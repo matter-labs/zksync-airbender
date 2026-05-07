@@ -67,7 +67,7 @@ const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 /// kernel. `None` slab is a no-op (test paths).
 fn copy_base_layer_cap_to_slab(
     unified_device_cap: &DeviceAllocation<Digest>,
-    proof_slab: Option<&DeviceAllocation<u8>>,
+    proof_slab: Option<&DeviceAllocation<E4>>,
     proof_layout: &ProofLayout,
     kind: crate::prover::proof_layout::WhirBaseLayerKind,
     stream: &era_cudart::stream::CudaStream,
@@ -109,7 +109,7 @@ fn copy_intermediate_query_to_slab(
     all_indexes_accessor: crate::primitives::context::UnsafeAccessor<[u32]>,
     leafs_accessor: crate::primitives::context::UnsafeAccessor<[BF]>,
     paths_accessor: crate::primitives::context::UnsafeAccessor<[Digest]>,
-    proof_slab: Option<&DeviceAllocation<u8>>,
+    proof_slab: Option<&DeviceAllocation<E4>>,
     proof_layout: &ProofLayout,
     round: usize,
     query_idx: usize,
@@ -183,7 +183,7 @@ fn copy_intermediate_query_to_slab(
 /// `None` slab is a no-op (test paths).
 fn copy_intermediate_cap_to_slab(
     unified_device_cap: &DeviceAllocation<Digest>,
-    proof_slab: Option<&DeviceAllocation<u8>>,
+    proof_slab: Option<&DeviceAllocation<E4>>,
     proof_layout: &ProofLayout,
     round: usize,
     stream: &era_cudart::stream::CudaStream,
@@ -220,7 +220,7 @@ fn copy_intermediate_cap_to_slab(
 /// (test paths).
 fn copy_ood_sample_to_slab(
     ood_value_host: &HostAllocation<[E4]>,
-    proof_slab: Option<&DeviceAllocation<u8>>,
+    proof_slab: Option<&DeviceAllocation<E4>>,
     proof_layout: &ProofLayout,
     ood_idx: usize,
     stream: &era_cudart::stream::CudaStream,
@@ -249,7 +249,7 @@ fn copy_ood_sample_to_slab(
 /// no-op (test paths).
 fn copy_pow_nonce_to_slab(
     pow_keepalives: &PowAndQueryIndexesKeepalives,
-    proof_slab: Option<&DeviceAllocation<u8>>,
+    proof_slab: Option<&DeviceAllocation<E4>>,
     proof_layout: &ProofLayout,
     pow_round_idx: usize,
     stream: &era_cudart::stream::CudaStream,
@@ -1888,14 +1888,13 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     // sumcheck_polys, final_monomials in follow-up commits) into slab
     // offsets via `ProofLayout` accessors. `None` skips all slab routing
     // (test paths).
-    proof_slab: Option<&DeviceAllocation<u8>>,
+    proof_slab: Option<&DeviceAllocation<E4>>,
     proof_layout: &ProofLayout,
-    // Deferred base-layer-claims aggregation closure (built by
+    // Deferred base-layer-claims metadata publication (built by
     // `schedule_prepare_base_layer_claims_with_sources` and handed off via
-    // `take_pending_aggregation`). When `Some`, scheduled as the very first
-    // start callback inside `gkr.whir.schedule`, before any `fill_*_polys_claims`
-    // / `fill_base_layer_point` / seed write callback so the downstream WHIR
-    // setup callbacks see the populated `base_layer_claims_shared_state.result`.
+    // `take_pending_aggregation`). When `Some`, scheduled as the first start
+    // callback inside `gkr.whir.schedule` so final proof parsing can see the
+    // populated `base_layer_claims_shared_state.result`.
     // `None` for test paths that use `wait()` and don't go through this fn.
     pre_start_aggregation_callback: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     context: &ProverContext,
@@ -2119,9 +2118,10 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     let shared_state_handle = UnsafeMutAccessor::new(shared_state.as_mut());
     let mut start_callbacks = Callbacks::new();
     if let Some(aggregation) = pre_start_aggregation_callback {
-        // Replaces the former `gkr.base_layer_claims.schedule` finish callback
-        // and the `gkr.proof` apply-extras callback. Must run before the
-        // downstream `fill_*_polys_claims` reads `base_layer_claims_shared_state.result`.
+        // Replaces the former `gkr.base_layer_claims.schedule` finish callback.
+        // Production extras are already device-gathered and committed into the
+        // backward seed before this point; this callback publishes the metadata
+        // needed by the final slab parse.
         start_callbacks.schedule(aggregation, stream)?;
     }
     let mut seed_host = unsafe { context.alloc_host_uninit::<Seed>() };

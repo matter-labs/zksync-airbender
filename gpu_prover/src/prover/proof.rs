@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
@@ -28,18 +29,17 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::gkr::backward::{
-    apply_base_layer_extra_evaluations_to_workflow_state, current_backward_seed,
-    make_deferred_backward_workflow_state, ClaimBufferLayout, GpuGKRBackwardHostKeepalive,
+    current_backward_seed, make_deferred_backward_workflow_state, ClaimBufferLayout,
+    GpuGKRBackwardHostKeepalive,
 };
 use crate::prover::gkr::backward_kernels::{
     eq_group_tables_len, launch_build_eq_values_from_point,
 };
 use crate::prover::gkr::base_layer_claims::{
-    clone_base_layer_extra_evaluations_from_caching_relations,
-    schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
-    GpuGKRBaseLayerTailOutput,
+    clone_base_layer_extra_evaluations_from_slab, schedule_prepare_base_layer_claims_with_sources,
+    GpuGKRBaseLayerClaimsScheduledExecution,
 };
-use crate::prover::gkr::forward::schedule_forward_pass;
+use crate::prover::gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use crate::prover::gkr::setup::{
     schedule_forward_setup_for_shape, GpuGKRForwardSetupHostKeepalive, GpuGKRSetupTransfer,
     GpuGKRSetupTransferHostKeepalive,
@@ -79,7 +79,7 @@ struct GpuGKRProofJobKeepalive<'a> {
     /// Proof slab itself — held here so it outlives all scheduled writes and
     /// the terminal D2H.
     #[allow(dead_code)]
-    _proof_slab: Option<DeviceAllocation<u8>>,
+    _proof_slab: Option<Arc<DeviceAllocation<E4>>>,
 }
 
 pub(crate) struct GpuGKRProofJob<'a> {
@@ -522,14 +522,22 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         );
     let proof_layout =
         crate::prover::proof_layout::ProofLayout::new(&proof_layout_inputs_structural);
-    let proof_slab: Option<DeviceAllocation<u8>> = if proof_layout.total_bytes > 0 {
-        let slab = context.alloc::<u8>(proof_layout.total_bytes, AllocationPlacement::Bottom)?;
+    let proof_slab: Option<Arc<DeviceAllocation<E4>>> = if proof_layout.total_bytes > 0 {
+        assert_eq!(
+            proof_layout.total_bytes % std::mem::size_of::<E4>(),
+            0,
+            "proof slab size must be E4-aligned",
+        );
+        let slab = context.alloc_with_extra_alignment::<E4, 4>(
+            proof_layout.total_bytes / std::mem::size_of::<E4>(),
+            AllocationPlacement::Bottom,
+        )?;
         debug_assert_eq!(
             slab.as_ptr() as usize & 0xF,
             0,
             "proof slab base pointer must be 16-byte aligned for ProofLayout typed casts",
         );
-        Some(slab)
+        Some(Arc::new(slab))
     } else {
         None
     };
@@ -617,6 +625,19 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             context,
         )?
     };
+    let output_evaluations_slab = proof_slab.as_ref().and_then(|slab| {
+        let (ptr, len) =
+            unsafe { proof_layout.output_evaluations_device_mut(slab.as_ptr() as *mut u8) }?;
+        assert_eq!(
+            ptr,
+            slab.as_ptr() as *mut E4,
+            "output_evaluations must be the proof slab prefix for direct forward writes",
+        );
+        Some(ForwardOutputSlabTarget {
+            backing: Arc::clone(slab),
+            len,
+        })
+    });
     let forward_output = schedule_forward_pass(
         setup_transfer.as_ref().map(|setup| &setup.trace_holder),
         synthetic_setup_trace_holder.as_ref(),
@@ -625,32 +646,17 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         &compiled_circuit,
         &external_challenges,
         final_trace_size_log_2,
+        output_evaluations_slab,
         context,
     )?;
     let post_forward_handoff_range = Range::new("gkr.proof.post_forward_handoff")?;
     post_forward_handoff_range.start(stream)?;
     // The reduced-output polys at the initial sumcheck layer share a single
-    // consolidated `Arc<DeviceAllocation<E4>>` populated by the forward
-    // dim-reduction pass in BTreeMap key order × {read, write}. That layout
-    // exactly matches the slab's `output_evaluations` block, so a single
-    // contiguous D2D from the Arc prefix into the block populates every
-    // per-`OutputType` slot in one op. The terminal slab D2H at the end of
-    // `prove()` then mirrors the block back to host as part of the single
-    // batched copy — no per-poly D2H ops, no per-poly host pinned allocs.
-    let handoff_slab_dst: Option<(*mut E4, usize)> = proof_slab.as_ref().and_then(|slab| {
-        let block = proof_layout.output_evaluations_block()?;
-        let total_e4 = (block.end - block.start) / std::mem::size_of::<E4>();
-        if total_e4 == 0 {
-            return None;
-        }
-        // SAFETY: `output_evaluations` block is laid out contiguously starting
-        // at `block.start`, sized at `total_e4 * size_of::<E4>()`, 16-byte
-        // aligned (FIELD_ALIGN), and disjoint from every other slab field.
-        let ptr = unsafe { (slab.as_ptr() as *mut u8).add(block.start) } as *mut E4;
-        Some((ptr, total_e4))
-    });
-    let transcript_handoff =
-        forward_output.schedule_transcript_handoff(false, handoff_slab_dst, context)?;
+    // consolidated backing. In the proof path, the final forward dim-reduction
+    // writes that backing directly into the slab's `output_evaluations` prefix;
+    // the terminal slab D2H then mirrors it back to host as part of the single
+    // batched copy.
+    let transcript_handoff = forward_output.schedule_transcript_handoff(false, context)?;
     let initial_layer_for_sumcheck = forward_output.initial_layer_for_sumcheck;
     let output_layer_for_sumcheck =
         forward_output.dimension_reducing_inputs[&initial_layer_for_sumcheck].clone();
@@ -810,7 +816,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             top_layer_claim_layout,
             d_lookup_challenges_for_backward,
             false,
-            proof_slab.as_ref(),
+            proof_slab.as_deref(),
             &proof_layout,
             context,
         )?;
@@ -823,34 +829,24 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 .as_ref()
                 .expect("setup-less proof path must materialize a synthetic setup holder")
         });
+    let final_claim_addresses = backward_scheduled.final_claim_addresses().to_vec();
+    let (final_device_seed, final_device_claim_point) =
+        backward_scheduled.final_device_seed_and_claim_point_mut();
     let mut base_layer_claims_scheduled = schedule_prepare_base_layer_claims_with_sources(
         compiled_circuit.layers[0].clone(),
-        backward_scheduled.final_device_claim_point(),
+        final_device_claim_point,
         // Layer-1 incoming claim addresses are schedule-time-known (the
         // `ClaimBufferLayout` built when backward staged its final claims),
         // so the base-layer extras plan is built at schedule time without
         // waiting for the backward post-handoff callback to materialize a
         // host BTreeMap.
-        backward_scheduled.final_claim_addresses(),
-        // Mirror the caching-relations extras into backward state at the end of
-        // the deferred aggregation callback. This fold of the former separate
-        // apply-extras callback removes one host callback from the
-        // post_backward → pre-WHIR window.
-        {
-            let backward_shared_state = backward_shared_state;
-            move |result: &GpuGKRBaseLayerTailOutput<E4>| unsafe {
-                apply_base_layer_extra_evaluations_to_workflow_state(
-                    backward_shared_state,
-                    result.extra_evaluations_addresses.get(),
-                    result.extra_evaluations_values.get(),
-                );
-            }
-        },
+        &final_claim_addresses,
         setup_trace_holder,
         &stage1_output.memory_trace_holder,
         &stage1_output.witness_trace_holder,
-        proof_slab.as_ref(),
+        proof_slab.as_deref(),
         &proof_layout,
+        Some(final_device_seed),
         context,
     )?;
     let base_layer_claims_shared_state = base_layer_claims_scheduled.shared_state_handle();
@@ -937,7 +933,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             whir_schedule.cap_size,
             compiled_circuit.trace_len.trailing_zeros() as usize,
             true, // use_hypercube_evals_for_batching
-            proof_slab.as_ref(),
+            proof_slab.as_deref(),
             &proof_layout,
             Some(base_layer_claims_scheduled.take_pending_aggregation()),
             context,
@@ -956,7 +952,17 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         .as_ref()
         .expect("proof slab must be allocated for prove()");
     let mut mirror = unsafe { context.alloc_host_uninit_slice::<u8>(proof_layout.total_bytes) };
-    memory_copy_async(unsafe { mirror.get_mut_accessor().get_mut() }, slab, stream)?;
+    let slab_u8 = unsafe {
+        era_cudart::slice::DeviceSlice::from_raw_parts(
+            slab.as_ptr() as *const u8,
+            proof_layout.total_bytes,
+        )
+    };
+    memory_copy_async(
+        unsafe { mirror.get_mut_accessor().get_mut() },
+        slab_u8,
+        stream,
+    )?;
     let proof_host_mirror_accessor = mirror.get_accessor();
     let proof_host_mirror = Some(mirror);
     callbacks.schedule(
@@ -969,18 +975,17 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             move || {
                 // Phase 4: source all device-produced proof fields from the
                 // terminal-D2H'd slab — including `final_explicit_evaluations`,
-                // which the forward transcript handoff D2D'd into the slab's
-                // `output_evaluations` block as part of a single contiguous
-                // copy from the consolidated forward backing Arc. Base-layer
-                // WHIR queries still come from the host callback path pending
-                // the WHIR rewrite.
+                // which final forward dim-reduction wrote directly into the
+                // slab's `output_evaluations` block.
                 let slab_bytes = unsafe { proof_host_mirror_accessor.get() };
                 let final_explicit_evaluations =
                     proof_layout_for_parse.parse_final_explicit_evaluations(slab_bytes);
                 let mut extra_by_layer = BTreeMap::new();
                 let base_layer_idx = 0usize;
-                let extra = clone_base_layer_extra_evaluations_from_caching_relations(
+                let extra = clone_base_layer_extra_evaluations_from_slab(
                     base_layer_claims_shared_state_for_final,
+                    &proof_layout_for_parse,
+                    slab_bytes,
                 );
                 if !extra.is_empty() {
                     extra_by_layer.insert(base_layer_idx, extra);
