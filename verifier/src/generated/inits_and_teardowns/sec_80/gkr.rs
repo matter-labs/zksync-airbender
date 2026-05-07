@@ -2106,7 +2106,7 @@ unsafe fn dim_reducing_final_step_accumulator(
 }
 #[doc = " Closed-form eval of VirtualSetup(InitsAndTeardownsLow/High) at `state.prev_point`."]
 #[doc = " Low half = bits [2..16) of the address (top 2 bits zeroed); high half = the high 10 address bits."]
-#[doc = " Source: prover/src/gkr/virtual_polys/inits_and_teardowns.rs."]
+#[doc = " Source: prover/src/gkr/virtual_polys/init_and_teardown_base.rs."]
 #[doc = " The `prev_claims` indices are positions assigned by the canonical layer-0 layout"]
 #[doc = " (memory cols → witness cols → setup cols → virtual setups → others)`."]
 #[inline(always)]

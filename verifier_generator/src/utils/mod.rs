@@ -300,4 +300,3 @@ pub fn collect_extra_addrs_from_cached_relations(
     }
     extra.into_iter().collect()
 }
-

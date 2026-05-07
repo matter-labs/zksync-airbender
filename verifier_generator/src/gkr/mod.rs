@@ -5,11 +5,11 @@ use std::collections::BTreeMap;
 use crate::field_wrapper::FieldWrapper;
 pub use crate::utils::{
     addr_to_idx, coeff_to_internal_repr, collect_extra_addrs_from_cached_relations,
-    collect_sorted_unique_addrs, BATCHING_CHALLENGE_EXTRA,
-    DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS,
+    collect_sorted_unique_addrs, BATCHING_CHALLENGE_EXTRA, DIM_REDUCE_EVAL_POINTS,
+    STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS,
 };
-use prover::cs::definitions::{GKRAddress, VirtualSetupPoly};
 use prover::common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
+use prover::cs::definitions::{GKRAddress, VirtualSetupPoly};
 use prover::cs::gkr_compiler::{
     GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation, OutputType,
 };
@@ -296,6 +296,7 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
 fn build_virtual_setup_eval_checks<MW: FieldWrapper>(
     layer_0_layout: &[GKRAddress],
     trace_len_log_2: usize,
+    inits_and_teardowns_word_bits: Option<u32>,
 ) -> (TokenStream, TokenStream) {
     let mut helpers = TokenStream::new();
     let mut calls = TokenStream::new();
@@ -342,8 +343,12 @@ fn build_virtual_setup_eval_checks<MW: FieldWrapper>(
     if its_low_idx.is_some() || its_high_idx.is_some() {
         let lo = its_low_idx.expect("InitsAndTeardownsLow expected when High is present");
         let hi = its_high_idx.expect("InitsAndTeardownsHigh expected when Low is present");
+        let word_bits = inits_and_teardowns_word_bits.expect(
+            "compiled_circuit.memory_layout.inits_and_teardowns_word_bits must be Some \
+             for circuits emitting InitsAndTeardowns VirtualSetup polys",
+        ) as usize;
         let (helper, call) =
-            emit_inits_and_teardowns_eval_check::<MW>(lo, hi, 2, trace_len_log_2);
+            emit_inits_and_teardowns_eval_check::<MW>(lo, hi, word_bits, trace_len_log_2);
         helpers.extend(helper);
         calls.extend(call);
     }
@@ -418,7 +423,6 @@ fn emit_range_check_eval_check<MW: FieldWrapper>(
     (helper, call)
 }
 
-
 fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
     lo_idx: usize,
     hi_idx: usize,
@@ -445,7 +449,7 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
     let helper = quote! {
         #[doc = " Closed-form eval of VirtualSetup(InitsAndTeardownsLow/High) at `state.prev_point`."]
         #[doc = #halves]
-        #[doc = " Source: prover/src/gkr/virtual_polys/inits_and_teardowns.rs."]
+        #[doc = " Source: prover/src/gkr/virtual_polys/init_and_teardown_base.rs."]
         #[doc = " The `prev_claims` indices are positions assigned by the canonical layer-0 layout"]
         #[doc = " (memory cols → witness cols → setup cols → virtual setups → others)`."]
         #[inline(always)]
@@ -903,8 +907,14 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     let trace_len_log2 = compiled_circuit.trace_len.trailing_zeros() as usize;
 
     let address_high_bits_shift_val: u32 = if num_teardown_sets > 0 {
-        const WORD_BITS: u32 = 2;
-        (trace_len_log2 as u32) + WORD_BITS - 16
+        let word_bits = compiled_circuit
+            .memory_layout
+            .inits_and_teardowns_word_bits
+            .expect(
+                "compiled_circuit.memory_layout.inits_and_teardowns_word_bits must be Some \
+                 when teardown_sets is non-empty",
+            );
+        (trace_len_log2 as u32) + word_bits - 16
     } else {
         0
     };
@@ -946,7 +956,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             const #array_name: [usize; #num_indices] = [#( #input_sorted_indices ),*];
         });
     }
-
 
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
@@ -1111,6 +1120,16 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         layer_0_src_kind,
         layer_0_src_pos,
     ) = if standard_sorted_addrs.is_empty() {
+        for (_, group_addrs) in compiled_circuit.global_output_map.iter() {
+            for addr in group_addrs {
+                assert!(
+                    !matches!(addr, GKRAddress::VirtualSetup(_)),
+                    "circuit has zero standard GKR layers but VirtualSetup address {:?} \
+                     appears in global_output_map; closed-form eval check cannot be generated",
+                    addr
+                );
+            }
+        }
         (
             TokenStream::new(),
             TokenStream::new(),
@@ -1120,8 +1139,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         )
     } else {
         use std::collections::BTreeSet;
-        let regular_set: BTreeSet<GKRAddress> =
-            standard_sorted_addrs[0].iter().copied().collect();
+        let regular_set: BTreeSet<GKRAddress> = standard_sorted_addrs[0].iter().copied().collect();
         let extra_addrs = collect_extra_addrs_from_cached_relations(
             &compiled_circuit.layers[0],
             &standard_sorted_addrs[0],
@@ -1166,10 +1184,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             assert_eq!(layout[i], GKRAddress::BaseLayerMemory(i));
         }
         for j in 0..num_witness_cols {
-            assert_eq!(
-                layout[num_memory_cols + j],
-                GKRAddress::BaseLayerWitness(j)
-            );
+            assert_eq!(layout[num_memory_cols + j], GKRAddress::BaseLayerWitness(j));
         }
         for k in 0..num_setup_cols {
             assert_eq!(
@@ -1177,6 +1192,13 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 GKRAddress::Setup(k)
             );
         }
+        let total_oracle_cols = num_memory_cols + num_witness_cols + num_setup_cols;
+        assert!(
+            layout.len() >= total_oracle_cols,
+            "layer-0 layout has {} entries, less than TOTAL_ORACLE_COLS = {}",
+            layout.len(),
+            total_oracle_cols
+        );
         for addr in standard_sorted_addrs[0].iter().chain(extra_addrs.iter()) {
             assert!(
                 layout.iter().any(|a| a == addr),
@@ -1185,8 +1207,11 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             );
         }
 
-        let (helpers, calls) =
-            build_virtual_setup_eval_checks::<MW>(&layout, trace_len_log_2);
+        let (helpers, calls) = build_virtual_setup_eval_checks::<MW>(
+            &layout,
+            trace_len_log_2,
+            compiled_circuit.memory_layout.inits_and_teardowns_word_bits,
+        );
 
         let mut src_kind: Vec<usize> = Vec::with_capacity(layout.len());
         let mut src_pos: Vec<usize> = Vec::with_capacity(layout.len());
@@ -1599,7 +1624,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     let oracle_depths: Vec<usize> = oracles.iter().map(|(_, o)| o.depth).collect();
     let oracle_num_cols: Vec<usize> = oracles.iter().map(|(_, o)| o.num_columns).collect();
     let num_oracles = oracles.len();
-
 
     let num_intermediate_oracles = whir_rounds - 1;
     let mut whir_oracle_depths = Vec::with_capacity(num_intermediate_oracles);

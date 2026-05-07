@@ -4890,7 +4890,8 @@
     },
     "indirect_access_variable_offsets": [],
     "teardown_sets": [],
-    "total_width": 30
+    "total_width": 30,
+    "inits_and_teardowns_word_bits": null
   },
   "witness_layout": {
     "multiplicities_columns_for_range_check_16": {

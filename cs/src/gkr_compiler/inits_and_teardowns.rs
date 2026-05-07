@@ -139,6 +139,7 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
             indirect_access_variable_offsets: Vec::new(),
             teardown_sets,
             total_width: graph.base_layer_memory.len(),
+            inits_and_teardowns_word_bits: Some(WORD_BITS),
         },
         witness_layout: GKRWitnessLayout {
             multiplicities_columns_for_range_check_16: 0..0,

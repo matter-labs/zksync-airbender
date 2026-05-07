@@ -1344,7 +1344,8 @@
         ]
       ]
     ],
-    "total_width": 64
+    "total_width": 64,
+    "inits_and_teardowns_word_bits": 2
   },
   "witness_layout": {
     "multiplicities_columns_for_range_check_16": {
