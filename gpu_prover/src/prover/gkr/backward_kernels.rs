@@ -17,7 +17,6 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use era_cudart_sys::cudaGetSymbolAddress;
 use field::{Field, FieldExtension};
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
-use prover::gkr::prover::transcript_utils::commit_field_els;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::sumcheck::evaluation_kernels::GKRInputs;
 use prover::transcript::Seed;
@@ -41,9 +40,7 @@ use crate::primitives::context::{
 use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::utils::{
-    get_grid_block_dims_for_threads_count, memcpy_to_symbol_from_device_async, WARP_SIZE,
-};
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ClaimBufferLayout {
@@ -169,10 +166,40 @@ pub(super) const GKR_BACKWARD_MAX_KERNELS_PER_LAYER: usize = 64;
 // PermutationProduct plus up to 3 lookup records, consuming 8 challenges.
 pub(super) const GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER: usize = 5;
 pub(super) const GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN: usize = 8;
+/// Supported GKR trace-length ceiling. Backward folding uses one challenge per
+/// trace dimension, so a `2^24` trace has at most 24 folding steps.
+pub(super) const GKR_BACKWARD_MAX_TRACE_LEN_LOG2: usize = 24;
+/// Dim-reducing next-layer state stores `(folding_steps - 1)` per-round
+/// challenges plus 3 transcript-squeezed values:
+/// `[folding_challenges, r_before_last, r_last, next_batching]`.
+pub(super) const MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN: usize =
+    GKR_BACKWARD_MAX_TRACE_LEN_LOG2 + 2;
 
 extern "C" {
     static ab_gkr_dim_reducing_batch_challenge_table:
         [E4; GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN];
+    static ab_gkr_dim_reducing_layer_claim_point: [E4; MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN];
+}
+
+pub(super) fn get_dim_reducing_layer_claim_point_device_ptr() -> *mut E4 {
+    use std::sync::OnceLock;
+
+    static PTR: OnceLock<usize> = OnceLock::new();
+    let ptr = *PTR.get_or_init(|| {
+        let mut p: *mut c_void = null_mut();
+        // SAFETY: ab_gkr_dim_reducing_layer_claim_point is a valid
+        // __constant__ symbol defined in dim_reducing_backward.cu.
+        unsafe {
+            cudaGetSymbolAddress(
+                &mut p,
+                &ab_gkr_dim_reducing_layer_claim_point as *const _ as *const c_void,
+            )
+        }
+        .wrap()
+        .expect("cudaGetSymbolAddress failed for ab_gkr_dim_reducing_layer_claim_point");
+        p as usize
+    });
+    ptr as *mut E4
 }
 
 fn get_dim_reducing_batch_challenge_table_device_ptr() -> *mut E4 {
@@ -615,9 +642,9 @@ impl<E> SharedChallengeDevice<E> {
         unsafe { (&*self.device.get()).as_ptr().add(offset) }
     }
 
-    pub(super) unsafe fn slice_mut(&self, offset: usize, len: usize) -> &mut DeviceSlice<E> {
-        // SAFETY: callers guarantee the requested range is within bounds and that using this
-        // temporary mutable view only serves to enqueue stream-ordered H2D copies.
+    pub(super) unsafe fn slice_mut(&mut self, offset: usize, len: usize) -> &mut DeviceSlice<E> {
+        // SAFETY: callers guarantee the requested range is within bounds and use
+        // this temporary mutable view only to enqueue stream-ordered device work.
         &mut (&mut *self.device.get())[offset..offset + len]
     }
 
@@ -637,12 +664,6 @@ pub(super) struct ScheduledChallengeBuffer<E> {
 impl<E> ScheduledChallengeBuffer<E> {
     pub(super) fn as_ptr(&self) -> *const E {
         unsafe { self.device.get() }.as_ptr(self.offset)
-    }
-
-    #[cfg(test)]
-    pub(super) fn device_slice(&self) -> &DeviceSlice<E> {
-        // SAFETY: buffer views only expose ranges created from valid packed offsets.
-        unsafe { self.device.get().slice(self.offset, self.len) }
     }
 }
 
@@ -674,6 +695,63 @@ impl<E> ScheduledChallengeStorage<E> {
             device,
         } = self;
         (*device).device.into_inner()
+    }
+}
+
+pub(crate) struct DeviceClaimPointAndBatching<E> {
+    ptr: usize,
+    len: usize,
+    #[allow(dead_code)]
+    owner: Option<DeviceAllocation<E>>,
+}
+
+impl<E> DeviceClaimPointAndBatching<E> {
+    pub(crate) fn from_allocation(allocation: DeviceAllocation<E>) -> Self {
+        let ptr = allocation.as_ptr() as usize;
+        let len = allocation.len();
+        Self {
+            ptr,
+            len,
+            owner: Some(allocation),
+        }
+    }
+
+    pub(crate) unsafe fn from_raw_symbol_parts(ptr: *mut E, len: usize) -> Self {
+        Self {
+            ptr: ptr as usize,
+            len,
+            owner: None,
+        }
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.len
+    }
+
+    pub(crate) fn as_ptr(&self) -> *const E {
+        self.ptr as *const E
+    }
+
+    pub(crate) fn as_mut_ptr(&mut self) -> *mut E {
+        self.ptr as *mut E
+    }
+
+    pub(crate) fn as_slice(&self) -> &DeviceSlice<E> {
+        unsafe { DeviceSlice::from_raw_parts(self.as_ptr(), self.len) }
+    }
+
+    pub(crate) fn as_mut_slice(&mut self) -> &mut DeviceSlice<E> {
+        unsafe { DeviceSlice::from_raw_parts_mut(self.as_mut_ptr(), self.len) }
+    }
+
+    pub(crate) unsafe fn slice(&self, offset: usize, len: usize) -> &DeviceSlice<E> {
+        assert!(offset <= self.len && len <= self.len - offset);
+        DeviceSlice::from_raw_parts(self.as_ptr().add(offset), len)
+    }
+
+    pub(crate) unsafe fn slice_mut(&mut self, offset: usize, len: usize) -> &mut DeviceSlice<E> {
+        assert!(offset <= self.len && len <= self.len - offset);
+        DeviceSlice::from_raw_parts_mut(self.as_mut_ptr().add(offset), len)
     }
 }
 
@@ -749,7 +827,7 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExte
     /// via `.take()`. Replaces the per-layer entry H2D that used to copy
     /// `workflow_state.current_claim_point` + `current_batching_challenge`
     /// from host.
-    pub(super) device_claim_point_for_next_layer: Option<DeviceAllocation<E>>,
+    pub(super) device_claim_point_for_next_layer: Option<DeviceClaimPointAndBatching<E>>,
     /// Device-resident `current_claims` buffer for the NEXT backward layer.
     /// This layer's `device_new_claims` becomes the next layer's input to
     /// `build_combined_claim`.
@@ -912,7 +990,7 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     pub(super) device_seed: Option<DeviceAllocation<u32>>,
     /// Device-resident `[claim_point || batching_challenge]` for the NEXT
     /// backward layer (see dim-reducing twin). Taken by the orchestrator.
-    pub(super) device_claim_point_for_next_layer: Option<DeviceAllocation<E>>,
+    pub(super) device_claim_point_for_next_layer: Option<DeviceClaimPointAndBatching<E>>,
     /// Device-resident `current_claims` buffer for the NEXT backward layer.
     pub(super) device_claims_for_next_layer: Option<DeviceAllocation<E>>,
     /// Explicit address order of `device_claims_for_next_layer`.
@@ -951,7 +1029,7 @@ pub(crate) struct GpuGKRBackwardScheduledExecution<B, E: FieldExtension<BF> + Fi
     #[allow(dead_code)]
     pub(super) external_challenges_device_keepalive: Option<DeviceAllocation<E>>,
     pub(super) final_device_seed: Option<DeviceAllocation<u32>>,
-    pub(super) final_device_claim_point_and_batching: Option<DeviceAllocation<E>>,
+    pub(super) final_device_claim_point_and_batching: Option<DeviceClaimPointAndBatching<E>>,
     pub(super) final_claim_layout: Option<ClaimBufferLayout>,
     // Pinned host buffers populated by `schedule_post_backward_handoff`'s D2H. The
     // host callback that mirrors them into `ScheduledBackwardWorkflowState` reads
@@ -1016,7 +1094,7 @@ pub(crate) struct GpuGKRBackwardHostKeepalive<B, E: FieldExtension<BF> + Field> 
     #[allow(dead_code)]
     pub(super) final_device_seed: Option<DeviceAllocation<u32>>,
     #[allow(dead_code)]
-    pub(super) final_device_claim_point_and_batching: Option<DeviceAllocation<E>>,
+    pub(super) final_device_claim_point_and_batching: Option<DeviceClaimPointAndBatching<E>>,
     #[allow(dead_code)]
     pub(super) final_claim_layout: Option<ClaimBufferLayout>,
     #[allow(dead_code)]
@@ -1260,33 +1338,6 @@ where
     unsafe { shared_state.get() }.seed
 }
 
-pub(crate) fn apply_base_layer_extra_evaluations_to_workflow_state<E>(
-    shared_state: ScheduledBackwardWorkflowStateHandle<E>,
-    extra_evaluations_addresses: &[GKRAddress],
-    extra_evaluations_values: &[E],
-) where
-    E: FieldExtension<BF> + Field + Copy,
-    [(); E::DEGREE]: Sized,
-{
-    debug_assert_eq!(
-        extra_evaluations_addresses.len(),
-        extra_evaluations_values.len(),
-    );
-    if extra_evaluations_addresses.is_empty() {
-        return;
-    }
-
-    // The only durable side-effect production needs is committing the extras
-    // values into the rolling transcript seed; downstream WHIR setup reads
-    // the seed via `current_backward_seed`. The historical extends of
-    // `claims_for_layers[0]` and `current_claims` are dead in production
-    // (`mirror_layer_to_host` is false on the prove path, so the per-layer
-    // claim BTreeMap is never populated, and `current_claims` is no longer
-    // mirrored across the post-backward boundary).
-    let state = unsafe { shared_state.get_mut() };
-    commit_field_els::<BF, E>(&mut state.seed, extra_evaluations_values);
-}
-
 pub(crate) fn take_backward_execution_from_shared_state<E>(
     shared_state: ScheduledBackwardWorkflowStateHandle<E>,
 ) -> GpuGKRBackwardExecution<E>
@@ -1326,64 +1377,6 @@ pub(super) fn upload_into_host_keepalive<T>(upload: ScheduledUpload<T>) -> HostS
         scheduler_host,
         _phantom: std::marker::PhantomData,
     }
-}
-
-pub(super) fn schedule_immediate_field_upload<E: Field + Send + Sync + 'static>(
-    context: &ProverContext,
-    padded_len: usize,
-    values: &[E],
-) -> CudaResult<(ScheduledChallengeStorage<E>, ScheduledChallengeBuffer<E>)> {
-    assert!(values.len() <= padded_len);
-    let values = values.to_vec();
-    let mut storage =
-        ScheduledChallengeStorage::new(context.alloc(padded_len, AllocationPlacement::Top)?);
-    let buffer = schedule_packed_round_challenge_upload(
-        context,
-        storage.device_accessor(),
-        &mut storage.callbacks,
-        0,
-        padded_len,
-        move |slice| {
-            slice[..values.len()].copy_from_slice(&values);
-        },
-    )?;
-    Ok((storage, buffer))
-}
-
-pub(super) fn schedule_packed_round_challenge_upload<E: Field + 'static>(
-    context: &ProverContext,
-    device: UnsafeAccessor<SharedChallengeDevice<E>>,
-    callbacks: &mut Callbacks<'static>,
-    offset: usize,
-    len: usize,
-    fill: impl Fn(&mut [E]) + Send + Sync + 'static,
-) -> CudaResult<ScheduledChallengeBuffer<E>> {
-    let mut host = unsafe { context.alloc_host_uninit_slice(len) };
-    let host_accessor = host.get_mut_accessor();
-    callbacks.schedule(
-        move || unsafe {
-            let dst = host_accessor.get_mut();
-            dst.fill(E::ZERO);
-            fill(dst);
-        },
-        context.get_exec_stream(),
-    )?;
-    // SAFETY: the packed device buffer outlives the queued copy and the slice range belongs to
-    // this buffer view. Uploads are enqueued on a single CUDA stream in program order.
-    unsafe {
-        memory_copy_async(
-            device.get().slice_mut(offset, len),
-            &host,
-            context.get_exec_stream(),
-        )?;
-    }
-    drop(host);
-
-    Ok(ScheduledChallengeBuffer {
-        device,
-        offset,
-        len,
-    })
 }
 
 pub(super) fn schedule_callback_populated_field_upload<'a, E: Field + 'a>(
@@ -1463,20 +1456,6 @@ pub(super) const GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK: u32 = 512;
 pub(super) const GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK: usize = 4;
 pub(super) const GKR_EQ_GROUP_SIZE: usize = 8;
 pub(super) const GKR_EQ_GROUP_TABLE_LEN: usize = 1 << GKR_EQ_GROUP_SIZE;
-
-extern "C" {
-    static ab_gkr_dim_reducing_round1_challenge: [E4; 1];
-    static ab_gkr_dim_reducing_continuation_challenge: [E4; 1];
-}
-
-#[inline]
-unsafe fn upload_dim_symbol_from_device<T>(
-    symbol: *const c_void,
-    src: *const T,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    memcpy_to_symbol_from_device_async(symbol, src, 1, stream)
-}
 
 cuda_kernel_signature_arguments_and_function!(
     GpuDimensionReducingPairwiseRound0<T>,
@@ -1593,14 +1572,6 @@ pub(crate) trait GpuDimensionReducingKernelSet: Reduce + Copy + Sized {
     const CONTINUATION_BATCHED_COMPACT: GpuDimensionReducingContinuationBatchedCompactSignature<
         Self,
     >;
-    unsafe fn upload_round1_challenge(
-        folding_challenge: *const Self,
-        stream: &CudaStream,
-    ) -> CudaResult<()>;
-    unsafe fn upload_continuation_challenge(
-        folding_challenge: *const Self,
-        stream: &CudaStream,
-    ) -> CudaResult<()>;
 }
 
 macro_rules! gkr_dim_reducing_kernels {
@@ -1729,26 +1700,6 @@ macro_rules! gkr_dim_reducing_kernels {
                     [<ab_gkr_dim_reducing_round1_batched_compact_ $type:lower _kernel>];
                 const CONTINUATION_BATCHED_COMPACT: GpuDimensionReducingContinuationBatchedCompactSignature<Self> =
                     [<ab_gkr_dim_reducing_continuation_batched_compact_ $type:lower _kernel>];
-                unsafe fn upload_round1_challenge(
-                    folding_challenge: *const Self,
-                    stream: &CudaStream,
-                ) -> CudaResult<()> {
-                    upload_dim_symbol_from_device(
-                        &ab_gkr_dim_reducing_round1_challenge as *const _ as *const c_void,
-                        folding_challenge,
-                        stream,
-                    )
-                }
-                unsafe fn upload_continuation_challenge(
-                    folding_challenge: *const Self,
-                    stream: &CudaStream,
-                ) -> CudaResult<()> {
-                    upload_dim_symbol_from_device(
-                        &ab_gkr_dim_reducing_continuation_challenge as *const _ as *const c_void,
-                        folding_challenge,
-                        stream,
-                    )
-                }
             }
         }
     };
@@ -1922,14 +1873,10 @@ pub(super) fn launch_dim_reducing_round1_batched_compact<
     E: GpuDimensionReducingKernelSet + Field,
 >(
     batch: &GpuGKRDimensionReducingContinuationBatchCompact<E>,
-    folding_challenge: *const E,
+    _folding_challenge: *const E,
     acc_size: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    let stream = context.get_exec_stream();
-    // SAFETY: the source is a device pointer ordered on exec_stream; the
-    // symbol is a valid __constant__ e4[1] payload consumed by the kernel.
-    unsafe { E::upload_round1_challenge(folding_challenge, stream)? };
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
     let args = GpuDimensionReducingRound1BatchedCompactArguments::new(*batch, acc_size as u32);
     GpuDimensionReducingRound1BatchedCompactFunction(E::ROUND1_BATCHED_COMPACT)
@@ -1940,15 +1887,11 @@ pub(super) fn launch_dim_reducing_continuation_batched_compact<
     E: GpuDimensionReducingKernelSet + Field,
 >(
     batch: &GpuGKRDimensionReducingContinuationBatchCompact<E>,
-    folding_challenge: *const E,
+    _folding_challenge: *const E,
     acc_size: usize,
     step: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    let stream = context.get_exec_stream();
-    // SAFETY: the source is a device pointer ordered on exec_stream; the
-    // symbol is a valid __constant__ e4[1] payload consumed by the kernel.
-    unsafe { E::upload_continuation_challenge(folding_challenge, stream)? };
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
     let args = GpuDimensionReducingContinuationBatchedCompactArguments::new(
         *batch,

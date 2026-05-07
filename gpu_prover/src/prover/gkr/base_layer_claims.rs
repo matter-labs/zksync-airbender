@@ -65,14 +65,14 @@ fn launch_eval_virtual_setup_claims(
     EvalVirtualSetupClaimsFunction::default().launch(&config, &args)
 }
 
-/// Production view onto the post-aggregation state. Holds accessors into the
-/// pinned `BaseLayerExtrasPlan` buffers owned by the keepalive — never copies
-/// the values to the host-resident heap. Consumers (the post-aggregation
-/// callback and the final D2H callback) iterate the values sequentially.
+/// Production view onto the post-aggregation state. Addresses/sources are
+/// schedule-time metadata owned by the keepalive; fallback test paths also
+/// carry a host values accessor populated from dense claim readbacks.
 #[derive(Copy, Clone)]
 pub(crate) struct GpuGKRBaseLayerTailOutput<E> {
     pub(crate) extra_evaluations_addresses: UnsafeAccessor<[GKRAddress]>,
-    pub(crate) extra_evaluations_values: UnsafeAccessor<[E]>,
+    extra_evaluations_sources: UnsafeAccessor<[DenseSource]>,
+    _marker: std::marker::PhantomData<E>,
 }
 
 /// Test convenience snapshot: owns its data so `wait()` can drop the
@@ -91,22 +91,27 @@ pub(crate) struct ScheduledBaseLayerClaimsState<E> {
     result: Option<GpuGKRBaseLayerTailOutput<E>>,
 }
 
-pub(crate) fn clone_base_layer_extra_evaluations_from_caching_relations<E>(
-    shared_state: UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E>>,
-) -> BTreeMap<GKRAddress, E>
-where
-    E: Copy,
-{
+pub(crate) fn clone_base_layer_extra_evaluations_from_slab(
+    shared_state: UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E4>>,
+    proof_layout: &ProofLayout,
+    slab: &[u8],
+) -> BTreeMap<GKRAddress, E4> {
     let result = unsafe { shared_state.get() }
         .result
         .as_ref()
         .expect("base-layer claims result must be available");
     let addresses = unsafe { result.extra_evaluations_addresses.get() };
-    let values = unsafe { result.extra_evaluations_values.get() };
+    let sources = unsafe { result.extra_evaluations_sources.get() };
+    debug_assert_eq!(addresses.len(), sources.len());
     addresses
         .iter()
         .copied()
-        .zip(values.iter().copied())
+        .zip(
+            sources
+                .iter()
+                .copied()
+                .map(|source| source.read_from_slab(proof_layout, slab)),
+        )
         .collect()
 }
 
@@ -132,6 +137,58 @@ impl DenseSource {
             }
         }
     }
+
+    fn read_from_slab(self, proof_layout: &ProofLayout, slab: &[u8]) -> E4 {
+        match self {
+            DenseSource::Memory(offset) => {
+                proof_layout.whir_base_evals_host(slab, WhirBaseLayerKind::Memory)[offset]
+            }
+            DenseSource::Witness(offset) => {
+                proof_layout.whir_base_evals_host(slab, WhirBaseLayerKind::Witness)[offset]
+            }
+            DenseSource::Setup(offset) => {
+                proof_layout.whir_base_evals_host(slab, WhirBaseLayerKind::Setup)[offset]
+            }
+        }
+    }
+
+    unsafe fn device_ptr<E>(
+        self,
+        proof_slab: &DeviceAllocation<E4>,
+        proof_layout: &ProofLayout,
+    ) -> *const E {
+        let slab_base = proof_slab.as_ptr() as *mut u8;
+        let (base, len) = match self {
+            DenseSource::Memory(offset) => {
+                let (ptr, len) =
+                    proof_layout.whir_base_evals_device_mut(slab_base, WhirBaseLayerKind::Memory);
+                assert!(offset < len, "memory dense source offset out of slab range");
+                (ptr, len)
+            }
+            DenseSource::Witness(offset) => {
+                let (ptr, len) =
+                    proof_layout.whir_base_evals_device_mut(slab_base, WhirBaseLayerKind::Witness);
+                assert!(
+                    offset < len,
+                    "witness dense source offset out of slab range"
+                );
+                (ptr, len)
+            }
+            DenseSource::Setup(offset) => {
+                let (ptr, len) =
+                    proof_layout.whir_base_evals_device_mut(slab_base, WhirBaseLayerKind::Setup);
+                assert!(offset < len, "setup dense source offset out of slab range");
+                (ptr, len)
+            }
+        };
+        let offset = match self {
+            DenseSource::Memory(offset)
+            | DenseSource::Witness(offset)
+            | DenseSource::Setup(offset) => offset,
+        };
+        debug_assert!(offset < len);
+        base.add(offset) as *const E
+    }
 }
 
 /// Schedule-time-known SoA description of the layer-0 caching-relations extras:
@@ -143,13 +200,14 @@ impl DenseSource {
 struct BaseLayerExtrasPlan<E> {
     addresses: Box<[GKRAddress]>,
     sources: Box<[DenseSource]>,
-    values: HostAllocation<[E]>,
+    values: Option<HostAllocation<[E]>>,
 }
 
 impl<E> BaseLayerExtrasPlan<E> {
     fn new(
         layer_desc: &GKRLayerDescription,
         initial_addresses: &[GKRAddress],
+        allocate_host_values: bool,
         context: &ProverContext,
     ) -> Self {
         let mut already_present: BTreeSet<GKRAddress> = initial_addresses.iter().copied().collect();
@@ -172,7 +230,8 @@ impl<E> BaseLayerExtrasPlan<E> {
             .iter()
             .map(|addr| DenseSource::from_address(*addr))
             .collect();
-        let values = unsafe { context.alloc_host_uninit_slice::<E>(addresses.len()) };
+        let values = allocate_host_values
+            .then(|| unsafe { context.alloc_host_uninit_slice::<E>(addresses.len()) });
         Self {
             addresses,
             sources,
@@ -184,28 +243,29 @@ impl<E> BaseLayerExtrasPlan<E> {
 pub(crate) struct GpuGKRBaseLayerClaimsScheduledExecution<E> {
     _tracing_ranges: Vec<Range>,
     _finish_callbacks: Callbacks<'static>,
-    // Pinned D2H readbacks consumed by the deferred aggregation closure below.
-    // The closure captures raw accessors, so the underlying chunks must not
-    // return to the host pool before the closure is scheduled.
-    _virtual_setup_claims_host: HostAllocation<[E]>,
-    _mem_polys_claims: HostAllocation<[E]>,
-    _wit_polys_claims: HostAllocation<[E]>,
-    _setup_polys_claims: HostAllocation<[E]>,
+    // Fallback/test pinned D2H readbacks consumed by the deferred aggregation
+    // closure below. Production slab routing keeps these as `None`.
+    _virtual_setup_claims_host: Option<HostAllocation<[E]>>,
+    _mem_polys_claims: Option<HostAllocation<[E]>>,
+    _wit_polys_claims: Option<HostAllocation<[E]>>,
+    _setup_polys_claims: Option<HostAllocation<[E]>>,
+    // Production device gather of cached-relation extras. It is committed into
+    // the final backward seed on-device, so it must live until stream work ends.
+    _extras_values_device: Option<DeviceAllocation<E>>,
     // Schedule-time-built plan for layer-0 caching-relations extras. The plan
-    // owns the pinned `values` buffer; the aggregation callback writes into it
-    // through accessors. The plan must outlive every consumer of those
-    // accessors (post-aggregation callback + final-D2H callback), so it is
-    // parked here.
+    // owns the optional fallback `values` buffer and the production metadata.
+    // The plan must outlive every consumer of those accessors, so it is parked
+    // here.
     _extras_plan: BaseLayerExtrasPlan<E>,
     // Snapshot accessors used by the test convenience `wait()`. Each accessor
     // points into one of the pinned host allocations above; valid only while
     // `self` is alive (i.e. before `wait()` consumes it).
     extras_addresses_accessor: UnsafeAccessor<[GKRAddress]>,
-    extras_values_accessor: UnsafeAccessor<[E]>,
-    virtual_setup_claims_accessor: UnsafeAccessor<[E]>,
-    mem_polys_claims_accessor: UnsafeAccessor<[E]>,
-    wit_polys_claims_accessor: UnsafeAccessor<[E]>,
-    setup_polys_claims_accessor: UnsafeAccessor<[E]>,
+    extras_values_accessor: Option<UnsafeAccessor<[E]>>,
+    virtual_setup_claims_accessor: Option<UnsafeAccessor<[E]>>,
+    mem_polys_claims_accessor: Option<UnsafeAccessor<[E]>>,
+    wit_polys_claims_accessor: Option<UnsafeAccessor<[E]>>,
+    setup_polys_claims_accessor: Option<UnsafeAccessor<[E]>>,
     shared_state: Box<ScheduledBaseLayerClaimsState<E>>,
     // Deferred aggregation closure built by `schedule_prepare_base_layer_claims_with_sources`.
     // Holds the captured pinned-host accessors and `layer_desc`; the caller schedules it
@@ -221,9 +281,8 @@ impl<E: Copy + 'static> GpuGKRBaseLayerClaimsScheduledExecution<E> {
     }
 
     /// Schedules the deferred aggregation callback on `stream`. Must be called
-    /// exactly once. The callback finalizes `shared_state.result` and runs the
-    /// caller-supplied `post_aggregation` closure (e.g. mirror extras into
-    /// backward state).
+    /// exactly once. The callback finalizes `shared_state.result`; fallback
+    /// paths also aggregate host extras from dense claim readbacks.
     pub(crate) fn schedule_aggregation(
         &mut self,
         stream: &era_cudart::stream::CudaStream,
@@ -264,10 +323,19 @@ impl<E: Copy + 'static> GpuGKRBaseLayerClaimsScheduledExecution<E> {
                 .copied()
                 .collect()
         };
-        let extra_evaluations_values: Box<[E]> =
-            unsafe { self.extras_values_accessor.get().iter().copied().collect() };
+        let extra_evaluations_values: Box<[E]> = unsafe {
+            self.extras_values_accessor
+                .expect("test base-layer wait requires host extra values")
+                .get()
+                .iter()
+                .copied()
+                .collect()
+        };
         let virtual_setup_claims = {
-            let slice = unsafe { self.virtual_setup_claims_accessor.get() };
+            let accessor = self
+                .virtual_setup_claims_accessor
+                .expect("test base-layer wait requires virtual setup readback");
+            let slice = unsafe { accessor.get() };
             assert_eq!(slice.len(), VIRTUAL_SETUP_CLAIMS_OUTPUT_LEN);
             let mut arr = [slice[0]; VIRTUAL_SETUP_CLAIMS_OUTPUT_LEN];
             arr.copy_from_slice(slice);
@@ -275,6 +343,7 @@ impl<E: Copy + 'static> GpuGKRBaseLayerClaimsScheduledExecution<E> {
         };
         let mem_polys_claims: Box<[E]> = unsafe {
             self.mem_polys_claims_accessor
+                .expect("test base-layer wait requires memory claim readback")
                 .get()
                 .iter()
                 .copied()
@@ -282,6 +351,7 @@ impl<E: Copy + 'static> GpuGKRBaseLayerClaimsScheduledExecution<E> {
         };
         let wit_polys_claims: Box<[E]> = unsafe {
             self.wit_polys_claims_accessor
+                .expect("test base-layer wait requires witness claim readback")
                 .get()
                 .iter()
                 .copied()
@@ -289,6 +359,7 @@ impl<E: Copy + 'static> GpuGKRBaseLayerClaimsScheduledExecution<E> {
         };
         let setup_polys_claims: Box<[E]> = unsafe {
             self.setup_polys_claims_accessor
+                .expect("test base-layer wait requires setup claim readback")
                 .get()
                 .iter()
                 .copied()
@@ -315,9 +386,10 @@ fn schedule_reduce_trace_holder_claims<E>(
     // `claims_device` allocation and the post-D2H slab H2D-back loop. When
     // `None` (test paths), a fallback device buffer is allocated.
     slab_claims_dst: Option<(*mut E, usize)>,
+    readback_to_host: bool,
     tracing_ranges: &mut Vec<Range>,
     context: &ProverContext,
-) -> CudaResult<HostAllocation<[E]>>
+) -> CudaResult<Option<HostAllocation<[E]>>>
 where
     E: GpuDimensionReducingKernelSet + Field + 'static,
 {
@@ -334,7 +406,7 @@ where
     assert!(columns_count <= u32::MAX as usize);
     assert!(columns_count <= i32::MAX as usize);
     if columns_count == 0 {
-        return Ok(unsafe { context.alloc_host_uninit_slice(0) });
+        return Ok(readback_to_host.then(|| unsafe { context.alloc_host_uninit_slice(0) }));
     }
 
     let blocks_count = context.get_device_properties().sm_count;
@@ -405,13 +477,18 @@ where
         stream,
     )?;
 
-    let mut host_claims = unsafe { context.alloc_host_uninit_slice(columns_count) };
-    // SAFETY: the source memory is the same slab/fallback range we just wrote
-    // through `batch_reduce`; both the kernel and the D2H are stream-ordered
-    // on `exec_stream`.
-    let claims_src_slice =
-        unsafe { DeviceSlice::from_raw_parts(claims_dst_ptr as *const E, columns_count) };
-    memory_copy_async(&mut host_claims, claims_src_slice, stream)?;
+    let host_claims = if readback_to_host {
+        let mut host_claims = unsafe { context.alloc_host_uninit_slice(columns_count) };
+        // SAFETY: the source memory is the same slab/fallback range we just wrote
+        // through `batch_reduce`; both the kernel and the D2H are stream-ordered
+        // on `exec_stream`.
+        let claims_src_slice =
+            unsafe { DeviceSlice::from_raw_parts(claims_dst_ptr as *const E, columns_count) };
+        memory_copy_async(&mut host_claims, claims_src_slice, stream)?;
+        Some(host_claims)
+    } else {
+        None
+    };
     reduction_range.end(stream)?;
     tracing_ranges.push(reduction_range);
 
@@ -429,21 +506,19 @@ pub(crate) fn schedule_prepare_base_layer_claims_with_sources<E>(
     // which caching-relations dependencies are missing and thus need to be
     // sourced from the per-column dense flats at runtime.
     initial_addresses: &[GKRAddress],
-    // Runs at the END of the (deferred) aggregation callback. The hot path
-    // uses this to mirror `extra_evaluations_*` into `backward_shared_state`
-    // (replacing the former separate apply-extras callback). Test paths can
-    // pass a no-op closure.
-    post_aggregation: impl Fn(&GpuGKRBaseLayerTailOutput<E>) + Send + Sync + 'static,
     setup_trace_holder: &TraceHolder<BF>,
     memory_trace_holder: &TraceHolder<BF>,
     witness_trace_holder: &TraceHolder<BF>,
-    // B3: when Some, `batch_reduce` writes the per-column claims directly
-    // into the slab's `whir.{setup,memory,witness}.evals` ranges. The pinned
-    // host claim vectors are sourced from the slab via the standard D2H
-    // (the H2D-back roundtrip is gone). `None` skips slab routing (test
-    // paths fall back to per-call device allocations).
-    proof_slab: Option<&DeviceAllocation<u8>>,
+    // When Some, `batch_reduce` writes the per-column claims directly into the
+    // slab's `whir.{setup,memory,witness}.evals` ranges. Cached-relation extras
+    // are gathered from those slab ranges on device; `None` keeps the
+    // host-readback fallback used by tests.
+    proof_slab: Option<&DeviceAllocation<E4>>,
     proof_layout: &ProofLayout,
+    // Production path: when present, cached-relation extras are gathered from
+    // the slab-resident base evals and committed into this final backward seed
+    // on-device. Fallback/test paths pass `None` and use host readbacks.
+    final_device_seed: Option<&mut DeviceAllocation<u32>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRBaseLayerClaimsScheduledExecution<E>>
 where
@@ -475,39 +550,36 @@ where
 
     let trace_len_log2 = setup_trace_holder.log_domain_size;
 
-    // Evaluate the four virtual setup polynomial values (RangeCheck16,
-    // RangeCheckTimestamp, InitsAndTeardownsLow, InitsAndTeardownsHigh) on
-    // device from the device-resident claim_point. The kernel consumes only
-    // the device claim_point and writes a 64-byte device buffer that we then
-    // D2H into a pinned host slot for the finish callback to read. Replaces
-    // the host-side `populate_virtual_setup_claims` E4 polynomial eval and
-    // removes the prior `claim_point` D2H entirely.
-    //
-    // The kernel is E4-only; the trait bounds on `E` resolve to `E4` in
-    // practice (`GpuDimensionReducingKernelSet` is implemented only for E4),
-    // and we assert layout compatibility before casting.
-    debug_assert_eq!(
-        std::mem::size_of::<E>(),
-        std::mem::size_of::<E4>(),
-        "virtual-setup-claims kernel requires E = E4",
-    );
-    let mut virtual_setup_claims_device = context.alloc::<E>(
-        VIRTUAL_SETUP_CLAIMS_OUTPUT_LEN,
-        AllocationPlacement::BestFit,
-    )?;
-    launch_eval_virtual_setup_claims(
-        claim_point_device.as_ptr() as *const E4,
-        trace_len_log2,
-        virtual_setup_claims_device.as_mut_ptr() as *mut E4,
-        context,
-    )?;
-    let mut virtual_setup_claims_host =
-        unsafe { context.alloc_host_uninit_slice::<E>(VIRTUAL_SETUP_CLAIMS_OUTPUT_LEN) };
-    memory_copy_async(
-        &mut virtual_setup_claims_host,
-        &virtual_setup_claims_device,
-        stream,
-    )?;
+    let production_slab_path = proof_slab.is_some();
+    let virtual_setup_claims_host = if production_slab_path {
+        None
+    } else {
+        // Test/fallback path: evaluate the four virtual setup polynomial values
+        // on device and mirror them for the snapshot returned by `wait()`.
+        debug_assert_eq!(
+            std::mem::size_of::<E>(),
+            std::mem::size_of::<E4>(),
+            "virtual-setup-claims kernel requires E = E4",
+        );
+        let mut virtual_setup_claims_device = context.alloc::<E>(
+            VIRTUAL_SETUP_CLAIMS_OUTPUT_LEN,
+            AllocationPlacement::BestFit,
+        )?;
+        launch_eval_virtual_setup_claims(
+            claim_point_device.as_ptr() as *const E4,
+            trace_len_log2,
+            virtual_setup_claims_device.as_mut_ptr() as *mut E4,
+            context,
+        )?;
+        let mut virtual_setup_claims_host =
+            unsafe { context.alloc_host_uninit_slice::<E>(VIRTUAL_SETUP_CLAIMS_OUTPUT_LEN) };
+        memory_copy_async(
+            &mut virtual_setup_claims_host,
+            &virtual_setup_claims_device,
+            stream,
+        )?;
+        Some(virtual_setup_claims_host)
+    };
 
     let mut eq_group_tables = context.alloc(
         eq_group_tables_len(claim_point_len).max(1),
@@ -524,12 +596,11 @@ where
         context,
     )?;
 
-    // B3: when the slab is provided, route `batch_reduce`'s output of each
-    // base-layer column reduction straight into the slab's
-    // `whir.{kind}.evals` range. The pinned host claim vectors returned
-    // below are then sourced from the slab via the standard D2H — no
-    // separate H2D-back loop needed. The size_of guard ensures the *mut E
-    // cast is byte-equivalent to the slab's *mut E4 storage.
+    // When the slab is provided, route `batch_reduce`'s output of each
+    // base-layer column reduction straight into the slab's `whir.{kind}.evals`
+    // range. Production does not mirror those dense vectors here; cached
+    // relation extras are gathered from the slab on device below, and final
+    // proof parsing reads the same slab ranges after the terminal D2H.
     if proof_slab.is_some() {
         debug_assert_eq!(
             std::mem::size_of::<E>(),
@@ -549,6 +620,7 @@ where
         memory_trace_holder,
         &eq_values,
         slab_claims_dst(WhirBaseLayerKind::Memory),
+        !production_slab_path,
         &mut tracing_ranges,
         context,
     )?;
@@ -557,6 +629,7 @@ where
         witness_trace_holder,
         &eq_values,
         slab_claims_dst(WhirBaseLayerKind::Witness),
+        !production_slab_path,
         &mut tracing_ranges,
         context,
     )?;
@@ -565,23 +638,31 @@ where
         setup_trace_holder,
         &eq_values,
         slab_claims_dst(WhirBaseLayerKind::Setup),
+        !production_slab_path,
         &mut tracing_ranges,
         context,
     )?;
 
     let mut shared_state = Box::new(ScheduledBaseLayerClaimsState { result: None });
     let shared_state_handle = UnsafeMutAccessor::new(shared_state.as_mut());
-    let mem_polys_claims_accessor = mem_polys_claims.get_accessor();
-    let wit_polys_claims_accessor = wit_polys_claims.get_accessor();
-    let setup_polys_claims_accessor = setup_polys_claims.get_accessor();
-    let virtual_setup_claims_accessor = virtual_setup_claims_host.get_accessor();
+    let mem_polys_claims_accessor = mem_polys_claims.as_ref().map(HostAllocation::get_accessor);
+    let wit_polys_claims_accessor = wit_polys_claims.as_ref().map(HostAllocation::get_accessor);
+    let setup_polys_claims_accessor = setup_polys_claims
+        .as_ref()
+        .map(HostAllocation::get_accessor);
+    let virtual_setup_claims_accessor = virtual_setup_claims_host
+        .as_ref()
+        .map(HostAllocation::get_accessor);
 
     // Build the schedule-time SoA plan for the caching-relations extras. The
-    // plan owns the pinned `values` buffer and the schedule-time-known
-    // `addresses` / `sources` boxes. The aggregation callback fills `values`
-    // by indexing into the per-column accessors at the schedule-time-known
-    // dense offsets.
-    let mut extras_plan = BaseLayerExtrasPlan::<E>::new(&layer_desc, initial_addresses, context);
+    // production path keeps only `addresses` / `sources` metadata; the fallback
+    // path also owns a pinned `values` buffer filled from dense host readbacks.
+    let mut extras_plan = BaseLayerExtrasPlan::<E>::new(
+        &layer_desc,
+        initial_addresses,
+        !production_slab_path,
+        context,
+    );
     drop(layer_desc);
     let extras_addresses_accessor = crate::primitives::context::UnsafeAccessor::<[GKRAddress]>::new(
         extras_plan.addresses.as_ref(),
@@ -589,35 +670,77 @@ where
     let extras_sources_accessor = crate::primitives::context::UnsafeAccessor::<[DenseSource]>::new(
         extras_plan.sources.as_ref(),
     );
-    let extras_values_mut_accessor = extras_plan.values.get_mut_accessor();
-    let extras_values_accessor = extras_plan.values.get_accessor();
+    let extras_values_mut_accessor = extras_plan
+        .values
+        .as_mut()
+        .map(HostAllocation::get_mut_accessor);
+    let extras_values_accessor = extras_plan
+        .values
+        .as_ref()
+        .map(HostAllocation::get_accessor);
     let shared_state_for_callback = shared_state_handle;
-    // Build the aggregation closure but defer its scheduling: the caller calls
-    // `schedule_aggregation` on the returned struct, which lets the merged
-    // callback land outside `gkr.base_layer_claims.schedule` (e.g. inside
-    // `gkr.whir.schedule`). The closure now reads per-column flats by
-    // schedule-time-known indices instead of materializing host-side Vecs and
-    // walking a BTreeMap; it writes the extras values straight into the
-    // pinned `values` buffer in `extras_plan`.
+    let mut extras_values_device = None;
+    if production_slab_path {
+        let proof_slab = proof_slab.expect("production slab path requires slab");
+        let final_device_seed =
+            final_device_seed.expect("production slab path requires final device seed");
+        if !extras_plan.sources.is_empty() {
+            assert_eq!(
+                std::mem::size_of::<E>(),
+                std::mem::size_of::<E4>(),
+                "base-layer extras gather requires E = E4",
+            );
+            let src_ptrs: Vec<u64> = extras_plan
+                .sources
+                .iter()
+                .copied()
+                .map(|source| unsafe { source.device_ptr::<E>(proof_slab, proof_layout) as u64 })
+                .collect();
+            let mut d_values =
+                context.alloc::<E>(extras_plan.sources.len(), AllocationPlacement::BestFit)?;
+            let d_values_e4 = unsafe { d_values.transmute_mut::<E4>() };
+            crate::ops::blake2s::gather_e_addresses(&src_ptrs, d_values_e4, 1, stream)?;
+            let d_values_u32 = unsafe { d_values.transmute::<u32>() };
+            crate::ops::blake2s::transcript_commit(final_device_seed, d_values_u32, stream)?;
+            extras_values_device = Some(d_values);
+        }
+    } else {
+        assert!(
+            final_device_seed.is_none(),
+            "fallback base-layer claims must not receive a final device seed"
+        );
+    }
+
+    // Build the metadata publication closure but defer its scheduling: the
+    // caller places it at the front of WHIR start callbacks. Fallback/test
+    // paths also fill the host extras values from dense claim readbacks.
     let pending_aggregation: Box<dyn Fn() + Send + Sync + 'static> = Box::new(move || unsafe {
-        let mem = mem_polys_claims_accessor.get();
-        let wit = wit_polys_claims_accessor.get();
-        let setup = setup_polys_claims_accessor.get();
-        let sources = extras_sources_accessor.get();
-        let values = extras_values_mut_accessor.get_mut();
-        debug_assert_eq!(values.len(), sources.len());
-        for (i, source) in sources.iter().enumerate() {
-            values[i] = match *source {
-                DenseSource::Memory(offset) => mem[offset],
-                DenseSource::Witness(offset) => wit[offset],
-                DenseSource::Setup(offset) => setup[offset],
-            };
+        if let Some(extras_values_mut_accessor) = extras_values_mut_accessor {
+            let mem_accessor =
+                mem_polys_claims_accessor.expect("host extras aggregation requires memory claims");
+            let wit_accessor =
+                wit_polys_claims_accessor.expect("host extras aggregation requires witness claims");
+            let setup_accessor =
+                setup_polys_claims_accessor.expect("host extras aggregation requires setup claims");
+            let mem = mem_accessor.get();
+            let wit = wit_accessor.get();
+            let setup = setup_accessor.get();
+            let sources = extras_sources_accessor.get();
+            let values = extras_values_mut_accessor.get_mut();
+            debug_assert_eq!(values.len(), sources.len());
+            for (i, source) in sources.iter().enumerate() {
+                values[i] = match *source {
+                    DenseSource::Memory(offset) => mem[offset],
+                    DenseSource::Witness(offset) => wit[offset],
+                    DenseSource::Setup(offset) => setup[offset],
+                };
+            }
         }
         let result = GpuGKRBaseLayerTailOutput {
             extra_evaluations_addresses: extras_addresses_accessor,
-            extra_evaluations_values: extras_values_accessor,
+            extra_evaluations_sources: extras_sources_accessor,
+            _marker: std::marker::PhantomData,
         };
-        post_aggregation(&result);
         shared_state_for_callback.get_mut().result = Some(result);
     });
 
@@ -631,6 +754,7 @@ where
         _mem_polys_claims: mem_polys_claims,
         _wit_polys_claims: wit_polys_claims,
         _setup_polys_claims: setup_polys_claims,
+        _extras_values_device: extras_values_device,
         _extras_plan: extras_plan,
         extras_addresses_accessor,
         extras_values_accessor,
@@ -675,12 +799,12 @@ where
         layer_desc.clone(),
         &point_device,
         &initial_addresses,
-        |_| {},
         setup_trace_holder,
         memory_trace_holder,
         witness_trace_holder,
         None,
         proof_layout,
+        None,
         context,
     )
 }

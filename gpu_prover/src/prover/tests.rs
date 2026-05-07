@@ -1,7 +1,8 @@
 use super::gkr::{
     backward::{
-        GpuGKRDimensionReducingBackwardState, GpuGKRDimensionReducingSumcheckLayerPlan,
-        GpuGKRMainLayerKernelKind, GpuGKRMainLayerSumcheckLayerPlan,
+        DeviceClaimPointAndBatching, GpuGKRDimensionReducingBackwardState,
+        GpuGKRDimensionReducingSumcheckLayerPlan, GpuGKRMainLayerKernelKind,
+        GpuGKRMainLayerSumcheckLayerPlan,
     },
     base_layer_claims::prepare_base_layer_claims,
     forward::schedule_forward_pass as schedule_forward_pass_impl,
@@ -487,6 +488,7 @@ where
         compiled_circuit,
         external_challenges,
         final_trace_size_log_2,
+        None,
         context,
     )
 }
@@ -2162,7 +2164,7 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     .unwrap();
     eprintln!("async-backward-from-base: forward pass scheduled");
     let gpu_transcript_handoff = gpu_forward_output
-        .schedule_transcript_handoff(true, None, &context)
+        .schedule_transcript_handoff(true, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     eprintln!("async-backward-from-base: transcript handoff ready");
@@ -4068,7 +4070,7 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     )
     .unwrap();
     let gpu_transcript_handoff = gpu_forward_output
-        .schedule_transcript_handoff(true, None, &context)
+        .schedule_transcript_handoff(true, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     let gpu_final_explicit_evaluations = gpu_transcript_handoff.final_explicit_evaluations();
@@ -4607,497 +4609,6 @@ fn run_basic_unrolled_main_layer0_kernel_kind_trace_test() {
         .map(|kernel| kernel.kind)
         .collect_vec();
     eprintln!("layer0 kernel kinds: {kernel_kinds:?}");
-}
-
-#[test]
-#[serial]
-fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
-    fn advance_dimension_reduction(
-        mut state: GpuGKRDimensionReducingBackwardState<BF, E4>,
-        compiled_circuit: &GKRCircuitArtifact<BF>,
-        external_challenges: &GKRExternalChallenges<BF, E4>,
-        mut current_claims: BTreeMap<GKRAddress, E4>,
-        mut current_point: Vec<E4>,
-        mut seed: Seed,
-        mut batching_challenge: E4,
-        lookup_multiplicative_part: E4,
-        lookup_additive_part: E4,
-        context: &ProverContext,
-    ) -> (
-        crate::prover::gkr::backward::GpuGKRMainLayerBackwardState<E4>,
-        BTreeMap<GKRAddress, E4>,
-        Vec<E4>,
-        Seed,
-        E4,
-    ) {
-        while let Some(mut plan) = state
-            .prepare_next_layer(batching_challenge, context)
-            .unwrap()
-        {
-            let scheduled = plan
-                .schedule_execute_dimension_reducing_layer(
-                    &current_claims,
-                    &current_point,
-                    seed,
-                    batching_challenge,
-                    context,
-                )
-                .unwrap();
-            context.get_exec_stream().synchronize().unwrap();
-            let execution = scheduled.into_execution();
-            current_claims = execution.new_claims;
-            current_point = execution.new_claim_point;
-            seed = execution.updated_seed;
-            batching_challenge = execution.next_batching_challenge;
-        }
-
-        (
-            state.into_main_layer_backward_state(
-                compiled_circuit.clone(),
-                external_challenges.clone(),
-                lookup_multiplicative_part,
-                lookup_additive_part,
-                false,
-            ),
-            current_claims,
-            current_point,
-            seed,
-            batching_challenge,
-        )
-    }
-
-    let (base_fixture, expected_cpu_proof) =
-        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
-            binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
-            text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
-            non_determinism_reads: &[15, 1],
-            compute_cpu_reference: false,
-            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
-        });
-    assert!(expected_cpu_proof.is_none());
-    let fixture_dynamic = build_basic_unrolled_async_backward_fixture_from_base(&base_fixture);
-    eprintln!("first-main-layer: dynamic fixture ready");
-    let fixture_static = build_basic_unrolled_async_backward_fixture_from_base(&base_fixture);
-    eprintln!("first-main-layer: static fixture ready");
-
-    let (
-        mut dynamic_state,
-        dynamic_claims,
-        dynamic_point,
-        dynamic_seed,
-        dynamic_batching_challenge,
-    ) = advance_dimension_reduction(
-        fixture_dynamic.gpu_backward_state,
-        &fixture_dynamic.compiled_circuit,
-        &fixture_dynamic.external_challenges,
-        fixture_dynamic.top_layer_claims,
-        fixture_dynamic.evaluation_point,
-        fixture_dynamic.seed,
-        fixture_dynamic.batching_challenge,
-        fixture_dynamic.lookup_multiplicative_part,
-        fixture_dynamic.lookup_additive_part,
-        &fixture_dynamic.context,
-    );
-    eprintln!("first-main-layer: dynamic dimension reduction ready");
-
-    let (mut static_state, static_claims, static_point, static_seed, static_batching_challenge) =
-        advance_dimension_reduction(
-            fixture_static.gpu_backward_state,
-            &fixture_static.compiled_circuit,
-            &fixture_static.external_challenges,
-            fixture_static.top_layer_claims,
-            fixture_static.evaluation_point,
-            fixture_static.seed,
-            fixture_static.batching_challenge,
-            fixture_static.lookup_multiplicative_part,
-            fixture_static.lookup_additive_part,
-            &fixture_static.context,
-        );
-    eprintln!("first-main-layer: static dimension reduction ready");
-
-    let mut dynamic_plan = dynamic_state
-        .prepare_next_layer(dynamic_batching_challenge, &fixture_dynamic.context)
-        .unwrap()
-        .expect("expected first main-layer plan");
-    let first_layer_idx = dynamic_plan.layer_idx;
-    let mut static_plan = static_state
-        .prepare_next_layer_static(&fixture_static.context)
-        .unwrap()
-        .expect("expected first static main-layer plan");
-    assert_eq!(static_plan.layer_idx, first_layer_idx);
-
-    let dynamic_scheduled = dynamic_plan
-        .schedule_execute_main_layer(
-            &dynamic_claims,
-            &dynamic_point,
-            dynamic_seed,
-            &fixture_dynamic.context,
-        )
-        .unwrap();
-    eprintln!("first-main-layer: dynamic main-layer scheduled");
-    fixture_dynamic
-        .context
-        .get_exec_stream()
-        .synchronize()
-        .unwrap();
-    eprintln!("first-main-layer: dynamic main-layer synchronized");
-    let dynamic_execution = dynamic_scheduled.into_execution();
-
-    let mut shared_state = crate::prover::gkr::backward::make_deferred_backward_workflow_state();
-    let shared_state_handle = UnsafeMutAccessor::new(shared_state.as_mut());
-    let static_point_for_device = static_point.clone();
-    let static_claims_for_device = static_claims.clone();
-    crate::prover::gkr::backward::populate_backward_workflow_state(
-        shared_state_handle,
-        first_layer_idx + 1,
-        static_claims,
-        static_point,
-        static_seed,
-        static_batching_challenge,
-        fixture_static.lookup_multiplicative_part,
-        fixture_static.lookup_additive_part,
-    );
-    let mut initial_callbacks = crate::primitives::callbacks::Callbacks::new();
-    let shared_device_seed = crate::prover::gkr::backward::h2d_seed_from_host(
-        &fixture_static.context,
-        &mut initial_callbacks,
-        &static_seed,
-    )
-    .unwrap();
-    let shared_device_claim_point =
-        crate::prover::gkr::backward::h2d_claim_point_and_batching_from_host(
-            &fixture_static.context,
-            &mut initial_callbacks,
-            &static_point_for_device,
-            static_batching_challenge,
-        )
-        .unwrap();
-    let (shared_device_claims, shared_claim_layout) =
-        crate::prover::gkr::backward::h2d_claims_from_host(
-            &fixture_static.context,
-            &mut initial_callbacks,
-            &static_claims_for_device,
-        )
-        .unwrap();
-    let device_lookup_and_constraint =
-        crate::prover::gkr::backward::h2d_lookup_and_constraint_from_shared_state::<E4>(
-            &fixture_static.context,
-            &mut initial_callbacks,
-            shared_state_handle,
-        )
-        .unwrap();
-    let mut external_challenges_flat = fixture_static
-        .external_challenges
-        .permutation_argument_linearization_challenges
-        .to_vec();
-    external_challenges_flat.push(
-        fixture_static
-            .external_challenges
-            .permutation_argument_additive_part,
-    );
-    let mut device_external_challenges = fixture_static
-        .context
-        .alloc(external_challenges_flat.len(), AllocationPlacement::BestFit)
-        .unwrap();
-    memory_copy_async(
-        &mut device_external_challenges,
-        &external_challenges_flat,
-        fixture_static.context.get_exec_stream(),
-    )
-    .unwrap();
-    let main_proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
-    let static_scheduled = static_plan
-        .schedule_execute_main_layer_from_workflow_state(
-            shared_state_handle,
-            shared_device_seed,
-            shared_device_claim_point,
-            shared_device_claims,
-            &shared_claim_layout,
-            device_lookup_and_constraint.as_ptr(),
-            device_external_challenges.as_ptr(),
-            None,
-            &main_proof_layout,
-            0,
-            true,
-            &fixture_static.context,
-        )
-        .unwrap();
-    eprintln!("first-main-layer: static main-layer scheduled");
-    fixture_static
-        .context
-        .get_exec_stream()
-        .synchronize()
-        .unwrap();
-    eprintln!("first-main-layer: static main-layer synchronized");
-    drop(initial_callbacks);
-    let static_execution = static_scheduled.into_execution();
-
-    // Per-layer sumcheck intermediate proof values now live in the device-
-    // resident proof slab; this plan-parity test compares the propagated
-    // claim/point/seed/challenge state, which already diverges on any kernel
-    // launch difference upstream of the proof fields.
-    let _ = first_layer_idx;
-    assert_eq!(dynamic_execution.new_claims, static_execution.new_claims);
-    assert_eq!(
-        dynamic_execution.new_claim_point,
-        static_execution.new_claim_point
-    );
-    assert_eq!(
-        dynamic_execution.next_batching_challenge,
-        static_execution.next_batching_challenge
-    );
-    assert_eq!(
-        dynamic_execution.updated_seed,
-        static_execution.updated_seed
-    );
-}
-
-#[test]
-#[serial]
-fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
-    fn advance_dimension_reduction(
-        mut state: GpuGKRDimensionReducingBackwardState<BF, E4>,
-        compiled_circuit: &GKRCircuitArtifact<BF>,
-        external_challenges: &GKRExternalChallenges<BF, E4>,
-        mut current_claims: BTreeMap<GKRAddress, E4>,
-        mut current_point: Vec<E4>,
-        mut seed: Seed,
-        mut batching_challenge: E4,
-        lookup_multiplicative_part: E4,
-        lookup_additive_part: E4,
-        context: &ProverContext,
-    ) -> (
-        crate::prover::gkr::backward::GpuGKRMainLayerBackwardState<E4>,
-        BTreeMap<GKRAddress, E4>,
-        Vec<E4>,
-        Seed,
-        E4,
-    ) {
-        while let Some(mut plan) = state
-            .prepare_next_layer(batching_challenge, context)
-            .unwrap()
-        {
-            let scheduled = plan
-                .schedule_execute_dimension_reducing_layer(
-                    &current_claims,
-                    &current_point,
-                    seed,
-                    batching_challenge,
-                    context,
-                )
-                .unwrap();
-            context.get_exec_stream().synchronize().unwrap();
-            let execution = scheduled.into_execution();
-            current_claims = execution.new_claims;
-            current_point = execution.new_claim_point;
-            seed = execution.updated_seed;
-            batching_challenge = execution.next_batching_challenge;
-        }
-
-        (
-            state.into_main_layer_backward_state(
-                compiled_circuit.clone(),
-                external_challenges.clone(),
-                lookup_multiplicative_part,
-                lookup_additive_part,
-                false,
-            ),
-            current_claims,
-            current_point,
-            seed,
-            batching_challenge,
-        )
-    }
-
-    let fixture_dynamic = prepare_basic_unrolled_async_backward_fixture(8);
-    let fixture_static = prepare_basic_unrolled_async_backward_fixture(8);
-
-    let (
-        mut dynamic_state,
-        mut dynamic_claims,
-        mut dynamic_point,
-        mut dynamic_seed,
-        mut dynamic_batching_challenge,
-    ) = advance_dimension_reduction(
-        fixture_dynamic.gpu_backward_state,
-        &fixture_dynamic.compiled_circuit,
-        &fixture_dynamic.external_challenges,
-        fixture_dynamic.top_layer_claims,
-        fixture_dynamic.evaluation_point,
-        fixture_dynamic.seed,
-        fixture_dynamic.batching_challenge,
-        fixture_dynamic.lookup_multiplicative_part,
-        fixture_dynamic.lookup_additive_part,
-        &fixture_dynamic.context,
-    );
-
-    let (
-        mut static_state,
-        mut static_claims,
-        mut static_point,
-        mut static_seed,
-        mut static_batching_challenge,
-    ) = advance_dimension_reduction(
-        fixture_static.gpu_backward_state,
-        &fixture_static.compiled_circuit,
-        &fixture_static.external_challenges,
-        fixture_static.top_layer_claims,
-        fixture_static.evaluation_point,
-        fixture_static.seed,
-        fixture_static.batching_challenge,
-        fixture_static.lookup_multiplicative_part,
-        fixture_static.lookup_additive_part,
-        &fixture_static.context,
-    );
-
-    let mut current_output_layer_idx = fixture_dynamic.initial_output_layer_idx;
-    while let Some(mut dynamic_plan) = dynamic_state
-        .prepare_next_layer(dynamic_batching_challenge, &fixture_dynamic.context)
-        .unwrap()
-    {
-        let layer_idx = dynamic_plan.layer_idx;
-        let mut static_plan = static_state
-            .prepare_next_layer_static(&fixture_static.context)
-            .unwrap()
-            .unwrap_or_else(|| panic!("missing static plan for layer {layer_idx}"));
-        assert_eq!(static_plan.layer_idx, layer_idx);
-
-        let dynamic_scheduled = dynamic_plan
-            .schedule_execute_main_layer(
-                &dynamic_claims,
-                &dynamic_point,
-                dynamic_seed,
-                &fixture_dynamic.context,
-            )
-            .unwrap();
-        fixture_dynamic
-            .context
-            .get_exec_stream()
-            .synchronize()
-            .unwrap();
-        let dynamic_execution = dynamic_scheduled.into_execution();
-
-        let mut shared_state =
-            crate::prover::gkr::backward::make_deferred_backward_workflow_state();
-        let shared_state_handle = UnsafeMutAccessor::new(shared_state.as_mut());
-        crate::prover::gkr::backward::populate_backward_workflow_state(
-            shared_state_handle,
-            current_output_layer_idx,
-            static_claims.clone(),
-            static_point.clone(),
-            static_seed,
-            static_batching_challenge,
-            fixture_static.lookup_multiplicative_part,
-            fixture_static.lookup_additive_part,
-        );
-        let mut initial_callbacks = crate::primitives::callbacks::Callbacks::new();
-        let shared_device_seed = crate::prover::gkr::backward::h2d_seed_from_host(
-            &fixture_static.context,
-            &mut initial_callbacks,
-            &static_seed,
-        )
-        .unwrap();
-        let shared_device_claim_point =
-            crate::prover::gkr::backward::h2d_claim_point_and_batching_from_host(
-                &fixture_static.context,
-                &mut initial_callbacks,
-                &static_point,
-                static_batching_challenge,
-            )
-            .unwrap();
-        let (shared_device_claims, shared_claim_layout) =
-            crate::prover::gkr::backward::h2d_claims_from_host(
-                &fixture_static.context,
-                &mut initial_callbacks,
-                &static_claims,
-            )
-            .unwrap();
-        let device_lookup_and_constraint =
-            crate::prover::gkr::backward::h2d_lookup_and_constraint_from_shared_state::<E4>(
-                &fixture_static.context,
-                &mut initial_callbacks,
-                shared_state_handle,
-            )
-            .unwrap();
-        let mut external_challenges_flat = fixture_static
-            .external_challenges
-            .permutation_argument_linearization_challenges
-            .to_vec();
-        external_challenges_flat.push(
-            fixture_static
-                .external_challenges
-                .permutation_argument_additive_part,
-        );
-        let mut device_external_challenges = fixture_static
-            .context
-            .alloc(external_challenges_flat.len(), AllocationPlacement::BestFit)
-            .unwrap();
-        memory_copy_async(
-            &mut device_external_challenges,
-            &external_challenges_flat,
-            fixture_static.context.get_exec_stream(),
-        )
-        .unwrap();
-        let main_proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
-        let static_scheduled = static_plan
-            .schedule_execute_main_layer_from_workflow_state(
-                shared_state_handle,
-                shared_device_seed,
-                shared_device_claim_point,
-                shared_device_claims,
-                &shared_claim_layout,
-                device_lookup_and_constraint.as_ptr(),
-                device_external_challenges.as_ptr(),
-                None,
-                &main_proof_layout,
-                0,
-                true,
-                &fixture_static.context,
-            )
-            .unwrap();
-        fixture_static
-            .context
-            .get_exec_stream()
-            .synchronize()
-            .unwrap();
-        drop(initial_callbacks);
-        let static_execution = static_scheduled.into_execution();
-
-        // Per-layer sumcheck intermediate proof values now live in the
-        // device-resident proof slab; we compare the propagated workflow
-        // state (claims/point/seed/challenge) which diverges on any upstream
-        // kernel difference.
-        assert_eq!(
-            dynamic_execution.new_claims, static_execution.new_claims,
-            "layer {layer_idx}: new_claims mismatch"
-        );
-        assert_eq!(
-            dynamic_execution.new_claim_point, static_execution.new_claim_point,
-            "layer {layer_idx}: new_claim_point mismatch"
-        );
-        assert_eq!(
-            dynamic_execution.next_batching_challenge, static_execution.next_batching_challenge,
-            "layer {layer_idx}: next batching challenge mismatch"
-        );
-        assert_eq!(
-            dynamic_execution.updated_seed, static_execution.updated_seed,
-            "layer {layer_idx}: updated seed mismatch"
-        );
-
-        dynamic_claims = dynamic_execution.new_claims;
-        dynamic_point = dynamic_execution.new_claim_point;
-        dynamic_seed = dynamic_execution.updated_seed;
-        dynamic_batching_challenge = dynamic_execution.next_batching_challenge;
-
-        static_claims = static_execution.new_claims;
-        static_point = static_execution.new_claim_point;
-        static_seed = static_execution.updated_seed;
-        static_batching_challenge = static_execution.next_batching_challenge;
-
-        current_output_layer_idx = layer_idx;
-        dynamic_state.purge_up_to_layer(layer_idx);
-        static_state.purge_up_to_layer(layer_idx);
-    }
 }
 
 #[test]
@@ -5860,7 +5371,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(true, None, &context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)
@@ -6369,7 +5880,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(true, None, &context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)
@@ -6853,7 +6364,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
     )
     .unwrap();
     let gpu_transcript_handoff = gpu_forward_output
-        .schedule_transcript_handoff(true, None, &context)
+        .schedule_transcript_handoff(true, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     let gpu_final_explicit_evaluations = gpu_transcript_handoff.final_explicit_evaluations();
@@ -7351,7 +6862,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(true, None, &context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)
@@ -8271,11 +7782,12 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             &compiled_circuit,
             &external_challenges,
             FINAL_TRACE_SIZE_LOG_2,
+            None,
             &context,
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(true, None, &context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         assert_eq!(
@@ -9408,7 +8920,7 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(true, None, &context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)

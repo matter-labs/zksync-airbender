@@ -2,9 +2,9 @@
 //!
 //! See `docs/gpu_scheduling_contract.md` and the iterative-knitting-bumblebee
 //! plan. The intent is that every proof field produced on device lands in one
-//! contiguous `DeviceAllocation<u8>` (the proof slab); one terminal D2H copies
-//! the slab to pinned host memory; a single host parse over the slab emits the
-//! final `GKRProof`.
+//! contiguous device allocation (the proof slab); one terminal D2H copies the
+//! slab to pinned host memory; a single host parse over the slab emits the final
+//! `GKRProof`.
 //!
 //! This module is dead code in Phase 1 — the slab is allocated at `prove()`
 //! start but no kernels write to it yet. Phases 2-4 wire kernel writes into
@@ -294,11 +294,9 @@ impl ProofLayoutBaseLayerGeometry {
 ///   `final_evaluation_sources_for_last_step`).
 ///
 /// Note: `extra_evaluations_from_caching_relations` (main layer 0 only) is
-/// intentionally not in the slab. It is host-computed in
-/// `fill_missing_cached_dependency_claims` from already-D2H'd base-layer
-/// claims; the Phase 4 parse callback merges it directly from
-/// `base_layer_claims_shared_state`, matching the host-only pattern used for
-/// `external_challenges` and `grand_product_accumulator_computed`.
+/// not a separate slab range. Its values are sparse references into the
+/// slab-resident WHIR base eval ranges; Phase 4 reconstructs the map from
+/// `base_layer_claims_shared_state` metadata plus the terminal slab mirror.
 /// * `whir`: derivation mirrors `whir_fold.rs:1742-1792`. `final_monomials_len`
 ///   is 0 because the current GPU prover leaves `proof.final_monomials =
 ///   vec![]` (whir_fold.rs:1870); revisit if that changes.
@@ -532,9 +530,8 @@ impl ProofLayout {
 
         // output_evaluations are laid out first as a single contiguous E4
         // block in BTreeMap key order × {read, write}. This matches the
-        // packing order produced by the forward dim-reduction pass into the
-        // shared `ThisLayerInnerLayerWrite` backing Arc, so a single
-        // contiguous D2D from that Arc fills the whole block in one op.
+        // packing order produced by the forward dim-reduction pass, allowing
+        // the final forward outputs to write directly into this slab prefix.
         let mut output_evaluations = BTreeMap::new();
         for (&output_type, &[read_len, write_len]) in inputs.output_evaluations.iter() {
             let read_set = alloc(&mut cur, read_len, size_of::<E4>());
@@ -581,8 +578,8 @@ impl ProofLayout {
     /// Returns the byte range covering the full `output_evaluations` block —
     /// concatenation of every `{read_set, write_set}` in BTreeMap iteration
     /// order. The block is contiguous (every entry's element size equals
-    /// `FIELD_ALIGN`), so a single D2D from the consolidated forward backing
-    /// Arc into this range populates every per-`OutputType` slot at once.
+    /// `FIELD_ALIGN`) and is the direct-write target for the final forward
+    /// dim-reduction outputs in the proof path.
     pub(crate) fn output_evaluations_block(&self) -> Option<Range<usize>> {
         let first = self.output_evaluations.values().next()?;
         let last = self
@@ -724,6 +721,14 @@ impl ProofLayout {
         layer_slot: usize,
     ) -> (*mut E4, usize) {
         Self::device_typed::<E4>(slab_base, &self.backward[layer_slot].final_step_evaluations)
+    }
+
+    pub(crate) unsafe fn output_evaluations_device_mut(
+        &self,
+        slab_base: *mut u8,
+    ) -> Option<(*mut E4, usize)> {
+        let block = self.output_evaluations_block()?;
+        Some(Self::device_typed::<E4>(slab_base, &block))
     }
 
     pub(crate) unsafe fn whir_base_cap_device_mut(
@@ -914,8 +919,7 @@ impl ProofLayout {
     /// Parse `final_explicit_evaluations: BTreeMap<OutputType, [Vec<E4>; 2]>`
     /// from the D2H'd slab. The forward dim-reduction pass writes every
     /// reduced-output poly into a single contiguous block in BTreeMap key
-    /// order × {read, write}; one D2D from that block into the slab fills
-    /// the layout, and this parse re-emits the BTreeMap by slicing the
+    /// order × {read, write}; this parse re-emits the BTreeMap by slicing the
     /// host-mirrored slab byte-for-byte.
     pub(crate) fn parse_final_explicit_evaluations(
         &self,
@@ -1038,8 +1042,8 @@ impl ProofLayout {
     }
 
     /// Phase 4: parse `sumcheck_intermediate_values: BTreeMap<layer_idx, _>`
-    /// from the D2H'd slab, merging in host-side
-    /// `extra_evaluations_from_caching_relations` (layer 0 only).
+    /// from the D2H'd slab, merging the caller-provided sparse
+    /// `extra_evaluations_from_caching_relations` map (layer 0 only).
     pub(crate) fn parse_sumcheck_intermediate_values(
         &self,
         slab: &[u8],

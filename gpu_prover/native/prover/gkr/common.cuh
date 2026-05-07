@@ -51,6 +51,11 @@ static constexpr unsigned GKR_BACKWARD_MAX_KERNELS_PER_LAYER = 64;
 // PermutationProduct plus up to 3 lookup records, consuming 8 challenges.
 static constexpr unsigned GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER = 5;
 static constexpr unsigned GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN = 8;
+static constexpr unsigned GKR_BACKWARD_MAX_TRACE_LEN_LOG2 = 24;
+// Dim-reducing stores folding_steps - 1 round challenges plus 3 transcript challenges.
+static constexpr unsigned GKR_DIM_REDUCING_LAYER_CLAIM_POINT_LEN = GKR_BACKWARD_MAX_TRACE_LEN_LOG2 + 2;
+// Main layers store folding_steps - 1 round challenges plus 2 transcript challenges.
+static constexpr unsigned GKR_MAIN_LAYER_CLAIM_POINT_LEN = GKR_BACKWARD_MAX_TRACE_LEN_LOG2 + 1;
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK = 8;
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_BLOCK = 1u << GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK;
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS = GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK;
@@ -75,8 +80,7 @@ enum gkr_dim_reducing_kernel_kind : u32 {
 // __constant__ batch-challenge table for dim-reducing backward compact kernels.
 // Defined in dim_reducing_backward.cu.
 EXTERN __device__ __constant__ e4 ab_gkr_dim_reducing_batch_challenge_table[airbender::prover::gkr::GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN];
-EXTERN __device__ __constant__ e4 ab_gkr_dim_reducing_round1_challenge[1];
-EXTERN __device__ __constant__ e4 ab_gkr_dim_reducing_continuation_challenge[1];
+EXTERN __device__ __constant__ e4 ab_gkr_dim_reducing_layer_claim_point[airbender::prover::gkr::GKR_DIM_REDUCING_LAYER_CLAIM_POINT_LEN];
 
 namespace airbender::prover::gkr {
 
@@ -1120,11 +1124,11 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_round1_batched_compact_inner(const gkr_
     E c1;
     switch (record.kind) {
     case GKR_DIM_REDUCING_PAIRWISE:
-      gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, ::ab_gkr_dim_reducing_round1_challenge,
+      gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, &::ab_gkr_dim_reducing_layer_claim_point[0],
                                                          ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset], gid, c0, c1);
       break;
     case GKR_DIM_REDUCING_LOOKUP:
-      gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, ::ab_gkr_dim_reducing_round1_challenge,
+      gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, &::ab_gkr_dim_reducing_layer_claim_point[0],
                                                        ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset],
                                                        ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset + 1], gid, c0, c1);
       break;
@@ -1189,11 +1193,11 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched_compact_inner(cons
     E c1;
     switch (record.kind) {
     case GKR_DIM_REDUCING_PAIRWISE:
-      gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, ::ab_gkr_dim_reducing_continuation_challenge,
+      gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, &::ab_gkr_dim_reducing_layer_claim_point[step - 1],
                                                          ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset], gid, c0, c1);
       break;
     case GKR_DIM_REDUCING_LOOKUP:
-      gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, ::ab_gkr_dim_reducing_continuation_challenge,
+      gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, &::ab_gkr_dim_reducing_layer_claim_point[step - 1],
                                                        ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset],
                                                        ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset + 1], gid, c0, c1);
       break;
