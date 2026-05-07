@@ -3,9 +3,8 @@
 #include "common.cuh"
 #include "flat_backward.cuh" // flat_c0_ref, flat_c1_pair, coeff_loader_ptr
 
-EXTERN __device__ __constant__ e4 ab_gkr_round1_challenge[1];
 EXTERN __device__ __constant__ e4 ab_gkr_round2_challenges[3];
-EXTERN __device__ __constant__ e4 ab_gkr_round3_challenge[1];
+EXTERN __device__ __constant__ e4 ab_gkr_main_layer_claim_point[airbender::prover::gkr::GKR_MAIN_LAYER_CLAIM_POINT_LEN];
 
 namespace airbender::prover::gkr {
 
@@ -289,13 +288,14 @@ DEVICE_FORCEINLINE E flat_cont_fold_and_load_compact(const flat_continuation_uni
 // Per-tile fold for the compact continuation descriptor.
 template <typename E, unsigned NUM_WARPS>
 DEVICE_FORCEINLINE void flat_cont_tile_fold_compact(const flat_continuation_unified_desc_compact &desc, const unsigned fold_start, const unsigned fold_end,
-                                                     const unsigned fold_stride, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id) {
+                                                     const unsigned fold_stride, const unsigned next_layer_size, const unsigned folding_challenge_slot,
+                                                     const unsigned gid, const unsigned warp_id) {
   if (fold_start == fold_end)
     return;
   for (unsigned s = fold_start + warp_id; s < fold_end; s += NUM_WARPS) {
     const gkr_source_record record = desc.sources[desc.fold_sources[s]];
-    flat_cont_fold_and_load_compact<E>(desc, record, ::ab_gkr_round3_challenge[0], fold_stride, gid);
-    flat_cont_fold_and_load_compact<E>(desc, record, ::ab_gkr_round3_challenge[0], fold_stride, next_layer_size + gid);
+    flat_cont_fold_and_load_compact<E>(desc, record, ::ab_gkr_main_layer_claim_point[folding_challenge_slot], fold_stride, gid);
+    flat_cont_fold_and_load_compact<E>(desc, record, ::ab_gkr_main_layer_claim_point[folding_challenge_slot], fold_stride, next_layer_size + gid);
   }
   __syncthreads();
 }
@@ -569,11 +569,11 @@ DEVICE_FORCEINLINE void flat_round1_tile_fold_compact(const flat_round1_unified_
     const u16 src_idx = desc.fold_sources[s];
     if (src_idx & FLAT_CONT_EXT_SOURCE_BIT) {
       const gkr_source_record ext_record = desc.ext_sources[src_idx & ~FLAT_CONT_EXT_SOURCE_BIT];
-      flat_round1_ext_fold_and_load_compact<E>(desc, ext_record, ::ab_gkr_round1_challenge[0], fold_stride, gid);
-      flat_round1_ext_fold_and_load_compact<E>(desc, ext_record, ::ab_gkr_round1_challenge[0], fold_stride, next_layer_size + gid);
+      flat_round1_ext_fold_and_load_compact<E>(desc, ext_record, ::ab_gkr_main_layer_claim_point[0], fold_stride, gid);
+      flat_round1_ext_fold_and_load_compact<E>(desc, ext_record, ::ab_gkr_main_layer_claim_point[0], fold_stride, next_layer_size + gid);
     } else {
-      flat_round1_get_base_value_compact<E>(desc, src_idx, ::ab_gkr_round1_challenge[0], gid);
-      flat_round1_get_base_value_compact<E>(desc, src_idx, ::ab_gkr_round1_challenge[0], next_layer_size + gid);
+      flat_round1_get_base_value_compact<E>(desc, src_idx, ::ab_gkr_main_layer_claim_point[0], gid);
+      flat_round1_get_base_value_compact<E>(desc, src_idx, ::ab_gkr_main_layer_claim_point[0], next_layer_size + gid);
     }
   }
   __syncthreads();

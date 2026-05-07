@@ -33,7 +33,10 @@ use super::backward::GpuGKRDimensionReducingBackwardState;
 use super::setup::{bootstrap_storage_from_trace_holders, GpuGKRForwardSetup};
 use super::stage1::GpuGKRStage1Output;
 use super::transform::normalize_compiled_circuit_for_gpu;
-use super::{GpuBaseFieldPoly, GpuBaseFieldSourceKind, GpuExtensionFieldPoly, GpuGKRStorage};
+use super::{
+    GpuBaseFieldPoly, GpuBaseFieldSourceKind, GpuExtensionFieldPoly, GpuGKRLayerSource,
+    GpuGKRStorage,
+};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::simple::{
     add_into_y, mul, mul_into_y, set_by_ref, set_by_val, sub_into_x, Add, BinaryOp, Mul, SetByRef,
@@ -61,12 +64,17 @@ pub(crate) struct GpuGKRTranscriptHandoff<E> {
     /// All reduced-output polys for the initial sumcheck layer share this
     /// Arc with `poly_idx == BTreeMap iteration index`, so the first
     /// `flat_total_len` elements form the same contiguous packing the
-    /// previous slab-D2D loop produced.
+    /// transcript and initial-claim kernels consume.
     flat_evaluations_backing: Arc<DeviceAllocation<E>>,
     /// Number of valid `E` elements at the start of `flat_evaluations_backing`
     /// — `num_polys * poly_len`, equal to `backing.len()` in the production
     /// path but sized explicitly to keep the contract local.
     flat_total_len: usize,
+}
+
+pub(crate) struct ForwardOutputSlabTarget<E> {
+    pub(crate) backing: Arc<DeviceAllocation<E>>,
+    pub(crate) len: usize,
 }
 
 impl<E: Copy> GpuGKRTranscriptHandoff<E> {
@@ -145,23 +153,17 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
     /// initial-claim kernels read; they're exposed via
     /// `device_flat_evaluations()` without a per-poly pack.
     ///
-    /// `dst_slab`: when `Some`, schedule one contiguous D2D from the backing
-    /// Arc prefix into the slab's `output_evaluations` block. The terminal
-    /// slab D2H at the end of `prove()` then carries the data back to host as
-    /// part of the single batched mirror copy — no extra D2H ops, no extra
-    /// host pinned allocations. The caller must size `dst_slab` to exactly
-    /// `flat_total_len` `E` elements.
-    ///
     /// `with_host_readback`: when `true`, schedule per-poly D2Hs into pinned
     /// host slots so `final_explicit_evaluations()` /
     /// `flattened_transcript_evaluations()` produce the host-side mirror used
     /// by tests. Production passes `false` — `prove()`'s assembly callback
     /// reads `final_explicit_evaluations` from the slab mirror via
-    /// `ProofLayout::parse_final_explicit_evaluations`.
+    /// `ProofLayout::parse_final_explicit_evaluations`. In the proof path, the
+    /// final forward dim-reduction writes this backing directly into the slab's
+    /// `output_evaluations` prefix.
     pub(crate) fn schedule_transcript_handoff(
         &self,
         with_host_readback: bool,
-        dst_slab: Option<(*mut E, usize)>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRTranscriptHandoff<E>> {
         let tracing_ranges = Vec::new();
@@ -204,37 +206,10 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
                 explicit_evaluations.insert(*output_type, [first, second]);
             }
         }
-        debug_assert_eq!(
-            flat_total_len,
-            flat_evaluations_backing.len(),
-            "consolidated backing length must match the sum of reduced-output poly lengths"
+        debug_assert!(
+            flat_total_len <= flat_evaluations_backing.len(),
+            "consolidated backing must contain the reduced-output poly prefix"
         );
-
-        // One contiguous D2D from the backing Arc prefix into the slab's
-        // `output_evaluations` block — the source is already laid out in
-        // BTreeMap key order × {read, write} (see `allocate_ext_view` in
-        // `gkr/mod.rs` and `append_tower_layers` in `gkr/storage_layout.rs`),
-        // matching the slab block layout produced by `ProofLayout::new`.
-        if let Some((slab_ptr, slab_len)) = dst_slab {
-            assert_eq!(
-                slab_len, flat_total_len,
-                "slab dst length must match the total flat evaluations length",
-            );
-            // SAFETY: `slab_ptr + flat_total_len` is in-bounds for the slab's
-            // `output_evaluations` block (sized at layout time). The slab is
-            // kept alive across this scheduling call by the proof job's
-            // `_proof_slab` keepalive; the source backing Arc is held by this
-            // same handoff via `flat_evaluations_backing` and rides into the
-            // backward state past every consumer.
-            let dst = unsafe {
-                era_cudart::slice::DeviceSlice::from_raw_parts_mut(slab_ptr, flat_total_len)
-            };
-            memory_copy_async(
-                dst,
-                &flat_evaluations_backing[..flat_total_len],
-                context.get_exec_stream(),
-            )?;
-        }
 
         Ok(GpuGKRTranscriptHandoff {
             _tracing_ranges: tracing_ranges,
@@ -268,6 +243,7 @@ pub(crate) fn schedule_forward_pass<E>(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     external_challenges: &GKRExternalChallenges<BF, E>,
     final_trace_size_log_2: usize,
+    output_evaluations_slab: Option<ForwardOutputSlabTarget<E>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardOutput<BF, E>>
 where
@@ -380,6 +356,7 @@ where
             compiled_circuit.global_output_map.clone(),
             trace_len.trailing_zeros() as usize,
             final_trace_size_log_2,
+            output_evaluations_slab,
             &mut tracing_ranges,
             context,
         )?;
@@ -1850,6 +1827,7 @@ pub(super) fn schedule_dimension_reduction_forward<E>(
     initial_output_map: BTreeMap<OutputType, Vec<GKRAddress>>,
     initial_trace_log_2: usize,
     final_trace_log_2: usize,
+    output_evaluations_slab: Option<ForwardOutputSlabTarget<E>>,
     tracing_ranges: &mut Vec<Range>,
     context: &ProverContext,
 ) -> CudaResult<(
@@ -1887,6 +1865,7 @@ where
     for round_idx in 0..total_rounds {
         let input_size_log_2 = initial_trace_log_2 - round_idx;
         let output_trace_len = 1usize << (input_size_log_2 - 1);
+        let is_final_round = round_idx + 1 == total_rounds;
 
         let layer_inputs = if current_layer_idx != initial_layer_idx {
             let previous: &BTreeMap<OutputType, DimensionReducingInputOutput> =
@@ -1903,6 +1882,11 @@ where
             current_layer_idx,
             output_trace_len,
             storage,
+            if is_final_round {
+                output_evaluations_slab.as_ref()
+            } else {
+                None
+            },
             context,
         )?;
 
@@ -2061,6 +2045,7 @@ fn lower_dimension_reducing_forward_round<E>(
     current_layer_idx: usize,
     output_trace_len: usize,
     storage: &mut GpuGKRStorage<BF, E>,
+    output_evaluations_slab: Option<&ForwardOutputSlabTarget<E>>,
     context: &ProverContext,
 ) -> CudaResult<LoweredDimReducingForwardRound<E>>
 where
@@ -2068,6 +2053,31 @@ where
     E: 'static,
 {
     let output_layer = current_layer_idx + 1;
+    if let Some(target) = output_evaluations_slab {
+        let output_polys: usize = layer_inputs.values().map(Vec::len).sum();
+        assert_eq!(
+            target.len,
+            output_polys * output_trace_len,
+            "slab output_evaluations length must match final forward reduction outputs",
+        );
+        assert!(
+            target.backing.len() >= target.len,
+            "proof slab backing must contain the output_evaluations prefix",
+        );
+        if output_layer >= storage.layers.len() {
+            storage
+                .layers
+                .resize_with(output_layer + 1, GpuGKRLayerSource::default);
+        }
+        let previous = storage.layers[output_layer].ext_class_backings.insert(
+            super::gkr_address_audit::AddressClass::ThisLayerInnerLayerWrite,
+            Arc::clone(&target.backing),
+        );
+        assert!(
+            previous.is_none(),
+            "final forward output slab backing must be bound before any output allocation",
+        );
+    }
     let mut output_idx = 0usize;
     let mut layer_description = BTreeMap::new();
     let mut slot_initial_inputs = Vec::new();
@@ -3215,6 +3225,7 @@ mod tests {
             initial_output_map,
             initial_trace_log_2,
             final_trace_log_2,
+            None,
             &mut tracing_ranges,
             &context,
         )
