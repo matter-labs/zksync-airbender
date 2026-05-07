@@ -468,6 +468,7 @@ where
         + crate::prover::gkr::forward_kernels::GpuGKRVirtualBaseAccumKernelSet
         + crate::prover::gkr::forward_kernels::GpuGKRDimensionReducingForwardTowerKernelSet
         + crate::prover::gkr::forward_kernels::GpuGKRFlatForwardKernelSet,
+    E: crate::prover::gkr::forward_kernels::GpuGKRLookupGammaConstsPreludeKernelSet,
     crate::ops::simple::Add: crate::ops::simple::BinaryOp<E, E, E>,
     crate::ops::simple::Add: crate::ops::simple::BinaryOp<BF, E, E>,
     crate::ops::simple::Add: crate::ops::simple::BinaryOp<E, BF, E>,

@@ -1,6 +1,15 @@
 #include "flat_forward.cuh"
 
+__device__ __constant__ e4 ab_gkr_lookup_gamma_consts[3];
+
 namespace airbender::prover::gkr {
+
+EXTERN __global__ void ab_gkr_lookup_gamma_consts_prelude(const e4 *gamma, e4 *staging) {
+  const e4 value = gamma[0];
+  staging[0] = value;
+  staging[1] = e4::sqr(value);
+  staging[2] = e4::dbl(value);
+}
 
 // Phase 0 baseline profiling hasn't been run yet, so start with a conservative
 // launch bound of 4 blocks/SM at 128 threads. Phase 4 will tune this based on

@@ -1,5 +1,6 @@
+use std::ffi::c_void;
 use std::marker::PhantomData;
-use std::ptr::{null, null_mut};
+use std::ptr::{self, null, null_mut};
 use std::sync::Arc;
 
 use cs::definitions::GKRAddress;
@@ -7,10 +8,10 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::paste::paste;
-use era_cudart::result::CudaResult;
-use era_cudart::slice::CudaSlice;
+use era_cudart::result::{CudaResult, CudaResultWrap};
+use era_cudart::slice::{CudaSlice, DeviceSlice, DeviceVariable};
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
-use fft::materialize_powers_serial_starting_with_one;
+use era_cudart_sys::cudaGetSymbolAddress;
 use field::Field;
 
 use super::setup::{flatten_setup_columns_into_pinned_buffer, precompute_partial_tree_cache};
@@ -30,6 +31,64 @@ use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 
 pub(super) const GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS: usize = 10;
 pub(super) const GKR_FORWARD_SETUP_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
+
+extern "C" {
+    static ab_gkr_lookup_alpha_powers: [E4; GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS];
+}
+
+fn get_lookup_alpha_powers_device_ptr() -> *mut E4 {
+    use std::sync::OnceLock;
+
+    static PTR: OnceLock<usize> = OnceLock::new();
+    let ptr = *PTR.get_or_init(|| {
+        let mut p: *mut c_void = ptr::null_mut();
+        // SAFETY: ab_gkr_lookup_alpha_powers is a valid __constant__ e4 array
+        // defined in native/prover/gkr/setup.cu.
+        unsafe {
+            cudaGetSymbolAddress(
+                &mut p,
+                &ab_gkr_lookup_alpha_powers as *const _ as *const c_void,
+            )
+        }
+        .wrap()
+        .expect("cudaGetSymbolAddress failed for ab_gkr_lookup_alpha_powers");
+        p as usize
+    });
+    ptr as *mut E4
+}
+
+pub(super) fn schedule_lookup_alpha_powers_prelude(
+    lookup_alpha: *const E4,
+    generic_lookup_width: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(
+        generic_lookup_width <= GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS,
+        "generic lookup setup width {} exceeds the fused setup cap of {}",
+        generic_lookup_width,
+        GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS
+    );
+    if generic_lookup_width == 0 {
+        return Ok(());
+    }
+
+    let powers_ptr = get_lookup_alpha_powers_device_ptr();
+    // SAFETY: the constant symbol storage contains exactly
+    // GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS E4 elements.
+    let powers = unsafe {
+        DeviceSlice::from_raw_parts_mut(powers_ptr, GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS)
+    };
+    // SAFETY: the caller passes a device-resident alpha scalar that remains
+    // valid until this stream-ordered prelude has been scheduled.
+    let alpha = unsafe { DeviceVariable::from_raw_parts(lookup_alpha) };
+    crate::ops::powers::get_powers_by_ref::<E4>(
+        alpha,
+        0,
+        false,
+        &mut powers[..generic_lookup_width],
+        context.get_exec_stream(),
+    )
+}
 
 pub(crate) struct GpuGKRSetupHost {
     pub(crate) raw_hypercube_evals: StaticPinnedBox<BF>,
@@ -160,7 +219,6 @@ pub(super) struct GpuGKRForwardSetupGenericLookupBatch<
 > {
     pub(super) column_count: u32,
     pub(super) decoder_table_id: u32,
-    pub(super) alpha_powers: *const E,
     pub(super) output: *mut E,
     pub(super) decoder_fill_value_out: *mut E,
     pub(super) descriptors: [GpuGKRForwardSetupGenericLookupDescriptor; MAX_COLUMNS],
@@ -179,7 +237,6 @@ impl<E, const MAX_COLUMNS: usize> Default for GpuGKRForwardSetupGenericLookupBat
         Self {
             column_count: 0,
             decoder_table_id: 0,
-            alpha_powers: null(),
             output: null_mut(),
             decoder_fill_value_out: null_mut(),
             descriptors: [GpuGKRForwardSetupGenericLookupDescriptor::default(); MAX_COLUMNS],
@@ -220,7 +277,6 @@ gkr_forward_setup_generic_lookup_kernels!(E4);
 
 pub(super) fn pack_forward_setup_generic_lookup_batch<E>(
     setup_columns: &[*const BF],
-    alpha_powers: *const E,
     output: *mut E,
     decoder_fill_value_out: *mut E,
     decoder_table_id: u32,
@@ -235,7 +291,6 @@ pub(super) fn pack_forward_setup_generic_lookup_batch<E>(
     let mut batch = GpuGKRForwardSetupGenericLookupBatch::default();
     batch.column_count = setup_columns.len() as u32;
     batch.decoder_table_id = decoder_table_id;
-    batch.alpha_powers = alpha_powers;
     batch.output = output;
     batch.decoder_fill_value_out = decoder_fill_value_out;
     for (input, descriptor) in setup_columns.iter().zip(batch.descriptors.iter_mut()) {
@@ -249,7 +304,6 @@ pub(super) fn lower_forward_setup_generic_lookup_batch<E>(
     host: &GpuGKRSetupHost,
     raw: &(impl CudaSlice<BF> + ?Sized),
     generic_lookup_width: usize,
-    alpha_powers: &DeviceAllocation<E>,
     generic_lookup: &mut DeviceAllocation<E>,
 ) -> GpuGKRForwardSetupGenericLookupBatch<E> {
     assert!(
@@ -268,7 +322,6 @@ pub(super) fn lower_forward_setup_generic_lookup_batch<E>(
         .collect::<Vec<_>>();
     pack_forward_setup_generic_lookup_batch(
         &setup_columns,
-        alpha_powers.as_ptr(),
         generic_lookup.as_mut_ptr(),
         null_mut(),
         0,
