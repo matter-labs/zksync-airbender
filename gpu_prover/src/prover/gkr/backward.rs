@@ -25,7 +25,7 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use field::{Field, FieldExtension, PrimeField};
 use prover::gkr::high_bits_offset_for_inits_and_teardowns;
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
-use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
+use prover::gkr::prover::transcript_utils::draw_random_field_els;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::sumcheck::evaluation_kernels::{
     BaseFieldCopyGKRRelation, BatchedGKRKernel, ExtensionCopyGKRRelation, GKRInputs,
@@ -4674,15 +4674,6 @@ fn fill_packed_main_layer_batch_challenges<E: Field>(
     }
 }
 
-fn pack_main_layer_batch_challenges<E: Field>(
-    kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
-    batch_challenge_base: E,
-) -> Vec<E> {
-    let mut packed = vec![E::ZERO; packed_main_layer_batch_challenge_len(kernel_plans)];
-    fill_packed_main_layer_batch_challenges(kernel_plans, batch_challenge_base, &mut packed);
-    packed
-}
-
 impl<E: Field + 'static> GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(crate) fn schedule_round_1(
         &self,
@@ -4778,28 +4769,6 @@ where
         }
     }
 
-    fn compute_combined_claim_with_batch_base(
-        &self,
-        output_claims: &BTreeMap<GKRAddress, E>,
-        batch_challenge_base: E,
-    ) -> E {
-        let mut result = E::ZERO;
-        for kernel in self.kernel_plans.iter() {
-            let mut challenge = field_pow(batch_challenge_base, kernel.batch_challenge_offset);
-            for output in kernel.inputs.outputs_in_extension.iter() {
-                let mut term = output_claims
-                    .get(output)
-                    .copied()
-                    .unwrap_or_else(|| panic!("missing output claim for {output:?}"));
-                term.mul_assign(&challenge);
-                result.add_assign(&term);
-                challenge.mul_assign(&batch_challenge_base);
-            }
-        }
-
-        result
-    }
-
     fn build_round0_eq_values(
         &mut self,
         eq_pair_values_host: &HostAllocation<[E]>,
@@ -4847,9 +4816,8 @@ where
         launch_dim_reducing_round0_batched_compact(&batch, acc_size, context)
     }
 
-    fn launch_round1_kernels(
+    fn launch_round1_kernels_from_symbol(
         &mut self,
-        folding_challenge: &ScheduledChallengeBuffer<E>,
         acc_size: usize,
         explicit_form: bool,
         context: &ProverContext,
@@ -4858,17 +4826,12 @@ where
         batch.eq_values = self.round_scratch.eq_values.as_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
         batch.explicit_form = explicit_form;
-        launch_dim_reducing_round1_batched_compact(
-            &batch,
-            folding_challenge.as_ptr(),
-            acc_size,
-            context,
-        )
+        launch_dim_reducing_round1_batched_compact(&batch, null(), acc_size, context)
     }
 
-    fn launch_round2_kernels(
+    fn launch_continuation_kernels_from_symbol(
         &mut self,
-        folding_challenge: &ScheduledChallengeBuffer<E>,
+        step: usize,
         acc_size: usize,
         explicit_form: bool,
         context: &ProverContext,
@@ -4877,50 +4840,7 @@ where
         batch.eq_values = self.round_scratch.eq_values.as_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
         batch.explicit_form = explicit_form;
-        launch_dim_reducing_continuation_batched_compact(
-            &batch,
-            folding_challenge.as_ptr(),
-            acc_size,
-            2,
-            context,
-        )
-    }
-
-    fn launch_round3_kernels(
-        &mut self,
-        step: usize,
-        folding_challenge: &ScheduledChallengeBuffer<E>,
-        acc_size: usize,
-        explicit_form: bool,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
-        let mut batch = self.continuation_batch_template_compact;
-        batch.eq_values = self.round_scratch.eq_values.as_ptr();
-        batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
-        batch.explicit_form = explicit_form;
-        launch_dim_reducing_continuation_batched_compact(
-            &batch,
-            folding_challenge.as_ptr(),
-            acc_size,
-            step,
-            context,
-        )
-    }
-
-    fn schedule_round_coefficients_reduction(
-        &mut self,
-        step: usize,
-        acc_size: usize,
-        context: &ProverContext,
-    ) -> CudaResult<HostAllocation<[E]>> {
-        self.run_round_coefficients_reduction_device(step, acc_size, context)?;
-        let mut reduction_host = unsafe { context.alloc_host_uninit_slice(2) };
-        memory_copy_async(
-            &mut reduction_host,
-            &self.round_scratch.reduction_output,
-            context.get_exec_stream(),
-        )?;
-        Ok(reduction_host)
+        launch_dim_reducing_continuation_batched_compact(&batch, null(), acc_size, step, context)
     }
 
     /// Runs the two CUB reductions for a round's sumcheck accumulator without
@@ -4966,54 +4886,6 @@ where
         Ok(())
     }
 
-    fn schedule_device_values_readback_from_raw_ptr(
-        &self,
-        ptr: *const E,
-        len: usize,
-        context: &ProverContext,
-    ) -> CudaResult<HostAllocation<[E]>> {
-        let device = unsafe { DeviceSlice::from_raw_parts(ptr, len) };
-        let mut host = unsafe { context.alloc_host_uninit_slice(len) };
-        memory_copy_async(&mut host, device, context.get_exec_stream())?;
-        Ok(host)
-    }
-
-    fn evaluate_with_two_variable_eq_ext(values: &[E; 4], r_before_last: E, r_last: E) -> E {
-        let mut result = E::ZERO;
-
-        let mut w00 = E::ONE;
-        w00.sub_assign(&r_before_last);
-        let mut tmp = E::ONE;
-        tmp.sub_assign(&r_last);
-        w00.mul_assign(&tmp);
-        let mut term = values[0];
-        term.mul_assign(&w00);
-        result.add_assign(&term);
-
-        let mut w01 = E::ONE;
-        w01.sub_assign(&r_before_last);
-        w01.mul_assign(&r_last);
-        let mut term = values[1];
-        term.mul_assign(&w01);
-        result.add_assign(&term);
-
-        let mut w10 = r_before_last;
-        let mut tmp = E::ONE;
-        tmp.sub_assign(&r_last);
-        w10.mul_assign(&tmp);
-        let mut term = values[2];
-        term.mul_assign(&w10);
-        result.add_assign(&term);
-
-        let mut w11 = r_before_last;
-        w11.mul_assign(&r_last);
-        let mut term = values[3];
-        term.mul_assign(&w11);
-        result.add_assign(&term);
-
-        result
-    }
-
     fn final_evaluation_sources_for_last_step(
         &self,
         last_step: usize,
@@ -5052,277 +4924,11 @@ where
         result
     }
 
-    fn schedule_last_evaluations_readback(
-        &self,
-        last_step: usize,
-        context: &ProverContext,
-    ) -> CudaResult<BTreeMap<GKRAddress, HostAllocation<[E]>>> {
-        let mut result = BTreeMap::new();
-        for (address, ptr) in self.final_evaluation_sources_for_last_step(last_step) {
-            result.insert(
-                address,
-                self.schedule_device_values_readback_from_raw_ptr(ptr, 4, context)?,
-            );
-        }
-        Ok(result)
-    }
-
-    pub(crate) fn schedule_execute_dimension_reducing_layer(
-        &mut self,
-        output_layer_claims: &BTreeMap<GKRAddress, E>,
-        previous_claim_point: &[E],
-        seed: Seed,
-        batch_challenge_base: E,
-        context: &ProverContext,
-    ) -> CudaResult<GpuGKRDimensionReducingScheduledLayerExecution<B, E>> {
-        assert_eq!(
-            previous_claim_point.len(),
-            self.folding_steps,
-            "dimension-reducing claim point must match folding steps"
-        );
-        if let Some(prepared_base) = self.batch_challenge_base {
-            assert_eq!(
-                prepared_base, batch_challenge_base,
-                "dimension-reducing execution batching challenge must match prepared layer state"
-            );
-        }
-
-        let last_step = self.folding_steps - 1;
-        let mut round_challenge_buffers = Vec::with_capacity(last_step);
-        let mut round_challenge_storage = if last_step == 0 {
-            None
-        } else {
-            Some(ScheduledChallengeStorage::new(
-                context.alloc(last_step, AllocationPlacement::Top)?,
-            ))
-        };
-        let mut start_callbacks = Callbacks::new();
-        let mut claim_point_values = previous_claim_point.to_vec();
-        claim_point_values.push(batch_challenge_base);
-        let claim_point_host =
-            alloc_host_and_schedule_copy(context, &mut start_callbacks, claim_point_values);
-        let eq_pair_values_host = alloc_host_and_schedule_copy(
-            context,
-            &mut start_callbacks,
-            make_round0_eq_pair_values(previous_claim_point),
-        );
-        memory_copy_async(
-            &mut self.round_scratch.claim_point,
-            &claim_point_host,
-            context.get_exec_stream(),
-        )?;
-        schedule_dim_reducing_batch_challenge_table_prelude(
-            self.batch_challenge_base_ptr() as *const E4,
-            context,
-        )?;
-        self.build_round0_eq_values(&eq_pair_values_host, context)?;
-        drop(claim_point_host);
-        drop(eq_pair_values_host);
-
-        let mut shared_state = Box::new(ScheduledDimensionReducingLayerExecutionState {
-            seed,
-            claim: self.compute_combined_claim(output_layer_claims),
-            eq_prefactor: E::ONE,
-            folding_challenges: Vec::with_capacity(self.folding_steps + 1),
-            result: None,
-        });
-        let shared_state_handle =
-            crate::primitives::context::UnsafeMutAccessor::new(shared_state.as_mut());
-        let mut reduction_states = Vec::with_capacity(last_step);
-
-        for step in 0..last_step {
-            let acc_size = 1usize << (self.folding_steps - step - 1);
-            if step == 0 {
-                self.launch_round0_kernels(acc_size, context)?;
-            } else {
-                match step {
-                    1 => self.launch_round1_kernels(
-                        &round_challenge_buffers[step - 1],
-                        acc_size,
-                        false,
-                        context,
-                    )?,
-                    2 => self.launch_round2_kernels(
-                        &round_challenge_buffers[step - 1],
-                        acc_size,
-                        false,
-                        context,
-                    )?,
-                    _ => self.launch_round3_kernels(
-                        step,
-                        &round_challenge_buffers[step - 1],
-                        acc_size,
-                        false,
-                        context,
-                    )?,
-                }
-            }
-            let reduction_output =
-                self.schedule_round_coefficients_reduction(step, acc_size, context)?;
-            self.fold_eq_values_for_next_round(acc_size, context)?;
-            let reduction_accessor = reduction_output.get_accessor();
-            let next_round_challenges_offset = if step < last_step { Some(step) } else { None };
-            let shared_state_for_callback = shared_state_handle;
-            let previous_claim_coord = previous_claim_point[step];
-            let callback = move |dst: &mut [E]| {
-                debug_assert_eq!(dst.len(), 1);
-                unsafe {
-                    let reduction = reduction_accessor.get();
-                    let c0 = reduction[0];
-                    let c2 = reduction[1];
-                    let state = shared_state_for_callback.get_mut();
-                    let mut normalized_claim = state.claim;
-                    normalized_claim.mul_assign(
-                        &state
-                            .eq_prefactor
-                            .inverse()
-                            .expect("eq prefactor must be non-zero"),
-                    );
-                    let coeffs = output_univariate_monomial_form_max_quadratic::<BF, E>(
-                        previous_claim_coord,
-                        normalized_claim,
-                        c0,
-                        c2,
-                    );
-                    commit_field_els(&mut state.seed, &coeffs);
-
-                    let folding_challenge = draw_random_field_els::<BF, E>(&mut state.seed, 1)[0];
-                    state.claim =
-                        evaluate_small_univariate_poly::<BF, E, _>(&coeffs, &folding_challenge);
-                    state.eq_prefactor =
-                        evaluate_eq_poly::<BF, E>(&folding_challenge, &previous_claim_coord);
-                    state.folding_challenges.push(folding_challenge);
-                    dst[0] = folding_challenge;
-                }
-            };
-            let callbacks = if let (Some(storage), Some(offset)) = (
-                round_challenge_storage.as_mut(),
-                next_round_challenges_offset,
-            ) {
-                round_challenge_buffers.push(schedule_packed_round_challenge_upload(
-                    context,
-                    storage.device_accessor(),
-                    &mut storage.callbacks,
-                    offset,
-                    1,
-                    callback,
-                )?);
-                Callbacks::new()
-            } else {
-                let mut callbacks = Callbacks::new();
-                callbacks.schedule(
-                    move || {
-                        let mut tmp = [E::ZERO; 1];
-                        callback(&mut tmp);
-                    },
-                    context.get_exec_stream(),
-                )?;
-                callbacks
-            };
-            drop(reduction_output);
-            reduction_states.push(ScheduledDimensionReducingReductionState {
-                callbacks,
-                _phantom: std::marker::PhantomData,
-            });
-        }
-
-        match last_step {
-            1 => self.launch_round1_kernels(
-                &round_challenge_buffers[last_step - 1],
-                1,
-                true,
-                context,
-            )?,
-            2 => self.launch_round2_kernels(
-                &round_challenge_buffers[last_step - 1],
-                1,
-                true,
-                context,
-            )?,
-            step => self.launch_round3_kernels(
-                step,
-                &round_challenge_buffers[last_step - 1],
-                1,
-                true,
-                context,
-            )?,
-        }
-        let final_evaluations = self.schedule_last_evaluations_readback(last_step, context)?;
-        let final_evaluation_accessors: Vec<_> = final_evaluations
-            .iter()
-            .map(|(addr, values)| (*addr, values.get_accessor()))
-            .collect();
-        let shared_state_for_callback = shared_state_handle;
-        let mut final_readback_callbacks = Callbacks::new();
-        final_readback_callbacks.schedule(
-            move || unsafe {
-                let mut last_evaluations = BTreeMap::new();
-                for (address, accessor) in final_evaluation_accessors.iter() {
-                    let values: [E; 4] = accessor.get().try_into().unwrap();
-                    last_evaluations.insert(*address, values);
-                }
-
-                let transcript_inputs: Vec<E> = last_evaluations
-                    .values()
-                    .flat_map(|values| values.iter().copied())
-                    .collect();
-                let state = shared_state_for_callback.get_mut();
-                commit_field_els(&mut state.seed, &transcript_inputs);
-
-                let challenges = draw_random_field_els::<BF, E>(&mut state.seed, 3);
-                let [r_before_last, r_last, next_batching_challenge]: [E; 3] =
-                    challenges.try_into().unwrap();
-                let mut new_claim_point = state.folding_challenges.clone();
-                new_claim_point.push(r_before_last);
-                new_claim_point.push(r_last);
-
-                let new_claims = last_evaluations
-                    .iter()
-                    .map(|(addr, values)| {
-                        (
-                            *addr,
-                            Self::evaluate_with_two_variable_eq_ext(values, r_before_last, r_last),
-                        )
-                    })
-                    .collect();
-
-                state.result = Some(GpuGKRDimensionReducingLayerExecution {
-                    new_claims,
-                    new_claim_point,
-                    next_batching_challenge,
-                    updated_seed: state.seed,
-                });
-            },
-            context.get_exec_stream(),
-        )?;
-
-        drop(round_challenge_buffers);
-        drop(round_challenge_storage);
-        Ok(GpuGKRDimensionReducingScheduledLayerExecution {
-            tracing_ranges: Vec::new(),
-            start_callbacks,
-            reduction_states,
-            final_readback: {
-                drop(final_evaluations);
-                ScheduledDimensionReducingFinalReadback {
-                    callbacks: final_readback_callbacks,
-                    _phantom: std::marker::PhantomData,
-                }
-            },
-            shared_state,
-            device_seed: None,
-            device_claim_point_for_next_layer: None,
-            device_claims_for_next_layer: None,
-            claim_layout_for_next_layer: None,
-            _phantom: std::marker::PhantomData,
-        })
-    }
-
     pub(crate) fn schedule_execute_dimension_reducing_layer_from_workflow_state(
         &mut self,
         workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
         mut device_seed: DeviceAllocation<u32>,
-        device_claim_point_in: DeviceAllocation<E>,
+        device_claim_point_in: DeviceClaimPointAndBatching<E>,
         device_claims_in: DeviceAllocation<E>,
         claim_layout: &ClaimBufferLayout,
         // When `Some` (production), per-round kernels write coeffs directly
@@ -5331,7 +4937,7 @@ where
         // `final_step_evaluations` (B1 + B2). When `None` (test paths with
         // placeholder layouts), per-layer fallback device buffers are
         // allocated so the kernels still have valid destinations.
-        proof_slab: Option<&DeviceAllocation<u8>>,
+        proof_slab: Option<&DeviceAllocation<E4>>,
         proof_layout: &ProofLayout,
         layer_slot: usize,
         mirror_layer_to_host: bool,
@@ -5463,7 +5069,7 @@ where
         {
             let claims_e4: &era_cudart::slice::DeviceSlice<E4> =
                 unsafe { device_claims_in[..claim_layout.len()].transmute::<E4>() };
-            let batching_slice = &device_claim_point_in[self.folding_steps..self.folding_steps + 1];
+            let batching_slice = unsafe { device_claim_point_in.slice(self.folding_steps, 1) };
             let batching_e4: &era_cudart::slice::DeviceSlice<E4> =
                 unsafe { batching_slice.transmute::<E4>() };
             let claim_out_e4: &mut era_cudart::slice::DeviceSlice<E4> =
@@ -5480,7 +5086,6 @@ where
             )?;
         }
 
-        let mut round_challenge_buffers = Vec::with_capacity(last_step);
         // Hoisted: `device_claim_point_out` holds the next layer's
         // `[claim_point || batching_challenge]` buffer. Slots `[0..folding_steps - 1]`
         // are written in-place by the per-round update kernels (replacing
@@ -5489,9 +5094,18 @@ where
         // post-loop transcript squeeze (replacing the old `d_layer_challenges`
         // allocation + post-loop D2D pack).
         let next_claim_point_and_batching_len = self.folding_steps + 2;
-        let claim_point_out_storage = ScheduledChallengeStorage::new(
-            context.alloc(next_claim_point_and_batching_len, AllocationPlacement::Top)?,
+        assert!(
+            next_claim_point_and_batching_len <= MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN,
+            "dim-reducing layer claim point length {} exceeds __constant__ symbol capacity {}",
+            next_claim_point_and_batching_len,
+            MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN
         );
+        let mut device_claim_point_out = unsafe {
+            DeviceClaimPointAndBatching::from_raw_symbol_parts(
+                get_dim_reducing_layer_claim_point_device_ptr() as *mut E,
+                next_claim_point_and_batching_len,
+            )
+        };
         let mut reduction_states = Vec::with_capacity(last_step);
 
         for step in 0..last_step {
@@ -5500,25 +5114,9 @@ where
                 self.launch_round0_kernels(acc_size, context)?;
             } else {
                 match step {
-                    1 => self.launch_round1_kernels(
-                        &round_challenge_buffers[step - 1],
-                        acc_size,
-                        false,
-                        context,
-                    )?,
-                    2 => self.launch_round2_kernels(
-                        &round_challenge_buffers[step - 1],
-                        acc_size,
-                        false,
-                        context,
-                    )?,
-                    _ => self.launch_round3_kernels(
-                        step,
-                        &round_challenge_buffers[step - 1],
-                        acc_size,
-                        false,
-                        context,
-                    )?,
+                    1 => self.launch_round1_kernels_from_symbol(acc_size, false, context)?,
+                    step => self
+                        .launch_continuation_kernels_from_symbol(step, acc_size, false, context)?,
                 }
             }
 
@@ -5534,7 +5132,7 @@ where
             // one single-thread kernel. The challenge lands directly in
             // `device_claim_point_out[step]`, ready for the next round's
             // kernel to read and for the next layer to consume.
-            let prev_coord_slice = &device_claim_point_in[step..step + 1];
+            let prev_coord_slice = unsafe { device_claim_point_in.slice(step, 1) };
             // SAFETY: `coeffs_buffer_ptr` points either into `proof_slab`
             // (held alive by `_proof_slab` keepalive in `prove()`) or into
             // `fallback_device_coeffs` (dropped at end of this function,
@@ -5543,8 +5141,7 @@ where
             // (`coeffs_total_len = last_step * 4`).
             let coeffs_round_slice =
                 unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(step * 4), 4) };
-            let challenge_slice =
-                unsafe { claim_point_out_storage.device.slice_mut(step, 1) };
+            let challenge_slice = unsafe { device_claim_point_out.slice_mut(step, 1) };
             E::launch_backward_sumcheck_round_update(
                 &self.round_scratch.reduction_output,
                 prev_coord_slice,
@@ -5556,14 +5153,6 @@ where
                 stream,
             )?;
 
-            // Record a view over the just-written challenge slot for the next
-            // round's kernel to read.
-            round_challenge_buffers.push(ScheduledChallengeBuffer {
-                device: claim_point_out_storage.device_accessor(),
-                offset: step,
-                len: 1,
-            });
-
             // Empty reduction_state retained for struct ABI compatibility — the
             // kernel-driven path no longer has per-round host callbacks.
             reduction_states.push(ScheduledDimensionReducingReductionState {
@@ -5573,25 +5162,8 @@ where
         }
 
         match last_step {
-            1 => self.launch_round1_kernels(
-                &round_challenge_buffers[last_step - 1],
-                1,
-                true,
-                context,
-            )?,
-            2 => self.launch_round2_kernels(
-                &round_challenge_buffers[last_step - 1],
-                1,
-                true,
-                context,
-            )?,
-            step => self.launch_round3_kernels(
-                step,
-                &round_challenge_buffers[last_step - 1],
-                1,
-                true,
-                context,
-            )?,
+            1 => self.launch_round1_kernels_from_symbol(1, true, context)?,
+            step => self.launch_continuation_kernels_from_symbol(step, 1, true, context)?,
         }
 
         // B1: coeffs already landed in the slab via the per-round kernels
@@ -5687,12 +5259,10 @@ where
         // so the range is in-bounds, and only this scheduling site writes
         // it (see write-exclusivity below).
         {
-            let layer_challenges_dst =
-                unsafe { claim_point_out_storage.device.slice_mut(last_step, 3) };
+            let layer_challenges_dst = unsafe { device_claim_point_out.slice_mut(last_step, 3) };
             // SAFETY: E = E4 in every instantiation; the transmute is a no-op at
             // the byte level and matches host `draw_random_field_els::<BF, E4>`.
-            let layer_challenges_dst_e4 =
-                unsafe { layer_challenges_dst.transmute_mut::<E4>() };
+            let layer_challenges_dst_e4 = unsafe { layer_challenges_dst.transmute_mut::<E4>() };
             crate::ops::blake2s::transcript_squeeze_e4(
                 &mut device_seed,
                 layer_challenges_dst_e4,
@@ -5725,10 +5295,7 @@ where
             // `claim_point_out[last_step..last_step + 3]`; reading the first
             // two (`r_before_last`, `r_last`) for the kernel.
             let challenges_view = unsafe {
-                DeviceSlice::from_raw_parts(
-                    claim_point_out_storage.device.as_ptr(last_step),
-                    2,
-                )
+                DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr().add(last_step), 2)
             };
             let challenges_e4: &era_cudart::slice::DeviceSlice<E4> =
                 unsafe { challenges_view.transmute::<E4>() };
@@ -5775,16 +5342,9 @@ where
             // transcript squeeze on `stream` and the d2h_stream waits on
             // `layer_src_ready` before this read.
             let layer_challenges_src = unsafe {
-                DeviceSlice::from_raw_parts(
-                    claim_point_out_storage.device.as_ptr(last_step),
-                    3,
-                )
+                DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr().add(last_step), 3)
             };
-            memory_copy_async(
-                &mut layer_challenges_host,
-                layer_challenges_src,
-                d2h_stream,
-            )?;
+            memory_copy_async(&mut layer_challenges_host, layer_challenges_src, d2h_stream)?;
 
             // Single D2H of device-computed new_claims. Replaces N per-address D2Hs
             // (one per address × 4 E) + the host `evaluate_with_two_variable_eq_ext` loop.
@@ -5816,10 +5376,7 @@ where
                 // per-round update kernels. The d2h_stream waits on
                 // `layer_src_ready` before this read.
                 let folding_src = unsafe {
-                    DeviceSlice::from_raw_parts(
-                        claim_point_out_storage.device.as_ptr(0),
-                        last_step,
-                    )
+                    DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr(), last_step)
                 };
                 memory_copy_async(&mut final_folding_challenges_host, folding_src, d2h_stream)?;
             }
@@ -5913,15 +5470,6 @@ where
         drop(fallback_device_coeffs);
         drop(device_claim_point_in);
         drop(device_claims_in);
-        // Extract the underlying allocation now that every kernel and D2H
-        // that captured a raw pointer through `claim_point_out_storage`'s
-        // device accessor has been scheduled. Subsequent layers consume it
-        // as a plain `DeviceAllocation` via `device_claim_point_in`.
-        let device_claim_point_out = claim_point_out_storage.into_device();
-        // `round_challenge_buffers`' UnsafeAccessors aliased the now-consumed
-        // storage; the kernels reading them are scheduled. Drop locally so we
-        // don't carry dangling accessors past the function boundary.
-        drop(round_challenge_buffers);
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
             tracing_ranges,
             start_callbacks: Callbacks::new(),
@@ -6015,65 +5563,9 @@ where
         result
     }
 
-    fn compute_combined_claim_with_batch_base(
-        &self,
-        output_claims: &BTreeMap<GKRAddress, E>,
-        batch_challenge_base: E,
-    ) -> E {
-        let mut result = E::ZERO;
-        for kernel in self.kernel_plans.iter() {
-            if kernel.kind == GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic {
-                continue;
-            }
-            let mut challenge = field_pow(batch_challenge_base, kernel.batch_challenge_offset);
-            for output in kernel
-                .inputs
-                .outputs_in_base
-                .iter()
-                .chain(kernel.inputs.outputs_in_extension.iter())
-            {
-                let mut term = output_claims
-                    .get(output)
-                    .copied()
-                    .unwrap_or_else(|| panic!("missing output claim for {output:?}"));
-                term.mul_assign(&challenge);
-                result.add_assign(&term);
-                challenge.mul_assign(&batch_challenge_base);
-            }
-        }
-
-        result
-    }
-
-    fn schedule_batch_challenge_buffer(
-        &self,
-        batch_challenge_base: E,
-        context: &ProverContext,
-    ) -> CudaResult<(ScheduledChallengeStorage<E>, ScheduledChallengeBuffer<E>)> {
-        let packed = pack_main_layer_batch_challenges(&self.kernel_plans, batch_challenge_base);
-        assert!(
-            !packed.is_empty(),
-            "main-layer batched execution requires at least one packed batch challenge"
-        );
-        let len = packed.len();
-        let mut storage =
-            ScheduledChallengeStorage::new(context.alloc(len, AllocationPlacement::Top)?);
-        let buffer = schedule_packed_round_challenge_upload(
-            context,
-            storage.device_accessor(),
-            &mut storage.callbacks,
-            0,
-            len,
-            move |dst| {
-                dst.copy_from_slice(&packed);
-            },
-        )?;
-        Ok((storage, buffer))
-    }
-
     fn schedule_batch_challenge_buffer_on_device(
         &self,
-        device_claim_point_in: &DeviceAllocation<E>,
+        device_claim_point_in: &DeviceClaimPointAndBatching<E>,
         context: &ProverContext,
     ) -> CudaResult<(ScheduledChallengeStorage<E>, ScheduledChallengeBuffer<E>)> {
         let len = packed_main_layer_batch_challenge_len(&self.kernel_plans);
@@ -6091,11 +5583,12 @@ where
                 .all(|k| k.batch_challenges.is_empty()),
             "schedule_batch_challenge_buffer_on_device requires static-blueprint specs",
         );
-        let storage = ScheduledChallengeStorage::new(context.alloc(len, AllocationPlacement::Top)?);
+        let mut storage =
+            ScheduledChallengeStorage::new(context.alloc(len, AllocationPlacement::Top)?);
         // Fill the packed buffer with powers of the device-resident batching
         // challenge — the last slot of the orchestrator-owned
         // `device_claim_point_in`.
-        let batching_slice = &device_claim_point_in[self.folding_steps..self.folding_steps + 1];
+        let batching_slice = unsafe { device_claim_point_in.slice(self.folding_steps, 1) };
         // SAFETY: `storage.device` was just allocated with capacity `len` and
         // no other view into it exists yet; the `&mut DeviceSlice` is dropped
         // before `storage.device_accessor()` is called below. The subsequent
@@ -6190,9 +5683,8 @@ where
         }
     }
 
-    fn launch_round1_kernels(
+    fn launch_round1_kernels_from_symbol(
         &mut self,
-        folding_challenge: &ScheduledChallengeBuffer<E>,
         acc_size: usize,
         context: &ProverContext,
     ) -> CudaResult<()> {
@@ -6210,7 +5702,7 @@ where
             .expect("flat round 1 compact desc must be built");
         super::backward_flat_compact::launch_main_round1_flat_constant_compact_unified_compact(
             compact_desc,
-            folding_challenge.as_ptr(),
+            null(),
             sizes.fold_stride,
             sizes.next_layer_size,
             self.round_scratch.eq_values.as_ptr(),
@@ -6220,9 +5712,8 @@ where
         )
     }
 
-    fn launch_round2_kernels(
+    fn launch_round2_kernels_from_symbol(
         &mut self,
-        folding_challenges: &ScheduledChallengeBuffer<E>,
         acc_size: usize,
         context: &ProverContext,
     ) -> CudaResult<()> {
@@ -6240,7 +5731,7 @@ where
             .expect("flat round 2 compact desc must be built");
         super::backward_flat_compact::launch_main_round2_flat_constant_compact_unified_compact(
             compact_desc,
-            folding_challenges.as_ptr(),
+            super::backward_flat_compact::get_main_layer_claim_point_device_ptr() as *const E,
             sizes.fold_stride,
             sizes.next_layer_size,
             self.round_scratch.eq_values.as_ptr(),
@@ -6250,10 +5741,9 @@ where
         )
     }
 
-    fn launch_round3_kernels(
+    fn launch_round3_kernels_from_symbol(
         &mut self,
         step: usize,
-        folding_challenge: &ScheduledChallengeBuffer<E>,
         acc_size: usize,
         explicit_form: bool,
         context: &ProverContext,
@@ -6277,31 +5767,16 @@ where
             });
         super::backward_flat_compact::launch_main_round3_flat_constant_unified_compact(
             compact_desc,
-            folding_challenge.as_ptr(),
+            null(),
             sizes.fold_stride,
             sizes.next_layer_size,
+            (step - 1) as u32,
             self.round_scratch.eq_values.as_ptr(),
             self.round_scratch.accumulator.as_mut_ptr(),
             acc_size as u32,
             explicit_form,
             context,
         )
-    }
-
-    fn schedule_round_coefficients_reduction(
-        &mut self,
-        step: usize,
-        acc_size: usize,
-        context: &ProverContext,
-    ) -> CudaResult<HostAllocation<[E]>> {
-        self.run_round_coefficients_reduction_device(step, acc_size, context)?;
-        let mut reduction_host = unsafe { context.alloc_host_uninit_slice(2) };
-        memory_copy_async(
-            &mut reduction_host,
-            &self.round_scratch.reduction_output,
-            context.get_exec_stream(),
-        )?;
-        Ok(reduction_host)
     }
 
     /// Main-layer variant of the device-only sumcheck accumulator reduction.
@@ -6346,18 +5821,6 @@ where
         Ok(())
     }
 
-    fn schedule_device_values_readback_from_raw_ptr(
-        &self,
-        ptr: *const E,
-        len: usize,
-        context: &ProverContext,
-    ) -> CudaResult<HostAllocation<[E]>> {
-        let device = unsafe { DeviceSlice::from_raw_parts(ptr, len) };
-        let mut host = unsafe { context.alloc_host_uninit_slice(len) };
-        memory_copy_async(&mut host, device, context.get_exec_stream())?;
-        Ok(host)
-    }
-
     /// Schedule eval_recipes on the GPU. Each challenge is read from its own
     /// existing device-resident pointer:
     ///   - batch_base = `device_claim_point_in[folding_steps]` (last slot,
@@ -6368,7 +5831,7 @@ where
     /// kernel now reads each scalar through its own pointer.
     fn schedule_flat_eval_recipes(
         &mut self,
-        device_claim_point_in: &DeviceAllocation<E>,
+        device_claim_point_in: &DeviceClaimPointAndBatching<E>,
         device_lookup_and_constraint_ptr: *const E,
         external_challenges_ptr: *const E,
         context: &ProverContext,
@@ -6488,354 +5951,11 @@ where
         result
     }
 
-    fn schedule_last_evaluations_readback(
-        &self,
-        last_step: usize,
-        context: &ProverContext,
-    ) -> CudaResult<BTreeMap<GKRAddress, HostAllocation<[E]>>> {
-        let mut result = BTreeMap::new();
-        for (address, ptr) in self.final_evaluation_sources_for_last_step(last_step) {
-            result.insert(
-                address,
-                self.schedule_device_values_readback_from_raw_ptr(ptr, 2, context)?,
-            );
-        }
-        Ok(result)
-    }
-
-    fn interpolate_linear(f0: E, f1: E, r: &E) -> E {
-        let mut result = f1;
-        result.sub_assign(&f0);
-        result.mul_assign(r);
-        result.add_assign(&f0);
-        result
-    }
-
-    pub(crate) fn schedule_execute_main_layer(
-        &mut self,
-        output_layer_claims: &BTreeMap<GKRAddress, E>,
-        previous_claim_point: &[E],
-        seed: Seed,
-        context: &ProverContext,
-    ) -> CudaResult<GpuGKRMainLayerScheduledLayerExecution<E>> {
-        assert_eq!(
-            previous_claim_point.len(),
-            self.folding_steps,
-            "main-layer claim point must match folding steps"
-        );
-
-        let last_step = self.folding_steps - 1;
-        assert!(last_step >= 3);
-        let mut round_challenge_buffers = Vec::with_capacity(last_step);
-        let round_challenge_len = (1..=last_step)
-            .map(main_layer_round_challenge_len)
-            .sum::<usize>();
-        let mut round_challenge_storage = ScheduledChallengeStorage::new(
-            context.alloc(round_challenge_len, AllocationPlacement::Top)?,
-        );
-        let mut next_round_challenge_offset = 0usize;
-        let mut start_callbacks = Callbacks::new();
-        let mut start_state_values = previous_claim_point.to_vec();
-        start_state_values.push(
-            self.batch_challenge_base
-                .expect("direct main-layer execution requires a prepared batching challenge base"),
-        );
-        let claim_point_host =
-            alloc_host_and_schedule_copy(context, &mut start_callbacks, start_state_values);
-        let eq_pair_values_host = alloc_host_and_schedule_copy(
-            context,
-            &mut start_callbacks,
-            make_round0_eq_pair_values(previous_claim_point),
-        );
-        memory_copy_async(
-            &mut self.round_scratch.claim_point,
-            &claim_point_host,
-            context.get_exec_stream(),
-        )?;
-        self.build_round0_eq_values(&eq_pair_values_host, context)?;
-        drop(claim_point_host);
-        drop(eq_pair_values_host);
-        let (batch_challenge_storage, batch_challenge_buffer) = self
-            .schedule_batch_challenge_buffer(
-                self.batch_challenge_base.expect(
-                    "direct main-layer execution requires a prepared batching challenge base",
-                ),
-                context,
-            )?;
-
-        let mut shared_state = Box::new(ScheduledMainLayerExecutionState {
-            seed,
-            claim: self.compute_combined_claim(output_layer_claims),
-            eq_prefactor: E::ONE,
-            folding_challenges: Vec::with_capacity(self.folding_steps),
-            result: None,
-        });
-        let shared_state_handle =
-            crate::primitives::context::UnsafeMutAccessor::new(shared_state.as_mut());
-        let mut reduction_states = Vec::with_capacity(last_step);
-
-        // Schedule eval_recipes for the static path. Stage challenge scalars
-        // through pinned host memory via callback to avoid pageable memory
-        // copies (stack arrays are not pinned), then H2D into a local
-        // 3-element device buffer. The kernel reads each scalar through its
-        // own per-element pointer; the buffer outlives both eval kernel
-        // launches via `static_challenges_buf_keepalive` (dropped at the end
-        // of this function).
-        let mut static_challenges_buf_keepalive: Option<DeviceAllocation<E>> = None;
-        let mut static_external_challenges_keepalive: Option<DeviceAllocation<E>> = None;
-        let mut flat_coeff_callbacks = Callbacks::new();
-        let mut static_batch_base_ptr: *const E4 = std::ptr::null();
-        let mut static_lookup_mul_ptr: *const E4 = std::ptr::null();
-        let mut static_lookup_add_ptr: *const E4 = std::ptr::null();
-        let mut static_external_challenges_ptr: *const E4 = std::ptr::null();
-        if self.flat_recipe_desc.is_some() {
-            let batch_base = self
-                .batch_challenge_base
-                .expect("static path requires batch_challenge_base");
-            let lm = self.lookup_multiplicative_challenge;
-            let la = self.lookup_additive_challenge;
-            let challenges_host = alloc_host_and_schedule_copy(
-                context,
-                &mut flat_coeff_callbacks,
-                vec![batch_base, lm, la],
-            );
-            let mut challenges_buf: DeviceAllocation<E> =
-                context.alloc(3, AllocationPlacement::BestFit)?;
-            memory_copy_async(
-                &mut challenges_buf,
-                &challenges_host,
-                context.get_exec_stream(),
-            )?;
-            drop(challenges_host);
-            let buf_ptr = challenges_buf.as_ptr() as *const E4;
-            static_batch_base_ptr = buf_ptr;
-            static_lookup_mul_ptr = unsafe { buf_ptr.add(1) };
-            static_lookup_add_ptr = unsafe { buf_ptr.add(2) };
-            static_challenges_buf_keepalive = Some(challenges_buf);
-            let external_host = alloc_host_and_schedule_copy(
-                context,
-                &mut flat_coeff_callbacks,
-                self.external_challenges_flat.clone(),
-            );
-            let mut external_buf: DeviceAllocation<E> =
-                context.alloc(external_host.len(), AllocationPlacement::BestFit)?;
-            memory_copy_async(&mut external_buf, &external_host, context.get_exec_stream())?;
-            drop(external_host);
-            static_external_challenges_ptr = external_buf.as_ptr() as *const E4;
-            static_external_challenges_keepalive = Some(external_buf);
-
-            let coeff_out_ptr: *mut E4 = if self.flat_use_constant {
-                super::backward_flat::get_constant_coefficients_device_ptr()
-            } else {
-                self.flat_coeff_device_buf
-                    .as_mut()
-                    .unwrap()
-                    .as_mut_ptr()
-                    .cast()
-            };
-            crate::ops::eval_recipes::eval_recipes_e4(
-                static_batch_base_ptr,
-                static_lookup_mul_ptr,
-                static_lookup_add_ptr,
-                static_external_challenges_ptr,
-                self.flat_recipe_desc.as_ref().unwrap(),
-                self.flat_recipe_count,
-                coeff_out_ptr,
-                context.get_exec_stream(),
-            )?;
-        }
-        self.schedule_flat_continuation_eval_recipes(
-            static_batch_base_ptr,
-            static_lookup_mul_ptr,
-            static_lookup_add_ptr,
-            static_external_challenges_ptr,
-            context,
-        )?;
-        for step in 0..last_step {
-            let acc_size = 1usize << (self.folding_steps - step - 1);
-            if step == 0 {
-                self.launch_round0_kernels(acc_size, context)?;
-            } else {
-                match step {
-                    1 => self.launch_round1_kernels(
-                        &round_challenge_buffers[step - 1],
-                        acc_size,
-                        context,
-                    )?,
-                    2 => self.launch_round2_kernels(
-                        &round_challenge_buffers[step - 1],
-                        acc_size,
-                        context,
-                    )?,
-                    _ => self.launch_round3_kernels(
-                        step,
-                        &round_challenge_buffers[step - 1],
-                        acc_size,
-                        false,
-                        context,
-                    )?,
-                }
-            }
-
-            let reduction_output =
-                self.schedule_round_coefficients_reduction(step, acc_size, context)?;
-            self.fold_eq_values_for_next_round(acc_size, context)?;
-            let reduction_accessor = reduction_output.get_accessor();
-            let next_round_len =
-                (step < last_step).then(|| main_layer_round_challenge_len(step + 1));
-            let shared_state_for_callback = shared_state_handle;
-            let previous_claim_coord = previous_claim_point[step];
-            let callback = move |dst: &mut [E]| unsafe {
-                let reduction = reduction_accessor.get();
-                let c0 = reduction[0];
-                let c2 = reduction[1];
-                let state = shared_state_for_callback.get_mut();
-                let mut normalized_claim = state.claim;
-                normalized_claim.mul_assign(
-                    &state
-                        .eq_prefactor
-                        .inverse()
-                        .expect("eq prefactor must be non-zero"),
-                );
-                let coeffs = output_univariate_monomial_form_max_quadratic::<BF, E>(
-                    previous_claim_coord,
-                    normalized_claim,
-                    c0,
-                    c2,
-                );
-                commit_field_els(&mut state.seed, &coeffs);
-
-                let folding_challenge = draw_random_field_els::<BF, E>(&mut state.seed, 1)[0];
-                state.claim =
-                    evaluate_small_univariate_poly::<BF, E, _>(&coeffs, &folding_challenge);
-                state.eq_prefactor =
-                    evaluate_eq_poly::<BF, E>(&folding_challenge, &previous_claim_coord);
-                state.folding_challenges.push(folding_challenge);
-                match step + 1 {
-                    1 => dst[0] = state.folding_challenges[0],
-                    2 => {
-                        dst[0] = state.folding_challenges[0];
-                        dst[1] = state.folding_challenges[1];
-                    }
-                    _ => dst[0] = *state.folding_challenges.last().unwrap(),
-                }
-            };
-            let callbacks = if let Some(len) = next_round_len {
-                let offset = next_round_challenge_offset;
-                next_round_challenge_offset += len;
-                round_challenge_buffers.push(schedule_packed_round_challenge_upload(
-                    context,
-                    round_challenge_storage.device_accessor(),
-                    &mut round_challenge_storage.callbacks,
-                    offset,
-                    len,
-                    callback,
-                )?);
-                Callbacks::new()
-            } else {
-                let mut callbacks = Callbacks::new();
-                callbacks.schedule(
-                    move || {
-                        let mut tmp = [E::ZERO; 2];
-                        callback(&mut tmp[..main_layer_round_challenge_len(step + 1)]);
-                    },
-                    context.get_exec_stream(),
-                )?;
-                callbacks
-            };
-            drop(reduction_output);
-            reduction_states.push(ScheduledDimensionReducingReductionState {
-                callbacks,
-                _phantom: std::marker::PhantomData,
-            });
-        }
-
-        self.launch_round3_kernels(
-            last_step,
-            &round_challenge_buffers[last_step - 1],
-            1,
-            true,
-            context,
-        )?;
-        let final_evaluations = self.schedule_last_evaluations_readback(last_step, context)?;
-        let final_evaluation_accessors: Vec<_> = final_evaluations
-            .iter()
-            .map(|(addr, values)| (*addr, values.get_accessor()))
-            .collect();
-        let shared_state_for_callback = shared_state_handle;
-        let mut final_readback_callbacks = Callbacks::new();
-        final_readback_callbacks.schedule(
-            move || unsafe {
-                let mut last_evaluations = BTreeMap::new();
-                for (address, accessor) in final_evaluation_accessors.iter() {
-                    let values: [E; 2] = accessor.get().try_into().unwrap();
-                    last_evaluations.insert(*address, values);
-                }
-
-                let transcript_inputs: Vec<E> = last_evaluations
-                    .values()
-                    .flat_map(|values| values.iter().copied())
-                    .collect();
-                let state = shared_state_for_callback.get_mut();
-                commit_field_els(&mut state.seed, &transcript_inputs);
-
-                let challenges = draw_random_field_els::<BF, E>(&mut state.seed, 2);
-                let [last_r, next_batching_challenge]: [E; 2] = challenges.try_into().unwrap();
-                let mut new_claim_point = state.folding_challenges.clone();
-                new_claim_point.push(last_r);
-                let new_claims = last_evaluations
-                    .iter()
-                    .map(|(addr, [f0, f1])| (*addr, Self::interpolate_linear(*f0, *f1, &last_r)))
-                    .collect();
-                state.result = Some(GpuGKRMainLayerExecution {
-                    new_claims,
-                    new_claim_point,
-                    next_batching_challenge,
-                    updated_seed: state.seed,
-                });
-            },
-            context.get_exec_stream(),
-        )?;
-
-        // Both eval kernels (round-0 and continuation) have been scheduled
-        // above; the static challenges buffer can be released — the pool
-        // tracks scheduled-but-not-completed reads and will not recycle it
-        // until exec_stream actually advances past those launches.
-        drop(static_challenges_buf_keepalive);
-        drop(static_external_challenges_keepalive);
-        drop(round_challenge_buffers);
-        drop(round_challenge_storage);
-        Ok(GpuGKRMainLayerScheduledLayerExecution {
-            tracing_ranges: Vec::new(),
-            start_callbacks,
-            batch_challenge_storage,
-            batch_challenge_buffer,
-            reduction_states,
-            final_readback: {
-                drop(final_evaluations);
-                ScheduledDimensionReducingFinalReadback {
-                    callbacks: final_readback_callbacks,
-                    _phantom: std::marker::PhantomData,
-                }
-            },
-            flat_coeff_callbacks,
-            recipe_upload_callbacks: std::mem::replace(
-                &mut self.recipe_upload_callbacks,
-                Callbacks::new(),
-            ),
-            shared_state,
-            device_seed: None,
-            device_claim_point_for_next_layer: None,
-            device_claims_for_next_layer: None,
-            claim_layout_for_next_layer: None,
-        })
-    }
-
     pub(crate) fn schedule_execute_main_layer_from_workflow_state(
         &mut self,
         workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
         mut device_seed: DeviceAllocation<u32>,
-        device_claim_point_in: DeviceAllocation<E>,
+        device_claim_point_in: DeviceClaimPointAndBatching<E>,
         device_claims_in: DeviceAllocation<E>,
         claim_layout: &ClaimBufferLayout,
         device_lookup_and_constraint_ptr: *const E,
@@ -6845,7 +5965,7 @@ where
         // `internal_round_coefficients` range and the per-address gather
         // writes directly into `final_step_evaluations` (B1 + B2). When
         // `None` (test paths), per-layer fallback device buffers are used.
-        proof_slab: Option<&DeviceAllocation<u8>>,
+        proof_slab: Option<&DeviceAllocation<E4>>,
         proof_layout: &ProofLayout,
         layer_slot: usize,
         mirror_layer_to_host: bool,
@@ -6954,7 +6074,7 @@ where
         {
             let claims_e4: &era_cudart::slice::DeviceSlice<E4> =
                 unsafe { device_claims_in[..claim_layout.len()].transmute::<E4>() };
-            let batching_slice = &device_claim_point_in[self.folding_steps..self.folding_steps + 1];
+            let batching_slice = unsafe { device_claim_point_in.slice(self.folding_steps, 1) };
             let batching_e4: &era_cudart::slice::DeviceSlice<E4> =
                 unsafe { batching_slice.transmute::<E4>() };
             let claim_out_e4: &mut era_cudart::slice::DeviceSlice<E4> =
@@ -6992,7 +6112,6 @@ where
             device_external_challenges_ptr as *const E4,
             context,
         )?;
-        let mut round_challenge_buffers = Vec::with_capacity(last_step);
         // Hoisted: `device_claim_point_out` holds the next layer's
         // `[claim_point || batching_challenge]` buffer. Slots `[0..folding_steps - 1]`
         // are written in-place by the per-round update kernels; slots
@@ -7005,9 +6124,19 @@ where
         // - round ≥ 3 reads `[step - 1..step]` (= c_{step - 1}, the just-produced challenge)
         // No packing buffer or per-round D2D needed.
         let next_claim_point_and_batching_len = self.folding_steps + 1;
-        let claim_point_out_storage = ScheduledChallengeStorage::new(
-            context.alloc(next_claim_point_and_batching_len, AllocationPlacement::Top)?,
+        assert!(
+            next_claim_point_and_batching_len
+                <= super::backward_flat_compact::MAX_MAIN_LAYER_CLAIM_POINT_LEN,
+            "main-layer claim point length {} exceeds __constant__ symbol capacity {}",
+            next_claim_point_and_batching_len,
+            super::backward_flat_compact::MAX_MAIN_LAYER_CLAIM_POINT_LEN
         );
+        let mut device_claim_point_out = unsafe {
+            DeviceClaimPointAndBatching::from_raw_symbol_parts(
+                super::backward_flat_compact::get_main_layer_claim_point_device_ptr() as *mut E,
+                next_claim_point_and_batching_len,
+            )
+        };
         let mut reduction_states = Vec::with_capacity(last_step);
 
         for step in 0..last_step {
@@ -7016,23 +6145,11 @@ where
                 self.launch_round0_kernels(acc_size, context)?;
             } else {
                 match step {
-                    1 => self.launch_round1_kernels(
-                        &round_challenge_buffers[step - 1],
-                        acc_size,
-                        context,
-                    )?,
-                    2 => self.launch_round2_kernels(
-                        &round_challenge_buffers[step - 1],
-                        acc_size,
-                        context,
-                    )?,
-                    _ => self.launch_round3_kernels(
-                        step,
-                        &round_challenge_buffers[step - 1],
-                        acc_size,
-                        false,
-                        context,
-                    )?,
+                    1 => self.launch_round1_kernels_from_symbol(acc_size, context)?,
+                    2 => self.launch_round2_kernels_from_symbol(acc_size, context)?,
+                    step => {
+                        self.launch_round3_kernels_from_symbol(step, acc_size, false, context)?
+                    }
                 }
             }
 
@@ -7045,7 +6162,7 @@ where
             // pushes the round's 4 coefficients into device_coeffs at
             // [step*4..step*4+4], and emits the next folding challenge
             // directly into `claim_point_out[step]`.
-            let prev_coord_slice = &device_claim_point_in[step..step + 1];
+            let prev_coord_slice = unsafe { device_claim_point_in.slice(step, 1) };
             // SAFETY: see the dim-reducing twin — the coeffs buffer is either
             // a slab subslice (held alive by `_proof_slab` keepalive) or
             // `fallback_device_coeffs` (dropped after every kernel that writes
@@ -7053,8 +6170,7 @@ where
             // in-bounds (`coeffs_total_len = last_step * 4`).
             let coeffs_round_slice =
                 unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(step * 4), 4) };
-            let challenge_slot =
-                unsafe { claim_point_out_storage.device.slice_mut(step, 1) };
+            let challenge_slot = unsafe { device_claim_point_out.slice_mut(step, 1) };
             E::launch_backward_sumcheck_round_update(
                 &self.round_scratch.reduction_output,
                 prev_coord_slice,
@@ -7066,35 +6182,12 @@ where
                 stream,
             )?;
 
-            // Record a view over the slots the next-round kernel will read.
-            // Main-layer packing (1/2/1/1/…) maps onto contiguous slices of
-            // `claim_point_out` because the per-round update writes c_step
-            // at slot `step`.
-            let next_round = step + 1;
-            let (src_start, src_len) = match next_round {
-                1 => (0, 1),
-                2 => (0, 2),
-                _ => (step, 1),
-            };
-            debug_assert_eq!(src_len, main_layer_round_challenge_len(next_round));
-            round_challenge_buffers.push(ScheduledChallengeBuffer {
-                device: claim_point_out_storage.device_accessor(),
-                offset: src_start,
-                len: src_len,
-            });
-
             reduction_states.push(ScheduledDimensionReducingReductionState {
                 callbacks: Callbacks::new(),
                 _phantom: std::marker::PhantomData,
             });
         }
-        self.launch_round3_kernels(
-            last_step,
-            &round_challenge_buffers[last_step - 1],
-            1,
-            true,
-            context,
-        )?;
+        self.launch_round3_kernels_from_symbol(last_step, 1, true, context)?;
 
         // B1: coeffs already landed in the slab via the per-round kernels
         // (or in `fallback_device_coeffs` for test paths). No post-loop slab
@@ -7173,11 +6266,9 @@ where
         // SAFETY: `last_step + 2 = folding_steps + 1 = next_claim_point_and_batching_len`,
         // so the range is in-bounds, and only this scheduling site writes it.
         {
-            let layer_challenges_dst =
-                unsafe { claim_point_out_storage.device.slice_mut(last_step, 2) };
+            let layer_challenges_dst = unsafe { device_claim_point_out.slice_mut(last_step, 2) };
             // SAFETY: E = E4 in every instantiation; matches host `draw_random_field_els::<BF, E4>`.
-            let layer_challenges_dst_e4 =
-                unsafe { layer_challenges_dst.transmute_mut::<E4>() };
+            let layer_challenges_dst_e4 = unsafe { layer_challenges_dst.transmute_mut::<E4>() };
             crate::ops::blake2s::transcript_squeeze_e4(
                 &mut device_seed,
                 layer_challenges_dst_e4,
@@ -7186,8 +6277,8 @@ where
         }
 
         // Device-side per-address `new_claims` evaluator (main-layer variant:
-        // `interpolate_linear(v0, v1, last_r)`). Replaces the host loop inside
-        // the final readback callback.
+        // interpolate `v0, v1` at `last_r`). Replaces the host loop inside the
+        // final readback callback.
         let mut device_new_claims: DeviceAllocation<E> =
             context.alloc(num_addresses.max(1), AllocationPlacement::Top)?;
         if num_addresses > 0 {
@@ -7206,10 +6297,7 @@ where
             // `claim_point_out[last_step..last_step + 2]`; reading the first
             // element (`last_r`) for the kernel.
             let challenges_view = unsafe {
-                DeviceSlice::from_raw_parts(
-                    claim_point_out_storage.device.as_ptr(last_step),
-                    1,
-                )
+                DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr().add(last_step), 1)
             };
             let challenges_e4: &era_cudart::slice::DeviceSlice<E4> =
                 unsafe { challenges_view.transmute::<E4>() };
@@ -7256,10 +6344,7 @@ where
             // transcript squeeze on `stream`; d2h_stream waits on
             // `layer_src_ready` before this read.
             let layer_challenges_src = unsafe {
-                DeviceSlice::from_raw_parts(
-                    claim_point_out_storage.device.as_ptr(last_step),
-                    2,
-                )
+                DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr().add(last_step), 2)
             };
             memory_copy_async(&mut layer_challenges_host, layer_challenges_src, d2h_stream)?;
 
@@ -7288,17 +6373,9 @@ where
             let final_folding_challenges_accessor = final_folding_challenges_host.get_accessor();
             // SAFETY: `[0..last_step]` were written in-place by the per-round
             // update kernels.
-            let folding_src = unsafe {
-                DeviceSlice::from_raw_parts(
-                    claim_point_out_storage.device.as_ptr(0),
-                    last_step,
-                )
-            };
-            memory_copy_async(
-                &mut final_folding_challenges_host,
-                folding_src,
-                d2h_stream,
-            )?;
+            let folding_src =
+                unsafe { DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr(), last_step) };
+            memory_copy_async(&mut final_folding_challenges_host, folding_src, d2h_stream)?;
 
             // Join d2h -> exec: the per-layer D2Hs above are fully scheduled. Exec waits on this
             // event before the final readback callback (which reads the host slabs) is scheduled,
@@ -7379,12 +6456,6 @@ where
         drop(fallback_device_coeffs);
         drop(device_claim_point_in);
         drop(device_claims_in);
-        // Extract the underlying allocation now that every kernel and D2H
-        // that captured a raw pointer through `claim_point_out_storage`'s
-        // device accessor has been scheduled. Subsequent layers consume it
-        // as a plain `DeviceAllocation` via `device_claim_point_in`.
-        let device_claim_point_out = claim_point_out_storage.into_device();
-        drop(round_challenge_buffers);
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             tracing_ranges,
             start_callbacks: Callbacks::new(),
@@ -7507,7 +6578,29 @@ where
             len >= 1,
             "final claim point handoff must include batching challenge"
         );
-        &buffer[..len - 1]
+        unsafe { buffer.slice(0, len - 1) }
+    }
+
+    pub(crate) fn final_device_seed_and_claim_point_mut(
+        &mut self,
+    ) -> (
+        &mut DeviceAllocation<u32>,
+        &era_cudart::slice::DeviceSlice<E>,
+    ) {
+        let device_seed = self
+            .final_device_seed
+            .as_mut()
+            .expect("backward seed handoff buffer must be allocated before consumption");
+        let buffer = self
+            .final_device_claim_point_and_batching
+            .as_ref()
+            .expect("backward claim_point handoff buffer must be allocated before consumption");
+        let len = buffer.len();
+        assert!(
+            len >= 1,
+            "final claim point handoff must include batching challenge"
+        );
+        (device_seed, unsafe { buffer.slice(0, len - 1) })
     }
 
     /// Schedule-time-known set of layer-1 incoming claim addresses (i.e. the
@@ -7554,7 +6647,7 @@ where
         memory_copy_async(&mut final_seed_host, device_seed, stream)?;
         memory_copy_async(
             &mut final_claim_point_and_batching_host,
-            device_claim_point_and_batching,
+            device_claim_point_and_batching.as_slice(),
             stream,
         )?;
 
@@ -7642,10 +6735,10 @@ where
         // Per-layer schedulers D2D-copy slab-bound fields
         // (`internal_round_coefficients`, `final_step_evaluations`) into slab
         // offsets via `ProofLayout` accessors. `extra_evaluations_from_caching_relations`
-        // is not in the slab — it is host-computed from already-D2H'd
-        // base-layer claims and merged at Phase 4 parse time.
+        // is represented as sparse references into the slab-resident WHIR base
+        // eval ranges and merged at Phase 4 parse time.
         // `None` skips all slab routing (test paths).
-        proof_slab: Option<&DeviceAllocation<u8>>,
+        proof_slab: Option<&DeviceAllocation<E4>>,
         proof_layout: &ProofLayout,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {
@@ -7676,10 +6769,11 @@ where
         // batching]` layout each layer consumes directly. The first layer
         // receives the post-forward device squeeze
         // buffer (`evaluation_point || batching_challenge`) unchanged; every
-        // subsequent layer reallocates to match its own size (`folding_steps +
-        // 1`) and is populated on device from the previous layer's
-        // `device_folding_challenges` + `d_layer_challenges`.
-        let mut shared_device_claim_point = initial_d_claim_point_and_batching;
+        // subsequent layer receives a symbol-backed view sized to its own
+        // `[claim_point || batching]` layout and populated on device by the
+        // previous layer's round-update and transcript kernels.
+        let mut shared_device_claim_point =
+            DeviceClaimPointAndBatching::from_allocation(initial_d_claim_point_and_batching);
         let mut shared_device_claims = initial_d_claims;
         let mut shared_claim_layout = initial_claim_layout;
         // `backward_layer_slot` tracks the scheduler-order index into
@@ -7840,7 +6934,7 @@ where
         batching_challenge: E,
         lookup_multiplicative_challenge: E,
         lookup_additive_challenge: E,
-        proof_slab: Option<&DeviceAllocation<u8>>,
+        proof_slab: Option<&DeviceAllocation<E4>>,
         proof_layout: &ProofLayout,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {
@@ -7942,7 +7036,7 @@ mod tests {
         launch_fold_eq_values_in_place, launch_lookup_continuation, launch_lookup_round0,
         launch_pairwise_continuation, launch_pairwise_round0,
         make_deferred_backward_workflow_state, populate_backward_workflow_state,
-        GKRCircuitArtifact, GpuGKRDimensionReducingBackwardState,
+        DeviceClaimPointAndBatching, GKRCircuitArtifact, GpuGKRDimensionReducingBackwardState,
         GpuGKRMainLayerConstraintLinearTerm, GpuGKRMainLayerConstraintQuadraticTerm,
         GpuGKRMainLayerKernelKind,
     };
@@ -8316,7 +7410,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut shared_device_claim_point =
+        let shared_device_claim_point_initial =
             crate::prover::gkr::backward::h2d_claim_point_and_batching_from_host::<E4>(
                 context,
                 &mut initial_callbacks,
@@ -8324,6 +7418,8 @@ mod tests {
                 fixture.batching_challenge,
             )
             .unwrap();
+        let mut shared_device_claim_point =
+            DeviceClaimPointAndBatching::from_allocation(shared_device_claim_point_initial);
         let (mut shared_device_claims, mut shared_claim_layout) =
             crate::prover::gkr::backward::h2d_claims_from_host::<E4>(
                 context,
@@ -8488,131 +7584,6 @@ mod tests {
         for kind in two_challenge_kinds {
             assert_eq!(super::main_layer_kind_batch_challenge_count(kind), 2);
         }
-    }
-
-    #[test]
-    #[cfg(not(no_cuda))]
-    #[serial]
-    fn main_layer_packed_batch_challenges_match_dynamic_and_static_preparation() {
-        fn advance_dimension_reduction(
-            mut state: GpuGKRDimensionReducingBackwardState<BF, E4>,
-            compiled_circuit: &GKRCircuitArtifact<BF>,
-            external_challenges: &GKRExternalChallenges<BF, E4>,
-            mut current_claims: BTreeMap<GKRAddress, E4>,
-            mut current_point: Vec<E4>,
-            mut seed: Seed,
-            mut batching_challenge: E4,
-            lookup_multiplicative_part: E4,
-            lookup_additive_part: E4,
-            context: &ProverContext,
-        ) -> (
-            crate::prover::gkr::backward::GpuGKRMainLayerBackwardState<E4>,
-            BTreeMap<GKRAddress, E4>,
-            Vec<E4>,
-            Seed,
-            E4,
-        ) {
-            while let Some(mut plan) = state
-                .prepare_next_layer(batching_challenge, context)
-                .unwrap()
-            {
-                let scheduled = plan
-                    .schedule_execute_dimension_reducing_layer(
-                        &current_claims,
-                        &current_point,
-                        seed,
-                        batching_challenge,
-                        context,
-                    )
-                    .unwrap();
-                context.get_exec_stream().synchronize().unwrap();
-                let execution = scheduled.into_execution();
-                current_claims = execution.new_claims;
-                current_point = execution.new_claim_point;
-                seed = execution.updated_seed;
-                batching_challenge = execution.next_batching_challenge;
-            }
-
-            (
-                state.into_main_layer_backward_state(
-                    compiled_circuit.clone(),
-                    external_challenges.clone(),
-                    lookup_multiplicative_part,
-                    lookup_additive_part,
-                    false,
-                ),
-                current_claims,
-                current_point,
-                seed,
-                batching_challenge,
-            )
-        }
-
-        let dynamic_fixture =
-            crate::prover::tests::prepare_basic_unrolled_async_backward_fixture(8);
-        let dynamic_context = &dynamic_fixture.context;
-        let (mut dynamic_state, _, _, _, dynamic_batching_challenge) = advance_dimension_reduction(
-            dynamic_fixture.gpu_backward_state,
-            &dynamic_fixture.compiled_circuit,
-            &dynamic_fixture.external_challenges,
-            dynamic_fixture.top_layer_claims,
-            dynamic_fixture.evaluation_point,
-            dynamic_fixture.seed,
-            dynamic_fixture.batching_challenge,
-            dynamic_fixture.lookup_multiplicative_part,
-            dynamic_fixture.lookup_additive_part,
-            dynamic_context,
-        );
-        let dynamic_plan = dynamic_state
-            .prepare_next_layer(dynamic_batching_challenge, dynamic_context)
-            .unwrap()
-            .expect("expected first main-layer plan");
-        let dynamic_packed = super::pack_main_layer_batch_challenges(
-            &dynamic_plan.kernel_plans,
-            dynamic_batching_challenge,
-        );
-
-        let static_fixture = crate::prover::tests::prepare_basic_unrolled_async_backward_fixture(8);
-        let static_context = &static_fixture.context;
-        let (mut static_state, _, _, _, static_batching_challenge) = advance_dimension_reduction(
-            static_fixture.gpu_backward_state,
-            &static_fixture.compiled_circuit,
-            &static_fixture.external_challenges,
-            static_fixture.top_layer_claims,
-            static_fixture.evaluation_point,
-            static_fixture.seed,
-            static_fixture.batching_challenge,
-            static_fixture.lookup_multiplicative_part,
-            static_fixture.lookup_additive_part,
-            static_context,
-        );
-        let static_plan = static_state
-            .prepare_next_layer_static(static_context)
-            .unwrap()
-            .expect("expected first main-layer plan");
-        let static_packed = super::pack_main_layer_batch_challenges(
-            &static_plan.kernel_plans,
-            static_batching_challenge,
-        );
-
-        assert_eq!(dynamic_batching_challenge, static_batching_challenge);
-        assert_eq!(
-            dynamic_packed.len(),
-            dynamic_plan
-                .kernel_plans
-                .iter()
-                .map(|kernel| kernel.batch_challenge_count)
-                .sum::<usize>(),
-        );
-        assert_eq!(
-            static_packed.len(),
-            static_plan
-                .kernel_plans
-                .iter()
-                .map(|kernel| kernel.batch_challenge_count)
-                .sum::<usize>(),
-        );
-        assert_eq!(dynamic_packed, static_packed);
     }
 
     #[test]

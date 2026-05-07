@@ -1,6 +1,6 @@
 #include "flat_backward_continuation.cuh"
 
-__device__ __constant__ e4 ab_gkr_round1_challenge[1];
+__device__ __constant__ e4 ab_gkr_main_layer_claim_point[airbender::prover::gkr::GKR_MAIN_LAYER_CLAIM_POINT_LEN];
 
 namespace airbender::prover::gkr {
 
