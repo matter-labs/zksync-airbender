@@ -20,6 +20,24 @@ pub const DEFAULT_LDE_FACTOR: usize = 2;
 pub const DEFAULT_CAP_SIZE: usize = 16;
 pub const DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2: usize = 4;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(usize)]
+pub enum SecurityLevel {
+    Sec80 = 0,
+    Sec100 = 1,
+}
+
+impl SecurityLevel {
+    pub const ALL: &'static [SecurityLevel] = &[SecurityLevel::Sec80, SecurityLevel::Sec100];
+
+    pub fn dir_suffix(self) -> &'static str {
+        match self {
+            SecurityLevel::Sec80 => "sec_80",
+            SecurityLevel::Sec100 => "sec_100",
+        }
+    }
+}
+
 use cs::definitions::gkr::AddressSpaceType;
 
 pub use self::hash_like_holder::*;

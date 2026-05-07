@@ -1,6 +1,9 @@
+#![cfg(feature = "security_80")]
+
 #[macro_use]
 mod common;
 
+use common::SecurityLevel;
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use prover::gkr::prover::GKRProof;
@@ -36,7 +39,13 @@ fn load_malicious_proof(
 
 fn assert_rejects(variant: &str, expected: impl FnOnce(&VerificationError) -> bool) {
     let proof = load_malicious_proof(variant);
-    common::assert_rejects_with_variant(CIRCUIT_NAME, variant, &proof, expected);
+    common::assert_rejects_with_variant(
+        CIRCUIT_NAME,
+        SecurityLevel::Sec80,
+        variant,
+        &proof,
+        expected,
+    );
 }
 
 #[test]

@@ -1,6 +1,7 @@
 use super::*;
 
 pub mod prover;
+pub mod prover_config;
 pub mod sumcheck;
 pub mod virtual_polys;
 pub mod whir;
