@@ -274,8 +274,8 @@ where
     let mut device_decoder_lookup_fill_value =
         context.alloc::<E>(1, AllocationPlacement::BestFit)?;
 
-    // We need `alpha_powers` populated on device whenever we'll launch the generic-lookup
-    // kernel. The kernel runs when either:
+    // We need `alpha_powers` populated in setup constant memory whenever we'll
+    // launch the generic-lookup kernel. The kernel runs when either:
     //   (a) there is real generic lookup preprocessing to do (`generic_lookup_len > 0`), or
     //   (b) we still need to emit the decoder fill value inline (tables_ids_in_generic_lookups
     //       && generic_lookup_width > 0), even though there are no generic lookups to accumulate.
@@ -285,21 +285,13 @@ where
         0
     };
     let needs_generic_lookup_kernel = generic_lookup_len > 0 || decoder_table_id_value != 0;
-    let device_lookup_alpha_powers = if needs_generic_lookup_kernel && generic_lookup_width > 0 {
-        let mut powers: DeviceAllocation<E> =
-            context.alloc(generic_lookup_width, AllocationPlacement::BestFit)?;
-        // alpha_powers[i] = alpha^i, for i in 0..generic_lookup_width
-        crate::ops::powers::get_powers_by_ref::<E>(
-            &d_lookup_challenges[0],
-            0,
-            false,
-            &mut powers,
-            stream,
+    if needs_generic_lookup_kernel && generic_lookup_width > 0 {
+        schedule_lookup_alpha_powers_prelude(
+            d_lookup_challenges.as_ptr().cast::<E4>(),
+            generic_lookup_width,
+            context,
         )?;
-        Some(powers)
-    } else {
-        None
-    };
+    }
     if decoder_table_id_value == 0 {
         // No decoder fill value to compute. Zero-init the 1-E slot so it's deterministic;
         // downstream forward-cache kernels won't read from it when `decoder_mask` is null.
@@ -319,9 +311,6 @@ where
     };
 
     if needs_generic_lookup_kernel && generic_lookup_width > 0 {
-        let device_lookup_alpha_powers = device_lookup_alpha_powers
-            .as_ref()
-            .expect("alpha_powers allocated when needs_generic_lookup_kernel && width > 0");
         let setup_columns: Vec<*const BF> =
             if let Some((setup_trace_holder, _)) = setup_trace_holder {
                 let raw = setup_trace_holder.get_hypercube_evals();
@@ -342,7 +331,6 @@ where
         };
         let batch = pack_forward_setup_generic_lookup_batch(
             &setup_columns,
-            device_lookup_alpha_powers.as_ptr(),
             output_ptr,
             device_decoder_lookup_fill_value.as_mut_ptr(),
             decoder_table_id_value,
@@ -355,7 +343,6 @@ where
         _callbacks: callbacks,
         d_lookup_challenges,
         device_decoder_lookup_fill_value,
-        _device_lookup_alpha_powers: device_lookup_alpha_powers,
         generic_lookup,
     })
 }
@@ -443,7 +430,6 @@ pub(crate) struct GpuGKRForwardSetup<E> {
     _callbacks: Callbacks<'static>,
     d_lookup_challenges: DeviceAllocation<E>,
     device_decoder_lookup_fill_value: DeviceAllocation<E>,
-    _device_lookup_alpha_powers: Option<DeviceAllocation<E>>,
     generic_lookup: Option<DeviceAllocation<E>>,
 }
 
@@ -491,7 +477,6 @@ impl<E> GpuGKRForwardSetup<E> {
             _callbacks,
             d_lookup_challenges: _,
             device_decoder_lookup_fill_value: _,
-            _device_lookup_alpha_powers: _,
             generic_lookup: _,
         } = self;
         // d_lookup_challenges and generic_lookup (device allocs) drop here —
@@ -518,7 +503,6 @@ impl<E> GpuGKRForwardSetup<E> {
             _callbacks,
             d_lookup_challenges,
             device_decoder_lookup_fill_value: _,
-            _device_lookup_alpha_powers: _,
             generic_lookup: _,
         } = self;
         (
@@ -789,17 +773,17 @@ mod tests {
         transfer.schedule_transfer(context).unwrap();
         context.get_h2d_stream().synchronize().unwrap();
 
-        let powers = materialize_powers_serial_starting_with_one::<E4, Global>(
-            lookup_alpha,
-            generic_lookup_width,
-        );
-        let mut device_lookup_alpha_powers = context
-            .alloc(powers.len(), AllocationPlacement::BestFit)
-            .unwrap();
+        let mut device_lookup_alpha = context.alloc(1, AllocationPlacement::BestFit).unwrap();
         memory_copy_async(
-            &mut device_lookup_alpha_powers,
-            &powers,
+            &mut device_lookup_alpha,
+            &[lookup_alpha],
             context.get_exec_stream(),
+        )
+        .unwrap();
+        schedule_lookup_alpha_powers_prelude(
+            device_lookup_alpha.as_ptr(),
+            generic_lookup_width,
+            context,
         )
         .unwrap();
         let mut generic_lookup = context
@@ -809,7 +793,6 @@ mod tests {
             host.as_ref(),
             transfer.trace_holder.get_hypercube_evals(),
             generic_lookup_width,
-            &device_lookup_alpha_powers,
             &mut generic_lookup,
         );
         launch_forward_setup_generic_lookup::<E4>(&batch, generic_lookup_len, context).unwrap();
@@ -1201,7 +1184,7 @@ mod tests {
     #[test]
     #[cfg(not(no_cuda))]
     #[serial]
-    fn forward_setup_schedule_generic_lookup_matches_cpu_and_powers() {
+    fn forward_setup_schedule_generic_lookup_matches_cpu() {
         let trace_len = 1usize << 10;
         let generic_lookup_width = 4;
         let generic_lookup_len = 32;
@@ -1255,19 +1238,6 @@ mod tests {
         .unwrap();
         context.get_exec_stream().synchronize().unwrap();
 
-        let expected_powers = materialize_powers_serial_starting_with_one::<E4, Global>(
-            lookup_alpha,
-            generic_lookup_width,
-        );
-        let actual_device_powers = read_ext_allocation(
-            scheduled
-                ._device_lookup_alpha_powers
-                .as_ref()
-                .expect("expected device alpha powers"),
-            &context,
-        );
-        assert_eq!(actual_device_powers, expected_powers);
-
         let actual_generic_lookup = read_ext_allocation(
             scheduled
                 .generic_lookup
@@ -1290,7 +1260,6 @@ mod tests {
         let setup_columns = vec![null(); GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS + 1];
         let _ = pack_forward_setup_generic_lookup_batch::<E4>(
             &setup_columns,
-            null(),
             null_mut(),
             null_mut(),
             0,
