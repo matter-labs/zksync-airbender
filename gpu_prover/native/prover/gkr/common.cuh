@@ -81,6 +81,7 @@ enum gkr_dim_reducing_kernel_kind : u32 {
 // Defined in dim_reducing_backward.cu.
 EXTERN __device__ __constant__ e4 ab_gkr_dim_reducing_batch_challenge_table[airbender::prover::gkr::GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN];
 EXTERN __device__ __constant__ e4 ab_gkr_dim_reducing_layer_claim_point[airbender::prover::gkr::GKR_DIM_REDUCING_LAYER_CLAIM_POINT_LEN];
+EXTERN __device__ __constant__ e4 ab_gkr_lookup_alpha_powers[airbender::prover::gkr::GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS];
 
 namespace airbender::prover::gkr {
 
@@ -201,7 +202,6 @@ struct gkr_forward_setup_generic_lookup_descriptor {
 template <typename E> struct gkr_forward_setup_generic_lookup_batch {
   u32 column_count;
   u32 decoder_table_id;
-  const E *alpha_powers;
   E *output;
   E *decoder_fill_value_out;
   gkr_forward_setup_generic_lookup_descriptor descriptors[GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS];
@@ -830,6 +830,15 @@ template <typename E, typename B, typename D> DEVICE_FORCEINLINE void gkr_eval_l
   den = E::mul(shifted_b, shifted_d);
 }
 
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_lookup_base_pair_v2(const bf b, const bf d, const E gamma, const E gamma_sq, const E two_gamma, E &num, E &den) {
+  const bf bd_sum = bf::add(b, d);
+  num = E::add(two_gamma, bd_sum);
+  const bf bd_prod = bf::mul(b, d);
+  const E gamma_sq_plus_bd = E::add(gamma_sq, bd_prod);
+  den = E::fma(gamma, bd_sum, gamma_sq_plus_bd);
+}
+
 template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_ext_pair(const E b, const E d, const E gamma, E &num, E &den) {
   const E shifted_b = E::add(b, gamma);
   const E shifted_d = E::add(d, gamma);
@@ -853,6 +862,19 @@ DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity(const B b, const
   const E shifted_d = E::add(d, gamma);
   num = E::sub(shifted_d, E::mul(c, shifted_b));
   den = E::mul(shifted_b, shifted_d);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity_v2(const bf b, const bf c, const bf d, const E gamma, const E gamma_sq, E &num, E &den) {
+  const bf cb = bf::mul(c, b);
+  const bf one_minus_c = bf::sub(bf::ONE(), c);
+  const bf d_minus_cb = bf::sub(d, cb);
+  num = E::fma(gamma, one_minus_c, d_minus_cb);
+
+  const bf bd_sum = bf::add(b, d);
+  const bf bd_prod = bf::mul(b, d);
+  const E gamma_sq_plus_bd = E::add(gamma_sq, bd_prod);
+  den = E::fma(gamma, bd_sum, gamma_sq_plus_bd);
 }
 
 template <typename E, typename B, typename C, typename D>
@@ -977,7 +999,7 @@ DEVICE_FORCEINLINE void gkr_forward_setup_generic_lookup(const gkr_forward_setup
   // into a 1-element device slot so downstream forward-cache kernels can read it
   // directly, replacing the former host callback + H2D copy path.
   if (gid == 0 && batch.decoder_fill_value_out != nullptr && batch.decoder_table_id != 0 && batch.column_count > 0) {
-    const E last_alpha_power = load<E, ld_modifier::ca>(batch.alpha_powers, batch.column_count - 1);
+    const E last_alpha_power = ::ab_gkr_lookup_alpha_powers[batch.column_count - 1];
     const bf table_id = bf::from_u32_unchecked(batch.decoder_table_id);
     const E fill = E::mul(last_alpha_power, table_id);
     store<E, st_modifier::cs>(batch.decoder_fill_value_out, fill, 0);
@@ -995,7 +1017,7 @@ DEVICE_FORCEINLINE void gkr_forward_setup_generic_lookup(const gkr_forward_setup
 
     const auto descriptor = batch.descriptors[column_idx];
     const bf input = load<bf, ld_modifier::cs>(descriptor.input, gid);
-    const E alpha_power = load<E, ld_modifier::ca>(batch.alpha_powers, column_idx);
+    const E alpha_power = ::ab_gkr_lookup_alpha_powers[column_idx];
     value = E::fma(alpha_power, input, value);
   }
 

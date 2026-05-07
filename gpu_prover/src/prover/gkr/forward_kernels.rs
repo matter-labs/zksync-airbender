@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
+use std::ffi::c_void;
 use std::ops::DerefMut;
-use std::ptr::null;
+use std::ptr::{null, null_mut};
 
 use cs::definitions::{
     gkr::{RamWordRepresentation, DECODER_LOOKUP_FORMAL_SET_INDEX},
@@ -18,9 +19,10 @@ use cs::gkr_compiler::{
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::paste::paste;
-use era_cudart::result::CudaResult;
+use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
+use era_cudart_sys::cudaGetSymbolAddress;
 use field::{Field, FieldExtension, PrimeField};
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use prover::gkr::prover::GKRExternalChallenges;
@@ -437,6 +439,68 @@ macro_rules! gkr_dim_reducing_forward_tower_kernels {
 
 gkr_dim_reducing_forward_tower_kernels!(E4);
 
+extern "C" {
+    static ab_gkr_lookup_gamma_consts: [E4; 3];
+}
+
+fn get_lookup_gamma_consts_device_ptr() -> *mut E4 {
+    use std::sync::OnceLock;
+
+    static PTR: OnceLock<usize> = OnceLock::new();
+    let ptr = *PTR.get_or_init(|| {
+        let mut p: *mut c_void = null_mut();
+        // SAFETY: ab_gkr_lookup_gamma_consts is a valid __constant__ e4[3]
+        // symbol defined in native/prover/gkr/flat_forward_layer.cu.
+        unsafe {
+            cudaGetSymbolAddress(
+                &mut p,
+                &ab_gkr_lookup_gamma_consts as *const _ as *const c_void,
+            )
+        }
+        .wrap()
+        .expect("cudaGetSymbolAddress failed for ab_gkr_lookup_gamma_consts");
+        p as usize
+    });
+    ptr as *mut E4
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    GpuGKRLookupGammaConstsPrelude,
+    gamma: *const E4,
+    staging: *mut E4,
+);
+
+cuda_kernel_declaration!(
+    ab_gkr_lookup_gamma_consts_prelude(gamma: *const E4, staging: *mut E4)
+);
+
+pub(super) fn schedule_lookup_gamma_consts_prelude(
+    gamma: *const E4,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let config = CudaLaunchConfig::basic(1, 1, context.get_exec_stream());
+    let args =
+        GpuGKRLookupGammaConstsPreludeArguments::new(gamma, get_lookup_gamma_consts_device_ptr());
+    GpuGKRLookupGammaConstsPreludeFunction(ab_gkr_lookup_gamma_consts_prelude)
+        .launch(&config, &args)
+}
+
+pub(crate) trait GpuGKRLookupGammaConstsPreludeKernelSet: Copy {
+    fn schedule_lookup_gamma_consts_prelude(
+        gamma: *const Self,
+        context: &ProverContext,
+    ) -> CudaResult<()>;
+}
+
+impl GpuGKRLookupGammaConstsPreludeKernelSet for E4 {
+    fn schedule_lookup_gamma_consts_prelude(
+        gamma: *const Self,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        schedule_lookup_gamma_consts_prelude(gamma, context)
+    }
+}
+
 pub(super) fn gkr_forward_cache_launch_config(
     count: u32,
     context: &ProverContext,
@@ -727,8 +791,6 @@ pub(super) struct GpuFlatForwardStaticDesc<E> {
     pub(super) sources: [*const u8; FLAT_FWD_MAX_SOURCES],
     pub(super) num_sources: u32,
 
-    pub(super) gamma: *const E,
-
     pub(super) products: [GpuFlatFwdProductEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
     pub(super) num_products: u32,
 
@@ -779,7 +841,6 @@ impl<E> Default for GpuFlatForwardStaticDesc<E> {
         Self {
             sources: [null::<u8>(); FLAT_FWD_MAX_SOURCES],
             num_sources: 0,
-            gamma: null(),
             products: std::array::from_fn(|_| GpuFlatFwdProductEntry {
                 src_a: 0,
                 src_b: 0,
