@@ -44,10 +44,11 @@ DEVICE_FORCEINLINE e4 lookup_two_gamma() { return ::ab_gkr_lookup_gamma_consts[2
 // `__grid_constant__` limit).
 constexpr unsigned FLAT_FWD_MAX_SOURCES = 256;
 
-// Max gates per layer in any single category. Observed maxima across
-// production circuits fit below 32; 64 is ~2x headroom while keeping the
-// full 10-category descriptor under the 32764-byte grid_constant limit.
-constexpr unsigned FLAT_FWD_MAX_PER_CATEGORY = 64;
+// Max gates per descriptor in any single category. Rust chunks layers across
+// multiple descriptors when a category reaches this cap, keeping the
+// grid-constant argument comfortably under the 32764-byte limit even with the
+// direct no-cache categories below.
+constexpr unsigned FLAT_FWD_MAX_PER_CATEGORY = 16;
 
 // ---------------------------------------------------------------------------
 // Per-category entries
@@ -145,6 +146,75 @@ template <typename E> struct flat_fwd_e4_unbalanced_entry {
   E *den;
 };
 
+// Direct no-cache lookup categories consume Stage-1 mapping arrays directly.
+template <typename E> struct flat_fwd_mapped_bf_pair_entry {
+  const u32 *mapping_b;
+  const u32 *mapping_d;
+  E *num;
+  E *den;
+};
+
+template <typename E> struct flat_fwd_mapped_e4_pair_entry {
+  const u32 *mapping_b;
+  const u32 *mapping_d;
+  const E *generic_lookup;
+  E *num;
+  E *den;
+};
+
+template <typename E> struct flat_fwd_mapped_cached_dens_entry {
+  const u32 *mapping_b;
+  const E *generic_lookup;
+  const bf *decoder_mask;
+  const E *decoder_fill_value;
+  u16 src_a;
+  u16 src_c;
+  u32 generic_lookup_len;
+  u32 _pad;
+  E *num;
+  E *den;
+};
+
+template <typename E> struct flat_fwd_mapped_e4_minus_mult_entry {
+  const u32 *mapping_b;
+  const E *generic_lookup;
+  u16 src_c;
+  u16 _pad;
+  u32 generic_lookup_len;
+  E *num;
+  E *den;
+};
+
+template <typename E> struct flat_fwd_mapped_e4_unbalanced_entry {
+  u16 src_a;
+  u16 src_b;
+  u32 _pad;
+  const u32 *mapping_d;
+  const E *generic_lookup;
+  E *num;
+  E *den;
+};
+
+template <typename E> struct flat_fwd_memory_expr {
+  gkr_forward_cache_address_space_kind address_space_kind;
+  const bf *address_space_ptr;
+  bf address_space_constant;
+  E constant_term;
+  const bf *linear_inputs[GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS];
+  E linear_challenges[GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS];
+};
+
+template <typename E> struct flat_fwd_memory_product_entry {
+  flat_fwd_memory_expr<E> lhs;
+  flat_fwd_memory_expr<E> rhs;
+  E *dst;
+};
+
+template <typename E> struct flat_fwd_memory_materialize_entry {
+  flat_fwd_memory_expr<E> expr;
+  E *dst;
+};
+
 // ---------------------------------------------------------------------------
 // Static description
 // ---------------------------------------------------------------------------
@@ -183,6 +253,27 @@ template <typename E> struct flat_forward_static_desc {
 
   flat_fwd_e4_unbalanced_entry<E> e4_unbalanceds[FLAT_FWD_MAX_PER_CATEGORY];
   u32 num_e4_unbalanceds;
+
+  flat_fwd_mapped_bf_pair_entry<E> mapped_bf_pairs[FLAT_FWD_MAX_PER_CATEGORY];
+  u32 num_mapped_bf_pairs;
+
+  flat_fwd_mapped_e4_pair_entry<E> mapped_e4_pairs[FLAT_FWD_MAX_PER_CATEGORY];
+  u32 num_mapped_e4_pairs;
+
+  flat_fwd_mapped_cached_dens_entry<E> mapped_cached_denses[FLAT_FWD_MAX_PER_CATEGORY];
+  u32 num_mapped_cached_denses;
+
+  flat_fwd_mapped_e4_minus_mult_entry<E> mapped_e4_minus_mults[FLAT_FWD_MAX_PER_CATEGORY];
+  u32 num_mapped_e4_minus_mults;
+
+  flat_fwd_mapped_e4_unbalanced_entry<E> mapped_e4_unbalanceds[FLAT_FWD_MAX_PER_CATEGORY];
+  u32 num_mapped_e4_unbalanceds;
+
+  flat_fwd_memory_product_entry<E> memory_products[FLAT_FWD_MAX_PER_CATEGORY];
+  u32 num_memory_products;
+
+  flat_fwd_memory_materialize_entry<E> memory_materializes[FLAT_FWD_MAX_PER_CATEGORY];
+  u32 num_memory_materializes;
 };
 
 // ---------------------------------------------------------------------------
@@ -200,6 +291,54 @@ DEVICE_FORCEINLINE bf flat_fwd_load_bf(const void *src, const unsigned gid) {
 
 template <typename E> DEVICE_FORCEINLINE E flat_fwd_load_ext(const void *src, const unsigned gid) {
   return load<E, ld_modifier::ca>(reinterpret_cast<const E *>(src), gid);
+}
+
+template <typename E> DEVICE_FORCEINLINE E flat_fwd_load_generic_lookup(const E *generic_lookup, const u32 mapping) {
+  return load<E, ld_modifier::ca>(generic_lookup, mapping);
+}
+
+template <typename E> DEVICE_FORCEINLINE E flat_fwd_load_generic_lookup_setup(const E *generic_lookup, const u32 generic_lookup_len, const unsigned gid) {
+  return gid < generic_lookup_len ? load<E, ld_modifier::ca>(generic_lookup, gid) : E::ZERO();
+}
+
+template <typename E> DEVICE_FORCEINLINE E flat_fwd_load_mapped_lookup(const u32 *mapping, const E *generic_lookup, const unsigned gid) {
+  return flat_fwd_load_generic_lookup(generic_lookup, load<u32, ld_modifier::ca>(mapping, gid));
+}
+
+template <typename E> DEVICE_FORCEINLINE E flat_fwd_load_decoder_mapped_lookup(const flat_fwd_mapped_cached_dens_entry<E> &t, const unsigned gid) {
+  E value = flat_fwd_load_mapped_lookup(t.mapping_b, t.generic_lookup, gid);
+  if (t.decoder_mask != nullptr) {
+    const bf enabled = load<bf, ld_modifier::ca>(t.decoder_mask, gid);
+    if (enabled.limb == 0)
+      value = load<E, ld_modifier::ca>(t.decoder_fill_value, 0);
+  }
+  return value;
+}
+
+template <typename E> DEVICE_FORCEINLINE E flat_fwd_eval_memory_expr(const flat_fwd_memory_expr<E> &expr, const unsigned gid) {
+  E value = expr.constant_term;
+  switch (expr.address_space_kind) {
+  case GKR_FORWARD_CACHE_ADDRESS_SPACE_CONSTANT:
+    value = E::add(value, expr.address_space_constant);
+    break;
+  case GKR_FORWARD_CACHE_ADDRESS_SPACE_IS:
+    value = E::add(value, load<bf, ld_modifier::ca>(expr.address_space_ptr, gid));
+    break;
+  case GKR_FORWARD_CACHE_ADDRESS_SPACE_NOT:
+    value = E::add(value, E::sub(E::ONE(), load<bf, ld_modifier::ca>(expr.address_space_ptr, gid)));
+    break;
+  case GKR_FORWARD_CACHE_ADDRESS_SPACE_EMPTY:
+    break;
+  }
+
+#pragma unroll
+  for (unsigned term = 0; term < GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS; ++term) {
+    if (expr.linear_inputs[term] == nullptr)
+      continue;
+    const bf input = load<bf, ld_modifier::ca>(expr.linear_inputs[term], gid);
+    value = E::fma(expr.linear_challenges[term], input, value);
+  }
+  return value;
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +382,8 @@ template <typename E> DEVICE_FORCEINLINE void flat_forward_compute(const flat_fo
   // Gamma is used by every remaining category. All threads branch the same
   // way on grid-constant counts, so this compiles to a uniform predicate.
   const bool has_lookup_with_gamma = desc.num_bf_pairs || desc.num_e4_pairs || desc.num_cached_denses || desc.num_bf_minus_mults || desc.num_e4_minus_mults ||
-                                     desc.num_bf_unbalanceds || desc.num_e4_unbalanceds;
+                                     desc.num_bf_unbalanceds || desc.num_e4_unbalanceds || desc.num_mapped_bf_pairs || desc.num_mapped_e4_pairs ||
+                                     desc.num_mapped_cached_denses || desc.num_mapped_e4_minus_mults || desc.num_mapped_e4_unbalanceds;
   E gamma = E::ZERO();
   E gamma_sq = E::ZERO();
   E two_gamma = E::ZERO();
@@ -334,6 +474,81 @@ template <typename E> DEVICE_FORCEINLINE void flat_forward_compute(const flat_fo
     gkr_eval_lookup_unbalanced(d, a, b, gamma, num, den);
     store<E, st_modifier::cs>(t.num, num, gid);
     store<E, st_modifier::cs>(t.den, den, gid);
+  }
+
+  // Direct no-cache LOOKUP_PAIR_FROM_BASE_INPUTS: mapping indices are the base values.
+  for (unsigned i = 0; i < desc.num_mapped_bf_pairs; i++) {
+    const auto &t = desc.mapped_bf_pairs[i];
+    const bf b = bf::from_u32_unchecked(load<u32, ld_modifier::ca>(t.mapping_b, gid));
+    const bf d = bf::from_u32_unchecked(load<u32, ld_modifier::ca>(t.mapping_d, gid));
+    E num, den;
+    gkr_eval_lookup_base_pair_v2(b, d, gamma, gamma_sq, two_gamma, num, den);
+    store<E, st_modifier::cs>(t.num, num, gid);
+    store<E, st_modifier::cs>(t.den, den, gid);
+  }
+
+  // Direct no-cache LOOKUP_PAIR_FROM_VECTOR_INPUTS.
+  for (unsigned i = 0; i < desc.num_mapped_e4_pairs; i++) {
+    const auto &t = desc.mapped_e4_pairs[i];
+    const E b = flat_fwd_load_mapped_lookup(t.mapping_b, t.generic_lookup, gid);
+    const E d = flat_fwd_load_mapped_lookup(t.mapping_d, t.generic_lookup, gid);
+    E num, den;
+    gkr_eval_lookup_ext_pair(b, d, gamma, num, den);
+    store<E, st_modifier::cs>(t.num, num, gid);
+    store<E, st_modifier::cs>(t.den, den, gid);
+  }
+
+  // Direct no-cache LOOKUP_WITH_DENS_AND_SETUP_EXPRESSIONS.
+  for (unsigned i = 0; i < desc.num_mapped_cached_denses; i++) {
+    const auto &t = desc.mapped_cached_denses[i];
+    const bf a = flat_fwd_load_bf(desc.sources[t.src_a], gid);
+    const E b = flat_fwd_load_decoder_mapped_lookup(t, gid);
+    const bf c = flat_fwd_load_bf(desc.sources[t.src_c], gid);
+    const E d = flat_fwd_load_generic_lookup_setup(t.generic_lookup, t.generic_lookup_len, gid);
+    E num, den;
+    gkr_eval_lookup_cached_dens_and_setup(a, b, c, d, gamma, num, den);
+    store<E, st_modifier::cs>(t.num, num, gid);
+    store<E, st_modifier::cs>(t.den, den, gid);
+  }
+
+  // Direct no-cache LOOKUP_FROM_VECTOR_INPUT_WITH_SETUP.
+  for (unsigned i = 0; i < desc.num_mapped_e4_minus_mults; i++) {
+    const auto &t = desc.mapped_e4_minus_mults[i];
+    const E b = flat_fwd_load_mapped_lookup(t.mapping_b, t.generic_lookup, gid);
+    const bf c = flat_fwd_load_bf(desc.sources[t.src_c], gid);
+    const E d = flat_fwd_load_generic_lookup_setup(t.generic_lookup, t.generic_lookup_len, gid);
+    E num, den;
+    gkr_eval_lookup_base_minus_multiplicity(b, c, d, gamma, num, den);
+    store<E, st_modifier::cs>(t.num, num, gid);
+    store<E, st_modifier::cs>(t.den, den, gid);
+  }
+
+  // Direct no-cache LOOKUP_UNBALANCED_PAIR_WITH_VECTOR_INPUTS.
+  for (unsigned i = 0; i < desc.num_mapped_e4_unbalanceds; i++) {
+    const auto &t = desc.mapped_e4_unbalanceds[i];
+    const E a = flat_fwd_load_ext<E>(desc.sources[t.src_a], gid);
+    const E b = flat_fwd_load_ext<E>(desc.sources[t.src_b], gid);
+    const E d = flat_fwd_load_mapped_lookup(t.mapping_d, t.generic_lookup, gid);
+    E num, den;
+    gkr_eval_lookup_unbalanced(d, a, b, gamma, num, den);
+    store<E, st_modifier::cs>(t.num, num, gid);
+    store<E, st_modifier::cs>(t.den, den, gid);
+  }
+
+  // Direct no-cache INITIAL_GRAND_PRODUCT_WITHOUT_CACHES.
+  for (unsigned i = 0; i < desc.num_memory_products; i++) {
+    const auto &t = desc.memory_products[i];
+    const E lhs = flat_fwd_eval_memory_expr(t.lhs, gid);
+    const E rhs = flat_fwd_eval_memory_expr(t.rhs, gid);
+    E value;
+    gkr_eval_product(lhs, rhs, value);
+    store<E, st_modifier::cs>(t.dst, value, gid);
+  }
+
+  // Direct no-cache MATERIALIZE_GRAND_PRODUCT_TERM_EXPRESSION.
+  for (unsigned i = 0; i < desc.num_memory_materializes; i++) {
+    const auto &t = desc.memory_materializes[i];
+    store<E, st_modifier::cs>(t.dst, flat_fwd_eval_memory_expr(t.expr, gid), gid);
   }
 }
 
