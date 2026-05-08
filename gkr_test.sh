@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ALL_CIRCUITS=($(ls tools/gkr_verifier/src/bin/*.rs | sed 's|.*/||;s|\.rs||'))
-ALL_STEPS=(circuits prover generator native corruption binaries transpiler)
+ALL_STEPS=(circuits witness_gen prover generator native corruption binaries transpiler)
 
 usage() {
   echo "Usage: $0 [options] [steps...]"
@@ -20,6 +20,7 @@ usage() {
   echo ""
   echo "Steps:"
   echo "  circuits      Compile GKR circuits"
+  echo "  witness_gen   Generate witness evaluation functions"
   echo "  prover        Generate proof"
   echo "  generator     Regenerate inlined verifier"
   echo "  native        Run native tests"
@@ -205,6 +206,9 @@ for step in "${STEPS[@]}"; do
     circuits)
       run_step "Compile GKR circuits" \
         bash -c "cd cs && RUSTFLAGS=\"$WARN_FLAGS\" cargo test -p cs -- gkr" ;;
+    witness_gen)
+      run_step "Generate witness evaluation functions" \
+        bash -c "cd witness_eval_generator && RUSTFLAGS=\"$WARN_FLAGS\" cargo test -p witness_eval_generator -- gen_for_gkr" ;;
     prover)
       run_step "Generate proof" \
         bash -c "cd prover && RUST_MIN_STACK=100000000 RUSTFLAGS=\"$WARN_FLAGS\" cargo test -p prover --release --features gkr_self_checks $VARIANT_FEATURES -- --nocapture gkr_run_basic_unrolled_test${LEVEL_TEST_FILTER}" ;;

@@ -117,7 +117,7 @@ fn run_transpiler(name: &str, level: SecurityLevel) {
 }
 
 macro_rules! generate_transpiler_tests {
-    ($($name:ident: $schedule_80:ident: $schedule_100:ident: $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
         paste::paste! {
             $(
                 #[cfg(feature = "security_80")]

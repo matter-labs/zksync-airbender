@@ -79,10 +79,13 @@ fn generate_gkr_verifier<MW: FieldWrapper<BaseField = BabyBearField>>(
     dir: &str,
 ) -> GKRGeneratedFiles {
     let compiled_circuit = circuit.compiled_circuit();
+    assert_eq!(compiled_circuit.trace_len, 1 << circuit.trace_len_log_2);
 
     let files = gkr::generate_gkr_inlined::<MW>(
         &compiled_circuit,
-        prover::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
+        circuit
+            .prover_config_for(level)
+            .sumcheck_explicit_output_size_log_2,
         circuit.whir_schedule_for(level),
     );
 
@@ -205,7 +208,7 @@ fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
 }
 
 macro_rules! generate_circuit_tests {
-    ($($name:ident: $schedule_80:ident: $schedule_100:ident: $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
         $(
             #[test]
             fn $name() {

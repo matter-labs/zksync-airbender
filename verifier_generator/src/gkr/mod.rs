@@ -1047,6 +1047,9 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         let mut eval_buf = CommitBuf::<GKR_EVAL_BUF>::new();
 
         #dim_reduce_index_arrays
+
+        #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION INIT");
     });
 
     for config_idx in (num_standard_layers..initial_layer_for_sumcheck).rev() {
@@ -1057,6 +1060,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         let indices_name = quote::format_ident!("DIM_REDUCE_INDICES_{}", config_idx);
         let num_regular_rounds = num_sumcheck_rounds - 1;
 
+        let label = &format!("GKR COMPRESSION LAYER {config_idx}");
         main_body.extend(quote! {
             {
                 let initial_claim = dim_reducing_compute_claim(state.prev_claims.as_array::<#total_output_polys>(), state.batching_challenge);
@@ -1104,6 +1108,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 }
                 state.batching_challenge = next_batching;
                 state.prev_point_len = fc_len;
+                #[cfg(feature = "verifier_stats")]
+                    verifier_common::stats::log(#label);
             }
         });
     }
@@ -1412,6 +1418,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             (fold, cache_check, TokenStream::new())
         };
 
+        let label = &format!("GKR MAIN LAYER {config_idx}");
         main_body.extend(quote! {
             {
                 let initial_claim = #compute_claim_fn(state.prev_claims.as_array::<#num_output_addrs>(), state.batching_challenge);
@@ -1451,6 +1458,9 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 #virtual_setup_calls_emit
                 state.batching_challenge = next_batching;
                 state.prev_point_len = fc_len;
+
+                #[cfg(feature = "verifier_stats")]
+                    verifier_common::stats::log(#label);
             }
         });
     }
@@ -1534,6 +1544,9 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         let mut permutation_write_product: #quartic_struct = #quartic_one;
 
         #output_checks
+
+        #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR MAIN OUTPUT");
 
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,

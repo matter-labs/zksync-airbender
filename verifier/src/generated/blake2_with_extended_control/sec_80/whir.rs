@@ -21,8 +21,8 @@ use verifier_common::whir::{
 };
 const INITIAL_VALUES_PER_LEAF: usize = 2usize;
 const INITIAL_QUERY_INDEX_BITS: usize = 20usize;
-const INITIAL_NUM_QUERIES: usize = 68usize;
-const INITIAL_POW_BITS: u32 = 24u32;
+const INITIAL_NUM_QUERIES: usize = 63usize;
+const INITIAL_POW_BITS: u32 = 28u32;
 const INITIAL_DRAW_WORDS: usize = 48usize;
 const INITIAL_RS_DOMAIN_LOG2: usize = 21usize;
 const HASH_BUF_SIZE: usize = 1296usize;
@@ -189,21 +189,21 @@ use super::common::{
 };
 use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 pub const NUM_INTERNAL_ROUNDS: usize = 3usize;
-const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [18usize, 17usize, 14usize];
-const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [8usize, 64usize, 128usize];
-const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [3usize, 6usize, 7usize];
-const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] = [32768usize, 2048usize, 128usize];
-const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [22usize, 21usize, 18usize];
-const MAX_INTERNAL_FOLD_STEPS: usize = 4usize;
-const MAX_INTERNAL_VALUES_PER_LEAF: usize = 16usize;
+const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [22usize, 22usize, 20usize];
+const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [256usize, 8192usize, 32768usize];
+const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [8usize, 13usize, 15usize];
+const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] = [16384usize, 512usize, 32usize];
+const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [27usize, 27usize, 24usize];
+const MAX_INTERNAL_FOLD_STEPS: usize = 5usize;
+const MAX_INTERNAL_VALUES_PER_LEAF: usize = 32usize;
 const MAX_INTERNAL_LEAF_EXT_WORDS: usize = MAX_INTERNAL_VALUES_PER_LEAF * EXT_DEGREE;
 const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS
     .div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS)
     * BLAKE2S_BLOCK_SIZE_U32_WORDS;
-const MAX_INTERNAL_FOLD_BUF_HALF: usize = 8usize;
-const MAX_INTERNAL_NUM_QUERIES: usize = 23usize;
-const MAX_INTERNAL_DRAW_WORDS: usize = 16usize;
-const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [16usize, 8usize, 8usize];
+const MAX_INTERNAL_FOLD_BUF_HALF: usize = 16usize;
+const MAX_INTERNAL_NUM_QUERIES: usize = 9usize;
+const MAX_INTERNAL_DRAW_WORDS: usize = 8usize;
+const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [8usize, 8usize, 8usize];
 pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -338,19 +338,19 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     }
 }
 const FINAL_FOLD_STEPS: usize = 4usize;
-const FINAL_NUM_QUERIES: usize = 10usize;
+const FINAL_NUM_QUERIES: usize = 3usize;
 const FINAL_VALUES_PER_LEAF: usize = 16usize;
 const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
 const FINAL_HASH_BUF_SIZE: usize =
     FINAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
 const FINAL_FOLD_BUF_HALF: usize = 8usize;
-const FINAL_QUERY_INDEX_BITS: usize = 10usize;
-const FINAL_RS_DOMAIN_LOG2: usize = 14usize;
-const FINAL_NUM_COSETS: usize = 128usize;
-const FINAL_NUM_COSETS_LOG2: usize = 7usize;
-const FINAL_COSET_TREE_SIZE: usize = 8usize;
+const FINAL_QUERY_INDEX_BITS: usize = 20usize;
+const FINAL_RS_DOMAIN_LOG2: usize = 24usize;
+const FINAL_NUM_COSETS: usize = 524288usize;
+const FINAL_NUM_COSETS_LOG2: usize = 19usize;
+const FINAL_COSET_TREE_SIZE: usize = 2usize;
 const FINAL_DRAW_WORDS: usize = 8usize;
-const FINAL_POW_BITS: u32 = 24u32;
+const FINAL_POW_BITS: u32 = 23u32;
 const FINAL_ORACLE_DEPTH_IDX: usize = 3usize;
 pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     ts: &mut TranscriptState,
@@ -532,6 +532,42 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         Ok(())
     }
 }
+#[cfg(feature = "verifier_stats")]
+const _: () = assert!(
+    NUM_INTERNAL_ROUNDS + 1
+        < [
+            "WHIR SINGLE ROUND 0",
+            "WHIR SINGLE ROUND 1",
+            "WHIR SINGLE ROUND 2",
+            "WHIR SINGLE ROUND 3",
+            "WHIR SINGLE ROUND 4",
+            "WHIR SINGLE ROUND 5",
+            "WHIR SINGLE ROUND 6",
+            "WHIR SINGLE ROUND 7",
+            "WHIR SINGLE ROUND 8",
+            "WHIR SINGLE ROUND 9",
+            "WHIR SINGLE ROUND 10",
+            "WHIR SINGLE ROUND 11",
+            "WHIR SINGLE ROUND 12",
+            "WHIR SINGLE ROUND 13",
+            "WHIR SINGLE ROUND 14",
+            "WHIR SINGLE ROUND 15",
+            "WHIR SINGLE ROUND 16",
+            "WHIR SINGLE ROUND 17",
+            "WHIR SINGLE ROUND 18",
+            "WHIR SINGLE ROUND 19",
+            "WHIR SINGLE ROUND 20",
+            "WHIR SINGLE ROUND 21",
+            "WHIR SINGLE ROUND 22",
+            "WHIR SINGLE ROUND 23",
+            "WHIR SINGLE ROUND 24",
+            "WHIR SINGLE ROUND 25",
+            "WHIR SINGLE ROUND 26",
+            "WHIR SINGLE ROUND 27",
+        ]
+        .len(),
+    "WHIR stats labels array is too small for NUM_INTERNAL_ROUNDS"
+);
 pub const WHIR_HASH_BUF_SIZE: usize = 1296usize;
 pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
     initial_transcript: &ConcreteInitialTranscript,
@@ -554,6 +590,8 @@ pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
         z_initial,
         &mut accumulator,
     )?;
+    #[cfg(feature = "verifier_stats")]
+    verifier_common::stats::log("WHIR BATCHED ROUND 0");
     let mut round_idx = 1;
     while round_idx <= NUM_INTERNAL_ROUNDS {
         let (new_claim, new_cap) = verify_internal_whir_round::<I, E>(
@@ -565,10 +603,76 @@ pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
             z_initial,
             &mut accumulator,
         )?;
+        #[cfg(feature = "verifier_stats")]
+        verifier_common::stats::log(
+            [
+                "WHIR SINGLE ROUND 0",
+                "WHIR SINGLE ROUND 1",
+                "WHIR SINGLE ROUND 2",
+                "WHIR SINGLE ROUND 3",
+                "WHIR SINGLE ROUND 4",
+                "WHIR SINGLE ROUND 5",
+                "WHIR SINGLE ROUND 6",
+                "WHIR SINGLE ROUND 7",
+                "WHIR SINGLE ROUND 8",
+                "WHIR SINGLE ROUND 9",
+                "WHIR SINGLE ROUND 10",
+                "WHIR SINGLE ROUND 11",
+                "WHIR SINGLE ROUND 12",
+                "WHIR SINGLE ROUND 13",
+                "WHIR SINGLE ROUND 14",
+                "WHIR SINGLE ROUND 15",
+                "WHIR SINGLE ROUND 16",
+                "WHIR SINGLE ROUND 17",
+                "WHIR SINGLE ROUND 18",
+                "WHIR SINGLE ROUND 19",
+                "WHIR SINGLE ROUND 20",
+                "WHIR SINGLE ROUND 21",
+                "WHIR SINGLE ROUND 22",
+                "WHIR SINGLE ROUND 23",
+                "WHIR SINGLE ROUND 24",
+                "WHIR SINGLE ROUND 25",
+                "WHIR SINGLE ROUND 26",
+                "WHIR SINGLE ROUND 27",
+            ][round_idx],
+        );
         claim = new_claim;
         cap = new_cap;
         round_idx += 1;
     }
     verify_final_whir_round::<I, E>(ts, &mut hash_buf, claim, &cap, z_initial, &mut accumulator)?;
+    #[cfg(feature = "verifier_stats")]
+    verifier_common::stats::log(
+        [
+            "WHIR SINGLE ROUND 0",
+            "WHIR SINGLE ROUND 1",
+            "WHIR SINGLE ROUND 2",
+            "WHIR SINGLE ROUND 3",
+            "WHIR SINGLE ROUND 4",
+            "WHIR SINGLE ROUND 5",
+            "WHIR SINGLE ROUND 6",
+            "WHIR SINGLE ROUND 7",
+            "WHIR SINGLE ROUND 8",
+            "WHIR SINGLE ROUND 9",
+            "WHIR SINGLE ROUND 10",
+            "WHIR SINGLE ROUND 11",
+            "WHIR SINGLE ROUND 12",
+            "WHIR SINGLE ROUND 13",
+            "WHIR SINGLE ROUND 14",
+            "WHIR SINGLE ROUND 15",
+            "WHIR SINGLE ROUND 16",
+            "WHIR SINGLE ROUND 17",
+            "WHIR SINGLE ROUND 18",
+            "WHIR SINGLE ROUND 19",
+            "WHIR SINGLE ROUND 20",
+            "WHIR SINGLE ROUND 21",
+            "WHIR SINGLE ROUND 22",
+            "WHIR SINGLE ROUND 23",
+            "WHIR SINGLE ROUND 24",
+            "WHIR SINGLE ROUND 25",
+            "WHIR SINGLE ROUND 26",
+            "WHIR SINGLE ROUND 27",
+        ][NUM_INTERNAL_ROUNDS + 1],
+    );
     Ok(())
 }

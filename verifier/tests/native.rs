@@ -17,6 +17,8 @@ fn run_native(name: &str, level: SecurityLevel) {
                     m::verify::<ThreadLocalBasedSource, DebugErrorCreator>(&external_challenges)
                         .unwrap_or_else(|e| panic!("{} {:?} failed: {:?}", name, level, e));
                 });
+                #[cfg(feature = "verifier_stats")]
+                common::print_stats_log(name);
             })
             .expect("failed to spawn verifier thread");
 
@@ -28,7 +30,7 @@ fn run_native(name: &str, level: SecurityLevel) {
 }
 
 macro_rules! generate_native_tests {
-    ($($name:ident: $schedule_80:ident: $schedule_100:ident: $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
         paste::paste! {
             $(
                 #[cfg(feature = "security_80")]

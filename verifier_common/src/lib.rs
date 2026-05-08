@@ -6,15 +6,16 @@
 macro_rules! gkr_circuits {
     ($callback:ident) => {
         $callback! {
-            add_sub_lui_auipc_mop: default_for_tests_80_bits_24: default_for_tests_100_bits_24: "_preprocessed_layout",
-            jump_branch_slt: default_for_tests_80_bits_24: default_for_tests_100_bits_24: "_preprocessed_layout",
-            shift_binop: default_for_tests_80_bits_24: default_for_tests_100_bits_24: "_preprocessed_layout",
-            mem_word_only: default_for_tests_80_bits_24: default_for_tests_100_bits_24: "_preprocessed_layout",
-            mem_subword_only: default_for_tests_80_bits_24: default_for_tests_100_bits_24: "_preprocessed_layout",
-            bigint_with_extended_control: default_for_tests_80_bits_22: default_for_tests_100_bits_22: "_layout",
-            blake2_with_extended_control: default_for_tests_80_bits_20: default_for_tests_100_bits_20: "_layout",
-            keccak_special5: default_for_tests_80_bits_22: default_for_tests_100_bits_22: "_layout",
-            inits_and_teardowns: default_for_tests_80_bits_24: default_for_tests_100_bits_24: "_preprocessed_layout",
+            add_sub_lui_auipc_mop; 24 ; "_layout",
+            jump_branch_slt; 24 ; "_layout",
+            shift_binop; 24 ; "_layout",
+            mem_word_only; 24 ; "_layout",
+            mem_subword_only; 24 ; "_layout",
+            bigint_with_extended_control; 22 ; "_layout",
+            blake2_with_extended_control; 20 ; "_layout",
+            keccak_special5; 22 ; "_layout",
+            blake2_g_function; 22 ; "_layout",
+            inits_and_teardowns; 24 ; "_layout",
         }
     };
 }
@@ -66,6 +67,8 @@ pub mod whir;
 pub mod inline_ops;
 pub mod lazy_vec;
 pub mod no_inline_ops;
+#[cfg(feature = "verifier_stats")]
+pub mod stats;
 
 pub use self::gkr::{GKRVerifierOutput, InitialGKRTranscript};
 pub use ::prover::definitions::{GKRExternalChallenges, USE_REDUCED_BLAKE2_ROUNDS};

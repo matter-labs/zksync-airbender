@@ -13,22 +13,22 @@ use std::{
 use type_map::concurrent::TypeMap;
 
 mod binops;
+mod blake_g_function_precompile_related;
 mod integer_ops;
 mod jump_branch_opcode_related;
 mod keccak_precompile_related;
 mod memory_opcode_related;
-// mod range_checks_and_decompositions;
 mod quote;
 mod rom_related;
 mod shift_opcode_related;
 mod zero_entry;
 
 pub use self::binops::*;
+pub use self::blake_g_function_precompile_related::*;
 pub use self::integer_ops::*;
 pub use self::jump_branch_opcode_related::*;
 pub use self::keccak_precompile_related::*;
 pub use self::memory_opcode_related::*;
-// pub use self::range_checks_and_decompositions::*;
 pub use self::rom_related::*;
 pub use self::shift_opcode_related::*;
 pub use self::zero_entry::*;
@@ -874,9 +874,9 @@ impl TableType {
             // TableType::U16SelectByteAndGetByteSign => {
             //     LookupWrapper::Dimensional3(create_select_byte_and_get_sign_table::<F>(id))
             // }
-            // TableType::ExtendLoadedValue => {
-            //     LookupWrapper::Dimensional3(create_mem_load_extend_table::<F>(id))
-            // }
+            TableType::BlakeGFunctionControlLookup => LookupWrapper::Initialized(
+                create_blake_g_function_control_and_offsets_table::<F>(id),
+            ),
             TableType::StoreByteSourceContribution => {
                 LookupWrapper::Initialized(create_store_byte_source_contribution_table::<F>(id))
             }

@@ -57,7 +57,7 @@ pub const NUM_ORACLES: usize = 3usize;
 pub const ORACLE_NUM_COLS: [usize; 3usize] = [91usize, 175usize, 8usize];
 pub const ORACLE_DEPTHS: [usize; 3usize] = [18usize, 18usize, 18usize];
 pub const TOTAL_ORACLE_COLS: usize = 274usize;
-pub const WHIR_ORACLE_DEPTHS: [usize; 5usize] = [16usize, 15usize, 12usize, 8usize, 6usize];
+pub const WHIR_ORACLE_DEPTHS: [usize; 4usize] = [18usize, 18usize, 17usize, 16usize];
 pub const WHIR_CAP_WORDS: usize = 128usize;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;

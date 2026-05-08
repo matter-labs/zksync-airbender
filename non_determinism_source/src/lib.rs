@@ -1,5 +1,8 @@
 #![no_std]
 
+#[cfg(feature = "verifier_stats")]
+pub mod stats;
+
 pub trait NonDeterminismSource: 'static + Send + Sync + Clone + Copy {
     fn read_word() -> u32;
     fn read_reduced_field_element(modulus: u32) -> u32;
@@ -23,10 +26,14 @@ pub struct CSRBasedSource;
 impl NonDeterminismSource for CSRBasedSource {
     #[inline(always)]
     fn read_word() -> u32 {
+        #[cfg(feature = "verifier_stats")]
+        stats::NDS_STATS.with_borrow_mut(|s| s.read_bytes += core::mem::size_of::<u32>());
         csr_read_word()
     }
     #[inline(always)]
     fn read_reduced_field_element(modulus: u32) -> u32 {
+        #[cfg(feature = "verifier_stats")]
+        stats::NDS_STATS.with_borrow_mut(|s| s.read_bytes += core::mem::size_of::<u32>());
         csr_read_field_element(modulus)
     }
 }

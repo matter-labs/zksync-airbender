@@ -161,4 +161,19 @@ mod test {
         let mulhu_opcode = 0x0220b1b3;
         test_mul_div_circuit(mulhu_opcode, mulhu_opcode_data);
     }
+
+    #[test]
+    fn test_mulhu() {
+        let opcode_data = NonMemoryOpcodeTracingData {
+            initial_pc: 0,
+            rs1_value: 0,
+            rs2_value: 281475,
+            rd_old_value: 0,
+            rd_value: 0,
+            new_pc: 4,
+            delegation_type: 0,
+        };
+        let opcode = 0x0220b1b3;
+        test_mul_div_circuit(opcode, opcode_data);
+    }
 }

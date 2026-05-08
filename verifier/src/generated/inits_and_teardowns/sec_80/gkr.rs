@@ -2242,6 +2242,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
         const DIM_REDUCE_INDICES_21: [usize; 2usize] = [0usize, 1usize];
         const DIM_REDUCE_INDICES_22: [usize; 2usize] = [0usize, 1usize];
         const DIM_REDUCE_INDICES_23: [usize; 2usize] = [0usize, 1usize];
+        #[cfg(feature = "verifier_stats")]
+        verifier_common::stats::log("GKR COMPRESSION INIT");
         {
             let initial_claim = dim_reducing_compute_claim(
                 state.prev_claims.as_array::<2usize>(),
@@ -2305,6 +2307,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 23");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -2369,6 +2373,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 22");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -2433,6 +2439,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 21");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -2497,6 +2505,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 20");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -2561,6 +2571,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 19");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -2625,6 +2637,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 18");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -2689,6 +2703,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 17");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -2753,6 +2769,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 16");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -2817,6 +2835,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 15");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -2881,6 +2901,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 14");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -2945,6 +2967,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 13");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -3009,6 +3033,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 12");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -3073,6 +3099,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 11");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -3137,6 +3165,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 10");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -3201,6 +3231,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 9");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -3265,6 +3297,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 8");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -3329,6 +3363,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 7");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -3393,6 +3429,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 6");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -3457,6 +3495,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 5");
         }
         {
             let initial_claim = dim_reducing_compute_claim(
@@ -3521,6 +3561,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR COMPRESSION LAYER 4");
         }
         {
             let initial_claim = layer_3_compute_claim(
@@ -3579,6 +3621,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             );
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR MAIN LAYER 3");
         }
         {
             let initial_claim = layer_2_compute_claim(
@@ -3637,6 +3681,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             );
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR MAIN LAYER 2");
         }
         {
             let initial_claim = layer_1_compute_claim(
@@ -3695,6 +3741,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             );
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR MAIN LAYER 1");
         }
         {
             let initial_claim = layer_0_compute_claim(
@@ -3791,6 +3839,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             check_virtual_setup_inits_and_teardowns::<E>(&state)?;
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
+            #[cfg(feature = "verifier_stats")]
+            verifier_common::stats::log("GKR MAIN LAYER 0");
         }
         state.batching_challenge = draw_single_field_el(ts);
         let mut permutation_read_product: BabyBearExt4 = BabyBearExt4::ONE;
@@ -3809,6 +3859,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             permutation_read_product = read_product;
             permutation_write_product = write_product;
         }
+        #[cfg(feature = "verifier_stats")]
+        verifier_common::stats::log("GKR MAIN OUTPUT");
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
             evaluation_point: state.prev_point,

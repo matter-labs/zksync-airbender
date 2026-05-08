@@ -14,7 +14,7 @@ use blake2s_u32::EXTENDED_CONFIGURED_IV;
 use blake2s_u32::SIGMAS;
 use common_constants::delegation_types::blake2s_with_control::*;
 
-mod g_function;
+pub(crate) mod g_function;
 
 const TOTAL_TABLE_WIDTH: usize = 3;
 

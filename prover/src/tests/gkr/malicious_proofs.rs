@@ -4,6 +4,7 @@ use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::GKRExternalChallenges;
 use crate::gkr::prover::GKRProof;
 use crate::gkr::prover::WhirSchedule;
+use crate::gkr::prover_config;
 use crate::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
 use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
 use crate::merkle_trees::DefaultTreeConstructor;
@@ -45,7 +46,10 @@ fn generate_proof(
     type CountersT = DelegationsAndFamiliesCounters;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+    let prover_config =
+        prover_config::example_configs::config_for_80_bits_under_pessimistic_conjecture(
+            TRACE_LEN_LOG2,
+        );
     let worker = Worker::new_with_num_threads(8);
 
     let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
@@ -225,9 +229,9 @@ fn generate_proof(
 
     let setup_commitment = setup.commit(
         &twiddles,
-        2,
-        1,
-        whir_schedule.cap_size,
+        prover_config.lde_factor,
+        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+        prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
         &worker,
     );
@@ -241,7 +245,7 @@ fn generate_proof(
         &setup,
         &setup_commitment,
         &twiddles,
-        &whir_schedule,
+        &prover_config,
         Vec::new(),
         trace_len,
         &worker,

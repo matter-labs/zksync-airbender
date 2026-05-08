@@ -3,6 +3,8 @@
 pub mod circuit_families;
 pub mod delegation_types;
 pub mod rom;
+#[cfg(feature = "verifier_stats")]
+pub mod stats;
 pub mod timestamps;
 
 /// This module is meant to contain extensions that are outside of the proving path,

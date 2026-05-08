@@ -1,0 +1,78 @@
+
+running 1 test
+
+=== add_sub_lui_auipc_mop stats log (32 entries) ===
+
+                           F4+    F4*    F+     F*    bytes  hashes tot.gas 
+gas/op                     (8)    (8)    (8)   (8)    (16)    (42)          
+---------------------------------------------------------------------------
+GKR COMPRESSION INIT       132    158     0     0     3584     61           
+GKR COMPRESSION LAYER 23    95    121     0     0      704     16           
+GKR COMPRESSION LAYER 22   105    127     0     0      768     18           
+GKR COMPRESSION LAYER 21   115    133     0     0      832     20           
+GKR COMPRESSION LAYER 20   125    139     0     0      896     22           
+GKR COMPRESSION LAYER 19   135    145     0     0      960     24           
+GKR COMPRESSION LAYER 18   145    151     0     0     1024     26           
+GKR COMPRESSION LAYER 17   155    157     0     0     1088     28           
+GKR COMPRESSION LAYER 16   165    163     0     0     1152     30           
+GKR COMPRESSION LAYER 15   175    169     0     0     1216     32           
+GKR COMPRESSION LAYER 14   185    175     0     0     1280     34           
+GKR COMPRESSION LAYER 13   195    181     0     0     1344     36           
+GKR COMPRESSION LAYER 12   205    187     0     0     1408     38           
+GKR COMPRESSION LAYER 11   215    193     0     0     1472     40           
+GKR COMPRESSION LAYER 10   225    199     0     0     1536     42           
+GKR COMPRESSION LAYER 9    235    205     0     0     1600     44           
+GKR COMPRESSION LAYER 8    245    211     0     0     1664     46           
+GKR COMPRESSION LAYER 7    255    217     0     0     1728     48           
+GKR COMPRESSION LAYER 6    265    223     0     0     1792     50           
+GKR COMPRESSION LAYER 5    275    229     0     0     1856     52           
+GKR COMPRESSION LAYER 4    285    235     0     0     1920     54           
+GKR MAIN LAYER 3           278    197     0     0     1792     52           
+GKR MAIN LAYER 2           296    222     8     0     1952     54           
+GKR MAIN LAYER 1           335    263     0     0     2208     58           
+GKR MAIN LAYER 0           936    600     0    1204   3536     80           
+GKR MAIN OUTPUT             48    176     0     0       0      0            
+
+                           F4+    F4*    F+     F*    bytes  hashes tot.gas 
+gas/op                     (8)    (8)    (8)   (8)    (16)    (42)          
+---------------------------------------------------------------------------
+TOTAL GKR COMPRESSION      3932   3718    0     0     29824   761           
+                          (32k)  (30k)  (0k)   (0k)  (478k)  (32k)    571k  
+TOTAL GKR MAIN             1893   1458    8    1204   9488    244           
+                          (16k)  (12k)  (1k)  (10k)  (152k)  (11k)    199k  
+TOTAL GKR                  5825   5176    8    1204   39312   1005          
+                          (47k)  (42k)  (1k)  (10k)  (629k)  (43k)    769k  
+
+
+                           F4+    F4*    F+     F*    bytes  hashes tot.gas 
+gas/op                     (8)    (8)    (8)   (8)    (16)    (42)          
+---------------------------------------------------------------------------
+WHIR BATCHED ROUND 0       7817   317     0   35468  161064   4643          
+WHIR SINGLE ROUND 1        1647   1236    0    4724   19864   527           
+WHIR SINGLE ROUND 2        1333   1337    0    2447   10328   272           
+WHIR SINGLE ROUND 3        1345   1459    0    1955   7768    199           
+WHIR SINGLE ROUND 4        1433   1591    0    1801   6488    159           
+WHIR SINGLE ROUND 5        2611   2862    0    1997   4808    112           
+
+                           F4+    F4*    F+     F*    bytes  hashes tot.gas 
+gas/op                     (8)    (8)    (8)   (8)    (16)    (42)          
+---------------------------------------------------------------------------
+TOTAL WHIR BATCHED         7817   317     0   35468  161064   4643          
+                          (63k)   (3k)  (0k)  (284k) (2578k) (196k)  3121k  
+TOTAL WHIR SINGLE          8369   8485    0   12924   49256   1269          
+                          (67k)  (68k)  (0k)  (104k) (789k)  (54k)   1080k  
+TOTAL WHIR                16186   8802    0   48392  210320   5912          
+                          (130k) (71k)  (0k)  (388k) (3366k) (249k)  4201k  
+
+
+                           F4+    F4*    F+     F*    bytes  hashes tot.gas 
+gas/op                     (8)    (8)    (8)   (8)    (16)    (42)          
+---------------------------------------------------------------------------
+TOTAL ALL                 22011  13978    8   49596  249632   6917          
+                          (177k) (112k) (1k)  (397k) (3995k) (291k)  4970k  
+
+add_sub_lui_auipc_mop: verification passed
+test add_sub_lui_auipc_mop ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 3.86s
+

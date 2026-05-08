@@ -29,6 +29,7 @@ pub(crate) fn test_single_non_mem_cycle<F: PrimeField, OPT: DecodingOptions>(
             BLAKE2S_DELEGATION_CSR_REGISTER as u16,
             BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
             KECCAK_SPECIAL5_CSR_REGISTER as u16,
+            BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
         ],
     );
     let decoder_data = t.remove(&circuit_family).expect("decoder data");
