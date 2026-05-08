@@ -95,8 +95,7 @@ generate_witness_unrolled_non_memory_kernel!(
     ab_generate_witness_values_add_sub_lui_auipc_mop_kernel
 );
 generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_jump_branch_slt_kernel);
-// generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_mul_div_kernel);
-// generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_mul_div_unsigned_kernel);
+generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_mul_div_unsigned_kernel);
 generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_shift_binary_csr_kernel);
 
 pub(crate) fn generate_witness_values_unrolled_non_memory(
@@ -144,14 +143,15 @@ pub(crate) fn generate_witness_values_unrolled_non_memory(
         UnrolledNonMemoryCircuitType::JumpBranchSlt => {
             ab_generate_witness_values_jump_branch_slt_kernel
         }
-        // UnrolledNonMemoryCircuitType::MulDiv => ab_generate_witness_values_mul_div_kernel,
-        // UnrolledNonMemoryCircuitType::MulDivUnsigned => {
-        //     ab_generate_witness_values_mul_div_unsigned_kernel
-        // }
+        UnrolledNonMemoryCircuitType::MulDivUnsigned => {
+            ab_generate_witness_values_mul_div_unsigned_kernel
+        }
         UnrolledNonMemoryCircuitType::ShiftBinaryCsr => {
             ab_generate_witness_values_shift_binary_csr_kernel
         }
-        _ => unimplemented!(),
+        UnrolledNonMemoryCircuitType::MulDiv => unimplemented!(
+            "signed MulDiv is not supported by the GPU prover; the CPU prover only supports MulDivUnsigned"
+        ),
     };
     GenerateWitnessUnrolledNonMemoryKernelFunction(kernel).launch(&config, &args)
 }
