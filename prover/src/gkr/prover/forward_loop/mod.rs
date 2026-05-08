@@ -20,6 +20,7 @@ pub(crate) mod lookup_from_base_inputs;
 pub(crate) mod lookup_from_vector_inputs;
 pub(crate) mod lookup_pair;
 pub(crate) mod mask_product;
+pub(crate) mod max_quadratic;
 pub(crate) mod pairwise_product;
 pub(crate) mod single_column_lookup;
 pub(crate) mod utils;
@@ -214,7 +215,11 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         .iter()
         .chain(layer.gates_with_external_connections.iter())
     {
-        assert_eq!(gate.output_layer, expected_output_layer);
+        assert_eq!(
+            gate.output_layer, expected_output_layer,
+            "Unexpected output layer for gate {:?}",
+            gate
+        );
 
         // println!("Should evaluate {:?}", &gate.enforced_relation);
 
@@ -236,6 +241,11 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 if compiled_circuit.scratch_space_mapping.contains_key(output) {
                     // a value of it will be filled from scratch space in the next round
                 } else {
+                    #[cfg(feature = "gkr_self_checks")]
+                    {
+                        // we will evaluate and compare for debug purposes
+                    }
+
                     println!("Need to evaluate {:?} -> {:?}", input, output);
                     todo!();
                 }
@@ -391,9 +401,22 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 );
             }
             NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { .. } => {
+                unimplemented!("no longer supported");
                 // we do nothing as it should result in all zeroes in case if constraints are satisfied
             }
-            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { .. } => {
+            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input: _input } => {
+                #[cfg(feature = "gkr_self_checks")]
+                {
+                    max_quadratic::self_check_max_quadratic_constraint(
+                        _input,
+                        gkr_storage,
+                        expected_output_layer,
+                        trace_len,
+                        worker,
+                    );
+                    // debug evaluation
+                }
+
                 // we do nothing as it should result in all zeroes in case if constraints are satisfied
             }
             NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup {
@@ -635,7 +658,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
             }
             NoFieldGKRRelation::InitsOrTeardownsInitialPair {
                 timestamp_and_value,
-                setup,
+                setup: _,
                 output,
                 set_idxes,
             } => {

@@ -481,38 +481,56 @@ mod test {
     }
 
     #[test]
-    fn gen_for_unrolled_gkr_tests() {
+    fn gen_for_gkr() {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
         for prefix in [
-            "add_sub_lui_auipc_mop_preprocessed",
-            "jump_branch_slt_preprocessed",
-            "shift_binop_preprocessed",
-            "mem_word_only_preprocessed",
-            "mem_subword_only_preprocessed",
+            "add_sub_lui_auipc_mop",
+            "jump_branch_slt",
+            "shift_binop",
+            "mem_word_only",
+            "mem_subword_only",
             // "mul_div_preprocessed",
-            "unsigned_mul_div_preprocessed",
+            "unsigned_mul_div",
             // "reduced_machine_preprocessed",
             "blake2_with_extended_control",
             "bigint_with_extended_control",
             "keccak_special5",
+            "blake2_g_function",
         ] {
+            // let compiled_circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
+            //     &format!("../cs/compiled_circuits/{}_layout_no_caches_gkr.json", prefix),
+            // );
             let compiled_circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
-                &format!("../cs/compiled_circuits/{}_no_caches_gkr.json", prefix),
+                &format!("../cs/compiled_circuits/{}_layout_gkr.json", prefix),
             );
             let compiled_graph: Vec<Vec<RawExpression<BabyBearField>>> =
                 deserialize_from_file(&format!("../cs/compiled_circuits/{}_ssa_gkr.json", prefix));
             let full_stream =
                 derive_from_gkr_ssa(&compiled_graph, &compiled_circuit, false, "BabyBearField");
 
-            std::fs::File::create(&format!(
-                "../prover/compiled_circuits/{}_generated_gkr.rs",
-                prefix
-            ))
-            .unwrap()
-            .write_all(&full_stream.to_string().as_bytes())
-            .unwrap();
+            write_and_fmt(
+                &format!("../prover/compiled_circuits/{}_generated_gkr.rs", prefix),
+                &full_stream,
+            );
+            // std::fs::File::create(&format!(
+            //     "../prover/compiled_circuits/{}_generated_gkr.rs",
+            //     prefix
+            // ))
+            // .unwrap()
+            // .write_all(&full_stream.to_string().as_bytes())
+            // .unwrap();
         }
+    }
+
+    fn write_and_fmt(path: &str, content: &proc_macro2::TokenStream) {
+        let mut dst = std::fs::File::create(path).unwrap();
+        dst.write_all(content.to_string().as_bytes()).unwrap();
+        drop(dst);
+        std::process::Command::new("rustfmt")
+            .arg(path)
+            .status()
+            .ok();
     }
 }

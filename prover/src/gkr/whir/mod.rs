@@ -85,6 +85,7 @@ use transcript::Seed;
 use worker::{IterableWithGeometry, Worker};
 
 pub mod hypercube_to_monomial;
+pub mod proximity_testing_modes;
 pub mod queries;
 pub mod whir_proof;
 
@@ -312,6 +313,14 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
             }
             16 => {
                 let offsets = offsets_for_leaf_construction::<16>(trace_len);
+                for offset in offsets.iter() {
+                    let i = *offset + index;
+                    let value = self.values_normal_order.column[i];
+                    result.push(value);
+                }
+            }
+            32 => {
+                let offsets = offsets_for_leaf_construction::<32>(trace_len);
                 for offset in offsets.iter() {
                     let i = *offset + index;
                     let value = self.values_normal_order.column[i];

@@ -56,7 +56,7 @@ fn test_sumcheck_loop_product() {
         }],
         gates_with_external_connections: vec![],
         cached_relations: BTreeMap::new(),
-        // additional_base_layer_openings: vec![],
+        intermediate_layer_width: None,
     };
 
     let prev_challenges: Vec<E> = random_poly_in_ext::<F, E>(FOLDING_STEPS);
@@ -210,7 +210,7 @@ fn test_sumcheck_loop_multiple_gates() {
         ],
         gates_with_external_connections: vec![],
         cached_relations: BTreeMap::new(),
-        // additional_base_layer_openings: vec![],
+        intermediate_layer_width: None,
     };
 
     let prev_challenges: Vec<E> = random_poly_in_ext::<F, E>(FOLDING_STEPS);

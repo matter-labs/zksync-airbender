@@ -252,7 +252,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/inits_and_teardowns_preprocessed_layout_no_caches_gkr.json",
+            "compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json",
         );
     }
 }

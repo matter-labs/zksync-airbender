@@ -92,9 +92,9 @@ pub(crate) fn bigint_call<C: Counters, R: RAM>(
         // touch x0
         state.registers[0].timestamp = state.timestamp | 2;
 
-        let (x10, x10_ts) = read_register_with_ts::<C, 3>(state, 10);
-        let (x11, x11_ts) = read_register_with_ts::<C, 3>(state, 11);
-        let (x12, x12_ts) = write_register_with_ts::<C, 3>(state, 12, &mut expected_of);
+        let (_x10, _x10_ts) = read_register_with_ts::<C, 3>(state, 10);
+        let (_x11, _x11_ts) = read_register_with_ts::<C, 3>(state, 11);
+        let (_x12, _x12_ts) = write_register_with_ts::<C, 3>(state, 12, &mut expected_of);
 
         // timestamp is advanced post-cycle
 
@@ -190,9 +190,9 @@ pub(crate) fn bigint_call<C: Counters, R: RAM>(
         let (ts, mut expected_of) = ram.read_word(0, state.timestamp | 3);
         assert_eq!(ts, 0);
 
-        let (x10, x10_ts) = read_register_with_ts::<C, 3>(state, 10);
-        let (x11, x11_ts) = read_register_with_ts::<C, 3>(state, 11);
-        let (x12, x12_ts) = write_register_with_ts::<C, 3>(state, 12, &mut expected_of);
+        let (_x10, _x10_ts) = read_register_with_ts::<C, 3>(state, 10);
+        let (_x11, _x11_ts) = read_register_with_ts::<C, 3>(state, 11);
+        let (_x12, _x12_ts) = write_register_with_ts::<C, 3>(state, 12, &mut expected_of);
 
         // timestamp is advanced post-cycle
     }

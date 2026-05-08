@@ -608,61 +608,62 @@ pub(crate) fn lookup_input_into_cached_expr<F: PrimeField, const SINGLE_COLUMN: 
     ))
 }
 
-// pub(crate) fn vector_or_single_input<const SINGLE_COLUMN: bool>(
-//     input: NoFieldVectorLookupRelation,
-// ) -> LookupDenominator {
-//     if SINGLE_COLUMN {
-//         assert_eq!(input.columns.len(), 1);
-//         let input = NoFieldSingleColumnLookupRelation {
-//             input: input.columns[0].clone(),
-//             lookup_set_index: input.lookup_set_index,
-//         };
-//         lookup_nodes::LookupDenominator::UseInput(input)
-//     } else {
-//         lookup_nodes::LookupDenominator::UseVectorInput(input)
-//     }
-// }
+impl NoFieldSpecialMemoryContributionRelation {
+    pub(crate) fn dump_inputs(&self, result: &mut BTreeSet<GKRAddress>) {
+        match self.address_space {
+            CompiledAddressSpaceRelationStrict::Constant(c) => {}
+            CompiledAddressSpaceRelationStrict::IsRam(offset)
+            | CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
+                result.insert(GKRAddress::BaseLayerMemory(offset));
+            }
+        }
 
-// pub(crate) fn vector_or_single_setup<const SINGLE_COLUMN: bool>(
-//     graph: &dyn GraphHolder,
-//     lookup_type: LookupType,
-// ) -> LookupDenominator {
-//     if SINGLE_COLUMN {
-//         assert!(
-//             lookup_type == LookupType::RangeCheck16
-//                 || lookup_type == LookupType::TimestampRangeCheck
-//         );
-//         let setup = graph.setup_addresses(lookup_type);
-//         assert_eq!(setup.len(), 1);
-//         lookup_nodes::LookupDenominator::Setup(setup[0])
-//     } else {
-//         lookup_nodes::LookupDenominator::VectorSetup(
-//             graph
-//                 .setup_addresses(lookup_type)
-//                 .to_vec()
-//                 .into_boxed_slice(),
-//         )
-//     }
-// }
+        // Address contribution
+        match &self.address {
+            CompiledAddressStrict::ConstantU16(..) | CompiledAddressStrict::Constant(..) => {}
+            &CompiledAddressStrict::U16Space(offset) => {
+                result.insert(GKRAddress::BaseLayerMemory(offset));
+            }
+            &CompiledAddressStrict::U32Space([low, high]) => {
+                result.insert(GKRAddress::BaseLayerMemory(low));
+                result.insert(GKRAddress::BaseLayerMemory(high));
+            }
+            CompiledAddressStrict::U32SpaceGeneric(..) => {
+                todo!();
+            }
+            &CompiledAddressStrict::U32SpaceSpecialIndirect {
+                low_base,
+                low_dynamic_offset,
+                low_offset,
+                high,
+            } => {
+                result.insert(GKRAddress::BaseLayerMemory(low_base));
+                result.insert(GKRAddress::BaseLayerMemory(high));
+                if let Some((_, offset)) = low_dynamic_offset {
+                    result.insert(GKRAddress::BaseLayerMemory(offset));
+                }
+            }
+        }
+        match self.timestamp {
+            CompiledMemoryTimestamp::Zero => {}
+            CompiledMemoryTimestamp::Normal(ts) => {
+                result.insert(GKRAddress::BaseLayerMemory(ts[0]));
+                result.insert(GKRAddress::BaseLayerMemory(ts[1]));
+            }
+        }
 
-// pub(crate) fn copy_single_base_input_or_materialize_vector<const SINGLE_COLUMN: bool>(
-//     input: NoFieldVectorLookupRelation,
-// ) -> LookupDenominator {
-//     if SINGLE_COLUMN {
-//         assert_eq!(input.columns.len(), 1);
-//         if input.columns[0].constant == 0
-//             && input.columns[0].linear_terms.len() == 1
-//             && input.columns[0].linear_terms[0].0 == 1
-//         {
-//             lookup_nodes::LookupDenominator::UseInputViaCopy(input.columns[0].linear_terms[0].1)
-//         } else {
-//             let input = NoFieldSingleColumnLookupRelation {
-//                 input: input.columns[0].clone(),
-//                 lookup_set_index: input.lookup_set_index,
-//             };
-//             lookup_nodes::LookupDenominator::MaterializeBaseInput(input)
-//         }
-//     } else {
-//         lookup_nodes::LookupDenominator::MaterializeVectorInput(input)
-//     }
-// }
+        match self.value {
+            RamWordRepresentation::Zero => {}
+            RamWordRepresentation::U16Limbs(read_value) => {
+                result.insert(GKRAddress::BaseLayerMemory(read_value[0]));
+                result.insert(GKRAddress::BaseLayerMemory(read_value[1]));
+            }
+            RamWordRepresentation::U8Limbs(read_value) => {
+                result.insert(GKRAddress::BaseLayerMemory(read_value[0]));
+                result.insert(GKRAddress::BaseLayerMemory(read_value[1]));
+                result.insert(GKRAddress::BaseLayerMemory(read_value[2]));
+                result.insert(GKRAddress::BaseLayerMemory(read_value[3]));
+            }
+        }
+    }
+}

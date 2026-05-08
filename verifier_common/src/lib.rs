@@ -6,84 +6,18 @@
 macro_rules! gkr_circuits {
     ($callback:ident) => {
         $callback! {
-            add_sub_lui_auipc_mop: default_for_tests_80_bits_24: "_preprocessed_layout",
-            jump_branch_slt: default_for_tests_80_bits_24: "_preprocessed_layout",
-            shift_binop: default_for_tests_80_bits_24: "_preprocessed_layout",
-            mem_word_only: default_for_tests_80_bits_24: "_preprocessed_layout",
-            mem_subword_only: default_for_tests_80_bits_24: "_preprocessed_layout",
-            bigint_with_extended_control: default_for_tests_80_bits_22: "_layout",
-            blake2_with_extended_control: default_for_tests_80_bits_20: "_layout",
-            keccak_special5: default_for_tests_80_bits_22: "_layout",
-            inits_and_teardowns: default_for_tests_80_bits_24: "_preprocessed_layout",
+            add_sub_lui_auipc_mop; 24 ; "_layout",
+            jump_branch_slt; 24 ; "_layout",
+            shift_binop; 24 ; "_layout",
+            mem_word_only; 24 ; "_layout",
+            mem_subword_only; 24 ; "_layout",
+            bigint_with_extended_control; 22 ; "_layout",
+            blake2_with_extended_control; 20 ; "_layout",
+            keccak_special5; 22 ; "_layout",
+            blake2_g_function; 22 ; "_layout",
+            inits_and_teardowns; 24 ; "_layout",
         }
     };
-}
-
-#[cfg(all(feature = "security_80", feature = "security_100"))]
-compile_error!("multiple security levels selected at the same time");
-
-pub const MERSENNE31QUARTIC_SIZE_LOG2: usize = 124;
-pub const POW_BITS_FOR_80_SECURITY_BITS: usize = 28;
-pub const POW_BITS_FOR_100_SECURITY_BITS: usize = 28;
-
-#[cfg(feature = "security_80")]
-pub const SECURITY_BITS: usize = 80;
-#[cfg(all(feature = "security_80", not(feature = "worst_case_config_generation")))]
-pub const MEMORY_DELEGATION_POW_BITS: usize =
-    pow_config_worst_constants::MEMORY_DELEGATION_POW_BITS_80;
-
-#[cfg(feature = "security_100")]
-pub const SECURITY_BITS: usize = 100;
-#[cfg(all(
-    feature = "security_100",
-    not(feature = "worst_case_config_generation")
-))]
-pub const MEMORY_DELEGATION_POW_BITS: usize =
-    pow_config_worst_constants::MEMORY_DELEGATION_POW_BITS_100;
-
-#[cfg(feature = "worst_case_config_generation")]
-pub const MEMORY_DELEGATION_POW_BITS: usize = 0;
-
-#[derive(Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize)]
-pub struct SizedProofSecurityConfig<const NUM_FOLDINGS: usize> {
-    pub lookup_pow_bits: u32,
-    pub quotient_alpha_pow_bits: u32,
-    pub quotient_z_pow_bits: u32,
-    pub deep_poly_alpha_pow_bits: u32,
-    #[serde(bound(deserialize = "[u32; NUM_FOLDINGS]: serde::Deserialize<'de>"))]
-    #[serde(bound(serialize = "[u32; NUM_FOLDINGS]: serde::Serialize"))]
-    pub foldings_pow_bits: [u32; NUM_FOLDINGS],
-    pub fri_queries_pow_bits: u32,
-    pub num_queries: usize,
-}
-
-// The file should be generated with tools/pow_config_generator
-#[cfg(not(feature = "worst_case_config_generation"))]
-#[allow(dead_code)]
-mod pow_config_worst_constants {
-    use super::SizedProofSecurityConfig;
-
-    include!("pow_config_worst_constants.rs");
-
-    pub(super) const MEMORY_DELEGATION_POW_BITS_80: usize =
-        POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_80_SECURITY_BITS;
-    pub(super) const MEMORY_DELEGATION_POW_BITS_100: usize =
-        POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_100_SECURITY_BITS;
-}
-
-#[cfg(feature = "worst_case_config_generation")]
-impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
-    pub const fn worst_case_config() -> Self {
-        SizedProofSecurityConfig {
-            lookup_pow_bits: 0,
-            quotient_alpha_pow_bits: 0,
-            quotient_z_pow_bits: 0,
-            deep_poly_alpha_pow_bits: 0,
-            foldings_pow_bits: [0; NUM_FOLDINGS],
-            fri_queries_pow_bits: 0,
-            num_queries: 50,
-        }
-    }
 }
 
 /// GKR sumcheck polynomial is cubic
@@ -107,18 +41,6 @@ pub const fn transcript_challenge_array_size(num_elements: usize, pow_bits: usiz
 #[inline(always)]
 pub const unsafe fn slice_from_ptr_range<'a, T>(range: core::ops::Range<*const T>) -> &'a [T] {
     unsafe { core::slice::from_raw_parts(range.start, range.end.offset_from(range.start) as usize) }
-}
-
-#[derive(Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize)]
-pub struct SizedProofPowChallenges<const NUM_FOLDINGS: usize> {
-    pub lookup_pow_challenge: u64,
-    pub quotient_alpha_pow_challenge: u64,
-    pub quotient_z_pow_challenge: u64,
-    pub deep_poly_alpha_pow_challenge: u64,
-    #[serde(bound(deserialize = "[u64; NUM_FOLDINGS]: serde::Deserialize<'de>"))]
-    #[serde(bound(serialize = "[u64; NUM_FOLDINGS]: serde::Serialize"))]
-    pub foldings_pow_challenges: [u64; NUM_FOLDINGS],
-    pub fri_queries_pow_challenge: u64,
 }
 
 #[cfg(any(test, feature = "replace_csr", feature = "proof_utils"))]
