@@ -332,17 +332,22 @@ if $SHOW_CYCLES && ! $DRY_RUN; then
     after+=("$n")
   done < <(read_cycles)
 
+  # Markdown table — column padding makes it readable in the terminal AND
+  # GitHub renders the alignment hints (`---:`) for right-aligned numeric cells.
+  hr_circuit='----------------------------------------'
+  hr_num='---------:'
   echo ""
-  echo "=== Cycle Count Summary ==="
-  printf "%-40s %10s %10s %10s\n" "Circuit" "Before" "After" "Delta"
-  printf "%-40s %10s %10s %10s\n" "-------" "------" "-----" "-----"
+  echo "### Cycle counts"
+  echo ""
+  printf "| %-40s | %10s | %10s | %10s |\n" "Circuit" "Before" "After" "Delta"
+  printf "| %s | %s | %s | %s |\n" "$hr_circuit" "$hr_num" "$hr_num" "$hr_num"
   total_before=0
   total_after=0
   for i in "${!CIRCUITS[@]}"; do
     b=${before[$i]}
     a=${after[$i]}
     if [[ "$b" == "MISSING" || "$a" == "MISSING" ]]; then
-      printf "%-40s %10s %10s %10s\n" "${CIRCUITS[$i]}" "$b" "$a" "n/a"
+      printf "| %-40s | %10s | %10s | %10s |\n" "${CIRCUITS[$i]}" "$b" "$a" "n/a"
       continue
     fi
     d=$((a - b))
@@ -350,12 +355,12 @@ if $SHOW_CYCLES && ! $DRY_RUN; then
     total_after=$((total_after + a))
     sign=""
     [[ $d -gt 0 ]] && sign="+"
-    printf "%-40s %10d %10d %10s\n" "${CIRCUITS[$i]}" "$b" "$a" "${sign}${d}"
+    printf "| %-40s | %10d | %10d | %10s |\n" "${CIRCUITS[$i]}" "$b" "$a" "${sign}${d}"
   done
   total_d=$((total_after - total_before))
   sign=""
   [[ $total_d -gt 0 ]] && sign="+"
-  printf "%-40s %10d %10d %10s\n" "TOTAL" "$total_before" "$total_after" "${sign}${total_d}"
+  printf "| %-40s | %10d | %10d | %10s |\n" "**TOTAL**" "$total_before" "$total_after" "${sign}${total_d}"
 fi
 
 echo ""
