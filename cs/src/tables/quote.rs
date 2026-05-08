@@ -47,7 +47,9 @@ impl quote::ToTokens for TableType {
             TableType::LoadByteRomRead => {
                 quote! { TableType::LoadByteRomRead }
             }
-            TableType::ExtendLoadedValue => quote! { TableType::ExtendLoadedValue },
+            TableType::BlakeGFunctionControlLookup => {
+                quote! { TableType::BlakeGFunctionControlLookup }
+            }
             TableType::AlignedRomRead => quote! { TableType::AlignedRomRead },
             TableType::ConditionalJmpBranchSlt => {
                 quote! { TableType::ConditionalJmpBranchSlt }

@@ -28,10 +28,12 @@ pub const BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER: u32 = super::super::NON_DE
 //     control_mask
 // }
 
+// ABI: feed extended state (aligned by 64) via x10, and input (aligned by 64) via x11. Use x12 for control
+
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
 pub unsafe fn blake_g_function_csr_trigger_delegation_reduced_rounds(
-    states_ptr: *mut u32,
+    extended_state_ptr: *mut u32,
     input_ptr: *const u32,
 ) {
     unsafe {
@@ -101,7 +103,7 @@ pub unsafe fn blake_g_function_csr_trigger_delegation_reduced_rounds(
             "csrrw x0, 0x7C8, x0",
             "csrrw x0, 0x7C8, x0",
 
-            in("x10") states_ptr.addr(),
+            in("x10") extended_state_ptr.addr(),
             in("x11") input_ptr.addr(),
             out("x12") _,
             imm = const BLAKE2S_G_FUNCTION_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER,
@@ -113,7 +115,7 @@ pub unsafe fn blake_g_function_csr_trigger_delegation_reduced_rounds(
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
 pub unsafe fn blake_g_function_csr_trigger_delegation_full_rounds(
-    states_ptr: *mut u32,
+    extended_state_ptr: *mut u32,
     input_ptr: *const u32,
 ) {
     unsafe {
@@ -210,7 +212,7 @@ pub unsafe fn blake_g_function_csr_trigger_delegation_full_rounds(
             "csrrw x0, 0x7C8, x0",
             "csrrw x0, 0x7C8, x0",
 
-            in("x10") states_ptr.addr(),
+            in("x10") extended_state_ptr.addr(),
             in("x11") input_ptr.addr(),
             out("x12") _,
             imm = const BLAKE2S_G_FUNCTION_FULL_ROUNDS_INITIAL_CONTROL_REGISTER,

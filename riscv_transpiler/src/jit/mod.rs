@@ -44,6 +44,11 @@ pub const MAX_TRACE_CHUNK_LEN: usize = const {
 
 pub const MAX_NUM_COUNTERS: usize = 16;
 
+const _: () = const {
+    assert!(MAX_NUM_COUNTERS >= CounterType::FormalEnd as u8 as usize);
+    ()
+};
+
 #[repr(u8)]
 pub enum CounterType {
     AddSubLui = 0,
@@ -55,6 +60,7 @@ pub enum CounterType {
     BlakeDelegation,
     BigintDelegation,
     KeccakDelegation,
+    BlakeGFunctionDelegation,
     FormalEnd, // must always be the last
 }
 
@@ -120,6 +126,9 @@ impl MachineState {
                 blake_calls: self.counters[CounterType::BlakeDelegation as u8 as usize] as usize,
                 bigint_calls: self.counters[CounterType::BigintDelegation as u8 as usize] as usize,
                 keccak_calls: self.counters[CounterType::KeccakDelegation as u8 as usize] as usize,
+                blake_g_function_calls: self.counters
+                    [CounterType::BlakeGFunctionDelegation as u8 as usize]
+                    as usize,
             },
         }
     }

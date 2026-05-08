@@ -1,8 +1,11 @@
-use common_constants::{bigint_with_control::*, blake2s_with_control::*, keccak_special5::*};
+use common_constants::{
+    bigint_with_control::*, blake2s_g_function::*, blake2s_with_control::*, keccak_special5::*,
+};
 use cs::definitions::TimestampScalar;
 use cs::oracle::*;
 use field::PrimeField;
 use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
+use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
 use riscv_transpiler::witness::*;
@@ -46,6 +49,14 @@ pub type KeccakDelegationOracle<'a> = DelegationOracle<
     NUM_KECCAK_SPECIAL5_INDIRECT_READS,
     KECCAK_SPECIAL5_X11_NUM_WRITES,
     KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS,
+>;
+pub type Blake2sGFunctionDelegationOracle<'a> = DelegationOracle<
+    'a,
+    Blake2sGFunctionAbiDescription,
+    NUM_BLAKE2S_G_FUNCTION_REGISTER_ACCESSES,
+    BLAKE2S_G_FUNCTION_X11_NUM_READS,
+    BLAKE2S_G_FUNCTION_X10_NUM_WRITES,
+    NUM_BLAKE2S_G_FUNCTION_VARIABLE_OFFSETS,
 >;
 
 impl<'a> DelegationOracleMarker<'a> for BigintDelegationOracle<'a> {}

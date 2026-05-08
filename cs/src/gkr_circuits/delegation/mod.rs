@@ -6,5 +6,6 @@ use crate::types::*;
 use field::PrimeField;
 
 pub mod bigint_with_control;
+pub mod blake2_g_function;
 pub mod blake2_round_with_extended_control;
 pub mod keccak_special5;

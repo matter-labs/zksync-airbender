@@ -1,7 +1,6 @@
 use std::mem::MaybeUninit;
 
 use super::*;
-use crate::vm::delegations::blake2_round_function::blake2_round_function_impl;
 use crate::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use blake2s_u32::state_with_extended_control_flags::*;
 use blake2s_u32::*;
@@ -9,50 +8,6 @@ use common_constants::*;
 
 // NOTE: in forward execution we read through x11 and dump witness, and then dump writes via x10,
 // so in the function below we will just read via x11 and x10
-
-#[inline(always)]
-fn read_words<R: RAM, const N: usize>(
-    offset: u32,
-    ram: &mut R,
-    timestamp: TimestampScalar,
-    witness: &mut [RegisterOrIndirectReadData; N],
-) -> [u32; N] {
-    unsafe {
-        let mut result = [MaybeUninit::uninit(); N];
-        let mut addr = offset;
-        for (dst, wit) in result.iter_mut().zip(witness.iter_mut()) {
-            let (read_ts, value) = ram.read_word(addr, timestamp);
-            wit.read_value = value;
-            wit.timestamp = TimestampData::from_scalar(read_ts);
-            addr += core::mem::size_of::<u32>() as u32;
-            dst.write(value);
-        }
-
-        result.map(|el| el.assume_init())
-    }
-}
-
-#[inline(always)]
-fn read_words_for_update<R: RAM, const N: usize>(
-    offset: u32,
-    ram: &mut R,
-    timestamp: TimestampScalar,
-    witness: &mut [RegisterOrIndirectReadWriteData; N],
-) -> [u32; N] {
-    unsafe {
-        let mut result = [MaybeUninit::uninit(); N];
-        let mut addr = offset;
-        for (dst, wit) in result.iter_mut().zip(witness.iter_mut()) {
-            let (read_ts, value) = ram.read_word(addr, timestamp);
-            wit.read_value = value;
-            wit.timestamp = TimestampData::from_scalar(read_ts);
-            addr += core::mem::size_of::<u32>() as u32;
-            dst.write(value);
-        }
-
-        result.map(|el| el.assume_init())
-    }
-}
 
 #[inline(never)]
 pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(

@@ -425,7 +425,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/shift_binop_preprocessed_layout_gkr.json",
+            "compiled_circuits/shift_binop_layout_gkr.json",
         );
     }
 
@@ -458,7 +458,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/shift_binop_preprocessed_layout_no_caches_gkr.json",
+            "compiled_circuits/shift_binop_layout_no_caches_gkr.json",
         );
     }
 }

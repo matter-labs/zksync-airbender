@@ -151,7 +151,7 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
             println!("MUL");
         }
         if is_mulhu.get_value(cs).unwrap_or(false) {
-            println!("MULHI");
+            println!("MULHU");
         }
         if is_divu.get_value(cs).unwrap_or(false) {
             println!("DIVU");
@@ -161,7 +161,7 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
         }
 
         let is_division_group_constraint = Term::<F>::from(is_divu) + Term::from(is_remu);
-        let is_multiplication_group_constraint = Term::<F>::from(is_mul) + Term::from(is_mulhu);
+        // let is_multiplication_group_constraint = Term::<F>::from(is_mul) + Term::from(is_mulhu);
 
         // Generic strategy:
         // - choose variables for (high, low) = q * divisor + remainder pattern
@@ -229,15 +229,8 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
 
         // we do not need exact ranges for carry witnesses, just some range checks that fit
         // worst case option, and do NOT overflow the field
-        assert!(F::CHAR_BITS > 16 + 13);
         let intermedaite_carry_witness: [Variable; 3] = std::array::from_fn(|i| {
             let var = cs.add_named_variable(&format!("Intermediate carry witness[{}]", i));
-            cs.enforce_lookup_tuple_for_fixed_table(
-                &[LookupInput::from(Constraint::empty() + Term::from(var))],
-                TableType::RangeCheck13,
-                false,
-            );
-
             var
         });
 
@@ -284,7 +277,6 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                 let mut remainder_for_enforcement =
                     <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
 
-                let div_by_zero = is_div_family.and(&rs2_is_zero);
                 // first we need to get extra/rd values, to then get u8 splits,
                 // and perform comparisons
 
@@ -380,9 +372,9 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                 // quickly decide on the byte splitting - we have all the values
                 {
                     let rs1_byte_0 = rs1_u32.truncate().truncate();
-                    let rs1_byte_1 = rs2_u32.shr(8).truncate().truncate();
+                    let rs1_byte_1 = rs1_u32.shr(8).truncate().truncate();
                     let rs1_byte_2 = rs1_u32.shr(16).truncate().truncate();
-                    let rs1_byte_3 = rs2_u32.shr(24).truncate().truncate();
+                    let rs1_byte_3 = rs1_u32.shr(24).truncate().truncate();
                     quotient_byte_0_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
                         &is_mul_family,
                         &rs1_byte_0,
@@ -457,10 +449,10 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                     );
                 }
 
-                let divisor_byte_0 = rs2_u32.truncate().truncate();
-                let divisor_byte_1 = rs2_u32.shr(8).truncate().truncate();
-                let divisor_byte_2 = rs2_u32.shr(16).truncate().truncate();
-                let divisor_byte_3 = rs2_u32.shr(24).truncate().truncate();
+                let divisor_byte_0_value = rs2_u32.truncate().truncate();
+                let divisor_byte_1_value = rs2_u32.shr(8).truncate().truncate();
+                let divisor_byte_2_value = rs2_u32.shr(16).truncate().truncate();
+                let divisor_byte_3_value = rs2_u32.shr(24).truncate().truncate();
 
                 // and finally we can compute intermediate witness values
                 {
@@ -469,18 +461,18 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                         <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
                     bits_0_to_16_carry.add_assign(
                         &quotient_byte_0_value
-                            .widening_product(&divisor_byte_0)
+                            .widening_product(&divisor_byte_0_value)
                             .widen(),
                     );
                     bits_0_to_16_carry.add_assign(
                         &quotient_byte_1_value
-                            .widening_product(&divisor_byte_0)
+                            .widening_product(&divisor_byte_0_value)
                             .widen()
                             .shl(8),
                     );
                     bits_0_to_16_carry.add_assign(
                         &quotient_byte_0_value
-                            .widening_product(&divisor_byte_1)
+                            .widening_product(&divisor_byte_1_value)
                             .widen()
                             .shl(8),
                     );
@@ -494,40 +486,40 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                         <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
                     bits_16_to_32_carry.add_assign(
                         &quotient_byte_1_value
-                            .widening_product(&divisor_byte_1)
+                            .widening_product(&divisor_byte_1_value)
                             .widen(),
                     );
                     bits_16_to_32_carry.add_assign(
                         &quotient_byte_2_value
-                            .widening_product(&divisor_byte_0)
+                            .widening_product(&divisor_byte_0_value)
                             .widen(),
                     );
                     bits_16_to_32_carry.add_assign(
                         &quotient_byte_0_value
-                            .widening_product(&divisor_byte_2)
+                            .widening_product(&divisor_byte_2_value)
                             .widen(),
                     );
                     bits_16_to_32_carry.add_assign(
                         &quotient_byte_3_value
-                            .widening_product(&divisor_byte_0)
+                            .widening_product(&divisor_byte_0_value)
                             .widen()
                             .shl(8),
                     );
                     bits_16_to_32_carry.add_assign(
                         &quotient_byte_0_value
-                            .widening_product(&divisor_byte_3)
+                            .widening_product(&divisor_byte_3_value)
                             .widen()
                             .shl(8),
                     );
                     bits_16_to_32_carry.add_assign(
                         &quotient_byte_2_value
-                            .widening_product(&divisor_byte_1)
+                            .widening_product(&divisor_byte_1_value)
                             .widen()
                             .shl(8),
                     );
                     bits_16_to_32_carry.add_assign(
                         &quotient_byte_1_value
-                            .widening_product(&divisor_byte_2)
+                            .widening_product(&divisor_byte_2_value)
                             .widen()
                             .shl(8),
                     );
@@ -542,28 +534,28 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                         <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
                     bits_32_to_48_carry.add_assign(
                         &quotient_byte_3_value
-                            .widening_product(&divisor_byte_1)
+                            .widening_product(&divisor_byte_1_value)
                             .widen(),
                     );
                     bits_32_to_48_carry.add_assign(
                         &quotient_byte_2_value
-                            .widening_product(&divisor_byte_2)
+                            .widening_product(&divisor_byte_2_value)
                             .widen(),
                     );
                     bits_32_to_48_carry.add_assign(
                         &quotient_byte_1_value
-                            .widening_product(&divisor_byte_3)
+                            .widening_product(&divisor_byte_3_value)
                             .widen(),
                     );
                     bits_32_to_48_carry.add_assign(
                         &quotient_byte_3_value
-                            .widening_product(&divisor_byte_2)
+                            .widening_product(&divisor_byte_2_value)
                             .widen()
                             .shl(8),
                     );
                     bits_32_to_48_carry.add_assign(
                         &quotient_byte_3_value
-                            .widening_product(&divisor_byte_2)
+                            .widening_product(&divisor_byte_2_value)
                             .widen()
                             .shl(8),
                     );
@@ -626,6 +618,18 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                 placer.assign_u16(intermedaite_carry_witness[2], &intermediate_carry_2_value);
             };
             cs.set_values(value_fn);
+        }
+
+        // range-check intermediate carries
+        {
+            assert!(F::CHAR_BITS > 16 + 13);
+            intermedaite_carry_witness.iter().for_each(|var| {
+                cs.enforce_lookup_tuple_for_fixed_table(
+                    &[LookupInput::from(Constraint::empty() + Term::from(*var))],
+                    TableType::RangeCheck13,
+                    false,
+                );
+            });
         }
 
         // now we push everything to the intermediate layer
@@ -793,6 +797,8 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
             ];
 
             for i in 0..4 {
+                // `i` marks u16-ish chunks over which we accumulate
+                // schoolbook multplication terms
                 println!("Computing enforcement on limb {}", i);
 
                 let mut constraint = Constraint::<F>::empty();
@@ -802,22 +808,32 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                     for k in 0..4 {
                         let d_byte = &divisor_bytes[k];
                         if j + k == 2 * i {
+                            // println!(" + {:?} * {:?}", q_byte.get_value(cs), d_byte.get_value(cs));
                             constraint += q_byte.clone() * d_byte.clone();
                         } else if j + k == 2 * i + 1 {
+                            // println!(
+                            //     " + 256 * {:?} * {:?}",
+                            //     q_byte.get_value(cs),
+                            //     d_byte.get_value(cs)
+                            // );
                             constraint += q_byte.clone() * d_byte.clone() * shift_left_8_bits_term;
                         }
                     }
                 }
 
                 if let Some(addend) = addends_u16_words[i] {
+                    // println!(" + {:?}", cs.get_value(addend));
                     constraint += Term::from(addend);
                 }
                 if let Some(carry_in) = carry_in_u16_words[i] {
+                    // println!(" + {:?}", cs.get_value(carry_in));
                     constraint += Term::from(carry_in);
                 }
                 if let Some(carry_out) = carry_out_u16_words[i] {
+                    // println!(" - 2^16 * {:?}", cs.get_value(carry_out));
                     constraint -= Term::from((shift_left_16_bits, carry_out));
                 }
+                // println!(" - {:?}", cs.get_value(target_u16_words[i]));
                 constraint -= Term::from(target_u16_words[i]);
                 cs.add_constraint(constraint);
             }
@@ -923,7 +939,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/unsigned_mul_div_preprocessed_layout_gkr.json",
+            "compiled_circuits/unsigned_mul_div_layout_gkr.json",
         );
     }
 
@@ -938,7 +954,7 @@ mod test {
         );
         serialize_to_file(
             &ssa_forms,
-            "compiled_circuits/unsigned_mul_div_preprocessed_ssa_gkr.json",
+            "compiled_circuits/unsigned_mul_div_ssa_gkr.json",
         );
     }
 
@@ -959,7 +975,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/unsigned_mul_div_preprocessed_layout_no_caches_gkr.json",
+            "compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json",
         );
     }
 }
