@@ -56,7 +56,18 @@ fn main() {
     };
     let runs = env_usize("ZKSYNC_SYNC_PROFILE_RUNS", 1);
     let replay_threads = env_usize("ZKSYNC_REPLAY_THREADS", default_replay_threads);
-    let host_allocators = env_usize("ZKSYNC_HOST_ALLOCATORS", 384);
+    let autocheck_num_gpus = if autocheck {
+        env_usize("ZKSYNC_NUM_GPUS", 1)
+    } else {
+        1
+    };
+    let autocheck_default_host_allocators = production_default_host_allocators(autocheck_num_gpus);
+    let default_host_allocators = if autocheck {
+        autocheck_default_host_allocators
+    } else {
+        384
+    };
+    let host_allocators = env_usize("ZKSYNC_HOST_ALLOCATORS", default_host_allocators);
     let trace_chunks_count_override = env_optional_usize("ZKSYNC_TRACE_CHUNKS");
     let use_dedicated_pipeline_threads = env_bool("ZKSYNC_DEDICATED_PIPELINE_THREADS");
     let replay_segment_cycle_limit = env_optional_usize("ZKSYNC_REPLAY_SEGMENT_CYCLES");
@@ -79,6 +90,8 @@ fn main() {
             runs,
             replay_threads,
             host_allocators,
+            autocheck_num_gpus,
+            autocheck_default_host_allocators,
             trace_chunks_count_override,
             use_dedicated_pipeline_threads,
             replay_segment_cycle_limit,
@@ -160,6 +173,8 @@ fn run_autocheck(
     runs: usize,
     max_replay_threads: usize,
     max_host_allocators: usize,
+    num_gpus: usize,
+    default_host_allocators: usize,
     max_trace_chunks_count_override: Option<usize>,
     use_dedicated_pipeline_threads: bool,
     max_replay_segment_cycle_limit: Option<usize>,
@@ -168,10 +183,19 @@ fn run_autocheck(
     nondeterminism: Vec<u32>,
 ) {
     let replay_threads_values = autocheck_replay_threads_values(max_replay_threads);
-    let host_allocators_values = autocheck_host_allocators_values(max_host_allocators);
+    assert!(
+        max_host_allocators >= default_host_allocators,
+        "ZKSYNC_HOST_ALLOCATORS must be at least {default_host_allocators} for ZKSYNC_NUM_GPUS={num_gpus}"
+    );
+    let host_allocators_values =
+        autocheck_host_allocators_values(max_host_allocators, default_host_allocators);
     let trace_chunks_values = autocheck_trace_chunks_values(max_trace_chunks_count_override);
     let replay_segment_values = autocheck_replay_segment_values(max_replay_segment_cycle_limit);
-    let default_config = default_profile_config(mode, use_dedicated_pipeline_threads);
+    let default_config = default_profile_config(
+        mode,
+        use_dedicated_pipeline_threads,
+        default_host_allocators,
+    );
     let all_configs = build_autocheck_configs(
         mode,
         use_dedicated_pipeline_threads,
@@ -188,7 +212,7 @@ fn run_autocheck(
     let configs_count = configs.len();
 
     eprintln!(
-        "starting autocheck: configs={configs_count}/{full_configs_count}, runs_per_config={runs}, replay_threads={replay_threads_values:?}, host_allocators={host_allocators_values:?}, trace_chunks={}, replay_segment_cycles={}",
+        "starting autocheck: configs={configs_count}/{full_configs_count}, runs_per_config={runs}, num_gpus={num_gpus}, default_host_allocators={default_host_allocators}, replay_threads={replay_threads_values:?}, host_allocators={host_allocators_values:?}, trace_chunks={}, replay_segment_cycles={}",
         format_option_list(&trace_chunks_values, "default"),
         format_option_list(&replay_segment_values, "off"),
     );
@@ -316,15 +340,15 @@ fn print_winner(rank: usize, result: &AutocheckResult) {
 fn print_default_result(default_result: &AutocheckResult, best_result: &AutocheckResult) {
     let config = default_result.config;
     let default_avg = millis(default_result.average_total_wall());
+    let default_best = millis(default_result.best_total_wall);
     let best_avg = millis(best_result.average_total_wall());
-    let delta_ms = default_avg - best_avg;
-    let delta_pct = if best_avg == 0.0 {
-        0.0
-    } else {
-        delta_ms * 100.0 / best_avg
-    };
+    let best_best = millis(best_result.best_total_wall);
+    let avg_delta_ms = default_avg - best_avg;
+    let avg_delta_pct = percent_delta(default_avg, best_avg);
+    let best_delta_ms = default_best - best_best;
+    let best_delta_pct = percent_delta(default_best, best_best);
     println!(
-        "default_config avg_total={default_avg:.3}ms best_total={best_avg:.3}ms delta_vs_best={delta_ms:+.3}ms delta_vs_best_pct={delta_pct:+.2}% runs={} mode={:?} replay_threads={} trace_chunks={} host_allocators={} dedicated_pipeline_threads={} replay_segment_cycles={}",
+        "default_config_timings avg_total={default_avg:.3}ms best_attempt_total={default_best:.3}ms runs={} mode={:?} replay_threads={} trace_chunks={} host_allocators={} dedicated_pipeline_threads={} replay_segment_cycles={}",
         default_result.runs,
         config.mode,
         config.replay_threads,
@@ -333,16 +357,30 @@ fn print_default_result(default_result: &AutocheckResult, best_result: &Autochec
         config.use_dedicated_pipeline_threads,
         format_option(config.replay_segment_cycle_limit, "off"),
     );
+    let config = best_result.config;
+    println!(
+        "best_config_timings avg_total={best_avg:.3}ms best_attempt_total={best_best:.3}ms runs={} mode={:?} replay_threads={} trace_chunks={} host_allocators={} dedicated_pipeline_threads={} replay_segment_cycles={}",
+        best_result.runs,
+        config.mode,
+        config.replay_threads,
+        format_option(config.trace_chunks_count_override, "default"),
+        config.host_allocators,
+        config.use_dedicated_pipeline_threads,
+        format_option(config.replay_segment_cycle_limit, "off"),
+    );
+    println!("delta_average_values total={avg_delta_ms:+.3}ms total_pct={avg_delta_pct:+.2}%");
+    println!("delta_best_values total={best_delta_ms:+.3}ms total_pct={best_delta_pct:+.2}%");
 }
 
 fn default_profile_config(
     mode: CpuPipelineMode,
     use_dedicated_pipeline_threads: bool,
+    default_host_allocators: usize,
 ) -> ProfileConfig {
     ProfileConfig {
         mode,
         replay_threads: 4,
-        host_allocators: 384,
+        host_allocators: default_host_allocators,
         trace_chunks_count_override: None,
         use_dedicated_pipeline_threads,
         replay_segment_cycle_limit: None,
@@ -484,18 +522,26 @@ fn autocheck_replay_threads_values(max_replay_threads: usize) -> Vec<usize> {
     }
 }
 
-fn autocheck_host_allocators_values(max_host_allocators: usize) -> Vec<usize> {
+fn autocheck_host_allocators_values(
+    max_host_allocators: usize,
+    default_host_allocators: usize,
+) -> Vec<usize> {
     assert_ne!(
         max_host_allocators, 0,
         "ZKSYNC_HOST_ALLOCATORS must be non-zero"
     );
-    let mut values = vec![384];
+    assert_ne!(
+        default_host_allocators, 0,
+        "default host allocators must be non-zero"
+    );
+    let mut values = vec![default_host_allocators];
     for value in [384, 512, 768, 1024, 1536, 2048, 3072] {
         if value <= max_host_allocators {
             values.push(value);
         }
     }
     values.push(max_host_allocators);
+    values.sort_unstable();
     dedup_preserving_order(values)
 }
 
@@ -560,6 +606,28 @@ fn format_option_list(values: &[Option<usize>], none: &str) -> String {
 
 fn millis(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
+}
+
+fn percent_delta(default_value: f64, best_value: f64) -> f64 {
+    if best_value == 0.0 {
+        0.0
+    } else {
+        (default_value - best_value) * 100.0 / best_value
+    }
+}
+
+fn production_default_host_allocators(num_gpus: usize) -> usize {
+    assert_ne!(num_gpus, 0, "ZKSYNC_NUM_GPUS must be non-zero");
+
+    // Match the real prover defaults: one concurrent job gets a fixed pool,
+    // then every GPU contributes the per-device host allocation reserve.
+    256usize
+        .checked_add(
+            num_gpus
+                .checked_mul(128)
+                .expect("ZKSYNC_NUM_GPUS should fit allocator formula"),
+        )
+        .expect("default host allocator count should fit usize")
 }
 
 fn init_tracing_subscriber() {
