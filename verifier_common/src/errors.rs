@@ -8,6 +8,7 @@ pub trait ErrorCreator {
     fn gkr_cache_relation_failed(layer: usize) -> Self::Error;
     fn gkr_grand_product_check_failed() -> Self::Error;
     fn gkr_lookup_identity_failed(lookup_type: usize) -> Self::Error;
+    fn gkr_virtual_setup_eval_mismatch(idx: usize) -> Self::Error;
     fn whir_sumcheck_failed(round: usize) -> Self::Error;
     fn whir_fold_agreement_failed(query: usize) -> Self::Error;
     fn whir_merkle_path_failed(query: usize) -> Self::Error;
@@ -21,6 +22,7 @@ pub enum VerificationError {
     GkrCacheRelationFailed { layer: usize },
     GkrGrandProductCheckFailed,
     GkrLookupIdentityFailed { lookup_type: usize },
+    GkrVirtualSetupEvalMismatch { idx: usize },
     WhirSumcheckFailed { round: usize },
     WhirFoldAgreementFailed { query: usize },
     WhirMerklePathFailed { query: usize },
@@ -51,6 +53,10 @@ impl ErrorCreator for DebugErrorCreator {
     #[inline(always)]
     fn gkr_lookup_identity_failed(lookup_type: usize) -> VerificationError {
         VerificationError::GkrLookupIdentityFailed { lookup_type }
+    }
+    #[inline(always)]
+    fn gkr_virtual_setup_eval_mismatch(idx: usize) -> VerificationError {
+        VerificationError::GkrVirtualSetupEvalMismatch { idx }
     }
     #[inline(always)]
     fn whir_sumcheck_failed(round: usize) -> VerificationError {
@@ -94,6 +100,10 @@ impl ErrorCreator for PanicErrorCreator {
     #[inline(always)]
     fn gkr_lookup_identity_failed(lookup_type: usize) -> Infallible {
         panic!("GKR lookup identity failed: type {lookup_type}")
+    }
+    #[inline(always)]
+    fn gkr_virtual_setup_eval_mismatch(idx: usize) -> Infallible {
+        panic!("GKR VirtualSetup poly eval mismatch at opening idx {idx}")
     }
     #[inline(always)]
     fn whir_sumcheck_failed(round: usize) -> Infallible {

@@ -1,14 +1,14 @@
 use proc_macro2::TokenStream;
-use quote::{quote, TokenStreamExt};
+use quote::quote;
 use std::collections::BTreeMap;
 
 use crate::field_wrapper::FieldWrapper;
 pub use crate::utils::{
     addr_to_idx, collect_extra_addrs_from_cached_relations, collect_sorted_unique_addrs,
-    compute_max_pow, transform_gkr_address, BATCHING_CHALLENGE_EXTRA, DIM_REDUCE_EVAL_POINTS,
-    STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS,
+    BATCHING_CHALLENGE_EXTRA, DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS,
 };
-use prover::cs::definitions::GKRAddress;
+use prover::common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
+use prover::cs::definitions::{GKRAddress, VirtualSetupPoly};
 use prover::cs::gkr_compiler::{
     GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation, OutputType,
 };
@@ -290,6 +290,219 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
         #eval_helpers
         #compute_claim
     }
+}
+
+fn build_virtual_setup_eval_checks<MW: FieldWrapper>(
+    layer_0_layout: &[GKRAddress],
+    trace_len_log_2: usize,
+    inits_and_teardowns_word_bits: Option<u32>,
+) -> (TokenStream, TokenStream) {
+    let mut helpers = TokenStream::new();
+    let mut calls = TokenStream::new();
+
+    let mut its_low_idx: Option<usize> = None;
+    let mut its_high_idx: Option<usize> = None;
+
+    for (idx, addr) in layer_0_layout.iter().enumerate() {
+        let GKRAddress::VirtualSetup(poly) = addr else {
+            continue;
+        };
+        match poly {
+            VirtualSetupPoly::RangeCheck16Bits => {
+                let (helper, call) = emit_range_check_eval_check::<MW>(
+                    "RangeCheck16Bits",
+                    "range_check_16bits",
+                    idx,
+                    16,
+                    trace_len_log_2,
+                );
+                helpers.extend(helper);
+                calls.extend(call);
+            }
+            VirtualSetupPoly::RangeCheckTimestamp => {
+                let (helper, call) = emit_range_check_eval_check::<MW>(
+                    "RangeCheckTimestamp",
+                    "range_check_timestamp",
+                    idx,
+                    TIMESTAMP_COLUMNS_NUM_BITS as usize,
+                    trace_len_log_2,
+                );
+                helpers.extend(helper);
+                calls.extend(call);
+            }
+            VirtualSetupPoly::InitsAndTeardownsLow => {
+                its_low_idx = Some(idx);
+            }
+            VirtualSetupPoly::InitsAndTeardownsHigh => {
+                its_high_idx = Some(idx);
+            }
+        }
+    }
+
+    if its_low_idx.is_some() || its_high_idx.is_some() {
+        let lo = its_low_idx.expect("InitsAndTeardownsLow expected when High is present");
+        let hi = its_high_idx.expect("InitsAndTeardownsHigh expected when Low is present");
+        let word_bits = inits_and_teardowns_word_bits.expect(
+            "compiled_circuit.memory_layout.inits_and_teardowns_word_bits must be Some \
+             for circuits emitting InitsAndTeardowns VirtualSetup polys",
+        ) as usize;
+        let (helper, call) =
+            emit_inits_and_teardowns_eval_check::<MW>(lo, hi, word_bits, trace_len_log_2);
+        helpers.extend(helper);
+        calls.extend(call);
+    }
+
+    (helpers, calls)
+}
+
+fn emit_range_check_eval_check<MW: FieldWrapper>(
+    poly_name: &str,
+    poly_snake: &str,
+    idx: usize,
+    bits: usize,
+    n: usize,
+) -> (TokenStream, TokenStream) {
+    let field_struct = MW::field_struct();
+    let quartic_struct = MW::quartic_struct();
+    let field_one = MW::field_one();
+    let quartic_zero = MW::quartic_zero();
+    let quartic_one = MW::quartic_one();
+
+    let mul_t_pre = MW::mul_assign_by_base(quote! { t }, quote! { prefactor });
+    let add_res_t = MW::add_assign(quote! { result }, quote! { t });
+    let dbl_pre = MW::double(quote! { prefactor });
+    let sub_t_p = MW::sub_assign(quote! { t }, quote! { *p });
+    let mul_res_t = MW::mul_assign(quote! { result }, quote! { t });
+
+    let summary = format!(
+        " Closed-form eval of VirtualSetup({}) at `state.prev_point` (lower {} bits free, top bits forced to zero).",
+        poly_name, bits,
+    );
+
+    let fn_name = quote::format_ident!("check_virtual_setup_{}", poly_snake);
+
+    let helper = quote! {
+        #[doc = #summary]
+        #[doc = " Source: prover/src/gkr/virtual_polys/range_check.rs."]
+        #[doc = " The `prev_claims` index is the position assigned to this VirtualSetup poly by the"]
+        #[doc = " canonical layer-0 layout (memory cols → witness cols → setup cols → virtual setups → others)."]
+        #[inline(always)]
+        fn #fn_name<E: ErrorCreator>(
+            state: &LayerState<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>,
+        ) -> Result<(), E::Error> {
+            unsafe {
+                let pt = state.prev_point.get_unchecked(..#n);
+                let mut result: #quartic_struct = #quartic_zero;
+                let mut prefactor: #field_struct = #field_one;
+                let mut k: usize = 0;
+                while k < #bits {
+                    let mut t = *pt.get_unchecked(#n - 1 - k);
+                    #mul_t_pre;
+                    #add_res_t;
+                    #dbl_pre;
+                    k += 1;
+                }
+                while k < #n {
+                    let mut t: #quartic_struct = #quartic_one;
+                    let p = pt.get_unchecked(#n - 1 - k);
+                    #sub_t_p;
+                    #mul_res_t;
+                    k += 1;
+                }
+                if result != *state.prev_claims.get_unchecked(#idx) {
+                    return Err(E::gkr_virtual_setup_eval_mismatch(#idx));
+                }
+            }
+            Ok(())
+        }
+    };
+
+    let call = quote! { #fn_name::<E>(&state)?; };
+
+    (helper, call)
+}
+
+fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
+    lo_idx: usize,
+    hi_idx: usize,
+    word_bits: usize,
+    n: usize,
+) -> (TokenStream, TokenStream) {
+    let field_struct = MW::field_struct();
+    let quartic_struct = MW::quartic_struct();
+    let field_one = MW::field_one();
+    let quartic_zero = MW::quartic_zero();
+
+    let mul_t_pre = MW::mul_assign_by_base(quote! { t }, quote! { prefactor });
+    let add_low_t = MW::add_assign(quote! { low_eval }, quote! { t });
+    let add_high_t = MW::add_assign(quote! { high_eval }, quote! { t });
+    let dbl_pre = MW::double(quote! { prefactor });
+
+    let take_count = 16 - word_bits;
+
+    let halves = format!(
+        " Low half = bits [{}..16) of the address (top {} bits zeroed); high half = the high {} address bits.",
+        word_bits, word_bits, n - take_count,
+    );
+
+    let helper = quote! {
+        #[doc = " Closed-form eval of VirtualSetup(InitsAndTeardownsLow/High) at `state.prev_point`."]
+        #[doc = #halves]
+        #[doc = " Source: prover/src/gkr/virtual_polys/init_and_teardown_base.rs."]
+        #[doc = " The `prev_claims` indices are positions assigned by the canonical layer-0 layout"]
+        #[doc = " (memory cols → witness cols → setup cols → virtual setups → others)`."]
+        #[inline(always)]
+        fn check_virtual_setup_inits_and_teardowns<E: ErrorCreator>(
+            state: &LayerState<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>,
+        ) -> Result<(), E::Error> {
+            unsafe {
+                let pt = state.prev_point.get_unchecked(..#n);
+
+                let mut low_eval: #quartic_struct = #quartic_zero;
+                {
+                    let mut prefactor: #field_struct = #field_one;
+                    let mut wb: usize = 0;
+                    while wb < #word_bits {
+                        #dbl_pre;
+                        wb += 1;
+                    }
+                    let mut k: usize = 0;
+                    while k < #take_count {
+                        let mut t = *pt.get_unchecked(#n - 1 - k);
+                        #mul_t_pre;
+                        #add_low_t;
+                        #dbl_pre;
+                        k += 1;
+                    }
+                }
+
+                let mut high_eval: #quartic_struct = #quartic_zero;
+                {
+                    let mut prefactor: #field_struct = #field_one;
+                    let mut k: usize = 0;
+                    while k < #n - #take_count {
+                        let mut t = *pt.get_unchecked(#n - 1 - #take_count - k);
+                        #mul_t_pre;
+                        #add_high_t;
+                        #dbl_pre;
+                        k += 1;
+                    }
+                }
+
+                if low_eval != *state.prev_claims.get_unchecked(#lo_idx) {
+                    return Err(E::gkr_virtual_setup_eval_mismatch(#lo_idx));
+                }
+                if high_eval != *state.prev_claims.get_unchecked(#hi_idx) {
+                    return Err(E::gkr_virtual_setup_eval_mismatch(#hi_idx));
+                }
+            }
+            Ok(())
+        }
+    };
+
+    let call = quote! { check_virtual_setup_inits_and_teardowns::<E>(&state)?; };
+
+    (helper, call)
 }
 
 fn generate_cache_relation_checks<MW: FieldWrapper>(
@@ -679,14 +892,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         .sum();
     let max_addrs = max_unique_addrs_standard.max(total_output_polys);
 
-    let max_pow = compiled_circuit
-        .layers
-        .iter()
-        .map(compute_max_pow)
-        .max()
-        .unwrap_or(0)
-        + 1;
-
     let max_evals = total_output_polys * (1usize << sumcheck_output_size_log_2);
 
     let num_memory_commits = (compiled_circuit.memory_layout.total_width > 0) as usize;
@@ -701,8 +906,14 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     let trace_len_log2 = compiled_circuit.trace_len.trailing_zeros() as usize;
 
     let address_high_bits_shift_val: u32 = if num_teardown_sets > 0 {
-        const WORD_BITS: u32 = 2;
-        (trace_len_log2 as u32) + WORD_BITS - 16
+        let word_bits = compiled_circuit
+            .memory_layout
+            .inits_and_teardowns_word_bits
+            .expect(
+                "compiled_circuit.memory_layout.inits_and_teardowns_word_bits must be Some \
+                 when teardown_sets is non-empty",
+            );
+        (trace_len_log2 as u32) + word_bits - 16
     } else {
         0
     };
@@ -744,21 +955,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             const #array_name: [usize; #num_indices] = [#( #input_sorted_indices ),*];
         });
     }
-
-    let mut static_data = TokenStream::new();
-
-    if !standard_sorted_addrs.is_empty() {
-        let sorted = &standard_sorted_addrs[0];
-        let mut addrs_stream = TokenStream::new();
-        addrs_stream.append_separated(sorted.iter().map(transform_gkr_address), quote! {,});
-        static_data.extend(quote! {
-            pub const LAYER_0_SORTED_ADDRS: &[GKRAddress] = &[#addrs_stream];
-        });
-    }
-
-    let base_layer_additional_openings: Vec<TokenStream> = vec![];
-    let mut base_openings_stream = TokenStream::new();
-    base_openings_stream.append_separated(base_layer_additional_openings.iter(), quote! {,});
 
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
@@ -918,6 +1114,133 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         });
     }
 
+    let num_memory_cols = compiled_circuit.memory_layout.total_width;
+    let num_witness_cols = compiled_circuit.witness_layout.total_width;
+    let num_setup_cols = compiled_circuit.generic_lookup_tables_width;
+
+    let (
+        virtual_setup_helpers,
+        virtual_setup_calls,
+        layer_0_layout,
+        layer_0_src_kind,
+        layer_0_src_pos,
+    ) = if standard_sorted_addrs.is_empty() {
+        for (_, group_addrs) in compiled_circuit.global_output_map.iter() {
+            for addr in group_addrs {
+                assert!(
+                    !matches!(addr, GKRAddress::VirtualSetup(_)),
+                    "circuit has zero standard GKR layers but VirtualSetup address {:?} \
+                     appears in global_output_map; closed-form eval check cannot be generated",
+                    addr
+                );
+            }
+        }
+        (
+            TokenStream::new(),
+            TokenStream::new(),
+            Vec::<GKRAddress>::new(),
+            Vec::<usize>::new(),
+            Vec::<usize>::new(),
+        )
+    } else {
+        use std::collections::BTreeSet;
+        let regular_set: BTreeSet<GKRAddress> = standard_sorted_addrs[0].iter().copied().collect();
+        let extra_addrs = collect_extra_addrs_from_cached_relations(
+            &compiled_circuit.layers[0],
+            &standard_sorted_addrs[0],
+        );
+        let mut merged: BTreeSet<GKRAddress> = regular_set;
+        for a in &extra_addrs {
+            merged.insert(*a);
+        }
+
+        let is_oracle_col = |addr: &GKRAddress| {
+            matches!(
+                addr,
+                GKRAddress::BaseLayerMemory(_)
+                    | GKRAddress::BaseLayerWitness(_)
+                    | GKRAddress::Setup(_)
+            )
+        };
+        let is_virtual = |addr: &GKRAddress| matches!(addr, GKRAddress::VirtualSetup(_));
+
+        let mut layout: Vec<GKRAddress> = Vec::with_capacity(merged.len());
+        for i in 0..num_memory_cols {
+            layout.push(GKRAddress::BaseLayerMemory(i));
+        }
+        for i in 0..num_witness_cols {
+            layout.push(GKRAddress::BaseLayerWitness(i));
+        }
+        for i in 0..num_setup_cols {
+            layout.push(GKRAddress::Setup(i));
+        }
+        for addr in merged.iter() {
+            if is_virtual(addr) {
+                layout.push(*addr);
+            }
+        }
+        for addr in merged.iter() {
+            if !is_oracle_col(addr) && !is_virtual(addr) {
+                layout.push(*addr);
+            }
+        }
+
+        for i in 0..num_memory_cols {
+            assert_eq!(layout[i], GKRAddress::BaseLayerMemory(i));
+        }
+        for j in 0..num_witness_cols {
+            assert_eq!(layout[num_memory_cols + j], GKRAddress::BaseLayerWitness(j));
+        }
+        for k in 0..num_setup_cols {
+            assert_eq!(
+                layout[num_memory_cols + num_witness_cols + k],
+                GKRAddress::Setup(k)
+            );
+        }
+        let total_oracle_cols = num_memory_cols + num_witness_cols + num_setup_cols;
+        assert!(
+            layout.len() >= total_oracle_cols,
+            "layer-0 layout has {} entries, less than TOTAL_ORACLE_COLS = {}",
+            layout.len(),
+            total_oracle_cols
+        );
+        for addr in standard_sorted_addrs[0].iter().chain(extra_addrs.iter()) {
+            assert!(
+                layout.iter().any(|a| a == addr),
+                "layer-0 layout missing address {:?}",
+                addr
+            );
+        }
+
+        let (helpers, calls) = build_virtual_setup_eval_checks::<MW>(
+            &layout,
+            trace_len_log_2,
+            compiled_circuit.memory_layout.inits_and_teardowns_word_bits,
+        );
+
+        let mut src_kind: Vec<usize> = Vec::with_capacity(layout.len());
+        let mut src_pos: Vec<usize> = Vec::with_capacity(layout.len());
+        for addr in &layout {
+            if let Some(p) = standard_sorted_addrs[0].iter().position(|a| a == addr) {
+                src_kind.push(0);
+                src_pos.push(p);
+            } else if let Some(p) = extra_addrs.iter().position(|a| a == addr) {
+                src_kind.push(1);
+                src_pos.push(p);
+            } else {
+                panic!(
+                    "layer-0 layout entry {:?} is neither a gate input nor a cache extra",
+                    addr
+                );
+            }
+        }
+
+        (helpers, calls, layout, src_kind, src_pos)
+    };
+    layer_functions.extend(virtual_setup_helpers);
+
+    let layer_0_n_extra: usize = layer_0_src_kind.iter().filter(|&&k| k == 1).count();
+
     for config_idx in (0..num_standard_layers).rev() {
         let num_sumcheck_rounds = trace_len_log_2;
         let num_dedup_addrs = standard_sorted_addrs[config_idx].len();
@@ -925,6 +1248,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         let compute_claim_fn = quote::format_ident!("layer_{}_compute_claim", config_idx);
         let final_step_fn = quote::format_ident!("layer_{}_final_step_accumulator", config_idx);
         let num_regular_rounds = num_sumcheck_rounds - 1;
+
+        let is_layer_0 = config_idx == 0;
 
         let extra_addrs = collect_extra_addrs_from_cached_relations(
             &compiled_circuit.layers[config_idx],
@@ -942,83 +1267,156 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             addrs.into_iter().collect()
         };
 
-        let fold_and_extras_code = if num_extra > 0 {
-            let sub = MW::sub_assign(quote! { diff }, quote! { f0 });
-            let mul_r = MW::mul_assign(quote! { diff }, quote! { last_r });
-            let add_f0 = MW::add_assign(quote! { diff }, quote! { f0 });
+        let sub = MW::sub_assign(quote! { diff }, quote! { f0 });
+        let mul_r = MW::mul_assign(quote! { diff }, quote! { last_r });
+        let add_f0 = MW::add_assign(quote! { diff }, quote! { f0 });
 
-            let mut extra_positions: Vec<(usize, usize)> = Vec::new();
-            let mut extra_idx = 0usize;
-            for (merged_idx, addr) in target_addrs.iter().enumerate() {
-                if !regular_set.contains(addr) {
-                    extra_positions.push((merged_idx, extra_idx));
-                    extra_idx += 1;
-                }
-            }
-            let num_merged = target_addrs.len();
-            let num_extra_pos = extra_positions.len();
-            let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
-            let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
+        let (fold_and_extras_code, cache_check_code, virtual_setup_calls_emit) = if is_layer_0 {
+            let n_total = layer_0_layout.len();
+            let n_extra = layer_0_n_extra;
+            let layout_kind: Vec<usize> = layer_0_src_kind.clone();
+            let layout_pos: Vec<usize> = layer_0_src_pos.clone();
 
-            quote! {
-                const EXTRA_COMMIT_BUF: usize = {
-                    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #num_extra * EXT_DEGREE;
-                    total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
-                };
-                let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
-                let extra_data_words = #num_extra * EXT_DEGREE;
-                {
-                    let mut i = 0;
-                    while i < extra_data_words {
-                        extra_buf.data_write(i, read_reduced_field_el::<I>());
-                        i += 1;
+            let read_extras = if n_extra > 0 {
+                quote! {
+                    const EXTRA_COMMIT_BUF: usize = {
+                        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #n_extra * EXT_DEGREE;
+                        total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
+                    };
+                    let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
+                    let extra_data_words = #n_extra * EXT_DEGREE;
+                    {
+                        let mut i = 0;
+                        while i < extra_data_words {
+                            extra_buf.data_write(i, read_reduced_field_el::<I>());
+                            i += 1;
+                        }
                     }
-                }
-                let mut extra_evals = LazyVec::<#quartic_struct, #num_extra>::new();
-                {
-                    let slice: &[#quartic_struct] = unsafe { extra_buf.data_as(#num_extra) };
-                    for el in slice {
-                        extra_evals.push(*el);
+                    let mut extra_evals = LazyVec::<#quartic_struct, #n_extra>::new();
+                    {
+                        let slice: &[#quartic_struct] = unsafe { extra_buf.data_as(#n_extra) };
+                        for el in slice {
+                            extra_evals.push(*el);
+                        }
                     }
+                    ts.commit(&mut extra_buf, extra_data_words);
                 }
-                ts.commit(&mut extra_buf, extra_data_words);
+            } else {
+                quote! {
+                    let extra_evals = LazyVec::<#quartic_struct, 0usize>::new();
+                }
+            };
+
+            let fold = quote! {
+                #read_extras
                 let final_step_evals: &[[#quartic_struct; 2]] = unsafe { eval_buf.data_as(#num_dedup_addrs) };
                 state.prev_claims.clear();
                 {
-                    const EXTRA_POS: [(usize, usize); #num_extra_pos] = [
-                        #( (#ep_merged, #ep_extra), )*
-                    ];
-                    let mut regular_idx: usize = 0;
-                    let mut ep_idx: usize = 0;
-                    let mut merged_idx: usize = 0;
-                    while merged_idx < #num_merged {
-                        if ep_idx < #num_extra_pos && EXTRA_POS[ep_idx].0 == merged_idx {
-                            state.prev_claims.push(*extra_evals.get(EXTRA_POS[ep_idx].1));
-                            ep_idx += 1;
-                        } else {
-                            let ev = final_step_evals.get_unchecked(regular_idx);
+                    const LAYOUT_KIND: [usize; #n_total] = [#( #layout_kind ),*];
+                    const LAYOUT_POS:  [usize; #n_total] = [#( #layout_pos  ),*];
+                    let mut i = 0usize;
+                    while i < #n_total {
+                        let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
+                        let pos = unsafe { *LAYOUT_POS.get_unchecked(i)  };
+                        let claim: #quartic_struct = if kind == 0usize {
+                            let ev = unsafe { final_step_evals.get_unchecked(pos) };
                             let f0 = ev[0];
                             let mut diff = ev[1];
                             #sub; #mul_r; #add_f0;
-                            state.prev_claims.push(diff);
-                            regular_idx += 1;
-                        }
-                        merged_idx += 1;
+                            diff
+                        } else {
+                            *extra_evals.get(pos)
+                        };
+                        state.prev_claims.push(claim);
+                        i += 1;
                     }
                 }
-            }
-        } else {
-            quote! {
-                fold_standard_claims::<#num_dedup_addrs, GKR_ADDRS, GKR_EVAL_BUF>(
-                    &eval_buf, last_r, &mut state.prev_claims);
-            }
-        };
+            };
 
-        let cache_check_code = generate_cache_relation_checks::<MW>(
-            &compiled_circuit.layers[config_idx],
-            &target_addrs,
-            config_idx,
-        );
+            let cache_check = generate_cache_relation_checks::<MW>(
+                &compiled_circuit.layers[0],
+                &layer_0_layout,
+                0,
+            );
+
+            (fold, cache_check, virtual_setup_calls.clone())
+        } else {
+            let fold = if num_extra > 0 {
+                let mut extra_positions: Vec<(usize, usize)> = Vec::new();
+                let mut extra_idx = 0usize;
+                for (merged_idx, addr) in target_addrs.iter().enumerate() {
+                    if !regular_set.contains(addr) {
+                        extra_positions.push((merged_idx, extra_idx));
+                        extra_idx += 1;
+                    }
+                }
+                let num_merged = target_addrs.len();
+                let num_extra_pos = extra_positions.len();
+                let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
+                let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
+
+                quote! {
+                    const EXTRA_COMMIT_BUF: usize = {
+                        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #num_extra * EXT_DEGREE;
+                        total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
+                    };
+                    let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
+                    let extra_data_words = #num_extra * EXT_DEGREE;
+                    {
+                        let mut i = 0;
+                        while i < extra_data_words {
+                            extra_buf.data_write(i, read_reduced_field_el::<I>());
+                            i += 1;
+                        }
+                    }
+                    let mut extra_evals = LazyVec::<#quartic_struct, #num_extra>::new();
+                    {
+                        let slice: &[#quartic_struct] = unsafe { extra_buf.data_as(#num_extra) };
+                        for el in slice {
+                            extra_evals.push(*el);
+                        }
+                    }
+                    ts.commit(&mut extra_buf, extra_data_words);
+                    let final_step_evals: &[[#quartic_struct; 2]] = unsafe { eval_buf.data_as(#num_dedup_addrs) };
+                    state.prev_claims.clear();
+                    {
+                        const EXTRA_POS: [(usize, usize); #num_extra_pos] = [
+                            #( (#ep_merged, #ep_extra), )*
+                        ];
+                        let mut regular_idx: usize = 0;
+                        let mut ep_idx: usize = 0;
+                        let mut merged_idx: usize = 0;
+                        while merged_idx < #num_merged {
+                            if ep_idx < #num_extra_pos && EXTRA_POS[ep_idx].0 == merged_idx {
+                                state.prev_claims.push(*extra_evals.get(EXTRA_POS[ep_idx].1));
+                                ep_idx += 1;
+                            } else {
+                                let ev = final_step_evals.get_unchecked(regular_idx);
+                                let f0 = ev[0];
+                                let mut diff = ev[1];
+                                #sub; #mul_r; #add_f0;
+                                state.prev_claims.push(diff);
+                                regular_idx += 1;
+                            }
+                            merged_idx += 1;
+                        }
+                    }
+                }
+            } else {
+                quote! {
+                    fold_standard_claims::<#num_dedup_addrs, GKR_ADDRS, GKR_EVAL_BUF>(
+                        &eval_buf, last_r, &mut state.prev_claims);
+                }
+            };
+
+            let cache_check = generate_cache_relation_checks::<MW>(
+                &compiled_circuit.layers[config_idx],
+                &target_addrs,
+                config_idx,
+            );
+
+            (fold, cache_check, TokenStream::new())
+        };
 
         let label = &format!("GKR MAIN LAYER {config_idx}");
         main_body.extend(quote! {
@@ -1057,6 +1455,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 fc_len += 1;
                 #fold_and_extras_code
                 #cache_check_code
+                #virtual_setup_calls_emit
                 state.batching_challenge = next_batching;
                 state.prev_point_len = fc_len;
 
@@ -1151,12 +1550,10 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
-            base_layer_addrs: LAYER_0_SORTED_ADDRS,
             evaluation_point: state.prev_point,
             evaluation_point_len: state.prev_point_len,
             permutation_read_product,
             permutation_write_product,
-            additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
             whir_batching_challenge: state.batching_challenge,
         })
     });
@@ -1236,59 +1633,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     let oracle_num_cols: Vec<usize> = oracles.iter().map(|(_, o)| o.num_columns).collect();
     let num_oracles = oracles.len();
 
-    // Mapping from WHIR initial-round column index (in [memory, witness, setup] order) to
-    // the index in GKR's base_layer_claims (which is sorted per target_addrs of layer 0).
-    let initial_whir_claim_indices: Vec<usize> = {
-        let layer_0_target_addrs: Vec<GKRAddress> = {
-            let regular: std::collections::BTreeSet<GKRAddress> =
-                standard_sorted_addrs[0].iter().copied().collect();
-            let extras = collect_extra_addrs_from_cached_relations(
-                &compiled_circuit.layers[0],
-                &standard_sorted_addrs[0],
-            );
-            let mut all = regular;
-            for a in extras {
-                all.insert(a);
-            }
-            all.into_iter().collect()
-        };
-        let position = |addr: &GKRAddress| -> usize {
-            layer_0_target_addrs
-                .iter()
-                .position(|a| a == addr)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "WHIR base-oracle address {:?} not found in layer 0 target_addrs; \
-                         circuits with unopened base oracles are not supported yet",
-                        addr
-                    )
-                })
-        };
-        let mut indices = Vec::with_capacity(total_oracle_cols);
-        for i in 0..oracles
-            .get(&OracleType::Memory)
-            .map(|el| el.num_columns)
-            .unwrap_or(0)
-        {
-            indices.push(position(&GKRAddress::BaseLayerMemory(i)));
-        }
-        for i in 0..oracles
-            .get(&OracleType::Witness)
-            .map(|el| el.num_columns)
-            .unwrap_or(0)
-        {
-            indices.push(position(&GKRAddress::BaseLayerWitness(i)));
-        }
-        for i in 0..oracles
-            .get(&OracleType::Setup)
-            .map(|el| el.num_columns)
-            .unwrap_or(0)
-        {
-            indices.push(position(&GKRAddress::Setup(i)));
-        }
-        indices
-    };
-
     let num_intermediate_oracles = whir_rounds - 1;
     let mut whir_oracle_depths = Vec::with_capacity(num_intermediate_oracles);
     {
@@ -1303,7 +1647,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     }
 
     let constants = quote! {
-        use ::verifier_common::cs::definitions::{GKRAddress, VirtualSetupPoly};
         use ::verifier_common::blake2s_u32::{
             BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS,
         };
@@ -1338,7 +1681,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             if rem == 0 { 0 } else { BLAKE2S_BLOCK_SIZE_U32_WORDS - rem }
         };
 
-        pub const GKR_MAX_POW: usize = #max_pow;
         pub const GKR_EVAL_BUF: usize = {
             let dim_reducing = #max_addrs * DIM_REDUCE_EVAL_POINTS * EXT_DEGREE;
             let standard = #max_addrs * STANDARD_EVAL_POINTS * EXT_DEGREE;
@@ -1358,8 +1700,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         };
         pub const DRAW_BUF_CAPACITY: usize =
             (#num_challenges * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-        #static_data
-        pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[#base_openings_stream];
         pub const WHIR_FOLD_STEPS: [usize; #whir_rounds] = [#(#whir_fold_steps),*];
         pub const WHIR_QUERIES: [usize; #whir_rounds] = [#(#whir_queries),*];
         pub const WHIR_POW_BITS: [u32; #whir_rounds] = [#(#whir_pow_bits),*];
@@ -1371,7 +1711,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         pub const TOTAL_ORACLE_COLS: usize = #total_oracle_cols;
         pub const WHIR_ORACLE_DEPTHS: [usize; #num_intermediate_oracles] = [#(#whir_oracle_depths),*];
         pub const WHIR_CAP_WORDS: usize = #whir_cap_words;
-        pub const INITIAL_WHIR_CLAIM_INDICES: [usize; #total_oracle_cols] = [#(#initial_whir_claim_indices),*];
 
         #field_use_stmts
 
@@ -1385,7 +1724,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             NUM_SETUP_COMMITS,
             PADDING_WORDS,
         >;
-        pub type ConcreteGKRVerifierOutput = ::verifier_common::GKRVerifierOutput<'static, #quartic_struct, GKR_ROUNDS, GKR_ADDRS>;
+        pub type ConcreteGKRVerifierOutput = ::verifier_common::GKRVerifierOutput<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>;
         pub type ConcreteVerifierOutput = ::verifier_common::VerifierOutput<#quartic_struct, INIT_AND_TEARDOWN_SETS, CAP_SIZE, NUM_MEMORY_COMMITS, NUM_SETUP_COMMITS>;
 
     };

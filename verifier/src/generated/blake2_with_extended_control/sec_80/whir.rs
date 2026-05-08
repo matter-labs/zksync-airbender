@@ -46,8 +46,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         {
             let mut col_idx = 0;
             while col_idx < TOTAL_ORACLE_COLS {
-                let claim_idx = *INITIAL_WHIR_CLAIM_INDICES.get_unchecked(col_idx);
-                let eval: BabyBearExt4 = *base_layer_claims.get_unchecked(claim_idx);
+                let eval: BabyBearExt4 = *base_layer_claims.get_unchecked(col_idx);
                 let mut term = *gamma_powers.get_unchecked(col_idx);
                 field_ops::mul_assign(&mut term, &eval);
                 field_ops::add_assign(&mut claim, &term);

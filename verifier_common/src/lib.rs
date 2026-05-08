@@ -160,7 +160,7 @@ pub trait ConcreteVerifierImpl<
             PADDING_WORDS,
         >,
         transcript_state: &mut ::transcript::TranscriptState,
-    ) -> Result<GKRVerifierOutput<'static, EE, ROUNDS, ADDRS>, E::Error>;
+    ) -> Result<GKRVerifierOutput<EE, ROUNDS, ADDRS>, E::Error>;
     fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
         initial_transcript: &InitialGKRTranscript<
             EE,
@@ -227,7 +227,7 @@ pub fn verify_impl<
     >(external_challenges);
     let gkr_output =
         V::verify_gkr::<I, E>(external_challenges, &initial_transcript_values, &mut ts)?;
-    let _ = V::verify_whir::<I, E>(
+    V::verify_whir::<I, E>(
         &initial_transcript_values,
         &mut ts,
         gkr_output.whir_batching_challenge,
