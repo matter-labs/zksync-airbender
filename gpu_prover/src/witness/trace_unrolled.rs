@@ -1,14 +1,21 @@
 use super::option::u8::Option;
 use crate::primitives::context::DeviceAllocation;
+use crate::primitives::static_host::StaticPinnedBox;
 use crate::witness::trace::ChunkedTraceHolder;
+use common_constants::TimestampScalar;
 use cs::gkr_circuits::ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData;
-// TODO(init-teardown-port): `LazyInitAndTeardown` removed from `prover::definitions` upstream
-// (137e531e). Restore when the GPU inits-and-teardowns witness path is ported.
-// use prover::definitions::LazyInitAndTeardown;
 use riscv_transpiler::witness::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,
 };
+use std::sync::Arc;
+
+/// Page size for the inits-and-teardowns trace transfer, in `log2(words)`.
+///
+/// Each touched page ships `1 << PAGE_SIZE_LOG2` `u32` values plus
+/// `1 << PAGE_SIZE_LOG2` `u64` timestamps. Producer / kernel both rely on
+/// this value as the contract.
+pub const PAGE_SIZE_LOG2: u32 = 10;
 
 #[repr(C)]
 #[derive(Copy, Clone, Default, Debug)]
@@ -123,30 +130,39 @@ pub(crate) struct UnrolledUnifiedOracle {
     pub decoder_table: *const ExecutorFamilyDecoderData,
 }
 
-// TODO(init-teardown-port): disabled — the `LazyInitAndTeardown` struct was removed
-// upstream when the CPU init/teardown witness flow was reshaped. Restore these types
-// (and their call sites, which are also commented out) when porting the GPU path.
-// pub struct ShuffleRamInitsAndTeardownsDevice {
-//     pub inits_and_teardowns: DeviceAllocation<LazyInitAndTeardown>,
-// }
-//
-// #[repr(C)]
-// #[derive(Default)]
-// pub(crate) struct ShuffleRamInitsAndTeardownsRaw {
-//     pub count: u32,
-//     pub inits_and_teardowns: *const LazyInitAndTeardown,
-// }
-//
-// impl From<&ShuffleRamInitsAndTeardownsDevice> for ShuffleRamInitsAndTeardownsRaw {
-//     fn from(value: &ShuffleRamInitsAndTeardownsDevice) -> Self {
-//         Self {
-//             count: value.inits_and_teardowns.len() as u32,
-//             inits_and_teardowns: value.inits_and_teardowns.as_ptr(),
-//         }
-//     }
-// }
-//
-// pub(crate) type ShuffleRamInitsAndTeardownsHost<A> = ChunkedTraceHolder<LazyInitAndTeardown, A>;
+pub struct InitsAndTeardownsTraceDevice {
+    pub page_indices: DeviceAllocation<u32>,
+    pub values_packed: DeviceAllocation<u32>,
+    pub timestamps_packed: DeviceAllocation<TimestampScalar>,
+}
+
+#[repr(C)]
+pub(crate) struct InitsAndTeardownsTraceRaw {
+    pub num_pages: u32,
+    pub page_indices: *const u32,
+    pub values_packed: *const u32,
+    pub timestamps_packed: *const TimestampScalar,
+}
+
+impl From<&InitsAndTeardownsTraceDevice> for InitsAndTeardownsTraceRaw {
+    fn from(value: &InitsAndTeardownsTraceDevice) -> Self {
+        let num_pages = value.page_indices.len();
+        debug_assert_eq!(value.values_packed.len(), num_pages << PAGE_SIZE_LOG2);
+        debug_assert_eq!(value.timestamps_packed.len(), num_pages << PAGE_SIZE_LOG2);
+        Self {
+            num_pages: num_pages as u32,
+            page_indices: value.page_indices.as_ptr(),
+            values_packed: value.values_packed.as_ptr(),
+            timestamps_packed: value.timestamps_packed.as_ptr(),
+        }
+    }
+}
+
+pub(crate) struct InitsAndTeardownsTraceHost {
+    pub page_indices: Arc<StaticPinnedBox<u32>>,
+    pub values_packed: Arc<StaticPinnedBox<u32>>,
+    pub timestamps_packed: Arc<StaticPinnedBox<TimestampScalar>>,
+}
 
 // pub(crate) fn get_aux_arguments_boundary_values(
 //     compiled_circuit: &CompiledCircuitArtifact<BF>,
