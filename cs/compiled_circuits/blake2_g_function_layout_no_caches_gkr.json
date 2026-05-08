@@ -6479,7 +6479,8 @@
       45
     ],
     "teardown_sets": [],
-    "total_width": 55
+    "total_width": 55,
+    "inits_and_teardowns_word_bits": null
   },
   "witness_layout": {
     "multiplicities_columns_for_range_check_16": {

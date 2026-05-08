@@ -48,11 +48,11 @@ pub const GKR_EVALS_COMMIT_BUF: usize = {
 };
 pub const DRAW_BUF_CAPACITY: usize =
     (5usize * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-pub const WHIR_FOLD_STEPS: [usize; 6usize] = [1usize, 4usize, 4usize, 4usize, 4usize, 4usize];
-pub const WHIR_QUERIES: [usize; 6usize] = [68usize, 23usize, 12usize, 10usize, 10usize, 10usize];
-pub const WHIR_POW_BITS: [u32; 6usize] = [24u32, 24u32, 24u32, 24u32, 24u32, 24u32];
-pub const MAX_POW_ENTRIES: usize = 128usize;
-pub const FINAL_MONOMIALS_LEN: usize = 8usize;
+pub const WHIR_FOLD_STEPS: [usize; 6usize] = [1usize, 5usize, 5usize, 5usize, 4usize, 3usize];
+pub const WHIR_QUERIES: [usize; 6usize] = [63usize, 17usize, 8usize, 5usize, 3usize, 3usize];
+pub const WHIR_POW_BITS: [u32; 6usize] = [28u32, 20u32, 17u32, 10u32, 23u32, 23u32];
+pub const MAX_POW_ENTRIES: usize = 101usize;
+pub const FINAL_MONOMIALS_LEN: usize = 2usize;
 pub const NUM_ORACLES: usize = 1usize;
 pub const ORACLE_NUM_COLS: [usize; 1usize] = [64usize];
 pub const ORACLE_DEPTHS: [usize; 1usize] = [20usize];
