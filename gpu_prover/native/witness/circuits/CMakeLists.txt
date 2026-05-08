@@ -6,6 +6,7 @@ target_sources(gpu_prover_native PRIVATE
         jump_branch_slt.cu
         load_store_subword_only.cu
         load_store_word_only.cu
+        mul_div_unsigned.cu
         shift_binary_csr.cu
         template_delegation.cuh
         template_unrolled_memory.cuh
