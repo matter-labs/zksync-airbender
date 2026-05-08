@@ -8,7 +8,7 @@ compile_error!(
 use gpu_prover::execution::cpu_pipeline_model::{
     CpuPipelineMode, CpuPipelineModel, CpuPipelineModelConfig, CpuPipelineModelInput,
 };
-use gpu_prover::execution::prover::ExecutionKind;
+use gpu_prover::execution::prover::{ExecutionKind, ExecutionProverConfiguration};
 use gpu_prover::machine_type::MachineType;
 use setups::read_binary;
 use std::cmp::Reverse;
@@ -35,6 +35,8 @@ struct AutocheckResult {
     best_total_wall: Duration,
 }
 
+const AUTOCHECK_WINNERS_TO_PRINT: usize = 20;
+
 fn main() {
     init_tracing_subscriber();
 
@@ -47,26 +49,19 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("/home/popzxc/workspace/airbender/24232546_witness.bin"));
     let autocheck = env_bool("ZKSYNC_AUTOCHECK");
+    let production_default = ExecutionProverConfiguration::default();
+    let production_default_replay_threads = production_default.replay_worker_threads_count;
     let default_replay_threads = if autocheck {
         std::thread::available_parallelism()
             .map(|value| value.get())
-            .unwrap_or(4)
+            .unwrap_or(production_default_replay_threads)
     } else {
-        4
+        production_default_replay_threads
     };
     let runs = env_usize("ZKSYNC_SYNC_PROFILE_RUNS", 1);
     let replay_threads = env_usize("ZKSYNC_REPLAY_THREADS", default_replay_threads);
-    let autocheck_num_gpus = if autocheck {
-        env_usize("ZKSYNC_NUM_GPUS", 1)
-    } else {
-        1
-    };
-    let autocheck_default_host_allocators = production_default_host_allocators(autocheck_num_gpus);
-    let default_host_allocators = if autocheck {
-        autocheck_default_host_allocators
-    } else {
-        384
-    };
+    let num_gpus = env_optional_usize("ZKSYNC_NUM_GPUS").unwrap_or_else(detected_cuda_device_count);
+    let default_host_allocators = production_default_host_allocators(num_gpus);
     let host_allocators = env_usize("ZKSYNC_HOST_ALLOCATORS", default_host_allocators);
     let trace_chunks_count_override = env_optional_usize("ZKSYNC_TRACE_CHUNKS");
     let use_dedicated_pipeline_threads = env_bool("ZKSYNC_DEDICATED_PIPELINE_THREADS");
@@ -89,9 +84,10 @@ fn main() {
             mode,
             runs,
             replay_threads,
+            production_default_replay_threads,
             host_allocators,
-            autocheck_num_gpus,
-            autocheck_default_host_allocators,
+            num_gpus,
+            default_host_allocators,
             trace_chunks_count_override,
             use_dedicated_pipeline_threads,
             replay_segment_cycle_limit,
@@ -172,6 +168,7 @@ fn run_autocheck(
     mode: CpuPipelineMode,
     runs: usize,
     max_replay_threads: usize,
+    default_replay_threads: usize,
     max_host_allocators: usize,
     num_gpus: usize,
     default_host_allocators: usize,
@@ -182,7 +179,8 @@ fn run_autocheck(
     input: CpuPipelineModelInput,
     nondeterminism: Vec<u32>,
 ) {
-    let replay_threads_values = autocheck_replay_threads_values(max_replay_threads);
+    let replay_threads_values =
+        autocheck_replay_threads_values(max_replay_threads, default_replay_threads);
     assert!(
         max_host_allocators >= default_host_allocators,
         "ZKSYNC_HOST_ALLOCATORS must be at least {default_host_allocators} for ZKSYNC_NUM_GPUS={num_gpus}"
@@ -194,6 +192,7 @@ fn run_autocheck(
     let default_config = default_profile_config(
         mode,
         use_dedicated_pipeline_threads,
+        default_replay_threads,
         default_host_allocators,
     );
     let all_configs = build_autocheck_configs(
@@ -212,7 +211,7 @@ fn run_autocheck(
     let configs_count = configs.len();
 
     eprintln!(
-        "starting autocheck: configs={configs_count}/{full_configs_count}, runs_per_config={runs}, num_gpus={num_gpus}, default_host_allocators={default_host_allocators}, replay_threads={replay_threads_values:?}, host_allocators={host_allocators_values:?}, trace_chunks={}, replay_segment_cycles={}",
+        "starting autocheck: configs={configs_count}/{full_configs_count}, runs_per_config={runs}, num_gpus={num_gpus}, default_replay_threads={default_replay_threads}, default_host_allocators={default_host_allocators}, replay_threads={replay_threads_values:?}, host_allocators={host_allocators_values:?}, trace_chunks={}, replay_segment_cycles={}",
         format_option_list(&trace_chunks_values, "default"),
         format_option_list(&replay_segment_values, "off"),
     );
@@ -264,8 +263,11 @@ fn run_autocheck(
     }
 
     results.sort_by_key(|result| result.average_total_wall().as_nanos());
-    println!("winners count={}", results.len().min(5));
-    for (rank, result) in results.iter().take(5).enumerate() {
+    println!(
+        "winners count={}",
+        results.len().min(AUTOCHECK_WINNERS_TO_PRINT)
+    );
+    for (rank, result) in results.iter().take(AUTOCHECK_WINNERS_TO_PRINT).enumerate() {
         print_winner(rank + 1, result);
     }
     let default_result = results
@@ -375,11 +377,12 @@ fn print_default_result(default_result: &AutocheckResult, best_result: &Autochec
 fn default_profile_config(
     mode: CpuPipelineMode,
     use_dedicated_pipeline_threads: bool,
+    default_replay_threads: usize,
     default_host_allocators: usize,
 ) -> ProfileConfig {
     ProfileConfig {
         mode,
-        replay_threads: 4,
+        replay_threads: default_replay_threads,
         host_allocators: default_host_allocators,
         trace_chunks_count_override: None,
         use_dedicated_pipeline_threads,
@@ -492,16 +495,23 @@ fn mode_sort_key(mode: CpuPipelineMode) -> u8 {
     }
 }
 
-fn autocheck_replay_threads_values(max_replay_threads: usize) -> Vec<usize> {
+fn autocheck_replay_threads_values(
+    max_replay_threads: usize,
+    default_replay_threads: usize,
+) -> Vec<usize> {
     assert_ne!(
         max_replay_threads, 0,
         "ZKSYNC_REPLAY_THREADS must be non-zero"
     );
-    assert!(
-        max_replay_threads >= 4,
-        "ZKSYNC_REPLAY_THREADS must be at least 4 in autocheck mode"
+    assert_ne!(
+        default_replay_threads, 0,
+        "production default replay threads must be non-zero"
     );
-    let mut values = vec![4];
+    assert!(
+        max_replay_threads >= default_replay_threads,
+        "ZKSYNC_REPLAY_THREADS must be at least the production default replay thread count ({default_replay_threads}) in autocheck mode"
+    );
+    let mut values = vec![4, default_replay_threads];
     let mut powers = Vec::new();
     let mut value = 4usize;
     while value < max_replay_threads {
@@ -512,11 +522,11 @@ fn autocheck_replay_threads_values(max_replay_threads: usize) -> Vec<usize> {
     values.push(max_replay_threads);
     values.sort_unstable();
     let values = dedup_preserving_order(values);
-    if values.len() <= 4 {
+    if values.len() <= 5 {
         values
     } else {
         let start = values.len() - 4;
-        let mut clipped = vec![4];
+        let mut clipped = vec![4, default_replay_threads];
         clipped.extend_from_slice(&values[start + 1..]);
         dedup_preserving_order(clipped)
     }
@@ -613,6 +623,15 @@ fn percent_delta(default_value: f64, best_value: f64) -> f64 {
         0.0
     } else {
         (default_value - best_value) * 100.0 / best_value
+    }
+}
+
+fn detected_cuda_device_count() -> usize {
+    match gpu_prover::cudart::device::get_device_count() {
+        Ok(count) if count > 0 => count as usize,
+        // The CPU pipeline model is also useful on machines where CUDA is unavailable.
+        // Falling back to one GPU preserves the old baseline instead of making profiling fail.
+        Ok(_) | Err(_) => 1,
     }
 }
 
