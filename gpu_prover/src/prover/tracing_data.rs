@@ -3,15 +3,9 @@ use crate::primitives::context::ProverContext;
 use crate::primitives::transfer::Transfer;
 use crate::witness::trace_delegation::{DelegationTraceDevice, DelegationTraceHost};
 use crate::witness::trace_unrolled::{
-    // TODO(init-teardown-port): re-add `ShuffleRamInitsAndTeardownsDevice,
-    // ShuffleRamInitsAndTeardownsHost,` here when the GPU inits-and-teardowns
-    // path is restored.
-    UnrolledMemoryTraceDevice,
-    UnrolledMemoryTraceHost,
-    UnrolledNonMemoryTraceDevice,
-    UnrolledNonMemoryTraceHost,
-    UnrolledUnifiedTraceDevice,
-    UnrolledUnifiedTraceHost,
+    InitsAndTeardownsTraceDevice, InitsAndTeardownsTraceHost, UnrolledMemoryTraceDevice,
+    UnrolledMemoryTraceHost, UnrolledNonMemoryTraceDevice, UnrolledNonMemoryTraceHost,
+    UnrolledUnifiedTraceDevice, UnrolledUnifiedTraceHost,
 };
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
@@ -243,48 +237,58 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
     }
 }
 
-// TODO(init-teardown-port): disabled until the GPU inits-and-teardowns path is ported.
-// pub(crate) struct InitsAndTeardownsTransfer<'a, A: GoodAllocator> {
-//     pub data_host: ShuffleRamInitsAndTeardownsHost<A>,
-//     pub data_device: ShuffleRamInitsAndTeardownsDevice,
-//     pub transfer: Transfer<'a>,
-// }
-//
-// impl<'a, A: GoodAllocator + 'a> InitsAndTeardownsTransfer<'a, A> {
-//     pub fn new(
-//         data_host: ShuffleRamInitsAndTeardownsHost<A>,
-//         context: &ProverContext,
-//     ) -> CudaResult<Self> {
-//         let data_device = {
-//             let inits_and_teardowns = context.alloc(data_host.len(), AllocationPlacement::Top)?;
-//             ShuffleRamInitsAndTeardownsDevice {
-//                 inits_and_teardowns,
-//             }
-//         };
-//         let transfer = Transfer::new()?;
-//         transfer.record_allocated(context)?;
-//         Ok(Self {
-//             data_host,
-//             data_device,
-//             transfer,
-//         })
-//     }
-//
-//     pub fn schedule_transfer(&mut self, context: &ProverContext) -> CudaResult<()> {
-//         self.transfer.schedule_multiple(
-//             &self.data_host.chunks,
-//             &mut self.data_device.inits_and_teardowns,
-//             context,
-//         )?;
-//         self.transfer.record_transferred(context)
-//     }
-//
-//     pub(crate) fn into_host_keepalive(self) -> crate::primitives::callbacks::Callbacks<'a> {
-//         let Self {
-//             data_host: _,
-//             data_device: _,
-//             transfer,
-//         } = self;
-//         transfer.into_callbacks()
-//     }
-// }
+pub(crate) struct InitsAndTeardownsTransfer<'a> {
+    pub data_host: InitsAndTeardownsTraceHost,
+    pub data_device: InitsAndTeardownsTraceDevice,
+    pub transfer: Transfer<'a>,
+}
+
+impl<'a> InitsAndTeardownsTransfer<'a> {
+    pub fn new(data_host: InitsAndTeardownsTraceHost, context: &ProverContext) -> CudaResult<Self> {
+        let page_indices = context.alloc(data_host.page_indices.len(), AllocationPlacement::Top)?;
+        let values_packed =
+            context.alloc(data_host.values_packed.len(), AllocationPlacement::Top)?;
+        let timestamps_packed =
+            context.alloc(data_host.timestamps_packed.len(), AllocationPlacement::Top)?;
+        let data_device = InitsAndTeardownsTraceDevice {
+            page_indices,
+            values_packed,
+            timestamps_packed,
+        };
+        let transfer = Transfer::new()?;
+        transfer.record_allocated(context)?;
+        Ok(Self {
+            data_host,
+            data_device,
+            transfer,
+        })
+    }
+
+    pub fn schedule_transfer(&mut self, context: &ProverContext) -> CudaResult<()> {
+        self.transfer.schedule(
+            self.data_host.page_indices.clone(),
+            &mut self.data_device.page_indices,
+            context,
+        )?;
+        self.transfer.schedule(
+            self.data_host.values_packed.clone(),
+            &mut self.data_device.values_packed,
+            context,
+        )?;
+        self.transfer.schedule(
+            self.data_host.timestamps_packed.clone(),
+            &mut self.data_device.timestamps_packed,
+            context,
+        )?;
+        self.transfer.record_transferred(context)
+    }
+
+    pub(crate) fn into_host_keepalive(self) -> crate::primitives::callbacks::Callbacks<'a> {
+        let Self {
+            data_host: _,
+            data_device: _,
+            transfer,
+        } = self;
+        transfer.into_callbacks()
+    }
+}

@@ -422,12 +422,26 @@ pub(crate) fn collect_addresses_from_relation(
             writes.extend_from_slice(output);
         }
         InitsOrTeardownsInitialPair {
-            timestamp_and_value: _,
+            timestamp_and_value,
             setup,
             output,
             set_idxes: _,
         } => {
             reads.extend_from_slice(setup);
+            if let cs::gkr_compiler::InitsOrTeardownsTimestampAndValue::Teardown {
+                lhs_timestamp,
+                lhs_value,
+                rhs_timestamp,
+                rhs_value,
+            } = timestamp_and_value
+            {
+                for &col in lhs_timestamp.iter().chain(rhs_timestamp.iter()) {
+                    reads.push(GKRAddress::BaseLayerMemory(col));
+                }
+                for &col in lhs_value.iter().chain(rhs_value.iter()) {
+                    reads.push(GKRAddress::BaseLayerMemory(col));
+                }
+            }
             writes.push(*output);
         }
     }

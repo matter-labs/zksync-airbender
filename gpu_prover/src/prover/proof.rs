@@ -49,8 +49,7 @@ use crate::prover::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferH
 use crate::prover::trace_holder::{
     allocate_trees, TraceHolder, TreesCacheMode, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
 };
-// TODO(init-teardown-port): re-add `InitsAndTeardownsTransfer,` once restored.
-use crate::prover::tracing_data::TracingDataTransfer;
+use crate::prover::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::prover::whir_fold::{
     schedule_gpu_whir_fold_with_sources, take_scheduled_whir_proof, GpuWhirFoldScheduledExecution,
 };
@@ -269,8 +268,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     final_trace_size_log_2: usize,
     mut setup_transfer: Option<GpuGKRSetupTransfer<'a>>,
     mut decoder_transfer: Option<DecoderTableTransfer<'a>>,
-    // TODO(init-teardown-port): restore once path is re-enabled.
-    // inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a, A>>,
+    inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a>>,
     mut tracing_data_transfer: TracingDataTransfer<'a, A>,
     memory_transfer: GpuGKRMemoryTransfer<'a>,
     context: &ProverContext,
@@ -281,12 +279,11 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     if let Some(decoder_transfer) = decoder_transfer.as_ref() {
         decoder_transfer.transfer.ensure_transferred(context)?;
     }
-    // TODO(init-teardown-port): re-enable alongside the parameter.
-    // if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer.as_ref() {
-    //     inits_and_teardowns_transfer
-    //         .transfer
-    //         .ensure_transferred(context)?;
-    // }
+    if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer.as_ref() {
+        inits_and_teardowns_transfer
+            .transfer
+            .ensure_transferred(context)?;
+    }
     tracing_data_transfer.transfer.ensure_transferred(context)?;
     // Memory cap H2D was scheduled pre-prove on h2d_stream; the D2D into the
     // transcript input slot below needs the H2D to be visible on exec_stream.
@@ -442,17 +439,18 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         decoder_transfer
             .as_ref()
             .map(|transfer| &transfer.data_device[..]),
-        // TODO(init-teardown-port): restore `inits_and_teardowns_transfer.as_ref().map(...)` arg.
+        inits_and_teardowns_transfer
+            .as_ref()
+            .map(|transfer| &transfer.data_device),
         &tracing_data_transfer.data_device,
         context,
     )?;
     if let Some(decoder_transfer) = decoder_transfer {
         callbacks.extend(decoder_transfer.into_host_keepalive());
     }
-    // TODO(init-teardown-port): re-enable alongside the parameter.
-    // if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer {
-    //     callbacks.extend(inits_and_teardowns_transfer.into_host_keepalive());
-    // }
+    if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer {
+        callbacks.extend(inits_and_teardowns_transfer.into_host_keepalive());
+    }
     callbacks.extend(tracing_data_transfer.into_host_keepalive());
     let mut synthetic_setup_trace_holder = if setup_transfer.is_none() {
         Some(TraceHolder::new_without_cosets(
@@ -1060,8 +1058,7 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
     final_trace_size_log_2: usize,
     mut setup_transfer: Option<GpuGKRSetupTransfer<'a>>,
     mut decoder_transfer: Option<DecoderTableTransfer<'a>>,
-    // TODO(init-teardown-port): restore once path is re-enabled.
-    // mut inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a, A>>,
+    mut inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a>>,
     mut tracing_data_transfer: TracingDataTransfer<'a, A>,
     mut memory_transfer: GpuGKRMemoryTransfer<'a>,
     context: &ProverContext,
@@ -1075,10 +1072,9 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
     if let Some(decoder_transfer) = decoder_transfer.as_mut() {
         decoder_transfer.schedule_transfer(context)?;
     }
-    // TODO(init-teardown-port): re-enable alongside the parameter.
-    // if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer.as_mut() {
-    //     inits_and_teardowns_transfer.schedule_transfer(context)?;
-    // }
+    if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer.as_mut() {
+        inits_and_teardowns_transfer.schedule_transfer(context)?;
+    }
     tracing_data_transfer.schedule_transfer(context)?;
     memory_transfer.schedule_transfer(context)?;
     transfer_range.end(h2d_stream)?;
@@ -1091,7 +1087,7 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
         final_trace_size_log_2,
         setup_transfer,
         decoder_transfer,
-        // TODO(init-teardown-port): restore `inits_and_teardowns_transfer,` arg.
+        inits_and_teardowns_transfer,
         tracing_data_transfer,
         memory_transfer,
         context,
