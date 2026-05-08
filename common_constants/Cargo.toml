@@ -11,3 +11,6 @@ categories.workspace = true
 
 [dependencies]
 serde.workspace = true
+
+[features]
+verifier_stats = []

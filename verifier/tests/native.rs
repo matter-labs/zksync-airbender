@@ -17,6 +17,8 @@ fn run_native(name: &str, level: SecurityLevel) {
                     m::verify::<ThreadLocalBasedSource, DebugErrorCreator>(&external_challenges)
                         .unwrap_or_else(|e| panic!("{} {:?} failed: {:?}", name, level, e));
                 });
+                #[cfg(feature = "verifier_stats")]
+                common::print_stats_log(name);
             })
             .expect("failed to spawn verifier thread");
 

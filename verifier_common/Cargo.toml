@@ -22,6 +22,7 @@ serde = { workspace = true, default-features = false, features = ["derive", "all
 serde_json = { version = "*", default-features = false, features = ["alloc"], optional = true }
 quote = { version = "1", optional = true }
 proc-macro2 = {version = "1", optional = true }
+common_constants = { workspace = true, optional = true }
 
 [dev-dependencies]
 prover = { workspace = true, features = ["prover"] }
@@ -42,5 +43,14 @@ proof_utils = ["prover/prover", "dep:serde_json", "replace_csr", "dep:quote", "d
 replace_csr = ["prover/prover"]
 # Use no-caches circuit descriptors (default for testing)
 no_caches = []
+# Instrument verifier to collect per-phase field-op / NDS-read / blake-hash counts
+verifier_stats = [
+    "dep:common_constants",
+    "field/verifier_stats",
+    "non_determinism_source/verifier_stats",
+    "prover/verifier_stats",
+    "blake2s_u32/verifier_stats",
+    "common_constants/verifier_stats",
+]
 
 default = []

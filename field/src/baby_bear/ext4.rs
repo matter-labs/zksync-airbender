@@ -147,6 +147,8 @@ impl Field for BabyBearExt4 {
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fext_adds += 1);
         self.c0.add_assign(&other.c0);
         self.c1.add_assign(&other.c1);
 
@@ -155,6 +157,8 @@ impl Field for BabyBearExt4 {
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn sub_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fext_adds += 1);
         self.c0.sub_assign(&other.c0);
         self.c1.sub_assign(&other.c1);
 
@@ -163,6 +167,8 @@ impl Field for BabyBearExt4 {
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fext_muls += 1);
         let mut v0 = self.c0;
         v0.mul_assign(&other.c0);
         let mut v1 = self.c1;
@@ -185,6 +191,8 @@ impl Field for BabyBearExt4 {
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn square(&mut self) -> &mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fext_muls += 1);
         let mut v0 = self.c0;
         v0.sub_assign(&self.c1);
         let mut v3 = self.c0;
@@ -207,6 +215,8 @@ impl Field for BabyBearExt4 {
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn negate(&mut self) -> &mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fext_adds += 1);
         self.c0.negate();
         self.c1.negate();
 
@@ -215,6 +225,8 @@ impl Field for BabyBearExt4 {
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn double(&mut self) -> &mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fext_adds += 1);
         self.c0.double();
         self.c1.double();
 
@@ -222,6 +234,8 @@ impl Field for BabyBearExt4 {
     }
 
     fn inverse(&self) -> Option<Self> {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fext_muls += 6);
         let mut v0 = self.c0;
         v0.square();
         let mut v1 = self.c1;
@@ -247,6 +261,8 @@ impl Field for BabyBearExt4 {
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_by_two(&'_ mut self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fext_adds += 1);
         self.c0.mul_by_two();
         self.c1.mul_by_two();
         self
@@ -254,6 +270,8 @@ impl Field for BabyBearExt4 {
 
     #[cfg_attr(not(feature = "no_inline"), inline)]
     fn div_by_two(&'_ mut self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fext_muls += 1);
         self.c0.div_by_two();
         self.c1.div_by_two();
         self

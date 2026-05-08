@@ -24,5 +24,6 @@ harness = false
 [features]
 blake2_with_compression = ["common_constants"]
 blake2_g_function = ["common_constants"]
+verifier_stats = ["common_constants/verifier_stats"]
 mop_extension = []
 default = []
