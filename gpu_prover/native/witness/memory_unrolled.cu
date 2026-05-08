@@ -27,21 +27,12 @@ namespace airbender::witness::memory::unrolled {
 //   const ShuffleRamQueryColumns sets[MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT];
 // };
 //
-struct __align__(16) LazyInitAndTeardown {
-  u32 address;
-  u32 teardown_value;
-  TimestampData teardown_timestamp;
+struct InitsAndTeardownsTraceRaw {
+  const u32 num_pages;
+  const u32 *const __restrict__ page_indices;
+  const u32 *const __restrict__ values_packed;
+  const TimestampScalar *const __restrict__ timestamps_packed;
 };
-
-struct ShuffleRamInitsAndTeardownsRaw {
-  const u32 count;
-  const LazyInitAndTeardown *const __restrict__ inits_and_teardowns;
-};
-//
-// struct ShuffleRamInitsAndTeardowns {
-//   const u32 count;
-//   const InitAndTeardown *const __restrict__ inits_and_teardowns;
-// };
 
 #define MAX_INITS_AND_TEARDOWNS_SETS_COUNT 16
 
@@ -103,26 +94,24 @@ DEVICE_FORCEINLINE void copy_timestamp(const u32 src[NUM_TIMESTAMP_COLUMNS_FOR_R
 
 DEVICE_FORCEINLINE void copy_register(const u32 src[REGISTER_SIZE], u32 dst[REGISTER_SIZE]) { copy_array<REGISTER_SIZE>(src, dst); }
 
-template <bool COMPUTE_WITNESS>
-DEVICE_FORCEINLINE void process_inits_and_teardowns(const InitsAndTeardownsLayouts &init_and_teardown_layouts,
-                                                    const ShuffleRamInitsAndTeardownsRaw &inits_and_teardowns, const matrix_setter<bf, st_modifier::cg> memory,
-                                                    const matrix_setter<bf, st_modifier::cg> witness, const unsigned count, const unsigned index) {
-  (void)witness;
-  static_assert(!COMPUTE_WITNESS, "standalone init/teardown witness columns are expected to stay empty");
-  if (index >= inits_and_teardowns.count)
+DEVICE_FORCEINLINE void process_inits_and_teardowns_pages(const InitsAndTeardownsLayouts &init_and_teardown_layouts,
+                                                          const InitsAndTeardownsTraceRaw &trace, const matrix_setter<bf, st_modifier::cg> memory,
+                                                          const u32 page_size_log2, const u32 pages_per_set_log2, const unsigned global_word) {
+  if (global_word >= trace.num_pages << page_size_log2)
     return;
-  const auto data = inits_and_teardowns.inits_and_teardowns[index];
-  const unsigned word_index = data.address >> 2;
-  const unsigned set_idx = word_index / count;
-  const unsigned row_idx = word_index % count;
-  if (set_idx >= init_and_teardown_layouts.count)
-    return;
+  const u32 page_size_mask = (1u << page_size_log2) - 1u;
+  const u32 pages_per_set_mask = (1u << pages_per_set_log2) - 1u;
+  const unsigned page_slot = global_word >> page_size_log2;
+  const unsigned word_in_page = global_word & page_size_mask;
+  const u32 page_idx = trace.page_indices[page_slot];
+  const u32 set_idx = page_idx >> pages_per_set_log2;
+  const unsigned row_idx = ((page_idx & pages_per_set_mask) << page_size_log2) | word_in_page;
+  const u32 val = trace.values_packed[global_word];
+  const TimestampScalar ts_scalar = trace.timestamps_packed[global_word];
   const auto layout = init_and_teardown_layouts.layouts[set_idx];
   const auto row_memory = memory.copy().add_row(row_idx);
-  write_timestamp_value(layout.teardown_timestamps_columns, data.teardown_timestamp, row_memory);
-  PRINT_TS(M, layout.teardown_timestamps_columns, data.teardown_timestamp);
-  write_u32_value(layout.teardown_values_columns, data.teardown_value, row_memory);
-  PRINT_U32(M, layout.teardown_values_columns, data.teardown_value);
+  write_timestamp_value(layout.teardown_timestamps_columns, TimestampData::from_scalar(ts_scalar), row_memory);
+  write_u32_value(layout.teardown_values_columns, val, row_memory);
 }
 
 // template <bool COMPUTE_WITNESS>
@@ -446,10 +435,10 @@ EXTERN __global__ void ab_generate_memory_and_witness_values_unrolled_non_memory
 }
 
 EXTERN __global__ void ab_generate_memory_and_witness_values_unrolled_inits_and_teardowns_kernel(
-    const __grid_constant__ InitsAndTeardownsLayouts init_and_teardown_layouts, const __grid_constant__ ShuffleRamInitsAndTeardownsRaw inits_and_teardowns,
-    matrix_setter<bf, st_modifier::cg> memory, matrix_setter<bf, st_modifier::cg> witness, const unsigned count) {
-  const unsigned index = blockIdx.x * blockDim.x + threadIdx.x;
-  process_inits_and_teardowns<false>(init_and_teardown_layouts, inits_and_teardowns, memory, witness, count, index);
+    const __grid_constant__ InitsAndTeardownsLayouts init_and_teardown_layouts, const __grid_constant__ InitsAndTeardownsTraceRaw trace,
+    matrix_setter<bf, st_modifier::cg> memory, const u32 page_size_log2, const u32 pages_per_set_log2) {
+  const unsigned global_word = blockIdx.x * blockDim.x + threadIdx.x;
+  process_inits_and_teardowns_pages(init_and_teardown_layouts, trace, memory, page_size_log2, pages_per_set_log2, global_word);
 }
 //
 // EXTERN __global__ void ab_generate_memory_and_witness_values_unrolled_unified_kernel(

@@ -34,13 +34,8 @@ use crate::prover::test_utils::{
 };
 use crate::prover::trace_holder::TraceHolder;
 use crate::prover::tracing_data::{
-    // TODO(init-teardown-port): re-add `InitsAndTeardownsTransfer,` once restored.
-    DelegationTracingDataDevice,
-    TracingDataDevice,
-    TracingDataHost,
-    TracingDataTransfer,
-    UnrolledTracingDataDevice,
-    UnrolledTracingDataHost,
+    DelegationTracingDataDevice, InitsAndTeardownsTransfer, TracingDataDevice, TracingDataHost,
+    TracingDataTransfer, UnrolledTracingDataDevice, UnrolledTracingDataHost,
 };
 use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::prover::whir_fold::{
@@ -52,10 +47,8 @@ use crate::prover::whir_fold::{
 };
 use crate::witness::trace::ChunkedTraceHolder;
 use crate::witness::trace_unrolled::{
-    // TODO(init-teardown-port): re-add `ShuffleRamInitsAndTeardownsDevice,` once restored.
-    ExecutorFamilyDecoderData,
-    UnrolledMemoryTraceDevice,
-    UnrolledNonMemoryTraceDevice,
+    ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice, InitsAndTeardownsTraceHost,
+    UnrolledMemoryTraceDevice, UnrolledNonMemoryTraceDevice, PAGE_SIZE_LOG2,
 };
 use common_constants::TimestampData;
 use cs::cs::circuit_trait::Circuit;
@@ -92,7 +85,6 @@ use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension, PrimeField};
 use itertools::Itertools;
-// TODO(init-teardown-port): re-add `LazyInitAndTeardown,` once restored upstream.
 use prover::definitions::Transcript;
 use prover::gkr::prover::dimension_reduction::{self, forward::DimensionReducingInputOutput};
 use prover::gkr::prover::forward_loop;
@@ -403,24 +395,6 @@ fn make_non_memory_tracing_host_for_test(
     }))
 }
 
-// TODO(init-teardown-port): disabled alongside the GPU inits-and-teardowns path.
-// fn flatten_sparse_inits_and_teardowns_for_transfer<A>(
-//     sparse_inits_and_teardowns: &[Vec<(u32, (u64, u32)), A>],
-// ) -> Vec<LazyInitAndTeardown>
-// where
-//     A: std::alloc::Allocator + Clone,
-// {
-//     sparse_inits_and_teardowns
-//         .iter()
-//         .flat_map(|chunk| chunk.iter())
-//         .map(|(address, (timestamp, value))| LazyInitAndTeardown {
-//             address: *address,
-//             teardown_value: *value,
-//             teardown_timestamp: TimestampData::from_scalar(*timestamp),
-//         })
-//         .collect()
-// }
-
 fn setup_geometry_for_test(setup_transfer: &GpuGKRSetupTransfer<'_>) -> GpuGKRTraceGeometry {
     GpuGKRTraceGeometry {
         log_domain_size: setup_transfer.trace_holder.log_domain_size,
@@ -435,8 +409,7 @@ fn generate_stage1_output_for_test(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     setup_transfer: &GpuGKRSetupTransfer<'_>,
     decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
-    // TODO(init-teardown-port): restore once path is re-enabled.
-    // inits_and_teardowns: Option<&ShuffleRamInitsAndTeardownsDevice>,
+    inits_and_teardowns: Option<&InitsAndTeardownsTraceDevice>,
     tracing_data: &TracingDataDevice,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRStage1Output> {
@@ -446,7 +419,7 @@ fn generate_stage1_output_for_test(
         setup_geometry_for_test(setup_transfer),
         Some(setup_transfer.trace_holder.get_hypercube_evals()),
         decoder_table,
-        // TODO(init-teardown-port): restore `inits_and_teardowns,` arg.
+        inits_and_teardowns,
         tracing_data,
         context,
     )
@@ -598,7 +571,7 @@ impl BasicUnrolledFixture {
             self.final_trace_size_log_2,
             Some(setup_transfer),
             decoder_transfer,
-            // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns_transfer.
+            None,
             tracing_data_transfer,
             memory_transfer,
             &self.context,
@@ -621,7 +594,7 @@ impl BasicUnrolledFixture {
             self.final_trace_size_log_2,
             Some(setup_transfer),
             decoder_transfer,
-            // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns_transfer.
+            None,
             tracing_data_transfer,
             memory_transfer,
             &self.context,
@@ -982,7 +955,7 @@ fn prepare_basic_unrolled_profiling_fixture() -> BasicUnrolledFixture {
         prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
             binary_path: "examples/basic_fibonacci/app.bin",
             text_path: "examples/basic_fibonacci/app.text",
-            layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+            layout_path: BASIC_UNROLLED_ADD_SUB_NO_CACHES_LAYOUT_PATH,
             non_determinism_reads: &[],
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
@@ -2100,7 +2073,7 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
             .decoder_transfer
             .as_ref()
             .map(|transfer| &transfer.data_device[..]),
-        // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
+        None,
         &transfers.tracing_data_transfer.data_device,
         &context,
     )
@@ -3849,7 +3822,7 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
         } else {
             None
         },
-        // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
+        None,
         &gpu_trace,
         &context,
     )
@@ -4712,7 +4685,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
             .decoder_transfer
             .as_ref()
             .map(|transfer| &transfer.data_device[..]),
-        // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
+        None,
         &transfers.tracing_data_transfer.data_device,
         &context,
     )
@@ -5157,7 +5130,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         } else {
             None
         },
-        // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
+        None,
         &gpu_trace,
         &context,
     )
@@ -5666,7 +5639,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         } else {
             None
         },
-        // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
+        None,
         &gpu_trace,
         &context,
     )
@@ -6270,7 +6243,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
         } else {
             None
         },
-        // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
+        None,
         &gpu_trace,
         &context,
     )
@@ -6738,7 +6711,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
             } else {
                 None
             },
-            // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
+            None,
             &gpu_trace,
             &context,
         )
@@ -7464,16 +7437,75 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let _elapsed = now.elapsed();
 }
 
+/// Bucket sparse `(addr, (timestamp, value))` triples (per CPU-worker chunks) into the
+/// page-based SoA wire format consumed by the GPU inits-and-teardowns kernel.
+///
+/// Producer contract (mirrors what a real producer must enforce):
+/// - Each emitted `page_idx` decodes to a `set_idx < num_sets`.
+/// - Each emitted page is dense: `1 << PAGE_SIZE_LOG2` `u32` values plus
+///   `1 << PAGE_SIZE_LOG2` `u64` timestamps, with untouched cells zero-padded.
+/// - ROM pages are excluded (the CPU collector never yields ROM addresses by construction).
+fn build_inits_and_teardowns_pages_for_test(
+    sparse: &[Vec<(u32, (common_constants::TimestampScalar, u32))>],
+    trace_len_log2: u32,
+    num_sets: u32,
+) -> (Vec<u32>, Vec<u32>, Vec<common_constants::TimestampScalar>) {
+    use std::collections::BTreeMap;
+
+    assert!(PAGE_SIZE_LOG2 < trace_len_log2);
+    let page_size = 1usize << PAGE_SIZE_LOG2;
+    let pages_per_set_log2 = trace_len_log2 - PAGE_SIZE_LOG2;
+    let max_page_idx = (num_sets as u64) << pages_per_set_log2;
+
+    let mut pages: BTreeMap<u32, (Vec<u32>, Vec<common_constants::TimestampScalar>)> =
+        BTreeMap::new();
+    for chunk in sparse {
+        for &(address, (timestamp, value)) in chunk {
+            let word_idx = address >> 2;
+            let page_idx = word_idx >> PAGE_SIZE_LOG2;
+            let word_in_page = (word_idx & ((1u32 << PAGE_SIZE_LOG2) - 1)) as usize;
+            assert!(
+                (page_idx as u64) < max_page_idx,
+                "test producer emitted page_idx {page_idx} that decodes to set_idx >= num_sets ({num_sets})",
+            );
+            let entry = pages
+                .entry(page_idx)
+                .or_insert_with(|| (vec![0u32; page_size], vec![0u64; page_size]));
+            entry.0[word_in_page] = value;
+            entry.1[word_in_page] = timestamp;
+        }
+    }
+
+    let num_pages = pages.len();
+    let mut page_indices = Vec::with_capacity(num_pages);
+    let mut values_packed = Vec::with_capacity(num_pages * page_size);
+    let mut timestamps_packed = Vec::with_capacity(num_pages * page_size);
+    for (page_idx, (vals, tss)) in pages {
+        page_indices.push(page_idx);
+        values_packed.extend_from_slice(&vals);
+        timestamps_packed.extend_from_slice(&tss);
+    }
+    (page_indices, values_packed, timestamps_packed)
+}
+
+fn build_inits_and_teardowns_trace_host_for_test(
+    page_indices: &[u32],
+    values_packed: &[u32],
+    timestamps_packed: &[common_constants::TimestampScalar],
+) -> InitsAndTeardownsTraceHost {
+    use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
+    InitsAndTeardownsTraceHost {
+        page_indices: Arc::new(alloc_static_pinned_box_from_slice(page_indices).unwrap()),
+        values_packed: Arc::new(alloc_static_pinned_box_from_slice(values_packed).unwrap()),
+        timestamps_packed: Arc::new(alloc_static_pinned_box_from_slice(timestamps_packed).unwrap()),
+    }
+}
+
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore]
 #[serial]
 fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
-    // TODO(init-teardown-port): body disabled alongside the GPU inits-and-teardowns path.
-    // The `#[ignore]` attribute already prevents it from running by default; the body is
-    // wrapped in a nested block comment so the crate still compiles while `LazyInitAndTeardown`
-    // / `ShuffleRamInitsAndTeardownsDevice` / `InitsAndTeardownsTransfer` remain disabled.
-    /*
     type CountersT = DelegationsAndFamiliesCounters;
 
     const TRACE_LEN_LOG2: usize = 24;
@@ -7518,8 +7550,11 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         "cs/compiled_circuits/inits_and_teardowns_preprocessed_layout_gkr.json",
     );
     let num_init_and_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
-    let flattened_inits_and_teardowns =
-        flatten_sparse_inits_and_teardowns_for_transfer(&sparse_inits_and_teardowns);
+    let (page_indices, values_packed, timestamps_packed) = build_inits_and_teardowns_pages_for_test(
+        &sparse_inits_and_teardowns,
+        TRACE_LEN_LOG2 as u32,
+        num_init_and_teardown_sets as u32,
+    );
     let mut inits_and_teardowns_columns = Vec::with_capacity(num_init_and_teardown_sets);
     for _ in 0..num_init_and_teardown_sets {
         inits_and_teardowns_columns.push((
@@ -7547,13 +7582,13 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
-    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
-        materialize_powers_serial_starting_with_elem::<_, Global>(
-            memory_argument_alpha,
-            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
-        )
-        .try_into()
-        .unwrap();
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS
+        - 1] = materialize_powers_serial_starting_with_elem::<_, Global>(
+        memory_argument_alpha,
+        NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
+    )
+    .try_into()
+    .unwrap();
     let external_challenges = GKRExternalChallenges {
         permutation_argument_linearization_challenges,
         permutation_argument_additive_part,
@@ -7629,9 +7664,11 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         let tracing_data_host = make_non_memory_tracing_host_for_test(Vec::new());
         let mut tracing_data_transfer =
             TracingDataTransfer::new(tracing_data_host, &context).unwrap();
-        let inits_and_teardowns_host = ChunkedTraceHolder {
-            chunks: vec![Arc::new(flattened_inits_and_teardowns.clone())],
-        };
+        let inits_and_teardowns_host = build_inits_and_teardowns_trace_host_for_test(
+            &page_indices,
+            &values_packed,
+            &timestamps_packed,
+        );
         let mut inits_and_teardowns_transfer =
             InitsAndTeardownsTransfer::new(inits_and_teardowns_host, &context).unwrap();
         tracing_data_transfer.schedule_transfer(&context).unwrap();
@@ -7680,7 +7717,10 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             panic!("standalone init/teardown stage1 memory trace mismatch: {mismatch}");
         }
         assert_eq!(
-            stage1_output.memory_trace_holder.read_per_coset_caps_synchronously(&context).unwrap(),
+            stage1_output
+                .memory_trace_holder
+                .read_per_coset_caps_synchronously(&context)
+                .unwrap(),
             cpu_memory_caps,
             "standalone init/teardown memory caps diverged"
         );
@@ -7705,7 +7745,12 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         let mut gpu_transcript_input = Vec::new();
         gpu_transcript_input.extend_from_slice(&canonical_top_bits);
         external_challenges.flatten_into_buffer(&mut gpu_transcript_input);
-        for cap in stage1_output.memory_trace_holder.read_per_coset_caps_synchronously(&context).unwrap().iter() {
+        for cap in stage1_output
+            .memory_trace_holder
+            .read_per_coset_caps_synchronously(&context)
+            .unwrap()
+            .iter()
+        {
             for digest in cap.cap.iter() {
                 gpu_transcript_input.extend_from_slice(digest);
             }
@@ -7723,7 +7768,9 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             "transcript-derived lookup challenges diverged"
         );
 
-        let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
+        // `evaluate_layer` no longer takes the constraints-batch challenge; ignore the third
+        // element so the destructuring still mirrors the on-device 3-tuple layout.
+        let [lookup_alpha, lookup_additive_part, _constraints_batch_challenge] =
             cpu_lookup_challenges;
         let mut gkr_storage = GKRStorage::<BF, E4>::default();
         insert_virtual_setup_polys_for_test(trace_len, &mut gkr_storage);
@@ -7757,7 +7804,6 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
                 lookup_alpha,
                 lookup_additive_part,
                 decoder_lookup_fill_value,
-                constraints_batch_challenge,
                 &worker,
             );
         }
@@ -7838,17 +7884,31 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         );
     }
 
-    let inits_and_teardowns_host = ChunkedTraceHolder {
-        chunks: vec![Arc::new(flattened_inits_and_teardowns)],
-    };
+    let inits_and_teardowns_host = build_inits_and_teardowns_trace_host_for_test(
+        &page_indices,
+        &values_packed,
+        &timestamps_packed,
+    );
     let tracing_data_host = make_non_memory_tracing_host_for_test(Vec::new());
     let mut inits_and_teardowns_transfer =
         InitsAndTeardownsTransfer::new(inits_and_teardowns_host, &context).unwrap();
     let mut tracing_data_transfer = TracingDataTransfer::new(tracing_data_host, &context).unwrap();
+    let memory_transfer_host = Arc::new(
+        crate::prover::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
+            &cpu_memory_caps,
+            whir_schedule.base_lde_factor.trailing_zeros(),
+            whir_schedule.cap_size.trailing_zeros(),
+        )
+        .unwrap(),
+    );
+    let mut memory_transfer =
+        crate::prover::memory_transfer::GpuGKRMemoryTransfer::new(memory_transfer_host, &context)
+            .unwrap();
     inits_and_teardowns_transfer
         .schedule_transfer(&context)
         .unwrap();
     tracing_data_transfer.schedule_transfer(&context).unwrap();
+    memory_transfer.schedule_transfer(&context).unwrap();
     let gpu_job = prove::<Global>(
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
         compiled_circuit.clone(),
@@ -7859,7 +7919,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         None,
         Some(inits_and_teardowns_transfer),
         tracing_data_transfer,
-        &cpu_memory_caps,
+        memory_transfer,
         &context,
     )
     .unwrap();
@@ -7880,7 +7940,6 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             E4::ONE
         );
     }
-    */
 }
 
 #[test]
@@ -8693,7 +8752,7 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
         &compiled_circuit,
         &gpu_setup_transfer,
         None,
-        // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
+        None,
         &gpu_trace,
         &context,
     )
