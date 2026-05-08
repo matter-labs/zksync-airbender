@@ -1472,9 +1472,10 @@ fn schedule_initialize_batched_forms(
         context.alloc(total_base_oracles, AllocationPlacement::BestFit)?;
     memory_copy_async(&mut challenge_powers_device, &challenge_powers_host, stream)?;
 
-    assert!(mem_polys_claims_len > 0);
-    assert!(wit_polys_claims_len > 0);
-    assert!(setup_polys_claims_len > 0);
+    assert!(
+        mem_polys_claims_len + wit_polys_claims_len + setup_polys_claims_len > 0,
+        "WHIR base-folding needs at least one base column across memory/witness/setup",
+    );
 
     let challenge_powers_device_slice = &mut challenge_powers_device[..];
     let (device_memory_weights, rest) =
