@@ -1582,7 +1582,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                 store_result(&mut ops, rd);
                                 pre_bump_timestamp_and_touch!(ops, 1, rd);
                                 bump_timestamp!(ops, 2);
-                                record_circuit_type(&mut ops, CounterType::ShiftBinaryCsr, 1);
+                                record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                                 issue_snapshot = true;
                             } else if parts.rs1() != 0 {
                                 let rd = (raw_instruction >> 7) & 0x1F;
@@ -1614,7 +1614,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                 );
                                 pre_bump_timestamp_and_touch!(ops, 1, 0);
                                 bump_timestamp!(ops, 2);
-                                record_circuit_type(&mut ops, CounterType::ShiftBinaryCsr, 1);
+                                record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                             } else {
                                 panic!(
                                     "CSRRW with non-determinism CSR and invalid rs1/rd combination"
@@ -1692,7 +1692,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             assert!(cycles_taken <= u16::MAX as usize);
                             record_circuit_type(
                                 &mut ops,
-                                CounterType::ShiftBinaryCsr,
+                                CounterType::AddSubLui,
                                 cycles_taken as u16,
                             );
 
