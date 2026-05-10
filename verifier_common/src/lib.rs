@@ -75,6 +75,35 @@ pub mod stats;
 pub use self::gkr::{GKRVerifierOutput, InitialGKRTranscript};
 pub use ::prover::definitions::{GKRExternalChallenges, USE_REDUCED_BLAKE2_ROUNDS};
 
+pub const SECURITY_BITS: usize = 80;
+pub const MERSENNE31QUARTIC_SIZE_LOG2: usize = 124;
+pub const MEMORY_DELEGATION_POW_BITS: usize = 0;
+
+#[derive(Clone, Copy, Debug, Hash)]
+pub struct SizedProofSecurityConfig<const NUM_FOLDINGS: usize> {
+    pub lookup_pow_bits: u32,
+    pub quotient_alpha_pow_bits: u32,
+    pub quotient_z_pow_bits: u32,
+    pub deep_poly_alpha_pow_bits: u32,
+    pub foldings_pow_bits: [u32; NUM_FOLDINGS],
+    pub fri_queries_pow_bits: u32,
+    pub num_queries: usize,
+}
+
+impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
+    pub const fn worst_case_config() -> Self {
+        Self {
+            lookup_pow_bits: 0,
+            quotient_alpha_pow_bits: 0,
+            quotient_z_pow_bits: 0,
+            deep_poly_alpha_pow_bits: 0,
+            foldings_pow_bits: [0; NUM_FOLDINGS],
+            fri_queries_pow_bits: 28,
+            num_queries: 63,
+        }
+    }
+}
+
 /// Wrappers for common field operations used by the verifier.
 /// We use inline operations when compiling to RISC-V to maximize performance,
 /// but using inline operations on x86_64 causes the compile time to explode and requires
