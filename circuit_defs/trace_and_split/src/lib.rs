@@ -405,7 +405,7 @@ pub fn fs_transform_for_permutation_argument(
 ) -> Seed {
     use transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
 
-    let mut memory_trace_transcript = transcript::Blake2sBufferingTranscript::new();
+    let mut memory_trace_transcript = transcript::Blake2sBufferingTranscript::<true>::new();
 
     // commit all registers
     let mut register_values_and_timestamps = Vec::with_capacity(32 + 32 * 2);

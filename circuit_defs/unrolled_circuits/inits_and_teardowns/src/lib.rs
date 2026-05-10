@@ -18,8 +18,12 @@ fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
 }
 
-pub fn get_inits_and_teardowns_circuit<F: PrimeField>() -> GKRCircuitArtifact<F> {
-    compile_inits_and_teardowns_circuit::<F, 2>(NUM_INIT_AND_TEARDOWN_SETS, TRACE_LEN_LOG2 as usize)
+pub fn get_inits_and_teardowns_circuit<F: PrimeField>(use_caches: bool) -> GKRCircuitArtifact<F> {
+    compile_inits_and_teardowns_circuit::<F, 2>(
+        NUM_INIT_AND_TEARDOWN_SETS,
+        TRACE_LEN_LOG2 as usize,
+        use_caches,
+    )
 }
 
 pub fn get_table_driver<F: PrimeField>() -> prover::cs::tables::TableDriver<F> {
@@ -28,7 +32,7 @@ pub fn get_table_driver<F: PrimeField>() -> prover::cs::tables::TableDriver<F> {
 
 /// This function will generate layout and quotient files for verifier
 pub fn generate_artifacts() {
-    let compiled_machine = get_inits_and_teardowns_circuit::<BabyBearField>();
+    let compiled_machine = get_inits_and_teardowns_circuit::<BabyBearField>(true);
     serialize_to_file(&compiled_machine, "generated/layout.json");
 }
 
