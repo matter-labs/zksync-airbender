@@ -2,11 +2,15 @@
 #![feature(allocator_api)]
 #![feature(btree_cursors)]
 #![feature(generic_const_exprs)]
+#![feature(get_mut_unchecked)]
+#![feature(likely_unlikely)]
+#![feature(once_cell_try)]
 #![feature(pointer_is_aligned_to)]
 
 pub(crate) mod allocator;
 #[cfg(feature = "bench")]
 pub mod bench;
+pub mod execution;
 pub(crate) mod ntt;
 pub(crate) mod ops;
 pub mod primitives;
