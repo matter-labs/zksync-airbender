@@ -170,7 +170,7 @@ impl GpuGKRStage1Output {
         setup_hypercube_evals: Option<&DeviceSlice<BF>>,
         decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
         inits_and_teardowns: Option<&InitsAndTeardownsTraceDevice>,
-        tracing_data: &TracingDataDevice,
+        tracing_data: Option<&TracingDataDevice>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = compiled_circuit.trace_len;
@@ -247,8 +247,8 @@ impl GpuGKRStage1Output {
             match (circuit_type, tracing_data) {
                 (
                     CircuitType::Delegation(circuit_type),
-                    TracingDataDevice::Delegation(DelegationTracingDataDevice::BigIntWithControl(
-                        trace,
+                    Some(TracingDataDevice::Delegation(
+                        DelegationTracingDataDevice::BigIntWithControl(trace),
                     )),
                 ) => {
                     assert_eq!(circuit_type, DelegationCircuitType::BigIntWithControl);
@@ -276,9 +276,9 @@ impl GpuGKRStage1Output {
                 }
                 (
                     CircuitType::Delegation(circuit_type),
-                    TracingDataDevice::Delegation(
+                    Some(TracingDataDevice::Delegation(
                         DelegationTracingDataDevice::Blake2WithCompression(trace),
-                    ),
+                    )),
                 ) => {
                     assert_eq!(circuit_type, DelegationCircuitType::Blake2WithCompression);
                     let witness_values_range =
@@ -305,8 +305,8 @@ impl GpuGKRStage1Output {
                 }
                 (
                     CircuitType::Delegation(circuit_type),
-                    TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(
-                        trace,
+                    Some(TracingDataDevice::Delegation(
+                        DelegationTracingDataDevice::KeccakSpecial5(trace),
                     )),
                 ) => {
                     assert_eq!(circuit_type, DelegationCircuitType::KeccakSpecial5);
@@ -334,7 +334,7 @@ impl GpuGKRStage1Output {
                 }
                 (
                     CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type)),
-                    TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(trace)),
+                    Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(trace))),
                 ) => {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
@@ -371,7 +371,7 @@ impl GpuGKRStage1Output {
                 }
                 (
                     CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type)),
-                    TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(trace)),
+                    Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(trace))),
                 ) => {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
@@ -424,8 +424,12 @@ impl GpuGKRStage1Output {
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
+                (
+                    CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                    Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(_))),
+                ) => unimplemented!("GPU GKR stage1 unified path is not implemented yet"),
                 _ => unimplemented!(
-                    "GPU GKR stage1 currently supports only unrolled non-memory and memory traces",
+                    "GPU GKR stage1 received an unsupported witness shape for circuit {circuit_type:?}",
                 ),
             }
         }
