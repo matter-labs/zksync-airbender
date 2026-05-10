@@ -1,4 +1,5 @@
 use crate::primitives::machine_type::MachineType;
+use circuit_common::{DelegationCircuit, RiscVCycleCircuit};
 use common_constants::circuit_families::{
     ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX,
     JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX, LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX,
@@ -11,34 +12,42 @@ use common_constants::delegation_types::{
     keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
 };
 use common_constants::NON_DETERMINISM_CSR;
+use field::baby_bear::base::BabyBearField;
 use prover::definitions::OPTIMAL_FOLDING_PROPERTIES;
+use riscv_transpiler::cycle::{IMStandardIsaConfigUnsignedMulDivOnly, MachineConfig};
+use setups::{
+    inits_and_teardowns, AddSubLuiAuipcMopCircuit, BigIntDelegationCircuit,
+    Blake2sWithCompressionDelegationCircuit, JumpBranchSltCircuit, KeccakSpecial5DelegationCircuit,
+    LoadStoreSubwordOnlyCircuit, LoadStoreWordOnlyCircuit, ShiftBinaryCircuit,
+    UnsignedMulDivCircuit,
+};
 
 const DEFAULT_LDE_FACTOR: usize = 2;
 const DEFAULT_LDE_SOURCE_COSETS: &[usize] = &[0, 1];
 
-const BIGINT_DOMAIN_SIZE: usize = 1 << 22;
-const BLAKE_DOMAIN_SIZE: usize = 1 << 20;
-const KECCAK_DOMAIN_SIZE: usize = 1 << 22;
+const BIGINT_DOMAIN_SIZE: usize =
+    1 << <BigIntDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
+const BLAKE_DOMAIN_SIZE: usize = 1 << <Blake2sWithCompressionDelegationCircuit as
+    DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
+const KECCAK_DOMAIN_SIZE: usize =
+    1 << <KeccakSpecial5DelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
 
-const ADD_SUB_DOMAIN_SIZE: usize = 1 << 24;
-const JUMP_BRANCH_DOMAIN_SIZE: usize = 1 << 24;
-const SHIFT_BINARY_DOMAIN_SIZE: usize = 1 << 24;
-const LOAD_STORE_WORD_DOMAIN_SIZE: usize = 1 << 24;
-const LOAD_STORE_SUBWORD_DOMAIN_SIZE: usize = 1 << 24;
-const INITS_AND_TEARDOWNS_DOMAIN_SIZE: usize = 1 << 24;
-const MUL_DIV_DOMAIN_SIZE: usize = 1 << 23;
-const MUL_DIV_UNSIGNED_DOMAIN_SIZE: usize = 1 << 23;
-const UNIFIED_REDUCED_DOMAIN_SIZE: usize = 1 << 23;
+const ADD_SUB_DOMAIN_SIZE: usize =
+    1 << <AddSubLuiAuipcMopCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
+const JUMP_BRANCH_DOMAIN_SIZE: usize =
+    1 << <JumpBranchSltCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
+const SHIFT_BINARY_DOMAIN_SIZE: usize =
+    1 << <ShiftBinaryCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
+const LOAD_STORE_WORD_DOMAIN_SIZE: usize =
+    1 << <LoadStoreWordOnlyCircuit as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+const LOAD_STORE_SUBWORD_DOMAIN_SIZE: usize =
+    1 << <LoadStoreSubwordOnlyCircuit as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+const INITS_AND_TEARDOWNS_DOMAIN_SIZE: usize = 1 << inits_and_teardowns::TRACE_LEN_LOG2;
+const MUL_DIV_UNSIGNED_DOMAIN_SIZE: usize =
+    1 << <UnsignedMulDivCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
 
-const SHIFT_BINARY_ALLOWED_DELEGATION_CSRS: &[u32] = &[
-    NON_DETERMINISM_CSR,
-    BLAKE2S_DELEGATION_CSR_REGISTER,
-    BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-    KECCAK_SPECIAL5_CSR_REGISTER,
-];
-
-const UNIFIED_REDUCED_ALLOWED_DELEGATION_CSRS: &[u32] =
-    &[NON_DETERMINISM_CSR, BLAKE2S_DELEGATION_CSR_REGISTER];
+const SHIFT_BINARY_ALLOWED_DELEGATION_CSRS: &[u32] =
+    IMStandardIsaConfigUnsignedMulDivOnly::ALLOWED_DELEGATION_CSRS;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ProofSecurityConfig {
@@ -79,14 +88,6 @@ impl CircuitType {
         }
     }
 
-    // #[inline(always)]
-    // pub const fn get_num_cycles(&self) -> usize {
-    //     match self {
-    //         CircuitType::Delegation(delegation) => delegation.get_num_cycles(),
-    //         CircuitType::Unrolled(unrolled) => unrolled.get_num_cycles(),
-    //     }
-    // }
-
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
         match self {
@@ -121,6 +122,14 @@ impl CircuitType {
         // }
     }
 
+    #[inline(always)]
+    pub const fn get_family_idx(&self) -> u8 {
+        match self {
+            Self::Delegation(_) => panic!("delegation circuits do not have a circuit family idx"),
+            Self::Unrolled(unrolled_type) => unrolled_type.get_family_idx(),
+        }
+    }
+
     pub fn get_security_config(&self) -> ProofSecurityConfig {
         match self {
             Self::Delegation(delegation_type) => delegation_type.get_security_config(),
@@ -141,11 +150,6 @@ impl DelegationCircuitType {
     #[inline(always)]
     pub const fn get_delegation_type_id(&self) -> u16 {
         *self as u16
-    }
-
-    #[inline(always)]
-    pub const fn get_num_cycles(&self) -> usize {
-        self.get_domain_size() - 1
     }
 
     #[inline(always)]
@@ -226,6 +230,10 @@ pub enum UnrolledCircuitType {
 }
 
 impl UnrolledCircuitType {
+    const fn unified_unimplemented() -> ! {
+        panic!("Unified circuit metadata is unavailable because Unified execution is unimplemented")
+    }
+
     #[inline(always)]
     pub fn as_memory(&self) -> Option<UnrolledMemoryCircuitType> {
         match self {
@@ -242,23 +250,13 @@ impl UnrolledCircuitType {
         }
     }
 
-    // #[inline(always)]
-    // pub const fn get_num_cycles(&self) -> usize {
-    //     match self {
-    //         Self::InitsAndTeardowns => inits_and_teardowns::NUM_CYCLES,
-    //         Self::Memory(circuit_type) => circuit_type.get_num_cycles(),
-    //         Self::NonMemory(circuit_type) => circuit_type.get_num_cycles(),
-    //         Self::Unified => unified_reduced_machine::NUM_CYCLES,
-    //     }
-    // }
-
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
         match self {
             Self::InitsAndTeardowns => INITS_AND_TEARDOWNS_DOMAIN_SIZE,
             Self::Memory(circuit_type) => circuit_type.get_domain_size(),
             Self::NonMemory(circuit_type) => circuit_type.get_domain_size(),
-            Self::Unified => UNIFIED_REDUCED_DOMAIN_SIZE,
+            Self::Unified => Self::unified_unimplemented(),
         }
     }
 
@@ -268,7 +266,7 @@ impl UnrolledCircuitType {
             Self::InitsAndTeardowns => DEFAULT_LDE_FACTOR,
             Self::Memory(circuit_type) => circuit_type.get_lde_factor(),
             Self::NonMemory(circuit_type) => circuit_type.get_lde_factor(),
-            Self::Unified => DEFAULT_LDE_FACTOR,
+            Self::Unified => Self::unified_unimplemented(),
         }
     }
 
@@ -278,7 +276,7 @@ impl UnrolledCircuitType {
             Self::InitsAndTeardowns => DEFAULT_LDE_SOURCE_COSETS,
             Self::Memory(circuit_type) => circuit_type.get_lde_source_cosets(),
             Self::NonMemory(circuit_type) => circuit_type.get_lde_source_cosets(),
-            Self::Unified => DEFAULT_LDE_SOURCE_COSETS,
+            Self::Unified => Self::unified_unimplemented(),
         }
     }
 
@@ -309,7 +307,7 @@ impl UnrolledCircuitType {
             Self::InitsAndTeardowns => &[],
             Self::Memory(_) => &[],
             Self::NonMemory(circuit_type) => circuit_type.get_allowed_delegation_csrs(),
-            Self::Unified => UNIFIED_REDUCED_ALLOWED_DELEGATION_CSRS,
+            Self::Unified => Self::unified_unimplemented(),
         }
     }
 
@@ -326,7 +324,9 @@ impl UnrolledCircuitType {
             Self::InitsAndTeardowns => get_security_config::<INITS_AND_TEARDOWNS_DOMAIN_SIZE>(),
             Self::Memory(circuit_type) => circuit_type.get_security_config(),
             Self::NonMemory(circuit_type) => circuit_type.get_security_config(),
-            Self::Unified => get_security_config::<UNIFIED_REDUCED_DOMAIN_SIZE>(),
+            Self::Unified => unimplemented!(
+                "Unified security config is unavailable because Unified execution is unimplemented"
+            ),
         }
     }
 }
@@ -339,14 +339,6 @@ pub enum UnrolledMemoryCircuitType {
 }
 
 impl UnrolledMemoryCircuitType {
-    // #[inline(always)]
-    // pub const fn get_num_cycles(&self) -> usize {
-    //     match self {
-    //         Self::LoadStoreSubwordOnly => load_store_subword_only::NUM_CYCLES,
-    //         Self::LoadStoreWordOnly => load_store_word_only::NUM_CYCLES,
-    //     }
-    // }
-
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
         match self {
@@ -436,23 +428,16 @@ pub enum UnrolledNonMemoryCircuitType {
 }
 
 impl UnrolledNonMemoryCircuitType {
-    // #[inline(always)]
-    // pub const fn get_num_cycles(&self) -> usize {
-    //     match self {
-    //         Self::AddSubLuiAuipcMop => add_sub_lui_auipc_mop::NUM_CYCLES,
-    //         Self::JumpBranchSlt => jump_branch_slt::NUM_CYCLES,
-    //         Self::MulDiv => mul_div::NUM_CYCLES,
-    //         Self::MulDivUnsigned => mul_div_unsigned::NUM_CYCLES,
-    //         Self::ShiftBinaryCsr => shift_binary_csr::NUM_CYCLES,
-    //     }
-    // }
+    const fn signed_mul_div_unimplemented() -> ! {
+        panic!("signed MulDiv metadata is unavailable because signed MulDiv execution is unimplemented")
+    }
 
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
         match self {
             Self::AddSubLuiAuipcMop => ADD_SUB_DOMAIN_SIZE,
             Self::JumpBranchSlt => JUMP_BRANCH_DOMAIN_SIZE,
-            Self::MulDiv => MUL_DIV_DOMAIN_SIZE,
+            Self::MulDiv => Self::signed_mul_div_unimplemented(),
             Self::MulDivUnsigned => MUL_DIV_UNSIGNED_DOMAIN_SIZE,
             Self::ShiftBinaryCsr => SHIFT_BINARY_DOMAIN_SIZE,
         }
@@ -473,7 +458,7 @@ impl UnrolledNonMemoryCircuitType {
         match self {
             Self::AddSubLuiAuipcMop => get_tree_cap_size_for_domain_size(ADD_SUB_DOMAIN_SIZE),
             Self::JumpBranchSlt => get_tree_cap_size_for_domain_size(JUMP_BRANCH_DOMAIN_SIZE),
-            Self::MulDiv => get_tree_cap_size_for_domain_size(MUL_DIV_DOMAIN_SIZE),
+            Self::MulDiv => Self::signed_mul_div_unimplemented(),
             Self::MulDivUnsigned => get_tree_cap_size_for_domain_size(MUL_DIV_UNSIGNED_DOMAIN_SIZE),
             Self::ShiftBinaryCsr => get_tree_cap_size_for_domain_size(SHIFT_BINARY_DOMAIN_SIZE),
         }
@@ -571,7 +556,9 @@ impl UnrolledNonMemoryCircuitType {
         match self {
             Self::AddSubLuiAuipcMop => get_security_config::<ADD_SUB_DOMAIN_SIZE>(),
             Self::JumpBranchSlt => get_security_config::<JUMP_BRANCH_DOMAIN_SIZE>(),
-            Self::MulDiv => get_security_config::<MUL_DIV_DOMAIN_SIZE>(),
+            Self::MulDiv => unimplemented!(
+                "signed MulDiv security config is unavailable because signed MulDiv execution is unimplemented"
+            ),
             Self::MulDivUnsigned => get_security_config::<MUL_DIV_UNSIGNED_DOMAIN_SIZE>(),
             Self::ShiftBinaryCsr => get_security_config::<SHIFT_BINARY_DOMAIN_SIZE>(),
         }

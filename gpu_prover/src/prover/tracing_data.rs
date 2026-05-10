@@ -265,18 +265,18 @@ impl<'a> InitsAndTeardownsTransfer<'a> {
     }
 
     pub fn schedule_transfer(&mut self, context: &ProverContext) -> CudaResult<()> {
-        self.transfer.schedule(
-            self.data_host.page_indices.clone(),
+        self.transfer.schedule_multiple(
+            &self.data_host.page_indices.chunks,
             &mut self.data_device.page_indices,
             context,
         )?;
-        self.transfer.schedule(
-            self.data_host.values_packed.clone(),
+        self.transfer.schedule_multiple(
+            &self.data_host.values_packed.chunks,
             &mut self.data_device.values_packed,
             context,
         )?;
-        self.transfer.schedule(
-            self.data_host.timestamps_packed.clone(),
+        self.transfer.schedule_multiple(
+            &self.data_host.timestamps_packed.chunks,
             &mut self.data_device.timestamps_packed,
             context,
         )?;

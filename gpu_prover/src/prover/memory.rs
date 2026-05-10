@@ -5,20 +5,24 @@ use crate::primitives::context::{ProverContext, UnsafeMutAccessor};
 use crate::primitives::device_structures::DeviceMatrixMut;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
+use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::trace_holder::{bitreverse_index, TraceHolder, TreesCacheMode};
 use crate::prover::tracing_data::{
-    DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
+    DelegationTracingDataDevice, InitsAndTeardownsTransfer, TracingDataDevice, TracingDataTransfer,
+    UnrolledTracingDataDevice,
 };
 use crate::witness::memory_delegation::generate_memory_values_delegation;
 use crate::witness::memory_unrolled::{
+    generate_memory_and_witness_values_unrolled_inits_and_teardowns,
     generate_memory_values_unrolled_memory, generate_memory_values_unrolled_non_memory,
 };
-use crate::witness::trace_unrolled::ExecutorFamilyDecoderData;
+use crate::witness::trace_unrolled::{ExecutorFamilyDecoderData, PAGE_SIZE_LOG2};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
+use fft::GoodAllocator;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 
 pub(crate) struct MemoryCommitmentJob<'a> {
@@ -49,14 +53,16 @@ impl<'a> MemoryCommitmentJob<'a> {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn commit_memory<'a>(
+fn commit_memory_inner<'a>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
-    tracing_data: &TracingDataDevice,
+    inits_and_teardowns: Option<&crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice>,
+    tracing_data: Option<&TracingDataDevice>,
     log_lde_factor: u32,
     log_rows_per_leaf: u32,
     log_tree_cap_size: u32,
+    mut callbacks: Callbacks<'a>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     let trace_len = compiled_circuit.trace_len;
@@ -72,16 +78,17 @@ pub(crate) fn commit_memory<'a>(
         TreesCacheMode::CachePartial,
         context,
     )?;
-    let mut callbacks = Callbacks::new();
     let range = Range::new("commit_memory")?;
     let stream = context.get_exec_stream();
     range.start(stream)?;
     let mut evaluations = memory_holder.get_uninit_hypercube_evals_mut();
     let memory = &mut DeviceMatrixMut::new(&mut evaluations, trace_len);
-    match (circuit_type, tracing_data) {
+    match (circuit_type, tracing_data.as_ref()) {
         (
             CircuitType::Delegation(circuit_type),
-            TracingDataDevice::Delegation(DelegationTracingDataDevice::BigIntWithControl(trace)),
+            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::BigIntWithControl(
+                trace,
+            ))),
         ) => {
             assert_eq!(
                 circuit_type,
@@ -91,8 +98,8 @@ pub(crate) fn commit_memory<'a>(
         }
         (
             CircuitType::Delegation(circuit_type),
-            TracingDataDevice::Delegation(DelegationTracingDataDevice::Blake2WithCompression(
-                trace,
+            Some(TracingDataDevice::Delegation(
+                DelegationTracingDataDevice::Blake2WithCompression(trace),
             )),
         ) => {
             assert_eq!(
@@ -103,7 +110,7 @@ pub(crate) fn commit_memory<'a>(
         }
         (
             CircuitType::Delegation(circuit_type),
-            TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(trace)),
+            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(trace))),
         ) => {
             assert_eq!(
                 circuit_type,
@@ -113,7 +120,7 @@ pub(crate) fn commit_memory<'a>(
         }
         (
             CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type)),
-            TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(trace)),
+            Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(trace))),
         ) => {
             generate_memory_values_unrolled_non_memory(
                 circuit_type,
@@ -126,7 +133,7 @@ pub(crate) fn commit_memory<'a>(
         }
         (
             CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type)),
-            TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(trace)),
+            Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(trace))),
         ) => {
             generate_memory_values_unrolled_memory(
                 circuit_type,
@@ -137,8 +144,27 @@ pub(crate) fn commit_memory<'a>(
                 stream,
             )?;
         }
+        (CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns), None) => {
+            let inits_and_teardowns = inits_and_teardowns
+                .as_ref()
+                .expect("standalone init/teardown circuit requires init/teardown data");
+            generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+                &compiled_circuit.memory_layout,
+                log_domain_size,
+                PAGE_SIZE_LOG2,
+                inits_and_teardowns,
+                memory,
+                stream,
+            )?;
+        }
+        (
+            CircuitType::Unrolled(UnrolledCircuitType::Unified),
+            Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(_))),
+        ) => {
+            unimplemented!("unified memory commitment is not implemented yet")
+        }
         _ => unimplemented!(
-            "commit_memory currently supports only delegation and unrolled non-memory/memory traces"
+            "commit_memory received an unsupported witness shape for circuit {circuit_type:?}"
         ),
     }
     let _ = evaluations;
@@ -188,4 +214,93 @@ pub(crate) fn commit_memory<'a>(
         range,
     };
     Ok(job)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn commit_memory<'a>(
+    circuit_type: CircuitType,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
+    tracing_data: &TracingDataDevice,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    log_tree_cap_size: u32,
+    context: &ProverContext,
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    commit_memory_inner(
+        circuit_type,
+        compiled_circuit,
+        decoder_table,
+        None,
+        Some(tracing_data),
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        Callbacks::new(),
+        context,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
+    circuit_type: CircuitType,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    decoder_transfer: Option<DecoderTableTransfer<'a>>,
+    inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a>>,
+    tracing_data_transfer: Option<TracingDataTransfer<'a, A>>,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    log_tree_cap_size: u32,
+    context: &ProverContext,
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    let mut callbacks = Callbacks::new();
+    let decoder_table = if let Some(decoder_transfer) = decoder_transfer {
+        decoder_transfer.transfer.ensure_transferred(context)?;
+        let DecoderTableTransfer {
+            data_host: _,
+            data_device,
+            transfer,
+        } = decoder_transfer;
+        callbacks.extend(transfer.into_callbacks());
+        Some(data_device)
+    } else {
+        None
+    };
+    let inits_and_teardowns =
+        if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer {
+            let InitsAndTeardownsTransfer {
+                data_host: _,
+                data_device,
+                transfer,
+            } = inits_and_teardowns_transfer;
+            transfer.ensure_transferred(context)?;
+            callbacks.extend(transfer.into_callbacks());
+            Some(data_device)
+        } else {
+            None
+        };
+    let tracing_data = if let Some(tracing_data_transfer) = tracing_data_transfer {
+        let TracingDataTransfer {
+            data_host: _,
+            data_device,
+            transfer,
+        } = tracing_data_transfer;
+        transfer.ensure_transferred(context)?;
+        callbacks.extend(transfer.into_callbacks());
+        Some(data_device)
+    } else {
+        None
+    };
+    commit_memory_inner(
+        circuit_type,
+        compiled_circuit,
+        decoder_table.as_ref().map(|t| &t[..]),
+        inits_and_teardowns.as_ref(),
+        tracing_data.as_ref(),
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        callbacks,
+        context,
+    )
 }

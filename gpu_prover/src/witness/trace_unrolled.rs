@@ -1,6 +1,6 @@
 use super::option::u8::Option;
+use crate::allocator::host::ConcurrentStaticHostAllocator;
 use crate::primitives::context::DeviceAllocation;
-use crate::primitives::static_host::StaticPinnedBox;
 use crate::witness::trace::ChunkedTraceHolder;
 use common_constants::TimestampScalar;
 use cs::gkr_circuits::ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData;
@@ -8,7 +8,6 @@ use riscv_transpiler::witness::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,
 };
-use std::sync::Arc;
 
 /// Page size for the inits-and-teardowns trace transfer, in `log2(words)`.
 ///
@@ -158,93 +157,31 @@ impl From<&InitsAndTeardownsTraceDevice> for InitsAndTeardownsTraceRaw {
     }
 }
 
+/// Chunked, pinned-host inits-and-teardowns trace.
+///
+/// Each field is a `ChunkedTraceHolder` whose chunks come from the bounded
+/// pinned-host allocator pool. The three series stay in lockstep at the page
+/// granularity: chunks of `values_packed` and `timestamps_packed` must be
+/// page-aligned (length is a multiple of `1 << PAGE_SIZE_LOG2`); chunks of
+/// `page_indices` carry one entry per page. Per-field chunk lengths sum to
+/// the same total page count.
+#[derive(Clone)]
 pub(crate) struct InitsAndTeardownsTraceHost {
-    pub page_indices: Arc<StaticPinnedBox<u32>>,
-    pub values_packed: Arc<StaticPinnedBox<u32>>,
-    pub timestamps_packed: Arc<StaticPinnedBox<TimestampScalar>>,
+    pub page_indices: ChunkedTraceHolder<u32, ConcurrentStaticHostAllocator>,
+    pub values_packed: ChunkedTraceHolder<u32, ConcurrentStaticHostAllocator>,
+    pub timestamps_packed: ChunkedTraceHolder<TimestampScalar, ConcurrentStaticHostAllocator>,
 }
 
-// pub(crate) fn get_aux_arguments_boundary_values(
-//     compiled_circuit: &CompiledCircuitArtifact<BF>,
-//     inits_and_teardowns: &ShuffleRamInitsAndTeardownsHost<impl GoodAllocator>,
-// ) -> Vec<AuxArgumentsBoundaryValues> {
-//     let layouts = &compiled_circuit
-//         .memory_layout
-//         .shuffle_ram_inits_and_teardowns;
-//     let layouts_len = layouts.len();
-//     assert_eq!(
-//         layouts_len,
-//         compiled_circuit.lazy_init_address_aux_vars.len()
-//     );
-//     let rows_count = compiled_circuit.trace_len - 1;
-//     let len = inits_and_teardowns.len();
-//     assert!(len <= rows_count * layouts_len);
-//     let padding = rows_count * layouts_len - len;
-//     let get_data = |index: usize| -> LazyInitAndTeardown {
-//         if index >= padding {
-//             inits_and_teardowns.get(index - padding)
-//         } else {
-//             LazyInitAndTeardown::default()
-//         }
-//     };
-//     let mut values = Vec::with_capacity(layouts_len);
-//     for i in 0..layouts_len {
-//         let LazyInitAndTeardown {
-//             address: lazy_init_address_first_row,
-//             teardown_value: lazy_teardown_value_first_row,
-//             teardown_timestamp: lazy_teardown_timestamp_first_row,
-//         } = get_data((rows_count - 1) * i);
-//
-//         let LazyInitAndTeardown {
-//             address: lazy_init_address_one_before_last_row,
-//             teardown_value: lazy_teardown_value_one_before_last_row,
-//             teardown_timestamp: lazy_teardown_timestamp_one_before_last_row,
-//         } = get_data((rows_count * (i + 1)) - 1);
-//
-//         let (lazy_init_address_first_row_low, lazy_init_address_first_row_high) =
-//             split_u32_into_pair_u16(lazy_init_address_first_row);
-//         let (teardown_value_first_row_low, teardown_value_first_row_high) =
-//             split_u32_into_pair_u16(lazy_teardown_value_first_row);
-//         let (teardown_timestamp_first_row_low, teardown_timestamp_first_row_high) =
-//             split_timestamp(lazy_teardown_timestamp_first_row.as_scalar());
-//
-//         let (lazy_init_address_one_before_last_row_low, lazy_init_address_one_before_last_row_high) =
-//             split_u32_into_pair_u16(lazy_init_address_one_before_last_row);
-//         let (teardown_value_one_before_last_row_low, teardown_value_one_before_last_row_high) =
-//             split_u32_into_pair_u16(lazy_teardown_value_one_before_last_row);
-//         let (
-//             teardown_timestamp_one_before_last_row_low,
-//             teardown_timestamp_one_before_last_row_high,
-//         ) = split_timestamp(lazy_teardown_timestamp_one_before_last_row.as_scalar());
-//
-//         let aux_value = AuxArgumentsBoundaryValues {
-//             lazy_init_first_row: [
-//                 BF::new(lazy_init_address_first_row_low as u32),
-//                 BF::new(lazy_init_address_first_row_high as u32),
-//             ],
-//             teardown_value_first_row: [
-//                 BF::new(teardown_value_first_row_low as u32),
-//                 BF::new(teardown_value_first_row_high as u32),
-//             ],
-//             teardown_timestamp_first_row: [
-//                 BF::new(teardown_timestamp_first_row_low),
-//                 BF::new(teardown_timestamp_first_row_high),
-//             ],
-//             lazy_init_one_before_last_row: [
-//                 BF::new(lazy_init_address_one_before_last_row_low as u32),
-//                 BF::new(lazy_init_address_one_before_last_row_high as u32),
-//             ],
-//             teardown_value_one_before_last_row: [
-//                 BF::new(teardown_value_one_before_last_row_low as u32),
-//                 BF::new(teardown_value_one_before_last_row_high as u32),
-//             ],
-//             teardown_timestamp_one_before_last_row: [
-//                 BF::new(teardown_timestamp_one_before_last_row_low),
-//                 BF::new(teardown_timestamp_one_before_last_row_high),
-//             ],
-//         };
-//         values.push(aux_value);
-//     }
-//
-//     values
-// }
+impl InitsAndTeardownsTraceHost {
+    pub fn into_allocators(self) -> Vec<ConcurrentStaticHostAllocator> {
+        let Self {
+            page_indices,
+            values_packed,
+            timestamps_packed,
+        } = self;
+        let mut allocators = page_indices.into_allocators();
+        allocators.extend(values_packed.into_allocators());
+        allocators.extend(timestamps_packed.into_allocators());
+        allocators
+    }
+}

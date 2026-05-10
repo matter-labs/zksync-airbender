@@ -420,7 +420,7 @@ fn generate_stage1_output_for_test(
         Some(setup_transfer.trace_holder.get_hypercube_evals()),
         decoder_table,
         inits_and_teardowns,
-        tracing_data,
+        Some(tracing_data),
         context,
     )
 }
@@ -572,7 +572,7 @@ impl BasicUnrolledFixture {
             Some(setup_transfer),
             decoder_transfer,
             None,
-            tracing_data_transfer,
+            Some(tracing_data_transfer),
             memory_transfer,
             &self.context,
         )
@@ -595,7 +595,7 @@ impl BasicUnrolledFixture {
             Some(setup_transfer),
             decoder_transfer,
             None,
-            tracing_data_transfer,
+            Some(tracing_data_transfer),
             memory_transfer,
             &self.context,
         )
@@ -758,7 +758,11 @@ fn prepare_basic_unrolled_fixture(
         _marker: std::marker::PhantomData,
     };
 
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+    let prover_config =
+        prover::gkr::prover_config::example_configs::config_for_80_bits_under_pessimistic_conjecture(
+            trace_len.trailing_zeros() as usize,
+        );
+    let whir_schedule = prover_config.whir_schedule.clone();
     let setup = GKRSetup::construct(
         &TableDriver::new(),
         &decoder_table_data,
@@ -835,7 +839,7 @@ fn prepare_basic_unrolled_fixture(
             &setup,
             &setup_commitment,
             &twiddles,
-            &whir_schedule,
+            &prover_config,
             vec![],
             trace_len,
             &worker,
@@ -3748,7 +3752,11 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+    let prover_config =
+        prover::gkr::prover_config::example_configs::config_for_80_bits_under_pessimistic_conjecture(
+            trace_len.trailing_zeros() as usize,
+        );
+    let whir_schedule = prover_config.whir_schedule.clone();
     let setup = GKRSetup::construct(
         &table_driver,
         &decoder_table_data,
@@ -7493,12 +7501,39 @@ fn build_inits_and_teardowns_trace_host_for_test(
     values_packed: &[u32],
     timestamps_packed: &[common_constants::TimestampScalar],
 ) -> InitsAndTeardownsTraceHost {
-    use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
     InitsAndTeardownsTraceHost {
-        page_indices: Arc::new(alloc_static_pinned_box_from_slice(page_indices).unwrap()),
-        values_packed: Arc::new(alloc_static_pinned_box_from_slice(values_packed).unwrap()),
-        timestamps_packed: Arc::new(alloc_static_pinned_box_from_slice(timestamps_packed).unwrap()),
+        page_indices: ChunkedTraceHolder {
+            chunks: vec![Arc::new(alloc_pinned_vec_from_slice_for_test(page_indices))],
+        },
+        values_packed: ChunkedTraceHolder {
+            chunks: vec![Arc::new(alloc_pinned_vec_from_slice_for_test(
+                values_packed,
+            ))],
+        },
+        timestamps_packed: ChunkedTraceHolder {
+            chunks: vec![Arc::new(alloc_pinned_vec_from_slice_for_test(
+                timestamps_packed,
+            ))],
+        },
     }
+}
+
+/// Build a single pinned-host `Vec<T, ConcurrentStaticHostAllocator>` from a slice.
+///
+/// Each call dedicates a private `ConcurrentStaticHostAllocator` that owns one fresh
+/// `HostAllocation`, mirroring the per-chunk pinned allocation pattern used in the
+/// production producer's pool allocators (single-chunk degenerate case).
+fn alloc_pinned_vec_from_slice_for_test<T: Copy>(
+    values: &[T],
+) -> Vec<T, crate::allocator::host::ConcurrentStaticHostAllocator> {
+    use crate::allocator::host::ConcurrentStaticHostAllocator;
+    use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
+    let bytes = values.len() * std::mem::size_of::<T>();
+    let allocation = HostAllocation::alloc(bytes, CudaHostAllocFlags::DEFAULT).unwrap();
+    let allocator = ConcurrentStaticHostAllocator::new([allocation], 0);
+    let mut out: Vec<T, _> = Vec::with_capacity_in(values.len(), allocator);
+    out.extend_from_slice(values);
+    out
 }
 
 #[test]
@@ -7622,7 +7657,11 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
 
     let table_driver = TableDriver::<BF>::new();
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+    let prover_config =
+        prover::gkr::prover_config::example_configs::config_for_80_bits_under_pessimistic_conjecture(
+            trace_len.trailing_zeros() as usize,
+        );
+    let whir_schedule = prover_config.whir_schedule.clone();
     let setup = GKRSetup::construct(&table_driver, &[], trace_len, &compiled_circuit);
     assert!(setup.hypercube_evals.is_empty());
     let setup_commitment = setup.commit(
@@ -7640,7 +7679,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         &setup,
         &setup_commitment,
         &twiddles,
-        &whir_schedule,
+        &prover_config,
         canonical_top_bits.clone(),
         trace_len,
         &worker,
@@ -7697,7 +7736,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             None,
             None,
             Some(&inits_and_teardowns_transfer.data_device),
-            &tracing_data_transfer.data_device,
+            Some(&tracing_data_transfer.data_device),
             &context,
         )
         .unwrap();
@@ -7918,7 +7957,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         None,
         None,
         Some(inits_and_teardowns_transfer),
-        tracing_data_transfer,
+        Some(tracing_data_transfer),
         memory_transfer,
         &context,
     )

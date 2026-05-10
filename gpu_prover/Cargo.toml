@@ -12,21 +12,27 @@ build = "build/main.rs"
 
 [dependencies]
 blake2s_u32 = { workspace = true }
+circuit_common = { workspace = true }
 common_constants = { workspace = true }
 cs = { workspace = true, features = ["compiler"] }
 fft = { workspace = true }
 field = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
 riscv_transpiler = { workspace = true, features = ["jit"] }
+setups = { workspace = true }
+trace_and_split = { workspace = true }
 verifier_common = { workspace = true }
 worker = { workspace = true }
 
 era_cudart = "=0.156.0"
 era_cudart_sys = "=0.156.0"
 
+crossbeam-channel = "0.5"
+crossbeam-utils = "0.8"
 itertools = "*"
 log = "0.4.29"
 rayon = "*"
+type-map = "0.5"
 
 [features]
 default = ["security_80", "deterministic_pow"]
