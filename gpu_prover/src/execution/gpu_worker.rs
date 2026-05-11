@@ -267,8 +267,15 @@ fn schedule_phase_one<'a>(
     };
 
     let memory_transfer = if let Some(caps) = state.memory_caps.as_ref() {
-        let log_lde_factor = circuit_type.get_lde_factor().trailing_zeros();
-        let log_tree_cap_size = circuit_type.get_tree_cap_size().trailing_zeros();
+        // Geometry must match what `commit_memory_inner` used to produce the
+        // caps (it reads `lde_factor` and `cap_size` from `prover_config`).
+        // `circuit_type.get_lde_factor()` / `get_tree_cap_size()` are derived
+        // from `OPTIMAL_FOLDING_PROPERTIES` and can disagree with the
+        // `prover_config` the commit phase actually used, so use the
+        // prover_config geometry directly here.
+        let prover_config = circuit_type.prover_config(state.security_level);
+        let log_lde_factor = prover_config.lde_factor.trailing_zeros();
+        let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
         let host =
             GpuGKRMemoryTransferHost::from_per_coset_caps(caps, log_lde_factor, log_tree_cap_size)?;
         let mut t = GpuGKRMemoryTransfer::new(Arc::new(host), context)?;
