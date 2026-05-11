@@ -89,6 +89,9 @@ pub mod proximity_testing_modes;
 pub mod queries;
 pub mod whir_proof;
 
+#[cfg(test)]
+mod monomial_basis_self_check;
+
 pub use self::queries::*;
 pub use self::whir_proof::*;
 
