@@ -2526,17 +2526,6 @@ impl<F: FieldInfo> StructVars<F> {
         }
     }
 
-    /// Update a logical struct member and its compiled-column mirror, if one exists.
-    pub fn assign_compute_member_and_bridge<'ctx, 'sco>(
-        &self,
-        builder: &OpsBuilder<'ctx, 'sco, F>,
-        self_value: Value<'ctx, 'sco>,
-        var: &Variable,
-        value: Value<'ctx, 'sco>,
-    ) -> Result<()> {
-        self.assign_compute_member_and_bridge_with_lookup(builder, self_value, var, value, |_| None)
-    }
-
     /// Update a logical struct member and its compiled-column mirror, if one exists, using
     /// already-materialized compute values to rebuild register-valued members without reading
     /// their previous struct value.

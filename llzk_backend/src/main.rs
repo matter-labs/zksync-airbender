@@ -99,7 +99,7 @@ struct GenerateArgs {
     /// Output directory or output file name
     #[arg(short, long)]
     output: String,
-    #[arg(short, long, default_value_t = OutputFormat::Pcl)]
+    #[arg(short, long, default_value_t = OutputFormat::Llzk)]
     format: OutputFormat,
     #[arg(short = 'O', default_value_t = OptLevel::O1)]
     opt_level: OptLevel,
