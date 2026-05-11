@@ -86,7 +86,6 @@ use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension, PrimeField};
 use itertools::Itertools;
 use prover::definitions::{SecurityLevel, Transcript};
-use prover::gkr::prover_config::ProverConfig;
 use prover::gkr::prover::dimension_reduction::{self, forward::DimensionReducingInputOutput};
 use prover::gkr::prover::forward_loop;
 use prover::gkr::prover::prove_configured_with_gkr;
@@ -99,6 +98,7 @@ use prover::gkr::prover::transcript_utils::{
 };
 use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
 use prover::gkr::prover::{GKRExternalChallenges, GKRProof, WhirSchedule};
+use prover::gkr::prover_config::ProverConfig;
 use prover::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRLayerSource, GKRStorage};
 use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
 use prover::gkr::sumcheck::evaluate_small_univariate_poly;
@@ -7653,9 +7653,8 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
 
     let table_driver = TableDriver::<BF>::new();
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    let prover_config =
-        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
-            .prover_config(SecurityLevel::Sec80);
+    let prover_config = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
+        .prover_config(SecurityLevel::Sec80);
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = GKRSetup::construct(&table_driver, &[], trace_len, &compiled_circuit);
     assert!(setup.hypercube_evals.is_empty());
