@@ -33,7 +33,6 @@ delegation = []
 jit = ["dynasmrt", "riscv-decode", "capstone"]
 fuzzing-support = []
 flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object"]
-fuzzing-support = []
 default = ["jit"]
 
 [dev-dependencies]
