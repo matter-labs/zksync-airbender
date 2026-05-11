@@ -1,15 +1,19 @@
 use super::*;
 
 mod bigint_ops_with_control_circuit;
+mod blake2_g_function_circuit;
 mod blake2_with_compression_circuit;
 mod keccak_special5_circuit;
 
 pub use self::bigint_ops_with_control_circuit::get_bigint_with_control_circuit_setup;
+pub use self::blake2_g_function_circuit::get_blake2_g_function_circuit_setup;
 pub use self::blake2_with_compression_circuit::get_blake2_with_compression_circuit_setup;
 pub use self::keccak_special5_circuit::get_keccak_special5_circuit_setup;
 
 #[cfg(feature = "witness_eval_fn")]
 pub use ::bigint_with_control::witness_eval_fn as bigint_witness_eval_fn;
+#[cfg(feature = "witness_eval_fn")]
+pub use ::blake2_g_function::witness_eval_fn as blake2_g_function_witness_eval_fn;
 #[cfg(feature = "witness_eval_fn")]
 pub use ::blake2_with_compression::witness_eval_fn as blake2_with_compression_witness_eval_fn;
 #[cfg(feature = "witness_eval_fn")]

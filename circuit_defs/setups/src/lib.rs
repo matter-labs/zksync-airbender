@@ -29,12 +29,14 @@ pub use ::mul_div_unsigned::UnsignedMulDivCircuit;
 pub use ::shift_binary::ShiftBinaryCircuit;
 
 pub use ::bigint_with_control::BigIntDelegationCircuit;
+pub use ::blake2_g_function::Blake2sGFunctionDelegationCircuit;
 pub use ::blake2_with_compression::Blake2sWithCompressionDelegationCircuit;
 pub use ::keccak_special5::KeccakSpecial5DelegationCircuit;
 
 pub use ::inits_and_teardowns;
 
 pub use bigint_with_control;
+pub use blake2_g_function;
 pub use blake2_with_compression;
 pub use keccak_special5;
 pub use prover;
