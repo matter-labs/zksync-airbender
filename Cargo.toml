@@ -35,6 +35,7 @@ members = [
     "tools/generator",
     "tools/pow_config_generator",
 
+    "circuit_defs/blake2_g_function",
     "circuit_defs/blake2_with_compression",
     "circuit_defs/bigint_with_control",
     "circuit_defs/keccak_special5",
@@ -56,6 +57,7 @@ default-members = [
     "blake2s_u32",
     "common_constants",
     "circuit_defs/bigint_with_control",
+    "circuit_defs/blake2_g_function",
     "circuit_defs/blake2_with_compression",
     "circuit_defs/circuit_common",
     "circuit_defs/prover_examples",
@@ -118,6 +120,7 @@ verifier_common = { path = "./verifier_common", default-features = false }
 
 circuit_common = { path = "./circuit_defs/circuit_common" }
 
+blake2_g_function = { path = "./circuit_defs/blake2_g_function" }
 blake2_with_compression = { path = "./circuit_defs/blake2_with_compression" }
 bigint_with_control = { path = "./circuit_defs/bigint_with_control" }
 keccak_special5 = {path = "./circuit_defs/keccak_special5"}
