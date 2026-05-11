@@ -134,13 +134,13 @@ pub struct LookupQuery<F: PrimeField> {
     pub table: LookupQueryTableType,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DisjunctiveLookupGuard<F: PrimeField> {
     EqConst { var: Variable, value: F },
     And(Vec<DisjunctiveLookupGuard<F>>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DisjunctiveLookupCase<F: PrimeField> {
     pub flag: Boolean,
     pub row: [LookupInput<F>; COMMON_TABLE_WIDTH],
