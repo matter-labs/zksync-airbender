@@ -14,8 +14,8 @@ use crate::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use cs::gkr_circuits::ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::result::CudaResult;
+use prover::definitions::SecurityLevel;
 use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
-use prover::gkr::prover::WhirSchedule;
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 use worker::Worker;
@@ -212,6 +212,7 @@ pub(crate) fn build_unrolled_circuit_precomputation(
     binary_image: &[u32],
     text_section: &[u32],
     worker: &Worker,
+    security_level: SecurityLevel,
 ) -> CircuitPrecomputations {
     let setup = build_unrolled_setup(
         machine_type,
@@ -224,10 +225,9 @@ pub(crate) fn build_unrolled_circuit_precomputation(
         UnrolledSetup::Memory(s) => (s.compiled_circuit, s.setup, s.decoder_data),
         UnrolledSetup::NonMemory(s) => (s.compiled_circuit, s.setup, s.decoder_data),
     };
-    let log_lde_factor = circuit_type.get_lde_factor().trailing_zeros();
     let circuit_type = CircuitType::Unrolled(circuit_type);
-    let log_rows_per_leaf = whir_schedule_for_circuit(circuit_type).whir_steps_schedule[0] as u32;
-    let log_tree_cap_size = circuit_type.get_tree_cap_size().trailing_zeros();
+    let (log_lde_factor, log_rows_per_leaf, log_tree_cap_size) =
+        config_logs_for_circuit(circuit_type, security_level);
     CircuitPrecomputations::new(
         circuit_type,
         circuit,
@@ -240,46 +240,27 @@ pub(crate) fn build_unrolled_circuit_precomputation(
     .unwrap()
 }
 
-/// Pick a `WhirSchedule` for a circuit based on its domain-size log2.
-pub(crate) fn whir_schedule_for_circuit(circuit_type: CircuitType) -> WhirSchedule {
-    let domain_size_log2 = circuit_type.get_domain_size().trailing_zeros();
-    match domain_size_log2 {
-        20 => WhirSchedule::default_for_tests_80_bits_20(),
-        22 => WhirSchedule::default_for_tests_80_bits_22(),
-        24 => WhirSchedule::default_for_tests_80_bits_24(),
-        23 => WhirSchedule::default_for_tests_80_bits_24(),
-        other => panic!(
-            "no default WhirSchedule for circuit {circuit_type:?} (domain_size_log2 = {other})"
-        ),
-    }
-}
-
-fn whir_schedule_for_logs(domain_size_log2: u32) -> (u32, u32) {
-    let schedule = match domain_size_log2 {
-        20 => WhirSchedule::default_for_tests_80_bits_20(),
-        22 => WhirSchedule::default_for_tests_80_bits_22(),
-        23 | 24 => WhirSchedule::default_for_tests_80_bits_24(),
-        other => panic!("no default WhirSchedule for domain_size_log2 = {other}"),
-    };
-    (
-        schedule.whir_steps_schedule[0] as u32,
-        schedule.cap_size.trailing_zeros(),
-    )
-}
-
 pub(crate) fn get_common_precomputations_for_all(
     worker: &Worker,
+    security_level: SecurityLevel,
 ) -> BTreeMap<CircuitType, CircuitPrecomputations> {
-    get_common_precomputations(whir_logs_for_circuit, worker).unwrap()
+    get_common_precomputations(
+        move |ct| config_logs_for_circuit(ct, security_level),
+        worker,
+    )
+    .unwrap()
 }
 
-fn whir_logs_for_circuit(circuit_type: CircuitType) -> (u32, u32, u32) {
-    let log_lde_factor = circuit_type.get_lde_factor().trailing_zeros();
-    let log_tree_cap_size = circuit_type.get_tree_cap_size().trailing_zeros();
-    let domain_size_log2 = circuit_type.get_domain_size().trailing_zeros();
-    let (log_rows_per_leaf, _log_tree_cap_size_from_schedule) =
-        whir_schedule_for_logs(domain_size_log2);
-    (log_lde_factor, log_rows_per_leaf, log_tree_cap_size)
+fn config_logs_for_circuit(
+    circuit_type: CircuitType,
+    security_level: SecurityLevel,
+) -> (u32, u32, u32) {
+    let prover_config = circuit_type.prover_config(security_level);
+    (
+        prover_config.lde_factor.trailing_zeros(),
+        prover_config.base_oracles_values_per_leaf.trailing_zeros(),
+        prover_config.cap_size.trailing_zeros(),
+    )
 }
 
 struct UnrolledMemorySetup {
