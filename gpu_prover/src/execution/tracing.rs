@@ -16,6 +16,7 @@ use riscv_transpiler::vm::{
     Counters, DelegationsAndFamiliesCounters, DelegationsAndUnifiedCounters,
 };
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
+use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 use riscv_transpiler::witness::{
@@ -58,6 +59,8 @@ const BIGINT_DELEGATION_TYPE_ID: u16 =
     DelegationCircuitType::BigIntWithControl.get_delegation_type_id();
 const KECCAK_DELEGATION_TYPE_ID: u16 =
     DelegationCircuitType::KeccakSpecial5.get_delegation_type_id();
+const BLAKE_G_FUNCTION_DELEGATION_TYPE_ID: u16 =
+    DelegationCircuitType::Blake2GFunction.get_delegation_type_id();
 
 pub(crate) trait TracingType {
     const IS_SPLIT: bool;
@@ -112,6 +115,7 @@ pub(crate) struct SplitDataTraceRanges {
     pub blake_calls: VecDeque<PtrRange<Blake2sRoundFunctionDelegationWitness>>,
     pub bigint_calls: VecDeque<PtrRange<BigintDelegationWitness>>,
     pub keccak_calls: VecDeque<PtrRange<KeccakSpecial5DelegationWitness>>,
+    pub blake_g_function_calls: VecDeque<PtrRange<Blake2sGFunctionDelegationWitness>>,
     pub add_sub_family: VecDeque<PtrRange<NonMemoryOpcodeTracingDataWithTimestamp>>,
     pub binary_shift_csr_family: VecDeque<PtrRange<NonMemoryOpcodeTracingDataWithTimestamp>>,
     pub slt_branch_family: VecDeque<PtrRange<NonMemoryOpcodeTracingDataWithTimestamp>>,
@@ -127,6 +131,7 @@ pub(crate) struct UnifiedDataTraceRanges {
     pub blake_calls: VecDeque<PtrRange<Blake2sRoundFunctionDelegationWitness>>,
     pub bigint_calls: VecDeque<PtrRange<BigintDelegationWitness>>,
     pub keccak_calls: VecDeque<PtrRange<KeccakSpecial5DelegationWitness>>,
+    pub blake_g_function_calls: VecDeque<PtrRange<Blake2sGFunctionDelegationWitness>>,
     pub cycles: VecDeque<PtrRange<UnifiedOpcodeTracingDataWithTimestamp>>,
 }
 
@@ -174,6 +179,7 @@ pub(crate) struct SplitTracer {
     blake_calls: TracerRanges<Blake2sRoundFunctionDelegationWitness>,
     bigint_calls: TracerRanges<BigintDelegationWitness>,
     keccak_calls: TracerRanges<KeccakSpecial5DelegationWitness>,
+    blake_g_function_calls: TracerRanges<Blake2sGFunctionDelegationWitness>,
     add_sub_family: TracerRanges<NonMemoryOpcodeTracingDataWithTimestamp>,
     binary_shift_csr_family: TracerRanges<NonMemoryOpcodeTracingDataWithTimestamp>,
     slt_branch_family: TracerRanges<NonMemoryOpcodeTracingDataWithTimestamp>,
@@ -190,6 +196,7 @@ impl Tracer for SplitTracer {
             blake_calls: TracerRanges::new(trace_ranges.blake_calls),
             bigint_calls: TracerRanges::new(trace_ranges.bigint_calls),
             keccak_calls: TracerRanges::new(trace_ranges.keccak_calls),
+            blake_g_function_calls: TracerRanges::new(trace_ranges.blake_g_function_calls),
             add_sub_family: TracerRanges::new(trace_ranges.add_sub_family),
             binary_shift_csr_family: TracerRanges::new(trace_ranges.binary_shift_csr_family),
             slt_branch_family: TracerRanges::new(trace_ranges.slt_branch_family),
@@ -270,6 +277,8 @@ impl WitnessTracer for SplitTracer {
                 self.bigint_calls.write_type_unchecked(data)
             } else if const { DELEGATION_TYPE == KECCAK_DELEGATION_TYPE_ID } {
                 self.keccak_calls.write_type_unchecked(data)
+            } else if const { DELEGATION_TYPE == BLAKE_G_FUNCTION_DELEGATION_TYPE_ID } {
+                self.blake_g_function_calls.write_type_unchecked(data)
             } else {
                 core::hint::unreachable_unchecked()
             };
@@ -281,6 +290,7 @@ pub(crate) struct UnifiedTracer {
     blake_calls: TracerRanges<Blake2sRoundFunctionDelegationWitness>,
     bigint_calls: TracerRanges<BigintDelegationWitness>,
     keccak_calls: TracerRanges<KeccakSpecial5DelegationWitness>,
+    blake_g_function_calls: TracerRanges<Blake2sGFunctionDelegationWitness>,
     cycles: TracerRanges<UnifiedOpcodeTracingDataWithTimestamp>,
 }
 
@@ -292,6 +302,7 @@ impl Tracer for UnifiedTracer {
             blake_calls: TracerRanges::new(trace_ranges.blake_calls),
             bigint_calls: TracerRanges::new(trace_ranges.bigint_calls),
             keccak_calls: TracerRanges::new(trace_ranges.keccak_calls),
+            blake_g_function_calls: TracerRanges::new(trace_ranges.blake_g_function_calls),
             cycles: TracerRanges::new(trace_ranges.cycles),
         }
     }
@@ -353,6 +364,8 @@ impl WitnessTracer for UnifiedTracer {
                 self.bigint_calls.write_type_unchecked(data)
             } else if const { DELEGATION_TYPE == KECCAK_DELEGATION_TYPE_ID } {
                 self.keccak_calls.write_type_unchecked(data)
+            } else if const { DELEGATION_TYPE == BLAKE_G_FUNCTION_DELEGATION_TYPE_ID } {
+                self.blake_g_function_calls.write_type_unchecked(data)
             } else {
                 core::hint::unreachable_unchecked()
             };
@@ -515,6 +528,7 @@ pub(crate) struct SplitTracingDataProducers {
     blake_producer: TracingDataProducer<Blake2sRoundFunctionDelegationWitness>,
     bigint_producer: TracingDataProducer<BigintDelegationWitness>,
     keccak_producer: TracingDataProducer<KeccakSpecial5DelegationWitness>,
+    blake_g_function_producer: TracingDataProducer<Blake2sGFunctionDelegationWitness>,
     add_sub_family_producer: TracingDataProducer<NonMemoryOpcodeTracingDataWithTimestamp>,
     binary_shift_csr_family_producer: TracingDataProducer<NonMemoryOpcodeTracingDataWithTimestamp>,
     slt_branch_family_producer: TracingDataProducer<NonMemoryOpcodeTracingDataWithTimestamp>,
@@ -546,6 +560,12 @@ impl TracingDataProducers for SplitTracingDataProducers {
             free_allocators.clone(),
             results.clone(),
         );
+        let blake_g_function_producer =
+            TracingDataProducer::<Blake2sGFunctionDelegationWitness>::new(
+                CircuitType::Delegation(DelegationCircuitType::Blake2GFunction),
+                free_allocators.clone(),
+                results.clone(),
+            );
         let add_sub_family_producer =
             TracingDataProducer::<NonMemoryOpcodeTracingDataWithTimestamp>::new(
                 CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
@@ -602,6 +622,7 @@ impl TracingDataProducers for SplitTracingDataProducers {
             blake_producer,
             bigint_producer,
             keccak_producer,
+            blake_g_function_producer,
             add_sub_family_producer,
             binary_shift_csr_family_producer,
             slt_branch_family_producer,
@@ -681,10 +702,12 @@ impl TracingDataProducers for SplitTracingDataProducers {
                     &mut trace_ranges.keccak_calls,
                 ),
                 CounterType::BlakeGFunctionDelegation => {
-                    assert_eq!(
-                        initial_count, final_count,
-                        "Blake G-function delegation tracing is not implemented in execution"
-                    );
+                    self.blake_g_function_producer.process_snapshot(
+                        snapshot_index,
+                        initial_count,
+                        final_count,
+                        &mut trace_ranges.blake_g_function_calls,
+                    )
                 }
                 _ => unreachable!(),
             }
@@ -696,6 +719,7 @@ impl TracingDataProducers for SplitTracingDataProducers {
         self.blake_producer.finalize();
         self.bigint_producer.finalize();
         self.keccak_producer.finalize();
+        self.blake_g_function_producer.finalize();
         self.add_sub_family_producer.finalize();
         self.binary_shift_csr_family_producer.finalize();
         self.slt_branch_family_producer.finalize();
@@ -709,6 +733,7 @@ pub(crate) struct UnifiedTracingDataProducers {
     blake_producer: TracingDataProducer<Blake2sRoundFunctionDelegationWitness>,
     bigint_producer: TracingDataProducer<BigintDelegationWitness>,
     keccak_producer: TracingDataProducer<KeccakSpecial5DelegationWitness>,
+    blake_g_function_producer: TracingDataProducer<Blake2sGFunctionDelegationWitness>,
     cycles_producer: TracingDataProducer<UnifiedOpcodeTracingDataWithTimestamp>,
 }
 
@@ -736,6 +761,12 @@ impl TracingDataProducers for UnifiedTracingDataProducers {
             free_allocators.clone(),
             results.clone(),
         );
+        let blake_g_function_producer =
+            TracingDataProducer::<Blake2sGFunctionDelegationWitness>::new(
+                CircuitType::Delegation(DelegationCircuitType::Blake2GFunction),
+                free_allocators.clone(),
+                results.clone(),
+            );
         let cycles_producer = TracingDataProducer::<UnifiedOpcodeTracingDataWithTimestamp>::new(
             CircuitType::Unrolled(UnrolledCircuitType::Unified),
             free_allocators.clone(),
@@ -745,6 +776,7 @@ impl TracingDataProducers for UnifiedTracingDataProducers {
             blake_producer,
             bigint_producer,
             keccak_producer,
+            blake_g_function_producer,
             cycles_producer,
         }
     }
@@ -792,10 +824,12 @@ impl TracingDataProducers for UnifiedTracingDataProducers {
                     &mut trace_ranges.keccak_calls,
                 ),
                 CounterType::BlakeGFunctionDelegation => {
-                    assert_eq!(
-                        initial_count, final_count,
-                        "Blake G-function delegation tracing is not implemented in execution"
-                    );
+                    self.blake_g_function_producer.process_snapshot(
+                        snapshot_index,
+                        initial_count,
+                        final_count,
+                        &mut trace_ranges.blake_g_function_calls,
+                    )
                 }
                 _ => unreachable!(),
             }
@@ -813,6 +847,7 @@ impl TracingDataProducers for UnifiedTracingDataProducers {
         self.blake_producer.finalize();
         self.bigint_producer.finalize();
         self.keccak_producer.finalize();
+        self.blake_g_function_producer.finalize();
         self.cycles_producer.finalize();
     }
 }

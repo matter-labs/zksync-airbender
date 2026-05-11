@@ -8,6 +8,7 @@ use common_constants::circuit_families::{
 };
 use common_constants::delegation_types::{
     bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+    blake2s_g_function::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
     blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
     keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
 };
@@ -19,9 +20,9 @@ use prover::gkr::prover_config::ProverConfig;
 use riscv_transpiler::cycle::{IMStandardIsaConfigUnsignedMulDivOnly, MachineConfig};
 use setups::{
     inits_and_teardowns, AddSubLuiAuipcMopCircuit, BigIntDelegationCircuit,
-    Blake2sWithCompressionDelegationCircuit, JumpBranchSltCircuit, KeccakSpecial5DelegationCircuit,
-    LoadStoreSubwordOnlyCircuit, LoadStoreWordOnlyCircuit, ShiftBinaryCircuit,
-    UnsignedMulDivCircuit,
+    Blake2sGFunctionDelegationCircuit, Blake2sWithCompressionDelegationCircuit,
+    JumpBranchSltCircuit, KeccakSpecial5DelegationCircuit, LoadStoreSubwordOnlyCircuit,
+    LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnsignedMulDivCircuit,
 };
 
 const DEFAULT_LDE_FACTOR: usize = 2;
@@ -31,6 +32,8 @@ const BIGINT_DOMAIN_SIZE: usize =
     1 << <BigIntDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
 const BLAKE_DOMAIN_SIZE: usize = 1 << <Blake2sWithCompressionDelegationCircuit as
     DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
+const BLAKE_G_FUNCTION_DOMAIN_SIZE: usize =
+    1 << <Blake2sGFunctionDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
 const KECCAK_DOMAIN_SIZE: usize =
     1 << <KeccakSpecial5DelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
 
@@ -178,6 +181,7 @@ impl CircuitType {
 pub enum DelegationCircuitType {
     BigIntWithControl = BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
     Blake2WithCompression = BLAKE2S_DELEGATION_CSR_REGISTER,
+    Blake2GFunction = BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
     KeccakSpecial5 = KECCAK_SPECIAL5_CSR_REGISTER,
 }
 
@@ -192,6 +196,7 @@ impl DelegationCircuitType {
         match self {
             Self::BigIntWithControl => BIGINT_DOMAIN_SIZE,
             Self::Blake2WithCompression => BLAKE_DOMAIN_SIZE,
+            Self::Blake2GFunction => BLAKE_G_FUNCTION_DOMAIN_SIZE,
             Self::KeccakSpecial5 => KECCAK_DOMAIN_SIZE,
         }
     }
@@ -221,6 +226,7 @@ impl DelegationCircuitType {
         &[
             DelegationCircuitType::BigIntWithControl,
             DelegationCircuitType::Blake2WithCompression,
+            DelegationCircuitType::Blake2GFunction,
             DelegationCircuitType::KeccakSpecial5,
         ]
     }
@@ -239,6 +245,7 @@ impl DelegationCircuitType {
         match self {
             Self::BigIntWithControl => get_security_config::<BIGINT_DOMAIN_SIZE>(),
             Self::Blake2WithCompression => get_security_config::<BLAKE_DOMAIN_SIZE>(),
+            Self::Blake2GFunction => get_security_config::<BLAKE_G_FUNCTION_DOMAIN_SIZE>(),
             Self::KeccakSpecial5 => get_security_config::<KECCAK_DOMAIN_SIZE>(),
         }
     }
@@ -250,6 +257,7 @@ impl From<u16> for DelegationCircuitType {
         match delegation_type as u32 {
             BIGINT_OPS_WITH_CONTROL_CSR_REGISTER => Self::BigIntWithControl,
             BLAKE2S_DELEGATION_CSR_REGISTER => Self::Blake2WithCompression,
+            BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER => Self::Blake2GFunction,
             KECCAK_SPECIAL5_CSR_REGISTER => Self::KeccakSpecial5,
             _ => panic!("unknown delegation type {}", delegation_type),
         }

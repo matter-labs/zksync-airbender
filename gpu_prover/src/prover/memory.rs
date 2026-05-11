@@ -121,6 +121,18 @@ fn commit_memory_inner<'a>(
         }
         (
             CircuitType::Delegation(circuit_type),
+            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::Blake2GFunction(
+                trace,
+            ))),
+        ) => {
+            assert_eq!(
+                circuit_type,
+                crate::primitives::circuit_type::DelegationCircuitType::Blake2GFunction
+            );
+            generate_memory_values_delegation(compiled_circuit, trace, memory, stream)?;
+        }
+        (
+            CircuitType::Delegation(circuit_type),
             Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(trace))),
         ) => {
             assert_eq!(
