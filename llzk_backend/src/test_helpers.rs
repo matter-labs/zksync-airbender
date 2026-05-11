@@ -78,10 +78,15 @@ pub(crate) fn emit_test_constrain_ir_with_special_csr_properties(
 
     let mut struct_builder = StructBuilder::new(&env, struct_name);
     for _ in input_vars {
-        struct_builder.with_input(env.felt_type());
+        struct_builder.with_input_location(env.felt_type(), Location::unknown(&ctx));
     }
     for (_, name) in member_vars {
-        struct_builder.with_member((*name).to_string(), env.felt_type(), false);
+        struct_builder.with_member_location(
+            (*name).to_string(),
+            env.felt_type(),
+            false,
+            Location::unknown(&ctx),
+        );
     }
 
     let arg_map = input_vars
@@ -122,10 +127,15 @@ pub(crate) fn emit_test_constrain_ir_with_debug_info(
 
     let mut struct_builder = StructBuilder::new(&env, struct_name);
     for _ in input_vars {
-        struct_builder.with_input(env.felt_type());
+        struct_builder.with_input_location(env.felt_type(), Location::unknown(&ctx));
     }
     for (_, name) in member_vars {
-        struct_builder.with_member((*name).to_string(), env.felt_type(), false);
+        struct_builder.with_member_location(
+            (*name).to_string(),
+            env.felt_type(),
+            false,
+            Location::unknown(&ctx),
+        );
     }
 
     let arg_map = input_vars

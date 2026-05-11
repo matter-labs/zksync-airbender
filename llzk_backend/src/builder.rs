@@ -139,11 +139,6 @@ impl SemanticLocation {
         Self::new(path, index, 0)
     }
 
-    /// Location for the top-level LLZK module.
-    pub fn layout_module(name: &str) -> Self {
-        Self::new_owned(format!("llzk://layout/module/{name}"), 0, 0)
-    }
-
     /// Location for a generated struct definition.
     pub fn layout_struct(name: &str) -> Self {
         Self::new_owned(format!("llzk://layout/struct/{name}"), 0, 0)
@@ -399,9 +394,6 @@ enum InsertionPoint {
     Start,
     /// End of function (before the terminator, if any)
     End,
-    /// At a concrete position.
-    #[allow(dead_code)]
-    At(usize),
 }
 
 /// Key type for caching const op values
@@ -523,60 +515,11 @@ impl<'ctx, 'sco, F: FieldInfo> OpsBuilder<'ctx, 'sco, F> {
         self.append_op_with_results::<1>(op).map(|v| v[0])
     }
 
-    /// Inserts an operation with no results at the start.
-    #[inline]
-    #[allow(dead_code)]
-    pub fn insert_op_with_no_results_at_start(&self, op: Operation<'ctx>) -> Result<()> {
-        let _ = self.insert_operation(InsertionPoint::Start, op)?;
-        Ok(())
-    }
-
-    /// Inserts an operation with results at the start.
-    #[inline]
-    #[allow(dead_code)]
-    pub fn insert_op_with_results_at_start<const N: usize>(
-        &self,
-        op: Operation<'ctx>,
-    ) -> Result<[Value<'ctx, 'sco>; N]> {
-        let op = self.insert_operation(InsertionPoint::Start, op)?;
-        self.extract_results(op)
-    }
-
     /// Inserts an operation with one result at the start.
     #[inline]
     pub fn insert_op_with_result_at_start(&self, op: Operation<'ctx>) -> Result<Value<'ctx, 'sco>> {
-        self.insert_op_with_results_at_start::<1>(op).map(|v| v[0])
-    }
-
-    /// Inserts an operation with no results at the given position.
-    #[inline]
-    #[allow(dead_code)]
-    pub fn insert_op_with_no_results_at(&self, pos: usize, op: Operation<'ctx>) -> Result<()> {
-        let _ = self.insert_operation(InsertionPoint::At(pos), op)?;
-        Ok(())
-    }
-
-    /// Inserts an operation with results at the given position.
-    #[inline]
-    #[allow(dead_code)]
-    pub fn insert_op_with_results_at<const N: usize>(
-        &self,
-        pos: usize,
-        op: Operation<'ctx>,
-    ) -> Result<[Value<'ctx, 'sco>; N]> {
-        let op = self.insert_operation(InsertionPoint::At(pos), op)?;
-        self.extract_results(op)
-    }
-
-    /// Inserts an operation with one result at the given position.
-    #[inline]
-    #[allow(dead_code)]
-    pub fn insert_op_with_result_at(
-        &self,
-        pos: usize,
-        op: Operation<'ctx>,
-    ) -> Result<Value<'ctx, 'sco>> {
-        self.insert_op_with_results_at::<1>(pos, op).map(|v| v[0])
+        let op = self.insert_operation(InsertionPoint::Start, op)?;
+        self.extract_results::<1>(op).map(|v| v[0])
     }
 
     fn extract_results<const N: usize>(
@@ -610,35 +553,18 @@ impl<'ctx, 'sco, F: FieldInfo> OpsBuilder<'ctx, 'sco, F> {
         })
     }
 
-    fn operations(&self) -> impl Iterator<Item = OperationRef<'ctx, 'sco>> {
-        self.blocks()
-            .flat_map(|blk| std::iter::successors(blk.first_operation(), |op| op.next_in_block()))
-    }
-
     fn extract_insertion_point(
         &self,
         point: InsertionPoint,
     ) -> Result<(Option<OperationRef<'ctx, 'sco>>, BlockRef<'ctx, 'sco>)> {
         Ok(match point {
-            InsertionPoint::Start | InsertionPoint::At(0) => {
+            InsertionPoint::Start => {
                 let blk = self.first_block()?;
                 (blk.first_operation(), blk)
             }
             InsertionPoint::End => {
                 let blk = self.last_block()?;
                 (blk.terminator(), blk)
-            }
-            InsertionPoint::At(pos) => {
-                let op = self
-                    .operations()
-                    .nth(pos - 1)
-                    .ok_or_else(|| anyhow!("operation position {pos} is out of bounds"))?;
-
-                (
-                    Some(op),
-                    op.block()
-                        .expect("operation ref comes from an iterator of blocks"),
-                )
             }
         })
     }
@@ -926,11 +852,6 @@ impl<'ctx, 'sco, F: FieldInfo> OpsBuilder<'ctx, 'sco, F> {
             array_ty,
             ArrayCtor::Values(values),
         ))
-    }
-
-    /// Append an uninitialized one-dimensional felt array allocation at the current location.
-    pub fn append_new_felt_array_here(&self, len: usize) -> Result<Value<'ctx, 'sco>> {
-        self.append_new_felt_array(self.current_location(), len)
     }
 
     /// Append an array read operation and return the read value.
@@ -1721,15 +1642,6 @@ impl<'ctx, 'str, F: FieldInfo> StructBuilder<'ctx, 'str, F> {
         }
     }
 
-    /// Adds an input to the list.
-    pub fn with_input(&mut self, input: Type<'ctx>) -> &mut Self {
-        self.inputs.push(StructInput {
-            r#type: input,
-            location: None,
-        });
-        self
-    }
-
     /// Adds an input with an explicit debug location.
     pub fn with_input_location(
         &mut self,
@@ -1743,25 +1655,7 @@ impl<'ctx, 'str, F: FieldInfo> StructBuilder<'ctx, 'str, F> {
         self
     }
 
-    /// Adds an input that corresponds to a proof-system signal.
-    ///
-    /// LLZK currently serializes `signal` on `struct.member` ops, not on function block
-    /// arguments. Signal inputs are therefore represented structurally as ordinary parameters.
-    pub fn with_signal_input(&mut self, input: Type<'ctx>) -> &mut Self {
-        self.with_input(input)
-    }
-
-    /// Adds a signal input with an explicit debug location.
-    pub fn with_signal_input_location(
-        &mut self,
-        input: Type<'ctx>,
-        location: Location<'ctx>,
-    ) -> &mut Self {
-        self.with_input_location(input, location)
-    }
-
     /// Sets the location of the struct.
-    #[allow(dead_code)]
     pub fn with_location(&mut self, location: Location<'ctx>) -> &mut Self {
         self.location = Some(location);
         self
@@ -1776,18 +1670,6 @@ impl<'ctx, 'str, F: FieldInfo> StructBuilder<'ctx, 'str, F> {
     /// Sets the location of the generated `@constrain` function.
     pub fn with_constrain_location(&mut self, location: Location<'ctx>) -> &mut Self {
         self.constrain_location = Some(location);
-        self
-    }
-
-    /// Adds a member to the struct.
-    pub fn with_member(&mut self, name: String, r#type: Type<'ctx>, is_public: bool) -> &mut Self {
-        self.members.push(StructMember {
-            name,
-            r#type,
-            is_public,
-            location: None,
-            is_signal: false,
-        });
         self
     }
 
@@ -1935,6 +1817,30 @@ impl<'ctx, 'str, F: FieldInfo> Deref for StructBuilder<'ctx, 'str, F> {
 }
 
 #[cfg(test)]
+impl<'ctx, 'str, F: FieldInfo> StructBuilder<'ctx, 'str, F> {
+    /// Adds an input to the list.
+    pub fn with_input(&mut self, input: Type<'ctx>) -> &mut Self {
+        self.inputs.push(StructInput {
+            r#type: input,
+            location: None,
+        });
+        self
+    }
+
+    /// Adds a member to the struct.
+    pub fn with_member(&mut self, name: String, r#type: Type<'ctx>, is_public: bool) -> &mut Self {
+        self.members.push(StructMember {
+            name,
+            r#type,
+            is_public,
+            location: None,
+            is_signal: false,
+        });
+        self
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use llzk::operation::verify_operation_with_diags;
@@ -2046,7 +1952,6 @@ mod tests {
         let mut builder = StructBuilder::new(&env, "signal_attrs");
         let felt = env.felt_type();
 
-        builder.with_signal_input(felt);
         builder.with_input(felt);
         builder.with_signal_member("sig_member".to_string(), felt, false);
         builder.with_member("tmp_member".to_string(), felt, false);
