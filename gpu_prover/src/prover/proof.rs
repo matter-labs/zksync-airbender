@@ -311,9 +311,18 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         })
         .unwrap_or(GpuGKRTraceGeometry {
             log_domain_size: compiled_circuit.trace_len.trailing_zeros(),
-            log_lde_factor: whir_schedule.base_lde_factor.trailing_zeros(),
+            // No setup transfer means the setup precomputation step was
+            // skipped (zero-column setup, e.g. InitsAndTeardowns). Match
+            // memory_transfer's geometry — which uses
+            // `circuit_type.get_tree_cap_size()` / `get_lde_factor()` — so
+            // stage1's memory/witness trace holders end up with the same cap
+            // size as the pre-built memory caps we'll D2D into them.
+            // Using `whir_schedule.cap_size` here desyncs the slab cap range
+            // from `memory_transfer.unified_device_cap.len()` and the
+            // `copy_base_layer_cap_to_slab` D2D length assertion trips.
+            log_lde_factor: circuit_type.get_lde_factor().trailing_zeros(),
             log_rows_per_leaf: whir_schedule.whir_steps_schedule[0] as u32,
-            log_tree_cap_size: whir_schedule.cap_size.trailing_zeros(),
+            log_tree_cap_size: circuit_type.get_tree_cap_size().trailing_zeros(),
         });
 
     // ---------------------------------------------------------------------
@@ -672,26 +681,47 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     // improperly sized and writes overflow.
     #[cfg(debug_assertions)]
     {
+        // Mirror the structural builder's normalize-then-derive flow so
+        // the storage-aware regression check uses the same post-normalize
+        // address set as `build_proof_layout_inputs_structural`. The
+        // storage handle here is owned by the forward pass and remains
+        // valid; we clone the artifact only to apply the rewrite locally.
+        let normalized_compiled_circuit =
+            crate::prover::gkr::transform::normalize_compiled_circuit_for_gpu(
+                compiled_circuit.clone(),
+            );
         let main_layer_input_addresses_per_layer_storage_aware =
             crate::prover::gkr::backward::collect_main_layer_input_addresses_per_layer::<E4>(
-                &compiled_circuit,
+                &normalized_compiled_circuit,
                 &external_challenges,
                 &forward_output.storage,
             );
+        let main_layer_kernel_output_addresses_per_layer_storage_aware =
+            crate::prover::gkr::backward::collect_main_layer_kernel_output_addresses_per_layer::<E4>(
+                &normalized_compiled_circuit,
+                &external_challenges,
+                &forward_output.storage,
+            );
+        let main_layer_orphan_output_addresses_per_layer_storage_aware =
+            crate::prover::gkr::backward::compute_main_layer_orphan_output_addresses_per_layer::<E4>(
+                &main_layer_input_addresses_per_layer_storage_aware,
+                &main_layer_kernel_output_addresses_per_layer_storage_aware,
+            );
         let proof_layout_inputs_storage_aware =
             crate::prover::proof_layout::build_proof_layout_inputs(
-                &compiled_circuit,
+                &normalized_compiled_circuit,
                 &whir_schedule,
                 final_trace_size_log_2,
                 &forward_output.dimension_reducing_inputs,
                 &main_layer_input_addresses_per_layer_storage_aware,
+                &main_layer_orphan_output_addresses_per_layer_storage_aware,
                 crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
                     memory_layer_geometry,
-                    compiled_circuit.memory_layout.total_width,
+                    normalized_compiled_circuit.memory_layout.total_width,
                 ),
                 crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
                     witness_layer_geometry,
-                    compiled_circuit.witness_layout.total_width,
+                    normalized_compiled_circuit.witness_layout.total_width,
                 ),
                 crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
                     setup_geometry,

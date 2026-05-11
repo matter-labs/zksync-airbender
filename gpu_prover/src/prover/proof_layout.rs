@@ -65,6 +65,15 @@ pub(crate) struct BackwardLayerDims {
     /// extension-field degree of the reduced output polynomial). Kept per-layer
     /// because it may vary between dim-reducing and main layers.
     pub(crate) final_step_eval_degree: usize,
+    /// Addresses for `extra_evaluations_from_caching_relations` — the per-layer
+    /// orphan kernel outputs that are not consumed as inputs by any parent-layer
+    /// kernel and therefore not part of `final_step_evaluations`. Each entry
+    /// contributes a single `E4` (the explicit evaluation at the random folding
+    /// point). Empty for dim-reducing slots and for main layers without
+    /// orphans. Mirrors the CPU proof's
+    /// `SumcheckIntermediateProofValues::extra_evaluations_from_caching_relations`
+    /// field.
+    pub(crate) extra_evaluations_addresses: Vec<GKRAddress>,
 }
 
 /// Per-base-layer (setup/memory/witness) WHIR dimensions.
@@ -150,6 +159,13 @@ pub(crate) struct BackwardLayerLayout {
     /// Copy of the address ordering, retained for parse-time `BTreeMap`
     /// reconstruction.
     pub(crate) final_step_eval_addresses: Vec<GKRAddress>,
+    /// `extra_evaluations_from_caching_relations` flat array — one `E4` per
+    /// orphan address, in `extra_evaluations_addresses` order. Empty for
+    /// dim-reducing slots and main layers without orphans.
+    pub(crate) extra_evaluations: Range<usize>,
+    /// Copy of the orphan address ordering, retained for parse-time
+    /// `BTreeMap` reconstruction.
+    pub(crate) extra_evaluations_addresses: Vec<GKRAddress>,
     pub(crate) sumcheck_num_rounds: usize,
     pub(crate) final_step_eval_degree: usize,
 }
@@ -306,6 +322,7 @@ pub(crate) fn build_proof_layout_inputs(
     final_trace_size_log_2: usize,
     dimension_reducing_inputs: &BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
     main_layer_input_addresses_per_layer: &[Vec<GKRAddress>],
+    main_layer_orphan_output_addresses_per_layer: &[Vec<GKRAddress>],
     memory_geometry: ProofLayoutBaseLayerGeometry,
     witness_geometry: ProofLayoutBaseLayerGeometry,
     setup_geometry: ProofLayoutBaseLayerGeometry,
@@ -323,6 +340,11 @@ pub(crate) fn build_proof_layout_inputs(
         main_layer_input_addresses_per_layer.len(),
         num_main_layers,
         "main_layer_input_addresses_per_layer must have one entry per main layer",
+    );
+    assert_eq!(
+        main_layer_orphan_output_addresses_per_layer.len(),
+        num_main_layers,
+        "main_layer_orphan_output_addresses_per_layer must have one entry per main layer",
     );
 
     // ------------------------------------------------------------------
@@ -374,6 +396,11 @@ pub(crate) fn build_proof_layout_inputs(
             sumcheck_num_rounds,
             final_step_eval_addresses: addresses.into_iter().collect(),
             final_step_eval_degree: 4,
+            // Dim-reducing layers don't host the kind of orphan-output
+            // pattern that main-layer `MaxQuadratic` produces; the
+            // forward dim-reduction pass wires every output from one
+            // round directly into the next round's inputs.
+            extra_evaluations_addresses: Vec::new(),
         });
     }
     for layer_idx in (0..num_main_layers).rev() {
@@ -382,6 +409,8 @@ pub(crate) fn build_proof_layout_inputs(
             sumcheck_num_rounds: initial_trace_size_log_2,
             final_step_eval_addresses: main_layer_input_addresses_per_layer[layer_idx].clone(),
             final_step_eval_degree: 2,
+            extra_evaluations_addresses: main_layer_orphan_output_addresses_per_layer[layer_idx]
+                .clone(),
         });
     }
 
@@ -492,25 +521,46 @@ pub(crate) fn build_proof_layout_inputs_structural<E>(
 where
     E: field::Field + field::FieldExtension<BF>,
 {
-    let initial_trace_size_log_2 = compiled_circuit.trace_len.trailing_zeros() as usize;
+    // Normalize-once for the address-derivation helpers so they see the
+    // same `(MaxQuadratic { output: ScratchSpace(K) })` shape that the
+    // backward main-layer scheduler operates on. Without this, orphan
+    // addresses derived structurally would still carry `InnerLayer { ..
+    // }` for scratch-mapped MaxQuadratic outputs, while runtime kernel
+    // outputs (post-normalize) carry `ScratchSpace(K)` — and the
+    // resulting `next_claim_layout` augmentation would never match
+    // L-1's `claim_idx` lookup. The clone is paid once per proof.
+    let normalized_compiled_circuit =
+        crate::prover::gkr::transform::normalize_compiled_circuit_for_gpu(compiled_circuit.clone());
+    let initial_trace_size_log_2 = normalized_compiled_circuit.trace_len.trailing_zeros() as usize;
     let dim_reducing_inputs =
         crate::prover::gkr::backward::derive_dimension_reducing_inputs_structural(
-            compiled_circuit.layers.len(),
-            &compiled_circuit.global_output_map,
+            normalized_compiled_circuit.layers.len(),
+            &normalized_compiled_circuit.global_output_map,
             initial_trace_size_log_2,
             final_trace_size_log_2,
         );
     let main_layer_addresses =
         crate::prover::gkr::backward::collect_main_layer_input_addresses_per_layer_structural::<E>(
-            compiled_circuit,
+            &normalized_compiled_circuit,
             external_challenges,
         );
+    let main_layer_outputs =
+        crate::prover::gkr::backward::collect_main_layer_kernel_output_addresses_per_layer_structural::<E>(
+            &normalized_compiled_circuit,
+            external_challenges,
+        );
+    let main_layer_orphans =
+        crate::prover::gkr::backward::compute_main_layer_orphan_output_addresses_per_layer::<E>(
+            &main_layer_addresses,
+            &main_layer_outputs,
+        );
     build_proof_layout_inputs(
-        compiled_circuit,
+        &normalized_compiled_circuit,
         whir_schedule,
         final_trace_size_log_2,
         &dim_reducing_inputs,
         &main_layer_addresses,
+        &main_layer_orphans,
         memory_geometry,
         witness_geometry,
         setup_geometry,
@@ -553,11 +603,22 @@ impl ProofLayout {
             let final_evals_count =
                 layer.final_step_eval_addresses.len() * layer.final_step_eval_degree;
             let final_step_evaluations = alloc(&mut cur, final_evals_count, size_of::<E4>());
+            // One `E4` per orphan address — single explicit evaluation at
+            // the layer's random folding point. Empty range when there are
+            // no orphans (zero-width allocations are fine; the start offset
+            // remains aligned).
+            let extra_evaluations = alloc(
+                &mut cur,
+                layer.extra_evaluations_addresses.len(),
+                size_of::<E4>(),
+            );
             backward.push(BackwardLayerLayout {
                 layer_idx: layer.layer_idx,
                 internal_round_coefficients,
                 final_step_evaluations,
                 final_step_eval_addresses: layer.final_step_eval_addresses.clone(),
+                extra_evaluations,
+                extra_evaluations_addresses: layer.extra_evaluations_addresses.clone(),
                 sumcheck_num_rounds: layer.sumcheck_num_rounds,
                 final_step_eval_degree: layer.final_step_eval_degree,
             });
@@ -721,6 +782,17 @@ impl ProofLayout {
         layer_slot: usize,
     ) -> (*mut E4, usize) {
         Self::device_typed::<E4>(slab_base, &self.backward[layer_slot].final_step_evaluations)
+    }
+
+    /// Per-layer-slot `extra_evaluations` range. Returns `(ptr, addresses_len)`
+    /// — one `E4` per orphan address. Length is 0 for dim-reducing slots and
+    /// for main layers without orphan outputs.
+    pub(crate) unsafe fn backward_extra_evaluations_device_mut(
+        &self,
+        slab_base: *mut u8,
+        layer_slot: usize,
+    ) -> (*mut E4, usize) {
+        Self::device_typed::<E4>(slab_base, &self.backward[layer_slot].extra_evaluations)
     }
 
     pub(crate) unsafe fn output_evaluations_device_mut(
@@ -892,6 +964,14 @@ impl ProofLayout {
         Self::host_typed::<E4>(slab, &self.backward[layer_slot].final_step_evaluations)
     }
 
+    pub(crate) fn backward_extra_evaluations_host<'a>(
+        &self,
+        slab: &'a [u8],
+        layer_slot: usize,
+    ) -> &'a [E4] {
+        Self::host_typed::<E4>(slab, &self.backward[layer_slot].extra_evaluations)
+    }
+
     pub(crate) fn output_evaluations_read_host<'a>(
         &self,
         slab: &'a [u8],
@@ -1042,8 +1122,16 @@ impl ProofLayout {
     }
 
     /// Phase 4: parse `sumcheck_intermediate_values: BTreeMap<layer_idx, _>`
-    /// from the D2H'd slab, merging the caller-provided sparse
-    /// `extra_evaluations_from_caching_relations` map (layer 0 only).
+    /// from the D2H'd slab.
+    ///
+    /// `extra_evaluations_by_layer` is the caller-provided sparse map for
+    /// layer 0 only — its values are sparse references into the slab-resident
+    /// WHIR base eval ranges (`DenseSource::read_from_slab`). For every other
+    /// layer-slot we read the dedicated `extra_evaluations` slab range
+    /// directly: each entry is one `E4` per orphan address, in
+    /// `extra_evaluations_addresses` order. Both sources are merged into the
+    /// same `extra_evaluations_from_caching_relations` BTreeMap on the
+    /// resulting `SumcheckIntermediateProofValues`.
     pub(crate) fn parse_sumcheck_intermediate_values(
         &self,
         slab: &[u8],
@@ -1075,9 +1163,28 @@ impl ProofLayout {
                     (*addr, finals_flat[start..end].to_vec())
                 })
                 .collect();
-            let extra_evaluations_from_caching_relations = extra_evaluations_by_layer
+            let mut extra_evaluations_from_caching_relations = extra_evaluations_by_layer
                 .remove(&bw.layer_idx)
                 .unwrap_or_default();
+            if !bw.extra_evaluations_addresses.is_empty() {
+                let extras_flat = self.backward_extra_evaluations_host(slab, layer_slot);
+                debug_assert_eq!(
+                    extras_flat.len(),
+                    bw.extra_evaluations_addresses.len(),
+                    "slab extra_evaluations length must match address ordering",
+                );
+                for (addr, value) in bw
+                    .extra_evaluations_addresses
+                    .iter()
+                    .zip(extras_flat.iter())
+                {
+                    let prev = extra_evaluations_from_caching_relations.insert(*addr, *value);
+                    debug_assert!(
+                        prev.is_none(),
+                        "duplicate extra-evaluation address across slab range and caller map: {addr:?}",
+                    );
+                }
+            }
             result.insert(
                 bw.layer_idx,
                 SumcheckIntermediateProofValues {
@@ -1184,6 +1291,7 @@ impl ProofLayout {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use field::{Field, FieldExtension, PrimeField};
 
     fn sample_inputs() -> ProofLayoutInputs {
         let backward_layers = vec![
@@ -1192,12 +1300,28 @@ mod tests {
                 sumcheck_num_rounds: 3,
                 final_step_eval_addresses: vec![GKRAddress::BaseLayerWitness(0); 2],
                 final_step_eval_degree: 4,
+                // Dim-reducing slot: never has orphans.
+                extra_evaluations_addresses: Vec::new(),
             },
             BackwardLayerDims {
                 layer_idx: 0,
                 sumcheck_num_rounds: 5,
                 final_step_eval_addresses: vec![GKRAddress::BaseLayerWitness(0); 3],
                 final_step_eval_degree: 2,
+                // Exercise non-empty orphans to validate the extra
+                // range's sizing + parser round-trip in this slot.
+                // Production code derives this list via a BTreeSet
+                // (`compute_main_layer_orphan_output_addresses_per_layer`),
+                // so the ordering matches `GKRAddress`'s `Ord` impl —
+                // `InnerLayer` < `ScratchSpace` per the enum-variant
+                // declaration order.
+                extra_evaluations_addresses: vec![
+                    GKRAddress::InnerLayer {
+                        layer: 1,
+                        offset: 0,
+                    },
+                    GKRAddress::ScratchSpace(7),
+                ],
             },
         ];
 
@@ -1273,6 +1397,12 @@ mod tests {
                 format!("backward[{}].final", bw.layer_idx),
                 bw.final_step_evaluations.clone(),
             ));
+            if !bw.extra_evaluations_addresses.is_empty() {
+                ranges.push((
+                    format!("backward[{}].extra", bw.layer_idx),
+                    bw.extra_evaluations.clone(),
+                ));
+            }
         }
         for (name, base) in [
             ("setup", &layout.whir.setup),
@@ -1352,6 +1482,16 @@ mod tests {
             assert_eq!(
                 laid.final_step_evaluations.end - laid.final_step_evaluations.start,
                 final_len * size_of::<E4>()
+            );
+            // 1 E4 per orphan address.
+            let extra_len = dims.extra_evaluations_addresses.len();
+            assert_eq!(
+                laid.extra_evaluations.end - laid.extra_evaluations.start,
+                extra_len * size_of::<E4>()
+            );
+            assert_eq!(
+                laid.extra_evaluations_addresses,
+                dims.extra_evaluations_addresses,
             );
         }
     }
@@ -1452,12 +1592,84 @@ mod tests {
                     len * size_of::<E4>(),
                     bw_layout.final_step_evaluations.end - bw_layout.final_step_evaluations.start
                 );
+                let (extra_ptr, extra_len) =
+                    layout.backward_extra_evaluations_device_mut(slab_ptr, i);
+                assert_eq!(
+                    extra_ptr as *const u8 as usize,
+                    slab_ptr as usize + bw_layout.extra_evaluations.start
+                );
+                assert_eq!(
+                    extra_len * size_of::<E4>(),
+                    bw_layout.extra_evaluations.end - bw_layout.extra_evaluations.start
+                );
+                assert_eq!(extra_len, bw_layout.extra_evaluations_addresses.len());
             }
             let host = layout.backward_final_step_evals_host(&slab, i);
             assert_eq!(
                 host.len() * size_of::<E4>(),
                 bw_layout.final_step_evaluations.end - bw_layout.final_step_evaluations.start
             );
+            let extra_host = layout.backward_extra_evaluations_host(&slab, i);
+            assert_eq!(
+                extra_host.len() * size_of::<E4>(),
+                bw_layout.extra_evaluations.end - bw_layout.extra_evaluations.start,
+            );
         }
+    }
+
+    #[test]
+    fn parser_round_trips_extra_evaluations() {
+        let inputs = sample_inputs();
+        let layout = ProofLayout::new(&inputs);
+
+        // Layer 0 has 2 orphan addresses (per `sample_inputs`). Write
+        // recognizable values into the slab's `extra_evaluations` range
+        // for layer-slot 1 (= main layer, the second slot here), then
+        // run the parser and assert the BTreeMap has the expected keys
+        // and values.
+        let mut slab = vec![0u8; layout.total_bytes];
+        let layer_slot = 1usize;
+        let bw = &layout.backward[layer_slot];
+        assert_eq!(bw.extra_evaluations_addresses.len(), 2);
+
+        // Write `[E4::from_limbs([1,0,0,0]), E4::from_limbs([2,0,0,0])]`
+        // into the slab via the device-side accessor (we have a host
+        // pointer here but the call shape matches production usage).
+        let slab_ptr = slab.as_mut_ptr();
+        unsafe {
+            let (ptr, len) = layout.backward_extra_evaluations_device_mut(slab_ptr, layer_slot);
+            assert_eq!(len, 2);
+            let written: [E4; 2] = [
+                E4::from_base(BF::from_u32_unchecked(1)),
+                E4::from_base(BF::from_u32_unchecked(2)),
+            ];
+            std::ptr::copy_nonoverlapping(written.as_ptr(), ptr, 2);
+        }
+
+        let parsed = layout.parse_sumcheck_intermediate_values(&slab, BTreeMap::new());
+        let layer_idx = inputs.backward_layers[layer_slot].layer_idx;
+        let intermediate = parsed.get(&layer_idx).expect("layer slot in parsed map");
+        assert_eq!(
+            intermediate.extra_evaluations_from_caching_relations.len(),
+            2,
+        );
+        let by_addr: Vec<_> = intermediate
+            .extra_evaluations_from_caching_relations
+            .iter()
+            .collect();
+        // BTreeMap iteration follows GKRAddress's `Ord`: InnerLayer < ScratchSpace.
+        assert_eq!(
+            *by_addr[0].0,
+            GKRAddress::InnerLayer {
+                layer: 1,
+                offset: 0,
+            }
+        );
+        assert_eq!(*by_addr[1].0, GKRAddress::ScratchSpace(7));
+        // `extras_flat[0] = 1` was written under the address at slab
+        // index 0 = InnerLayer{1, 0}, `extras_flat[1] = 2` under
+        // ScratchSpace(7). The map preserves those associations.
+        assert_eq!(*by_addr[0].1, E4::from_base(BF::from_u32_unchecked(1)));
+        assert_eq!(*by_addr[1].1, E4::from_base(BF::from_u32_unchecked(2)));
     }
 }

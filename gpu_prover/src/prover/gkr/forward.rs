@@ -31,6 +31,7 @@ use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOut
 use prover::gkr::prover::GKRExternalChallenges;
 
 use super::backward::GpuGKRDimensionReducingBackwardState;
+use super::gkr_address_audit::AddressClass;
 use super::setup::{bootstrap_storage_from_trace_holders, GpuGKRForwardSetup};
 use super::stage1::GpuGKRStage1Output;
 use super::transform::normalize_compiled_circuit_for_gpu;
@@ -302,6 +303,7 @@ where
         ),
     );
     storage.set_layout(storage_layout);
+    bind_scratch_space_into_storage(&compiled_circuit, stage1, &mut storage);
 
     if usage.last_generic_mapping_layer.is_none() {
         stage1.lookup_mappings.release_generic_family();
@@ -691,6 +693,54 @@ fn hydrate_scratch_space_layer<E>(
             GpuBaseFieldPoly::from_arc(Arc::clone(scratch_space_trace), offset, trace_len),
         );
     }
+}
+
+/// Register `stage1.scratch_space_trace` as the consolidated `AddressClass::ScratchSpace`
+/// backing at layer 0, plus per-`ScratchSpace` poly views. Mirrors the trace-holder
+/// pattern in `bind_trace_holder_columns_into_storage`: scratch is a first-class
+/// trace-aligned class (poly_idx == scratch_idx), so the layout-driven backward
+/// path (`build_backing_ranges`, `register_flat_base_folding_for_layer`,
+/// `allocate_base_view`) picks it up uniformly with witness/memory.
+///
+/// Called once by `schedule_forward_pass` after the storage layout is bound and
+/// before per-layer scheduling begins.
+fn bind_scratch_space_into_storage<E>(
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    stage1: &GpuGKRStage1Output,
+    storage: &mut GpuGKRStorage<BF, E>,
+) {
+    let Some(scratch_space_trace) = stage1.scratch_space_trace.as_ref() else {
+        return;
+    };
+    if compiled_circuit.scratch_space_size == 0 {
+        return;
+    }
+    let trace_len = compiled_circuit.trace_len;
+    let scratch_space_size = compiled_circuit.scratch_space_size;
+    for scratch_idx in 0..scratch_space_size {
+        let address = GKRAddress::ScratchSpace(scratch_idx);
+        if storage.try_get_base_poly(address).is_some() {
+            continue;
+        }
+        let offset = scratch_idx * trace_len;
+        storage.insert_base_field_at_layer(
+            0,
+            address,
+            GpuBaseFieldPoly::from_arc(Arc::clone(scratch_space_trace), offset, trace_len),
+        );
+    }
+    if storage.layers.is_empty() {
+        storage
+            .layers
+            .resize_with(1, crate::prover::gkr::GpuGKRLayerSource::default);
+    }
+    let prev = storage.layers[0]
+        .base_class_backings
+        .insert(AddressClass::ScratchSpace, Arc::clone(scratch_space_trace));
+    assert!(
+        prev.is_none(),
+        "scratch_space backing already registered for layer 0 AddressClass::ScratchSpace"
+    );
 }
 
 fn assert_forward_layer_invariants(
@@ -1401,7 +1451,8 @@ where
                 );
             }
             NoFieldGKRRelation::MaxQuadratic { output, .. }
-                if scratch_space_mapping.contains_key(output)
+                if matches!(*output, GKRAddress::ScratchSpace(_))
+                    || scratch_space_mapping.contains_key(output)
                     || storage.try_get_base_poly(*output).is_some() => {}
             NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { .. } => {}
             NoFieldGKRRelation::InitsOrTeardownsInitialPair {
