@@ -35,7 +35,7 @@ enum TableType : u16 {
   RangeCheck12,
   RangeCheck13,
   U16SelectByteAndGetByteSign,
-  ExtendLoadedValue,
+  BlakeGFunctionControlLookup,
   StoreByteSourceContribution,
   StoreByteExistingContribution,
   ConditionalJmpBranchSlt,
@@ -116,7 +116,7 @@ template <unsigned K, unsigned V> struct TableDriver {
     case RangeCheck12:
     case RangeCheck13:
     case U16SelectByteAndGetByteSign:
-    case ExtendLoadedValue:
+    case BlakeGFunctionControlLookup:
     case ConditionalJmpBranchSlt:
     case MemoryGetOffsetAndMaskWithTrap:
     case MemoryLoadHalfwordOrByte:
