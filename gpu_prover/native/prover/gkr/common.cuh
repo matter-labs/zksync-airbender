@@ -46,7 +46,7 @@ template <typename E> struct gkr_ext_continuing_source {
   bool first_access;
 };
 
-static constexpr unsigned GKR_BACKWARD_MAX_KERNELS_PER_LAYER = 64;
+static constexpr unsigned GKR_BACKWARD_MAX_KERNELS_PER_LAYER = 128;
 // Dim-reducing layers are keyed by OutputType: 2 pairwise records for
 // PermutationProduct plus up to 3 lookup records, consuming 8 challenges.
 static constexpr unsigned GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER = 5;
