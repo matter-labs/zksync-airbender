@@ -10,12 +10,14 @@ use crate::witness::trace_unrolled::{
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
+use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 
 pub(crate) enum DelegationTracingDataDevice {
     BigIntWithControl(DelegationTraceDevice<BigintDelegationWitness>),
     Blake2WithCompression(DelegationTraceDevice<Blake2sRoundFunctionDelegationWitness>),
+    Blake2GFunction(DelegationTraceDevice<Blake2sGFunctionDelegationWitness>),
     KeccakSpecial5(DelegationTraceDevice<KeccakSpecial5DelegationWitness>),
 }
 
@@ -34,6 +36,7 @@ pub(crate) enum TracingDataDevice {
 pub(crate) enum DelegationTracingDataHost<A: GoodAllocator> {
     BigIntWithControl(DelegationTraceHost<BigintDelegationWitness, A>),
     Blake2WithCompression(DelegationTraceHost<Blake2sRoundFunctionDelegationWitness, A>),
+    Blake2GFunction(DelegationTraceHost<Blake2sGFunctionDelegationWitness, A>),
     KeccakSpecial5(DelegationTraceHost<KeccakSpecial5DelegationWitness, A>),
 }
 
@@ -42,6 +45,7 @@ impl<A: GoodAllocator> DelegationTracingDataHost<A> {
         match self {
             DelegationTracingDataHost::BigIntWithControl(trace) => trace.into_allocators(),
             DelegationTracingDataHost::Blake2WithCompression(trace) => trace.into_allocators(),
+            DelegationTracingDataHost::Blake2GFunction(trace) => trace.into_allocators(),
             DelegationTracingDataHost::KeccakSpecial5(trace) => trace.into_allocators(),
         }
     }
@@ -60,6 +64,12 @@ impl DelegationTracingDataHostSource for BigintDelegationWitness {
 impl DelegationTracingDataHostSource for Blake2sRoundFunctionDelegationWitness {
     fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A> {
         DelegationTracingDataHost::Blake2WithCompression(trace)
+    }
+}
+
+impl DelegationTracingDataHostSource for Blake2sGFunctionDelegationWitness {
+    fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A> {
+        DelegationTracingDataHost::Blake2GFunction(trace)
     }
 }
 
@@ -122,6 +132,11 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
                         let trace = DelegationTraceDevice { tracing_data };
                         DelegationTracingDataDevice::Blake2WithCompression(trace)
                     }
+                    DelegationTracingDataHost::Blake2GFunction(data) => {
+                        let tracing_data = context.alloc(data.len(), AllocationPlacement::Top)?;
+                        let trace = DelegationTraceDevice { tracing_data };
+                        DelegationTracingDataDevice::Blake2GFunction(trace)
+                    }
                     DelegationTracingDataHost::KeccakSpecial5(data) => {
                         let tracing_data = context.alloc(data.len(), AllocationPlacement::Top)?;
                         let trace = DelegationTraceDevice { tracing_data };
@@ -182,6 +197,18 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
                             context,
                         )?,
                         _ => panic!("expected blake2 with compression trace"),
+                    }
+                }
+                DelegationTracingDataHost::Blake2GFunction(h_trace) => {
+                    match &mut self.data_device {
+                        TracingDataDevice::Delegation(
+                            DelegationTracingDataDevice::Blake2GFunction(d_trace),
+                        ) => self.transfer.schedule_multiple(
+                            &h_trace.chunks,
+                            &mut d_trace.tracing_data,
+                            context,
+                        )?,
+                        _ => panic!("expected blake2 g function trace"),
                     }
                 }
                 DelegationTracingDataHost::KeccakSpecial5(h_trace) => match &mut self.data_device {

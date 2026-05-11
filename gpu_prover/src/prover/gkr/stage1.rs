@@ -306,6 +306,35 @@ impl GpuGKRStage1Output {
                 (
                     CircuitType::Delegation(circuit_type),
                     Some(TracingDataDevice::Delegation(
+                        DelegationTracingDataDevice::Blake2GFunction(trace),
+                    )),
+                ) => {
+                    assert_eq!(circuit_type, DelegationCircuitType::Blake2GFunction);
+                    let witness_values_range =
+                        Range::new("gkr.stage1.generate.memory_and_witness_values")?;
+                    witness_values_range.start(stream)?;
+                    generate_memory_and_witness_values_delegation(
+                        compiled_circuit,
+                        trace,
+                        &mut memory_matrix,
+                        &mut witness_matrix,
+                        context.get_exec_stream(),
+                    )?;
+                    generate_witness_values_delegation(
+                        trace,
+                        &DeviceMatrix::new(generic_lookup_tables, trace_len),
+                        &DeviceMatrix::new(memory_matrix.slice(), trace_len),
+                        &mut witness_matrix,
+                        &mut scratch_matrix,
+                        &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
+                        context.get_exec_stream(),
+                    )?;
+                    witness_values_range.end(stream)?;
+                    tracing_ranges.push(witness_values_range);
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    Some(TracingDataDevice::Delegation(
                         DelegationTracingDataDevice::KeccakSpecial5(trace),
                     )),
                 ) => {
