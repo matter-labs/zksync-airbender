@@ -45,7 +45,7 @@ use super::backward_kernels::GpuBackwardSumcheckRoundUpdateKernel;
 pub(crate) use super::backward_kernels::*;
 use super::transform::normalize_compiled_circuit_for_gpu;
 use super::{
-    alloc_host_and_schedule_copy, GpuBaseFieldPolySource,
+    alloc_host_and_schedule_copy, GpuBaseFieldPoly, GpuBaseFieldPolySource,
     GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
     GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor,
     GpuExtensionFieldPolyContinuingLaunchDescriptor, GpuExtensionFieldPolyInitialSource,
@@ -60,7 +60,8 @@ use super::{
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::STATE_SIZE;
 use crate::ops::cub::device_reduce::{
-    get_reduce_temp_storage_bytes, reduce, Reduce, ReduceOperation,
+    batch_reduce, get_batch_reduce_temp_storage_bytes, get_reduce_temp_storage_bytes, reduce,
+    Reduce, ReduceOperation,
 };
 use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::ops::immediate_factors::{
@@ -72,7 +73,7 @@ use crate::primitives::context::{
     DeviceAllocation, HostAllocation, ProverContext, SchedulerHostAllocation, UnsafeAccessor,
     UnsafeMutAccessor,
 };
-use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
+use crate::primitives::device_structures::{DeviceMatrix, DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
@@ -83,9 +84,6 @@ fn remap_constraint_input(
     inputs: &mut Vec<GKRAddress>,
     address: GKRAddress,
 ) -> usize {
-    if let GKRAddress::ScratchSpace(..) = address {
-        panic!("Scratch space addresses are not allowed in constraints");
-    }
     if let Some(idx) = mapping.get(&address).copied() {
         idx
     } else {
@@ -797,6 +795,22 @@ pub(crate) fn build_single_max_quadratic_constraint_inputs_and_metadata<
             constant_offset_recipe: ImmediateFactorRecipeStructural::from_base(constant),
         },
     )
+}
+
+/// Builds blueprint inputs and metadata for the value-producing
+/// `NoFieldGKRRelation::MaxQuadratic { input, output }` form. Reuses the
+/// constraint-only helper for input remapping and metadata, then attaches the
+/// scratch-backed output as `outputs_in_base`. The kernel kind is the
+/// dedicated `MaxQuadraticBaseOutput` (a `LinearBaseOutput`-shaped emit with
+/// the constraint's quadratic terms layered on top).
+pub(crate) fn build_max_quadratic_relation_inputs_and_metadata<E: Field + FieldExtension<BF>>(
+    relation: &NoFieldMaxQuadraticGKRRelation,
+    output: GKRAddress,
+) -> (GKRInputs, GpuGKRMainLayerConstraintHostMetadata<E>) {
+    let (mut gkr_inputs, metadata) =
+        build_single_max_quadratic_constraint_inputs_and_metadata::<E>(relation);
+    gkr_inputs.outputs_in_base = vec![output];
+    (gkr_inputs, metadata)
 }
 
 fn build_linear_base_kernel_inputs_and_metadata<E: Field + FieldExtension<BF>>(
@@ -2472,8 +2486,27 @@ fn build_main_layer_kernel_blueprints<E: Field + FieldExtension<BF>>(
                     ),
                 });
             }
-            NoFieldGKRRelation::MaxQuadratic { .. }
-            | NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. } => {
+            NoFieldGKRRelation::MaxQuadratic { input, output } => {
+                let (inputs, constraint_metadata) =
+                    build_max_quadratic_relation_inputs_and_metadata::<E>(input, *output);
+                blueprints.push(GpuGKRMainLayerKernelBlueprint {
+                    kind: GpuGKRMainLayerKernelKind::MaxQuadraticBaseOutput,
+                    inputs,
+                    batch_challenge_offset: next_batch_challenge_offset,
+                    batch_challenge_count: 1,
+                    batch_challenges: {
+                        next_batch_challenge_offset += 1;
+                        vec![get_challenge()]
+                    },
+                    auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(
+                        E::ZERO,
+                    ),
+                    constraint_metadata_source: Some(
+                        GpuGKRMainLayerConstraintMetadataSource::Immediate(constraint_metadata),
+                    ),
+                });
+            }
+            NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. } => {
                 unimplemented!(
                     "unsupported GPU main-layer relation: {:?}",
                     gate.enforced_relation
@@ -3077,8 +3110,26 @@ pub(crate) fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtensio
                     ),
                 });
             }
-            NoFieldGKRRelation::MaxQuadratic { .. }
-            | NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. } => {
+            NoFieldGKRRelation::MaxQuadratic { input, output } => {
+                let (inputs, constraint_metadata) =
+                    build_max_quadratic_relation_inputs_and_metadata::<E>(input, *output);
+                let (batch_challenge_offset, batch_challenge_count) =
+                    push_empty(1, &mut next_batch_challenge_offset);
+                blueprints.push(GpuGKRMainLayerKernelBlueprint {
+                    kind: GpuGKRMainLayerKernelKind::MaxQuadraticBaseOutput,
+                    inputs,
+                    batch_challenge_offset,
+                    batch_challenge_count,
+                    batch_challenges: Vec::new(),
+                    auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(
+                        E::ZERO,
+                    ),
+                    constraint_metadata_source: Some(
+                        GpuGKRMainLayerConstraintMetadataSource::Immediate(constraint_metadata),
+                    ),
+                });
+            }
+            NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. } => {
                 unimplemented!(
                     "unsupported GPU main-layer relation: {:?}",
                     gate.enforced_relation
@@ -3130,6 +3181,15 @@ where
             layer,
             layer_idx,
             &|addr| {
+                if matches!(
+                    addr,
+                    GKRAddress::BaseLayerWitness(_)
+                        | GKRAddress::BaseLayerMemory(_)
+                        | GKRAddress::Setup(_)
+                        | GKRAddress::ScratchSpace(_)
+                ) {
+                    return true;
+                }
                 storage.layers[layer_idx]
                     .base_field_inputs
                     .contains_key(addr)
@@ -3191,6 +3251,350 @@ where
         external_challenges,
         &stub_storage,
     )
+}
+
+/// Sibling of [`collect_main_layer_input_addresses_per_layer`] that collects
+/// the deduplicated `outputs_in_base ∪ outputs_in_extension` per layer. These
+/// are the addresses that each layer's kernels claim about — i.e., the
+/// addresses looked up via `claim_layout.claim_idx` in the desc_pairs build
+/// inside `schedule_execute_main_layer_from_workflow_state`.
+///
+/// Result is indexed by natural `layer_idx` (0-based position in
+/// `compiled_circuit.layers`), matching the inputs-side helper.
+pub(crate) fn collect_main_layer_kernel_output_addresses_per_layer<E>(
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    external_challenges: &GKRExternalChallenges<BF, E>,
+    storage: &GpuGKRStorage<BF, E>,
+) -> Vec<Vec<GKRAddress>>
+where
+    E: Field + FieldExtension<BF>,
+{
+    let inits_and_teardowns_top_bits =
+        canonical_inits_and_teardowns_top_bits(compiled_circuit.memory_layout.teardown_sets.len());
+    let inits_and_teardowns_address_high_bits_shift =
+        if compiled_circuit.memory_layout.teardown_sets.is_empty() {
+            0
+        } else {
+            high_bits_offset_for_inits_and_teardowns::<2>(compiled_circuit.trace_len)
+        };
+    let num_base_layer_memory_polys = compiled_circuit.memory_layout.total_width;
+    let num_base_layer_witness_polys = compiled_circuit.witness_layout.total_width;
+    let mut per_layer = Vec::with_capacity(compiled_circuit.layers.len());
+    for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
+        let blueprints = build_main_layer_kernel_blueprints_static::<E>(
+            layer,
+            layer_idx,
+            &|addr| {
+                if matches!(
+                    addr,
+                    GKRAddress::BaseLayerWitness(_)
+                        | GKRAddress::BaseLayerMemory(_)
+                        | GKRAddress::Setup(_)
+                        | GKRAddress::ScratchSpace(_)
+                ) {
+                    return true;
+                }
+                storage.layers[layer_idx]
+                    .base_field_inputs
+                    .contains_key(addr)
+            },
+            external_challenges,
+            &inits_and_teardowns_top_bits,
+            inits_and_teardowns_address_high_bits_shift,
+            num_base_layer_memory_polys,
+            num_base_layer_witness_polys,
+        );
+        let mut addresses: std::collections::BTreeSet<GKRAddress> =
+            std::collections::BTreeSet::new();
+        for kernel in blueprints.iter() {
+            for addr in kernel
+                .inputs
+                .outputs_in_base
+                .iter()
+                .chain(kernel.inputs.outputs_in_extension.iter())
+            {
+                if *addr == GKRAddress::placeholder() {
+                    continue;
+                }
+                addresses.insert(*addr);
+            }
+        }
+        per_layer.push(addresses.into_iter().collect());
+    }
+    per_layer
+}
+
+/// Structural variant of [`collect_main_layer_kernel_output_addresses_per_layer`].
+/// Same rationale as
+/// [`collect_main_layer_input_addresses_per_layer_structural`]: the
+/// `storage`-derived branch in `build_main_layer_kernel_blueprints_static`
+/// only affects BaseCopy/ExtCopy classification, which preserves the
+/// `outputs_in_*` set.
+pub(crate) fn collect_main_layer_kernel_output_addresses_per_layer_structural<E>(
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    external_challenges: &GKRExternalChallenges<BF, E>,
+) -> Vec<Vec<GKRAddress>>
+where
+    E: Field + FieldExtension<BF>,
+{
+    let mut stub_storage = GpuGKRStorage::<BF, E>::default();
+    stub_storage
+        .layers
+        .resize_with(compiled_circuit.layers.len(), Default::default);
+    collect_main_layer_kernel_output_addresses_per_layer(
+        compiled_circuit,
+        external_challenges,
+        &stub_storage,
+    )
+}
+
+/// Computes per-layer "orphan" output addresses, indexed by the layer at
+/// which the prover **evaluates** them (= the main-layer scheduler that
+/// emits them into its slot's `extra_evaluations` slab range).
+///
+/// Concretely: at scheduler for main layer `L`, we have just folded down
+/// to a single random point and produced `last_evaluations[L]` (= layer
+/// `L`'s last-round kernel inputs). The next layer scheduled is `L - 1`,
+/// whose `desc_pairs` build looks up each of its kernels' output
+/// addresses in the IN claim layout. Any layer-`(L - 1)` kernel output
+/// address that is not in `last_evaluations[L]` is an "orphan" — its
+/// claim must be computed explicitly at `L`'s folding point and inserted
+/// into `L`'s next claim layout (and its slot's slab `extra_evaluations`
+/// range) so that `L - 1`'s scheduler sees it.
+///
+/// Returned vector layout: `per_layer[L]` =
+/// `outputs_per_layer[L - 1] − inputs_per_layer[L]`, sorted by
+/// `BTreeSet`. `per_layer[0]` is always empty (no main layer below 0
+/// produces outputs that need bridging into 0's IN claim layout).
+///
+/// On CPU this is bridged by
+/// `extra_evaluations_from_caching_relations` ([sumcheck_loop/mod.rs:293-395](prover/src/gkr/prover/sumcheck_loop/mod.rs#L293-L395));
+/// the GPU port mirrors this via on-device explicit evaluation at the
+/// random folding point and a dedicated per-layer-slot proof-slab range.
+pub(crate) fn compute_main_layer_orphan_output_addresses_per_layer<E>(
+    inputs_per_layer: &[Vec<GKRAddress>],
+    outputs_per_layer: &[Vec<GKRAddress>],
+) -> Vec<Vec<GKRAddress>>
+where
+    E: Field + FieldExtension<BF>,
+{
+    assert_eq!(
+        inputs_per_layer.len(),
+        outputs_per_layer.len(),
+        "inputs and outputs per-layer arrays must have matching length",
+    );
+    let num_layers = inputs_per_layer.len();
+    let mut per_layer: Vec<Vec<GKRAddress>> = Vec::with_capacity(num_layers);
+    for layer_idx in 0..num_layers {
+        // Bottom main layer (layer_idx == 0) has no layer-(-1) below to
+        // produce orphan outputs; its IN claim layout is fully populated
+        // from layer 1's transcript inputs and there is nothing to bridge.
+        if layer_idx == 0 {
+            per_layer.push(Vec::new());
+            continue;
+        }
+        let child_layer_idx = layer_idx - 1;
+        let this_inputs: std::collections::BTreeSet<GKRAddress> =
+            inputs_per_layer[layer_idx].iter().copied().collect();
+        // BTreeSet keeps deterministic ordering and dedupes simultaneously;
+        // downstream code relies on `BTreeMap::keys()`-equivalent iteration
+        // order on the addresses produced here.
+        let orphans: std::collections::BTreeSet<GKRAddress> = outputs_per_layer[child_layer_idx]
+            .iter()
+            .copied()
+            .filter(|addr| !this_inputs.contains(addr))
+            .collect();
+        per_layer.push(orphans.into_iter().collect());
+    }
+    per_layer
+}
+
+/// Stream-ordered keepalive for the main-layer extras eval scratch
+/// buffers. The held allocations and Arc-clones outlive every
+/// `exec_stream` op scheduled by `schedule_main_layer_extras_eval`; the
+/// pool defers underlying free until exec_stream has progressed past the
+/// last write that uses these buffers.
+pub(crate) struct MainLayerExtrasKeepalive<B, E> {
+    _eq_group_tables: DeviceAllocation<E>,
+    _eq_values: DeviceAllocation<E>,
+    _block_partials: DeviceAllocation<E>,
+    _reduction_temp: DeviceAllocation<u8>,
+    /// Per-orphan resolved views over the consolidated
+    /// `base_class_backings`. Holding the views keeps the underlying
+    /// `Arc<DeviceAllocation<B>>` backings alive until kernels reading
+    /// from them have been scheduled and the pool drop is safe.
+    _orphan_views: Vec<GpuBaseFieldPoly<B>>,
+}
+
+/// Schedules the on-device evaluation of `orphan_addresses` at the
+/// folding point `[r_0..r_{folding_steps - 1}]` of length
+/// `folding_steps`. For each orphan, computes
+/// `inner_product(orphan_poly, eq_values)` and writes one `E` value into:
+/// (a) `extras_dst_ptr[i]`, the tail of the caller's `device_new_claims`
+///     buffer (so the next layer's IN claim buffer carries the orphan
+///     claim), and
+/// (b) `proof_layout.backward[layer_slot].extra_evaluations`, the slab
+///     range (so the verifier can read the explicit at-point evals).
+///
+/// Mirrors the CPU's
+/// `extra_evaluations_from_caching_relations` mechanism (see
+/// [`prover/src/gkr/prover/sumcheck_loop/mod.rs:293-395`]). Returns a
+/// keepalive that the caller drops at the end of the scheduler — the
+/// keepalive owns the temporaries (`eq_values`, `block_partials`,
+/// `reduction_temp`) and the orphan view Arc-clones.
+///
+/// Operates entirely on `exec_stream`. No host blocking. Compatible
+/// with the GPU scheduling contract (`gpu_prover/docs/gpu_scheduling_contract.md`).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn schedule_main_layer_extras_eval<E>(
+    layer_idx: usize,
+    orphan_addresses: &[GKRAddress],
+    storage: &GpuGKRStorage<BF, E>,
+    folding_point_ptr: *const E,
+    folding_steps: usize,
+    trace_len: usize,
+    extras_dst_ptr: *mut E,
+    proof_slab: Option<&DeviceAllocation<E4>>,
+    proof_layout: &ProofLayout,
+    layer_slot: usize,
+    context: &ProverContext,
+) -> CudaResult<MainLayerExtrasKeepalive<BF, E>>
+where
+    E: GpuDimensionReducingKernelSet + Field + FieldExtension<BF> + Reduce + 'static,
+{
+    let orphan_count = orphan_addresses.len();
+    assert!(
+        orphan_count > 0,
+        "schedule_main_layer_extras_eval should only be called with at least one orphan"
+    );
+    assert_eq!(
+        trace_len,
+        1usize << folding_steps,
+        "trace_len must equal 2^folding_steps for full-folding-point eq build",
+    );
+    assert!(trace_len <= u32::MAX as usize);
+    let stream = context.get_exec_stream();
+
+    // 1. Build the full-folding-point `eq_values` of length `trace_len`
+    //    from the just-produced folding point in `device_claim_point_out`.
+    //    The dim-reducing eq builder is reused: it derives `eq_values`
+    //    over the entire hypercube of size `2^challenge_count` from a
+    //    single contiguous challenge slab — exactly what we need here.
+    let mut eq_group_tables: DeviceAllocation<E> = context.alloc(
+        eq_group_tables_len(folding_steps).max(1),
+        AllocationPlacement::Top,
+    )?;
+    let mut eq_values: DeviceAllocation<E> = context.alloc(trace_len, AllocationPlacement::Top)?;
+    launch_build_eq_values_from_point(
+        folding_point_ptr,
+        0,
+        folding_steps,
+        eq_group_tables.as_mut_ptr(),
+        eq_values.as_mut_ptr(),
+        trace_len,
+        context,
+    )?;
+
+    // 2. Resolve each orphan to its `(backing, offset, len)` view via
+    //    the storage layout. Non-mutating — no fresh allocations
+    //    triggered. The Arc clones held in `orphan_views` are the
+    //    keepalive that ties this scheduler's lifetime to the backings.
+    let orphan_views: Vec<GpuBaseFieldPoly<BF>> = orphan_addresses
+        .iter()
+        .map(|addr| {
+            let view = storage.resolve_base_view_or_panic(layer_idx, *addr);
+            assert_eq!(
+                view.len(),
+                trace_len,
+                "orphan poly length must match trace_len (address {addr:?})"
+            );
+            view
+        })
+        .collect();
+
+    // 3. Per-orphan partial-sum reduction → `block_partials[orphan_count, blocks_count]`
+    //    matrix, then `batch_reduce` over rows to produce `[orphan_count]`
+    //    scalar inner products written straight into `extras_dst_ptr`.
+    let blocks_count = context.get_device_properties().sm_count;
+    assert!(blocks_count > 0, "device must expose at least one SM");
+    assert!(blocks_count <= u32::MAX as usize);
+    let mut block_partials: DeviceAllocation<E> =
+        context.alloc(orphan_count * blocks_count, AllocationPlacement::Top)?;
+    let reduction_temp_bytes = get_batch_reduce_temp_storage_bytes::<E>(
+        ReduceOperation::Sum,
+        orphan_count as i32,
+        blocks_count as i32,
+    )?;
+    let mut reduction_temp = context
+        .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
+            reduction_temp_bytes,
+            AllocationPlacement::Top,
+        )?;
+
+    for (orphan_i, view) in orphan_views.iter().enumerate() {
+        // SAFETY: block_partials buffer is sized [orphan_count *
+        // blocks_count]; the kernel writes exactly `blocks_count`
+        // contiguous slots starting at this pointer (since we pass
+        // `column_start = 0`, `chunk_cols = 1`).
+        let row_partials_ptr = unsafe { block_partials.as_mut_ptr().add(orphan_i * blocks_count) };
+        launch_trace_holder_block_partials::<E>(
+            view.as_ptr(),
+            eq_values.as_ptr(),
+            row_partials_ptr,
+            trace_len,
+            0,
+            1,
+            blocks_count,
+            context,
+        )?;
+    }
+
+    let block_partials_matrix = DeviceMatrix::new(&block_partials, blocks_count);
+    // SAFETY: `extras_dst_ptr` is a tail slot in `device_new_claims`,
+    // sized to fit `orphan_count` `E` values by the caller.
+    let extras_dst_slice = unsafe { DeviceSlice::from_raw_parts_mut(extras_dst_ptr, orphan_count) };
+    let reduction_temp_slice = unsafe {
+        DeviceSlice::from_raw_parts_mut(reduction_temp.as_mut_ptr(), reduction_temp.len())
+    };
+    batch_reduce(
+        ReduceOperation::Sum,
+        reduction_temp_slice,
+        &block_partials_matrix,
+        extras_dst_slice,
+        stream,
+    )?;
+
+    // 4. Production slab path: copy the orphan claim values from the
+    //    `device_new_claims` tail into the slab's per-layer-slot
+    //    `extra_evaluations` range so the verifier can parse them
+    //    alongside `final_step_evaluations`. Test paths (no slab)
+    //    skip this — the values still live in the claims buffer for
+    //    the next layer's consumption.
+    if let Some(slab) = proof_slab {
+        // SAFETY: E = E4 in every instantiation; the slab range was
+        // sized at `extra_evaluations_addresses.len()` E4 by the
+        // proof-layout builder.
+        let (slab_dst_ptr, slab_dst_len) = unsafe {
+            proof_layout.backward_extra_evaluations_device_mut(slab.as_ptr() as *mut u8, layer_slot)
+        };
+        debug_assert_eq!(
+            slab_dst_len, orphan_count,
+            "slab extra_evaluations range must match orphan_count for layer {layer_slot}",
+        );
+        let slab_dst_slice =
+            unsafe { DeviceSlice::from_raw_parts_mut(slab_dst_ptr as *mut E, orphan_count) };
+        let extras_src_slice =
+            unsafe { DeviceSlice::from_raw_parts(extras_dst_ptr as *const E, orphan_count) };
+        memory_copy_async(slab_dst_slice, extras_src_slice, stream)?;
+    }
+
+    Ok(MainLayerExtrasKeepalive {
+        _eq_group_tables: eq_group_tables,
+        _eq_values: eq_values,
+        _block_partials: block_partials,
+        _reduction_temp: reduction_temp,
+        _orphan_views: orphan_views,
+    })
 }
 
 /// Structural variant of [`schedule_dimension_reduction_forward`]'s
@@ -3410,19 +3814,21 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
 
         let mut round1_prepared_all = Vec::with_capacity(blueprints.len());
         for blueprint in blueprints.iter() {
-            round1_prepared_all.push(
-                self.storage
-                    .prepare_for_sumcheck_round_1(&blueprint.inputs, context)?,
-            );
+            round1_prepared_all.push(self.storage.prepare_for_sumcheck_round_1(
+                &blueprint.inputs,
+                layer_idx,
+                context,
+            )?);
         }
 
         let mut round2_prepared_all = Vec::with_capacity(blueprints.len());
         for blueprint in blueprints.iter() {
             round2_prepared_all.push(if folding_steps >= 3 {
-                Some(
-                    self.storage
-                        .prepare_for_sumcheck_round_2(&blueprint.inputs, context)?,
-                )
+                Some(self.storage.prepare_for_sumcheck_round_2(
+                    &blueprint.inputs,
+                    layer_idx,
+                    context,
+                )?)
             } else {
                 None
             });
@@ -3437,6 +3843,7 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
             {
                 let prepared = self.storage.prepare_for_sumcheck_round_3_and_beyond(
                     &blueprint.inputs,
+                    layer_idx,
                     step,
                     context,
                 )?;
@@ -3669,18 +4076,20 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
 
         let mut round1_prepared_all = Vec::with_capacity(blueprints.len());
         for blueprint in blueprints.iter() {
-            round1_prepared_all.push(
-                self.storage
-                    .prepare_for_sumcheck_round_1(&blueprint.inputs, context)?,
-            );
+            round1_prepared_all.push(self.storage.prepare_for_sumcheck_round_1(
+                &blueprint.inputs,
+                layer_idx,
+                context,
+            )?);
         }
 
         let mut round2_prepared_all = Vec::with_capacity(blueprints.len());
         for blueprint in blueprints.iter() {
-            round2_prepared_all.push(
-                self.storage
-                    .prepare_for_sumcheck_round_2(&blueprint.inputs, context)?,
-            );
+            round2_prepared_all.push(self.storage.prepare_for_sumcheck_round_2(
+                &blueprint.inputs,
+                layer_idx,
+                context,
+            )?);
         }
 
         let mut round3_prepared_all = Vec::with_capacity(blueprints.len());
@@ -3691,6 +4100,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             {
                 let prepared = self.storage.prepare_for_sumcheck_round_3_and_beyond(
                     &blueprint.inputs,
+                    layer_idx,
                     step,
                     context,
                 )?;
@@ -4454,6 +4864,27 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             &layer,
             layer_idx,
             &|addr| {
+                // Universally base-field address kinds (trace-holder /
+                // scratch / setup) classify as base regardless of which
+                // logical layer the kernel runs at; the layout-driven
+                // storage path (and forward-pass scratch hydration)
+                // populates them at canonical layer 0 / their `layer`
+                // field, not at the requesting `layer_idx`. Without
+                // this, a `CopyIn{Base,Extension}Field` whose input got
+                // rewritten to `ScratchSpace(K)` by
+                // `normalize_compiled_circuit_for_gpu` would fall into
+                // the ExtCopy branch and panic in
+                // `get_for_sumcheck_round_0`'s extension lookup at line
+                // 1973 (the value lives in `base_field_inputs`).
+                if matches!(
+                    addr,
+                    GKRAddress::BaseLayerWitness(_)
+                        | GKRAddress::BaseLayerMemory(_)
+                        | GKRAddress::Setup(_)
+                        | GKRAddress::ScratchSpace(_)
+                ) {
+                    return true;
+                }
                 self.storage.layers[layer_idx]
                     .base_field_inputs
                     .contains_key(addr)
@@ -5969,6 +6400,13 @@ where
         proof_layout: &ProofLayout,
         layer_slot: usize,
         mirror_layer_to_host: bool,
+        // Read-only handle to the consolidated GKR storage. Used by the
+        // main-layer extras eval path to resolve orphan output addresses
+        // (`outputs[layer-1] − inputs[layer]`) to their backing
+        // pointers without forcing additional allocations. Test paths
+        // that don't exercise extras can pass `None` to skip extras work
+        // entirely; production callers always pass `Some`.
+        storage: Option<&GpuGKRStorage<BF, E>>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRMainLayerScheduledLayerExecution<E>> {
         let stream = context.get_exec_stream();
@@ -6276,11 +6714,32 @@ where
             )?;
         }
 
+        // Look up orphan addresses for this layer's slot. These are
+        // `outputs[layer_idx - 1] − inputs[layer_idx]` (i.e., layer-(L-1)
+        // kernel outputs that L's kernels do NOT consume) and must be
+        // explicitly evaluated at the just-produced folding point so
+        // L-1's `desc_pairs` build can resolve them in its IN claim
+        // layout. See [backward.rs] `compute_main_layer_orphan_output_addresses_per_layer`
+        // for the producer side. Empty for `layer_idx == 0` and for
+        // any layer that consumes every immediate-child output.
+        let orphan_addresses: Vec<GKRAddress> = proof_layout.backward[layer_slot]
+            .extra_evaluations_addresses
+            .clone();
+        let orphan_count = orphan_addresses.len();
+        if orphan_count > 0 {
+            assert!(
+                storage.is_some(),
+                "main-layer extras eval requires a storage handle; production callers must pass Some(&storage)"
+            );
+        }
+        let total_new_claims_len = num_addresses + orphan_count;
+
         // Device-side per-address `new_claims` evaluator (main-layer variant:
         // interpolate `v0, v1` at `last_r`). Replaces the host loop inside the
-        // final readback callback.
+        // final readback callback. Allocation extends by `orphan_count` so
+        // the on-device extras kernel can write extras into the tail.
         let mut device_new_claims: DeviceAllocation<E> =
-            context.alloc(num_addresses.max(1), AllocationPlacement::Top)?;
+            context.alloc(total_new_claims_len.max(1), AllocationPlacement::Top)?;
         if num_addresses > 0 {
             // SAFETY: E = E4 in every instantiation; transmutes match the
             // kernel's `e4` view of the packed evals and challenges. The
@@ -6311,13 +6770,55 @@ where
             )?;
         }
 
+        // Schedule on-device evaluation of orphan output polys at the
+        // full folding point `[r_0..r_{last_step-1}, last_r]`
+        // (= `device_claim_point_out[0..self.folding_steps]`). Each
+        // orphan's claim is written into:
+        //   - `device_new_claims[num_addresses..num_addresses + orphan_count]`
+        //     (tail) so the next layer's IN claim buffer carries it; and
+        //   - `proof_layout.backward[layer_slot].extra_evaluations` slab
+        //     range so the verifier can read the explicit at-point evals.
+        // Returns a keepalive that holds eq_values, block_partials,
+        // reduction_temp, and the orphan poly views (Arc-clones of the
+        // consolidated backings) until exec_stream has finished every
+        // kernel reading them. Drop happens at end of scheduler — same
+        // pattern as `fallback_d_layer_transcript_inputs`.
+        let extras_keepalive: Option<MainLayerExtrasKeepalive<BF, E>> = if orphan_count > 0 {
+            // SAFETY: device_claim_point_out is `MAX_MAIN_LAYER_CLAIM_POINT_LEN`
+            // long; `[0..folding_steps]` is in-bounds. The orphan eval
+            // tail starts at `device_new_claims[num_addresses]`.
+            let folding_point_ptr = device_claim_point_out.as_ptr();
+            let trace_len = 1usize << self.folding_steps;
+            let extras_dst_ptr = unsafe { device_new_claims.as_mut_ptr().add(num_addresses) };
+            Some(schedule_main_layer_extras_eval::<E>(
+                self.layer_idx,
+                &orphan_addresses,
+                storage.expect("extras eval requires storage handle"),
+                folding_point_ptr,
+                self.folding_steps,
+                trace_len,
+                extras_dst_ptr,
+                proof_slab,
+                proof_layout,
+                layer_slot,
+                context,
+            )?)
+        } else {
+            None
+        };
+
         // `device_claim_point_out` is already populated in place — slots
         // `[0..last_step]` by the per-round update kernels (folding challenges)
         // and slots `[last_step..last_step + 2]` by the transcript squeeze
         // (`last_r`, `next_batching_challenge`). No post-loop pack copies.
 
-        let next_claim_layout =
-            ClaimBufferLayout::from_addresses(transcript_input_addresses.clone());
+        // Combined claim layout = transcript inputs (in BTreeMap key order)
+        // followed by orphans (in BTreeSet order). Orphans are disjoint from
+        // transcript inputs by construction (orphan = layer-(L-1) output not
+        // consumed by L), so the combined Vec has no duplicates.
+        let mut combined_addresses = transcript_input_addresses.clone();
+        combined_addresses.extend(orphan_addresses.iter().copied());
+        let next_claim_layout = ClaimBufferLayout::from_addresses(combined_addresses);
         let callback_addresses = next_claim_layout.addresses.clone();
         let mut final_readback_callbacks = Callbacks::new();
         if mirror_layer_to_host {
@@ -6348,14 +6849,16 @@ where
             };
             memory_copy_async(&mut layer_challenges_host, layer_challenges_src, d2h_stream)?;
 
-            // Single D2H of device-computed new_claims.
+            // Single D2H of device-computed new_claims, including any
+            // orphan extras the on-device extras kernel appended at
+            // `[num_addresses..num_addresses + orphan_count]`.
             let mut new_claims_host: HostAllocation<[E]> =
-                unsafe { context.alloc_host_uninit_slice(num_addresses.max(1)) };
+                unsafe { context.alloc_host_uninit_slice(total_new_claims_len.max(1)) };
             let new_claims_accessor = new_claims_host.get_accessor();
-            if num_addresses > 0 {
+            if total_new_claims_len > 0 {
                 memory_copy_async(
                     &mut new_claims_host,
-                    &device_new_claims[..num_addresses],
+                    &device_new_claims[..total_new_claims_len],
                     d2h_stream,
                 )?;
             }
@@ -6456,6 +6959,13 @@ where
         drop(fallback_device_coeffs);
         drop(device_claim_point_in);
         drop(device_claims_in);
+        // Stream-ordered drop: every scheduled extras-eval kernel +
+        // memcpy has been issued by this point, so the temporary
+        // device buffers (eq_values, block_partials, reduction_temp)
+        // and the orphan view Arc-clones can release here. The pool
+        // defers the underlying free until exec_stream has progressed
+        // past the writes.
+        drop(extras_keepalive);
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             tracing_ranges,
             start_callbacks: Callbacks::new(),
@@ -6838,6 +7348,11 @@ where
             main_backward_state.prepare_next_layer_static(context)?
         {
             let layer_idx = prepared_layer.layer_idx;
+            // SAFETY: `prepare_next_layer_static` released its `&mut`
+            // borrow on `main_backward_state` when it returned. The
+            // re-borrow here is read-only and lives only across the
+            // scheduler call (which doesn't touch storage mutably).
+            let storage_for_extras = main_backward_state.storage();
             let mut execution = prepared_layer.schedule_execute_main_layer_from_workflow_state(
                 shared_state_handle,
                 shared_device_seed,
@@ -6850,6 +7365,7 @@ where
                 proof_layout,
                 backward_layer_slot,
                 mirror_layers_to_host,
+                Some(storage_for_extras),
                 context,
             )?;
             shared_device_seed = execution
@@ -7030,6 +7546,7 @@ mod tests {
         build_lookup_from_vector_input_with_setup_inputs_and_metadata,
         build_lookup_with_dens_and_setup_expressions_inputs_and_metadata,
         build_main_layer_kernel_blueprints, build_main_layer_kernel_blueprints_static,
+        build_max_quadratic_relation_inputs_and_metadata,
         build_single_max_quadratic_constraint_inputs_and_metadata,
         canonical_inits_and_teardowns_top_bits, eq_group_tables_len,
         launch_build_eq_values_from_point, launch_build_round0_eq_values_from_pairs,
@@ -7533,6 +8050,10 @@ mod tests {
                 &main_proof_layout,
                 0,
                 true,
+                // Test path: placeholder proof layout has empty
+                // `extra_evaluations_addresses` for every slot, so no
+                // extras work runs and storage isn't dereferenced.
+                None,
                 context,
             )
             .unwrap();
@@ -7557,6 +8078,7 @@ mod tests {
             GpuGKRMainLayerKernelKind::Product,
             GpuGKRMainLayerKernelKind::MaskIdentity,
             GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic,
+            GpuGKRMainLayerKernelKind::MaxQuadraticBaseOutput,
             GpuGKRMainLayerKernelKind::LinearBaseOutput,
             GpuGKRMainLayerKernelKind::InitsAndTeardownsInitialPair,
             GpuGKRMainLayerKernelKind::InitialGrandProductWithoutCaches,
@@ -8559,6 +9081,100 @@ mod tests {
     }
 
     #[test]
+    fn max_quadratic_relation_dispatches_with_base_output() {
+        let storage = crate::prover::gkr::GpuGKRStorage::<BF, E4> {
+            layers: vec![Default::default()],
+            layout: None,
+        };
+        let constraint_input = NoFieldMaxQuadraticGKRRelation {
+            quadratic_terms: vec![
+                (
+                    GKRAddress::BaseLayerMemory(0),
+                    vec![
+                        (2u32, GKRAddress::BaseLayerWitness(1)),
+                        (3u32, GKRAddress::BaseLayerMemory(0)),
+                    ]
+                    .into_boxed_slice(),
+                ),
+                (
+                    GKRAddress::BaseLayerWitness(2),
+                    vec![(5u32, GKRAddress::BaseLayerWitness(1))].into_boxed_slice(),
+                ),
+            ]
+            .into_boxed_slice(),
+            linear_terms: vec![
+                (7u32, GKRAddress::BaseLayerMemory(3)),
+                (11u32, GKRAddress::BaseLayerWitness(2)),
+            ]
+            .into_boxed_slice(),
+            constant: 13,
+        };
+        let output_address = GKRAddress::ScratchSpace(0);
+        let layer = GKRLayerDescription {
+            layer: 0,
+            gates_with_external_connections: Vec::new(),
+            cached_relations: BTreeMap::new(),
+            intermediate_layer_width: None,
+            gates: vec![GateArtifacts {
+                output_layer: 1,
+                enforced_relation: NoFieldGKRRelation::MaxQuadratic {
+                    input: constraint_input.clone(),
+                    output: output_address,
+                },
+            }],
+        };
+
+        let external_challenges = sample_external_challenges(40);
+        let blueprints = build_main_layer_kernel_blueprints(
+            &layer,
+            0,
+            &storage,
+            &external_challenges,
+            &[],
+            0,
+            sample_ext(10),
+            sample_ext(20),
+            sample_ext(20),
+            2,
+            2,
+        );
+        assert_eq!(blueprints.len(), 1);
+        let blueprint = &blueprints[0];
+        let (expected_inputs, expected_metadata) = build_max_quadratic_relation_inputs_and_metadata::<
+            E4,
+        >(&constraint_input, output_address);
+
+        assert_eq!(
+            blueprint.kind,
+            GpuGKRMainLayerKernelKind::MaxQuadraticBaseOutput
+        );
+        assert_eq!(blueprint.batch_challenges, vec![E4::ONE]);
+        assert_eq!(blueprint.inputs, expected_inputs);
+        assert_eq!(blueprint.inputs.outputs_in_base, vec![output_address]);
+        assert!(blueprint.inputs.outputs_in_extension.is_empty());
+
+        let metadata = blueprint
+            .constraint_metadata_source
+            .as_ref()
+            .expect("constraint metadata must be present");
+        let metadata = match metadata {
+            super::GpuGKRMainLayerConstraintMetadataSource::Immediate(metadata) => metadata,
+            super::GpuGKRMainLayerConstraintMetadataSource::Deferred(..) => {
+                panic!("max quadratic relation must use immediate metadata")
+            }
+        };
+        assert_eq!(metadata, &expected_metadata);
+        // The MaxQuadraticBaseOutput kernel reuses the constraint helper
+        // unchanged, only attaching the output to outputs_in_base — the
+        // metadata's linear and quadratic terms match the constraint-only
+        // build exactly.
+        let (_, base_metadata) =
+            build_single_max_quadratic_constraint_inputs_and_metadata::<E4>(&constraint_input);
+        assert_eq!(metadata.linear_terms, base_metadata.linear_terms);
+        assert_eq!(metadata.quadratic_terms, base_metadata.quadratic_terms);
+    }
+
+    #[test]
     fn main_layer_blueprints_for_inits_and_teardowns_initial_pair_use_canonical_top_bits() {
         let storage = crate::prover::gkr::GpuGKRStorage::<BF, E4> {
             layers: vec![Default::default()],
@@ -8701,5 +9317,71 @@ mod tests {
         assert_eq!(dynamic_blueprints[1].batch_challenges, vec![sample_ext(10)]);
         assert!(static_blueprints[0].batch_challenges.is_empty());
         assert!(static_blueprints[1].batch_challenges.is_empty());
+    }
+
+    #[test]
+    fn compute_main_layer_orphan_output_addresses_picks_unconsumed_outputs() {
+        // Three layers; layer 0 produces an InnerLayer{1,0} output that
+        // layer-1's kernels do not read — exactly the MaxQuadratic-with-
+        // higher-layer-consumer case the GPU port now handles. Bottom
+        // layer (layer_idx == 0) is always empty (no layer below). Top
+        // layer's slot lists orphans of the layer below it (here:
+        // layer-1 outputs that layer 2 doesn't consume).
+        let layer0_inputs = vec![GKRAddress::BaseLayerWitness(0)];
+        let layer1_inputs = vec![GKRAddress::BaseLayerWitness(1)];
+        let layer2_inputs = vec![
+            GKRAddress::ScratchSpace(7),
+            GKRAddress::InnerLayer {
+                layer: 2,
+                offset: 0,
+            },
+        ];
+        let inputs_per_layer = vec![layer0_inputs, layer1_inputs, layer2_inputs];
+
+        let layer0_outputs = vec![GKRAddress::InnerLayer {
+            layer: 1,
+            offset: 0,
+        }];
+        let layer1_outputs = vec![
+            GKRAddress::ScratchSpace(7),
+            GKRAddress::InnerLayer {
+                layer: 2,
+                offset: 0,
+            },
+        ];
+        let layer2_outputs = vec![GKRAddress::InnerLayer {
+            layer: 3,
+            offset: 0,
+        }];
+        let outputs_per_layer = vec![layer0_outputs, layer1_outputs, layer2_outputs];
+
+        let orphans = super::compute_main_layer_orphan_output_addresses_per_layer::<E4>(
+            &inputs_per_layer,
+            &outputs_per_layer,
+        );
+
+        // Bottom layer (layer 0): nothing below it — always empty.
+        assert!(orphans[0].is_empty());
+        // Layer 1's orphan list = layer-0 outputs not consumed by layer 1.
+        // layer 0's output InnerLayer{1,0} is NOT in layer 1's inputs
+        // (which is BaseLayerWitness(1)) — so it IS an orphan emitted at
+        // scheduler 1.
+        assert_eq!(
+            orphans[1],
+            vec![GKRAddress::InnerLayer {
+                layer: 1,
+                offset: 0,
+            }],
+        );
+        // Layer 2's orphan list = layer-1 outputs not consumed by layer 2.
+        // both ScratchSpace(7) and InnerLayer{2,0} ARE in layer 2's
+        // inputs, so neither is an orphan.
+        assert!(orphans[2].is_empty());
+    }
+
+    #[test]
+    fn compute_main_layer_orphan_output_addresses_handles_empty() {
+        let orphans = super::compute_main_layer_orphan_output_addresses_per_layer::<E4>(&[], &[]);
+        assert!(orphans.is_empty());
     }
 }

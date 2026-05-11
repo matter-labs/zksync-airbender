@@ -207,6 +207,10 @@ impl<B> GpuBaseFieldPoly<B> {
         Arc::ptr_eq(&self.backing, &other.backing)
     }
 
+    pub(crate) fn backing_arc(&self) -> &Arc<DeviceAllocation<B>> {
+        &self.backing
+    }
+
     pub(crate) fn as_ptr(&self) -> *const B {
         unsafe { self.backing.as_ptr().add(self.offset) }
     }
@@ -955,8 +959,8 @@ impl<B, E> GpuGKRStorage<B, E> {
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
             | GKRAddress::Setup(..)
-            | GKRAddress::VirtualSetup(..) => Some(0),
-            GKRAddress::ScratchSpace(..) => None,
+            | GKRAddress::VirtualSetup(..)
+            | GKRAddress::ScratchSpace(..) => Some(0),
         }
     }
 
@@ -991,12 +995,12 @@ impl<B, E> GpuGKRStorage<B, E> {
         }
 
         let layer = match address {
-            GKRAddress::ScratchSpace(..) => unreachable!(),
             GKRAddress::Cached { layer, .. } | GKRAddress::InnerLayer { layer, .. } => layer,
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
             | GKRAddress::Setup(..)
-            | GKRAddress::VirtualSetup(..) => 0,
+            | GKRAddress::VirtualSetup(..)
+            | GKRAddress::ScratchSpace(..) => 0,
         };
         let source = self.layers[layer]
             .base_field_inputs
@@ -1146,6 +1150,93 @@ impl<B, E> GpuGKRStorage<B, E> {
             }
         };
         Ok(GpuBaseFieldPoly::from_arc(backing, offset, stride))
+    }
+
+    /// Non-mutating resolver: returns a `GpuBaseFieldPoly<B>` view for an
+    /// already-populated address. Unlike `allocate_base_view`, this does
+    /// NOT lazily allocate a backing — it returns a clone of the view
+    /// stored in `storage.layers[L].base_field_inputs[addr]`, which the
+    /// forward pass populates via `insert_base_field_at_layer` and the
+    /// scratch / trace-holder bindings. Used by code paths that read an
+    /// existing poly through the consolidated storage (e.g., main-layer
+    /// extras eval) without forcing the allocation lifecycle that
+    /// mutates the storage.
+    ///
+    /// Resolution order:
+    ///   1. `storage.layers[layer].base_field_inputs[addr]` — direct hit.
+    ///   2. Layout-driven canonical-layer lookup (handles `CopyIn`
+    ///      aliases and addresses stored at a different canonical
+    ///      layer than `layer`).
+    /// Panics with diagnostic context on miss in both.
+    pub(crate) fn resolve_base_view_or_panic(
+        &self,
+        layer: usize,
+        address: GKRAddress,
+    ) -> GpuBaseFieldPoly<B> {
+        // Fast path: direct hit on the requested layer's per-address
+        // map. Forward populates this for every address it materializes
+        // into a layer's storage (including scratch hydration for
+        // `InnerLayer { layer, .. }` addresses that alias to the
+        // consolidated `ScratchSpace` backing).
+        if let Some(layer_source) = self.layers.get(layer) {
+            if let Some(view) = layer_source.base_field_inputs.get(&address) {
+                return view.clone();
+            }
+        }
+        // Try the address at its canonical storage layer (handles
+        // `InnerLayer { layer: L', .. }` addresses requested through a
+        // different logical layer).
+        let canonical_layer = match address {
+            GKRAddress::BaseLayerWitness(_)
+            | GKRAddress::BaseLayerMemory(_)
+            | GKRAddress::Setup(_)
+            | GKRAddress::VirtualSetup(_)
+            | GKRAddress::ScratchSpace(_) => 0,
+            GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => layer,
+        };
+        if canonical_layer != layer {
+            if let Some(layer_source) = self.layers.get(canonical_layer) {
+                if let Some(view) = layer_source.base_field_inputs.get(&address) {
+                    return view.clone();
+                }
+            }
+        }
+        // Final fallback: layout-driven canonical resolution. Aliases
+        // map (e.g., `CopyInBaseField`) here; production code populates
+        // the canonical's view in `base_field_inputs`, so this branch
+        // exists for completeness against test paths that bypass the
+        // forward population.
+        let layout = self
+            .layout
+            .as_ref()
+            .expect("storage layout required for resolve_base_view_or_panic");
+        let (alias_canonical_layer, class, field, poly_idx) = layout
+            .lookup(layer, &address)
+            .unwrap_or_else(|| panic!("address {address:?} missing from layer {layer} layout"));
+        assert_eq!(
+            field,
+            FieldType::Base,
+            "address {address:?} is not classified as a base poly in layout"
+        );
+        let layer_layout = layout.layers.get(alias_canonical_layer).unwrap_or_else(|| {
+            panic!("canonical layer {alias_canonical_layer} out of range in layout")
+        });
+        let layer_log2_stride = layer_layout.log2_stride;
+        let stride = 1usize << layer_log2_stride;
+        let offset = (poly_idx as usize) << layer_log2_stride;
+        let layer_source = self.layers.get(alias_canonical_layer).unwrap_or_else(|| {
+            panic!(
+                "resolve_base_view_or_panic: storage layer {alias_canonical_layer} not present \
+                 (address {address:?} requested at logical layer {layer})"
+            )
+        });
+        let backing = layer_source.base_class_backings.get(&class).unwrap_or_else(|| {
+            panic!(
+                "resolve_base_view_or_panic: no consolidated base backing at layer {alias_canonical_layer} \
+                 class {class:?} (address {address:?} requested at logical layer {layer})"
+            )
+        });
+        GpuBaseFieldPoly::from_arc(Arc::clone(backing), offset, stride)
     }
 
     /// Extension-field analogue of `allocate_base_view`.
@@ -1352,12 +1443,12 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
             None => return Ok(()),
         };
         let n_layers = self.layers.len();
-        let layer_storage = self.layers.get_mut(layer).unwrap_or_else(|| {
+        if !(layer < n_layers) {
             panic!(
                 "register_flat_base_folding_for_layer called for layer {layer} but storage has only {n_layers} layers"
-            )
-        });
-        if layer_storage
+            );
+        }
+        if self.layers[layer]
             .intermediate_base_folding_consolidated
             .is_some()
         {
@@ -1370,8 +1461,10 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
 
         // Walk addresses, splitting into real (layout-indexed) and virtual
         // (`VirtualSetup`) sets. Validate uniform per-poly size for real polys
-        // (they're tracked in `base_field_inputs`); for virtuals, fall back to
-        // the layer's `base_trace_len` proxy since they have no real backing.
+        // (they're tracked in `base_field_inputs` at the address's canonical
+        // storage layer — for `ScratchSpace`, that is layer 0, not the
+        // requesting `layer`); for virtuals, fall back to the layer's
+        // `base_trace_len` proxy since they have no real backing.
         let mut addrs_by_class: BTreeMap<AddressClass, Vec<GKRAddress>> = BTreeMap::new();
         let mut per_poly_size: Option<usize> = None;
         let mut virtuals_by_class: BTreeMap<AddressClass, Vec<GKRAddress>> = BTreeMap::new();
@@ -1397,12 +1490,34 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
                 "flat base-folding input {addr:?} must be base-typed (got {field:?})",
             );
             addrs_by_class.entry(class).or_default().push(*addr);
-            let len = layer_storage
-                .base_field_inputs
-                .get(addr)
+            // Look up size at the address's canonical storage layer. For
+            // base-field addresses whose canonical layer differs from
+            // `layer` (e.g. `ScratchSpace(K)` whose poly lives at layer 0
+            // but is consumed by a kernel at layer L > 0), the per-poly
+            // size is the same as the requesting layer's polys (uniform
+            // hypercube length), but it is only registered in the
+            // canonical layer's `base_field_inputs`.
+            let storage_layer = match addr {
+                GKRAddress::BaseLayerWitness(_)
+                | GKRAddress::BaseLayerMemory(_)
+                | GKRAddress::Setup(_)
+                | GKRAddress::ScratchSpace(_) => 0usize,
+                GKRAddress::Cached { layer, .. } | GKRAddress::InnerLayer { layer, .. } => *layer,
+                _ => layer,
+            };
+            let storage_layer = if self.layers.get(storage_layer).is_some() {
+                storage_layer
+            } else {
+                layer
+            };
+            let len = self
+                .layers
+                .get(storage_layer)
+                .and_then(|s| s.base_field_inputs.get(addr))
+                .or_else(|| self.layers[layer].base_field_inputs.get(addr))
                 .unwrap_or_else(|| {
                     panic!(
-                        "flat base-folding input {addr:?} missing from base storage at layer {layer}"
+                        "flat base-folding input {addr:?} missing from base storage at layer {layer} (also checked canonical layer {storage_layer})"
                     )
                 })
                 .len();
@@ -1486,24 +1601,27 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
 
     fn round_input_layer(address: GKRAddress) -> usize {
         match address {
-            GKRAddress::ScratchSpace(..) => unreachable!(),
             GKRAddress::Cached { layer, .. } => layer,
             GKRAddress::InnerLayer { layer, .. } => layer,
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
             | GKRAddress::Setup(..)
-            | GKRAddress::VirtualSetup(..) => 0,
+            | GKRAddress::VirtualSetup(..)
+            | GKRAddress::ScratchSpace(..) => 0,
         }
     }
 
     fn round_output_layer(address: GKRAddress) -> usize {
         match address {
-            GKRAddress::ScratchSpace(..)
-            | GKRAddress::BaseLayerMemory(..)
+            GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
             | GKRAddress::Setup(..)
             | GKRAddress::VirtualSetup(..) => unreachable!(),
             GKRAddress::Cached { .. } => unreachable!(),
+            // ScratchSpace outputs (e.g. rewritten MaxQuadratic outputs from
+            // `transform::normalize_compiled_circuit_for_gpu`) live at layer 0
+            // alongside trace columns.
+            GKRAddress::ScratchSpace(..) => 0,
             GKRAddress::InnerLayer { layer, .. } => layer,
         }
     }
@@ -1586,9 +1704,15 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
     fn plan_base_source_for_round_1(
         &mut self,
         poly: GKRAddress,
+        request_layer: usize,
         context: &ProverContext,
     ) -> CudaResult<GpuBaseFieldPolySourceAfterOneFoldingPlan<B, E>> {
-        let layer = Self::base_poly_layer(poly).expect("must exist");
+        // Cache lives at the requesting sumcheck layer, NOT at the source
+        // poly's canonical storage layer. For trace-holder / scratch
+        // sources whose canonical layer is 0, the per-layer-L sumcheck
+        // owns the intermediate folding buffer and registers it with
+        // `register_flat_base_folding_for_layer` at layer L.
+        let cache_layer = request_layer;
         let sumcheck_step = 1;
         let (base_poly_len, base_poly_ptr, source_kind) =
             if let Some(source_kind) = GpuBaseFieldSourceKind::from_address(poly) {
@@ -1598,18 +1722,18 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
                 (poly.len(), poly.as_ptr(), GpuBaseFieldSourceKind::Real)
             };
 
-        if !self.layers[layer]
+        if !self.layers[cache_layer]
             .intermediate_storage_for_folder_base_field_inputs
             .contains_key(&poly)
         {
             let buffer =
-                self.materialize_base_folding_buffer(layer, poly, base_poly_len, context)?;
-            self.layers[layer]
+                self.materialize_base_folding_buffer(cache_layer, poly, base_poly_len, context)?;
+            self.layers[cache_layer]
                 .intermediate_storage_for_folder_base_field_inputs
                 .insert(poly, (0, buffer));
         }
 
-        let (last_used_for_layer, buffer) = self.layers[layer]
+        let (last_used_for_layer, buffer) = self.layers[cache_layer]
             .intermediate_storage_for_folder_base_field_inputs
             .get_mut(&poly)
             .expect("must be present");
@@ -1634,9 +1758,10 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
     fn plan_base_source_for_round_2(
         &mut self,
         poly: GKRAddress,
+        request_layer: usize,
         context: &ProverContext,
     ) -> CudaResult<GpuBaseFieldPolySourceAfterTwoFoldingsPlan<B, E>> {
-        let layer = Self::base_poly_layer(poly).expect("must exist");
+        let cache_layer = request_layer;
         let sumcheck_step = 2;
         let (base_poly_len, base_poly_ptr, source_kind) =
             if let Some(source_kind) = GpuBaseFieldSourceKind::from_address(poly) {
@@ -1646,18 +1771,18 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
                 (poly.len(), poly.as_ptr(), GpuBaseFieldSourceKind::Real)
             };
 
-        if !self.layers[layer]
+        if !self.layers[cache_layer]
             .intermediate_storage_for_folder_base_field_inputs
             .contains_key(&poly)
         {
             let buffer =
-                self.materialize_base_folding_buffer(layer, poly, base_poly_len, context)?;
-            self.layers[layer]
+                self.materialize_base_folding_buffer(cache_layer, poly, base_poly_len, context)?;
+            self.layers[cache_layer]
                 .intermediate_storage_for_folder_base_field_inputs
                 .insert(poly, (1, buffer));
         }
 
-        let (last_used_for_layer, buffer) = self.layers[layer]
+        let (last_used_for_layer, buffer) = self.layers[cache_layer]
             .intermediate_storage_for_folder_base_field_inputs
             .get_mut(&poly)
             .expect("must be present");
@@ -1691,12 +1816,13 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
     fn plan_base_source_for_rounds_3_and_beyond(
         &mut self,
         poly: GKRAddress,
+        request_layer: usize,
         sumcheck_step: usize,
     ) -> GpuExtensionFieldPolyContinuingSourcePlan<E> {
         assert!(sumcheck_step >= 3);
 
-        let layer = Self::base_poly_layer(poly).expect("must be present");
-        let (last_used_for_layer, buffer) = self.layers[layer]
+        let cache_layer = request_layer;
+        let (last_used_for_layer, buffer) = self.layers[cache_layer]
             .intermediate_storage_for_folder_base_field_inputs
             .get_mut(&poly)
             .expect("must be present");
@@ -1983,6 +2109,7 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
     pub(crate) fn prepare_for_sumcheck_round_1(
         &mut self,
         inputs: &GKRInputs,
+        request_layer: usize,
         context: &ProverContext,
     ) -> CudaResult<GpuSumcheckRound1PreparedStorage<B, E>> {
         let mut storage = GpuSumcheckRound1PreparedStorage {
@@ -1998,7 +2125,7 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
             } else {
                 storage
                     .base_field_inputs
-                    .push(self.plan_base_source_for_round_1(*input, context)?);
+                    .push(self.plan_base_source_for_round_1(*input, request_layer, context)?);
             }
         }
         for input in inputs.inputs_in_extension.iter() {
@@ -2019,6 +2146,7 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
     pub(crate) fn prepare_for_sumcheck_round_2(
         &mut self,
         inputs: &GKRInputs,
+        request_layer: usize,
         context: &ProverContext,
     ) -> CudaResult<GpuSumcheckRound2PreparedStorage<B, E>> {
         let mut storage = GpuSumcheckRound2PreparedStorage {
@@ -2034,7 +2162,7 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
             } else {
                 storage
                     .base_field_inputs
-                    .push(self.plan_base_source_for_round_2(*input, context)?);
+                    .push(self.plan_base_source_for_round_2(*input, request_layer, context)?);
             }
         }
         for input in inputs.inputs_in_extension.iter() {
@@ -2055,6 +2183,7 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
     pub(crate) fn prepare_for_sumcheck_round_3_and_beyond(
         &mut self,
         inputs: &GKRInputs,
+        request_layer: usize,
         sumcheck_step: usize,
         context: &ProverContext,
     ) -> CudaResult<GpuSumcheckRound3AndBeyondPreparedStorage<E>> {
@@ -2073,7 +2202,11 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
             } else {
                 storage
                     .base_field_inputs
-                    .push(self.plan_base_source_for_rounds_3_and_beyond(*input, sumcheck_step));
+                    .push(self.plan_base_source_for_rounds_3_and_beyond(
+                        *input,
+                        request_layer,
+                        sumcheck_step,
+                    ));
             }
         }
         for input in inputs.inputs_in_extension.iter() {
@@ -2524,7 +2657,7 @@ mod tests {
         {
             let mut callbacks = Callbacks::new();
             let round1 = storage
-                .prepare_for_sumcheck_round_1(&inputs, &context)
+                .prepare_for_sumcheck_round_1(&inputs, 0, &context)
                 .unwrap()
                 .schedule_upload_launch_descriptors(&context, &mut callbacks)
                 .unwrap();
@@ -2552,7 +2685,7 @@ mod tests {
         let (base_round2_cache_ptr, ext_round2_cache_ptr) = {
             let mut callbacks = Callbacks::new();
             let round2_first = storage
-                .prepare_for_sumcheck_round_2(&inputs, &context)
+                .prepare_for_sumcheck_round_2(&inputs, 0, &context)
                 .unwrap()
                 .schedule_upload_launch_descriptors(&context, &mut callbacks)
                 .unwrap();
@@ -2572,7 +2705,7 @@ mod tests {
         {
             let mut callbacks = Callbacks::new();
             let round2_second = storage
-                .prepare_for_sumcheck_round_2(&inputs, &context)
+                .prepare_for_sumcheck_round_2(&inputs, 0, &context)
                 .unwrap()
                 .schedule_upload_launch_descriptors(&context, &mut callbacks)
                 .unwrap();
@@ -2597,7 +2730,7 @@ mod tests {
         let (round3_base_cache_ptr, round3_ext_cache_ptr) = {
             let mut callbacks = Callbacks::new();
             let round3_first = storage
-                .prepare_for_sumcheck_round_3_and_beyond(&inputs, 3, &context)
+                .prepare_for_sumcheck_round_3_and_beyond(&inputs, 0, 3, &context)
                 .unwrap()
                 .schedule_upload_launch_descriptors(&context, &mut callbacks)
                 .unwrap();
@@ -2635,7 +2768,7 @@ mod tests {
         {
             let mut callbacks = Callbacks::new();
             let round3_second = storage
-                .prepare_for_sumcheck_round_3_and_beyond(&inputs, 3, &context)
+                .prepare_for_sumcheck_round_3_and_beyond(&inputs, 0, 3, &context)
                 .unwrap()
                 .schedule_upload_launch_descriptors(&context, &mut callbacks)
                 .unwrap();
@@ -2659,7 +2792,7 @@ mod tests {
         {
             let mut callbacks = Callbacks::new();
             let round2_reuse_after_round3 = storage
-                .prepare_for_sumcheck_round_2(&inputs, &context)
+                .prepare_for_sumcheck_round_2(&inputs, 0, &context)
                 .unwrap()
                 .schedule_upload_launch_descriptors(&context, &mut callbacks)
                 .unwrap();
@@ -2728,7 +2861,7 @@ mod tests {
         );
 
         let round1 = storage
-            .prepare_for_sumcheck_round_1(&inputs, &context)
+            .prepare_for_sumcheck_round_1(&inputs, 0, &context)
             .unwrap();
         assert!(round1.base_field_inputs[0].base_input_start.is_null());
         assert_eq!(round1.base_field_inputs[0].base_layer_half_size, 4);
@@ -2744,7 +2877,7 @@ mod tests {
         );
 
         let round2_first = storage
-            .prepare_for_sumcheck_round_2(&inputs, &context)
+            .prepare_for_sumcheck_round_2(&inputs, 0, &context)
             .unwrap();
         assert!(round2_first.base_field_inputs[0].base_input_start.is_null());
         assert_eq!(round2_first.base_field_inputs[0].base_layer_half_size, 4);
@@ -2763,7 +2896,7 @@ mod tests {
         );
 
         let round2_second = storage
-            .prepare_for_sumcheck_round_2(&inputs, &context)
+            .prepare_for_sumcheck_round_2(&inputs, 0, &context)
             .unwrap();
         assert!(!round2_second.base_field_inputs[0].first_access);
         assert!(!round2_second.base_field_inputs[1].first_access);

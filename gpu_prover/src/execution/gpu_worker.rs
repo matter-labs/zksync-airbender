@@ -213,13 +213,16 @@ fn schedule_phase_one<'a>(
     // use against this worker's context (legacy `OnceLock<SetupTreesAndCaps>`
     // pattern).
     let setup_transfer = if is_proof {
-        let setup_host = state.precomputations.setup_host.get_or_init(context)?;
-        let mut transfer = GpuGKRSetupTransfer::new(setup_host, context)?;
-        trace!(
-            "BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for circuit {circuit_type:?}[{sequence_id}]"
-        );
-        transfer.schedule_transfer(context)?;
-        Some(transfer)
+        if let Some(setup_host) = state.precomputations.setup_host.get_or_init(context)? {
+            let mut transfer = GpuGKRSetupTransfer::new(setup_host, context)?;
+            trace!(
+                "BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for circuit {circuit_type:?}[{sequence_id}]"
+            );
+            transfer.schedule_transfer(context)?;
+            Some(transfer)
+        } else {
+            None
+        }
     } else {
         None
     };
