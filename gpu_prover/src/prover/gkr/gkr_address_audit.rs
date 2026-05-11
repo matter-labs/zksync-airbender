@@ -88,7 +88,7 @@ pub(crate) enum AddressClass {
     PrevCached = 4,
     ThisLayerCachedWrite = 5,
     ThisLayerInnerLayerWrite = 6,
-    Reserved = 7,
+    ScratchSpace = 7,
     /// Outside the 8-slot taxonomy (taxonomy revision needed).
     Other = 255,
 }
@@ -103,7 +103,7 @@ impl AddressClass {
             Self::PrevCached => "PrevCached",
             Self::ThisLayerCachedWrite => "ThisLayerCachedWrite",
             Self::ThisLayerInnerLayerWrite => "ThisLayerInnerLayer",
-            Self::Reserved => "Reserved",
+            Self::ScratchSpace => "ScratchSpace",
             Self::Other => "Other",
         }
     }
@@ -134,7 +134,7 @@ pub(crate) fn classify(addr: &GKRAddress, output_layer: usize) -> AddressClass {
                 AddressClass::Other
             }
         }
-        GKRAddress::ScratchSpace(_) => AddressClass::Reserved,
+        GKRAddress::ScratchSpace(_) => AddressClass::ScratchSpace,
     }
 }
 
@@ -1156,6 +1156,12 @@ pub(crate) fn project_layer_flat_round0_term_counts<E>(
                 let (qt, _) = count_metadata_terms(&bp.constraint_metadata_source, false);
                 counts.c1_bf_bf += qt as u32;
             }
+            K::MaxQuadraticBaseOutput => {
+                // c0 = β * output (bf) + c1 quadratic terms via emit_constraint_gate.
+                counts.c0_bf += 1;
+                let (qt, _) = count_metadata_terms(&bp.constraint_metadata_source, false);
+                counts.c1_bf_bf += qt as u32;
+            }
             K::InitsAndTeardownsInitialPair => {
                 counts.c0_ext += 1;
                 let (qt, _) = count_metadata_terms(&bp.constraint_metadata_source, false);
@@ -1535,6 +1541,11 @@ pub(crate) fn project_layer_flat_round0_recipe_audit<E>(
                 let (qt, _) = metadata_qt_lt_term_lens(&bp.constraint_metadata_source, false);
                 account_single_group(&mut a, &qt, imm);
             }
+            K::MaxQuadraticBaseOutput => {
+                account_bare(&mut a, 1);
+                let (qt, _) = metadata_qt_lt_term_lens(&bp.constraint_metadata_source, false);
+                account_single_group(&mut a, &qt, imm);
+            }
             K::InitsAndTeardownsInitialPair => {
                 account_bare(&mut a, 1);
                 let (qt, _) = metadata_qt_lt_term_lens(&bp.constraint_metadata_source, false);
@@ -1749,6 +1760,7 @@ pub(crate) fn project_layer_flat_continuation_recipe_audit<E>(
                 gamma(&mut a, 5);
             }
             K::EnforceConstraintsMaxQuadratic => emit_constraint(&mut a, src, imm),
+            K::MaxQuadraticBaseOutput => emit_constraint(&mut a, src, imm),
             K::InitsAndTeardownsInitialPair => emit_constraint(&mut a, src, imm),
             K::InitialGrandProductWithoutCaches => emit_xprod(&mut a, src, imm),
             K::MaterializeGrandProductTermExpression => emit_materialize(&mut a, src, imm),
