@@ -85,7 +85,8 @@ use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension, PrimeField};
 use itertools::Itertools;
-use prover::definitions::Transcript;
+use prover::definitions::{SecurityLevel, Transcript};
+use prover::gkr::prover_config::ProverConfig;
 use prover::gkr::prover::dimension_reduction::{self, forward::DimensionReducingInputOutput};
 use prover::gkr::prover::forward_loop;
 use prover::gkr::prover::prove_configured_with_gkr;
@@ -159,9 +160,9 @@ const BASIC_UNROLLED_CPU_PARITY_BINARY_PATH: &str =
     "riscv_transpiler/examples/keccak_f1600/app.bin";
 const BASIC_UNROLLED_CPU_PARITY_TEXT_PATH: &str = "riscv_transpiler/examples/keccak_f1600/app.text";
 const BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH: &str =
-    "cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_gkr.json";
+    "cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json";
 const BASIC_UNROLLED_ADD_SUB_NO_CACHES_LAYOUT_PATH: &str =
-    "cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_no_caches_gkr.json";
+    "cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json";
 
 fn test_artifact_path(relative_path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -474,7 +475,7 @@ pub(crate) struct BasicUnrolledFixture {
     pub(crate) circuit_type: CircuitType,
     pub(crate) compiled_circuit: GKRCircuitArtifact<BF>,
     pub(crate) external_challenges: GKRExternalChallenges<BF, E4>,
-    pub(crate) whir_schedule: WhirSchedule,
+    pub(crate) prover_config: ProverConfig,
     pub(crate) final_trace_size_log_2: usize,
     pub(crate) gpu_setup_host: Arc<GpuGKRSetupHost>,
     pub(crate) decoder_table_host:
@@ -567,7 +568,7 @@ impl BasicUnrolledFixture {
             self.circuit_type,
             self.compiled_circuit.clone(),
             self.external_challenges,
-            self.whir_schedule.clone(),
+            &self.prover_config,
             self.final_trace_size_log_2,
             Some(setup_transfer),
             decoder_transfer,
@@ -590,7 +591,7 @@ impl BasicUnrolledFixture {
             self.circuit_type,
             self.compiled_circuit.clone(),
             self.external_challenges,
-            self.whir_schedule.clone(),
+            &self.prover_config,
             self.final_trace_size_log_2,
             Some(setup_transfer),
             decoder_transfer,
@@ -758,10 +759,10 @@ fn prepare_basic_unrolled_fixture(
         _marker: std::marker::PhantomData,
     };
 
-    let prover_config =
-        prover::gkr::prover_config::example_configs::config_for_80_bits_under_pessimistic_conjecture(
-            trace_len.trailing_zeros() as usize,
-        );
+    let fixture_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+        UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+    ));
+    let prover_config = fixture_circuit_type.prover_config(SecurityLevel::Sec80);
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = GKRSetup::construct(
         &TableDriver::new(),
@@ -882,19 +883,12 @@ fn prepare_basic_unrolled_fixture(
             .ensure_transferred(&context)
             .unwrap();
 
-        let log_lde_factor = whir_schedule.base_lde_factor.trailing_zeros();
-        let log_rows_per_leaf = whir_schedule.whir_steps_schedule[0] as u32;
-        let log_tree_cap_size = whir_schedule.cap_size.trailing_zeros();
         let job = commit_memory(
-            CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-            )),
+            fixture_circuit_type,
             &compiled_circuit,
             decoder_transfer.as_ref().map(|t| &t.data_device[..]),
             &tracing_data_transfer.data_device,
-            log_lde_factor,
-            log_rows_per_leaf,
-            log_tree_cap_size,
+            &prover_config,
             &context,
         )
         .unwrap();
@@ -921,12 +915,10 @@ fn prepare_basic_unrolled_fixture(
     (
         BasicUnrolledFixture {
             context,
-            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-            )),
+            circuit_type: fixture_circuit_type,
             compiled_circuit,
             external_challenges,
-            whir_schedule,
+            prover_config,
             final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
             gpu_setup_host,
             decoder_table_host,
@@ -959,7 +951,7 @@ fn prepare_basic_unrolled_profiling_fixture() -> BasicUnrolledFixture {
         prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
             binary_path: "examples/basic_fibonacci/app.bin",
             text_path: "examples/basic_fibonacci/app.text",
-            layout_path: BASIC_UNROLLED_ADD_SUB_NO_CACHES_LAYOUT_PATH,
+            layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
             non_determinism_reads: &[],
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
@@ -3752,10 +3744,8 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    let prover_config =
-        prover::gkr::prover_config::example_configs::config_for_80_bits_under_pessimistic_conjecture(
-            trace_len.trailing_zeros() as usize,
-        );
+    let memory_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type));
+    let prover_config = memory_circuit_type.prover_config(SecurityLevel::Sec80);
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = GKRSetup::construct(
         &table_driver,
@@ -3837,7 +3827,7 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     let (gpu_memory_caps, _gpu_memory_commitment_ms) = commit_memory(
-        CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type)),
+        memory_circuit_type,
         &compiled_circuit,
         if compiled_circuit.has_decoder_lookup {
             Some(&d_decoder_table)
@@ -3845,9 +3835,7 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
             None
         },
         &gpu_trace,
-        whir_schedule.base_lde_factor.trailing_zeros(),
-        whir_schedule.whir_steps_schedule[0] as u32,
-        whir_schedule.cap_size.trailing_zeros(),
+        &prover_config,
         &context,
     )
     .unwrap()
@@ -4873,7 +4861,7 @@ fn run_basic_unrolled_proof_job_profile_test() {
     );
     let (warmup_proof, warmup_time_ms) = warmup_job.finish().unwrap();
     eprintln!("warmup proof time: {warmup_time_ms} ms");
-    assert_gkr_proof_structure_for_test(&warmup_proof, &fixture.whir_schedule);
+    assert_gkr_proof_structure_for_test(&warmup_proof, &fixture.prover_config.whir_schedule);
     drop(warmup_proof);
 
     let profiled_transfers = fixture.schedule_transfers().unwrap();
@@ -4889,7 +4877,7 @@ fn run_basic_unrolled_proof_job_profile_test() {
         profiled_job.finish().unwrap()
     };
     eprintln!("profiled proof time: {profiled_time_ms} ms");
-    assert_gkr_proof_structure_for_test(&profiled_proof, &fixture.whir_schedule);
+    assert_gkr_proof_structure_for_test(&profiled_proof, &fixture.prover_config.whir_schedule);
     drop(profiled_proof);
     let peak_device_usage = fixture.context.get_used_mem_peak();
     eprintln!(
@@ -5065,7 +5053,11 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+    let add_sub_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+        UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+    ));
+    let prover_config = add_sub_circuit_type.prover_config(SecurityLevel::Sec80);
+    let whir_schedule = prover_config.whir_schedule.clone();
     let setup = GKRSetup::construct(
         &TableDriver::new(),
         &decoder_table_data,
@@ -5145,9 +5137,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     let (gpu_memory_caps, _gpu_memory_commitment_ms) = commit_memory(
-        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-            UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-        )),
+        add_sub_circuit_type,
         &add_sub_circuit,
         if add_sub_circuit.has_decoder_lookup {
             Some(&d_decoder_table)
@@ -5155,9 +5145,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
             None
         },
         &gpu_trace,
-        whir_schedule.base_lde_factor.trailing_zeros(),
-        whir_schedule.whir_steps_schedule[0] as u32,
-        whir_schedule.cap_size.trailing_zeros(),
+        &prover_config,
         &context,
     )
     .unwrap()
@@ -5574,7 +5562,11 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+    let jump_branch_slt_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+        UnrolledNonMemoryCircuitType::JumpBranchSlt,
+    ));
+    let prover_config = jump_branch_slt_circuit_type.prover_config(SecurityLevel::Sec80);
+    let whir_schedule = prover_config.whir_schedule.clone();
     let setup = GKRSetup::construct(
         &table_driver,
         &decoder_table_data,
@@ -5654,9 +5646,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     let (gpu_memory_caps, _gpu_memory_commitment_ms) = commit_memory(
-        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-            UnrolledNonMemoryCircuitType::JumpBranchSlt,
-        )),
+        jump_branch_slt_circuit_type,
         &jump_branch_slt_circuit,
         if jump_branch_slt_circuit.has_decoder_lookup {
             Some(&d_decoder_table)
@@ -5664,9 +5654,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
             None
         },
         &gpu_trace,
-        whir_schedule.base_lde_factor.trailing_zeros(),
-        whir_schedule.whir_steps_schedule[0] as u32,
-        whir_schedule.cap_size.trailing_zeros(),
+        &prover_config,
         &context,
     )
     .unwrap()
@@ -6194,7 +6182,11 @@ fn run_shift_binop_cached_lookup_parity_test() {
     );
     ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+    let shift_binop_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+        UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
+    ));
+    let prover_config = shift_binop_circuit_type.prover_config(SecurityLevel::Sec80);
+    let whir_schedule = prover_config.whir_schedule.clone();
     let setup = GKRSetup::construct(
         &table_driver,
         &decoder_table_data,
@@ -6621,7 +6613,11 @@ fn run_basic_unrolled_stagewise_parity_test() {
     ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+    let add_sub_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+        UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+    ));
+    let prover_config = add_sub_circuit_type.prover_config(SecurityLevel::Sec80);
+    let whir_schedule = prover_config.whir_schedule.clone();
     let base_lde_factor = whir_schedule.base_lde_factor;
     let tree_cap_size = whir_schedule.cap_size;
     let setup = GKRSetup::construct(
@@ -7658,9 +7654,8 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
     let table_driver = TableDriver::<BF>::new();
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
     let prover_config =
-        prover::gkr::prover_config::example_configs::config_for_80_bits_under_pessimistic_conjecture(
-            trace_len.trailing_zeros() as usize,
-        );
+        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
+            .prover_config(SecurityLevel::Sec80);
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = GKRSetup::construct(&table_driver, &[], trace_len, &compiled_circuit);
     assert!(setup.hypercube_evals.is_empty());
@@ -7952,7 +7947,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
         compiled_circuit.clone(),
         external_challenges,
-        whir_schedule.clone(),
+        &prover_config,
         FINAL_TRACE_SIZE_LOG_2,
         None,
         None,
@@ -8250,7 +8245,10 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     );
 
     let twiddles: fft::Twiddles<BF, Global> = fft::Twiddles::new(trace_len, &worker);
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+    let non_memory_circuit_type =
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type));
+    let prover_config = non_memory_circuit_type.prover_config(SecurityLevel::Sec80);
+    let whir_schedule = prover_config.whir_schedule.clone();
     let mem_inputs: Vec<_> = cpu_memory_trace
         .column_major_trace
         .iter()
@@ -8301,12 +8299,8 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         },
     ));
 
-    let log_lde_factor = whir_schedule.base_lde_factor.trailing_zeros();
-    let log_rows_per_leaf = whir_schedule.whir_steps_schedule[0] as u32;
-    let log_tree_cap_size = whir_schedule.cap_size.trailing_zeros();
-
     let job = commit_memory(
-        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type)),
+        non_memory_circuit_type,
         &compiled_circuit,
         if compiled_circuit.has_decoder_lookup {
             Some(d_decoder_table.as_ref().unwrap())
@@ -8314,9 +8308,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
             None
         },
         &gpu_trace,
-        log_lde_factor,
-        log_rows_per_leaf,
-        log_tree_cap_size,
+        &prover_config,
         &context,
     )
     .unwrap();
@@ -8455,7 +8447,10 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     );
 
     let twiddles: fft::Twiddles<BF, Global> = fft::Twiddles::new(trace_len, &worker);
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+    let memory_circuit_type_value =
+        CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type));
+    let prover_config = memory_circuit_type_value.prover_config(SecurityLevel::Sec80);
+    let whir_schedule = prover_config.whir_schedule.clone();
     let mem_inputs: Vec<_> = cpu_memory_trace
         .column_major_trace
         .iter()
@@ -8506,12 +8501,8 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         },
     ));
 
-    let log_lde_factor = whir_schedule.base_lde_factor.trailing_zeros();
-    let log_rows_per_leaf = whir_schedule.whir_steps_schedule[0] as u32;
-    let log_tree_cap_size = whir_schedule.cap_size.trailing_zeros();
-
     let job = commit_memory(
-        CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type)),
+        memory_circuit_type_value,
         &compiled_circuit,
         if compiled_circuit.has_decoder_lookup {
             Some(d_decoder_table.as_ref().unwrap())
@@ -8519,9 +8510,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
             None
         },
         &gpu_trace,
-        log_lde_factor,
-        log_rows_per_leaf,
-        log_tree_cap_size,
+        &prover_config,
         &context,
     )
     .unwrap();
@@ -8586,15 +8575,8 @@ fn build_delegation_replay_fixture(non_determinism_reads: &[u32]) -> DelegationR
     }
 }
 
-fn delegation_whir_schedule(circuit_type: DelegationCircuitType) -> WhirSchedule {
-    match circuit_type {
-        DelegationCircuitType::Blake2WithCompression => {
-            WhirSchedule::default_for_tests_80_bits_20()
-        }
-        DelegationCircuitType::BigIntWithControl | DelegationCircuitType::KeccakSpecial5 => {
-            WhirSchedule::default_for_tests_80_bits_22()
-        }
-    }
+fn delegation_prover_config(circuit_type: DelegationCircuitType) -> ProverConfig {
+    CircuitType::Delegation(circuit_type).prover_config(SecurityLevel::Sec80)
 }
 
 fn test_external_challenges() -> GKRExternalChallenges<BF, E4> {
@@ -8645,7 +8627,8 @@ fn assert_delegation_commit_memory_matches_cpu_inner<W, O, F>(
     );
 
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    let whir_schedule = delegation_whir_schedule(circuit_type);
+    let prover_config = delegation_prover_config(circuit_type);
+    let whir_schedule = prover_config.whir_schedule.clone();
     let mem_inputs: Vec<_> = cpu_memory_trace
         .column_major_trace
         .iter()
@@ -8683,9 +8666,7 @@ fn assert_delegation_commit_memory_matches_cpu_inner<W, O, F>(
         &compiled_circuit,
         None,
         &gpu_trace,
-        whir_schedule.base_lde_factor.trailing_zeros(),
-        whir_schedule.whir_steps_schedule[0] as u32,
-        whir_schedule.cap_size.trailing_zeros(),
+        &prover_config,
         &context,
     )
     .unwrap();
@@ -8719,7 +8700,8 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
 {
     let worker = Worker::new_with_num_threads(8);
     let trace_len = compiled_circuit.trace_len;
-    let whir_schedule = delegation_whir_schedule(circuit_type);
+    let prover_config = delegation_prover_config(circuit_type);
+    let whir_schedule = prover_config.whir_schedule.clone();
     let external_challenges = test_external_challenges();
     let num_calls = buffer.len();
 
@@ -8803,9 +8785,7 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
         &compiled_circuit,
         None,
         &gpu_trace,
-        whir_schedule.base_lde_factor.trailing_zeros(),
-        whir_schedule.whir_steps_schedule[0] as u32,
-        whir_schedule.cap_size.trailing_zeros(),
+        &prover_config,
         &context,
     )
     .unwrap()

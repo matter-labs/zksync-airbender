@@ -7,6 +7,7 @@ use crate::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use common_constants::TimestampScalar;
 use crossbeam_channel::{Receiver, Sender};
 use fft::GoodAllocator;
+use prover::definitions::SecurityLevel;
 use prover::gkr::prover::{GKRExternalChallenges, GKRProof};
 use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 use std::collections::BTreeSet;
@@ -48,6 +49,7 @@ pub(crate) struct MemoryCommitmentRequest<A: GoodAllocator> {
     pub precomputations: CircuitPrecomputations,
     pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost>,
     pub tracing_data: Option<TracingDataHost<A>>,
+    pub security_level: SecurityLevel,
 }
 
 pub(crate) struct MemoryCommitmentResult<A: GoodAllocator> {
@@ -73,6 +75,7 @@ pub(crate) struct ProofRequest<A: GoodAllocator> {
     /// `prove()` ran its own internal commit, so this field had no
     /// counterpart.
     pub memory_caps: Vec<MerkleTreeCapVarLength>,
+    pub security_level: SecurityLevel,
 }
 
 pub(crate) struct ProofResult<A: GoodAllocator> {
