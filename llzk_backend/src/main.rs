@@ -94,29 +94,51 @@ impl Circuits {
     }
 }
 
+#[derive(ValueEnum, Clone, Copy, PartialEq, Eq)]
+enum MlirSerialization {
+    Bytecode,
+    Plaintext,
+}
+
 #[derive(Args, Clone)]
 struct GenerateArgs {
     /// Output directory or output file name
     #[arg(short, long)]
     output: String,
+    /// Output serialization format to write.
     #[arg(short, long, default_value_t = OutputFormat::Llzk)]
     format: OutputFormat,
+    /// Optimization level for the post-lowering MLIR pipeline.
     #[arg(short = 'O', default_value_t = OptLevel::O1)]
     opt_level: OptLevel,
+    /// Struct/program organization used for the generated LLZK module.
     #[arg(long, default_value_t = LlzkStructLayout::ComputeConstrain)]
     layout: LlzkStructLayout,
+    /// Style used for emitted debug locations in generated IR.
     #[arg(long, default_value_t = DebugLocationStyle::FileLineCol)]
     debug_location_style: DebugLocationStyle,
+    /// Whether to lower constraints from logical Circuit output or compiled artifacts.
     #[arg(long, default_value_t = ConstraintLoweringMode::Logical)]
     constraint_lowering_mode: ConstraintLoweringMode,
+    /// How to handle logical variables that end up unused in emitted LLZK.
     #[arg(long, default_value_t = UnusedVariablePolicy::Warn)]
     unused_variable_policy: UnusedVariablePolicy,
+    /// Whether to emit suspicious unused logical variables as intermediate members.
     #[arg(long, default_value_t = false)]
     emit_suspicious_unused: bool,
-    #[arg(long, default_value_t = false)]
-    emit_bytecode: bool,
+    /// MLIR serialization to use when the selected output format supports both forms.
+    ///
+    /// Defaults to `bytecode`, as MLIR bytecode preserves LLZK version information that
+    /// the plaintext IR cannot preserve.
+    ///
+    /// This allows downstream LLZK tooling to recognize
+    /// older IR versions and perform automatic upgrades when possible.
+    #[arg(long, value_enum, default_value_t = MlirSerialization::Bytecode)]
+    emit: MlirSerialization,
+    /// Write the compiled circuit artifact JSON alongside the generated output.
     #[arg(long, default_value_t = false)]
     dump_circuit_artifact: bool,
+    /// Write the raw circuit output JSON alongside the generated output.
     #[arg(long, default_value_t = false)]
     dump_circuit_output: bool,
 }
@@ -132,7 +154,7 @@ impl GenerateArgs {
             constraint_lowering_mode: self.constraint_lowering_mode,
             unused_variable_policy: self.unused_variable_policy,
             emit_suspicious_unused: self.emit_suspicious_unused,
-            emit_bytecode: self.emit_bytecode,
+            emit_bytecode: matches!(self.emit, MlirSerialization::Bytecode),
             dump_circuit_artifact: self.dump_circuit_artifact,
             dump_circuit_output: self.dump_circuit_output,
         }
@@ -150,6 +172,7 @@ struct Cli {
 enum Commands {
     /// Generate the specified output for the specified circuit
     GenCircuit {
+        /// Circuit family or standalone operation to generate.
         #[arg(long)]
         circuit: Circuits,
         #[command(flatten)]
