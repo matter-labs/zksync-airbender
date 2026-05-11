@@ -417,6 +417,7 @@ mod tests {
         const IDS: &[&str] = &[
             "add_sub_lui_auipc_mop",
             "bigint_with_extended_control",
+            "blake2_g_function",
             "blake2_with_extended_control",
             "jump_branch_slt",
             "keccak_special5",

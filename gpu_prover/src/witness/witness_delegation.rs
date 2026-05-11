@@ -9,6 +9,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
+use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 
@@ -70,6 +71,12 @@ generate_witness_values_impl!(
     blake2_with_compression,
     Blake2sRoundFunctionDelegationWitness,
     DelegationCircuitType::Blake2WithCompression
+);
+
+generate_witness_values_impl!(
+    blake2_g_function,
+    Blake2sGFunctionDelegationWitness,
+    DelegationCircuitType::Blake2GFunction
 );
 
 generate_witness_values_impl!(

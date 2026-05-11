@@ -59,6 +59,16 @@ struct KeccakSpecial5AbiDescription {
   DEVICE_FORCEINLINE static constexpr bool use_read_indirects(const u16) { return false; }
 };
 
+struct Blake2sGFunctionAbiDescription {
+  static constexpr unsigned REG_ACCESSES = 3;     // 3 x 16B = 48B
+  static constexpr unsigned INDIRECT_READS = 2;   // 2 x 12B = 24B
+  static constexpr unsigned INDIRECT_WRITES = 4;  // 4 x 16B = 64B
+  static constexpr unsigned VARIABLE_OFFSETS = 6; // 6 x 2B = 12B
+  static constexpr u16 DELEGATION_TYPE = NON_DETERMINISM_CSR + 8;
+  static constexpr unsigned BASE_REGISTER = 10;
+  DEVICE_FORCEINLINE static constexpr bool use_read_indirects(const u16 reg_idx) { return reg_idx == 11; }
+};
+
 template <typename DESCRIPTION> struct DelegationWitness {
   const TimestampScalar write_timestamp;
   // instead of
@@ -176,6 +186,7 @@ template <typename DESCRIPTION> struct DelegationTrace {
 
 typedef DelegationTrace<BigintWithControlAbiDescription> BigintWithControlOracle;
 typedef DelegationTrace<Blake2sRoundFunctionAbiDescription> Blake2WithCompressionOracle;
+typedef DelegationTrace<Blake2sGFunctionAbiDescription> Blake2GFunctionOracle;
 typedef DelegationTrace<KeccakSpecial5AbiDescription> KeccakSpecial5Oracle;
 
 } // namespace airbender::witness::trace::delegation
