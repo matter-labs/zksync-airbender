@@ -3,9 +3,8 @@
 namespace airbender::prover::gkr {
 
 EXTERN __launch_bounds__(128, 8) __global__
-    void ab_gkr_flat_round0_eval_recipes_e4_kernel(const e4 *batch_base, const e4 *lookup_mul, const e4 *lookup_add,
-                                                   const e4 *ext_challenges, __grid_constant__ const gpu_flat_recipe_eval_desc desc,
-                                                   e4 *coefficients, const unsigned num_recipes) {
+    void ab_gkr_flat_round0_eval_recipes_e4_kernel(const e4 *batch_base, const e4 *lookup_mul, const e4 *lookup_add, const e4 *ext_challenges,
+                                                   __grid_constant__ const gpu_flat_recipe_eval_desc desc, e4 *coefficients, const unsigned num_recipes) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= num_recipes)
     return;

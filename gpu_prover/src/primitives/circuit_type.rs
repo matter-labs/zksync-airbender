@@ -142,9 +142,9 @@ impl CircuitType {
             20 => WhirSchedule::default_for_tests_80_bits_20(),
             22 => WhirSchedule::default_for_tests_80_bits_22(),
             23 | 24 => WhirSchedule::default_for_tests_80_bits_24(),
-            other => panic!(
-                "no Sec80 ProverConfig for circuit {self:?} (domain_size_log_2 = {other})"
-            ),
+            other => {
+                panic!("no Sec80 ProverConfig for circuit {self:?} (domain_size_log_2 = {other})")
+            }
         };
         ProverConfig {
             lde_factor: 2,

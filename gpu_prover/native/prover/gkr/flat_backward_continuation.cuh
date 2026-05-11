@@ -192,8 +192,7 @@ struct flat_round1_unified_desc_compact {
   u16 fold_sources[FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES];
 };
 
-static_assert(sizeof(flat_round1_unified_desc_compact) <= 32 * 1024,
-              "flat_round1_unified_desc_compact exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
+static_assert(sizeof(flat_round1_unified_desc_compact) <= 32 * 1024, "flat_round1_unified_desc_compact exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
 
 // Combined descriptor for the unified continuation kernel (rounds 3+):
 // single source array + mixed terms with per-tile fold/compute metadata.
@@ -256,7 +255,8 @@ static_assert(sizeof(flat_continuation_unified_desc_compact) <= 32 * 1024,
 // folding backing — the encoder bakes the per-step offsets into the desc.
 
 template <typename E>
-DEVICE_FORCEINLINE void flat_cont_resolve_compact(const flat_continuation_unified_desc_compact &desc, const gkr_source_record record, const E *&prev, E *&cache) {
+DEVICE_FORCEINLINE void flat_cont_resolve_compact(const flat_continuation_unified_desc_compact &desc, const gkr_source_record record, const E *&prev,
+                                                  E *&cache) {
   const bool first_access = (record.src & 0x8000u) != 0;
   const u32 ptr_idx = (record.src >> 11) & 0xFu;
   const u32 poly_idx = record.src & 0x07FFu;
@@ -271,7 +271,7 @@ DEVICE_FORCEINLINE void flat_cont_resolve_compact(const flat_continuation_unifie
 // compact descriptor's tables instead of legacy raw pointers.
 template <typename E>
 DEVICE_FORCEINLINE E flat_cont_fold_and_load_compact(const flat_continuation_unified_desc_compact &desc, const gkr_source_record record,
-                                                      const E &folding_challenge, const unsigned fold_stride, const unsigned index) {
+                                                     const E &folding_challenge, const unsigned fold_stride, const unsigned index) {
   const E *prev;
   E *cache;
   flat_cont_resolve_compact<E>(desc, record, prev, cache);
@@ -288,8 +288,8 @@ DEVICE_FORCEINLINE E flat_cont_fold_and_load_compact(const flat_continuation_uni
 // Per-tile fold for the compact continuation descriptor.
 template <typename E, unsigned NUM_WARPS>
 DEVICE_FORCEINLINE void flat_cont_tile_fold_compact(const flat_continuation_unified_desc_compact &desc, const unsigned fold_start, const unsigned fold_end,
-                                                     const unsigned fold_stride, const unsigned next_layer_size, const unsigned folding_challenge_slot,
-                                                     const unsigned gid, const unsigned warp_id) {
+                                                    const unsigned fold_stride, const unsigned next_layer_size, const unsigned folding_challenge_slot,
+                                                    const unsigned gid, const unsigned warp_id) {
   if (fold_start == fold_end)
     return;
   for (unsigned s = fold_start + warp_id; s < fold_end; s += NUM_WARPS) {
@@ -303,7 +303,7 @@ DEVICE_FORCEINLINE void flat_cont_tile_fold_compact(const flat_continuation_unif
 // Cache-only load pair for the compact continuation descriptor.
 template <typename E, bool EXPLICIT_FORM>
 DEVICE_FORCEINLINE void flat_cont_load_pair_cached_compact(const flat_continuation_unified_desc_compact &desc, const u16 source_idx,
-                                                            const unsigned next_layer_size, const unsigned gid, E &f0, E &f1_or_delta) {
+                                                           const unsigned next_layer_size, const unsigned gid, E &f0, E &f1_or_delta) {
   const gkr_source_record record = desc.sources[source_idx];
   const u32 ptr_idx = (record.cache >> 11) & 0xFu;
   const u32 poly_idx = record.cache & 0x07FFu;
@@ -346,8 +346,7 @@ struct flat_round2_unified_desc_compact {
   u16 fold_sources[FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES];
 };
 
-static_assert(sizeof(flat_round2_unified_desc_compact) <= 32 * 1024,
-              "flat_round2_unified_desc_compact exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
+static_assert(sizeof(flat_round2_unified_desc_compact) <= 32 * 1024, "flat_round2_unified_desc_compact exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
 
 } // namespace airbender::prover::gkr
 
@@ -465,9 +464,8 @@ DEVICE_FORCEINLINE void flat_round1_compute_unified(const flat_round1_unified_de
 // path uses `base_input_start`, the virtual path synthesizes via
 // `gkr_virtual_base_value`.
 template <typename E>
-DEVICE_FORCEINLINE void flat_round1_resolve_base_compact(const flat_round1_unified_desc_compact &desc, const u32 idx,
-                                                          gkr_base_source_kind &source_kind, bool &first_access,
-                                                          const bf *&base_input_start, E *&this_layer_cache_start) {
+DEVICE_FORCEINLINE void flat_round1_resolve_base_compact(const flat_round1_unified_desc_compact &desc, const u32 idx, gkr_base_source_kind &source_kind,
+                                                         bool &first_access, const bf *&base_input_start, E *&this_layer_cache_start) {
   const gkr_source_record record = desc.base_sources[idx];
   first_access = (record.src & 0x8000u) != 0;
   const bool is_virtual = (record.cache & 0x8000u) != 0;
@@ -475,8 +473,7 @@ DEVICE_FORCEINLINE void flat_round1_resolve_base_compact(const flat_round1_unifi
   const u32 cache_poly_idx = record.cache & 0x07FFu;
   const u8 *cache_base_u8 = desc.tables.bases[cache_slot];
   const u32 cache_log2 = desc.tables.log2_stride[cache_slot];
-  this_layer_cache_start = const_cast<E *>(reinterpret_cast<const E *>(cache_base_u8))
-                           + (static_cast<size_t>(cache_poly_idx) << cache_log2);
+  this_layer_cache_start = const_cast<E *>(reinterpret_cast<const E *>(cache_base_u8)) + (static_cast<size_t>(cache_poly_idx) << cache_log2);
   if (is_virtual) {
     base_input_start = nullptr;
     const u32 kind = record.src & 0x7u;
@@ -503,8 +500,8 @@ DEVICE_FORCEINLINE bf flat_round1_get_base_bf_value_compact(const gkr_base_sourc
 // `(index, base_layer_half_size + index)` and writes the folded E value into
 // the cache at `index` if `first_access` (matches legacy semantics).
 template <typename E>
-DEVICE_FORCEINLINE E flat_round1_get_base_value_compact(const flat_round1_unified_desc_compact &desc, const u32 idx,
-                                                         const E first_folding_challenge, const unsigned index) {
+DEVICE_FORCEINLINE E flat_round1_get_base_value_compact(const flat_round1_unified_desc_compact &desc, const u32 idx, const E first_folding_challenge,
+                                                        const unsigned index) {
   gkr_base_source_kind source_kind;
   bool first_access;
   const bf *base_input_start;
@@ -524,8 +521,8 @@ DEVICE_FORCEINLINE E flat_round1_get_base_value_compact(const flat_round1_unifie
 // Resolve an ext source's `(prev, cache)` pointers from a packed u16. The
 // cache pointer derives from the record's cache half.
 template <typename E>
-DEVICE_FORCEINLINE void flat_round1_resolve_ext_compact(const flat_round1_unified_desc_compact &desc, const gkr_source_record record,
-                                                         const E *&prev, E *&cache, bool &first_access) {
+DEVICE_FORCEINLINE void flat_round1_resolve_ext_compact(const flat_round1_unified_desc_compact &desc, const gkr_source_record record, const E *&prev, E *&cache,
+                                                        bool &first_access) {
   first_access = (record.src & 0x8000u) != 0;
   const u32 ptr_idx = (record.src >> 11) & 0xFu;
   const u32 poly_idx = record.src & 0x07FFu;
@@ -537,14 +534,13 @@ DEVICE_FORCEINLINE void flat_round1_resolve_ext_compact(const flat_round1_unifie
   const u32 cache_poly_idx = record.cache & 0x07FFu;
   const u8 *cache_base_u8 = desc.tables.bases[cache_slot];
   const u32 cache_log2 = desc.tables.log2_stride[cache_slot];
-  cache = const_cast<E *>(reinterpret_cast<const E *>(cache_base_u8))
-          + (static_cast<size_t>(cache_poly_idx) << cache_log2);
+  cache = const_cast<E *>(reinterpret_cast<const E *>(cache_base_u8)) + (static_cast<size_t>(cache_poly_idx) << cache_log2);
 }
 
 // Mirror of `flat_cont_fold_and_load` for round 1 ext sources.
 template <typename E>
 DEVICE_FORCEINLINE E flat_round1_ext_fold_and_load_compact(const flat_round1_unified_desc_compact &desc, const gkr_source_record record,
-                                                            const E &folding_challenge, const unsigned fold_stride, const unsigned index) {
+                                                           const E &folding_challenge, const unsigned fold_stride, const unsigned index) {
   const E *prev;
   E *cache;
   bool first_access;
@@ -562,7 +558,7 @@ DEVICE_FORCEINLINE E flat_round1_ext_fold_and_load_compact(const flat_round1_uni
 // via the legacy `FLAT_CONT_EXT_SOURCE_BIT` encoding in `fold_sources`.
 template <typename E, unsigned NUM_WARPS>
 DEVICE_FORCEINLINE void flat_round1_tile_fold_compact(const flat_round1_unified_desc_compact &desc, const unsigned fold_start, const unsigned fold_end,
-                                                       const unsigned fold_stride, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id) {
+                                                      const unsigned fold_stride, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id) {
   if (fold_start == fold_end)
     return;
   for (unsigned s = fold_start + warp_id; s < fold_end; s += NUM_WARPS) {
@@ -583,8 +579,8 @@ DEVICE_FORCEINLINE void flat_round1_tile_fold_compact(const flat_round1_unified_
 // cache pointer for either base or ext source by inspecting `fold_sources`'s
 // high bit.
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void flat_round1_load_pair_cached_compact(const flat_round1_unified_desc_compact &desc, const u16 source_idx,
-                                                              const unsigned next_layer_size, const unsigned gid, E &f0, E &f1_or_delta) {
+DEVICE_FORCEINLINE void flat_round1_load_pair_cached_compact(const flat_round1_unified_desc_compact &desc, const u16 source_idx, const unsigned next_layer_size,
+                                                             const unsigned gid, E &f0, E &f1_or_delta) {
   const E *cache;
   if (source_idx & FLAT_CONT_EXT_SOURCE_BIT) {
     const gkr_source_record ext_record = desc.ext_sources[source_idx & ~FLAT_CONT_EXT_SOURCE_BIT];
@@ -614,7 +610,7 @@ DEVICE_FORCEINLINE void flat_round1_load_pair_cached_compact(const flat_round1_u
 // `flat_round1_compute_unified` but loads via the compact decoder.
 template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS>
 DEVICE_FORCEINLINE void flat_round1_compute_unified_compact(const flat_round1_unified_desc_compact &desc, const unsigned term_start, const unsigned term_end,
-                                                             const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
+                                                            const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
   coeff_loader_constant_indexed coeff{};
 
   for (unsigned i = term_start + warp_id; i < term_end; i += NUM_WARPS) {
@@ -735,8 +731,9 @@ DEVICE_FORCEINLINE void flat_cont_compute_unified(const flat_continuation_unifie
 // Compute path for the Phase C compact continuation descriptor, mirroring
 // `flat_cont_compute_unified` but loading from compact-resolved cache.
 template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS>
-DEVICE_FORCEINLINE void flat_cont_compute_unified_compact(const flat_continuation_unified_desc_compact &desc, const unsigned term_start, const unsigned term_end,
-                                                           const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
+DEVICE_FORCEINLINE void flat_cont_compute_unified_compact(const flat_continuation_unified_desc_compact &desc, const unsigned term_start,
+                                                          const unsigned term_end, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id,
+                                                          E &c0, E &c1) {
   coeff_loader_constant_indexed coeff{};
 
   for (unsigned i = term_start + warp_id; i < term_end; i += NUM_WARPS) {
@@ -786,9 +783,8 @@ DEVICE_FORCEINLINE void flat_cont_compute_unified_compact(const flat_continuatio
 // triple from a packed u16 plus the per-source position `idx`.
 // Encoding identical to round 1.
 template <typename E>
-DEVICE_FORCEINLINE void flat_round2_resolve_base_compact(const flat_round2_unified_desc_compact &desc, const u32 idx,
-                                                          gkr_base_source_kind &source_kind, bool &first_access,
-                                                          const bf *&base_input_start, E *&this_layer_cache_start) {
+DEVICE_FORCEINLINE void flat_round2_resolve_base_compact(const flat_round2_unified_desc_compact &desc, const u32 idx, gkr_base_source_kind &source_kind,
+                                                         bool &first_access, const bf *&base_input_start, E *&this_layer_cache_start) {
   const gkr_source_record record = desc.base_sources[idx];
   first_access = (record.src & 0x8000u) != 0;
   const bool is_virtual = (record.cache & 0x8000u) != 0;
@@ -796,8 +792,7 @@ DEVICE_FORCEINLINE void flat_round2_resolve_base_compact(const flat_round2_unifi
   const u32 cache_poly_idx = record.cache & 0x07FFu;
   const u8 *cache_base_u8 = desc.tables.bases[cache_slot];
   const u32 cache_log2 = desc.tables.log2_stride[cache_slot];
-  this_layer_cache_start = const_cast<E *>(reinterpret_cast<const E *>(cache_base_u8))
-                           + (static_cast<size_t>(cache_poly_idx) << cache_log2);
+  this_layer_cache_start = const_cast<E *>(reinterpret_cast<const E *>(cache_base_u8)) + (static_cast<size_t>(cache_poly_idx) << cache_log2);
   if (is_virtual) {
     base_input_start = nullptr;
     const u32 kind = record.src & 0x7u;
@@ -853,8 +848,8 @@ DEVICE_FORCEINLINE E flat_round2_get_base_value_compact(const flat_round2_unifie
 //
 // The kernel re-derives the cache offset from the runtime `next_layer_size`.
 template <typename E>
-DEVICE_FORCEINLINE void flat_round2_resolve_ext_compact(const flat_round2_unified_desc_compact &desc, const gkr_source_record record,
-                                                         const E *&prev, E *&cache, bool &first_access, const unsigned next_layer_size) {
+DEVICE_FORCEINLINE void flat_round2_resolve_ext_compact(const flat_round2_unified_desc_compact &desc, const gkr_source_record record, const E *&prev, E *&cache,
+                                                        bool &first_access, const unsigned next_layer_size) {
   first_access = (record.src & 0x8000u) != 0;
   const u32 ptr_idx = (record.src >> 11) & 0xFu;
   const u32 poly_idx = record.src & 0x07FFu;
@@ -869,8 +864,8 @@ DEVICE_FORCEINLINE void flat_round2_resolve_ext_compact(const flat_round2_unifie
 
 template <typename E>
 DEVICE_FORCEINLINE E flat_round2_ext_fold_and_load_compact(const flat_round2_unified_desc_compact &desc, const gkr_source_record record,
-                                                            const E &folding_challenge, const unsigned fold_stride, const unsigned next_layer_size,
-                                                            const unsigned index) {
+                                                           const E &folding_challenge, const unsigned fold_stride, const unsigned next_layer_size,
+                                                           const unsigned index) {
   const E *prev;
   E *cache;
   bool first_access;
@@ -886,7 +881,7 @@ DEVICE_FORCEINLINE E flat_round2_ext_fold_and_load_compact(const flat_round2_uni
 
 template <typename E, unsigned NUM_WARPS>
 DEVICE_FORCEINLINE void flat_round2_tile_fold_compact(const flat_round2_unified_desc_compact &desc, const unsigned fold_start, const unsigned fold_end,
-                                                       const unsigned fold_stride, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id) {
+                                                      const unsigned fold_stride, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id) {
   if (fold_start == fold_end)
     return;
   for (unsigned s = fold_start + warp_id; s < fold_end; s += NUM_WARPS) {
@@ -904,8 +899,8 @@ DEVICE_FORCEINLINE void flat_round2_tile_fold_compact(const flat_round2_unified_
 }
 
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void flat_round2_load_pair_cached_compact(const flat_round2_unified_desc_compact &desc, const u16 source_idx,
-                                                              const unsigned next_layer_size, const unsigned gid, E &f0, E &f1_or_delta) {
+DEVICE_FORCEINLINE void flat_round2_load_pair_cached_compact(const flat_round2_unified_desc_compact &desc, const u16 source_idx, const unsigned next_layer_size,
+                                                             const unsigned gid, E &f0, E &f1_or_delta) {
   const E *cache;
   if (source_idx & FLAT_CONT_EXT_SOURCE_BIT) {
     const gkr_source_record ext_record = desc.ext_sources[source_idx & ~FLAT_CONT_EXT_SOURCE_BIT];
@@ -937,7 +932,7 @@ DEVICE_FORCEINLINE void flat_round2_load_pair_cached_compact(const flat_round2_u
 
 template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS>
 DEVICE_FORCEINLINE void flat_round2_compute_unified_compact(const flat_round2_unified_desc_compact &desc, const unsigned term_start, const unsigned term_end,
-                                                             const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
+                                                            const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
   coeff_loader_constant_indexed coeff{};
 
   for (unsigned i = term_start + warp_id; i < term_end; i += NUM_WARPS) {

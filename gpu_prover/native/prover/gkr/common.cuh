@@ -113,8 +113,7 @@ struct gkr_dim_reducing_batch_record_compact {
   u16 batch_challenge_count;
 };
 
-static_assert(sizeof(gkr_dim_reducing_batch_record_compact) == 16,
-              "compact batch record must be 16 B (Phase 0 audit invariant)");
+static_assert(sizeof(gkr_dim_reducing_batch_record_compact) == 16, "compact batch record must be 16 B (Phase 0 audit invariant)");
 
 struct gkr_dim_reducing_tables {
   const u8 *bases[GKR_DIM_REDUCING_BASE_SLOTS];
@@ -152,8 +151,7 @@ template <typename E> struct gkr_dim_reducing_continuation_batch_compact {
   gkr_source_record inline_payload[GKR_DIM_REDUCING_INLINE_U16_BUDGET];
 };
 
-DEVICE_FORCEINLINE void unpack_dim_reducing_source_u16(u16 packed, bool &first_access, u32 &ptr_idx,
-                                                       u32 &poly_idx) {
+DEVICE_FORCEINLINE void unpack_dim_reducing_source_u16(u16 packed, bool &first_access, u32 &ptr_idx, u32 &poly_idx) {
   // bit 15 = first_access, bits 14..11 = ptr_idx (4 bits, 16 slots),
   // bits 10..0 = poly_idx (11 bits, max 2048).
   first_access = (packed & 0x8000u) != 0;
@@ -410,8 +408,8 @@ template <typename E> DEVICE_FORCEINLINE void gkr_accumulate_contribution(E *dst
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_pairwise_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs,
-                                                   const E batch_challenge, const unsigned gid, E &c0, E &c1) {
+DEVICE_FORCEINLINE void gkr_pairwise_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E batch_challenge,
+                                                   const unsigned gid, E &c0, E &c1) {
   const unsigned even_index = gid * 2;
   const unsigned odd_index = even_index + 1;
 
@@ -424,8 +422,8 @@ DEVICE_FORCEINLINE void gkr_pairwise_round0_values(const gkr_ext_initial_source<
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_lookup_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs,
-                                                 const E batch_challenge_0, const E batch_challenge_1, const unsigned gid, E &c0, E &c1) {
+DEVICE_FORCEINLINE void gkr_lookup_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E batch_challenge_0,
+                                                 const E batch_challenge_1, const unsigned gid, E &c0, E &c1) {
   const unsigned even_index = gid * 2;
   const unsigned odd_index = even_index + 1;
 
@@ -465,8 +463,8 @@ DEVICE_FORCEINLINE void gkr_pairwise_continuation_values(const gkr_ext_continuin
 }
 
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_lookup_continuation_values(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge,
-                                                       const E batch_challenge_0, const E batch_challenge_1, const unsigned gid, E &out0, E &out1) {
+DEVICE_FORCEINLINE void gkr_lookup_continuation_values(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E batch_challenge_0,
+                                                       const E batch_challenge_1, const unsigned gid, E &out0, E &out1) {
   const E current_folding_challenge = folding_challenge[0];
 
   const unsigned even_index = gid * 2;
@@ -1042,7 +1040,7 @@ DEVICE_FORCEINLINE void gkr_forward_setup_generic_lookup(const gkr_forward_setup
 // uniform setting is correct for both input and output sources at round 0.
 template <typename E>
 DEVICE_FORCEINLINE gkr_ext_initial_source<E> gkr_resolve_dim_reducing_initial_source(const gkr_dim_reducing_tables &tables, const gkr_source_record record,
-                                                                                      const unsigned acc_size) {
+                                                                                     const unsigned acc_size) {
   bool first_access;
   u32 ptr_idx;
   u32 poly_idx;
@@ -1128,8 +1126,7 @@ DEVICE_FORCEINLINE gkr_ext_continuing_source<E> gkr_resolve_dim_reducing_round1_
 }
 
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_dim_reducing_round1_batched_compact_inner(const gkr_dim_reducing_continuation_batch_compact<E> &batch,
-                                                                      const unsigned acc_size) {
+DEVICE_FORCEINLINE void gkr_dim_reducing_round1_batched_compact_inner(const gkr_dim_reducing_continuation_batch_compact<E> &batch, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
@@ -1174,8 +1171,9 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_round1_batched_compact_inner(const gkr_
 //   this_offset_in_E     = ((1 << (N+1)) - 4) * acc_size   // step 2 → 4*acc
 //   this_layer_size = 2 * acc_size, next_layer_size = acc_size
 template <typename E>
-DEVICE_FORCEINLINE gkr_ext_continuing_source<E> gkr_resolve_dim_reducing_continuation_source(const gkr_dim_reducing_tables &tables, const gkr_source_record record,
-                                                                                              const unsigned acc_size, const unsigned step) {
+DEVICE_FORCEINLINE gkr_ext_continuing_source<E> gkr_resolve_dim_reducing_continuation_source(const gkr_dim_reducing_tables &tables,
+                                                                                             const gkr_source_record record, const unsigned acc_size,
+                                                                                             const unsigned step) {
   bool first_access;
   u32 ptr_idx;
   u32 poly_idx;
@@ -1198,7 +1196,7 @@ DEVICE_FORCEINLINE gkr_ext_continuing_source<E> gkr_resolve_dim_reducing_continu
 
 template <typename E, bool EXPLICIT_FORM>
 DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched_compact_inner(const gkr_dim_reducing_continuation_batch_compact<E> &batch,
-                                                                             const unsigned acc_size, const unsigned step) {
+                                                                            const unsigned acc_size, const unsigned step) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;

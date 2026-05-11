@@ -12,9 +12,7 @@ namespace airbender::ops {
 // via a striped per-thread accumulation followed by a block-wide tree
 // reduction in shared memory, then writes the resulting E4 to
 // `claims_out[blockIdx.x]`.
-EXTERN __global__ void ab_initial_inner_product_e4_kernel(const e4 *polys_base,
-                                                          const e4 *eq_values,
-                                                          const unsigned poly_len, e4 *claims_out) {
+EXTERN __global__ void ab_initial_inner_product_e4_kernel(const e4 *polys_base, const e4 *eq_values, const unsigned poly_len, e4 *claims_out) {
   constexpr unsigned BLOCK_SIZE = 256;
   const e4 *poly = polys_base + blockIdx.x * poly_len;
   e4 sum = e4::ZERO();

@@ -94,9 +94,9 @@ DEVICE_FORCEINLINE void copy_timestamp(const u32 src[NUM_TIMESTAMP_COLUMNS_FOR_R
 
 DEVICE_FORCEINLINE void copy_register(const u32 src[REGISTER_SIZE], u32 dst[REGISTER_SIZE]) { copy_array<REGISTER_SIZE>(src, dst); }
 
-DEVICE_FORCEINLINE void process_inits_and_teardowns_pages(const InitsAndTeardownsLayouts &init_and_teardown_layouts,
-                                                          const InitsAndTeardownsTraceRaw &trace, const matrix_setter<bf, st_modifier::cg> memory,
-                                                          const u32 page_size_log2, const u32 pages_per_set_log2, const unsigned global_word) {
+DEVICE_FORCEINLINE void process_inits_and_teardowns_pages(const InitsAndTeardownsLayouts &init_and_teardown_layouts, const InitsAndTeardownsTraceRaw &trace,
+                                                          const matrix_setter<bf, st_modifier::cg> memory, const u32 page_size_log2,
+                                                          const u32 pages_per_set_log2, const unsigned global_word) {
   if (global_word >= trace.num_pages << page_size_log2)
     return;
   const u32 page_size_mask = (1u << page_size_log2) - 1u;

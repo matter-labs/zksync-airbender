@@ -53,11 +53,9 @@ static_assert(sizeof(gpu_recipe_header) == 8, "gpu_recipe_header must be 8 bytes
 static_assert(sizeof(gpu_prefactor_term) == 8, "gpu_prefactor_term must be 8 bytes");
 static_assert(sizeof(immediate_factor_recipe_header) == 4, "immediate_factor_recipe_header must be 4 bytes");
 static_assert(sizeof(immediate_factor_monomial) == 8, "immediate_factor_monomial must be 8 bytes");
-static_assert(sizeof(gpu_flat_recipe_eval_desc) <= 32u * 1024u,
-              "gpu_flat_recipe_eval_desc must fit under the 32 KB inline kernel-arg ceiling");
+static_assert(sizeof(gpu_flat_recipe_eval_desc) <= 32u * 1024u, "gpu_flat_recipe_eval_desc must fit under the 32 KB inline kernel-arg ceiling");
 
-DEVICE_FORCEINLINE e4 eval_immediate_factor(const immediate_factor_recipe_header &recipe,
-                                            const immediate_factor_monomial *all_monomials,
+DEVICE_FORCEINLINE e4 eval_immediate_factor(const immediate_factor_recipe_header &recipe, const immediate_factor_monomial *all_monomials,
                                             const e4 *ext_challenges) {
   e4 acc = e4::ZERO();
   for (unsigned i = 0; i < recipe.monomial_count; i++) {
@@ -74,8 +72,8 @@ DEVICE_FORCEINLINE e4 eval_immediate_factor(const immediate_factor_recipe_header
   return acc;
 }
 
-DEVICE_FORCEINLINE e4 eval_single_recipe(const gpu_recipe_header &recipe, const gpu_flat_recipe_eval_desc &desc, const e4 &batch_base,
-                                         const e4 &lookup_mul, const e4 &lookup_add, const e4 *ext_challenges) {
+DEVICE_FORCEINLINE e4 eval_single_recipe(const gpu_recipe_header &recipe, const gpu_flat_recipe_eval_desc &desc, const e4 &batch_base, const e4 &lookup_mul,
+                                         const e4 &lookup_add, const e4 *ext_challenges) {
   e4 c = e4::pow(batch_base, recipe.batch_power);
   const e4 immediate = eval_immediate_factor(desc.immediate_recipes[recipe.immediate_idx], desc.immediate_monomials, ext_challenges);
   c = e4::mul(c, immediate);

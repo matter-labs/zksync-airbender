@@ -80,8 +80,7 @@ struct flat_round0_static_desc_compact {
   u32 num_c1_linear;
 };
 
-static_assert(sizeof(flat_round0_static_desc_compact) <= 32 * 1024,
-              "flat_round0_static_desc_compact exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
+static_assert(sizeof(flat_round0_static_desc_compact) <= 32 * 1024, "flat_round0_static_desc_compact exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
 
 // --- Load helpers ---
 
@@ -131,11 +130,13 @@ DEVICE_FORCEINLINE bf flat_load_bf_value_compact(const gkr_dim_reducing_tables &
   return load<bf, ld_modifier::ca>(poly, gid);
 }
 
-DEVICE_FORCEINLINE bf flat_load_bf_delta_compact(const gkr_dim_reducing_tables &tables, const gkr_source_record record, const unsigned gid, const unsigned acc_size) {
+DEVICE_FORCEINLINE bf flat_load_bf_delta_compact(const gkr_dim_reducing_tables &tables, const gkr_source_record record, const unsigned gid,
+                                                 const unsigned acc_size) {
   return bf::sub(flat_load_bf_value_compact(tables, record, gid + acc_size), flat_load_bf_value_compact(tables, record, gid));
 }
 
-template <typename E> DEVICE_FORCEINLINE E flat_load_ext_value_compact(const gkr_dim_reducing_tables &tables, const gkr_source_record record, const unsigned gid) {
+template <typename E>
+DEVICE_FORCEINLINE E flat_load_ext_value_compact(const gkr_dim_reducing_tables &tables, const gkr_source_record record, const unsigned gid) {
   // Extension-field sources never use the virtual encoding (only base-field
   // sources can be virtual). The encoder emits the real path for ext sources.
   const u16 packed = record.src;
@@ -148,7 +149,8 @@ template <typename E> DEVICE_FORCEINLINE E flat_load_ext_value_compact(const gkr
 }
 
 template <typename E>
-DEVICE_FORCEINLINE E flat_load_ext_delta_compact(const gkr_dim_reducing_tables &tables, const gkr_source_record record, const unsigned gid, const unsigned acc_size) {
+DEVICE_FORCEINLINE E flat_load_ext_delta_compact(const gkr_dim_reducing_tables &tables, const gkr_source_record record, const unsigned gid,
+                                                 const unsigned acc_size) {
   const E f0 = flat_load_ext_value_compact<E>(tables, record, gid);
   const E f1 = flat_load_ext_value_compact<E>(tables, record, gid + acc_size);
   return E::sub(f1, f0);
@@ -268,9 +270,8 @@ DEVICE_FORCEINLINE void flat_round0_compute_constant(const flat_round0_static_de
 // of directly dereferencing a raw pointer.
 
 template <typename E, typename CoeffLoader>
-DEVICE_FORCEINLINE void flat_round0_compute_compact_impl(const flat_round0_static_desc_compact &desc, CoeffLoader coeff_loader,
-                                                          const E *__restrict__ eq_values, E *__restrict__ contributions,
-                                                          const unsigned acc_size, const unsigned gid) {
+DEVICE_FORCEINLINE void flat_round0_compute_compact_impl(const flat_round0_static_desc_compact &desc, CoeffLoader coeff_loader, const E *__restrict__ eq_values,
+                                                         E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
   E c0 = E::ZERO();
 
   for (unsigned i = 0; i < desc.num_c0_bf; i++) {
@@ -318,15 +319,15 @@ DEVICE_FORCEINLINE void flat_round0_compute_compact_impl(const flat_round0_stati
 
 template <typename E>
 DEVICE_FORCEINLINE void flat_round0_compute_compact(const flat_round0_static_desc_compact &desc, const E *__restrict__ coefficients,
-                                                    const E *__restrict__ eq_values, E *__restrict__ contributions,
-                                                    const unsigned acc_size, const unsigned gid) {
+                                                    const E *__restrict__ eq_values, E *__restrict__ contributions, const unsigned acc_size,
+                                                    const unsigned gid) {
   coeff_loader_ptr<E> loader{coefficients};
   flat_round0_compute_compact_impl(desc, loader, eq_values, contributions, acc_size, gid);
 }
 
 template <typename E>
 DEVICE_FORCEINLINE void flat_round0_compute_constant_compact(const flat_round0_static_desc_compact &desc, const E *__restrict__ eq_values,
-                                                              E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
+                                                             E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
   coeff_loader_round0_constant loader{};
   flat_round0_compute_compact_impl<E>(desc, loader, eq_values, contributions, acc_size, gid);
 }

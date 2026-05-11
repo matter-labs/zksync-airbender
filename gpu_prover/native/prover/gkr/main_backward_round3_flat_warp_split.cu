@@ -10,9 +10,9 @@ namespace airbender::prover::gkr {
 // descriptor instead of legacy raw pointers.
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_gkr_main_round3_flat_constant_unified_compact_e4_kernel(const __grid_constant__ flat_continuation_unified_desc_compact desc,
-                                                                     const unsigned fold_stride, const unsigned next_layer_size,
-                                                                     const unsigned folding_challenge_slot, const e4 *eq_values, e4 *contributions,
-                                                                     const unsigned acc_size) {
+                                                                    const unsigned fold_stride, const unsigned next_layer_size,
+                                                                    const unsigned folding_challenge_slot, const e4 *eq_values, e4 *contributions,
+                                                                    const unsigned acc_size) {
   constexpr unsigned NUM_WARPS = 4;
   const unsigned lane = threadIdx.x % 32;
   const unsigned warp_id = threadIdx.x / 32;
@@ -29,7 +29,7 @@ EXTERN __launch_bounds__(128, 8) __global__
     flat_cont_tile_fold_compact<e4, NUM_WARPS>(desc, desc.tile_fold_offsets[tile], desc.tile_fold_offsets[tile + 1], fold_stride, next_layer_size,
                                                folding_challenge_slot, gid, warp_id);
     flat_cont_compute_unified_compact<e4, false, NUM_WARPS>(desc, desc.tile_term_offsets[tile], desc.tile_term_offsets[tile + 1], next_layer_size, gid, warp_id,
-                                                             c0, c1);
+                                                            c0, c1);
   }
 
   const e4 eq = load<e4, ld_modifier::cs>(eq_values, gid);
@@ -61,9 +61,9 @@ EXTERN __launch_bounds__(128, 8) __global__
 // Phase C compact-source unified tiled warp-split round 3+ kernel (explicit form).
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_gkr_main_round3_flat_constant_explicit_unified_compact_e4_kernel(const __grid_constant__ flat_continuation_unified_desc_compact desc,
-                                                                              const unsigned fold_stride, const unsigned next_layer_size,
-                                                                              const unsigned folding_challenge_slot, const e4 *eq_values, e4 *contributions,
-                                                                              const unsigned acc_size) {
+                                                                             const unsigned fold_stride, const unsigned next_layer_size,
+                                                                             const unsigned folding_challenge_slot, const e4 *eq_values, e4 *contributions,
+                                                                             const unsigned acc_size) {
   constexpr unsigned NUM_WARPS = 4;
   const unsigned lane = threadIdx.x % 32;
   const unsigned warp_id = threadIdx.x / 32;
@@ -80,7 +80,7 @@ EXTERN __launch_bounds__(128, 8) __global__
     flat_cont_tile_fold_compact<e4, NUM_WARPS>(desc, desc.tile_fold_offsets[tile], desc.tile_fold_offsets[tile + 1], fold_stride, next_layer_size,
                                                folding_challenge_slot, gid, warp_id);
     flat_cont_compute_unified_compact<e4, true, NUM_WARPS>(desc, desc.tile_term_offsets[tile], desc.tile_term_offsets[tile + 1], next_layer_size, gid, warp_id,
-                                                            c0, c1);
+                                                           c0, c1);
   }
 
   const e4 eq = load<e4, ld_modifier::cs>(eq_values, gid);

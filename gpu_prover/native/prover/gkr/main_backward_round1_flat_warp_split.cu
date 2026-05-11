@@ -11,8 +11,8 @@ namespace airbender::prover::gkr {
 // qualifier (unrelated to Phase C's u16 source encoding).
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_gkr_main_round1_flat_constant_compact_unified_compact_e4_kernel(const __grid_constant__ flat_round1_unified_desc_compact desc,
-                                                                              const unsigned fold_stride, const unsigned next_layer_size, const e4 *eq_values,
-                                                                              e4 *contributions, const unsigned acc_size) {
+                                                                            const unsigned fold_stride, const unsigned next_layer_size, const e4 *eq_values,
+                                                                            e4 *contributions, const unsigned acc_size) {
   constexpr unsigned NUM_WARPS = 4;
   const unsigned lane = threadIdx.x % 32;
   const unsigned warp_id = threadIdx.x / 32;
@@ -29,9 +29,9 @@ EXTERN __launch_bounds__(128, 8) __global__
   // Per-tile: fold (with conditional sync inside) → compute.
   for (unsigned tile = 0; tile < desc.num_tiles; tile++) {
     flat_round1_tile_fold_compact<e4, NUM_WARPS>(desc, desc.tile_fold_offsets[tile], desc.tile_fold_offsets[tile + 1], fold_stride, next_layer_size, gid,
-                                                  warp_id);
+                                                 warp_id);
     flat_round1_compute_unified_compact<e4, false, NUM_WARPS>(desc, desc.tile_term_offsets[tile], desc.tile_term_offsets[tile + 1], next_layer_size, gid,
-                                                               warp_id, c0, c1);
+                                                              warp_id, c0, c1);
   }
 
   // Reduce partial c0/c1 across warps via shared memory, one coefficient at a time.
