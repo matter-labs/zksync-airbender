@@ -389,8 +389,7 @@ EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_cou
 // `src_ptrs[i]` is a u64 carrying the device pointer to coset i's cap region
 // (cap_words_per_coset u32s). The kernel reinterprets it as `const u32 *` on device.
 // dst[i*cap_words_per_coset .. (i+1)*cap_words_per_coset] receives that coset's data.
-EXTERN __global__ void ab_gather_tree_caps_kernel(const unsigned long long *src_ptrs, u32 *dst,
-                                                  const unsigned cap_words_per_coset,
+EXTERN __global__ void ab_gather_tree_caps_kernel(const unsigned long long *src_ptrs, u32 *dst, const unsigned cap_words_per_coset,
                                                   const unsigned coset_count) {
   const unsigned coset_idx = blockIdx.x;
   if (coset_idx >= coset_count)
@@ -418,15 +417,13 @@ struct gpu_gather_tree_caps_desc {
   unsigned long long src_ptrs[GKR_GATHER_TREE_CAPS_MAX_COSETS];
 };
 
-static_assert(sizeof(gpu_gather_tree_caps_desc) <= 32u * 1024u,
-              "gpu_gather_tree_caps_desc must fit under the 32 KB inline kernel-arg ceiling");
+static_assert(sizeof(gpu_gather_tree_caps_desc) <= 32u * 1024u, "gpu_gather_tree_caps_desc must fit under the 32 KB inline kernel-arg ceiling");
 
 // Inline-descriptor variant of `ab_gather_tree_caps_kernel`. Layout and
 // semantics match (each block = one coset, threads stripe the cap region),
 // but the source pointer table is read from `__grid_constant__` kernel-arg
 // data instead of a runtime `*src_ptrs` device buffer.
-EXTERN __global__ void ab_gather_tree_caps_inline_kernel(__grid_constant__ const gpu_gather_tree_caps_desc desc,
-                                                         u32 *dst) {
+EXTERN __global__ void ab_gather_tree_caps_inline_kernel(__grid_constant__ const gpu_gather_tree_caps_desc desc, u32 *dst) {
   const unsigned coset_idx = blockIdx.x;
   if (coset_idx >= desc.coset_count)
     return;
@@ -448,8 +445,7 @@ struct gpu_gather_e_addresses_desc {
   unsigned long long src_ptrs[GKR_GATHER_MAX_ADDRESSES];
 };
 
-static_assert(sizeof(gpu_gather_e_addresses_desc) <= 32u * 1024u,
-              "gpu_gather_e_addresses_desc must fit under the 32 KB inline kernel-arg ceiling");
+static_assert(sizeof(gpu_gather_e_addresses_desc) <= 32u * 1024u, "gpu_gather_e_addresses_desc must fit under the 32 KB inline kernel-arg ceiling");
 
 // Gather E4 evaluations from N source buffers (one per address) into one
 // contiguous destination, in the order given by desc.src_ptrs. Each block
@@ -459,8 +455,7 @@ static_assert(sizeof(gpu_gather_e_addresses_desc) <= 32u * 1024u,
 // that address's data. Internally copies `elements_per_addr * 4` u32 words
 // per address (each E4 is 16 bytes / 4 u32 words). Replaces the per-address
 // `memory_copy_async` loop in the backward schedulers with a single launch.
-EXTERN __global__ void ab_gather_e_addresses_kernel(__grid_constant__ const gpu_gather_e_addresses_desc desc,
-                                                    u32 *dst) {
+EXTERN __global__ void ab_gather_e_addresses_kernel(__grid_constant__ const gpu_gather_e_addresses_desc desc, u32 *dst) {
   const unsigned addr_idx = blockIdx.x;
   if (addr_idx >= desc.num_addresses)
     return;
@@ -490,8 +485,7 @@ struct gpu_chunked_input_desc {
 // Identical Blake2s state evolution to `ab_transcript_commit_initial_kernel` for
 // the same logical concatenation — Blake2s streams 64-byte (= 16 u32) blocks, so
 // chunk boundaries that fall mid-block are handled transparently.
-EXTERN __global__ void
-ab_transcript_commit_initial_chunked_kernel(__grid_constant__ const gpu_chunked_input_desc desc, u32 *seed_out) {
+EXTERN __global__ void ab_transcript_commit_initial_chunked_kernel(__grid_constant__ const gpu_chunked_input_desc desc, u32 *seed_out) {
   u32 state[STATE_SIZE];
   initialize(state);
   u32 t = 0;
@@ -1038,12 +1032,10 @@ struct gpu_combined_claim_desc {
   u32 entries[2 * GKR_COMBINED_CLAIM_MAX_PAIRS];
 };
 
-static_assert(sizeof(gpu_combined_claim_desc) <= 32u * 1024u,
-              "gpu_combined_claim_desc must fit under the 32 KB inline kernel-arg ceiling");
+static_assert(sizeof(gpu_combined_claim_desc) <= 32u * 1024u, "gpu_combined_claim_desc must fit under the 32 KB inline kernel-arg ceiling");
 
-EXTERN __global__ void ab_build_combined_claim_kernel(const e4 *claims, const e4 *batching,
-                                                      __grid_constant__ const gpu_combined_claim_desc desc,
-                                                      e4 *claim_out, e4 *eq_prefactor_out) {
+EXTERN __global__ void ab_build_combined_claim_kernel(const e4 *claims, const e4 *batching, __grid_constant__ const gpu_combined_claim_desc desc, e4 *claim_out,
+                                                      e4 *eq_prefactor_out) {
   if (threadIdx.x != 0 || blockIdx.x != 0)
     return;
   const e4 b = *batching;
