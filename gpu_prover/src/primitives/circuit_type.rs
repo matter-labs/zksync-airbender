@@ -13,7 +13,9 @@ use common_constants::delegation_types::{
 };
 use common_constants::NON_DETERMINISM_CSR;
 use field::baby_bear::base::BabyBearField;
-use prover::definitions::OPTIMAL_FOLDING_PROPERTIES;
+use prover::definitions::{SecurityLevel, OPTIMAL_FOLDING_PROPERTIES};
+use prover::gkr::prover::WhirSchedule;
+use prover::gkr::prover_config::ProverConfig;
 use riscv_transpiler::cycle::{IMStandardIsaConfigUnsignedMulDivOnly, MachineConfig};
 use setups::{
     inits_and_teardowns, AddSubLuiAuipcMopCircuit, BigIntDelegationCircuit,
@@ -120,6 +122,39 @@ impl CircuitType {
         //     Self::Delegation(delegation_type) => delegation_type.get_tree_cap_size(),
         //     Self::Unrolled(unrolled_type) => unrolled_type.get_tree_cap_size(),
         // }
+    }
+
+    /// Canonical `ProverConfig` for this circuit at the requested security
+    /// level. Mirrors CPU's `config_for_security_level_under_pessimistic_conjecture`
+    /// for the schedule-independent fields, but uses the
+    /// `default_for_tests_80_bits_*` schedules that GPU stage1 and WHIR are
+    /// tuned for. Only `Sec80` is supported on GPU today.
+    pub fn prover_config(&self, security_level: SecurityLevel) -> ProverConfig {
+        match security_level {
+            SecurityLevel::Sec80 => self.prover_config_sec80(),
+            SecurityLevel::Sec100 => unimplemented!("Sec100 not supported on GPU yet"),
+        }
+    }
+
+    fn prover_config_sec80(&self) -> ProverConfig {
+        let domain_size_log_2 = self.get_domain_size().trailing_zeros();
+        let whir_schedule = match domain_size_log_2 {
+            20 => WhirSchedule::default_for_tests_80_bits_20(),
+            22 => WhirSchedule::default_for_tests_80_bits_22(),
+            23 | 24 => WhirSchedule::default_for_tests_80_bits_24(),
+            other => panic!(
+                "no Sec80 ProverConfig for circuit {self:?} (domain_size_log_2 = {other})"
+            ),
+        };
+        ProverConfig {
+            lde_factor: 2,
+            cap_size: 16,
+            base_oracles_values_per_leaf: 2,
+            lookup_challenges_pow_bits: 0,
+            sumcheck_explicit_output_size_log_2: 4,
+            batched_proximity_check_challenge_pow_bits: 0,
+            whir_schedule,
+        }
     }
 
     #[inline(always)]

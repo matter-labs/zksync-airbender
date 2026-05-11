@@ -12,7 +12,8 @@ use fft::GoodAllocator;
 use field::Field;
 use prover::definitions::Transcript;
 use prover::gkr::prover::transcript_utils::draw_random_field_els;
-use prover::gkr::prover::{GKRExternalChallenges, GKRProof, WhirSchedule};
+use prover::gkr::prover::{GKRExternalChallenges, GKRProof};
+use prover::gkr::prover_config::ProverConfig;
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::query_utils::BitSource;
 use prover::transcript::Seed;
@@ -264,7 +265,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     circuit_type: CircuitType,
     compiled_circuit: GKRCircuitArtifact<BF>,
     external_challenges: GKRExternalChallenges<BF, E4>,
-    whir_schedule: WhirSchedule,
+    prover_config: &ProverConfig,
     final_trace_size_log_2: usize,
     mut setup_transfer: Option<GpuGKRSetupTransfer<'a>>,
     mut decoder_transfer: Option<DecoderTableTransfer<'a>>,
@@ -273,7 +274,29 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     memory_transfer: GpuGKRMemoryTransfer<'a>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
+    assert_eq!(prover_config.lookup_challenges_pow_bits, 0, "TODO");
+    assert_eq!(
+        prover_config.batched_proximity_check_challenge_pow_bits, 0,
+        "TODO"
+    );
+    assert_eq!(
+        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+        prover_config.whir_schedule.whir_steps_schedule[0]
+    );
+    let whir_schedule = &prover_config.whir_schedule;
     if let Some(setup_transfer) = setup_transfer.as_ref() {
+        assert_eq!(
+            setup_transfer.trace_holder.log_lde_factor,
+            prover_config.lde_factor.trailing_zeros()
+        );
+        assert_eq!(
+            setup_transfer.trace_holder.log_rows_per_leaf,
+            prover_config.base_oracles_values_per_leaf.trailing_zeros()
+        );
+        assert_eq!(
+            setup_transfer.trace_holder.log_tree_cap_size,
+            prover_config.cap_size.trailing_zeros()
+        );
         setup_transfer.ensure_transferred(context)?;
     }
     if let Some(decoder_transfer) = decoder_transfer.as_ref() {
@@ -518,7 +541,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         crate::prover::proof_layout::build_proof_layout_inputs_structural::<E4>(
             &compiled_circuit,
             &external_challenges,
-            &whir_schedule,
+            whir_schedule,
             final_trace_size_log_2,
             crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
                 memory_layer_geometry,
@@ -710,7 +733,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         let proof_layout_inputs_storage_aware =
             crate::prover::proof_layout::build_proof_layout_inputs(
                 &normalized_compiled_circuit,
-                &whir_schedule,
+                whir_schedule,
                 final_trace_size_log_2,
                 &forward_output.dimension_reducing_inputs,
                 &main_layer_input_addresses_per_layer_storage_aware,
@@ -1090,7 +1113,7 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
     circuit_type: CircuitType,
     compiled_circuit: GKRCircuitArtifact<BF>,
     external_challenges: GKRExternalChallenges<BF, E4>,
-    whir_schedule: WhirSchedule,
+    prover_config: &ProverConfig,
     final_trace_size_log_2: usize,
     mut setup_transfer: Option<GpuGKRSetupTransfer<'a>>,
     mut decoder_transfer: Option<DecoderTableTransfer<'a>>,
@@ -1121,7 +1144,7 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
         circuit_type,
         compiled_circuit,
         external_challenges,
-        whir_schedule,
+        prover_config,
         final_trace_size_log_2,
         setup_transfer,
         decoder_transfer,
