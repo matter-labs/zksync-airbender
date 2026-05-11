@@ -335,17 +335,14 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         .unwrap_or(GpuGKRTraceGeometry {
             log_domain_size: compiled_circuit.trace_len.trailing_zeros(),
             // No setup transfer means the setup precomputation step was
-            // skipped (zero-column setup, e.g. InitsAndTeardowns). Match
-            // memory_transfer's geometry — which uses
-            // `circuit_type.get_tree_cap_size()` / `get_lde_factor()` — so
-            // stage1's memory/witness trace holders end up with the same cap
-            // size as the pre-built memory caps we'll D2D into them.
-            // Using `whir_schedule.cap_size` here desyncs the slab cap range
-            // from `memory_transfer.unified_device_cap.len()` and the
-            // `copy_base_layer_cap_to_slab` D2D length assertion trips.
-            log_lde_factor: circuit_type.get_lde_factor().trailing_zeros(),
-            log_rows_per_leaf: whir_schedule.whir_steps_schedule[0] as u32,
-            log_tree_cap_size: circuit_type.get_tree_cap_size().trailing_zeros(),
+            // skipped (zero-column setup, e.g. InitsAndTeardowns). Match the
+            // geometry that `commit_memory_inner` and `memory_transfer` use
+            // for this circuit — both read from `prover_config`, so stage1's
+            // memory/witness trace holders end up with the same cap size as
+            // the pre-built memory caps we'll D2D into them.
+            log_lde_factor: prover_config.lde_factor.trailing_zeros(),
+            log_rows_per_leaf: prover_config.base_oracles_values_per_leaf.trailing_zeros(),
+            log_tree_cap_size: prover_config.cap_size.trailing_zeros(),
         });
 
     // ---------------------------------------------------------------------
