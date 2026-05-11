@@ -169,6 +169,9 @@ where
             DelegationCircuitType::Blake2WithCompression => {
                 setups::circuits::get_blake2_with_compression_circuit_setup(true, worker)
             }
+            DelegationCircuitType::Blake2GFunction => {
+                setups::circuits::get_blake2_g_function_circuit_setup(true, worker)
+            }
             DelegationCircuitType::KeccakSpecial5 => {
                 setups::circuits::get_keccak_special5_circuit_setup(true, worker)
             }
