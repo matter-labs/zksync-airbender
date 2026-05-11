@@ -59,7 +59,16 @@ impl LazyGpuGKRSetupHost {
     /// `precompute_from_cpu_setup`); subsequent calls return the cached Arc.
     /// `OnceLock::get_or_try_init` is atomic: concurrent workers race once and
     /// the loser drops its Arc instead of installing a duplicate.
-    pub fn get_or_init(&self, context: &ProverContext) -> CudaResult<Arc<GpuGKRSetupHost>> {
+    ///
+    /// Returns `None` when the CPU setup has no columns (e.g.
+    /// InitsAndTeardowns has `generic_lookup_tables_width == 0` and no
+    /// decoder table). The proof flow already treats `setup_transfer` as
+    /// optional, so a column-less circuit simply has no setup to transfer
+    /// or commit.
+    pub fn get_or_init(&self, context: &ProverContext) -> CudaResult<Option<Arc<GpuGKRSetupHost>>> {
+        if self.cpu_setup.hypercube_evals.is_empty() {
+            return Ok(None);
+        }
         self.inner
             .get_or_try_init(|| {
                 Ok(Arc::new(GpuGKRSetupHost::precompute_from_cpu_setup(
@@ -70,7 +79,7 @@ impl LazyGpuGKRSetupHost {
                     context,
                 )?))
             })
-            .map(Arc::clone)
+            .map(|arc| Some(Arc::clone(arc)))
     }
 }
 

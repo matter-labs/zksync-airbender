@@ -840,6 +840,12 @@ pub(super) fn build_flat_round0_plan<'s, E: Field>(
                 emit_constraint_gate(&mut b, gate, r0, p0);
             }
 
+            GpuGKRMainLayerKernelKind::MaxQuadraticBaseOutput => {
+                let out = b.add_bf_source(&r0.base_field_outputs[0]);
+                b.push_c0_bf(out, bc0());
+                emit_constraint_gate(&mut b, gate, r0, p0);
+            }
+
             GpuGKRMainLayerKernelKind::InitsAndTeardownsInitialPair => {
                 let out = b.add_ext_source(&r0.extension_field_outputs[0]);
                 b.push_c0_ext(out, bc0());
@@ -1937,6 +1943,10 @@ pub(super) fn build_flat_continuation_plan<E: Field>(
             // Constraint gates: quadratic → unified_quadratic, linear → c0_only_linear
             // ---------------------------------------------------------------
             GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic => {
+                emit_continuation_constraint_gate(&mut b, gate, p0);
+            }
+
+            GpuGKRMainLayerKernelKind::MaxQuadraticBaseOutput => {
                 emit_continuation_constraint_gate(&mut b, gate, p0);
             }
 

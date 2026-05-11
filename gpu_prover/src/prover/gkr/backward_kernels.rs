@@ -153,6 +153,7 @@ pub(crate) enum GpuGKRMainLayerKernelKind {
     LookupUnbalancedPairWithVectorInputs = 19,
     LookupExtPair = 20,
     LookupUnbalancedExtension = 21,
+    MaxQuadraticBaseOutput = 22,
 }
 
 impl GpuGKRMainLayerKernelKind {
@@ -161,7 +162,7 @@ impl GpuGKRMainLayerKernelKind {
     }
 }
 
-pub(super) const GKR_BACKWARD_MAX_KERNELS_PER_LAYER: usize = 64;
+pub(super) const GKR_BACKWARD_MAX_KERNELS_PER_LAYER: usize = 128;
 // Dim-reducing layers are keyed by OutputType: 2 pairwise records for
 // PermutationProduct plus up to 3 lookup records, consuming 8 challenges.
 pub(super) const GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER: usize = 5;

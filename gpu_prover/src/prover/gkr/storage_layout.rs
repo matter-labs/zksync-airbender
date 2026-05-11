@@ -286,6 +286,22 @@ impl GpuGKRStorageLayout {
                 return Some((layer, class, field, poly_idx));
             }
         }
+        // Same-address fallback at the canonical storage layer. Covers
+        // base-field addresses (e.g., `ScratchSpace(K)` at layer 0)
+        // whose value lives at `address_storage_layer(addr)` but is
+        // looked up via a higher logical `layer` — common after
+        // `normalize_compiled_circuit_for_gpu` rewrites
+        // `InnerLayer { layer: L, .. }` into `ScratchSpace(K)` (layer 0)
+        // for kernels at layer L.
+        let same_addr_canonical = address_storage_layer(*addr);
+        if same_addr_canonical != layer {
+            if let Some(layer_layout) = self.layers.get(same_addr_canonical) {
+                if let Some((class, field, poly_idx)) = layer_layout.lookup(addr) {
+                    return Some((same_addr_canonical, class, field, poly_idx));
+                }
+            }
+        }
+        // Alias fallback for `CopyIn{Base,Extension}Field` outputs.
         let canonical = self.aliases.get(addr)?;
         let canonical_layer = address_storage_layer(*canonical);
         let layer_layout = self.layers.get(canonical_layer)?;
@@ -353,7 +369,7 @@ fn build_layer_layout_from_writes(
             AddressClass::BaseLayerWitness
                 | AddressClass::BaseLayerMemory
                 | AddressClass::Setup
-                | AddressClass::Reserved
+                | AddressClass::ScratchSpace
         );
         let mut max_assigned: u32 = 0;
         for (sequential_idx, addr) in addrs.iter().enumerate() {
@@ -833,9 +849,13 @@ mod tests {
                         | R::AggregateLookupRationalPair { .. }
                         | R::InitsOrTeardownsInitialPair { .. } => {}
                         R::MaxQuadratic { output, .. } => {
+                            // Backward dispatch (build_main_layer_kernel_blueprints) supports
+                            // MaxQuadratic unconditionally. The forward path still expects the
+                            // output to be pre-materialized via scratch_space_mapping; without it
+                            // the unimplemented! arm in forward.rs fires.
                             assert!(
                                 artifact.scratch_space_mapping.contains_key(output),
-                                "{basename} layer {layer_idx}: non-scratch-backed MaxQuadratic output {output:?} requires direct GPU support"
+                                "{basename} layer {layer_idx}: non-scratch-backed MaxQuadratic output {output:?} requires direct GPU forward support"
                             );
                         }
                         R::EnforceConstraintsMaxQuadratic { .. }
