@@ -415,19 +415,15 @@ mod tests {
     fn generate_all() {
         skip_if_ci!();
         const IDS: &[&str] = &[
-            // "bigint_delegation",
-            // "blake_delegation",
-            // "keccak_delegation",
-            "add_sub_lui_auipc_mop_preprocessed",
-            // "jump_branch_slt_preprocessed",
-            // "shift_binop_csrrw_preprocessed",
-            // "load_store_preprocessed",
-            // "word_only_load_store_preprocessed",
-            // "subword_only_load_store_preprocessed",
-            // "mul_div_preprocessed",
-            // "mul_div_unsigned_preprocessed",
-            // "inits_and_teardowns_preprocessed",
-            // "reduced_machine_preprocessed",
+            "add_sub_lui_auipc_mop",
+            "bigint_with_extended_control",
+            "blake2_with_extended_control",
+            "jump_branch_slt",
+            "keccak_special5",
+            "mem_subword_only",
+            "mem_word_only",
+            "shift_binop",
+            "unsigned_mul_div",
         ];
         for id in IDS {
             generate(id);
