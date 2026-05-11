@@ -23,6 +23,7 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
+use prover::gkr::prover_config::ProverConfig;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 
 pub(crate) struct MemoryCommitmentJob<'a> {
@@ -59,12 +60,22 @@ fn commit_memory_inner<'a>(
     decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
     inits_and_teardowns: Option<&crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice>,
     tracing_data: Option<&TracingDataDevice>,
-    log_lde_factor: u32,
-    log_rows_per_leaf: u32,
-    log_tree_cap_size: u32,
+    prover_config: &ProverConfig,
     mut callbacks: Callbacks<'a>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
+    assert_eq!(prover_config.lookup_challenges_pow_bits, 0, "TODO");
+    assert_eq!(
+        prover_config.batched_proximity_check_challenge_pow_bits, 0,
+        "TODO"
+    );
+    assert_eq!(
+        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+        prover_config.whir_schedule.whir_steps_schedule[0]
+    );
+    let log_lde_factor = prover_config.lde_factor.trailing_zeros();
+    let log_rows_per_leaf = prover_config.base_oracles_values_per_leaf.trailing_zeros();
+    let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
     let trace_len = compiled_circuit.trace_len;
     assert!(trace_len.is_power_of_two());
     let log_domain_size = trace_len.trailing_zeros();
@@ -216,15 +227,12 @@ fn commit_memory_inner<'a>(
     Ok(job)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn commit_memory<'a>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
     tracing_data: &TracingDataDevice,
-    log_lde_factor: u32,
-    log_rows_per_leaf: u32,
-    log_tree_cap_size: u32,
+    prover_config: &ProverConfig,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     commit_memory_inner(
@@ -233,24 +241,19 @@ pub(crate) fn commit_memory<'a>(
         decoder_table,
         None,
         Some(tracing_data),
-        log_lde_factor,
-        log_rows_per_leaf,
-        log_tree_cap_size,
+        prover_config,
         Callbacks::new(),
         context,
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     decoder_transfer: Option<DecoderTableTransfer<'a>>,
     inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a>>,
     tracing_data_transfer: Option<TracingDataTransfer<'a, A>>,
-    log_lde_factor: u32,
-    log_rows_per_leaf: u32,
-    log_tree_cap_size: u32,
+    prover_config: &ProverConfig,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     let mut callbacks = Callbacks::new();
@@ -297,9 +300,7 @@ pub(crate) fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
         decoder_table.as_ref().map(|t| &t[..]),
         inits_and_teardowns.as_ref(),
         tracing_data.as_ref(),
-        log_lde_factor,
-        log_rows_per_leaf,
-        log_tree_cap_size,
+        prover_config,
         callbacks,
         context,
     )
