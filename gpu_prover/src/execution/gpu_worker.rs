@@ -2,7 +2,7 @@ use crate::execution::messages::{
     GpuWorkRequest, GpuWorkResult, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
     ProofResult,
 };
-use crate::execution::precomputations::{whir_schedule_for_circuit, CircuitPrecomputations};
+use crate::execution::precomputations::CircuitPrecomputations;
 use crate::execution::A;
 use crate::primitives::circuit_type::CircuitType;
 use crate::primitives::context::{ProverContext, ProverContextConfig};
@@ -18,6 +18,7 @@ use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
 use log::{debug, error, info, trace};
+use prover::definitions::SecurityLevel;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use std::ffi::CStr;
@@ -66,6 +67,7 @@ struct RequestState {
     /// completes so allocator ownership stays symmetric with the old prover.
     inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost>,
     tracing_data_result: Option<crate::prover::tracing_data::TracingDataHost<A>>,
+    security_level: SecurityLevel,
 }
 
 impl RequestState {
@@ -167,6 +169,7 @@ fn schedule_phase_one<'a>(
                 precomputations,
                 inits_and_teardowns,
                 tracing_data,
+                security_level,
             } = req;
             let state = RequestState {
                 batch_id,
@@ -177,6 +180,7 @@ fn schedule_phase_one<'a>(
                 memory_caps: None,
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
+                security_level,
             };
             (state, inits_and_teardowns, tracing_data)
         }
@@ -190,6 +194,7 @@ fn schedule_phase_one<'a>(
                 tracing_data,
                 external_challenges,
                 memory_caps,
+                security_level,
             } = req;
             let state = RequestState {
                 batch_id,
@@ -200,6 +205,7 @@ fn schedule_phase_one<'a>(
                 memory_caps: Some(memory_caps),
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
+                security_level,
             };
             (state, inits_and_teardowns, tracing_data)
         }
@@ -301,10 +307,7 @@ fn enqueue_phase_two<'a>(
     let batch_id = state.batch_id;
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
-    let log_lde_factor = circuit_type.get_lde_factor().trailing_zeros();
-    let log_tree_cap_size = circuit_type.get_tree_cap_size().trailing_zeros();
-    let whir_schedule = whir_schedule_for_circuit(circuit_type);
-    let log_rows_per_leaf = whir_schedule.whir_steps_schedule[0] as u32;
+    let prover_config = circuit_type.prover_config(state.security_level);
     let final_trace_size_log_2 = 4usize;
     let compiled_circuit_arc = state.precomputations.compiled_circuit.clone();
 
@@ -321,7 +324,7 @@ fn enqueue_phase_two<'a>(
             circuit_type,
             compiled_circuit_value,
             external_challenges,
-            whir_schedule,
+            &prover_config,
             final_trace_size_log_2,
             setup_transfer,
             decoder_transfer,
@@ -341,9 +344,7 @@ fn enqueue_phase_two<'a>(
             decoder_transfer,
             inits_and_teardowns_transfer,
             tracing_data_transfer,
-            log_lde_factor,
-            log_rows_per_leaf,
-            log_tree_cap_size,
+            &prover_config,
             context,
         )?;
         let _ = (setup_transfer, memory_transfer);

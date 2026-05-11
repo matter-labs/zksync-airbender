@@ -28,7 +28,7 @@ use era_cudart::device::get_device_count;
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use itertools::Itertools;
 use log::{debug, info, trace, warn};
-use prover::definitions::{GKRExternalChallenges, Transcript};
+use prover::definitions::{GKRExternalChallenges, SecurityLevel, Transcript};
 use prover::gkr::prover::GKRProof;
 use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 use rayon::iter::IntoParallelIterator;
@@ -81,6 +81,7 @@ pub struct ExecutionProverConfiguration {
     pub host_allocators_per_job_count: usize,
     pub host_allocators_per_device_count: usize,
     pub min_free_host_allocators_per_job: usize,
+    pub security_level: SecurityLevel,
 }
 
 impl Default for ExecutionProverConfiguration {
@@ -94,6 +95,7 @@ impl Default for ExecutionProverConfiguration {
             host_allocators_per_job_count: 256,              // 16 GB
             host_allocators_per_device_count: 128,           // 8 GB
             min_free_host_allocators_per_job: 32,            // 2 GB
+            security_level: SecurityLevel::Sec80,
         }
     }
 }
@@ -201,7 +203,12 @@ impl ExecutionProver {
             host_allocators_per_job_count,
             host_allocators_per_device_count,
             min_free_host_allocators_per_job: _,
+            security_level,
         } = configuration;
+        match security_level {
+            SecurityLevel::Sec80 => {}
+            SecurityLevel::Sec100 => unimplemented!("only Sec80 is supported on GPU"),
+        }
         let device_count = get_device_count().unwrap() as usize;
         assert_ne!(device_count, 0, "no CUDA capable devices found");
         let gpu_wait_group = WaitGroup::new();
@@ -245,7 +252,7 @@ impl ExecutionProver {
         // them once up front. We use the inits-and-teardowns logs (24 / 1 / 4)
         // for the I&T entry; delegation entries pick their own per-family.
         info!("PROVER generating common precomputations");
-        let common_precomputations = get_common_precomputations_for_all(&worker);
+        let common_precomputations = get_common_precomputations_for_all(&worker, security_level);
         let host_allocators_count = expected_concurrent_jobs * host_allocators_per_job_count
             + device_count * host_allocators_per_device_count;
         let host_allocation_size = host_allocator_backing_allocation_size;
@@ -337,6 +344,7 @@ impl ExecutionProver {
                     &padded_binary_image,
                     &padded_text_section,
                     &self.worker,
+                    self.configuration.security_level,
                 );
                 (circuit_type, precomp)
             })
@@ -444,6 +452,7 @@ impl ExecutionProver {
                     tracing_data,
                     external_challenges: external_challenges.unwrap(),
                     memory_caps,
+                    security_level: self.configuration.security_level,
                 };
                 let request = GpuWorkRequest::Proof(request);
                 gpu_work_requests_sender.send(request).unwrap();
@@ -691,6 +700,7 @@ impl ExecutionProver {
                     tracing_data,
                     external_challenges: external_challenges.unwrap(),
                     memory_caps,
+                    security_level: self.configuration.security_level,
                 };
                 GpuWorkRequest::Proof(request)
             } else {
@@ -701,6 +711,7 @@ impl ExecutionProver {
                     precomputations,
                     inits_and_teardowns,
                     tracing_data,
+                    security_level: self.configuration.security_level,
                 };
                 GpuWorkRequest::MemoryCommitment(request)
             }
