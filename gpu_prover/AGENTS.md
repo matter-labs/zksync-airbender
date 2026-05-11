@@ -53,15 +53,18 @@ summary — the contract document is the source of truth.
   fork/join machinery.
 
 ## Constraints
+
 - Do not modify CMake/CUDA flags.
 - Do not change build configuration behavior unless explicitly requested.
 
 ## Key Files and Structure
+
 - `build/main.rs`: build script that wires cmake/CUDA integration.
 - `native/`: native CUDA/C++ sources and build artifacts managed by the build script.
 - `src/`: crate modules.
 
 ## Legacy Reference
+
 - `../gpu_prover_old/` is the old prover crate. It is kept only as a reference and must not be modified.
 - `gpu_prover_old` is not an implementation target for new work; all active prover development belongs in `gpu_prover`.
 - `gpu_prover` already overlaps heavily with `gpu_prover_old` across allocator, NTT, ops, witness generation, trace-holder logic, and many CUDA kernels, and more legacy behavior may continue to be reimplemented here.
@@ -69,6 +72,7 @@ summary — the contract document is the source of truth.
 - Use `gpu_prover_old` to understand behavior, not as a place to land fixes or feature work. Port behavior deliberately into `gpu_prover` rather than copying legacy structure mechanically.
 
 ## Build and Test
+
 - Minimum validation for any code change: `cargo check -p gpu_prover`
 - Build: `cargo build -p gpu_prover`
 - Test: `cargo test -p gpu_prover`
@@ -76,16 +80,25 @@ summary — the contract document is the source of truth.
 - For compute-heavy GPU tests or prover flows, use `cargo test -p gpu_prover --release` by default. Use debug-mode execution only for quick smoke tests or when debug assertions/symbols are specifically needed.
 - For Rust GPU tests, compile first with `cargo test --no-run`, then run the produced test binary under `.agents/bin/with_gpu_lock.sh`. Do not run locked `cargo test ...` directly when the binary can be built first.
 
+## Formatting
+
+- Rust: `cargo fmt`.
+- Native CUDA/C++ under `native/`: `clang-format` against [`native/.clang-format`](native/.clang-format). `cargo fmt` does not cover this; CI does not enforce it.
+- A change that touches both languages needs both.
+
 ## Build Script
+
 - Unless explicitly requested, changes in `build/main.rs` must be non-behavioral.
 
 ## Design Documents
+
 - `docs/gpu_scheduling_contract.md`: Async scheduling contract for GPU stream-ordered prover work (GKR, WHIR) — see the "GPU Scheduling Contract" section above for the summary; this is the full source of truth.
 - `docs/profiling.md`: Shared `gpu_prover` profiling setup, including the profiling test, NVTX identifiers, and test-binary workflow.
 - `docs/profiling_nsys.md`: `gpu_prover` `nsys` workflow around the existing top-level NVTX capture range.
 - `docs/profiling_ncu.md`: `gpu_prover` `ncu` workflow for quick kernel profiling, full-picture/source-correlated profiling, and dependency-sensitive range replay.
 
 ## Code Notes
+
 - Use `log` for diagnostic output rather than `println!`.
 - Prefer `rayon` for CPU parallelism when applicable.
 - Keep unsafe blocks minimal and justified; comment on non-obvious invariants.
