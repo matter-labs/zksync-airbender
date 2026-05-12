@@ -178,10 +178,14 @@ fn quick_self_test() {
 #[test]
 fn quick_test_binding_poly_and_sumcheck() {
     let size = 8usize;
+
     let num_vars = size.trailing_zeros() as usize;
     let challenge_coordiantes: Vec<_> = (1..=num_vars)
         .map(|el| F::from_nonreduced_u32((el * 10) as u32))
         .collect();
+    // let challenge_coordiantes: Vec<_> = (1..=num_vars)
+    //     .map(|el| F::from_nonreduced_u32(1 as u32))
+    //     .collect();
     let mut eqs_at_zero_inf =
         make_eq_poly_for_zero_infinity_basis_impl::<F, F, true>(&challenge_coordiantes);
 
@@ -190,7 +194,7 @@ fn quick_test_binding_poly_and_sumcheck() {
         .collect();
 
     let b: Vec<_> = (1..=size)
-        .map(|el| F::from_nonreduced_u32((el * 2) as u32))
+        .map(|el| F::from_nonreduced_u32((el * 1000) as u32))
         .collect();
 
     let output: Vec<_> = a
@@ -206,6 +210,8 @@ fn quick_test_binding_poly_and_sumcheck() {
 
     dbg!(&a);
     dbg!(&b);
+    dbg!(&output);
+    dbg!(&eqs_at_zero_inf);
 
     // there are multiple ways to "save" on computations in sumcheck of the special form
     // like we have - \sum_x eq(x, r) * a(x) * b(x), and below we will split it as G(X) = \sum_x eq(X, r0) * eq(x, r1, ...) * A(X, x) * B(X, x)
@@ -233,19 +239,32 @@ fn quick_test_binding_poly_and_sumcheck() {
     // and prover will compute G(0) (because it's nice to compute), getting
     // `e` and then we get G(1) = (r0 + 1) * (c + d + e),
     // and then compute G(infinity) as it's also nice to compute, getting `c`, so we have enough points
-    // to get all the values
+    // to get all the values. But such aproach only works for the first round,
+    // so we will have output(r) = claim = \sum_{x_0 = {0, 1}, x_{1,...} = {0, inf}^{N-1}} eq_{0/1}(x, r0) * eq_{0/inf}(x1, ..., r1, ...) * a(x) * b(x)
 
     // Here we self-check our second approach
 
     let eq_table_at_zero_inf = eqs_at_zero_inf.last().unwrap();
     let mut claim = F::ZERO;
     let mut g_0_self_check = F::ZERO;
-    let mut tt = F::ZERO;
     for i in 0..size / 2 {
-        let mut out_at_0 = output[i];
-        let out_at_inf = output[i + size / 2];
-        let mut out_at_1 = out_at_0;
-        out_at_1.add_assign(&out_at_inf);
+        let a_at_0 = a[i];
+        let b_at_0 = b[i];
+        let a_at_inf = a[i + size / 2];
+        let b_at_inf = b[i + size / 2];
+
+        let naive_out_at_0 = output[i];
+        let mut a_at_1 = a_at_inf;
+        a_at_1.add_assign(&a_at_0);
+        let mut b_at_1 = b_at_inf;
+        b_at_1.add_assign(&b_at_0);
+
+        let mut out_at_0 = a_at_0;
+        out_at_0.mul_assign(&b_at_0);
+        let mut out_at_1 = a_at_1;
+        out_at_1.mul_assign(&b_at_1);
+
+        assert_eq!(naive_out_at_0, out_at_0);
 
         let eq_at_0 = eq_table_at_zero_inf[i];
         let eq_at_inf = eq_table_at_zero_inf[i + size / 2];
@@ -259,7 +278,6 @@ fn quick_test_binding_poly_and_sumcheck() {
         claim.add_assign(&out_at_1);
 
         g_0_self_check.add_assign(&out_at_0);
-        tt.add_assign(&out_at_1);
     }
 
     // now we actually do the sumcheck, and we will only do one round for our self-check
@@ -295,11 +313,9 @@ fn quick_test_binding_poly_and_sumcheck() {
 
         g_at_inf.add_assign(&out_at_inf);
     }
-    g_at_inf.mul_assign(&challenge_coordiantes[0]);
 
     let mut g_at_1 = claim;
     g_at_1.sub_assign(&g_at_0);
-    assert_eq!(g_at_1, tt);
 
     // now we get the coefficients
 
@@ -333,6 +349,8 @@ fn quick_test_binding_poly_and_sumcheck() {
     assert_eq!(t, g_at_inf);
     coeffs.push(t);
 
+    dbg!(&coeffs);
+
     let g_at_0_reevaluated = evaluate_monomial_form_serial(&coeffs, &F::ZERO);
     assert_eq!(g_at_0_reevaluated, g_at_0);
     let g_at_1_reevaluated = evaluate_monomial_form_serial(&coeffs, &F::ONE);
@@ -341,6 +359,7 @@ fn quick_test_binding_poly_and_sumcheck() {
     let challenge = F::from_nonreduced_u32(100);
 
     let new_claim = evaluate_monomial_form_serial(&coeffs, &challenge);
+    dbg!(new_claim);
 
     // now we do the binding (fold), and check it again
     let mut new_a = a[..size / 2].to_vec();
@@ -362,9 +381,9 @@ fn quick_test_binding_poly_and_sumcheck() {
     // we should bind equality poly, but we have evaluation table for eq(coordiantes except first)
     // already, and eq(X, challenge_coordiantes[0]) at new_challenge is just 1 + new_challenge * challenge_coordiantes[0]
 
-    let mut t = challenge_coordiantes[0];
-    t.mul_assign(&challenge);
-    t.add_assign(&F::ONE);
+    let mut t0 = challenge_coordiantes[0];
+    t0.mul_assign(&challenge);
+    t0.add_assign(&F::ONE);
 
     let extended_eq = eqs_at_zero_inf.pop().unwrap();
     let mut new_eq = extended_eq[..size / 2].to_vec();
@@ -377,6 +396,7 @@ fn quick_test_binding_poly_and_sumcheck() {
     dbg!(&new_eq);
 
     let eq_table_at_zero_inf = eqs_at_zero_inf.last().unwrap();
+    assert_eq!(eq_table_at_zero_inf.len(), new_a.len());
 
     let mut naive_eval = F::ZERO;
     for i in 0..new_a.len() / 2 {
@@ -384,32 +404,185 @@ fn quick_test_binding_poly_and_sumcheck() {
         let b_at_0 = new_b[i];
         let a_at_inf = new_a[i + new_a.len() / 2];
         let b_at_inf = new_b[i + new_a.len() / 2];
+
+        let mut out_at_0 = a_at_0;
+        out_at_0.mul_assign(&b_at_0);
+        let mut out_at_inf = a_at_inf;
+        out_at_inf.mul_assign(&b_at_inf);
+
+        let mut eq_at_0 = eq_table_at_zero_inf[i];
+        let mut eq_at_inf = eq_table_at_zero_inf[i + new_a.len() / 2];
+        eq_at_0.mul_assign(&t0);
+        eq_at_inf.mul_assign(&t0);
+
+        assert_eq!(eq_at_0, new_eq[i]);
+        assert_eq!(eq_at_inf, new_eq[i + new_a.len() / 2]);
+
+        out_at_0.mul_assign(&eq_at_0);
+        out_at_inf.mul_assign(&eq_at_inf);
+
+        naive_eval.add_assign(&out_at_0);
+        naive_eval.add_assign(&out_at_inf);
+    }
+
+    assert_eq!(naive_eval, new_claim);
+
+    // and we can fold once again, and check.
+    // Now new_claim = G(0) + G(inf)
+
+    // now we actually do the sumcheck, and we will only do one round for our self-check
+    let mut g_at_0 = F::ZERO;
+    for i in 0..new_a.len() / 2 {
+        let a_at_0 = new_a[i];
+        let b_at_0 = new_b[i];
+
+        let mut out_at_0 = a_at_0;
+        out_at_0.mul_assign(&b_at_0);
+
+        let mut eq_at_0 = eq_table_at_zero_inf[i];
+        eq_at_0.mul_assign(&t0);
+
+        out_at_0.mul_assign(&eq_at_0);
+
+        g_at_0.add_assign(&out_at_0);
+    }
+
+    let mut g_at_inf = new_claim;
+    g_at_inf.sub_assign(&g_at_0);
+
+    // and prover anyway needs to compute g(1)
+    let mut g_at_1 = F::ZERO;
+    for i in 0..new_a.len() / 2 {
+        let a_at_0 = new_a[i];
+        let b_at_0 = new_b[i];
+        let a_at_inf = new_a[i + new_a.len() / 2];
+        let b_at_inf = new_b[i + new_a.len() / 2];
+
         let mut a_at_1 = a_at_inf;
         a_at_1.add_assign(&a_at_0);
         let mut b_at_1 = b_at_inf;
         b_at_1.add_assign(&b_at_0);
 
-        let mut out_at_0 = a_at_0;
-        out_at_0.mul_assign(&b_at_0);
         let mut out_at_1 = a_at_1;
         out_at_1.mul_assign(&b_at_1);
 
         let mut eq_at_0 = eq_table_at_zero_inf[i];
         let mut eq_at_inf = eq_table_at_zero_inf[i + new_a.len() / 2];
-        eq_at_0.mul_assign(&t);
-        eq_at_inf.mul_assign(&t);
-
-        assert_eq!(eq_at_0, new_eq[i]);
-        assert_eq!(eq_at_inf, new_eq[i + new_a.len() / 2]);
+        eq_at_0.mul_assign(&t0);
+        eq_at_inf.mul_assign(&t0);
 
         let mut eq_at_1 = eq_at_0;
         eq_at_1.add_assign(&eq_at_inf);
 
-        out_at_0.mul_assign(&eq_at_0);
         out_at_1.mul_assign(&eq_at_1);
 
+        g_at_1.add_assign(&out_at_1);
+    }
+
+    // same way as before we interpolate
+    // lowest
+    let e = g_at_0;
+
+    // highest
+    let mut c = g_at_inf;
+    c.mul_assign(&challenge_coordiantes[1].inverse().unwrap());
+
+    let mut t = challenge_coordiantes[1];
+    t.add_assign(&F::ONE);
+    let mut d = g_at_1;
+    d.mul_assign(&t.inverse().unwrap());
+    d.sub_assign(&e);
+    d.sub_assign(&c);
+
+    // self-check
+    let mut coeffs = vec![];
+    coeffs.push(e);
+    let mut t = e;
+    t.mul_assign(&challenge_coordiantes[1]);
+    t.add_assign(&d);
+    coeffs.push(t);
+    let mut t = d;
+    t.mul_assign(&challenge_coordiantes[1]);
+    t.add_assign(&c);
+    coeffs.push(t);
+    let mut t = c;
+    t.mul_assign(&challenge_coordiantes[1]);
+    assert_eq!(t, g_at_inf);
+    coeffs.push(t);
+
+    dbg!(&coeffs);
+
+    let g_at_0_reevaluated = evaluate_monomial_form_serial(&coeffs, &F::ZERO);
+    assert_eq!(g_at_0_reevaluated, g_at_0);
+    let g_at_1_reevaluated = evaluate_monomial_form_serial(&coeffs, &F::ONE);
+    assert_eq!(g_at_1_reevaluated, g_at_1);
+
+    let challenge = F::from_nonreduced_u32(1000);
+
+    let new_claim = evaluate_monomial_form_serial(&coeffs, &challenge);
+    dbg!(new_claim);
+
+    // and final self-verification
+    let mut new_new_a = new_a[..new_a.len() / 2].to_vec();
+    let mut new_new_b = new_b[..new_a.len() / 2].to_vec();
+    for (dst, src) in new_new_a.iter_mut().zip(new_a[new_a.len() / 2..].iter()) {
+        let mut t = challenge;
+        t.mul_assign(src);
+        dst.add_assign(&t);
+    }
+    for (dst, src) in new_new_b.iter_mut().zip(new_b[new_a.len() / 2..].iter()) {
+        let mut t = challenge;
+        t.mul_assign(src);
+        dst.add_assign(&t);
+    }
+
+    dbg!(&new_new_a);
+    dbg!(&new_new_b);
+
+    let mut t1 = challenge_coordiantes[1];
+    t1.mul_assign(&challenge);
+    t1.add_assign(&F::ONE);
+
+    let mut new_new_eq = new_eq[..new_eq.len() / 2].to_vec();
+    for (dst, src) in new_new_eq.iter_mut().zip(new_eq[new_eq.len() / 2..].iter()) {
+        let mut t = challenge;
+        t.mul_assign(src);
+        dst.add_assign(&t);
+    }
+
+    dbg!(&new_eq);
+
+    let _ = eqs_at_zero_inf.pop().unwrap();
+    let eq_table_at_zero_inf = eqs_at_zero_inf.last().unwrap();
+    assert_eq!(eq_table_at_zero_inf.len(), new_new_a.len());
+
+    let mut naive_eval = F::ZERO;
+    for i in 0..new_new_a.len() / 2 {
+        let a_at_0 = new_new_a[i];
+        let b_at_0 = new_new_b[i];
+        let a_at_inf = new_new_a[i + new_new_a.len() / 2];
+        let b_at_inf = new_new_b[i + new_new_a.len() / 2];
+
+        let mut out_at_0 = a_at_0;
+        out_at_0.mul_assign(&b_at_0);
+        let mut out_at_inf = a_at_inf;
+        out_at_inf.mul_assign(&b_at_inf);
+
+        let mut eq_at_0 = eq_table_at_zero_inf[i];
+        let mut eq_at_inf = eq_table_at_zero_inf[i + new_new_a.len() / 2];
+        eq_at_0.mul_assign(&t0);
+        eq_at_0.mul_assign(&t1);
+        eq_at_inf.mul_assign(&t0);
+        eq_at_inf.mul_assign(&t1);
+
+        assert_eq!(eq_at_0, new_new_eq[i]);
+        assert_eq!(eq_at_inf, new_new_eq[i + new_new_a.len() / 2]);
+
+        out_at_0.mul_assign(&eq_at_0);
+        out_at_inf.mul_assign(&eq_at_inf);
+
         naive_eval.add_assign(&out_at_0);
-        naive_eval.add_assign(&out_at_1);
+        naive_eval.add_assign(&out_at_inf);
     }
 
     assert_eq!(naive_eval, new_claim);
