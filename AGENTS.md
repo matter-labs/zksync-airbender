@@ -19,14 +19,14 @@
 
 ## Context Efficiency
 
-This repo contains generated circuit code, large layout/proof JSON, legacy-GPU
-reference dirs, and pre-built `.elf` binaries. A single unscoped `rg` or `git
-show` can pull hundreds of thousands of tokens into context. The rules below
-are not preferences — follow them on every search and history inspection.
+This repo contains generated circuit code, large layout/proof JSON, and
+pre-built `.elf` binaries. A single unscoped `rg` or `git show` can pull
+hundreds of thousands of tokens into context. The rules below are not
+preferences — follow them on every search and history inspection.
 
 ### Search Hygiene
 
-- **A repo-root `.ignore` filters broad searches automatically.** Plain `rg <pattern>` already excludes generated code, compiled-circuit layouts, proof JSON, legacy-GPU dirs, `.elf` binaries, and other artifacts that bloat context with no semantic value — see `.ignore` for the full list. Filtered files remain tracked in git and readable by direct path (`Read`, `cat`, `rg path/to/file`). When a task specifically needs to search filtered content, bypass with `rg --no-ignore <pattern>` or `rg -uu <pattern>`.
+- **A repo-root `.ignore` filters broad searches automatically.** Plain `rg <pattern>` already excludes generated code, compiled-circuit layouts, proof JSON, `.elf` binaries, and other artifacts that bloat context with no semantic value — see `.ignore` for the full list. Filtered files remain tracked in git and readable by direct path (`Read`, `cat`, `rg path/to/file`). When a task specifically needs to search filtered content, bypass with `rg --no-ignore <pattern>` or `rg -uu <pattern>`.
 - **List before reading content.** First pass of a search uses `rg -l <pattern>` (file list) or `rg -c <pattern>` (per-file counts), not bare `rg <pattern>`. Decide which files are relevant from the list, then read content only from those. Don't dump full match output into context as a first step.
 - **Cap match count when probing.** When you need content, use `rg -n -m 3 <pattern>` or `rg -n --max-columns 200 <pattern>` for the first look. Widen only if needed.
 - **Targeted reads over whole-file reads.** For files >500 lines, locate the relevant span with `rg -n` first and read only that range. Never read a full file in `compiled_circuits/`, `test_proofs/`, or `**/generated/` — they are machine-generated and not meaningfully readable end-to-end.
@@ -58,7 +58,7 @@ are not preferences — follow them on every search and history inspection.
 If subagents are available and permitted by the active runtime instructions, delegate the operations below so the bulk output stays out of the main conversation. If subagents are unavailable or restricted, narrow the operation locally and summarize aggressively instead — do not run the broad operation in-context as a fallback.
 
 - An unscoped `rg` / `grep` across the workspace.
-- Exploratory reads of files under `compiled_circuits/`, `test_proofs/`, `**/generated/`, `gpu_prover_old/`, or `gpu_witness_eval_generator_old/`. (Targeted single-file reads with a known path are fine.)
+- Exploratory reads of files under `compiled_circuits/`, `test_proofs/`, or `**/generated/`. (Targeted single-file reads with a known path are fine.)
 - `git show <sha>` or `git log -p` on commits known or suspected to touch generated files.
 - Any task that will produce large intermediate output where you only need the summary.
 

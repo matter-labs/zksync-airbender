@@ -1442,12 +1442,6 @@ mod tests {
     use serial_test::serial;
     use setups::read_binary;
 
-    /// Port of the legacy `gpu_prover_old::execution::prover::tests::test_execution_prover`.
-    /// Drives the orchestrator end-to-end against `examples/hashed_fibonacci/app.bin`,
-    /// using the same canonical non-determinism source as the legacy crate.
-    /// Marked `#[ignore]` because it requires a CUDA device and the binary
-    /// fixture; run via `.agents/bin/with_gpu_lock.sh` per the GPU work
-    /// guidelines.
     fn test_artifact(relative_path: &str) -> std::path::PathBuf {
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
