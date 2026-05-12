@@ -1533,6 +1533,9 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                         }
                     });
                 }
+                OutputType::InitsAndTeardownsProduct => {
+                    todo!()
+                }
             }
         }
     }

@@ -497,6 +497,9 @@ where
                 evals_flattened.extend_from_slice(den);
                 final_explicit_evaluations.insert(*k, [num.to_vec(), den.to_vec()]);
             }
+            OutputType::InitsAndTeardownsProduct => {
+                todo!();
+            }
         }
     }
     commit_field_els(&mut seed, &evals_flattened);

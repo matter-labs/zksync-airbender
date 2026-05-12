@@ -111,8 +111,11 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
     assert_eq!(read_set.len(), 1);
     assert_eq!(write_set.len(), 1);
 
-    let (layers, global_output_map) =
-        graph.layout_layers([read_set[0].clone(), write_set[0].clone()], BTreeMap::new());
+    let (layers, global_output_map) = graph.layout_layers(
+        [read_set[0].clone(), write_set[0].clone()],
+        BTreeMap::new(),
+        None,
+    );
 
     let mut placement_data = BTreeMap::new();
     placement_data.extend(graph.base_layer_memory.iter().map(|(k, v)| (*k, *v)));
@@ -168,7 +171,7 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
     }
 }
 
-fn create_inits_and_teardowns_set(
+pub(crate) fn create_inits_and_teardowns_set(
     graph: &mut impl GraphHolder,
     set_idxes: [usize; 2],
     allocated_teardown_ts_and_values: [([GKRAddress; 2], [GKRAddress; 2]); 2],

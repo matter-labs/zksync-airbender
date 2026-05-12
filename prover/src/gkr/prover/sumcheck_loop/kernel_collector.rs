@@ -639,6 +639,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                         ));
                     }
                 }
+                OutputType::InitsAndTeardownsProduct => {
+                    todo!()
+                }
                 OutputType::Lookup16Bits
                 | OutputType::LookupTimestamps
                 | OutputType::GenericLookup => {

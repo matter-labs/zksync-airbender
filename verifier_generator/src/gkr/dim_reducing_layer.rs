@@ -79,6 +79,9 @@ pub fn generate_dim_reducing_compute_claim<MW: FieldWrapper>(
                     }
                 });
             }
+            OutputType::InitsAndTeardownsProduct => {
+                todo!()
+            }
         }
     }
 
@@ -205,6 +208,12 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: FieldWrapper>(
                         #lookup_body
                     }
                 });
+            }
+            OutputType::InitsAndTeardownsProduct => {
+                unimplemented!(
+                    "Phase F — verifier_generator support for inline inits/teardowns output \
+                     channel. See plans/unified_riscv_circuit.md."
+                );
             }
         }
     }

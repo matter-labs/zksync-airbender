@@ -33,6 +33,7 @@ members = [
 
     # "tools/cli",
     "tools/generator",
+    "tools/opcode_histogram",
     "tools/pow_config_generator",
 
     "circuit_defs/blake2_g_function",

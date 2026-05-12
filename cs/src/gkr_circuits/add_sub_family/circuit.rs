@@ -20,10 +20,14 @@ pub fn add_sub_lui_auipc_mop_table_driver_fn<F: PrimeField>(table_driver: &mut T
     let _ = table_driver;
 }
 
-fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
+pub fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     decoder: <AddSubLuiAuipcMopDecoder as OpcodeFamilyDecoder>::BitmaskCircuitParser,
+    rs1_limbs: [Variable; 4],
+    rs2_limbs: [Variable; 4],
+    rd_write_limbs: [Variable; 2],
+    rs2_read_timestamp: [Variable; common_constants::NUM_TIMESTAMP_COLUMNS_FOR_RAM],
 ) {
     // NOTE: by preprocessing if we have rd == 0 in any of the opcodes below, then
     // we have rs1 = x0, rs2 = x0 and imm = 0, and it's preprocessed into plain addition,
@@ -38,59 +42,6 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         );
     }
 
-    // read inputs and prepare outputs
-    let rs1_access = cs.request_mem_access(
-        MemoryAccessRequest::RegisterRead {
-            reg_idx: inputs.decoder_data.rs1_index,
-            read_value_placeholder: Placeholder::ShuffleRamReadValue(0),
-            split_as_u8: false,
-        },
-        "rs1",
-        0,
-    );
-
-    let rs2_access = cs.request_mem_access(
-        MemoryAccessRequest::RegisterRead {
-            reg_idx: inputs.decoder_data.rs2_index,
-            read_value_placeholder: Placeholder::ShuffleRamReadValue(1),
-            split_as_u8: false,
-        },
-        "rs2",
-        1,
-    );
-
-    let rd_access = cs.request_mem_access(
-        MemoryAccessRequest::RegisterReadWrite {
-            reg_idx: inputs.decoder_data.rd_index,
-            read_value_placeholder: Placeholder::ShuffleRamReadValue(2),
-            write_value_placeholder: Placeholder::ShuffleRamWriteValue(2),
-            split_read_as_u8: false,
-            split_write_as_u8: false,
-        },
-        "rd",
-        2,
-    );
-
-    let MemoryAccess::RegisterOnly(rs1_access) = rs1_access else {
-        unreachable!()
-    };
-    let MemoryAccess::RegisterOnly(rs2_access) = rs2_access else {
-        unreachable!()
-    };
-    let MemoryAccess::RegisterOnly(rd_access) = rd_access else {
-        unreachable!()
-    };
-
-    let WordRepresentation::U16Limbs(rs1_limbs) = rs1_access.read_value else {
-        unreachable!()
-    };
-    let WordRepresentation::U16Limbs(rs2_limbs) = rs2_access.read_value else {
-        unreachable!()
-    };
-    let WordRepresentation::U16Limbs(rd_write_limbs) = rd_access.write_value else {
-        unreachable!()
-    };
-
     // we will also need to pay 2 more range checks
     let intermediate_tmp = Register::new_named(cs, "Modular ops intermediate comparison reg");
     let modulus_low = F::from_u32_unchecked((F::CHARACTERISTICS as u16) as u32);
@@ -99,18 +50,21 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     let carry_shift = F::from_u32_with_reduction(1 << 16);
     let shift_term = Term::from_field(carry_shift);
 
+    // U16 views of rs1/rs2 reassembled from U8 bytes via free algebra.
+    let byte_shift = F::from_u32_unchecked(1 << 8);
+    let rs1_low_c: Constraint<F> =
+        Constraint::from(rs1_limbs[0]) + Term::from((byte_shift, rs1_limbs[1]));
+    let rs1_high_c: Constraint<F> =
+        Constraint::from(rs1_limbs[2]) + Term::from((byte_shift, rs1_limbs[3]));
+    let rs2_low_c: Constraint<F> =
+        Constraint::from(rs2_limbs[0]) + Term::from((byte_shift, rs2_limbs[1]));
+    let rs2_high_c: Constraint<F> =
+        Constraint::from(rs2_limbs[2]) + Term::from((byte_shift, rs2_limbs[3]));
+
     // we need range checks on the output to ensure proper addition
     let [out_low, out_high] = rd_write_limbs;
     cs.require_invariant(out_low, Invariant::RangeChecked { width: 16 });
     cs.require_invariant(out_high, Invariant::RangeChecked { width: 16 });
-
-    if let Some(rs1_reg) = Register(rs1_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
-        println!("RS1 value = 0x{:08x}", rs1_reg);
-    }
-
-    if let Some(rs2_reg) = Register(rs2_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
-        println!("RS2 value = 0x{:08x}", rs2_reg);
-    }
 
     if let Some(imm) =
         Register::<F>(inputs.decoder_data.imm.map(|el| Num::Var(el))).get_value_unsigned(cs)
@@ -188,10 +142,10 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
 
             let imm_low = placer.get_u16(imm_vars[0]);
             let imm = placer.get_u32_from_u16_parts(imm_vars);
-            let rs1_low = placer.get_u16(rs1_vars[0]);
-            let rs1_u32 = placer.get_u32_from_u16_parts(rs1_vars);
-            let rs2_low = placer.get_u16(rs2_vars[0]);
-            let rs2_u32 = placer.get_u32_from_u16_parts(rs2_vars);
+            let rs1_low = placer.get_u16_from_u8_parts([rs1_vars[0], rs1_vars[1]]);
+            let rs1_u32 = placer.get_u32_from_u8_parts(rs1_vars);
+            let rs2_low = placer.get_u16_from_u8_parts([rs2_vars[0], rs2_vars[1]]);
+            let rs2_u32 = placer.get_u32_from_u8_parts(rs2_vars);
             let pc_low = placer.get_u16(pc_vars[0]);
             let pc_u32 = placer.get_u32_from_u16_parts(pc_vars);
             let boolean_false = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
@@ -399,10 +353,10 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             cs.add_constraint(
                 Constraint::from(is_addmod)
                     * ((Constraint::from(out_low) + shift_term * Term::from(out_high))
-                        - (Constraint::from(rs1_limbs[0])
-                            + shift_term * Term::from(rs1_limbs[1])
-                            + Term::from(rs2_limbs[0])
-                            + shift_term * Term::from(rs2_limbs[1]))),
+                        - (rs1_low_c.clone()
+                            + shift_term * rs1_high_c.clone()
+                            + rs2_low_c.clone()
+                            + shift_term * rs2_high_c.clone())),
             );
             cs.add_constraint(Term::from(is_addmod) * (Term::from(1u32) - Term::from(carry)));
         };
@@ -412,9 +366,9 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             cs.add_constraint(
                 Constraint::from(is_submod)
                     * ((Constraint::from(out_low) + shift_term * Term::from(out_high))
-                        - (Constraint::from(rs1_limbs[0]) + shift_term * Term::from(rs1_limbs[1])
-                            - Term::from(rs2_limbs[0])
-                            - shift_term * Term::from(rs2_limbs[1]))),
+                        - (rs1_low_c.clone() + shift_term * rs1_high_c.clone()
+                            - rs2_low_c.clone()
+                            - shift_term * rs2_high_c.clone())),
             );
             cs.add_constraint(Term::from(is_submod) * (Term::from(1u32) - Term::from(carry)));
         }
@@ -422,8 +376,8 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         // MULMOD
         {
             cs.add_constraint(
-                (Constraint::from(rs1_limbs[0]) + shift_term * Term::from(rs1_limbs[1]))
-                    * (Constraint::from(rs2_limbs[0]) + shift_term * Term::from(rs2_limbs[1]))
+                (rs1_low_c.clone() + shift_term * rs1_high_c.clone())
+                    * (rs2_low_c.clone() + shift_term * rs2_high_c.clone())
                     - Term::from(mulmod_intermediate_var),
             );
             cs.add_constraint(
@@ -449,7 +403,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     {
         let mut add_like_low_constraint = Constraint::empty();
         // rs1
-        add_like_low_constraint += Term::from(is_add) * Term::from(rs1_limbs[0]);
+        add_like_low_constraint += Term::from(is_add) * rs1_low_c.clone();
         add_like_low_constraint +=
             Term::from(is_auipc) * Term::from(inputs.cycle_start_state.pc[0]);
         // for subtraction 2^16*of + a - b = c -> 2^16*of + a = b + c
@@ -463,17 +417,17 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             Term::from(is_mulmod) * Term::from(intermediate_tmp.0[0].get_variable());
         // rs2
         // NOTE: for additions we blindly mix imm and rs2 as preprocessing ensures that if imm !=0 then rs2 = x0
-        add_like_low_constraint += Term::from(is_add) * Term::from(rs2_limbs[0]);
+        add_like_low_constraint += Term::from(is_add) * rs2_low_c.clone();
         add_like_low_constraint += Term::from(is_add) * Term::from(inputs.decoder_data.imm[0]);
         add_like_low_constraint += Term::from(is_auipc) * Term::from(inputs.decoder_data.imm[0]);
-        add_like_low_constraint += Term::from(is_sub) * Term::from(rs2_limbs[0]);
+        add_like_low_constraint += Term::from(is_sub) * rs2_low_c.clone();
         add_like_low_constraint += Term::from((modulus_low, is_addmod.get_variable().unwrap()));
         add_like_low_constraint += Term::from((modulus_low, is_submod.get_variable().unwrap()));
         add_like_low_constraint += Term::from((modulus_low, is_mulmod.get_variable().unwrap()));
         // rd
         add_like_low_constraint -= Term::from(is_add) * Term::from(out_low);
         add_like_low_constraint -= Term::from(is_auipc) * Term::from(out_low);
-        add_like_low_constraint -= Term::from(is_sub) * Term::from(rs1_limbs[0]);
+        add_like_low_constraint -= Term::from(is_sub) * rs1_low_c.clone();
         add_like_low_constraint -= Term::from(is_addmod) * Term::from(out_low);
         add_like_low_constraint -= Term::from(is_submod) * Term::from(out_low);
         add_like_low_constraint -= Term::from(is_mulmod) * Term::from(out_low);
@@ -504,7 +458,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         add_like_high_constraint += Term::from(is_submod) * Term::from(intermediate_carry);
         add_like_high_constraint += Term::from(is_mulmod) * Term::from(intermediate_carry);
         // rs1
-        add_like_high_constraint += Term::from(is_add) * Term::from(rs1_limbs[1]);
+        add_like_high_constraint += Term::from(is_add) * rs1_high_c.clone();
         add_like_high_constraint +=
             Term::from(is_auipc) * Term::from(inputs.cycle_start_state.pc[1]);
         add_like_high_constraint += Term::from(is_sub) * Term::from(out_high);
@@ -516,17 +470,17 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             Term::from(is_mulmod) * Term::from(intermediate_tmp.0[1].get_variable());
         // rs2
         // NOTE: for additions we blindly mix imm and rs2 as preprocessing ensures that if imm !=0 then rs2 = x0
-        add_like_high_constraint += Term::from(is_add) * Term::from(rs2_limbs[1]);
+        add_like_high_constraint += Term::from(is_add) * rs2_high_c.clone();
         add_like_high_constraint += Term::from(is_add) * Term::from(inputs.decoder_data.imm[1]);
         add_like_high_constraint += Term::from(is_auipc) * Term::from(inputs.decoder_data.imm[1]);
-        add_like_high_constraint += Term::from(is_sub) * Term::from(rs2_limbs[1]);
+        add_like_high_constraint += Term::from(is_sub) * rs2_high_c.clone();
         add_like_high_constraint += Term::from((modulus_high, is_addmod.get_variable().unwrap()));
         add_like_high_constraint += Term::from((modulus_high, is_submod.get_variable().unwrap()));
         add_like_high_constraint += Term::from((modulus_high, is_mulmod.get_variable().unwrap()));
         // rd
         add_like_high_constraint -= Term::from(is_add) * Term::from(out_high);
         add_like_high_constraint -= Term::from(is_auipc) * Term::from(out_high);
-        add_like_high_constraint -= Term::from(is_sub) * Term::from(rs1_limbs[1]);
+        add_like_high_constraint -= Term::from(is_sub) * rs1_high_c.clone();
         add_like_high_constraint += Term::from(is_addmod) * Term::from(out_high);
         add_like_high_constraint += Term::from(is_submod) * Term::from(out_high);
         add_like_high_constraint += Term::from(is_mulmod) * Term::from(out_high);
@@ -548,15 +502,11 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     // We also ensure that out value is 0 as from preprocessing rd = x0
     {
         // delegation register value
-        cs.add_constraint(Term::from(is_delegation_call) * Term::from(rs2_limbs[0]));
-        cs.add_constraint(Term::from(is_delegation_call) * Term::from(rs2_limbs[1]));
+        cs.add_constraint(Term::from(is_delegation_call) * rs2_low_c.clone());
+        cs.add_constraint(Term::from(is_delegation_call) * rs2_high_c.clone());
         // read timestamp
-        cs.add_constraint(
-            Term::from(is_delegation_call) * Term::from(rs2_access.read_timestamp[0]),
-        );
-        cs.add_constraint(
-            Term::from(is_delegation_call) * Term::from(rs2_access.read_timestamp[1]),
-        );
+        cs.add_constraint(Term::from(is_delegation_call) * Term::from(rs2_read_timestamp[0]));
+        cs.add_constraint(Term::from(is_delegation_call) * Term::from(rs2_read_timestamp[1]));
         // out value
         cs.add_constraint(Term::from(is_delegation_call) * Term::from(rd_write_limbs[0]));
         cs.add_constraint(Term::from(is_delegation_call) * Term::from(rd_write_limbs[1]));
@@ -569,13 +519,10 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         println!("RD value = 0x{:08x}", rd_reg);
     }
 
-    // bump PC
-    use crate::gkr_circuits::utils::calculate_pc_next_no_overflows_with_range_checks;
-    calculate_pc_next_no_overflows_with_range_checks(
-        cs,
-        inputs.cycle_start_state.pc,
-        inputs.cycle_end_state.pc,
-    );
+    // PC bump is owned by the caller (standalone wrapper or unified body) — every
+    // family wants `pc_next = pc + 4` except Family 2 (jump/branch/slt), which has
+    // its own custom PC handling. Adding it here unconditionally would conflict
+    // with Family 2's logic in the unified circuit.
 }
 
 pub fn add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr<
@@ -589,7 +536,70 @@ pub fn add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr<
     let bitmask: [_; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS] = bitmask.try_into().unwrap();
     let bitmask = bitmask.map(|el| Boolean::Is(el));
     let decoder = AddSubLuiAuipcMopFamilyCircuitMask::from_mask(bitmask);
-    apply_add_sub_lui_auipc_mop_inner(cs, input, decoder);
+
+    let rs1_access = cs.request_mem_access(
+        MemoryAccessRequest::RegisterRead {
+            reg_idx: input.decoder_data.rs1_index,
+            read_value_placeholder: Placeholder::ShuffleRamReadValue(0),
+            split_as_u8: true,
+        },
+        "rs1",
+        0,
+    );
+    let rs2_access = cs.request_mem_access(
+        MemoryAccessRequest::RegisterRead {
+            reg_idx: input.decoder_data.rs2_index,
+            read_value_placeholder: Placeholder::ShuffleRamReadValue(1),
+            split_as_u8: true,
+        },
+        "rs2",
+        1,
+    );
+    let rd_access = cs.request_mem_access(
+        MemoryAccessRequest::RegisterReadWrite {
+            reg_idx: input.decoder_data.rd_index,
+            read_value_placeholder: Placeholder::ShuffleRamReadValue(2),
+            write_value_placeholder: Placeholder::ShuffleRamWriteValue(2),
+            split_read_as_u8: false,
+            split_write_as_u8: false,
+        },
+        "rd",
+        2,
+    );
+    let MemoryAccess::RegisterOnly(rs1_access) = rs1_access else {
+        unreachable!()
+    };
+    let MemoryAccess::RegisterOnly(rs2_access) = rs2_access else {
+        unreachable!()
+    };
+    let MemoryAccess::RegisterOnly(rd_access) = rd_access else {
+        unreachable!()
+    };
+    let WordRepresentation::U8Limbs(rs1_limbs) = rs1_access.read_value else {
+        unreachable!()
+    };
+    let WordRepresentation::U8Limbs(rs2_limbs) = rs2_access.read_value else {
+        unreachable!()
+    };
+    let WordRepresentation::U16Limbs(rd_write_limbs) = rd_access.write_value else {
+        unreachable!()
+    };
+
+    let pc_in = input.cycle_start_state.pc;
+    let pc_out = input.cycle_end_state.pc;
+    apply_add_sub_lui_auipc_mop_inner(
+        cs,
+        input,
+        decoder,
+        rs1_limbs,
+        rs2_limbs,
+        rd_write_limbs,
+        rs2_access.read_timestamp,
+    );
+
+    // Standalone PC bump — every Family-1 op is pc_next = pc + 4.
+    use crate::gkr_circuits::utils::calculate_pc_next_no_overflows_with_range_checks;
+    calculate_pc_next_no_overflows_with_range_checks(cs, pc_in, pc_out);
 }
 
 #[cfg(test)]

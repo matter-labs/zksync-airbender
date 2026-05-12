@@ -37,10 +37,13 @@ pub fn shift_binop_table_driver_fn<F: PrimeField>(table_driver: &mut TableDriver
     }
 }
 
-fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
+pub fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     decoder: ShiftBinaryFamilyCircuitMask,
+    rs1_limbs: [Variable; 4],
+    rs2_limbs: [Variable; 4],
+    rd_write_limbs: [Variable; 2],
 ) {
     // NOTE: by preprocessing if we have rd == 0 in any of the opcodes below, then
     // we have rs1 = x0, rs2 = x0 and imm = 0, and it's preprocessed into plain addition,
@@ -54,59 +57,6 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
             circuit_family_extra_mask.as_u32_reduced()
         );
     }
-
-    // read inputs and prepare outputs
-    let rs1_access = cs.request_mem_access(
-        MemoryAccessRequest::RegisterRead {
-            reg_idx: inputs.decoder_data.rs1_index,
-            read_value_placeholder: Placeholder::ShuffleRamReadValue(0),
-            split_as_u8: true,
-        },
-        "rs1",
-        0,
-    );
-
-    let rs2_access = cs.request_mem_access(
-        MemoryAccessRequest::RegisterRead {
-            reg_idx: inputs.decoder_data.rs2_index,
-            read_value_placeholder: Placeholder::ShuffleRamReadValue(1),
-            split_as_u8: true,
-        },
-        "rs2",
-        1,
-    );
-
-    let rd_access = cs.request_mem_access(
-        MemoryAccessRequest::RegisterReadWrite {
-            reg_idx: inputs.decoder_data.rd_index,
-            read_value_placeholder: Placeholder::ShuffleRamReadValue(2),
-            write_value_placeholder: Placeholder::ShuffleRamWriteValue(2),
-            split_read_as_u8: false,
-            split_write_as_u8: false,
-        },
-        "rd",
-        2,
-    );
-
-    let MemoryAccess::RegisterOnly(rs1_access) = rs1_access else {
-        unreachable!()
-    };
-    let MemoryAccess::RegisterOnly(rs2_access) = rs2_access else {
-        unreachable!()
-    };
-    let MemoryAccess::RegisterOnly(rd_access) = rd_access else {
-        unreachable!()
-    };
-
-    let WordRepresentation::U8Limbs(rs1_limbs) = rs1_access.read_value else {
-        unreachable!()
-    };
-    let WordRepresentation::U8Limbs(rs2_limbs) = rs2_access.read_value else {
-        unreachable!()
-    };
-    let WordRepresentation::U16Limbs(rd_write_limbs) = rd_access.write_value else {
-        unreachable!()
-    };
 
     // if let Some(rs1_reg) = Register(rs1_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
     //     println!("RS1 value = 0x{:08x}", rs1_reg);
@@ -382,13 +332,8 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
         println!("RD value = 0x{:08x}", rd_reg);
     }
 
-    // bump PC
-    use crate::gkr_circuits::utils::calculate_pc_next_no_overflows_with_range_checks;
-    calculate_pc_next_no_overflows_with_range_checks(
-        cs,
-        inputs.cycle_start_state.pc,
-        inputs.cycle_end_state.pc,
-    );
+    // PC bump is owned by the caller (standalone wrapper or unified body) — see the
+    // analogous note in `apply_add_sub_lui_auipc_mop_inner`.
 }
 
 pub fn shift_binop_circuit_with_preprocessed_bytecode_for_gkr<F: PrimeField, CS: Circuit<F>>(
@@ -398,7 +343,62 @@ pub fn shift_binop_circuit_with_preprocessed_bytecode_for_gkr<F: PrimeField, CS:
     let bitmask: [_; SHIFT_BINARY_FAMILY_NUM_FLAGS] = bitmask.try_into().unwrap();
     let bitmask = bitmask.map(|el| Boolean::Is(el));
     let decoder = ShiftBinaryFamilyCircuitMask::from_mask(bitmask);
-    apply_shift_binop_inner(cs, input, decoder);
+
+    let rs1_access = cs.request_mem_access(
+        MemoryAccessRequest::RegisterRead {
+            reg_idx: input.decoder_data.rs1_index,
+            read_value_placeholder: Placeholder::ShuffleRamReadValue(0),
+            split_as_u8: true,
+        },
+        "rs1",
+        0,
+    );
+    let rs2_access = cs.request_mem_access(
+        MemoryAccessRequest::RegisterRead {
+            reg_idx: input.decoder_data.rs2_index,
+            read_value_placeholder: Placeholder::ShuffleRamReadValue(1),
+            split_as_u8: true,
+        },
+        "rs2",
+        1,
+    );
+    let rd_access = cs.request_mem_access(
+        MemoryAccessRequest::RegisterReadWrite {
+            reg_idx: input.decoder_data.rd_index,
+            read_value_placeholder: Placeholder::ShuffleRamReadValue(2),
+            write_value_placeholder: Placeholder::ShuffleRamWriteValue(2),
+            split_read_as_u8: false,
+            split_write_as_u8: false,
+        },
+        "rd",
+        2,
+    );
+    let MemoryAccess::RegisterOnly(rs1_access) = rs1_access else {
+        unreachable!()
+    };
+    let MemoryAccess::RegisterOnly(rs2_access) = rs2_access else {
+        unreachable!()
+    };
+    let MemoryAccess::RegisterOnly(rd_access) = rd_access else {
+        unreachable!()
+    };
+    let WordRepresentation::U8Limbs(rs1_limbs) = rs1_access.read_value else {
+        unreachable!()
+    };
+    let WordRepresentation::U8Limbs(rs2_limbs) = rs2_access.read_value else {
+        unreachable!()
+    };
+    let WordRepresentation::U16Limbs(rd_write_limbs) = rd_access.write_value else {
+        unreachable!()
+    };
+
+    let pc_in = input.cycle_start_state.pc;
+    let pc_out = input.cycle_end_state.pc;
+    apply_shift_binop_inner(cs, input, decoder, rs1_limbs, rs2_limbs, rd_write_limbs);
+
+    // Standalone PC bump — every shift_binop op is pc_next = pc + 4.
+    use crate::gkr_circuits::utils::calculate_pc_next_no_overflows_with_range_checks;
+    calculate_pc_next_no_overflows_with_range_checks(cs, pc_in, pc_out);
 }
 
 #[cfg(test)]

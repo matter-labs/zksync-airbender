@@ -80,6 +80,9 @@ pub fn evaluate_dimension_reduction_forward<F: PrimeField, E: FieldExtension<F> 
                     };
                     layer_description.insert(a, descr);
                 }
+                OutputType::InitsAndTeardownsProduct => {
+                    todo!()
+                }
                 a @ OutputType::Lookup16Bits
                 | a @ OutputType::LookupTimestamps
                 | a @ OutputType::GenericLookup => {
