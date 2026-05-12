@@ -90,7 +90,8 @@ pub fn generate_gpu_witness_evaluation_function(
     circuit: &CompiledCircuitArtifact<Mersenne31Field>,
     ssa: &[Vec<RawExpression<Mersenne31Field>>],
 ) -> String {
-    gpu_witness_eval_generator_old::Generator::generate(ssa, circuit, false)
+    // gpu_witness_eval_generator::Generator::generate(ssa, circuit, false)
+    unimplemented!("Old GPU witness evaluation function generation is not implemented anymore, switch to new GKR based generation when it's ready")
 }
 
 #[derive(Parser)]
