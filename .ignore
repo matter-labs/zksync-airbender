@@ -1,8 +1,8 @@
 # Ripgrep / fd / ag ignore file (auto-discovered).
 #
 # These patterns are filtered from broad searches by default. They cover
-# generated code, layout/proof artifacts, legacy-GPU dirs, compiled
-# binaries, and other content with no semantic value for code search.
+# generated code, layout/proof artifacts, compiled binaries, and other
+# content with no semantic value for code search.
 #
 # Files listed here remain tracked in git and readable directly by path
 # (Read tool, cat, less, targeted `rg path/to/file`). To bypass these
@@ -30,10 +30,6 @@ prover/test_proofs/
 *_ssa_gkr.json
 *_witness
 *.vk.json
-
-# --- Legacy GPU code (kept for reference/diffing, not active) ---
-gpu_prover_old/
-gpu_witness_eval_generator_old/
 
 # --- Compiled binaries ---
 *.elf
