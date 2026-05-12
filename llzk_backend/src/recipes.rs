@@ -1943,9 +1943,9 @@ fn optimized_decoder_boundary_spec(
 
 fn build_optimized_decoder() -> Result<BuiltCircuit> {
     let (circuit_output, instruction, invalid_opcode, outputs) =
-        prover::cs::picus_translation::build_optimized_decoder_circuit_output(true);
+        picus_frontend::build_optimized_decoder_circuit_output(true);
     let boundary_spec = optimized_decoder_boundary_spec(instruction, invalid_opcode, outputs);
-    let witness_ssa = prover::cs::picus_translation::dump_optimized_decoder_witness_eval_form();
+    let witness_ssa = picus_frontend::dump_optimized_decoder_witness_eval_form();
     Ok(BuiltCircuit {
         circuit_output,
         boundary_spec: Some(boundary_spec),

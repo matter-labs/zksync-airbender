@@ -23,8 +23,6 @@ pub mod machine;
 #[cfg(feature = "compiler")]
 pub mod one_row_compiler;
 #[cfg(feature = "compiler")]
-pub mod picus_translation;
-#[cfg(feature = "compiler")]
 pub mod tables;
 #[cfg(feature = "compiler")]
 pub mod types;

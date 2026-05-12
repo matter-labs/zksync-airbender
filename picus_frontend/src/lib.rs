@@ -1,127 +1,215 @@
-use crate::constraint::{Constraint, Term};
-use crate::cs::circuit::{
-    Circuit, CircuitOutput, LookupQuery, LookupQueryTableType, PicusExpr as CircuitPicusExpr,
-    PicusStructuredConstraint as CircuitPicusStructuredConstraint, ShuffleRamMemQuery,
-};
-use crate::cs::cs_reference::BasicAssembly;
-use crate::cs::witness_placer::graph_description::RawExpression;
-use crate::cs::witness_placer::graph_description::WitnessGraphCreator;
-use crate::delegation::bigint_with_control::{
-    define_u256_ops_extended_control_delegation_circuit_with_metadata, BigintDelegationPicusMetadata,
-};
-use crate::delegation::blake2_round_with_extended_control::{
-    define_blake2_with_extended_control_delegation_circuit_with_metadata,
-    Blake2WithExtendedControlDelegationPicusMetadata,
-};
-use crate::definitions::{
-    OpcodeFamilyCircuitState, TableType, Variable, ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS,
-    JUMP_SLT_BRANCH_FAMILY_NUM_BITS, MEMORY_FAMILY_NUM_FLAGS, MUL_DIV_FAMILY_NUM_FLAGS,
-    REDUCED_MACHINE_NUM_FLAGS, SHIFT_BINARY_CSRRW_FAMILY_NUM_FLAGS,
-    SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS,
-};
-use crate::devices::diffs::{CommonDiffs, NextPcValue};
-use crate::devices::optimization_context::OptimizationContext;
-use crate::machine::decoder::decode_optimized_must_handle_csr::OptimizedDecoder;
-use crate::machine::decoder::DecoderInput;
-use crate::machine::instruction_decoding_data::{
-    DecoderInstructionVariantsKey, DecoderMajorInstructionFamilyKey,
-};
-use crate::machine::machine_configurations::create_csr_table_for_delegation;
-use crate::machine::machine_configurations::full_isa_no_exceptions::FullIsaMachineNoExceptionHandling;
-use crate::machine::machine_configurations::minimal_no_exceptions_with_delegation::MinimalMachineNoExceptionHandlingWithDelegation;
-use crate::machine::machine_configurations::minimal_state::MinimalStateRegistersInMemory;
-use crate::machine::machine_configurations::BasicDecodingResultWithSigns;
-use crate::machine::ops::add_sub::{AddOp, SubOp, ADD_OP_KEY, SUB_OP_KEY};
-use crate::machine::ops::binops::{BinaryOp, BINOP_COMMON_OP_KEY};
-use crate::machine::ops::conditional::{ConditionalOp, CONDITIONAL_COMMON_OP_KEY};
-use crate::machine::ops::csr::CSR_COMMON_OP_KEY;
-use crate::machine::ops::jump::{JumpOp, JAL_OP_KEY, JUMP_COMMON_OP_KEY};
-use crate::machine::ops::lui_auipc::{AuiPc, LuiOp, AUIPC_OP_KEY, LUI_OP_KEY};
-use crate::machine::ops::mop::{MopOp, ADDMOD_OP_KEY, MOP_OP_KEY, MULMOD_OP_KEY, SUBMOD_OP_KEY};
-use crate::machine::ops::mul_div::{
-    DivRemOp, MulOp, DIVREM_COMMON_OP_KEY, DIVU_OP_KEY, DIV_OP_KEY, MULHSU_OP_KEY,
-    MULH_OP_KEY, MUL_COMMON_OP_KEY, MUL_OP_KEY, REM_OP_KEY,
-};
-use crate::machine::ops::shift::{
-    ShiftOp, SHIFT_COMMON_OP_KEY, SHIFT_RIGHT_ALGEBRAIC_KEY, SHIFT_RIGHT_KEY,
-};
-use crate::machine::ops::unrolled::jump_branch_slt::jump_branch_slt_table_addition_fn;
-use crate::machine::ops::unrolled::load_store::{
-    load_store_circuit_with_preprocessed_bytecode_with_decoded_bits, load_store_table_addition_fn,
-};
-use crate::machine::ops::unrolled::load_store_subword_only::{
-    subword_only_load_store_circuit_with_preprocessed_bytecode_with_decoded_bits,
-    subword_only_load_store_table_addition_fn,
-};
-use crate::machine::ops::unrolled::mul_div::{
-    mul_div_circuit_with_preprocessed_bytecode_with_decoded_bits, mul_div_table_addition_fn,
-};
-use crate::machine::ops::unrolled::reduced_machine_ops::{
-    create_reduced_machine_special_tables,
-    reduced_machine_circuit_with_preprocessed_bytecode_with_decoded_bits,
-    reduced_machine_table_addition_fn,
-};
-use crate::machine::ops::unrolled::shift_binary_csr::{
-    shift_binop_csrrw_circuit_with_preprocessed_bytecode_with_decoded_bits,
-    shift_binop_csrrw_table_addition_fn,
-};
-use crate::machine::ops::unrolled::{
-    add_sub_lui_auipc_mop::add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode,
-    add_sub_lui_auipc_mop::add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_and_decoded_bits,
-    add_sub_lui_auipc_mop::add_sub_lui_auipc_mop_table_addition_fn,
-    decoder::{
-        describe_decoder_cycle_from_opcode_with_metadata, OpcodeFamilyDecoder,
-        ReducedMachineDecoder, UnrolledDecoderPicusMetadata,
-    },
-    jump_branch_slt::jump_branch_slt_circuit_with_preprocessed_bytecode_with_decoded_bits,
-};
-use crate::machine::ops::{RS1_LOAD_LOCAL_TIMESTAMP, RS2_LOAD_LOCAL_TIMESTAMP};
-use crate::machine::IndexableBooleanSet;
-use crate::machine::{Machine, MachineOp};
-use crate::tables::LookupWrapper;
-use crate::types::{Boolean, Num, Register};
-use field::{Mersenne31Field, PrimeField};
-use picus::{PicusConstraint, PicusExpr, PicusModule, PicusProgram};
-use std::collections::{BTreeMap, BTreeSet};
+#![allow(type_alias_bounds)]
+#![allow(incomplete_features)]
+#![feature(generic_const_exprs)]
+#![feature(iter_advance_by)]
+#![feature(option_zip)]
+#![feature(allocator_api)]
+
+use cs::constraint::Constraint;
+use cs::constraint::Term;
+use cs::cs::circuit::Circuit;
+use cs::cs::circuit::CircuitOutput;
+use cs::cs::circuit::LookupQuery;
+use cs::cs::circuit::LookupQueryTableType;
+use cs::cs::circuit::PicusExpr as CircuitPicusExpr;
+use cs::cs::circuit::PicusStructuredConstraint as CircuitPicusStructuredConstraint;
+use cs::cs::circuit::ShuffleRamMemQuery;
+use cs::cs::cs_reference::BasicAssembly;
+use cs::cs::witness_placer::graph_description::RawExpression;
+use cs::cs::witness_placer::graph_description::WitnessGraphCreator;
+use cs::definitions::OpcodeFamilyCircuitState;
+use cs::definitions::TableType;
+use cs::definitions::Variable;
+use cs::definitions::ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS;
+use cs::definitions::JUMP_SLT_BRANCH_FAMILY_NUM_BITS;
+use cs::definitions::MEMORY_FAMILY_NUM_FLAGS;
+use cs::definitions::MUL_DIV_FAMILY_NUM_FLAGS;
+use cs::definitions::REDUCED_MACHINE_NUM_FLAGS;
+use cs::definitions::SHIFT_BINARY_CSRRW_FAMILY_NUM_FLAGS;
+use cs::definitions::SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS;
+use cs::delegation::bigint_with_control::define_u256_ops_extended_control_delegation_circuit_with_metadata;
+use cs::delegation::bigint_with_control::BigintDelegationPicusMetadata;
+use cs::delegation::blake2_round_with_extended_control::define_blake2_with_extended_control_delegation_circuit_with_metadata;
+use cs::delegation::blake2_round_with_extended_control::Blake2WithExtendedControlDelegationPicusMetadata;
+use cs::devices::diffs::CommonDiffs;
+use cs::devices::diffs::NextPcValue;
+use cs::devices::optimization_context::OptimizationContext;
+use cs::devices::risc_v_types::InstructionType;
+use cs::machine::decoder::decode_optimized_must_handle_csr::OptimizedDecoder;
+use cs::machine::decoder::DecoderInput;
+use cs::machine::instruction_decoding_data::DecoderInstructionVariantsKey;
+use cs::machine::instruction_decoding_data::DecoderMajorInstructionFamilyKey;
+use cs::machine::machine_configurations::create_csr_table_for_delegation;
+use cs::machine::machine_configurations::full_isa_no_exceptions::FullIsaMachineNoExceptionHandling;
+use cs::machine::machine_configurations::minimal_no_exceptions_with_delegation::MinimalMachineNoExceptionHandlingWithDelegation;
+use cs::machine::machine_configurations::minimal_state::MinimalStateRegistersInMemory;
+use cs::machine::machine_configurations::BasicDecodingResultWithSigns;
+use cs::machine::ops::add_sub::AddOp;
+use cs::machine::ops::add_sub::SubOp;
+use cs::machine::ops::add_sub::ADD_OP_KEY;
+use cs::machine::ops::add_sub::SUB_OP_KEY;
+use cs::machine::ops::binops::BinaryOp;
+use cs::machine::ops::binops::BINOP_COMMON_OP_KEY;
+use cs::machine::ops::conditional::ConditionalOp;
+use cs::machine::ops::conditional::CONDITIONAL_COMMON_OP_KEY;
+use cs::machine::ops::csr::CSR_COMMON_OP_KEY;
+use cs::machine::ops::jump::JumpOp;
+use cs::machine::ops::jump::JAL_OP_KEY;
+use cs::machine::ops::jump::JUMP_COMMON_OP_KEY;
+use cs::machine::ops::lui_auipc::AuiPc;
+use cs::machine::ops::lui_auipc::LuiOp;
+use cs::machine::ops::lui_auipc::AUIPC_OP_KEY;
+use cs::machine::ops::lui_auipc::LUI_OP_KEY;
+use cs::machine::ops::mop::MopOp;
+use cs::machine::ops::mop::ADDMOD_OP_KEY;
+use cs::machine::ops::mop::MOP_OP_KEY;
+use cs::machine::ops::mop::MULMOD_OP_KEY;
+use cs::machine::ops::mop::SUBMOD_OP_KEY;
+use cs::machine::ops::mul_div::DivRemOp;
+use cs::machine::ops::mul_div::MulOp;
+use cs::machine::ops::mul_div::DIVREM_COMMON_OP_KEY;
+use cs::machine::ops::mul_div::DIVU_OP_KEY;
+use cs::machine::ops::mul_div::DIV_OP_KEY;
+use cs::machine::ops::mul_div::MULHSU_OP_KEY;
+use cs::machine::ops::mul_div::MULH_OP_KEY;
+use cs::machine::ops::mul_div::MUL_COMMON_OP_KEY;
+use cs::machine::ops::mul_div::MUL_OP_KEY;
+use cs::machine::ops::mul_div::REM_OP_KEY;
+use cs::machine::ops::shift::ShiftOp;
+use cs::machine::ops::shift::SHIFT_COMMON_OP_KEY;
+use cs::machine::ops::shift::SHIFT_RIGHT_ALGEBRAIC_KEY;
+use cs::machine::ops::shift::SHIFT_RIGHT_KEY;
+use cs::machine::ops::unrolled::add_sub_lui_auipc_mop::add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode;
+use cs::machine::ops::unrolled::add_sub_lui_auipc_mop::add_sub_lui_auipc_mop_table_addition_fn;
+use cs::machine::ops::unrolled::decoder::describe_decoder_cycle_from_opcode_with_metadata;
+use cs::machine::ops::unrolled::decoder::UnrolledDecoderPicusMetadata;
+use cs::machine::ops::unrolled::jump_branch_slt::jump_branch_slt_circuit_with_preprocessed_bytecode;
+use cs::machine::ops::unrolled::jump_branch_slt::jump_branch_slt_table_addition_fn;
+use cs::machine::ops::unrolled::load_store::create_load_store_special_tables;
+use cs::machine::ops::unrolled::load_store::load_store_circuit_with_preprocessed_bytecode;
+use cs::machine::ops::unrolled::load_store::load_store_table_addition_fn;
+use cs::machine::ops::unrolled::load_store_subword_only::subword_only_load_store_circuit_with_preprocessed_bytecode;
+use cs::machine::ops::unrolled::load_store_subword_only::subword_only_load_store_table_addition_fn;
+#[cfg(test)]
+use cs::machine::ops::unrolled::load_store_word_only::create_word_only_load_store_special_tables;
+#[cfg(test)]
+use cs::machine::ops::unrolled::load_store_word_only::word_only_load_store_circuit_with_preprocessed_bytecode;
+#[cfg(test)]
+use cs::machine::ops::unrolled::load_store_word_only::word_only_load_store_table_addition_fn;
+use cs::machine::ops::unrolled::mul_div::mul_div_circuit_with_preprocessed_bytecode;
+use cs::machine::ops::unrolled::mul_div::mul_div_table_addition_fn;
+use cs::machine::ops::unrolled::reduced_machine_ops::create_reduced_machine_special_tables;
+use cs::machine::ops::unrolled::reduced_machine_ops::reduced_machine_circuit_with_preprocessed_bytecode;
+use cs::machine::ops::unrolled::reduced_machine_ops::reduced_machine_table_addition_fn;
+use cs::machine::ops::unrolled::shift_binary_csr::shift_binop_csrrw_circuit_with_preprocessed_bytecode;
+use cs::machine::ops::unrolled::shift_binary_csr::shift_binop_csrrw_table_addition_fn;
+use cs::machine::ops::RS1_LOAD_LOCAL_TIMESTAMP;
+use cs::machine::ops::RS2_LOAD_LOCAL_TIMESTAMP;
+use cs::machine::IndexableBooleanSet;
+use cs::machine::Machine;
+use cs::machine::MachineOp;
+use cs::tables::LookupWrapper;
+use cs::types::Boolean;
+use cs::types::Num;
+use cs::types::Register;
+use field::Mersenne31Field;
+use field::PrimeField;
+use picus::PicusConstraint;
+use picus::PicusExpr;
+use picus::PicusModule;
+use picus::PicusProgram;
+use std::collections::BTreeMap;
 
 mod lookups;
-use lookups::{add_disjunctive_lookup_constraints, add_lookup_constraints};
+use lookups::add_disjunctive_lookup_constraints;
+use lookups::add_lookup_constraints;
 
 const U16_BOUND: u64 = 1 << 16;
 
 #[derive(Clone, Debug)]
+struct SpecializationCase {
+    name_suffix: Option<String>,
+    assignments: BTreeMap<usize, u64>,
+}
+
+#[derive(Clone, Debug)]
 pub struct DecoderSpecialization {
-    assignments: Vec<BTreeMap<usize, u64>>,
+    cases: Vec<SpecializationCase>,
 }
 
 impl DecoderSpecialization {
-    fn from_assignments(assignments: Vec<BTreeMap<usize, u64>>) -> Self {
-        Self { assignments }
+    fn from_named_assignments(cases: Vec<(String, BTreeMap<usize, u64>)>) -> Self {
+        Self {
+            cases: cases
+                .into_iter()
+                .map(|(name_suffix, assignments)| SpecializationCase {
+                    name_suffix: Some(sanitize_module_label(&name_suffix)),
+                    assignments,
+                })
+                .collect(),
+        }
     }
 }
 
-fn specialization_for_single_bit(bit_var_id: usize) -> DecoderSpecialization {
-    let mut assignments = Vec::with_capacity(2);
-    for value in [0u64, 1u64] {
+fn sanitize_module_label(raw: &str) -> String {
+    let mut sanitized = String::with_capacity(raw.len());
+    let mut last_was_underscore = false;
+
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() {
+            sanitized.push(ch.to_ascii_lowercase());
+            last_was_underscore = false;
+        } else if !last_was_underscore {
+            sanitized.push('_');
+            last_was_underscore = true;
+        }
+    }
+
+    let sanitized = sanitized.trim_matches('_');
+    if sanitized.is_empty() {
+        "case".to_string()
+    } else {
+        sanitized.to_string()
+    }
+}
+
+#[cfg(test)]
+fn specialization_for_single_bit_named(
+    bit_var_id: usize,
+    false_name: &str,
+    true_name: &str,
+) -> DecoderSpecialization {
+    let mut cases = Vec::with_capacity(2);
+    for (value, name) in [(0u64, false_name), (1u64, true_name)] {
         let mut env = BTreeMap::new();
         env.insert(bit_var_id, value);
-        assignments.push(env);
+        cases.push((name.to_string(), env));
     }
-    DecoderSpecialization::from_assignments(assignments)
+
+    DecoderSpecialization::from_named_assignments(cases)
 }
 
-fn specialization_for_flat_one_hot(decoded_bits: &[usize]) -> DecoderSpecialization {
-    let mut assignments = Vec::with_capacity(decoded_bits.len());
-    for active_bit in 0..decoded_bits.len() {
+fn specialization_for_flat_one_hot_named(
+    decoded_bits: &[usize],
+    labels: &[&str],
+) -> DecoderSpecialization {
+    assert_eq!(
+        decoded_bits.len(),
+        labels.len(),
+        "one-hot specialization labels must match decoded bit count"
+    );
+
+    let mut cases = Vec::with_capacity(decoded_bits.len());
+    for (active_bit, label) in labels.iter().enumerate() {
         let mut env = BTreeMap::new();
         for (idx, bit_var_id) in decoded_bits.iter().copied().enumerate() {
             let value = if idx == active_bit { 1 } else { 0 };
             env.insert(bit_var_id, value);
         }
-        assignments.push(env);
+        cases.push(((*label).to_string(), env));
     }
 
-    DecoderSpecialization::from_assignments(assignments)
+    DecoderSpecialization::from_named_assignments(cases)
 }
 
 fn specialization_for_mul_div_signed(decoded_bits: &[usize]) -> DecoderSpecialization {
@@ -141,11 +229,15 @@ fn specialization_for_mul_div_signed(decoded_bits: &[usize]) -> DecoderSpecializ
         [0, 0, 1, 0], // MULHSU
         [0, 0, 0, 0], // MULHU
     ];
+    let labels = [
+        "div", "divu", "rem", "remu", "mul", "mulh", "mulhsu", "mulhu",
+    ];
 
-    DecoderSpecialization::from_assignments(
-        cases
+    DecoderSpecialization::from_named_assignments(
+        labels
             .into_iter()
-            .map(|values| bit_ids.into_iter().zip(values).collect())
+            .zip(cases)
+            .map(|(label, values)| (label.to_string(), bit_ids.into_iter().zip(values).collect()))
             .collect(),
     )
 }
@@ -161,11 +253,13 @@ fn specialization_for_mul_div_unsigned_only(decoded_bits: &[usize]) -> DecoderSp
         [1, 0], // REMU
         [1, 1], // DIVU
     ];
+    let labels = ["mulhu", "mul", "remu", "divu"];
 
-    DecoderSpecialization::from_assignments(
-        cases
+    DecoderSpecialization::from_named_assignments(
+        labels
             .into_iter()
-            .map(|values| bit_ids.into_iter().zip(values).collect())
+            .zip(cases)
+            .map(|(label, values)| (label.to_string(), bit_ids.into_iter().zip(values).collect()))
             .collect(),
     )
 }
@@ -198,33 +292,31 @@ fn specialization_for_shift_binop_csrrw(
         env
     };
 
-    let assignments = vec![
-        mk_env([1, 0, 0, 0, 0, 0], 0b001), // SLL
-        mk_env([0, 1, 0, 0, 0, 0], 0b101), // SRL
-        mk_env([0, 0, 1, 0, 0, 0], 0b101), // SRA
-        mk_env([0, 0, 0, 1, 0, 0], 0b100), // XOR
-        mk_env([0, 0, 0, 1, 0, 0], 0b110), // OR
-        mk_env([0, 0, 0, 1, 0, 0], 0b111), // AND
-        mk_env([0, 0, 0, 0, 1, 0], 0b001), // CSRRW
-        mk_env([1, 0, 0, 0, 0, 1], 0b001), // SLLI
-        mk_env([0, 1, 0, 0, 0, 1], 0b101), // SRLI
-        mk_env([0, 0, 1, 0, 0, 1], 0b101), // SRAI
-        mk_env([0, 0, 0, 1, 0, 1], 0b100), // XORI
-        mk_env([0, 0, 0, 1, 0, 1], 0b110), // ORI
-        mk_env([0, 0, 0, 1, 0, 1], 0b111), // ANDI
-    ];
-
-    DecoderSpecialization::from_assignments(assignments)
+    DecoderSpecialization::from_named_assignments(vec![
+        ("sll".to_string(), mk_env([1, 0, 0, 0, 0, 0], 0b001)),
+        ("srl".to_string(), mk_env([0, 1, 0, 0, 0, 0], 0b101)),
+        ("sra".to_string(), mk_env([0, 0, 1, 0, 0, 0], 0b101)),
+        ("xor".to_string(), mk_env([0, 0, 0, 1, 0, 0], 0b100)),
+        ("or".to_string(), mk_env([0, 0, 0, 1, 0, 0], 0b110)),
+        ("and".to_string(), mk_env([0, 0, 0, 1, 0, 0], 0b111)),
+        ("csrrw".to_string(), mk_env([0, 0, 0, 0, 1, 0], 0b001)),
+        ("slli".to_string(), mk_env([1, 0, 0, 0, 0, 1], 0b001)),
+        ("srli".to_string(), mk_env([0, 1, 0, 0, 0, 1], 0b101)),
+        ("srai".to_string(), mk_env([0, 0, 1, 0, 0, 1], 0b101)),
+        ("xori".to_string(), mk_env([0, 0, 0, 1, 0, 1], 0b100)),
+        ("ori".to_string(), mk_env([0, 0, 0, 1, 0, 1], 0b110)),
+        ("andi".to_string(), mk_env([0, 0, 0, 1, 0, 1], 0b111)),
+    ])
 }
 
-fn specialization_from_valid_bitmasks(
+fn specialization_from_named_bitmasks(
     decoded_bits: &[usize],
-    valid_masks: impl IntoIterator<Item = u32>,
+    named_masks: impl IntoIterator<Item = (String, u32)>,
 ) -> DecoderSpecialization {
-    let assignments = valid_masks
+    let cases = named_masks
         .into_iter()
-        .map(|mask| {
-            decoded_bits
+        .map(|(label, mask)| {
+            let assignments = decoded_bits
                 .iter()
                 .copied()
                 .enumerate()
@@ -232,11 +324,12 @@ fn specialization_from_valid_bitmasks(
                     let value = ((mask >> idx) & 1) as u64;
                     (bit_var_id, value)
                 })
-                .collect()
+                .collect();
+            (label, assignments)
         })
         .collect();
 
-    DecoderSpecialization::from_assignments(assignments)
+    DecoderSpecialization::from_named_assignments(cases)
 }
 
 fn specialization_with_fixed_assignment(
@@ -244,42 +337,222 @@ fn specialization_with_fixed_assignment(
     var_id: usize,
     value: u64,
 ) -> DecoderSpecialization {
-    let assignments = specialization
-        .assignments
+    let cases = specialization
+        .cases
         .into_iter()
-        .map(|mut env| {
-            env.insert(var_id, value);
-            env
+        .map(|mut case| {
+            case.assignments.insert(var_id, value);
+            case
         })
         .collect();
 
-    DecoderSpecialization::from_assignments(assignments)
+    DecoderSpecialization { cases }
 }
 
-fn valid_reduced_machine_masks() -> Vec<u32> {
-    use crate::machine::Machine;
+fn reduced_machine_instruction_type_label(instr_type: InstructionType) -> &'static str {
+    match instr_type {
+        InstructionType::RType => "rtype",
+        InstructionType::IType => "itype",
+        InstructionType::SType => "stype",
+        InstructionType::BType => "btype",
+        InstructionType::UType => "utype",
+        InstructionType::JType => "jtype",
+    }
+}
 
-    let decoder = ReducedMachineDecoder::new();
+fn reduced_machine_case_label(
+    instruction_type: InstructionType,
+    major_key: DecoderMajorInstructionFamilyKey,
+    minor_keys: &[DecoderInstructionVariantsKey],
+) -> String {
+    let mut parts = vec![
+        reduced_machine_instruction_type_label(instruction_type).to_string(),
+        sanitize_module_label(major_key.0),
+    ];
+    parts.extend(minor_keys.iter().map(|key| sanitize_module_label(key.0)));
+    parts.join("_")
+}
+
+fn named_reduced_machine_masks() -> Vec<(String, u32)> {
+    use cs::machine::Machine;
+
     let all_keys =
         <MinimalMachineNoExceptionHandlingWithDelegation as Machine<Mersenne31Field>>::all_decoder_keys();
-    let csr_major_bit = 1u32 << (3 + all_keys.get_major_index(&CSR_COMMON_OP_KEY) as u32);
-    let mut masks = BTreeSet::new();
+    let all_opcodes = <MinimalMachineNoExceptionHandlingWithDelegation as Machine<
+        Mersenne31Field,
+    >>::all_supported_opcodes();
 
-    for opcode in 0u32..=0x7f {
-        for funct3 in 0u32..=0x7 {
-            for funct7 in 0u32..=0x7f {
-                let encoded = opcode | (funct3 << 12) | (funct7 << 25);
-                if let Ok(data) = decoder.define_decoder_subspace(encoded) {
-                    let mask = data.data.opcode_family_bits;
-                    if (mask & csr_major_bit) == 0 {
-                        masks.insert(mask);
+    let major_key_offset = 3usize;
+    let minor_key_offset = major_key_offset + all_keys.num_major_keys();
+    let csr_major_bit = 1u32 << (major_key_offset + all_keys.get_major_index(&CSR_COMMON_OP_KEY));
+    let mut named_masks = BTreeMap::new();
+
+    for opcode in 0u8..=0x7f {
+        for funct3 in 0u8..=0x7 {
+            for funct7 in 0u8..=0x7f {
+                for supported_opcode in all_opcodes.iter() {
+                    if let Ok((instruction_type, major_key, minor_keys)) =
+                        supported_opcode.define_decoder_subspace(opcode, funct3, funct7)
+                    {
+                        let mut mask = 0u32;
+                        match instruction_type {
+                            InstructionType::RType
+                            | InstructionType::IType
+                            | InstructionType::JType
+                            | InstructionType::UType => mask |= 1 << 0,
+                            InstructionType::SType | InstructionType::BType => {}
+                        }
+                        match instruction_type {
+                            InstructionType::RType
+                            | InstructionType::SType
+                            | InstructionType::BType => mask |= 1 << 1,
+                            InstructionType::IType
+                            | InstructionType::UType
+                            | InstructionType::JType => {}
+                        }
+                        if instruction_type == InstructionType::BType {
+                            mask |= 1 << 2;
+                        }
+
+                        let major_index = all_keys.get_major_index(&major_key);
+                        mask |= 1u32 << (major_key_offset + major_index);
+                        for minor in minor_keys.iter() {
+                            let (_, minor_index) = all_keys.get_index_set(&major_key, minor);
+                            mask |= 1u32 << (minor_key_offset + minor_index);
+                        }
+
+                        if (mask & csr_major_bit) == 0 {
+                            let label =
+                                reduced_machine_case_label(instruction_type, major_key, minor_keys);
+                            if let Some(existing) = named_masks.get(&mask) {
+                                assert_eq!(
+                                    existing, &label,
+                                    "same reduced-machine mask maps to multiple labels"
+                                );
+                            } else {
+                                named_masks.insert(mask, label);
+                            }
+                        }
+                        break;
                     }
                 }
             }
         }
     }
 
-    masks.into_iter().collect()
+    named_masks
+        .into_iter()
+        .map(|(mask, label)| (label, mask))
+        .collect()
+}
+
+#[cfg(test)]
+fn valid_reduced_machine_masks() -> Vec<u32> {
+    named_reduced_machine_masks()
+        .into_iter()
+        .map(|(_, mask)| mask)
+        .collect()
+}
+
+fn executor_machine_state<F: PrimeField>(
+    circuit_output: &CircuitOutput<F>,
+) -> OpcodeFamilyCircuitState<F> {
+    *circuit_output
+        .executor_machine_state
+        .as_ref()
+        .expect("executor machine state must be present in executor circuit")
+}
+
+fn power_of_two_bit_index(value: u64) -> Option<usize> {
+    if value != 0 && value.is_power_of_two() {
+        Some(value.trailing_zeros() as usize)
+    } else {
+        None
+    }
+}
+
+fn recover_split_bitmask_variables<F: PrimeField>(
+    circuit_output: &CircuitOutput<F>,
+    full_bitmask_var: Variable,
+    width: usize,
+) -> Vec<usize> {
+    let negative_one = F::CHARACTERISTICS - 1;
+    let mut recovered = None;
+
+    for (constraint, _) in &circuit_output.constraints {
+        let mut constraint = constraint.clone();
+        constraint.normalize();
+
+        if constraint.degree() != 1 || constraint.terms.len() != width + 1 {
+            continue;
+        }
+
+        let mut bits = vec![None; width];
+        let mut saw_full_bitmask = false;
+        let mut valid = true;
+
+        for term in &constraint.terms {
+            let Term::Expression {
+                coeff,
+                inner,
+                degree,
+            } = *term
+            else {
+                valid = false;
+                break;
+            };
+
+            if degree != 1 {
+                valid = false;
+                break;
+            }
+
+            let variable = inner[0];
+            let coeff = coeff.as_u64_reduced();
+            if variable == full_bitmask_var {
+                if saw_full_bitmask || coeff != negative_one {
+                    valid = false;
+                    break;
+                }
+                saw_full_bitmask = true;
+            } else if let Some(bit_idx) = power_of_two_bit_index(coeff) {
+                if bit_idx >= width || bits[bit_idx].is_some() {
+                    valid = false;
+                    break;
+                }
+                bits[bit_idx] = Some(variable.0 as usize);
+            } else {
+                valid = false;
+                break;
+            }
+        }
+
+        if valid && saw_full_bitmask && bits.iter().all(Option::is_some) {
+            let bits: Vec<_> = bits.into_iter().map(Option::unwrap).collect();
+            if let Some(existing) = &recovered {
+                assert_eq!(
+                    existing, &bits,
+                    "found multiple inconsistent bitmask decompositions for variable {:?}",
+                    full_bitmask_var
+                );
+            }
+            recovered = Some(bits);
+        }
+    }
+
+    recovered.unwrap_or_else(|| {
+        panic!(
+            "failed to recover {}-bit decomposition for variable {:?}",
+            width, full_bitmask_var
+        )
+    })
+}
+
+fn recover_direct_mask_variable(circuit_output: &CircuitOutput<Mersenne31Field>) -> usize {
+    executor_machine_state(circuit_output)
+        .decoder_data
+        .circuit_family_extra_mask
+        .0 as usize
 }
 
 fn variable_to_picus_expr(var: Variable) -> PicusExpr {
@@ -446,7 +719,8 @@ fn register_as_inputs(reg: Register<Mersenne31Field>) -> Vec<PicusExpr> {
 }
 
 fn word_pairs_to_picus_exprs(words: &[[Variable; 2]]) -> Vec<PicusExpr> {
-    words.iter()
+    words
+        .iter()
         .flat_map(|word| word.iter().copied().map(variable_to_picus_expr))
         .collect()
 }
@@ -489,7 +763,7 @@ fn materialize_constraint_output<CS: Circuit<Mersenne31Field>>(
         cs.add_constraint_allow_explicit_linear(Constraint::from(var) - constraint);
         cs.add_picus_parallel_constraint(CircuitPicusStructuredConstraint::Eq {
             lhs: CircuitPicusExpr::Variable(var),
-            rhs: crate::cs::circuit::picus_expr_from_constraint(&parallel_constraint),
+            rhs: cs::cs::circuit::picus_expr_from_constraint(&parallel_constraint),
         });
     }
 
@@ -565,8 +839,8 @@ fn build_binary_like_decoder_output<CS: Circuit<Mersenne31Field>>(
 ) -> BasicDecodingResultWithSigns<Mersenne31Field> {
     BasicDecodingResultWithSigns {
         pc_next: Register::new_from_constant(0),
-        src1: crate::types::RegisterDecompositionWithSign::parse_reg(cs, rs1),
-        src2: crate::types::RegisterDecompositionWithSign::parse_reg(cs, rs2),
+        src1: cs::types::RegisterDecompositionWithSign::parse_reg(cs, rs1),
+        src2: cs::types::RegisterDecompositionWithSign::parse_reg(cs, rs2),
         imm,
         rs2_index: Constraint::from(0u64),
         funct3,
@@ -677,7 +951,7 @@ fn build_auipc_harness() -> StandaloneHarness {
     let decoder_output =
         build_binary_like_decoder_output(&mut cs, zero, zero_reg, imm, zero_funct3);
     let initial_state = MinimalStateRegistersInMemory { pc };
-    let pc_next = crate::machine::utils::calculate_pc_next_no_overflows(&mut cs, pc);
+    let pc_next = cs::machine::utils::calculate_pc_next_no_overflows(&mut cs, pc);
     let flags = ExplicitFlagSource::new(false_flag).with_major(AUIPC_OP_KEY, true_flag);
     let mut opt_ctx = OptimizationContext::<Mersenne31Field, _>::new();
     let diffs = AuiPc::apply::<_, true, false>(
@@ -903,18 +1177,19 @@ fn build_conditional_harness() -> StandaloneHarness {
             + (CircuitPicusExpr::Constant(Mersenne31Field::from_u64_unchecked(4))
                 * CircuitPicusExpr::Variable(funct3_bit2_var)),
     });
-    let pc_next = crate::machine::utils::calculate_pc_next_no_overflows(&mut cs, pc);
+    let pc_next = cs::machine::utils::calculate_pc_next_no_overflows(&mut cs, pc);
     let decoder_output = BasicDecodingResultWithSigns {
         pc_next,
-        src1: crate::types::RegisterDecompositionWithSign::parse_reg(&mut cs, rs1),
-        src2: crate::types::RegisterDecompositionWithSign::parse_reg(&mut cs, rs2),
+        src1: cs::types::RegisterDecompositionWithSign::parse_reg(&mut cs, rs1),
+        src2: cs::types::RegisterDecompositionWithSign::parse_reg(&mut cs, rs2),
         imm,
         rs2_index: Constraint::from(0u64),
         funct3,
         funct12: Constraint::from(0u64),
     };
     let initial_state = MinimalStateRegistersInMemory { pc };
-    let flags = ExplicitFlagSource::new(false_flag).with_major(CONDITIONAL_COMMON_OP_KEY, true_flag);
+    let flags =
+        ExplicitFlagSource::new(false_flag).with_major(CONDITIONAL_COMMON_OP_KEY, true_flag);
     let mut opt_ctx = OptimizationContext::<Mersenne31Field, _>::new();
     let diffs = ConditionalOp::<true>::apply::<_, true, false>(
         &mut cs,
@@ -963,11 +1238,11 @@ fn build_jump_harness<const ASSUME_TRUSTED_CODE: bool>() -> StandaloneHarness {
     let imm = Register::new(&mut cs);
     let zero_reg = fixed_register(&mut cs, 0);
     let zero_funct3 = fixed_num(&mut cs, 0);
-    let pc_next = crate::machine::utils::calculate_pc_next_no_overflows(&mut cs, pc);
+    let pc_next = cs::machine::utils::calculate_pc_next_no_overflows(&mut cs, pc);
     let decoder_output = BasicDecodingResultWithSigns {
         pc_next,
-        src1: crate::types::RegisterDecompositionWithSign::parse_reg(&mut cs, rs1),
-        src2: crate::types::RegisterDecompositionWithSign::parse_reg(&mut cs, zero_reg),
+        src1: cs::types::RegisterDecompositionWithSign::parse_reg(&mut cs, rs1),
+        src2: cs::types::RegisterDecompositionWithSign::parse_reg(&mut cs, zero_reg),
         imm,
         rs2_index: Constraint::from(0u64),
         funct3: zero_funct3,
@@ -1292,12 +1567,10 @@ fn circuit_picus_constraint_to_pcl_constraint<F: PrimeField>(
     }
 }
 
-fn lookup_input_to_picus_expr<F: PrimeField>(
-    input: &crate::definitions::LookupInput<F>,
-) -> PicusExpr {
+fn lookup_input_to_picus_expr<F: PrimeField>(input: &cs::definitions::LookupInput<F>) -> PicusExpr {
     match input {
-        crate::definitions::LookupInput::Variable(variable) => variable_to_picus_expr(*variable),
-        crate::definitions::LookupInput::Expression {
+        cs::definitions::LookupInput::Variable(variable) => variable_to_picus_expr(*variable),
+        cs::definitions::LookupInput::Expression {
             linear_terms,
             constant_coeff,
         } => linear_terms.iter().fold(
@@ -1471,9 +1744,17 @@ pub fn circuit_output_to_picus_program<F: PrimeField>(
     );
     let mut modules = BTreeMap::new();
     if let Some(specialization) = specialization {
-        for env in specialization.assignments.iter() {
-            let specialized = module.partial_eval(env);
-            modules.insert(specialized.name.clone(), specialized);
+        for case in specialization.cases.iter() {
+            let mut specialized = module.partial_eval(&case.assignments);
+            if let Some(name_suffix) = &case.name_suffix {
+                specialized.name = format!("{}_{}", module_name, name_suffix);
+            }
+            let previous = modules.insert(specialized.name.clone(), specialized);
+            assert!(
+                previous.is_none(),
+                "duplicate specialized module name emitted for {}",
+                module_name
+            );
         }
     } else {
         modules.insert(module_name, module);
@@ -1488,8 +1769,8 @@ pub fn circuit_output_to_picus_program<F: PrimeField>(
 ///
 /// This is factored over `CS` so the exact same harness can be instantiated in two modes:
 /// - `BasicAssembly`, which produces the finalized `CircuitOutput` used by Picus and LLZK; and
-/// - `BasicAssembly<_, WitnessGraphCreator<_>>`, which records the SSA witness graph used for
-///   LLZK `@compute` lowering.
+/// - `BasicAssembly<_, WitnessGraphCreator<_>>`, which records the SSA witness graph used for LLZK
+///   `@compute` lowering.
 ///
 /// Keeping the harness body in one place avoids drift between the finalized logical circuit and
 /// the witness-graph extraction path. The split wrapper functions below only add the mode-specific
@@ -1528,12 +1809,12 @@ fn build_optimized_decoder_circuit_output_with_cs<CS: Circuit<Mersenne31Field>>(
     };
     let rs2_var = cs.add_variable_from_constraint_allow_explicit_linear(decoder_output.rs2.clone());
     cs.add_picus_parallel_constraint(CircuitPicusStructuredConstraint::Eq {
-        lhs: crate::cs::circuit::picus_expr_from_constraint(&decoder_output.rs2),
+        lhs: cs::cs::circuit::picus_expr_from_constraint(&decoder_output.rs2),
         rhs: CircuitPicusExpr::Variable(rs2_var),
     });
     let rd_var = cs.add_variable_from_constraint_allow_explicit_linear(decoder_output.rd.clone());
     cs.add_picus_parallel_constraint(CircuitPicusStructuredConstraint::Eq {
-        lhs: crate::cs::circuit::picus_expr_from_constraint(&decoder_output.rd),
+        lhs: cs::cs::circuit::picus_expr_from_constraint(&decoder_output.rd),
         rhs: CircuitPicusExpr::Variable(rd_var),
     });
     let imm_low_var = match decoder_output.imm.0[0] {
@@ -1551,13 +1832,13 @@ fn build_optimized_decoder_circuit_output_with_cs<CS: Circuit<Mersenne31Field>>(
     let funct7_var =
         cs.add_variable_from_constraint_allow_explicit_linear(decoder_output.funct7.clone());
     cs.add_picus_parallel_constraint(CircuitPicusStructuredConstraint::Eq {
-        lhs: crate::cs::circuit::picus_expr_from_constraint(&decoder_output.funct7),
+        lhs: cs::cs::circuit::picus_expr_from_constraint(&decoder_output.funct7),
         rhs: CircuitPicusExpr::Variable(funct7_var),
     });
     let funct12_var =
         cs.add_variable_from_constraint_allow_explicit_linear(decoder_output.funct12.clone());
     cs.add_picus_parallel_constraint(CircuitPicusStructuredConstraint::Eq {
-        lhs: crate::cs::circuit::picus_expr_from_constraint(&decoder_output.funct12),
+        lhs: cs::cs::circuit::picus_expr_from_constraint(&decoder_output.funct12),
         rhs: CircuitPicusExpr::Variable(funct12_var),
     });
     (
@@ -1641,8 +1922,7 @@ pub fn build_optimized_decoder_picus_program(enable_parallel_constraints: bool) 
 ///
 /// This helper reuses [`build_optimized_decoder_circuit_output_with_cs`] so the SSA graph is
 /// extracted from the exact same harness that produces the finalized logical circuit.
-pub fn dump_optimized_decoder_witness_eval_form(
-) -> Vec<Vec<RawExpression<Mersenne31Field>>> {
+pub fn dump_optimized_decoder_witness_eval_form() -> Vec<Vec<RawExpression<Mersenne31Field>>> {
     let mut cs = BasicAssembly::<Mersenne31Field, WitnessGraphCreator<Mersenne31Field>>::new();
     cs.witness_placer = Some(WitnessGraphCreator::<Mersenne31Field>::new());
     let (instruction, _invalid_opcode_var, _outputs) =
@@ -1656,7 +1936,7 @@ pub fn dump_optimized_decoder_witness_eval_form(
             Mersenne31Field,
             WitnessGraphCreator<Mersenne31Field>,
         > as Circuit<Mersenne31Field>>::WitnessPlacer| {
-            use crate::cs::witness_placer::WitnessPlacer;
+            use cs::cs::witness_placer::WitnessPlacer;
 
             for variable in instruction_vars {
                 placer.assume_assigned(variable);
@@ -1755,127 +2035,78 @@ pub fn build_add_sub_lui_auipc_mop_circuit_output() -> CircuitOutput<Mersenne31F
     circuit_output
 }
 
-pub fn build_add_sub_lui_auipc_mop_circuit_output_with_decoded_bits() -> (
-    CircuitOutput<Mersenne31Field>,
-    OpcodeFamilyCircuitState<Mersenne31Field>,
-    [usize; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS],
-) {
-    let mut cs = BasicAssembly::<Mersenne31Field>::new();
-    add_sub_lui_auipc_mop_table_addition_fn(&mut cs);
-    let (input, decoded_mask_bits) =
-        add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_and_decoded_bits(&mut cs);
-    let (circuit_output, _) = cs.finalize();
-    (
-        circuit_output,
-        input,
-        decoded_mask_bits.map(|v| v.0 as usize),
-    )
-}
-
-pub fn build_jump_branch_slt_mop_circuit_output_with_decoded_bits() -> (
-    CircuitOutput<Mersenne31Field>,
-    OpcodeFamilyCircuitState<Mersenne31Field>,
-    [usize; JUMP_SLT_BRANCH_FAMILY_NUM_BITS],
-) {
+fn build_jump_branch_slt_mop_circuit_output() -> CircuitOutput<Mersenne31Field> {
     let mut cs = BasicAssembly::<Mersenne31Field>::new();
     jump_branch_slt_table_addition_fn(&mut cs);
-    let (input, decoded_mask_bits) =
-        jump_branch_slt_circuit_with_preprocessed_bytecode_with_decoded_bits::<_, _, true>(&mut cs);
+    jump_branch_slt_circuit_with_preprocessed_bytecode::<_, _, true>(&mut cs);
     let (circuit_output, _) = cs.finalize();
-    (
-        circuit_output,
-        input,
-        decoded_mask_bits.map(|v| v.0 as usize),
-    )
+    circuit_output
 }
 
-pub fn build_load_store_subword_only_circuit_output_with_decoded_bits() -> (
-    CircuitOutput<Mersenne31Field>,
-    OpcodeFamilyCircuitState<Mersenne31Field>,
-    [usize; SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS],
-) {
+fn build_load_store_subword_only_circuit_output() -> CircuitOutput<Mersenne31Field> {
     let mut cs = BasicAssembly::<Mersenne31Field>::new();
     subword_only_load_store_table_addition_fn(&mut cs);
-    let (input, decoded_mask_bits) =
-        subword_only_load_store_circuit_with_preprocessed_bytecode_with_decoded_bits::<
-            _,
-            _,
-            { common_constants::ROM_SECOND_WORD_BITS },
-        >(&mut cs);
+    let extra_tables =
+        create_load_store_special_tables::<_, { common_constants::ROM_SECOND_WORD_BITS }>(&[]);
+    for (table_type, table) in extra_tables {
+        cs.add_table_with_content(table_type, table);
+    }
+    subword_only_load_store_circuit_with_preprocessed_bytecode::<
+        _,
+        _,
+        { common_constants::ROM_SECOND_WORD_BITS },
+    >(&mut cs);
     let (circuit_output, _) = cs.finalize();
-    (
-        circuit_output,
-        input,
-        decoded_mask_bits.map(|v| v.0 as usize),
-    )
+    circuit_output
 }
 
-pub fn build_load_store_circuit_output_with_decoded_bits() -> (
-    CircuitOutput<Mersenne31Field>,
-    OpcodeFamilyCircuitState<Mersenne31Field>,
-    [usize; MEMORY_FAMILY_NUM_FLAGS],
-) {
+#[cfg(test)]
+fn build_load_store_word_only_circuit_output() -> CircuitOutput<Mersenne31Field> {
+    let mut cs = BasicAssembly::<Mersenne31Field>::new();
+    word_only_load_store_table_addition_fn(&mut cs);
+    let extra_tables = create_word_only_load_store_special_tables::<
+        _,
+        { common_constants::ROM_SECOND_WORD_BITS },
+    >(&[]);
+    for (table_type, table) in extra_tables {
+        cs.add_table_with_content(table_type, table);
+    }
+    word_only_load_store_circuit_with_preprocessed_bytecode::<
+        _,
+        _,
+        { common_constants::ROM_SECOND_WORD_BITS },
+    >(&mut cs);
+    let (circuit_output, _) = cs.finalize();
+    circuit_output
+}
+
+fn build_load_store_circuit_output() -> CircuitOutput<Mersenne31Field> {
     let mut cs = BasicAssembly::<Mersenne31Field>::new();
     load_store_table_addition_fn(&mut cs);
-    let (input, decoded_mask_bits) =
-        load_store_circuit_with_preprocessed_bytecode_with_decoded_bits::<
-            _,
-            _,
-            { common_constants::ROM_SECOND_WORD_BITS },
-        >(&mut cs);
+    let extra_tables =
+        create_load_store_special_tables::<_, { common_constants::ROM_SECOND_WORD_BITS }>(&[]);
+    for (table_type, table) in extra_tables {
+        cs.add_table_with_content(table_type, table);
+    }
+    load_store_circuit_with_preprocessed_bytecode::<_, _, { common_constants::ROM_SECOND_WORD_BITS }>(
+        &mut cs,
+    );
     let (circuit_output, _) = cs.finalize();
-    (
-        circuit_output,
-        input,
-        decoded_mask_bits.map(|v| v.0 as usize),
-    )
+    circuit_output
 }
 
-pub fn build_mul_div_circuit_output_with_decoded_bits() -> (
-    CircuitOutput<Mersenne31Field>,
-    OpcodeFamilyCircuitState<Mersenne31Field>,
-    [usize; MUL_DIV_FAMILY_NUM_FLAGS],
-) {
-    build_mul_div_circuit_output_with_decoded_bits_and_parallel_constraints::<true>(true)
-}
-
-pub fn build_mul_div_unsigned_only_circuit_output_with_decoded_bits() -> (
-    CircuitOutput<Mersenne31Field>,
-    OpcodeFamilyCircuitState<Mersenne31Field>,
-    [usize; MUL_DIV_FAMILY_NUM_FLAGS],
-) {
-    build_mul_div_circuit_output_with_decoded_bits_and_parallel_constraints::<false>(true)
-}
-
-pub fn build_mul_div_circuit_output_with_decoded_bits_and_parallel_constraints<
-    const SUPPORT_SIGNED: bool,
->(
+fn build_mul_div_circuit_output<const SUPPORT_SIGNED: bool>(
     enable_parallel_constraints: bool,
-) -> (
-    CircuitOutput<Mersenne31Field>,
-    OpcodeFamilyCircuitState<Mersenne31Field>,
-    [usize; MUL_DIV_FAMILY_NUM_FLAGS],
-) {
+) -> CircuitOutput<Mersenne31Field> {
     let mut cs = BasicAssembly::<Mersenne31Field>::new();
     cs.set_picus_parallel_constraints_enabled(enable_parallel_constraints);
     mul_div_table_addition_fn(&mut cs);
-    let (input, decoded_mask_bits) =
-        mul_div_circuit_with_preprocessed_bytecode_with_decoded_bits::<_, _, SUPPORT_SIGNED>(
-            &mut cs,
-        );
+    mul_div_circuit_with_preprocessed_bytecode::<_, _, SUPPORT_SIGNED>(&mut cs);
     let (circuit_output, _) = cs.finalize();
-    (
-        circuit_output,
-        input,
-        decoded_mask_bits.map(|v| v.0 as usize),
-    )
+    circuit_output
 }
 
-pub fn build_shift_binop_csrrw_circuit_output_with_decoded_bits() -> (
-    CircuitOutput<Mersenne31Field>,
-    OpcodeFamilyCircuitState<Mersenne31Field>,
-    [usize; SHIFT_BINARY_CSRRW_FAMILY_NUM_FLAGS],
-) {
+fn build_shift_binop_csrrw_circuit_output() -> CircuitOutput<Mersenne31Field> {
     let mut cs = BasicAssembly::<Mersenne31Field>::new();
     shift_binop_csrrw_table_addition_fn(&mut cs);
     let csr_table = create_csr_table_for_delegation::<Mersenne31Field>(
@@ -1887,21 +2118,12 @@ pub fn build_shift_binop_csrrw_circuit_output_with_decoded_bits() -> (
         TableType::SpecialCSRProperties,
         LookupWrapper::Dimensional3(csr_table),
     );
-    let (input, decoded_mask_bits) =
-        shift_binop_csrrw_circuit_with_preprocessed_bytecode_with_decoded_bits(&mut cs);
+    shift_binop_csrrw_circuit_with_preprocessed_bytecode(&mut cs);
     let (circuit_output, _) = cs.finalize();
-    (
-        circuit_output,
-        input,
-        decoded_mask_bits.map(|v| v.0 as usize),
-    )
+    circuit_output
 }
 
-pub fn build_reduced_machine_circuit_output_with_decoded_bits() -> (
-    CircuitOutput<Mersenne31Field>,
-    OpcodeFamilyCircuitState<Mersenne31Field>,
-    [usize; REDUCED_MACHINE_NUM_FLAGS],
-) {
+fn build_reduced_machine_circuit_output() -> CircuitOutput<Mersenne31Field> {
     let mut cs = BasicAssembly::<Mersenne31Field>::new();
     reduced_machine_table_addition_fn(&mut cs);
     let extra_tables = create_reduced_machine_special_tables::<
@@ -1911,24 +2133,170 @@ pub fn build_reduced_machine_circuit_output_with_decoded_bits() -> (
     for (table_type, table) in extra_tables {
         cs.add_table_with_content(table_type, table);
     }
-    let (input, decoded_mask_bits) =
-        reduced_machine_circuit_with_preprocessed_bytecode_with_decoded_bits::<
-            _,
-            _,
-            { common_constants::ROM_SECOND_WORD_BITS },
-        >(&mut cs);
+    reduced_machine_circuit_with_preprocessed_bytecode::<
+        _,
+        _,
+        { common_constants::ROM_SECOND_WORD_BITS },
+    >(&mut cs);
     let (circuit_output, _) = cs.finalize();
+    circuit_output
+}
+
+pub fn build_add_sub_lui_auipc_mop_circuit_output_with_decoded_bits() -> (
+    CircuitOutput<Mersenne31Field>,
+    OpcodeFamilyCircuitState<Mersenne31Field>,
+    [usize; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS],
+) {
+    let circuit_output = build_add_sub_lui_auipc_mop_circuit_output();
+    let input = executor_machine_state(&circuit_output);
+    let decoded_mask_bits = recover_split_bitmask_variables(
+        &circuit_output,
+        input.decoder_data.circuit_family_extra_mask,
+        ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS,
+    );
     (
         circuit_output,
         input,
-        decoded_mask_bits.map(|v| v.0 as usize),
+        decoded_mask_bits
+            .try_into()
+            .expect("add/sub/lui/auipc/mop decomposition must have the expected width"),
+    )
+}
+
+pub fn build_jump_branch_slt_mop_circuit_output_with_decoded_bits() -> (
+    CircuitOutput<Mersenne31Field>,
+    OpcodeFamilyCircuitState<Mersenne31Field>,
+    [usize; JUMP_SLT_BRANCH_FAMILY_NUM_BITS],
+) {
+    let circuit_output = build_jump_branch_slt_mop_circuit_output();
+    let input = executor_machine_state(&circuit_output);
+    let decoded_mask_bits = recover_split_bitmask_variables(
+        &circuit_output,
+        input.decoder_data.circuit_family_extra_mask,
+        JUMP_SLT_BRANCH_FAMILY_NUM_BITS,
+    );
+    (
+        circuit_output,
+        input,
+        decoded_mask_bits
+            .try_into()
+            .expect("jump/branch/slt decomposition must have the expected width"),
+    )
+}
+
+pub fn build_load_store_subword_only_circuit_output_with_decoded_bits() -> (
+    CircuitOutput<Mersenne31Field>,
+    OpcodeFamilyCircuitState<Mersenne31Field>,
+    [usize; SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS],
+) {
+    let circuit_output = build_load_store_subword_only_circuit_output();
+    let input = executor_machine_state(&circuit_output);
+    let decoded_mask_bit = recover_direct_mask_variable(&circuit_output);
+    (circuit_output, input, [decoded_mask_bit])
+}
+
+pub fn build_load_store_circuit_output_with_decoded_bits() -> (
+    CircuitOutput<Mersenne31Field>,
+    OpcodeFamilyCircuitState<Mersenne31Field>,
+    [usize; MEMORY_FAMILY_NUM_FLAGS],
+) {
+    let circuit_output = build_load_store_circuit_output();
+    let input = executor_machine_state(&circuit_output);
+    let decoded_mask_bit = recover_direct_mask_variable(&circuit_output);
+    (circuit_output, input, [decoded_mask_bit])
+}
+
+pub fn build_mul_div_circuit_output_with_decoded_bits() -> (
+    CircuitOutput<Mersenne31Field>,
+    OpcodeFamilyCircuitState<Mersenne31Field>,
+    Vec<usize>,
+) {
+    build_mul_div_circuit_output_with_decoded_bits_and_parallel_constraints::<true>(true)
+}
+
+pub fn build_mul_div_unsigned_only_circuit_output_with_decoded_bits() -> (
+    CircuitOutput<Mersenne31Field>,
+    OpcodeFamilyCircuitState<Mersenne31Field>,
+    Vec<usize>,
+) {
+    build_mul_div_circuit_output_with_decoded_bits_and_parallel_constraints::<false>(true)
+}
+
+pub fn build_mul_div_circuit_output_with_decoded_bits_and_parallel_constraints<
+    const SUPPORT_SIGNED: bool,
+>(
+    enable_parallel_constraints: bool,
+) -> (
+    CircuitOutput<Mersenne31Field>,
+    OpcodeFamilyCircuitState<Mersenne31Field>,
+    Vec<usize>,
+) {
+    let circuit_output =
+        build_mul_div_circuit_output::<SUPPORT_SIGNED>(enable_parallel_constraints);
+    let input = executor_machine_state(&circuit_output);
+    let decoded_mask_bits = recover_split_bitmask_variables(
+        &circuit_output,
+        input.decoder_data.circuit_family_extra_mask,
+        if SUPPORT_SIGNED {
+            MUL_DIV_FAMILY_NUM_FLAGS
+        } else {
+            2
+        },
+    );
+    (circuit_output, input, decoded_mask_bits)
+}
+
+pub fn build_shift_binop_csrrw_circuit_output_with_decoded_bits() -> (
+    CircuitOutput<Mersenne31Field>,
+    OpcodeFamilyCircuitState<Mersenne31Field>,
+    [usize; SHIFT_BINARY_CSRRW_FAMILY_NUM_FLAGS],
+) {
+    let circuit_output = build_shift_binop_csrrw_circuit_output();
+    let input = executor_machine_state(&circuit_output);
+    let decoded_mask_bits = recover_split_bitmask_variables(
+        &circuit_output,
+        input.decoder_data.circuit_family_extra_mask,
+        SHIFT_BINARY_CSRRW_FAMILY_NUM_FLAGS,
+    );
+    (
+        circuit_output,
+        input,
+        decoded_mask_bits
+            .try_into()
+            .expect("shift/binop/csrrw decomposition must have the expected width"),
+    )
+}
+
+pub fn build_reduced_machine_circuit_output_with_decoded_bits() -> (
+    CircuitOutput<Mersenne31Field>,
+    OpcodeFamilyCircuitState<Mersenne31Field>,
+    [usize; REDUCED_MACHINE_NUM_FLAGS],
+) {
+    let circuit_output = build_reduced_machine_circuit_output();
+    let input = executor_machine_state(&circuit_output);
+    let decoded_mask_bits = recover_split_bitmask_variables(
+        &circuit_output,
+        input.decoder_data.circuit_family_extra_mask,
+        REDUCED_MACHINE_NUM_FLAGS,
+    );
+    (
+        circuit_output,
+        input,
+        decoded_mask_bits
+            .try_into()
+            .expect("reduced-machine decomposition must have the expected width"),
     )
 }
 
 pub fn build_add_sub_lui_auipc_mop_picus_program() -> PicusProgram {
     let (circuit_output, input, decoded_bits) =
         build_add_sub_lui_auipc_mop_circuit_output_with_decoded_bits();
-    let specialization = specialization_for_flat_one_hot(decoded_bits.as_slice());
+    let specialization = specialization_for_flat_one_hot_named(
+        decoded_bits.as_slice(),
+        &[
+            "add", "addi", "sub", "lui", "auipc", "addmod", "submod", "mulmod",
+        ],
+    );
     circuit_output_to_picus_program(
         "add_sub_lui_auipc_mop",
         &circuit_output,
@@ -2001,7 +2369,10 @@ pub fn build_mul_op_unsigned_only_picus_program() -> PicusProgram {
 }
 
 pub fn build_divrem_op_signed_picus_program() -> PicusProgram {
-    build_standalone_program("divrem_op_signed", build_divrem_harness(DivRemVariant::Signed))
+    build_standalone_program(
+        "divrem_op_signed",
+        build_divrem_harness(DivRemVariant::Signed),
+    )
 }
 
 pub fn build_divrem_op_unsigned_only_picus_program() -> PicusProgram {
@@ -2070,7 +2441,7 @@ pub fn build_reduced_machine_picus_program() -> PicusProgram {
     let (circuit_output, input, decoded_bits) =
         build_reduced_machine_circuit_output_with_decoded_bits();
     let specialization = specialization_with_fixed_assignment(
-        specialization_from_valid_bitmasks(decoded_bits.as_slice(), valid_reduced_machine_masks()),
+        specialization_from_named_bitmasks(decoded_bits.as_slice(), named_reduced_machine_masks()),
         input.execute.0 as usize,
         1,
     );
@@ -2084,7 +2455,8 @@ pub fn build_reduced_machine_picus_program() -> PicusProgram {
 
 pub fn build_blake2_with_extended_control_delegation_picus_program() -> PicusProgram {
     let mut cs = BasicAssembly::<Mersenne31Field>::new();
-    let (_, _, metadata) = define_blake2_with_extended_control_delegation_circuit_with_metadata(&mut cs);
+    let (_, _, metadata) =
+        define_blake2_with_extended_control_delegation_circuit_with_metadata(&mut cs);
     let (circuit_output, _) = cs.finalize();
 
     let Blake2WithExtendedControlDelegationPicusMetadata {
@@ -2124,7 +2496,8 @@ pub fn build_blake2_with_extended_control_delegation_picus_program() -> PicusPro
 
 pub fn build_bigint_with_control_delegation_picus_program() -> PicusProgram {
     let mut cs = BasicAssembly::<Mersenne31Field>::new();
-    let (_, _, metadata) = define_u256_ops_extended_control_delegation_circuit_with_metadata(&mut cs);
+    let (_, _, metadata) =
+        define_u256_ops_extended_control_delegation_circuit_with_metadata(&mut cs);
     let (circuit_output, _) = cs.finalize();
 
     let BigintDelegationPicusMetadata {
@@ -2161,7 +2534,8 @@ pub fn build_bigint_with_control_delegation_picus_program() -> PicusProgram {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, path::PathBuf};
+    use std::fs;
+    use std::path::PathBuf;
 
     fn write_extracted_program(test_name: &str, dumped: &str) {
         let mut out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -2243,7 +2617,12 @@ mod tests {
     fn add_sub_lui_auipc_mop_one_hot_specialization_emits_one_module_per_bit() {
         let (circuit_output, input, decoded_bits) =
             build_add_sub_lui_auipc_mop_circuit_output_with_decoded_bits();
-        let specialization = specialization_for_flat_one_hot(decoded_bits.as_slice());
+        let specialization = specialization_for_flat_one_hot_named(
+            decoded_bits.as_slice(),
+            &[
+                "add", "addi", "sub", "lui", "auipc", "addmod", "submod", "mulmod",
+            ],
+        );
         let program = circuit_output_to_picus_program(
             "add_sub_lui_auipc_mop",
             &circuit_output,
@@ -2260,7 +2639,10 @@ mod tests {
     fn jump_branch_slt_one_hot_specialization_emits_one_module_per_bit() {
         let (circuit_output, input, decoded_bits) =
             build_jump_branch_slt_mop_circuit_output_with_decoded_bits();
-        let specialization = specialization_for_flat_one_hot(decoded_bits.as_slice());
+        let specialization = specialization_for_flat_one_hot_named(
+            decoded_bits.as_slice(),
+            &["branch", "slti", "slt", "jal", "jalr"],
+        );
         let program = circuit_output_to_picus_program(
             "jump_branch_slt",
             &circuit_output,
@@ -2275,7 +2657,7 @@ mod tests {
     fn load_store_subword_only_one_hot_specialization_emits_one_module_per_bit() {
         let (circuit_output, input, decoded_bits) =
             build_load_store_subword_only_circuit_output_with_decoded_bits();
-        let specialization = specialization_for_single_bit(decoded_bits[0]);
+        let specialization = specialization_for_single_bit_named(decoded_bits[0], "load", "store");
         let program = circuit_output_to_picus_program(
             "load_store_subword_only",
             &circuit_output,
@@ -2288,9 +2670,13 @@ mod tests {
 
     #[test]
     fn load_store_word_only_one_hot_specialization_emits_one_module_per_bit() {
-        let (circuit_output, input, decoded_bits) =
-            build_load_store_subword_only_circuit_output_with_decoded_bits();
-        let specialization = specialization_for_single_bit(decoded_bits[0]);
+        let (circuit_output, input, decoded_bits) = {
+            let circuit_output = build_load_store_word_only_circuit_output();
+            let input = executor_machine_state(&circuit_output);
+            let decoded_mask_bit = recover_direct_mask_variable(&circuit_output);
+            (circuit_output, input, [decoded_mask_bit])
+        };
+        let specialization = specialization_for_single_bit_named(decoded_bits[0], "load", "store");
         let program = circuit_output_to_picus_program(
             "load_store_word_only",
             &circuit_output,
@@ -2305,7 +2691,7 @@ mod tests {
     fn load_store_one_hot_specialization_emits_one_module_per_bit() {
         let (circuit_output, input, decoded_bits) =
             build_load_store_circuit_output_with_decoded_bits();
-        let specialization = specialization_for_single_bit(decoded_bits[0]);
+        let specialization = specialization_for_single_bit_named(decoded_bits[0], "load", "store");
         let program = circuit_output_to_picus_program(
             "load_store",
             &circuit_output,
@@ -2372,7 +2758,10 @@ mod tests {
             build_reduced_machine_circuit_output_with_decoded_bits();
         let valid_masks = valid_reduced_machine_masks();
         let specialization = specialization_with_fixed_assignment(
-            specialization_from_valid_bitmasks(decoded_bits.as_slice(), valid_masks.clone()),
+            specialization_from_named_bitmasks(
+                decoded_bits.as_slice(),
+                named_reduced_machine_masks(),
+            ),
             input.execute.0 as usize,
             1,
         );
@@ -2410,9 +2799,9 @@ mod tests {
     fn load_store_lookup_handlers_emit_constraints() {
         let mk_row = |base: u64| {
             [
-                crate::definitions::LookupInput::Variable(Variable(base)),
-                crate::definitions::LookupInput::Variable(Variable(base + 1)),
-                crate::definitions::LookupInput::Variable(Variable(base + 2)),
+                cs::definitions::LookupInput::Variable(Variable(base)),
+                cs::definitions::LookupInput::Variable(Variable(base + 1)),
+                cs::definitions::LookupInput::Variable(Variable(base + 2)),
             ]
         };
 

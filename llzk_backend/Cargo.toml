@@ -21,6 +21,7 @@ load_store_word_only = { path = "../circuit_defs/unrolled_circuits/load_store_wo
 mul_div = { path = "../circuit_defs/unrolled_circuits/mul_div" }
 shift_binary_csr = { path = "../circuit_defs/unrolled_circuits/shift_binary_csr" }
 unified_reduced_machine = { path = "../circuit_defs/unrolled_circuits/unified_reduced_machine" }
+picus_frontend = { path = "../picus_frontend" }
 
 env_logger = "0.11"
 base64 = "0.21.7"
