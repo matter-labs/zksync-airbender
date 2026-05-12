@@ -254,7 +254,8 @@ fn apply_jump_branch_slt<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bo
     opt_ctx.restore_indexers(indexers);
     let (next_pc_for_state_t, of_t) =
         opt_ctx.append_add_relation(pc_as_reg, four_as_reg, is_sltimmediates, cs);
-    // cs.add_constraint(Constraint::from(is_sltimmediates) * Term::from(of)); // PC + 4 can overflow
+    // cs.add_constraint(Constraint::from(is_sltimmediates) * Term::from(of)); // PC + 4 can
+    // overflow
     assert_eq!(
         next_pc_for_state_t.0[0].get_variable(),
         next_pc_for_state.0[0].get_variable()
@@ -296,7 +297,8 @@ fn apply_jump_branch_slt<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bo
     let is_branches_skipped = Boolean::and(&is_branches, &Boolean::Is(flag).toggle(), cs);
     let (next_pc_for_state_t, of_t) =
         opt_ctx.append_add_relation(pc_as_reg, four_as_reg, is_branches_skipped, cs);
-    // cs.add_constraint(Constraint::from(is_branches_skipped) * Term::from(of)); // PC + 4 can overflow
+    // cs.add_constraint(Constraint::from(is_branches_skipped) * Term::from(of)); // PC + 4 can
+    // overflow
     assert_eq!(
         next_pc_for_state_t.0[0].get_variable(),
         next_pc_for_state.0[0].get_variable()
@@ -335,8 +337,8 @@ fn apply_jump_branch_slt<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bo
     debug_var_mapping("lookup.jump_cleanup.bit_1", bit_1);
     debug_var_mapping("lookup.jump_cleanup.dst_low_for_jump", dst_low_for_jump);
 
-    // unaligned jump is unprovable, and we only need to check bit number 1, as jump offset is always 0 mod 2,
-    // and PC is 0 mod 4
+    // unaligned jump is unprovable, and we only need to check bit number 1, as jump offset is
+    // always 0 mod 2, and PC is 0 mod 4
     println!("BIT_1: {bit_1:?} {is_branches_taken:?}");
     cs.add_constraint(
         (Constraint::from(is_jal) + Term::from(is_jalr) + Term::from(is_branches_taken))
@@ -431,21 +433,6 @@ pub fn jump_branch_slt_circuit_with_preprocessed_bytecode<
 ) {
     let input = cs.allocate_execution_circuit_state::<true>();
     apply_jump_branch_slt::<F, CS, SUPPORT_SIGNED>(cs, input);
-}
-
-pub fn jump_branch_slt_circuit_with_preprocessed_bytecode_with_decoded_bits<
-    F: PrimeField,
-    CS: Circuit<F>,
-    const SUPPORT_SIGNED: bool,
->(
-    cs: &mut CS,
-) -> (
-    OpcodeFamilyCircuitState<F>,
-    [Variable; crate::definitions::JUMP_SLT_BRANCH_FAMILY_NUM_BITS],
-) {
-    let input = cs.allocate_execution_circuit_state::<true>();
-    let decoded_bits = apply_jump_branch_slt::<F, CS, SUPPORT_SIGNED>(cs, input);
-    (input, decoded_bits)
 }
 
 #[cfg(test)]

@@ -2,8 +2,8 @@ use crate::cs::witness_placer::*;
 
 use super::*;
 
-// NOTE: this circuit should specify non-dummy CSR table in proving/setup. while compilation in tests
-// takes case of properly computing offsets by using dummy table
+// NOTE: this circuit should specify non-dummy CSR table in proving/setup. while compilation in
+// tests takes case of properly computing offsets by using dummy table
 
 pub fn shift_binop_csrrw_tables() -> Vec<TableType> {
     vec![
@@ -44,11 +44,17 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
     );
 
     // read inputs
-    let (rs1_reg, rs1_mem_query) =
-        get_rs1_as_shuffle_ram(cs, Num::Var(input_circuit_state.decoder_data.rs1_index), true);
+    let (rs1_reg, rs1_mem_query) = get_rs1_as_shuffle_ram(
+        cs,
+        Num::Var(input_circuit_state.decoder_data.rs1_index),
+        true,
+    );
     cs.add_shuffle_ram_query(rs1_mem_query);
-    let (rs2_reg, rs2_mem_query) =
-        get_rs2_as_shuffle_ram(cs, Num::Var(input_circuit_state.decoder_data.rs2_index), true);
+    let (rs2_reg, rs2_mem_query) = get_rs2_as_shuffle_ram(
+        cs,
+        Num::Var(input_circuit_state.decoder_data.rs2_index),
+        true,
+    );
     cs.add_shuffle_ram_query(rs2_mem_query);
     let imm_as_reg = Register::<F>(input_circuit_state.decoder_data.imm.map(|el| Num::Var(el)));
 
@@ -79,7 +85,8 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
     // for binary ops - we need to decompose inputs into bytes, so we will need 4 more variables,
     // and then we need 4 more variables for outputs of lookup
 
-    // for shifts - we need to crop shift amount to 5 bits (for simplicity we will treat it as 2 output vars), also get top bit of input word (same - we will use 2 output var),
+    // for shifts - we need to crop shift amount to 5 bits (for simplicity we will treat it as 2
+    // output vars), also get top bit of input word (same - we will use 2 output var),
     // and then 4 more variables as outputs of lookups
 
     // for csrrw - we are also fine with 8
@@ -515,12 +522,13 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
     };
 
     let (lookup_tuples_csrrw, csrrw_outs): (Vec<([LookupInput<F>; 3], Num<F>)>, _) = {
-        // we need 2 more variables that are "exclusive", as those can not be polluted by other opcode
+        // we need 2 more variables that are "exclusive", as those can not be polluted by other
+        // opcode
         let execute_delegation = cs.add_variable(); // we do not need boolean check
 
-        // cs.require_invariant(execute_delegation, Invariant::Substituted((Placeholder::ExecuteDelegation, 0)));
-        // let value_fn = move |placer: &mut CS::WitnessPlacer| {
-        //     let value =
+        // cs.require_invariant(execute_delegation,
+        // Invariant::Substituted((Placeholder::ExecuteDelegation, 0))); let value_fn = move
+        // |placer: &mut CS::WitnessPlacer| {     let value =
         //         placer.get_oracle_boolean(Placeholder::ExecuteDelegation);
         //     placer.assign_mask(execute_delegation, &value);
         // };
@@ -528,9 +536,9 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
 
         let delegation_type = cs.add_variable(); // we also do not need to perform range checks
 
-        // cs.require_invariant(delegation_type, Invariant::Substituted((Placeholder::DelegationType, 0)));
-        // let value_fn = move |placer: &mut CS::WitnessPlacer| {
-        //     let value =
+        // cs.require_invariant(delegation_type,
+        // Invariant::Substituted((Placeholder::DelegationType, 0))); let value_fn = move
+        // |placer: &mut CS::WitnessPlacer| {     let value =
         //         placer.get_oracle_u16(Placeholder::DelegationType);
         //     placer.assign_u16(delegation_type, &value);
         // };
@@ -557,9 +565,10 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
             TableType::SpecialCSRProperties.to_num(),
             is_csrrw,
         );
-        // panic if CSR is not supported (even though we could make a table this way, for convenience table just spans 12 bits)
+        // panic if CSR is not supported (even though we could make a table this way, for
+        // convenience table just spans 12 bits)
         cs.add_constraint(
-            (Term::from(1)  - Term::from(is_supported_table_output)) * is_csrrw.get_terms(),
+            (Term::from(1) - Term::from(is_supported_table_output)) * is_csrrw.get_terms(),
         );
 
         let t0 = (
@@ -627,7 +636,8 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
                 &non_determinism_selected_value,
             );
 
-            // if it's CSRRW, then delegation execution is properly masked (to save constraint degree below)
+            // if it's CSRRW, then delegation execution is properly masked (to save constraint
+            // degree below)
             let is_delegaiton_masked = is_csrrw.and(&is_delegation);
             placer.assign_mask(execute_delegation, &is_delegaiton_masked);
 
@@ -673,8 +683,8 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
         // we will transpose a constraint to mask non-determinism value for simplicity,
         // and reuse the fact that `execute_delegation` is not shared
 
-        // what we want, is that if `execute_delegation` == 1, then non-determinism value is always 0
-        // (and we checked that it's valid CSR already)
+        // what we want, is that if `execute_delegation` == 1, then non-determinism value is always
+        // 0 (and we checked that it's valid CSR already)
         cs.add_constraint(
             Term::from(non_determinism_placeholder_low) * Term::from(execute_delegation),
         );
@@ -683,12 +693,14 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
         );
 
         // That constraint is enough - if it's csrrw and we execute delegation - then it's 0,
-        // if it's CSRRW and it's not a delegation - we will use oracle value directly, because it's the only case
+        // if it's CSRRW and it's not a delegation - we will use oracle value directly, because it's
+        // the only case
 
-        // And to avoid prover's possibility to set delegation to 1 when we actually do not execute on this row, check
-        // that we indeed execute
+        // And to avoid prover's possibility to set delegation to 1 when we actually do not execute
+        // on this row, check that we indeed execute
         cs.add_constraint(
-            Term::from(execute_delegation) * (Term::from(1u64) - Term::from(input_circuit_state.execute)),
+            Term::from(execute_delegation)
+                * (Term::from(1u64) - Term::from(input_circuit_state.execute)),
         );
 
         let delegation_request = DelegatedComputationRequest {
@@ -738,9 +750,10 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
 
             assert!(flags.len() > 0);
 
-            // NOTE: here we must select such that in case if particular opcode doesn't use a table all available
-            // lookups, then it would degrade to 0/0/0 case. So we select from orthogonal values, and in the worst
-            // case we will indeed get 0s everywhere
+            // NOTE: here we must select such that in case if particular opcode doesn't use a table
+            // all available lookups, then it would degrade to 0/0/0 case. So we select
+            // from orthogonal values, and in the worst case we will indeed get 0s
+            // everywhere
 
             let vars: [Num<F>; COMMON_TABLE_WIDTH] = std::array::from_fn(|i| {
                 let variants: Vec<Constraint<F>> = input_array
@@ -874,7 +887,12 @@ fn apply_shift_binop_csrrw<F: PrimeField, CS: Circuit<F>>(
     // write to PC
     bump_pc_no_range_checks_explicit(
         cs,
-        Register(input_circuit_state.cycle_start_state.pc.map(|x| Num::Var(x))),
+        Register(
+            input_circuit_state
+                .cycle_start_state
+                .pc
+                .map(|x| Num::Var(x)),
+        ),
         Register(input_circuit_state.cycle_end_state.pc.map(|x| Num::Var(x))),
     );
 
@@ -886,20 +904,6 @@ pub fn shift_binop_csrrw_circuit_with_preprocessed_bytecode<F: PrimeField, CS: C
 ) {
     let input = cs.allocate_execution_circuit_state::<true>();
     apply_shift_binop_csrrw(cs, input);
-}
-
-pub fn shift_binop_csrrw_circuit_with_preprocessed_bytecode_with_decoded_bits<
-    F: PrimeField,
-    CS: Circuit<F>,
->(
-    cs: &mut CS,
-) -> (
-    OpcodeFamilyCircuitState<F>,
-    [Variable; SHIFT_BINARY_CSRRW_FAMILY_NUM_FLAGS],
-) {
-    let input = cs.allocate_execution_circuit_state::<true>();
-    let decoded_bits = apply_shift_binop_csrrw(cs, input);
-    (input, decoded_bits)
 }
 
 #[cfg(test)]

@@ -24,7 +24,8 @@ fn apply_mul_div<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool>(
     inputs: OpcodeFamilyCircuitState<F>,
 ) -> [Variable; MUL_DIV_FAMILY_NUM_FLAGS] {
     // GET EXEC FLAGS
-    // NB: we set division to 1 s.t. default padding-mask goes to 0 and our division-exclusive traps pass quietly
+    // NB: we set division to 1 s.t. default padding-mask goes to 0 and our division-exclusive traps
+    // pass quietly
     let decoder =
         <DivMulDecoder<SUPPORT_SIGNED> as OpcodeFamilyDecoder>::BitmaskCircuitParser::parse(
             cs,
@@ -43,9 +44,9 @@ fn apply_mul_div<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool>(
         get_rs2_as_shuffle_ram(cs, Num::Var(inputs.decoder_data.rs2_index), true);
     cs.add_shuffle_ram_query(rs2_mem_query);
 
-    // 1) first we allocate the right MulDiv operation
-    //    TODO: test that the PADDING / default case (circuit_family_extra_mask == 0) always works
-    //    TODO: possibly we could build a big table to take care of all the weird bit cases across the entire circuit
+    // 1) first we allocate the right MulDiv operation TODO: test that the PADDING / default case
+    //    (circuit_family_extra_mask == 0) always works TODO: possibly we could build a big table to
+    //    take care of all the weird bit cases across the entire circuit
     let rs1_sign = if SUPPORT_SIGNED {
         let is_rs1_signed = decoder.perform_rs1_signed();
         let rs1_reg_high = rs1_reg.0[1];
@@ -355,9 +356,9 @@ fn apply_mul_div<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool>(
         }
     };
 
-    // 2) then we take care of special division traps
-    //    TODO: it's possible the second invariant would benefit from lookup table
-    //          it's also possible it would simply benefit from smarter arithmetisation instead
+    // 2) then we take care of special division traps TODO: it's possible the second invariant would
+    //    benefit from lookup table it's also possible it would simply benefit from smarter
+    //    arithmetisation instead
 
     // INVARIANT 1:     QUOT==-1        if DIVISOR == 0
     let (is_division_and_rs2_zero, is_div_and_rs2_zero_bool) = {
@@ -387,7 +388,8 @@ fn apply_mul_div<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool>(
     let is_modular_inequality = if SUPPORT_SIGNED {
         // check that modulus of remainder is less than modulus of divisor
         // we simply mask one add_sub relation based on which case we're in
-        // this only applies if the divisor is not zero!!! otherwise of course remainder will be larger
+        // this only applies if the divisor is not zero!!! otherwise of course remainder will be
+        // larger
         //
         //     remainder_sign divisor_sign
         //     0              0            -->  r <  d --> (r-d) < 0    --> condition: underflow
@@ -451,21 +453,6 @@ pub fn mul_div_circuit_with_preprocessed_bytecode<
 ) {
     let input = cs.allocate_execution_circuit_state::<true>();
     apply_mul_div::<_, _, SUPPORT_SIGNED>(cs, input);
-}
-
-pub fn mul_div_circuit_with_preprocessed_bytecode_with_decoded_bits<
-    F: PrimeField,
-    CS: Circuit<F>,
-    const SUPPORT_SIGNED: bool,
->(
-    cs: &mut CS,
-) -> (
-    OpcodeFamilyCircuitState<F>,
-    [Variable; MUL_DIV_FAMILY_NUM_FLAGS],
-) {
-    let input = cs.allocate_execution_circuit_state::<true>();
-    let decoded_bits = apply_mul_div::<_, _, SUPPORT_SIGNED>(cs, input);
-    (input, decoded_bits)
 }
 
 #[cfg(test)]

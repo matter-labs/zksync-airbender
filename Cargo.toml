@@ -6,6 +6,7 @@ members = [
     "common_constants",
     "field",
     "cs",
+    "picus_frontend",
     "prover",
     "trace_holder",
     "fft",
@@ -65,6 +66,7 @@ default-members = [
     "circuit_defs/setups",
     "circuit_defs/trace_and_split",
     "cs",
+    "picus_frontend",
     "execution_utils",
     "fft",
     "field",
@@ -117,6 +119,7 @@ test_utils = { path = "./test_utils" }
 fft = { path = "./fft" }
 prover = { path = "./prover", default-features = false }
 cs = { path = "./cs", default-features = false }
+picus_frontend = { path = "./picus_frontend" }
 transcript = { path = "./transcript", default-features = false }
 verifier_generator = { path = "./verifier_generator" }
 verifier_common = { path = "./verifier_common", default-features = false }
