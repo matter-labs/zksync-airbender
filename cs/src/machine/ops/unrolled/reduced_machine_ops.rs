@@ -7,8 +7,8 @@ pub fn reduced_machine_tables() -> Vec<TableType> {
     use crate::machine::Machine;
     use field::Mersenne31Field;
 
-    // these get dynamically allocated by instance of the circuit depending on the machine configuration
-    //      TableType::RomAddressSpaceSeparator,
+    // these get dynamically allocated by instance of the circuit depending on the machine
+    // configuration      TableType::RomAddressSpaceSeparator,
     //      TableType::RomRead,
 
     let mut result = vec![TableType::ZeroEntry, TableType::U16GetSignAndHighByte];
@@ -81,23 +81,6 @@ pub fn reduced_machine_circuit_with_preprocessed_bytecode<
 ) {
     let input = cs.allocate_execution_circuit_state::<true>();
     let _ = apply_reduced_machine_circuit::<_, _, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(cs, input);
-}
-
-pub fn reduced_machine_circuit_with_preprocessed_bytecode_with_decoded_bits<
-    F: PrimeField,
-    CS: Circuit<F>,
-    const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
->(
-    cs: &mut CS,
-) -> (
-    OpcodeFamilyCircuitState<F>,
-    [Variable; crate::definitions::REDUCED_MACHINE_NUM_FLAGS],
-) {
-    let input = cs.allocate_execution_circuit_state::<true>();
-    let decoded_mask_bits =
-        apply_reduced_machine_circuit::<_, _, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(cs, input);
-
-    (input, decoded_mask_bits)
 }
 
 fn apply_reduced_machine_circuit<
@@ -257,7 +240,8 @@ fn apply_reduced_machine_circuit<
     cs.set_log(&opt_ctx, "STORE");
 
     if PERFORM_DELEGATION == false {
-        // CSR operation must be hand implemented for most of the machines, even though we can declare support of it in the opcode
+        // CSR operation must be hand implemented for most of the machines, even though we can
+        // declare support of it in the opcode
         let application_result = apply_non_determinism_csr_only_assuming_no_unimp::<
             _,
             _,
@@ -350,8 +334,8 @@ fn get_initial_data_for_execution<F: PrimeField, CS: Circuit<F>>(
             Placeholder::ShuffleRamReadValue(0),
         );
 
-        // no range check is needed here, as our RAM is consistent by itself - our writes(!) are range-checked,
-        // so any reads will have to be range-checked
+        // no range check is needed here, as our RAM is consistent by itself - our writes(!) are
+        // range-checked, so any reads will have to be range-checked
         let value = Register::new_unchecked_from_placeholder(cs, placeholder);
 
         // registers live in their separate address space
@@ -382,8 +366,8 @@ fn get_initial_data_for_execution<F: PrimeField, CS: Circuit<F>>(
         value
     };
 
-    // RS2 is merged with mem LOAD, and it's always placed into memory columns, so we can just allocate is_register as non-determinate placeholder,
-    // and then modify
+    // RS2 is merged with mem LOAD, and it's always placed into memory columns, so we can just
+    // allocate is_register as non-determinate placeholder, and then modify
     let rs2_value_if_register = {
         // NOTE: since we use a value from read set, it means we do not need range check
         let (local_timestamp_in_cycle, placeholder) = (
@@ -391,8 +375,8 @@ fn get_initial_data_for_execution<F: PrimeField, CS: Circuit<F>>(
             Placeholder::ShuffleRamReadValue(1),
         );
 
-        // no range check is needed here, as our RAM is consistent by itself - our writes(!) are range-checked,
-        // so any reads will have to be range-checked
+        // no range check is needed here, as our RAM is consistent by itself - our writes(!) are
+        // range-checked, so any reads will have to be range-checked
         let value = Register::new_unchecked_from_placeholder(cs, placeholder);
         let read_address =
             Register::new_unchecked_from_placeholder(cs, Placeholder::ShuffleRamAddress(1));
@@ -415,8 +399,8 @@ fn get_initial_data_for_execution<F: PrimeField, CS: Circuit<F>>(
     // and we can right away prepare RD/STORE query
     {
         let local_timestamp_in_cycle = RD_STORE_LOCAL_TIMESTAMP;
-        // no range check is needed here, as our RAM is consistent by itself - our writes(!) are range-checked,
-        // so any reads will have to be range-checked
+        // no range check is needed here, as our RAM is consistent by itself - our writes(!) are
+        // range-checked, so any reads will have to be range-checked
         let read_value =
             Register::new_unchecked_from_placeholder(cs, Placeholder::ShuffleRamReadValue(2));
         // Also unchecked, as it would be constrained in STORE opcode, or at the end of the cycle
@@ -498,7 +482,8 @@ fn final_state_check<F: PrimeField, CS: Circuit<F>>(
             };
         }
 
-        // we do not care about predicating state updates below, because if trap happens it's already unsatisfiable circuit
+        // we do not care about predicating state updates below, because if trap happens it's
+        // already unsatisfiable circuit
 
         let new_reg_val = CommonDiffs::select_final_rd_value(cs, &application_results);
 
@@ -507,8 +492,8 @@ fn final_state_check<F: PrimeField, CS: Circuit<F>>(
 
         let rd = inputs.decoder_data.rd_index;
         let reg_is_zero = inputs.decoder_data.rd_is_zero;
-        // we ALWAYS write to register (with maybe modified value), unless we write to RAM, except for B-format opcodes (
-        // that are modeled as write 0 to x0)
+        // we ALWAYS write to register (with maybe modified value), unless we write to RAM, except
+        // for B-format opcodes ( that are modeled as write 0 to x0)
 
         // Mask to get 0s if we write into x0
         let reg_write_value_low = cs.add_variable_from_constraint(
@@ -533,7 +518,8 @@ fn final_state_check<F: PrimeField, CS: Circuit<F>>(
         let update_rd_flag = decoder_bits.get_update_rd_flag();
         let b_instruction_flag = decoder_bits.get_b_instruction_flag();
 
-        // if we write to RD - we should make a constraint over the address, that it comes from opcode
+        // if we write to RD - we should make a constraint over the address, that it comes from
+        // opcode
         cs.add_constraint((Term::from(rd) - Term::from(address[0])) * Term::from(update_rd_flag));
         cs.add_constraint((Term::from(address[1])) * Term::from(update_rd_flag));
         // x0 for BRANCH instructions as it's not even encoded in the opcode

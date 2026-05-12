@@ -13,7 +13,7 @@ pub fn add_sub_lui_auipc_mop_table_driver_fn<F: PrimeField>(table_driver: &mut T
     let _ = table_driver;
 }
 
-pub fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
+fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
 ) -> [Variable; crate::definitions::ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS] {
@@ -40,7 +40,8 @@ pub fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
         get_rs2_as_shuffle_ram(cs, Num::Var(inputs.decoder_data.rs2_index), true);
     cs.add_shuffle_ram_query(rs2_mem_query);
 
-    // do what's effectively inside of optimization context, but we will manually allocate the output
+    // do what's effectively inside of optimization context, but we will manually allocate the
+    // output
     let out = opt_ctx.get_register_output(cs);
     // we will also need to pay 2 more range checks
     let intermediate_tmp = opt_ctx.get_register_output(cs);
@@ -196,15 +197,12 @@ pub fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
     {
         opt_ctx.restore_indexers(indexers);
         let cons = Constraint::from(is_addmod)
-                * ((Constraint::from(out_low) + shift * Term::from(out_high))
-                    - (Constraint::from(rs1_reg_low)
-                        + shift * Term::from(rs1_reg_high)
-                        + Term::from(rs2_reg_low)
-                        + shift * Term::from(rs2_reg_high)));
-        println!("ADD MOD CONS: {cons:?}");
-        cs.add_constraint(
-            cons
-        );
+            * ((Constraint::from(out_low) + shift * Term::from(out_high))
+                - (Constraint::from(rs1_reg_low)
+                    + shift * Term::from(rs1_reg_high)
+                    + Term::from(rs2_reg_low)
+                    + shift * Term::from(rs2_reg_high)));
+        cs.add_constraint(cons);
         // of + out - modulus = tmp, and OF must be true
         let relation = AddSubRelation {
             exec_flag: is_addmod,
@@ -461,25 +459,16 @@ pub fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
         Register(inputs.cycle_start_state.pc.map(|x| Num::Var(x))),
         Register(inputs.cycle_end_state.pc.map(|x| Num::Var(x))),
     );
-    
+
     opt_ctx.enforce_all(cs);
     decoded_mask_bits
-}
-
-pub fn add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_and_decoded_bits<
-    F: PrimeField,
-    CS: Circuit<F>,
->(
-    cs: &mut CS,
-) -> (OpcodeFamilyCircuitState<F>, [Variable; crate::definitions::ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS]) {
-    let input: OpcodeFamilyCircuitState<F> = cs.allocate_execution_circuit_state::<true>();
-    (input, apply_add_sub_lui_auipc_mop(cs, input.clone()))
 }
 
 pub fn add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
 ) {
-    let _ = add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_and_decoded_bits(cs);
+    let input: OpcodeFamilyCircuitState<F> = cs.allocate_execution_circuit_state::<true>();
+    let _ = apply_add_sub_lui_auipc_mop(cs, input);
 }
 
 #[cfg(test)]
@@ -487,14 +476,14 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::{
-        cs::cs_reference::BasicAssembly,
-        definitions::{
-            ColumnAddress, CompiledDegree1Constraint, TIMESTAMP_COLUMNS_NUM_BITS, TIMESTAMP_STEP,
-        },
-        utils::serialize_to_file,
-    };
-    use field::{Field, PrimeField};
+    use crate::cs::cs_reference::BasicAssembly;
+    use crate::definitions::ColumnAddress;
+    use crate::definitions::CompiledDegree1Constraint;
+    use crate::definitions::TIMESTAMP_COLUMNS_NUM_BITS;
+    use crate::definitions::TIMESTAMP_STEP;
+    use crate::utils::serialize_to_file;
+    use field::Field;
+    use field::PrimeField;
 
     fn equal_up_to_sign(
         lhs: &CompiledDegree1Constraint<field::Mersenne31Field>,

@@ -1,6 +1,8 @@
 use super::*;
-use crate::cs::circuit::{DisjunctiveLookup, DisjunctiveLookupGuard};
-use crate::types::{Boolean, Num};
+use cs::cs::circuit::DisjunctiveLookup;
+use cs::cs::circuit::DisjunctiveLookupGuard;
+use cs::types::Boolean;
+use cs::types::Num;
 
 const U16_BOUND: u64 = 1 << 16;
 const U12_BOUND: u64 = 1 << 12;
@@ -34,16 +36,6 @@ fn add_one_hot_bits(
         .push(PicusConstraint::new_equality(sum, PicusExpr::Const(1)));
 
     bits
-}
-
-fn and_constraints<I>(constraints: I) -> PicusConstraint
-where
-    I: IntoIterator<Item = PicusConstraint>,
-{
-    constraints
-        .into_iter()
-        .reduce(|acc, el| PicusConstraint::And(Box::new(acc), Box::new(el)))
-        .unwrap_or_else(|| PicusConstraint::new_equality(PicusExpr::Const(0), PicusExpr::Const(0)))
 }
 
 /// Translation for `JumpCleanupOffset` lookup.
@@ -986,7 +978,7 @@ fn add_special_csr_properties_lookup_constraints<F: PrimeField>(
 /// Converts a lookup input into a Picus expression and optionally scales it by a
 /// row multiplier (used for flag-multiplied disjunctive encodings).
 fn lookup_input_to_picus_expr_with_multiplier<F: PrimeField>(
-    input: &crate::definitions::LookupInput<F>,
+    input: &cs::definitions::LookupInput<F>,
     row_multiplier: Option<&PicusExpr>,
 ) -> PicusExpr {
     let expr = lookup_input_to_picus_expr(input);
@@ -1206,8 +1198,8 @@ pub(super) fn add_lookup_constraints<F: PrimeField>(
 /// For each disjunctive relation this function:
 /// - adds postconditions that flags are boolean and satisfy `sum(flags) <= 1`,
 /// - dispatches each case through the same table translator,
-/// - either multiplies row expressions by flag for safe tables or guards case
-///   constraints under `(flag = 1) => ...`.
+/// - either multiplies row expressions by flag for safe tables or guards case constraints under
+///   `(flag = 1) => ...`.
 pub(super) fn add_disjunctive_lookup_constraints<F: PrimeField>(
     module: &mut PicusModule,
     disjunctive_lookups: &[DisjunctiveLookup<F>],
@@ -1308,14 +1300,18 @@ pub(super) fn add_disjunctive_lookup_constraints<F: PrimeField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cs::circuit::{LookupQuery, LookupQueryTableType};
-    use crate::definitions::LookupInput;
-    use crate::machine::machine_configurations::create_csr_table_for_delegation;
-    use crate::machine::machine_configurations::full_isa_no_exceptions::FullIsaMachineNoExceptionHandling;
-    use crate::machine::Machine;
-    use crate::tables::LookupWrapper;
-    use field::{Field, Mersenne31Field};
-    use picus::{partial_evaluate, PicusConstraint, PicusExpr};
+    use cs::cs::circuit::LookupQuery;
+    use cs::cs::circuit::LookupQueryTableType;
+    use cs::definitions::LookupInput;
+    use cs::machine::machine_configurations::create_csr_table_for_delegation;
+    use cs::machine::machine_configurations::full_isa_no_exceptions::FullIsaMachineNoExceptionHandling;
+    use cs::machine::Machine;
+    use cs::tables::LookupWrapper;
+    use field::Field;
+    use field::Mersenne31Field;
+    use picus::partial_evaluate;
+    use picus::PicusConstraint;
+    use picus::PicusExpr;
     use std::collections::BTreeMap;
 
     fn variable_query(table: TableType) -> LookupQuery<Mersenne31Field> {
