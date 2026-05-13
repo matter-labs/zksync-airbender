@@ -1,7 +1,5 @@
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::{
-    GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation,
-};
+use cs::gkr_compiler::{GKRCircuitArtifact, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation};
 use field::PrimeField;
 use std::collections::BTreeMap;
 
@@ -36,8 +34,6 @@ pub(crate) fn normalize_compiled_circuit_for_gpu<F: PrimeField>(
     }
     compiled_circuit
 }
-
-pub(crate) fn normalize_layer_for_gpu(_layer: &mut GKRLayerDescription) {}
 
 fn rewrite_addr(addr: &mut GKRAddress, mapping: &BTreeMap<GKRAddress, usize>) {
     if let Some(scratch_idx) = mapping.get(addr).copied() {

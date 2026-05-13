@@ -14,11 +14,11 @@ use riscv_transpiler::witness::{
 /// Each touched page ships `1 << PAGE_SIZE_LOG2` `u32` values plus
 /// `1 << PAGE_SIZE_LOG2` `u64` timestamps. Producer / kernel both rely on
 /// this value as the contract.
-pub const PAGE_SIZE_LOG2: u32 = 10;
+pub(crate) const PAGE_SIZE_LOG2: u32 = 10;
 
 #[repr(C)]
 #[derive(Copy, Clone, Default, Debug)]
-pub struct ExecutorFamilyDecoderData {
+pub(crate) struct ExecutorFamilyDecoderData {
     pub imm: u32,
     pub rs1_index: u8,
     pub rs2_index: u16,
@@ -44,7 +44,7 @@ impl From<CSExecutorFamilyDecoderData> for ExecutorFamilyDecoderData {
     }
 }
 
-pub struct UnrolledMemoryTraceDevice {
+pub(crate) struct UnrolledMemoryTraceDevice {
     pub tracing_data: DeviceAllocation<MemoryOpcodeTracingDataWithTimestamp>,
 }
 
@@ -72,7 +72,7 @@ pub(crate) struct UnrolledMemoryOracle {
     pub decoder_table: *const ExecutorFamilyDecoderData,
 }
 
-pub struct UnrolledNonMemoryTraceDevice {
+pub(crate) struct UnrolledNonMemoryTraceDevice {
     pub tracing_data: DeviceAllocation<NonMemoryOpcodeTracingDataWithTimestamp>,
 }
 
@@ -101,10 +101,12 @@ pub(crate) struct UnrolledNonMemoryOracle {
     pub default_pc_value_in_padding: u32,
 }
 
-pub struct UnrolledUnifiedTraceDevice {
+pub(crate) struct UnrolledUnifiedTraceDevice {
     pub tracing_data: DeviceAllocation<UnifiedOpcodeTracingDataWithTimestamp>,
 }
 
+// Unified execution scaffolding — kept for future use; not yet wired in.
+#[allow(dead_code)]
 #[repr(C)]
 pub(crate) struct UnrolledUnifiedTraceRaw {
     pub cycles_count: u32,
@@ -123,13 +125,15 @@ impl From<&UnrolledUnifiedTraceDevice> for UnrolledUnifiedTraceRaw {
 pub(crate) type UnrolledUnifiedTraceHost<A> =
     ChunkedTraceHolder<UnifiedOpcodeTracingDataWithTimestamp, A>;
 
+// Unified execution scaffolding — kept for future use; not yet wired in.
+#[allow(dead_code)]
 #[repr(C)]
 pub(crate) struct UnrolledUnifiedOracle {
     pub trace: UnrolledUnifiedTraceRaw,
     pub decoder_table: *const ExecutorFamilyDecoderData,
 }
 
-pub struct InitsAndTeardownsTraceDevice {
+pub(crate) struct InitsAndTeardownsTraceDevice {
     pub page_indices: DeviceAllocation<u32>,
     pub values_packed: DeviceAllocation<u32>,
     pub timestamps_packed: DeviceAllocation<TimestampScalar>,

@@ -12,11 +12,11 @@ EXTERN __global__ void ab_gkr_round2_challenges_prelude(const e4 *folding_challe
   staging[2] = e4::mul(first, second);
 }
 
-// Phase C compact-source unified tiled warp-split round 2 kernel.
+// Compact-source unified tiled warp-split round 2 kernel.
 // Per-tile fold -> sync -> compute. All term types mixed in a single
 // array sorted by source-group tile affinity. Grid covers acc_size / 32
 // blocks (4 warps share 32 gids). Resolves source pointers via
-// `desc.tables` instead of legacy raw per-source structs.
+// `desc.tables` instead of raw per-source structs.
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_gkr_main_round2_flat_constant_compact_unified_compact_e4_kernel(const __grid_constant__ flat_round2_unified_desc_compact desc,
                                                                             const unsigned fold_stride, const unsigned next_layer_size, const e4 *eq_values,
