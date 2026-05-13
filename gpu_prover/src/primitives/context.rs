@@ -3,20 +3,19 @@ use crate::allocator::device::{
     StaticDeviceAllocationBackend,
 };
 use crate::allocator::host::{ConcurrentStaticHostAllocator, NonConcurrentStaticHostAllocator};
+// `ConcurrentStaticHostAllocator` is consumed via the `SchedulerHostAllocator`
+// alias below — the explicit import keeps `pub(crate) type` resolution short.
 use crate::allocator::tracker::AllocationPlacement;
-use crate::primitives::device_context::DeviceContext;
-use era_cudart::device::{device_get_attribute, get_device, set_device};
+use crate::primitives::ntt_twiddles::DeviceContext;
+use era_cudart::device::{device_get_attribute, get_device};
 use era_cudart::memory::{memory_get_info, CudaHostAllocFlags};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, CudaSliceMut};
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{CudaDeviceAttr, CudaError};
 use log::error;
-use rayon::iter::IntoParallelIterator;
-use rayon::iter::ParallelIterator;
-use std::alloc::AllocError;
 
-pub struct DeviceProperties {
+pub(crate) struct DeviceProperties {
     pub l2_cache_size_bytes: usize,
     pub sm_count: usize,
 }
@@ -68,20 +67,22 @@ impl Default for ProverContextConfig {
     }
 }
 
-pub type DeviceAllocator = NonConcurrentStaticDeviceAllocator;
-pub type DeviceAllocation<T> = NonConcurrentStaticDeviceAllocation<T>;
-pub type HostAllocator = NonConcurrentStaticHostAllocator;
-pub type SchedulerHostAllocator = ConcurrentStaticHostAllocator;
+pub(crate) type DeviceAllocator = NonConcurrentStaticDeviceAllocator;
+pub(crate) type DeviceAllocation<T> = NonConcurrentStaticDeviceAllocation<T>;
+pub(crate) type HostAllocator = NonConcurrentStaticHostAllocator;
+pub(crate) type SchedulerHostAllocator = ConcurrentStaticHostAllocator;
 
-pub const AUX_STREAM_POOL_SIZE: usize = 8;
+pub(crate) const AUX_STREAM_POOL_SIZE: usize = 8;
 
-pub struct ProverContext {
+pub(crate) struct ProverContext {
     // Own the device-resident twiddle tables for the full lifetime of the prover context.
     _device_context: DeviceContext,
     device_allocator: DeviceAllocator,
     host_allocator: HostAllocator,
+    #[allow(dead_code)]
     scheduler_host_allocator: SchedulerHostAllocator,
     exec_stream: CudaStream,
+    #[allow(dead_code)]
     aux_streams: [CudaStream; AUX_STREAM_POOL_SIZE],
     h2d_stream: CudaStream,
     d2h_stream: CudaStream,
@@ -92,41 +93,6 @@ pub struct ProverContext {
 }
 
 impl ProverContext {
-    pub fn is_global_host_allocator_initialized() -> bool {
-        ConcurrentStaticHostAllocator::is_initialized_global()
-    }
-
-    pub fn initialize_global_host_allocator(
-        host_allocations_count: usize,
-        blocks_per_allocation_count: usize,
-        block_log_size: u32,
-    ) -> CudaResult<()> {
-        assert!(
-            !Self::is_global_host_allocator_initialized(),
-            "Global host allocator can only be initialized once"
-        );
-        let host_allocation_size = blocks_per_allocation_count << block_log_size;
-        let allocations: Vec<CudaResult<era_cudart::memory::HostAllocation<u8>>> = (0
-            ..host_allocations_count)
-            .into_par_iter()
-            .map(|_| {
-                era_cudart::memory::HostAllocation::alloc(
-                    host_allocation_size,
-                    CudaHostAllocFlags::DEFAULT,
-                )
-            })
-            .collect();
-        let mut backends = vec![];
-        for allocation in allocations {
-            match allocation {
-                Ok(alloc) => backends.push(alloc),
-                Err(e) => return Err(e),
-            }
-        }
-        ConcurrentStaticHostAllocator::initialize_global(backends, block_log_size);
-        Ok(())
-    }
-
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
         let device_id = get_device()?;
         let mpc = device_get_attribute(CudaDeviceAttr::MultiProcessorCount, device_id)? as usize;
@@ -175,8 +141,7 @@ impl ProverContext {
             };
         };
         slack.free()?;
-        let device_allocation_backend =
-            StaticDeviceAllocationBackend::DeviceAllocation(device_allocation);
+        let device_allocation_backend = StaticDeviceAllocationBackend(device_allocation);
         let device_allocator = if let Some(small_log_chunk_size) =
             config.small_allocator_log_chunk_size
         {
@@ -233,26 +198,8 @@ impl ProverContext {
         self.host_allocator.clone()
     }
 
-    pub fn get_scheduler_host_allocator(&self) -> SchedulerHostAllocator {
-        self.scheduler_host_allocator.clone()
-    }
-
-    pub fn get_device_id(&self) -> i32 {
-        self.device_id
-    }
-
-    pub fn switch_to_device(&self) -> CudaResult<()> {
-        set_device(self.device_id)
-    }
-
     pub fn get_exec_stream(&self) -> &CudaStream {
         &self.exec_stream
-    }
-
-    /// Pool of auxiliary streams for parallel kernel dispatch. Pool streams have no intrinsic
-    /// ordering with `exec_stream` — callers are responsible for fork/join event synchronization.
-    pub fn get_aux_streams(&self) -> &[CudaStream; AUX_STREAM_POOL_SIZE] {
-        &self.aux_streams
     }
 
     pub fn get_h2d_stream(&self) -> &CudaStream {
@@ -333,13 +280,6 @@ impl ProverContext {
         HostAllocation::new_uninit_slice_in(len, self.get_host_allocator())
     }
 
-    pub(crate) fn scheduler_host_from_slice<T: Copy>(
-        &self,
-        values: &[T],
-    ) -> CudaResult<SchedulerHostAllocation<[T]>> {
-        SchedulerHostAllocation::from_slice_in(values, self.get_scheduler_host_allocator())
-    }
-
     pub fn get_mem_size(&self) -> usize {
         self.device_allocator_mem_size
     }
@@ -348,30 +288,37 @@ impl ProverContext {
         self.device_allocator.get_used_mem_current()
     }
 
+    #[cfg(test)]
     pub fn get_used_mem_peak(&self) -> usize {
         self.device_allocator.get_used_mem_peak()
     }
 
+    #[cfg(test)]
     pub fn get_host_used_mem_current(&self) -> usize {
         self.host_allocator.get_used_mem_current()
     }
 
+    #[cfg(test)]
     pub fn get_host_used_mem_peak(&self) -> usize {
         self.host_allocator.get_used_mem_peak()
     }
 
+    #[cfg(test)]
     pub fn reset_host_used_mem_peak(&self) {
         self.host_allocator.reset_used_mem_peak();
     }
 
+    #[cfg(test)]
     pub fn get_scheduler_host_used_mem_current(&self) -> usize {
         self.scheduler_host_allocator.get_used_mem_current()
     }
 
+    #[cfg(test)]
     pub fn get_scheduler_host_used_mem_peak(&self) -> usize {
         self.scheduler_host_allocator.get_used_mem_peak()
     }
 
+    #[cfg(test)]
     pub fn reset_scheduler_host_used_mem_peak(&self) {
         self.scheduler_host_allocator.reset_used_mem_peak();
     }
@@ -393,10 +340,6 @@ impl ProverContext {
 
     pub fn get_device_properties(&self) -> &DeviceProperties {
         &self.device_properties
-    }
-
-    pub fn is_reversed_allocation_placement(&self) -> bool {
-        self.reversed_allocation_placement
     }
 
     pub fn set_reversed_allocation_placement(&mut self, reversed: bool) {
@@ -450,13 +393,6 @@ impl<T: ?Sized> UnsafeMutAccessor<T> {
     {
         std::ptr::write(self.0, value);
     }
-
-    pub unsafe fn replace(&self, value: T) -> T
-    where
-        T: Sized,
-    {
-        std::ptr::replace(self.0, value)
-    }
 }
 
 impl<T: ?Sized> Clone for UnsafeMutAccessor<T> {
@@ -504,50 +440,5 @@ impl<T> CudaSlice<T> for HostAllocation<[T]> {
 impl<T> CudaSliceMut<T> for HostAllocation<[T]> {
     unsafe fn as_mut_slice(&mut self) -> &mut [T] {
         self.0.as_mut_slice()
-    }
-}
-
-pub(crate) struct SchedulerHostAllocation<T: ?Sized>(Option<Box<T, SchedulerHostAllocator>>);
-
-impl<T> SchedulerHostAllocation<[T]> {
-    fn from_slice_in(values: &[T], allocator: SchedulerHostAllocator) -> CudaResult<Self>
-    where
-        T: Copy,
-    {
-        if values.is_empty() {
-            return Ok(Self(None));
-        }
-
-        let allocation = Box::<[T], _>::try_new_uninit_slice_in(values.len(), allocator)
-            .map_err(|AllocError| CudaError::ErrorMemoryAllocation)?;
-        // SAFETY: every element is initialized by the copy immediately below before the boxed
-        // slice is exposed to callers.
-        let mut allocation = unsafe { allocation.assume_init() };
-        allocation.copy_from_slice(values);
-        Ok(Self(Some(allocation)))
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.as_ref().map_or(0, |allocation| allocation.len())
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_none()
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        match &self.0 {
-            Some(allocation) => allocation,
-            None => &[],
-        }
-    }
-}
-
-impl<T> CudaSlice<T> for SchedulerHostAllocation<[T]> {
-    unsafe fn as_slice(&self) -> &[T] {
-        match &self.0 {
-            Some(allocation) => allocation.as_slice(),
-            None => &[],
-        }
     }
 }

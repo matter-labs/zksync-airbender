@@ -4,13 +4,12 @@ use std::os::raw::c_void;
 
 use era_cudart::execution::Dim3;
 use era_cudart::result::{CudaResult, CudaResultWrap};
-use era_cudart::stream::CudaStream;
-use era_cudart_sys::{cudaMemcpyToSymbol, cudaMemcpyToSymbolAsync, CudaMemoryCopyKind};
+use era_cudart_sys::{cudaMemcpyToSymbol, CudaMemoryCopyKind};
 
-pub const LOG_WARP_SIZE: u32 = 5;
-pub const WARP_SIZE: u32 = 1 << LOG_WARP_SIZE;
+pub(crate) const LOG_WARP_SIZE: u32 = 5;
+pub(crate) const WARP_SIZE: u32 = 1 << LOG_WARP_SIZE;
 
-pub trait GetChunksCount {
+pub(crate) trait GetChunksCount {
     fn get_chunks_count(self, chunk_size: Self) -> Self;
 }
 
@@ -26,7 +25,7 @@ impl GetChunksCount for usize {
     }
 }
 
-pub fn get_grid_block_dims_for_threads_count(
+pub(crate) fn get_grid_block_dims_for_threads_count(
     threads_per_block: u32,
     threads_count: u32,
 ) -> (Dim3, Dim3) {
@@ -47,59 +46,12 @@ pub unsafe fn memcpy_to_symbol<T>(symbol: &T, src: &T) -> CudaResult<()> {
     .wrap()
 }
 
-#[allow(clippy::missing_safety_doc)]
-pub unsafe fn memcpy_to_symbol_async<T>(
-    symbol: &T,
-    src: &T,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    cudaMemcpyToSymbolAsync(
-        symbol as *const T as *const c_void,
-        src as *const T as *const c_void,
-        size_of::<T>(),
-        0,
-        CudaMemoryCopyKind::HostToDevice,
-        stream.into(),
-    )
-    .wrap()
-}
-
-#[allow(clippy::missing_safety_doc)]
-pub unsafe fn memcpy_to_symbol_from_device_async<T>(
-    symbol: *const c_void,
-    src: *const T,
-    count: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    cudaMemcpyToSymbolAsync(
-        symbol,
-        src as *const c_void,
-        size_of::<T>() * count,
-        0,
-        CudaMemoryCopyKind::DeviceToDevice,
-        stream.into(),
-    )
-    .wrap()
-}
-
-// #[inline(always)]
-// #[allow(dead_code)]
-// pub fn bitreverse_index(n: usize, l: usize) -> usize {
-//     if l == 0 {
-//         assert_eq!(n, 0);
-//         return 0;
-//     }
-//     let r = n.reverse_bits();
-//     // now we need to only use the bits that originally were "last" l, so shift
-//     r >> (size_of::<usize>() * 8) - l
-// }
-
 // ---------------------------------------------------------------------------
 // Shared-memory carveout helpers
 // ---------------------------------------------------------------------------
 
 /// Query the configurable shared-memory / L1 pool size (bytes) for the current device.
-pub fn smem_pool_bytes_per_sm() -> usize {
+pub(crate) fn smem_pool_bytes_per_sm() -> usize {
     use era_cudart::device::{device_get_attribute, get_device};
     use era_cudart_sys::CudaDeviceAttr;
     let device_id = get_device().expect("get_device failed");
@@ -109,7 +61,11 @@ pub fn smem_pool_bytes_per_sm() -> usize {
 
 /// Compute the smallest carveout percentage that accommodates a kernel's
 /// static shared memory at maximum occupancy.
-pub fn compute_minimal_carveout(kernel: *const c_void, block_size: i32, pool_bytes: usize) -> i32 {
+pub(crate) fn compute_minimal_carveout(
+    kernel: *const c_void,
+    block_size: i32,
+    pool_bytes: usize,
+) -> i32 {
     use era_cudart_sys::{
         cudaFuncGetAttributes, cudaOccupancyMaxActiveBlocksPerMultiprocessor, CudaFuncAttributes,
     };
@@ -142,7 +98,7 @@ pub fn compute_minimal_carveout(kernel: *const c_void, block_size: i32, pool_byt
 }
 
 /// Set the preferred shared-memory carveout percentage for a kernel.
-pub fn set_shared_carveout(kernel: *const c_void, pct: i32) {
+pub(crate) fn set_shared_carveout(kernel: *const c_void, pct: i32) {
     use era_cudart_sys::CudaFuncAttribute;
     unsafe {
         era_cudart_sys::cudaFuncSetAttribute(

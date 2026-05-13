@@ -15,7 +15,8 @@ use std::ptr::NonNull;
 use std::slice;
 use std::sync::OnceLock;
 
-pub static STATIC_HOST_ALLOCATOR: OnceLock<ConcurrentStaticHostAllocator> = OnceLock::new();
+#[allow(dead_code)]
+pub(crate) static STATIC_HOST_ALLOCATOR: OnceLock<ConcurrentStaticHostAllocator> = OnceLock::new();
 
 impl StaticAllocationBackend for HostAllocation<u8> {
     fn as_non_null(&mut self) -> NonNull<u8> {
@@ -45,9 +46,10 @@ impl InnerStaticHostAllocatorWrapper for NonConcurrentInnerStaticHostAllocatorWr
 
 type StaticHostAllocator<W> = StaticAllocator<HostAllocation<u8>, W>;
 
-pub type ConcurrentStaticHostAllocator =
+pub(crate) type ConcurrentStaticHostAllocator =
     StaticHostAllocator<ConcurrentInnerStaticHostAllocatorWrapper>;
 
+#[allow(dead_code)]
 impl ConcurrentStaticHostAllocator {
     pub fn initialize_global(
         backends: impl IntoIterator<Item = HostAllocation<u8>>,
@@ -66,7 +68,7 @@ impl ConcurrentStaticHostAllocator {
     }
 }
 
-pub type NonConcurrentStaticHostAllocator =
+pub(crate) type NonConcurrentStaticHostAllocator =
     StaticHostAllocator<NonConcurrentInnerStaticHostAllocatorWrapper>;
 
 impl<T, W: InnerStaticHostAllocatorWrapper> Deref for StaticAllocation<T, HostAllocation<u8>, W> {

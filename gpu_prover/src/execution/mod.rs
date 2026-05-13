@@ -1,12 +1,9 @@
 use crate::allocator::host::ConcurrentStaticHostAllocator;
 
-mod cpu_worker;
-mod gpu_manager;
-mod gpu_worker;
 mod messages;
 mod precomputations;
-pub mod prover;
-mod simulation_runner;
+pub(crate) mod prover;
 mod tracing;
+mod workers;
 
 pub(crate) type A = ConcurrentStaticHostAllocator;
