@@ -49,18 +49,15 @@ impl<F: PrimeField> OneRowCompiler<F> {
         assert!(delegated_computation_requests.is_empty());
         assert!(register_and_indirect_memory_accesses.is_empty());
         assert!(executor_machine_state.is_none());
-        assert!(range_check_expressions.is_empty());
-
         for el in lookups.iter() {
-            let LookupQueryTableType::Constant(table_type) = el.table else {
-                panic!("all lookups must use fixed table IDx");
-            };
-            let t = table_driver.get_table(table_type);
-            assert!(
-                t.is_initialized(),
-                "trying to use table with ID {:?}, but it's not initialized in table driver",
-                table_type
-            );
+            if let LookupQueryTableType::Constant(table_type) = el.table {
+                let t = table_driver.get_table(table_type);
+                assert!(
+                    t.is_initialized(),
+                    "trying to use table with ID {:?}, but it's not initialized in table driver",
+                    table_type
+                );
+            }
         }
 
         let trace_len = 1usize << trace_len_log2;
@@ -238,15 +235,21 @@ impl<F: PrimeField> OneRowCompiler<F> {
 
         // there are no inputs or outputs, or linkage
 
+        let mut range_check_16_lookup_expressions = range_check_16_lookup_expressions;
+        if range_check_16_lookup_expressions.len() % 2 != 0 {
+            let last = range_check_16_lookup_expressions.last().unwrap().clone();
+            range_check_16_lookup_expressions.push(last);
+        }
+
         let witness_layout = WitnessSubtree {
             multiplicities_columns_for_range_check_16,
             multiplicities_columns_for_timestamp_range_check,
             multiplicities_columns_for_decoder_in_executor_families: ColumnSet::empty(),
             multiplicities_columns_for_generic_lookup,
-            range_check_8_columns: ColumnSet::empty(),
-            range_check_16_columns: ColumnSet::empty(),
+            range_check_8_columns,
+            range_check_16_columns,
             width_3_lookups,
-            range_check_16_lookup_expressions: Vec::new(),
+            range_check_16_lookup_expressions,
             timestamp_range_check_lookup_expressions: Vec::new(),
             offset_for_special_shuffle_ram_timestamps_range_check_expressions: 0,
             boolean_vars_columns_range,
