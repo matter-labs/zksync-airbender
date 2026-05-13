@@ -1,16 +1,12 @@
 use crate::statement_common::{
-    read_setups, FINAL_PC_BUFFER_PC_IDX, FINAL_PC_BUFFER_TS_HIGH_IDX, FINAL_PC_BUFFER_TS_LOW_IDX,
+    read_setup_cap, FINAL_PC_BUFFER_PC_IDX, FINAL_PC_BUFFER_TS_HIGH_IDX, FINAL_PC_BUFFER_TS_LOW_IDX,
 };
 use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
-use verifier_common::errors::ErrorCreator;
-use verifier_common::field::baby_bear::base::BabyBearField;
-use verifier_common::field::baby_bear::ext4::BabyBearExt4;
-use verifier_common::DelegationCircuitSetupData;
-use verifier_common::{cs::definitions::split_timestamp, DefaultNonDeterminismSource};
+use verifier_common::cs::definitions::split_timestamp;
+use verifier_common::cs::definitions::NUM_REGISTERS;
 
 use super::*;
 use crate::delegation_params::*;
-use crate::imports::*;
 use crate::unrolled_circuit_params::*;
 
 /// If we recurse over user's program -> we must provide expected final PC,
@@ -58,9 +54,9 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
 
     // first we need to get final register values and timestamps
     for reg_idx in 0..32 {
-        let value = verifier_common::DefaultNonDeterminismSource::read_word();
-        let timestamp_low = verifier_common::DefaultNonDeterminismSource::read_word();
-        let timestamp_high = verifier_common::DefaultNonDeterminismSource::read_word();
+        let value = I::read_word();
+        let timestamp_low = I::read_word();
+        let timestamp_high = I::read_word();
         registers_buffer[reg_idx * 3] = value;
         registers_buffer[reg_idx * 3 + 1] = timestamp_low;
         registers_buffer[reg_idx * 3 + 2] = timestamp_high;
@@ -72,9 +68,9 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     transcript.absorb(&registers_buffer);
 
     let mut final_pc_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
-    let final_pc = verifier_common::DefaultNonDeterminismSource::read_word();
-    let final_ts_low = verifier_common::DefaultNonDeterminismSource::read_word();
-    let final_ts_high = verifier_common::DefaultNonDeterminismSource::read_word();
+    let final_pc = I::read_word();
+    let final_ts_low = I::read_word();
+    let final_ts_high = I::read_word();
     final_pc_buffer[FINAL_PC_BUFFER_PC_IDX] = final_pc;
     final_pc_buffer[FINAL_PC_BUFFER_TS_LOW_IDX] = final_ts_low;
     final_pc_buffer[FINAL_PC_BUFFER_TS_HIGH_IDX] = final_ts_high;
@@ -97,14 +93,14 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         .iter()
         .zip(circuits_families_setups.iter())
     {
-        let num_circuits = verifier_common::DefaultNonDeterminismSource::read_word();
+        let num_circuits = I::read_word();
         if num_circuits > 0 {
             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
             buffer[0] = *circuit_family;
             transcript.absorb(&buffer);
         }
 
-        for circuit_sequence in 0..num_circuits {
+        for _circuit_sequence in 0..num_circuits {
             total_cycles += 1u64 << 24; // TODO
             assert!(total_cycles < MAX_CYCLES);
 
@@ -130,7 +126,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
 
     // then init/teardown circuits - we expect to have exactly 1
     {
-        let num_circuits = verifier_common::DefaultNonDeterminismSource::read_word();
+        let num_circuits = I::read_word();
         assert_eq!(num_circuits, 1);
         if num_circuits > 0 {
             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
@@ -140,7 +136,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
             transcript.absorb(&buffer);
         }
 
-        for circuit_sequence in 0..num_circuits {
+        for _circuit_sequence in 0..num_circuits {
             let proof_output = (inits_and_teardowns_verifier)(&external_challenges)?;
 
             // we expect that for all the top bits we have a continuous sequence
@@ -162,8 +158,6 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         }
     }
 
-    todo!();
-
     // If we will even want to break an execution here, we will have full buffer (unflushed)
     assert!(transcript.get_current_buffer_offset() == BLAKE2S_BLOCK_SIZE_U32_WORDS);
 
@@ -175,7 +169,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
             .iter()
             .zip(delegation_circuits_verifiers)
         {
-            let num_circuits = verifier_common::DefaultNonDeterminismSource::read_word();
+            let num_circuits = I::read_word();
 
             if num_circuits > 0 {
                 let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
@@ -210,12 +204,13 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     }
 
     // TODO: assert that number of permutation elements is less than we computed for security levels
+    assert!(total_permutation_elements < 1u64 << 40);
 
     // finish with the transcript, compare memory values from transcript with ones used in proofs
     let memory_seed = transcript.finalize_reset();
 
-    let pow_challenge_low = verifier_common::DefaultNonDeterminismSource::read_word();
-    let pow_challenge_high = verifier_common::DefaultNonDeterminismSource::read_word();
+    let pow_challenge_low = I::read_word();
+    let pow_challenge_high = I::read_word();
     let pow_challenge = (pow_challenge_high as u64) << 32 | (pow_challenge_low as u64);
 
     let expected_challenges = GKRExternalChallenges::draw_from_transcript_seed(
@@ -226,31 +221,21 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
 
     assert_eq!(expected_challenges, external_challenges);
 
-    todo!();
+    // conclude that our memory argument is valid
+    let (machine_state_read_set_contribution, machine_state_write_set_contribution) =
+        prover::definitions::produce_initial_permutation_product_separate_contributions(
+            core::mem::transmute::<_, &[(u32, (u32, u32)); NUM_REGISTERS]>(&registers_buffer),
+            INITIAL_PC,
+            split_timestamp(INITIAL_TIMESTAMP),
+            final_pc,
+            (final_ts_low, final_ts_high),
+            &external_challenges,
+        );
 
-    // // conclude that our memory argument is valid
-    // let register_contribution =
-    //     prover::definitions::produce_register_contribution_into_memory_accumulator_raw(
-    //         core::mem::transmute(&registers_buffer),
-    //         proof_output_0
-    //             .memory_challenges
-    //             .memory_argument_linearization_challenges,
-    //         proof_output_0.memory_challenges.memory_argument_gamma,
-    //     );
-    // let machine_state_contribution =
-    //     prover::definitions::produce_pc_into_permutation_accumulator_raw(
-    //         INITIAL_PC,
-    //         split_timestamp(INITIAL_TIMESTAMP),
-    //         final_pc,
-    //         (final_ts_low, final_ts_high),
-    //         &proof_output_0.machine_state_permutation_challenges[0].linearization_challenges,
-    //         &proof_output_0.machine_state_permutation_challenges[0].additive_term,
-    //     );
-    // grand_product_accumulator.mul_assign(&register_contribution);
-    // grand_product_accumulator.mul_assign(&machine_state_contribution);
+    read_set_product_accumulator.mul_assign(&machine_state_read_set_contribution);
+    write_set_product_accumulator.mul_assign(&machine_state_write_set_contribution);
 
-    // assert_eq!(grand_product_accumulator, Mersenne31Quartic::ONE);
-    // assert_eq!(delegation_set_accumulator, Mersenne31Quartic::ZERO);
+    assert_eq!(read_set_product_accumulator, write_set_product_accumulator);
 
     // Now we only need to reason about "which program do we execute", and "did it finish successfully or not".
 
@@ -311,7 +296,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         let mut preimage: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2] =
             MaybeUninit::uninit().assume_init();
         for i in 0..BLAKE2S_DIGEST_SIZE_U32_WORDS * 2 {
-            preimage[i] = verifier_common::DefaultNonDeterminismSource::read_word();
+            preimage[i] = I::read_word();
         }
         result_hasher.absorb(&preimage);
         let preimage_hash = result_hasher.finalize_reset();
@@ -354,61 +339,66 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     Ok(output)
 }
 
-// pub fn verify_unrolled_base_layer() -> [u32; 16] {
-//     unsafe {
-//         let circuits_setups = read_setups::<
-//             DefaultNonDeterminismSource,
-//             FULL_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS,
-//         >();
-//         let circuits_setups_refs = circuits_setups.each_ref();
-//         let inits_and_teardowns_setups = read_setups::<DefaultNonDeterminismSource, 1>();
-//         verify_full_statement_for_unrolled_circuits::<
-//             true,
-//             { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
-//         >(
-//             &circuits_setups_refs,
-//             &FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS,
-//             (
-//                 &inits_and_teardowns_setups[0],
-//                 INITS_AND_TEARDOWNS_VERIFIER_PTR,
-//             ),
-//             BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS,
-//         )
-//     }
-// }
+pub fn verify_unrolled_base_layer<
+    I: NonDeterminismSource,
+    E: ErrorCreator,
+    const REDUCED_ROUNDS: bool,
+>() -> Result<[u32; 16], E::Error> {
+    unsafe {
+        let circuits_setups: [MerkleTreeCap<_>; NUM_BASE_LAYER_CIRCUITS] =
+            core::array::from_fn(|_| {
+                read_setup_cap::<I, { prover::definitions::DEFAULT_CAP_SIZE }>()
+            });
+        let circuits_setups_refs = circuits_setups.each_ref();
+        verify_full_statement_for_unrolled_circuits::<I, E, true, REDUCED_ROUNDS>(
+            &circuits_setups_refs,
+            &crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer::<I, E>(),
+            crate::unrolled_circuit_params::inits_and_teardowns_verifier::<I, E>(),
+            &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
+            &crate::delegation_params::all_delegation_circuit_verifiers::<I, E>(),
+        )
+    }
+}
 
-// pub fn verify_unrolled_recursion_layer() -> [u32; 16] {
-//     unsafe {
-//         let circuits_setups = read_setups::<
-//             DefaultNonDeterminismSource,
-//             RECURSION_WORD_ONLY_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS,
-//         >();
-//         let circuits_setups_refs = circuits_setups.each_ref();
-//         let inits_and_teardowns_setups = read_setups::<DefaultNonDeterminismSource, 1>();
-//         verify_full_statement_for_unrolled_circuits::<
-//             false,
-//             { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
-//         >(
-//             &circuits_setups_refs,
-//             &RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS,
-//             (
-//                 &inits_and_teardowns_setups[0],
-//                 INITS_AND_TEARDOWNS_VERIFIER_PTR,
-//             ),
-//             RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS,
-//         )
-//     }
-// }
+pub fn verify_unrolled_recursion_layer<
+    I: NonDeterminismSource,
+    E: ErrorCreator,
+    const REDUCED_ROUNDS: bool,
+>() -> Result<[u32; 16], E::Error> {
+    unsafe {
+        let circuits_setups: [MerkleTreeCap<_>; NUM_RECURSION_LAYER_CIRCUITS] =
+            core::array::from_fn(|_| {
+                read_setup_cap::<I, { prover::definitions::DEFAULT_CAP_SIZE }>()
+            });
+        let circuits_setups_refs = circuits_setups.each_ref();
+        verify_full_statement_for_unrolled_circuits::<I, E, false, REDUCED_ROUNDS>(
+            &circuits_setups_refs,
+            &crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_recursion_layer::<I, E>(
+            ),
+            crate::unrolled_circuit_params::inits_and_teardowns_verifier::<I, E>(),
+            &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
+            &crate::delegation_params::all_delegation_circuit_verifiers::<I, E>(),
+        )
+    }
+}
 
-// pub fn verify_base_or_recursion_unrolled_circuits() -> [u32; 16] {
-//     // we just branch
-//     let op_type = DefaultNonDeterminismSource::read_word();
-//     use crate::definitions::*;
-//     match op_type {
-//         OP_VERIFY_BASE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_base_layer(),
-//         OP_VERIFY_RECURSIVE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_recursion_layer(),
-//         _ => {
-//             panic!("Unknown op");
-//         }
-//     }
-// }
+pub fn verify_base_or_recursion_unrolled_circuits<
+    I: NonDeterminismSource,
+    E: ErrorCreator,
+    const REDUCED_ROUNDS: bool,
+>() -> Result<[u32; 16], E::Error> {
+    // we just branch
+    let op_type = I::read_word();
+    use crate::definitions::*;
+    match op_type {
+        OP_VERIFY_BASE_LAYER_IN_UNROLLED_CIRCUITS => {
+            verify_unrolled_base_layer::<I, E, REDUCED_ROUNDS>()
+        }
+        OP_VERIFY_RECURSIVE_LAYER_IN_UNROLLED_CIRCUITS => {
+            verify_unrolled_recursion_layer::<I, E, REDUCED_ROUNDS>()
+        }
+        _ => {
+            panic!("Unknown op");
+        }
+    }
+}

@@ -1,5 +1,6 @@
-#![allow(warnings)]
 #![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
+#![cfg_attr(any(test, feature = "replace_csr"), allow(incomplete_features))]
+#![cfg_attr(any(test, feature = "replace_csr"), feature(generic_const_exprs))]
 
 pub use verifier_common;
 
@@ -23,17 +24,18 @@ pub mod statement_common;
 
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 mod verifier_imports {
-    pub(super) use super::constants::*;
     pub(super) use core::mem::MaybeUninit;
     pub(super) use verifier_common::blake2s_u32::{
         BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS,
     };
-    pub(super) use verifier_common::field::{
-        Field, Mersenne31Field, Mersenne31Quartic, PrimeField,
-    };
+    pub(super) use verifier_common::errors::ErrorCreator;
+    pub(super) use verifier_common::field::baby_bear::base::BabyBearField;
+    pub(super) use verifier_common::field::baby_bear::ext4::BabyBearExt4;
+    pub(super) use verifier_common::field::Field;
     pub(super) use verifier_common::non_determinism_source::NonDeterminismSource;
     pub(super) use verifier_common::prover::definitions::{GKRExternalChallenges, MerkleTreeCap};
     pub(super) use verifier_common::transcript::Blake2sBufferingTranscript;
+    pub(super) use verifier_common::DelegationCircuitSetupData;
 }
 
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
@@ -42,7 +44,6 @@ use self::verifier_imports::*;
 use verifier_common::cs::definitions::{
     NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP, NUM_TIMESTAMP_COLUMNS_FOR_RAM, TIMESTAMP_COLUMNS_NUM_BITS,
 };
-use verifier_common::parse_field_els_as_u32_from_u16_limbs_checked;
 use verifier_common::prover;
 
 pub const MAX_CYCLES: u64 = const {

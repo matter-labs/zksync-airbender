@@ -2,7 +2,7 @@ use super::*;
 
 #[allow(invalid_value)]
 #[inline(always)]
-pub unsafe fn read_setups<I: NonDeterminismSource, const SIZE: usize>() -> MerkleTreeCap<SIZE> {
+pub unsafe fn read_setup_cap<I: NonDeterminismSource, const SIZE: usize>() -> MerkleTreeCap<SIZE> {
     let mut result: MaybeUninit<MerkleTreeCap<SIZE>> = core::mem::MaybeUninit::uninit();
 
     MerkleTreeCap::<SIZE>::read_caps_into::<I, 1>(result.as_mut_ptr().cast());
