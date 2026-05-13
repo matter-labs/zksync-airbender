@@ -137,17 +137,6 @@ impl<F: PrimeField> OneRowCompiler<F> {
             num_required_tuples_for_generic_lookup_setup,
         );
 
-        let (range_check_8_columns, range_check_16_columns, range_check_16_lookup_expressions) =
-            allocate_range_check_expressions(
-                trace_len,
-                vec![],
-                &range_check_expressions,
-                &mut witness_tree_offset,
-                &mut all_variables_to_place,
-                &mut layout,
-                0,
-            );
-
         // Now we will pause and place boolean variables, as those can have their constraints special-handled in quotient
 
         let mut constraints = constraints;

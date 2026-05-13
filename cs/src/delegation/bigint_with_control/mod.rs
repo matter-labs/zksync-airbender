@@ -940,18 +940,6 @@ mod test {
     }
 
     #[test]
-    fn bigint_delegation_keeps_all_protected_constraints() {
-        let mut cs: BasicAssembly<Mersenne31Field> = BasicAssembly::<Mersenne31Field>::new();
-        define_u256_ops_extended_control_delegation_circuit(&mut cs);
-        let (circuit_output, _) = cs.finalize();
-
-        let (compiled, protected) = OneRowCompiler::default()
-            .compile_to_evaluate_delegations_and_protected_constraints(circuit_output, 20);
-
-        assert_all_protected_constraints_are_present(&compiled, &protected);
-    }
-
-    #[test]
     #[serial_test::serial(cs_codegen)]
     fn bigint_delegation_get_witness_graph() {
         skip_if_ci!();

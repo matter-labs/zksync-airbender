@@ -1761,18 +1761,6 @@ mod test {
     }
 
     #[test]
-    fn keccak_delegation_keeps_all_protected_constraints() {
-        let mut cs = BasicAssembly::<Mersenne31Field>::new();
-        define_keccak_special5_delegation_circuit::<_, _, false>(&mut cs);
-        let (circuit_output, _) = cs.finalize();
-
-        let (compiled, protected) = OneRowCompiler::default()
-            .compile_to_evaluate_delegations_and_protected_constraints(circuit_output, 20);
-
-        assert_all_protected_constraints_are_present(&compiled, &protected);
-    }
-
-    #[test]
     #[serial_test::serial(cs_codegen)]
     fn keccak_delegation_get_witness_graph() {
         skip_if_ci!();

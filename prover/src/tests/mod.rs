@@ -66,7 +66,7 @@ pub mod keccak_special5_delegation_with_transpiler {
 
 use super::*;
 
-pub mod unrolled;
+mod unrolled;
 
 #[cfg(test)]
 mod lde_tests;
