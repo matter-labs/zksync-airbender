@@ -6,13 +6,13 @@ use std::ptr::NonNull;
 type Addr = usize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AllocationPlacement {
+pub(crate) enum AllocationPlacement {
     BestFit,
     Bottom,
     Top,
 }
 
-pub struct AllocationsTracker {
+pub(crate) struct AllocationsTracker {
     ptrs: Vec<Addr>,
     lens: Vec<usize>,
     free_len_by_addr: BTreeMap<Addr, usize>,
@@ -28,11 +28,6 @@ impl AllocationsTracker {
             .map(|&(ptr, len)| (Self::addr_from_ptr(ptr), len))
             .collect_vec();
         Self::new_from_addrs(&addrs_and_lens)
-    }
-
-    #[cfg(test)]
-    fn from_raw_regions(addrs_and_lens: &[(usize, usize)]) -> Self {
-        Self::new_from_addrs(addrs_and_lens)
     }
 
     fn new_from_addrs(addrs_and_lens: &[(Addr, usize)]) -> Self {
@@ -289,14 +284,6 @@ impl AllocationsTracker {
         result.map(Self::ptr_from_addr)
     }
 
-    pub fn alloc(
-        &mut self,
-        len: usize,
-        placement: AllocationPlacement,
-    ) -> Result<NonNull<u8>, AllocError> {
-        self.alloc_aligned(len, placement, 1)
-    }
-
     pub fn free(&mut self, mut ptr: NonNull<u8>, mut len: usize) {
         if len == 0 {
             assert_eq!(ptr, Self::ptr_from_addr(self.ptrs[0]));
@@ -354,10 +341,6 @@ impl AllocationsTracker {
         self.used_mem_current
     }
 
-    pub fn get_used_mem_peak(&self) -> usize {
-        self.used_mem_peak
-    }
-
     pub fn reset_used_mem_peak(&mut self) {
         self.used_mem_peak = self.used_mem_current;
     }
@@ -410,6 +393,25 @@ impl AllocationsTracker {
 
     #[cfg(not(debug_assertions))]
     fn assert_invariants(&self) {}
+}
+
+#[cfg(test)]
+impl AllocationsTracker {
+    fn from_raw_regions(addrs_and_lens: &[(usize, usize)]) -> Self {
+        Self::new_from_addrs(addrs_and_lens)
+    }
+
+    pub fn alloc(
+        &mut self,
+        len: usize,
+        placement: AllocationPlacement,
+    ) -> Result<NonNull<u8>, AllocError> {
+        self.alloc_aligned(len, placement, 1)
+    }
+
+    pub fn get_used_mem_peak(&self) -> usize {
+        self.used_mem_peak
+    }
 }
 
 unsafe impl Send for AllocationsTracker {}

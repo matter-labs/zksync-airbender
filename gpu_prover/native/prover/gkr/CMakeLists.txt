@@ -1,5 +1,8 @@
 target_sources(gpu_prover_native PRIVATE
         common.cuh
+        descriptors.cuh
+        kernel_helpers.cuh
+        lookup_helpers.cuh
         dim_reducing_backward.cu
         dim_reducing_forward_tower.cu
         flat_backward.cuh

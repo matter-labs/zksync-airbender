@@ -41,6 +41,10 @@ deterministic_pow = ["prover/deterministic_pow"]
 gpu_prover_full_tests = []
 log_gpu_mem_usage = []
 log_gpu_stages_timings = []
+# Off by default; turn on to compile the unused unary ops (dbl, inv, neg, sqr
+# and their `_in_place` variants) plus their tests. Kept available for future
+# use without re-creating the scaffolding by hand.
+scaffolding_ops = []
 security_80 = ["verifier_common/security_80"]
 security_100 = ["verifier_common/security_100"]
 test_no_inline = ["field/no_inline"]

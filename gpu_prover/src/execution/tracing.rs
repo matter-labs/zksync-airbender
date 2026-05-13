@@ -5,7 +5,7 @@ use crate::primitives::circuit_type::{
     UnrolledNonMemoryCircuitType,
 };
 use crate::primitives::machine_type::MachineType;
-use crate::prover::tracing_data::{
+use crate::prover::trace::tracing_data::{
     DelegationTracingDataHostSource, TracingDataHost, UnrolledTracingDataHost,
 };
 use crate::witness::trace::ChunkedTraceHolder;
@@ -402,10 +402,7 @@ impl TracingDataProducerType for UnifiedOpcodeTracingDataWithTimestamp {
 }
 
 /// Per-circuit trace-row count used to slice cycle counters into circuit-sized
-/// partitions. Old `CircuitType::get_num_cycles` is no longer exposed (the new
-/// `circuit_type` module's `get_num_cycles` was commented out); recover the
-/// count from the circuit-family domain size, treating the full `2^N` as
-/// usable rows under the new GKR convention (no `-1` reserved padding row).
+/// partitions. The full `2^N` rows are usable (no reserved padding row).
 fn cycles_per_circuit_for(circuit_type: CircuitType) -> usize {
     circuit_type.get_domain_size()
 }
@@ -541,7 +538,7 @@ impl TracingDataProducers for SplitTracingDataProducers {
     type Ranges = SplitDataTraceRanges;
 
     fn new(
-        machine_type: MachineType,
+        _machine_type: MachineType,
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
     ) -> Self {
@@ -593,11 +590,7 @@ impl TracingDataProducers for SplitTracingDataProducers {
         let mul_div_family_producer =
             TracingDataProducer::<NonMemoryOpcodeTracingDataWithTimestamp>::new(
                 CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-                    if machine_type == MachineType::Full {
-                        UnrolledNonMemoryCircuitType::MulDiv
-                    } else {
-                        UnrolledNonMemoryCircuitType::MulDivUnsigned
-                    },
+                    UnrolledNonMemoryCircuitType::MulDivUnsigned,
                 )),
                 free_allocators.clone(),
                 results.clone(),
