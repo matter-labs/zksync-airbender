@@ -50,6 +50,7 @@ use crate::errors::ErrorCreator;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use field::{Field, FieldExtension, PrimeField};
 use non_determinism_source::NonDeterminismSource;
+use prover::definitions::MerkleTreeCap;
 
 pub use blake2s_u32;
 pub use cs;
@@ -131,6 +132,23 @@ pub struct VerifierOutput<
     pub memory_caps: [[[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]; CAP_SIZE]; NUM_MEMORY_COMMITS],
     pub grand_product_read_set_accumulator: E,
     pub grand_product_write_set_accumulator: E,
+}
+
+impl<
+        E: Field,
+        const INIT_AND_TEARDOWN_SETS: usize,
+        const CAP_SIZE: usize,
+        const NUM_SETUP_COMMITS: usize,
+    > VerifierOutput<E, INIT_AND_TEARDOWN_SETS, CAP_SIZE, 1, NUM_SETUP_COMMITS>
+{
+    pub fn memory_caps_flattened(&'_ self) -> &'_ [u32] {
+        unsafe {
+            slice_from_ptr_range(
+                self.memory_caps.as_ptr_range().start.cast::<u32>()
+                    ..self.memory_caps.as_ptr_range().end.cast::<u32>(),
+            )
+        }
+    }
 }
 
 pub trait ConcreteVerifierImpl<
@@ -260,5 +278,35 @@ pub fn read_external_challenges<
         permutation_argument_linearization_challenges,
         permutation_argument_additive_part,
         _marker: core::marker::PhantomData,
+    }
+}
+
+pub struct DelegationCircuitSetupData<const N: usize> {
+    pub delegation_type: u32,
+    pub num_permutation_terms_per_circuit: u32,
+    pub setup_cap: MerkleTreeCap<N>,
+}
+
+#[cfg(feature = "proof_utils")]
+impl<const N: usize> quote::ToTokens for DelegationCircuitSetupData<N> {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        use prover::cs::utils::array_to_tokens;
+        use quote::quote;
+
+        let DelegationCircuitSetupData {
+            delegation_type,
+            num_permutation_terms_per_circuit,
+            setup_cap,
+        } = self;
+
+        let t = quote! {
+            DelegationCircuitSetupData {
+                delegation_type: #delegation_type,
+                num_permutation_terms_per_circuit: #num_permutation_terms_per_circuit,
+                setup_cap: #setup_cap,
+            }
+        };
+
+        tokens.extend(t);
     }
 }

@@ -81,6 +81,21 @@ impl<const N: usize> MerkleTreeCap<N> {
         }
     }
 
+    pub fn compare_single(a: &Self, b: &Self) -> bool {
+        let mut equal = true;
+        unsafe {
+            for j in 0..N {
+                let a = a.cap.get_unchecked(j);
+                let b = b.cap.get_unchecked(j);
+                for k in 0..DIGEST_SIZE_U32_WORDS {
+                    equal &= *a.get_unchecked(k) == *b.get_unchecked(k);
+                }
+            }
+        }
+
+        equal
+    }
+
     pub fn compare<const M: usize>(a: &[Self; M], b: &[Self; M]) -> bool {
         let mut equal = true;
         unsafe {

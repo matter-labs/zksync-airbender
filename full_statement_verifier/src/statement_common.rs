@@ -2,16 +2,12 @@ use super::*;
 
 #[allow(invalid_value)]
 #[inline(always)]
-pub unsafe fn read_setups<I: NonDeterminismSource, const N: usize>(
-) -> [[MerkleTreeCap<CAP_SIZE>; NUM_COSETS]; N] {
-    let mut result: [[MaybeUninit<MerkleTreeCap<CAP_SIZE>>; 2]; N] =
-        [[const { core::mem::MaybeUninit::uninit() }; NUM_COSETS]; N];
+pub unsafe fn read_setups<I: NonDeterminismSource, const SIZE: usize>() -> MerkleTreeCap<SIZE> {
+    let mut result: MaybeUninit<MerkleTreeCap<SIZE>> = core::mem::MaybeUninit::uninit();
 
-    for dst in result.iter_mut() {
-        MerkleTreeCap::<CAP_SIZE>::read_caps_into::<I, NUM_COSETS>(dst.as_mut_ptr().cast());
-    }
+    MerkleTreeCap::<SIZE>::read_caps_into::<I, 1>(result.as_mut_ptr().cast());
 
-    result.map(|el| el.map(|el| el.assume_init()))
+    result.assume_init()
 }
 
 pub const FINAL_PC_BUFFER_PC_IDX: usize = 0;
