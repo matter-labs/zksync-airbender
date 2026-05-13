@@ -4,11 +4,9 @@ __device__ __constant__ e4 ab_gkr_main_layer_claim_point[airbender::prover::gkr:
 
 namespace airbender::prover::gkr {
 
-// Phase C compact-source unified tiled warp-split round 1 kernel.
+// Compact-source unified tiled warp-split round 1 kernel.
 // Resolves source pointers via `desc.tables` (per-launch base/log2_stride
-// tables) instead of legacy raw per-source structs. The doubled `_compact_`
-// in the name disambiguates from the older unified-tiled "compact"
-// qualifier (unrelated to Phase C's u16 source encoding).
+// tables) instead of raw per-source structs.
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_gkr_main_round1_flat_constant_compact_unified_compact_e4_kernel(const __grid_constant__ flat_round1_unified_desc_compact desc,
                                                                             const unsigned fold_stride, const unsigned next_layer_size, const e4 *eq_values,

@@ -11,21 +11,6 @@ impl<T, A: GoodAllocator> ChunkedTraceHolder<T, A> {
         self.chunks.iter().map(|chunk| chunk.len()).sum()
     }
 
-    pub fn get(&self, index: usize) -> T
-    where
-        T: Copy,
-    {
-        let mut current_index = index;
-        for chunk in self.chunks.iter() {
-            if current_index < chunk.len() {
-                return chunk[current_index];
-            } else {
-                current_index -= chunk.len();
-            }
-        }
-        panic!("Index out of bounds");
-    }
-
     pub fn into_allocators(self) -> Vec<A> {
         self.chunks
             .into_iter()

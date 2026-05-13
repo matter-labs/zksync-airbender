@@ -1,32 +1,24 @@
 use std::ffi::c_void;
-use std::marker::PhantomData;
 use std::ptr::{self, null, null_mut};
-use std::sync::Arc;
 
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::memory::memory_copy_async;
 use era_cudart::paste::paste;
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::{CudaSlice, DeviceSlice, DeviceVariable};
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use era_cudart_sys::cudaGetSymbolAddress;
-use field::Field;
 
 use super::setup::{flatten_setup_columns_into_pinned_buffer, precompute_partial_tree_cache};
-use super::stage1::GpuGKRStage1Output;
 use super::{GpuBaseFieldPoly, GpuGKRStorage};
-use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::Digest;
-use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{DeviceAllocation, ProverContext};
-use crate::primitives::device_tracing::Range;
+#[cfg(test)]
+use crate::primitives::context::DeviceAllocation;
+use crate::primitives::context::ProverContext;
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::StaticPinnedBox;
-use crate::primitives::transfer::Transfer;
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use crate::prover::trace_holder::{TraceHolder, TreesCacheMode, TreesHolder};
+use crate::prover::trace::holder::TraceHolder;
 use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 
 pub(super) const GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS: usize = 10;
@@ -90,13 +82,13 @@ pub(super) fn schedule_lookup_alpha_powers_prelude(
     )
 }
 
+#[allow(dead_code)]
 pub(crate) struct GpuGKRSetupHost {
     pub(crate) raw_hypercube_evals: StaticPinnedBox<BF>,
     pub(crate) partial_trees: Vec<StaticPinnedBox<Digest>>,
     /// Single contiguous Merkle cap of length `1 << log_tree_cap_size`, stored
     /// in canonical bit-reversed coset order so a single H2D fills the device
-    /// unified cap directly. Replaces the legacy per-coset `tree_caps` host
-    /// pool.
+    /// unified cap directly.
     pub(crate) unified_tree_cap: StaticPinnedBox<Digest>,
     pub(crate) trace_len: usize,
     pub(crate) log_domain_size: u32,
@@ -151,6 +143,7 @@ impl GpuGKRSetupHost {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn column_offset(&self, column: usize) -> usize {
         assert!(column < self.columns_count);
         column * self.trace_len
@@ -178,13 +171,12 @@ pub(super) fn bind_trace_holder_columns_into_storage<E>(
         );
     }
     // Register the trace holder Arc as the consolidated per-class backing for
-    // this layer-0 slot. Phase A's storage layout uses `poly_idx == column
-    // index` for trace-holder-aligned slots, so the layout-driven lookup
+    // this layer-0 slot. The storage layout uses `poly_idx == column index`
+    // for trace-holder-aligned slots, so the layout-driven lookup
     // `bases[class] + (poly_idx << log2_stride)` resolves to the same column
-    // pointer that the per-poly views above hand out. Subsequent layout-aware
-    // consumers (Phase B kernel encoding, `allocate_base_view`) can now read
-    // the trace holder backing through the unified `base_class_backings`
-    // path.
+    // pointer that the per-poly views above hand out. Layout-aware consumers
+    // (compact kernel encoding, `allocate_base_view`) read the trace holder
+    // backing through the unified `base_class_backings` path.
     if trace_holder.columns_count > 0 {
         let class = crate::prover::gkr::gkr_address_audit::classify(&make_address(0), 0);
         if storage.layers.is_empty() {
@@ -213,7 +205,7 @@ impl Default for GpuGKRForwardSetupGenericLookupDescriptor {
 }
 
 #[repr(C)]
-pub(super) struct GpuGKRForwardSetupGenericLookupBatch<
+pub(crate) struct GpuGKRForwardSetupGenericLookupBatch<
     E,
     const MAX_COLUMNS: usize = GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS,
 > {
@@ -300,6 +292,7 @@ pub(super) fn pack_forward_setup_generic_lookup_batch<E>(
     batch
 }
 
+#[cfg(test)]
 pub(super) fn lower_forward_setup_generic_lookup_batch<E>(
     host: &GpuGKRSetupHost,
     raw: &(impl CudaSlice<BF> + ?Sized),
