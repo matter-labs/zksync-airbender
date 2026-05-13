@@ -1,7 +1,6 @@
 use super::layout::DelegationProcessingLayout;
 use super::ram_access::{RamAuxComparisonSet, RamQuery};
 use super::trace_delegation::{DelegationTraceDevice, DelegationTraceRaw};
-use crate::primitives::circuit_type::DelegationCircuitType;
 use crate::primitives::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
 use crate::primitives::field::BF;
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
@@ -174,17 +173,15 @@ macro_rules! generate_delegation_kernels {
 }
 
 pub(crate) trait GenerateMemoryDelegation: Sized {
-    const CIRCUIT_TYPE: DelegationCircuitType;
     const MEMORY_SIGNATURE: GenerateMemoryValuesSignature<Self>;
     const MEMORY_AND_WITNESS_SIGNATURE: GenerateMemoryAndWitnessValuesSignature<Self>;
 }
 
 macro_rules! generate_memory_values_impl {
-    ($name:ident, $witness_type:ty, $circuit_type:ty) => {
+    ($name:ident, $witness_type:ty) => {
         paste! {
             generate_delegation_kernels!($name, $witness_type);
             impl GenerateMemoryDelegation for $witness_type {
-                const CIRCUIT_TYPE: DelegationCircuitType = $circuit_type;
                 const MEMORY_SIGNATURE: GenerateMemoryValuesSignature<Self> = [<ab_generate_memory_values_ $name _kernel>];
                 const MEMORY_AND_WITNESS_SIGNATURE: GenerateMemoryAndWitnessValuesSignature<Self> = [<ab_generate_memory_and_witness_values_ $name _kernel>];
             }
@@ -192,29 +189,16 @@ macro_rules! generate_memory_values_impl {
     };
 }
 
-generate_memory_values_impl!(
-    bigint_with_control,
-    BigintDelegationWitness,
-    DelegationCircuitType::BigIntWithControl
-);
+generate_memory_values_impl!(bigint_with_control, BigintDelegationWitness);
 
 generate_memory_values_impl!(
     blake2_with_compression,
-    Blake2sRoundFunctionDelegationWitness,
-    DelegationCircuitType::Blake2WithCompression
+    Blake2sRoundFunctionDelegationWitness
 );
 
-generate_memory_values_impl!(
-    blake2_g_function,
-    Blake2sGFunctionDelegationWitness,
-    DelegationCircuitType::Blake2GFunction
-);
+generate_memory_values_impl!(blake2_g_function, Blake2sGFunctionDelegationWitness);
 
-generate_memory_values_impl!(
-    keccak_special5,
-    KeccakSpecial5DelegationWitness,
-    DelegationCircuitType::KeccakSpecial5
-);
+generate_memory_values_impl!(keccak_special5, KeccakSpecial5DelegationWitness);
 
 pub(crate) fn generate_memory_values_delegation<T: GenerateMemoryDelegation>(
     compiled_circuit: &GKRCircuitArtifact<BF>,

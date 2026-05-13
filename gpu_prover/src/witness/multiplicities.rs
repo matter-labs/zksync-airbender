@@ -31,7 +31,7 @@ cuda_kernel!(GenerateMultiplicities,
     )
 );
 
-pub fn generate_generic_lookup_multiplicities(
+pub(crate) fn generate_generic_lookup_multiplicities(
     lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
     multiplicities: &mut impl DeviceMatrixMutImpl<BF>,
     lookup_mapping_bits_count: i32,
@@ -117,13 +117,13 @@ pub fn generate_generic_lookup_multiplicities(
     GenerateMultiplicitiesFunction::default().launch(&config, &args)
 }
 
-// The checked-in delegation layouts exceed the legacy unrolled-family limit of 8.
-// Blake currently needs 88 timestamp lookup expressions, so keep modest headroom.
-pub const MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT: usize = 128;
+// Sized for delegation layouts that need many lookup expressions per circuit.
+// Blake currently needs 88 timestamp lookup expressions; keep modest headroom.
+pub(crate) const MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT: usize = 128;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct LookupExpressions {
+pub(crate) struct LookupExpressions {
     relations_count: u32,
     relations: [NoFieldLinearRelation; MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT],
 }
@@ -166,40 +166,7 @@ cuda_kernel!(GenerateRangeCheckLookupMappings,
     )
 );
 
-pub fn generate_range_check_multiplicities(
-    circuit: &GKRCircuitArtifact<BF>,
-    memory: &impl DeviceMatrixImpl<BF>,
-    scratch: &impl DeviceMatrixImpl<BF>,
-    witness: &mut impl DeviceMatrixMutImpl<BF>,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let trace_len = circuit.trace_len;
-    assert!(trace_len.is_power_of_two());
-    let witness_layout = &circuit.witness_layout;
-    let num_memory_cols = circuit.memory_layout.total_width;
-    let num_witness_cols = witness_layout.total_width;
-    assert_eq!(memory.stride(), trace_len);
-    assert_eq!(memory.cols(), num_memory_cols,);
-    assert_eq!(scratch.stride(), trace_len);
-    assert_eq!(witness.stride(), trace_len);
-    assert_eq!(witness.cols(), num_witness_cols,);
-    let (
-        mut range_check_16_lookup_mapping_allocation,
-        mut range_check_timestamp_lookup_mapping_allocation,
-    ) = generate_range_check_lookup_mappings(circuit, memory, scratch, witness, context)?;
-    generate_range_check_multiplicities_from_mappings(
-        circuit,
-        &mut DeviceMatrixMut::new(&mut range_check_16_lookup_mapping_allocation, trace_len),
-        &mut DeviceMatrixMut::new(
-            &mut range_check_timestamp_lookup_mapping_allocation,
-            trace_len,
-        ),
-        witness,
-        context,
-    )
-}
-
-pub fn generate_range_check_lookup_mappings(
+pub(crate) fn generate_range_check_lookup_mappings(
     circuit: &GKRCircuitArtifact<BF>,
     memory: &impl DeviceMatrixImpl<BF>,
     scratch: &impl DeviceMatrixImpl<BF>,
@@ -267,7 +234,7 @@ pub fn generate_range_check_lookup_mappings(
     ))
 }
 
-pub fn generate_range_check_multiplicities_from_mappings(
+pub(crate) fn generate_range_check_multiplicities_from_mappings(
     circuit: &GKRCircuitArtifact<BF>,
     range_check_16_lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
     range_check_timestamp_lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,

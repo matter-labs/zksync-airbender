@@ -1,19 +1,15 @@
-use crate::primitives::circuit_type::{
-    UnrolledCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
-};
+use crate::primitives::circuit_type::{UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType};
 use crate::primitives::device_structures::{DeviceMatrixImpl, DeviceMatrixMutImpl};
 use crate::primitives::field::BF;
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use crate::witness::trace_unrolled::{
     UnrolledMemoryTraceDevice, UnrolledMemoryTraceRaw, UnrolledNonMemoryTraceDevice,
-    UnrolledNonMemoryTraceRaw, UnrolledUnifiedTraceDevice, UnrolledUnifiedTraceRaw,
+    UnrolledNonMemoryTraceRaw,
 };
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::memory::memory_get_info;
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
-use std::ptr::{null, null_mut};
 
 cuda_kernel!(GenerateWitnessUnrolledMemoryKernel,
     generate_witness_unrolled_memory_kernel,
@@ -149,9 +145,6 @@ pub(crate) fn generate_witness_values_unrolled_non_memory(
         UnrolledNonMemoryCircuitType::ShiftBinaryCsr => {
             ab_generate_witness_values_shift_binary_csr_kernel
         }
-        UnrolledNonMemoryCircuitType::MulDiv => unimplemented!(
-            "signed MulDiv is not supported by the GPU prover; the CPU prover only supports MulDivUnsigned"
-        ),
     };
     GenerateWitnessUnrolledNonMemoryKernelFunction(kernel).launch(&config, &args)
 }

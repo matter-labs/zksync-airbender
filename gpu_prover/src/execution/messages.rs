@@ -2,7 +2,7 @@ use crate::execution::precomputations::CircuitPrecomputations;
 use crate::execution::A;
 use crate::primitives::circuit_type::CircuitType;
 use crate::primitives::field::{BF, E4};
-use crate::prover::tracing_data::TracingDataHost;
+use crate::prover::trace::tracing_data::TracingDataHost;
 use crate::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use common_constants::TimestampScalar;
 use crossbeam_channel::{Receiver, Sender};
@@ -11,7 +11,7 @@ use prover::definitions::SecurityLevel;
 use prover::gkr::prover::{GKRExternalChallenges, GKRProof};
 use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 use std::collections::BTreeSet;
-pub use trace_and_split::FinalRegisterValue;
+use trace_and_split::FinalRegisterValue;
 
 pub(crate) struct InitsAndTeardownsData {
     pub circuit_type: CircuitType,
@@ -70,10 +70,8 @@ pub(crate) struct ProofRequest<A: GoodAllocator> {
     pub tracing_data: Option<TracingDataHost<A>>,
     pub external_challenges: GKRExternalChallenges<BF, E4>,
     /// Per-coset caps from this circuit's prior `commit_memory` (one entry
-    /// per coset, in natural order). The new GKR `prove()` consumes a
-    /// `GpuGKRMemoryTransfer` built from these caps; in the legacy world
-    /// `prove()` ran its own internal commit, so this field had no
-    /// counterpart.
+    /// per coset, in natural order). `prove()` builds a
+    /// `GpuGKRMemoryTransfer` from these caps.
     pub memory_caps: Vec<MerkleTreeCapVarLength>,
     pub security_level: SecurityLevel,
 }
@@ -92,7 +90,6 @@ pub(crate) enum GpuWorkRequest<A: GoodAllocator> {
     Proof(ProofRequest<A>),
 }
 
-#[allow(dead_code)]
 impl<A: GoodAllocator> GpuWorkRequest<A> {
     pub fn batch_id(&self) -> u64 {
         match self {
@@ -112,27 +109,6 @@ impl<A: GoodAllocator> GpuWorkRequest<A> {
         match self {
             GpuWorkRequest::MemoryCommitment(request) => request.sequence_id,
             GpuWorkRequest::Proof(request) => request.sequence_id,
-        }
-    }
-
-    pub fn precomputations(&self) -> &CircuitPrecomputations {
-        match self {
-            GpuWorkRequest::MemoryCommitment(request) => &request.precomputations,
-            GpuWorkRequest::Proof(request) => &request.precomputations,
-        }
-    }
-
-    pub fn inits_and_teardowns(&self) -> &Option<InitsAndTeardownsTraceHost> {
-        match self {
-            GpuWorkRequest::MemoryCommitment(request) => &request.inits_and_teardowns,
-            GpuWorkRequest::Proof(request) => &request.inits_and_teardowns,
-        }
-    }
-
-    pub fn tracing_data(&self) -> &Option<TracingDataHost<A>> {
-        match self {
-            GpuWorkRequest::MemoryCommitment(request) => &request.tracing_data,
-            GpuWorkRequest::Proof(request) => &request.tracing_data,
         }
     }
 }

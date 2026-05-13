@@ -4,8 +4,8 @@ __device__ __constant__ e4 ab_gkr_flat_round0_coefficients[airbender::prover::gk
 
 namespace airbender::prover::gkr {
 
-// Phase C compact path: descriptor's source array holds packed `u16`s
-// resolved through `tables.bases` / `tables.log2_stride` instead of raw
+// Compact path: descriptor's source array holds packed `u16`s resolved
+// through `tables.bases` / `tables.log2_stride` instead of raw
 // `*const u8` pointers.
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_gkr_main_round0_flat_compact_e4_kernel(const __grid_constant__ flat_round0_static_desc_compact static_desc, const e4 *coefficients,

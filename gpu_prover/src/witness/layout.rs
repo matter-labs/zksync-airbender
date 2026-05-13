@@ -2,7 +2,7 @@ use cs::definitions::{gkr::GKRMemoryLayout, NUM_TIMESTAMP_COLUMNS_FOR_RAM};
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
-pub struct DelegationProcessingLayout {
+pub(crate) struct DelegationProcessingLayout {
     pub execute: u32,
     pub invocation_timestamp: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
 }
