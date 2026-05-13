@@ -22,7 +22,7 @@ use era_cudart::stream::CudaStream;
 use std::ops::Deref;
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
-pub struct MachineState {
+pub(crate) struct MachineState {
     pub pc: [u32; REGISTER_SIZE],
     pub timestamp: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
 }
@@ -38,7 +38,7 @@ impl From<GKRMachineState> for MachineState {
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
-pub struct MachineStatePermutationDescription {
+pub(crate) struct MachineStatePermutationDescription {
     pub execute: u32,
     pub initial_state: MachineState,
     pub final_state: MachineState,
@@ -60,7 +60,7 @@ const MAX_CIRCUIT_FAMILY_MASK_BITS: usize = 32;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
-pub struct DecoderPlacementDescription {
+pub(crate) struct DecoderPlacementDescription {
     pub rs1_index: u32,
     pub rs2_index: Address,
     pub rd_index: Address,
@@ -103,12 +103,12 @@ impl From<cs::definitions::gkr::DecoderPlacementDescription> for DecoderPlacemen
     }
 }
 
-pub const MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT: usize = 4;
-pub const MAX_INITS_AND_TEARDOWNS_SETS_COUNT: usize = 16;
+pub(crate) const MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT: usize = 4;
+pub(crate) const MAX_INITS_AND_TEARDOWNS_SETS_COUNT: usize = 16;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
-pub struct UnrolledMemoryLayout {
+pub(crate) struct UnrolledMemoryLayout {
     pub shuffle_ram_access_sets_count: u32,
     pub shuffle_ram_access_sets: [RamQuery; MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT],
     pub machine_state: MachineStatePermutationDescription,
@@ -149,7 +149,7 @@ impl From<&GKRMemoryLayout> for UnrolledMemoryLayout {
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
-pub struct AuxLayoutData {
+pub(crate) struct AuxLayoutData {
     pub shuffle_ram_timestamp_comparison_aux_vars:
         [RamAuxComparisonSet; MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT],
 }
@@ -175,14 +175,14 @@ impl From<&GKRAuxLayoutData> for AuxLayoutData {
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
-pub struct InitsAndTeardownsLayout {
+pub(crate) struct InitsAndTeardownsLayout {
     pub teardown_timestamps_columns: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
     pub teardown_values_columns: [u32; 2],
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
-pub struct InitsAndTeardownsLayouts {
+pub(crate) struct InitsAndTeardownsLayouts {
     pub count: u32,
     pub layouts: [InitsAndTeardownsLayout; MAX_INITS_AND_TEARDOWNS_SETS_COUNT],
 }

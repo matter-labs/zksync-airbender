@@ -114,9 +114,9 @@ DEVICE_FORCEINLINE e6 sub(const e6 x, const bf y) { return e6::sub(x, y); }
 DEVICE_FORCEINLINE e6 sub(const e6 x, const e2 y) { return e6::sub(x, y); }
 DEVICE_FORCEINLINE e6 sub(const e6 x, const e6 y) { return e6::sub(x, y); }
 
-// template <class T0, class T1, class T2, class U> DEVICE_FORCEINLINE U mul_add(const T0 x, const T1 y, const T2 z) { return add(mul(x, y), z); }
-//
-// template <class T0, class T1, class T2, class U> DEVICE_FORCEINLINE U mul_sub(const T0 x, const T1 y, const T2 z) { return sub(mul(x, y), z); }
+template <class T0, class T1, class T2, class U> DEVICE_FORCEINLINE U mul_add(const T0 x, const T1 y, const T2 z) { return add(mul(x, y), z); }
+
+template <class T0, class T1, class T2, class U> DEVICE_FORCEINLINE U mul_sub(const T0 x, const T1 y, const T2 z) { return sub(mul(x, y), z); }
 
 #define SET_BY_VAL_KERNEL(arg_t)                                                                                                                               \
   EXTERN __global__ void ab_set_by_val_##arg_t##_kernel(const arg_t##_value_getter arg, arg_t##_setter result) { unary_op(return_value, arg, result); }
@@ -201,66 +201,65 @@ BINARY_KERNEL(sub, e4, bf, e4)
 BINARY_KERNEL(sub, e4, e4, e4)
 BINARY_KERNEL(sub, e6, e6, e6)
 
-// #define TERNARY_KERNEL(op, arg0_t, arg1_t, arg2_t, result_t) \
-//   EXTERN __global__ void ab_##op##_##arg0_t##_##arg1_t##_##arg2_t##_kernel(const arg0_t##_getter arg0, const arg1_t##_getter arg1, const arg2_t##_getter
-//   arg2, \
-//                                                                            result_t##_setter result) { \
-//     ternary_op(op, arg0, arg1, arg2, result); \
-//   }
-//
-// TERNARY_KERNEL(mul_add, bf, bf, bf, bf)
-// TERNARY_KERNEL(mul_add, bf, bf, e2, e2)
-// TERNARY_KERNEL(mul_add, bf, bf, e4, e4)
-// TERNARY_KERNEL(mul_add, bf, e2, bf, e2)
-// TERNARY_KERNEL(mul_add, bf, e2, e2, e2)
-// TERNARY_KERNEL(mul_add, bf, e2, e4, e4)
-// TERNARY_KERNEL(mul_add, bf, e4, bf, e4)
-// TERNARY_KERNEL(mul_add, bf, e4, e2, e4)
-// TERNARY_KERNEL(mul_add, bf, e4, e4, e4)
-// TERNARY_KERNEL(mul_add, e2, bf, bf, e2)
-// TERNARY_KERNEL(mul_add, e2, bf, e2, e2)
-// TERNARY_KERNEL(mul_add, e2, bf, e4, e4)
-// TERNARY_KERNEL(mul_add, e2, e2, bf, e2)
-// TERNARY_KERNEL(mul_add, e2, e2, e2, e2)
-// TERNARY_KERNEL(mul_add, e2, e2, e4, e4)
-// TERNARY_KERNEL(mul_add, e2, e4, bf, e4)
-// TERNARY_KERNEL(mul_add, e2, e4, e2, e4)
-// TERNARY_KERNEL(mul_add, e2, e4, e4, e4)
-// TERNARY_KERNEL(mul_add, e4, bf, bf, e4)
-// TERNARY_KERNEL(mul_add, e4, bf, e2, e4)
-// TERNARY_KERNEL(mul_add, e4, bf, e4, e4)
-// TERNARY_KERNEL(mul_add, e4, e2, bf, e4)
-// TERNARY_KERNEL(mul_add, e4, e2, e2, e4)
-// TERNARY_KERNEL(mul_add, e4, e2, e4, e4)
-// TERNARY_KERNEL(mul_add, e4, e4, bf, e4)
-// TERNARY_KERNEL(mul_add, e4, e4, e2, e4)
-// TERNARY_KERNEL(mul_add, e4, e4, e4, e4)
-// TERNARY_KERNEL(mul_sub, bf, bf, bf, bf)
-// TERNARY_KERNEL(mul_sub, bf, bf, e2, e2)
-// TERNARY_KERNEL(mul_sub, bf, bf, e4, e4)
-// TERNARY_KERNEL(mul_sub, bf, e2, bf, e2)
-// TERNARY_KERNEL(mul_sub, bf, e2, e2, e2)
-// TERNARY_KERNEL(mul_sub, bf, e2, e4, e4)
-// TERNARY_KERNEL(mul_sub, bf, e4, bf, e4)
-// TERNARY_KERNEL(mul_sub, bf, e4, e2, e4)
-// TERNARY_KERNEL(mul_sub, bf, e4, e4, e4)
-// TERNARY_KERNEL(mul_sub, e2, bf, bf, e2)
-// TERNARY_KERNEL(mul_sub, e2, bf, e2, e2)
-// TERNARY_KERNEL(mul_sub, e2, bf, e4, e4)
-// TERNARY_KERNEL(mul_sub, e2, e2, bf, e2)
-// TERNARY_KERNEL(mul_sub, e2, e2, e2, e2)
-// TERNARY_KERNEL(mul_sub, e2, e2, e4, e4)
-// TERNARY_KERNEL(mul_sub, e2, e4, bf, e4)
-// TERNARY_KERNEL(mul_sub, e2, e4, e2, e4)
-// TERNARY_KERNEL(mul_sub, e2, e4, e4, e4)
-// TERNARY_KERNEL(mul_sub, e4, bf, bf, e4)
-// TERNARY_KERNEL(mul_sub, e4, bf, e2, e4)
-// TERNARY_KERNEL(mul_sub, e4, bf, e4, e4)
-// TERNARY_KERNEL(mul_sub, e4, e2, bf, e4)
-// TERNARY_KERNEL(mul_sub, e4, e2, e2, e4)
-// TERNARY_KERNEL(mul_sub, e4, e2, e4, e4)
-// TERNARY_KERNEL(mul_sub, e4, e4, bf, e4)
-// TERNARY_KERNEL(mul_sub, e4, e4, e2, e4)
-// TERNARY_KERNEL(mul_sub, e4, e4, e4, e4)
+#define TERNARY_KERNEL(op, arg0_t, arg1_t, arg2_t, result_t)                                                                                                   \
+  EXTERN __global__ void ab_##op##_##arg0_t##_##arg1_t##_##arg2_t##_kernel(const arg0_t##_getter arg0, const arg1_t##_getter arg1, const arg2_t##_getter arg2, \
+                                                                           result_t##_setter result) {                                                         \
+    ternary_op<arg0_t##_getter, arg1_t##_getter, arg2_t##_getter, result_t##_setter>(op<arg0_t, arg1_t, arg2_t, result_t>, arg0, arg1, arg2, result);          \
+  }
+
+TERNARY_KERNEL(mul_add, bf, bf, bf, bf)
+TERNARY_KERNEL(mul_add, bf, bf, e2, e2)
+TERNARY_KERNEL(mul_add, bf, bf, e4, e4)
+TERNARY_KERNEL(mul_add, bf, e2, bf, e2)
+TERNARY_KERNEL(mul_add, bf, e2, e2, e2)
+TERNARY_KERNEL(mul_add, bf, e2, e4, e4)
+TERNARY_KERNEL(mul_add, bf, e4, bf, e4)
+TERNARY_KERNEL(mul_add, bf, e4, e2, e4)
+TERNARY_KERNEL(mul_add, bf, e4, e4, e4)
+TERNARY_KERNEL(mul_add, e2, bf, bf, e2)
+TERNARY_KERNEL(mul_add, e2, bf, e2, e2)
+TERNARY_KERNEL(mul_add, e2, bf, e4, e4)
+TERNARY_KERNEL(mul_add, e2, e2, bf, e2)
+TERNARY_KERNEL(mul_add, e2, e2, e2, e2)
+TERNARY_KERNEL(mul_add, e2, e2, e4, e4)
+TERNARY_KERNEL(mul_add, e2, e4, bf, e4)
+TERNARY_KERNEL(mul_add, e2, e4, e2, e4)
+TERNARY_KERNEL(mul_add, e2, e4, e4, e4)
+TERNARY_KERNEL(mul_add, e4, bf, bf, e4)
+TERNARY_KERNEL(mul_add, e4, bf, e2, e4)
+TERNARY_KERNEL(mul_add, e4, bf, e4, e4)
+TERNARY_KERNEL(mul_add, e4, e2, bf, e4)
+TERNARY_KERNEL(mul_add, e4, e2, e2, e4)
+TERNARY_KERNEL(mul_add, e4, e2, e4, e4)
+TERNARY_KERNEL(mul_add, e4, e4, bf, e4)
+TERNARY_KERNEL(mul_add, e4, e4, e2, e4)
+TERNARY_KERNEL(mul_add, e4, e4, e4, e4)
+TERNARY_KERNEL(mul_sub, bf, bf, bf, bf)
+TERNARY_KERNEL(mul_sub, bf, bf, e2, e2)
+TERNARY_KERNEL(mul_sub, bf, bf, e4, e4)
+TERNARY_KERNEL(mul_sub, bf, e2, bf, e2)
+TERNARY_KERNEL(mul_sub, bf, e2, e2, e2)
+TERNARY_KERNEL(mul_sub, bf, e2, e4, e4)
+TERNARY_KERNEL(mul_sub, bf, e4, bf, e4)
+TERNARY_KERNEL(mul_sub, bf, e4, e2, e4)
+TERNARY_KERNEL(mul_sub, bf, e4, e4, e4)
+TERNARY_KERNEL(mul_sub, e2, bf, bf, e2)
+TERNARY_KERNEL(mul_sub, e2, bf, e2, e2)
+TERNARY_KERNEL(mul_sub, e2, bf, e4, e4)
+TERNARY_KERNEL(mul_sub, e2, e2, bf, e2)
+TERNARY_KERNEL(mul_sub, e2, e2, e2, e2)
+TERNARY_KERNEL(mul_sub, e2, e2, e4, e4)
+TERNARY_KERNEL(mul_sub, e2, e4, bf, e4)
+TERNARY_KERNEL(mul_sub, e2, e4, e2, e4)
+TERNARY_KERNEL(mul_sub, e2, e4, e4, e4)
+TERNARY_KERNEL(mul_sub, e4, bf, bf, e4)
+TERNARY_KERNEL(mul_sub, e4, bf, e2, e4)
+TERNARY_KERNEL(mul_sub, e4, bf, e4, e4)
+TERNARY_KERNEL(mul_sub, e4, e2, bf, e4)
+TERNARY_KERNEL(mul_sub, e4, e2, e2, e4)
+TERNARY_KERNEL(mul_sub, e4, e2, e4, e4)
+TERNARY_KERNEL(mul_sub, e4, e4, bf, e4)
+TERNARY_KERNEL(mul_sub, e4, e4, e2, e4)
+TERNARY_KERNEL(mul_sub, e4, e4, e4, e4)
 
 } // namespace airbender::ops::simple

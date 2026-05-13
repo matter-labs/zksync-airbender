@@ -23,6 +23,7 @@ pub(crate) fn alloc_static_pinned_box_uninit<T>(len: usize) -> CudaResult<Static
     unsafe { Ok(Box::<[T], _>::new_uninit_slice_in(len, allocator).assume_init()) }
 }
 
+#[cfg(test)]
 pub(crate) fn alloc_static_pinned_box_from_slice<T: Copy>(
     values: &[T],
 ) -> CudaResult<StaticPinnedBox<T>> {

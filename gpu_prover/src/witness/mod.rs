@@ -7,7 +7,6 @@ pub(crate) mod memory_delegation;
 pub mod memory_unrolled;
 pub mod multiplicities;
 mod option;
-mod placeholder;
 mod ram_access;
 pub mod trace;
 pub(crate) mod trace_delegation;
@@ -18,7 +17,7 @@ pub mod witness_unrolled;
 #[repr(C, u32)]
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
-pub enum Address {
+pub(crate) enum Address {
     BaseLayerWitness(u32),
     BaseLayerMemory(u32),
     InnerLayer { offset: u32, layer: u32 },
@@ -59,16 +58,16 @@ impl From<GKRAddress> for Address {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
-pub struct NoFieldLinearTerm {
+pub(crate) struct NoFieldLinearTerm {
     coefficient: u32,
     address: Address,
 }
 
-pub const MAX_LINEAR_TERMS_COUNT: usize = 4;
+pub(crate) const MAX_LINEAR_TERMS_COUNT: usize = 4;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
-pub struct NoFieldLinearRelation {
+pub(crate) struct NoFieldLinearRelation {
     linear_terms_count: u32,
     linear_terms: [NoFieldLinearTerm; MAX_LINEAR_TERMS_COUNT],
     constant: u32,

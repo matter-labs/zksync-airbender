@@ -37,11 +37,14 @@ macro_rules! get_powers_by_val_kernel {
     };
 }
 
-pub trait GetPowersByVal: Sized {
+#[allow(dead_code)]
+#[allow(dead_code)]
+pub(crate) trait GetPowersByVal: Sized {
     const KERNEL_FUNCTION: GetPowersByValSignature<Self>;
 }
 
-pub fn get_powers_by_val<T: GetPowersByVal>(
+#[cfg(test)]
+pub(crate) fn get_powers_by_val<T: GetPowersByVal>(
     base: T,
     offset: u32,
     bit_reverse: bool,
@@ -96,11 +99,11 @@ macro_rules! get_powers_by_ref_kernel {
     };
 }
 
-pub trait GetPowersByRef: Sized {
+pub(crate) trait GetPowersByRef: Sized {
     const KERNEL_FUNCTION: GetPowersByRefSignature<Self>;
 }
 
-pub fn get_powers_by_ref<T: GetPowersByRef>(
+pub(crate) fn get_powers_by_ref<T: GetPowersByRef>(
     base: &DeviceVariable<T>,
     offset: u32,
     bit_reverse: bool,

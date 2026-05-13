@@ -10,8 +10,8 @@ use crate::primitives::device_structures::{
 };
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
-use crate::prover::trace_holder::{TraceHolder, TreesCacheMode};
-use crate::prover::tracing_data::{
+use crate::prover::trace::holder::{TraceHolder, TreesCacheMode};
+use crate::prover::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
 };
 use crate::witness::memory_delegation::generate_memory_and_witness_values_delegation;
@@ -47,14 +47,17 @@ pub(crate) struct GpuGKRLookupMappings {
 }
 
 impl GpuGKRLookupMappings {
+    #[cfg(test)]
     pub(crate) fn has_generic_family(&self) -> bool {
         self.generic_family.is_some()
     }
 
+    #[cfg(test)]
     pub(crate) fn has_range_check_16(&self) -> bool {
         self.range_check_16.is_some()
     }
 
+    #[cfg(test)]
     pub(crate) fn has_timestamp(&self) -> bool {
         self.timestamp.is_some()
     }
@@ -110,10 +113,6 @@ impl GpuGKRLookupMappings {
 
     pub(crate) fn timestamp_mapping(&self, set_idx: usize) -> &DeviceSlice<u32> {
         &self.timestamp()[self.column_range(set_idx)]
-    }
-
-    pub(crate) fn all_generic_family_mappings(&self) -> DeviceMatrix<'_, u32> {
-        DeviceMatrix::new(self.generic_family(), self.trace_len)
     }
 }
 

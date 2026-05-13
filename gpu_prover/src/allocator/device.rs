@@ -1,36 +1,25 @@
 use crate::allocator::{
-    ConcurrentInnerStaticAllocatorWrapper, InnerStaticAllocatorWrapper,
-    NonConcurrentInnerStaticAllocatorWrapper, StaticAllocation, StaticAllocationBackend,
-    StaticAllocator,
+    InnerStaticAllocatorWrapper, NonConcurrentInnerStaticAllocatorWrapper, StaticAllocation,
+    StaticAllocationBackend, StaticAllocator,
 };
 use era_cudart::memory::DeviceAllocation;
-use era_cudart::memory_pools::DevicePoolAllocation;
 use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 
-pub enum StaticDeviceAllocationBackend {
-    DeviceAllocation(DeviceAllocation<u8>),
-    DevicePoolAllocation(DevicePoolAllocation<'static, u8>),
-}
+pub(crate) struct StaticDeviceAllocationBackend(pub(crate) DeviceAllocation<u8>);
 
 impl Deref for StaticDeviceAllocationBackend {
     type Target = DeviceSlice<u8>;
 
     fn deref(&self) -> &Self::Target {
-        match self {
-            Self::DeviceAllocation(allocation) => allocation,
-            Self::DevicePoolAllocation(allocation) => allocation,
-        }
+        &self.0
     }
 }
 
 impl DerefMut for StaticDeviceAllocationBackend {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            Self::DeviceAllocation(allocation) => allocation,
-            Self::DevicePoolAllocation(allocation) => allocation,
-        }
+        &mut self.0
     }
 }
 
@@ -53,11 +42,6 @@ trait InnerStaticDeviceAllocatorWrapper:
 {
 }
 
-type ConcurrentInnerStaticDeviceAllocatorWrapper =
-    ConcurrentInnerStaticAllocatorWrapper<StaticDeviceAllocationBackend>;
-
-impl InnerStaticDeviceAllocatorWrapper for ConcurrentInnerStaticDeviceAllocatorWrapper {}
-
 type NonConcurrentInnerStaticDeviceAllocatorWrapper =
     NonConcurrentInnerStaticAllocatorWrapper<StaticDeviceAllocationBackend>;
 
@@ -67,16 +51,10 @@ type StaticDeviceAllocator<W> = StaticAllocator<StaticDeviceAllocationBackend, W
 
 type StaticDeviceAllocation<T, W> = StaticAllocation<T, StaticDeviceAllocationBackend, W>;
 
-pub type ConcurrentStaticDeviceAllocator =
-    StaticDeviceAllocator<ConcurrentInnerStaticDeviceAllocatorWrapper>;
-
-pub type ConcurrentStaticDeviceAllocation<T> =
-    StaticDeviceAllocation<T, ConcurrentInnerStaticDeviceAllocatorWrapper>;
-
-pub type NonConcurrentStaticDeviceAllocator =
+pub(crate) type NonConcurrentStaticDeviceAllocator =
     StaticDeviceAllocator<NonConcurrentInnerStaticDeviceAllocatorWrapper>;
 
-pub type NonConcurrentStaticDeviceAllocation<T> =
+pub(crate) type NonConcurrentStaticDeviceAllocation<T> =
     StaticDeviceAllocation<T, NonConcurrentInnerStaticDeviceAllocatorWrapper>;
 
 impl<T, W: InnerStaticDeviceAllocatorWrapper> Deref for StaticDeviceAllocation<T, W> {

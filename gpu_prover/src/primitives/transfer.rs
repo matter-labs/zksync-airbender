@@ -7,7 +7,7 @@ use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
 use era_cudart::stream::CudaStreamWaitEventFlags;
 use std::sync::Arc;
 
-pub struct Transfer<'a> {
+pub(crate) struct Transfer<'a> {
     pub(crate) allocated: CudaEvent,
     pub(crate) transferred: CudaEvent,
     pub(crate) callbacks: Callbacks<'a>,

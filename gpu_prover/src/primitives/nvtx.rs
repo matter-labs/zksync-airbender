@@ -139,16 +139,19 @@ pub(crate) fn end_range(id: RangeId) {
     }
 }
 
+#[cfg(test)]
 pub(crate) struct ScopedRange {
     id: RangeId,
 }
 
+#[cfg(test)]
 impl Drop for ScopedRange {
     fn drop(&mut self) {
         end_range(self.id);
     }
 }
 
+#[cfg(test)]
 pub(crate) fn scoped_range(domain: Option<&str>, message: &str) -> ScopedRange {
     ScopedRange {
         id: start_range(domain, message),

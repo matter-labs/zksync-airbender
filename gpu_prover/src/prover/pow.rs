@@ -2,7 +2,6 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::{
     assemble_query_indexes, blake2s_pow, transcript_commit, transcript_squeeze, STATE_SIZE,
 };
-use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;

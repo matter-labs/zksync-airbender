@@ -1,0 +1,583 @@
+use std::alloc::Global;
+
+use era_cudart::memory::memory_copy_async;
+use fft::field_utils::{distribute_powers_serial, domain_generator_for_size};
+use field::{Field, PrimeField};
+use prover::gkr::whir::hypercube_to_monomial::{
+    multivariate_coeffs_into_hypercube_evals, multivariate_hypercube_evals_into_coeffs,
+};
+use serial_test::serial;
+use worker::Worker;
+
+use super::{
+    bitreversed_coeffs_to_natural_coset, hypercube_coeffs_natural_to_natural_evals,
+    hypercube_evals_natural_to_bitreversed_coeffs, natural_evals_to_bitreversed_coeffs,
+    transpose_monomials_naive,
+};
+use crate::allocator::tracker::AllocationPlacement;
+use crate::primitives::context::{ProverContext, ProverContextConfig};
+use crate::primitives::field::BF;
+
+const TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 2;
+
+fn make_context() -> ProverContext {
+    let mut config = ProverContextConfig::default();
+    let default_block_log_size = config.allocator_block_log_size;
+    let arena_bytes = 256usize << default_block_log_size;
+    config.allocator_block_log_size = TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
+    config.max_device_allocation_blocks_count =
+        Some(arena_bytes >> TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE);
+    // 32 MB host pool: with 8 KB blocks this is 4096 blocks
+    let host_block_size = 1usize << config.host_allocator_block_log_size;
+    config.host_allocator_blocks_count = (32 * 1024 * 1024) / host_block_size;
+    ProverContext::new(&config).unwrap()
+}
+
+const TEST_LOG_NS: &[usize] = &[1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20];
+
+#[test]
+fn characterize_cpu_hypercube_ordering() {
+    let coeffs = vec![
+        BF::new(3),
+        BF::new(5),
+        BF::new(7),
+        BF::new(11),
+        BF::new(13),
+        BF::new(17),
+        BF::new(19),
+        BF::new(23),
+    ];
+    let mut hypercube_evals = coeffs.clone();
+    multivariate_coeffs_into_hypercube_evals(&mut hypercube_evals, 3);
+
+    let mut bitreversed_input_evals = hypercube_evals.clone();
+    fft::bitreverse_enumeration_inplace(&mut bitreversed_input_evals);
+    let mut bitreversed_coeffs = coeffs.clone();
+    fft::bitreverse_enumeration_inplace(&mut bitreversed_coeffs);
+
+    let mut recovered_bitreversed = bitreversed_input_evals.clone();
+    multivariate_hypercube_evals_into_coeffs(&mut recovered_bitreversed, 3);
+    assert_eq!(recovered_bitreversed, bitreversed_coeffs);
+
+    let mut recovered_natural = bitreversed_input_evals;
+    fft::bitreverse_enumeration_inplace(&mut recovered_natural);
+    multivariate_hypercube_evals_into_coeffs(&mut recovered_natural, 3);
+    assert_eq!(recovered_natural, coeffs);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu() {
+    let context = make_context();
+    let stream = context.get_exec_stream();
+
+    for &log_n in TEST_LOG_NS {
+        let n = 1usize << log_n;
+        let evals = (0..n)
+            .map(|idx| BF::new((17 + idx * 13) as u32))
+            .collect::<Vec<_>>();
+        let mut expected = evals.clone();
+        fft::bitreverse_enumeration_inplace(&mut expected);
+        multivariate_hypercube_evals_into_coeffs(&mut expected, log_n as u32);
+        fft::bitreverse_enumeration_inplace(&mut expected);
+
+        let mut src = context.alloc(n, AllocationPlacement::BestFit).unwrap();
+        let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
+        memory_copy_async(&mut src, &evals, stream).unwrap();
+        hypercube_evals_natural_to_bitreversed_coeffs(&src, &mut dst, log_n, stream).unwrap();
+
+        let mut actual = vec![BF::ZERO; n];
+        memory_copy_async(&mut actual, &dst, stream).unwrap();
+        stream.synchronize().unwrap();
+        assert_eq!(actual, expected, "log_n={}", log_n);
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn hypercube_coeffs_natural_to_natural_evals_matches_cpu() {
+    let context = make_context();
+    let stream = context.get_exec_stream();
+
+    for &log_n in TEST_LOG_NS {
+        let n = 1usize << log_n;
+        let coeffs = (0..n)
+            .map(|idx| BF::new((29 + idx * 7) as u32))
+            .collect::<Vec<_>>();
+        let mut expected = coeffs.clone();
+        multivariate_coeffs_into_hypercube_evals(&mut expected, log_n as u32);
+
+        let mut src = context.alloc(n, AllocationPlacement::BestFit).unwrap();
+        let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
+        memory_copy_async(&mut src, &coeffs, stream).unwrap();
+        hypercube_coeffs_natural_to_natural_evals(&src, &mut dst, log_n, stream).unwrap();
+
+        let mut actual = vec![BF::ZERO; n];
+        memory_copy_async(&mut actual, &dst, stream).unwrap();
+        stream.synchronize().unwrap();
+        assert_eq!(actual, expected, "log_n={}", log_n);
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn natural_evals_to_bitreversed_coeffs_matches_cpu() {
+    let context = make_context();
+    let stream = context.get_exec_stream();
+
+    for &log_n in TEST_LOG_NS {
+        let n = 1usize << log_n;
+        let evals = (0..n)
+            .map(|idx| BF::new((11 + idx * 23) as u32))
+            .collect::<Vec<_>>();
+        let mut expected = evals.clone();
+        fft::naive::cache_friendly_ntt_natural_to_bitreversed(
+            &mut expected,
+            log_n as u32,
+            &fft::Twiddles::<BF, Global>::new(n, &Worker::new()).inverse_twiddles[..],
+        );
+        let scale = BF::from_u32_unchecked(n as u32).inverse().unwrap();
+        for value in expected.iter_mut() {
+            value.mul_assign(&scale);
+        }
+
+        let mut src = context.alloc(n, AllocationPlacement::BestFit).unwrap();
+        let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
+        memory_copy_async(&mut src, &evals, stream).unwrap();
+        natural_evals_to_bitreversed_coeffs(&src, &mut dst, log_n, stream).unwrap();
+
+        let mut actual = vec![BF::ZERO; n];
+        memory_copy_async(&mut actual, &dst, stream).unwrap();
+        stream.synchronize().unwrap();
+        assert_eq!(actual, expected, "log_n={}", log_n);
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn bitreversed_coeffs_to_natural_coset_matches_cpu() {
+    let worker = Worker::new();
+    let context = make_context();
+    let stream = context.get_exec_stream();
+
+    for &log_n in TEST_LOG_NS {
+        let n = 1usize << log_n;
+        let twiddles = fft::Twiddles::<BF, Global>::new(n, &worker);
+        let selected_twiddles = &twiddles.forward_twiddles[..(n >> 1)];
+        let coeffs_natural = (0..n)
+            .map(|idx| BF::new((5 + idx * 19) as u32))
+            .collect::<Vec<_>>();
+        let mut coeffs_bitreversed = coeffs_natural.clone();
+        fft::bitreverse_enumeration_inplace(&mut coeffs_bitreversed);
+
+        let mut src = context.alloc(n, AllocationPlacement::BestFit).unwrap();
+        let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
+        memory_copy_async(&mut src, &coeffs_bitreversed, stream).unwrap();
+
+        for log_lde_factor in [1usize, 2, 3] {
+            let tau = domain_generator_for_size::<BF>(1u64 << (log_n + log_lde_factor));
+            for coset_index in 0..(1usize << log_lde_factor) {
+                bitreversed_coeffs_to_natural_coset(
+                    &src,
+                    &mut dst,
+                    log_n,
+                    log_lde_factor,
+                    coset_index,
+                    stream,
+                )
+                .unwrap();
+
+                let mut actual = vec![BF::ZERO; n];
+                memory_copy_async(&mut actual, &dst, stream).unwrap();
+                stream.synchronize().unwrap();
+
+                let mut expected = coeffs_natural.clone();
+                if coset_index != 0 {
+                    distribute_powers_serial(&mut expected, BF::ONE, tau.pow(coset_index as u32));
+                }
+                fft::bitreverse_enumeration_inplace(&mut expected);
+                fft::naive::serial_ct_ntt_bitreversed_to_natural(
+                    &mut expected,
+                    log_n as u32,
+                    selected_twiddles,
+                );
+
+                assert_eq!(
+                    actual, expected,
+                    "log_n={}, log_lde_factor={}, coset_index={}",
+                    log_n, log_lde_factor, coset_index
+                );
+            }
+        }
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn transpose_monomials_naive_matches_cpu() {
+    let context = make_context();
+    let stream = context.get_exec_stream();
+
+    for &log_n in &[10usize, 12, 14] {
+        let n = 1usize << log_n;
+        let mut expected = (0..n)
+            .map(|idx| BF::new((37 + idx * 31) as u32))
+            .collect::<Vec<_>>();
+        let mut actual = expected.clone();
+        transpose_monomials(&mut expected);
+
+        let mut values = context.alloc(n, AllocationPlacement::BestFit).unwrap();
+        memory_copy_async(&mut values, &actual, stream).unwrap();
+        transpose_monomials_naive(&mut values, log_n, stream).unwrap();
+        memory_copy_async(&mut actual, &values, stream).unwrap();
+        stream.synchronize().unwrap();
+
+        assert_eq!(actual, expected, "log_n={}", log_n);
+    }
+}
+
+const TEST_LOG_LDE_FACTOR: usize = 2;
+const TEST_COSET_INDEX: usize = 1;
+
+#[derive(PartialEq)]
+enum InOrOutOfPlace {
+    In,
+    Out,
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_hypercube_evals_to_monomials_2_pass_out_of_place() {
+    run_evals_to_monomials(
+        23..25,
+        8,
+        wrap_hypercube_evals_to_monomials_2_pass,
+        hypercube_evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::Out,
+        false,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_hypercube_evals_to_monomials_2_pass_in_place() {
+    run_evals_to_monomials(
+        23..25,
+        8,
+        wrap_hypercube_evals_to_monomials_2_pass,
+        hypercube_evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::In,
+        false,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_hypercube_evals_to_monomials_2_pass_transposed_monomials_out_of_place() {
+    run_evals_to_monomials(
+        23..25,
+        8,
+        wrap_hypercube_evals_to_monomials_2_pass,
+        hypercube_evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::Out,
+        true,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_hypercube_evals_to_monomials_2_pass_transposed_monomials_in_place() {
+    run_evals_to_monomials(
+        23..25,
+        8,
+        wrap_hypercube_evals_to_monomials_2_pass,
+        hypercube_evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::In,
+        true,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_hypercube_evals_to_monomials_3_pass_out_of_place() {
+    run_evals_to_monomials(
+        21..25,
+        8,
+        wrap_hypercube_evals_to_monomials_3_pass,
+        hypercube_evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::Out,
+        false,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_hypercube_evals_to_monomials_3_pass_in_place() {
+    run_evals_to_monomials(
+        21..25,
+        8,
+        wrap_hypercube_evals_to_monomials_3_pass,
+        hypercube_evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::In,
+        false,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_hypercube_evals_to_monomials_3_pass_transposed_monomials_out_of_place() {
+    run_evals_to_monomials(
+        21..25,
+        8,
+        wrap_hypercube_evals_to_monomials_3_pass,
+        hypercube_evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::Out,
+        true,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_hypercube_evals_to_monomials_3_pass_transposed_monomials_in_place() {
+    run_evals_to_monomials(
+        21..25,
+        8,
+        wrap_hypercube_evals_to_monomials_3_pass,
+        hypercube_evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::In,
+        true,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_evals_to_monomials_2_pass_out_of_place() {
+    run_evals_to_monomials(
+        23..25,
+        8,
+        wrap_evals_to_monomials_2_pass,
+        evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::Out,
+        false,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_evals_to_monomials_2_pass_in_place() {
+    run_evals_to_monomials(
+        23..25,
+        8,
+        wrap_evals_to_monomials_2_pass,
+        evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::In,
+        false,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_evals_to_monomials_2_pass_transposed_monomials_out_of_place() {
+    run_evals_to_monomials(
+        23..25,
+        8,
+        wrap_evals_to_monomials_2_pass,
+        evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::Out,
+        true,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_evals_to_monomials_2_pass_transposed_monomials_in_place() {
+    run_evals_to_monomials(
+        23..25,
+        8,
+        wrap_evals_to_monomials_2_pass,
+        evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::In,
+        true,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_evals_to_monomials_3_pass_out_of_place() {
+    run_evals_to_monomials(
+        21..25,
+        8,
+        wrap_evals_to_monomials_3_pass,
+        evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::Out,
+        false,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_evals_to_monomials_3_pass_in_place() {
+    run_evals_to_monomials(
+        21..25,
+        8,
+        wrap_evals_to_monomials_3_pass,
+        evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::In,
+        false,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_evals_to_monomials_3_pass_transposed_monomials_out_of_place() {
+    run_evals_to_monomials(
+        21..25,
+        8,
+        wrap_evals_to_monomials_3_pass,
+        evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::Out,
+        true,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_evals_to_monomials_3_pass_transposed_monomials_in_place() {
+    run_evals_to_monomials(
+        21..25,
+        8,
+        wrap_evals_to_monomials_3_pass,
+        evals_to_monomials_cpu_fn,
+        InOrOutOfPlace::In,
+        true,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_monomials_to_evals_3_pass_out_of_place() {
+    run_monomials_to_evals(
+        21..25,
+        8,
+        wrap_monomials_to_evals_3_pass,
+        InOrOutOfPlace::Out,
+        false,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_monomials_to_evals_3_pass_in_place() {
+    run_monomials_to_evals(
+        21..25,
+        8,
+        wrap_monomials_to_evals_3_pass,
+        InOrOutOfPlace::In,
+        false,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_monomials_to_evals_3_pass_transposed_monomials_out_of_place() {
+    run_monomials_to_evals(
+        21..25,
+        8,
+        wrap_monomials_to_evals_3_pass,
+        InOrOutOfPlace::Out,
+        true,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_monomials_to_evals_3_pass_transposed_monomials_in_place() {
+    run_monomials_to_evals(
+        21..25,
+        8,
+        wrap_monomials_to_evals_3_pass,
+        InOrOutOfPlace::In,
+        true,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_monomials_to_evals_2_pass_out_of_place() {
+    run_monomials_to_evals(
+        23..25,
+        8,
+        wrap_monomials_to_evals_2_pass,
+        InOrOutOfPlace::Out,
+        false,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_monomials_to_evals_2_pass_in_place() {
+    run_monomials_to_evals(
+        23..25,
+        8,
+        wrap_monomials_to_evals_2_pass,
+        InOrOutOfPlace::In,
+        false,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_monomials_to_evals_2_pass_transposed_monomials_out_of_place() {
+    run_monomials_to_evals(
+        23..25,
+        8,
+        wrap_monomials_to_evals_2_pass,
+        InOrOutOfPlace::Out,
+        true,
+    );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn test_monomials_to_evals_2_pass_transposed_monomials_in_place() {
+    run_monomials_to_evals(
+        23..25,
+        8,
+        wrap_monomials_to_evals_2_pass,
+        InOrOutOfPlace::In,
+        true,
+    );
+}
+
+mod helpers;
+#[allow(unused_imports)]
+use helpers::*;

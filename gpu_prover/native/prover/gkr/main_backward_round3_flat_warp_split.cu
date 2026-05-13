@@ -2,12 +2,11 @@
 
 namespace airbender::prover::gkr {
 
-// Phase C compact-source unified tiled warp-split round 3+ kernel
-// (non-explicit form). Per-tile fold -> sync -> compute. All term types
-// mixed in a single array sorted by source-group tile affinity. Grid
-// covers acc_size / 32 blocks (4 warps share 32 gids). Resolves source
-// pointers via `desc.tables` + per-step offsets baked into the compact
-// descriptor instead of legacy raw pointers.
+// Compact-source unified tiled warp-split round 3+ kernel (non-explicit
+// form). Per-tile fold -> sync -> compute. All term types mixed in a
+// single array sorted by source-group tile affinity. Grid covers
+// acc_size / 32 blocks (4 warps share 32 gids). Resolves source pointers
+// via `desc.tables` + per-step offsets baked into the compact descriptor.
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_gkr_main_round3_flat_constant_unified_compact_e4_kernel(const __grid_constant__ flat_continuation_unified_desc_compact desc,
                                                                     const unsigned fold_stride, const unsigned next_layer_size,
@@ -58,7 +57,7 @@ EXTERN __launch_bounds__(128, 8) __global__
   }
 }
 
-// Phase C compact-source unified tiled warp-split round 3+ kernel (explicit form).
+// Compact-source unified tiled warp-split round 3+ kernel (explicit form).
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_gkr_main_round3_flat_constant_explicit_unified_compact_e4_kernel(const __grid_constant__ flat_continuation_unified_desc_compact desc,
                                                                              const unsigned fold_stride, const unsigned next_layer_size,

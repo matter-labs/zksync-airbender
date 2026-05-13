@@ -20,10 +20,7 @@ mod tests {
         UnrolledProgramSetup,
     };
     use execution_utils::unrolled_gpu::{UnrolledProver, UnrolledProverLevel};
-    use gpu_prover::execution::prover::{
-        ExecutionKind, ExecutionProver, ExecutionProverConfiguration,
-    };
-    use gpu_prover::machine_type::MachineType;
+    use gpu_prover::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType};
     use log::info;
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
     use riscv_transpiler::cycle::{

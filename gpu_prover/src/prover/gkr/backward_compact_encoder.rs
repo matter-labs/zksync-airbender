@@ -1,15 +1,11 @@
-//! Phase B-encoder — per-launch builders that emit u16 source records into
-//! the compact dim-reducing kernel-arg structs. Pre-condition: Phase A2's
-//! consolidated per-(layer, AddressClass) backings are populated for every
-//! address the encoder will touch (artifact + tower).
+//! Per-launch builders that emit u16 source records into the compact
+//! dim-reducing kernel-arg structs.
 //!
-//! Slot assignment is **per-launch dynamic**: each builder walks the
-//! addresses for one batch, collects distinct `(backing_arc_pointer,
-//! log2_stride)` pairs in order of first appearance, and packs each address
-//! as `pack_source_u16(first_access, slot_idx, poly_idx)` against the resulting
+//! Slot assignment is per-launch dynamic: each builder walks the addresses
+//! for one batch, collects distinct `(backing_arc_pointer, log2_stride)` pairs
+//! in order of first appearance, and packs each address as
+//! `pack_source_u16(first_access, slot_idx, poly_idx)` against the resulting
 //! tables.
-//!
-//! See `/home/rr/.claude/plans/i-would-actually-put-kind-thacker.md`.
 //!
 //! GPU scheduling contract: see docs/gpu_scheduling_contract.md. Builders run
 //! on the scheduling thread, only read from `GpuGKRStorage` (no allocation,
@@ -33,9 +29,8 @@ use super::GpuGKRStorage;
 
 /// Per-launch slot assignment helper. Maps distinct `(backing_arc_pointer,
 /// log2_stride)` pairs to slot indices in first-appearance order, panicking
-/// past `GKR_DIM_REDUCING_BASE_SLOTS = 16` (raised from 8 to fit main-layer
-/// flat-path round 1/2 launches that touch up to ~10 distinct backings;
-/// Phase 0 measured the worst-case dim-reducing path well under 8).
+/// past `GKR_DIM_REDUCING_BASE_SLOTS = 16` (sized to fit main-layer
+/// flat-path round 1/2 launches that touch up to ~10 distinct backings).
 struct SlotTableBuilder {
     bases: [*const u8; GKR_DIM_REDUCING_BASE_SLOTS],
     log2_stride: [u32; GKR_DIM_REDUCING_BASE_SLOTS],
@@ -67,7 +62,7 @@ impl SlotTableBuilder {
         }
         assert!(
             self.n_slots < GKR_DIM_REDUCING_BASE_SLOTS,
-            "exceeded GKR_DIM_REDUCING_BASE_SLOTS={GKR_DIM_REDUCING_BASE_SLOTS}; per-launch class fan-out higher than Phase 0 measured maximum",
+            "exceeded GKR_DIM_REDUCING_BASE_SLOTS={GKR_DIM_REDUCING_BASE_SLOTS}; per-launch class fan-out above expected maximum",
         );
         let slot = self.n_slots;
         self.bases[slot] = backing_ptr;
@@ -136,8 +131,8 @@ fn resolve_ext_consolidated<B, E: Field>(
 
 /// `(layer, class)` lookup of the matching folding-buffer backing. Returns
 /// `(backing_ptr, log2_stride, poly_idx)`. The folding-buffer log2_stride is
-/// `log2(per_poly_size)`; per Phase B-foundation the poly_idx aligns with
-/// the matching ext_class_backing.
+/// `log2(per_poly_size)`; the poly_idx aligns with the matching
+/// `ext_class_backing`.
 fn resolve_ext_folding_buffer<B, E: Field>(
     storage: &GpuGKRStorage<B, E>,
     address: GKRAddress,
@@ -285,9 +280,9 @@ pub(super) fn build_round0_batch_compact<B, E: Field>(
 /// the record's cache half. The source and cache poly_idx values may differ
 /// for copy aliases.
 ///
-/// `first_access` mirrors the legacy `last_used_for_layer` semantics: the
-/// first occurrence of a given `(layer, address)` pair within the batch
-/// payload returns `true`, subsequent occurrences return `false`.
+/// `first_access` follows `last_used_for_layer` semantics: the first
+/// occurrence of a given `(layer, address)` pair within the batch payload
+/// returns `true`, subsequent occurrences return `false`.
 pub(super) fn build_round1_batch_compact<B, E: Field>(
     blueprints: &[DimensionReducingKernelBlueprint<E>],
     storage: &GpuGKRStorage<B, E>,
@@ -349,8 +344,8 @@ pub(super) fn build_round1_batch_compact<B, E: Field>(
 /// `gkr_resolve_dim_reducing_continuation_source` which derives per-step
 /// offsets from `step + acc_size`.
 ///
-/// `first_access` mirrors the legacy semantics: first occurrence of a
-/// `(layer, address)` pair within this step's batch payload is `true`.
+/// `first_access` is `true` on the first occurrence of a
+/// `(layer, address)` pair within this step's batch payload.
 pub(super) fn build_continuation_batch_compact<B, E: Field>(
     blueprints: &[DimensionReducingKernelBlueprint<E>],
     storage: &GpuGKRStorage<B, E>,

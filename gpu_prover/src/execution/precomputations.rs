@@ -25,8 +25,8 @@ use worker::Worker;
 /// `GpuGKRSetupHost::precompute_from_cpu_setup` call (which does GPU LDE +
 /// commit + D2H of partial trees and the unified cap) runs on first use
 /// inside the GPU worker, against that worker's already-initialized
-/// `ProverContext`. Mirrors the legacy `OnceLock<SetupTreesAndCaps>`
-/// first-use-on-GPU pattern, lifted to the new GKR shape.
+/// `ProverContext`. Uses a `OnceLock` so concurrent workers race once and
+/// the loser drops its Arc instead of installing a duplicate.
 ///
 /// The `Arc` wrapper around `GpuGKRSetupHost` is what subsequent workers
 /// clone — every prove() that uses this circuit picks up the same cached
@@ -84,11 +84,9 @@ impl LazyGpuGKRSetupHost {
 }
 
 /// Per-circuit precomputations cached across `prove()` invocations.
-///
-/// Replaces the legacy `(compiled_circuit, lde_precomputations, setup_trace,
-/// setup_trees_and_caps: OnceLock, decoder_data)` shape. `setup_host` is a
-/// `LazyGpuGKRSetupHost` populated on first GPU-worker use; the decoder
-/// table is host-only and built eagerly in this constructor.
+/// `setup_host` is a `LazyGpuGKRSetupHost` populated on first GPU-worker
+/// use; the decoder table is host-only and built eagerly in this
+/// constructor.
 #[derive(Clone)]
 pub(crate) struct CircuitPrecomputations {
     pub compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
@@ -99,8 +97,7 @@ pub(crate) struct CircuitPrecomputations {
 impl CircuitPrecomputations {
     /// Build the per-circuit precomputations. The GPU-side `GpuGKRSetupHost`
     /// is *not* materialized here — `setup_host.get_or_init(context)` does
-    /// that on first use inside a GPU worker, mirroring the legacy
-    /// `OnceLock<SetupTreesAndCaps>` lazy-on-first-prove pattern.
+    /// that on first use inside a GPU worker.
     pub fn new(
         circuit_type: CircuitType,
         compiled_circuit: GKRCircuitArtifact<BF>,
@@ -417,9 +414,6 @@ fn build_unrolled_setup(
                 setup: s.setup,
                 decoder_data: decoder_data_from_table,
             })
-        }
-        UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::MulDiv) => {
-            unimplemented!("signed MulDiv setup is not exposed by the new `setups` crate")
         }
         UnrolledCircuitType::InitsAndTeardowns | UnrolledCircuitType::Unified => unreachable!(),
     }

@@ -1,7 +1,7 @@
 use crate::primitives::context::DeviceAllocation;
 use crate::witness::trace::ChunkedTraceHolder;
 
-pub struct DelegationTraceDevice<T> {
+pub(crate) struct DelegationTraceDevice<T> {
     pub tracing_data: DeviceAllocation<T>,
 }
 

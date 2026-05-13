@@ -1,5 +1,4 @@
 use super::trace_delegation::{DelegationTraceDevice, DelegationTraceRaw};
-use crate::primitives::circuit_type::DelegationCircuitType;
 use crate::primitives::device_structures::{DeviceMatrixImpl, DeviceMatrixMutImpl};
 use crate::primitives::field::BF;
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
@@ -45,45 +44,30 @@ macro_rules! generate_witness_values_kernel {
 }
 
 pub(crate) trait GenerateWitnessDelegation: Sized {
-    const CIRCUIT_TYPE: DelegationCircuitType;
     const SIGNATURE: GenerateWitnessValuesSignature<Self>;
 }
 
 macro_rules! generate_witness_values_impl {
-    ($name:ident, $witness_type:ty, $circuit_type:ty) => {
+    ($name:ident, $witness_type:ty) => {
         paste! {
             generate_witness_values_kernel!($name, $witness_type);
             impl GenerateWitnessDelegation for $witness_type {
-                const CIRCUIT_TYPE: DelegationCircuitType = $circuit_type;
                 const SIGNATURE: GenerateWitnessValuesSignature<Self> = [<ab_generate_witness_values_ $name _kernel>];
             }
         }
     };
 }
 
-generate_witness_values_impl!(
-    bigint_with_control,
-    BigintDelegationWitness,
-    DelegationCircuitType::BigIntWithControl
-);
+generate_witness_values_impl!(bigint_with_control, BigintDelegationWitness);
 
 generate_witness_values_impl!(
     blake2_with_compression,
-    Blake2sRoundFunctionDelegationWitness,
-    DelegationCircuitType::Blake2WithCompression
+    Blake2sRoundFunctionDelegationWitness
 );
 
-generate_witness_values_impl!(
-    blake2_g_function,
-    Blake2sGFunctionDelegationWitness,
-    DelegationCircuitType::Blake2GFunction
-);
+generate_witness_values_impl!(blake2_g_function, Blake2sGFunctionDelegationWitness);
 
-generate_witness_values_impl!(
-    keccak_special5,
-    KeccakSpecial5DelegationWitness,
-    DelegationCircuitType::KeccakSpecial5
-);
+generate_witness_values_impl!(keccak_special5, KeccakSpecial5DelegationWitness);
 
 pub(crate) fn generate_witness_values_delegation<T: GenerateWitnessDelegation>(
     trace: &DelegationTraceDevice<T>,

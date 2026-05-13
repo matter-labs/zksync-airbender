@@ -8,7 +8,7 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 
 use crate::ops::blake2s::DG;
 use crate::primitives::device_structures::{
-    DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
+    DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
 use crate::primitives::field::*;
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, LOG_WARP_SIZE, WARP_SIZE};
@@ -24,7 +24,7 @@ cuda_kernel_signature_arguments_and_function!(
     log_count: u32,
 );
 
-pub trait BitReverse: Sized {
+pub(crate) trait BitReverse: Sized {
     type ChunkType: Sized;
     const NAIVE_KERNEL_FUNCTION: BitReverseSignature<Self>;
     const KERNEL_FUNCTION: BitReverseSignature<Self::ChunkType>;
@@ -77,21 +77,7 @@ pub trait BitReverse: Sized {
     }
 }
 
-pub fn bit_reverse<T: BitReverse>(
-    src: &(impl DeviceMatrixChunkImpl<T> + ?Sized),
-    dst: &mut (impl DeviceMatrixChunkMutImpl<T> + ?Sized),
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    let rows = dst.rows();
-    let cols = dst.cols();
-    assert_eq!(src.rows(), rows);
-    assert_eq!(src.cols(), cols);
-    let src = src.as_ptr_and_stride();
-    let dst = dst.as_mut_ptr_and_stride();
-    T::launch(rows, cols, src, dst, stream)
-}
-
-pub fn bit_reverse_in_place<T: BitReverse>(
+pub(crate) fn bit_reverse_in_place<T: BitReverse>(
     values: &mut (impl DeviceMatrixChunkMutImpl<T> + ?Sized),
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -143,11 +129,27 @@ bit_reverse_impl!(DG, E4);
 mod tests {
     use super::*;
     use crate::ops::blake2s::DG;
-    use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+    use crate::primitives::device_structures::{
+        DeviceMatrix, DeviceMatrixChunkImpl, DeviceMatrixMut,
+    };
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Rand;
     use itertools::Itertools;
     use rand::rng;
+
+    pub(crate) fn bit_reverse<T: BitReverse>(
+        src: &(impl DeviceMatrixChunkImpl<T> + ?Sized),
+        dst: &mut (impl DeviceMatrixChunkMutImpl<T> + ?Sized),
+        stream: &CudaStream,
+    ) -> CudaResult<()> {
+        let rows = dst.rows();
+        let cols = dst.cols();
+        assert_eq!(src.rows(), rows);
+        assert_eq!(src.cols(), cols);
+        let src = src.as_ptr_and_stride();
+        let dst = dst.as_mut_ptr_and_stride();
+        T::launch(rows, cols, src, dst, stream)
+    }
 
     fn assert_equal<T: PartialEq + core::fmt::Debug>((a, b): (T, T)) {
         assert_eq!(a, b);

@@ -33,7 +33,7 @@ macro_rules! transpose_kernel {
     };
 }
 
-pub trait Transpose: Sized {
+pub(crate) trait Transpose: Sized {
     const LOG_TILE_SIZE: u32;
     const KERNEL_FUNCTION: TransposeSignature<Self>;
 
@@ -65,7 +65,7 @@ pub trait Transpose: Sized {
     }
 }
 
-pub fn transpose<T: Transpose>(
+pub(crate) fn transpose<T: Transpose>(
     src: &(impl DeviceMatrixChunkImpl<T> + ?Sized),
     dst: &mut (impl DeviceMatrixChunkMutImpl<T> + ?Sized),
     stream: &CudaStream,

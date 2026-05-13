@@ -20,7 +20,7 @@ cuda_fn_and_stub! {
     ) -> cudaError_t;
 }
 
-pub type EncodeFunction<T> = unsafe extern "C" fn(
+pub(crate) type EncodeFunction<T> = unsafe extern "C" fn(
     d_temp_storage: *mut u8,
     temp_storage_bytes: &mut usize,
     d_in: *const T,
@@ -31,7 +31,7 @@ pub type EncodeFunction<T> = unsafe extern "C" fn(
     stream: cudaStream_t,
 ) -> cudaError_t;
 
-pub trait Encode: Sized {
+pub(crate) trait Encode: Sized {
     fn get_function() -> EncodeFunction<Self>;
 
     fn get_encode_temp_storage_bytes(num_items: i32) -> CudaResult<usize> {
@@ -115,11 +115,11 @@ impl Encode for BaseField {
     }
 }
 
-pub fn get_encode_temp_storage_bytes<T: Encode>(num_items: i32) -> CudaResult<usize> {
+pub(crate) fn get_encode_temp_storage_bytes<T: Encode>(num_items: i32) -> CudaResult<usize> {
     T::get_encode_temp_storage_bytes(num_items)
 }
 
-pub fn encode<T: Encode>(
+pub(crate) fn encode<T: Encode>(
     d_temp_storage: &mut DeviceSlice<u8>,
     d_in: &DeviceSlice<T>,
     d_unique_out: &mut DeviceSlice<T>,

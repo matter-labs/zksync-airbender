@@ -1,7 +1,7 @@
 mod allocation_data;
-pub mod device;
-pub mod host;
-pub mod tracker;
+pub(crate) mod device;
+pub(crate) mod host;
+pub(crate) mod tracker;
 
 use allocation_data::StaticAllocationData;
 use era_cudart::result::CudaResult;
@@ -9,15 +9,15 @@ use era_cudart_sys::CudaError;
 use itertools::Itertools;
 use std::cell::RefCell;
 use std::marker::PhantomData;
-use std::mem::forget;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use tracker::{AllocationPlacement, AllocationsTracker};
 
-pub trait StaticAllocationBackend: Sized {
+pub(crate) trait StaticAllocationBackend: Sized {
     fn as_non_null(&mut self) -> NonNull<u8>;
     fn len(&self) -> usize;
+    #[allow(dead_code)]
     fn is_empty(&self) -> bool;
 }
 
@@ -35,7 +35,7 @@ impl SmallAllocator {
     }
 }
 
-pub struct InnerStaticAllocator<B: StaticAllocationBackend> {
+pub(crate) struct InnerStaticAllocator<B: StaticAllocationBackend> {
     _backends: Vec<B>,
     tracker: AllocationsTracker,
     log_chunk_size: u32,
@@ -175,23 +175,10 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
     }
 }
 
-pub struct StaticAllocation<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> {
+pub(crate) struct StaticAllocation<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>>
+{
     allocator: StaticAllocator<B, W>,
     data: StaticAllocationData<T>,
-}
-
-impl<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAllocation<T, B, W> {
-    pub fn alloc(
-        len: usize,
-        placement: AllocationPlacement,
-        allocator: &mut StaticAllocator<B, W>,
-    ) -> CudaResult<Self> {
-        allocator.alloc(len, placement)
-    }
-
-    pub fn free(self) {
-        drop(self)
-    }
 }
 
 impl<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> Drop
@@ -202,12 +189,12 @@ impl<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> Drop
     }
 }
 
-pub trait InnerStaticAllocatorWrapper<B: StaticAllocationBackend>: Clone {
+pub(crate) trait InnerStaticAllocatorWrapper<B: StaticAllocationBackend>: Clone {
     fn new(inner_static_allocator: InnerStaticAllocator<B>) -> Self;
     fn execute<R>(&self, f: impl FnOnce(&mut InnerStaticAllocator<B>) -> R) -> R;
 }
 
-pub type ConcurrentInnerStaticAllocatorWrapper<B> = Arc<Mutex<InnerStaticAllocator<B>>>;
+pub(crate) type ConcurrentInnerStaticAllocatorWrapper<B> = Arc<Mutex<InnerStaticAllocator<B>>>;
 
 impl<B: StaticAllocationBackend> InnerStaticAllocatorWrapper<B>
     for ConcurrentInnerStaticAllocatorWrapper<B>
@@ -221,7 +208,7 @@ impl<B: StaticAllocationBackend> InnerStaticAllocatorWrapper<B>
     }
 }
 
-pub type NonConcurrentInnerStaticAllocatorWrapper<B> = Rc<RefCell<InnerStaticAllocator<B>>>;
+pub(crate) type NonConcurrentInnerStaticAllocatorWrapper<B> = Rc<RefCell<InnerStaticAllocator<B>>>;
 
 impl<B: StaticAllocationBackend> InnerStaticAllocatorWrapper<B>
     for NonConcurrentInnerStaticAllocatorWrapper<B>
@@ -243,7 +230,7 @@ impl<B: StaticAllocationBackend> InnerStaticAllocatorWrapper<B>
     }
 }
 
-pub struct StaticAllocator<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> {
+pub(crate) struct StaticAllocator<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> {
     inner: W,
     log_chunk_size: u32,
     _phantom: PhantomData<B>,
@@ -312,17 +299,8 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
             })
     }
 
-    pub fn free<T>(&self, allocation: StaticAllocation<T, B, W>) {
-        unsafe { self.free_using_data(allocation.data) };
-        forget(allocation);
-    }
-
     unsafe fn free_using_data<T>(&self, data: StaticAllocationData<T>) {
         self.inner.execute(|inner| inner.free(data))
-    }
-
-    pub fn log_chunk_size(&self) -> u32 {
-        self.log_chunk_size
     }
 
     pub fn get_used_mem_current(&self) -> usize {
@@ -339,15 +317,18 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
         })
     }
 
+    pub(crate) fn reset_used_mem_peak(&self) {
+        self.inner
+            .execute(|inner| inner.tracker.reset_used_mem_peak())
+    }
+}
+
+#[cfg(test)]
+impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAllocator<B, W> {
     pub(crate) fn get_used_mem_peak(&self) -> usize {
         // Conservative: the big tracker's peak reflects worst-case physical usage.
         self.inner
             .execute(|inner| inner.tracker.get_used_mem_peak())
-    }
-
-    pub(crate) fn reset_used_mem_peak(&self) {
-        self.inner
-            .execute(|inner| inner.tracker.reset_used_mem_peak())
     }
 }
 
@@ -382,8 +363,6 @@ mod tests {
     const SMALL_LCS: u32 = 4;
     const BIG_CHUNK: usize = 1 << BIG_LCS; // 1024
     const SMALL_CHUNK: usize = 1 << SMALL_LCS; // 16
-                                               // threshold = 1 << (10 - 2) = 256
-    const THRESHOLD: usize = 1 << (BIG_LCS - 2);
 
     fn make_allocator(
         num_big_chunks: usize,

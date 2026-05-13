@@ -4,7 +4,7 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct PtrAndStride<T> {
+pub(crate) struct PtrAndStride<T> {
     pub ptr: *const T,
     pub stride: usize,
 }
@@ -17,7 +17,7 @@ impl<T> PtrAndStride<T> {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct MutPtrAndStride<T> {
+pub(crate) struct MutPtrAndStride<T> {
     pub ptr: *mut T,
     pub stride: usize,
 }
@@ -38,7 +38,7 @@ fn mut_ptr_from_slice_and_offset<T>(slice: &mut DeviceSlice<T>, offset: usize) -
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
-pub struct PtrAndStrideWrappingMatrix<T> {
+pub(crate) struct PtrAndStrideWrappingMatrix<T> {
     pub ptr_and_stride: PtrAndStride<T>,
     pub rows: u32,
     pub cols: u32,
@@ -58,7 +58,7 @@ impl<T> PtrAndStrideWrappingMatrix<T> {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
-pub struct MutPtrAndStrideWrappingMatrix<T> {
+pub(crate) struct MutPtrAndStrideWrappingMatrix<T> {
     pub mut_ptr_and_stride: MutPtrAndStride<T>,
     pub rows: u32,
     pub cols: u32,
@@ -76,7 +76,8 @@ impl<T> MutPtrAndStrideWrappingMatrix<T> {
     }
 }
 
-pub trait DeviceVectorImpl<T> {
+#[allow(dead_code)]
+pub(crate) trait DeviceVectorImpl<T> {
     fn slice(&self) -> &DeviceSlice<T>;
 
     fn as_ptr(&self) -> *const T {
@@ -88,7 +89,8 @@ pub trait DeviceVectorImpl<T> {
     }
 }
 
-pub trait DeviceVectorMutImpl<T>: DeviceVectorImpl<T> {
+#[allow(dead_code)]
+pub(crate) trait DeviceVectorMutImpl<T>: DeviceVectorImpl<T> {
     fn slice_mut(&mut self) -> &mut DeviceSlice<T>;
 
     fn as_mut_ptr(&mut self) -> *mut T {
@@ -100,7 +102,7 @@ pub trait DeviceVectorMutImpl<T>: DeviceVectorImpl<T> {
     }
 }
 
-pub trait DeviceVectorChunkImpl<T> {
+pub(crate) trait DeviceVectorChunkImpl<T> {
     fn slice(&self) -> &DeviceSlice<T>;
 
     fn offset(&self) -> usize {
@@ -115,12 +117,14 @@ pub trait DeviceVectorChunkImpl<T> {
         ptr_from_slice_and_offset(self.slice(), self.offset())
     }
 
+    #[allow(dead_code)]
     fn as_ptr_and_stride(&self) -> PtrAndStride<T> {
         PtrAndStride::new(self.as_ptr(), self.slice().len())
     }
 }
 
-pub trait DeviceVectorChunkMutImpl<T>: DeviceVectorChunkImpl<T> {
+#[allow(dead_code)]
+pub(crate) trait DeviceVectorChunkMutImpl<T>: DeviceVectorChunkImpl<T> {
     fn slice_mut(&mut self) -> &mut DeviceSlice<T>;
 
     fn as_mut_ptr(&mut self) -> *mut T {
@@ -133,7 +137,7 @@ pub trait DeviceVectorChunkMutImpl<T>: DeviceVectorChunkImpl<T> {
     }
 }
 
-pub trait DeviceMatrixImpl<T> {
+pub(crate) trait DeviceMatrixImpl<T> {
     fn slice(&self) -> &DeviceSlice<T>;
 
     fn stride(&self) -> usize {
@@ -153,7 +157,7 @@ pub trait DeviceMatrixImpl<T> {
     }
 }
 
-pub trait DeviceMatrixMutImpl<T>: DeviceMatrixImpl<T> {
+pub(crate) trait DeviceMatrixMutImpl<T>: DeviceMatrixImpl<T> {
     fn slice_mut(&mut self) -> &mut DeviceSlice<T>;
 
     fn as_mut_ptr(&mut self) -> *mut T {
@@ -165,7 +169,7 @@ pub trait DeviceMatrixMutImpl<T>: DeviceMatrixImpl<T> {
     }
 }
 
-pub trait DeviceMatrixChunkImpl<T> {
+pub(crate) trait DeviceMatrixChunkImpl<T> {
     fn slice(&self) -> &DeviceSlice<T>;
 
     fn stride(&self) -> usize {
@@ -193,7 +197,7 @@ pub trait DeviceMatrixChunkImpl<T> {
     }
 }
 
-pub trait DeviceMatrixChunkMutImpl<T>: DeviceMatrixChunkImpl<T> {
+pub(crate) trait DeviceMatrixChunkMutImpl<T>: DeviceMatrixChunkImpl<T> {
     fn slice_mut(&mut self) -> &mut DeviceSlice<T>;
 
     fn as_mut_ptr(&mut self) -> *mut T {
@@ -399,7 +403,7 @@ impl<T> DeviceMatrixChunkMutImpl<T> for DevicePoolAllocation<'_, T> {
 }
 
 #[derive(Debug)]
-pub struct DeviceVectorChunk<'a, T> {
+pub(crate) struct DeviceVectorChunk<'a, T> {
     slice: &'a DeviceSlice<T>,
     offset: usize,
     len: usize,
@@ -441,7 +445,7 @@ impl<T> DeviceMatrixChunkImpl<T> for DeviceVectorChunk<'_, T> {
 }
 
 #[derive(Debug)]
-pub struct DeviceVectorChunkMut<'a, T> {
+pub(crate) struct DeviceVectorChunkMut<'a, T> {
     slice: &'a mut DeviceSlice<T>,
     offset: usize,
     len: usize,
@@ -495,7 +499,7 @@ impl<T> DeviceMatrixChunkMutImpl<T> for DeviceVectorChunkMut<'_, T> {
 }
 
 #[derive(Debug)]
-pub struct DeviceMatrix<'a, T> {
+pub(crate) struct DeviceMatrix<'a, T> {
     slice: &'a DeviceSlice<T>,
     stride: usize,
 }
@@ -527,7 +531,7 @@ impl<T> DeviceMatrixChunkImpl<T> for DeviceMatrix<'_, T> {
     }
 }
 
-pub struct DeviceMatrixOwnsAllocation<T> {
+pub(crate) struct DeviceMatrixOwnsAllocation<T> {
     allocation: crate::primitives::context::DeviceAllocation<T>,
     stride: usize,
 }
@@ -572,7 +576,7 @@ impl<T> DeviceMatrixChunkMutImpl<T> for DeviceMatrixOwnsAllocation<T> {
 }
 
 #[derive(Debug)]
-pub struct DeviceMatrixMut<'a, T> {
+pub(crate) struct DeviceMatrixMut<'a, T> {
     slice: &'a mut DeviceSlice<T>,
     stride: usize,
 }
@@ -617,7 +621,7 @@ impl<T> DeviceMatrixChunkMutImpl<T> for DeviceMatrixMut<'_, T> {
 }
 
 #[derive(Debug)]
-pub struct DeviceMatrixChunk<'a, T> {
+pub(crate) struct DeviceMatrixChunk<'a, T> {
     slice: &'a DeviceSlice<T>,
     stride: usize,
     offset: usize,
@@ -656,7 +660,7 @@ impl<T> DeviceMatrixChunkImpl<T> for DeviceMatrixChunk<'_, T> {
 }
 
 #[derive(Debug)]
-pub struct DeviceMatrixChunkMut<'a, T> {
+pub(crate) struct DeviceMatrixChunkMut<'a, T> {
     slice: &'a mut DeviceSlice<T>,
     stride: usize,
     offset: usize,

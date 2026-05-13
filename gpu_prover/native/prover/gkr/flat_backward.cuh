@@ -51,11 +51,10 @@ struct flat_round0_static_desc {
   u32 num_c1_linear;
 };
 
-// Phase C compact mirror of `flat_round0_static_desc`. Source pointers
-// collapse to u16 packed references (`is_virtual<<15 | ptr_idx<<11 | poly_idx`,
-// 4-bit ptr_idx, 11-bit poly_idx),
-// resolved via the per-launch `tables` block (`bases` / `log2_stride`).
-// Term tables (`c0_bf`, `c1_bf_bf`, ...) are unchanged — they already use u16
+// Compact flat round-0 static descriptor. Source pointers are u16 packed
+// references (`is_virtual<<15 | ptr_idx<<11 | poly_idx`, 4-bit ptr_idx,
+// 11-bit poly_idx), resolved via the per-launch `tables` block
+// (`bases` / `log2_stride`). Term tables (`c0_bf`, `c1_bf_bf`, ...) use u16
 // indices into `sources[]`. Mirror of
 // `gpu_prover::prover::gkr::backward_flat_compact::GpuFlatRound0StaticDescCompact`.
 struct flat_round0_static_desc_compact {
@@ -107,14 +106,13 @@ template <typename E> DEVICE_FORCEINLINE E flat_load_ext_delta(const void *src, 
   return E::sub(f1, f0);
 }
 
-// --- Compact load helpers (Phase C u16 source encoding) ---
+// --- Compact load helpers (u16 source encoding) ---
 //
 // Each `packed` u16 is one entry of `desc.sources[]`. Layout:
 //   bit 15      : is_virtual (1 = virtual base-field source)
 //   bits 14..11 : ptr_idx (4 bits, 16 slots) into `tables.bases` / `tables.log2_stride`
 //   bits 10..0  : poly_idx (11 bits, max 2048) (real path) OR low 3 bits = `gkr_base_source_kind`
-// `log2_stride` is in element units (matches the Rust storage layout's
-// per-poly element stride; see Phase B notes in `common.cuh`).
+// `log2_stride` is in element units (per-poly stride from the Rust storage layout).
 
 DEVICE_FORCEINLINE bf flat_load_bf_value_compact(const gkr_dim_reducing_tables &tables, const gkr_source_record record, const unsigned gid) {
   if ((record.src & 0x8000u) != 0) {
@@ -263,7 +261,7 @@ DEVICE_FORCEINLINE void flat_round0_compute_constant(const flat_round0_static_de
   flat_round0_compute_impl<E>(desc, loader, eq_values, contributions, acc_size, gid);
 }
 
-// --- Phase C compact compute path ---
+// --- Compact compute path ---
 //
 // Same algebra as `flat_round0_compute_impl`, but every `desc.sources[idx]`
 // dereference goes through `desc.tables` via `flat_load_*_compact` instead
