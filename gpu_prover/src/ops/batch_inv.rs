@@ -29,12 +29,12 @@ macro_rules! batch_inv_kernel {
     };
 }
 
-pub trait BatchInv {
+pub(crate) trait BatchInv {
     const BATCH_SIZE: u32;
     const KERNEL_FUNCTION: BatchInvSignature<Self>;
 }
 
-pub fn launch_batch_inv<T: BatchInv>(
+pub(crate) fn launch_batch_inv<T: BatchInv>(
     src: *const T,
     dst: *mut T,
     count: u32,
@@ -47,7 +47,7 @@ pub fn launch_batch_inv<T: BatchInv>(
     BatchInvFunction::<T>(T::KERNEL_FUNCTION).launch(&config, &args)
 }
 
-pub fn batch_inv<T: BatchInv>(
+pub(crate) fn batch_inv<T: BatchInv>(
     src: &DeviceSlice<T>,
     dst: &mut DeviceSlice<T>,
     stream: &CudaStream,
@@ -57,7 +57,7 @@ pub fn batch_inv<T: BatchInv>(
     launch_batch_inv::<T>(src.as_ptr(), dst.as_mut_ptr(), dst.len() as u32, stream)
 }
 
-pub fn batch_inv_in_place<T: BatchInv>(
+pub(crate) fn batch_inv_in_place<T: BatchInv>(
     values: &mut DeviceSlice<T>,
     stream: &CudaStream,
 ) -> CudaResult<()> {

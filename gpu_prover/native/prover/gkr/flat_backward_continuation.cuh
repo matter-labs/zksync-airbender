@@ -147,17 +147,17 @@ template <typename B, typename E> struct flat_round1_unified_desc {
   u16 fold_sources[FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES];
 };
 
-// Phase C compact mirror of `flat_round1_unified_desc<bf, e4>`. Each base
-// source's full struct collapses to a u16 (real path) or a u16 + side-array
-// poly_idx (virtual path); each ext source's pair of pointers collapses to a
-// u16. Layer-uniform metadata (`base_layer_half_size`, `next_layer_size`) is
-// hoisted out of every per-source entry into descriptor-level u32s.
+// Compact round-1 unified descriptor. Each base source's full struct
+// collapses to a u16 (real path) or a u16 + side-array poly_idx (virtual
+// path); each ext source's pair of pointers collapses to a u16.
+// Layer-uniform metadata (`base_layer_half_size`, `next_layer_size`) is
+// descriptor-level u32s.
 //
 // Mirror of `gpu_prover::prover::gkr::backward_flat_compact::GpuFlatRound1UnifiedDescCompact`.
 struct flat_round1_unified_desc_compact {
   gkr_dim_reducing_tables tables;
 
-  // Per-launch uniform sizes hoisted from the legacy per-source entries.
+  // Per-launch uniform sizes carried at the descriptor level.
   // `base_layer_half_size` is the offset between the two halves of the base
   // input poly that get folded together (in `bf` element units).
   // `next_layer_size` is the offset between the two halves of the cache
@@ -210,8 +210,8 @@ template <typename E> struct flat_continuation_unified_desc {
   u16 fold_sources[FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES];
 };
 
-// Phase C compact mirror of `flat_continuation_unified_desc<e4>`. Each
-// source's (prev, cache) pointer pair collapses to a single u16 packed as
+// Compact continuation unified descriptor. Each source's (prev, cache)
+// pointer pair collapses to a single u16 packed as
 // `(first_access << 15) | (ptr_idx << 11) | poly_idx` (4-bit ptr_idx,
 // 11-bit poly_idx). The kernel resolves addresses via `tables` plus
 // per-step uniform offsets.
@@ -221,10 +221,9 @@ struct flat_continuation_unified_desc_compact {
   gkr_dim_reducing_tables tables;
 
   // Per-slot element offsets within each per-poly slot of the consolidated
-  // folding backing. Phase A2-flat-base: base- and ext-derived sources have
-  // different per-poly buffer sizes, so the offsets differ between slots.
-  // Set by the encoder per launch step. Decoder: see
-  // `flat_cont_resolve_compact` below.
+  // folding backing. Base- and ext-derived sources have different per-poly
+  // buffer sizes, so the offsets differ between slots. Set by the encoder
+  // per launch step. Decoder: see `flat_cont_resolve_compact` below.
   u32 prev_per_poly_offset[GKR_DIM_REDUCING_BASE_SLOTS];
   u32 cache_per_poly_offset[GKR_DIM_REDUCING_BASE_SLOTS];
 
@@ -244,7 +243,7 @@ struct flat_continuation_unified_desc_compact {
 static_assert(sizeof(flat_continuation_unified_desc_compact) <= 32 * 1024,
               "flat_continuation_unified_desc_compact exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
 
-// --- Phase C compact load helpers (continuation rounds ≥ 3) ---
+// --- Compact load helpers (continuation rounds ≥ 3) ---
 //
 // Each `packed` u16 in `desc.sources[]` is:
 //   bit 15      : first_access (1 = read prev, fold, write cache; 0 = read cache only)
@@ -268,7 +267,7 @@ DEVICE_FORCEINLINE void flat_cont_resolve_compact(const flat_continuation_unifie
 }
 
 // Mirror of `flat_cont_fold_and_load`, but resolves prev/cache via the
-// compact descriptor's tables instead of legacy raw pointers.
+// compact descriptor's tables instead of raw pointers.
 template <typename E>
 DEVICE_FORCEINLINE E flat_cont_fold_and_load_compact(const flat_continuation_unified_desc_compact &desc, const gkr_source_record record,
                                                      const E &folding_challenge, const unsigned fold_stride, const unsigned index) {
@@ -320,8 +319,8 @@ DEVICE_FORCEINLINE void flat_cont_load_pair_cached_compact(const flat_continuati
   }
 }
 
-// Phase C compact round-2 descriptor. Identical shape to round 1 with an
-// extra `base_quarter_size` u32 for the `base_after_two` semantics.
+// Compact round-2 descriptor. Identical shape to round 1 with an extra
+// `base_quarter_size` u32 for the `base_after_two` semantics.
 //
 // Mirror of `gpu_prover::prover::gkr::backward_flat_compact::GpuFlatRound2UnifiedDescCompact`.
 struct flat_round2_unified_desc_compact {
@@ -451,9 +450,9 @@ DEVICE_FORCEINLINE void flat_round1_compute_unified(const flat_round1_unified_de
 }
 
 // ===========================================================================
-// Phase C compact helpers for round 1: u16-encoded sources resolved through
-// `desc.tables`. Mirror of the legacy round-1 helpers above; same algebra,
-// different source resolution.
+// Compact helpers for round 1: u16-encoded sources resolved through
+// `desc.tables`. Same algebra as the verbose round-1 helpers above; only
+// source resolution differs.
 // ===========================================================================
 
 // Resolve a base source's `(source_kind, base_input_start, this_layer_cache_start)`
@@ -498,7 +497,7 @@ DEVICE_FORCEINLINE bf flat_round1_get_base_bf_value_compact(const gkr_base_sourc
 
 // Mirror of `gkr_get_base_after_one_value`. Folds the bf source pair at
 // `(index, base_layer_half_size + index)` and writes the folded E value into
-// the cache at `index` if `first_access` (matches legacy semantics).
+// the cache at `index` if `first_access`.
 template <typename E>
 DEVICE_FORCEINLINE E flat_round1_get_base_value_compact(const flat_round1_unified_desc_compact &desc, const u32 idx, const E first_folding_challenge,
                                                         const unsigned index) {
@@ -555,7 +554,7 @@ DEVICE_FORCEINLINE E flat_round1_ext_fold_and_load_compact(const flat_round1_uni
 }
 
 // Per-tile fold for round 1 compact: dispatches on source type (base vs ext)
-// via the legacy `FLAT_CONT_EXT_SOURCE_BIT` encoding in `fold_sources`.
+// via the `FLAT_CONT_EXT_SOURCE_BIT` encoding in `fold_sources`.
 template <typename E, unsigned NUM_WARPS>
 DEVICE_FORCEINLINE void flat_round1_tile_fold_compact(const flat_round1_unified_desc_compact &desc, const unsigned fold_start, const unsigned fold_end,
                                                       const unsigned fold_stride, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id) {
@@ -728,7 +727,7 @@ DEVICE_FORCEINLINE void flat_cont_compute_unified(const flat_continuation_unifie
   }
 }
 
-// Compute path for the Phase C compact continuation descriptor, mirroring
+// Compute path for the compact continuation descriptor, mirroring
 // `flat_cont_compute_unified` but loading from compact-resolved cache.
 template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS>
 DEVICE_FORCEINLINE void flat_cont_compute_unified_compact(const flat_continuation_unified_desc_compact &desc, const unsigned term_start,
@@ -775,8 +774,8 @@ DEVICE_FORCEINLINE void flat_cont_compute_unified_compact(const flat_continuatio
 }
 
 // ===========================================================================
-// Phase C compact helpers for round 2: same shape as round 1 with
-// `base_after_two` semantics (two folds, four bf reads per cache write).
+// Compact helpers for round 2: same shape as round 1 with `base_after_two`
+// semantics (two folds, four bf reads per cache write).
 // ===========================================================================
 
 // Resolve a base source's `(source_kind, base_input_start, this_layer_cache_start)`

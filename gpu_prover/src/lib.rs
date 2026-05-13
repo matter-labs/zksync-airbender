@@ -10,16 +10,14 @@
 pub(crate) mod allocator;
 #[cfg(feature = "bench")]
 pub mod bench;
-pub mod execution;
-pub(crate) mod ntt;
+pub(crate) mod execution;
 pub(crate) mod ops;
-pub mod primitives;
+pub(crate) mod primitives;
 pub(crate) mod prover;
 pub(crate) mod witness;
 
-pub use primitives::circuit_type;
-pub use primitives::device_context;
-pub use primitives::device_structures;
-pub use primitives::field;
+pub use execution::prover::{
+    CommitMemoryResult, ExecutionKind, ExecutionProver, ExecutionProverConfiguration, ProveResult,
+};
 pub use primitives::machine_type;
-pub use primitives::utils;
+pub use primitives::machine_type::MachineType;
