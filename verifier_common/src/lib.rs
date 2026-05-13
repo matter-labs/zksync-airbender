@@ -130,6 +130,7 @@ pub struct VerifierOutput<
 > {
     pub inits_and_teardowns_top_bits: [u32; INIT_AND_TEARDOWN_SETS],
     pub memory_caps: [[[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]; CAP_SIZE]; NUM_MEMORY_COMMITS],
+    pub setup_caps: [[[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]; CAP_SIZE]; NUM_SETUP_COMMITS],
     pub grand_product_read_set_accumulator: E,
     pub grand_product_write_set_accumulator: E,
 }
@@ -256,6 +257,7 @@ pub fn verify_impl<
     Ok(VerifierOutput {
         inits_and_teardowns_top_bits: initial_transcript_values.inits_and_teardowns_top_bits,
         memory_caps: initial_transcript_values.memory_caps,
+        setup_caps: initial_transcript_values.setup_caps,
         grand_product_read_set_accumulator: gkr_output.permutation_read_product,
         grand_product_write_set_accumulator: gkr_output.permutation_write_product,
     })

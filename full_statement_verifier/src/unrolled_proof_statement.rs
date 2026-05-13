@@ -22,6 +22,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     I: NonDeterminismSource,
     E: ErrorCreator,
     const BASE_LAYER: bool,
+    const REDUCED_ROUNDS: bool,
 >(
     circuits_families_setups: &[&MerkleTreeCap<{ prover::definitions::DEFAULT_CAP_SIZE }>],
     // circuit type/delegation type, verifier function
@@ -51,7 +52,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     );
     debug_assert!(circuits_families_verifiers.is_sorted_by(|a, b| { a.0 < b.0 }));
     // we should in parallel verify proofs, and drag along the transcript to assert equality of challenges
-    let mut transcript = Blake2sBufferingTranscript::new();
+    let mut transcript = Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new();
 
     let mut registers_buffer = MaybeUninit::<[u32; 32 + 2 * 32]>::uninit().assume_init();
 
@@ -114,7 +115,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
 
             // now we should check all invariants about continuity
 
-            assert!(MerkleTreeCap::compare_single(
+            assert!(MerkleTreeCap::compare_single_with_flattened(
                 *setup,
                 &proof_output.setup_caps[0]
             ));
@@ -127,204 +128,105 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         }
     }
 
+    // then init/teardown circuits - we expect to have exactly 1
+    {
+        let num_circuits = verifier_common::DefaultNonDeterminismSource::read_word();
+        assert_eq!(num_circuits, 1);
+        if num_circuits > 0 {
+            let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+            buffer[0] =
+                common_constants::circuit_families::INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX
+                    as u32;
+            transcript.absorb(&buffer);
+        }
+
+        for circuit_sequence in 0..num_circuits {
+            let proof_output = (inits_and_teardowns_verifier)(&external_challenges)?;
+
+            // we expect that for all the top bits we have a continuous sequence
+            for i in 0..proof_output.inits_and_teardowns_top_bits.len() {
+                assert_eq!(i as u32, proof_output.inits_and_teardowns_top_bits[i]);
+            }
+
+            // and commit memory caps
+            transcript.absorb(proof_output.memory_caps_flattened());
+
+            // there is no setup for inits/teardowns
+            debug_assert_eq!(proof_output.setup_caps.len(), 0);
+
+            // update accumulators
+            read_set_product_accumulator
+                .mul_assign(&proof_output.grand_product_read_set_accumulator);
+            write_set_product_accumulator
+                .mul_assign(&proof_output.grand_product_write_set_accumulator);
+        }
+    }
+
     todo!();
 
-    // // then init/teardown circuits
-    // {
-    //     let mut proof_output_0: ProofOutput<CAP_SIZE, NUM_COSETS, 0, NUM_INIT_AND_TEARDOWN_SETS> =
-    //         MaybeUninit::uninit().assume_init();
-    //     let mut proof_output_1: ProofOutput<CAP_SIZE, NUM_COSETS, 0, NUM_INIT_AND_TEARDOWN_SETS> =
-    //         MaybeUninit::uninit().assume_init();
-    //     let mut state_variables = ProofPublicInputs::uninit();
+    // If we will even want to break an execution here, we will have full buffer (unflushed)
+    assert!(transcript.get_current_buffer_offset() == BLAKE2S_BLOCK_SIZE_U32_WORDS);
 
-    //     let num_circuits = verifier_common::DefaultNonDeterminismSource::read_word();
-    //     if num_circuits > 0 {
-    //         let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
-    //         buffer[0] =
-    //             common_constants::circuit_families::INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX
-    //                 as u32;
-    //         transcript.absorb(&buffer);
-    //     }
+    let mut total_permutation_elements = total_cycles << 2; // 4 permutation elements per cycle - 1 from machine state and 3 memory accesses
 
-    //     let mut cells_initialized = 0;
-    //     for circuit_sequence in 0..num_circuits {
-    //         assert!(cells_initialized < MAX_MEMORY_CELLS_TO_INIT);
-    //         let (setup, verifier_fn) = inits_and_teardowns_verifier;
-    //         let (current, previous) = if circuit_sequence & 1 == 0 {
-    //             (&mut proof_output_0, &proof_output_1)
-    //         } else {
-    //             (&mut proof_output_1, &proof_output_0)
-    //         };
-    //         (verifier_fn)(current, &mut state_variables);
+    // ok, now we forget about main circuit and potentially parse delegations
+    {
+        for (delegation_circuit_params, verifier_fn) in delegation_circuits_params
+            .iter()
+            .zip(delegation_circuits_verifiers)
+        {
+            let num_circuits = verifier_common::DefaultNonDeterminismSource::read_word();
 
-    //         assert_eq!(current.circuit_sequence, 0);
-    //         assert_eq!(current.delegation_type, 0);
+            if num_circuits > 0 {
+                let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+                buffer[0] = delegation_circuit_params.delegation_type;
+                transcript.absorb(&buffer);
+            }
 
-    //         // and commit memory caps
-    //         transcript.absorb(current.memory_caps_flattened());
+            for _circuit_sequence in 0..num_circuits {
+                let proof_output = (verifier_fn)(&external_challenges)?;
 
-    //         // now we should check all invariants about continuity
+                // and commit memory caps
+                transcript.absorb(proof_output.memory_caps_flattened());
 
-    //         if circuit_sequence > 0 {
-    //             // and check equality of the setup
-    //             assert!(MerkleTreeCap::compare(
-    //                 &previous.setup_caps,
-    //                 &current.setup_caps
-    //             ));
-    //             // check that all challenges are the same
-    //             assert_eq!(previous.memory_challenges, current.memory_challenges);
-    //             assert_eq!(
-    //                 previous.delegation_challenges,
-    //                 current.delegation_challenges
-    //             );
-    //         } else {
-    //             assert!(MerkleTreeCap::compare(setup, &current.setup_caps));
-    //         }
+                assert!(MerkleTreeCap::compare_single_with_flattened(
+                    &delegation_circuit_params.setup_cap,
+                    &proof_output.setup_caps[0]
+                ));
 
-    //         // update accumulators
-    //         grand_product_accumulator.mul_assign(&current.grand_product_accumulator);
+                // update accumulators
+                read_set_product_accumulator
+                    .mul_assign(&proof_output.grand_product_read_set_accumulator);
+                write_set_product_accumulator
+                    .mul_assign(&proof_output.grand_product_write_set_accumulator);
 
-    //         let mut last_previous = if circuit_sequence == 0 {
-    //             InitAndTeardownTuple {
-    //                 address: 0u32,
-    //                 teardown_value: 0u32,
-    //                 teardown_ts_pair: (0u32, 0u32),
-    //             }
-    //         } else {
-    //             InitAndTeardownTuple::from_aux_values_one_before_last_row(
-    //                 &previous.lazy_init_boundary_values[NUM_INIT_AND_TEARDOWN_SETS - 1],
-    //             )
-    //         };
+                total_permutation_elements +=
+                    delegation_circuit_params.num_permutation_terms_per_circuit as u64;
+            }
 
-    //         // check that addresses are sorted at juctions
-    //         for i in 0..NUM_INIT_AND_TEARDOWN_SETS {
-    //             cells_initialized += INITS_AND_TEARDOWNS_CAPACITY_PER_SET;
-    //             let first_current_address = parse_field_els_as_u32_from_u16_limbs_checked(
-    //                 current.lazy_init_boundary_values[i].lazy_init_first_row,
-    //             );
+            // If we will even want to break an execution here, we will have full buffer (unflushed)
+            assert!(transcript.get_current_buffer_offset() == BLAKE2S_BLOCK_SIZE_U32_WORDS);
+        }
+    }
 
-    //             // if it's
-    //             if last_previous.address < first_current_address {
-    //                 // nothing, we are all good
-    //             } else {
-    //                 // we require padding of 0 init address, and 0 teardown value and timestamp
-    //                 assert_eq!(last_previous.address, 0);
-    //                 assert_eq!(last_previous.teardown_value, 0);
+    // TODO: assert that number of permutation elements is less than we computed for security levels
 
-    //                 // just compare to 0 after reduction to avoid parsing u16 or timestamp bits
-    //                 assert_eq!(last_previous.teardown_ts_pair.0, 0);
-    //                 assert_eq!(last_previous.teardown_ts_pair.1, 0);
-    //             }
+    // finish with the transcript, compare memory values from transcript with ones used in proofs
+    let memory_seed = transcript.finalize_reset();
 
-    //             // circuits sort addresses in the column, so we just need to re-assign
-    //             last_previous = InitAndTeardownTuple::from_aux_values_one_before_last_row(
-    //                 &current.lazy_init_boundary_values[i],
-    //             )
-    //         }
-    //     }
-    // }
+    let pow_challenge_low = verifier_common::DefaultNonDeterminismSource::read_word();
+    let pow_challenge_high = verifier_common::DefaultNonDeterminismSource::read_word();
+    let pow_challenge = (pow_challenge_high as u64) << 32 | (pow_challenge_low as u64);
 
-    // // If we will even want to break an execution here, we will have full buffer (unflushed)
-    // assert!(transcript.get_current_buffer_offset() == BLAKE2S_BLOCK_SIZE_U32_WORDS);
+    let expected_challenges = GKRExternalChallenges::draw_from_transcript_seed(
+        memory_seed,
+        MEMORY_DELEGATION_POW_BITS,
+        pow_challenge,
+    );
 
-    // // since we have > 0 main circuits, then we can always use `proof_output_0` below
+    assert_eq!(expected_challenges, external_challenges);
 
-    // // ok, now we forget about main circuit and potentially parse delegations
-    // if NUM_DELEGATION_CHALLENGES > 0 {
-    //     let mut previous_delegation_type = 0u32;
-    //     let mut state_variables = ProofPublicInputs::uninit();
-    //     let mut delegation_proof_output = MaybeUninit::uninit().assume_init();
-
-    //     let mut total_delegation_requests = 0u64;
-
-    //     for (delegation_type, delegation_requests_per_circuit, setup_caps, verification_function) in
-    //         delegation_circuits_verifiers.iter()
-    //     {
-    //         assert!(previous_delegation_type < *delegation_type);
-    //         previous_delegation_type = *delegation_type;
-
-    //         let num_circuits = verifier_common::DefaultNonDeterminismSource::read_word();
-
-    //         if num_circuits > 0 {
-    //             delegation_used |= true;
-    //             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
-    //             buffer[0] = *delegation_type;
-    //             transcript.absorb(&buffer);
-    //         }
-
-    //         for _circuit_sequence in 0..num_circuits {
-    //             // Note: this will make sure that all external challenges are the same as we progress,
-    //             // and so we will only need to save the result at the very end
-    //             (verification_function)(&mut delegation_proof_output, &mut state_variables);
-
-    //             assert_eq!(delegation_proof_output.circuit_sequence, 0);
-    //             assert_eq!(delegation_proof_output.delegation_type, *delegation_type);
-    //             assert!(MerkleTreeCap::compare(
-    //                 &delegation_proof_output.setup_caps,
-    //                 setup_caps
-    //             ));
-
-    //             // and commit memory caps
-    //             transcript.absorb(delegation_proof_output.memory_caps_flattened());
-
-    //             // check that we use the same challenges
-    //             assert_eq!(
-    //                 delegation_proof_output.memory_challenges,
-    //                 proof_output_0.memory_challenges
-    //             );
-    //             assert_eq!(
-    //                 delegation_proof_output.delegation_challenges,
-    //                 proof_output_with_delegation_0.delegation_challenges
-    //             );
-
-    //             // update accumulators
-    //             grand_product_accumulator
-    //                 .mul_assign(&delegation_proof_output.grand_product_accumulator);
-    //             delegation_set_accumulator
-    //                 .sub_assign(&delegation_proof_output.delegation_argument_accumulator[0]);
-
-    //             total_delegation_requests += (*delegation_requests_per_circuit) as u64;
-    //         }
-
-    //         // If we will even want to break an execution here, we will have full buffer (unflushed)
-    //         assert!(transcript.get_current_buffer_offset() == BLAKE2S_BLOCK_SIZE_U32_WORDS);
-    //     }
-
-    //     // we use LogUp like argument for permutation between all delegation requests and responses.
-    //     // All requests are unique (due to timestamps), so to ensure soundness we just require that total number
-    //     // of responses processed it < field size
-    //     assert!(total_delegation_requests < Mersenne31Field::CHARACTERISTICS as u64);
-    // }
-
-    // // finish with the transcript, compare memory values from transcript with ones used in proofs
-    // let memory_seed = transcript.finalize_reset();
-
-    // let pow_challenge_low = verifier_common::DefaultNonDeterminismSource::read_word();
-    // let pow_challenge_high = verifier_common::DefaultNonDeterminismSource::read_word();
-    // let pow_challenge = (pow_challenge_high as u64) << 32 | (pow_challenge_low as u64);
-
-    // let expected_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
-    //     memory_seed,
-    //     MEMORY_DELEGATION_POW_BITS,
-    //     pow_challenge,
-    // );
-
-    // assert_eq!(
-    //     expected_challenges.memory_argument,
-    //     proof_output_0.memory_challenges
-    // );
-    // if delegation_used {
-    //     assert_eq!(
-    //         expected_challenges.delegation_argument.unwrap_unchecked(),
-    //         proof_output_with_delegation_0.delegation_challenges[0]
-    //     );
-    // }
-    // assert_eq!(
-    //     expected_challenges
-    //         .machine_state_permutation_argument
-    //         .unwrap_unchecked(),
-    //     proof_output_0.machine_state_permutation_challenges[0]
-    // );
+    todo!();
 
     // // conclude that our memory argument is valid
     // let register_contribution =
@@ -350,107 +252,106 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     // assert_eq!(grand_product_accumulator, Mersenne31Quartic::ONE);
     // assert_eq!(delegation_set_accumulator, Mersenne31Quartic::ZERO);
 
-    // // Now we only need to reason about "which program do we execute", and "did it finish successfully or not".
+    // Now we only need to reason about "which program do we execute", and "did it finish successfully or not".
 
-    // let mut output: [u32; 16] = MaybeUninit::uninit().assume_init();
-    // // in any case we carry registers 10-17 to the next layer - those are the output of the base program
-    // for i in 0..8 {
-    //     output[i] = registers_buffer[(10 + i) * 3];
-    // }
+    let mut output: [u32; 16] = MaybeUninit::uninit().assume_init();
+    // in any case we carry registers 10-17 to the next layer - those are the output of the base program
+    for i in 0..8 {
+        output[i] = registers_buffer[(10 + i) * 3];
+    }
 
-    // // the final piece is to make sure that we ended on the PC that is "expected" (basically - loops to itself, and at the right place),
-    // // so the program ended logical execution and we can conclude that the set of register values is meaningful
+    // the final piece is to make sure that we ended on the PC that is "expected" (basically - loops to itself, and at the right place),
+    // so the program ended logical execution and we can conclude that the set of register values is meaningful
 
-    // let mut result_hasher = Blake2sBufferingTranscript::new();
-    // // NOTE: for parameters we are no longer interested in the timestamp when we ended execution,
-    // // just on PC
-    // final_pc_buffer[FINAL_PC_BUFFER_TS_LOW_IDX] = 0;
-    // final_pc_buffer[FINAL_PC_BUFFER_TS_HIGH_IDX] = 0;
+    let mut result_hasher = Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new();
+    // NOTE: for parameters we are no longer interested in the timestamp when we ended execution,
+    // just on PC
+    final_pc_buffer[FINAL_PC_BUFFER_TS_LOW_IDX] = 0;
+    final_pc_buffer[FINAL_PC_BUFFER_TS_HIGH_IDX] = 0;
 
-    // result_hasher.absorb(&final_pc_buffer);
-    // for setup in circuits_families_setups.iter() {
-    //     result_hasher.absorb(caps_flattened(*setup));
-    // }
-    // result_hasher.absorb(caps_flattened(&inits_and_teardowns_verifier.0));
-    // let end_params_output = result_hasher.finalize_reset();
+    result_hasher.absorb(&final_pc_buffer);
+    for setup in circuits_families_setups.iter() {
+        result_hasher.absorb(MerkleTreeCap::flatten_single(*setup));
+    }
+    let end_params_output = result_hasher.finalize_reset();
 
-    // // `end_params_output` now fully describes an ending PC + setups (and setups include program binary)
+    // `end_params_output` now fully describes an ending PC + setups (and setups include program binary)
 
-    // if BASE_LAYER {
-    //     // we REQUIRE that remaining 8 registers are 0 in our convention
-    //     let mut all_zeroes = true;
-    //     for i in 8..16 {
-    //         let value = registers_buffer[(10 + i) * 3];
-    //         all_zeroes &= value == 0;
-    //     }
-    //     assert!(all_zeroes);
+    if BASE_LAYER {
+        // we REQUIRE that remaining 8 registers are 0 in our convention
+        let mut all_zeroes = true;
+        for i in 8..16 {
+            let value = registers_buffer[(10 + i) * 3];
+            all_zeroes &= value == 0;
+        }
+        assert!(all_zeroes);
 
-    //     // we only start a chain, so we will hash a concatenation of 8x0u32 and end_params_output
-    //     let mut buffer = [0u32; 16];
-    //     for i in 0..8 {
-    //         buffer[8 + i] = end_params_output.0[i];
-    //     }
-    //     result_hasher.absorb(&buffer);
-    //     let recursion_chain_output = result_hasher.finalize_reset();
-    //     for i in 8..16 {
-    //         output[i] = recursion_chain_output.0[i - 8];
-    //     }
-    // } else {
-    //     // we require that remaining 8 registers are some hash output in nature, that encodes our
-    //     // chain of executed programs
+        // we only start a chain, so we will hash a concatenation of 8x0u32 and end_params_output
+        let mut buffer = [0u32; 16];
+        for i in 0..8 {
+            buffer[8 + i] = end_params_output.0[i];
+        }
+        result_hasher.absorb(&buffer);
+        let recursion_chain_output = result_hasher.finalize_reset();
+        for i in 8..16 {
+            output[i] = recursion_chain_output.0[i - 8];
+        }
+    } else {
+        // we require that remaining 8 registers are some hash output in nature, that encodes our
+        // chain of executed programs
 
-    //     let mut aux_registers: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] =
-    //         MaybeUninit::uninit().assume_init();
-    //     for i in 8..16 {
-    //         let value = registers_buffer[(10 + i) * 3];
-    //         aux_registers[i - 8] = value;
-    //     }
+        let mut aux_registers: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] =
+            MaybeUninit::uninit().assume_init();
+        for i in 8..16 {
+            let value = registers_buffer[(10 + i) * 3];
+            aux_registers[i - 8] = value;
+        }
 
-    //     // So prover can ALWAYS present a preimage
-    //     let mut preimage: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2] =
-    //         MaybeUninit::uninit().assume_init();
-    //     for i in 0..BLAKE2S_DIGEST_SIZE_U32_WORDS * 2 {
-    //         preimage[i] = verifier_common::DefaultNonDeterminismSource::read_word();
-    //     }
-    //     result_hasher.absorb(&preimage);
-    //     let preimage_hash = result_hasher.finalize_reset();
-    //     // manually unrolled to avoid memcmp
-    //     let mut equal = true;
-    //     for i in 0..8 {
-    //         equal &= preimage_hash.0[i] == aux_registers[i];
-    //     }
-    //     assert!(equal);
+        // So prover can ALWAYS present a preimage
+        let mut preimage: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2] =
+            MaybeUninit::uninit().assume_init();
+        for i in 0..BLAKE2S_DIGEST_SIZE_U32_WORDS * 2 {
+            preimage[i] = verifier_common::DefaultNonDeterminismSource::read_word();
+        }
+        result_hasher.absorb(&preimage);
+        let preimage_hash = result_hasher.finalize_reset();
+        // manually unrolled to avoid memcmp
+        let mut equal = true;
+        for i in 0..8 {
+            equal &= preimage_hash.0[i] == aux_registers[i];
+        }
+        assert!(equal);
 
-    //     // then if last elements of the preimage are equal to the current end parameters - we do not need to continue the chain
-    //     let mut equal = true;
-    //     for i in 0..8 {
-    //         equal &= preimage[i + 8] == end_params_output.0[i];
-    //     }
+        // then if last elements of the preimage are equal to the current end parameters - we do not need to continue the chain
+        let mut equal = true;
+        for i in 0..8 {
+            equal &= preimage[i + 8] == end_params_output.0[i];
+        }
 
-    //     if equal {
-    //         // we do not need to continue the chain. So for valid recursion chain is
-    //         // always just a blake ( blake([0u32; 8] || base_program_end_params) || recursion_step_end_params)
-    //         // for the case of all successful ends of execution
-    //         for i in 8..16 {
-    //             output[i] = aux_registers[i - 8];
-    //         }
-    //     } else {
-    //         // concatenate and hash
-    //         let mut input: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2] =
-    //             MaybeUninit::uninit().assume_init();
-    //         for i in 0..8 {
-    //             input[i] = aux_registers[i];
-    //             input[i + 8] = end_params_output.0[i];
-    //         }
-    //         result_hasher.absorb(&input);
-    //         let new_output_registers = result_hasher.finalize_reset();
-    //         for i in 8..16 {
-    //             output[i] = new_output_registers.0[i - 8];
-    //         }
-    //     }
-    // }
+        if equal {
+            // we do not need to continue the chain. So for valid recursion chain is
+            // always just a blake ( blake([0u32; 8] || base_program_end_params) || recursion_step_end_params)
+            // for the case of all successful ends of execution
+            for i in 8..16 {
+                output[i] = aux_registers[i - 8];
+            }
+        } else {
+            // concatenate and hash
+            let mut input: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2] =
+                MaybeUninit::uninit().assume_init();
+            for i in 0..8 {
+                input[i] = aux_registers[i];
+                input[i + 8] = end_params_output.0[i];
+            }
+            result_hasher.absorb(&input);
+            let new_output_registers = result_hasher.finalize_reset();
+            for i in 8..16 {
+                output[i] = new_output_registers.0[i - 8];
+            }
+        }
+    }
 
-    // output
+    Ok(output)
 }
 
 // pub fn verify_unrolled_base_layer() -> [u32; 16] {
