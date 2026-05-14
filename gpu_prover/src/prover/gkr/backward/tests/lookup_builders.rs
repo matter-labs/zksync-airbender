@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::primitives::field::BF;
-use cs::definitions::GKRAddress;
-use field::{Field, FieldExtension, PrimeField};
+
+use crate::upstream::{Field, FieldExtension, GKRAddress, PrimeField};
 use std::collections::BTreeMap;
 
 fn single_column_lookup_as_flattened_relation<

@@ -640,8 +640,19 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         .unwrap();
     let mut base_layer_point_host =
         unsafe { context.alloc_host_uninit_slice::<E4>(original_evaluation_point.len()) };
-    unsafe { base_layer_point_host.get_mut_accessor().get_mut() }
-        .copy_from_slice(original_evaluation_point);
+    let mut base_layer_point_callbacks = crate::primitives::callbacks::Callbacks::new();
+    let base_layer_point_host_accessor = base_layer_point_host.get_mut_accessor();
+    let base_layer_point_for_h2d = original_evaluation_point.to_vec();
+    base_layer_point_callbacks
+        .schedule(
+            move || unsafe {
+                base_layer_point_host_accessor
+                    .get_mut()
+                    .copy_from_slice(&base_layer_point_for_h2d);
+            },
+            context.get_exec_stream(),
+        )
+        .unwrap();
     memory_copy_async(
         &mut base_layer_point_device[..original_evaluation_point.len()],
         &base_layer_point_host,

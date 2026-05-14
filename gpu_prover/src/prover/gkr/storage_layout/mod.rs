@@ -18,13 +18,11 @@
 //! consults to encode `(ptr_idx, poly_idx)` against the per-launch pointer
 //! table.
 
-use std::collections::{BTreeMap, BTreeSet};
-
-use cs::definitions::GKRAddress;
-use cs::gkr_compiler::{
-    GKRCircuitArtifact, NoFieldGKRCacheRelation, NoFieldGKRRelation, OutputType,
+use crate::upstream::{
+    GKRAddress, GKRCircuitArtifact, NoFieldGKRCacheRelation, NoFieldGKRRelation, OutputType,
+    PrimeField,
 };
-use field::PrimeField;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::gkr_address_audit::{
     classify, collect_addresses_from_cache_relation, collect_addresses_from_relation, AddressClass,
@@ -415,7 +413,7 @@ fn build_layer_layout_from_writes(
 
 /// Append per-tower-layer `GpuGKRLayerLayout` entries to `layers`, mirroring
 /// the address derivation in
-/// `crate::prover::gkr::backward::derive_dimension_reducing_inputs_structural`
+/// `crate::prover::gkr::backward::derive_dimension_reducing_inputs`
 /// and the output assignment in
 /// `crate::prover::gkr::forward::lower_dimension_reducing_forward_round`.
 ///

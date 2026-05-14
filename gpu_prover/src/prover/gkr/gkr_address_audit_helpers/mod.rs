@@ -5,16 +5,14 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cs::definitions::GKRAddress;
-use cs::gkr_compiler::{
-    GKRCircuitArtifact, GKRLayerDescription, GateArtifacts, NoFieldGKRRelation,
-};
-use field::PrimeField;
-
-use super::backward_flat::FLAT_ROUND0_MAX_SOURCES;
+use super::backward::flat::FLAT_ROUND0_MAX_SOURCES;
 use super::gkr_address_audit::{
     classify, collect_addresses_from_cache_relation, collect_addresses_from_relation, AddressClass,
     GKR_MAX_POLYS_PER_SLOT, GKR_MAX_SLOTS,
+};
+use crate::upstream::{
+    GKRAddress, GKRCircuitArtifact, GKRLayerDescription, GateArtifacts, NoFieldGKRRelation,
+    PrimeField,
 };
 
 pub(crate) const KERNEL_ARG_HARD_CEILING_BYTES: usize = 32 * 1024;
@@ -457,7 +455,7 @@ pub(crate) fn check_audit_against_budgets(audit: &CircuitAudit) -> Result<(), Au
 }
 
 /// Per-layer flat-path round-0 term counts. Mirrors the term-table fields of
-/// `GpuFlatRound0StaticDescCompact` so a per-circuit max can be compared
+/// `GpuFlatRound0StaticDesc` so a per-circuit max can be compared
 /// against the locked `FLAT_ROUND0_MAX_*` ceilings.
 #[derive(Default, Debug, Clone, Copy)]
 pub(crate) struct FlatRound0TermCounts {
@@ -487,10 +485,10 @@ impl FlatRound0TermCounts {
 pub(super) const FLAT_LINEAR_FORM_SENTINEL: u32 = u32::MAX;
 
 fn count_metadata_terms<E>(
-    src: &Option<crate::prover::gkr::backward_kernels::GpuGKRMainLayerConstraintMetadataSource<E>>,
+    src: &Option<crate::prover::gkr::backward::kernels::GpuGKRMainLayerConstraintMetadataSource<E>>,
     filter_sentinel: bool,
 ) -> (usize, usize) {
-    use crate::prover::gkr::backward_kernels::GpuGKRMainLayerConstraintMetadataSource as MS;
+    use crate::prover::gkr::backward::kernels::GpuGKRMainLayerConstraintMetadataSource as MS;
     let (qt, lt): (Box<dyn Iterator<Item = u32>>, Box<dyn Iterator<Item = u32>>) = match src {
         Some(MS::Immediate(meta)) => (
             Box::new(meta.quadratic_terms.iter().map(|t| t.lhs)),
@@ -517,9 +515,9 @@ fn count_metadata_terms<E>(
 /// in `backward_flat::build_flat_round0_plan` exactly. Used by the audit
 /// to find the per-circuit max for tightening `FLAT_ROUND0_MAX_*`.
 pub(crate) fn project_layer_flat_round0_term_counts<E>(
-    blueprints: &[crate::prover::gkr::backward_kernels::GpuGKRMainLayerKernelBlueprint<E>],
+    blueprints: &[crate::prover::gkr::backward::kernels::GpuGKRMainLayerKernelBlueprint<E>],
 ) -> FlatRound0TermCounts {
-    use crate::prover::gkr::backward_kernels::GpuGKRMainLayerKernelKind as K;
+    use crate::prover::gkr::backward::kernels::GpuGKRMainLayerKernelKind as K;
     let mut counts = FlatRound0TermCounts::default();
     for bp in blueprints {
         match bp.kind {
@@ -626,9 +624,9 @@ pub(crate) fn project_layer_flat_round0_term_counts<E>(
 ///
 /// Returns the count in u32 entries; H2D bytes = `result * 4`.
 pub(super) fn project_layer_main_combined_claim_pair_count<E>(
-    blueprints: &[crate::prover::gkr::backward_kernels::GpuGKRMainLayerKernelBlueprint<E>],
+    blueprints: &[crate::prover::gkr::backward::kernels::GpuGKRMainLayerKernelBlueprint<E>],
 ) -> usize {
-    use crate::prover::gkr::backward_kernels::GpuGKRMainLayerKernelKind as K;
+    use crate::prover::gkr::backward::kernels::GpuGKRMainLayerKernelKind as K;
     let mut entries = 0usize;
     for bp in blueprints {
         if bp.kind == K::EnforceConstraintsMaxQuadratic {
@@ -650,13 +648,13 @@ pub(super) fn project_layer_main_combined_claim_pair_count<E>(
 /// per linearization slot so we get a structurally-tight estimate rather than
 /// accidental coincidence-equalities.
 pub(crate) fn collect_unique_immediates_for_layer<E>(
-    blueprints: &[crate::prover::gkr::backward_kernels::GpuGKRMainLayerKernelBlueprint<E>],
+    blueprints: &[crate::prover::gkr::backward::kernels::GpuGKRMainLayerKernelBlueprint<E>],
 ) -> std::collections::HashSet<[u32; 4]>
 where
     E: field::Field,
 {
-    use crate::prover::gkr::backward_kernels::GpuGKRMainLayerConstraintMetadataSource as MS;
-    use crate::prover::gkr::backward_kernels::GpuGKRMainLayerKernelKind as K;
+    use crate::prover::gkr::backward::kernels::GpuGKRMainLayerConstraintMetadataSource as MS;
+    use crate::prover::gkr::backward::kernels::GpuGKRMainLayerKernelKind as K;
     let mut set: std::collections::HashSet<[u32; 4]> = std::collections::HashSet::new();
 
     let key_of = |e: &E| -> [u32; 4] {
@@ -713,13 +711,13 @@ where
 }
 
 pub(crate) fn collect_structural_immediates_for_layer<E>(
-    blueprints: &[crate::prover::gkr::backward_kernels::GpuGKRMainLayerKernelBlueprint<E>],
+    blueprints: &[crate::prover::gkr::backward::kernels::GpuGKRMainLayerKernelBlueprint<E>],
 ) -> (usize, usize)
 where
     E: field::Field,
 {
-    use crate::prover::gkr::backward_kernels::GpuGKRMainLayerConstraintMetadataSource as MS;
-    use crate::prover::gkr::backward_kernels::GpuGKRMainLayerKernelKind as K;
+    use crate::prover::gkr::backward::kernels::GpuGKRMainLayerConstraintMetadataSource as MS;
+    use crate::prover::gkr::backward::kernels::GpuGKRMainLayerKernelKind as K;
     use crate::prover::gkr::immediate_factors::ImmediateFactorInterner;
 
     let mut interner = ImmediateFactorInterner::new();
@@ -764,10 +762,10 @@ where
 /// challenges are already evaluated into a single `E`), so per-term length
 /// is reported as 0.
 pub(super) fn metadata_qt_lt_term_lens<E>(
-    src: &Option<crate::prover::gkr::backward_kernels::GpuGKRMainLayerConstraintMetadataSource<E>>,
+    src: &Option<crate::prover::gkr::backward::kernels::GpuGKRMainLayerConstraintMetadataSource<E>>,
     filter_sentinel: bool,
 ) -> (Vec<usize>, Vec<usize>) {
-    use crate::prover::gkr::backward_kernels::GpuGKRMainLayerConstraintMetadataSource as MS;
+    use crate::prover::gkr::backward::kernels::GpuGKRMainLayerConstraintMetadataSource as MS;
     match src {
         None => (Vec::new(), Vec::new()),
         Some(MS::Immediate(meta)) => {
@@ -809,7 +807,7 @@ pub(super) fn metadata_qt_lt_term_lens<E>(
 /// `inputs_in_base ∪ inputs_in_extension`. The result bounds
 /// `gather_e_addresses`'s `num_addresses` argument.
 pub(super) fn project_layer_main_gather_num_addresses<E>(
-    blueprints: &[crate::prover::gkr::backward_kernels::GpuGKRMainLayerKernelBlueprint<E>],
+    blueprints: &[crate::prover::gkr::backward::kernels::GpuGKRMainLayerKernelBlueprint<E>],
 ) -> usize {
     let mut seen: std::collections::BTreeSet<cs::definitions::GKRAddress> =
         std::collections::BTreeSet::new();

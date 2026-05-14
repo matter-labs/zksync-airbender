@@ -1,5 +1,171 @@
 use super::*;
 
+/// Schedules one fold-round group: `num_folding_steps` sumcheck/fold iterations
+/// sharing a device-side seed, plus the slab D2D, the bulk D2H of packed
+/// coefficients, and the rehydration callback that publishes them into
+/// `proof.sumcheck_polys` and mirrors the device seed back into the host
+/// transcript seed.
+///
+/// `scheduled_sumcheck_poly_idx` is read at entry to compute the group's slab
+/// offset and advanced once per inner round so the next group starts at the
+/// correct slab/proof index. Per-group device and host allocations are
+/// `push`ed into `keepalives` so the caller can keep them alive on the
+/// returned `GpuWhirFoldScheduledExecution`.
+fn schedule_fold_round(
+    num_folding_steps: usize,
+    state: &mut GpuWhirState,
+    scheduled_sumcheck_poly_idx: &mut usize,
+    keepalives: &mut FoldRoundGroupKeepalives,
+    proof_slab: Option<&DeviceAllocation<E4>>,
+    proof_layout: &ProofLayout,
+    shared_state_handle: UnsafeMutAccessor<ScheduledWhirProofState>,
+    seed_accessor: UnsafeMutAccessor<Seed>,
+    stream: &era_cudart::stream::CudaStream,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    if num_folding_steps == 0 {
+        return Ok(());
+    }
+
+    // Allocate persistent per-round-group device buffers: seed is
+    // threaded round-to-round, challenge is overwritten each round
+    // (stream-ordered, so safe to reuse), coeffs are packed into one
+    // contiguous [3 * num_folding_steps] block for bulk readback.
+    let mut d_seed: DeviceAllocation<u32> =
+        context.alloc(STATE_SIZE, AllocationPlacement::BestFit)?;
+    let mut d_challenge: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::BestFit)?;
+    let mut d_coeffs_all: DeviceAllocation<E4> =
+        context.alloc(3 * num_folding_steps, AllocationPlacement::BestFit)?;
+
+    // Seed upload: stage the host seed into a pinned buffer via a
+    // pre-kernel callback, then H2D copy into d_seed.
+    let mut h_seed_staging = unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
+    let mut upload_callbacks = Callbacks::new();
+    let staging_accessor = h_seed_staging.get_mut_accessor();
+    upload_callbacks.schedule(
+        move || unsafe {
+            staging_accessor
+                .get_mut()
+                .copy_from_slice(&seed_accessor.get().0);
+        },
+        stream,
+    )?;
+    memory_copy_async(&mut d_seed, &h_seed_staging, stream)?;
+
+    let group_start_idx = *scheduled_sumcheck_poly_idx;
+    for round in 0..num_folding_steps {
+        // Compute the 3 reductions into state.reduce_out (on device).
+        schedule_special_three_point_eval_device_compute(state, context)?;
+
+        // Fused kernel: reads reduce_out + d_seed, writes
+        // d_coeffs[round*3..round*3+3], d_challenge, and the advanced
+        // d_seed — all device-side, no host roundtrip.
+        let coeff_range = (round * 3)..((round + 1) * 3);
+        crate::ops::blake2s::whir_fold_round_update(
+            &state.reduce_out[..3],
+            &mut d_seed,
+            &mut d_coeffs_all[coeff_range],
+            &mut d_challenge,
+            stream,
+        )?;
+
+        let current_len = state.current_len;
+        let next_len = current_len / 2;
+        whir_fold_split_half_in_place_vectorized(
+            &mut state.sumchecked_poly_monomial_form,
+            &d_challenge[0],
+            next_len,
+            stream,
+        )?;
+        whir_fold_split_half_in_place(
+            &mut state.sumchecked_poly_evaluation_form[..current_len],
+            &d_challenge[0],
+            stream,
+        )?;
+        whir_fold_split_half_in_place(&mut state.eq_poly[..current_len], &d_challenge[0], stream)?;
+        state.current_len = next_len;
+        *scheduled_sumcheck_poly_idx += 1;
+    }
+
+    // Phase 3 slab routing: before the host-directed D2H, D2D-copy the
+    // packed `d_coeffs_all` (the `[E4; 3]` sumcheck-round coefficients
+    // for every round in this group) into the slab's
+    // `whir.sumcheck_polys[group_start_idx * 3 .. (group_start_idx +
+    // num_folding_steps) * 3]` region. The slab range is flat
+    // `total_sumcheck_polys * 3` `E4` values in schedule order, which
+    // matches `d_coeffs_all`'s packing exactly.
+    if let Some(slab) = proof_slab {
+        let (dst_base_ptr, dst_total_len) =
+            unsafe { proof_layout.whir_sumcheck_polys_device_mut(slab.as_ptr() as *mut u8) };
+        let dst_offset = group_start_idx * 3;
+        let dst_len = num_folding_steps * 3;
+        assert!(
+            dst_offset + dst_len <= dst_total_len,
+            "sumcheck_polys slab range overflow: {}+{} > {}",
+            dst_offset,
+            dst_len,
+            dst_total_len,
+        );
+        // SAFETY: offset is 16-byte-aligned (slab base is, and
+        // `E4` is 16 bytes so every element index is aligned);
+        // the destination sub-range is disjoint from other slab
+        // fields and from other fold-round groups.
+        let dst = unsafe {
+            era_cudart::slice::DeviceSlice::from_raw_parts_mut(
+                dst_base_ptr.add(dst_offset),
+                dst_len,
+            )
+        };
+        memory_copy_async(dst, &d_coeffs_all[..dst_len], stream)?;
+    }
+
+    // Bulk D2H: all coeffs for this group, plus the updated seed.
+    // Schedule a final callback that rehydrates both into the shared
+    // proof state and the host seed (which subsequent host-side
+    // transcript ops — oracle commit, OOD, pow, queries — rely on).
+    let mut h_coeffs_all = unsafe { context.alloc_host_uninit_slice::<E4>(3 * num_folding_steps) };
+    memory_copy_async(&mut h_coeffs_all, &d_coeffs_all, stream)?;
+    let mut h_seed_mirror = unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
+    memory_copy_async(&mut h_seed_mirror, &d_seed, stream)?;
+    let h_coeffs_accessor = h_coeffs_all.get_accessor();
+    let h_seed_mirror_accessor = h_seed_mirror.get_accessor();
+    // Rehydration callback goes into the same per-group Callbacks
+    // container as the upload callback; their stream-order is decided
+    // by scheduling position, not by the Callbacks object they belong
+    // to. Keeping it local avoids a mutable borrow conflict with the
+    // outer `final_callbacks` (which the surrounding scope also
+    // writes to).
+    upload_callbacks.schedule(
+        move || unsafe {
+            let all = h_coeffs_accessor.get();
+            let proof_state = shared_state_handle.get_mut();
+            let proof = proof_state
+                .proof
+                .as_mut()
+                .expect("proof must be initialized");
+            for i in 0..num_folding_steps {
+                let base = i * 3;
+                proof.sumcheck_polys[group_start_idx + i] =
+                    [all[base], all[base + 1], all[base + 2]];
+            }
+            // Mirror the device seed back into the host transcript
+            // seed for subsequent host-side transcript operations.
+            let new_seed = h_seed_mirror_accessor.get();
+            seed_accessor.get_mut().0.copy_from_slice(new_seed);
+        },
+        stream,
+    )?;
+
+    keepalives.device_seeds.push(d_seed);
+    keepalives.device_challenges.push(d_challenge);
+    keepalives.device_coeffs.push(d_coeffs_all);
+    keepalives.host_seed_stagings.push(h_seed_staging);
+    keepalives.host_seed_mirrors.push(h_seed_mirror);
+    keepalives.host_coeffs.push(h_coeffs_all);
+    keepalives.upload_callbacks.push(upload_callbacks);
+    Ok(())
+}
+
 pub(crate) fn schedule_gpu_whir_fold_with_sources(
     memory_trace_holder: &mut TraceHolder<BF>,
     memory_unified_device_cap: &DeviceAllocation<Digest>,
@@ -42,6 +208,18 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     assert_eq!(
         1usize << memory_trace_holder.log_lde_factor,
         original_lde_factor
+    );
+    // Base-layer memory/witness/setup oracles share `log_lde_factor`
+    // (sourced from `ProverConfig`). The base-round query loop below relies
+    // on this to share a single `device_internal_indexes` buffer across all
+    // three calls per query.
+    assert_eq!(
+        witness_trace_holder.log_lde_factor,
+        memory_trace_holder.log_lde_factor
+    );
+    assert_eq!(
+        setup_trace_holder.log_lde_factor,
+        memory_trace_holder.log_lde_factor
     );
     assert_eq!(
         1usize << memory_trace_holder.log_rows_per_leaf,
@@ -338,21 +516,15 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     let num_whir_steps = num_intermediate_oracles;
     let mut rs_oracle: Option<GpuWhirExtensionOracle>;
 
-    let folding_challenges: Vec<WhirHostUpload<E4>> = Vec::new();
-    // Per-fold-round-group device/host keepalives for the device-side
-    // transcript path: d_seed, d_challenge, d_coeffs, plus host staging/mirror
-    // buffers and the upload callbacks.
-    let mut fold_round_group_device_seeds: Vec<DeviceAllocation<u32>> = Vec::new();
-    let mut fold_round_group_device_challenges: Vec<DeviceAllocation<E4>> = Vec::new();
-    let mut fold_round_group_device_coeffs: Vec<DeviceAllocation<E4>> = Vec::new();
-    let mut fold_round_group_host_seed_stagings: Vec<HostAllocation<[u32]>> = Vec::new();
-    let mut fold_round_group_host_seed_mirrors: Vec<HostAllocation<[u32]>> = Vec::new();
-    let mut fold_round_group_host_coeffs: Vec<HostAllocation<[E4]>> = Vec::new();
-    let mut fold_round_group_upload_callbacks: Vec<Callbacks<'static>> = Vec::new();
+    let folding_challenges: Vec<WhirHostUpload> = Vec::new();
+    // Per-fold-round-group keepalives for the device-side transcript path:
+    // d_seed, d_challenge, d_coeffs, plus host staging/mirror buffers and
+    // the upload callbacks. Populated by `schedule_fold_round`.
+    let mut fold_round_group_keepalives = FoldRoundGroupKeepalives::new();
     // Per-WHIR-round keepalives for the device-side PoW verify + query index
     // assembly: the contained device/host buffers must outlive the stream
     // work scheduled by the caller around them.
-    let mut pow_keepalives_keepalive: Vec<PowAndQueryIndexesKeepalives> = Vec::new();
+    let mut pow_keepalives_list: Vec<PowAndQueryIndexesKeepalives> = Vec::new();
     let mut recursive_caps_keepalive: Vec<crate::prover::whir::GpuWhirExtensionOracleKeepalive> =
         Vec::new();
     // Pinned host buffers backing per-round D2Hs of intermediate oracle caps.
@@ -372,175 +544,41 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     let mut final_callbacks = Callbacks::new();
     let mut scheduled_sumcheck_poly_idx = 0usize;
 
-    let mut schedule_fold_round = |num_folding_steps: usize,
-                                   state: &mut GpuWhirState|
-     -> CudaResult<()> {
-        if num_folding_steps == 0 {
-            return Ok(());
-        }
-
-        // Allocate persistent per-round-group device buffers: seed is
-        // threaded round-to-round, challenge is overwritten each round
-        // (stream-ordered, so safe to reuse), coeffs are packed into one
-        // contiguous [3 * num_folding_steps] block for bulk readback.
-        let mut d_seed: DeviceAllocation<u32> =
-            context.alloc(STATE_SIZE, AllocationPlacement::BestFit)?;
-        let mut d_challenge: DeviceAllocation<E4> =
-            context.alloc(1, AllocationPlacement::BestFit)?;
-        let mut d_coeffs_all: DeviceAllocation<E4> =
-            context.alloc(3 * num_folding_steps, AllocationPlacement::BestFit)?;
-
-        // Seed upload: stage the host seed into a pinned buffer via a
-        // pre-kernel callback, then H2D copy into d_seed.
-        let mut h_seed_staging = unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
-        let mut upload_callbacks = Callbacks::new();
-        let staging_accessor = h_seed_staging.get_mut_accessor();
-        upload_callbacks.schedule(
-            move || unsafe {
-                staging_accessor
-                    .get_mut()
-                    .copy_from_slice(&seed_accessor.get().0);
-            },
-            stream,
-        )?;
-        memory_copy_async(&mut d_seed, &h_seed_staging, stream)?;
-
-        let group_start_idx = scheduled_sumcheck_poly_idx;
-        for round in 0..num_folding_steps {
-            // Compute the 3 reductions into state.reduce_out (on device).
-            schedule_special_three_point_eval_device_compute(state, context)?;
-
-            // Fused kernel: reads reduce_out + d_seed, writes
-            // d_coeffs[round*3..round*3+3], d_challenge, and the advanced
-            // d_seed — all device-side, no host roundtrip.
-            let coeff_range = (round * 3)..((round + 1) * 3);
-            crate::ops::blake2s::whir_fold_round_update(
-                &state.reduce_out[..3],
-                &mut d_seed,
-                &mut d_coeffs_all[coeff_range],
-                &mut d_challenge,
-                stream,
-            )?;
-
-            let current_len = state.current_len;
-            let next_len = current_len / 2;
-            whir_fold_split_half_in_place_vectorized(
-                &mut state.sumchecked_poly_monomial_form,
-                &d_challenge[0],
-                next_len,
-                stream,
-            )?;
-            whir_fold_split_half_in_place(
-                &mut state.sumchecked_poly_evaluation_form[..current_len],
-                &d_challenge[0],
-                stream,
-            )?;
-            whir_fold_split_half_in_place(
-                &mut state.eq_poly[..current_len],
-                &d_challenge[0],
-                stream,
-            )?;
-            state.current_len = next_len;
-            scheduled_sumcheck_poly_idx += 1;
-        }
-
-        // Phase 3 slab routing: before the host-directed D2H, D2D-copy the
-        // packed `d_coeffs_all` (the `[E4; 3]` sumcheck-round coefficients
-        // for every round in this group) into the slab's
-        // `whir.sumcheck_polys[group_start_idx * 3 .. (group_start_idx +
-        // num_folding_steps) * 3]` region. The slab range is flat
-        // `total_sumcheck_polys * 3` `E4` values in schedule order, which
-        // matches `d_coeffs_all`'s packing exactly.
-        if let Some(slab) = proof_slab {
-            let (dst_base_ptr, dst_total_len) =
-                unsafe { proof_layout.whir_sumcheck_polys_device_mut(slab.as_ptr() as *mut u8) };
-            let dst_offset = group_start_idx * 3;
-            let dst_len = num_folding_steps * 3;
-            assert!(
-                dst_offset + dst_len <= dst_total_len,
-                "sumcheck_polys slab range overflow: {}+{} > {}",
-                dst_offset,
-                dst_len,
-                dst_total_len,
-            );
-            // SAFETY: offset is 16-byte-aligned (slab base is, and
-            // `E4` is 16 bytes so every element index is aligned);
-            // the destination sub-range is disjoint from other slab
-            // fields and from other fold-round groups.
-            let dst = unsafe {
-                era_cudart::slice::DeviceSlice::from_raw_parts_mut(
-                    dst_base_ptr.add(dst_offset),
-                    dst_len,
-                )
-            };
-            memory_copy_async(dst, &d_coeffs_all[..dst_len], stream)?;
-        }
-
-        // Bulk D2H: all coeffs for this group, plus the updated seed.
-        // Schedule a final callback that rehydrates both into the shared
-        // proof state and the host seed (which subsequent host-side
-        // transcript ops — oracle commit, OOD, pow, queries — rely on).
-        let mut h_coeffs_all =
-            unsafe { context.alloc_host_uninit_slice::<E4>(3 * num_folding_steps) };
-        memory_copy_async(&mut h_coeffs_all, &d_coeffs_all, stream)?;
-        let mut h_seed_mirror = unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
-        memory_copy_async(&mut h_seed_mirror, &d_seed, stream)?;
-        let h_coeffs_accessor = h_coeffs_all.get_accessor();
-        let h_seed_mirror_accessor = h_seed_mirror.get_accessor();
-        // Rehydration callback goes into the same per-group Callbacks
-        // container as the upload callback; their stream-order is decided
-        // by scheduling position, not by the Callbacks object they belong
-        // to. Keeping it local avoids a mutable borrow conflict with the
-        // outer `final_callbacks` (which the surrounding scope also
-        // writes to).
-        {
-            let shared_state = shared_state_handle;
-            upload_callbacks.schedule(
-                move || unsafe {
-                    let all = h_coeffs_accessor.get();
-                    let proof_state = shared_state.get_mut();
-                    let proof = proof_state
-                        .proof
-                        .as_mut()
-                        .expect("proof must be initialized");
-                    for i in 0..num_folding_steps {
-                        let base = i * 3;
-                        proof.sumcheck_polys[group_start_idx + i] =
-                            [all[base], all[base + 1], all[base + 2]];
-                    }
-                    // Mirror the device seed back into the host transcript
-                    // seed for subsequent host-side transcript operations.
-                    let new_seed = h_seed_mirror_accessor.get();
-                    seed_accessor.get_mut().0.copy_from_slice(new_seed);
-                },
-                stream,
-            )?;
-        }
-
-        fold_round_group_device_seeds.push(d_seed);
-        fold_round_group_device_challenges.push(d_challenge);
-        fold_round_group_device_coeffs.push(d_coeffs_all);
-        fold_round_group_host_seed_stagings.push(h_seed_staging);
-        fold_round_group_host_seed_mirrors.push(h_seed_mirror);
-        fold_round_group_host_coeffs.push(h_coeffs_all);
-        fold_round_group_upload_callbacks.push(upload_callbacks);
-        Ok(())
-    };
-
     {
         let round_range = Range::new("gkr.whir.base_round.0")?;
         round_range.start(stream)?;
-        let num_folding_steps = whir_steps_schedule.next().unwrap();
-        let num_queries = whir_queries_schedule.next().unwrap();
-        let (pow_round_idx, pow_bits) = whir_pow_schedule.next().unwrap();
+        let num_folding_steps = whir_steps_schedule
+            .next()
+            .expect("whir_steps_schedule exhausted before scheduling this round");
+        let num_queries = whir_queries_schedule
+            .next()
+            .expect("whir_queries_schedule exhausted before scheduling this round");
+        let (pow_round_idx, pow_bits) = whir_pow_schedule
+            .next()
+            .expect("whir_pow_schedule exhausted before scheduling this round");
         let folds_range = Range::new("gkr.whir.base_round.0.folds")?;
         folds_range.start(stream)?;
-        schedule_fold_round(num_folding_steps, &mut state)?;
+        schedule_fold_round(
+            num_folding_steps,
+            &mut state,
+            &mut scheduled_sumcheck_poly_idx,
+            &mut fold_round_group_keepalives,
+            proof_slab,
+            proof_layout,
+            shared_state_handle,
+            seed_accessor,
+            stream,
+            context,
+        )?;
         folds_range.end(stream)?;
         tracing_ranges.push(folds_range);
 
-        let lde_factor = whir_steps_lde_factors.next().unwrap();
-        let next_folding_steps = *whir_steps_schedule.peek().unwrap();
+        let lde_factor = whir_steps_lde_factors
+            .next()
+            .expect("whir_steps_lde_factors exhausted before scheduling this round");
+        let next_folding_steps = *whir_steps_schedule
+            .peek()
+            .expect("whir_steps_schedule has no follow-up step for next-oracle sizing");
         let commit_next_oracle_range = Range::new("gkr.whir.base_round.0.commit_next_oracle")?;
         commit_next_oracle_range.start(stream)?;
         let oracle = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs(
@@ -663,7 +701,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             stream,
         )?;
         let h_seed_mirror_accessor = pow_keepalives.h_seed_mirror.get_accessor();
-        pow_keepalives_keepalive.push(pow_keepalives);
+        pow_keepalives_list.push(pow_keepalives);
         query_index_callbacks_for_round.schedule(
             {
                 let shared_state = shared_state_handle;
@@ -720,44 +758,50 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
         let queries_range = Range::new("gkr.whir.base_round.0.queries")?;
         queries_range.start(stream)?;
+        // Shared host + device buffers carrying `internal_index = query_index
+        // / lde_factor` for every query of this base round. One alloc + one
+        // fill callback + one H2D replaces `num_queries × 3` per-helper-call
+        // host alloc + callback + device alloc + H2D.
+        let base_lde_factor = 1u32 << memory_trace_holder.log_lde_factor;
+        let mut internal_indexes_host =
+            unsafe { context.alloc_host_uninit_slice::<u32>(num_queries) };
+        {
+            let query_indexes_accessor = query_indexes_host.get_accessor();
+            let internal_indexes_accessor = internal_indexes_host.get_mut_accessor();
+            query_index_callbacks_for_round.schedule(
+                move || unsafe {
+                    let src = query_indexes_accessor.get();
+                    let dst = internal_indexes_accessor.get_mut();
+                    for (dst_el, src_el) in dst.iter_mut().zip(src.iter()) {
+                        *dst_el = src_el / base_lde_factor;
+                    }
+                },
+                stream,
+            )?;
+        }
+        let mut device_internal_indexes: DeviceAllocation<u32> =
+            context.alloc(num_queries, AllocationPlacement::BestFit)?;
+        memory_copy_async(&mut device_internal_indexes, &internal_indexes_host, stream)?;
         let mut round_base_queries = [Vec::new(), Vec::new(), Vec::new()];
         for query_idx in 0..num_queries {
-            let mut memory_query_index_host = unsafe { context.alloc_host_uninit_slice(1) };
-            let mut witness_query_index_host = unsafe { context.alloc_host_uninit_slice(1) };
-            let mut setup_query_index_host = unsafe { context.alloc_host_uninit_slice(1) };
-            let query_indexes_accessor = query_indexes_host.get_accessor();
-            let mut copy_callbacks = Callbacks::new();
-            for single_accessor in [
-                memory_query_index_host.get_mut_accessor(),
-                witness_query_index_host.get_mut_accessor(),
-                setup_query_index_host.get_mut_accessor(),
-            ] {
-                let query_indexes_accessor = query_indexes_accessor;
-                copy_callbacks.schedule(
-                    move || unsafe {
-                        single_accessor.get_mut()[0] = query_indexes_accessor.get()[query_idx];
-                    },
-                    stream,
-                )?;
-            }
+            let device_internal_index = &device_internal_indexes[query_idx..query_idx + 1];
 
             let memory_query = schedule_unknown_coset_base_field_query(
                 memory_trace_holder,
-                memory_query_index_host,
+                device_internal_index,
                 context,
             )?;
             let witness_query = schedule_unknown_coset_base_field_query(
                 witness_trace_holder,
-                witness_query_index_host,
+                device_internal_index,
                 context,
             )?;
             let setup_query = schedule_unknown_coset_base_field_query(
                 setup_trace_holder,
-                setup_query_index_host,
+                device_internal_index,
                 context,
             )?;
 
-            let memory_query_index_accessor = memory_query.query_index.get_accessor();
             let memory_leaf_accessors = memory_query
                 .value_leafs
                 .iter()
@@ -768,7 +812,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 .iter()
                 .map(HostAllocation::get_accessor)
                 .collect::<Vec<_>>();
-            let witness_query_index_accessor = witness_query.query_index.get_accessor();
             let witness_leaf_accessors = witness_query
                 .value_leafs
                 .iter()
@@ -779,7 +822,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 .iter()
                 .map(HostAllocation::get_accessor)
                 .collect::<Vec<_>>();
-            let setup_query_index_accessor = setup_query.query_index.get_accessor();
             let setup_leaf_accessors = setup_query
                 .value_leafs
                 .iter()
@@ -809,7 +851,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             )?;
             ood_points.push(eq_upload);
 
-            final_callbacks.extend(copy_callbacks);
             final_callbacks.schedule(
                 {
                     let shared_state = shared_state_handle;
@@ -828,10 +869,10 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                     move || unsafe {
                         let proof_state = shared_state.get_mut();
                         let proof = proof_state.proof.as_mut().unwrap();
-                        let memory_index = memory_query_index_accessor.get()[0] as usize;
+                        let shared_index = query_indexes_accessor.get()[query_idx] as usize;
                         fill_unknown_coset_base_field_query_from_accessors(
                             &mut proof.memory_commitment.queries[query_idx],
-                            memory_index,
+                            shared_index,
                             memory_coset_tree_size,
                             memory_log_lde_factor,
                             memory_values_per_leaf,
@@ -839,10 +880,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                             &memory_leaf_accessors,
                             &memory_path_accessors,
                         );
-                        let witness_index = witness_query_index_accessor.get()[0] as usize;
                         fill_unknown_coset_base_field_query_from_accessors(
                             &mut proof.witness_commitment.queries[query_idx],
-                            witness_index,
+                            shared_index,
                             witness_coset_tree_size,
                             witness_log_lde_factor,
                             witness_values_per_leaf,
@@ -850,10 +890,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                             &witness_leaf_accessors,
                             &witness_path_accessors,
                         );
-                        let setup_index = setup_query_index_accessor.get()[0] as usize;
                         fill_unknown_coset_base_field_query_from_accessors(
                             &mut proof.setup_commitment.queries[query_idx],
-                            setup_index,
+                            shared_index,
                             setup_coset_tree_size,
                             setup_log_lde_factor,
                             setup_values_per_leaf,
@@ -872,12 +911,14 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         }
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
-        base_queries.push(round_base_queries.map(|queries| {
-            queries
-                .into_iter()
-                .map(ScheduledUnknownCosetBaseFieldQuery::into_keepalive)
-                .collect()
-        }));
+        // `round_base_queries` retains every `ScheduledUnknownCosetBaseFieldQuery`
+        // — including its `value_leafs` / `path_merkle_paths` host allocations —
+        // so the per-query host buffers stay alive until the
+        // `GpuWhirFoldScheduledExecution` is dropped (i.e. after `finish()` has
+        // synced the stream). The previous `into_keepalive` step discarded those
+        // host buffers while their `UnsafeAccessor`s were still in flight on the
+        // final-readback callback.
+        base_queries.push(round_base_queries);
         query_index_callbacks.push(query_index_callbacks_for_round);
         query_indexes.push(query_indexes_host);
         delinearization_challenges.push(delinearization_upload);
@@ -891,13 +932,34 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let round_name = format!("gkr.whir.internal_round.{}", internal_round_idx);
         let round_range = Range::new(&*round_name)?;
         round_range.start(stream)?;
-        let num_folding_steps = whir_steps_schedule.next().unwrap();
-        let num_queries = whir_queries_schedule.next().unwrap();
-        let (pow_round_idx, pow_bits) = whir_pow_schedule.next().unwrap();
-        schedule_fold_round(num_folding_steps, &mut state)?;
+        let num_folding_steps = whir_steps_schedule
+            .next()
+            .expect("whir_steps_schedule exhausted before scheduling this round");
+        let num_queries = whir_queries_schedule
+            .next()
+            .expect("whir_queries_schedule exhausted before scheduling this round");
+        let (pow_round_idx, pow_bits) = whir_pow_schedule
+            .next()
+            .expect("whir_pow_schedule exhausted before scheduling this round");
+        schedule_fold_round(
+            num_folding_steps,
+            &mut state,
+            &mut scheduled_sumcheck_poly_idx,
+            &mut fold_round_group_keepalives,
+            proof_slab,
+            proof_layout,
+            shared_state_handle,
+            seed_accessor,
+            stream,
+            context,
+        )?;
 
-        let lde_factor = whir_steps_lde_factors.next().unwrap();
-        let next_folding_steps = *whir_steps_schedule.peek().unwrap();
+        let lde_factor = whir_steps_lde_factors
+            .next()
+            .expect("whir_steps_lde_factors exhausted before scheduling this round");
+        let next_folding_steps = *whir_steps_schedule
+            .peek()
+            .expect("whir_steps_schedule has no follow-up step for next-oracle sizing");
         let commit_name = format!("{round_name}.commit_next_oracle");
         let commit_next_oracle_range = Range::new(&*commit_name)?;
         commit_next_oracle_range.start(stream)?;
@@ -1020,7 +1082,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             stream,
         )?;
         let h_seed_mirror_accessor = pow_keepalives.h_seed_mirror.get_accessor();
-        pow_keepalives_keepalive.push(pow_keepalives);
+        pow_keepalives_list.push(pow_keepalives);
         query_index_callbacks_for_round.schedule(
             {
                 let shared_state = shared_state_handle;
@@ -1169,10 +1231,27 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     {
         let round_range = Range::new("gkr.whir.final_round")?;
         round_range.start(stream)?;
-        let num_folding_steps = whir_steps_schedule.next().unwrap();
-        let num_queries = whir_queries_schedule.next().unwrap();
-        let (pow_round_idx, pow_bits) = whir_pow_schedule.next().unwrap();
-        schedule_fold_round(num_folding_steps, &mut state)?;
+        let num_folding_steps = whir_steps_schedule
+            .next()
+            .expect("whir_steps_schedule exhausted before scheduling this round");
+        let num_queries = whir_queries_schedule
+            .next()
+            .expect("whir_queries_schedule exhausted before scheduling this round");
+        let (pow_round_idx, pow_bits) = whir_pow_schedule
+            .next()
+            .expect("whir_pow_schedule exhausted before scheduling this round");
+        schedule_fold_round(
+            num_folding_steps,
+            &mut state,
+            &mut scheduled_sumcheck_poly_idx,
+            &mut fold_round_group_keepalives,
+            proof_slab,
+            proof_layout,
+            shared_state_handle,
+            seed_accessor,
+            stream,
+            context,
+        )?;
 
         // Mirror CPU `prover/src/gkr/whir/mod.rs` lines 1297 and 1391: after the final fold
         // and before drawing the final PoW/query bits, CPU commits the remaining
@@ -1250,7 +1329,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             stream,
         )?;
         let h_seed_mirror_accessor = pow_keepalives.h_seed_mirror.get_accessor();
-        pow_keepalives_keepalive.push(pow_keepalives);
+        pow_keepalives_list.push(pow_keepalives);
         query_index_callbacks_for_round.schedule(
             {
                 let shared_state = shared_state_handle;
@@ -1351,14 +1430,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         _tracing_ranges: tracing_ranges,
         _start_callbacks: start_callbacks,
         _folding_challenges: folding_challenges,
-        _fold_round_group_device_seeds: fold_round_group_device_seeds,
-        _fold_round_group_device_challenges: fold_round_group_device_challenges,
-        _fold_round_group_device_coeffs: fold_round_group_device_coeffs,
-        _fold_round_group_host_seed_stagings: fold_round_group_host_seed_stagings,
-        _fold_round_group_host_seed_mirrors: fold_round_group_host_seed_mirrors,
-        _fold_round_group_host_coeffs: fold_round_group_host_coeffs,
-        _fold_round_group_upload_callbacks: fold_round_group_upload_callbacks,
-        _pow_keepalives: pow_keepalives_keepalive,
+        _fold_round_group_keepalives: fold_round_group_keepalives,
+        _pow_keepalives: pow_keepalives_list,
         _ood_points: ood_points,
         _query_index_callbacks: query_index_callbacks,
         _delinearization_challenges: delinearization_challenges,

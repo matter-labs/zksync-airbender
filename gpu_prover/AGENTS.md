@@ -30,9 +30,9 @@ summary — the contract document is the source of truth.
   operation thereafter only reads.
 - **MUST** consume D2H readback buffers via a scheduled host callback, never
   from the scheduling thread.
-- **MUST** fork/join any op on an auxiliary stream (`h2d_stream`, `d2h_stream`,
-  or an `aux_streams` entry) against `exec_stream` with explicit CUDA events.
-  The driver gives independent streams no implicit ordering.
+- **MUST** fork/join any op on an auxiliary stream (`h2d_stream` or `d2h_stream`)
+  against `exec_stream` with explicit CUDA events. The driver gives independent
+  streams no implicit ordering.
 - **MUST** allocate and drop pool-backed handles on `exec_stream`. If a
   secondary stream touched the allocation, the `exec_stream` join wait must be
   scheduled before the Rust drop — otherwise it is a use-after-free.
@@ -62,6 +62,31 @@ summary — the contract document is the source of truth.
 - `build/main.rs`: build script that wires cmake/CUDA integration.
 - `native/`: native CUDA/C++ sources and build artifacts managed by the build script.
 - `src/`: crate modules.
+- `src/upstream.rs`: single-file manifest re-exporting every item the crate
+  consumes from `cs`, `prover`, `field`, `setups`, and `trace_and_split`. See
+  the "Upstream imports" section below.
+
+## Upstream imports
+
+Code under `gpu_prover/src/` imports items from the upstream crates (`cs`,
+`prover`, `field`, `setups`, `trace_and_split`) **exclusively through
+`crate::upstream`**. Direct `use cs::…;` / `use prover::…;` / etc. in
+consumer code is forbidden — the manifest is the contract.
+
+- Adding a new dependency on an upstream item: add a `pub(crate) use …;` to
+  the appropriate section of [`src/upstream.rs`](src/upstream.rs), then
+  `use crate::upstream::Item;` from the consumer.
+- Two aliases live in the manifest to avoid collisions with crate-local
+  types: `cs::gkr_circuits::ExecutorFamilyDecoderData` is re-exported as
+  `CSExecutorFamilyDecoderData`, and `prover::gkr::prover::setup::GKRSetup`
+  as `CpuGKRSetup`. Consumers must use the aliased name.
+- Bumping an upstream version: scan `src/upstream.rs` first. A renamed or
+  removed item surfaces as a compile error pointing at the manifest rather
+  than at scattered call sites; conversely, anything added to the manifest
+  is the documented surface contract.
+- The manifest exposes a few module re-exports (`dimension_reduction`,
+  `stage1`) so consumers can write `crate::upstream::stage1::stage1(...)`
+  without re-importing the entire path.
 
 ## Build and Test
 
@@ -95,3 +120,12 @@ summary — the contract document is the source of truth.
 - Prefer `rayon` for CPU parallelism when applicable.
 - Keep unsafe blocks minimal and justified; comment on non-obvious invariants.
 - Add `// SAFETY:` comments for non-trivial unsafe blocks.
+
+## Test layout convention
+
+- Under 100 lines and tightly coupled to one item: inline
+  `#[cfg(test)] mod tests { ... }` next to the item.
+- More than 100 lines, or shared helpers: sibling `tests.rs` (declared as
+  `#[cfg(test)] mod tests;` from the parent).
+- Multi-file with shared helpers / fixtures: `tests/` subdir with a
+  `tests/mod.rs` that re-exports the helpers needed by sibling test files.

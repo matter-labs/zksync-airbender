@@ -1,17 +1,13 @@
-
 use std::alloc::Global;
 use std::ops::DerefMut;
 use std::ptr::null;
 use std::sync::Arc;
 
-use cs::definitions::VirtualSetupPoly;
 use era_cudart::memory::memory_copy_async;
 use fft::materialize_powers_serial_starting_with_one;
-use field::{FieldExtension, PrimeField};
+
 use itertools::Itertools;
-use prover::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
-};
+
 use serial_test::serial;
 use worker::Worker;
 
@@ -19,6 +15,10 @@ use super::*;
 use crate::ops::simple::set_by_ref;
 use crate::primitives::field::E4;
 use crate::prover::test_utils::make_test_context;
+use crate::upstream::{
+    ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, FieldExtension,
+    MerkleTreeCapVarLength, PrimeField, VirtualSetupPoly,
+};
 
 impl GpuGKRForwardSetup<E4> {
     pub(crate) fn for_test_generic_lookup(
@@ -33,7 +33,7 @@ impl GpuGKRForwardSetup<E4> {
             &[E4::ONE, lookup_additive_challenge, E4::ZERO][..],
             context.get_exec_stream(),
         )?;
-        crate::prover::gkr::forward_kernels::schedule_lookup_gamma_consts_prelude(
+        crate::prover::gkr::forward::kernels::schedule_lookup_gamma_consts_prelude_e4(
             d_lookup_challenges[1..2].as_ptr(),
             context,
         )?;

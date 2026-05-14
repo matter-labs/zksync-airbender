@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn build_proof_layout_inputs_structural<E>(
+pub(crate) fn build_proof_layout_inputs<E>(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     external_challenges: &prover::gkr::prover::GKRExternalChallenges<BF, E>,
     whir_schedule: &WhirSchedule,
@@ -23,20 +23,19 @@ where
     let compiled_circuit =
         crate::prover::gkr::transform::normalize_compiled_circuit_for_gpu(compiled_circuit.clone());
     let initial_trace_size_log_2 = compiled_circuit.trace_len.trailing_zeros() as usize;
-    let dimension_reducing_inputs =
-        crate::prover::gkr::backward::derive_dimension_reducing_inputs_structural(
-            compiled_circuit.layers.len(),
-            &compiled_circuit.global_output_map,
-            initial_trace_size_log_2,
-            final_trace_size_log_2,
-        );
+    let dimension_reducing_inputs = crate::prover::gkr::backward::derive_dimension_reducing_inputs(
+        compiled_circuit.layers.len(),
+        &compiled_circuit.global_output_map,
+        initial_trace_size_log_2,
+        final_trace_size_log_2,
+    );
     let main_layer_input_addresses_per_layer =
-        crate::prover::gkr::backward::collect_main_layer_input_addresses_per_layer_structural::<E>(
+        crate::prover::gkr::backward::collect_main_layer_input_addresses_per_layer::<E>(
             &compiled_circuit,
             external_challenges,
         );
     let main_layer_outputs =
-        crate::prover::gkr::backward::collect_main_layer_kernel_output_addresses_per_layer_structural::<E>(
+        crate::prover::gkr::backward::collect_main_layer_kernel_output_addresses_per_layer::<E>(
             &compiled_circuit,
             external_challenges,
         );

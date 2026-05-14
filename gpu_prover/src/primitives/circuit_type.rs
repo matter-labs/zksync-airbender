@@ -1,4 +1,11 @@
 use crate::primitives::machine_type::MachineType;
+use crate::upstream::{
+    inits_and_teardowns, AddSubLuiAuipcMopCircuit, BabyBearField, BigIntDelegationCircuit,
+    Blake2sGFunctionDelegationCircuit, Blake2sWithCompressionDelegationCircuit,
+    JumpBranchSltCircuit, KeccakSpecial5DelegationCircuit, LoadStoreSubwordOnlyCircuit,
+    LoadStoreWordOnlyCircuit, ProverConfig, SecurityLevel, ShiftBinaryCircuit,
+    UnsignedMulDivCircuit, WhirSchedule,
+};
 use circuit_common::{DelegationCircuit, RiscVCycleCircuit};
 use common_constants::circuit_families::{
     ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX,
@@ -11,16 +18,6 @@ use common_constants::delegation_types::{
     blake2s_g_function::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
     blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
     keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
-};
-use field::baby_bear::base::BabyBearField;
-use prover::definitions::SecurityLevel;
-use prover::gkr::prover::WhirSchedule;
-use prover::gkr::prover_config::ProverConfig;
-use setups::{
-    inits_and_teardowns, AddSubLuiAuipcMopCircuit, BigIntDelegationCircuit,
-    Blake2sGFunctionDelegationCircuit, Blake2sWithCompressionDelegationCircuit,
-    JumpBranchSltCircuit, KeccakSpecial5DelegationCircuit, LoadStoreSubwordOnlyCircuit,
-    LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnsignedMulDivCircuit,
 };
 
 const BIGINT_DOMAIN_SIZE: usize =
