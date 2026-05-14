@@ -25,6 +25,8 @@ impl DerefMut for StaticDeviceAllocationBackend {
 
 impl StaticAllocationBackend for StaticDeviceAllocationBackend {
     fn as_non_null(&mut self) -> NonNull<u8> {
+        // SAFETY: `DeviceAllocation::as_mut_ptr` returns a non-null device
+        // pointer (cudaMalloc-backed; null would have failed allocation).
         unsafe { NonNull::new_unchecked(self.as_mut_ptr()) }
     }
 
@@ -61,12 +63,18 @@ impl<T, W: InnerStaticDeviceAllocatorWrapper> Deref for StaticDeviceAllocation<T
     type Target = DeviceSlice<T>;
 
     fn deref(&self) -> &Self::Target {
+        // SAFETY: `self.data.ptr` is a live `NonNull<T>` into the parent
+        // `StaticDeviceAllocationBackend`, which outlives `self`; `self.data.len`
+        // is the `T` count assigned at allocation. The allocator enforces `T`
+        // alignment at `allocate` time.
         unsafe { DeviceSlice::from_raw_parts(self.data.ptr.as_ptr(), self.data.len) }
     }
 }
 
 impl<T, W: InnerStaticDeviceAllocatorWrapper> DerefMut for StaticDeviceAllocation<T, W> {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        // SAFETY: as in `deref`, plus the `&mut self` receiver provides
+        // exclusive access to this allocation's slot in the parent backend.
         unsafe { DeviceSlice::from_raw_parts_mut(self.data.ptr.as_ptr(), self.data.len) }
     }
 }

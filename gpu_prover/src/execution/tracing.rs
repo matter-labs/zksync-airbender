@@ -157,17 +157,30 @@ impl<T: Copy + 'static> TracerRanges<T> {
         }
     }
 
+    /// # Safety
+    ///
+    /// Caller must ensure the producer reserved enough capacity in `queue`
+    /// for every `write` made during a snapshot (see `process_snapshot`).
     #[inline(always)]
     unsafe fn write(&mut self, value: T) {
         self.write_type_unchecked(value);
     }
 
+    /// # Safety
+    ///
+    /// Same capacity contract as [`Self::write`], plus `U` must equal `T`
+    /// (debug-asserted below). Used to forward dispatch-erased values from
+    /// callers that have a const-generic guarantee of type equality.
     #[inline(always)]
     unsafe fn write_type_unchecked<U: Copy + 'static>(&mut self, value: U) {
         debug_assert_eq!(any::TypeId::of::<T>(), any::TypeId::of::<U>());
         if core::hint::unlikely(self.current.start == self.current.end) {
+            // SAFETY: capacity precondition: producer pre-queued enough
+            // `PtrRange`s for this snapshot's writes.
             self.current = self.queue.pop_front().unwrap_unchecked();
         }
+        // SAFETY: `self.current.start` points into a live `PtrRange` reserved
+        // for this tracer; `T == U` debug-checked above.
         *(self.current.start as *mut U) = value;
         self.current.start = self.current.start.add(1);
         self.count += 1;
@@ -228,6 +241,10 @@ impl WitnessTracer for SplitTracer {
         &mut self,
         data: NonMemoryOpcodeTracingDataWithTimestamp,
     ) {
+        // SAFETY: `unreachable_unchecked` is reached only if the upstream
+        // `WitnessTracer` contract is violated (FAMILY outside the enumerated
+        // set). The `.write()` calls rely on capacity pre-queued by the
+        // matching family `Producer` for this snapshot.
         unsafe {
             if const { FAMILY == ADD_SUB_FAMILY_IDX } {
                 self.add_sub_family.write(data)
@@ -248,6 +265,9 @@ impl WitnessTracer for SplitTracer {
         &mut self,
         data: MemoryOpcodeTracingDataWithTimestamp,
     ) {
+        // SAFETY: as in `write_non_memory_family_data` — `unreachable_unchecked`
+        // covers the upstream FAMILY contract; `.write()` relies on pre-queued
+        // capacity owned by the matching family `Producer`.
         unsafe {
             if const { FAMILY == LOAD_STORE_SUBWORD_FAMILY_IDX } {
                 self.subword_size_mem_family.write(data)
@@ -275,6 +295,11 @@ impl WitnessTracer for SplitTracer {
             VARIABLE_OFFSETS,
         >,
     ) {
+        // SAFETY: `unreachable_unchecked` covers the upstream
+        // `WitnessTracer::write_delegation` contract (DELEGATION_TYPE outside
+        // the enumerated set). `write_type_unchecked` is sound because each
+        // arm pairs a const DELEGATION_TYPE with the matching witness type T
+        // by construction.
         unsafe {
             if const { DELEGATION_TYPE == BLAKE_DELEGATION_TYPE_ID } {
                 self.blake_calls.write_type_unchecked(data)
@@ -329,6 +354,8 @@ impl WitnessTracer for UnifiedTracer {
         &mut self,
         data: NonMemoryOpcodeTracingDataWithTimestamp,
     ) {
+        // SAFETY: capacity pre-queued by the unified `Producer` for the
+        // `cycles` stream during `process_snapshot`.
         unsafe {
             self.cycles
                 .write(UnifiedOpcodeTracingDataWithTimestamp::NonMem(data))
@@ -340,6 +367,7 @@ impl WitnessTracer for UnifiedTracer {
         &mut self,
         data: MemoryOpcodeTracingDataWithTimestamp,
     ) {
+        // SAFETY: as above — capacity pre-queued by the unified `Producer`.
         unsafe {
             self.cycles
                 .write(UnifiedOpcodeTracingDataWithTimestamp::Mem(data))
@@ -362,6 +390,10 @@ impl WitnessTracer for UnifiedTracer {
             VARIABLE_OFFSETS,
         >,
     ) {
+        // SAFETY: same contract as `SplitTracer::write_delegation`:
+        // `unreachable_unchecked` covers the upstream DELEGATION_TYPE contract;
+        // each `write_type_unchecked` arm pairs a const DELEGATION_TYPE with
+        // the matching witness type T by construction.
         unsafe {
             if const { DELEGATION_TYPE == BLAKE_DELEGATION_TYPE_ID } {
                 self.blake_calls.write_type_unchecked(data)
@@ -458,11 +490,21 @@ impl<T: TracingDataProducerType> TracingDataProducer<T> {
                 self.chunks.push_back(chunk)
             };
             let chunk = self.chunks.back_mut().unwrap();
+            // SAFETY: prior `Arc::clone`s of `chunk` live inside `PtrRange`s
+            // queued for the tracer/consumer threads, but those threads run
+            // strictly after this producer finishes the snapshot, so no
+            // concurrent access to the `Vec` exists right now.
             let chunk_mut = unsafe { Arc::get_mut_unchecked(chunk) };
             let spare_capacity = chunk_mut.spare_capacity_mut();
             let end = min(end, next_circuit_boundary);
             let diff = min(spare_capacity.len(), end - start);
             assert_ne!(diff, 0);
+            // SAFETY: `start_ptr..end_ptr` is `diff` elements inside
+            // `spare_capacity` (bounded by `diff <= spare_capacity.len()`).
+            // `set_len` extends the Vec over memory the tracer fills via the
+            // raw `PtrRange` before any reader sees the chunk via Vec
+            // accessors; `T: Copy + 'static` so no `Drop` runs on slots that
+            // remain unwritten until then.
             let ptr_range = unsafe {
                 let start_ptr = spare_capacity.as_mut_ptr() as *mut T;
                 let end_ptr = start_ptr.add(diff);
@@ -638,6 +680,8 @@ impl TracingDataProducers for SplitTracingDataProducers {
     ) -> Self::Ranges {
         let mut trace_ranges = SplitDataTraceRanges::default();
         for i in 0..CounterType::FormalEnd as u8 {
+            // SAFETY: loop bound `0..CounterType::FormalEnd as u8` keeps `i`
+            // within the enum's defined `#[repr(u8)]` discriminants.
             let counter_type = unsafe { transmute(i) };
             let index = i as usize;
             let initial_count = initial_counters[index] as usize;
@@ -789,6 +833,8 @@ impl TracingDataProducers for UnifiedTracingDataProducers {
         let mut cycles_initial_count = 0;
         let mut cycles_final_count = 0;
         for i in 0..CounterType::FormalEnd as u8 {
+            // SAFETY: loop bound `0..CounterType::FormalEnd as u8` keeps `i`
+            // within the enum's defined `#[repr(u8)]` discriminants.
             let counter_type = unsafe { transmute(i) };
             let index = i as usize;
             let initial_count = initial_counters[index] as usize;
