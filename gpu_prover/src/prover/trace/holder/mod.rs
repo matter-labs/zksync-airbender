@@ -1,5 +1,5 @@
-use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use crate::primitives::transfer::memory_copy_async_to_accessor;
+use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
