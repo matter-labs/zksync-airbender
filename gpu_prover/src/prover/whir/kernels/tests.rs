@@ -8,9 +8,7 @@ use rand::rng;
 use serial_test::serial;
 
 fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
-    use crate::ops::cub::device_reduce::{
-        get_reduce_temp_storage_bytes, reduce, ReduceOperation,
-    };
+    use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
     use fft::utils::bitreverse_enumeration_inplace;
 
     let count = 1 << log_count;
@@ -53,8 +51,7 @@ fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
     .unwrap();
 
     let reduce_temp_bytes =
-        get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, partials_count as i32)
-            .unwrap();
+        get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, partials_count as i32).unwrap();
     let mut reduce_temp = DeviceAllocation::alloc(reduce_temp_bytes).unwrap();
     let mut reduce_result = DeviceAllocation::alloc(1).unwrap();
 
