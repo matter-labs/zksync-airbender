@@ -4,10 +4,10 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart_sys::cuda_struct_and_stub;
 use fft::bitreverse_enumeration_inplace;
 use fft::field_utils::{distribute_powers_serial, domain_generator_for_size};
-use field::Field;
 
 use crate::primitives::field::BF;
 use crate::primitives::utils::memcpy_to_symbol;
+use crate::upstream::Field;
 
 pub(crate) const OMEGA_LOG_ORDER: u32 = 27;
 pub(crate) const LOG_MAX_NTT_SIZE: usize = 24;

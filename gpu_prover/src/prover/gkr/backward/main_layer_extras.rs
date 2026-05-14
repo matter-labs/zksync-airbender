@@ -1,19 +1,15 @@
 use std::collections::BTreeMap;
 
-use cs::definitions::GKRAddress;
-use cs::gkr_compiler::OutputType;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
-use field::{Field, FieldExtension};
 
 use crate::ops::cub::device_reduce::Reduce;
 use crate::primitives::field::E4;
 use crate::prover::proof::layout::ProofLayout;
-use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 
-use super::super::backward_kernels::*;
 use super::super::{GpuBaseFieldPoly, GpuGKRStorage};
+use super::kernels::*;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{
     batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
@@ -22,6 +18,9 @@ use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::primitives::context::{DeviceAllocation, ProverContext};
 use crate::primitives::device_structures::DeviceMatrix;
 use crate::primitives::field::BF;
+use crate::upstream::{
+    DimensionReducingInputOutput, Field, FieldExtension, GKRAddress, OutputType,
+};
 
 /// Stream-ordered keepalive for the main-layer extras eval scratch
 /// buffers. The held allocations and Arc-clones outlive every
@@ -74,7 +73,7 @@ pub(crate) fn schedule_main_layer_extras_eval<E>(
     context: &ProverContext,
 ) -> CudaResult<MainLayerExtrasKeepalive<BF, E>>
 where
-    E: GpuDimensionReducingKernelSet + Field + FieldExtension<BF> + Reduce + 'static,
+    E: crate::prover::gkr::GpuKernels + Field + FieldExtension<BF> + Reduce + 'static,
 {
     let orphan_count = orphan_addresses.len();
     assert!(
@@ -224,9 +223,9 @@ where
 /// - Round 0's `layer_inputs` is `compiled_circuit.global_output_map`; subsequent
 ///   rounds chain from the previous round's `output`.
 ///
-/// Used by [`crate::prover::proof::layout::build_proof_layout_inputs_structural`]
+/// Used by [`crate::prover::proof::layout::build_proof_layout_inputs`]
 /// to size the proof slab before forward runs.
-pub(crate) fn derive_dimension_reducing_inputs_structural(
+pub(crate) fn derive_dimension_reducing_inputs(
     initial_layer_idx: usize,
     initial_output_map: &BTreeMap<OutputType, Vec<GKRAddress>>,
     initial_trace_log_2: usize,

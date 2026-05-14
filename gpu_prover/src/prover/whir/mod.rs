@@ -3,7 +3,6 @@ pub(crate) mod kernels;
 
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
-use field::FieldExtension;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::Digest;
@@ -13,6 +12,7 @@ use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, D
 use crate::primitives::field::{BF, E4};
 use crate::prover::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
 use crate::prover::whir::kernels::pack_rows_for_whir_leaves;
+use crate::upstream::FieldExtension;
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 
@@ -45,10 +45,7 @@ pub(crate) struct GpuWhirScheduledExtensionQuery {
     values_per_leaf: usize,
 }
 
-pub(crate) struct GpuWhirScheduledExtensionQueryKeepalive {
-    // Keeps index-fill and query-index callbacks alive until the stream executes them.
-    _callbacks: Callbacks<'static>,
-}
+pub(crate) type GpuWhirScheduledExtensionQueryKeepalive = Callbacks<'static>;
 
 impl GpuWhirScheduledExtensionQuery {
     pub(crate) fn leafs_accessor(&self) -> UnsafeAccessor<[BF]> {
@@ -64,15 +61,7 @@ impl GpuWhirScheduledExtensionQuery {
     }
 
     pub(crate) fn into_keepalive(self) -> GpuWhirScheduledExtensionQueryKeepalive {
-        let Self {
-            index: _,
-            coset_index: _,
-            _callbacks,
-            leafs: _,
-            merkle_paths: _,
-            values_per_leaf: _,
-        } = self;
-        GpuWhirScheduledExtensionQueryKeepalive { _callbacks }
+        self._callbacks
     }
 }
 
@@ -103,7 +92,6 @@ impl GpuWhirExtensionOracle {
             values_per_leaf,
             tree_cap_size,
             context,
-            false,
         )
     }
 
@@ -114,7 +102,6 @@ impl GpuWhirExtensionOracle {
         values_per_leaf: usize,
         tree_cap_size: usize,
         context: &ProverContext,
-        synchronize_at_end: bool,
     ) -> CudaResult<Self> {
         assert!(!monomial_coeffs.slice().is_empty());
         assert!(monomial_coeffs.slice().len().is_power_of_two());
@@ -197,9 +184,6 @@ impl GpuWhirExtensionOracle {
 
         trace_holder.mark_cosets_materialized();
         trace_holder.commit_all(context)?;
-        if synchronize_at_end {
-            stream.synchronize()?;
-        }
 
         Ok(Self {
             trace_holder,
@@ -397,15 +381,16 @@ pub(crate) mod tests {
             tree_cap_size: usize,
             context: &ProverContext,
         ) -> CudaResult<Self> {
-            Self::from_device_monomial_coeffs_impl(
+            let oracle = Self::from_device_monomial_coeffs_impl(
                 monomial_coeffs,
                 trace_len,
                 lde_factor,
                 values_per_leaf,
                 tree_cap_size,
                 context,
-                true,
-            )
+            )?;
+            context.get_exec_stream().synchronize()?;
+            Ok(oracle)
         }
 
         pub(crate) fn schedule_query_for_folded_index(
@@ -775,9 +760,16 @@ pub(crate) mod tests {
             let (_cpu_coset_index, cpu_values, cpu_query) = cpu.query_for_folded_index(query_index);
 
             let mut host_query_index = unsafe { context.alloc_host_uninit_slice::<u32>(1) };
-            unsafe {
-                host_query_index.get_mut_accessor().get_mut()[0] = query_index as u32;
-            }
+            let mut h2d_callbacks = Callbacks::new();
+            let host_query_index_accessor = host_query_index.get_mut_accessor();
+            h2d_callbacks
+                .schedule(
+                    move || unsafe {
+                        host_query_index_accessor.get_mut()[0] = query_index as u32;
+                    },
+                    context.get_exec_stream(),
+                )
+                .unwrap();
             let scheduled_query = gpu
                 .schedule_query_for_folded_index_from_host(host_query_index, &context)
                 .unwrap();

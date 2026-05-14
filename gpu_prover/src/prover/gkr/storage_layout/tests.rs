@@ -1,4 +1,3 @@
-
 use super::*;
 use std::path::PathBuf;
 
@@ -28,7 +27,7 @@ const CIRCUIT_BASENAMES: &[&str] = &[
 ];
 
 /// Every `GKRAddress` produced by
-/// `derive_dimension_reducing_inputs_structural` for the artifact's
+/// `derive_dimension_reducing_inputs` for the artifact's
 /// `global_output_map` must resolve through the layout when it is built
 /// with `from_artifact_with_tower`. Per-tower-layer `log2_stride` halves
 /// each round, all polys are ext-typed, and the class is always

@@ -1,9 +1,10 @@
 use super::option::u8::Option;
 use crate::allocator::host::ConcurrentStaticHostAllocator;
 use crate::primitives::context::DeviceAllocation;
+use crate::upstream::CSExecutorFamilyDecoderData;
 use crate::witness::trace::ChunkedTraceHolder;
 use common_constants::TimestampScalar;
-use cs::gkr_circuits::ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData;
+
 use riscv_transpiler::witness::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,

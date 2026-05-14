@@ -1,7 +1,6 @@
 use blake2s_u32::Blake2sState;
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
-use field::Field;
-use prover::transcript::Seed;
+
 type Blake2sTranscript =
     prover::transcript::Blake2sTranscript<{ prover::definitions::USE_REDUCED_BLAKE2_ROUNDS }>;
 use rand::Rng;
@@ -11,6 +10,7 @@ use worker::Worker;
 use super::super::*;
 
 use super::{gather_tree_caps, transcript_commit_initial, BLOCK_SIZE, USE_REDUCED_BLAKE2_ROUNDS};
+use crate::upstream::{Field, Seed};
 
 #[test]
 fn pow() {

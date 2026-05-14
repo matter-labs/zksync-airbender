@@ -1,4 +1,3 @@
-
 use crate::ops::simple::{Add, BinaryOp, Mul, SetByRef, SetByVal, Sub};
 #[cfg(feature = "scaffolding_ops")]
 use crate::ops::simple::{Dbl, Inv, Neg, Sqr, UnaryOp};
@@ -7,7 +6,6 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use field::{Field, FieldExtension};
 
 fn set_by_val<T: Field + SetByVal, const LOG_N: u32>() {
     let n = 1 << LOG_N;
@@ -861,5 +859,6 @@ fn sub_into_x_mixed_e4_bf() {
 // }
 
 mod helpers;
+use crate::upstream::{Field, FieldExtension};
 #[allow(unused_imports)]
 use helpers::*;

@@ -25,9 +25,9 @@ summary — the contract document is the source of truth.
   operation thereafter only reads.
 - **MUST** consume D2H readback buffers via a scheduled host callback, never
   from the scheduling thread.
-- **MUST** fork/join any op on an auxiliary stream (`h2d_stream`, `d2h_stream`,
-  or an `aux_streams` entry) against `exec_stream` with explicit CUDA events.
-  The driver gives independent streams no implicit ordering.
+- **MUST** fork/join any op on an auxiliary stream (`h2d_stream` or `d2h_stream`)
+  against `exec_stream` with explicit CUDA events. The driver gives independent
+  streams no implicit ordering.
 - **MUST** allocate and drop pool-backed handles on `exec_stream`. If a
   secondary stream touched the allocation, the `exec_stream` join wait must be
   scheduled before the Rust drop — otherwise it is a use-after-free.

@@ -1,22 +1,19 @@
 use std::collections::BTreeMap;
 
-use cs::definitions::{
-    gkr::AddressSpaceType, GKRAddress, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+use super::kernels::*;
+use crate::primitives::field::BF;
+use crate::prover::gkr::immediate_factors::{
+    ImmediateFactorRecipeStructural, IMMEDIATE_FACTOR_ADDITIVE_PART_IDX,
+};
+use crate::upstream::{
+    AddressSpaceType, Field, FieldExtension, GKRAddress, GKRExternalChallenges, GKRInputs,
+    InitsOrTeardownsTimestampAndValue, NoFieldMaxQuadraticGKRRelation, PrimeField,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
-};
-use cs::gkr_compiler::{InitsOrTeardownsTimestampAndValue, NoFieldMaxQuadraticGKRRelation};
-use field::{Field, FieldExtension, PrimeField};
-use prover::gkr::prover::GKRExternalChallenges;
-use prover::gkr::sumcheck::evaluation_kernels::GKRInputs;
-
-use super::super::backward_kernels::*;
-use crate::primitives::field::BF;
-use crate::prover::gkr::immediate_factors::{
-    ImmediateFactorRecipeStructural, IMMEDIATE_FACTOR_ADDITIVE_PART_IDX,
 };
 
 fn remap_constraint_input(

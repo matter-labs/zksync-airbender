@@ -1,9 +1,6 @@
-
 use super::*;
-use prover::definitions::Transcript;
-use prover::gkr::prover::transcript_utils::draw_query_bits;
-use prover::query_utils::{assemble_query_index, BitSource};
-use prover::transcript::Seed;
+
+use crate::upstream::{assemble_query_index, draw_query_bits, BitSource, Seed, Transcript};
 use worker::Worker;
 
 fn draw_query_bits_with_external_nonce(

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common.cuh"
+#include "kernel_helpers.cuh"
 
 namespace airbender::prover::gkr {
 

@@ -1,5 +1,4 @@
 target_sources(gpu_prover_native PRIVATE
-        common.cuh
         descriptors.cuh
         kernel_helpers.cuh
         lookup_helpers.cuh

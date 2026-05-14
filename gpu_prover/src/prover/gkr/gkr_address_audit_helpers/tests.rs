@@ -1,10 +1,8 @@
-
 use std::path::PathBuf;
 use std::sync::Once;
 
-use field::baby_bear::base::BabyBearField;
-
 use super::*;
+use crate::upstream::BabyBearField;
 
 static LOGGER_INIT: Once = Once::new();
 

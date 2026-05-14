@@ -36,9 +36,13 @@ fn main() {
         use std::env::var;
         let cuda_include_path =
             get_cuda_include_path().expect("Failed to determine the CUDA Toolkit include path.");
+        const SUPPORTED_CUDA_MAJOR_PREFIXES: &[&str] = &["12.", "13."];
         let cuda_version =
             get_cuda_version().expect("Failed to determine the CUDA Toolkit version.");
-        if !(cuda_version.starts_with("12.") || cuda_version.starts_with("13.")) {
+        if !SUPPORTED_CUDA_MAJOR_PREFIXES
+            .iter()
+            .any(|p| cuda_version.starts_with(p))
+        {
             println!("cargo::warning=CUDA Toolkit version {cuda_version} detected. This crate is only tested with CUDA Toolkit versions 12.* and 13.*.");
         }
         cc::Build::new()
