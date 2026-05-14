@@ -69,11 +69,7 @@ impl<const N: usize> MerkleTreeCap<N> {
         unsafe {
             core::slice::from_raw_parts(
                 input.cap.as_ptr().cast::<u32>(),
-                input
-                    .cap
-                    .as_ptr_range()
-                    .end
-                    .offset_from(input.cap.as_ptr_range().start) as usize,
+                DIGEST_SIZE_U32_WORDS * N
             )
         }
     }
@@ -83,10 +79,7 @@ impl<const N: usize> MerkleTreeCap<N> {
         unsafe {
             core::slice::from_raw_parts(
                 input.as_ptr_range().start.cast::<u32>(),
-                input
-                    .as_ptr_range()
-                    .end
-                    .offset_from(input.as_ptr_range().start) as usize,
+                DIGEST_SIZE_U32_WORDS * N * M
             )
         }
     }

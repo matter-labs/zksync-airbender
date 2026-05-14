@@ -316,8 +316,6 @@ pub fn proof_to_nds(
     let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
         proof,
         &compiled,
-        circuit_data.whir_schedule_for(level),
-        &inits_and_teardowns_top_bits,
     );
     let external_challenges = proof.external_challenges;
 

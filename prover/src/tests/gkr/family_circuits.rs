@@ -99,9 +99,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
     let worker = Worker::new_with_num_threads(8);
     // load binary
 
-    // let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
-    // let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
-
     let (binary, text_section) = if USE_KECCAK_BINARY {
         (
             "../riscv_transpiler/examples/keccak_f1600/app.bin",
@@ -120,6 +117,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
             )
         }
     };
+
+    let binary = "../examples/basic_fibonacci/app.bin";
+    let text_section = "../examples/basic_fibonacci/app.text";
 
     println!("Using {} binary", binary);
 

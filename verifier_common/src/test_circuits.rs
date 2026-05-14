@@ -119,10 +119,6 @@ impl CircuitData {
         self.nds_cache[level as usize]
             .get_or_init(|| {
                 let circuit = self.compiled_circuit();
-                let inits_and_teardowns_top_bits: Vec<u32> =
-                    (0..circuit.memory_layout.teardown_sets.len())
-                        .map(|i| i as u32)
-                        .collect();
                 let proof = self.proof_for(level);
                 let nds = flatten_gkr_proof_for_nds::<
                     BabyBearField,
@@ -131,8 +127,6 @@ impl CircuitData {
                 >(
                     &proof,
                     &circuit,
-                    self.whir_schedule_for(level),
-                    &inits_and_teardowns_top_bits,
                 );
                 let challenges = proof.external_challenges;
 

@@ -4,8 +4,6 @@
 
 pub use ::prover;
 pub use ::setups;
-use prover::field::*;
-use prover::*;
 
 #[cfg(feature = "gpu")]
 pub mod gpu;
@@ -13,11 +11,7 @@ pub mod gpu;
 // pub mod unified;
 pub mod unrolled;
 
-pub const LDE_FACTOR_LOG2: usize = 1;
-pub const NUM_FOLDINGS: usize = 5; // same for all circuits we use here
-pub const SECURITY_CONFIG: verifier_common::SizedProofSecurityConfig<NUM_FOLDINGS> =
-    verifier_common::SizedProofSecurityConfig::<NUM_FOLDINGS>::worst_case_config();
-pub const MEMORY_DELEGATION_POW_BITS: usize = verifier_common::MEMORY_DELEGATION_POW_BITS;
+pub const MEMORY_DELEGATION_POW_BITS: usize = 0; // TODO
 
 #[cfg(not(feature = "precheck_satisfied"))]
 const PRECHECK_SATISFIED: bool = false;

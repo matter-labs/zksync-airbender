@@ -1,6 +1,6 @@
-#![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
-#![cfg_attr(any(test, feature = "replace_csr"), allow(incomplete_features))]
-#![cfg_attr(any(test, feature = "replace_csr"), feature(generic_const_exprs))]
+#![cfg_attr(not(any(test, any(feature = "replace_csr", feature = "proof_utils"))), no_std)]
+#![cfg_attr(any(test, any(feature = "replace_csr", feature = "proof_utils")), allow(incomplete_features))]
+#![cfg_attr(any(test, any(feature = "replace_csr", feature = "proof_utils")), feature(generic_const_exprs))]
 
 pub use verifier_common;
 
@@ -21,6 +21,9 @@ pub mod unrolled_proof_statement;
 
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod statement_common;
+
+#[cfg(feature = "proof_utils")]
+pub mod program_proof;
 
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 mod verifier_imports {

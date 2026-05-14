@@ -16,6 +16,12 @@ mod leaf_inclusion_verifier;
 mod optimal_folding;
 pub mod sumcheck_kernel;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct FinalRegisterValue {
+    pub value: u32,
+    pub last_access_timestamp: TimestampScalar,
+}
+
 pub const DEFAULT_LDE_FACTOR: usize = 2;
 pub const DEFAULT_CAP_SIZE: usize = 16;
 pub const DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2: usize = 4;
