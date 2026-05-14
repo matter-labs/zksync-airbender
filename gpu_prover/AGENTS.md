@@ -70,12 +70,19 @@ summary — the contract document is the source of truth.
 
 Code under `gpu_prover/src/` imports items from the upstream crates (`cs`,
 `prover`, `field`, `setups`, `trace_and_split`) **exclusively through
-`crate::upstream`**. Direct `use cs::…;` / `use prover::…;` / etc. in
-consumer code is forbidden — the manifest is the contract.
+`crate::upstream`** in production code. Direct `use cs::…;` /
+`use prover::…;` / etc. in non-test consumer code is forbidden — the
+manifest is the production-surface contract.
 
-- Adding a new dependency on an upstream item: add a `pub(crate) use …;` to
-  the appropriate section of [`src/upstream.rs`](src/upstream.rs), then
-  `use crate::upstream::Item;` from the consumer.
+`#[cfg(test)]` modules and files under `tests/` subdirectories are
+exempt: tests may import upstream items directly. This keeps test-only
+utility surface (`field::Rand`, witness-placer traits required by
+`include!`'d generated circuits, etc.) out of the production manifest.
+
+- Adding a new dependency on an upstream item from production code: add a
+  `pub(crate) use …;` to the appropriate section of
+  [`src/upstream.rs`](src/upstream.rs), then `use crate::upstream::Item;`
+  from the consumer.
 - Two aliases live in the manifest to avoid collisions with crate-local
   types: `cs::gkr_circuits::ExecutorFamilyDecoderData` is re-exported as
   `CSExecutorFamilyDecoderData`, and `prover::gkr::prover::setup::GKRSetup`
