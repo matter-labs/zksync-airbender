@@ -106,6 +106,11 @@ impl<T> Default for PtrRange<T> {
     }
 }
 
+// SAFETY: `PtrRange<T>` is a raw pointer pair into a host buffer owned by
+// `_chunk`. The owning chunk is moved across threads alongside the range,
+// so the lifetime of the pointed-to memory matches the receiver thread's
+// access window. Concurrent mutation is controlled by the queue's pop/push
+// discipline, not by the type itself.
 unsafe impl<T> Send for PtrRange<T> {}
 
 pub(crate) trait DataTraceRanges {}

@@ -161,7 +161,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     ));
     let prover_config = add_sub_circuit_type.prover_config(SecurityLevel::Sec80);
     let whir_schedule = prover_config.whir_schedule.clone();
-    let setup = GKRSetup::construct(
+    let setup = CpuGKRSetup::construct(
         &TableDriver::new(),
         &decoder_table_data,
         trace_len,

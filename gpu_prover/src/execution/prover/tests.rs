@@ -1,9 +1,8 @@
-
 use super::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration};
 use crate::primitives::machine_type::MachineType;
+use crate::upstream::read_binary;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use serial_test::serial;
-use setups::read_binary;
 
 fn test_artifact(relative_path: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -24,8 +23,7 @@ fn test_execution_prover() {
     let mut prover = ExecutionProver::with_configuration(configuration);
     let (_, binary_image) = read_binary(&test_artifact("examples/hashed_fibonacci/app.bin"));
     let (_, text_section) = read_binary(&test_artifact("examples/hashed_fibonacci/app.text"));
-    prover.add_binary(
-        0,
+    let handle = prover.add_binary(
         ExecutionKind::Unrolled,
         MachineType::FullUnsigned,
         binary_image,
@@ -39,7 +37,7 @@ fn test_execution_prover() {
     // pipeline (mem ops + delegation) without producing a multi-GB
     // single snapshot.
     let non_determinism_source = QuasiUARTSource::new_with_reads(vec![100, 5]);
-    let _base_layer_result = prover.commit_memory_and_prove(0, 0, non_determinism_source);
+    let _base_layer_result = prover.commit_memory_and_prove(0, &handle, non_determinism_source);
     drop(prover);
 }
 
@@ -56,8 +54,7 @@ fn test_execution_prover_commit_then_prove() {
     let mut prover = ExecutionProver::with_configuration(configuration);
     let (_, binary_image) = read_binary(&test_artifact("examples/hashed_fibonacci/app.bin"));
     let (_, text_section) = read_binary(&test_artifact("examples/hashed_fibonacci/app.text"));
-    prover.add_binary(
-        0,
+    let handle = prover.add_binary(
         ExecutionKind::Unrolled,
         MachineType::FullUnsigned,
         binary_image,
@@ -69,9 +66,9 @@ fn test_execution_prover_commit_then_prove() {
     // match `commit_memory_and_prove` on a single source.
     let nd_inputs = vec![100u32, 5];
     let commit_source = QuasiUARTSource::new_with_reads(nd_inputs.clone());
-    let memory_commitment = prover.commit_memory(0, 0, commit_source);
+    let memory_commitment = prover.commit_memory(0, &handle, commit_source);
     let prove_source = QuasiUARTSource::new_with_reads(nd_inputs);
-    let prove_result = prover.prove(0, 0, prove_source, memory_commitment);
+    let prove_result = prover.prove(0, memory_commitment, prove_source);
     drop(prove_result);
     drop(prover);
 }

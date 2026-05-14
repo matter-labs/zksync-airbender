@@ -6,7 +6,8 @@ use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
-use prover::transcript::Seed;
+
+use crate::upstream::Seed;
 use std::slice;
 
 /// Device-side keepalives produced by

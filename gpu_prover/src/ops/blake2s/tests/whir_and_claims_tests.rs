@@ -1,9 +1,9 @@
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
-use field::Field;
-use prover::transcript::Seed;
+
 use rand::Rng;
 
 use super::super::*;
+use crate::upstream::{Field, Seed};
 
 fn sample_e4(seed: u32) -> E4 {
     use field::PrimeField;

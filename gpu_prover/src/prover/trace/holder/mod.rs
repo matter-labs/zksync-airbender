@@ -1,4 +1,5 @@
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
+use crate::primitives::transfer::memory_copy_async_to_accessor;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
@@ -13,7 +14,7 @@ use crate::ops::ntt::{
     bitreversed_monomials_to_natural_evals, hypercube_x1_msb_evals_to_x1_msb_monomials,
     log_size_supports_transposed_monomials,
 };
-use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
+use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use crate::primitives::field::BF;
 
@@ -31,32 +32,16 @@ pub(crate) enum CosetsHolder<T> {
     None(std::marker::PhantomData<T>),
 }
 
-#[allow(unused)]
 pub(crate) enum TreesHolder {
     Full(Vec<DeviceAllocation<Digest>>),
     Partial(Vec<DeviceAllocation<Digest>>),
     None,
 }
 
+#[cfg(test)]
 pub(crate) struct LeafsAndMerklePaths {
     pub leafs: HostAllocation<[BF]>,
     pub merkle_paths: HostAllocation<[Digest]>,
-}
-
-#[allow(dead_code)] // Used by the old query workflow and will be wired back into the new prover.
-pub(crate) struct LeafsAndMerklePathsAccessors {
-    pub leafs: UnsafeAccessor<[BF]>,
-    pub merkle_paths: UnsafeAccessor<[Digest]>,
-}
-
-impl LeafsAndMerklePaths {
-    #[allow(dead_code)] // Used by the old query workflow and will be wired back into the new prover.
-    pub(crate) fn get_accessor(&self) -> LeafsAndMerklePathsAccessors {
-        LeafsAndMerklePathsAccessors {
-            leafs: self.leafs.get_accessor(),
-            merkle_paths: self.merkle_paths.get_accessor(),
-        }
-    }
 }
 
 pub(crate) struct TraceHolder<T> {
@@ -223,7 +208,6 @@ impl<T> TraceHolder<T> {
         }
     }
 
-    #[allow(dead_code)] // Preserved for stage-style workflows that treat coset 0 as the active trace.
     pub(crate) fn get_uninit_coset_evaluations_mut(
         &mut self,
         coset_index: usize,
@@ -237,14 +221,8 @@ impl<T> TraceHolder<T> {
         }
     }
 
-    #[allow(dead_code)] // Preserved for stage-style workflows that treat coset 0 as the active trace.
     pub(crate) fn get_evaluations(&self) -> &DeviceSlice<T> {
         self.get_coset_evaluations(0)
-    }
-
-    #[allow(dead_code)] // Preserved for stage-style workflows that treat coset 0 as the active trace.
-    pub(crate) fn get_uninit_evaluations_mut(&mut self) -> &mut DeviceSlice<T> {
-        self.get_uninit_coset_evaluations_mut(0)
     }
 
     pub(crate) fn get_uninit_tree_mut(
@@ -581,11 +559,9 @@ impl TraceHolder<BF> {
             stream,
         )?;
         let mut leafs = unsafe { context.alloc_host_uninit_slice(leafs_len) };
-        memory_copy_async(
-            unsafe { leafs.get_mut_accessor().get_mut() },
-            &d_leafs,
-            stream,
-        )?;
+        unsafe {
+            memory_copy_async_to_accessor(leafs.get_mut_accessor(), &d_leafs, stream)?;
+        }
         Ok(leafs)
     }
 
@@ -648,11 +624,13 @@ impl TraceHolder<BF> {
             }
         };
         let mut merkle_paths = unsafe { context.alloc_host_uninit_slice(digests_len) };
-        memory_copy_async(
-            unsafe { merkle_paths.get_mut_accessor().get_mut() },
-            &d_merkle_paths,
-            stream,
-        )?;
+        unsafe {
+            memory_copy_async_to_accessor(
+                merkle_paths.get_mut_accessor(),
+                &d_merkle_paths,
+                stream,
+            )?;
+        }
         Ok(merkle_paths)
     }
 
@@ -792,4 +770,4 @@ pub(crate) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

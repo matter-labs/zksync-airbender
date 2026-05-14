@@ -4,9 +4,7 @@ use std::alloc::Global;
 
 use crate::ops::powers::get_powers_by_val;
 use era_cudart::memory::memory_copy_async;
-use field::PrimeField;
-use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
-use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
+
 use serial_test::serial;
 use worker::Worker;
 
@@ -17,6 +15,7 @@ use super::helpers::{
     copy_small_to_device, decode_base_leaf_values, query_base_trace_holder_for_folded_index,
 };
 use super::{copy_back_bf, make_lde_trace_holder};
+use crate::upstream::{Blake2sU32MerkleTreeWithCap, ColumnMajorMerkleTreeConstructor, PrimeField};
 
 #[test]
 #[cfg(not(no_cuda))]

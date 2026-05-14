@@ -4,18 +4,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
-use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
+
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
-use field::Field;
-use prover::gkr::prover::transcript_utils::draw_random_field_els;
-use prover::gkr::prover::{GKRExternalChallenges, GKRProof};
-use prover::gkr::prover_config::ProverConfig;
-use prover::merkle_trees::DefaultTreeConstructor;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::STATE_SIZE;
@@ -26,12 +20,13 @@ use crate::primitives::context::{
 };
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
+use crate::primitives::transfer::memory_copy_async_to_accessor;
+use crate::prover::gkr::backward::kernels::{
+    eq_group_tables_len, launch_build_eq_values_from_point,
+};
 use crate::prover::gkr::backward::{
     current_backward_seed, make_deferred_backward_workflow_state, ClaimBufferLayout,
-    GpuGKRBackwardHostKeepalive,
-};
-use crate::prover::gkr::backward_kernels::{
-    eq_group_tables_len, launch_build_eq_values_from_point,
+    GpuGKRBackwardScheduledExecution,
 };
 use crate::prover::gkr::base_layer_claims::{
     clone_base_layer_extra_evaluations_from_slab, schedule_prepare_base_layer_claims_with_sources,
@@ -54,13 +49,28 @@ use crate::prover::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataT
 use crate::prover::whir::fold::{
     schedule_gpu_whir_fold_with_sources, take_scheduled_whir_proof, GpuWhirFoldScheduledExecution,
 };
+use crate::upstream::{
+    draw_random_field_els, DefaultTreeConstructor, Field, GKRCircuitArtifact,
+    GKRExternalChallenges, GKRProof, OutputType, ProverConfig,
+    NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES,
+};
+
+/// GPU prover doesn't yet implement PoW for lookup-challenge or
+/// batched-proximity-check challenges; both `*_pow_bits` knobs must be 0.
+pub(crate) fn assert_gpu_supported_pow_config(prover_config: &ProverConfig) {
+    assert_eq!(prover_config.lookup_challenges_pow_bits, 0, "TODO");
+    assert_eq!(
+        prover_config.batched_proximity_check_challenge_pow_bits, 0,
+        "TODO"
+    );
+}
 
 struct GpuGKRProofJobKeepalive<'a> {
     _stage1: GpuGKRStage1Keepalive,
     _setup: Option<GpuGKRSetupTransferHostKeepalive<'a>>,
     _memory: GpuGKRMemoryTransferHostKeepalive<'a>,
     _forward_setup: GpuGKRForwardSetupHostKeepalive<E4>,
-    _backward: GpuGKRBackwardHostKeepalive<BF, E4>,
+    _backward: GpuGKRBackwardScheduledExecution<BF, E4>,
     _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
     _whir: GpuWhirFoldScheduledExecution,
     /// Pinned host staging buffer backing the h2d_stream H2D that uploads the
@@ -186,11 +196,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     memory_transfer: GpuGKRMemoryTransfer<'a>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
-    assert_eq!(prover_config.lookup_challenges_pow_bits, 0, "TODO");
-    assert_eq!(
-        prover_config.batched_proximity_check_challenge_pow_bits, 0,
-        "TODO"
-    );
+    assert_gpu_supported_pow_config(prover_config);
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
@@ -258,15 +264,15 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         });
 
     // ---------------------------------------------------------------------
-    // Initial Fiat-Shamir transcript: moved off exec_stream entirely.
+    // Initial Fiat-Shamir transcript.
     //
     // Pipeline:
-    //  1. h2d_stream: upload canonical_top_bits into `d_transcript_input` and
-    //     external_challenges into a durable aligned 7-E4 device buffer. This is
-    //     scheduled *before* stage 1 is queued on exec_stream, so `e_alloc`
-    //     captures an empty exec_stream position and h2d_stream can run
-    //     concurrently with stage 1 GPU compute.
-    //  2. exec_stream: assemble the full flat transcript input `d_transcript_input`
+    //  1. exec_stream: H2D canonical_top_bits and external_challenges (a few
+    //     tens of u32s) via a callback-populated pinned-host staging pair.
+    //     The transfer is small enough that running it on exec_stream
+    //     ahead of stage 1 doesn't materially block compute, and removes
+    //     the h2d_stream fork/join.
+    //  2. exec_stream: assemble the full flat transcript input
     //     (canonical_top_bits ++ external_challenges ++ setup_caps ++ memory_caps ++ witness_caps)
     //     as contiguous device u32s after stage 1 finishes. Setup and witness caps are D2D-copied
     //     from their on-device tree buffers in bit-reversed LDE position order.
@@ -309,15 +315,13 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         "transcript input must be non-empty for commit_initial",
     );
 
-    // -------------- Step 1: h2d_stream pack of the small device-side sources for the chunked commit --------------
-    // The transcript-input concat is now performed inside the
+    // -------------- Step 1: exec_stream H2D of the small host-origin sources for the chunked commit --------------
+    // The transcript-input concat is performed inside the
     // `transcript_commit_initial_chunked` kernel directly over the existing
     // device-resident sources (external_challenges + per-holder unified caps).
     // The only host-origin words still needed on device are canonical_top_bits
     // (a tiny prefix) and the external-challenges buffer — both H2D'd here on
-    // h2d_stream behind an `e_alloc` fence so packing runs concurrently with
-    // stage 1 compute on exec_stream.
-    let h2d_stream = context.get_h2d_stream();
+    // exec_stream after a callback-fill of the pinned-host staging buffers.
     let mut d_canonical_top_bits: DeviceAllocation<u32> =
         context.alloc(canonical_top_bits_len.max(1), AllocationPlacement::BestFit)?;
     let mut canonical_top_bits_host =
@@ -333,10 +337,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         AllocationPlacement::BestFit,
     )?;
 
-    let e_alloc = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
-    e_alloc.record(stream)?;
-    h2d_stream.wait_event(&e_alloc, CudaStreamWaitEventFlags::DEFAULT)?;
-
     callbacks.schedule(
         move || unsafe {
             canonical_top_bits_host_write_accessor.get_mut()[..canonical_top_bits_len]
@@ -348,29 +348,22 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             dst[NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES] =
                 external_challenges_for_h2d.permutation_argument_additive_part;
         },
-        h2d_stream,
+        stream,
     )?;
     if canonical_top_bits_len > 0 {
         memory_copy_async(
             &mut d_canonical_top_bits[..canonical_top_bits_len],
             &canonical_top_bits_host,
-            h2d_stream,
+            stream,
         )?;
     }
     memory_copy_async(
         &mut d_external_challenges_e4,
         &external_challenges_host,
-        h2d_stream,
+        stream,
     )?;
 
-    // `e_xfer` records "pre-prove H2D complete". The exec-stream wait on it is
-    // deferred until just before the chunked transcript-commit kernel reads
-    // canonical_top_bits + external_challenges, so stage 1 compute isn't
-    // artificially serialized behind these tiny copies.
-    let e_xfer = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
-    e_xfer.record(h2d_stream)?;
-
-    // -------------- Stage 1 on exec_stream (runs concurrently with h2d_stream packing+H2D) --------------
+    // -------------- Stage 1 on exec_stream --------------
     let mut stage1_output = GpuGKRStage1Output::generate(
         circuit_type,
         &compiled_circuit,
@@ -446,27 +439,25 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         log_rows_per_leaf: stage1_output.witness_trace_holder.log_rows_per_leaf,
         log_tree_cap_size: stage1_output.witness_trace_holder.log_tree_cap_size,
     };
-    let proof_layout_inputs_structural =
-        crate::prover::proof::layout::build_proof_layout_inputs_structural::<E4>(
-            &compiled_circuit,
-            &external_challenges,
-            whir_schedule,
-            final_trace_size_log_2,
-            crate::prover::proof::layout::ProofLayoutBaseLayerGeometry::from_geometry(
-                memory_layer_geometry,
-                compiled_circuit.memory_layout.total_width,
-            ),
-            crate::prover::proof::layout::ProofLayoutBaseLayerGeometry::from_geometry(
-                witness_layer_geometry,
-                compiled_circuit.witness_layout.total_width,
-            ),
-            crate::prover::proof::layout::ProofLayoutBaseLayerGeometry::from_geometry(
-                setup_geometry,
-                proof_layout_setup_columns_count,
-            ),
-        );
-    let proof_layout =
-        crate::prover::proof::layout::ProofLayout::new(&proof_layout_inputs_structural);
+    let proof_layout_inputs = crate::prover::proof::layout::build_proof_layout_inputs::<E4>(
+        &compiled_circuit,
+        &external_challenges,
+        whir_schedule,
+        final_trace_size_log_2,
+        crate::prover::proof::layout::ProofLayoutBaseLayerGeometry::from_geometry(
+            memory_layer_geometry,
+            compiled_circuit.memory_layout.total_width,
+        ),
+        crate::prover::proof::layout::ProofLayoutBaseLayerGeometry::from_geometry(
+            witness_layer_geometry,
+            compiled_circuit.witness_layout.total_width,
+        ),
+        crate::prover::proof::layout::ProofLayoutBaseLayerGeometry::from_geometry(
+            setup_geometry,
+            proof_layout_setup_columns_count,
+        ),
+    );
+    let proof_layout = crate::prover::proof::layout::ProofLayout::new(&proof_layout_inputs);
     let proof_slab: Option<Arc<DeviceAllocation<E4>>> = if proof_layout.total_bytes > 0 {
         assert_eq!(
             proof_layout.total_bytes % std::mem::size_of::<E4>(),
@@ -486,12 +477,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     } else {
         None
     };
-
-    // Exec must not read the h2d-populated canonical_top_bits / external_challenges
-    // until the h2d_stream H2D has completed. Placing the wait here (after stage 1
-    // is queued) means stage 1 and the H2D pack run concurrently; the wait only
-    // fences the chunked transcript-commit kernel below.
-    stream.wait_event(&e_xfer, CudaStreamWaitEventFlags::DEFAULT)?;
 
     // -------------- Step 2: device-side chunked commit_initial --------------
     // `commit_initial(canonical_top_bits || external_challenges || setup_cap ||
@@ -668,7 +653,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     // order (BTreeMap-by-OutputType, 2 polys per OutputType). The slot order
     // from `top_layer_claim_layout` sorts the same address set by
     // (layer, offset), where offsets come from
-    // `derive_dimension_reducing_inputs_structural` in the *same* iteration
+    // `derive_dimension_reducing_inputs` in the *same* iteration
     // order. Both orderings collapse to OutputType-ordinal × half-index, so
     // `slot == poly_idx` for every poly — no pointer table needed; the kernel
     // computes its own per-block pointer from `polys_base + i * poly_len`.
@@ -845,7 +830,11 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     };
     let whir_shared_state = whir_scheduled.shared_state_handle();
 
-    let backward_keepalive = backward_scheduled.into_host_keepalive();
+    // `backward_scheduled` itself is the keepalive — the per-layer device
+    // handles were already taken by the orchestrator (or remain as `Some`
+    // for the proof-lifetime final-seed/claim-point buffers), and the
+    // callbacks/tracing/host-staging buffers all ride on this struct.
+    let backward_keepalive = backward_scheduled;
     let setup_keepalive = setup_transfer.map(GpuGKRSetupTransfer::into_host_keepalive);
     let memory_keepalive = memory_transfer.into_host_keepalive();
 
@@ -862,11 +851,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             proof_layout.total_bytes,
         )
     };
-    memory_copy_async(
-        unsafe { mirror.get_mut_accessor().get_mut() },
-        slab_u8,
-        stream,
-    )?;
+    unsafe {
+        memory_copy_async_to_accessor(mirror.get_mut_accessor(), slab_u8, stream)?;
+    }
     let proof_host_mirror_accessor = mirror.get_accessor();
     let proof_host_mirror = Some(mirror);
     callbacks.schedule(

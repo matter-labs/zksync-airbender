@@ -47,27 +47,7 @@ use crate::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice, InitsAndTeardownsTraceHost,
     UnrolledMemoryTraceDevice, UnrolledNonMemoryTraceDevice, PAGE_SIZE_LOG2,
 };
-use cs::cs::circuit_trait::Circuit;
-use cs::definitions::*;
-use cs::gkr_circuits::{
-    add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr,
-    add_sub_lui_auipc_mop_table_addition_fn, create_mem_subword_only_special_tables,
-    create_mem_word_only_special_tables,
-    jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr, jump_branch_slt_table_addition_fn,
-    jump_branch_slt_table_driver_fn, mem_subword_only_circuit_with_preprocessed_bytecode_for_gkr,
-    mem_subword_only_table_addition_fn, mem_subword_only_table_driver_fn,
-    mem_word_only_circuit_with_preprocessed_bytecode_for_gkr, mem_word_only_table_addition_fn,
-    mem_word_only_table_driver_fn,
-    opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization,
-    process_binary_into_separate_tables_ext,
-    shift_binop_circuit_with_preprocessed_bytecode_for_gkr, shift_binop_table_addition_fn,
-    shift_binop_table_driver_fn,
-};
-use cs::gkr_compiler::{
-    compile_unrolled_circuit_state_transition_into_gkr, GKRCircuitArtifact, GKRLayerDescription,
-    NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation, OutputType,
-};
-use cs::tables::TableDriver;
+
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -77,56 +57,9 @@ use fft::{
     materialize_powers_serial_starting_with_elem, materialize_powers_serial_starting_with_one,
     Twiddles,
 };
-use field::baby_bear::base::BabyBearField;
-use field::baby_bear::ext4::BabyBearExt4;
-use field::{Field, FieldExtension, PrimeField};
+
 use itertools::Itertools;
-use prover::definitions::{SecurityLevel, Transcript};
-use prover::gkr::prover::dimension_reduction::{self, forward::DimensionReducingInputOutput};
-use prover::gkr::prover::forward_loop;
-use prover::gkr::prover::prove_configured_with_gkr;
-use prover::gkr::prover::setup::GKRSetup;
-use prover::gkr::prover::stages::stage1;
-use prover::gkr::prover::stages::stage1::{commit_trace_part, ColumnMajorCosetBoundTracePart};
-use prover::gkr::prover::sumcheck_loop;
-use prover::gkr::prover::transcript_utils::{
-    add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
-};
-use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
-use prover::gkr::prover::{GKRExternalChallenges, GKRProof, WhirSchedule};
-use prover::gkr::prover_config::ProverConfig;
-use prover::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRLayerSource, GKRStorage};
-use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
-use prover::gkr::sumcheck::evaluate_small_univariate_poly;
-use prover::gkr::sumcheck::evaluation_kernels::{
-    BaseFieldCopyGKRRelation, BatchedGKRKernel, ExtensionCopyGKRRelation, GKRInputs,
-    LookupBaseExtMinusBaseExtGKRRelation, LookupBaseMinusMultiplicityByBaseGKRRelation,
-    LookupBasePairGKRRelation, LookupExtensionMinusMultiplicityByExtensionGKRRelation,
-    LookupPairGKRRelation, LookupRationalPairWithUnbalancedBaseGKRRelation,
-    MaskIntoIdentityProductGKRRelation, SameSizeProductGKRRelation,
-};
-use prover::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
-use prover::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
-use prover::gkr::whir::{
-    whir_fold, ColumnMajorBaseOracleForLDE, ColumnMajorExtensionOracleForCoset,
-    ColumnMajorExtensionOracleForLDE, WhirCommitment, WhirPolyCommitProof,
-};
-use prover::gkr::witness_gen::delegation_circuits::{
-    evaluate_gkr_memory_witness_for_delegation_circuit, evaluate_gkr_witness_for_delegation_circuit,
-};
-use prover::gkr::witness_gen::family_circuits::{
-    evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
-    evaluate_init_and_teardown_memory_witness, GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
-};
-use prover::gkr::witness_gen::oracles::{MemoryCircuitOracle, NonMemoryCircuitOracle};
-use prover::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
-};
-use prover::query_utils::assemble_query_index;
-use prover::tracers::oracles::transpiler_oracles::delegation::{
-    BigintDelegationOracle, Blake2sDelegationOracle, KeccakDelegationOracle,
-};
-use prover::transcript::Seed;
+
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
@@ -182,6 +115,7 @@ use expected_specs::*;
 use memory_workflow::*;
 use whir_oracle_parity::assert_recursive_whir_oracle_parity_for_supported_path;
 
+use crate::upstream::*;
 use fixtures::*;
 
 fn test_artifact_path(relative_path: &str) -> PathBuf {
@@ -460,11 +394,7 @@ where
         + Field
         + crate::ops::simple::SetByRef
         + crate::ops::simple::SetByVal
-        + crate::prover::gkr::forward_kernels::GpuGKRForwardCacheKernelSet
-        + crate::prover::gkr::forward_kernels::GpuGKRVirtualBaseAccumKernelSet
-        + crate::prover::gkr::forward_kernels::GpuGKRDimensionReducingForwardTowerKernelSet
-        + crate::prover::gkr::forward_kernels::GpuGKRFlatForwardKernelSet,
-    E: crate::prover::gkr::forward_kernels::GpuGKRLookupGammaConstsPreludeKernelSet,
+        + crate::prover::gkr::GpuKernels,
     crate::ops::simple::Add: crate::ops::simple::BinaryOp<E, E, E>,
     crate::ops::simple::Add: crate::ops::simple::BinaryOp<BF, E, E>,
     crate::ops::simple::Add: crate::ops::simple::BinaryOp<E, BF, E>,

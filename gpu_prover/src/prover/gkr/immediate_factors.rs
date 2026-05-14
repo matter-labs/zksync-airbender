@@ -1,9 +1,7 @@
 use std::collections::BTreeMap;
 
-use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
-use field::{Field, PrimeField};
-
 use crate::primitives::field::BF;
+use crate::upstream::{Field, PrimeField, NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES};
 
 pub(crate) const IMMEDIATE_FACTOR_ABSENT: u8 = 0xff;
 pub(crate) const IMMEDIATE_FACTOR_ADDITIVE_PART_IDX: u8 =

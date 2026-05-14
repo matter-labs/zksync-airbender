@@ -505,27 +505,23 @@ pub(crate) fn bitreversed_monomials_to_natural_evals(
         return Ok(());
     }
     let coset_factor_power = coset_index << (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor);
-    // Quick and dirty heuristic: use 3-pass if one column fits in L2, 2-pass otherwise
-    let l2_bytes = device_properties.l2_cache_size_bytes;
-    let column_bytes = (1 << log_n) * size_of::<BF>();
-    if (column_bytes >= l2_bytes) && (log_n >= 23) {
-        monomials_to_evals_2_pass(
+    match super::ntt_pass_selection(log_n, device_properties) {
+        super::NttPassCount::Two => monomials_to_evals_2_pass(
             inputs_matrix,
             outputs_matrix,
             log_n,
             coset_factor_power,
             transposed_monomials,
             stream,
-        )?;
-    } else {
-        monomials_to_evals_3_pass(
+        )?,
+        super::NttPassCount::Three => monomials_to_evals_3_pass(
             inputs_matrix,
             outputs_matrix,
             log_n,
             coset_factor_power,
             transposed_monomials,
             stream,
-        )?;
+        )?,
     }
     Ok(())
 }
@@ -565,25 +561,21 @@ pub(crate) fn natural_evals_to_bitreversed_monomials(
         }
         return Ok(());
     }
-    // Quick and dirty heuristic: use 3-pass if one column fits in L2, 2-pass otherwise
-    let l2_bytes = device_properties.l2_cache_size_bytes;
-    let column_bytes = (1 << log_n) * size_of::<BF>();
-    if (column_bytes >= l2_bytes) && (log_n >= 23) {
-        evals_to_monomials_2_pass(
+    match super::ntt_pass_selection(log_n, device_properties) {
+        super::NttPassCount::Two => evals_to_monomials_2_pass(
             inputs_matrix,
             outputs_matrix,
             log_n,
             transposed_monomials,
             stream,
-        )?;
-    } else {
-        evals_to_monomials_3_pass(
+        )?,
+        super::NttPassCount::Three => evals_to_monomials_3_pass(
             inputs_matrix,
             outputs_matrix,
             log_n,
             transposed_monomials,
             stream,
-        )?;
+        )?,
     }
     Ok(())
 }

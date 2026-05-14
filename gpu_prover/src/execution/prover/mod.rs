@@ -1,4 +1,28 @@
-use trace_and_split::FinalRegisterValue;
+//! `ExecutionProver` orchestrator. Channel `send` / `recv` calls use `.unwrap()`
+//! by convention: channel teardown indicates the worker pool was dropped before
+//! results were collected — a programming bug worth panicking on. Other
+//! fallible operations use `.expect("…")` with a specific message.
+
+mod cache;
+mod config;
+mod non_determinism_wrapper;
+mod result;
+
+pub use config::{ExecutionKind, ExecutionProverConfiguration};
+pub use result::{CommitMemoryResult, ProveResult};
+
+/// Opaque handle to a binary registered with the `ExecutionProver`. Returned by
+/// [`ExecutionProver::add_binary`]; required to identify the binary in
+/// `commit_memory` / `commit_memory_and_prove`. Cannot be fabricated by
+/// callers, which converts what was previously a runtime
+/// "binary key not found" panic into a compile-time guarantee.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BinaryHandle(usize);
+
+use cache::{TraceCache, TraceCacheEntry};
+use config::BinaryHolder;
+use non_determinism_wrapper::NonDeterminismWrapper;
+use result::ExecutionProverResult;
 
 use crate::execution::messages::{
     GpuWorkBatch, GpuWorkRequest, GpuWorkResult, InitsAndTeardownsData, MemoryCommitmentRequest,
@@ -19,7 +43,6 @@ use crate::primitives::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-use crate::primitives::context::ProverContextConfig;
 use crate::primitives::field::{BF, E4};
 use crate::primitives::machine_type::MachineType;
 use crate::prover::trace::tracing_data::TracingDataHost;
@@ -31,9 +54,10 @@ use era_cudart::device::get_device_count;
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use itertools::Itertools;
 use log::{debug, info, trace, warn};
-use prover::definitions::{GKRExternalChallenges, SecurityLevel, Transcript};
-use prover::gkr::prover::GKRProof;
-use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
+
+use crate::upstream::{
+    FinalRegisterValue, GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel, Transcript,
+};
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
@@ -41,142 +65,14 @@ use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
 use riscv_transpiler::ir::{
     FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
-use riscv_transpiler::vm::{NonDeterminismCSRSource, RamPeek, SimpleTape};
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use riscv_transpiler::vm::{NonDeterminismCSRSource, SimpleTape};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use type_map::concurrent::TypeMap;
 use verifier_common::MEMORY_DELEGATION_POW_BITS;
 use worker::Worker;
-
-/// Specifies the execution mode for the prover.
-///
-/// - `Unrolled`: per-family circuits (split memory / non-memory / I&T).
-/// - `Unified`: the reduced-machine unified circuit. Public surface is wired
-///   up; GPU dispatch points panic with `unimplemented!()` until unified is
-///   implemented.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum ExecutionKind {
-    Unrolled,
-    Unified,
-}
-
-struct BinaryHolder {
-    execution_kind: ExecutionKind,
-    machine_type: MachineType,
-    binary_image: Arc<Box<[u32]>>,
-    text_section: Arc<Box<[u32]>>,
-    cycles_bound: Option<u32>,
-    jit_cache: Arc<Mutex<TypeMap>>,
-    instruction_tape: Arc<SimpleTape>,
-    precomputations: HashMap<UnrolledCircuitType, CircuitPrecomputations>,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct ExecutionProverConfiguration {
-    pub prover_context_config: ProverContextConfig,
-    pub max_thread_pool_threads: Option<usize>,
-    pub expected_concurrent_jobs: usize,
-    pub replay_worker_threads_count: usize,
-    pub host_allocator_backing_allocation_size: usize,
-    pub host_allocators_per_job_count: usize,
-    pub host_allocators_per_device_count: usize,
-    pub min_free_host_allocators_per_job: usize,
-    pub security_level: SecurityLevel,
-}
-
-impl Default for ExecutionProverConfiguration {
-    fn default() -> Self {
-        Self {
-            prover_context_config: Default::default(),
-            max_thread_pool_threads: None,
-            expected_concurrent_jobs: 1,
-            replay_worker_threads_count: 8,
-            host_allocator_backing_allocation_size: 1 << 26, // 64 MB
-            host_allocators_per_job_count: 256,              // 16 GB
-            host_allocators_per_device_count: 128,           // 8 GB
-            min_free_host_allocators_per_job: 32,            // 2 GB
-            security_level: SecurityLevel::Sec80,
-        }
-    }
-}
-
-pub struct CommitMemoryResult {
-    pub final_register_values: [FinalRegisterValue; 32],
-    pub final_pc: u32,
-    pub final_timestamp: TimestampScalar,
-    pub circuit_families_memory_caps: BTreeMap<u8, Vec<Vec<MerkleTreeCapVarLength>>>,
-    pub inits_and_teardowns_memory_caps: Vec<Vec<MerkleTreeCapVarLength>>,
-    pub delegation_circuits_memory_caps: BTreeMap<u32, Vec<Vec<MerkleTreeCapVarLength>>>,
-}
-
-pub struct ProveResult {
-    pub register_final_values: [FinalRegisterValue; 32],
-    pub final_pc: u32,
-    pub final_timestamp: TimestampScalar,
-    pub circuit_families_proofs: BTreeMap<u8, Vec<GKRProof<BF, E4, DefaultTreeConstructor>>>,
-    pub inits_and_teardowns_proofs: Vec<GKRProof<BF, E4, DefaultTreeConstructor>>,
-    pub delegation_proofs: BTreeMap<u32, Vec<GKRProof<BF, E4, DefaultTreeConstructor>>>,
-    pub pow_challenge: u64,
-}
-
-enum ExecutionProverResult {
-    CommitMemory(CommitMemoryResult),
-    Prove(ProveResult),
-}
-
-impl ExecutionProverResult {
-    pub fn into_memory_commitment_result(self) -> CommitMemoryResult {
-        match self {
-            ExecutionProverResult::CommitMemory(result) => result,
-            _ => panic!("expected CommitMemoryResult"),
-        }
-    }
-
-    pub fn into_proof_result(self) -> ProveResult {
-        match self {
-            ExecutionProverResult::Prove(result) => result,
-            _ => panic!("expected ProveResult"),
-        }
-    }
-}
-
-struct TraceCacheEntry {
-    pub circuit_type: CircuitType,
-    pub sequence_id: usize,
-    pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost>,
-    pub tracing_data: Option<TracingDataHost<A>>,
-}
-
-#[derive(Default)]
-struct TraceCache {
-    entries: VecDeque<TraceCacheEntry>,
-    total_requests_count: usize,
-    trivial_unified_inits_and_teardowns_count: usize,
-    simulation_result: Option<SimulationResult>,
-}
-
-impl TraceCache {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    fn push_back(&mut self, entry: TraceCacheEntry) {
-        self.entries.push_back(entry);
-    }
-
-    fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
-    fn is_not_initialized(&self) -> bool {
-        self.entries.is_empty()
-            && self.total_requests_count == 0
-            && self.trivial_unified_inits_and_teardowns_count == 0
-            && self.simulation_result.is_none()
-    }
-}
 
 pub struct ExecutionProver {
     configuration: ExecutionProverConfiguration,
@@ -185,6 +81,7 @@ pub struct ExecutionProver {
     memory_holders_cache: Arc<Mutex<Vec<LockedBoxedMemoryHolder>>>,
     trace_chunks_cache: Arc<Mutex<Vec<Vec<LockedBoxedTraceChunk>>>>,
     binary_holders: BTreeMap<usize, BinaryHolder>,
+    next_binary_id: usize,
     common_precomputations: BTreeMap<CircuitType, CircuitPrecomputations>,
     free_allocators_sender: Sender<A>,
     free_allocators_receiver: Receiver<A>,
@@ -211,7 +108,7 @@ impl ExecutionProver {
             SecurityLevel::Sec80 => {}
             SecurityLevel::Sec100 => unimplemented!("only Sec80 is supported on GPU"),
         }
-        let device_count = get_device_count().unwrap() as usize;
+        let device_count = get_device_count().expect("CUDA device count query failed") as usize;
         assert_ne!(device_count, 0, "no CUDA capable devices found");
         let gpu_wait_group = WaitGroup::new();
         let gpu_manager = GpuManager::new(gpu_wait_group.clone(), prover_context_config);
@@ -267,7 +164,8 @@ impl ExecutionProver {
         let free_allocators_sender_ref = &free_allocators_sender;
         (0..host_allocators_count).into_par_iter().for_each(|_| {
             let allocation =
-                HostAllocation::alloc(host_allocation_size, CudaHostAllocFlags::DEFAULT).unwrap();
+                HostAllocation::alloc(host_allocation_size, CudaHostAllocFlags::DEFAULT)
+                    .expect("pinned host allocation for ExecutionProver pool failed");
             let allocator = A::new([allocation], host_allocation_log_chunk_size);
             free_allocators_sender_ref.send(allocator).unwrap();
         });
@@ -280,6 +178,7 @@ impl ExecutionProver {
             memory_holders_cache,
             trace_chunks_cache,
             binary_holders,
+            next_binary_id: 0,
             common_precomputations,
             free_allocators_sender,
             free_allocators_receiver,
@@ -288,13 +187,14 @@ impl ExecutionProver {
 
     pub fn add_binary(
         &mut self,
-        key: usize,
         execution_kind: ExecutionKind,
         machine_type: MachineType,
         binary_image: Vec<u32>,
         text_section: Vec<u32>,
         cycles_bound: Option<u32>,
-    ) {
+    ) -> BinaryHandle {
+        let key = self.next_binary_id;
+        self.next_binary_id += 1;
         info!("PROVER inserting binary with key {key:?}");
         let preprocessed_bytecode = match machine_type {
             MachineType::Full => {
@@ -364,9 +264,11 @@ impl ExecutionProver {
             precomputations,
         };
         assert!(self.binary_holders.insert(key, holder).is_none());
+        BinaryHandle(key)
     }
 
-    pub fn remove_binary(&mut self, key: usize) {
+    pub fn remove_binary(&mut self, handle: BinaryHandle) {
+        let key = handle.0;
         info!("PROVER removing binary with key {key:?}");
         assert!(self.binary_holders.remove(&key).is_some());
     }
@@ -676,8 +578,12 @@ impl ExecutionProver {
             } else {
                 None
             };
-            let circuit_type = circuit_type_value.unwrap();
-            let sequence_id = sequence_id_value.unwrap();
+            let circuit_type = circuit_type_value.expect(
+                "get_gpu_work_request needs at least one of inits_and_teardowns or tracing_data",
+            );
+            let sequence_id = sequence_id_value.expect(
+                "get_gpu_work_request needs at least one of inits_and_teardowns or tracing_data",
+            );
             let precomputations = match circuit_type {
                 CircuitType::Delegation(_)
                 | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
@@ -1082,6 +988,7 @@ impl ExecutionProver {
                 circuit_families_memory_caps,
                 inits_and_teardowns_memory_caps,
                 delegation_circuits_memory_caps,
+                binary_handle: BinaryHandle(binary_key),
             };
             ExecutionProverResult::CommitMemory(result)
         }
@@ -1131,14 +1038,15 @@ impl ExecutionProver {
         &self,
         cache: &mut Option<TraceCache>,
         batch_id: u64,
-        binary_key: usize,
+        handle: BinaryHandle,
         non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
     ) -> CommitMemoryResult {
+        let binary_key = handle.0;
         info!(
             "BATCH[{batch_id}] PROVER producing memory commitments for binary with key {binary_key:?}"
         );
         let timer = Instant::now();
-        let result = self
+        let mut result = self
             .get_result(
                 false,
                 cache,
@@ -1150,6 +1058,7 @@ impl ExecutionProver {
                 BTreeMap::new(),
             )
             .into_memory_commitment_result();
+        result.binary_handle = handle;
         let elapsed = timer.elapsed().as_secs_f64();
         info!(
             "BATCH[{batch_id}] PROVER produced memory commitments for binary with key {binary_key:?} in {elapsed:.3}s"
@@ -1160,11 +1069,11 @@ impl ExecutionProver {
     pub fn commit_memory(
         &self,
         batch_id: u64,
-        binary_key: usize,
+        handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
     ) -> CommitMemoryResult {
         let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
-        self.commit_memory_inner(&mut None, batch_id, binary_key, non_determinism_source)
+        self.commit_memory_inner(&mut None, batch_id, *handle, non_determinism_source)
     }
 
     fn prove_inner(
@@ -1216,6 +1125,7 @@ impl ExecutionProver {
             circuit_families_memory_caps,
             inits_and_teardowns_memory_caps,
             delegation_circuits_memory_caps,
+            binary_handle: _,
         } = memory_commitment;
         let all_challenges_seed = fs_transform_for_permutation_argument(
             final_register_values,
@@ -1270,8 +1180,7 @@ impl ExecutionProver {
             );
         }
         for (delegation_type, per_seq) in delegation_circuits_memory_caps.iter() {
-            let delegation_type =
-                unsafe { std::mem::transmute::<u32, DelegationCircuitType>(*delegation_type) };
+            let delegation_type = DelegationCircuitType::from(*delegation_type as u16);
             for (sequence_id, caps) in per_seq.iter().enumerate() {
                 proof_caps.insert(
                     (CircuitType::Delegation(delegation_type), sequence_id),
@@ -1289,12 +1198,12 @@ impl ExecutionProver {
     pub fn prove(
         &self,
         batch_id: u64,
-        binary_key: usize,
+        commit_ticket: CommitMemoryResult,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
-        memory_commitment: CommitMemoryResult,
     ) -> ProveResult {
+        let binary_key = commit_ticket.binary_handle.0;
         let (pow_challenge, external_challenges, proof_caps) =
-            self.derive_proof_artifacts(binary_key, &memory_commitment);
+            self.derive_proof_artifacts(binary_key, &commit_ticket);
         let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
         let mut cache = None;
         self.prove_inner(
@@ -1311,9 +1220,10 @@ impl ExecutionProver {
     pub fn commit_memory_and_prove(
         &self,
         batch_id: u64,
-        binary_key: usize,
+        handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
     ) -> ProveResult {
+        let binary_key = handle.0;
         let nd_wrapper = NonDeterminismWrapper::new(non_determinism_source);
         let non_determinism_source = Arc::new(Mutex::new(Some(nd_wrapper)));
         let mut cache = Some(TraceCache::new());
@@ -1321,14 +1231,14 @@ impl ExecutionProver {
         let memory_commitment = self.commit_memory_inner(
             &mut cache,
             batch_id,
-            binary_key,
+            *handle,
             non_determinism_source.clone(),
         );
         let non_determinism_values = Arc::into_inner(non_determinism_source)
-            .unwrap()
+            .expect("non_determinism_source Arc still has other strong refs after commit_memory")
             .into_inner()
-            .unwrap()
-            .unwrap()
+            .expect("non_determinism_source Mutex was poisoned")
+            .expect("commit_memory consumed the non_determinism_source")
             .into_values();
         let non_determinism_source = Arc::new(Mutex::new(Some(QuasiUARTSource::new_with_reads(
             non_determinism_values,
@@ -1423,40 +1333,6 @@ fn unrolled_circuit_type_from_family_idx(
         }
     }
     panic!("unknown unrolled family idx {family_idx} for machine type {machine_type:?}")
-}
-
-struct NonDeterminismWrapper<N> {
-    inner: N,
-    values: Vec<u32>,
-}
-
-impl<N> NonDeterminismWrapper<N> {
-    fn new(inner: N) -> Self {
-        Self {
-            inner,
-            values: Vec::new(),
-        }
-    }
-
-    fn into_values(self) -> Vec<u32> {
-        self.values
-    }
-}
-
-impl<N: NonDeterminismCSRSource> NonDeterminismCSRSource for NonDeterminismWrapper<N> {
-    fn read(&mut self) -> u32 {
-        let value = self.inner.read();
-        self.values.push(value);
-        value
-    }
-
-    fn write_with_memory_access<R: RamPeek>(&mut self, ram: &R, value: u32) {
-        self.inner.write_with_memory_access(ram, value)
-    }
-
-    fn write_with_memory_access_dyn(&mut self, ram: &dyn RamPeek, value: u32) {
-        self.inner.write_with_memory_access_dyn(ram, value)
-    }
 }
 
 #[cfg(test)]

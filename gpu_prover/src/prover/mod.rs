@@ -9,7 +9,7 @@ pub(crate) mod whir;
 /// One-time kernel configuration that must run before the first `prove()` call.
 /// Called from `ProverContext` creation.
 pub(crate) fn configure_kernel_attributes() {
-    gkr::backward_flat::configure_flat_kernel_cache_preference();
+    gkr::backward::flat::configure_flat_kernel_cache_preference();
 }
 
 #[cfg(test)]

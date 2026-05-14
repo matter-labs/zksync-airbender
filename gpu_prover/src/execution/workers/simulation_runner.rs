@@ -60,10 +60,15 @@ impl DerefMut for LockedBoxedMemoryHolder {
 
 impl Drop for LockedBoxedMemoryHolder {
     fn drop(&mut self) {
-        unsafe {
-            cudaHostUnregister(self.holder.as_mut() as *mut MemoryHolder as *mut c_void)
-                .wrap()
-                .unwrap();
+        let result = unsafe {
+            cudaHostUnregister(self.holder.as_mut() as *mut MemoryHolder as *mut c_void).wrap()
+        };
+        if std::thread::panicking() {
+            if let Err(e) = result {
+                log::error!("cudaHostUnregister failed during panic unwind: {e:?}");
+            }
+        } else {
+            result.expect("cudaHostUnregister failed");
         }
     }
 }
@@ -106,6 +111,11 @@ pub(crate) struct Snapshot<R: DataTraceRanges> {
     pub trace_ranges: R,
 }
 
+// SAFETY: `Snapshot<R>` is moved from the simulation worker to GPU upload
+// workers via a channel. The `LockedBoxedTraceChunk` owns its pinned host
+// allocation, so the trace pointers stay valid on the receiver thread. The
+// `R: DataTraceRanges` payload may carry `PtrRange<T>` ranges; their Send
+// guarantee is documented on those types.
 unsafe impl<R: DataTraceRanges> Send for Snapshot<R> {}
 
 pub(crate) struct SimulationRunner<
