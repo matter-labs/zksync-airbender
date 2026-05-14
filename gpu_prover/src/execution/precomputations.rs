@@ -15,6 +15,8 @@ use crate::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use era_cudart::result::CudaResult;
 
 use crate::upstream::{
+    opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization,
+    opcodes_for_reduced_machine, process_binary_into_separate_tables_ext,
     CSExecutorFamilyDecoderData, CpuGKRSetup, GKRCircuitArtifact, SecurityLevel,
 };
 use std::collections::BTreeMap;
@@ -288,10 +290,6 @@ fn build_unrolled_setup(
     text_section: &[u32],
     worker: &Worker,
 ) -> UnrolledSetup {
-    use cs::gkr_circuits::{
-        opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization,
-        opcodes_for_reduced_machine, process_binary_into_separate_tables_ext,
-    };
     use riscv_transpiler::ir::{FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig};
     use std::alloc::Global;
 

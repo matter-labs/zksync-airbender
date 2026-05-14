@@ -53,7 +53,7 @@ pub(crate) use cs::gkr_circuits::{
     mem_word_only_circuit_with_preprocessed_bytecode_for_gkr, mem_word_only_table_addition_fn,
     mem_word_only_table_driver_fn,
     opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization,
-    process_binary_into_separate_tables_ext,
+    opcodes_for_reduced_machine, process_binary_into_separate_tables_ext,
     shift_binop_circuit_with_preprocessed_bytecode_for_gkr, shift_binop_table_addition_fn,
     shift_binop_table_driver_fn, ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData,
 };
