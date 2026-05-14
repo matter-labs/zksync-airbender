@@ -61,7 +61,6 @@
 // - then we draw a challenge and evaluate p(alpha) = \sum_{X'} eq(r1, ...., alpha, X') f(alpha, X') =
 // = \sum_{X''} eq(r1, ...., alpha, 0, X'') f(alpha, 0, X'') + eq(r1, ...., alpha, 1, X'') f(alpha, 1, X'')
 
-use crate::gkr::prover::WhirSchedule;
 use crate::gkr::prover::stages::stage1::{
     compute_column_major_lde_from_monomial_form,
     compute_column_major_monomial_form_from_main_domain_owned, ColumnMajorCosetBoundTracePart,
@@ -69,6 +68,7 @@ use crate::gkr::prover::stages::stage1::{
 use crate::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
 };
+use crate::gkr::prover::WhirSchedule;
 use crate::gkr::sumcheck::eq_poly::{make_domain_eq_poly_in_full, make_eq_poly_in_full};
 use crate::gkr::sumcheck::*;
 use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
@@ -480,9 +480,18 @@ where
 
     assert!(whir_schedule.base_lde_factor.is_power_of_two());
     let num_whir_steps = whir_schedule.whir_steps_lde_factors.len();
-    assert_eq!(whir_schedule.whir_steps_schedule.len(), whir_schedule.whir_steps_lde_factors.len() + 1);
-    assert_eq!(whir_schedule.whir_steps_schedule.len(), whir_schedule.whir_queries_schedule.len());
-    assert_eq!(whir_schedule.whir_steps_schedule.len(), whir_schedule.whir_pow_schedule.len());
+    assert_eq!(
+        whir_schedule.whir_steps_schedule.len(),
+        whir_schedule.whir_steps_lde_factors.len() + 1
+    );
+    assert_eq!(
+        whir_schedule.whir_steps_schedule.len(),
+        whir_schedule.whir_queries_schedule.len()
+    );
+    assert_eq!(
+        whir_schedule.whir_steps_schedule.len(),
+        whir_schedule.whir_pow_schedule.len()
+    );
 
     let mut rs_oracle;
 
@@ -630,7 +639,8 @@ where
         println!("Initial round: fold by {}", 1 << num_initial_folding_rounds);
 
         assert!(num_initial_folding_rounds <= poly_size_log2);
-        let rs_domain_log2 = trace_len_log2 + (whir_schedule.base_lde_factor.trailing_zeros() as usize);
+        let rs_domain_log2 =
+            trace_len_log2 + (whir_schedule.base_lde_factor.trailing_zeros() as usize);
         let query_domain_log2 = rs_domain_log2 - num_initial_folding_rounds;
 
         // Even though we can do all the same trick as in our GKR kernels and only evaluate sum of half-size,

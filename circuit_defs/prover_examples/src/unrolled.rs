@@ -1029,7 +1029,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         if witness_chunks.is_empty() {
             // for consistency
             main_proofs.insert(family_idx, vec![]);
-            
+
             let setup = &setups[&family_idx];
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
@@ -1816,10 +1816,10 @@ pub(crate) mod test {
     fn test_verify_simple_fib() {
         skip_if_ci!();
         use crate::bincode_deserialize_from_file;
-        use setups::*;
-        use verifier_common::errors::DebugErrorCreator;
         use full_statement_verifier::program_proof::ProgramProof;
         use full_statement_verifier::unrolled_circuit_params::NUM_BASE_LAYER_CIRCUITS;
+        use setups::*;
+        use verifier_common::errors::DebugErrorCreator;
 
         let program_proof: ProgramProof = bincode_deserialize_from_file("tmp_proof.bin");
         let risc_v_setups: Vec<UnrolledCircuitSetupParams> =

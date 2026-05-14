@@ -124,10 +124,7 @@ impl CircuitData {
                     BabyBearField,
                     BabyBearExt4,
                     DefaultTreeConstructor,
-                >(
-                    &proof,
-                    &circuit,
-                );
+                >(&proof, &circuit);
                 let challenges = proof.external_challenges;
 
                 (nds, challenges)

@@ -67,10 +67,7 @@ impl<const N: usize> MerkleTreeCap<N> {
     pub fn flatten_single(input: &'_ Self) -> &'_ [u32] {
         // layouts are the same
         unsafe {
-            core::slice::from_raw_parts(
-                input.cap.as_ptr().cast::<u32>(),
-                DIGEST_SIZE_U32_WORDS * N
-            )
+            core::slice::from_raw_parts(input.cap.as_ptr().cast::<u32>(), DIGEST_SIZE_U32_WORDS * N)
         }
     }
 
@@ -79,7 +76,7 @@ impl<const N: usize> MerkleTreeCap<N> {
         unsafe {
             core::slice::from_raw_parts(
                 input.as_ptr_range().start.cast::<u32>(),
-                DIGEST_SIZE_U32_WORDS * N * M
+                DIGEST_SIZE_U32_WORDS * N * M,
             )
         }
     }
