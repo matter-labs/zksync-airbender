@@ -11,7 +11,8 @@ where
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::field::E4;
-use cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation;
+
+use crate::upstream::NoFieldMaxQuadraticConstraintsGKRRelation;
 use era_cudart::memory::memory_copy_async;
 
 pub(super) fn sample_ext(seed: u32) -> E4 {
@@ -136,7 +137,7 @@ pub(super) fn make_empty_forward_setup(
         context.get_exec_stream(),
     )
     .unwrap();
-    crate::prover::gkr::forward_kernels::schedule_lookup_gamma_consts_prelude(
+    crate::prover::gkr::forward::kernels::schedule_lookup_gamma_consts_prelude_e4(
         d_lookup_challenges[1..2].as_ptr(),
         context,
     )

@@ -1,4 +1,4 @@
-#include "common.cuh"
+#include "lookup_helpers.cuh"
 
 namespace airbender::prover::gkr {
 

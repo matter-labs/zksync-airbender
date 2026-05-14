@@ -166,7 +166,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     ));
     let prover_config = jump_branch_slt_circuit_type.prover_config(SecurityLevel::Sec80);
     let whir_schedule = prover_config.whir_schedule.clone();
-    let setup = GKRSetup::construct(
+    let setup = CpuGKRSetup::construct(
         &table_driver,
         &decoder_table_data,
         trace_len,
@@ -786,7 +786,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
     ));
     let prover_config = shift_binop_circuit_type.prover_config(SecurityLevel::Sec80);
     let whir_schedule = prover_config.whir_schedule.clone();
-    let setup = GKRSetup::construct(
+    let setup = CpuGKRSetup::construct(
         &table_driver,
         &decoder_table_data,
         trace_len,

@@ -4,8 +4,8 @@ use super::trace_delegation::{DelegationTraceDevice, DelegationTraceRaw};
 use crate::primitives::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
 use crate::primitives::field::BF;
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use cs::definitions::gkr::GKRMemoryLayout;
-use cs::gkr_compiler::{GKRAuxLayoutData, GKRCircuitArtifact};
+
+use crate::upstream::{GKRAuxLayoutData, GKRCircuitArtifact, GKRMemoryLayout};
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;

@@ -17,7 +17,6 @@ use std::sync::Arc;
 
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
-use prover::merkle_trees::MerkleTreeCapVarLength;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::Digest;
@@ -26,6 +25,7 @@ use crate::primitives::context::{DeviceAllocation, ProverContext};
 use crate::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use crate::primitives::transfer::Transfer;
 use crate::prover::trace::holder::bitreverse_index;
+use crate::upstream::MerkleTreeCapVarLength;
 
 pub(crate) struct GpuGKRMemoryTransferHost {
     pub(crate) log_lde_factor: u32,

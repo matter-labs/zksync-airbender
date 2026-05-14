@@ -1,32 +1,32 @@
 use std::ptr::null;
 
-use cs::definitions::{
-    gkr::{RamWordRepresentation, DECODER_LOOKUP_FORMAL_SET_INDEX},
-    GKRAddress, VirtualSetupPoly, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+use era_cudart::result::CudaResult;
+
+use crate::upstream::{
+    GKRAddress, RamWordRepresentation, VirtualSetupPoly, DECODER_LOOKUP_FORMAL_SET_INDEX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
-use cs::gkr_compiler::{
-    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
-    NoFieldGKRCacheRelation, NoFieldSpecialMemoryContributionRelation,
-};
-use era_cudart::result::CudaResult;
-use field::{Field, FieldExtension, PrimeField};
-use prover::gkr::prover::GKRExternalChallenges;
 
-use super::super::forward_kernels::*;
 use super::super::setup::GpuGKRForwardSetup;
 use super::super::stage1::GpuGKRStage1Output;
 use super::super::{
     GpuBaseFieldPoly, GpuBaseFieldSourceKind, GpuExtensionFieldPoly, GpuGKRStorage,
 };
 use super::flat_plan::cache_relation_layer;
+use super::kernels::*;
 use crate::ops::simple::{Add, BinaryOp, Mul, SetByRef, SetByVal, Sub};
 use crate::primitives::context::ProverContext;
 use crate::primitives::field::BF;
+use crate::upstream::{
+    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp, Field,
+    FieldExtension, GKRExternalChallenges, NoFieldGKRCacheRelation,
+    NoFieldSpecialMemoryContributionRelation, PrimeField,
+};
 
 fn add_memory_tuple_linear_term<E: Field>(
     descriptor: &mut GpuGKRForwardCacheDescriptor<E>,

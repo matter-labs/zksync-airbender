@@ -1,5 +1,4 @@
-use cs::definitions::{gkr::GKRMemoryLayout, NUM_TIMESTAMP_COLUMNS_FOR_RAM};
-
+use crate::upstream::{GKRMemoryLayout, NUM_TIMESTAMP_COLUMNS_FOR_RAM};
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub(crate) struct DelegationProcessingLayout {

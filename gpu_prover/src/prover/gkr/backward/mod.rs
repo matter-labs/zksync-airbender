@@ -1,14 +1,7 @@
 use std::collections::BTreeMap;
 
-use cs::definitions::GKRAddress;
-use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 use era_cudart::result::CudaResult;
-use field::{Field, FieldExtension};
-use prover::gkr::high_bits_offset_for_inits_and_teardowns;
-use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
-use prover::gkr::prover::GKRExternalChallenges;
 
-pub(crate) use super::backward_kernels::*;
 use super::transform::normalize_compiled_circuit_for_gpu;
 use super::GpuGKRStorage;
 #[cfg(test)]
@@ -21,7 +14,10 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 
 mod builders;
+pub(crate) mod compact;
 mod dim_reducing_sumcheck_plan;
+pub(crate) mod flat;
+pub(crate) mod kernels;
 mod lookup_builders;
 mod main_layer_blueprints;
 mod main_layer_extras;
@@ -29,12 +25,27 @@ mod main_layer_state;
 mod main_layer_sumcheck_plan;
 mod scheduled_execution;
 
+// Surface every kernels item via `backward::*` to preserve the previous
+// crate-wide path for consumers that read these as `backward::X`. Direct
+// imports of `crate::prover::gkr::backward::kernels::X` work too.
+pub(crate) use kernels::*;
+
 use main_layer_state::{FlatContinuationLaunchSizes, FlatContinuationSizeCheck};
 
-pub(crate) use main_layer_extras::derive_dimension_reducing_inputs_structural;
+pub(crate) use main_layer_extras::derive_dimension_reducing_inputs;
 
 #[cfg(test)]
 use crate::prover::gkr::immediate_factors::ImmediateFactorRecipeStructural;
+use crate::upstream::{
+    high_bits_offset_for_inits_and_teardowns, BaseFieldCopyGKRRelation, BatchedGKRKernel,
+    DimensionReducingInputOutput, ExtensionCopyGKRRelation, Field, FieldExtension, GKRAddress,
+    GKRCircuitArtifact, GKRExternalChallenges, GKRInputs, LookupBaseExtMinusBaseExtGKRRelation,
+    LookupBaseMinusMultiplicityByBaseGKRRelation, LookupBasePairGKRRelation,
+    LookupExtensionMinusMultiplicityByExtensionGKRRelation, LookupExtensionPairGKRRelation,
+    LookupPairGKRRelation, LookupRationalPairWithUnbalancedBaseGKRRelation,
+    LookupRationalPairWithUnbalancedExtensionGKRRelation, MaskIntoIdentityProductGKRRelation,
+    OutputType, SameSizeProductGKRRelation,
+};
 pub(crate) use builders::*;
 #[cfg(test)]
 use builders::{
@@ -45,19 +56,9 @@ use main_layer_blueprints::build_dimension_reducing_kernel_blueprints_static;
 #[cfg(test)]
 pub(crate) use main_layer_blueprints::build_main_layer_kernel_blueprints_static;
 pub(crate) use main_layer_blueprints::{
-    collect_main_layer_input_addresses_per_layer_structural,
-    collect_main_layer_kernel_output_addresses_per_layer_structural,
+    collect_main_layer_input_addresses_per_layer,
+    collect_main_layer_kernel_output_addresses_per_layer,
     compute_main_layer_orphan_output_addresses_per_layer,
-};
-#[cfg(test)]
-use prover::gkr::sumcheck::evaluation_kernels::{
-    BaseFieldCopyGKRRelation, BatchedGKRKernel, ExtensionCopyGKRRelation, GKRInputs,
-    LookupBaseExtMinusBaseExtGKRRelation, LookupBaseMinusMultiplicityByBaseGKRRelation,
-    LookupBasePairGKRRelation, LookupExtensionMinusMultiplicityByExtensionGKRRelation,
-    LookupExtensionPairGKRRelation, LookupPairGKRRelation,
-    LookupRationalPairWithUnbalancedBaseGKRRelation,
-    LookupRationalPairWithUnbalancedExtensionGKRRelation, MaskIntoIdentityProductGKRRelation,
-    SameSizeProductGKRRelation,
 };
 
 impl<B, E> GpuGKRDimensionReducingBackwardState<B, E> {
@@ -286,20 +287,11 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
             .collect();
 
         let round0_batch_template_compact =
-            crate::prover::gkr::backward_compact_encoder::build_round0_batch_compact(
-                &blueprints,
-                &self.storage,
-            );
+            self::compact::encoder::build_round0_batch_compact(&blueprints, &self.storage);
         let round1_batch_template_compact =
-            crate::prover::gkr::backward_compact_encoder::build_round1_batch_compact(
-                &blueprints,
-                &self.storage,
-            );
+            self::compact::encoder::build_round1_batch_compact(&blueprints, &self.storage);
         let continuation_batch_template_compact =
-            crate::prover::gkr::backward_compact_encoder::build_continuation_batch_compact(
-                &blueprints,
-                &self.storage,
-            );
+            self::compact::encoder::build_continuation_batch_compact(&blueprints, &self.storage);
 
         let max_acc_size = trace_len_after_reduction / 2;
         let reduction_temp_storage_bytes =

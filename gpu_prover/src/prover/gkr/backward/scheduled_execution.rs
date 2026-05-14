@@ -1,16 +1,11 @@
 #[cfg(test)]
 use std::collections::BTreeMap;
 
-use cs::definitions::GKRAddress;
-use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::CudaSlice;
-use field::{Field, FieldExtension};
-use prover::gkr::prover::GKRExternalChallenges;
-use prover::transcript::Seed;
 
-use super::super::backward_kernels::*;
+use super::kernels::*;
 #[cfg(test)]
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::STATE_SIZE;
@@ -21,101 +16,14 @@ use crate::primitives::context::{DeviceAllocation, ProverContext};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::proof::layout::ProofLayout;
-
-impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExecution<B, E> {
-    pub(crate) fn into_host_keepalive(self) -> GpuGKRDimensionReducingHostKeepalive<B, E> {
-        let Self {
-            tracing_ranges,
-            start_callbacks,
-            reduction_states,
-            final_readback,
-            shared_state,
-            device_seed: _,
-            device_claim_point_for_next_layer: _,
-            device_claims_for_next_layer: _,
-            claim_layout_for_next_layer: _,
-            _phantom: _,
-        } = self;
-        GpuGKRDimensionReducingHostKeepalive {
-            tracing_ranges,
-            start_callbacks,
-            reduction_states,
-            final_readback,
-            shared_state,
-            _phantom: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
-    pub(crate) fn into_host_keepalive(self) -> GpuGKRMainLayerHostKeepalive<E> {
-        let Self {
-            tracing_ranges,
-            start_callbacks,
-            batch_challenge_storage,
-            batch_challenge_buffer: _,
-            reduction_states,
-            final_readback,
-            flat_coeff_callbacks,
-            recipe_upload_callbacks,
-            shared_state,
-            device_seed: _,
-            device_claim_point_for_next_layer: _,
-            device_claims_for_next_layer: _,
-            claim_layout_for_next_layer: _,
-        } = self;
-        GpuGKRMainLayerHostKeepalive {
-            tracing_ranges,
-            start_callbacks,
-            batch_challenge_storage: challenge_storage_into_host_keepalive(batch_challenge_storage),
-            reduction_states,
-            final_readback,
-            flat_coeff_callbacks,
-            recipe_upload_callbacks,
-            shared_state,
-        }
-    }
-}
+use crate::upstream::{
+    Field, FieldExtension, GKRAddress, GKRCircuitArtifact, GKRExternalChallenges, Seed,
+};
 
 impl<B, E> GpuGKRBackwardScheduledExecution<B, E>
 where
     E: FieldExtension<BF> + Field,
 {
-    pub(crate) fn into_host_keepalive(self) -> GpuGKRBackwardHostKeepalive<B, E> {
-        let Self {
-            tracing_ranges,
-            dimension_reducing_layers,
-            main_layers,
-            shared_state,
-            initial_callbacks,
-            external_challenges_device_keepalive,
-            final_device_seed,
-            final_device_claim_point_and_batching,
-            final_claim_layout,
-            final_seed_host,
-            final_claim_point_and_batching_host,
-        } = self;
-        GpuGKRBackwardHostKeepalive {
-            tracing_ranges,
-            dimension_reducing_layers: dimension_reducing_layers
-                .into_iter()
-                .map(GpuGKRDimensionReducingScheduledLayerExecution::into_host_keepalive)
-                .collect(),
-            main_layers: main_layers
-                .into_iter()
-                .map(GpuGKRMainLayerScheduledLayerExecution::into_host_keepalive)
-                .collect(),
-            shared_state,
-            initial_callbacks,
-            external_challenges_device_keepalive,
-            final_device_seed,
-            final_device_claim_point_and_batching,
-            final_claim_layout,
-            final_seed_host,
-            final_claim_point_and_batching_host,
-        }
-    }
-
     pub(crate) fn shared_state_handle(&mut self) -> ScheduledBackwardWorkflowStateHandle<E> {
         crate::primitives::context::UnsafeMutAccessor::new(self.shared_state.as_mut())
     }
@@ -263,17 +171,7 @@ where
 
 impl<E> GpuGKRDimensionReducingBackwardState<BF, E>
 where
-    E: Field
-        + FieldExtension<BF>
-        + Reduce
-        + GpuDimensionReducingKernelSet
-        + GpuBackwardSumcheckRoundUpdateKernel
-        + super::super::backward_flat_compact::GpuFlatRound0CompactKernelSet
-        + super::super::backward_flat_compact::GpuFlatRound0ConstantCompactKernelSet
-        + super::super::backward_flat_compact::GpuFlatRound1UnifiedCompactKernelSet
-        + super::super::backward_flat_compact::GpuFlatRound2UnifiedCompactKernelSet
-        + super::super::backward_flat_compact::GpuFlatRound3UnifiedCompactKernelSet
-        + 'static,
+    E: Field + FieldExtension<BF> + Reduce + crate::prover::gkr::GpuKernels + 'static,
     Mul: BinaryOp<E, E, E>,
     [(); E::DEGREE]: Sized,
 {
@@ -338,7 +236,7 @@ where
         // `_proof_layout.backward[...]`. The outer BTreeMap in
         // `dimension_reducing_inputs` pops highest-first (see
         // `GpuGKRDimensionReducingBackwardState::new`), which matches
-        // `build_proof_layout_inputs_structural`'s dim-reducing slot numbering: slot 0 is
+        // `build_proof_layout_inputs`'s dim-reducing slot numbering: slot 0 is
         // the highest layer_idx (`initial_layer_for_sumcheck`) and slots
         // ascend as we descend through the dim-reducing chain. Main layers
         // continue from slot `num_dim_reducing_layers` and count downward
@@ -550,12 +448,15 @@ where
         external_challenges_flat.push(external_challenges.permutation_argument_additive_part);
         let mut external_challenges_host =
             unsafe { context.alloc_host_uninit_slice(external_challenges_flat.len()) };
-        unsafe {
-            external_challenges_host
-                .get_mut_accessor()
-                .get_mut()
-                .copy_from_slice(&external_challenges_flat);
-        }
+        let external_challenges_host_accessor = external_challenges_host.get_mut_accessor();
+        initial_callbacks.schedule(
+            move || unsafe {
+                external_challenges_host_accessor
+                    .get_mut()
+                    .copy_from_slice(&external_challenges_flat);
+            },
+            context.get_exec_stream(),
+        )?;
         let mut device_external_challenges = context
             .alloc(external_challenges_host.len(), AllocationPlacement::BestFit)
             .unwrap();

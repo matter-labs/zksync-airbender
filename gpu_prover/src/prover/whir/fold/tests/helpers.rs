@@ -8,9 +8,9 @@ use crate::primitives::static_host::{
     alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit,
 };
 use fft::batch_inverse_inplace;
-use field::PrimeField;
 
 use super::GpuScheduledBaseFieldQuery;
+use crate::upstream::PrimeField;
 
 pub(super) fn copy_small_to_device<T: Copy>(
     dst: &mut DeviceSlice<T>,
@@ -574,6 +574,7 @@ pub(super) fn evaluate_monomial_form_device(
     Ok(result)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn debug_build_initial_state_for_test(
     memory_trace_holder: &TraceHolder<BF>,
     mem_polys_claims: &[E4],
@@ -674,6 +675,7 @@ pub(crate) fn debug_build_initial_batched_evals_for_test(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn debug_build_initial_state_snapshots_for_test(
     memory_trace_holder: &TraceHolder<BF>,
     mem_polys_claims: &[E4],
