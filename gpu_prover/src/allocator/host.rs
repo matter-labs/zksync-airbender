@@ -20,6 +20,8 @@ pub(crate) static STATIC_HOST_ALLOCATOR: OnceLock<ConcurrentStaticHostAllocator>
 
 impl StaticAllocationBackend for HostAllocation<u8> {
     fn as_non_null(&mut self) -> NonNull<u8> {
+        // SAFETY: `era_cudart::memory::HostAllocation::as_mut_ptr` returns a
+        // non-null pinned-host pointer (cudaHostAlloc-backed).
         unsafe { NonNull::new_unchecked(self.as_mut_ptr()) }
     }
 
@@ -75,6 +77,10 @@ impl<T, W: InnerStaticHostAllocatorWrapper> Deref for StaticAllocation<T, HostAl
     type Target = [T];
 
     fn deref(&self) -> &Self::Target {
+        // SAFETY: `self.data.ptr` is a live `NonNull<T>` into the parent pinned
+        // `HostAllocation<u8>`, which outlives `self`; `self.data.len` is the
+        // `T` count assigned at allocation. The allocator enforces `T`
+        // alignment at `allocate` time (see the `is_aligned_to` assert below).
         unsafe { slice::from_raw_parts(self.data.ptr.as_ptr(), self.data.len) }
     }
 }
@@ -83,6 +89,8 @@ impl<T, W: InnerStaticHostAllocatorWrapper> DerefMut
     for StaticAllocation<T, HostAllocation<u8>, W>
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        // SAFETY: as in `deref`, plus the `&mut self` receiver provides
+        // exclusive access to this allocation's slot in the parent backend.
         unsafe { slice::from_raw_parts_mut(self.data.ptr.as_ptr(), self.data.len) }
     }
 }

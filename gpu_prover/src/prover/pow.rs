@@ -74,6 +74,9 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
         context.alloc(num_queries, AllocationPlacement::BestFit)?;
 
     // H2D the current host seed.
+    // SAFETY: the function holds `&mut seed_host` for its full extent, so no
+    // concurrent borrow of the pinned buffer exists; `memory_copy_async`
+    // captures only the source pointer for the H2D — no Rust borrow escapes.
     memory_copy_async(&mut d_seed, unsafe { &seed_accessor.get().0 }, &stream)?;
 
     // PoW search (GPU) → nonce. For pow_bits == 0 we emulate `nonce = 0` and
@@ -82,6 +85,10 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     if pow_bits > 0 {
         blake2s_pow(&d_seed, pow_bits, u64::MAX, &mut d_nonce[0], stream)?;
     } else {
+        // SAFETY: `d_nonce` is a freshly allocated `DeviceAllocation<u64>` (8
+        // bytes, align 8); reinterpreting it as `DeviceSlice<u8>` is
+        // layout-compatible, and zeroing 8 bytes yields `0u64`, matching the
+        // `pow_bits == 0` "nonce = 0" convention used downstream.
         unsafe {
             era_cudart::memory::memory_set_async(d_nonce.transmute_mut::<u8>(), 0, stream)?;
         }
@@ -90,6 +97,9 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     // D2H nonce — needed on host for proof assembly and for the test fixture
     // that snapshots per-round nonces. Scheduled early so it overlaps with
     // the downstream kernels.
+    // SAFETY: the function holds `&mut nonce_host`; the accessor pointer is
+    // the only outstanding borrow into the pinned `u64`. The D2H captures only
+    // the destination pointer — no Rust borrow escapes.
     memory_copy_async(
         slice::from_mut::<u64>(unsafe { nonce_accessor.get_mut() }),
         &d_nonce,
@@ -100,6 +110,9 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     if pow_bits > 0 {
         // Treat the u64 nonce as 2 LE u32 words on device — transcript_commit
         // consumes a DeviceSlice<u32>.
+        // SAFETY: `d_nonce` is a single `u64` (8 bytes, align 8) viewable as 2
+        // little-endian `u32` words — the layout `transcript_commit` consumes
+        // (and the host `verify_pow` convention it replaces).
         let nonce_as_u32: &DeviceSlice<u32> = unsafe { d_nonce.transmute::<u32>() };
         let nonce_words = &nonce_as_u32[..2];
         transcript_commit(&mut d_seed, nonce_words, stream)?;
@@ -132,6 +145,9 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     let _ = seed_accessor; // not used here, but retained as a compile-time
                            // reminder that the caller owns the copy-back.
     let _ = nonce_accessor;
+    // SAFETY: the slice is uninitialized but is used solely as the D2H
+    // destination on the next line before any host read; the consumer callback
+    // runs only after that D2H completes per stream order.
     let mut h_seed_mirror = unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
     memory_copy_async(&mut h_seed_mirror, &d_seed, &stream)?;
 
