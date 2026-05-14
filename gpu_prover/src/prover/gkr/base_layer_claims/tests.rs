@@ -1,21 +1,14 @@
-
 use std::collections::BTreeMap;
 
-use cs::definitions::{GKRAddress, TIMESTAMP_COLUMNS_NUM_BITS};
-use cs::gkr_compiler::GKRLayerDescription;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
-use era_cudart::stream::CudaStream;
-use field::{Field, FieldExtension, PrimeField};
-use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
-use prover::gkr::virtual_polys::init_and_teardown_base::evaluate_virtual_inits_and_teardowns_base_address_setup_polys;
-use prover::gkr::virtual_polys::range_check::evaluate_virtual_range_check_setup_poly;
+
 use serial_test::serial;
 use worker::Worker;
 
 use super::{
-    schedule_prepare_base_layer_claims_with_sources, GpuDimensionReducingKernelSet,
-    GpuGKRBaseLayerClaimsScheduledExecution, VIRTUAL_SETUP_CLAIMS_OUTPUT_LEN,
+    schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
+    VIRTUAL_SETUP_CLAIMS_OUTPUT_LEN,
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::ProverContext;
@@ -23,6 +16,11 @@ use crate::primitives::field::{BF, E4};
 use crate::prover::proof::layout::ProofLayout;
 use crate::prover::test_utils::make_test_context;
 use crate::prover::trace::holder::{TraceHolder, TreesCacheMode};
+use crate::upstream::{
+    evaluate_virtual_inits_and_teardowns_base_address_setup_polys,
+    evaluate_virtual_range_check_setup_poly, make_eq_poly_in_full, Field, FieldExtension,
+    GKRAddress, GKRLayerDescription, PrimeField, TIMESTAMP_COLUMNS_NUM_BITS,
+};
 
 #[derive(Clone)]
 pub(crate) struct GpuGKRBaseLayerTailSnapshot<E> {
@@ -35,23 +33,13 @@ pub(crate) struct GpuGKRBaseLayerTailSnapshot<E> {
 }
 
 impl<E: Copy + 'static> GpuGKRBaseLayerClaimsScheduledExecution<E> {
-    /// Schedules the deferred aggregation callback on `stream`. Must be called
-    /// exactly once. The callback finalizes `shared_state.result`; fallback
-    /// paths also aggregate host extras from dense claim readbacks.
-    pub(crate) fn schedule_aggregation(&mut self, stream: &CudaStream) -> CudaResult<()> {
-        let closure = self
-            .pending_aggregation
-            .take()
-            .expect("aggregation callback already scheduled");
-        self._finish_callbacks.schedule(closure, stream)
-    }
-
     pub(crate) fn wait(
         mut self,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBaseLayerTailSnapshot<E>> {
-        if self.pending_aggregation.is_some() {
-            self.schedule_aggregation(context.get_exec_stream())?;
+        let mut callbacks = crate::primitives::callbacks::Callbacks::new();
+        if let Some(closure) = self.pending_aggregation.take() {
+            callbacks.schedule(closure, context.get_exec_stream())?;
         }
         context.get_exec_stream().synchronize()?;
         // SAFETY: stream is synchronized; the host-pinned buffers are stable
@@ -127,7 +115,7 @@ pub(crate) fn schedule_prepare_base_layer_claims<E>(
     context: &ProverContext,
 ) -> CudaResult<GpuGKRBaseLayerClaimsScheduledExecution<E>>
 where
-    E: Copy + GpuDimensionReducingKernelSet + FieldExtension<BF> + Field + 'static,
+    E: Copy + super::super::GpuKernels + FieldExtension<BF> + Field + crate::ops::cub::device_reduce::Reduce + 'static,
 {
     let initial_addresses: Vec<GKRAddress> = layer_0_claims.keys().copied().collect();
     // Test-only convenience: stage the host-provided base layer point through a
@@ -169,7 +157,7 @@ pub(crate) fn prepare_base_layer_claims<E>(
     context: &ProverContext,
 ) -> CudaResult<GpuGKRBaseLayerTailSnapshot<E>>
 where
-    E: Copy + GpuDimensionReducingKernelSet + FieldExtension<BF> + Field + 'static,
+    E: Copy + super::super::GpuKernels + FieldExtension<BF> + Field + crate::ops::cub::device_reduce::Reduce + 'static,
 {
     schedule_prepare_base_layer_claims(
         layer_desc,

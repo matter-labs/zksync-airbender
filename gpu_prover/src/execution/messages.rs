@@ -7,11 +7,12 @@ use crate::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use common_constants::TimestampScalar;
 use crossbeam_channel::{Receiver, Sender};
 use fft::GoodAllocator;
-use prover::definitions::SecurityLevel;
-use prover::gkr::prover::{GKRExternalChallenges, GKRProof};
-use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
+
+use crate::upstream::{
+    DefaultTreeConstructor, FinalRegisterValue, GKRExternalChallenges, GKRProof,
+    MerkleTreeCapVarLength, SecurityLevel,
+};
 use std::collections::BTreeSet;
-use trace_and_split::FinalRegisterValue;
 
 pub(crate) struct InitsAndTeardownsData {
     pub circuit_type: CircuitType,

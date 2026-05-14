@@ -1,11 +1,88 @@
 use super::callbacks::Callbacks;
-use super::context::ProverContext;
+use super::context::{ProverContext, UnsafeAccessor, UnsafeMutAccessor};
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
-use era_cudart::stream::CudaStreamWaitEventFlags;
+use era_cudart::stream::{CudaStream, CudaStreamWaitEventFlags};
 use std::sync::Arc;
+
+/// `memory_copy_async` with the source provided as an `UnsafeAccessor`.
+/// Centralizes the documented "memcpy-slot `.get()`" carve-out from the GPU
+/// scheduling contract: dereferencing an accessor is normally only valid
+/// inside a stream-scheduled callback, but `memory_copy_async` itself merely
+/// records the pointer and returns immediately, so the dereference is safe
+/// at scheduling time provided the usual lifetime and write-exclusivity
+/// rules hold. See `docs/gpu_scheduling_contract.md`.
+///
+/// # Safety
+///
+/// The accessor must point at a live allocation whose contents have been
+/// initialized by previously-scheduled stream work (or by the scheduling
+/// thread for the inverted `SchedulerHostAllocator` pool), and no other
+/// stream may concurrently write the source during this op's window. The
+/// underlying handle must remain alive until this op is scheduled.
+pub(crate) unsafe fn memory_copy_async_from_accessor<T, S, D>(
+    dst: &mut D,
+    src_accessor: UnsafeAccessor<S>,
+    stream: &CudaStream,
+) -> CudaResult<()>
+where
+    D: CudaSliceMut<T> + ?Sized,
+    S: CudaSlice<T> + ?Sized,
+{
+    memory_copy_async(dst, src_accessor.get(), stream)
+}
+
+/// `memory_copy_async` with the destination provided as an
+/// `UnsafeMutAccessor`. Dest counterpart of
+/// [`memory_copy_async_from_accessor`]; see that function for the safety
+/// rationale and the contract-doc reference.
+///
+/// # Safety
+///
+/// The accessor must point at a live allocation that is not concurrently
+/// written or read by any other stream during this op's window, and the
+/// underlying handle must remain alive until this op is scheduled.
+pub(crate) unsafe fn memory_copy_async_to_accessor<T, S, D>(
+    dst_accessor: UnsafeMutAccessor<D>,
+    src: &S,
+    stream: &CudaStream,
+) -> CudaResult<()>
+where
+    D: CudaSliceMut<T> + ?Sized,
+    S: CudaSlice<T> + ?Sized,
+{
+    memory_copy_async(dst_accessor.get_mut(), src, stream)
+}
+
+/// One-shot exec → d2h fork/join wrapper. Records a `DISABLE_TIMING` event
+/// on `exec_stream`, waits on it from `d2h_stream`, runs `body` with the
+/// d2h stream, then joins via the symmetric event back to `exec_stream`.
+///
+/// Use for per-layer D2H bundles where every source has been written on
+/// exec by the time of the fork and exec needs the D2Hs visible before
+/// proceeding (e.g., before scheduling a final-readback callback or
+/// dropping the source allocations).
+pub(crate) fn fork_join_exec_to_d2h<R, F>(
+    exec_stream: &CudaStream,
+    d2h_stream: &CudaStream,
+    body: F,
+) -> CudaResult<R>
+where
+    F: FnOnce(&CudaStream) -> CudaResult<R>,
+{
+    let src_ready = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
+    src_ready.record(exec_stream)?;
+    d2h_stream.wait_event(&src_ready, CudaStreamWaitEventFlags::DEFAULT)?;
+
+    let result = body(d2h_stream)?;
+
+    let d2h_done = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
+    d2h_done.record(d2h_stream)?;
+    exec_stream.wait_event(&d2h_done, CudaStreamWaitEventFlags::DEFAULT)?;
+    Ok(result)
+}
 
 pub(crate) struct Transfer<'a> {
     pub(crate) allocated: CudaEvent,

@@ -1,25 +1,22 @@
 // GPU scheduling contract: see docs/gpu_scheduling_contract.md
 
 pub(crate) mod backward;
-pub(crate) mod backward_compact_encoder;
-pub(crate) mod backward_flat;
-pub(crate) mod backward_flat_compact;
-pub(crate) mod backward_kernels;
 pub(crate) mod base_layer_claims;
 pub(crate) mod eval_recipes;
 pub(crate) mod forward;
-pub(crate) mod forward_kernels;
 pub(crate) mod gkr_address_audit;
 #[cfg(test)]
 pub(crate) mod gkr_address_audit_helpers;
 pub(crate) mod gkr_initial_inner_products;
+mod gpu_kernels;
 pub(crate) mod immediate_factors;
 pub(crate) mod setup;
-pub(crate) mod setup_kernels;
 pub(crate) mod stage1;
 pub(crate) mod storage_layout;
 mod storage_ops;
 pub(crate) mod transform;
+
+pub(crate) use gpu_kernels::GpuKernels;
 
 use std::collections::BTreeMap;
 use std::ptr::null;
@@ -30,11 +27,10 @@ use crate::primitives::context::{DeviceAllocation, ProverContext};
 use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::prover::gkr::gkr_address_audit::AddressClass;
 use crate::prover::gkr::storage_layout::GpuGKRStorageLayout;
-use cs::definitions::{GKRAddress, VirtualSetupPoly};
+
+use crate::upstream::{GKRAddress, GKRInputs, VirtualSetupPoly};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
-#[cfg(test)]
-use prover::gkr::sumcheck::evaluation_kernels::GKRInputs;
 
 pub(crate) struct GpuGKRLayerSource<B, E> {
     pub(crate) base_field_inputs: BTreeMap<GKRAddress, GpuBaseFieldPoly<B>>,

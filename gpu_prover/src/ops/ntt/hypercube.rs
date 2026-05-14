@@ -309,25 +309,21 @@ pub(crate) fn hypercube_x1_msb_evals_to_x1_msb_monomials(
         }
         return Ok(());
     }
-    // Quick and dirty heuristic: use 3-pass if one column fits in L2, 2-pass otherwise
-    let l2_bytes = device_properties.l2_cache_size_bytes;
-    let column_bytes = (1 << log_n) * size_of::<BF>();
-    if (column_bytes >= l2_bytes) && (log_n >= 23) {
-        hypercube_evals_to_monomials_2_pass(
+    match super::ntt_pass_selection(log_n, device_properties) {
+        super::NttPassCount::Two => hypercube_evals_to_monomials_2_pass(
             inputs_matrix,
             outputs_matrix,
             log_n,
             transposed_monomials,
             stream,
-        )?;
-    } else {
-        hypercube_evals_to_monomials_3_pass(
+        )?,
+        super::NttPassCount::Three => hypercube_evals_to_monomials_3_pass(
             inputs_matrix,
             outputs_matrix,
             log_n,
             transposed_monomials,
             stream,
-        )?;
+        )?,
     }
     Ok(())
 }

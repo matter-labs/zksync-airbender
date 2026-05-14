@@ -28,9 +28,9 @@ edge cases, and wiring behind each rule.
   construction invariant and what belongs there.
 - **MUST** consume D2H readback buffers via a scheduled host callback, never
   from the scheduling thread.
-- **MUST** fork/join any op on an auxiliary stream (`h2d_stream`, `d2h_stream`,
-  or an `aux_streams` entry) against `exec_stream` with explicit CUDA events.
-  The driver gives independent streams no implicit ordering.
+- **MUST** fork/join any op on an auxiliary stream (`h2d_stream` or `d2h_stream`)
+  against `exec_stream` with explicit CUDA events. The driver gives independent
+  streams no implicit ordering.
 - **MUST** allocate and drop pool-backed handles on `exec_stream`. If a
   secondary stream touched the allocation, the `exec_stream` join wait must be
   scheduled before the Rust drop — otherwise it is a use-after-free.
@@ -52,7 +52,7 @@ edge cases, and wiring behind each rule.
 
 ## Streams
 
-The prover maintains four streams:
+The prover maintains three streams:
 
 - **exec stream** (`exec_stream`): the single reference stream for all GPU work.
   Kernel launches, pool allocations, pool frees, and host callbacks are all
@@ -69,16 +69,10 @@ The prover maintains four streams:
   exec-stream compute. Ownership is transferred to `d2h_stream` via a fork event
   and returned to `exec_stream` via a join event — see *D2H copies* below.
 
-- **aux stream pool** (`aux_streams`): a fixed-size pool of `AUX_STREAM_POOL_SIZE`
-  auxiliary streams (currently 8), used by subsystems that want to dispatch
-  independent work in parallel. Consumers pick streams by index and must fork/join
-  against exec_stream with explicit events (see rule below). Pool streams have
-  no intrinsic ordering with each other or with exec_stream.
-
 **Rule for auxiliary streams**: any operation on an auxiliary stream
-(h2d_stream, d2h_stream, or an aux_streams entry) must be explicitly ordered
-with respect to exec_stream using CUDA events. The driver gives independent
-streams no implicit ordering guarantees.
+(h2d_stream or d2h_stream) must be explicitly ordered with respect to
+exec_stream using CUDA events. The driver gives independent streams no
+implicit ordering guarantees.
 
 ## Memory lifetime
 
@@ -247,9 +241,9 @@ parallel with the transfer.
 
 Pool-backed `DeviceAllocation` and `HostAllocation` handles are always allocated
 and dropped with **exec_stream** ordering; that never changes. A secondary
-stream (h2d_stream, d2h_stream, or an aux_streams entry) may access these
-allocations between a fork event and a join event, after which ordering returns
-to exec_stream for the drop.
+stream (h2d_stream or d2h_stream) may access these allocations between a fork
+event and a join event, after which ordering returns to exec_stream for the
+drop.
 
 1. **Fork**: exec_stream records a `CudaEvent` after the last op that writes the
    source; the secondary stream calls `wait_event` on that event before issuing
