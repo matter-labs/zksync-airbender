@@ -12,16 +12,14 @@ use prover::cs::tables::TableType;
 use prover::field::Field as _;
 use prover::field::Mersenne31Field;
 use prover::field::Mersenne31Quartic;
-use prover::nd_source_std::ThreadLocalBasedSource;
 use prover::prover_stages::unrolled_prover::UnrolledModeProof;
-use prover::risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
 use prover::tests::unrolled::shift_binop_csrrw;
 use prover::unrolled::NonMemoryCircuitOracle;
 use prover::SimpleWitnessProxy;
-use shift_binary_csr_verifier::verify_with_configuration;
+use riscv_transpiler::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
+use shift_binary_csr_verifier::verify_80;
 use verifier_common::proof_flattener::flatten_query;
 use verifier_common::proof_flattener::flatten_unrolled_circuits_proof_for_skeleton;
-use verifier_common::DefaultLeafInclusionVerifier;
 
 use crate::rv32im::prover::accumulators::Accumulators;
 use crate::rv32im::prover::circuits::helpers::run_verifier_in_thread;
@@ -69,10 +67,9 @@ impl XorAndOrShiftCsrCircuit {
         run_verifier_in_thread("xor-and-or-shift-csr-verifier", oracle_data, move || {
             let (mut proof_state_dst, mut proof_input_dst) = validator_outputs();
             unsafe {
-                verify_with_configuration::<ThreadLocalBasedSource, DefaultLeafInclusionVerifier>(
-                    &mut proof_state_dst,
-                    &mut proof_input_dst,
-                )
+                // Fuzzing uses the verifier crate's fixed Security80 entrypoint to match the
+                // prover configuration and avoid threading the newer generic security API here.
+                verify_80(&mut proof_state_dst, &mut proof_input_dst)
             };
         })
     }

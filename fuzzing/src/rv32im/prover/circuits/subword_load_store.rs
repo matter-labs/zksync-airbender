@@ -1,6 +1,6 @@
 use std::alloc::Global;
 
-use load_store_subword_only_verifier::verify_with_configuration;
+use load_store_subword_only_verifier::verify_80;
 use prover::common_constants;
 use prover::common_constants::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX;
 use prover::cs::cs::circuit::Circuit as _;
@@ -17,17 +17,15 @@ use prover::cs::tables::TableType;
 use prover::field::Field as _;
 use prover::field::Mersenne31Field;
 use prover::field::Mersenne31Quartic;
-use prover::nd_source_std::ThreadLocalBasedSource;
 use prover::prover_stages::unrolled_prover::UnrolledModeProof;
-use prover::risc_v_simulator::machine_mode_only_unrolled::MemoryOpcodeTracingDataWithTimestamp;
 use prover::tests::unrolled::subword_load_store;
 use prover::unrolled::MemoryCircuitOracle;
 use prover::SimpleWitnessProxy;
 use prover::DEFAULT_TRACE_PADDING_MULTIPLE;
+use riscv_transpiler::machine_mode_only_unrolled::MemoryOpcodeTracingDataWithTimestamp;
 use riscv_transpiler::witness::MemDestinationHolder;
 use verifier_common::proof_flattener::flatten_query;
 use verifier_common::proof_flattener::flatten_unrolled_circuits_proof_for_skeleton;
-use verifier_common::DefaultLeafInclusionVerifier;
 
 use crate::rv32im::prover::accumulators::Accumulators;
 use crate::rv32im::prover::circuits::helpers::run_verifier_in_thread;
@@ -90,10 +88,9 @@ impl LoadStoreSubwordCircuit {
         run_verifier_in_thread("subword-load-store-verifier", oracle_data, move || {
             let (mut proof_state_dst, mut proof_input_dst) = validator_outputs();
             unsafe {
-                verify_with_configuration::<ThreadLocalBasedSource, DefaultLeafInclusionVerifier>(
-                    &mut proof_state_dst,
-                    &mut proof_input_dst,
-                )
+                // Fuzzing uses the verifier crate's fixed Security80 entrypoint to match the
+                // prover configuration and avoid threading the newer generic security API here.
+                verify_80(&mut proof_state_dst, &mut proof_input_dst)
             };
         })
     }

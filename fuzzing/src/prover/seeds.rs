@@ -6,8 +6,8 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 
-use prover::risc_v_simulator::machine_mode_only_unrolled::MemoryOpcodeTracingDataWithTimestamp;
-use prover::risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
+use riscv_transpiler::machine_mode_only_unrolled::MemoryOpcodeTracingDataWithTimestamp;
+use riscv_transpiler::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
 use prover::worker::Worker;
 use sha2::Digest;
 use sha2::Sha256;

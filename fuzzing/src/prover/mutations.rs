@@ -1,9 +1,9 @@
 use prover::cs::cs::oracle::ExecutorFamilyDecoderData;
 use prover::cs::definitions::TimestampData;
-use prover::risc_v_simulator::machine_mode_only_unrolled::MemoryOpcodeTracingDataWithTimestamp;
-use prover::risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
-use prover::risc_v_simulator::machine_mode_only_unrolled::MEM_LOAD_TRACE_DATA_MARKER;
-use prover::risc_v_simulator::machine_mode_only_unrolled::MEM_STORE_TRACE_DATA_MARKER;
+use riscv_transpiler::machine_mode_only_unrolled::MemoryOpcodeTracingDataWithTimestamp;
+use riscv_transpiler::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
+use riscv_transpiler::machine_mode_only_unrolled::MEM_LOAD_TRACE_DATA_MARKER;
+use riscv_transpiler::machine_mode_only_unrolled::MEM_STORE_TRACE_DATA_MARKER;
 use rand::rngs::StdRng;
 use rand::seq::IndexedRandom;
 use rand::RngExt;
@@ -358,7 +358,7 @@ pub(crate) fn mutate_mem_trace_row(
             _ => unreachable!(),
         },
         MEM_STORE_TRACE_DATA_MARKER => {
-            let store_data: &mut prover::risc_v_simulator::machine_mode_only_unrolled::StoreOpcodeTracingData =
+            let store_data: &mut riscv_transpiler::machine_mode_only_unrolled::StoreOpcodeTracingData =
                 unsafe { core::mem::transmute(&mut row.opcode_data) };
 
             match rng.random_range(0..5) {

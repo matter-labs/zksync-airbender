@@ -235,21 +235,15 @@ impl<F: PrimeField> OneRowCompiler<F> {
 
         // there are no inputs or outputs, or linkage
 
-        let mut range_check_16_lookup_expressions = range_check_16_lookup_expressions;
-        if range_check_16_lookup_expressions.len() % 2 != 0 {
-            let last = range_check_16_lookup_expressions.last().unwrap().clone();
-            range_check_16_lookup_expressions.push(last);
-        }
-
         let witness_layout = WitnessSubtree {
             multiplicities_columns_for_range_check_16,
             multiplicities_columns_for_timestamp_range_check,
             multiplicities_columns_for_decoder_in_executor_families: ColumnSet::empty(),
             multiplicities_columns_for_generic_lookup,
-            range_check_8_columns,
-            range_check_16_columns,
+            range_check_8_columns: ColumnSet::empty(),
+            range_check_16_columns: ColumnSet::empty(),
             width_3_lookups,
-            range_check_16_lookup_expressions,
+            range_check_16_lookup_expressions: Vec::new(),
             timestamp_range_check_lookup_expressions: Vec::new(),
             offset_for_special_shuffle_ram_timestamps_range_check_expressions: 0,
             boolean_vars_columns_range,

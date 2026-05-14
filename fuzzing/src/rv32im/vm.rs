@@ -1,5 +1,5 @@
 use prover::common_constants;
-use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::vm;
 use riscv_transpiler::vm::RamWithRomRegion;
 use riscv_transpiler::vm::SimpleTape;

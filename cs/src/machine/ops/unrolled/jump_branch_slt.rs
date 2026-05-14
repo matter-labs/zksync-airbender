@@ -38,7 +38,7 @@ pub fn jump_branch_slt_table_driver_fn<F: PrimeField>(table_driver: &mut TableDr
 fn apply_jump_branch_slt<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
-) -> [Variable; crate::definitions::JUMP_SLT_BRANCH_FAMILY_NUM_BITS] {
+)  {
     assert!(SUPPORT_SIGNED);
 
     let mut opt_ctx = OptimizationContext::new();
