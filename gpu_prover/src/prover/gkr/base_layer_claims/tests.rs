@@ -115,7 +115,12 @@ pub(crate) fn schedule_prepare_base_layer_claims<E>(
     context: &ProverContext,
 ) -> CudaResult<GpuGKRBaseLayerClaimsScheduledExecution<E>>
 where
-    E: Copy + super::super::GpuKernels + FieldExtension<BF> + Field + crate::ops::cub::device_reduce::Reduce + 'static,
+    E: Copy
+        + super::super::GpuKernels
+        + FieldExtension<BF>
+        + Field
+        + crate::ops::cub::device_reduce::Reduce
+        + 'static,
 {
     let initial_addresses: Vec<GKRAddress> = layer_0_claims.keys().copied().collect();
     // Test-only convenience: stage the host-provided base layer point through a
@@ -157,7 +162,12 @@ pub(crate) fn prepare_base_layer_claims<E>(
     context: &ProverContext,
 ) -> CudaResult<GpuGKRBaseLayerTailSnapshot<E>>
 where
-    E: Copy + super::super::GpuKernels + FieldExtension<BF> + Field + crate::ops::cub::device_reduce::Reduce + 'static,
+    E: Copy
+        + super::super::GpuKernels
+        + FieldExtension<BF>
+        + Field
+        + crate::ops::cub::device_reduce::Reduce
+        + 'static,
 {
     schedule_prepare_base_layer_claims(
         layer_desc,
