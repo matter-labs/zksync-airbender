@@ -6,6 +6,7 @@ use crate::execution::workers::simulation_runner::{
 use crate::execution::A;
 use crate::primitives::circuit_type::{CircuitType, UnrolledCircuitType};
 use crate::primitives::machine_type::MachineType;
+use crate::upstream::FinalRegisterValue;
 use crate::witness::trace::ChunkedTraceHolder;
 use crate::witness::trace_unrolled::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
@@ -24,8 +25,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use type_map::concurrent::TypeMap;
 use worker::Worker;
-
-use trace_and_split::FinalRegisterValue;
 
 /// Sparse init-and-teardown record produced by the memory-holder traversal.
 #[derive(Clone, Copy, Debug)]

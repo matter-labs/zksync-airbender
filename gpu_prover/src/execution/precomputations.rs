@@ -11,11 +11,12 @@ use crate::primitives::machine_type::MachineType;
 use crate::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use crate::prover::gkr::setup::GpuGKRSetupHost;
 use crate::witness::trace_unrolled::ExecutorFamilyDecoderData;
-use cs::gkr_circuits::ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData;
-use cs::gkr_compiler::GKRCircuitArtifact;
+
 use era_cudart::result::CudaResult;
-use prover::definitions::SecurityLevel;
-use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
+
+use crate::upstream::{
+    CSExecutorFamilyDecoderData, CpuGKRSetup, GKRCircuitArtifact, SecurityLevel,
+};
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 use worker::Worker;

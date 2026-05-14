@@ -1,14 +1,11 @@
 use std::collections::BTreeMap;
 use std::ptr::{null, null_mut};
 
-use cs::definitions::GKRAddress;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
-use field::{Field, FieldExtension};
-use prover::transcript::Seed;
 
-use super::super::backward_kernels::*;
+use super::kernels::*;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::STATE_SIZE;
 use crate::ops::cub::device_reduce::{reduce, Reduce, ReduceOperation};
@@ -19,14 +16,11 @@ use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::proof::layout::ProofLayout;
+use crate::upstream::{Field, FieldExtension, GKRAddress, Seed};
 
 impl<B: 'static, E: 'static> GpuGKRDimensionReducingSumcheckLayerPlan<B, E>
 where
-    E: Field
-        + FieldExtension<BF>
-        + Reduce
-        + GpuDimensionReducingKernelSet
-        + GpuBackwardSumcheckRoundUpdateKernel,
+    E: Field + FieldExtension<BF> + Reduce + crate::prover::gkr::GpuKernels,
     Mul: BinaryOp<E, E, E>,
     [(); E::DEGREE]: Sized,
 {
@@ -354,7 +348,6 @@ where
                 next_claim_point_and_batching_len,
             )
         };
-        let mut reduction_states = Vec::with_capacity(last_step);
 
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
@@ -400,13 +393,6 @@ where
                 challenge_slice,
                 stream,
             )?;
-
-            // Empty reduction_state retained for struct ABI compatibility — the
-            // kernel-driven path no longer has per-round host callbacks.
-            reduction_states.push(ScheduledDimensionReducingReductionState {
-                callbacks: Callbacks::new(),
-                _phantom: std::marker::PhantomData,
-            });
         }
 
         match last_step {
@@ -436,7 +422,7 @@ where
         // paths fall back to a per-layer device buffer. The flat layout (4 E
         // per address, in BTreeMap key order from
         // `final_evaluation_sources_for_last_step`) matches what
-        // `build_proof_layout_inputs_structural` stored in
+        // `build_proof_layout_inputs` stored in
         // `ProofLayout.backward[slot].final_step_eval_addresses`.
         let mut fallback_d_layer_transcript_inputs: Option<DeviceAllocation<E>> = None;
         let transcript_inputs_buffer_ptr: *mut E = if let Some(slab) = proof_slab {
@@ -567,74 +553,68 @@ where
             // (d_layer_challenges via `transcript_squeeze_e4`, device_new_claims via
             // `backward_new_claims_two_var`, device_seed/round_challenge_storage from earlier
             // work in this layer; coeffs and packed last-evals are now slab-direct via B1/B2
-            // and not D2H'd here). A single fork event covers all of them; the matching join
-            // is recorded after the last D2H below.
-            let layer_src_ready = era_cudart::event::CudaEvent::create_with_flags(
-                era_cudart::event::CudaEventCreateFlags::DISABLE_TIMING,
-            )?;
-            layer_src_ready.record(stream)?;
-            let d2h_stream = context.get_d2h_stream();
-            d2h_stream.wait_event(
-                &layer_src_ready,
-                era_cudart::stream::CudaStreamWaitEventFlags::DEFAULT,
-            )?;
-
+            // and not D2H'd here). The join lets exec wait for the per-layer D2Hs before
+            // scheduling the final-readback callback and dropping the source allocations.
             let mut layer_challenges_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(3) };
             let layer_challenges_accessor = layer_challenges_host.get_accessor();
-            // SAFETY: `[last_step..last_step + 3]` was just written by the
-            // transcript squeeze on `stream` and the d2h_stream waits on
-            // `layer_src_ready` before this read.
-            let layer_challenges_src = unsafe {
-                DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr().add(last_step), 3)
-            };
-            memory_copy_async(&mut layer_challenges_host, layer_challenges_src, d2h_stream)?;
-
-            // Single D2H of device-computed new_claims. Replaces N per-address D2Hs
-            // (one per address × 4 E) + the host `evaluate_with_two_variable_eq_ext` loop.
             let mut new_claims_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(num_addresses.max(1)) };
             let new_claims_accessor = new_claims_host.get_accessor();
-            if num_addresses > 0 {
-                memory_copy_async(
-                    &mut new_claims_host,
-                    &device_new_claims[..num_addresses],
-                    d2h_stream,
-                )?;
-            }
-
-            // Bulk D2H the on-device per-layer state that the final readback
-            // callback needs to advance the workflow (seed + folding challenges for
-            // WHIR host setup; coeffs and packed last-evaluations stay on device
-            // and flow through the proof slab via B1/B2). Copies continue on
-            // `d2h_stream` within the same fork/join window as the D2Hs above.
             let mut final_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
             let final_seed_accessor = final_seed_host.get_accessor();
-            memory_copy_async(&mut final_seed_host, &device_seed, d2h_stream)?;
-
             let mut final_folding_challenges_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(last_step.max(1)) };
             let final_folding_challenges_accessor = final_folding_challenges_host.get_accessor();
-            if last_step > 0 {
-                // SAFETY: `[0..last_step]` are written in-place by the
-                // per-round update kernels. The d2h_stream waits on
-                // `layer_src_ready` before this read.
-                let folding_src = unsafe {
-                    DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr(), last_step)
-                };
-                memory_copy_async(&mut final_folding_challenges_host, folding_src, d2h_stream)?;
-            }
+            crate::primitives::transfer::fork_join_exec_to_d2h(
+                stream,
+                context.get_d2h_stream(),
+                |d2h_stream| {
+                    // SAFETY: `[last_step..last_step + 3]` was just written by the
+                    // transcript squeeze on `stream`; d2h_stream waits on the fork event
+                    // before this read.
+                    let layer_challenges_src = unsafe {
+                        DeviceSlice::from_raw_parts(
+                            device_claim_point_out.as_ptr().add(last_step),
+                            3,
+                        )
+                    };
+                    memory_copy_async(
+                        &mut layer_challenges_host,
+                        layer_challenges_src,
+                        d2h_stream,
+                    )?;
 
-            // Join d2h -> exec: the per-layer D2Hs above are fully scheduled. Exec waits on this
-            // event before the final readback callback (which reads the host slabs) is scheduled,
-            // and before any downstream drop of the source allocations at the end of this function.
-            let layer_d2h_done = era_cudart::event::CudaEvent::create_with_flags(
-                era_cudart::event::CudaEventCreateFlags::DISABLE_TIMING,
-            )?;
-            layer_d2h_done.record(d2h_stream)?;
-            stream.wait_event(
-                &layer_d2h_done,
-                era_cudart::stream::CudaStreamWaitEventFlags::DEFAULT,
+                    // Single D2H of device-computed new_claims. Replaces N per-address
+                    // D2Hs (one per address × 4 E) + the host
+                    // `evaluate_with_two_variable_eq_ext` loop.
+                    if num_addresses > 0 {
+                        memory_copy_async(
+                            &mut new_claims_host,
+                            &device_new_claims[..num_addresses],
+                            d2h_stream,
+                        )?;
+                    }
+
+                    // Bulk D2H the on-device per-layer state that the final readback
+                    // callback needs to advance the workflow (seed + folding challenges
+                    // for WHIR host setup; coeffs and packed last-evaluations stay on
+                    // device and flow through the proof slab via B1/B2).
+                    memory_copy_async(&mut final_seed_host, &device_seed, d2h_stream)?;
+                    if last_step > 0 {
+                        // SAFETY: `[0..last_step]` are written in-place by the
+                        // per-round update kernels.
+                        let folding_src = unsafe {
+                            DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr(), last_step)
+                        };
+                        memory_copy_async(
+                            &mut final_folding_challenges_host,
+                            folding_src,
+                            d2h_stream,
+                        )?;
+                    }
+                    Ok(())
+                },
             )?;
 
             let shared_state_for_callback = shared_state_handle;
@@ -710,11 +690,7 @@ where
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
             tracing_ranges,
             start_callbacks: Callbacks::new(),
-            reduction_states,
-            final_readback: ScheduledDimensionReducingFinalReadback {
-                callbacks: final_readback_callbacks,
-                _phantom: std::marker::PhantomData,
-            },
+            final_readback: final_readback_callbacks,
             shared_state,
             device_seed: Some(device_seed),
             device_claim_point_for_next_layer: Some(device_claim_point_out),

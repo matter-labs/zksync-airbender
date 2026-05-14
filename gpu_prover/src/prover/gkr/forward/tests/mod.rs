@@ -1,4 +1,3 @@
-
 use super::*;
 use helpers::*;
 
@@ -6,9 +5,12 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::simple::set_by_val;
 use crate::primitives::field::E4;
 use crate::prover::test_utils::make_test_context;
-use cs::gkr_compiler::GateArtifacts;
+
 use era_cudart::memory::memory_copy_async;
-use prover::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
+
+use crate::upstream::{
+    materialize_virtual_inits_and_teardowns_base_address_setup_poly, GateArtifacts,
+};
 use serial_test::serial;
 use std::alloc::Global;
 use worker::Worker;
@@ -386,8 +388,7 @@ fn forward_layer_dispatch_and_launch_match_expected_outputs() {
     )
     .unwrap();
     for desc in plan.descs.iter() {
-        super::super::forward_kernels::launch_flat_forward_layer::<E4>(desc, trace_len, &context)
-            .unwrap();
+        super::kernels::launch_flat_forward_layer::<E4>(desc, trace_len, &context).unwrap();
     }
     commit_flat_forward_plan(1, &mut storage, plan);
     context.get_exec_stream().synchronize().unwrap();
@@ -651,8 +652,7 @@ fn direct_no_cache_flat_forward_variants_match_expected_outputs() {
     assert_eq!(desc.num_memory_materializes, 1);
 
     for desc in plan.descs.iter() {
-        super::super::forward_kernels::launch_flat_forward_layer::<E4>(desc, trace_len, &context)
-            .unwrap();
+        super::kernels::launch_flat_forward_layer::<E4>(desc, trace_len, &context).unwrap();
     }
     commit_flat_forward_plan(1, &mut storage, plan);
     context.get_exec_stream().synchronize().unwrap();

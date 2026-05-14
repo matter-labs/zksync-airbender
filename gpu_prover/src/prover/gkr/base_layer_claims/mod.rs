@@ -1,24 +1,21 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use cs::definitions::{GKRAddress, VirtualSetupPoly};
-use cs::gkr_compiler::GKRLayerDescription;
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
-use field::{Field, FieldExtension};
 
 use super::backward::{
     eq_group_tables_len, launch_build_eq_values_from_point, launch_trace_holder_block_partials,
-    GpuDimensionReducingKernelSet, GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK,
+    GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK,
 };
+use super::GpuKernels;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{
     batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
 };
 use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
-use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{
     DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor, UnsafeMutAccessor,
 };
@@ -27,6 +24,7 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::proof::layout::{ProofLayout, WhirBaseLayerKind};
 use crate::prover::trace::holder::TraceHolder;
+use crate::upstream::{Field, FieldExtension, GKRAddress, GKRLayerDescription, VirtualSetupPoly};
 
 cuda_kernel!(
     EvalVirtualSetupClaims,
@@ -230,7 +228,6 @@ impl<E> BaseLayerExtrasPlan<E> {
 #[allow(dead_code)]
 pub(crate) struct GpuGKRBaseLayerClaimsScheduledExecution<E> {
     _tracing_ranges: Vec<Range>,
-    _finish_callbacks: Callbacks<'static>,
     // Fallback/test pinned D2H readbacks consumed by the deferred aggregation
     // closure below. Production slab routing keeps these as `None`.
     _virtual_setup_claims_host: Option<HostAllocation<[E]>>,
@@ -295,7 +292,7 @@ fn schedule_reduce_trace_holder_claims<E>(
     context: &ProverContext,
 ) -> CudaResult<Option<HostAllocation<[E]>>>
 where
-    E: GpuDimensionReducingKernelSet + Field + 'static,
+    E: GpuKernels + Field + crate::ops::cub::device_reduce::Reduce + 'static,
 {
     let trace_len = 1usize << trace_holder.log_domain_size;
     assert_eq!(eq_values.len(), trace_len);
@@ -426,7 +423,12 @@ pub(crate) fn schedule_prepare_base_layer_claims_with_sources<E>(
     context: &ProverContext,
 ) -> CudaResult<GpuGKRBaseLayerClaimsScheduledExecution<E>>
 where
-    E: Copy + GpuDimensionReducingKernelSet + FieldExtension<BF> + Field + 'static,
+    E: Copy
+        + GpuKernels
+        + FieldExtension<BF>
+        + Field
+        + crate::ops::cub::device_reduce::Reduce
+        + 'static,
 {
     for (label, trace_holder) in [
         ("memory", memory_trace_holder),
@@ -652,7 +654,6 @@ where
 
     Ok(GpuGKRBaseLayerClaimsScheduledExecution {
         _tracing_ranges: tracing_ranges,
-        _finish_callbacks: Callbacks::new(),
         _virtual_setup_claims_host: virtual_setup_claims_host,
         _mem_polys_claims: mem_polys_claims,
         _wit_polys_claims: wit_polys_claims,

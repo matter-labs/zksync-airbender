@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
+pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
     label: &str,
     circuit_type: DelegationCircuitType,
     compiled_circuit: GKRCircuitArtifact<BF>,
@@ -44,7 +44,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
     ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    let setup = GKRSetup::construct(table_driver, &[], trace_len, &compiled_circuit);
+    let setup = CpuGKRSetup::construct(table_driver, &[], trace_len, &compiled_circuit);
     let setup_commitment = setup.commit::<DefaultTreeConstructor>(
         &twiddles,
         whir_schedule.base_lde_factor,
@@ -428,7 +428,7 @@ pub(super) fn assert_bigint_delegation_workflow_matches_cpu(
         cycle_data: &buffer,
         marker: core::marker::PhantomData,
     };
-    assert_delegation_workflow_matches_cpu_inner(
+    assert_delegation_workflow_matches_cpu(
         "bigint_with_control",
         DelegationCircuitType::BigIntWithControl,
         compiled_circuit,
@@ -495,7 +495,7 @@ pub(super) fn assert_blake2_delegation_workflow_matches_cpu(
         cycle_data: &buffer,
         marker: core::marker::PhantomData,
     };
-    assert_delegation_workflow_matches_cpu_inner(
+    assert_delegation_workflow_matches_cpu(
         "blake2_with_compression",
         DelegationCircuitType::Blake2WithCompression,
         compiled_circuit,
@@ -573,7 +573,7 @@ pub(super) fn assert_keccak_delegation_workflow_matches_cpu(
         cycle_data: &buffer,
         marker: core::marker::PhantomData,
     };
-    assert_delegation_workflow_matches_cpu_inner(
+    assert_delegation_workflow_matches_cpu(
         "keccak_special5",
         DelegationCircuitType::KeccakSpecial5,
         compiled_circuit,

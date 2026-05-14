@@ -208,7 +208,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
     let prover_config = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
         .prover_config(SecurityLevel::Sec80);
     let whir_schedule = prover_config.whir_schedule.clone();
-    let setup = GKRSetup::construct(&table_driver, &[], trace_len, &compiled_circuit);
+    let setup = CpuGKRSetup::construct(&table_driver, &[], trace_len, &compiled_circuit);
     assert!(setup.hypercube_evals.is_empty());
     let setup_commitment = setup.commit(
         &twiddles,

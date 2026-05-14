@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use cs::definitions::GKRAddress;
 use era_cudart::result::CudaResult;
 
 use super::{GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRLayerSource, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::ProverContext;
 use crate::prover::gkr::storage_layout::{FieldType, StorageSlot};
+use crate::upstream::GKRAddress;
 
 impl<B, E> GpuGKRStorage<B, E> {
     /// Returns a fresh `GpuBaseFieldPoly<B>` view backed by the consolidated

@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::allocator::tracker::AllocationPlacement;
 
@@ -7,9 +6,6 @@ use crate::primitives::field::{BF, E4};
 
 use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
-use field::Field;
-
-use prover::gkr::prover::GKRExternalChallenges;
 
 fn sample_ext(seed: u32) -> E4 {
     E4::from_array_of_base([
@@ -107,6 +103,7 @@ mod lookup_builders;
 mod lookup_expression_tests;
 mod sumcheck_kernel_tests;
 
+use crate::upstream::{Field, GKRExternalChallenges};
 pub(super) use helpers::build_main_layer_kernel_blueprints;
 use helpers::{build_dimension_reducing_kernel_blueprints, make_round0_eq_pair_values};
 pub(crate) use lookup_builders::{

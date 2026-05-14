@@ -222,7 +222,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let whir_schedule = prover_config.whir_schedule.clone();
     let base_lde_factor = whir_schedule.base_lde_factor;
     let tree_cap_size = whir_schedule.cap_size;
-    let setup = GKRSetup::construct(
+    let setup = CpuGKRSetup::construct(
         &TableDriver::new(),
         &decoder_table_data,
         trace_len,

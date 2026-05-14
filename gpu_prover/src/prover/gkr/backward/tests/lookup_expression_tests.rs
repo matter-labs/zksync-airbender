@@ -1,6 +1,6 @@
 use crate::primitives::field::{BF, E4};
-use cs::definitions::GKRAddress;
-use field::{Field, FieldExtension, PrimeField};
+
+use crate::upstream::{Field, FieldExtension, GKRAddress, PrimeField};
 
 use super::{
     build_lookup_from_vector_input_with_setup_inputs_and_metadata,

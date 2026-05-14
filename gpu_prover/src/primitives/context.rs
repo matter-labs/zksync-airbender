@@ -72,8 +72,6 @@ pub(crate) type DeviceAllocation<T> = NonConcurrentStaticDeviceAllocation<T>;
 pub(crate) type HostAllocator = NonConcurrentStaticHostAllocator;
 pub(crate) type SchedulerHostAllocator = ConcurrentStaticHostAllocator;
 
-pub(crate) const AUX_STREAM_POOL_SIZE: usize = 8;
-
 pub(crate) struct ProverContext {
     // Own the device-resident twiddle tables for the full lifetime of the prover context.
     _device_context: DeviceContext,
@@ -82,8 +80,6 @@ pub(crate) struct ProverContext {
     #[allow(dead_code)]
     scheduler_host_allocator: SchedulerHostAllocator,
     exec_stream: CudaStream,
-    #[allow(dead_code)]
-    aux_streams: [CudaStream; AUX_STREAM_POOL_SIZE],
     h2d_stream: CudaStream,
     d2h_stream: CudaStream,
     device_allocator_mem_size: usize,
@@ -94,6 +90,13 @@ pub(crate) struct ProverContext {
 
 impl ProverContext {
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
+        // host_typed allocations rely on the host pool's block size being at
+        // least 16 bytes so any `T` whose alignment is ≤16 is satisfied by the
+        // block address. See `proof/layout/mod.rs` for the consumers.
+        assert!(
+            config.host_allocator_block_log_size >= 4,
+            "host_allocator_block_log_size must be >= 4 (16-byte blocks) for host_typed alignment"
+        );
         let device_id = get_device()?;
         let mpc = device_get_attribute(CudaDeviceAttr::MultiProcessorCount, device_id)? as usize;
         let max_threads_per_mpc =
@@ -105,15 +108,6 @@ impl ProverContext {
         let allocator_block_log_size = config.allocator_block_log_size;
         let device_context = DeviceContext::create(config.powers_of_w_coarse_log_count)?;
         let exec_stream = CudaStream::create()?;
-        let aux_streams: [CudaStream; AUX_STREAM_POOL_SIZE] = {
-            let mut streams = Vec::with_capacity(AUX_STREAM_POOL_SIZE);
-            for _ in 0..AUX_STREAM_POOL_SIZE {
-                streams.push(CudaStream::create()?);
-            }
-            streams.try_into().unwrap_or_else(|_| {
-                unreachable!("constructed exactly AUX_STREAM_POOL_SIZE streams")
-            })
-        };
         let h2d_stream = CudaStream::create()?;
         let d2h_stream = CudaStream::create()?;
         let mut device_blocks_count =
@@ -183,7 +177,6 @@ impl ProverContext {
             host_allocator,
             scheduler_host_allocator,
             exec_stream,
-            aux_streams,
             h2d_stream,
             d2h_stream,
             device_allocator_mem_size,
@@ -269,10 +262,25 @@ impl ProverContext {
         result
     }
 
+    /// # Safety
+    ///
+    /// Returns a pinned host allocation whose contents are **uninitialized**.
+    /// The scheduling thread must NOT dereference the returned buffer: per the
+    /// inverted-access rule in `docs/gpu_scheduling_contract.md`, every read
+    /// and write must come from a stream-scheduled op (host callback or
+    /// `memory_copy_async`). The first stream op touching the buffer must be a
+    /// write (an H2D from a callback-populated source, or a D2H of fresh
+    /// device contents); reading from it before that is UB on the uninit
+    /// memory.
     pub(crate) unsafe fn alloc_host_uninit<T: Sized>(&self) -> HostAllocation<T> {
         HostAllocation::new_uninit_in(self.get_host_allocator())
     }
 
+    /// # Safety
+    ///
+    /// Same contract as [`Self::alloc_host_uninit`]; see that method's safety
+    /// note. The pool may have just recycled this block from a prior owner
+    /// whose DMA is not yet complete — every access must be stream-ordered.
     pub(crate) unsafe fn alloc_host_uninit_slice<T: Sized>(
         &self,
         len: usize,
@@ -347,6 +355,13 @@ impl ProverContext {
     }
 }
 
+/// Raw `*const T` wrapper that escapes Rust borrow-checking so a captured
+/// reference can travel into a stream-scheduled host callback.
+///
+/// Only the holder's lifetime is enforced — at call sites the pointee must
+/// still outlive every dereference. See
+/// [`docs/gpu_scheduling_contract.md`](../../docs/gpu_scheduling_contract.md)
+/// for the lifetime and access rules.
 #[repr(transparent)]
 pub(crate) struct UnsafeAccessor<T: ?Sized>(*const T);
 
@@ -355,6 +370,13 @@ impl<T: ?Sized> UnsafeAccessor<T> {
         UnsafeAccessor(value as *const T)
     }
 
+    /// # Safety
+    ///
+    /// May only be called from inside a stream-scheduled host callback
+    /// (`Callbacks::schedule` / `launch_host_fn`) whose ordering establishes
+    /// that the referent has been initialized by prior stream ops and is not
+    /// being concurrently mutated. The original holder must remain alive
+    /// until that callback has been *scheduled*; see contract doc.
     pub unsafe fn get(&self) -> &T {
         &*self.0
     }
@@ -368,9 +390,19 @@ impl<T: ?Sized> Clone for UnsafeAccessor<T> {
 
 impl<T: ?Sized> Copy for UnsafeAccessor<T> {}
 
+// SAFETY: `UnsafeAccessor<T>` is a raw pointer wrapper used to thread a
+// borrow into a stream-scheduled callback running on a different thread.
+// The scheduling contract (see `docs/gpu_scheduling_contract.md`) makes the
+// caller responsible for ordering reads/writes; the type itself adds no new
+// thread-safety obligations beyond `Sync`/`Send` of `*const T`.
 unsafe impl<T: ?Sized> Send for UnsafeAccessor<T> {}
 unsafe impl<T: ?Sized> Sync for UnsafeAccessor<T> {}
 
+/// Raw `*mut T` wrapper with the same intent as [`UnsafeAccessor`] but for
+/// mutable borrows.
+///
+/// See [`docs/gpu_scheduling_contract.md`](../../docs/gpu_scheduling_contract.md)
+/// for the write-exclusivity and lifetime rules.
 #[repr(transparent)]
 pub(crate) struct UnsafeMutAccessor<T: ?Sized>(*mut T);
 
@@ -379,14 +411,30 @@ impl<T: ?Sized> UnsafeMutAccessor<T> {
         UnsafeMutAccessor(value as *mut T)
     }
 
+    /// # Safety
+    ///
+    /// May only be called from inside a stream-scheduled host callback whose
+    /// ordering guarantees the referent has been initialized and is not being
+    /// concurrently mutated by another stream op. See contract doc.
     pub unsafe fn get(&self) -> &T {
         &*self.0
     }
 
+    /// # Safety
+    ///
+    /// Only valid inside a stream-scheduled host callback. Write-exclusivity
+    /// is enforced by scheduling order, not by the type: at most one stream
+    /// op (callback or kernel) may write the referent at a time, per the
+    /// fork/join window rules in `docs/gpu_scheduling_contract.md`.
     pub unsafe fn get_mut(&self) -> &mut T {
         &mut *(self.0)
     }
 
+    /// # Safety
+    ///
+    /// Same as [`Self::get_mut`]; writes go through `std::ptr::write`, so
+    /// the referent must be aligned and writable, and no concurrent stream
+    /// op may be reading or writing it.
     pub unsafe fn write(&self, value: T)
     where
         T: Sized,
@@ -403,6 +451,8 @@ impl<T: ?Sized> Clone for UnsafeMutAccessor<T> {
 
 impl<T: ?Sized> Copy for UnsafeMutAccessor<T> {}
 
+// SAFETY: see `UnsafeAccessor` Send/Sync note above; the scheduling contract
+// governs write-exclusivity and lifetime.
 unsafe impl<T: ?Sized> Send for UnsafeMutAccessor<T> {}
 unsafe impl<T: ?Sized> Sync for UnsafeMutAccessor<T> {}
 

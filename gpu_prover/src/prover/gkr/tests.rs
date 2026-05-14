@@ -1,11 +1,11 @@
-
 use super::*;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::HostAllocation;
 use crate::primitives::field::{BF, E4};
 use crate::prover::test_utils::make_test_context;
-use cs::definitions::VirtualSetupPoly;
+
+use crate::upstream::VirtualSetupPoly;
 use era_cudart::memory::memory_copy_async;
 use serial_test::serial;
 

@@ -1,8 +1,4 @@
-use field::baby_bear::base::BabyBearField;
-use field::baby_bear::ext2::BabyBearExt2;
-use field::baby_bear::ext4::BabyBearExt4;
-use field::baby_bear::ext6::BabyBearExt6;
-
+use crate::upstream::{BabyBearExt2, BabyBearExt4, BabyBearExt6, BabyBearField};
 pub(crate) type BaseField = BabyBearField;
 pub(crate) type Ext2Field = BabyBearExt2;
 pub(crate) type Ext4Field = BabyBearExt4;

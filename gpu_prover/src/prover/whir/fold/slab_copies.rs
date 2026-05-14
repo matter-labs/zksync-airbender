@@ -5,6 +5,7 @@ use super::EXT4_DEGREE;
 use crate::ops::blake2s::Digest;
 use crate::primitives::context::{DeviceAllocation, HostAllocation};
 use crate::primitives::field::{BF, E4};
+use crate::primitives::transfer::memory_copy_async_from_accessor;
 use crate::prover::pow::PowAndQueryIndexesKeepalives;
 use crate::prover::proof::layout::ProofLayout;
 
@@ -90,17 +91,19 @@ pub(super) fn copy_intermediate_query_to_slab(
         proof_layout.whir_intermediate_query_leaves_device_mut(slab.as_ptr() as *mut u8, round)
     };
     let leaf_values_len_e4 = leaves_total_e4 / idx_total_len;
-    let leaves_src_bf = unsafe { leafs_accessor.get() };
-    assert_eq!(leaves_src_bf.len(), leaf_values_len_e4 * EXT4_DEGREE);
+    let leaves_src_len_bf = leaf_values_len_e4 * EXT4_DEGREE;
+    assert_eq!(unsafe { leafs_accessor.get() }.len(), leaves_src_len_bf);
     // SAFETY: slab `E4` slot at `query_idx` offset has `leaf_values_len_e4 * 4`
     // BFs worth of storage.
     let leaves_dst = unsafe {
         era_cudart::slice::DeviceSlice::from_raw_parts_mut(
             leaves_ptr_e4.add(query_idx * leaf_values_len_e4) as *mut BF,
-            leaves_src_bf.len(),
+            leaves_src_len_bf,
         )
     };
-    memory_copy_async(leaves_dst, leaves_src_bf, stream)?;
+    unsafe {
+        memory_copy_async_from_accessor(leaves_dst, leafs_accessor, stream)?;
+    }
 
     // Paths: flat Digest → `[u32]` reinterpret, `path_len` digests per query.
     let (paths_ptr, paths_total_u32) = unsafe {

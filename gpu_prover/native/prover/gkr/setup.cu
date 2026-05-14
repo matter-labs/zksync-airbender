@@ -1,4 +1,4 @@
-#include "common.cuh"
+#include "lookup_helpers.cuh"
 
 __device__ __constant__ e4 ab_gkr_lookup_alpha_powers[airbender::prover::gkr::GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS];
 

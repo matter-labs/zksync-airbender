@@ -2,10 +2,7 @@ use std::collections::BTreeMap;
 use std::ptr::null;
 use std::sync::Arc;
 
-use cs::definitions::GKRAddress;
 use era_cudart::result::CudaResult;
-use field::Field;
-use prover::gkr::sumcheck::evaluation_kernels::GKRInputs;
 
 use super::gkr_address_audit::AddressClass;
 use super::storage_layout::FieldType;
@@ -28,6 +25,7 @@ use crate::allocator::tracker::AllocationPlacement;
 #[cfg(test)]
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, ProverContext};
+use crate::upstream::{Field, GKRAddress, GKRInputs};
 
 impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
     /// Pre-allocate the per-(layer, AddressClass) ext-intermediate-folding

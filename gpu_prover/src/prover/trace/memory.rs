@@ -17,14 +17,13 @@ use crate::witness::memory_unrolled::{
     generate_memory_values_unrolled_memory, generate_memory_values_unrolled_non_memory,
 };
 use crate::witness::trace_unrolled::{ExecutorFamilyDecoderData, PAGE_SIZE_LOG2};
-use cs::gkr_compiler::GKRCircuitArtifact;
+
+use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, ProverConfig};
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
-use prover::gkr::prover_config::ProverConfig;
-use prover::merkle_trees::MerkleTreeCapVarLength;
 
 pub(crate) struct MemoryCommitmentJob<'a> {
     is_finished_event: CudaEvent,
@@ -60,11 +59,7 @@ fn commit_memory_inner<'a>(
     mut callbacks: Callbacks<'a>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
-    assert_eq!(prover_config.lookup_challenges_pow_bits, 0, "TODO");
-    assert_eq!(
-        prover_config.batched_proximity_check_challenge_pow_bits, 0,
-        "TODO"
-    );
+    crate::prover::proof::assert_gpu_supported_pow_config(prover_config);
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]

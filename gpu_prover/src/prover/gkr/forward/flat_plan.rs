@@ -1,18 +1,12 @@
 use std::collections::BTreeMap;
 
-use cs::definitions::GKRAddress;
-use cs::gkr_compiler::{GKRCircuitArtifact, NoFieldGKRCacheRelation, NoFieldGKRRelation};
-use field::{Field, FieldExtension};
-
 use era_cudart::result::CudaResult;
-use prover::gkr::high_bits_offset_for_inits_and_teardowns;
-use prover::gkr::prover::GKRExternalChallenges;
 
-use super::super::forward_kernels::*;
 use super::super::setup::GpuGKRForwardSetup;
 use super::super::stage1::GpuGKRStage1Output;
 use super::super::{GpuBaseFieldSourceKind, GpuGKRStorage};
 use super::cache_relation::build_memory_expr;
+use super::kernels::*;
 use super::{
     materialize_inits_and_teardowns_initial_pair_into, single_column_lookup_mapping_ptr,
     vector_lookup_mapping_ptr,
@@ -20,6 +14,10 @@ use super::{
 use crate::ops::simple::{Add, BinaryOp, Mul, SetByVal};
 use crate::primitives::context::ProverContext;
 use crate::primitives::field::BF;
+use crate::upstream::{
+    high_bits_offset_for_inits_and_teardowns, Field, FieldExtension, GKRAddress,
+    GKRCircuitArtifact, GKRExternalChallenges, NoFieldGKRCacheRelation, NoFieldGKRRelation,
+};
 
 struct FlatBuilder<E> {
     descs: Vec<Box<GpuFlatForwardStaticDesc<E>>>,
@@ -47,7 +45,7 @@ impl<E: Field> FlatBuilder<E> {
     }
 
     fn rotate(&mut self) {
-        if !super::super::forward_kernels::flat_desc_has_work(self.desc()) {
+        if !super::kernels::flat_desc_has_work(self.desc()) {
             self.src_map.clear();
             return;
         }
@@ -89,7 +87,7 @@ impl<E: Field> FlatBuilder<E> {
     fn into_descs(self) -> Vec<Box<GpuFlatForwardStaticDesc<E>>> {
         self.descs
             .into_iter()
-            .filter(|desc| super::super::forward_kernels::flat_desc_has_work(desc))
+            .filter(|desc| super::kernels::flat_desc_has_work(desc))
             .collect()
     }
 }
@@ -114,7 +112,7 @@ pub(super) fn build_flat_forward_plan<E>(
     context: &ProverContext,
 ) -> CudaResult<FlatForwardPlan<E>>
 where
-    E: Field + FieldExtension<BF> + GpuGKRVirtualBaseAccumKernelSet + SetByVal,
+    E: Field + FieldExtension<BF> + crate::prover::gkr::GpuKernels + SetByVal,
     Add: BinaryOp<E, E, E>,
     Mul: BinaryOp<BF, E, E>,
     Mul: BinaryOp<E, E, E>,

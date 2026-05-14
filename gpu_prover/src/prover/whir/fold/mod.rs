@@ -7,17 +7,6 @@ use fft::{
     bitreverse_enumeration_inplace, domain_generator_for_size,
     materialize_powers_serial_starting_with_one,
 };
-use field::{Field, FieldExtension};
-use prover::gkr::prover::transcript_utils::{
-    add_whir_commitment_to_transcript, commit_field_els, draw_random_field_els,
-};
-use prover::gkr::whir::{
-    BaseFieldQuery, ExtensionFieldQuery, WhirBaseLayerCommitmentAndQueries, WhirCommitment,
-    WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof,
-};
-use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
-use prover::transcript::Seed;
-use prover::utils::extension_field_from_base_coeffs;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::{Digest, STATE_SIZE};
@@ -48,6 +37,12 @@ use crate::prover::whir::kernels::{
     whir_fold_split_half_in_place_vectorized,
 };
 use crate::prover::whir::GpuWhirExtensionOracle;
+use crate::upstream::{
+    add_whir_commitment_to_transcript, commit_field_els, draw_random_field_els,
+    extension_field_from_base_coeffs, BaseFieldQuery, DefaultTreeConstructor, ExtensionFieldQuery,
+    Field, FieldExtension, MerkleTreeCapVarLength, Seed, WhirBaseLayerCommitmentAndQueries,
+    WhirCommitment, WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof,
+};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 
@@ -76,9 +71,25 @@ pub(super) struct GpuWhirState {
     original_trace_len: usize,
 }
 
+// `device_internal_index` is a length-1 slice the caller pre-populated with
+// `query_index / lde_factor`. Base-layer memory/witness/setup oracles share
+// the same `log_lde_factor` (`ProverConfig` invariant; asserted by the
+// scheduler), so one shared internal-index buffer is filled once per query
+// and re-used across all three calls.
+//
+// After upstream efa7bbd3, CPU records `BaseFieldQuery.index = tree_index`
+// and retrieves the merkle path at `tree_index` too (see
+// prover/src/gkr/whir/mod.rs, `ColumnMajorBaseOracleForLDE::query_for_folded_index`).
+// The combined CPU tree is laid out with bit-reversed coset order over
+// per-coset buckets of `coset_tree_size` leaves, so `trees[lde_coset]` on GPU
+// corresponds to CPU bucket `bitreverse(lde_coset)` and the path within it is
+// at CPU's `internal_index = query_index / lde_factor`. We therefore use the
+// same `internal_index` for both value and path lookups; the per-coset
+// selection (value_leafs[coset_index], path_merkle_paths[coset_index]) is the
+// LDE coset index.
 pub(super) fn schedule_unknown_coset_base_field_query(
     trace_holder: &mut TraceHolder<BF>,
-    query_index: HostAllocation<[u32]>,
+    device_internal_index: &DeviceSlice<u32>,
     context: &ProverContext,
 ) -> CudaResult<ScheduledUnknownCosetBaseFieldQuery> {
     let lde_factor = 1usize << trace_holder.log_lde_factor;
@@ -86,8 +97,6 @@ pub(super) fn schedule_unknown_coset_base_field_query(
     let coset_tree_size = (1usize << trace_holder.log_domain_size) / values_per_leaf;
     if trace_holder.columns_count == 0 {
         return Ok(ScheduledUnknownCosetBaseFieldQuery {
-            callbacks: Callbacks::new(),
-            query_index,
             value_leafs: Vec::new(),
             path_merkle_paths: Vec::new(),
             values_per_leaf,
@@ -96,51 +105,22 @@ pub(super) fn schedule_unknown_coset_base_field_query(
             log_lde_factor: trace_holder.log_lde_factor,
         });
     }
-    let mut callbacks = Callbacks::new();
-    // After upstream efa7bbd3, CPU records `BaseFieldQuery.index = tree_index` and retrieves
-    // the merkle path at `tree_index` too (see prover/src/gkr/whir/mod.rs,
-    // `ColumnMajorBaseOracleForLDE::query_for_folded_index`). The combined CPU tree is laid
-    // out with bit-reversed coset order over per-coset buckets of `coset_tree_size` leaves,
-    // so `trees[lde_coset]` on GPU corresponds to CPU bucket `bitreverse(lde_coset)` and the
-    // path within it is at CPU's `internal_index = query_index / lde_factor`. We therefore
-    // use the same `internal_index` for both value and path lookups; the per-coset selection
-    // (value_leafs[coset_index], path_merkle_paths[coset_index]) is the LDE coset index.
-    let mut internal_index = unsafe { context.alloc_host_uninit_slice(1) };
-    let internal_index_accessor = internal_index.get_mut_accessor();
-    let query_index_accessor = query_index.get_accessor();
-    callbacks.schedule(
-        move || unsafe {
-            internal_index_accessor.get_mut()[0] =
-                query_index_accessor.get()[0] / (lde_factor as u32);
-        },
-        context.get_exec_stream(),
-    )?;
-    let mut device_internal_index = context.alloc(1, AllocationPlacement::BestFit)?;
-    memory_copy_async(
-        &mut device_internal_index,
-        &internal_index,
-        context.get_exec_stream(),
-    )?;
-    drop(internal_index);
-
     let mut value_leafs = Vec::with_capacity(lde_factor);
     let mut path_merkle_paths = Vec::with_capacity(lde_factor);
     for coset_index in 0..lde_factor {
         value_leafs.push(trace_holder.get_query_leafs(
             coset_index,
-            &device_internal_index,
+            device_internal_index,
             context,
         )?);
         path_merkle_paths.push(trace_holder.get_query_merkle_paths(
             coset_index,
-            &device_internal_index,
+            device_internal_index,
             context,
         )?);
     }
 
     Ok(ScheduledUnknownCosetBaseFieldQuery {
-        callbacks,
-        query_index,
         value_leafs,
         path_merkle_paths,
         values_per_leaf,
@@ -150,18 +130,9 @@ pub(super) fn schedule_unknown_coset_base_field_query(
     })
 }
 
-pub(super) struct WhirHostUpload<T> {
-    _callbacks: Callbacks<'static>,
-    _phantom: std::marker::PhantomData<T>,
-}
-
-pub(super) struct ScheduledUnknownCosetBaseFieldQueryKeepalive {
-    _callbacks: Callbacks<'static>,
-}
+pub(super) type WhirHostUpload = Callbacks<'static>;
 
 pub(super) struct ScheduledUnknownCosetBaseFieldQuery {
-    callbacks: Callbacks<'static>,
-    query_index: HostAllocation<[u32]>,
     value_leafs: Vec<HostAllocation<[BF]>>,
     path_merkle_paths: Vec<HostAllocation<[Digest]>>,
     values_per_leaf: usize,
@@ -170,28 +141,38 @@ pub(super) struct ScheduledUnknownCosetBaseFieldQuery {
     log_lde_factor: u32,
 }
 
-impl ScheduledUnknownCosetBaseFieldQuery {
-    fn into_keepalive(self) -> ScheduledUnknownCosetBaseFieldQueryKeepalive {
-        let Self {
-            callbacks,
-            query_index: _,
-            value_leafs: _,
-            path_merkle_paths: _,
-            values_per_leaf: _,
-            columns_count: _,
-            coset_tree_size: _,
-            log_lde_factor: _,
-        } = self;
-        ScheduledUnknownCosetBaseFieldQueryKeepalive {
-            _callbacks: callbacks,
-        }
-    }
-}
-
 pub(crate) struct ScheduledWhirProofState {
     proof: Option<WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>>,
     #[cfg(test)]
     pre_pow_seeds: Vec<Seed>,
+}
+
+// Per-fold-round-group buffers that back the device-side transcript path.
+// Aggregated into one struct because they have a shared lifetime: every
+// scheduled stream op holding into them remains in flight until the
+// surrounding `GpuWhirFoldScheduledExecution` is dropped.
+pub(super) struct FoldRoundGroupKeepalives {
+    pub(super) device_seeds: Vec<DeviceAllocation<u32>>,
+    pub(super) device_challenges: Vec<DeviceAllocation<E4>>,
+    pub(super) device_coeffs: Vec<DeviceAllocation<E4>>,
+    pub(super) host_seed_stagings: Vec<HostAllocation<[u32]>>,
+    pub(super) host_seed_mirrors: Vec<HostAllocation<[u32]>>,
+    pub(super) host_coeffs: Vec<HostAllocation<[E4]>>,
+    pub(super) upload_callbacks: Vec<Callbacks<'static>>,
+}
+
+impl FoldRoundGroupKeepalives {
+    pub(super) fn new() -> Self {
+        Self {
+            device_seeds: Vec::new(),
+            device_challenges: Vec::new(),
+            device_coeffs: Vec::new(),
+            host_seed_stagings: Vec::new(),
+            host_seed_mirrors: Vec::new(),
+            host_coeffs: Vec::new(),
+            upload_callbacks: Vec::new(),
+        }
+    }
 }
 
 pub(crate) struct GpuWhirFoldScheduledExecution {
@@ -200,36 +181,21 @@ pub(crate) struct GpuWhirFoldScheduledExecution {
     #[allow(dead_code)]
     _start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
-    _folding_challenges: Vec<WhirHostUpload<E4>>,
-    // Per-fold-round-group buffers that back the device-side transcript path.
-    // They must outlive the scheduled stream work; the final_callbacks block
-    // on them only by virtue of ordering, so we retain them on the struct.
+    _folding_challenges: Vec<WhirHostUpload>,
     #[allow(dead_code)]
-    _fold_round_group_device_seeds: Vec<DeviceAllocation<u32>>,
-    #[allow(dead_code)]
-    _fold_round_group_device_challenges: Vec<DeviceAllocation<E4>>,
-    #[allow(dead_code)]
-    _fold_round_group_device_coeffs: Vec<DeviceAllocation<E4>>,
-    #[allow(dead_code)]
-    _fold_round_group_host_seed_stagings: Vec<HostAllocation<[u32]>>,
-    #[allow(dead_code)]
-    _fold_round_group_host_seed_mirrors: Vec<HostAllocation<[u32]>>,
-    #[allow(dead_code)]
-    _fold_round_group_host_coeffs: Vec<HostAllocation<[E4]>>,
-    #[allow(dead_code)]
-    _fold_round_group_upload_callbacks: Vec<Callbacks<'static>>,
+    _fold_round_group_keepalives: FoldRoundGroupKeepalives,
     // Keepalives for the device-side PoW verify + query index assembly
     // (one entry per WHIR round that goes through schedule_pow_verify_and_query_indexes).
     #[allow(dead_code)]
     _pow_keepalives: Vec<PowAndQueryIndexesKeepalives>,
     #[allow(dead_code)]
-    _ood_points: Vec<WhirHostUpload<E4>>,
+    _ood_points: Vec<WhirHostUpload>,
     #[allow(dead_code)]
     _query_index_callbacks: Vec<Callbacks<'static>>,
     #[allow(dead_code)]
-    _delinearization_challenges: Vec<WhirHostUpload<E4>>,
+    _delinearization_challenges: Vec<WhirHostUpload>,
     #[allow(dead_code)]
-    _base_queries: Vec<[Vec<ScheduledUnknownCosetBaseFieldQueryKeepalive>; 3]>,
+    _base_queries: Vec<[Vec<ScheduledUnknownCosetBaseFieldQuery>; 3]>,
     #[allow(dead_code)]
     _recursive_queries: Vec<Vec<crate::prover::whir::GpuWhirScheduledExtensionQueryKeepalive>>,
     // Pinned host buffers that back D2H readbacks of the base-layer unified
@@ -317,7 +283,7 @@ pub(super) fn schedule_callback_populated_upload<T: Copy + 'static>(
     context: &ProverContext,
     len: usize,
     fill: impl Fn(&mut [T]) + Send + Sync + 'static,
-) -> CudaResult<(WhirHostUpload<T>, HostAllocation<[T]>, DeviceAllocation<T>)> {
+) -> CudaResult<(WhirHostUpload, HostAllocation<[T]>, DeviceAllocation<T>)> {
     let mut callbacks = Callbacks::new();
     let mut host = unsafe { context.alloc_host_uninit_slice(len) };
     let host_accessor = host.get_mut_accessor();
@@ -329,14 +295,7 @@ pub(super) fn schedule_callback_populated_upload<T: Copy + 'static>(
     )?;
     let mut device = context.alloc(len, AllocationPlacement::BestFit)?;
     memory_copy_async(&mut device, &host, context.get_exec_stream())?;
-    Ok((
-        WhirHostUpload {
-            _callbacks: callbacks,
-            _phantom: std::marker::PhantomData,
-        },
-        host,
-        device,
-    ))
+    Ok((callbacks, host, device))
 }
 
 pub(super) fn schedule_reduce_outputs_readback(
@@ -775,7 +734,7 @@ pub(super) fn schedule_accumulate_eq_sample_in_place_device(
     fill_point_pows: impl Fn(&mut [E4]) + Send + Sync + 'static,
     challenge: &DeviceSlice<E4>,
     context: &ProverContext,
-) -> CudaResult<(WhirHostUpload<E4>, HostAllocation<[E4]>)> {
+) -> CudaResult<(WhirHostUpload, HostAllocation<[E4]>)> {
     let log_n = state.current_len.trailing_zeros() as usize;
     let (point_pows_upload, _point_pows_host, point_pows_device) =
         schedule_callback_populated_upload(context, log_n, fill_point_pows)?;
@@ -801,7 +760,6 @@ pub(super) fn schedule_accumulate_eq_sample_in_place_device(
     Ok((point_pows_upload, _point_pows_host))
 }
 
-#[allow(clippy::too_many_arguments)]
 #[cfg(test)]
 pub(crate) use tests::{
     clone_scheduled_whir_pre_pow_seeds, debug_apply_initial_fold_challenge_for_test,

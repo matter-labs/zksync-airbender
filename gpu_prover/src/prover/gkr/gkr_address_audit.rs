@@ -20,17 +20,13 @@
 //! | 6    | this-layer InnerLayer      |
 //! | 7    | reserved (also ScratchSpace)|
 
-use cs::definitions::gkr::{
-    NoFieldLinearRelation, NoFieldSingleColumnLookupRelation, NoFieldVectorLookupRelation,
-    RamWordRepresentation,
+use crate::upstream::{
+    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp, GKRAddress,
+    NoFieldGKRCacheRelation, NoFieldGKRRelation, NoFieldLinearRelation,
+    NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldMaxQuadraticGKRRelation,
+    NoFieldSingleColumnLookupRelation, NoFieldSpecialMemoryContributionRelation,
+    NoFieldVectorLookupRelation, RamWordRepresentation,
 };
-use cs::definitions::GKRAddress;
-use cs::gkr_compiler::{
-    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
-    NoFieldGKRCacheRelation, NoFieldGKRRelation, NoFieldMaxQuadraticConstraintsGKRRelation,
-    NoFieldMaxQuadraticGKRRelation, NoFieldSpecialMemoryContributionRelation,
-};
-
 /// Hard cap on `OutputType` slots driving the dim-reducing batch fan-out.
 /// Plan-targeted ceilings. The audit pass below verifies every circuit fits.
 pub(crate) const GKR_MAX_SLOTS: usize = 8;

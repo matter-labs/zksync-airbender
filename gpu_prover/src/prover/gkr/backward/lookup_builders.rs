@@ -1,17 +1,15 @@
+use crate::upstream::{GKRAddress, GKRInputs};
 use std::collections::BTreeMap;
 
-use cs::definitions::GKRAddress;
-use prover::gkr::sumcheck::evaluation_kernels::GKRInputs;
-
-use super::super::backward_kernels::{
-    GpuGKRMainLayerConstraintChallengeTerm, GpuGKRMainLayerConstraintTemplate,
-    GpuGKRMainLayerDeferredChallengeSource,
-};
 use super::builders::{
     collect_no_cache_linear_form_template_inputs, encode_linear_form_as_linear_templates,
     encode_linear_form_as_quadratic_templates, lookup_constraint_term,
     single_column_lookup_as_flattened_relation_template,
     vector_lookup_as_flattened_relation_template,
+};
+use super::kernels::{
+    GpuGKRMainLayerConstraintChallengeTerm, GpuGKRMainLayerConstraintTemplate,
+    GpuGKRMainLayerDeferredChallengeSource,
 };
 
 fn flatten_lookup_setup_relation_template(

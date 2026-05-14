@@ -1,6 +1,6 @@
 use super::option::u32::*;
+use crate::upstream::{NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE};
 use crate::witness::Address;
-use cs::definitions::{NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE};
 
 type CSRegisterOnlyAccessAddress = cs::definitions::gkr::RegisterOnlyAccessAddress;
 type CSIndirectRamAccessAddress = cs::definitions::gkr::IndirectRamAccessAddress;

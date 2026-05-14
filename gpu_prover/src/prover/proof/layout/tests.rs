@@ -1,10 +1,9 @@
-
 use super::*;
-use field::{FieldExtension, PrimeField};
+use crate::upstream::{FieldExtension, PrimeField};
 
 /// Placeholder — returns empty dims for every section. Retained for
 /// unit-test coverage of the empty-slab edge case. Real `prove()` uses
-/// [`build_proof_layout_inputs_structural`].
+/// [`build_proof_layout_inputs`].
 pub(crate) fn placeholder_inputs_for_prove() -> ProofLayoutInputs {
     ProofLayoutInputs {
         output_evaluations: BTreeMap::new(),

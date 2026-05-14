@@ -1,5 +1,5 @@
+use crate::upstream::GKRAddress;
 use crate::witness::memory_unrolled::MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT;
-use cs::definitions::GKRAddress;
 
 // pub mod arg_utils;
 pub(crate) mod layout;

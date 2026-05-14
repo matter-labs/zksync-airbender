@@ -61,7 +61,7 @@ fn materialize_linear_base_combination<E>(
     context: &ProverContext,
 ) -> CudaResult<DeviceAllocation<E>>
 where
-    E: Field + FieldExtension<BF> + GpuGKRVirtualBaseAccumKernelSet + SetByVal,
+    E: Field + FieldExtension<BF> + crate::prover::gkr::GpuKernels + SetByVal,
     Add: BinaryOp<E, E, E>,
     Mul: BinaryOp<BF, E, E>,
 {
@@ -100,7 +100,7 @@ pub(super) fn materialize_inits_and_teardowns_initial_pair_into<E>(
     context: &ProverContext,
 ) -> CudaResult<()>
 where
-    E: Field + FieldExtension<BF> + GpuGKRVirtualBaseAccumKernelSet + SetByVal,
+    E: Field + FieldExtension<BF> + crate::prover::gkr::GpuKernels + SetByVal,
     Add: BinaryOp<E, E, E>,
     Mul: BinaryOp<BF, E, E>,
     Mul: BinaryOp<E, E, E>,

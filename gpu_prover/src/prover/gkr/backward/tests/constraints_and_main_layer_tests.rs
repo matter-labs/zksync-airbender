@@ -1,15 +1,14 @@
 use super::super::*;
 use crate::primitives::field::{BF, E4};
-use cs::definitions::{GKRAddress, VirtualSetupPoly};
-use cs::gkr_compiler::{
-    GKRLayerDescription, GateArtifacts, InitsOrTeardownsTimestampAndValue, NoFieldGKRRelation,
-    NoFieldMaxQuadraticGKRRelation,
-};
-use field::Field;
-use prover::gkr::high_bits_offset_for_inits_and_teardowns;
+
 use std::collections::BTreeMap;
 
 use super::{build_main_layer_kernel_blueprints, sample_ext, sample_external_challenges};
+use crate::upstream::{
+    high_bits_offset_for_inits_and_teardowns, Field, GKRAddress, GKRLayerDescription,
+    GateArtifacts, InitsOrTeardownsTimestampAndValue, NoFieldGKRRelation,
+    NoFieldMaxQuadraticGKRRelation, VirtualSetupPoly,
+};
 
 #[test]
 fn single_max_quadratic_constraint_uses_direct_metadata_and_no_outputs() {

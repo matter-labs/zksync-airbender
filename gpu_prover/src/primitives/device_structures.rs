@@ -76,32 +76,6 @@ impl<T> MutPtrAndStrideWrappingMatrix<T> {
     }
 }
 
-#[allow(dead_code)]
-pub(crate) trait DeviceVectorImpl<T> {
-    fn slice(&self) -> &DeviceSlice<T>;
-
-    fn as_ptr(&self) -> *const T {
-        self.slice().as_ptr()
-    }
-
-    fn as_ptr_and_stride(&self) -> PtrAndStride<T> {
-        PtrAndStride::new(self.as_ptr(), self.slice().len())
-    }
-}
-
-#[allow(dead_code)]
-pub(crate) trait DeviceVectorMutImpl<T>: DeviceVectorImpl<T> {
-    fn slice_mut(&mut self) -> &mut DeviceSlice<T>;
-
-    fn as_mut_ptr(&mut self) -> *mut T {
-        self.slice_mut().as_mut_ptr()
-    }
-
-    fn as_mut_ptr_and_stride(&mut self) -> MutPtrAndStride<T> {
-        MutPtrAndStride::new(self.as_mut_ptr(), self.slice().len())
-    }
-}
-
 pub(crate) trait DeviceVectorChunkImpl<T> {
     fn slice(&self) -> &DeviceSlice<T>;
 
@@ -210,195 +184,112 @@ pub(crate) trait DeviceMatrixChunkMutImpl<T>: DeviceMatrixChunkImpl<T> {
     }
 }
 
-impl<T> DeviceVectorImpl<T> for DeviceVariable<T> {
+/// Bridges each contiguous CUDA backing into the chunk/matrix trait family.
+/// Implementors are the "owns a whole `DeviceSlice<T>`" leaves; the
+/// `DeviceVectorChunk`/`DeviceMatrix*` wrapper structs do NOT implement this
+/// and keep their own non-trivial trait impls. The sealed supertrait is what
+/// makes that intra-crate exclusivity legible to the coherence checker — it
+/// closes `DeviceBacking` against downstream / forward impls so the blanket
+/// `impl<D: DeviceBacking<T>> …` below doesn't overlap the per-struct impls.
+mod sealed {
+    pub(crate) trait DeviceBackingSealed {}
+    pub(crate) trait DeviceBackingMutSealed {}
+}
+
+pub(crate) trait DeviceBacking<T>: sealed::DeviceBackingSealed {
+    fn as_device_slice(&self) -> &DeviceSlice<T>;
+}
+
+pub(crate) trait DeviceBackingMut<T>:
+    DeviceBacking<T> + sealed::DeviceBackingMutSealed
+{
+    fn as_device_slice_mut(&mut self) -> &mut DeviceSlice<T>;
+}
+
+impl<T> sealed::DeviceBackingSealed for DeviceVariable<T> {}
+impl<T> sealed::DeviceBackingSealed for DeviceSlice<T> {}
+impl<T> sealed::DeviceBackingSealed for DeviceAllocation<T> {}
+impl<T> sealed::DeviceBackingSealed for DevicePoolAllocation<'_, T> {}
+
+impl<T> sealed::DeviceBackingMutSealed for DeviceVariable<T> {}
+impl<T> sealed::DeviceBackingMutSealed for DeviceSlice<T> {}
+impl<T> sealed::DeviceBackingMutSealed for DeviceAllocation<T> {}
+impl<T> sealed::DeviceBackingMutSealed for DevicePoolAllocation<'_, T> {}
+
+impl<T> DeviceBacking<T> for DeviceVariable<T> {
+    fn as_device_slice(&self) -> &DeviceSlice<T> {
+        self
+    }
+}
+impl<T> DeviceBackingMut<T> for DeviceVariable<T> {
+    fn as_device_slice_mut(&mut self) -> &mut DeviceSlice<T> {
+        self
+    }
+}
+
+impl<T> DeviceBacking<T> for DeviceSlice<T> {
+    fn as_device_slice(&self) -> &Self {
+        self
+    }
+}
+impl<T> DeviceBackingMut<T> for DeviceSlice<T> {
+    fn as_device_slice_mut(&mut self) -> &mut Self {
+        self
+    }
+}
+
+impl<T> DeviceBacking<T> for DeviceAllocation<T> {
+    fn as_device_slice(&self) -> &DeviceSlice<T> {
+        self
+    }
+}
+impl<T> DeviceBackingMut<T> for DeviceAllocation<T> {
+    fn as_device_slice_mut(&mut self) -> &mut DeviceSlice<T> {
+        self
+    }
+}
+
+impl<T> DeviceBacking<T> for DevicePoolAllocation<'_, T> {
+    fn as_device_slice(&self) -> &DeviceSlice<T> {
+        self
+    }
+}
+impl<T> DeviceBackingMut<T> for DevicePoolAllocation<'_, T> {
+    fn as_device_slice_mut(&mut self) -> &mut DeviceSlice<T> {
+        self
+    }
+}
+
+impl<T, D: DeviceBacking<T> + ?Sized> DeviceVectorChunkImpl<T> for D {
     fn slice(&self) -> &DeviceSlice<T> {
-        self
+        self.as_device_slice()
     }
 }
-
-impl<T> DeviceVectorMutImpl<T> for DeviceVariable<T> {
+impl<T, D: DeviceBackingMut<T> + ?Sized> DeviceVectorChunkMutImpl<T> for D {
     fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
-        self
+        self.as_device_slice_mut()
     }
 }
 
-impl<T> DeviceVectorChunkImpl<T> for DeviceVariable<T> {
+impl<T, D: DeviceBacking<T> + ?Sized> DeviceMatrixImpl<T> for D {
     fn slice(&self) -> &DeviceSlice<T> {
-        self
+        self.as_device_slice()
     }
 }
-
-impl<T> DeviceVectorChunkMutImpl<T> for DeviceVariable<T> {
+impl<T, D: DeviceBackingMut<T> + ?Sized> DeviceMatrixMutImpl<T> for D {
     fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
-        self
+        self.as_device_slice_mut()
     }
 }
 
-impl<T> DeviceMatrixImpl<T> for DeviceVariable<T> {
+impl<T, D: DeviceBacking<T> + ?Sized> DeviceMatrixChunkImpl<T> for D {
     fn slice(&self) -> &DeviceSlice<T> {
-        self
+        self.as_device_slice()
     }
 }
-
-impl<T> DeviceMatrixMutImpl<T> for DeviceVariable<T> {
+impl<T, D: DeviceBackingMut<T> + ?Sized> DeviceMatrixChunkMutImpl<T> for D {
     fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceMatrixChunkImpl<T> for DeviceVariable<T> {
-    fn slice(&self) -> &DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceMatrixChunkMutImpl<T> for DeviceVariable<T> {
-    fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceVectorImpl<T> for DeviceSlice<T> {
-    fn slice(&self) -> &Self {
-        self
-    }
-}
-
-impl<T> DeviceVectorMutImpl<T> for DeviceSlice<T> {
-    fn slice_mut(&mut self) -> &mut Self {
-        self
-    }
-}
-
-impl<T> DeviceVectorChunkImpl<T> for DeviceSlice<T> {
-    fn slice(&self) -> &Self {
-        self
-    }
-}
-
-impl<T> DeviceVectorChunkMutImpl<T> for DeviceSlice<T> {
-    fn slice_mut(&mut self) -> &mut Self {
-        self
-    }
-}
-
-impl<T> DeviceMatrixImpl<T> for DeviceSlice<T> {
-    fn slice(&self) -> &Self {
-        self
-    }
-}
-
-impl<T> DeviceMatrixMutImpl<T> for DeviceSlice<T> {
-    fn slice_mut(&mut self) -> &mut Self {
-        self
-    }
-}
-
-impl<T> DeviceMatrixChunkImpl<T> for DeviceSlice<T> {
-    fn slice(&self) -> &Self {
-        self
-    }
-}
-
-impl<T> DeviceMatrixChunkMutImpl<T> for DeviceSlice<T> {
-    fn slice_mut(&mut self) -> &mut Self {
-        self
-    }
-}
-
-impl<T> DeviceVectorImpl<T> for DeviceAllocation<T> {
-    fn slice(&self) -> &DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceVectorMutImpl<T> for DeviceAllocation<T> {
-    fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceVectorChunkImpl<T> for DeviceAllocation<T> {
-    fn slice(&self) -> &DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceVectorChunkMutImpl<T> for DeviceAllocation<T> {
-    fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceMatrixImpl<T> for DeviceAllocation<T> {
-    fn slice(&self) -> &DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceMatrixMutImpl<T> for DeviceAllocation<T> {
-    fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceMatrixChunkImpl<T> for DeviceAllocation<T> {
-    fn slice(&self) -> &DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceMatrixChunkMutImpl<T> for DeviceAllocation<T> {
-    fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceVectorImpl<T> for DevicePoolAllocation<'_, T> {
-    fn slice(&self) -> &DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceVectorMutImpl<T> for DevicePoolAllocation<'_, T> {
-    fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceVectorChunkImpl<T> for DevicePoolAllocation<'_, T> {
-    fn slice(&self) -> &DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceVectorChunkMutImpl<T> for DevicePoolAllocation<'_, T> {
-    fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceMatrixImpl<T> for DevicePoolAllocation<'_, T> {
-    fn slice(&self) -> &DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceMatrixMutImpl<T> for DevicePoolAllocation<'_, T> {
-    fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceMatrixChunkImpl<T> for DevicePoolAllocation<'_, T> {
-    fn slice(&self) -> &DeviceSlice<T> {
-        self
-    }
-}
-
-impl<T> DeviceMatrixChunkMutImpl<T> for DevicePoolAllocation<'_, T> {
-    fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
-        self
+        self.as_device_slice_mut()
     }
 }
 

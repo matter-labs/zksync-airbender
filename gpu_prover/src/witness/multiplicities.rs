@@ -12,8 +12,8 @@ use crate::primitives::device_structures::{
 };
 use crate::primitives::field::BF;
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use cs::definitions::gkr::NoFieldSingleColumnLookupRelation;
-use cs::gkr_compiler::GKRCircuitArtifact;
+
+use crate::upstream::{GKRCircuitArtifact, NoFieldSingleColumnLookupRelation};
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;

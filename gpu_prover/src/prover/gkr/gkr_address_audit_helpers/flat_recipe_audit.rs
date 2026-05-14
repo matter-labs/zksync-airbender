@@ -65,10 +65,10 @@ impl FlatRecipeAudit {
 }
 
 pub(crate) fn project_layer_flat_round0_recipe_audit<E>(
-    blueprints: &[crate::prover::gkr::backward_kernels::GpuGKRMainLayerKernelBlueprint<E>],
+    blueprints: &[crate::prover::gkr::backward::kernels::GpuGKRMainLayerKernelBlueprint<E>],
 ) -> FlatRecipeAudit {
-    use crate::prover::gkr::backward_kernels::GpuGKRMainLayerConstraintMetadataSource as MS;
-    use crate::prover::gkr::backward_kernels::GpuGKRMainLayerKernelKind as K;
+    use crate::prover::gkr::backward::kernels::GpuGKRMainLayerConstraintMetadataSource as MS;
+    use crate::prover::gkr::backward::kernels::GpuGKRMainLayerKernelKind as K;
     let mut a = FlatRecipeAudit::default();
 
     // Helper: account for one cross-product expansion (qt × lt). The path
@@ -208,10 +208,10 @@ pub(crate) fn project_layer_flat_round0_recipe_audit<E>(
 /// (qt, lt) pairs and (qt, lt_const) / (qt_const, lt) / (qt_const, lt_const)
 /// fan-out are all counted as expanded recipes today.
 pub(crate) fn project_layer_flat_continuation_recipe_audit<E>(
-    blueprints: &[crate::prover::gkr::backward_kernels::GpuGKRMainLayerKernelBlueprint<E>],
+    blueprints: &[crate::prover::gkr::backward::kernels::GpuGKRMainLayerKernelBlueprint<E>],
 ) -> FlatRecipeAudit {
-    use crate::prover::gkr::backward_kernels::GpuGKRMainLayerConstraintMetadataSource as MS;
-    use crate::prover::gkr::backward_kernels::GpuGKRMainLayerKernelKind as K;
+    use crate::prover::gkr::backward::kernels::GpuGKRMainLayerConstraintMetadataSource as MS;
+    use crate::prover::gkr::backward::kernels::GpuGKRMainLayerKernelKind as K;
     let mut a = FlatRecipeAudit::default();
 
     // Bare-recipe accumulator (n recipes, 0 terms — no prefactors).
@@ -407,9 +407,9 @@ pub(crate) fn project_layer_flat_continuation_recipe_audit<E>(
 /// `n_*_consts` is the count of sentinel rows.
 /// `Immediate` metadata reports 0-len for everything (no challenge_terms).
 fn metadata_split_with_consts<E>(
-    src: &Option<crate::prover::gkr::backward_kernels::GpuGKRMainLayerConstraintMetadataSource<E>>,
+    src: &Option<crate::prover::gkr::backward::kernels::GpuGKRMainLayerConstraintMetadataSource<E>>,
 ) -> (Vec<usize>, Vec<usize>, usize, usize, usize, usize) {
-    use crate::prover::gkr::backward_kernels::GpuGKRMainLayerConstraintMetadataSource as MS;
+    use crate::prover::gkr::backward::kernels::GpuGKRMainLayerConstraintMetadataSource as MS;
     match src {
         None => (Vec::new(), Vec::new(), 0, 0, 0, 0),
         Some(MS::Immediate(meta)) => {

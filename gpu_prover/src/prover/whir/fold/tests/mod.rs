@@ -1,12 +1,9 @@
-
 use super::*;
 
 use std::alloc::Global;
 
 use era_cudart::memory::memory_copy_async;
 use fft::{bitreverse_enumeration_inplace, Twiddles};
-use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
-use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
 
 use serial_test::serial;
 
@@ -15,7 +12,8 @@ use crate::ops::ntt::MIN_LOG_N_FOR_MULTISTAGE_KERNELS;
 use crate::prover::test_utils::make_test_context;
 use crate::prover::trace::holder::TreesCacheMode;
 use crate::prover::whir::tests::e4_coeffs_to_vectorized;
-use field::PrimeField;
+
+use crate::upstream::{make_eq_poly_in_full, multivariate_coeffs_into_hypercube_evals, PrimeField};
 use worker::Worker;
 
 fn sample_ext(seed: u32) -> E4 {

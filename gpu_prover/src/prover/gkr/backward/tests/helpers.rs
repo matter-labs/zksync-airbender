@@ -3,15 +3,16 @@ use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::ProverContext;
 use crate::primitives::field::BF;
 use crate::prover::gkr::GpuSumcheckRound1ScheduledLaunchDescriptors;
-use cs::definitions::GKRAddress;
-use cs::gkr_compiler::{GKRLayerDescription, NoFieldGKRRelation, OutputType};
+
 use era_cudart::slice::CudaSlice;
-use field::{Field, FieldExtension};
-use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
-use prover::gkr::prover::GKRExternalChallenges;
+
 use std::collections::BTreeMap;
 
 use super::lookup_builders::build_materialized_vector_lookup_input_inputs_and_metadata;
+use crate::upstream::{
+    DimensionReducingInputOutput, Field, FieldExtension, GKRAddress, GKRExternalChallenges,
+    GKRLayerDescription, NoFieldGKRRelation, OutputType,
+};
 
 fn fill_round0_eq_pair_values<E: Field>(dst: &mut [E], claim_point: &[E]) {
     assert_eq!(

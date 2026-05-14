@@ -1,5 +1,4 @@
 use era_cudart::result::CudaResult;
-use field::Field;
 
 use super::{
     alloc_device_and_schedule_upload, alloc_host_and_schedule_copy,
@@ -15,6 +14,7 @@ use super::{
 };
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::ProverContext;
+use crate::upstream::Field;
 
 impl<B: 'static, E: Field + 'static> GpuSumcheckRound1PreparedStorage<B, E> {
     pub(crate) fn build_launch_descriptors(&self) -> GpuSumcheckRound1HostLaunchDescriptors<B, E> {

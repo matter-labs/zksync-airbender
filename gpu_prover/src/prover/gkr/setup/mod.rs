@@ -2,12 +2,9 @@ use std::marker::PhantomData;
 use std::ptr::null_mut;
 use std::sync::Arc;
 
-use cs::definitions::GKRAddress;
-use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::CudaSlice;
-use field::{Field, FieldExtension};
 
 use super::GpuGKRStorage;
 use crate::allocator::tracker::AllocationPlacement;
@@ -19,10 +16,12 @@ use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use crate::primitives::transfer::Transfer;
 use crate::prover::trace::holder::{TraceHolder, TreesCacheMode, TreesHolder};
-use cs::tables::TableType;
-use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
+use crate::upstream::{
+    CpuGKRSetup, Field, FieldExtension, GKRAddress, GKRCircuitArtifact, TableType,
+};
 
-pub(crate) use super::setup_kernels::*;
+pub(crate) mod kernels;
+pub(crate) use kernels::*;
 
 pub(crate) struct GpuGKRSetupTransfer<'a> {
     pub(crate) host: Arc<GpuGKRSetupHost>,
@@ -185,7 +184,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
     where
         E: Field
             + FieldExtension<BF>
-            + GpuGKRForwardSetupGenericLookupKernelSet
+            + crate::prover::gkr::GpuKernels
             + crate::ops::powers::GetPowersByRef
             + 'static,
     {
@@ -214,7 +213,7 @@ pub(crate) fn schedule_forward_setup_for_shape<E>(
 where
     E: Field
         + FieldExtension<BF>
-        + GpuGKRForwardSetupGenericLookupKernelSet
+        + crate::prover::gkr::GpuKernels
         + crate::ops::powers::GetPowersByRef
         + 'static,
 {

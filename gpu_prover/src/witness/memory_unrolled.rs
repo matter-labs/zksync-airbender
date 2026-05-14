@@ -11,9 +11,11 @@ use crate::witness::trace_unrolled::{
     UnrolledNonMemoryTraceDevice,
 };
 use crate::witness::Address;
-use cs::definitions::gkr::{GKRMachineState, GKRMemoryLayout};
-use cs::definitions::{NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE};
-use cs::gkr_compiler::GKRAuxLayoutData;
+
+use crate::upstream::{
+    GKRAuxLayoutData, GKRMachineState, GKRMemoryLayout, NUM_TIMESTAMP_COLUMNS_FOR_RAM,
+    REGISTER_SIZE,
+};
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;

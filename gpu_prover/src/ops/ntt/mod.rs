@@ -5,11 +5,33 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use fft::field_utils::domain_generator_for_size;
-use field::Field;
 
+use crate::primitives::context::DeviceProperties;
 use crate::primitives::field::BF;
 use crate::primitives::ntt_twiddles::OMEGA_LOG_ORDER;
 use crate::primitives::utils::get_grid_block_dims_for_threads_count;
+use crate::upstream::Field;
+
+/// Number of passes for the multi-stage NTT kernels at a given `log_n`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NttPassCount {
+    Two,
+    Three,
+}
+
+/// Pick 3-pass vs 2-pass based on whether a single column fits in L2.
+pub(crate) fn ntt_pass_selection(
+    log_n: usize,
+    device_properties: &DeviceProperties,
+) -> NttPassCount {
+    let l2_bytes = device_properties.l2_cache_size_bytes;
+    let column_bytes = (1usize << log_n) * size_of::<BF>();
+    if column_bytes >= l2_bytes && log_n >= 23 {
+        NttPassCount::Two
+    } else {
+        NttPassCount::Three
+    }
+}
 
 #[cfg(test)]
 mod tests;

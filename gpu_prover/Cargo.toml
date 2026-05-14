@@ -38,9 +38,7 @@ type-map = "0.5"
 default = ["security_80", "deterministic_pow"]
 bench = []
 deterministic_pow = ["prover/deterministic_pow"]
-gpu_prover_full_tests = []
 log_gpu_mem_usage = []
-log_gpu_stages_timings = []
 # Off by default; turn on to compile the unused unary ops (dbl, inv, neg, sqr
 # and their `_in_place` variants) plus their tests. Kept available for future
 # use without re-creating the scaffolding by hand.

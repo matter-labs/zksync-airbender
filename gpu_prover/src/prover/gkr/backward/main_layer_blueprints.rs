@@ -1,22 +1,5 @@
 use std::collections::BTreeMap;
 
-use cs::definitions::GKRAddress;
-use cs::gkr_compiler::{GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRRelation, OutputType};
-use field::{Field, FieldExtension};
-use prover::gkr::high_bits_offset_for_inits_and_teardowns;
-use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
-use prover::gkr::prover::GKRExternalChallenges;
-use prover::gkr::sumcheck::evaluation_kernels::{
-    BaseFieldCopyGKRRelation, BatchedGKRKernel, ExtensionCopyGKRRelation, GKRInputs,
-    LookupBaseExtMinusBaseExtGKRRelation, LookupBaseMinusMultiplicityByBaseGKRRelation,
-    LookupBasePairGKRRelation, LookupExtensionMinusMultiplicityByExtensionGKRRelation,
-    LookupExtensionPairGKRRelation, LookupPairGKRRelation,
-    LookupRationalPairWithUnbalancedBaseGKRRelation,
-    LookupRationalPairWithUnbalancedExtensionGKRRelation, MaskIntoIdentityProductGKRRelation,
-    SameSizeProductGKRRelation,
-};
-
-use super::super::backward_kernels::*;
 use super::super::GpuSumcheckRound0LaunchDescriptors;
 use super::builders::{
     build_initial_grand_product_without_caches_inputs_and_metadata,
@@ -27,6 +10,7 @@ use super::builders::{
     build_single_max_quadratic_constraint_inputs_and_metadata,
     canonical_inits_and_teardowns_top_bits,
 };
+use super::kernels::*;
 use super::lookup_builders::{
     build_lookup_from_vector_input_with_setup_inputs_and_template,
     build_lookup_pair_from_base_inputs_inputs_and_template,
@@ -36,6 +20,17 @@ use super::lookup_builders::{
     build_materialized_vector_lookup_input_inputs_and_template,
 };
 use crate::primitives::field::BF;
+use crate::upstream::{
+    high_bits_offset_for_inits_and_teardowns, BaseFieldCopyGKRRelation, BatchedGKRKernel,
+    DimensionReducingInputOutput, ExtensionCopyGKRRelation, Field, FieldExtension, GKRAddress,
+    GKRCircuitArtifact, GKRExternalChallenges, GKRInputs, GKRLayerDescription,
+    LookupBaseExtMinusBaseExtGKRRelation, LookupBaseMinusMultiplicityByBaseGKRRelation,
+    LookupBasePairGKRRelation, LookupExtensionMinusMultiplicityByExtensionGKRRelation,
+    LookupExtensionPairGKRRelation, LookupPairGKRRelation,
+    LookupRationalPairWithUnbalancedBaseGKRRelation,
+    LookupRationalPairWithUnbalancedExtensionGKRRelation, MaskIntoIdentityProductGKRRelation,
+    NoFieldGKRRelation, OutputType, SameSizeProductGKRRelation,
+};
 
 pub(super) fn build_dimension_reducing_kernel_blueprints_static<E: Field>(
     layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
@@ -786,7 +781,7 @@ pub(crate) fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtensio
 /// `compiled_circuit.layers`), not by backward-scheduler slot. Callers that
 /// build `ProofLayoutInputs.backward_layers` in scheduler order (high-to-low
 /// layer_idx after dim-reducing) index into the returned Vec accordingly.
-pub(crate) fn collect_main_layer_input_addresses_per_layer_structural<E>(
+pub(crate) fn collect_main_layer_input_addresses_per_layer<E>(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     external_challenges: &GKRExternalChallenges<BF, E>,
 ) -> Vec<Vec<GKRAddress>>
@@ -843,7 +838,7 @@ where
     per_layer
 }
 
-/// Sibling of [`collect_main_layer_input_addresses_per_layer_structural`] that
+/// Sibling of [`collect_main_layer_input_addresses_per_layer`] that
 /// collects the deduplicated `outputs_in_base ∪ outputs_in_extension` per
 /// layer. These are the addresses that each layer's kernels claim about — i.e.,
 /// the addresses looked up via `claim_layout.claim_idx` in the desc_pairs build
@@ -856,7 +851,7 @@ where
 ///
 /// Result is indexed by natural `layer_idx` (0-based position in
 /// `compiled_circuit.layers`), matching the inputs-side helper.
-pub(crate) fn collect_main_layer_kernel_output_addresses_per_layer_structural<E>(
+pub(crate) fn collect_main_layer_kernel_output_addresses_per_layer<E>(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     external_challenges: &GKRExternalChallenges<BF, E>,
 ) -> Vec<Vec<GKRAddress>>

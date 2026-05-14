@@ -1,11 +1,11 @@
-use crate::prover::gkr::backward_flat::{
+use crate::prover::gkr::backward::flat::{
     FLAT_CONT_MAX_BASE_SOURCES, FLAT_CONT_MAX_EXT_SOURCES, FLAT_CONT_MAX_SOURCES,
     FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES, FLAT_CONT_UNIFIED_MAX_TERMS, FLAT_CONT_UNIFIED_MAX_TILES,
     FLAT_ROUND0_MAX_C0_BF, FLAT_ROUND0_MAX_C0_EXT, FLAT_ROUND0_MAX_C1_BF_BF,
     FLAT_ROUND0_MAX_C1_BF_E4, FLAT_ROUND0_MAX_C1_E4_E4, FLAT_ROUND0_MAX_C1_LINEAR,
     FLAT_ROUND0_MAX_SOURCES,
 };
-use crate::prover::gkr::backward_kernels::GKR_BACKWARD_MAX_KERNELS_PER_LAYER;
+use crate::prover::gkr::backward::kernels::GKR_BACKWARD_MAX_KERNELS_PER_LAYER;
 
 use super::{KERNEL_ARG_HARD_CEILING_BYTES, KERNEL_ARG_SOFT_TARGET_BYTES};
 
@@ -26,7 +26,7 @@ pub(crate) struct PostCompactionSizes {
 // `bases:[*const u8;N] + log2_stride:[u32;N]`, where
 // `N = GKR_DIM_REDUCING_BASE_SLOTS`.
 const TABLES_BYTES: usize =
-    crate::prover::gkr::backward_kernels::GKR_DIM_REDUCING_BASE_SLOTS * (8 + 4);
+    crate::prover::gkr::backward::kernels::GKR_DIM_REDUCING_BASE_SLOTS * (8 + 4);
 const HEADER_HOT_PTRS_BYTES: usize = 8 * 8; // four hot pointers (eq, batch_challenge, fold_challenge, contributions) + slack
 const RECORD_BYTES: usize = 16; // BatchRecord { inputs: PayloadRange16, outputs: PayloadRange16 }
 
@@ -94,7 +94,7 @@ pub(crate) fn projected_post_compaction_sizes() -> PostCompactionSizes {
     let flat_round2 = flat_round1 + 4;
     let flat_continuation = align_up(
         TABLES_BYTES
-            + crate::prover::gkr::backward_kernels::GKR_DIM_REDUCING_BASE_SLOTS * 4 * 2 // prev_per_poly_offset[N], cache_per_poly_offset[N] (per-slot)
+            + crate::prover::gkr::backward::kernels::GKR_DIM_REDUCING_BASE_SLOTS * 4 * 2 // prev_per_poly_offset[N], cache_per_poly_offset[N] (per-slot)
             + 4 + FLAT_CONT_MAX_SOURCES * 4 // single source record array
             + 4 + FLAT_CONT_UNIFIED_MAX_TERMS * TERM_BYTES
             + 4 + 4

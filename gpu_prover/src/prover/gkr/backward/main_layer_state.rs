@@ -1,9 +1,7 @@
-use cs::definitions::GKRAddress;
 use era_cudart::result::CudaResult;
-use field::{Field, FieldExtension};
 
-use super::super::backward_kernels::*;
 use super::super::GpuGKRStorage;
+use super::kernels::*;
 use super::main_layer_blueprints::{
     build_main_layer_kernel_blueprints_static, resolve_main_layer_auxiliary_challenge,
     resolve_main_layer_constraint_metadata, summarize_main_layer_constraint_metadata_source,
@@ -15,6 +13,7 @@ use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::ProverContext;
 use crate::primitives::field::BF;
+use crate::upstream::{Field, FieldExtension, GKRAddress};
 
 impl<E: Field + FieldExtension<BF>> GpuGKRMainLayerBackwardState<E> {
     pub(crate) fn storage(&self) -> &GpuGKRStorage<BF, E> {
@@ -227,25 +226,18 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         // resolves each gate's source pointers against the per-(layer, class)
         // consolidated storage backings and emits packed `u16` source
         // descriptors as it walks the gates.
-        let flat_round0_template_compact: Option<
-            super::super::backward_flat_compact::FlatRound0BuildPlanCompact<E>,
-        > = {
+        let flat_round0_template_compact: Option<super::compact::FlatRound0BuildPlan<E>> = {
             let gates: Vec<_> = static_data
                 .iter()
                 .zip(kernel_plans.iter())
-                .map(
-                    |(sd, kp)| super::super::backward_flat::PreparedGateForFlatPlan {
-                        kind: sd.kind,
-                        round0: &sd.round0_descriptors,
-                        batch_challenge_power_offset: kp.batch_challenge_offset as u32,
-                        constraint_source: kp.constraint_metadata_source.as_ref(),
-                    },
-                )
+                .map(|(sd, kp)| super::flat::PreparedGateForFlatPlan {
+                    kind: sd.kind,
+                    round0: &sd.round0_descriptors,
+                    batch_challenge_power_offset: kp.batch_challenge_offset as u32,
+                    constraint_source: kp.constraint_metadata_source.as_ref(),
+                })
                 .collect();
-            Some(super::super::backward_flat::build_flat_round0_plan(
-                &gates,
-                &self.storage,
-            ))
+            Some(super::flat::build_flat_round0_plan(&gates, &self.storage))
         };
 
         // Compile one inline descriptor for the round-0 eval-recipes launch.
@@ -254,15 +246,14 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             if let Some(ref plan) = flat_round0_template_compact {
                 let total = plan.total_coefficients();
                 if total > 0 {
-                    let compiled =
-                        super::super::backward_flat::compile_recipes_for_device(&plan.recipes);
+                    let compiled = super::flat::compile_recipes_for_device(&plan.recipes);
                     let use_constant = !self.is_delegation || layer_idx != 0;
                     if use_constant {
                         assert!(
-                            total <= super::super::backward_flat::FLAT_ROUND0_CONST_MAX,
+                            total <= super::flat::FLAT_ROUND0_CONST_MAX,
                             "flat round 0: {} coefficients exceeds __constant__ limit of {}",
                             total,
-                            super::super::backward_flat::FLAT_ROUND0_CONST_MAX,
+                            super::flat::FLAT_ROUND0_CONST_MAX,
                         );
                     }
                     let coeff_buf = if use_constant {
@@ -337,42 +328,37 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         let flat_round1_unified_desc_compact = if let (Some(ref r1_desc), Some(plan)) =
             (&flat_round1_desc, flat_continuation_plan.as_ref())
         {
-            Some(
-                super::super::backward_flat_compact::build_flat_round1_unified_desc_compact::<E>(
-                    r1_desc,
-                    plan,
-                    &self.storage,
-                ),
-            )
+            Some(super::compact::build_flat_round1_unified_desc::<E>(
+                r1_desc,
+                plan,
+                &self.storage,
+            ))
         } else {
             None
         };
         let flat_round2_unified_desc_compact = if let (Some(ref r2_desc), Some(plan)) =
             (&flat_round2_desc, flat_continuation_plan.as_ref())
         {
-            Some(
-                super::super::backward_flat_compact::build_flat_round2_unified_desc_compact::<E>(
-                    r2_desc,
-                    plan,
-                    &self.storage,
-                ),
-            )
+            Some(super::compact::build_flat_round2_unified_desc::<E>(
+                r2_desc,
+                plan,
+                &self.storage,
+            ))
         } else {
             None
         };
         let flat_continuation_unified_descs_compact: Vec<(
             usize,
-            Box<super::super::backward_flat_compact::GpuFlatContinuationUnifiedDescCompact>,
+            Box<super::compact::GpuFlatContinuationUnifiedDesc>,
         )> = if let Some(ref plan) = flat_continuation_plan {
             flat_continuation_per_step_sources
                 .iter()
                 .map(|(step, sources)| {
-                    let compact =
-                        super::super::backward_flat_compact::build_flat_continuation_unified_desc_compact(
-                            sources,
-                            plan,
-                            &self.storage,
-                        );
+                    let compact = super::compact::build_flat_continuation_unified_desc(
+                        sources,
+                        plan,
+                        &self.storage,
+                    );
                     (*step, compact)
                 })
                 .collect()
@@ -381,7 +367,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         };
 
         if std::env::var("GPU_PROVER_DUMP_FLAT_PLAN").is_ok() {
-            super::super::backward_flat::dump_flat_round1_plan(
+            super::flat::dump_flat_round1_plan(
                 layer_idx,
                 flat_round1_desc.as_deref(),
                 flat_continuation_plan.as_ref(),
@@ -425,10 +411,10 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
 
     /// Build round-1 fused-source data from the continuation plan and round 1 prepared storage.
     fn build_flat_round1_desc(
-        plan: Option<&super::super::backward_flat::FlatContinuationBuildPlan<E>>,
+        plan: Option<&super::flat::FlatContinuationBuildPlan<E>>,
         kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
-    ) -> Option<Box<super::super::backward_flat::Round1FusedSources>> {
-        use super::super::backward_flat::{
+    ) -> Option<Box<super::flat::Round1FusedSources>> {
+        use super::flat::{
             GpuFlatBaseAfterOneSourceEntry, GpuFlatContinuingSourceEntry, Round1FusedSources,
             FLAT_CONT_EXT_SOURCE_BIT, FLAT_CONT_MAX_BASE_SOURCES, FLAT_CONT_MAX_EXT_SOURCES,
         };
@@ -562,10 +548,10 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
 
     /// Build round-2 fused-source data from the continuation plan and round 2 prepared storage.
     fn build_flat_round2_desc(
-        plan: Option<&super::super::backward_flat::FlatContinuationBuildPlan<E>>,
+        plan: Option<&super::flat::FlatContinuationBuildPlan<E>>,
         kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
-    ) -> Option<Box<super::super::backward_flat::Round2FusedSources>> {
-        use super::super::backward_flat::{
+    ) -> Option<Box<super::flat::Round2FusedSources>> {
+        use super::flat::{
             GpuFlatBaseAfterTwoSourceEntry, GpuFlatContinuingSourceEntry, Round2FusedSources,
             FLAT_CONT_EXT_SOURCE_BIT, FLAT_CONT_MAX_BASE_SOURCES, FLAT_CONT_MAX_EXT_SOURCES,
         };
@@ -701,19 +687,16 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         _layer_idx: usize,
         _context: &ProverContext,
     ) -> CudaResult<(
-        Option<super::super::backward_flat::FlatContinuationBuildPlan<E>>,
+        Option<super::flat::FlatContinuationBuildPlan<E>>,
         Vec<(
             usize,
-            Box<
-                [super::super::backward_flat::GpuFlatContinuingSourceEntry;
-                    super::super::backward_flat::FLAT_CONT_MAX_SOURCES],
-            >,
+            Box<[super::flat::GpuFlatContinuingSourceEntry; super::flat::FLAT_CONT_MAX_SOURCES]>,
         )>,
         Option<Box<crate::prover::gkr::eval_recipes::GpuFlatRecipeEvalDesc>>,
         usize,
         Callbacks<'static>,
     )> {
-        use super::super::backward_flat::{
+        use super::flat::{
             build_flat_continuation_plan, compile_recipes_for_device, GpuFlatContinuingSourceEntry,
             PreparedGateForFlatContinuationPlan, FLAT_CONT_CONST_MAX, FLAT_CONT_MAX_SOURCES,
         };

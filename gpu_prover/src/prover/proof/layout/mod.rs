@@ -13,6 +13,13 @@
 //! `Range::start` as a typed `*mut T` is always well-aligned. The cost is a
 //! handful of padding bytes per field; the benefit is that the layout math is
 //! trivially correct and reviewable in one place.
+//!
+//! ## Host alignment invariant
+//!
+//! The host-side proof slab is allocated from the stream-ordered host pool,
+//! whose block size is configured by `ProverContextConfig::host_allocator_block_log_size`.
+//! `ProverContext::new` asserts `host_allocator_block_log_size >= 4` (16-byte
+//! blocks) so block addresses meet the `FIELD_ALIGN` requirement above.
 
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
@@ -21,17 +28,14 @@ use std::ops::Range;
 
 use std::collections::BTreeSet;
 
-use cs::definitions::GKRAddress;
-use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
-use prover::gkr::prover::{SumcheckIntermediateProofValues, WhirSchedule};
-use prover::gkr::whir::{
-    ExtensionFieldQuery, WhirBaseLayerCommitmentAndQueries, WhirCommitment,
-    WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof,
-};
-use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
-
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::stage1::GpuGKRTraceGeometry;
+use crate::upstream::{
+    DefaultTreeConstructor, ExtensionFieldQuery, GKRAddress, GKRCircuitArtifact,
+    MerkleTreeCapVarLength, OutputType, SumcheckIntermediateProofValues,
+    WhirBaseLayerCommitmentAndQueries, WhirCommitment, WhirIntermediateCommitmentAndQueries,
+    WhirPolyCommitProof, WhirSchedule,
+};
 
 /// Slab field-start alignment, in bytes. See module-level doc.
 pub(crate) const FIELD_ALIGN: usize = 16;
@@ -227,10 +231,10 @@ pub(crate) struct ProofLayout {
 pub(crate) use tests::placeholder_inputs_for_prove;
 
 mod build_inputs;
-pub(crate) use build_inputs::build_proof_layout_inputs_structural;
+pub(crate) use build_inputs::build_proof_layout_inputs;
 
 /// Trace-holder geometry subset needed to size WHIR base-layer fields in the
-/// slab. See [`build_proof_layout_inputs_structural`].
+/// slab. See [`build_proof_layout_inputs`].
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ProofLayoutBaseLayerGeometry {
     pub(crate) columns_count: usize,
@@ -266,10 +270,10 @@ impl ProofLayoutBaseLayerGeometry {
 ///   `initial_trace_size_log_2` for every main layer. `final_step_eval_degree`
 ///   is 4 for dim-reducing (see backward.rs:5188) and 2 for main
 ///   (backward.rs:6646). Dim-reducing `final_step_eval_addresses` come from
-///   [`crate::prover::gkr::backward::derive_dimension_reducing_inputs_structural`]
+///   [`crate::prover::gkr::backward::derive_dimension_reducing_inputs`]
 ///   (address-assignment rules match `schedule_dimension_reduction_forward`).
 ///   Main-layer `final_step_eval_addresses` come from
-///   [`crate::prover::gkr::backward::collect_main_layer_input_addresses_per_layer_structural`]
+///   [`crate::prover::gkr::backward::collect_main_layer_input_addresses_per_layer`]
 ///   (storage-aware kernel-kind branch is invariant in the collected address set
 ///   — see that function's doc).
 ///

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "common.cuh"
 #include "flat_backward.cuh" // flat_c0_ref, flat_c1_pair, coeff_loader_ptr
 
 EXTERN __device__ __constant__ e4 ab_gkr_round2_challenges[3];

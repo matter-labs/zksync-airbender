@@ -1,6 +1,6 @@
-use cs::definitions::GKRAddress;
-use cs::gkr_compiler::{GKRCircuitArtifact, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation};
-use field::PrimeField;
+use crate::upstream::{
+    GKRAddress, GKRCircuitArtifact, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation, PrimeField,
+};
 use std::collections::BTreeMap;
 
 pub(crate) fn normalize_compiled_circuit_for_gpu<F: PrimeField>(

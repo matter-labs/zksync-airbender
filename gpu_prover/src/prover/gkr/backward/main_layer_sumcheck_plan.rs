@@ -1,15 +1,12 @@
 use std::collections::BTreeMap;
 use std::ptr::{null, null_mut};
 
-use cs::definitions::GKRAddress;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
-use field::{Field, FieldExtension};
-use prover::transcript::Seed;
 
-use super::super::backward_kernels::*;
 use super::super::GpuGKRStorage;
+use super::kernels::*;
 use super::main_layer_extras::{schedule_main_layer_extras_eval, MainLayerExtrasKeepalive};
 use super::packed_main_layer_batch_challenge_len;
 use crate::allocator::tracker::AllocationPlacement;
@@ -22,19 +19,11 @@ use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::proof::layout::ProofLayout;
+use crate::upstream::{Field, FieldExtension, GKRAddress, Seed};
 
 impl<E: 'static> GpuGKRMainLayerSumcheckLayerPlan<E>
 where
-    E: Field
-        + FieldExtension<BF>
-        + Reduce
-        + GpuDimensionReducingKernelSet
-        + GpuBackwardSumcheckRoundUpdateKernel
-        + super::super::backward_flat_compact::GpuFlatRound0CompactKernelSet
-        + super::super::backward_flat_compact::GpuFlatRound0ConstantCompactKernelSet
-        + super::super::backward_flat_compact::GpuFlatRound1UnifiedCompactKernelSet
-        + super::super::backward_flat_compact::GpuFlatRound2UnifiedCompactKernelSet
-        + super::super::backward_flat_compact::GpuFlatRound3UnifiedCompactKernelSet,
+    E: Field + FieldExtension<BF> + Reduce + crate::prover::gkr::GpuKernels,
     Mul: BinaryOp<E, E, E>,
     [(); E::DEGREE]: Sized,
 {
@@ -117,7 +106,7 @@ where
             .as_ref()
             .expect("compact flat round 0 plan must be built");
         if self.flat_use_constant {
-            super::super::backward_flat_compact::launch_main_round0_flat_constant_compact(
+            super::compact::launch_main_round0_constant(
                 &plan_compact.static_desc,
                 self.round_scratch.eq_values.as_ptr(),
                 self.round_scratch.accumulator.as_mut_ptr(),
@@ -125,7 +114,7 @@ where
                 context,
             )
         } else {
-            super::super::backward_flat_compact::launch_main_round0_flat_compact(
+            super::compact::launch_main_round0(
                 &plan_compact.static_desc,
                 self.flat_coeff_device_buf.as_ref().unwrap().as_ptr(),
                 self.round_scratch.eq_values.as_ptr(),
@@ -153,7 +142,7 @@ where
             .flat_round1_unified_desc_compact
             .as_ref()
             .expect("flat round 1 compact desc must be built");
-        super::super::backward_flat_compact::launch_main_round1_flat_constant_compact_unified_compact(
+        super::compact::launch_main_round1_unified(
             compact_desc,
             null(),
             sizes.fold_stride,
@@ -182,9 +171,9 @@ where
             .flat_round2_unified_desc_compact
             .as_ref()
             .expect("flat round 2 compact desc must be built");
-        super::super::backward_flat_compact::launch_main_round2_flat_constant_compact_unified_compact(
+        super::compact::launch_main_round2_unified(
             compact_desc,
-            super::super::backward_flat_compact::get_main_layer_claim_point_device_ptr() as *const E,
+            super::compact::get_main_layer_claim_point_device_ptr() as *const E,
             sizes.fold_stride,
             sizes.next_layer_size,
             self.round_scratch.eq_values.as_ptr(),
@@ -218,7 +207,7 @@ where
             .unwrap_or_else(|| {
                 panic!("flat continuation compact desc must be built for step {step}")
             });
-        super::super::backward_flat_compact::launch_main_round3_flat_constant_unified_compact(
+        super::compact::launch_main_round3_unified(
             compact_desc,
             null(),
             sizes.fold_stride,
@@ -307,7 +296,7 @@ where
 
         // Determine output pointer for eval_recipes.
         let coeff_out_ptr: *mut E4 = if self.flat_use_constant {
-            super::super::backward_flat::get_constant_coefficients_device_ptr()
+            super::flat::get_constant_coefficients_device_ptr()
         } else {
             self.flat_coeff_device_buf
                 .as_mut()
@@ -348,9 +337,9 @@ where
         };
 
         let coeff_out_ptr: *mut E4 =
-            super::super::backward_flat::get_constant_continuation_coefficients_device_ptr();
+            super::flat::get_constant_continuation_coefficients_device_ptr();
 
-        super::super::backward_flat::eval_continuation_recipes_e4(
+        super::flat::eval_continuation_recipes_e4(
             batch_base_ptr,
             lookup_mul_ptr,
             lookup_add_ptr,
@@ -582,20 +571,17 @@ where
         // No packing buffer or per-round D2D needed.
         let next_claim_point_and_batching_len = self.folding_steps + 1;
         assert!(
-            next_claim_point_and_batching_len
-                <= super::super::backward_flat_compact::MAX_MAIN_LAYER_CLAIM_POINT_LEN,
+            next_claim_point_and_batching_len <= super::compact::MAX_MAIN_LAYER_CLAIM_POINT_LEN,
             "main-layer claim point length {} exceeds __constant__ symbol capacity {}",
             next_claim_point_and_batching_len,
-            super::super::backward_flat_compact::MAX_MAIN_LAYER_CLAIM_POINT_LEN
+            super::compact::MAX_MAIN_LAYER_CLAIM_POINT_LEN
         );
         let mut device_claim_point_out = unsafe {
             DeviceClaimPointAndBatching::from_raw_symbol_parts(
-                super::super::backward_flat_compact::get_main_layer_claim_point_device_ptr()
-                    as *mut E,
+                super::compact::get_main_layer_claim_point_device_ptr() as *mut E,
                 next_claim_point_and_batching_len,
             )
         };
-        let mut reduction_states = Vec::with_capacity(last_step);
 
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
@@ -639,11 +625,6 @@ where
                 challenge_slot,
                 stream,
             )?;
-
-            reduction_states.push(ScheduledDimensionReducingReductionState {
-                callbacks: Callbacks::new(),
-                _phantom: std::marker::PhantomData,
-            });
         }
         self.launch_round3_kernels_from_symbol(last_step, 1, true, context)?;
 
@@ -665,7 +646,7 @@ where
         // B2: per-address gather writes straight into the slab's
         // `final_step_evaluations` range. Flat layout (2 E per address, in
         // BTreeMap key order from `final_evaluation_sources_for_last_step`)
-        // matches what `build_proof_layout_inputs_structural` stored in
+        // matches what `build_proof_layout_inputs` stored in
         // `ProofLayout.backward[slot].final_step_eval_addresses`.
         let mut fallback_d_layer_transcript_inputs: Option<DeviceAllocation<E>> = None;
         let transcript_inputs_buffer_ptr: *mut E = if let Some(slab) = proof_slab {
@@ -842,74 +823,67 @@ where
         let callback_addresses = next_claim_layout.addresses.clone();
         let mut final_readback_callbacks = Callbacks::new();
         if mirror_layer_to_host {
-            // Fork exec -> d2h: every D2H source below has been written on exec by this point
-            // (d_layer_challenges via `transcript_squeeze_e4`, device_new_claims via
-            // `backward_new_claims_linear`, device_seed/device_folding_challenges from earlier
-            // work in this layer; coeffs and packed last-evals are now slab-direct via B1/B2
-            // and not D2H'd here). A single fork event covers all of them; the matching join
-            // is recorded after the last D2H below.
-            let layer_src_ready = era_cudart::event::CudaEvent::create_with_flags(
-                era_cudart::event::CudaEventCreateFlags::DISABLE_TIMING,
-            )?;
-            layer_src_ready.record(stream)?;
-            let d2h_stream = context.get_d2h_stream();
-            d2h_stream.wait_event(
-                &layer_src_ready,
-                era_cudart::stream::CudaStreamWaitEventFlags::DEFAULT,
-            )?;
-
+            // Fork exec -> d2h then join. Every D2H source below has been written on exec by
+            // this point (d_layer_challenges via `transcript_squeeze_e4`, device_new_claims
+            // via `backward_new_claims_linear`, device_seed/device_folding_challenges from
+            // earlier work in this layer; coeffs and packed last-evals are now slab-direct
+            // via B1/B2 and not D2H'd here). The join lets exec wait for the per-layer D2Hs
+            // before scheduling the final-readback callback and dropping the source
+            // allocations at end of this function.
             let mut layer_challenges_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(2) };
             let layer_challenges_accessor = layer_challenges_host.get_accessor();
-            // SAFETY: `[last_step..last_step + 2]` were just written by the
-            // transcript squeeze on `stream`; d2h_stream waits on
-            // `layer_src_ready` before this read.
-            let layer_challenges_src = unsafe {
-                DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr().add(last_step), 2)
-            };
-            memory_copy_async(&mut layer_challenges_host, layer_challenges_src, d2h_stream)?;
-
-            // Single D2H of device-computed new_claims, including any
-            // orphan extras the on-device extras kernel appended at
-            // `[num_addresses..num_addresses + orphan_count]`.
             let mut new_claims_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(total_new_claims_len.max(1)) };
             let new_claims_accessor = new_claims_host.get_accessor();
-            if total_new_claims_len > 0 {
-                memory_copy_async(
-                    &mut new_claims_host,
-                    &device_new_claims[..total_new_claims_len],
-                    d2h_stream,
-                )?;
-            }
-
-            // D2H the on-device per-layer state that the final readback needs to
-            // advance the workflow (seed + folding challenges for WHIR host setup;
-            // coeffs and packed last-evaluations stay on device and flow through
-            // the proof slab via B1/B2). All copies continue on `d2h_stream`
-            // within the same fork/join window as the D2Hs above.
             let mut final_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
             let final_seed_accessor = final_seed_host.get_accessor();
-            memory_copy_async(&mut final_seed_host, &device_seed, d2h_stream)?;
             let mut final_folding_challenges_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(last_step) };
             let final_folding_challenges_accessor = final_folding_challenges_host.get_accessor();
-            // SAFETY: `[0..last_step]` were written in-place by the per-round
-            // update kernels.
-            let folding_src =
-                unsafe { DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr(), last_step) };
-            memory_copy_async(&mut final_folding_challenges_host, folding_src, d2h_stream)?;
+            crate::primitives::transfer::fork_join_exec_to_d2h(
+                stream,
+                context.get_d2h_stream(),
+                |d2h_stream| {
+                    // SAFETY: `[last_step..last_step + 2]` were just written by the
+                    // transcript squeeze on `stream`; d2h_stream waits on the fork event
+                    // before this read.
+                    let layer_challenges_src = unsafe {
+                        DeviceSlice::from_raw_parts(
+                            device_claim_point_out.as_ptr().add(last_step),
+                            2,
+                        )
+                    };
+                    memory_copy_async(
+                        &mut layer_challenges_host,
+                        layer_challenges_src,
+                        d2h_stream,
+                    )?;
 
-            // Join d2h -> exec: the per-layer D2Hs above are fully scheduled. Exec waits on this
-            // event before the final readback callback (which reads the host slabs) is scheduled,
-            // and before any downstream drop of the source allocations at the end of this function.
-            let layer_d2h_done = era_cudart::event::CudaEvent::create_with_flags(
-                era_cudart::event::CudaEventCreateFlags::DISABLE_TIMING,
-            )?;
-            layer_d2h_done.record(d2h_stream)?;
-            stream.wait_event(
-                &layer_d2h_done,
-                era_cudart::stream::CudaStreamWaitEventFlags::DEFAULT,
+                    // Single D2H of device-computed new_claims, including any orphan
+                    // extras the on-device extras kernel appended at
+                    // `[num_addresses..num_addresses + orphan_count]`.
+                    if total_new_claims_len > 0 {
+                        memory_copy_async(
+                            &mut new_claims_host,
+                            &device_new_claims[..total_new_claims_len],
+                            d2h_stream,
+                        )?;
+                    }
+
+                    // D2H the on-device per-layer state that the final readback needs to
+                    // advance the workflow (seed + folding challenges for WHIR host
+                    // setup; coeffs and packed last-evaluations stay on device and flow
+                    // through the proof slab via B1/B2).
+                    memory_copy_async(&mut final_seed_host, &device_seed, d2h_stream)?;
+                    // SAFETY: `[0..last_step]` were written in-place by the per-round
+                    // update kernels.
+                    let folding_src = unsafe {
+                        DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr(), last_step)
+                    };
+                    memory_copy_async(&mut final_folding_challenges_host, folding_src, d2h_stream)?;
+                    Ok(())
+                },
             )?;
 
             let shared_state_for_callback = shared_state_handle;
@@ -984,11 +958,7 @@ where
             start_callbacks: Callbacks::new(),
             batch_challenge_storage,
             batch_challenge_buffer,
-            reduction_states,
-            final_readback: ScheduledDimensionReducingFinalReadback {
-                callbacks: final_readback_callbacks,
-                _phantom: std::marker::PhantomData,
-            },
+            final_readback: final_readback_callbacks,
             flat_coeff_callbacks,
             recipe_upload_callbacks: std::mem::replace(
                 &mut self.recipe_upload_callbacks,

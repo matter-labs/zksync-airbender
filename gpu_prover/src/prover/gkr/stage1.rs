@@ -31,7 +31,8 @@ use crate::witness::witness_delegation::generate_witness_values_delegation;
 use crate::witness::witness_unrolled::{
     generate_witness_values_unrolled_memory, generate_witness_values_unrolled_non_memory,
 };
-use cs::gkr_compiler::GKRCircuitArtifact;
+
+use crate::upstream::GKRCircuitArtifact;
 #[cfg(test)]
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -116,9 +117,10 @@ impl GpuGKRLookupMappings {
     }
 }
 
-pub(crate) struct GpuGKRStage1Keepalive {
-    _tracing_ranges: Vec<Range>,
-}
+/// Stage-1 keepalive: only the tracing-range NVTX scopes need to outlive the
+/// stream-scheduled work. The trace holders themselves are dropped (stream-
+/// ordered) inside `into_keepalive`.
+pub(crate) type GpuGKRStage1Keepalive = Vec<Range>;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct GpuGKRTraceGeometry {
@@ -141,9 +143,7 @@ impl GpuGKRStage1Output {
         let Self { tracing_ranges, .. } = self;
         // memory_trace_holder, witness_trace_holder, lookup_mappings drop here —
         // all exec-stream ops that used them have already been scheduled.
-        GpuGKRStage1Keepalive {
-            _tracing_ranges: tracing_ranges,
-        }
+        tracing_ranges
     }
 
     fn allocate_trace_holder(

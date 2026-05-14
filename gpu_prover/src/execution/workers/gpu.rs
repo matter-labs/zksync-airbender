@@ -18,9 +18,8 @@ use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
 use log::{debug, error, info, trace};
-use prover::definitions::SecurityLevel;
-use prover::gkr::prover::GKRExternalChallenges;
-use prover::merkle_trees::MerkleTreeCapVarLength;
+
+use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel};
 use std::ffi::CStr;
 use std::mem;
 use std::process::exit;
