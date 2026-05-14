@@ -193,7 +193,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     let memory_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type));
     let prover_config = memory_circuit_type.prover_config(SecurityLevel::Sec80);
     let whir_schedule = prover_config.whir_schedule.clone();
-    let setup = GKRSetup::construct(
+    let setup = CpuGKRSetup::construct(
         &table_driver,
         &decoder_table_data,
         trace_len,

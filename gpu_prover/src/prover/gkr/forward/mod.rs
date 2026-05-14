@@ -3,34 +3,9 @@ use std::ops::DerefMut;
 use std::ptr::null;
 use std::sync::Arc;
 
-#[cfg(test)]
-use cs::definitions::{gkr::RamWordRepresentation, VirtualSetupPoly};
-use cs::definitions::{
-    gkr::{AddressSpaceType, DECODER_LOOKUP_FORMAL_SET_INDEX},
-    GKRAddress, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
-    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
-    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
-    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
-    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
-};
-#[cfg(test)]
-use cs::gkr_compiler::{
-    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
-    NoFieldSpecialMemoryContributionRelation,
-};
-use cs::gkr_compiler::{
-    GKRCircuitArtifact, GKRLayerDescription, InitsOrTeardownsTimestampAndValue,
-    NoFieldGKRCacheRelation, NoFieldGKRRelation, OutputType,
-};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
-use field::{Field, FieldExtension, PrimeField};
-#[cfg(test)]
-use prover::gkr::high_bits_offset_for_inits_and_teardowns;
-use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
-use prover::gkr::prover::GKRExternalChallenges;
 
 use super::backward::GpuGKRDimensionReducingBackwardState;
 use super::gkr_address_audit::AddressClass;
@@ -218,7 +193,8 @@ impl<B, E> GpuGKRForwardOutput<B, E> {
     }
 }
 
-pub(super) use super::forward_kernels::*;
+pub(crate) mod kernels;
+pub(super) use kernels::*;
 
 mod cache_relation;
 mod dimension_reducing;
@@ -227,6 +203,20 @@ mod materialize_helpers;
 
 use cache_relation::{lower_cache_relation, LoweredCacheRelationOutput};
 
+use crate::upstream::{
+    high_bits_offset_for_inits_and_teardowns, AddressSpaceType, CompiledAddressSpaceRelationStrict,
+    CompiledAddressStrict, CompiledMemoryTimestamp, DimensionReducingInputOutput, Field,
+    FieldExtension, GKRAddress, GKRCircuitArtifact, GKRExternalChallenges, GKRLayerDescription,
+    InitsOrTeardownsTimestampAndValue, NoFieldGKRCacheRelation, NoFieldGKRRelation,
+    NoFieldSpecialMemoryContributionRelation, OutputType, PrimeField, RamWordRepresentation,
+    VirtualSetupPoly, DECODER_LOOKUP_FORMAL_SET_INDEX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+};
 use dimension_reducing::schedule_dimension_reduction_forward;
 use materialize_helpers::{
     materialize_inits_and_teardowns_initial_pair_into, scale_and_add_base_column_in_place,
@@ -249,15 +239,7 @@ pub(crate) fn schedule_forward_pass<E>(
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardOutput<BF, E>>
 where
-    E: FieldExtension<BF>
-        + Field
-        + SetByRef
-        + SetByVal
-        + GpuGKRForwardCacheKernelSet
-        + GpuGKRVirtualBaseAccumKernelSet
-        + GpuGKRDimensionReducingForwardTowerKernelSet
-        + super::forward_kernels::GpuGKRFlatForwardKernelSet,
-    E: super::forward_kernels::GpuGKRLookupGammaConstsPreludeKernelSet,
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal + crate::prover::gkr::GpuKernels,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
@@ -410,13 +392,7 @@ fn schedule_layer<E>(
     context: &ProverContext,
 ) -> CudaResult<()>
 where
-    E: FieldExtension<BF>
-        + Field
-        + SetByRef
-        + SetByVal
-        + GpuGKRForwardCacheKernelSet
-        + GpuGKRVirtualBaseAccumKernelSet
-        + super::forward_kernels::GpuGKRFlatForwardKernelSet,
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal + crate::prover::gkr::GpuKernels,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
@@ -496,8 +472,8 @@ where
         context,
     )?;
     for desc in plan.descs.iter() {
-        if super::forward_kernels::flat_desc_has_work(desc) {
-            super::forward_kernels::launch_flat_forward_layer(desc, trace_len, context)?;
+        if kernels::flat_desc_has_work(desc) {
+            kernels::launch_flat_forward_layer(desc, trace_len, context)?;
         }
     }
     commit_flat_forward_plan(expected_output_layer, storage, plan);
@@ -539,7 +515,7 @@ fn schedule_materialized_vector_lookup_inputs<E>(
     context: &ProverContext,
 ) -> CudaResult<()>
 where
-    E: FieldExtension<BF> + Field + SetByRef + SetByVal + GpuGKRForwardCacheKernelSet,
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal + crate::prover::gkr::GpuKernels,
 {
     let generic_lookup = if forward_setup.generic_lookup_len() > 0 {
         forward_setup.generic_lookup().as_ptr()
@@ -813,7 +789,7 @@ fn schedule_cache_relations<E>(
     context: &ProverContext,
 ) -> CudaResult<()>
 where
-    E: FieldExtension<BF> + Field + SetByRef + SetByVal + GpuGKRForwardCacheKernelSet,
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal + crate::prover::gkr::GpuKernels,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,

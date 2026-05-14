@@ -1,5 +1,5 @@
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
-use field::Field;
+
 use itertools::Itertools;
 use rand::Rng;
 
@@ -8,6 +8,7 @@ use crate::ops::simple::set_to_zero;
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 
 use super::{gather_rows, leaf_source_row, random_digest, verify_leaves, verify_nodes};
+use crate::upstream::Field;
 
 #[test]
 fn leaves() {

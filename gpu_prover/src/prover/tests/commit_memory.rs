@@ -525,7 +525,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     eprintln!("Memory commitment tree caps match!");
 }
 
-fn assert_delegation_commit_memory_matches_cpu_inner<W, O, F>(
+fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
     label: &str,
     circuit_type: DelegationCircuitType,
     compiled_circuit: GKRCircuitArtifact<BF>,
@@ -653,7 +653,7 @@ fn assert_bigint_delegation_commit_memory_matches_cpu(
         cycle_data: &buffer,
         marker: core::marker::PhantomData,
     };
-    assert_delegation_commit_memory_matches_cpu_inner(
+    assert_delegation_commit_memory_matches_cpu(
         "bigint_with_control",
         DelegationCircuitType::BigIntWithControl,
         compiled_circuit,
@@ -713,7 +713,7 @@ fn assert_blake2_delegation_commit_memory_matches_cpu(
         cycle_data: &buffer,
         marker: core::marker::PhantomData,
     };
-    assert_delegation_commit_memory_matches_cpu_inner(
+    assert_delegation_commit_memory_matches_cpu(
         "blake2_with_compression",
         DelegationCircuitType::Blake2WithCompression,
         compiled_circuit,
@@ -775,7 +775,7 @@ fn assert_keccak_delegation_commit_memory_matches_cpu(compiled_circuit: GKRCircu
         cycle_data: &buffer,
         marker: core::marker::PhantomData,
     };
-    assert_delegation_commit_memory_matches_cpu_inner(
+    assert_delegation_commit_memory_matches_cpu(
         "keccak_special5",
         DelegationCircuitType::KeccakSpecial5,
         compiled_circuit,

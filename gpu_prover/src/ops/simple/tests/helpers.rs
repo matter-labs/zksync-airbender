@@ -5,7 +5,8 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use field::Field;
+
+use crate::upstream::Field;
 use itertools::Itertools;
 
 #[cfg(feature = "scaffolding_ops")]

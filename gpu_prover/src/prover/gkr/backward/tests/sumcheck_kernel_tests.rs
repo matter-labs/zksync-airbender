@@ -12,7 +12,8 @@ use crate::prover::gkr::{
 use crate::prover::test_utils::make_test_context;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::{CudaSlice, CudaSliceMut};
-use field::Field;
+
+use crate::upstream::Field;
 use serial_test::serial;
 
 use super::{

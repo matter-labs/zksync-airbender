@@ -2,10 +2,7 @@ use std::alloc::Global;
 
 use era_cudart::memory::memory_copy_async;
 use fft::field_utils::{distribute_powers_serial, domain_generator_for_size};
-use field::{Field, PrimeField};
-use prover::gkr::whir::hypercube_to_monomial::{
-    multivariate_coeffs_into_hypercube_evals, multivariate_hypercube_evals_into_coeffs,
-};
+
 use serial_test::serial;
 use worker::Worker;
 
@@ -579,5 +576,9 @@ fn test_monomials_to_evals_2_pass_transposed_monomials_in_place() {
 }
 
 mod helpers;
+use crate::upstream::{
+    multivariate_coeffs_into_hypercube_evals, multivariate_hypercube_evals_into_coeffs, Field,
+    PrimeField,
+};
 #[allow(unused_imports)]
 use helpers::*;

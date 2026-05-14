@@ -7,8 +7,7 @@ use fft::utils::bitreverse_enumeration_inplace;
 use fft::{
     ifft_natural_to_natural, precompute_twiddles_for_fft, serial_ct_ntt_bitreversed_to_natural,
 };
-use field::Field;
-use prover::gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs;
+
 use rand::Rng;
 use std::alloc::Global;
 use std::ops::Range;
@@ -23,6 +22,7 @@ use super::{InOrOutOfPlace, TEST_COSET_INDEX, TEST_LOG_LDE_FACTOR};
 use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
 use crate::primitives::field::BF;
 use crate::primitives::ntt_twiddles::DeviceContext;
+use crate::upstream::{multivariate_hypercube_evals_into_coeffs, Field};
 
 pub(super) fn transpose_monomials(vals: &mut [BF]) {
     for chunk in vals.chunks_mut(1024) {

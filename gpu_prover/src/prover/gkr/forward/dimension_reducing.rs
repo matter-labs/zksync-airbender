@@ -41,7 +41,7 @@ pub(super) fn schedule_dimension_reduction_forward<E>(
 )>
 where
     E: FieldExtension<BF> + Field + SetByRef + SetByVal,
-    E: GpuGKRDimensionReducingForwardTowerKernelSet,
+    E: crate::prover::gkr::GpuKernels,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
@@ -192,7 +192,7 @@ fn dispatch_tower_slot_launch<E>(
     stream: &era_cudart::stream::CudaStream,
 ) -> CudaResult<()>
 where
-    E: GpuGKRDimensionReducingForwardTowerKernelSet,
+    E: crate::prover::gkr::GpuKernels,
 {
     match slot_input {
         LoweredSlotInitialInput::PairwiseProduct { input } => {

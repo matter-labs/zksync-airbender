@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common.cuh"
+#include "lookup_helpers.cuh"
 
 EXTERN __device__ __constant__ e4 ab_gkr_lookup_gamma_consts[3];
 
