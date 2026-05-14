@@ -956,7 +956,4 @@ impl<B, E> GpuGKRStorage<B, E> {
 mod storage_views;
 
 #[cfg(test)]
-mod round_prepared_test_impls;
-
-#[cfg(test)]
 pub(crate) mod tests;
