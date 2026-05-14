@@ -326,7 +326,9 @@ pub(crate) fn launch_virtual_base_accum<E: crate::prover::gkr::GpuKernels>(
     GpuGKRVirtualBaseAccumFunction(E::VIRTUAL_BASE_ACCUM).launch(&config, &args)
 }
 
-pub(crate) fn launch_dimension_reducing_forward_tower_pairwise<E: crate::prover::gkr::GpuKernels>(
+pub(crate) fn launch_dimension_reducing_forward_tower_pairwise<
+    E: crate::prover::gkr::GpuKernels,
+>(
     batch: &GpuGKRDimensionReducingForwardTowerPairwiseBatch<E>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -379,5 +381,5 @@ pub(crate) fn gkr_forward_launch_config(
 
 mod flat;
 
-pub(in crate::prover::gkr) use flat::*;
 pub(crate) use flat::GpuFlatForwardStaticDesc;
+pub(in crate::prover::gkr) use flat::*;

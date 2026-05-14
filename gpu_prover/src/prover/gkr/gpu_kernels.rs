@@ -12,14 +12,12 @@ use era_cudart::stream::CudaStream;
 use crate::primitives::context::ProverContext;
 use crate::primitives::field::E4;
 use crate::prover::gkr::backward::compact::{
-    ab_gkr_main_round0_flat_compact_e4_kernel,
-    ab_gkr_main_round0_flat_constant_compact_e4_kernel,
+    ab_gkr_main_round0_flat_compact_e4_kernel, ab_gkr_main_round0_flat_constant_compact_e4_kernel,
     ab_gkr_main_round1_flat_constant_compact_unified_compact_e4_kernel,
     ab_gkr_main_round2_flat_constant_compact_unified_compact_e4_kernel,
     ab_gkr_main_round3_flat_constant_explicit_unified_compact_e4_kernel,
-    ab_gkr_main_round3_flat_constant_unified_compact_e4_kernel,
-    ab_gkr_round2_challenges_prelude, GpuGKRMainRound0FlatCompactSignature,
-    GpuGKRMainRound0FlatConstantCompactSignature,
+    ab_gkr_main_round3_flat_constant_unified_compact_e4_kernel, ab_gkr_round2_challenges_prelude,
+    GpuGKRMainRound0FlatCompactSignature, GpuGKRMainRound0FlatConstantCompactSignature,
     GpuGKRMainRound1FlatConstantCompactUnifiedCompactSignature,
     GpuGKRMainRound2FlatConstantCompactUnifiedCompactSignature,
     GpuGKRMainRound3FlatConstantUnifiedCompactSignature, GpuGKRRound2ChallengesPreludeSignature,
@@ -30,8 +28,7 @@ use crate::prover::gkr::backward::kernels::{
     ab_gkr_dim_reducing_build_eq_values_from_group_tables_e4_kernel,
     ab_gkr_dim_reducing_continuation_batched_compact_e4_kernel,
     ab_gkr_dim_reducing_fold_eq_values_e4_kernel,
-    ab_gkr_dim_reducing_lookup_continuation_e4_kernel,
-    ab_gkr_dim_reducing_lookup_round0_e4_kernel,
+    ab_gkr_dim_reducing_lookup_continuation_e4_kernel, ab_gkr_dim_reducing_lookup_round0_e4_kernel,
     ab_gkr_dim_reducing_pairwise_continuation_e4_kernel,
     ab_gkr_dim_reducing_pairwise_round0_e4_kernel,
     ab_gkr_dim_reducing_round0_batched_compact_e4_kernel,
@@ -43,10 +40,8 @@ use crate::prover::gkr::backward::kernels::{
     GpuDimensionReducingBuildEqValuesFromGroupTablesSignature,
     GpuDimensionReducingContinuationBatchedCompactSignature,
     GpuDimensionReducingFoldEqValuesSignature, GpuDimensionReducingLookupContinuationSignature,
-    GpuDimensionReducingLookupRound0Signature,
-    GpuDimensionReducingPairwiseContinuationSignature,
-    GpuDimensionReducingPairwiseRound0Signature,
-    GpuDimensionReducingRound0BatchedCompactSignature,
+    GpuDimensionReducingLookupRound0Signature, GpuDimensionReducingPairwiseContinuationSignature,
+    GpuDimensionReducingPairwiseRound0Signature, GpuDimensionReducingRound0BatchedCompactSignature,
     GpuDimensionReducingRound1BatchedCompactSignature,
     GpuDimensionReducingTraceHolderBlockPartialsSignature,
 };
@@ -99,8 +94,9 @@ pub(crate) trait GpuKernels: Copy + Sized {
     const TRACE_HOLDER_BLOCK_PARTIALS: GpuDimensionReducingTraceHolderBlockPartialsSignature<Self>;
     const ROUND0_BATCHED_COMPACT: GpuDimensionReducingRound0BatchedCompactSignature<Self>;
     const ROUND1_BATCHED_COMPACT: GpuDimensionReducingRound1BatchedCompactSignature<Self>;
-    const CONTINUATION_BATCHED_COMPACT:
-        GpuDimensionReducingContinuationBatchedCompactSignature<Self>;
+    const CONTINUATION_BATCHED_COMPACT: GpuDimensionReducingContinuationBatchedCompactSignature<
+        Self,
+    >;
     #[allow(clippy::too_many_arguments)]
     fn launch_backward_sumcheck_round_update(
         reduction_output: &DeviceSlice<Self>,
@@ -178,9 +174,9 @@ impl GpuKernels for E4 {
         ab_gkr_dim_reducing_round0_batched_compact_e4_kernel;
     const ROUND1_BATCHED_COMPACT: GpuDimensionReducingRound1BatchedCompactSignature<Self> =
         ab_gkr_dim_reducing_round1_batched_compact_e4_kernel;
-    const CONTINUATION_BATCHED_COMPACT:
-        GpuDimensionReducingContinuationBatchedCompactSignature<Self> =
-        ab_gkr_dim_reducing_continuation_batched_compact_e4_kernel;
+    const CONTINUATION_BATCHED_COMPACT: GpuDimensionReducingContinuationBatchedCompactSignature<
+        Self,
+    > = ab_gkr_dim_reducing_continuation_batched_compact_e4_kernel;
 
     fn launch_backward_sumcheck_round_update(
         reduction_output: &DeviceSlice<Self>,
