@@ -1,6 +1,5 @@
 use crate::bincode_serialize_to_file;
 use crate::DUMP_WITNESS_VAR;
-use crate::MEMORY_DELEGATION_POW_BITS;
 use ::prover::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
 use circuit_common::DelegationCircuit;
 use common_constants::TimestampScalar;
@@ -328,6 +327,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     ram_bound: usize,
     worker: &worker::Worker,
     security_level: SecurityLevel,
+    permutation_argument_pow_bits: u32,
 ) -> (
     full_statement_verifier::program_proof::ProgramProof,
     BTreeMap<u32, UnrolledCircuitSetupParams>,
@@ -635,12 +635,10 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
     println!("Touched {} unique addresses", total_unique_teardowns);
 
-    const WORD_BITS: u32 = 2;
-
     assert_eq!(
         (setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS
             << setups::inits_and_teardowns::TRACE_LEN_LOG2)
-            << WORD_BITS,
+            << setups::inits_and_teardowns::WORD_BITS,
         1 << 30
     );
 
@@ -969,21 +967,20 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     #[cfg(feature = "debug_logs")]
     println!("FS transformation memory seed is {:?}", all_challenges_seed);
 
-    let pow_challenge = if MEMORY_DELEGATION_POW_BITS > 0 {
+    let pow_challenge = if permutation_argument_pow_bits > 0 {
         #[cfg(feature = "debug_logs")]
-        println!("Searching for PoW for {} bits", MEMORY_DELEGATION_POW_BITS);
+        println!(
+            "Searching for PoW for {} bits",
+            permutation_argument_pow_bits
+        );
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
-        let pow_challenge = Transcript::search_pow(
-            &all_challenges_seed,
-            MEMORY_DELEGATION_POW_BITS as u32,
-            worker,
-        )
-        .1;
+        let pow_challenge =
+            Transcript::search_pow(&all_challenges_seed, permutation_argument_pow_bits, worker).1;
         #[cfg(feature = "timing_logs")]
         println!(
             "PoW for {} took {:?}",
-            MEMORY_DELEGATION_POW_BITS,
+            permutation_argument_pow_bits,
             now.elapsed()
         );
         pow_challenge
@@ -992,11 +989,45 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     };
     program_proof.pow_challenge = pow_challenge;
 
-    let external_challenges = GKRExternalChallenges::draw_from_transcript_seed(
-        all_challenges_seed,
-        MEMORY_DELEGATION_POW_BITS,
-        pow_challenge,
-    );
+    let external_challenges =
+        GKRExternalChallenges::<BabyBearField, BabyBearExt4>::draw_from_transcript_seed(
+            all_challenges_seed,
+            permutation_argument_pow_bits as usize,
+            pow_challenge,
+        );
+
+    // let external_challenges = {
+    //     use prover::cs::definitions::NUM_PERMUTATION_ARGUMENT_KEY_PARTS;
+    //     let memory_argument_alpha = BabyBearExt4::from_array_of_base([
+    //         BabyBearField::new(2),
+    //         BabyBearField::new(5),
+    //         BabyBearField::new(42),
+    //         BabyBearField::new(123),
+    //     ]);
+    //     let permutation_argument_additive_part = BabyBearExt4::from_array_of_base([
+    //         BabyBearField::new(7),
+    //         BabyBearField::new(11),
+    //         BabyBearField::new(1024),
+    //         BabyBearField::new(8000),
+    //     ]);
+
+    //     let permutation_argument_linearization_challenges: [BabyBearExt4;
+    //         NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
+    //         materialize_powers_serial_starting_with_elem::<_, Global>(
+    //             memory_argument_alpha,
+    //             NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
+    //         )
+    //         .try_into()
+    //         .unwrap();
+
+    //     let external_challenges = GKRExternalChallenges::<BabyBearField, BabyBearExt4> {
+    //         permutation_argument_linearization_challenges,
+    //         permutation_argument_additive_part,
+    //         _marker: std::marker::PhantomData,
+    //     };
+
+    //     external_challenges
+    // };
 
     #[cfg(feature = "debug_logs")]
     println!("External challenges = {:?}", external_challenges);
@@ -1105,6 +1136,12 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         else {
             unreachable!()
         };
+
+        println!(
+            "Will prove {} instances of family {} circuits",
+            witness_chunks.len(),
+            family_idx
+        );
 
         for (idx, chunk) in witness_chunks.into_iter().enumerate() {
             if should_dump_witness {
@@ -1273,6 +1310,12 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         else {
             unreachable!()
         };
+
+        println!(
+            "Will prove {} instances of family {} circuits",
+            witness_chunks.len(),
+            family_idx
+        );
 
         for (idx, chunk) in witness_chunks.into_iter().enumerate() {
             if should_dump_witness {
@@ -1802,6 +1845,7 @@ pub(crate) mod test {
             1 << 30,
             &worker,
             SecurityLevel::Sec80,
+            0,
         );
 
         bincode_serialize_to_file(&program_proof, "tmp_proof.bin");
@@ -1847,6 +1891,54 @@ pub(crate) mod test {
                         true,
                     >();
                 dbg!(&verification_result);
+                assert!(verification_result.is_ok());
+            })
+            .expect("must spawn")
+            .join()
+            .expect("must verify");
+    }
+
+    // #[cfg(feature = "verifiers")]
+    #[test]
+    #[ignore = "manual heavy proving test"]
+    #[serial_test::serial(prover_examples_proof_artifacts)]
+    fn test_verify_individual_proof() {
+        skip_if_ci!();
+        use crate::bincode_deserialize_from_file;
+        use full_statement_verifier::program_proof::ProgramProof;
+        use setups::*;
+        use verifier_common::errors::DebugErrorCreator;
+        let circuit_family = 3;
+        let verifier_idx = 2;
+
+        let program_proof: ProgramProof = bincode_deserialize_from_file("tmp_proof.bin");
+        let proof = &program_proof.riscv_proofs[&circuit_family][0];
+        let compiled_circuit = &program_proof.compiled_riscv_circuits[&circuit_family];
+        let responses =
+            ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(proof, compiled_circuit);
+        let external_challenges = proof.external_challenges;
+
+        std::thread::Builder::new()
+            .name("verifier thread".to_string())
+            .stack_size(1 << 27)
+            .spawn(move || {
+                let it = responses.into_iter();
+                prover::nd_source_std::set_iterator(it);
+
+                let (family, verifier_fn) =
+                    full_statement_verifier::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer::<
+                        verifier_common::DefaultNonDeterminismSource,
+                        DebugErrorCreator,
+                    >()[verifier_idx];
+                assert_eq!(family, circuit_family);
+                let verification_result = (verifier_fn)(&external_challenges);
+                // dbg!(&verification_result);
+                match &verification_result {
+                    Ok(..) => {},
+                    Err(e) => {
+                        dbg!(e);
+                    }
+                }
                 assert!(verification_result.is_ok());
             })
             .expect("must spawn")

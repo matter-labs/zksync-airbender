@@ -40,7 +40,7 @@ security_100 = ["verifier_common/security_100"]
 # When enabled, the crate will print detailed debug logs.
 debug_logs = []
 # Will perform satisfiability tests on witness
-precheck_satisfied = []
+gkr_self_checks = ["prover/gkr_self_checks"]
 # Will evaluate quotient on main domain for satisfiability checks
 debug_satisfiable = ["prover/debug_satisfiable"]
 # Print logs related to timings only.

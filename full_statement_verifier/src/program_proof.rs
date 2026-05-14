@@ -2,8 +2,11 @@ extern crate alloc;
 
 use alloc::collections::BTreeMap;
 use common_constants::{
-    BIGINT_OPS_WITH_CONTROL_CSR_REGISTER, BLAKE2S_DELEGATION_CSR_REGISTER,
-    BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER,
+    ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+    BLAKE2S_DELEGATION_CSR_REGISTER, BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
+    JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX, KECCAK_SPECIAL5_CSR_REGISTER,
+    LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX, LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX,
+    MUL_DIV_CIRCUIT_FAMILY_IDX, SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
 };
 use verifier_common::cs::definitions::TimestampScalar;
 use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
@@ -74,25 +77,29 @@ impl ProgramProof {
         let ext_challenges = ext_challenges.expect("external challenges from one of the proofs");
         ext_challenges.flatten_into_buffer(&mut responses);
 
-        dbg!(ext_challenges);
-        dbg!(
-            ext_challenges.permutation_argument_linearization_challenges[0]
-                .c0
-                .c0
-                .as_u32_raw_repr_reduced()
-        );
+        const RISC_V_CIRCUIT_TYPES: &[u8] = &[
+            ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX,
+            JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
+            SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
+            MUL_DIV_CIRCUIT_FAMILY_IDX,
+            LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX,
+            LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX,
+        ];
 
         // risc-v proofs
-        for (k, proofs) in self.riscv_proofs.iter() {
-            responses.push(proofs.len() as u32);
-            let compiled_circuit = &self.compiled_riscv_circuits[k];
-            for proof in proofs.iter() {
-                let proof = ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
-                    proof,
-                    compiled_circuit,
-                );
-                dbg!((k, proof.first().unwrap(), proof.last().unwrap()));
-                responses.extend(proof);
+        for k in RISC_V_CIRCUIT_TYPES.iter() {
+            let k = *k as u32;
+            if let Some(proofs) = self.riscv_proofs.get(&k) {
+                responses.push(proofs.len() as u32);
+                let compiled_circuit = &self.compiled_riscv_circuits[&k];
+                for proof in proofs.iter() {
+                    responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+                        proof,
+                        compiled_circuit,
+                    ));
+                }
+            } else {
+                responses.push(0u32);
             }
         }
 

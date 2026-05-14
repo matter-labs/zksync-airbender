@@ -118,8 +118,8 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     };
 
-    let binary = "../examples/basic_fibonacci/app.bin";
-    let text_section = "../examples/basic_fibonacci/app.text";
+    // let binary = "../examples/basic_fibonacci/app.bin";
+    // let text_section = "../examples/basic_fibonacci/app.text";
 
     println!("Using {} binary", binary);
 
@@ -589,7 +589,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             .collect::<Vec<_>>();
 
         // let row = 0;
-        // dbg!(buffer[row]);
+        // dbg!(&buffer);
         // dbg!(decoder_table_data[(buffer[row].opcode_data.initial_pc / 4) as usize]);
         // dbg!(witness_gen_data[(buffer[row].opcode_data.initial_pc / 4) as usize]);
 
@@ -610,6 +610,13 @@ pub fn gkr_run_basic_unrolled_test_impl(
             Global,
             Global,
         );
+
+        // let mut buffer = vec![];
+        // for row in 0..7 {
+        //     buffer.clear();
+        //     crate::utils::read_memory_trace_row(&memory_trace, row, &mut buffer);
+        //     dbg!(&buffer);
+        // }
 
         println!("Computing full trace");
         let full_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(

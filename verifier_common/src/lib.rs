@@ -292,7 +292,6 @@ pub struct DelegationCircuitSetupData<const N: usize> {
 #[cfg(feature = "proof_utils")]
 impl<const N: usize> quote::ToTokens for DelegationCircuitSetupData<N> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        use prover::cs::utils::array_to_tokens;
         use quote::quote;
 
         let DelegationCircuitSetupData {

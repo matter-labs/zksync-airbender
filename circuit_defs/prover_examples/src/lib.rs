@@ -11,14 +11,6 @@ pub mod gpu;
 // pub mod unified;
 pub mod unrolled;
 
-pub const MEMORY_DELEGATION_POW_BITS: usize = 0; // TODO
-
-#[cfg(not(feature = "precheck_satisfied"))]
-const PRECHECK_SATISFIED: bool = false;
-
-#[cfg(feature = "precheck_satisfied")]
-const PRECHECK_SATISFIED: bool = true;
-
 const DUMP_WITNESS_VAR: &str = "DUMP_WITNESS";
 
 #[allow(dead_code)]
