@@ -1,5 +1,4 @@
 use crate::upstream::GKRAddress;
-use crate::witness::memory_unrolled::MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT;
 
 // pub mod arg_utils;
 pub(crate) mod layout;
@@ -78,7 +77,7 @@ impl From<&cs::definitions::gkr::NoFieldLinearRelation> for NoFieldLinearRelatio
         let terms = &value.linear_terms;
         let len = terms.len();
         assert!(len <= MAX_LINEAR_TERMS_COUNT);
-        let mut linear_terms = [NoFieldLinearTerm::default(); MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT];
+        let mut linear_terms = [NoFieldLinearTerm::default(); MAX_LINEAR_TERMS_COUNT];
         for (&src, dst) in terms.iter().zip(linear_terms.iter_mut()) {
             *dst = NoFieldLinearTerm {
                 coefficient: src.0,
