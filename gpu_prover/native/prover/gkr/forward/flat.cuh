@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lookup_helpers.cuh"
+#include "../support/lookup_helpers.cuh"
 
 EXTERN __device__ __constant__ e4 ab_gkr_lookup_gamma_consts[3];
 
@@ -33,6 +33,13 @@ DEVICE_FORCEINLINE e4 lookup_gamma() { return ::ab_gkr_lookup_gamma_consts[0]; }
 DEVICE_FORCEINLINE e4 lookup_gamma_sq() { return ::ab_gkr_lookup_gamma_consts[1]; }
 
 DEVICE_FORCEINLINE e4 lookup_two_gamma() { return ::ab_gkr_lookup_gamma_consts[2]; }
+
+DEVICE_FORCEINLINE void stage_lookup_gamma_consts(const e4 *gamma, e4 *staging) {
+  const e4 value = gamma[0];
+  staging[0] = value;
+  staging[1] = e4::sqr(value);
+  staging[2] = e4::dbl(value);
+}
 
 // ---------------------------------------------------------------------------
 // Sizing

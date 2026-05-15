@@ -20,7 +20,7 @@ use crate::upstream::Field;
 /// references; term tables stay as in the verbose descriptor. Passed by
 /// value as `__grid_constant__`.
 ///
-/// Must match CUDA `flat_round0_static_desc_compact` in `flat_backward.cuh`.
+/// Must match CUDA `flat_round0_static_desc_compact` in `backward/flat.cuh`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct GpuFlatRound0StaticDesc {

@@ -28,7 +28,7 @@ use super::kernel_limits::KERNEL_ARG_HARD_CEILING_BYTES;
 /// to a single u16 each via `tables`; layer-uniform metadata (sizes) hoists
 /// out of every per-source entry into descriptor-level `u32`s.
 ///
-/// Must match CUDA `flat_round1_unified_desc_compact` in `flat_backward.cuh`.
+/// Must match CUDA `flat_round1_unified_desc_compact` in `backward/flat.cuh`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct GpuFlatRound1UnifiedDesc {

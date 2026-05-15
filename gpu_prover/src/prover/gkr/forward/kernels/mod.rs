@@ -259,7 +259,7 @@ fn get_lookup_gamma_consts_device_ptr() -> *mut E4 {
     let ptr = *PTR.get_or_init(|| {
         let mut p: *mut c_void = null_mut();
         // SAFETY: ab_gkr_lookup_gamma_consts is a valid __constant__ e4[3]
-        // symbol defined in native/prover/gkr/flat_forward_layer.cu.
+        // symbol defined in native/prover/gkr/forward/flat_layer.cu.
         unsafe {
             cudaGetSymbolAddress(
                 &mut p,

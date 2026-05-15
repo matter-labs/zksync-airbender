@@ -49,7 +49,7 @@ extern "C" {
 pub(crate) fn get_constant_continuation_coefficients_device_ptr() -> *mut E4 {
     let mut ptr: *mut c_void = std::ptr::null_mut();
     // SAFETY: ab_gkr_flat_continuation_coefficients is a valid __constant__ symbol
-    // defined in main_backward_round3_compute_coeff.cu.
+    // defined in backward/round3_compute_coeff.cu.
     unsafe {
         cudaGetSymbolAddress(
             &mut ptr,

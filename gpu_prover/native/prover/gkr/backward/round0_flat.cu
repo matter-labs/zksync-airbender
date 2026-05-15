@@ -1,8 +1,8 @@
-#include "flat_backward.cuh"
+#include "flat.cuh"
 
 __device__ __constant__ e4 ab_gkr_flat_round0_coefficients[airbender::prover::gkr::FLAT_ROUND0_CONST_MAX];
 
-namespace airbender::prover::gkr {
+namespace airbender::prover::gkr::backward {
 
 // Compact path: descriptor's source array holds packed `u16`s resolved
 // through `tables.bases` / `tables.log2_stride` instead of raw
@@ -25,4 +25,4 @@ EXTERN __launch_bounds__(128, 8) __global__
   flat_round0_compute_constant_compact(static_desc, eq_values, contributions, acc_size, gid);
 }
 
-} // namespace airbender::prover::gkr
+} // namespace airbender::prover::gkr::backward
