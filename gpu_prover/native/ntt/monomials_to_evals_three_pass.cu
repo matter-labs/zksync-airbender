@@ -1,15 +1,12 @@
 #include "ntt.cuh"
+#include "pass_config.cuh"
 
 namespace airbender::ntt {
 
 EXTERN __launch_bounds__(512, 2) __global__
     void ab_monomials_to_evals_noninitial_8_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
                                                           const int log_n, const int start_stage) {
-  constexpr int VALS_PER_THREAD = 16;
-  constexpr int LOG_DATA_TILE_SIZE = 5;
-  constexpr int TILE_SIZE = 1 << LOG_DATA_TILE_SIZE;
-  constexpr int LOG_DATA_TILES_PER_BLOCK = 8;
-  constexpr int THREAD_TILES_PER_BLOCK = 16;
+  using namespace pass_config::three_pass_phase_a;
 
   const int lane_in_tile = threadIdx.x & 31;
   const int tile_id = threadIdx.x >> LOG_DATA_TILE_SIZE;
@@ -93,11 +90,7 @@ EXTERN __launch_bounds__(512, 2) __global__
 template <int STAGES>
 DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
                                                                   const bool transposed_monomials, const int log_n, const int coset_factor_power) {
-  constexpr int WARP_SIZE = 32;
-  constexpr int VALS_PER_THREAD = 32;
-  constexpr int VALS_PER_WARP = WARP_SIZE * VALS_PER_THREAD;
-  constexpr int WARPS_PER_BLOCK = 8;
-  constexpr int VALS_PER_BLOCK = WARPS_PER_BLOCK * WARP_SIZE * VALS_PER_THREAD; // 8192
+  using namespace pass_config::three_pass_phase_b;
   constexpr int OUTPUT_EXCHG_REGIONS_PER_WARP = 1 << (10 - STAGES);
 
   const int lane_id = threadIdx.x & 31;

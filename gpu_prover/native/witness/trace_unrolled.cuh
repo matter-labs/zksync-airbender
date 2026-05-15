@@ -8,9 +8,15 @@ using namespace ::airbender::witness::option;
 using namespace ::airbender::witness::placeholder;
 using namespace ::airbender::witness::trace;
 
-namespace airbender::witness::trace::unrolled {
+// The structs in this header are FFI mirrors. Their layouts and field
+// semantics are owned by the Rust side: see
+// `gpu_prover/src/witness/trace_unrolled.rs` for the local mirrors, which in
+// turn track `riscv_transpiler::witness::{Memory,NonMemory,Unified}OpcodeTracingDataWithTimestamp`
+// and `cs::gkr_circuits::ExecutorFamilyDecoderData` (re-exported as
+// `CSExecutorFamilyDecoderData` via `gpu_prover/src/upstream.rs`).
+// Document semantics there; keep `#[repr(C)]`-equivalent layouts here.
 
-static constexpr u32 NON_DETERMINISM_CSR = 0x7c0;
+namespace airbender::witness::trace::unrolled {
 
 struct ExecutorFamilyDecoderData {
   const u32 imm;

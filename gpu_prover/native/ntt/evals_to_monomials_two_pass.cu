@@ -1,22 +1,14 @@
 #include "ntt.cuh"
+#include "pass_config.cuh"
 
 namespace airbender::ntt {
 
 EXTERN __launch_bounds__(512, 1) __global__
     void ab_evals_to_monomials_first_10_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n,
                                                       const int start_stage /*unused, for symmetry with three-pass API*/) {
-  constexpr int VALS_PER_THREAD = 32;
-  constexpr int LOG_DATA_TILE_SIZE = 4;
-  constexpr int TILE_SIZE = 1 << LOG_DATA_TILE_SIZE;
-  constexpr int LOG_DATA_TILES_PER_BLOCK = 10;
-  constexpr int THREAD_TILES_PER_BLOCK = 32;
-  constexpr int TILE_GMEM_STRIDE = 1 << (24 - LOG_DATA_TILES_PER_BLOCK);
-  constexpr int IL_GMEM_STRIDE = TILE_GMEM_STRIDE * THREAD_TILES_PER_BLOCK;
+  using namespace pass_config::two_pass_phase_a;
+  using namespace pass_config::pipeline_prefetch;
 
-  constexpr int PL_GROUP_SIZE = 4;
-  constexpr int PL_STRIDE = 8;
-
-  // TODO: make some of these kernel arguments
   const int lane_in_tile = threadIdx.x & 15;
   const int tile_id = threadIdx.x >> LOG_DATA_TILE_SIZE;
   const int gmem_block_offset = blockIdx.x << LOG_DATA_TILE_SIZE;
@@ -85,18 +77,9 @@ EXTERN __launch_bounds__(512, 1) __global__
 EXTERN __launch_bounds__(512, 1) __global__
     void ab_evals_to_monomials_first_9_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n,
                                                      const int start_stage /*unused, for symmetry with three-pass API*/) {
-  constexpr int VALS_PER_THREAD = 32;
-  constexpr int LOG_DATA_TILE_SIZE = 5;
-  constexpr int TILE_SIZE = 1 << LOG_DATA_TILE_SIZE;
-  constexpr int LOG_DATA_TILES_PER_BLOCK = 9;
-  constexpr int THREAD_TILES_PER_BLOCK = 16;
-  constexpr int TILE_GMEM_STRIDE = 1 << (23 - LOG_DATA_TILES_PER_BLOCK);
-  constexpr int IL_GMEM_STRIDE = TILE_GMEM_STRIDE * THREAD_TILES_PER_BLOCK;
+  using namespace pass_config::two_pass_phase_b;
+  using namespace pass_config::pipeline_prefetch;
 
-  constexpr int PL_GROUP_SIZE = 4;
-  constexpr int PL_STRIDE = 8;
-
-  // TODO: make some of these kernel arguments
   const int lane_in_tile = threadIdx.x & 31;
   const int tile_id = threadIdx.x >> LOG_DATA_TILE_SIZE;
   const int gmem_block_offset = blockIdx.x << LOG_DATA_TILE_SIZE;
@@ -167,10 +150,7 @@ EXTERN __launch_bounds__(512, 1) __global__
 EXTERN __launch_bounds__(512, 1) __global__
     void ab_evals_to_monomials_last_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
                                                      const bool transposed_monomials, const int log_n) {
-  constexpr int WARP_SIZE = 32;
-  constexpr int VALS_PER_THREAD = 32;
-  constexpr int WARPS_PER_BLOCK = 16;
-  constexpr int VALS_PER_BLOCK = WARPS_PER_BLOCK * WARP_SIZE * VALS_PER_THREAD; // 16384
+  using namespace pass_config::two_pass_phase_c;
 
   const int lane_id = threadIdx.x & 31;
   const int warp_id = threadIdx.x >> 5;

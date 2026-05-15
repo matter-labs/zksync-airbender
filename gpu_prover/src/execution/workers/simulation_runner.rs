@@ -30,6 +30,9 @@ pub(crate) struct LockedBoxedMemoryHolder {
 
 impl LockedBoxedMemoryHolder {
     pub fn new() -> Self {
+        // SAFETY: `MemoryHolder` is plain-data, so zero-init is sound; the boxed allocation
+        // outlives the matching `cudaHostUnregister` call in `Drop`, keeping the pinned
+        // registration valid for the holder's lifetime.
         unsafe {
             let mut holder = Box::<MemoryHolder>::new_zeroed().assume_init();
             cudaHostRegister(
@@ -60,6 +63,7 @@ impl DerefMut for LockedBoxedMemoryHolder {
 
 impl Drop for LockedBoxedMemoryHolder {
     fn drop(&mut self) {
+        // SAFETY: mirrors the `cudaHostRegister` in `new`; the boxed holder is still alive.
         let result = unsafe {
             cudaHostUnregister(self.holder.as_mut() as *mut MemoryHolder as *mut c_void).wrap()
         };
@@ -83,6 +87,8 @@ impl LockedBoxedTraceChunk {
         let size = size_of::<TraceChunk>().next_multiple_of(1 << LOG_CHUNK_SIZE);
         let allocation = HostAllocation::alloc(size, CudaHostAllocFlags::DEFAULT).unwrap();
         let allocator = A::new([allocation], LOG_CHUNK_SIZE);
+        // SAFETY: the allocator returns a freshly pinned chunk sized for `TraceChunk`;
+        // callers initialize the chunk before reading from it.
         let chunk = unsafe { Box::<TraceChunk, _>::new_uninit_in(allocator).assume_init() };
         Self { chunk }
     }
@@ -206,6 +212,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             .recv()
             .expect("must receive a trace chunk for simulation");
         trace.chunk.len = 0;
+        // SAFETY: `Box::as_mut` is always non-null.
         let trace_ref = unsafe { NonNull::new_unchecked(trace.chunk.as_mut()) };
         self.trace = Some(trace);
         self.instant = Some(Instant::now());

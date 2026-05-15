@@ -280,6 +280,9 @@ impl DeviceContext {
         let (fwd_cmem_twiddles_finest_11, inv_cmem_twiddles_finest_11) =
             generate_fwd_inv_arrays::<{ 1 << 11 }>(generator_fwd_cmem_finest);
 
+        // SAFETY: every `*_for_ntt` / `*_gmem_twiddles_*` source is a `DeviceAllocation`
+        // that outlives this synchronous FFI call; the constant-memory `*_cmem_*` arrays
+        // and `inv_sizes_host` are passed by value or as pointers to host-stable storage.
         unsafe {
             copy_to_symbols(
                 powers_of_w_fine_for_ntt.as_ptr(),

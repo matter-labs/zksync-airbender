@@ -88,6 +88,8 @@ impl<'a> Transfer<'a> {
         let stream = context.get_h2d_stream();
         let mut offset = 0;
         for src in srcs.iter() {
+            // SAFETY: `dst` is a `CudaSliceMut` chunk, the sub-slice is in-bounds by the
+            // preceding `assert_eq!` on total length, and the chunk lives for the H2D copy.
             let dst = unsafe {
                 let slice = &mut dst.as_mut_slice()[offset..offset + src.len()];
                 DeviceSlice::from_mut_slice(slice)

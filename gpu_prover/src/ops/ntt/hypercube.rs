@@ -37,13 +37,6 @@ strided_tiles_stages!(ab_hypercube_evals_to_monomials_first_10_stages_kernel);
 // 3-pass evals to monomials
 strided_tiles_stages!(ab_hypercube_evals_to_monomials_nonfinal_8_stages_kernel);
 
-// // 2-pass monomials to evals
-// strided_tiles_stages!(ab_hypercube_monomials_to_evals_first_9_stages_kernel);
-// strided_tiles_stages!(ab_hypercube_monomials_to_evals_first_10_stages_kernel);
-//
-// // 3-pass monomials to evals
-// strided_tiles_stages!(ab_hypercube_monomials_to_evals_nonfinal_8_stages_kernel);
-
 cuda_kernel!(
     EvalsToMonomialsFinal,
     hypercube_evals_to_monomials_final,
@@ -61,21 +54,6 @@ hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_5_stag
 hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_6_stages_kernel);
 hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_7_stages_kernel);
 hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_8_stages_kernel);
-
-// // 2-pass monomials to evals
-// hypercube_monomials_to_evals_final!(ab_hypercube_monomials_to_evals_last_14_stages_kernel);
-//
-// // 3-pass monomials to evals
-// hypercube_monomials_to_evals_final!(ab_hypercube_monomials_to_evals_final_5_stages_kernel);
-// hypercube_monomials_to_evals_final!(ab_hypercube_monomials_to_evals_final_6_stages_kernel);
-// hypercube_monomials_to_evals_final!(ab_hypercube_monomials_to_evals_final_7_stages_kernel);
-// hypercube_monomials_to_evals_final!(ab_hypercube_monomials_to_evals_final_8_stages_kernel);
-
-// #[derive(PartialEq)]
-// enum Direction {
-//     EvalsToMonomials,
-//     MonomialsToEvals,
-// }
 
 pub(crate) fn hypercube_evals_to_monomials_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),

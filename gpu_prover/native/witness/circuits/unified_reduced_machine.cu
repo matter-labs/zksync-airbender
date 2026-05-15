@@ -1,2 +1,3 @@
 #define NAME unified_reduced_machine
-#include "template_unrolled_unified.cuh"
+#define ORACLE UnrolledUnifiedOracle
+#include "template_unrolled.cuh"

@@ -1,2 +1,3 @@
 #define NAME add_sub_lui_auipc_mop
-#include "template_unrolled_non_memory.cuh"
+#define ORACLE UnrolledNonMemoryOracle
+#include "template_unrolled.cuh"
