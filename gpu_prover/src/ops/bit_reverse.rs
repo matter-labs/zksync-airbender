@@ -1,6 +1,6 @@
 use std::mem::size_of;
 
-use era_cudart::execution::{CudaLaunchConfig, Dim3, KernelFunction};
+use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
@@ -11,11 +11,7 @@ use crate::primitives::device_structures::{
     DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
 use crate::primitives::field::*;
-use crate::primitives::utils::{get_grid_block_dims_for_threads_count, LOG_WARP_SIZE, WARP_SIZE};
-
-fn get_launch_dims(count: u32) -> (Dim3, Dim3) {
-    get_grid_block_dims_for_threads_count(WARP_SIZE, count)
-}
+use crate::primitives::utils::{get_grid_block_dims_for_warp_groups, LOG_WARP_SIZE, WARP_SIZE};
 
 cuda_kernel_signature_arguments_and_function!(
     BitReverse<T>,
@@ -48,7 +44,7 @@ pub(crate) trait BitReverse: Sized {
         assert!(log_chunk_size <= LOG_WARP_SIZE);
         let log_tile_dim = LOG_WARP_SIZE - log_chunk_size;
         if half_log_count <= log_tile_dim {
-            let (mut grid_dim, block_dim) = get_launch_dims(1 << log_count);
+            let (mut grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(1, 1 << log_count);
             grid_dim.y = cols as u32;
             let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
             let args = BitReverseArguments::<Self>::new(src, dst, log_count);

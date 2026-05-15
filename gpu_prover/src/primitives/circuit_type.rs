@@ -1,3 +1,4 @@
+use crate::execution::prover::UnsupportedGpuSecurityLevel;
 use crate::primitives::machine_type::MachineType;
 use crate::upstream::{
     inits_and_teardowns, AddSubLuiAuipcMopCircuit, BabyBearField, BigIntDelegationCircuit,
@@ -63,10 +64,13 @@ impl CircuitType {
     /// for the schedule-independent fields, but uses the
     /// `default_for_tests_80_bits_*` schedules that GPU stage1 and WHIR are
     /// tuned for. Only `Sec80` is supported on GPU today.
-    pub fn prover_config(&self, security_level: SecurityLevel) -> ProverConfig {
+    pub fn prover_config(
+        &self,
+        security_level: SecurityLevel,
+    ) -> Result<ProverConfig, UnsupportedGpuSecurityLevel> {
         match security_level {
-            SecurityLevel::Sec80 => self.prover_config_sec80(),
-            SecurityLevel::Sec100 => unimplemented!("Sec100 not supported on GPU yet"),
+            SecurityLevel::Sec80 => Ok(self.prover_config_sec80()),
+            other => Err(UnsupportedGpuSecurityLevel { requested: other }),
         }
     }
 
@@ -145,15 +149,55 @@ impl DelegationCircuitType {
     }
 }
 
-impl From<u16> for DelegationCircuitType {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct InvalidDelegationCircuitType {
+    pub(crate) raw: u16,
+}
+
+impl std::fmt::Display for InvalidDelegationCircuitType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown delegation type {}", self.raw)
+    }
+}
+
+impl std::error::Error for InvalidDelegationCircuitType {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_unsupported_security_level_in_prover_config() {
+        let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
+
+        let err = circuit_type
+            .prover_config(SecurityLevel::Sec100)
+            .unwrap_err();
+
+        assert_eq!(err.requested, SecurityLevel::Sec100);
+    }
+
+    #[test]
+    fn rejects_unknown_delegation_type_ids() {
+        let err = DelegationCircuitType::try_from(u16::MAX).unwrap_err();
+
+        assert_eq!(err.raw, u16::MAX);
+    }
+}
+
+impl TryFrom<u16> for DelegationCircuitType {
+    type Error = InvalidDelegationCircuitType;
+
     #[inline(always)]
-    fn from(delegation_type: u16) -> Self {
+    fn try_from(delegation_type: u16) -> Result<Self, Self::Error> {
         match delegation_type as u32 {
-            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER => Self::BigIntWithControl,
-            BLAKE2S_DELEGATION_CSR_REGISTER => Self::Blake2WithCompression,
-            BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER => Self::Blake2GFunction,
-            KECCAK_SPECIAL5_CSR_REGISTER => Self::KeccakSpecial5,
-            _ => panic!("unknown delegation type {}", delegation_type),
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER => Ok(Self::BigIntWithControl),
+            BLAKE2S_DELEGATION_CSR_REGISTER => Ok(Self::Blake2WithCompression),
+            BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER => Ok(Self::Blake2GFunction),
+            KECCAK_SPECIAL5_CSR_REGISTER => Ok(Self::KeccakSpecial5),
+            _ => Err(InvalidDelegationCircuitType {
+                raw: delegation_type,
+            }),
         }
     }
 }

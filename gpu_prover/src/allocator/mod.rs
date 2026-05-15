@@ -204,7 +204,9 @@ impl<B: StaticAllocationBackend> InnerStaticAllocatorWrapper<B>
     }
 
     fn execute<R>(&self, f: impl FnOnce(&mut InnerStaticAllocator<B>) -> R) -> R {
-        f(&mut self.lock().unwrap())
+        f(&mut self
+            .lock()
+            .expect("concurrent static allocator mutex poisoned"))
     }
 }
 

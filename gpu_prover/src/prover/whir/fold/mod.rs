@@ -28,7 +28,7 @@ use crate::primitives::device_structures::{
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
-use crate::prover::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesKeepalives};
+use crate::prover::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
 use crate::prover::proof::layout::ProofLayout;
 use crate::prover::trace::holder::TraceHolder;
 use crate::prover::whir::kernels::{
@@ -187,7 +187,7 @@ pub(crate) struct GpuWhirFoldScheduledExecution {
     // Keepalives for the device-side PoW verify + query index assembly
     // (one entry per WHIR round that goes through schedule_pow_verify_and_query_indexes).
     #[allow(dead_code)]
-    _pow_keepalives: Vec<PowAndQueryIndexesKeepalives>,
+    _pow_round_state: Vec<PowAndQueryIndexesState>,
     #[allow(dead_code)]
     _ood_points: Vec<WhirHostUpload>,
     #[allow(dead_code)]
@@ -468,7 +468,9 @@ pub(super) fn get_base_columns<'a>(
     use_hypercube_evals: bool,
 ) -> DeviceMatrix<'a, BF> {
     let values = if use_hypercube_evals {
-        // TODO: Ask Robert: prefer raw_hypercube_backing here?
+        // Use the logical hypercube-evaluation view here. `raw_hypercube_backing`
+        // preserves ownership only; WHIR needs the row-shaped evaluation slice
+        // that `get_hypercube_evals` already exposes.
         DeviceMatrix::new(trace_holder.get_hypercube_evals(), rows)
     } else {
         assert!(
