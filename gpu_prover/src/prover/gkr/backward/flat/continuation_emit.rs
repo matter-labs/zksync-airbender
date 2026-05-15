@@ -1,9 +1,9 @@
-use super::super::super::kernels::GpuGKRMainLayerConstraintMetadataSource;
-use super::super::{
+use super::super::kernels::GpuGKRMainLayerConstraintMetadataSource;
+use super::continuation::build_plan::PreparedGateForFlatContinuationPlan;
+use super::continuation::builder::FlatContinuationDescriptionBuilder;
+use super::{
     immediate_recipe_with_negation, CoefficientRecipe, NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL,
 };
-use super::build_plan::PreparedGateForFlatContinuationPlan;
-use super::builder::FlatContinuationDescriptionBuilder;
 use crate::prover::gkr::immediate_factors::ImmediateFactorRecipeStructural;
 use crate::upstream::Field;
 

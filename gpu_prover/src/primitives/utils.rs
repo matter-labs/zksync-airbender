@@ -34,8 +34,15 @@ pub(crate) fn get_grid_block_dims_for_threads_count(
     (grid_dim.into(), block_dim.into())
 }
 
+pub(crate) fn get_grid_block_dims_for_warp_groups(
+    warps_per_block: u32,
+    threads_count: u32,
+) -> (Dim3, Dim3) {
+    get_grid_block_dims_for_threads_count(WARP_SIZE * warps_per_block, threads_count)
+}
+
 #[allow(clippy::missing_safety_doc)]
-pub unsafe fn memcpy_to_symbol<T>(symbol: &T, src: &T) -> CudaResult<()> {
+pub(crate) unsafe fn memcpy_to_symbol<T>(symbol: &T, src: &T) -> CudaResult<()> {
     cudaMemcpyToSymbol(
         symbol as *const T as *const c_void,
         src as *const T as *const c_void,

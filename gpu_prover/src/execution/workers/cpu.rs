@@ -55,7 +55,9 @@ pub(crate) fn run_simulator<
     worker: &Worker,
 ) {
     trace!("BATCH[{batch_id}] SIMULATOR started");
-    let mut non_determinism_guard = non_determinism.lock().unwrap();
+    let mut non_determinism_guard = non_determinism
+        .lock()
+        .expect("simulation worker non-determinism mutex poisoned");
     let non_determinism_source = non_determinism_guard.take().unwrap();
     let runner = SimulationRunner::<_, T>::new(
         batch_id,
@@ -126,7 +128,9 @@ pub(crate) fn run_simulator<
                     inits_and_teardowns: None,
                 };
                 let result = WorkerResult::InitsAndTeardownsData(data);
-                results.send(result).unwrap();
+                results.send(result).expect(
+                    "CPU worker results channel closed while sending empty init/teardown data",
+                );
             }
             (UnrolledCircuitType::Unified, empty_circuits)
         };
@@ -149,7 +153,9 @@ pub(crate) fn run_simulator<
                 inits_and_teardowns: Some(inits_and_teardowns_data),
             };
             let result = WorkerResult::InitsAndTeardownsData(data);
-            results.send(result).unwrap();
+            results
+                .send(result)
+                .expect("CPU worker results channel closed while sending init/teardown data");
             instant = Instant::now();
         }
         let final_register_values = state
@@ -168,7 +174,9 @@ pub(crate) fn run_simulator<
             final_timestamp: state.timestamp,
         };
         let result = WorkerResult::SimulationResult(simulation_result);
-        results.send(result).unwrap();
+        results
+            .send(result)
+            .expect("CPU worker results channel closed while sending simulation result");
     } else {
         trace!("BATCH[{batch_id}] SIMULATOR resetting memory due to abort");
         MemoryHolder::reset(&mut memory_holder.holder);
@@ -208,7 +216,9 @@ pub(crate) fn run_replayer<T: TracingType>(
             trace_ranges,
         } = snapshot;
         if is_aborted {
-            free_trace_chunks.send(trace).unwrap();
+            free_trace_chunks
+                .send(trace)
+                .expect("CPU replayer trace-return channel closed while aborting");
             continue;
         }
         let trace_len = trace.len as usize;
@@ -229,7 +239,9 @@ pub(crate) fn run_replayer<T: TracingType>(
             &mut tracer,
         );
         let elapsed = instant.elapsed();
-        free_trace_chunks.send(trace).unwrap();
+        free_trace_chunks
+            .send(trace)
+            .expect("CPU replayer trace-return channel closed after replay");
         assert_eq!(state.pc, final_state.pc);
         assert_eq!(state.timestamp, final_state.timestamp);
         assert_eq!(state.registers, final_state.registers);
@@ -239,7 +251,9 @@ pub(crate) fn run_replayer<T: TracingType>(
         let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
         trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] processed SNAPSHOT[{index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
         let result = WorkerResult::SnapshotReplayed(index);
-        results.send(result).unwrap()
+        results
+            .send(result)
+            .expect("CPU replayer results channel closed while sending replay result")
     }
     let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
     let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
@@ -389,7 +403,9 @@ fn chunk_into_pinned<T: Copy + 'static>(
     }
     let mut written = 0usize;
     while written < src.len() {
-        let allocator = free_allocators.recv().unwrap();
+        let allocator = free_allocators
+            .recv()
+            .expect("CPU worker allocator channel closed while building tracing data");
         let elem_capacity = allocator.capacity() / size_of::<T>();
         // Round down to alignment so chunk lengths stay page-aligned.
         let aligned_capacity = (elem_capacity / alignment_in_items) * alignment_in_items;

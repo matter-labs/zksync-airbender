@@ -108,10 +108,10 @@ fn resolve_ext_consolidated<B, E: Field>(
                 "ext_class_backings missing for layer {canonical_layer} class {class:?} (address {address:?}); register_dim_reducing_inputs_for_layer should have allocated it"
             )
         });
-    let resolved = unsafe {
+    let resolved: *const E = unsafe {
         (backing.as_ptr() as *const E).add((poly_idx as usize) << layer_layout.log2_stride)
     };
-    let legacy = storage
+    let legacy: *const E = storage
         .try_get_ext_poly(address)
         .map(|p| p.as_ptr())
         .unwrap_or(std::ptr::null());

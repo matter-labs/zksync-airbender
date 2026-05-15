@@ -164,7 +164,9 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     let jump_branch_slt_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
         UnrolledNonMemoryCircuitType::JumpBranchSlt,
     ));
-    let prover_config = jump_branch_slt_circuit_type.prover_config(SecurityLevel::Sec80);
+    let prover_config = jump_branch_slt_circuit_type
+        .prover_config(SecurityLevel::Sec80)
+        .unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         &table_driver,
@@ -209,19 +211,8 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         .copied()
         .map(ExecutorFamilyDecoderData::from)
         .collect_vec();
-    let mut d_decoder_table = context
-        .alloc(h_decoder_table.len(), AllocationPlacement::BestFit)
-        .unwrap();
-    memory_copy_async(
-        &mut d_decoder_table,
-        &h_decoder_table,
-        context.get_exec_stream(),
-    )
-    .unwrap();
-    let mut trace_data = context
-        .alloc(buffer.len(), AllocationPlacement::BestFit)
-        .unwrap();
-    memory_copy_async(&mut trace_data, &buffer[..], context.get_exec_stream()).unwrap();
+    let d_decoder_table = upload_slice_to_device_for_test(&h_decoder_table, &context);
+    let trace_data = upload_slice_to_device_for_test(&buffer, &context);
     let gpu_trace = TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(
         UnrolledNonMemoryTraceDevice {
             tracing_data: trace_data,
@@ -784,7 +775,9 @@ fn run_shift_binop_cached_lookup_parity_test() {
     let shift_binop_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
         UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
     ));
-    let prover_config = shift_binop_circuit_type.prover_config(SecurityLevel::Sec80);
+    let prover_config = shift_binop_circuit_type
+        .prover_config(SecurityLevel::Sec80)
+        .unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         &table_driver,
@@ -813,19 +806,8 @@ fn run_shift_binop_cached_lookup_parity_test() {
         .copied()
         .map(ExecutorFamilyDecoderData::from)
         .collect_vec();
-    let mut d_decoder_table = context
-        .alloc(h_decoder_table.len(), AllocationPlacement::BestFit)
-        .unwrap();
-    memory_copy_async(
-        &mut d_decoder_table,
-        &h_decoder_table,
-        context.get_exec_stream(),
-    )
-    .unwrap();
-    let mut trace_data = context
-        .alloc(buffer.len(), AllocationPlacement::BestFit)
-        .unwrap();
-    memory_copy_async(&mut trace_data, &buffer[..], context.get_exec_stream()).unwrap();
+    let d_decoder_table = upload_slice_to_device_for_test(&h_decoder_table, &context);
+    let trace_data = upload_slice_to_device_for_test(&buffer, &context);
     let gpu_trace = TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(
         UnrolledNonMemoryTraceDevice {
             tracing_data: trace_data,

@@ -173,7 +173,7 @@ pub(crate) fn hypercube_evals_to_monomials_3_pass(
                 EvalsToMonomialsFinalFunction(ab_hypercube_evals_to_monomials_final_8_stages_kernel)
                     .launch(&config, &args)?
             }
-            _ => unimplemented!(),
+            _ => unreachable!("hypercube 3-pass kernels are only generated for log_n in 21..=24"),
         }
     }
     Ok(())
@@ -234,7 +234,7 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass(
             24 => {
                 StridedTilesStagesFunction(ab_hypercube_evals_to_monomials_first_10_stages_kernel)
             }
-            _ => unimplemented!(),
+            _ => unreachable!("hypercube 2-pass kernels are only generated for log_n in 23..=24"),
         };
         let func_ptr = function.as_ptr();
         unsafe {
@@ -274,7 +274,7 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass(
     Ok(())
 }
 
-#[allow(unused)]
+#[allow(dead_code)]
 pub(crate) fn hypercube_x1_msb_evals_to_x1_msb_monomials(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
