@@ -9,6 +9,6 @@ namespace airbender::witness::circuits::NAME {
 
 #include UNROLLED_CIRCUIT_INCLUDE(NAME)
 
-KERNEL(NAME, UnrolledUnifiedOracle)
+KERNEL(NAME, ORACLE)
 
 } // namespace airbender::witness::circuits::NAME
