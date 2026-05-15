@@ -993,12 +993,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
             &setup_commitment,
             gpu_base_claims.setup_polys_claims.to_vec(),
             base_layer_z.clone(),
-            whir_schedule.base_lde_factor,
             whir_batching_challenge,
-            whir_schedule.whir_steps_schedule.clone(),
-            whir_schedule.whir_queries_schedule.clone(),
-            whir_schedule.whir_steps_lde_factors.clone(),
-            whir_schedule.whir_pow_schedule.clone(),
+            &whir_schedule,
             &twiddles,
             seed,
             whir_schedule.cap_size,
@@ -1030,6 +1026,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
         sumcheck_intermediate_values,
         whir_proof,
         grand_product_accumulator_computed,
+        inits_and_teardowns_top_bits: (0..add_sub_circuit.memory_layout.teardown_sets.len() as u32)
+            .collect(),
     };
     let _elapsed = now.elapsed();
 }
