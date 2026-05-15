@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use era_cudart::event::CudaEvent;
 use era_cudart::result::CudaResult;
+use fft::GoodAllocator;
 
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation};
@@ -10,18 +11,16 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::{ClaimBufferLayout, GpuGKRBackwardScheduledExecution};
 use crate::prover::gkr::base_layer_claims::GpuGKRBaseLayerClaimsScheduledExecution;
-use crate::prover::gkr::setup::{
-    GpuGKRForwardSetupHostKeepalive, GpuGKRSetupTransferHostKeepalive,
-};
+use crate::prover::gkr::setup::GpuGKRForwardSetupHostKeepalive;
 use crate::prover::gkr::stage1::GpuGKRStage1Keepalive;
-use crate::prover::trace::memory_transfer::GpuGKRMemoryTransferHostKeepalive;
+use crate::prover::proof::inputs::GpuGKRProofTransferKeepalive;
 use crate::prover::whir::fold::GpuWhirFoldScheduledExecution;
 use crate::upstream::{
     DefaultTreeConstructor, Field, GKRCircuitArtifact, GKRProof, OutputType, ProverConfig,
 };
 
 mod backward;
-mod stage1_forward;
+pub(super) mod stage1_forward;
 mod terminal;
 mod whir;
 
@@ -33,23 +32,18 @@ pub(super) use stage1_forward::{prepare_stage1_and_forward_setup, Stage1AndForwa
 pub(super) use terminal::schedule_terminal_proof_assembly;
 pub(super) use whir::{schedule_whir_phase, WhirPhaseResult};
 
-pub(super) struct GpuGKRProofJobKeepalive<'a> {
+pub(super) struct GpuGKRProofJobKeepalive<'a, A: GoodAllocator> {
     pub(super) _stage1: GpuGKRStage1Keepalive,
-    pub(super) _setup: Option<GpuGKRSetupTransferHostKeepalive<'a>>,
-    pub(super) _memory: GpuGKRMemoryTransferHostKeepalive<'a>,
+    /// Holds every per-piece transfer wrapper (setup, decoder, inits_and_teardowns,
+    /// tracing_data, memory caps, canonical_top_bits, external_challenges) plus the
+    /// shared `Transfer`'s accumulated `Callbacks`. Replaces the prior per-piece
+    /// keepalive fields (`_setup`, `_memory`, `_external_challenges_*`,
+    /// `_initial_transcript_canonical_top_bits_host`).
+    pub(super) _inputs: GpuGKRProofTransferKeepalive<'a, A>,
     pub(super) _forward_setup: GpuGKRForwardSetupHostKeepalive<E4>,
     pub(super) _backward: GpuGKRBackwardScheduledExecution<BF, E4>,
     pub(super) _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
     pub(super) _whir: GpuWhirFoldScheduledExecution,
-    /// Pinned host staging buffer backing the h2d_stream H2D that uploads the
-    /// canonical top-bits prefix into the device-resident
-    /// `d_canonical_top_bits` source consumed by `transcript_commit_initial_chunked`.
-    pub(super) _initial_transcript_canonical_top_bits_host: HostAllocation<[u32]>,
-    /// Pinned host staging buffer and durable device buffer for the seven
-    /// external challenges. The device buffer is the source of truth for both
-    /// the transcript input span and GKR flat immediate evaluation.
-    pub(super) _external_challenges_host: HostAllocation<[E4]>,
-    pub(super) _external_challenges_device: DeviceAllocation<E4>,
     /// Pinned host mirror of the device-resident proof slab (Phase 4). Populated
     /// by the terminal D2H; read by the single assembly callback.
     #[allow(dead_code)]
@@ -60,15 +54,15 @@ pub(super) struct GpuGKRProofJobKeepalive<'a> {
     pub(super) _proof_slab: Option<Arc<DeviceAllocation<E4>>>,
 }
 
-pub(crate) struct GpuGKRProofJob<'a> {
+pub(crate) struct GpuGKRProofJob<'a, A: GoodAllocator> {
     pub(crate) is_finished_event: CudaEvent,
     pub(crate) callbacks: Callbacks<'a>,
     pub(crate) proof: Box<Option<GKRProof<BF, E4, DefaultTreeConstructor>>>,
     pub(crate) ranges: Vec<Range>,
-    pub(super) keepalive: GpuGKRProofJobKeepalive<'a>,
+    pub(super) keepalive: GpuGKRProofJobKeepalive<'a, A>,
 }
 
-impl<'a> GpuGKRProofJob<'a> {
+impl<'a, A: GoodAllocator> GpuGKRProofJob<'a, A> {
     #[cfg(test)]
     pub(crate) fn is_finished(&self) -> CudaResult<bool> {
         self.is_finished_event.query()
@@ -159,7 +153,7 @@ pub(crate) fn grand_product_accumulator_from_explicit_evaluations(
     grand_product_accumulator_computed
 }
 
-pub(super) fn canonical_inits_and_teardowns_top_bits(
+pub(crate) fn canonical_inits_and_teardowns_top_bits(
     compiled_circuit: &GKRCircuitArtifact<BF>,
 ) -> Vec<u32> {
     (0..compiled_circuit.memory_layout.teardown_sets.len() as u32).collect()

@@ -220,7 +220,11 @@ fn launch_generic_lookup_preprocessing(
         .unwrap(),
     );
     let mut transfer = GpuGKRSetupTransfer::new(Arc::clone(&host), context).unwrap();
-    transfer.schedule_transfer(context).unwrap();
+    let _h2d = crate::primitives::transfer::single_shot_h2d(
+        |t| transfer.schedule_transfer(t, context),
+        context,
+    )
+    .unwrap();
     context.get_h2d_stream().synchronize().unwrap();
 
     let mut device_lookup_alpha = context.alloc(1, AllocationPlacement::BestFit).unwrap();
@@ -324,7 +328,11 @@ fn setup_transfer_reuses_single_raw_backing_and_lazy_queries_match_fresh_commit(
         .unwrap(),
     );
     let mut transfer = GpuGKRSetupTransfer::new(host, &context).unwrap();
-    transfer.schedule_transfer(&context).unwrap();
+    let _h2d = crate::primitives::transfer::single_shot_h2d(
+        |t| transfer.schedule_transfer(t, &context),
+        &context,
+    )
+    .unwrap();
     context.get_h2d_stream().synchronize().unwrap();
 
     let mut raw = vec![BF::ZERO; transfer.trace_holder.get_hypercube_evals().len()];
@@ -377,7 +385,8 @@ fn setup_transfer_reuses_single_raw_backing_and_lazy_queries_match_fresh_commit(
     )
     .unwrap();
 
-    transfer.ensure_transferred(&context).unwrap();
+    // The earlier `single_shot_h2d` + `h2d_stream.synchronize()` already make
+    // the H2D visible on exec_stream for subsequent host-issued kernels.
     let transferred_queries = transfer
         .trace_holder
         .get_leafs_and_merkle_paths(1, &indexes_device, &context)
@@ -431,7 +440,11 @@ fn bootstrap_storage_binds_setup_memory_and_witness_trace_holders() {
         .unwrap(),
     );
     let mut transfer = GpuGKRSetupTransfer::new(host, &context).unwrap();
-    transfer.schedule_transfer(&context).unwrap();
+    let _h2d = crate::primitives::transfer::single_shot_h2d(
+        |t| transfer.schedule_transfer(t, &context),
+        &context,
+    )
+    .unwrap();
     context.get_h2d_stream().synchronize().unwrap();
 
     let memory_columns = 2usize;
@@ -640,7 +653,11 @@ fn forward_setup_schedule_generic_lookup_matches_cpu() {
         .unwrap(),
     );
     let mut transfer = GpuGKRSetupTransfer::new(Arc::clone(&host), &context).unwrap();
-    transfer.schedule_transfer(&context).unwrap();
+    let _h2d = crate::primitives::transfer::single_shot_h2d(
+        |t| transfer.schedule_transfer(t, &context),
+        &context,
+    )
+    .unwrap();
     context.get_h2d_stream().synchronize().unwrap();
 
     let lookup_alpha = E4::from_array_of_base([BF::new(3), BF::new(5), BF::new(7), BF::new(11)]);
