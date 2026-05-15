@@ -452,23 +452,7 @@ pub(crate) struct BasicUnrolledFixture {
     pub(crate) memory_tree_caps: Vec<MerkleTreeCapVarLength>,
 }
 
-struct BasicUnrolledTransfers<'a> {
-    setup_transfer: GpuGKRSetupTransfer<'a>,
-    decoder_transfer: Option<DecoderTableTransfer<'a>>,
-    tracing_data_transfer: TracingDataTransfer<'a, Global>,
-    memory_transfer: crate::prover::trace::memory_transfer::GpuGKRMemoryTransfer<'a>,
-}
-
-impl<'a> BasicUnrolledTransfers<'a> {
-    fn schedule(&mut self, context: &ProverContext) -> CudaResult<()> {
-        self.setup_transfer.schedule_transfer(context)?;
-        if let Some(decoder_transfer) = self.decoder_transfer.as_mut() {
-            decoder_transfer.schedule_transfer(context)?;
-        }
-        self.tracing_data_transfer.schedule_transfer(context)?;
-        self.memory_transfer.schedule_transfer(context)
-    }
-}
+type BasicUnrolledTransfers<'a> = crate::prover::proof::inputs::GpuGKRProofTransfer<'a, Global>;
 
 pub(crate) struct BasicUnrolledProofFixture {
     pub(crate) base: BasicUnrolledFixture,
@@ -484,7 +468,10 @@ impl BasicUnrolledFixture {
         &self,
         context: &ProverContext,
     ) -> CudaResult<BasicUnrolledTransfers<'static>> {
-        let setup_transfer = GpuGKRSetupTransfer::new(Arc::clone(&self.gpu_setup_host), context)?;
+        let setup_transfer = Some(GpuGKRSetupTransfer::new(
+            Arc::clone(&self.gpu_setup_host),
+            context,
+        )?);
         let decoder_transfer = if self.compiled_circuit.has_decoder_lookup {
             Some(DecoderTableTransfer::new(
                 Arc::clone(&self.decoder_table_host),
@@ -493,8 +480,10 @@ impl BasicUnrolledFixture {
         } else {
             None
         };
-        let tracing_data_transfer =
-            TracingDataTransfer::new(self.tracing_data_host.clone(), context)?;
+        let tracing_data_transfer = Some(TracingDataTransfer::new(
+            self.tracing_data_host.clone(),
+            context,
+        )?);
         let memory_transfer_host = Arc::new(
             crate::prover::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
                 &self.memory_tree_caps,
@@ -507,12 +496,18 @@ impl BasicUnrolledFixture {
             context,
         )?;
 
-        Ok(BasicUnrolledTransfers {
+        let canonical_top_bits =
+            crate::prover::proof::canonical_inits_and_teardowns_top_bits(&self.compiled_circuit);
+        BasicUnrolledTransfers::new(
             setup_transfer,
             decoder_transfer,
+            None,
             tracing_data_transfer,
             memory_transfer,
-        })
+            &canonical_top_bits,
+            self.external_challenges,
+            context,
+        )
     }
 
     fn schedule_transfers(&self) -> CudaResult<BasicUnrolledTransfers<'static>> {
@@ -524,59 +519,32 @@ impl BasicUnrolledFixture {
     fn prove(
         &self,
         transfers: BasicUnrolledTransfers<'static>,
-    ) -> CudaResult<GpuGKRProofJob<'static>> {
-        let BasicUnrolledTransfers {
-            setup_transfer,
-            decoder_transfer,
-            tracing_data_transfer,
-            memory_transfer,
-        } = transfers;
-
+    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
         prove::<Global>(
             self.circuit_type,
             self.compiled_circuit.clone(),
-            self.external_challenges,
             &self.prover_config,
             self.final_trace_size_log_2,
-            Some(setup_transfer),
-            decoder_transfer,
-            None,
-            Some(tracing_data_transfer),
-            memory_transfer,
+            transfers,
             &self.context,
         )
     }
 
-    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {
-        let BasicUnrolledTransfers {
-            mut setup_transfer,
-            mut decoder_transfer,
-            mut tracing_data_transfer,
-            mut memory_transfer,
-        } = self.create_transfers()?;
+    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+        let mut transfers = self.create_transfers()?;
 
         let h2d_stream = self.context.get_h2d_stream();
         let transfer_range = Range::new("gkr.proof.h2d_transfers")?;
         transfer_range.start(h2d_stream)?;
-        setup_transfer.schedule_transfer(&self.context)?;
-        if let Some(decoder_transfer) = decoder_transfer.as_mut() {
-            decoder_transfer.schedule_transfer(&self.context)?;
-        }
-        tracing_data_transfer.schedule_transfer(&self.context)?;
-        memory_transfer.schedule_transfer(&self.context)?;
+        transfers.schedule(&self.context)?;
         transfer_range.end(h2d_stream)?;
 
         let mut proof_job = prove::<Global>(
             self.circuit_type,
             self.compiled_circuit.clone(),
-            self.external_challenges,
             &self.prover_config,
             self.final_trace_size_log_2,
-            Some(setup_transfer),
-            decoder_transfer,
-            None,
-            Some(tracing_data_transfer),
-            memory_transfer,
+            transfers,
             &self.context,
         )?;
         proof_job.ranges.insert(0, transfer_range);
@@ -585,7 +553,7 @@ impl BasicUnrolledFixture {
 }
 
 impl BasicUnrolledProofFixture {
-    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {
+    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
         self.base.schedule_prove()
     }
 }
