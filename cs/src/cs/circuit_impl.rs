@@ -6,6 +6,7 @@ use crate::cs::circuit::*;
 use crate::cs::circuit_output::CircuitOutput;
 use crate::cs::circuit_trait::*;
 use crate::oracle::*;
+use crate::structured_expr::{Expr, StructuredStatement};
 use crate::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator;
 use crate::witness_placer::*;
 use std::collections::BTreeMap;
@@ -33,6 +34,7 @@ pub struct BasicAssembly<
 > {
     no_index_assigned: u64,
     constraint_storage: Vec<(Constraint<F>, bool)>,
+    structured_statements: Vec<StructuredStatement<F>>,
     lookup_storage: Vec<LookupQuery<F>>,
     pub memory_queries: Vec<MemoryAccess>,
     boolean_variables: Vec<Variable>,
@@ -64,6 +66,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         Self {
             no_index_assigned: 0,
             constraint_storage: vec![],
+            structured_statements: vec![],
             lookup_storage: vec![],
             memory_queries: vec![],
             boolean_variables: vec![],
@@ -154,6 +157,23 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         new_var
     }
 
+    #[track_caller]
+    fn add_variable_from_expr(&mut self, expr: Expr<F>) -> Variable {
+        let location = std::panic::Location::caller();
+        let name = format!("Variable at {}::{}", location.file(), location.line());
+        self.add_named_variable_from_expr(expr, &name)
+    }
+
+    fn add_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable {
+        expr.validate_degree_at_most(4);
+        let constraint = expr.to_max_quadratic_constraint();
+        let new_var = self.add_named_variable_from_constraint(constraint, name);
+        self.structured_statements
+            .push(StructuredStatement::Define { dst: new_var, expr });
+
+        new_var
+    }
+
     fn add_intermediate_named_variable_from_constraint(
         &mut self,
         mut constraint: Constraint<F>,
@@ -191,6 +211,16 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
         use crate::cs::utils::collapse_max_quadratic_constraint_into;
         collapse_max_quadratic_constraint_into(self, constraint.clone(), new_var);
+
+        new_var
+    }
+
+    fn add_intermediate_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable {
+        expr.validate_degree_at_most(4);
+        let constraint = expr.to_max_quadratic_constraint();
+        let new_var = self.add_intermediate_named_variable_from_constraint(constraint, name);
+        self.structured_statements
+            .push(StructuredStatement::Define { dst: new_var, expr });
 
         new_var
     }
@@ -344,6 +374,59 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         constraint.normalize();
         self.try_check_constraint(&constraint);
         self.constraint_storage.push((constraint, true));
+    }
+
+    #[track_caller]
+    fn add_constraint_expr(&mut self, expr: Expr<F>) {
+        expr.validate_degree_at_most(4);
+        let constraint = expr.to_max_quadratic_constraint();
+        self.add_constraint(constraint);
+        self.structured_statements
+            .push(StructuredStatement::AssertZero {
+                expr,
+                prevent_optimizations: false,
+            });
+    }
+
+    #[track_caller]
+    fn add_constraint_allow_explicit_linear_expr(&mut self, expr: Expr<F>) {
+        expr.validate_degree_at_most(4);
+        let constraint = expr.to_max_quadratic_constraint();
+        self.add_constraint_allow_explicit_linear(constraint);
+        self.structured_statements
+            .push(StructuredStatement::AssertZero {
+                expr,
+                prevent_optimizations: false,
+            });
+    }
+
+    #[track_caller]
+    fn add_constraint_allow_explicit_linear_prevent_optimizations_expr(&mut self, expr: Expr<F>) {
+        expr.validate_degree_at_most(4);
+        let constraint = expr.to_max_quadratic_constraint();
+        self.add_constraint_allow_explicit_linear_prevent_optimizations(constraint);
+        self.structured_statements
+            .push(StructuredStatement::AssertZero {
+                expr,
+                prevent_optimizations: true,
+            });
+    }
+
+    #[track_caller]
+    fn define_variable_from_expr(&mut self, dst: Variable, expr: Expr<F>) {
+        expr.validate_degree_at_most(4);
+        let mut constraint = expr.to_max_quadratic_constraint();
+        constraint -= Term::from(dst);
+        constraint.normalize();
+
+        match constraint.degree() {
+            1 => self.add_constraint_allow_explicit_linear(constraint),
+            2 => self.add_constraint(constraint),
+            degree => panic!("variable definition constraint has unsupported degree {degree}"),
+        }
+
+        self.structured_statements
+            .push(StructuredStatement::Define { dst, expr });
     }
 
     fn add_constraint_into_intermediate_variable(
@@ -1586,6 +1669,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         let BasicAssembly {
             no_index_assigned,
             constraint_storage,
+            structured_statements,
             lookup_storage,
             boolean_variables,
             rangechecked_expressions,
@@ -1607,6 +1691,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             table_driver,
             num_of_variables: no_index_assigned as usize,
             constraints: constraint_storage,
+            structured_statements,
             layers_mapping,
             lookups: lookup_storage,
             range_check_expressions: rangechecked_expressions,

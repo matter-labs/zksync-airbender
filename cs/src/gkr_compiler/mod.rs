@@ -16,6 +16,7 @@ use crate::definitions::REGISTER_SIZE;
 use crate::gkr_compiler::graph::GraphHolder;
 pub use crate::gkr_compiler::layout::GKRAuxLayoutData;
 pub use crate::gkr_compiler::layout::GKRLayerDescription;
+use crate::structured_expr::StructuredStatement;
 use common_constants::*;
 use field::PrimeField;
 use std::collections::*;
@@ -86,6 +87,7 @@ pub struct GKRCircuitArtifact<F: PrimeField> {
     // for satisfiability checks
     pub degree_2_constraints: Vec<Degree2Constraint<F>>,
     pub degree_1_constraints: Vec<Degree1Constraint<F>>,
+    pub structured_statements: Vec<StructuredStatement<F>>,
 
     // for witness evaluation and multiplicity counting
     pub generic_lookups: Vec<NoFieldVectorLookupRelation>,

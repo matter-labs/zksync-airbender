@@ -33,6 +33,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             table_driver,
             num_of_variables,
             constraints,
+            structured_statements,
             lookups,
             memory_queries,
             range_check_expressions,
@@ -1038,6 +1039,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 
             degree_2_constraints,
             degree_1_constraints,
+            structured_statements,
 
             generic_lookups: generic_lookups_compiled,
             range_check_16_lookup_expressions: range_check_16_lookups_compiled,

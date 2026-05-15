@@ -7,6 +7,7 @@ use crate::cs::circuit::RegisterAccessRequest;
 use crate::cs::circuit::RegisterAndIndirectAccesses;
 use crate::cs::circuit_output::CircuitOutput;
 use crate::oracle::Placeholder;
+use crate::structured_expr::Expr;
 use crate::types::{Boolean, Num};
 use crate::witness_placer::*;
 use field::PrimeField;
@@ -166,6 +167,10 @@ pub trait Circuit<F: PrimeField>: Sized {
         &mut self,
         constraint: Constraint<F>,
     );
+    fn add_constraint_expr(&mut self, expr: Expr<F>);
+    fn add_constraint_allow_explicit_linear_expr(&mut self, expr: Expr<F>);
+    fn add_constraint_allow_explicit_linear_prevent_optimizations_expr(&mut self, expr: Expr<F>);
+    fn define_variable_from_expr(&mut self, dst: Variable, expr: Expr<F>);
     fn add_constraint_into_intermediate_variable(
         &mut self,
         constraint: Constraint<F>,
@@ -245,12 +250,15 @@ pub trait Circuit<F: PrimeField>: Sized {
         constraint: Constraint<F>,
         name: &str,
     ) -> Variable;
+    fn add_variable_from_expr(&mut self, expr: Expr<F>) -> Variable;
+    fn add_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable;
 
     fn add_intermediate_named_variable_from_constraint(
         &mut self,
         constraint: Constraint<F>,
         name: &str,
     ) -> Variable;
+    fn add_intermediate_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable;
 
     #[track_caller]
     fn add_variable_from_constraint_without_witness_evaluation(
@@ -288,10 +296,9 @@ pub trait Circuit<F: PrimeField>: Sized {
                     Boolean::Is(cond) => {
                         // if_true_val = a, if_false_val = b
                         // new_var = flag * a + (1 - flag) * b = flag * (a - b) + b
-                        let mut cnstr: Constraint<F> =
-                            { Term::from(cond) * (Term::from(a) - Term::from(b)) + Term::from(b) };
                         let new_var = self.add_variable();
-                        cnstr -= Term::from(new_var);
+                        let expr =
+                            Expr::from(cond) * (Expr::from(a) - Expr::from(b)) + Expr::from(b);
 
                         let value_fn = move |placer: &mut Self::WitnessPlacer| {
                             let mask = placer.get_boolean(cond);
@@ -304,7 +311,7 @@ pub trait Circuit<F: PrimeField>: Sized {
                         };
                         self.set_values(value_fn);
 
-                        self.add_constraint(cnstr);
+                        self.define_variable_from_expr(new_var, expr);
                         Num::Var(new_var)
                     }
 
