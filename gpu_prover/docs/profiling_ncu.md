@@ -17,7 +17,7 @@ Use the default/basic set for fast turnaround and filter to the kernel of intere
   --launch-count <matching_launches_to_collect> \
   -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_gpu_prover_kernel" \
   "$TEST_BINARY" \
-  --exact prover::tests::run_basic_unrolled_proof_job_profile_test \
+  --exact prover::tests::smoke::run_basic_unrolled_proof_job_profile_test \
   --ignored \
   --nocapture
 ```
@@ -58,7 +58,7 @@ Then profile with source import enabled and the explicit full-section list:
   --section WorkloadDistribution \
   -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_gpu_prover_full" \
   "$TEST_BINARY" \
-  --exact prover::tests::run_basic_unrolled_proof_job_profile_test \
+  --exact prover::tests::smoke::run_basic_unrolled_proof_job_profile_test \
   --ignored \
   --nocapture
 ```
@@ -114,7 +114,7 @@ Then profile that temporary range with range replay, cache flushing disabled, so
   --section WorkloadDistribution \
   -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_gpu_prover_range" \
   "$TEST_BINARY" \
-  --exact prover::tests::run_basic_unrolled_proof_job_profile_test \
+  --exact prover::tests::smoke::run_basic_unrolled_proof_job_profile_test \
   --ignored \
   --nocapture
 ```
