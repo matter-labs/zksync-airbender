@@ -25,23 +25,31 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 
-pub(crate) struct MemoryCommitmentJob<'a> {
+pub(crate) struct MemoryCommitmentJob<'a, A: GoodAllocator = std::alloc::Global> {
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
     tree_caps: Box<Option<Vec<MerkleTreeCapVarLength>>>,
     range: Range,
+    /// Holds the per-piece transferless wrappers (decoder, inits_and_teardowns,
+    /// tracing_data) + the bundle's accumulated `Transfer` callbacks. Only
+    /// populated when the job came from `commit_memory_from_transfers`; tests
+    /// that call `commit_memory` directly leave this `None`.
+    _inputs_keepalive:
+        Option<crate::prover::proof::inputs::GpuGKRCommitMemoryTransferKeepalive<'a, A>>,
 }
 
-impl<'a> MemoryCommitmentJob<'a> {
+impl<'a, A: GoodAllocator> MemoryCommitmentJob<'a, A> {
     pub(crate) fn finish(self) -> CudaResult<(Vec<MerkleTreeCapVarLength>, f32)> {
         let Self {
             is_finished_event,
             callbacks,
             tree_caps,
             range,
+            _inputs_keepalive,
         } = self;
         is_finished_event.synchronize()?;
         drop(callbacks);
+        drop(_inputs_keepalive);
         let tree_caps = tree_caps.unwrap();
         let commitment_time_ms = range.elapsed()?;
         Ok((tree_caps, commitment_time_ms))
@@ -49,7 +57,7 @@ impl<'a> MemoryCommitmentJob<'a> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn commit_memory_inner<'a>(
+fn commit_memory_inner<'a, A: GoodAllocator>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
@@ -57,8 +65,11 @@ fn commit_memory_inner<'a>(
     tracing_data: Option<&TracingDataDevice>,
     prover_config: &ProverConfig,
     mut callbacks: Callbacks<'a>,
+    inputs_keepalive: Option<
+        crate::prover::proof::inputs::GpuGKRCommitMemoryTransferKeepalive<'a, A>,
+    >,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a>> {
+) -> CudaResult<MemoryCommitmentJob<'a, A>> {
     crate::prover::proof::assert_gpu_supported_pow_config(prover_config);
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
@@ -226,6 +237,7 @@ fn commit_memory_inner<'a>(
         callbacks,
         tree_caps,
         range,
+        _inputs_keepalive: inputs_keepalive,
     };
     Ok(job)
 }
@@ -238,8 +250,8 @@ pub(crate) fn commit_memory<'a>(
     tracing_data: &TracingDataDevice,
     prover_config: &ProverConfig,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a>> {
-    commit_memory_inner(
+) -> CudaResult<MemoryCommitmentJob<'a, std::alloc::Global>> {
+    commit_memory_inner::<std::alloc::Global>(
         circuit_type,
         compiled_circuit,
         decoder_table,
@@ -247,6 +259,7 @@ pub(crate) fn commit_memory<'a>(
         Some(tracing_data),
         prover_config,
         Callbacks::new(),
+        None,
         context,
     )
 }
@@ -254,58 +267,46 @@ pub(crate) fn commit_memory<'a>(
 pub(crate) fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
-    decoder_transfer: Option<DecoderTableTransfer<'a>>,
-    inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a>>,
-    tracing_data_transfer: Option<TracingDataTransfer<'a, A>>,
+    inputs: crate::prover::proof::inputs::GpuGKRCommitMemoryTransfer<'a, A>,
     prover_config: &ProverConfig,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a>> {
-    let mut callbacks = Callbacks::new();
-    let decoder_table = if let Some(decoder_transfer) = decoder_transfer {
-        decoder_transfer.transfer.ensure_transferred(context)?;
-        let DecoderTableTransfer {
-            data_host: _,
-            data_device,
-            transfer,
-        } = decoder_transfer;
-        callbacks.extend(transfer.into_callbacks());
-        Some(data_device)
-    } else {
-        None
-    };
-    let inits_and_teardowns =
-        if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer {
-            let InitsAndTeardownsTransfer {
-                data_host: _,
-                data_device,
-                transfer,
-            } = inits_and_teardowns_transfer;
-            transfer.ensure_transferred(context)?;
-            callbacks.extend(transfer.into_callbacks());
-            Some(data_device)
-        } else {
-            None
-        };
-    let tracing_data = if let Some(tracing_data_transfer) = tracing_data_transfer {
-        let TracingDataTransfer {
-            data_host: _,
-            data_device,
-            transfer,
-        } = tracing_data_transfer;
-        transfer.ensure_transferred(context)?;
-        callbacks.extend(transfer.into_callbacks());
-        Some(data_device)
-    } else {
-        None
-    };
-    commit_memory_inner(
+) -> CudaResult<MemoryCommitmentJob<'a, A>> {
+    // One exec-stream wait covers every H2D bundled by `inputs` (decoder,
+    // inits_and_teardowns, tracing_data).
+    inputs.ensure_transferred(context)?;
+    // Move the wrappers into the bundle keepalive; raw-pointer into its
+    // device-buffer fields so we can simultaneously hand the keepalive to
+    // `commit_memory_inner` (where it moves into the returned job's
+    // `_inputs_keepalive`).
+    //
+    // SAFETY: `keepalive` is passed by-move into `commit_memory_inner` and
+    // ends up stored in the returned `MemoryCommitmentJob`; the wrappers it
+    // owns therefore outlive every kernel reading from the pointers below,
+    // since `MemoryCommitmentJob::finish()` synchronizes on the completion
+    // event before dropping the keepalive.
+    let keepalive = inputs.into_keepalive();
+    let decoder_ptr: Option<*const DeviceSlice<ExecutorFamilyDecoderData>> = keepalive
+        .decoder
+        .as_ref()
+        .map(|t| (&t.data_device[..]) as *const _);
+    let inits_ptr: Option<*const crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice> =
+        keepalive
+            .inits_and_teardowns
+            .as_ref()
+            .map(|t| &t.data_device as *const _);
+    let tracing_ptr: Option<*const TracingDataDevice> = keepalive
+        .tracing_data
+        .as_ref()
+        .map(|t| &t.data_device as *const _);
+    commit_memory_inner::<A>(
         circuit_type,
         compiled_circuit,
-        decoder_table.as_ref().map(|t| &t[..]),
-        inits_and_teardowns.as_ref(),
-        tracing_data.as_ref(),
+        decoder_ptr.map(|p| unsafe { &*p }),
+        inits_ptr.map(|p| unsafe { &*p }),
+        tracing_ptr.map(|p| unsafe { &*p }),
         prover_config,
-        callbacks,
+        Callbacks::new(),
+        Some(keepalive),
         context,
     )
 }

@@ -114,7 +114,7 @@ impl<A: GoodAllocator> TracingDataHost<A> {
 pub(crate) struct TracingDataTransfer<'a, A: GoodAllocator> {
     pub data_host: TracingDataHost<A>,
     pub data_device: TracingDataDevice,
-    pub transfer: Transfer<'a>,
+    _marker: std::marker::PhantomData<&'a ()>,
 }
 
 impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
@@ -163,23 +163,25 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
                 }
             },
         };
-        let transfer = Transfer::new()?;
-        transfer.record_allocated(context)?;
         Ok(Self {
             data_host,
             data_device,
-            transfer,
+            _marker: std::marker::PhantomData,
         })
     }
 
-    pub fn schedule_transfer(&mut self, context: &ProverContext) -> CudaResult<()> {
+    pub fn schedule_transfer(
+        &mut self,
+        transfer: &mut Transfer<'a>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
         match &self.data_host {
             TracingDataHost::Delegation(delegation) => match delegation {
                 DelegationTracingDataHost::BigIntWithControl(h_trace) => {
                     match &mut self.data_device {
                         TracingDataDevice::Delegation(
                             DelegationTracingDataDevice::BigIntWithControl(d_trace),
-                        ) => self.transfer.schedule_multiple(
+                        ) => transfer.schedule_multiple(
                             &h_trace.chunks,
                             &mut d_trace.tracing_data,
                             context,
@@ -191,7 +193,7 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
                     match &mut self.data_device {
                         TracingDataDevice::Delegation(
                             DelegationTracingDataDevice::Blake2WithCompression(d_trace),
-                        ) => self.transfer.schedule_multiple(
+                        ) => transfer.schedule_multiple(
                             &h_trace.chunks,
                             &mut d_trace.tracing_data,
                             context,
@@ -203,7 +205,7 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
                     match &mut self.data_device {
                         TracingDataDevice::Delegation(
                             DelegationTracingDataDevice::Blake2GFunction(d_trace),
-                        ) => self.transfer.schedule_multiple(
+                        ) => transfer.schedule_multiple(
                             &h_trace.chunks,
                             &mut d_trace.tracing_data,
                             context,
@@ -214,7 +216,7 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
                 DelegationTracingDataHost::KeccakSpecial5(h_trace) => match &mut self.data_device {
                     TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(
                         d_trace,
-                    )) => self.transfer.schedule_multiple(
+                    )) => transfer.schedule_multiple(
                         &h_trace.chunks,
                         &mut d_trace.tracing_data,
                         context,
@@ -224,14 +226,18 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
             },
             TracingDataHost::Unrolled(unrolled) => match unrolled {
                 UnrolledTracingDataHost::Memory(h_trace) => match &mut self.data_device {
-                    TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(d_trace)) => self
-                        .transfer
-                        .schedule_multiple(&h_trace.chunks, &mut d_trace.tracing_data, context)?,
+                    TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(d_trace)) => {
+                        transfer.schedule_multiple(
+                            &h_trace.chunks,
+                            &mut d_trace.tracing_data,
+                            context,
+                        )?
+                    }
                     _ => panic!("expected unrolled memory trace"),
                 },
                 UnrolledTracingDataHost::NonMemory(h_trace) => match &mut self.data_device {
                     TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(d_trace)) => {
-                        self.transfer.schedule_multiple(
+                        transfer.schedule_multiple(
                             &h_trace.chunks,
                             &mut d_trace.tracing_data,
                             context,
@@ -241,7 +247,7 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
                 },
                 UnrolledTracingDataHost::Unified(h_trace) => match &mut self.data_device {
                     TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(d_trace)) => {
-                        self.transfer.schedule_multiple(
+                        transfer.schedule_multiple(
                             &h_trace.chunks,
                             &mut d_trace.tracing_data,
                             context,
@@ -251,23 +257,14 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
                 },
             },
         }
-        self.transfer.record_transferred(context)
-    }
-
-    pub(crate) fn into_host_keepalive(self) -> crate::primitives::callbacks::Callbacks<'a> {
-        let Self {
-            data_host: _,
-            data_device: _,
-            transfer,
-        } = self;
-        transfer.into_callbacks()
+        Ok(())
     }
 }
 
 pub(crate) struct InitsAndTeardownsTransfer<'a> {
     pub data_host: InitsAndTeardownsTraceHost,
     pub data_device: InitsAndTeardownsTraceDevice,
-    pub transfer: Transfer<'a>,
+    _marker: std::marker::PhantomData<&'a ()>,
 }
 
 impl<'a> InitsAndTeardownsTransfer<'a> {
@@ -282,40 +279,33 @@ impl<'a> InitsAndTeardownsTransfer<'a> {
             values_packed,
             timestamps_packed,
         };
-        let transfer = Transfer::new()?;
-        transfer.record_allocated(context)?;
         Ok(Self {
             data_host,
             data_device,
-            transfer,
+            _marker: std::marker::PhantomData,
         })
     }
 
-    pub fn schedule_transfer(&mut self, context: &ProverContext) -> CudaResult<()> {
-        self.transfer.schedule_multiple(
+    pub fn schedule_transfer(
+        &mut self,
+        transfer: &mut Transfer<'a>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        transfer.schedule_multiple(
             &self.data_host.page_indices.chunks,
             &mut self.data_device.page_indices,
             context,
         )?;
-        self.transfer.schedule_multiple(
+        transfer.schedule_multiple(
             &self.data_host.values_packed.chunks,
             &mut self.data_device.values_packed,
             context,
         )?;
-        self.transfer.schedule_multiple(
+        transfer.schedule_multiple(
             &self.data_host.timestamps_packed.chunks,
             &mut self.data_device.timestamps_packed,
             context,
         )?;
-        self.transfer.record_transferred(context)
-    }
-
-    pub(crate) fn into_host_keepalive(self) -> crate::primitives::callbacks::Callbacks<'a> {
-        let Self {
-            data_host: _,
-            data_device: _,
-            transfer,
-        } = self;
-        transfer.into_callbacks()
+        Ok(())
     }
 }

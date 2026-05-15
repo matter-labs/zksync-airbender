@@ -1,20 +1,19 @@
 use std::sync::Arc;
 
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::STATE_SIZE;
-use crate::primitives::callbacks::Callbacks;
 use crate::primitives::circuit_type::CircuitType;
-use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
+use crate::primitives::context::{DeviceAllocation, ProverContext};
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::setup::{
     schedule_forward_setup_for_shape, GpuGKRForwardSetup, GpuGKRSetupTransfer,
 };
 use crate::prover::gkr::stage1::{GpuGKRStage1Output, GpuGKRTraceGeometry};
+use crate::prover::proof::inputs::EXTERNAL_CHALLENGES_E4_LEN;
 use crate::prover::proof::layout::{
     build_proof_layout_inputs, ProofLayout, ProofLayoutBaseLayerGeometry,
 };
@@ -22,10 +21,7 @@ use crate::prover::trace::decoder::DecoderTableTransfer;
 use crate::prover::trace::holder::{TraceHolder, TreesCacheMode};
 use crate::prover::trace::memory_transfer::GpuGKRMemoryTransfer;
 use crate::prover::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
-use crate::upstream::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
 use crate::upstream::{GKRCircuitArtifact, GKRExternalChallenges, ProverConfig, WhirSchedule};
-
-use super::canonical_inits_and_teardowns_top_bits;
 
 pub(in crate::prover::proof) struct Stage1AndForwardPreparation {
     pub(in crate::prover::proof) stage1_output: GpuGKRStage1Output,
@@ -34,9 +30,18 @@ pub(in crate::prover::proof) struct Stage1AndForwardPreparation {
     pub(in crate::prover::proof) proof_slab: Option<Arc<DeviceAllocation<E4>>>,
     pub(in crate::prover::proof) forward_setup: GpuGKRForwardSetup<E4>,
     pub(in crate::prover::proof) d_seed: DeviceAllocation<u32>,
-    pub(in crate::prover::proof) d_external_challenges_e4: DeviceAllocation<E4>,
-    pub(in crate::prover::proof) canonical_top_bits_host: HostAllocation<[u32]>,
-    pub(in crate::prover::proof) external_challenges_host: HostAllocation<[E4]>,
+}
+
+/// Pre-prepared device buffers that this function consumes via references
+/// (their owning wrappers live in the bundle keepalive for the proof job's
+/// lifetime).
+pub(in crate::prover::proof) struct BundleDeviceRefs<'b, 'a> {
+    pub setup: Option<&'b GpuGKRSetupTransfer<'a>>,
+    pub decoder: Option<&'b DecoderTableTransfer<'a>>,
+    pub inits_and_teardowns: Option<&'b InitsAndTeardownsTransfer<'a>>,
+    pub memory: &'b GpuGKRMemoryTransfer<'a>,
+    pub canonical_top_bits_device: Option<&'b DeviceAllocation<u32>>,
+    pub external_challenges_device: &'b DeviceAllocation<E4>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -47,17 +52,13 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
     prover_config: &ProverConfig,
     final_trace_size_log_2: usize,
     whir_schedule: &WhirSchedule,
-    setup_transfer: &Option<GpuGKRSetupTransfer<'a>>,
-    decoder_transfer: Option<DecoderTableTransfer<'a>>,
-    inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a>>,
-    tracing_data_transfer: Option<TracingDataTransfer<'a, A>>,
-    memory_transfer: &GpuGKRMemoryTransfer<'a>,
-    callbacks: &mut Callbacks<'a>,
+    bundle: BundleDeviceRefs<'_, 'a>,
+    tracing_data_transfer: Option<&TracingDataTransfer<'a, A>>,
     context: &ProverContext,
 ) -> CudaResult<Stage1AndForwardPreparation> {
     let stream = context.get_exec_stream();
-    let setup_geometry = setup_transfer
-        .as_ref()
+    let setup_geometry = bundle
+        .setup
         .map(|setup| GpuGKRTraceGeometry {
             log_domain_size: setup.trace_holder.log_domain_size,
             log_lde_factor: setup.trace_holder.log_lde_factor,
@@ -77,16 +78,18 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
             log_tree_cap_size: prover_config.cap_size.trailing_zeros(),
         });
 
-    let canonical_top_bits = canonical_inits_and_teardowns_top_bits(compiled_circuit);
-    let canonical_top_bits_len = canonical_top_bits.len();
-    let external_challenges_u32_len = (NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4;
+    let canonical_top_bits_len = bundle
+        .canonical_top_bits_device
+        .map(|d| d.len())
+        .unwrap_or(0);
+    let external_challenges_u32_len = EXTERNAL_CHALLENGES_E4_LEN * 4;
     debug_assert_eq!(
-        memory_transfer.host.log_lde_factor, setup_geometry.log_lde_factor,
+        bundle.memory.host.log_lde_factor, setup_geometry.log_lde_factor,
         "memory transfer log_lde_factor must match setup geometry",
     );
     let memory_caps_total_u32 =
-        (1usize << memory_transfer.host.log_tree_cap_size) * BLAKE2S_DIGEST_SIZE_U32_WORDS;
-    let setup_caps_total_u32 = if setup_transfer.is_some() {
+        (1usize << bundle.memory.host.log_tree_cap_size) * BLAKE2S_DIGEST_SIZE_U32_WORDS;
+    let setup_caps_total_u32 = if bundle.setup.is_some() {
         (1usize << setup_geometry.log_tree_cap_size) * BLAKE2S_DIGEST_SIZE_U32_WORDS
     } else {
         0
@@ -103,76 +106,22 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
         "transcript input must be non-empty for commit_initial",
     );
 
-    let mut d_canonical_top_bits: DeviceAllocation<u32> =
-        context.alloc(canonical_top_bits_len.max(1), AllocationPlacement::BestFit)?;
-    let mut canonical_top_bits_host =
-        unsafe { context.alloc_host_uninit_slice::<u32>(canonical_top_bits_len.max(1)) };
-    let canonical_top_bits_host_write_accessor = canonical_top_bits_host.get_mut_accessor();
-    let mut external_challenges_host = unsafe {
-        context.alloc_host_uninit_slice::<E4>(NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1)
-    };
-    let external_challenges_host_write_accessor = external_challenges_host.get_mut_accessor();
-    let external_challenges_for_h2d = external_challenges.clone();
-    let mut d_external_challenges_e4: DeviceAllocation<E4> = context.alloc(
-        NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1,
-        AllocationPlacement::BestFit,
-    )?;
-
-    callbacks.schedule(
-        move || unsafe {
-            canonical_top_bits_host_write_accessor.get_mut()[..canonical_top_bits_len]
-                .copy_from_slice(&canonical_top_bits);
-            let dst = external_challenges_host_write_accessor.get_mut();
-            dst[..NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES].copy_from_slice(
-                &external_challenges_for_h2d.permutation_argument_linearization_challenges,
-            );
-            dst[NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES] =
-                external_challenges_for_h2d.permutation_argument_additive_part;
-        },
-        stream,
-    )?;
-    if canonical_top_bits_len > 0 {
-        memory_copy_async(
-            &mut d_canonical_top_bits[..canonical_top_bits_len],
-            &canonical_top_bits_host,
-            stream,
-        )?;
-    }
-    memory_copy_async(
-        &mut d_external_challenges_e4,
-        &external_challenges_host,
-        stream,
-    )?;
-
     let stage1_output = GpuGKRStage1Output::generate(
         circuit_type,
         compiled_circuit,
         setup_geometry,
-        setup_transfer
-            .as_ref()
+        bundle
+            .setup
             .filter(|transfer| transfer.host.columns_count > 0)
             .map(|transfer| transfer.trace_holder.get_hypercube_evals()),
-        decoder_transfer
-            .as_ref()
-            .map(|transfer| &transfer.data_device[..]),
-        inits_and_teardowns_transfer
-            .as_ref()
+        bundle.decoder.map(|transfer| &transfer.data_device[..]),
+        bundle
+            .inits_and_teardowns
             .map(|transfer| &transfer.data_device),
-        tracing_data_transfer
-            .as_ref()
-            .map(|transfer| &transfer.data_device),
+        tracing_data_transfer.map(|transfer| &transfer.data_device),
         context,
     )?;
-    if let Some(decoder_transfer) = decoder_transfer {
-        callbacks.extend(decoder_transfer.into_host_keepalive());
-    }
-    if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer {
-        callbacks.extend(inits_and_teardowns_transfer.into_host_keepalive());
-    }
-    if let Some(tracing_data_transfer) = tracing_data_transfer {
-        callbacks.extend(tracing_data_transfer.into_host_keepalive());
-    }
-    let synthetic_setup_trace_holder = if setup_transfer.is_none() {
+    let synthetic_setup_trace_holder = if bundle.setup.is_none() {
         Some(TraceHolder::new_without_cosets(
             setup_geometry.log_domain_size,
             setup_geometry.log_lde_factor,
@@ -186,7 +135,7 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
         None
     };
     debug_assert_eq!(
-        stage1_output.memory_trace_holder.log_lde_factor, memory_transfer.host.log_lde_factor,
+        stage1_output.memory_trace_holder.log_lde_factor, bundle.memory.host.log_lde_factor,
         "memory trace holder LDE factor must match the memory transfer geometry",
     );
     debug_assert_eq!(
@@ -196,9 +145,7 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
         "stage1 witness unified cap size must match the structurally-derived witness_caps_total_u32",
     );
 
-    let proof_layout_setup_columns_count = setup_transfer
-        .as_ref()
-        .map_or(0, |s| s.trace_holder.columns_count);
+    let proof_layout_setup_columns_count = bundle.setup.map_or(0, |s| s.trace_holder.columns_count);
     let memory_layer_geometry = GpuGKRTraceGeometry {
         log_domain_size: stage1_output.memory_trace_holder.log_domain_size,
         log_lde_factor: stage1_output.memory_trace_holder.log_lde_factor,
@@ -251,24 +198,24 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
     };
 
     let mut chunks: Vec<(*const u32, u32)> = Vec::with_capacity(5);
-    if canonical_top_bits_len > 0 {
+    if let Some(d_canonical_top_bits) = bundle.canonical_top_bits_device {
         chunks.push((d_canonical_top_bits.as_ptr(), canonical_top_bits_len as u32));
     }
     {
-        let external_u32 = unsafe { d_external_challenges_e4.transmute::<u32>() };
+        let external_u32 = unsafe { bundle.external_challenges_device.transmute::<u32>() };
         debug_assert_eq!(external_u32.len(), external_challenges_u32_len);
         chunks.push((external_u32.as_ptr(), external_challenges_u32_len as u32));
     }
     if setup_caps_total_u32 > 0 {
-        let setup_transfer_ref = setup_transfer
-            .as_ref()
+        let setup_transfer_ref = bundle
+            .setup
             .expect("setup_caps_total_u32 > 0 requires a setup transfer");
         let src_u32 = unsafe { setup_transfer_ref.unified_device_cap().transmute::<u32>() };
         debug_assert_eq!(src_u32.len(), setup_caps_total_u32);
         chunks.push((src_u32.as_ptr(), setup_caps_total_u32 as u32));
     }
     {
-        let src_u32 = unsafe { memory_transfer.unified_device_cap().transmute::<u32>() };
+        let src_u32 = unsafe { bundle.memory.unified_device_cap().transmute::<u32>() };
         debug_assert_eq!(src_u32.len(), memory_caps_total_u32);
         chunks.push((src_u32.as_ptr(), memory_caps_total_u32 as u32));
     }
@@ -285,13 +232,12 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
     let mut d_seed: DeviceAllocation<u32> =
         context.alloc(STATE_SIZE, AllocationPlacement::BestFit)?;
     crate::ops::blake2s::transcript_commit_initial_chunked(&mut d_seed, &chunks, stream)?;
-    drop(d_canonical_top_bits);
 
     let mut d_lookup_challenges: DeviceAllocation<E4> =
         context.alloc(2, AllocationPlacement::BestFit)?;
     crate::ops::blake2s::transcript_squeeze_e4(&mut d_seed, &mut d_lookup_challenges, stream)?;
 
-    let forward_setup = if let Some(setup_transfer) = setup_transfer.as_ref() {
+    let forward_setup = if let Some(setup_transfer) = bundle.setup {
         setup_transfer.schedule_forward_setup(compiled_circuit, d_lookup_challenges, context)?
     } else {
         schedule_forward_setup_for_shape::<E4>(
@@ -312,8 +258,5 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
         proof_slab,
         forward_setup,
         d_seed,
-        d_external_challenges_e4,
-        canonical_top_bits_host,
-        external_challenges_host,
     })
 }

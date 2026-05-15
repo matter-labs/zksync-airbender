@@ -1,6 +1,10 @@
 use super::*;
 
-use crate::upstream::{assemble_query_index, draw_query_bits, BitSource, Seed, Transcript};
+use crate::primitives::field::{BF, E4};
+use crate::upstream::{
+    assemble_query_index, draw_query_bits, BitSource, GKRExternalChallenges, Seed, Transcript,
+};
+use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use worker::Worker;
 
 fn draw_query_bits_with_external_nonce(

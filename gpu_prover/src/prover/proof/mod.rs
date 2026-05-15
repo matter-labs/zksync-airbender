@@ -1,9 +1,8 @@
+pub(crate) mod inputs;
 pub(crate) mod layout;
 mod orchestration;
 
 use std::sync::Arc;
-
-use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::result::CudaResult;
@@ -17,20 +16,17 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::make_deferred_backward_workflow_state;
 use crate::prover::gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
-use crate::prover::gkr::setup::GpuGKRSetupTransfer;
-use crate::prover::trace::decoder::DecoderTableTransfer;
-use crate::prover::trace::memory_transfer::GpuGKRMemoryTransfer;
-use crate::prover::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
-use crate::upstream::{GKRCircuitArtifact, GKRExternalChallenges, ProverConfig};
+use crate::prover::proof::inputs::GpuGKRProofTransfer;
+use crate::upstream::{GKRCircuitArtifact, ProverConfig};
 
 pub(crate) use orchestration::{
-    assert_gpu_supported_pow_config, grand_product_accumulator_from_explicit_evaluations,
-    GpuGKRProofJob,
+    assert_gpu_supported_pow_config, canonical_inits_and_teardowns_top_bits,
+    grand_product_accumulator_from_explicit_evaluations, GpuGKRProofJob,
 };
 use orchestration::{
-    canonical_inits_and_teardowns_top_bits, prepare_backward_handoff,
-    prepare_stage1_and_forward_setup, schedule_backward_phase, schedule_terminal_proof_assembly,
-    schedule_whir_phase, BackwardPhaseResult, ForwardToBackwardHandoff, GpuGKRProofJobKeepalive,
+    prepare_backward_handoff, prepare_stage1_and_forward_setup, schedule_backward_phase,
+    schedule_terminal_proof_assembly, schedule_whir_phase, stage1_forward::BundleDeviceRefs,
+    BackwardPhaseResult, ForwardToBackwardHandoff, GpuGKRProofJobKeepalive,
     Stage1AndForwardPreparation, WhirPhaseResult,
 };
 
@@ -38,23 +34,30 @@ use orchestration::{
 pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     circuit_type: CircuitType,
     compiled_circuit: GKRCircuitArtifact<BF>,
-    external_challenges: GKRExternalChallenges<BF, E4>,
     prover_config: &ProverConfig,
     final_trace_size_log_2: usize,
-    mut setup_transfer: Option<GpuGKRSetupTransfer<'a>>,
-    decoder_transfer: Option<DecoderTableTransfer<'a>>,
-    inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a>>,
-    tracing_data_transfer: Option<TracingDataTransfer<'a, A>>,
-    memory_transfer: GpuGKRMemoryTransfer<'a>,
+    inputs: GpuGKRProofTransfer<'a, A>,
     context: &ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a>> {
+) -> CudaResult<GpuGKRProofJob<'a, A>> {
     assert_gpu_supported_pow_config(prover_config);
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
     );
     let whir_schedule = &prover_config.whir_schedule;
-    if let Some(setup_transfer) = setup_transfer.as_ref() {
+
+    let GpuGKRProofTransfer {
+        transfer,
+        mut setup,
+        decoder,
+        inits_and_teardowns,
+        tracing_data,
+        memory,
+        canonical_top_bits,
+        external_challenges,
+    } = inputs;
+
+    if let Some(setup_transfer) = setup.as_ref() {
         assert_eq!(
             setup_transfer.trace_holder.log_lde_factor,
             prover_config.lde_factor.trailing_zeros()
@@ -67,22 +70,12 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             setup_transfer.trace_holder.log_tree_cap_size,
             prover_config.cap_size.trailing_zeros()
         );
-        setup_transfer.ensure_transferred(context)?;
     }
-    if let Some(decoder_transfer) = decoder_transfer.as_ref() {
-        decoder_transfer.transfer.ensure_transferred(context)?;
-    }
-    if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer.as_ref() {
-        inits_and_teardowns_transfer
-            .transfer
-            .ensure_transferred(context)?;
-    }
-    if let Some(tracing_data_transfer) = tracing_data_transfer.as_ref() {
-        tracing_data_transfer.transfer.ensure_transferred(context)?;
-    }
-    // Memory cap H2D was scheduled pre-prove on h2d_stream; the D2D into the
-    // transcript input slot below needs the H2D to be visible on exec_stream.
-    memory_transfer.ensure_transferred(context)?;
+
+    // Single fork/join from h2d_stream → exec_stream covering every pre-prove
+    // H2D bundled by `inputs` (setup, decoder, inits_and_teardowns, tracing_data,
+    // memory caps, canonical_top_bits, external_challenges).
+    transfer.ensure_transferred(context)?;
 
     let stream = context.get_exec_stream();
     let mut callbacks = Callbacks::new();
@@ -101,22 +94,22 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         proof_slab,
         mut forward_setup,
         d_seed,
-        d_external_challenges_e4,
-        canonical_top_bits_host,
-        external_challenges_host,
-    } = prepare_stage1_and_forward_setup(
+    } = prepare_stage1_and_forward_setup::<A>(
         circuit_type,
         &compiled_circuit,
-        &external_challenges,
+        &external_challenges.value,
         prover_config,
         final_trace_size_log_2,
         whir_schedule,
-        &setup_transfer,
-        decoder_transfer,
-        inits_and_teardowns_transfer,
-        tracing_data_transfer,
-        &memory_transfer,
-        &mut callbacks,
+        BundleDeviceRefs {
+            setup: setup.as_ref(),
+            decoder: decoder.as_ref(),
+            inits_and_teardowns: inits_and_teardowns.as_ref(),
+            memory: &memory,
+            canonical_top_bits_device: canonical_top_bits.as_ref().map(|t| &t.device),
+            external_challenges_device: &external_challenges.device,
+        },
+        tracing_data.as_ref(),
         context,
     )?;
 
@@ -134,12 +127,12 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         })
     });
     let forward_output = schedule_forward_pass(
-        setup_transfer.as_ref().map(|setup| &setup.trace_holder),
+        setup.as_ref().map(|setup| &setup.trace_holder),
         synthetic_setup_trace_holder.as_ref(),
         &mut stage1_output,
         &mut forward_setup,
         &compiled_circuit,
-        &external_challenges,
+        &external_challenges.value,
         final_trace_size_log_2,
         output_evaluations_slab,
         context,
@@ -176,8 +169,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     } = schedule_backward_phase(
         backward_state,
         compiled_circuit.clone(),
-        external_challenges.clone(),
-        d_external_challenges_e4.as_ptr(),
+        external_challenges.value.clone(),
+        external_challenges.device.as_ptr(),
         backward_shared_state,
         d_seed,
         d_evaluation_point_and_batching,
@@ -198,10 +191,10 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     } = schedule_whir_phase(
         &compiled_circuit,
         whir_schedule,
-        &mut setup_transfer,
+        &mut setup,
         &mut synthetic_setup_trace_holder,
         &mut stage1_output,
-        &memory_transfer,
+        &memory,
         &mut backward_scheduled,
         backward_shared_state,
         proof_slab.as_deref(),
@@ -216,8 +209,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     // for the proof-lifetime final-seed/claim-point buffers), and the
     // callbacks/tracing/host-staging buffers all ride on this struct.
     let backward_keepalive = backward_scheduled;
-    let setup_keepalive = setup_transfer.map(GpuGKRSetupTransfer::into_host_keepalive);
-    let memory_keepalive = memory_transfer.into_host_keepalive();
 
     let slab = proof_slab
         .as_ref()
@@ -228,7 +219,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         proof_handle,
         whir_shared_state,
         base_layer_claims_shared_state,
-        external_challenges.clone(),
+        external_challenges.value.clone(),
         canonical_inits_and_teardowns_top_bits(&compiled_circuit),
         &mut callbacks,
         context,
@@ -248,6 +239,21 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
 
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     is_finished_event.record(stream)?;
+
+    // Reassemble the bundle so we can produce a single keepalive that owns
+    // every transferless wrapper + the shared Transfer's accumulated callbacks.
+    let inputs_keepalive = GpuGKRProofTransfer {
+        transfer,
+        setup,
+        decoder,
+        inits_and_teardowns,
+        tracing_data,
+        memory,
+        canonical_top_bits,
+        external_challenges,
+    }
+    .into_keepalive();
+
     Ok(GpuGKRProofJob {
         is_finished_event,
         callbacks,
@@ -255,15 +261,11 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         ranges,
         keepalive: GpuGKRProofJobKeepalive {
             _stage1: stage1_output.into_keepalive(),
-            _setup: setup_keepalive,
-            _memory: memory_keepalive,
+            _inputs: inputs_keepalive,
             _forward_setup: forward_setup_keepalive,
             _backward: backward_keepalive,
             _base_layer_claims: base_layer_claims_scheduled,
             _whir: whir_scheduled,
-            _initial_transcript_canonical_top_bits_host: canonical_top_bits_host,
-            _external_challenges_host: external_challenges_host,
-            _external_challenges_device: d_external_challenges_e4,
             _proof_host_mirror: proof_host_mirror,
             _proof_slab: proof_slab,
         },

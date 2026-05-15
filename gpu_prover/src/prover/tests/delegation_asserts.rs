@@ -67,7 +67,11 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
     );
     let mut gpu_setup_transfer =
         GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
-    gpu_setup_transfer.schedule_transfer(&context).unwrap();
+    let _h2d = crate::primitives::transfer::single_shot_h2d(
+        |t| gpu_setup_transfer.schedule_transfer(t, &context),
+        &context,
+    )
+    .unwrap();
     context.get_h2d_stream().synchronize().unwrap();
 
     let cpu_setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);

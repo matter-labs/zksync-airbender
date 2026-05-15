@@ -13,6 +13,7 @@
 // Callers obtain `Vec<MerkleTreeCapVarLength>` from `MemoryCommitmentJob::finish()`
 // and hand it here.
 
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use era_cudart::memory::memory_copy_async;
@@ -20,7 +21,6 @@ use era_cudart::result::CudaResult;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::Digest;
-use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, ProverContext};
 use crate::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use crate::primitives::transfer::Transfer;
@@ -78,11 +78,7 @@ impl GpuGKRMemoryTransferHost {
 pub(crate) struct GpuGKRMemoryTransfer<'a> {
     pub(crate) host: Arc<GpuGKRMemoryTransferHost>,
     pub(crate) unified_device_cap: DeviceAllocation<Digest>,
-    pub(crate) transfer: Transfer<'a>,
-}
-
-pub(crate) struct GpuGKRMemoryTransferHostKeepalive<'a> {
-    _transfer_callbacks: Callbacks<'a>,
+    _marker: PhantomData<&'a ()>,
 }
 
 impl<'a> GpuGKRMemoryTransfer<'a> {
@@ -92,45 +88,28 @@ impl<'a> GpuGKRMemoryTransfer<'a> {
     ) -> CudaResult<Self> {
         let cap_size = 1usize << host.log_tree_cap_size;
         let unified_device_cap = context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
-        let transfer = Transfer::new()?;
-        transfer.record_allocated(context)?;
         Ok(Self {
             host,
             unified_device_cap,
-            transfer,
+            _marker: PhantomData,
         })
     }
 
-    pub(crate) fn schedule_transfer(&mut self, context: &ProverContext) -> CudaResult<()> {
-        self.transfer.ensure_allocated(context)?;
+    pub(crate) fn schedule_transfer(
+        &mut self,
+        transfer: &mut Transfer<'a>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        transfer.ensure_allocated(context)?;
         let stream = context.get_h2d_stream();
         memory_copy_async(
             &mut self.unified_device_cap,
             &self.host.unified_tree_cap[..],
             stream,
-        )?;
-        self.transfer.record_transferred(context)
-    }
-
-    pub(crate) fn ensure_transferred(&self, context: &ProverContext) -> CudaResult<()> {
-        self.transfer.ensure_transferred(context)
+        )
     }
 
     pub(crate) fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {
         &self.unified_device_cap
-    }
-
-    pub(crate) fn into_host_keepalive(self) -> GpuGKRMemoryTransferHostKeepalive<'a> {
-        let Self {
-            host: _,
-            unified_device_cap: _,
-            transfer,
-        } = self;
-        // unified_device_cap and host drop here — all exec-stream ops that
-        // used them have already been scheduled by `prove()` before the
-        // keepalive is constructed.
-        GpuGKRMemoryTransferHostKeepalive {
-            _transfer_callbacks: transfer.into_callbacks(),
-        }
     }
 }

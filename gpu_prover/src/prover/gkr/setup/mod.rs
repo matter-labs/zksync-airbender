@@ -26,7 +26,7 @@ pub(crate) use kernels::*;
 pub(crate) struct GpuGKRSetupTransfer<'a> {
     pub(crate) host: Arc<GpuGKRSetupHost>,
     pub(crate) trace_holder: TraceHolder<BF>,
-    pub(crate) transfer: Transfer<'a>,
+    _marker: PhantomData<&'a ()>,
 }
 
 impl<'a> GpuGKRSetupTransfer<'a> {
@@ -36,10 +36,6 @@ impl<'a> GpuGKRSetupTransfer<'a> {
     pub(crate) fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {
         self.trace_holder.unified_device_cap()
     }
-}
-
-pub(crate) struct GpuGKRSetupTransferHostKeepalive<'a> {
-    _transfer_callbacks: Callbacks<'a>,
 }
 
 impl<'a> GpuGKRSetupTransfer<'a> {
@@ -62,17 +58,19 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             .unified_device_cap
             .replace(unified_cap)
             .is_none());
-        let transfer = Transfer::new()?;
-        transfer.record_allocated(context)?;
         Ok(Self {
             host,
             trace_holder,
-            transfer,
+            _marker: PhantomData,
         })
     }
 
-    pub(crate) fn schedule_transfer(&mut self, context: &ProverContext) -> CudaResult<()> {
-        self.transfer.ensure_allocated(context)?;
+    pub(crate) fn schedule_transfer(
+        &mut self,
+        transfer: &mut Transfer<'a>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        transfer.ensure_allocated(context)?;
         let stream = context.get_h2d_stream();
         memory_copy_async(
             self.trace_holder.get_uninit_hypercube_evals_mut(),
@@ -92,32 +90,14 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             memory_copy_async(dst_tree, &src_tree[..], stream)?;
         }
         // H2D the unified host cap directly into the device unified cap on
-        // h2d_stream — gated by the same `Transfer::record_transferred` fence
-        // as the polynomials and partial trees above.
+        // h2d_stream — gated by the bundle's single `record_transferred` fence.
         let unified_dst = self
             .trace_holder
             .unified_device_cap
             .as_mut()
             .expect("setup transfer must have allocated the unified device cap");
         memory_copy_async(unified_dst, &self.host.unified_tree_cap[..], stream)?;
-        self.transfer.record_transferred(context)
-    }
-
-    pub(crate) fn ensure_transferred(&self, context: &ProverContext) -> CudaResult<()> {
-        self.transfer.ensure_transferred(context)
-    }
-
-    pub(crate) fn into_host_keepalive(self) -> GpuGKRSetupTransferHostKeepalive<'a> {
-        let Self {
-            host: _,
-            trace_holder: _,
-            transfer,
-        } = self;
-        // trace_holder (device alloc) and host drop here — all exec-stream ops that
-        // used them have already been scheduled.
-        GpuGKRSetupTransferHostKeepalive {
-            _transfer_callbacks: transfer.into_callbacks(),
-        }
+        Ok(())
     }
 
     #[cfg(test)]
@@ -175,6 +155,10 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         Ok(storage)
     }
 
+    /// Schedule the forward setup kernels on `exec_stream`. The caller must
+    /// have already ensured the H2D into `self.trace_holder` is visible to
+    /// `exec_stream` (via the bundle's `ensure_transferred` in production, or
+    /// `h2d_stream.synchronize()` in tests).
     pub(crate) fn schedule_forward_setup<E>(
         &self,
         compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -188,7 +172,6 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             + crate::ops::powers::GetPowersByRef
             + 'static,
     {
-        self.ensure_transferred(context)?;
         schedule_forward_setup_for_shape(
             Some((&self.trace_holder, self.host.columns_count)),
             compiled_circuit.trace_len,

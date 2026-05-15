@@ -8,7 +8,7 @@ use crate::primitives::circuit_type::CircuitType;
 use crate::primitives::context::{ProverContext, ProverContextConfig};
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::setup::GpuGKRSetupTransfer;
-use crate::prover::proof::{prove, GpuGKRProofJob};
+use crate::prover::proof::{canonical_inits_and_teardowns_top_bits, prove, GpuGKRProofJob};
 use crate::prover::trace::decoder::DecoderTableTransfer;
 use crate::prover::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
 use crate::prover::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
@@ -78,11 +78,14 @@ impl RequestState {
 /// Phase-1 state: H2D transfers scheduled, no GPU job enqueued yet.
 struct PhaseOne<'a> {
     state: RequestState,
-    setup_transfer: Option<GpuGKRSetupTransfer<'a>>,
-    decoder_transfer: Option<DecoderTableTransfer<'a>>,
-    inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a>>,
-    tracing_data_transfer: Option<TracingDataTransfer<'a, A>>,
-    memory_transfer: Option<GpuGKRMemoryTransfer<'a>>,
+    inputs: PhaseOneInputs<'a>,
+}
+
+/// Per-phase-1 bundle, scheduled on h2d_stream against a single shared
+/// `Transfer`. Variant matches the eventual phase-2 job type.
+enum PhaseOneInputs<'a> {
+    Proof(crate::prover::proof::inputs::GpuGKRProofTransfer<'a, A>),
+    MemoryCommitment(crate::prover::proof::inputs::GpuGKRCommitMemoryTransfer<'a, A>),
 }
 
 /// Phase-2 state: GPU job enqueued, awaiting `finish()`.
@@ -92,8 +95,8 @@ struct PhaseTwo<'a> {
 }
 
 enum JobType<'a> {
-    MemoryCommitment(MemoryCommitmentJob<'a>),
-    Proof(GpuGKRProofJob<'a>),
+    MemoryCommitment(MemoryCommitmentJob<'a, A>),
+    Proof(GpuGKRProofJob<'a, A>),
 }
 
 fn gpu_worker(
@@ -218,57 +221,33 @@ fn schedule_phase_one<'a>(
     let sequence_id = state.sequence_id;
     let is_proof = state.is_proof();
 
-    // Setup transfer (Proof only) — lazy-init the GPU setup host on first
-    // use against this worker's context.
-    let setup_transfer = if is_proof {
-        if let Some(setup_host) = state.precomputations.setup_host.get_or_init(context)? {
-            let mut transfer = GpuGKRSetupTransfer::new(setup_host, context)?;
-            trace!(
-                "BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring setup for circuit {circuit_type:?}[{sequence_id}]"
-            );
-            transfer.schedule_transfer(context)?;
-            Some(transfer)
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
     let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {
-        let mut t = DecoderTableTransfer::new(Arc::clone(host), context)?;
-        trace!(
-            "BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring decoder table for circuit {circuit_type:?}"
-        );
-        t.schedule_transfer(context)?;
-        Some(t)
+        Some(DecoderTableTransfer::new(Arc::clone(host), context)?)
     } else {
         None
     };
 
     let inits_and_teardowns_transfer = if let Some(host) = inits_and_teardowns_host {
-        let mut t = InitsAndTeardownsTransfer::new(host, context)?;
-        trace!(
-            "BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring inits and teardowns for circuit {circuit_type:?}[{sequence_id}]"
-        );
-        t.schedule_transfer(context)?;
-        Some(t)
+        Some(InitsAndTeardownsTransfer::new(host, context)?)
     } else {
         None
     };
 
     let tracing_data_transfer = if let Some(tracing_data_host) = tracing_data_host {
-        let mut tracing_data_transfer = TracingDataTransfer::new(tracing_data_host, context)?;
-        trace!(
-            "BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring trace for circuit {circuit_type:?}[{sequence_id}]"
-        );
-        tracing_data_transfer.schedule_transfer(context)?;
-        Some(tracing_data_transfer)
+        Some(TracingDataTransfer::new(tracing_data_host, context)?)
     } else {
         None
     };
 
-    let memory_transfer = if let Some(caps) = state.memory_caps.as_ref() {
+    let inputs = if is_proof {
+        // Setup transfer (Proof only) — lazy-init the GPU setup host on first
+        // use against this worker's context.
+        let setup_transfer =
+            if let Some(setup_host) = state.precomputations.setup_host.get_or_init(context)? {
+                Some(GpuGKRSetupTransfer::new(setup_host, context)?)
+            } else {
+                None
+            };
         // Geometry must match what `commit_memory_inner` used to produce the
         // caps (it reads `lde_factor` and `cap_size` from `prover_config`).
         // `circuit_type.get_lde_factor()` / `get_tree_cap_size()` are derived
@@ -280,26 +259,52 @@ fn schedule_phase_one<'a>(
             .expect("ExecutionProverConfiguration validated GPU security level before GPU work");
         let log_lde_factor = prover_config.lde_factor.trailing_zeros();
         let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
-        let host =
-            GpuGKRMemoryTransferHost::from_per_coset_caps(caps, log_lde_factor, log_tree_cap_size)?;
-        let mut t = GpuGKRMemoryTransfer::new(Arc::new(host), context)?;
+        let memory_caps = state
+            .memory_caps
+            .as_ref()
+            .expect("Proof requires memory_caps");
+        let memory_host = GpuGKRMemoryTransferHost::from_per_coset_caps(
+            memory_caps,
+            log_lde_factor,
+            log_tree_cap_size,
+        )?;
+        let memory_transfer = GpuGKRMemoryTransfer::new(Arc::new(memory_host), context)?;
+        let external_challenges_value = state
+            .external_challenges
+            .clone()
+            .expect("Proof requires external_challenges");
+        let compiled_circuit = state.precomputations.compiled_circuit.as_ref();
+        let canonical_top_bits = canonical_inits_and_teardowns_top_bits(compiled_circuit);
+        let mut bundle = crate::prover::proof::inputs::GpuGKRProofTransfer::<'_, A>::new(
+            setup_transfer,
+            decoder_transfer,
+            inits_and_teardowns_transfer,
+            tracing_data_transfer,
+            memory_transfer,
+            &canonical_top_bits,
+            external_challenges_value,
+            context,
+        )?;
         trace!(
-            "BATCH[{batch_id}] GPU_WORKER[{device_id}] transferring memory caps for circuit {circuit_type:?}[{sequence_id}]"
+            "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling proof H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
-        t.schedule_transfer(context)?;
-        Some(t)
+        bundle.schedule(context)?;
+        PhaseOneInputs::Proof(bundle)
     } else {
-        None
+        let mut bundle = crate::prover::proof::inputs::GpuGKRCommitMemoryTransfer::<'_, A>::new(
+            decoder_transfer,
+            inits_and_teardowns_transfer,
+            tracing_data_transfer,
+            context,
+        )?;
+        trace!(
+            "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling commit-memory H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
+        );
+        bundle.schedule(context)?;
+        PhaseOneInputs::MemoryCommitment(bundle)
     };
 
-    Ok(PhaseOne {
-        state,
-        setup_transfer,
-        decoder_transfer,
-        inits_and_teardowns_transfer,
-        tracing_data_transfer,
-        memory_transfer,
-    })
+    Ok(PhaseOne { state, inputs })
 }
 
 fn enqueue_phase_two<'a>(
@@ -307,14 +312,7 @@ fn enqueue_phase_two<'a>(
     context: &ProverContext,
     p1: PhaseOne<'a>,
 ) -> CudaResult<PhaseTwo<'a>> {
-    let PhaseOne {
-        state,
-        setup_transfer,
-        decoder_transfer,
-        inits_and_teardowns_transfer,
-        tracing_data_transfer,
-        memory_transfer,
-    } = p1;
+    let PhaseOne { state, inputs } = p1;
     let batch_id = state.batch_id;
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
@@ -324,44 +322,35 @@ fn enqueue_phase_two<'a>(
     let final_trace_size_log_2 = 4usize;
     let compiled_circuit_arc = state.precomputations.compiled_circuit.clone();
 
-    let job = if state.is_proof() {
-        let memory_transfer = memory_transfer.expect("Proof requires memory_transfer");
-        let external_challenges = state
-            .external_challenges
-            .expect("Proof requires external_challenges");
-        let compiled_circuit_value = (*compiled_circuit_arc).clone();
-        trace!(
-            "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
-        );
-        let job = prove::<A>(
-            circuit_type,
-            compiled_circuit_value,
-            external_challenges,
-            &prover_config,
-            final_trace_size_log_2,
-            setup_transfer,
-            decoder_transfer,
-            inits_and_teardowns_transfer,
-            tracing_data_transfer,
-            memory_transfer,
-            context,
-        )?;
-        JobType::Proof(job)
-    } else {
-        trace!(
-            "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for circuit {circuit_type:?}[{sequence_id}]"
-        );
-        let job = commit_memory_from_transfers::<A>(
-            circuit_type,
-            &compiled_circuit_arc,
-            decoder_transfer,
-            inits_and_teardowns_transfer,
-            tracing_data_transfer,
-            &prover_config,
-            context,
-        )?;
-        let _ = (setup_transfer, memory_transfer);
-        JobType::MemoryCommitment(job)
+    let job = match inputs {
+        PhaseOneInputs::Proof(bundle) => {
+            let compiled_circuit_value = (*compiled_circuit_arc).clone();
+            trace!(
+                "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
+            );
+            let job = prove::<A>(
+                circuit_type,
+                compiled_circuit_value,
+                &prover_config,
+                final_trace_size_log_2,
+                bundle,
+                context,
+            )?;
+            JobType::Proof(job)
+        }
+        PhaseOneInputs::MemoryCommitment(bundle) => {
+            trace!(
+                "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for circuit {circuit_type:?}[{sequence_id}]"
+            );
+            let job = commit_memory_from_transfers::<A>(
+                circuit_type,
+                &compiled_circuit_arc,
+                bundle,
+                &prover_config,
+                context,
+            )?;
+            JobType::MemoryCommitment(job)
+        }
     };
 
     Ok(PhaseTwo { state, job })
