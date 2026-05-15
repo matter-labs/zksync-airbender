@@ -1,6 +1,6 @@
 #pragma once
 
-#include "descriptors.cuh"
+#include "../support/descriptors.cuh"
 
 namespace airbender::prover::gkr {
 

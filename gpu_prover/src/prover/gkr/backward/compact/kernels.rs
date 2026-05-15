@@ -114,7 +114,7 @@ pub(crate) fn get_main_layer_claim_point_device_ptr() -> *mut E4 {
     let ptr = *PTR.get_or_init(|| {
         let mut p: *mut c_void = null_mut();
         // SAFETY: ab_gkr_main_layer_claim_point is a valid __constant__ symbol
-        // defined in main_backward_round1_flat_warp_split.cu.
+        // defined in backward/round1_flat_warp_split.cu.
         unsafe {
             cudaGetSymbolAddress(
                 &mut p,
@@ -133,7 +133,7 @@ fn get_round2_challenges_device_ptr() -> *mut E4 {
     let ptr = *PTR.get_or_init(|| {
         let mut p: *mut c_void = null_mut();
         // SAFETY: ab_gkr_round2_challenges is a valid __constant__ e4[3]
-        // symbol defined in main_backward_round2_flat_warp_split.cu.
+        // symbol defined in backward/round2_flat_warp_split.cu.
         unsafe {
             cudaGetSymbolAddress(
                 &mut p,
