@@ -28,10 +28,10 @@ pub(crate) use orchestration::{
     GpuGKRProofJob,
 };
 use orchestration::{
-    prepare_backward_handoff, prepare_stage1_and_forward_setup, schedule_backward_phase,
-    schedule_terminal_proof_assembly, schedule_whir_phase, BackwardPhaseResult,
-    ForwardToBackwardHandoff, GpuGKRProofJobKeepalive, Stage1AndForwardPreparation,
-    WhirPhaseResult,
+    canonical_inits_and_teardowns_top_bits, prepare_backward_handoff,
+    prepare_stage1_and_forward_setup, schedule_backward_phase, schedule_terminal_proof_assembly,
+    schedule_whir_phase, BackwardPhaseResult, ForwardToBackwardHandoff, GpuGKRProofJobKeepalive,
+    Stage1AndForwardPreparation, WhirPhaseResult,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -229,6 +229,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         whir_shared_state,
         base_layer_claims_shared_state,
         external_challenges.clone(),
+        canonical_inits_and_teardowns_top_bits(&compiled_circuit),
         &mut callbacks,
         context,
     )?);

@@ -201,7 +201,7 @@ fn fs_transform_for_permutation_argument(
             )
         })
         .collect_vec();
-    trace_and_split::fs_transform_for_permutation_argument(
+    trace_and_split::fs_transform_for_permutation_argument::<true>(
         final_register_values,
         final_pc,
         final_timestamp,
