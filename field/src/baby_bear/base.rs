@@ -140,8 +140,8 @@ impl BabyBearField {
     }
 
     pub(crate) const fn inverse_impl(&self) -> Option<Self> {
-        // a^(p-2) - it's anyway expensive operation, but on platform with
-        // field ops it is still faster than binary GCD
+        // a^(p-2) — Fermat's little theorem. Faster than binary GCD on platforms
+        // with native modular multiplication.
 
         if self.is_zero_impl() {
             return None;
@@ -163,59 +163,25 @@ impl BabyBearField {
             result
         }
 
-        // 0x77ffffff = 0b111_0111_1111_1111_1111_1111_1111_1111
+        // p - 2 = 0x77ffffff = 0b1110 followed by 27 ones (31 bits).
+        // Addition chain (29 sqr + 8 mul = 37 ops):
+        //   Build x^7, x^56, x^63, x^119 = 0b1110111 (top 7 bits of p-2).
+        //   Then 4× [sqr^6, mul x^63] appends six 1-bits per round, filling
+        //   the remaining 24 bits to land on 31.
+        let x2 = square_by_value(*self);
+        let x3 = mul_by_value(x2, *self);
+        let x7 = mul_by_value(square_by_value(x3), *self); // x^6 · x
+        let mut x56 = x7;
+        x56.exp_power_of_2_impl(3); // x^7 << 3
+        let x63 = mul_by_value(x56, x7); // x^56 · x^7 = x^63
+        let mut result = mul_by_value(x63, x56); // x^63 · x^56 = x^119
 
-        // even though it's not the shortest, we just make it simple for now
-        // 10
-        let p_10 = square_by_value(*self);
-        let p_11 = mul_by_value(p_10, *self);
-        let p_110 = square_by_value(p_11);
-        let p_111 = mul_by_value(p_110, *self);
-        let p_1110 = square_by_value(p_111);
-        let p_1111 = mul_by_value(p_1110, *self);
-
-        let mut result = p_1110;
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        // 1110_000
-        result.mul_assign_impl(&p_111);
-        // now by 4
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.mul_assign_impl(&p_1111);
-
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.mul_assign_impl(&p_1111);
-
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.mul_assign_impl(&p_1111);
-
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.mul_assign_impl(&p_1111);
-
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.mul_assign_impl(&p_1111);
-
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.mul_assign_impl(&p_1111);
+        let mut i = 0;
+        while i < 4 {
+            result.exp_power_of_2_impl(6);
+            result.mul_assign_impl(&x63);
+            i += 1;
+        }
 
         Some(result)
     }
@@ -309,7 +275,7 @@ impl Field for BabyBearField {
 
     fn inverse(&self) -> Option<Self> {
         #[cfg(feature = "verifier_stats")]
-        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fbase_muls += 40);
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fbase_muls += 37);
         self.inverse_impl()
     }
 
@@ -649,6 +615,14 @@ mod test {
             let mut product = fa;
             product.mul_assign(&inv);
             prop_assert_eq!(product, BabyBearField::ONE);
+        }
+
+        #[test]
+        fn inverse_matches_fermat(a in 1..BabyBearField::ORDER) {
+            let fa = BabyBearField::new(a);
+            let chain = fa.inverse().unwrap();
+            let fermat = fa.pow(BabyBearField::CHARACTERISTICS - 2);
+            prop_assert_eq!(chain, fermat);
         }
 
         #[test]
