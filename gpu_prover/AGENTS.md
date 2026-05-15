@@ -68,32 +68,29 @@ summary — the contract document is the source of truth.
 
 ## Upstream imports
 
-Code under `gpu_prover/src/` imports items from the upstream crates (`cs`,
-`prover`, `field`, `setups`, `trace_and_split`) **exclusively through
-`crate::upstream`** in production code. Direct `use cs::…;` /
-`use prover::…;` / etc. in non-test consumer code is forbidden — the
-manifest is the production-surface contract.
+Production code imports from the upstream crates (`cs`, `prover`, `field`,
+`setups`, `trace_and_split`) **exclusively through `crate::upstream`**.
+Direct `use cs::…;` / `use prover::…;` in non-test code is forbidden.
+`#[cfg(test)]` modules and files under `tests/` are exempt.
 
-`#[cfg(test)]` modules and files under `tests/` subdirectories are
-exempt: tests may import upstream items directly. This keeps test-only
-utility surface (`field::Rand`, witness-placer traits required by
-`include!`'d generated circuits, etc.) out of the production manifest.
-
-- Adding a new dependency on an upstream item from production code: add a
-  `pub(crate) use …;` to the appropriate section of
+- Adding a dependency: `pub(crate) use …;` in
   [`src/upstream.rs`](src/upstream.rs), then `use crate::upstream::Item;`
   from the consumer.
-- Two aliases live in the manifest to avoid collisions with crate-local
-  types: `cs::gkr_circuits::ExecutorFamilyDecoderData` is re-exported as
-  `CSExecutorFamilyDecoderData`, and `prover::gkr::prover::setup::GKRSetup`
-  as `CpuGKRSetup`. Consumers must use the aliased name.
-- Bumping an upstream version: scan `src/upstream.rs` first. A renamed or
-  removed item surfaces as a compile error pointing at the manifest rather
-  than at scattered call sites; conversely, anything added to the manifest
-  is the documented surface contract.
-- The manifest exposes a few module re-exports (`dimension_reduction`,
-  `stage1`) so consumers can write `crate::upstream::stage1::stage1(...)`
-  without re-importing the entire path.
+- Two aliases avoid collisions with crate-local types:
+  `CSExecutorFamilyDecoderData` and `CpuGKRSetup`. Use the aliased names.
+
+## Upstream constant drift guards
+
+When `native/**` hard-codes a value owned by an upstream crate (`cs`,
+`common_constants`, …), add a compile-time assert in
+[`src/witness/mod.rs`](src/witness/mod.rs) comparing the upstream value
+against the native literal. Failures surface at `cargo check`.
+
+- Scalars: `const _: () = assert!(crate::upstream::FOO == N);`.
+- Grouped values (e.g. delegation `AbiDescription`): use the `DelegationAbi`
+  struct + `.assert_matches(...)` pattern already in the file.
+- Internal Rust↔CUDA duplicates are not asserted (the assert needs one side
+  to be external); fix structurally or rely on tests.
 
 ## Build and Test
 
