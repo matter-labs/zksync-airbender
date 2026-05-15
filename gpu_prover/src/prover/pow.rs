@@ -2,18 +2,21 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::{
     assemble_query_indexes, blake2s_pow, transcript_commit, transcript_squeeze, STATE_SIZE,
 };
+use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 
 use crate::upstream::Seed;
-use std::slice;
 
-/// Device-side keepalives produced by
-/// [`schedule_pow_verify_and_query_indexes`]. Must outlive the stream work the
-/// caller queued afterwards (they're freed on drop).
-pub(crate) struct PowAndQueryIndexesKeepalives {
+/// Device buffers and callbacks produced by
+/// [`schedule_pow_verify_and_query_indexes`]. They keep the scheduled stream
+/// work alive and also carry per-round state that later slab routing / host
+/// callbacks consume.
+pub(crate) struct PowAndQueryIndexesState {
+    #[allow(dead_code)]
+    _seed_upload_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     pub(crate) d_seed: DeviceAllocation<u32>,
     #[allow(dead_code)]
@@ -41,7 +44,7 @@ pub(crate) struct PowAndQueryIndexesKeepalives {
 ///   5. `assemble_query_indexes(d_raw_bits, d_indexes)` builds the query
 ///      indexes on device.
 ///   6. D2H `d_indexes` into `query_indexes_host` and `d_seed` into
-///      `PowAndQueryIndexesKeepalives::h_seed_mirror`. No host callback is
+///      `PowAndQueryIndexesState::h_seed_mirror`. No host callback is
 ///      scheduled — the caller is expected to schedule one fused callback
 ///      that reads the mirror and writes back `seed_host`, alongside any
 ///      other post-PoW host-side work (e.g. populating
@@ -58,13 +61,23 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     pow_bits: u32,
     query_domain_log2: usize,
     context: &ProverContext,
-) -> CudaResult<PowAndQueryIndexesKeepalives> {
+) -> CudaResult<PowAndQueryIndexesState> {
     let stream = context.get_exec_stream();
     assert!(num_queries > 0);
     assert!(query_domain_log2 > 0 && query_domain_log2 <= 32);
 
-    let nonce_accessor = nonce_host.get_mut_accessor();
-    let seed_accessor = seed_host.get_mut_accessor();
+    let seed_accessor = seed_host.get_accessor();
+    let mut seed_upload_callbacks = Callbacks::new();
+    let mut h_seed_staging = unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
+    let h_seed_staging_accessor = h_seed_staging.get_mut_accessor();
+    seed_upload_callbacks.schedule(
+        move || unsafe {
+            h_seed_staging_accessor
+                .get_mut()
+                .copy_from_slice(&seed_accessor.get().0);
+        },
+        &stream,
+    )?;
 
     // Allocate device buffers.
     let mut d_seed: DeviceAllocation<u32> =
@@ -73,11 +86,9 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     let mut d_indexes: DeviceAllocation<u32> =
         context.alloc(num_queries, AllocationPlacement::BestFit)?;
 
-    // H2D the current host seed.
-    // SAFETY: the function holds `&mut seed_host` for its full extent, so no
-    // concurrent borrow of the pinned buffer exists; `memory_copy_async`
-    // captures only the source pointer for the H2D — no Rust borrow escapes.
-    memory_copy_async(&mut d_seed, unsafe { &seed_accessor.get().0 }, &stream)?;
+    // H2D the current host seed via a callback-populated staging buffer.
+    memory_copy_async(&mut d_seed, &h_seed_staging, &stream)?;
+    drop(h_seed_staging);
 
     // PoW search (GPU) → nonce. For pow_bits == 0 we emulate `nonce = 0` and
     // skip the transcript commit (the host `verify_pow` is a no-op in that
@@ -85,10 +96,9 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     if pow_bits > 0 {
         blake2s_pow(&d_seed, pow_bits, u64::MAX, &mut d_nonce[0], stream)?;
     } else {
-        // SAFETY: `d_nonce` is a freshly allocated `DeviceAllocation<u64>` (8
-        // bytes, align 8); reinterpreting it as `DeviceSlice<u8>` is
-        // layout-compatible, and zeroing 8 bytes yields `0u64`, matching the
-        // `pow_bits == 0` "nonce = 0" convention used downstream.
+        // SAFETY: `memory_set_async` is byte-granular; zeroing the 8-byte
+        // `u64` allocation through a `u8` view writes the canonical all-zero
+        // `nonce = 0` bit pattern expected by the `pow_bits == 0` fast path.
         unsafe {
             era_cudart::memory::memory_set_async(d_nonce.transmute_mut::<u8>(), 0, stream)?;
         }
@@ -97,14 +107,7 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     // D2H nonce — needed on host for proof assembly and for the test fixture
     // that snapshots per-round nonces. Scheduled early so it overlaps with
     // the downstream kernels.
-    // SAFETY: the function holds `&mut nonce_host`; the accessor pointer is
-    // the only outstanding borrow into the pinned `u64`. The D2H captures only
-    // the destination pointer — no Rust borrow escapes.
-    memory_copy_async(
-        slice::from_mut::<u64>(unsafe { nonce_accessor.get_mut() }),
-        &d_nonce,
-        &stream,
-    )?;
+    memory_copy_async(nonce_host, &d_nonce, &stream)?;
 
     // verify_pow on device: hash seed || [nonce_lo, nonce_hi] → new seed.
     if pow_bits > 0 {
@@ -142,16 +145,14 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     // post-squeeze state. The caller is responsible for scheduling a single
     // fused callback that reads this mirror plus the nonce and performs all
     // post-PoW host bookkeeping in one stall.
-    let _ = seed_accessor; // not used here, but retained as a compile-time
-                           // reminder that the caller owns the copy-back.
-    let _ = nonce_accessor;
     // SAFETY: the slice is uninitialized but is used solely as the D2H
     // destination on the next line before any host read; the consumer callback
     // runs only after that D2H completes per stream order.
     let mut h_seed_mirror = unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
     memory_copy_async(&mut h_seed_mirror, &d_seed, &stream)?;
 
-    Ok(PowAndQueryIndexesKeepalives {
+    Ok(PowAndQueryIndexesState {
+        _seed_upload_callbacks: seed_upload_callbacks,
         d_seed,
         d_nonce,
         d_raw_bits: Some(d_raw_bits),

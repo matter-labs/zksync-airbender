@@ -19,10 +19,7 @@ mod dim_reducing_sumcheck_plan;
 pub(crate) mod flat;
 pub(crate) mod kernels;
 mod lookup_builders;
-mod main_layer_blueprints;
-mod main_layer_extras;
-mod main_layer_state;
-mod main_layer_sumcheck_plan;
+mod main_layer;
 mod scheduled_execution;
 
 // Surface every kernels item via `backward::*` to preserve the previous
@@ -30,9 +27,9 @@ mod scheduled_execution;
 // imports of `crate::prover::gkr::backward::kernels::X` work too.
 pub(crate) use kernels::*;
 
-use main_layer_state::{FlatContinuationLaunchSizes, FlatContinuationSizeCheck};
+use main_layer::state::{FlatContinuationLaunchSizes, FlatContinuationSizeCheck};
 
-pub(crate) use main_layer_extras::derive_dimension_reducing_inputs;
+pub(crate) use main_layer::extras::derive_dimension_reducing_inputs;
 
 #[cfg(test)]
 use crate::prover::gkr::immediate_factors::ImmediateFactorRecipeStructural;
@@ -52,10 +49,10 @@ use builders::{
     collect_no_cache_linear_form_inputs, validate_no_cache_linear_form_metadata,
     NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL,
 };
-use main_layer_blueprints::build_dimension_reducing_kernel_blueprints_static;
+use main_layer::blueprints::build_dimension_reducing_kernel_blueprints_static;
 #[cfg(test)]
-pub(crate) use main_layer_blueprints::build_main_layer_kernel_blueprints_static;
-pub(crate) use main_layer_blueprints::{
+pub(crate) use main_layer::blueprints::build_main_layer_kernel_blueprints_static;
+pub(crate) use main_layer::blueprints::{
     collect_main_layer_input_addresses_per_layer,
     collect_main_layer_kernel_output_addresses_per_layer,
     compute_main_layer_orphan_output_addresses_per_layer,

@@ -1,4 +1,3 @@
-use crate::primitives::transfer::memory_copy_async_to_accessor;
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -559,9 +558,7 @@ impl TraceHolder<BF> {
             stream,
         )?;
         let mut leafs = unsafe { context.alloc_host_uninit_slice(leafs_len) };
-        unsafe {
-            memory_copy_async_to_accessor(leafs.get_mut_accessor(), &d_leafs, stream)?;
-        }
+        memory_copy_async(&mut leafs, &d_leafs, stream)?;
         Ok(leafs)
     }
 
@@ -624,13 +621,7 @@ impl TraceHolder<BF> {
             }
         };
         let mut merkle_paths = unsafe { context.alloc_host_uninit_slice(digests_len) };
-        unsafe {
-            memory_copy_async_to_accessor(
-                merkle_paths.get_mut_accessor(),
-                &d_merkle_paths,
-                stream,
-            )?;
-        }
+        memory_copy_async(&mut merkle_paths, &d_merkle_paths, stream)?;
         Ok(merkle_paths)
     }
 
