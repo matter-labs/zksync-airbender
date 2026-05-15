@@ -355,6 +355,7 @@ impl ProofLayout {
             sumcheck_polys,
             pow_nonces,
             final_monomials,
+            whir_schedule: WhirSchedule::default(),
         }
     }
 
