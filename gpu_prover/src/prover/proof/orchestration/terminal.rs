@@ -25,6 +25,7 @@ pub(in crate::prover::proof) fn schedule_terminal_proof_assembly(
     whir_shared_state: UnsafeMutAccessor<ScheduledWhirProofState>,
     base_layer_claims_shared_state: UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E4>>,
     external_challenges: GKRExternalChallenges<BF, E4>,
+    inits_and_teardowns_top_bits: Vec<u32>,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
 ) -> CudaResult<HostAllocation<[u8]>> {
@@ -73,6 +74,7 @@ pub(in crate::prover::proof) fn schedule_terminal_proof_assembly(
                 whir_proof.witness_commitment.queries = host_whir_proof.witness_commitment.queries;
                 whir_proof.final_monomials = host_whir_proof.final_monomials;
                 whir_proof.intermediate_whir_oracles = host_whir_proof.intermediate_whir_oracles;
+                whir_proof.whir_schedule = host_whir_proof.whir_schedule;
                 let grand_product_accumulator_computed =
                     grand_product_accumulator_from_explicit_evaluations(
                         &final_explicit_evaluations,
@@ -83,6 +85,7 @@ pub(in crate::prover::proof) fn schedule_terminal_proof_assembly(
                     sumcheck_intermediate_values,
                     whir_proof,
                     grand_product_accumulator_computed,
+                    inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.clone(),
                 });
             }
         },

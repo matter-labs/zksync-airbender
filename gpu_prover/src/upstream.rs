@@ -171,7 +171,7 @@ pub(crate) use setups::{
 };
 
 // -----------------------------------------------------------------------
-// `trace_and_split` — final-register snapshot type
+// `prover` — final-register snapshot type
 // -----------------------------------------------------------------------
 
-pub(crate) use trace_and_split::FinalRegisterValue;
+pub(crate) use prover::definitions::FinalRegisterValue;

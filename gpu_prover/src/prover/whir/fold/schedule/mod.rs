@@ -204,6 +204,14 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         ood_samples: vec![E4::ZERO; num_intermediate_oracles],
         pow_nonces: vec![0u64; whir_pow_rounds],
         final_monomials: vec![],
+        whir_schedule: WhirSchedule {
+            base_lde_factor: original_lde_factor,
+            cap_size: tree_cap_size,
+            whir_steps_schedule: whir_steps_schedule.clone(),
+            whir_queries_schedule: whir_queries_schedule.clone(),
+            whir_steps_lde_factors: whir_steps_lde_factors.clone(),
+            whir_pow_schedule: whir_pow_schedule.clone(),
+        },
     };
 
     // Slab routing: D2D-copy each base-layer unified device cap into the slab's

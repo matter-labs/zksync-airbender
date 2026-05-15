@@ -41,7 +41,7 @@ use crate::upstream::{
     add_whir_commitment_to_transcript, commit_field_els, draw_random_field_els,
     extension_field_from_base_coeffs, BaseFieldQuery, DefaultTreeConstructor, ExtensionFieldQuery,
     Field, FieldExtension, MerkleTreeCapVarLength, Seed, WhirBaseLayerCommitmentAndQueries,
-    WhirCommitment, WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof,
+    WhirCommitment, WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof, WhirSchedule,
 };
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
