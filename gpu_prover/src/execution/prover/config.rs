@@ -10,12 +10,31 @@ use crate::primitives::context::ProverContextConfig;
 use crate::primitives::machine_type::MachineType;
 use crate::upstream::SecurityLevel;
 
+pub const GPU_SUPPORTED_SECURITY_LEVELS: [SecurityLevel; 1] = [SecurityLevel::Sec80];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UnsupportedGpuSecurityLevel {
+    pub requested: SecurityLevel,
+}
+
+impl std::fmt::Display for UnsupportedGpuSecurityLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "GPU prover does not support security level {:?}; supported levels: {:?}",
+            self.requested, GPU_SUPPORTED_SECURITY_LEVELS,
+        )
+    }
+}
+
+impl std::error::Error for UnsupportedGpuSecurityLevel {}
+
 /// Specifies the execution mode for the prover.
 ///
 /// - `Unrolled`: per-family circuits (split memory / non-memory / I&T).
 /// - `Unified`: the reduced-machine unified circuit. Public surface is wired
-///   up; GPU dispatch points panic with `unimplemented!()` until unified is
-///   implemented.
+///   up, but the remaining GPU dispatch path still rejects unified execution
+///   explicitly until that flow is implemented.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ExecutionKind {
     Unrolled,
@@ -44,6 +63,22 @@ pub struct ExecutionProverConfiguration {
     pub host_allocators_per_device_count: usize,
     pub min_free_host_allocators_per_job: usize,
     pub security_level: SecurityLevel,
+}
+
+impl ExecutionProverConfiguration {
+    pub const fn supported_security_levels() -> &'static [SecurityLevel] {
+        &GPU_SUPPORTED_SECURITY_LEVELS
+    }
+
+    pub fn validate(self) -> Result<Self, UnsupportedGpuSecurityLevel> {
+        if Self::supported_security_levels().contains(&self.security_level) {
+            Ok(self)
+        } else {
+            Err(UnsupportedGpuSecurityLevel {
+                requested: self.security_level,
+            })
+        }
+    }
 }
 
 impl Default for ExecutionProverConfiguration {

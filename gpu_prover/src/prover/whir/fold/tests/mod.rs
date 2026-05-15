@@ -33,20 +33,6 @@ fn alloc_and_copy<T>(values: &[T], context: &ProverContext) -> DeviceAllocation<
     device
 }
 
-fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
-    let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-    memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
-    context.get_exec_stream().synchronize().unwrap();
-    unsafe { host.get_accessor().get().to_vec() }
-}
-
-fn copy_back_bf(values: &DeviceSlice<BF>, context: &ProverContext) -> Vec<BF> {
-    let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-    memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
-    context.get_exec_stream().synchronize().unwrap();
-    unsafe { host.get_accessor().get().to_vec() }
-}
-
 fn fold_monomial_form_for_test(input: &mut Vec<E4>, challenge: E4) {
     let mut buffer = Vec::with_capacity(input.len() / 2);
     for [c0, c1] in input.as_chunks::<2>().0.iter() {
@@ -291,7 +277,7 @@ fn whir_fold_helpers_match_cpu() {
     fold_eq_poly_in_place_device(&mut state, challenge, &context).unwrap();
     state.current_len = 4;
 
-    let monomial_vectorized = copy_back_bf(state.sumchecked_poly_monomial_form.slice(), &context);
+    let monomial_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), &context);
     let mut monomial_from_gpu = vectorized_to_e4_coeffs(
         &monomial_vectorized,
         state.original_trace_len,
@@ -360,8 +346,7 @@ fn whir_multi_step_fold_helpers_match_cpu() {
         fold_eq_poly_in_place_device(&mut state, challenge, &context).unwrap();
         state.current_len /= 2;
 
-        let monomial_vectorized =
-            copy_back_bf(state.sumchecked_poly_monomial_form.slice(), &context);
+        let monomial_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), &context);
         let mut monomial_from_gpu = vectorized_to_e4_coeffs(
             &monomial_vectorized,
             state.original_trace_len,
@@ -424,8 +409,7 @@ fn whir_large_multi_step_monomial_fold_matches_cpu() {
         fold_monomial_form_in_place_device(&mut state, challenge, &context).unwrap();
         state.current_len /= 2;
 
-        let monomial_vectorized =
-            copy_back_bf(state.sumchecked_poly_monomial_form.slice(), &context);
+        let monomial_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), &context);
         let mut monomial_from_gpu = vectorized_to_e4_coeffs(
             &monomial_vectorized,
             state.original_trace_len,
@@ -491,8 +475,7 @@ fn whir_large_multi_step_fold_helpers_match_cpu() {
         fold_eq_poly_in_place_device(&mut state, challenge, &context).unwrap();
         state.current_len /= 2;
 
-        let monomial_vectorized =
-            copy_back_bf(state.sumchecked_poly_monomial_form.slice(), &context);
+        let monomial_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), &context);
         let mut monomial_from_gpu = vectorized_to_e4_coeffs(
             &monomial_vectorized,
             state.original_trace_len,
@@ -647,15 +630,15 @@ fn run_whir_initial_state_matches_cpu(
     let witness_trace_holder = make_trace_holder(&witness_columns, &context);
     let setup_trace_holder = make_trace_holder(&setup_columns, &context);
     let domain_size = memory_columns[0].len();
-    let memory_main_domain = copy_back_bf(memory_trace_holder.get_evaluations(), &context)
+    let memory_main_domain = copy_back(memory_trace_holder.get_evaluations(), &context)
         .chunks_exact(domain_size)
         .map(|chunk| chunk.to_vec())
         .collect::<Vec<_>>();
-    let witness_main_domain = copy_back_bf(witness_trace_holder.get_evaluations(), &context)
+    let witness_main_domain = copy_back(witness_trace_holder.get_evaluations(), &context)
         .chunks_exact(domain_size)
         .map(|chunk| chunk.to_vec())
         .collect::<Vec<_>>();
-    let setup_main_domain = copy_back_bf(setup_trace_holder.get_evaluations(), &context)
+    let setup_main_domain = copy_back(setup_trace_holder.get_evaluations(), &context)
         .chunks_exact(domain_size)
         .map(|chunk| chunk.to_vec())
         .collect::<Vec<_>>();
@@ -751,7 +734,7 @@ fn run_whir_initial_state_matches_cpu(
     }
 
     assert_eq!(claim, expected_claim);
-    let monomial_vectorized = copy_back_bf(state.sumchecked_poly_monomial_form.slice(), &context);
+    let monomial_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), &context);
     let mut monomial_from_gpu = vectorized_to_e4_coeffs(
         &monomial_vectorized,
         state.original_trace_len,
@@ -805,7 +788,7 @@ pub(crate) use helpers::{
 };
 
 use helpers::{
-    build_initial_state, evaluate_monomial_form_device, fold_eq_poly_in_place_device,
+    build_initial_state, copy_back, evaluate_monomial_form_device, fold_eq_poly_in_place_device,
     fold_evaluation_form_in_place_device, fold_monomial_form_in_place_device,
     schedule_special_three_point_eval_device, special_three_point_eval_device,
     vectorized_to_e4_coeffs,

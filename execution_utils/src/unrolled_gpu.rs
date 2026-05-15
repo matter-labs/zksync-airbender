@@ -124,7 +124,8 @@ impl UnrolledProver {
         prover_configuration: ExecutionProverConfiguration,
         max_level: UnrolledProverLevel,
     ) -> Self {
-        let mut prover = ExecutionProver::with_configuration(prover_configuration);
+        let mut prover = ExecutionProver::with_configuration(prover_configuration)
+            .expect("UnrolledProver requires a GPU-supported security level");
         let mut level_data = BTreeMap::new();
 
         {

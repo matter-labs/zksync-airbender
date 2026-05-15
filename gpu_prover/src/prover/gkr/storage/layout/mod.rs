@@ -24,7 +24,7 @@ use crate::upstream::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::gkr_address_audit::{
+use super::super::gkr_address_audit::{
     classify, collect_addresses_from_cache_relation, collect_addresses_from_relation, AddressClass,
     GKR_MAX_POLYS_PER_SLOT, GKR_MAX_SLOTS,
 };

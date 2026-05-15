@@ -91,7 +91,9 @@ impl Encode for u32 {
 
 impl Encode for BaseField {
     fn get_function() -> EncodeFunction<Self> {
-        unimplemented!()
+        // SAFETY: `BaseField` is a transparent `u32` newtype for this CUB path,
+        // so the ABI matches `ab_encode_u32`.
+        unsafe { std::mem::transmute::<EncodeFunction<u32>, EncodeFunction<Self>>(ab_encode_u32) }
     }
 
     fn encode(
