@@ -29,10 +29,12 @@ impl<T> MutPtrAndStride<T> {
 }
 
 fn ptr_from_slice_and_offset<T>(slice: &DeviceSlice<T>, offset: usize) -> *const T {
+    // SAFETY: callers derive `offset` from layout descriptors that stay within the slice.
     unsafe { slice.as_ptr().add(offset) }
 }
 
 fn mut_ptr_from_slice_and_offset<T>(slice: &mut DeviceSlice<T>, offset: usize) -> *mut T {
+    // SAFETY: callers derive `offset` from layout descriptors that stay within the slice.
     unsafe { slice.as_mut_ptr().add(offset) }
 }
 

@@ -10,7 +10,5 @@ target_sources(gpu_prover_native PRIVATE
         mul_div_unsigned.cu
         shift_binary_csr.cu
         template_delegation.cuh
-        template_unrolled_memory.cuh
-        template_unrolled_non_memory.cuh
-        template_unrolled_unified.cuh
+        template_unrolled.cuh
 )
