@@ -5,7 +5,9 @@ pub trait ErrorCreator {
 
     fn gkr_sumcheck_round_failed(layer: usize, round: usize) -> Self::Error;
     fn gkr_final_step_check_failed(layer: usize) -> Self::Error;
-    fn gkr_cache_relation_failed(layer: usize) -> Self::Error;
+    fn gkr_single_lookup_cache_relation_failed(layer: usize, relation: usize) -> Self::Error;
+    fn gkr_vector_lookup_cache_relation_failed(layer: usize, relation: usize) -> Self::Error;
+    fn gkr_permutation_cache_relation_failed(layer: usize, relation: usize) -> Self::Error;
     fn gkr_grand_product_check_failed() -> Self::Error;
     fn gkr_lookup_identity_failed(lookup_type: usize) -> Self::Error;
     fn gkr_virtual_setup_eval_mismatch(idx: usize) -> Self::Error;
@@ -19,7 +21,9 @@ pub trait ErrorCreator {
 pub enum VerificationError {
     GkrSumcheckRoundFailed { layer: usize, round: usize },
     GkrFinalStepCheckFailed { layer: usize },
-    GkrCacheRelationFailed { layer: usize },
+    GkrSingleLookupCacheRelationFailed { layer: usize, relation: usize },
+    GkrVectorLookupCacheRelationFailed { layer: usize, relation: usize },
+    GkrPermutationCacheRelationFailed { layer: usize, relation: usize },
     GkrGrandProductCheckFailed,
     GkrLookupIdentityFailed { lookup_type: usize },
     GkrVirtualSetupEvalMismatch { idx: usize },
@@ -43,8 +47,16 @@ impl ErrorCreator for DebugErrorCreator {
         VerificationError::GkrFinalStepCheckFailed { layer }
     }
     #[inline(always)]
-    fn gkr_cache_relation_failed(layer: usize) -> VerificationError {
-        VerificationError::GkrCacheRelationFailed { layer }
+    fn gkr_single_lookup_cache_relation_failed(layer: usize, relation: usize) -> Self::Error {
+        VerificationError::GkrSingleLookupCacheRelationFailed { layer, relation }
+    }
+    #[inline(always)]
+    fn gkr_vector_lookup_cache_relation_failed(layer: usize, relation: usize) -> Self::Error {
+        VerificationError::GkrVectorLookupCacheRelationFailed { layer, relation }
+    }
+    #[inline(always)]
+    fn gkr_permutation_cache_relation_failed(layer: usize, relation: usize) -> Self::Error {
+        VerificationError::GkrPermutationCacheRelationFailed { layer, relation }
     }
     #[inline(always)]
     fn gkr_grand_product_check_failed() -> VerificationError {
@@ -90,8 +102,16 @@ impl ErrorCreator for PanicErrorCreator {
         panic!("GKR final step check failed: layer {layer}")
     }
     #[inline(always)]
-    fn gkr_cache_relation_failed(layer: usize) -> Infallible {
-        panic!("GKR cache relation failed: layer {layer}")
+    fn gkr_single_lookup_cache_relation_failed(layer: usize, relation: usize) -> Self::Error {
+        panic!("GKR single lookup cache relation {relation} failed: layer {layer}")
+    }
+    #[inline(always)]
+    fn gkr_vector_lookup_cache_relation_failed(layer: usize, relation: usize) -> Self::Error {
+        panic!("GKR vector lookup cache relation {relation} failed: layer {layer}")
+    }
+    #[inline(always)]
+    fn gkr_permutation_cache_relation_failed(layer: usize, relation: usize) -> Self::Error {
+        panic!("GKR permutation cache relation {relation} failed: layer {layer}")
     }
     #[inline(always)]
     fn gkr_grand_product_check_failed() -> Infallible {

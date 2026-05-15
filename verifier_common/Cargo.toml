@@ -30,6 +30,7 @@ quote = { version = "1" }
 proc-macro2 = {version = "1" }
 
 [features]
+no_inline = ["field/no_inline"]
 security_80 = []
 security_100 = []
 worst_case_config_generation = []

@@ -4294,7 +4294,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(E::gkr_cache_relation_failed(1usize));
+                        return Err(E::gkr_vector_lookup_cache_relation_failed(1usize, _vl));
                     }
                     _vl += 1;
                 }
@@ -4468,7 +4468,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(E::gkr_cache_relation_failed(0usize));
+                        return Err(E::gkr_single_lookup_cache_relation_failed(0usize, _sc));
                     }
                     _sc += 1;
                 }
@@ -4529,7 +4529,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(E::gkr_cache_relation_failed(0usize));
+                        return Err(E::gkr_vector_lookup_cache_relation_failed(0usize, _vl));
                     }
                     _vl += 1;
                 }
@@ -4556,7 +4556,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(E::gkr_cache_relation_failed(0usize));
+                        return Err(E::gkr_permutation_cache_relation_failed(0usize, _vs));
                     }
                     _vs += 1;
                 }

@@ -84,6 +84,7 @@ pub struct GKRProof<
     pub sumcheck_intermediate_values: BTreeMap<usize, SumcheckIntermediateProofValues<F, E>>,
     pub whir_proof: WhirPolyCommitProof<F, E, T>,
     pub grand_product_accumulator_computed: E,
+    pub inits_and_teardowns_top_bits: Vec<u32>,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
@@ -103,7 +104,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub struct WhirSchedule {
     pub base_lde_factor: usize,
     pub cap_size: usize,
@@ -764,15 +765,6 @@ where
     let whir_batching_challenge = draw_random_field_els::<F, E>(&mut seed, 1);
     let whir_batching_challenge = whir_batching_challenge[0];
 
-    let WhirSchedule {
-        base_lde_factor,
-        cap_size,
-        whir_steps_schedule,
-        whir_queries_schedule,
-        whir_steps_lde_factors,
-        whir_pow_schedule,
-    } = prover_config.whir_schedule.clone();
-
     let whir_proof = whir_fold(
         mem_oracle,
         mem_polys_claims,
@@ -781,15 +773,11 @@ where
         setup_commitment,
         setup_polys_claims,
         base_layer_z.clone(),
-        base_lde_factor,
         whir_batching_challenge,
-        whir_steps_schedule,
-        whir_queries_schedule,
-        whir_steps_lde_factors,
-        whir_pow_schedule,
+        &prover_config.whir_schedule,
         twiddles,
         seed,
-        cap_size,
+        prover_config.whir_schedule.cap_size,
         trace_len.trailing_zeros() as usize,
         worker,
     );
@@ -817,5 +805,6 @@ where
         final_explicit_evaluations,
         sumcheck_intermediate_values,
         grand_product_accumulator_computed,
+        inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.to_vec(),
     }
 }

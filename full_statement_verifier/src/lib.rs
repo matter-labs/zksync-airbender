@@ -1,4 +1,15 @@
-#![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
+#![cfg_attr(
+    not(any(test, any(feature = "replace_csr", feature = "proof_utils"))),
+    no_std
+)]
+#![cfg_attr(
+    any(test, any(feature = "replace_csr", feature = "proof_utils")),
+    allow(incomplete_features)
+)]
+#![cfg_attr(
+    any(test, any(feature = "replace_csr", feature = "proof_utils")),
+    feature(generic_const_exprs)
+)]
 
 pub use verifier_common;
 
@@ -7,29 +18,36 @@ mod constants;
 pub mod definitions;
 
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
-pub mod imports;
+pub mod delegation_params;
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
-pub mod unified_circuit_statement;
+pub mod imports;
+// #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
+// pub mod unified_circuit_statement;
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
+pub mod unrolled_circuit_params;
 #[cfg(feature = "verifiers")]
 pub mod unrolled_proof_statement;
 
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod statement_common;
 
+#[cfg(feature = "proof_utils")]
+pub mod program_proof;
+
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 mod verifier_imports {
-    pub(super) use super::constants::*;
     pub(super) use core::mem::MaybeUninit;
     pub(super) use verifier_common::blake2s_u32::{
         BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS,
     };
-    pub(super) use verifier_common::field::{
-        Field, Mersenne31Field, Mersenne31Quartic, PrimeField,
-    };
+    pub(super) use verifier_common::errors::ErrorCreator;
+    pub(super) use verifier_common::field::baby_bear::base::BabyBearField;
+    pub(super) use verifier_common::field::baby_bear::ext4::BabyBearExt4;
+    pub(super) use verifier_common::field::Field;
     pub(super) use verifier_common::non_determinism_source::NonDeterminismSource;
-    pub(super) use verifier_common::prover::definitions::{ExternalChallenges, MerkleTreeCap};
+    pub(super) use verifier_common::prover::definitions::{GKRExternalChallenges, MerkleTreeCap};
     pub(super) use verifier_common::transcript::Blake2sBufferingTranscript;
-    pub(super) use verifier_common::{ProofOutput, ProofPublicInputs, VerifierFunctionPointer};
+    pub(super) use verifier_common::DelegationCircuitSetupData;
 }
 
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
@@ -38,7 +56,6 @@ use self::verifier_imports::*;
 use verifier_common::cs::definitions::{
     NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP, NUM_TIMESTAMP_COLUMNS_FOR_RAM, TIMESTAMP_COLUMNS_NUM_BITS,
 };
-use verifier_common::parse_field_els_as_u32_from_u16_limbs_checked;
 use verifier_common::prover;
 
 pub const MAX_CYCLES: u64 = const {
@@ -49,47 +66,4 @@ pub const MAX_CYCLES: u64 = const {
     max_cycles
 };
 
-pub const MEMORY_DELEGATION_POW_BITS: usize = verifier_common::MEMORY_DELEGATION_POW_BITS;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct InitAndTeardownTuple {
-    pub address: u32,
-    pub teardown_value: u32,
-    pub teardown_ts_pair: (u32, u32),
-}
-
-impl InitAndTeardownTuple {
-    #[inline(always)]
-    pub fn from_aux_values_first_row(
-        value: &prover::definitions::AuxArgumentsBoundaryValues,
-    ) -> Self {
-        Self {
-            address: parse_field_els_as_u32_from_u16_limbs_checked(value.lazy_init_first_row),
-            teardown_value: parse_field_els_as_u32_from_u16_limbs_checked(
-                value.teardown_value_first_row,
-            ),
-            teardown_ts_pair: (
-                value.teardown_timestamp_first_row[0].to_reduced_u32(),
-                value.teardown_timestamp_first_row[1].to_reduced_u32(),
-            ),
-        }
-    }
-
-    #[inline(always)]
-    pub fn from_aux_values_one_before_last_row(
-        value: &prover::definitions::AuxArgumentsBoundaryValues,
-    ) -> Self {
-        Self {
-            address: parse_field_els_as_u32_from_u16_limbs_checked(
-                value.lazy_init_one_before_last_row,
-            ),
-            teardown_value: parse_field_els_as_u32_from_u16_limbs_checked(
-                value.teardown_value_one_before_last_row,
-            ),
-            teardown_ts_pair: (
-                value.teardown_timestamp_one_before_last_row[0].to_reduced_u32(),
-                value.teardown_timestamp_one_before_last_row[1].to_reduced_u32(),
-            ),
-        }
-    }
-}
+pub const MEMORY_DELEGATION_POW_BITS: usize = 0; // TODO

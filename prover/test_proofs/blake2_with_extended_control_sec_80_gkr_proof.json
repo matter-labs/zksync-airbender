@@ -234923,7 +234923,38 @@
           "c1": 1801353153
         }
       }
-    ]
+    ],
+    "whir_schedule": {
+      "base_lde_factor": 2,
+      "cap_size": 16,
+      "whir_steps_schedule": [
+        1,
+        5,
+        5,
+        4,
+        4
+      ],
+      "whir_queries_schedule": [
+        63,
+        9,
+        5,
+        4,
+        3
+      ],
+      "whir_steps_lde_factors": [
+        256,
+        8192,
+        32768,
+        524288
+      ],
+      "whir_pow_schedule": [
+        28,
+        16,
+        15,
+        20,
+        23
+      ]
+    }
   },
   "grand_product_accumulator_computed": {
     "c0": {
@@ -234934,5 +234965,6 @@
       "c0": 0,
       "c1": 0
     }
-  }
+  },
+  "inits_and_teardowns_top_bits": []
 }

@@ -62,8 +62,8 @@ pub fn config_for_80_bits_under_pessimistic_conjecture(trace_len_log_2: usize) -
                 whir_pow_schedule: vec![28, 20, 17, 10, 23, 23],
             },
         },
-        _ => {
-            unimplemented!("TODO");
+        a @ _ => {
+            unimplemented!("not yet computed for 2^{} size", a);
         }
     }
 }
