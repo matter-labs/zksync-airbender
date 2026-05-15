@@ -12,7 +12,7 @@ pub(crate) const FLAT_RECIPE_MAX_TERMS: usize = 640;
 pub(crate) const FLAT_IMMEDIATE_MAX_RECIPES: usize = 128;
 pub(crate) const FLAT_IMMEDIATE_MAX_MONOMIALS: usize = 384;
 
-/// Mirrors `gpu_recipe_header` in `flat_backward_coeff.cuh`.
+/// Mirrors `gpu_recipe_header` in `backward/coeff.cuh`.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub(crate) struct GpuRecipeHeader {
@@ -23,7 +23,7 @@ pub(crate) struct GpuRecipeHeader {
     pub immediate_idx: u16,
 }
 
-/// Mirrors `gpu_prefactor_term` in `flat_backward_coeff.cuh`.
+/// Mirrors `gpu_prefactor_term` in `backward/coeff.cuh`.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub(crate) struct GpuPrefactorTerm {
@@ -33,7 +33,7 @@ pub(crate) struct GpuPrefactorTerm {
     pub _pad: u16,
 }
 
-/// Mirrors `gpu_flat_recipe_eval_desc` in `flat_backward_coeff.cuh`.
+/// Mirrors `gpu_flat_recipe_eval_desc` in `backward/coeff.cuh`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct GpuFlatRecipeEvalDesc {

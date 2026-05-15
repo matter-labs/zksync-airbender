@@ -1,6 +1,6 @@
-#include "flat_backward_coeff.cuh"
+#include "coeff.cuh"
 
-namespace airbender::prover::gkr {
+namespace airbender::prover::gkr::backward {
 
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_gkr_flat_round0_eval_recipes_e4_kernel(const e4 *batch_base, const e4 *lookup_mul, const e4 *lookup_add, const e4 *ext_challenges,
@@ -11,4 +11,4 @@ EXTERN __launch_bounds__(128, 8) __global__
   coefficients[gid] = eval_single_recipe(desc.headers[gid], desc, *batch_base, *lookup_mul, *lookup_add, ext_challenges);
 }
 
-} // namespace airbender::prover::gkr
+} // namespace airbender::prover::gkr::backward

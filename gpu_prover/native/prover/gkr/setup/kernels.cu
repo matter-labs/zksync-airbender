@@ -1,16 +1,13 @@
-#include "lookup_helpers.cuh"
+#include "../support/lookup_helpers.cuh"
 
 __device__ __constant__ e4 ab_gkr_lookup_alpha_powers[airbender::prover::gkr::GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS];
 
-namespace airbender::prover::gkr {
+namespace airbender::prover::gkr::setup {
 
-#define GKR_FORWARD_SETUP_KERNELS(arg_t)                                                                                                                       \
-  EXTERN __global__ void ab_gkr_forward_setup_generic_lookup_##arg_t##_kernel(const __grid_constant__ gkr_forward_setup_generic_lookup_batch<arg_t> batch,     \
-                                                                              const unsigned row_count) {                                                      \
-    gkr_forward_setup_generic_lookup(batch, row_count);                                                                                                        \
-  }
-
-GKR_FORWARD_SETUP_KERNELS(e4);
+EXTERN __global__ void ab_gkr_forward_setup_generic_lookup_e4_kernel(const __grid_constant__ gkr_forward_setup_generic_lookup_batch<e4> batch,
+                                                                     const unsigned row_count) {
+  gkr_forward_setup_generic_lookup(batch, row_count);
+}
 
 // Evaluates a virtual range-check setup polynomial at the GKR base-layer claim
 // point. Mirrors `evaluate_virtual_range_check_setup_poly<F, E, BITS>` in
@@ -86,4 +83,4 @@ EXTERN __global__ void ab_gkr_eval_virtual_setup_claims_e4_kernel(const e4 *clai
   output[3] = high_eval;
 }
 
-} // namespace airbender::prover::gkr
+} // namespace airbender::prover::gkr::setup
