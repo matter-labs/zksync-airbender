@@ -33,7 +33,7 @@ fn get_lookup_alpha_powers_device_ptr() -> *mut E4 {
     let ptr = *PTR.get_or_init(|| {
         let mut p: *mut c_void = ptr::null_mut();
         // SAFETY: ab_gkr_lookup_alpha_powers is a valid __constant__ e4 array
-        // defined in native/prover/gkr/setup.cu.
+        // defined in native/prover/gkr/setup/kernels.cu.
         unsafe {
             cudaGetSymbolAddress(
                 &mut p,

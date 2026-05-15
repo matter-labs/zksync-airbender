@@ -1,6 +1,6 @@
 //! Static description value types, term-type tags, and coefficient recipes
 //! for the flat backward round-0 kernel. These mirror the C++ layouts in
-//! `flat_backward.cuh` and feed both the builder and the kernel descriptor.
+//! `backward/flat.cuh` and feed both the builder and the kernel descriptor.
 
 use super::super::compact::FlatRound0BuildPlan;
 use super::super::kernels::GpuGKRMainLayerConstraintChallengeTerm;
@@ -9,10 +9,10 @@ use crate::prover::gkr::immediate_factors::ImmediateFactorRecipeStructural;
 use crate::upstream::Field;
 
 // ---------------------------------------------------------------------------
-// Constants (must match flat_backward.cuh)
+// Constants (must match backward/flat.cuh)
 // ---------------------------------------------------------------------------
 
-// Must match flat_backward.cuh.
+// Must match backward/flat.cuh.
 pub(crate) const FLAT_ROUND0_CONST_MAX: usize = 512;
 pub(crate) const FLAT_ROUND0_MAX_SOURCES: usize = 1280;
 pub(crate) const FLAT_ROUND0_MAX_C0_BF: usize = 128;

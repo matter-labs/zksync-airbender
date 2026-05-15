@@ -93,7 +93,7 @@ impl<E: Field> FlatBuilder<E> {
 }
 
 /// Low-3-bits-tagged null pointer encoding for virtual base sources; mirrors
-/// `flat_fwd_load_bf` in native/prover/gkr/flat_forward.cuh.
+/// `flat_fwd_load_bf` in native/prover/gkr/forward/flat.cuh.
 fn encode_virtual_source(kind: GpuBaseFieldSourceKind) -> *const u8 {
     (kind as usize) as *const u8
 }

@@ -70,7 +70,7 @@ pub(crate) fn get_dim_reducing_layer_claim_point_device_ptr() -> *mut E4 {
     let ptr = *PTR.get_or_init(|| {
         let mut p: *mut c_void = null_mut();
         // SAFETY: ab_gkr_dim_reducing_layer_claim_point is a valid
-        // __constant__ symbol defined in dim_reducing_backward.cu.
+        // __constant__ symbol defined in backward/dim_reducing.cu.
         unsafe {
             cudaGetSymbolAddress(
                 &mut p,
@@ -87,7 +87,7 @@ pub(crate) fn get_dim_reducing_layer_claim_point_device_ptr() -> *mut E4 {
 fn get_dim_reducing_batch_challenge_table_device_ptr() -> *mut E4 {
     let mut ptr: *mut c_void = null_mut();
     // SAFETY: ab_gkr_dim_reducing_batch_challenge_table is a valid
-    // __constant__ symbol defined in dim_reducing_backward.cu.
+    // __constant__ symbol defined in backward/dim_reducing.cu.
     unsafe {
         cudaGetSymbolAddress(
             &mut ptr,

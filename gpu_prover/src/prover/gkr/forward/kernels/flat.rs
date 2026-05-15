@@ -15,7 +15,7 @@ use crate::upstream::Field;
 // Flat forward kernel descriptors
 // ---------------------------------------------------------------------------
 //
-// Mirrors `flat_forward_static_desc<E>` in native/prover/gkr/flat_forward.cuh.
+// Mirrors `flat_forward_static_desc<E>` in native/prover/gkr/forward/flat.cuh.
 // The forward scheduler populates these descriptors directly and chunks them
 // when any per-category array would exceed the grid-constant budget.
 
@@ -384,7 +384,7 @@ impl<E: Copy> Clone for GpuFlatFwdMemoryMaterializeEntry<E> {
 
 /// Static description for the flat forward kernel.
 ///
-/// Mirrors `flat_forward_static_desc<E>` in native/prover/gkr/flat_forward.cuh.
+/// Mirrors `flat_forward_static_desc<E>` in native/prover/gkr/forward/flat.cuh.
 /// Passed as `__grid_constant__`. Sources are encoded as raw pointers: real
 /// device pointers for memory-backed sources, low-bit-tagged null pointers
 /// for virtual base sources (range checks / inits+teardowns).

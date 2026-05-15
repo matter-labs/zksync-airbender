@@ -1,6 +1,6 @@
 #pragma once
 
-#include "kernel_helpers.cuh"
+#include "../support/kernel_helpers.cuh"
 
 namespace airbender::prover::gkr {
 
@@ -239,7 +239,7 @@ DEVICE_FORCEINLINE void flat_round0_compute(const flat_round0_static_desc &desc,
 } // namespace airbender::prover::gkr
 
 // __constant__ coefficient symbol — declared at global scope (NTT pattern).
-// Defined in main_backward_round0_flat.cu.
+// Defined in round0_flat.cu.
 EXTERN __device__ __constant__ e4 ab_gkr_flat_round0_coefficients[airbender::prover::gkr::FLAT_ROUND0_CONST_MAX];
 
 namespace airbender::prover::gkr {
