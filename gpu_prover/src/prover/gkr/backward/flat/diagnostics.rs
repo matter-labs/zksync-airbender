@@ -41,14 +41,14 @@ pub(crate) fn dump_flat_round1_plan<E: Field + field::FieldExtension<BF> + std::
     kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
 ) {
     let Some(plan) = continuation_plan else {
-        eprintln!(
+        log::info!(
             "=== FLAT ROUND 1 PLAN: layer {} — no continuation plan ===",
             layer_idx
         );
         return;
     };
     let Some(desc) = round1_desc else {
-        eprintln!(
+        log::info!(
             "=== FLAT ROUND 1 PLAN: layer {} — no round 1 desc ===",
             layer_idx
         );
@@ -59,17 +59,22 @@ pub(crate) fn dump_flat_round1_plan<E: Field + field::FieldExtension<BF> + std::
     let assignments = &plan.source_assignments;
     let recipes = &plan.recipes;
 
-    eprintln!("=== FLAT ROUND 1 PLAN: layer {} ===", layer_idx);
-    eprintln!(
+    log::info!("=== FLAT ROUND 1 PLAN: layer {} ===", layer_idx);
+    log::info!(
         "  sources: {} total ({} base, {} ext in round1 desc)",
-        td.num_sources, desc.num_base_sources, desc.num_ext_sources
+        td.num_sources,
+        desc.num_base_sources,
+        desc.num_ext_sources
     );
-    eprintln!(
+    log::info!(
         "  terms: {} constants, {} c0_only_linear, {} unified_quadratic, {} unified_linear",
-        td.num_constants, td.num_c0_only_linear, td.num_unified_quadratic, td.num_unified_linear
+        td.num_constants,
+        td.num_c0_only_linear,
+        td.num_unified_quadratic,
+        td.num_unified_linear
     );
-    eprintln!("  coefficients: {}", recipes.len());
-    eprintln!();
+    log::info!("  coefficients: {}", recipes.len());
+    log::info!(" ");
 
     // --- Source table ---
     // Build a map: continuation source_table_idx → (gate_idx, is_ext, input_idx)
@@ -93,7 +98,7 @@ pub(crate) fn dump_flat_round1_plan<E: Field + field::FieldExtension<BF> + std::
         }
     }
 
-    eprintln!("--- SOURCES ---");
+    log::info!("--- SOURCES ---");
     // Print by continuation source_table_idx order
     let mut src_indices: Vec<u32> = src_remap.keys().copied().collect();
     src_indices.sort();
@@ -131,33 +136,33 @@ pub(crate) fn dump_flat_round1_plan<E: Field + field::FieldExtension<BF> + std::
         } else {
             String::new()
         };
-        eprintln!(
+        log::info!(
             "  [{tag}{sidx}] gate={gate_kind:?}(#{gate}) input={input}{kind_info}{fa}",
             gate = a.gate_idx,
             input = a.input_idx,
         );
     }
-    eprintln!();
+    log::info!(" ");
 
     // --- Terms by category ---
     // Recipes are ordered: constants, c0_only_linear, unified_quadratic, unified_linear
     let mut recipe_idx = 0usize;
 
-    eprintln!("--- CONSTANTS ({}) ---", td.num_constants);
+    log::info!("--- CONSTANTS ({}) ---", td.num_constants);
     for i in 0..td.num_constants as usize {
         let r = &recipes[recipe_idx];
-        eprintln!("  [{i}] {}", fmt_recipe(r));
+        log::info!("  [{i}] {}", fmt_recipe(r));
         recipe_idx += 1;
     }
     if td.num_constants > 0 {
-        eprintln!();
+        log::info!(" ");
     }
 
-    eprintln!("--- C0_ONLY_LINEAR ({}) ---", td.num_c0_only_linear);
+    log::info!("--- C0_ONLY_LINEAR ({}) ---", td.num_c0_only_linear);
     for i in 0..td.num_c0_only_linear as usize {
         let src = td.c0_only_linear[i].source_idx;
         let r = &recipes[recipe_idx];
-        eprintln!(
+        log::info!(
             "  [{i}] src={} {}",
             fmt_source(src, assignments),
             fmt_recipe(r),
@@ -165,14 +170,14 @@ pub(crate) fn dump_flat_round1_plan<E: Field + field::FieldExtension<BF> + std::
         recipe_idx += 1;
     }
     if td.num_c0_only_linear > 0 {
-        eprintln!();
+        log::info!(" ");
     }
 
-    eprintln!("--- UNIFIED_QUADRATIC ({}) ---", td.num_unified_quadratic);
+    log::info!("--- UNIFIED_QUADRATIC ({}) ---", td.num_unified_quadratic);
     for i in 0..td.num_unified_quadratic as usize {
         let t = td.unified_quadratic[i];
         let r = &recipes[recipe_idx];
-        eprintln!(
+        log::info!(
             "  [{i}] src_a={} src_b={} {}",
             fmt_source(t.source_a, assignments),
             fmt_source(t.source_b, assignments),
@@ -181,14 +186,14 @@ pub(crate) fn dump_flat_round1_plan<E: Field + field::FieldExtension<BF> + std::
         recipe_idx += 1;
     }
     if td.num_unified_quadratic > 0 {
-        eprintln!();
+        log::info!(" ");
     }
 
-    eprintln!("--- UNIFIED_LINEAR ({}) ---", td.num_unified_linear);
+    log::info!("--- UNIFIED_LINEAR ({}) ---", td.num_unified_linear);
     for i in 0..td.num_unified_linear as usize {
         let src = td.unified_linear[i].source_idx;
         let r = &recipes[recipe_idx];
-        eprintln!(
+        log::info!(
             "  [{i}] src={} {}",
             fmt_source(src, assignments),
             fmt_recipe(r),
@@ -196,11 +201,11 @@ pub(crate) fn dump_flat_round1_plan<E: Field + field::FieldExtension<BF> + std::
         recipe_idx += 1;
     }
     if td.num_unified_linear > 0 {
-        eprintln!();
+        log::info!(" ");
     }
 
     // --- Source reuse summary ---
-    eprintln!("--- SOURCE REUSE ---");
+    log::info!("--- SOURCE REUSE ---");
     let mut reuse: std::collections::HashMap<u16, Vec<String>> = std::collections::HashMap::new();
 
     for i in 0..td.num_c0_only_linear as usize {
@@ -243,13 +248,13 @@ pub(crate) fn dump_flat_round1_plan<E: Field + field::FieldExtension<BF> + std::
             r1idx < desc.num_base_sources as usize && desc.base_sources[r1idx].first_access
         };
         let fa = if first_access { " FIRST_ACCESS" } else { "" };
-        eprintln!(
+        log::info!(
             "  {} → {} refs: {}{fa}",
             fmt_source(*sidx, assignments),
             refs.len(),
             refs.join(", "),
         );
     }
-    eprintln!("=== END FLAT ROUND 1 PLAN: layer {} ===", layer_idx);
-    eprintln!();
+    log::info!("=== END FLAT ROUND 1 PLAN: layer {} ===", layer_idx);
+    log::info!(" ");
 }

@@ -277,9 +277,13 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         // needed by the final slab parse.
         start_callbacks.schedule(aggregation, stream)?;
     }
+    // SAFETY: this pinned host allocation is written by the callback below
+    // before any later host or device consumer reads it.
     let mut seed_host = unsafe { context.alloc_host_uninit::<Seed>() };
     let seed_accessor = seed_host.get_mut_accessor();
     start_callbacks.schedule(
+        // SAFETY: the callback is the sole writer of `seed_host`, and it runs
+        // on `exec_stream` before any downstream H2D or host read of the seed.
         move || unsafe {
             seed_accessor.write(seed_source());
         },
@@ -289,6 +293,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     start_callbacks.schedule(
         {
             let shared_state = shared_state_handle;
+            // SAFETY: the cap host buffers were filled by earlier D2Hs on the
+            // same stream before this callback executes, and `shared_state`
+            // stays alive for the whole scheduled proof assembly.
             move || unsafe {
                 let proof_state = shared_state.get_mut();
                 let proof = proof_state.proof.as_mut().unwrap();
@@ -364,10 +371,10 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     // d_seed, d_challenge, d_coeffs, plus host staging/mirror buffers and
     // the upload callbacks. Populated by `schedule_fold_round`.
     let mut fold_round_group_keepalives = FoldRoundGroupKeepalives::new();
-    // Per-WHIR-round keepalives for the device-side PoW verify + query index
-    // assembly: the contained device/host buffers must outlive the stream
-    // work scheduled by the caller around them.
-    let mut pow_keepalives_list: Vec<PowAndQueryIndexesKeepalives> = Vec::new();
+    // Per-WHIR-round device/host state for the device-side PoW verify +
+    // query-index assembly. Later callbacks consume the mirrored seed and
+    // nonce, so these values are not just passive keepalives.
+    let mut pow_round_state: Vec<PowAndQueryIndexesState> = Vec::new();
     let mut recursive_caps_keepalive: Vec<crate::prover::whir::GpuWhirExtensionOracleKeepalive> =
         Vec::new();
     // Pinned host buffers backing per-round D2Hs of intermediate oracle caps.
@@ -480,7 +487,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 query_domain_log2,
                 proof_slab,
                 proof_layout,
-                &mut pow_keepalives_list,
+                &mut pow_round_state,
                 &mut pow_nonces,
                 stream,
                 context,
@@ -509,12 +516,16 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         // fill callback + one H2D replaces `num_queries × 3` per-helper-call
         // host alloc + callback + device alloc + H2D.
         let base_lde_factor = 1u32 << memory_trace_holder.log_lde_factor;
+        // SAFETY: this pinned host allocation is initialized by the callback
+        // below before the H2D copy reads from it.
         let mut internal_indexes_host =
             unsafe { context.alloc_host_uninit_slice::<u32>(num_queries) };
         {
             let query_indexes_accessor = query_indexes_host.get_accessor();
             let internal_indexes_accessor = internal_indexes_host.get_mut_accessor();
             query_index_callbacks_for_round.schedule(
+                // SAFETY: the callback is the sole writer of
+                // `internal_indexes_host`, and it runs before the queued H2D.
                 move || unsafe {
                     let src = query_indexes_accessor.get();
                     let dst = internal_indexes_accessor.get_mut();
@@ -582,6 +593,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             let query_indexes_accessor = query_indexes_host.get_accessor();
             let (eq_upload, _eq_host) = schedule_accumulate_eq_sample_in_place_device(
                 &mut state,
+                // SAFETY: `dst` is a callback-owned mutable slice provided by the
+                // scheduler helper; the callback writes it sequentially before
+                // the subsequent H2D reads it.
                 move |dst| unsafe {
                     let point = E4::from_base(
                         query_domain_generator.pow(query_indexes_accessor.get()[query_idx]),
@@ -612,6 +626,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                     let setup_columns_count = setup_query.columns_count;
                     let setup_coset_tree_size = setup_query.coset_tree_size;
                     let setup_log_lde_factor = setup_query.log_lde_factor;
+                    // SAFETY: all accessors captured here point to host buffers
+                    // materialized before this callback runs, and the shared
+                    // proof state outlives every final callback.
                     move || unsafe {
                         let proof_state = shared_state.get_mut();
                         let proof = proof_state.proof.as_mut().unwrap();
@@ -760,7 +777,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 query_domain_log2,
                 proof_slab,
                 proof_layout,
-                &mut pow_keepalives_list,
+                &mut pow_round_state,
                 &mut pow_nonces,
                 stream,
                 context,
@@ -783,11 +800,15 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         queries_range.start(stream)?;
         let mut round_recursive_queries = Vec::new();
         for query_idx in 0..num_queries {
+            // SAFETY: this single-element pinned host allocation is written by
+            // the callback below before the folded-query scheduler reads it.
             let mut single_query_index = unsafe { context.alloc_host_uninit_slice(1) };
             let single_query_index_accessor = single_query_index.get_mut_accessor();
             let query_indexes_accessor = query_indexes_host.get_accessor();
             let mut copy_callbacks = Callbacks::new();
             copy_callbacks.schedule(
+                // SAFETY: the callback is the sole writer of
+                // `single_query_index`, and it runs before query scheduling.
                 move || unsafe {
                     single_query_index_accessor.get_mut()[0] =
                         query_indexes_accessor.get()[query_idx];
@@ -795,25 +816,28 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 stream,
             )?;
             let query = oracle_to_query
-                .schedule_query_for_folded_index_from_host(single_query_index, context)?;
-            let query_leafs_accessor = query.leafs_accessor();
-            let query_paths_accessor = query.merkle_paths_accessor();
+                .schedule_query_for_folded_index_from_host(&single_query_index, context)?;
+            let mut query = query;
             let query_values_per_leaf = query.values_per_leaf();
             let query_log_lde_factor = oracle_to_query.lde_factor().trailing_zeros();
             let query_coset_tree_size = oracle_to_query.packed_leaf_count();
             copy_intermediate_query_to_slab(
-                query_indexes_host.get_accessor(),
-                query_leafs_accessor,
-                query_paths_accessor,
+                &single_query_index,
+                &mut query,
                 proof_slab,
                 proof_layout,
                 internal_round_idx,
                 query_idx,
                 stream,
+                context,
             )?;
+            let query_leafs_accessor = query.leafs_accessor();
+            let query_paths_accessor = query.merkle_paths_accessor();
             let query_indexes_accessor = query_indexes_host.get_accessor();
             let (eq_upload, _eq_host) = schedule_accumulate_eq_sample_in_place_device(
                 &mut state,
+                // SAFETY: `dst` is a callback-owned mutable slice provided by the
+                // scheduler helper; the callback fills it before upload.
                 move |dst| unsafe {
                     let point = E4::from_base(
                         query_domain_generator.pow(query_indexes_accessor.get()[query_idx]),
@@ -834,6 +858,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 {
                     let shared_state = shared_state_handle;
                     let query_indexes_accessor = query_indexes_host.get_accessor();
+                    // SAFETY: the query leaf/path accessors and shared proof
+                    // state all outlive this callback, and the host buffers were
+                    // filled before the callback runs.
                     move || unsafe {
                         let index = query_indexes_accessor.get()[query_idx] as usize;
                         fill_extension_query_from_accessors(
@@ -905,10 +932,14 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         // proof as `final_monomials`. Read them back asynchronously and do both in a single
         // stream-ordered callback so the seed update is sequenced before
         // `schedule_pow_verify_and_query_indexes` below.
+        // SAFETY: this pinned host allocation is used purely as the D2H
+        // destination before the final callback consumes it.
         let mut final_monomials_host =
             unsafe { context.alloc_host_uninit_slice::<E4>(state.current_len) };
         let mut final_monomials_device =
             context.alloc::<E4>(state.current_len, AllocationPlacement::BestFit)?;
+        // SAFETY: `final_monomials_device` stores `E4` elements, so viewing it
+        // as its underlying `BF` lanes for the transpose is layout-compatible.
         let mut transpose_dst = unsafe { final_monomials_device.transmute_mut::<BF>() };
         let mut transpose_dst_matrix = DeviceMatrixMut::new(&mut transpose_dst, EXT4_DEGREE);
         let monomials_matrix_chunk = DeviceMatrixChunk::new(
@@ -923,6 +954,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         final_callbacks.schedule(
             {
                 let shared_state = shared_state_handle;
+                // SAFETY: `final_monomials_host` has been filled by the D2H
+                // queued above before this callback runs; `seed_accessor` and
+                // the shared proof state both outlive the callback.
                 move || unsafe {
                     let mut monomials = final_monomials_accessor.get().to_vec();
                     bitreverse_enumeration_inplace(&mut monomials);
@@ -955,7 +989,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 query_domain_log2,
                 proof_slab,
                 proof_layout,
-                &mut pow_keepalives_list,
+                &mut pow_round_state,
                 &mut pow_nonces,
                 stream,
                 context,
@@ -967,11 +1001,15 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let mut round_recursive_queries = Vec::new();
         let final_oracle_index = num_whir_steps.saturating_sub(1);
         for query_idx in 0..num_queries {
+            // SAFETY: this single-element pinned host allocation is written by
+            // the callback below before the folded-query scheduler reads it.
             let mut single_query_index = unsafe { context.alloc_host_uninit_slice(1) };
             let single_query_index_accessor = single_query_index.get_mut_accessor();
             let query_indexes_accessor = query_indexes_host.get_accessor();
             let mut copy_callbacks = Callbacks::new();
             copy_callbacks.schedule(
+                // SAFETY: the callback is the sole writer of
+                // `single_query_index`, and it runs before query scheduling.
                 move || unsafe {
                     single_query_index_accessor.get_mut()[0] =
                         query_indexes_accessor.get()[query_idx];
@@ -979,27 +1017,31 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 stream,
             )?;
             let query = oracle_to_query
-                .schedule_query_for_folded_index_from_host(single_query_index, context)?;
-            let query_leafs_accessor = query.leafs_accessor();
-            let query_paths_accessor = query.merkle_paths_accessor();
+                .schedule_query_for_folded_index_from_host(&single_query_index, context)?;
+            let mut query = query;
             let query_values_per_leaf = query.values_per_leaf();
             let query_log_lde_factor = oracle_to_query.lde_factor().trailing_zeros();
             let query_coset_tree_size = oracle_to_query.packed_leaf_count();
             copy_intermediate_query_to_slab(
-                query_indexes_host.get_accessor(),
-                query_leafs_accessor,
-                query_paths_accessor,
+                &single_query_index,
+                &mut query,
                 proof_slab,
                 proof_layout,
                 final_oracle_index,
                 query_idx,
                 stream,
+                context,
             )?;
+            let query_leafs_accessor = query.leafs_accessor();
+            let query_paths_accessor = query.merkle_paths_accessor();
             final_callbacks.extend(copy_callbacks);
             final_callbacks.schedule(
                 {
                     let shared_state = shared_state_handle;
                     let query_indexes_accessor = query_indexes_host.get_accessor();
+                    // SAFETY: the query leaf/path accessors and shared proof
+                    // state all outlive this callback, and the host buffers were
+                    // filled before the callback runs.
                     move || unsafe {
                         let index = query_indexes_accessor.get()[query_idx] as usize;
                         fill_extension_query_from_accessors(
@@ -1046,7 +1088,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         _start_callbacks: start_callbacks,
         _folding_challenges: folding_challenges,
         _fold_round_group_keepalives: fold_round_group_keepalives,
-        _pow_keepalives: pow_keepalives_list,
+        _pow_round_state: pow_round_state,
         _ood_points: ood_points,
         _query_index_callbacks: query_index_callbacks,
         _delinearization_challenges: delinearization_challenges,

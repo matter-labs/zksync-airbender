@@ -191,7 +191,9 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
 
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
     let memory_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type));
-    let prover_config = memory_circuit_type.prover_config(SecurityLevel::Sec80);
+    let prover_config = memory_circuit_type
+        .prover_config(SecurityLevel::Sec80)
+        .unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         &table_driver,
@@ -239,19 +241,8 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
         .copied()
         .map(ExecutorFamilyDecoderData::from)
         .collect_vec();
-    let mut d_decoder_table = context
-        .alloc(h_decoder_table.len(), AllocationPlacement::BestFit)
-        .unwrap();
-    memory_copy_async(
-        &mut d_decoder_table,
-        &h_decoder_table,
-        context.get_exec_stream(),
-    )
-    .unwrap();
-    let mut trace_data = context
-        .alloc(buffer.len(), AllocationPlacement::BestFit)
-        .unwrap();
-    memory_copy_async(&mut trace_data, &buffer[..], context.get_exec_stream()).unwrap();
+    let d_decoder_table = upload_slice_to_device_for_test(&h_decoder_table, &context);
+    let trace_data = upload_slice_to_device_for_test(&buffer, &context);
     let gpu_trace = TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(
         UnrolledMemoryTraceDevice {
             tracing_data: trace_data,

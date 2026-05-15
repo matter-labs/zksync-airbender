@@ -118,7 +118,9 @@ fn gpu_worker(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
     );
-    is_initialized.send(()).unwrap();
+    is_initialized
+        .send(())
+        .expect("GPU worker initialization channel closed before readiness signal");
     drop(is_initialized);
     let mut even_odd_index = 0;
     let mut current_phase_one: Option<PhaseOne> = None;
@@ -144,7 +146,9 @@ fn gpu_worker(
         } else {
             None
         };
-        results.send(result).unwrap()
+        results
+            .send(result)
+            .expect("GPU worker results channel closed before queued work completed")
     }
     assert!(current_phase_one.is_none());
     assert!(current_phase_two.is_none());
@@ -271,7 +275,9 @@ fn schedule_phase_one<'a>(
         // from `OPTIMAL_FOLDING_PROPERTIES` and can disagree with the
         // `prover_config` the commit phase actually used, so use the
         // prover_config geometry directly here.
-        let prover_config = circuit_type.prover_config(state.security_level);
+        let prover_config = circuit_type
+            .prover_config(state.security_level)
+            .expect("ExecutionProverConfiguration validated GPU security level before GPU work");
         let log_lde_factor = prover_config.lde_factor.trailing_zeros();
         let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
         let host =
@@ -312,7 +318,9 @@ fn enqueue_phase_two<'a>(
     let batch_id = state.batch_id;
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
-    let prover_config = circuit_type.prover_config(state.security_level);
+    let prover_config = circuit_type
+        .prover_config(state.security_level)
+        .expect("ExecutionProverConfiguration validated GPU security level before GPU work");
     let final_trace_size_log_2 = 4usize;
     let compiled_circuit_arc = state.precomputations.compiled_circuit.clone();
 

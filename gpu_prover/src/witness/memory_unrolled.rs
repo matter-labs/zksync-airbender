@@ -131,8 +131,19 @@ impl UnrolledMemoryLayout {
             }
             (count, sets)
         };
-        let machine_state = value.machine_state.unwrap().into();
-        let decoder_input = value.decoder_input.clone().unwrap().into();
+        let machine_state = value
+            .machine_state
+            .expect(
+                "GKR memory layout must include machine_state for unrolled memory witness teardown",
+            )
+            .into();
+        let decoder_input = value
+            .decoder_input
+            .clone()
+            .expect(
+                "GKR memory layout must include decoder_input for unrolled memory witness teardown",
+            )
+            .into();
         Self {
             shuffle_ram_access_sets_count,
             shuffle_ram_access_sets,
@@ -146,6 +157,76 @@ impl UnrolledMemoryLayout {
 impl From<&GKRMemoryLayout> for UnrolledMemoryLayout {
     fn from(value: &GKRMemoryLayout) -> Self {
         Self::from_parts(value, 0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::upstream::GKRAddress;
+
+    fn dummy_machine_state() -> cs::definitions::gkr::MachineStatePermutationDescription {
+        cs::definitions::gkr::MachineStatePermutationDescription {
+            execute: 1,
+            initial_state: cs::definitions::gkr::GKRMachineState {
+                pc: [0; REGISTER_SIZE],
+                timestamp: [0; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+            },
+            final_state: cs::definitions::gkr::GKRMachineState {
+                pc: [0; REGISTER_SIZE],
+                timestamp: [0; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+            },
+        }
+    }
+
+    fn dummy_decoder_input() -> cs::definitions::gkr::DecoderPlacementDescription {
+        cs::definitions::gkr::DecoderPlacementDescription {
+            rs1_index: 0,
+            rs2_index: GKRAddress::BaseLayerMemory(0),
+            rd_index: GKRAddress::BaseLayerMemory(0),
+            circuit_family_mask_bits: Box::new([]),
+            decoder_witness_is_in_memory: false,
+            imm: [0; REGISTER_SIZE],
+            funct3: None,
+        }
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "GKR memory layout must include machine_state for unrolled memory witness teardown"
+    )]
+    fn missing_machine_state_has_explicit_panic_message() {
+        let layout = GKRMemoryLayout {
+            ram_access_sets: Vec::new(),
+            machine_state: None,
+            delegation_state: None,
+            decoder_input: Some(dummy_decoder_input()),
+            indirect_access_variable_offsets: Vec::new(),
+            teardown_sets: Vec::new(),
+            total_width: 0,
+            inits_and_teardowns_word_bits: None,
+        };
+
+        let _ = UnrolledMemoryLayout::from_parts(&layout, 0);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "GKR memory layout must include decoder_input for unrolled memory witness teardown"
+    )]
+    fn missing_decoder_input_has_explicit_panic_message() {
+        let layout = GKRMemoryLayout {
+            ram_access_sets: Vec::new(),
+            machine_state: Some(dummy_machine_state()),
+            delegation_state: None,
+            decoder_input: None,
+            indirect_access_variable_offsets: Vec::new(),
+            teardown_sets: Vec::new(),
+            total_width: 0,
+            inits_and_teardowns_word_bits: None,
+        };
+
+        let _ = UnrolledMemoryLayout::from_parts(&layout, 0);
     }
 }
 

@@ -3,15 +3,15 @@ use crate::upstream::GKRAddress;
 // pub mod arg_utils;
 pub(crate) mod layout;
 pub(crate) mod memory_delegation;
-pub mod memory_unrolled;
-pub mod multiplicities;
+pub(crate) mod memory_unrolled;
+pub(crate) mod multiplicities;
 mod option;
 mod ram_access;
-pub mod trace;
+pub(crate) mod trace;
 pub(crate) mod trace_delegation;
-pub mod trace_unrolled;
+pub(crate) mod trace_unrolled;
 pub(crate) mod witness_delegation;
-pub mod witness_unrolled;
+pub(crate) mod witness_unrolled;
 
 #[repr(C, u32)]
 #[derive(Clone, Copy, Debug)]

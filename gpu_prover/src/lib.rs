@@ -25,7 +25,6 @@ pub(crate) mod witness;
 
 pub use execution::prover::{
     BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, ExecutionProverConfiguration,
-    ProveResult,
+    ProveResult, UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS,
 };
-pub use primitives::machine_type;
 pub use primitives::machine_type::MachineType;
