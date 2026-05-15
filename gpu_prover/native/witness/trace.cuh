@@ -6,6 +6,10 @@ using namespace ::airbender::witness;
 
 namespace airbender::witness::trace {
 
+// Mirrors `crate::upstream::NON_DETERMINISM_CSR`; a compile-time assertion in
+// the Rust crate guards against drift.
+constexpr u32 NON_DETERMINISM_CSR = 0x7c0;
+
 typedef u64 TimestampScalar;
 
 struct TimestampData {

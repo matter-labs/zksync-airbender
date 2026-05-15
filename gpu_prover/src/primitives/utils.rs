@@ -107,6 +107,8 @@ pub(crate) fn compute_minimal_carveout(
 /// Set the preferred shared-memory carveout percentage for a kernel.
 pub(crate) fn set_shared_carveout(kernel: *const c_void, pct: i32) {
     use era_cudart_sys::CudaFuncAttribute;
+    // SAFETY: `kernel` is a valid `__global__` function pointer; the attribute and value
+    // are well-formed.
     unsafe {
         era_cudart_sys::cudaFuncSetAttribute(
             kernel,
