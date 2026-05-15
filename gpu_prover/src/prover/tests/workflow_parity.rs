@@ -196,7 +196,11 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     );
     let mut gpu_setup_transfer =
         GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
-    gpu_setup_transfer.schedule_transfer(&context).unwrap();
+    let _h2d = crate::primitives::transfer::single_shot_h2d(
+        |t| gpu_setup_transfer.schedule_transfer(t, &context),
+        &context,
+    )
+    .unwrap();
     context.get_h2d_stream().synchronize().unwrap();
 
     let cpu_setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
@@ -798,7 +802,11 @@ fn run_shift_binop_cached_lookup_parity_test() {
     );
     let mut gpu_setup_transfer =
         GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
-    gpu_setup_transfer.schedule_transfer(&context).unwrap();
+    let _h2d = crate::primitives::transfer::single_shot_h2d(
+        |t| gpu_setup_transfer.schedule_transfer(t, &context),
+        &context,
+    )
+    .unwrap();
     context.get_h2d_stream().synchronize().unwrap();
 
     let h_decoder_table = witness_gen_data
