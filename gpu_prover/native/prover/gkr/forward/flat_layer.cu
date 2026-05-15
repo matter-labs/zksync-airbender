@@ -1,15 +1,10 @@
-#include "flat_forward.cuh"
+#include "flat.cuh"
 
 __device__ __constant__ e4 ab_gkr_lookup_gamma_consts[3];
 
-namespace airbender::prover::gkr {
+namespace airbender::prover::gkr::forward {
 
-EXTERN __global__ void ab_gkr_lookup_gamma_consts_prelude(const e4 *gamma, e4 *staging) {
-  const e4 value = gamma[0];
-  staging[0] = value;
-  staging[1] = e4::sqr(value);
-  staging[2] = e4::dbl(value);
-}
+EXTERN __global__ void ab_gkr_lookup_gamma_consts_prelude(const e4 *gamma, e4 *staging) { stage_lookup_gamma_consts(gamma, staging); }
 
 // Conservative launch bound of 4 blocks/SM at 128 threads — tune via ncu
 // measurements when profiling justifies it.
@@ -21,4 +16,4 @@ EXTERN __launch_bounds__(128, 4) __global__
   flat_forward_compute(desc, gid);
 }
 
-} // namespace airbender::prover::gkr
+} // namespace airbender::prover::gkr::forward

@@ -1,20 +1,4 @@
-target_sources(gpu_prover_native PRIVATE
-        descriptors.cuh
-        kernel_helpers.cuh
-        lookup_helpers.cuh
-        dim_reducing_backward.cu
-        dim_reducing_forward_tower.cu
-        flat_backward.cuh
-        flat_backward_coeff.cuh
-        flat_backward_continuation.cuh
-        flat_forward.cuh
-        flat_forward_layer.cu
-        forward_cache.cu
-        main_backward_round0_compute_coeff.cu
-        main_backward_round0_flat.cu
-        main_backward_round1_flat_warp_split.cu
-        main_backward_round2_flat_warp_split.cu
-        main_backward_round3_compute_coeff.cu
-        main_backward_round3_flat_warp_split.cu
-        setup.cu
-)
+add_subdirectory(support)
+add_subdirectory(forward)
+add_subdirectory(backward)
+add_subdirectory(setup)

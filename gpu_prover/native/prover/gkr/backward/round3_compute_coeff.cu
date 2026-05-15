@@ -1,9 +1,9 @@
-#include "flat_backward_coeff.cuh"
-#include "flat_backward_continuation.cuh"
+#include "coeff.cuh"
+#include "continuation.cuh"
 
 __device__ __constant__ e4 ab_gkr_flat_continuation_coefficients[airbender::prover::gkr::FLAT_CONT_CONST_MAX];
 
-namespace airbender::prover::gkr {
+namespace airbender::prover::gkr::backward {
 
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_gkr_flat_continuation_eval_recipes_e4_kernel(const e4 *batch_base, const e4 *lookup_mul, const e4 *lookup_add, const e4 *ext_challenges,
@@ -14,4 +14,4 @@ EXTERN __launch_bounds__(128, 8) __global__
   coefficients[gid] = eval_single_recipe(desc.headers[gid], desc, *batch_base, *lookup_mul, *lookup_add, ext_challenges);
 }
 
-} // namespace airbender::prover::gkr
+} // namespace airbender::prover::gkr::backward

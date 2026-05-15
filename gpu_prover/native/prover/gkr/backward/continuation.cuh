@@ -1,6 +1,6 @@
 #pragma once
 
-#include "flat_backward.cuh" // flat_c0_ref, flat_c1_pair, coeff_loader_ptr
+#include "flat.cuh" // flat_c0_ref, flat_c1_pair, coeff_loader_ptr
 
 EXTERN __device__ __constant__ e4 ab_gkr_round2_challenges[3];
 EXTERN __device__ __constant__ e4 ab_gkr_main_layer_claim_point[airbender::prover::gkr::GKR_MAIN_LAYER_CLAIM_POINT_LEN];
@@ -350,7 +350,7 @@ static_assert(sizeof(flat_round2_unified_desc_compact) <= 32 * 1024, "flat_round
 
 // __constant__ coefficient symbol for continuation rounds.
 // Separate from round 0's symbol to avoid coupling.
-// Defined in main_backward_round3_compute_coeff.cu.
+// Defined in round3_compute_coeff.cu.
 EXTERN __device__ __constant__ e4 ab_gkr_flat_continuation_coefficients[airbender::prover::gkr::FLAT_CONT_CONST_MAX];
 
 namespace airbender::prover::gkr {
@@ -968,6 +968,79 @@ DEVICE_FORCEINLINE void flat_round2_compute_unified_compact(const flat_round2_un
       break;
     }
     }
+  }
+}
+
+DEVICE_FORCEINLINE void stage_round2_challenges(const e4 *folding_challenges, e4 *staging) {
+  const e4 first = folding_challenges[0];
+  const e4 second = folding_challenges[1];
+  staging[0] = first;
+  staging[1] = second;
+  staging[2] = e4::mul(first, second);
+}
+
+template <typename E, unsigned NUM_WARPS>
+DEVICE_FORCEINLINE void flat_store_unified_contributions(E (*smem)[32], const E *eq_values, E *contributions, const unsigned acc_size, const unsigned gid,
+                                                         const unsigned lane, const unsigned warp_id, const E c0, const E c1) {
+  const E eq = load<E, ld_modifier::cs>(eq_values, gid);
+
+  if (warp_id != 0)
+    smem[warp_id - 1][lane] = c0;
+  __syncthreads();
+  if (warp_id == 0) {
+    E sum_c0 = c0;
+    for (unsigned w = 0; w < NUM_WARPS - 1; w++)
+      sum_c0 = E::add(sum_c0, smem[w][lane]);
+    store<E, st_modifier::cs>(contributions, E::mul(sum_c0, eq), gid);
+  }
+
+  __syncthreads();
+
+  if (warp_id != 0)
+    smem[warp_id - 1][lane] = c1;
+  __syncthreads();
+  if (warp_id == 0) {
+    E sum_c1 = c1;
+    for (unsigned w = 0; w < NUM_WARPS - 1; w++)
+      sum_c1 = E::add(sum_c1, smem[w][lane]);
+    store<E, st_modifier::cs>(contributions + acc_size, E::mul(sum_c1, eq), gid);
+  }
+}
+
+template <typename E, unsigned NUM_WARPS>
+DEVICE_FORCEINLINE void flat_round1_accumulate_unified_compact(const flat_round1_unified_desc_compact &desc, const unsigned fold_stride,
+                                                               const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
+  flat_round1_compute_unified_compact<E, false, NUM_WARPS>(desc, 0, desc.num_constant_terms, next_layer_size, gid, warp_id, c0, c1);
+  for (unsigned tile = 0; tile < desc.num_tiles; tile++) {
+    flat_round1_tile_fold_compact<E, NUM_WARPS>(desc, desc.tile_fold_offsets[tile], desc.tile_fold_offsets[tile + 1], fold_stride, next_layer_size, gid,
+                                                warp_id);
+    flat_round1_compute_unified_compact<E, false, NUM_WARPS>(desc, desc.tile_term_offsets[tile], desc.tile_term_offsets[tile + 1], next_layer_size, gid,
+                                                             warp_id, c0, c1);
+  }
+}
+
+template <typename E, unsigned NUM_WARPS>
+DEVICE_FORCEINLINE void flat_round2_accumulate_unified_compact(const flat_round2_unified_desc_compact &desc, const unsigned fold_stride,
+                                                               const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
+  flat_round2_compute_unified_compact<E, false, NUM_WARPS>(desc, 0, desc.num_constant_terms, next_layer_size, gid, warp_id, c0, c1);
+  for (unsigned tile = 0; tile < desc.num_tiles; tile++) {
+    flat_round2_tile_fold_compact<E, NUM_WARPS>(desc, desc.tile_fold_offsets[tile], desc.tile_fold_offsets[tile + 1], fold_stride, next_layer_size, gid,
+                                                warp_id);
+    flat_round2_compute_unified_compact<E, false, NUM_WARPS>(desc, desc.tile_term_offsets[tile], desc.tile_term_offsets[tile + 1], next_layer_size, gid,
+                                                             warp_id, c0, c1);
+  }
+}
+
+template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS>
+DEVICE_FORCEINLINE void flat_cont_accumulate_unified_compact(const flat_continuation_unified_desc_compact &desc, const unsigned fold_stride,
+                                                             const unsigned next_layer_size, const unsigned folding_challenge_slot, const unsigned gid,
+                                                             const unsigned warp_id, E &c0, E &c1) {
+  flat_cont_compute_unified_compact<E, EXPLICIT_FORM, NUM_WARPS>(desc, 0, desc.num_constant_terms, next_layer_size, gid, warp_id, c0, c1);
+  for (unsigned tile = 0; tile < desc.num_tiles; tile++) {
+    flat_cont_tile_fold_compact<E, NUM_WARPS>(desc, desc.tile_fold_offsets[tile], desc.tile_fold_offsets[tile + 1], fold_stride, next_layer_size,
+                                              folding_challenge_slot, gid, warp_id);
+    flat_cont_compute_unified_compact<E, EXPLICIT_FORM, NUM_WARPS>(desc, desc.tile_term_offsets[tile], desc.tile_term_offsets[tile + 1], next_layer_size, gid,
+                                                                   warp_id, c0, c1);
   }
 }
 

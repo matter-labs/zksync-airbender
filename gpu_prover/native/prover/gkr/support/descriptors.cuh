@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../../common.cuh"
-#include "../../primitives/field.cuh"
-#include "../../primitives/memory.cuh"
+#include "../../../common.cuh"
+#include "../../../primitives/field.cuh"
+#include "../../../primitives/memory.cuh"
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
@@ -217,7 +217,7 @@ constexpr unsigned GKR_DIM_REDUCING_MAX_OUTPUTS_PER_RECORD = 2;
 } // namespace airbender::prover::gkr
 
 // __constant__ batch-challenge table for dim-reducing backward compact kernels.
-// Defined in dim_reducing_backward.cu.
+// Defined in backward/dim_reducing.cu.
 EXTERN __device__ __constant__ e4 ab_gkr_dim_reducing_batch_challenge_table[airbender::prover::gkr::GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN];
 EXTERN __device__ __constant__ e4 ab_gkr_dim_reducing_layer_claim_point[airbender::prover::gkr::GKR_DIM_REDUCING_LAYER_CLAIM_POINT_LEN];
 EXTERN __device__ __constant__ e4 ab_gkr_lookup_alpha_powers[airbender::prover::gkr::GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS];
