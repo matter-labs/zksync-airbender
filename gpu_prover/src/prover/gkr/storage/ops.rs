@@ -4,15 +4,14 @@ use std::sync::Arc;
 
 use era_cudart::result::CudaResult;
 
-use super::gkr_address_audit::AddressClass;
-use super::storage_layout::FieldType;
+use super::super::gkr_address_audit::AddressClass;
 #[cfg(test)]
-use super::tests::{
+use super::super::tests::{
     alloc_device_and_schedule_upload, alloc_host_and_schedule_copy,
     GpuSumcheckRound0DeviceLaunchDescriptors, GpuSumcheckRound0HostLaunchDescriptors,
     GpuSumcheckRound0ScheduledLaunchDescriptors,
 };
-use super::{
+use super::super::{
     ConsolidatedBaseFoldingBacking, ConsolidatedFoldingBacking,
     GpuBaseFieldPolyIntermediateFoldingStorage, GpuBaseFieldPolySource,
     GpuBaseFieldPolySourceAfterOneFoldingPlan, GpuBaseFieldPolySourceAfterTwoFoldingsPlan,
@@ -21,6 +20,7 @@ use super::{
     GpuGKRStorage, GpuSumcheckRound0LaunchDescriptors, GpuSumcheckRound1PreparedStorage,
     GpuSumcheckRound2PreparedStorage, GpuSumcheckRound3AndBeyondPreparedStorage,
 };
+use super::storage_layout::FieldType;
 use crate::allocator::tracker::AllocationPlacement;
 #[cfg(test)]
 use crate::primitives::callbacks::Callbacks;

@@ -80,10 +80,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
         "{label}: setup caps diverged"
     );
 
-    let mut trace_data = context
-        .alloc(buffer.len(), AllocationPlacement::BestFit)
-        .unwrap();
-    memory_copy_async(&mut trace_data, buffer, context.get_exec_stream()).unwrap();
+    let trace_data = upload_slice_to_device_for_test(buffer, &context);
     let gpu_trace = build_gpu_trace(trace_data);
 
     let mut stage1_output = generate_stage1_output_for_test(
@@ -386,43 +383,25 @@ pub(super) fn assert_bigint_delegation_workflow_matches_cpu(
         &mut table_driver,
     );
 
-    let buffer = if zero_call {
-        vec![]
-    } else {
-        let fixture = build_delegation_replay_fixture(&[15, 1]);
-        let num_calls = fixture
-            .snapshotter
-            .snapshots
-            .last()
-            .unwrap()
-            .state
-            .counters
-            .bigint_calls;
-        let mut replay_state = fixture.snapshotter.initial_snapshot.state;
-        let mut ram_log_buffers = fixture
-            .snapshotter
-            .reads_buffer
-            .make_range(0..fixture.snapshotter.reads_buffer.len());
-        let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
-            ram_log: &mut ram_log_buffers,
-        };
-        let tape = SimpleTape::new(&fixture.instructions);
-        let mut buffer = vec![BigintDelegationWitness::empty(); num_calls];
-        let mut buffers = vec![&mut buffer[..]];
-        let mut tracer = BigintDelegationDestinationHolder {
-            buffers: &mut buffers[..],
-        };
-        ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
-            &mut replay_state,
-            &mut replay_ram,
-            &tape,
-            &mut (),
-            fixture.cycles_bound,
-            &mut tracer,
-        );
-        assert_eq!(fixture.expected_final_state, replay_state);
-        buffer
-    };
+    let buffer = replay_delegation_trace_buffer(
+        zero_call,
+        |counters| counters.bigint_calls,
+        BigintDelegationWitness::empty(),
+        |tape, cycles_bound, replay_state, replay_ram, buffer| {
+            let mut buffers = vec![buffer];
+            let mut tracer = BigintDelegationDestinationHolder {
+                buffers: &mut buffers[..],
+            };
+            ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
+                replay_state,
+                replay_ram,
+                tape,
+                &mut (),
+                cycles_bound,
+                &mut tracer,
+            );
+        },
+    );
 
     let oracle = BigintDelegationOracle {
         cycle_data: &buffer,
@@ -453,43 +432,25 @@ pub(super) fn assert_blake2_delegation_workflow_matches_cpu(
         &mut table_driver,
     );
 
-    let buffer = if zero_call {
-        vec![]
-    } else {
-        let fixture = build_delegation_replay_fixture(&[15, 1]);
-        let num_calls = fixture
-            .snapshotter
-            .snapshots
-            .last()
-            .unwrap()
-            .state
-            .counters
-            .blake_calls;
-        let mut replay_state = fixture.snapshotter.initial_snapshot.state;
-        let mut ram_log_buffers = fixture
-            .snapshotter
-            .reads_buffer
-            .make_range(0..fixture.snapshotter.reads_buffer.len());
-        let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
-            ram_log: &mut ram_log_buffers,
-        };
-        let tape = SimpleTape::new(&fixture.instructions);
-        let mut buffer = vec![Blake2sRoundFunctionDelegationWitness::empty(); num_calls];
-        let mut buffers = vec![&mut buffer[..]];
-        let mut tracer = BlakeDelegationDestinationHolder {
-            buffers: &mut buffers[..],
-        };
-        ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
-            &mut replay_state,
-            &mut replay_ram,
-            &tape,
-            &mut (),
-            fixture.cycles_bound,
-            &mut tracer,
-        );
-        assert_eq!(fixture.expected_final_state, replay_state);
-        buffer
-    };
+    let buffer = replay_delegation_trace_buffer(
+        zero_call,
+        |counters| counters.blake_calls,
+        Blake2sRoundFunctionDelegationWitness::empty(),
+        |tape, cycles_bound, replay_state, replay_ram, buffer| {
+            let mut buffers = vec![buffer];
+            let mut tracer = BlakeDelegationDestinationHolder {
+                buffers: &mut buffers[..],
+            };
+            ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
+                replay_state,
+                replay_ram,
+                tape,
+                &mut (),
+                cycles_bound,
+                &mut tracer,
+            );
+        },
+    );
 
     let oracle = Blake2sDelegationOracle {
         cycle_data: &buffer,
@@ -519,42 +480,30 @@ pub(super) fn assert_keccak_delegation_workflow_matches_cpu(
         &mut table_driver,
     );
 
-    let fixture = build_delegation_replay_fixture(&[15, 1]);
-    let num_calls = fixture
-        .snapshotter
-        .snapshots
-        .last()
-        .unwrap()
-        .state
-        .counters
-        .keccak_calls;
+    let buffer = replay_delegation_trace_buffer(
+        false,
+        |counters| counters.keccak_calls,
+        KeccakSpecial5DelegationWitness::empty(),
+        |tape, cycles_bound, replay_state, replay_ram, buffer| {
+            let mut buffers = vec![buffer];
+            let mut tracer = KeccakDelegationDestinationHolder {
+                buffers: &mut buffers[..],
+            };
+            ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
+                replay_state,
+                replay_ram,
+                tape,
+                &mut (),
+                cycles_bound,
+                &mut tracer,
+            );
+        },
+    );
+    let num_calls = buffer.len();
     assert!(
         num_calls > 0,
         "keccak_f1600 must exercise keccak delegation"
     );
-    let mut replay_state = fixture.snapshotter.initial_snapshot.state;
-    let mut ram_log_buffers = fixture
-        .snapshotter
-        .reads_buffer
-        .make_range(0..fixture.snapshotter.reads_buffer.len());
-    let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
-        ram_log: &mut ram_log_buffers,
-    };
-    let tape = SimpleTape::new(&fixture.instructions);
-    let mut buffer = vec![KeccakSpecial5DelegationWitness::empty(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
-    let mut tracer = KeccakDelegationDestinationHolder {
-        buffers: &mut buffers[..],
-    };
-    ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
-        &mut replay_state,
-        &mut replay_ram,
-        &tape,
-        &mut (),
-        fixture.cycles_bound,
-        &mut tracer,
-    );
-    assert_eq!(fixture.expected_final_state, replay_state);
     assert!(
         !compiled_circuit
             .memory_layout

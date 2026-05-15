@@ -481,6 +481,18 @@ impl<T> HostAllocation<[T]> {
     }
 }
 
+impl<T> CudaSlice<T> for HostAllocation<T> {
+    unsafe fn as_slice(&self) -> &[T] {
+        std::slice::from_ref(&self.0)
+    }
+}
+
+impl<T> CudaSliceMut<T> for HostAllocation<T> {
+    unsafe fn as_mut_slice(&mut self) -> &mut [T] {
+        std::slice::from_mut(&mut self.0)
+    }
+}
+
 impl<T> CudaSlice<T> for HostAllocation<[T]> {
     unsafe fn as_slice(&self) -> &[T] {
         self.0.as_slice()

@@ -134,8 +134,8 @@ pub(super) fn schedule_ood_sample_phase(
 /// Returns `(query_indexes_host, query_index_callbacks_for_round)` so the caller can:
 /// (a) capture the indexes accessor for the subsequent per-query loop, (b) extend the
 /// per-round callbacks container with query-specific work, and (c) eventually push both
-/// into the orchestrator's keepalive vecs. The nonce host buffer and PoW keepalives are
-/// pushed into their respective vecs inside this fn.
+/// into the orchestrator-owned callback/state vectors. The nonce host buffer and PoW
+/// round state are pushed into their respective vectors inside this fn.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn schedule_pow_and_query_indexes_phase(
     seed_host: &mut HostAllocation<Seed>,
@@ -147,7 +147,7 @@ pub(super) fn schedule_pow_and_query_indexes_phase(
     query_domain_log2: usize,
     proof_slab: Option<&DeviceAllocation<E4>>,
     proof_layout: &ProofLayout,
-    pow_keepalives_list: &mut Vec<PowAndQueryIndexesKeepalives>,
+    pow_round_state: &mut Vec<PowAndQueryIndexesState>,
     pow_nonces: &mut Vec<HostAllocation<u64>>,
     stream: &era_cudart::stream::CudaStream,
     context: &ProverContext,
@@ -166,7 +166,7 @@ pub(super) fn schedule_pow_and_query_indexes_phase(
         },
         stream,
     )?;
-    let pow_keepalives = schedule_pow_verify_and_query_indexes(
+    let pow_round_state_entry = schedule_pow_verify_and_query_indexes(
         seed_host,
         &mut nonce_host,
         &mut query_indexes_host,
@@ -176,14 +176,14 @@ pub(super) fn schedule_pow_and_query_indexes_phase(
         context,
     )?;
     copy_pow_nonce_to_slab(
-        &pow_keepalives,
+        &pow_round_state_entry,
         proof_slab,
         proof_layout,
         pow_round_idx,
         stream,
     )?;
-    let h_seed_mirror_accessor = pow_keepalives.h_seed_mirror.get_accessor();
-    pow_keepalives_list.push(pow_keepalives);
+    let h_seed_mirror_accessor = pow_round_state_entry.h_seed_mirror.get_accessor();
+    pow_round_state.push(pow_round_state_entry);
     query_index_callbacks_for_round.schedule(
         {
             let shared_state = shared_state_handle;

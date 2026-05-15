@@ -6,10 +6,10 @@ use era_cudart::slice::{CudaSlice, DeviceSlice};
 
 use crate::ops::cub::device_reduce::Reduce;
 use crate::primitives::field::E4;
+use crate::prover::gkr::{GpuBaseFieldPoly, GpuGKRStorage};
 use crate::prover::proof::layout::ProofLayout;
 
-use super::super::{GpuBaseFieldPoly, GpuGKRStorage};
-use super::kernels::*;
+use super::super::kernels::*;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{
     batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,

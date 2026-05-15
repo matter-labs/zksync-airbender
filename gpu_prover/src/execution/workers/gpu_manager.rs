@@ -49,7 +49,11 @@ impl GpuManager {
     }
 
     pub fn send_batch(&self, batch: GpuWorkBatch) {
-        self.batches_sender.as_ref().unwrap().send(batch).unwrap()
+        self.batches_sender
+            .as_ref()
+            .expect("GPU manager batch sender must exist before shutdown")
+            .send(batch)
+            .expect("GPU manager batch channel closed before all work was submitted")
     }
 }
 
@@ -192,7 +196,9 @@ fn gpu_manager(
                         }
                     };
                     let result = WorkerResult::GpuWorkResult(result);
-                    batch_senders[&batch_id].send(result).unwrap();
+                    batch_senders[&batch_id]
+                        .send(result)
+                        .expect("GPU manager result channel closed before batch completion");
                     if batches_to_flush.contains(&batch_id)
                         && !work_queue
                             .iter()
@@ -239,7 +245,8 @@ fn gpu_manager(
                     );
                     (Some(request), Some(batch_id))
                 };
-                op.send(worker_sender, request).unwrap();
+                op.send(worker_sender, request)
+                    .expect("GPU manager failed to send work to GPU worker");
                 worker_queue.push_back(batch_id);
             }
             _ => unreachable!(),
@@ -264,7 +271,8 @@ fn gpu_manager(
                         GpuWorkRequest::MemoryCommitment(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending memory commitment request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
                         GpuWorkRequest::Proof(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending proof request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
                     };
-                    op.send(&worker_senders[worker_id], Some(request)).unwrap();
+                    op.send(&worker_senders[worker_id], Some(request))
+                        .expect("GPU manager failed to eagerly queue work for GPU worker");
                     worker_queues[worker_id].push_back(Some(batch_id));
                 }
                 Err(_) => break,

@@ -258,7 +258,9 @@ fn config_logs_for_circuit(
     circuit_type: CircuitType,
     security_level: SecurityLevel,
 ) -> (u32, u32, u32) {
-    let prover_config = circuit_type.prover_config(security_level);
+    let prover_config = circuit_type
+        .prover_config(security_level)
+        .expect("ExecutionProverConfiguration validated GPU security level before precomputation");
     (
         prover_config.lde_factor.trailing_zeros(),
         prover_config.base_oracles_values_per_leaf.trailing_zeros(),

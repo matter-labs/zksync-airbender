@@ -1,6 +1,5 @@
-mod build_plan;
-mod builder;
-mod emit;
+pub(super) mod build_plan;
+pub(super) mod builder;
 mod kernel;
 mod types;
 

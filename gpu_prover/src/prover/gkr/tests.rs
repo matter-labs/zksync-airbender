@@ -1,13 +1,17 @@
 use super::*;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::HostAllocation;
+use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
+use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::field::{BF, E4};
 use crate::prover::test_utils::make_test_context;
 
-use crate::upstream::{Field, VirtualSetupPoly};
+use crate::upstream::{Field, GKRAddress, GKRInputs, VirtualSetupPoly};
 use era_cudart::memory::memory_copy_async;
+use era_cudart::result::CudaResult;
+use era_cudart::slice::CudaSlice;
 use serial_test::serial;
+use std::sync::Arc;
 
 impl<B> GpuBaseFieldPoly<B> {
     pub(crate) fn new(backing: DeviceAllocation<B>) -> Self {

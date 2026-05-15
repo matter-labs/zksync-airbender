@@ -65,7 +65,9 @@ fn domain_registry() -> &'static Mutex<Vec<DomainEntry>> {
 }
 
 fn get_or_create_domain(name: &str) -> NvtxDomainHandle {
-    let mut domains = domain_registry().lock().unwrap();
+    let mut domains = domain_registry()
+        .lock()
+        .expect("NVTX domain registry mutex poisoned");
     if let Some(entry) = domains.iter().find(|entry| entry.name == name) {
         return entry.handle;
     }
@@ -85,7 +87,9 @@ fn range_registry() -> &'static Mutex<Vec<Box<Registration>>> {
 }
 
 fn get_or_create_registration(domain: Option<&str>, message: &str) -> *const Registration {
-    let mut registry = range_registry().lock().unwrap();
+    let mut registry = range_registry()
+        .lock()
+        .expect("NVTX range registry mutex poisoned");
     if let Some(entry) = registry.iter().find(|entry| {
         entry.domain_name.as_deref() == domain && entry.message.to_bytes() == message.as_bytes()
     }) {

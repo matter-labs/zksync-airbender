@@ -1,4 +1,4 @@
-use era_cudart::execution::{CudaLaunchConfig, Dim3, KernelFunction};
+use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
@@ -6,11 +6,7 @@ use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 
 use crate::primitives::field::*;
-use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-
-fn get_launch_dims(count: u32) -> (Dim3, Dim3) {
-    get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count)
-}
+use crate::primitives::utils::get_grid_block_dims_for_warp_groups;
 
 cuda_kernel_signature_arguments_and_function!(
     GetPowersByVal<T>,
@@ -52,7 +48,7 @@ pub(crate) fn get_powers_by_val<T: GetPowersByVal>(
 ) -> CudaResult<()> {
     assert!(result.len() <= u32::MAX as usize);
     let count = result.len() as u32;
-    let (grid_dim, block_dim) = get_launch_dims(count);
+    let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, count);
     let result = result.as_mut_ptr();
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GetPowersByValArguments::new(base, offset, bit_reverse, result, count);
@@ -111,7 +107,7 @@ pub(crate) fn get_powers_by_ref<T: GetPowersByRef>(
 ) -> CudaResult<()> {
     assert!(result.len() <= u32::MAX as usize);
     let count = result.len() as u32;
-    let (grid_dim, block_dim) = get_launch_dims(count);
+    let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, count);
     let base = base.as_ptr();
     let result = result.as_mut_ptr();
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);

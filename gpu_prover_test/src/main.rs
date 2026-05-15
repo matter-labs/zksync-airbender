@@ -75,7 +75,8 @@ mod tests {
             host_allocators_per_device_count: 128,
             ..Default::default()
         };
-        let mut prover = ExecutionProver::with_configuration(configuration);
+        let mut prover = ExecutionProver::with_configuration(configuration)
+            .expect("gpu_prover_test requires a GPU-supported security level");
         prover.add_binary(
             0,
             ExecutionKind::Unrolled,
@@ -171,7 +172,8 @@ mod tests {
         //     .unwrap();
         println!("Computing proof");
 
-        let mut prover = ExecutionProver::with_configuration(Default::default());
+        let mut prover = ExecutionProver::with_configuration(Default::default())
+            .expect("gpu_prover_test requires a GPU-supported security level");
         prover.add_binary(
             0,
             ExecutionKind::Unrolled,
@@ -293,7 +295,8 @@ mod tests {
         )
         .unwrap();
 
-        let mut prover = ExecutionProver::with_configuration(Default::default());
+        let mut prover = ExecutionProver::with_configuration(Default::default())
+            .expect("gpu_prover_test requires a GPU-supported security level");
         prover.add_binary(
             0,
             ExecutionKind::Unrolled,
@@ -434,7 +437,8 @@ mod tests {
 
         println!("Computing proof");
 
-        let mut prover = ExecutionProver::with_configuration(Default::default());
+        let mut prover = ExecutionProver::with_configuration(Default::default())
+            .expect("gpu_prover_test requires a GPU-supported security level");
         prover.add_binary(
             0,
             ExecutionKind::Unified,
@@ -581,7 +585,8 @@ mod tests {
 
         println!("Computing proof");
 
-        let mut prover = ExecutionProver::with_configuration(Default::default());
+        let mut prover = ExecutionProver::with_configuration(Default::default())
+            .expect("gpu_prover_test requires a GPU-supported security level");
         prover.add_binary(
             0,
             ExecutionKind::Unified,

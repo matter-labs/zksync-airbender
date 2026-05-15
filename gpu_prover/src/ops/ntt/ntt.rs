@@ -173,7 +173,9 @@ pub(crate) fn evals_to_monomials_3_pass(
                 .launch(&config, &args)?,
             24 => EvalsToMonomialsFinalFunction(ab_evals_to_monomials_final_8_stages_kernel)
                 .launch(&config, &args)?,
-            _ => unimplemented!(),
+            _ => unreachable!(
+                "NTT 3-pass evals->monomials kernels are only generated for log_n in 21..=24"
+            ),
         }
     }
     Ok(())
@@ -233,7 +235,9 @@ pub(crate) fn evals_to_monomials_2_pass(
         let function = match log_n {
             23 => StridedTilesStagesFunction(ab_evals_to_monomials_first_9_stages_kernel),
             24 => StridedTilesStagesFunction(ab_evals_to_monomials_first_10_stages_kernel),
-            _ => unimplemented!(),
+            _ => unreachable!(
+                "NTT 2-pass evals->monomials kernels are only generated for log_n in 23..=24"
+            ),
         };
         let func_ptr = function.as_ptr();
         unsafe {
@@ -334,7 +338,9 @@ pub(crate) fn monomials_to_evals_3_pass(
                 .launch(&config, &args)?,
             24 => MonomialsToEvalsInitialFunction(ab_monomials_to_evals_initial_8_stages_kernel)
                 .launch(&config, &args)?,
-            _ => unimplemented!(),
+            _ => unreachable!(
+                "NTT 3-pass monomials->evals kernels are only generated for log_n in 21..=24"
+            ),
         }
         let threads = 512;
         let bf_vals_per_block = 1 << 13; // 8192
@@ -449,7 +455,9 @@ pub(crate) fn monomials_to_evals_2_pass(
         let function = match log_n {
             23 => StridedTilesStagesFunction(ab_monomials_to_evals_last_9_stages_kernel),
             24 => StridedTilesStagesFunction(ab_monomials_to_evals_last_10_stages_kernel),
-            _ => unimplemented!(),
+            _ => unreachable!(
+                "NTT 3-pass bitreversed->natural kernels are only generated for log_n in 21..=24"
+            ),
         };
         let func_ptr = function.as_ptr();
         unsafe {
@@ -465,7 +473,7 @@ pub(crate) fn monomials_to_evals_2_pass(
     Ok(())
 }
 
-#[allow(unused)]
+#[allow(dead_code)]
 pub(crate) fn bitreversed_monomials_to_natural_evals(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
@@ -526,7 +534,7 @@ pub(crate) fn bitreversed_monomials_to_natural_evals(
     Ok(())
 }
 
-#[allow(unused)]
+#[allow(dead_code)]
 pub(crate) fn natural_evals_to_bitreversed_monomials(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),

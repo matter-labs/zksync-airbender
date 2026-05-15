@@ -144,7 +144,9 @@ pub(super) fn prepare_basic_unrolled_fixture(
     let fixture_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
         UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
     ));
-    let prover_config = fixture_circuit_type.prover_config(SecurityLevel::Sec80);
+    let prover_config = fixture_circuit_type
+        .prover_config(SecurityLevel::Sec80)
+        .unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         &TableDriver::new(),

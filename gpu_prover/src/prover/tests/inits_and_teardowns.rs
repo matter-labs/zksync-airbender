@@ -206,7 +206,8 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
     let table_driver = TableDriver::<BF>::new();
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
     let prover_config = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
-        .prover_config(SecurityLevel::Sec80);
+        .prover_config(SecurityLevel::Sec80)
+        .unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(&table_driver, &[], trace_len, &compiled_circuit);
     assert!(setup.hypercube_evals.is_empty());

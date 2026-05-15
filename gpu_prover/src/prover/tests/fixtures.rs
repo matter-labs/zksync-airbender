@@ -49,8 +49,50 @@ pub(super) fn build_delegation_replay_fixture(
     }
 }
 
+pub(super) fn replay_delegation_trace_buffer<W: Clone>(
+    zero_call: bool,
+    count_from_counters: impl FnOnce(&DelegationsAndFamiliesCounters) -> usize,
+    empty_witness: W,
+    replay: fn(
+        &SimpleTape,
+        usize,
+        &mut DelegationState,
+        &mut ReplayerRam<{ ROM_SECOND_WORD_BITS }>,
+        &mut [W],
+    ),
+) -> Vec<W> {
+    if zero_call {
+        return Vec::new();
+    }
+
+    let fixture = build_delegation_replay_fixture(&[15, 1]);
+    let num_calls =
+        count_from_counters(&fixture.snapshotter.snapshots.last().unwrap().state.counters);
+    let mut replay_state = fixture.snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = fixture
+        .snapshotter
+        .reads_buffer
+        .make_range(0..fixture.snapshotter.reads_buffer.len());
+    let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let tape = SimpleTape::new(&fixture.instructions);
+    let mut buffer = vec![empty_witness; num_calls];
+    replay(
+        &tape,
+        fixture.cycles_bound,
+        &mut replay_state,
+        &mut replay_ram,
+        &mut buffer,
+    );
+    assert_eq!(fixture.expected_final_state, replay_state);
+    buffer
+}
+
 pub(super) fn delegation_prover_config(circuit_type: DelegationCircuitType) -> ProverConfig {
-    CircuitType::Delegation(circuit_type).prover_config(SecurityLevel::Sec80)
+    CircuitType::Delegation(circuit_type)
+        .prover_config(SecurityLevel::Sec80)
+        .unwrap()
 }
 
 pub(super) fn test_external_challenges() -> GKRExternalChallenges<BF, E4> {

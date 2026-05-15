@@ -42,6 +42,13 @@ pub(super) fn read_reduce_outputs(
     Ok(unsafe { host.get_accessor().get().to_vec() })
 }
 
+pub(super) fn copy_back<T: Clone>(values: &DeviceSlice<T>, context: &ProverContext) -> Vec<T> {
+    let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
+    memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    unsafe { host.get_accessor().get().to_vec() }
+}
+
 pub(super) fn decode_base_leaf_values(
     leafs: &[BF],
     values_per_leaf: usize,
@@ -587,13 +594,6 @@ pub(crate) fn debug_build_initial_state_for_test(
     use_hypercube_evals_for_batching: bool,
     context: &ProverContext,
 ) -> CudaResult<([Vec<E4>; 3], E4, Vec<E4>, Vec<E4>, Vec<E4>)> {
-    fn copy_back<T: Clone>(values: &DeviceSlice<T>, context: &ProverContext) -> Vec<T> {
-        let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-        unsafe { host.get_accessor().get().to_vec() }
-    }
-
     let trace_len = 1usize << memory_trace_holder.log_domain_size;
     let mut state = GpuWhirState::new(trace_len, context)?;
     let (batch_challenges, claim) = build_initial_state(
@@ -638,13 +638,6 @@ pub(crate) fn debug_build_initial_batched_evals_for_test(
     use_hypercube_evals: bool,
     context: &ProverContext,
 ) -> CudaResult<Vec<E4>> {
-    fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
-        let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-        unsafe { host.get_accessor().get().to_vec() }
-    }
-
     let trace_len = 1usize << memory_trace_holder.log_domain_size;
     let mut state = GpuWhirState::new(trace_len, context)?;
     let total_base_oracles = memory_trace_holder.columns_count
@@ -688,13 +681,6 @@ pub(crate) fn debug_build_initial_state_snapshots_for_test(
     use_hypercube_evals_for_batching: bool,
     context: &ProverContext,
 ) -> CudaResult<(Vec<E4>, Vec<E4>)> {
-    fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
-        let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-        unsafe { host.get_accessor().get().to_vec() }
-    }
-
     let trace_len = 1usize << memory_trace_holder.log_domain_size;
     let mut state = GpuWhirState::new(trace_len, context)?;
     let batch_challenges = initialize_batched_forms(

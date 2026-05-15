@@ -5,10 +5,12 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
 
-use super::super::GpuGKRStorage;
-use super::kernels::*;
-use super::main_layer_extras::{schedule_main_layer_extras_eval, MainLayerExtrasKeepalive};
-use super::packed_main_layer_batch_challenge_len;
+use crate::prover::gkr::GpuGKRStorage;
+
+use super::super::kernels::*;
+use super::super::packed_main_layer_batch_challenge_len;
+use super::super::{compact, flat};
+use super::extras::{schedule_main_layer_extras_eval, MainLayerExtrasKeepalive};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::STATE_SIZE;
 use crate::ops::cub::device_reduce::{reduce, Reduce, ReduceOperation};
@@ -52,6 +54,8 @@ where
         // Fill the packed buffer with powers of the device-resident batching
         // challenge — the last slot of the orchestrator-owned
         // `device_claim_point_in`.
+        // SAFETY: `device_claim_point_in` has length `folding_steps + 1`, so the
+        // final slot exists and is the batching challenge by construction.
         let batching_slice = unsafe { device_claim_point_in.slice(self.folding_steps, 1) };
         // SAFETY: `storage.device` was just allocated with capacity `len` and
         // no other view into it exists yet; the `&mut DeviceSlice` is dropped
@@ -59,6 +63,8 @@ where
         // `get_powers_by_ref` launch is stream-ordered on `exec_stream`, so the
         // buffer is populated before any downstream consumer reads it.
         unsafe {
+            // SAFETY: the freshly allocated challenge buffer is only re-viewed
+            // at the concrete `E4` layout used by this scheduler.
             let dst_slice = storage.device.slice_mut(0, len);
             let dst_e4 = dst_slice.transmute_mut::<E4>();
             let batching_e4 = batching_slice.transmute::<E4>();
@@ -106,7 +112,7 @@ where
             .as_ref()
             .expect("compact flat round 0 plan must be built");
         if self.flat_use_constant {
-            super::compact::launch_main_round0_constant(
+            compact::launch_main_round0_constant(
                 &plan_compact.static_desc,
                 self.round_scratch.eq_values.as_ptr(),
                 self.round_scratch.accumulator.as_mut_ptr(),
@@ -114,7 +120,7 @@ where
                 context,
             )
         } else {
-            super::compact::launch_main_round0(
+            compact::launch_main_round0(
                 &plan_compact.static_desc,
                 self.flat_coeff_device_buf.as_ref().unwrap().as_ptr(),
                 self.round_scratch.eq_values.as_ptr(),
@@ -142,7 +148,7 @@ where
             .flat_round1_unified_desc_compact
             .as_ref()
             .expect("flat round 1 compact desc must be built");
-        super::compact::launch_main_round1_unified(
+        compact::launch_main_round1_unified(
             compact_desc,
             null(),
             sizes.fold_stride,
@@ -171,9 +177,9 @@ where
             .flat_round2_unified_desc_compact
             .as_ref()
             .expect("flat round 2 compact desc must be built");
-        super::compact::launch_main_round2_unified(
+        compact::launch_main_round2_unified(
             compact_desc,
-            super::compact::get_main_layer_claim_point_device_ptr() as *const E,
+            compact::get_main_layer_claim_point_device_ptr() as *const E,
             sizes.fold_stride,
             sizes.next_layer_size,
             self.round_scratch.eq_values.as_ptr(),
@@ -207,7 +213,7 @@ where
             .unwrap_or_else(|| {
                 panic!("flat continuation compact desc must be built for step {step}")
             });
-        super::compact::launch_main_round3_unified(
+        compact::launch_main_round3_unified(
             compact_desc,
             null(),
             sizes.fold_stride,
@@ -233,6 +239,9 @@ where
         assert_eq!(acc_size, 1usize << challenge_count);
         let _ = (challenge_offset, challenge_count);
         let stream = context.get_exec_stream();
+        // SAFETY: `reduction_temp_storage` owns a live device allocation sized
+        // exactly to its backing buffer; this creates a temporary mutable view
+        // for the two reductions below and no aliasing mutable view escapes it.
         let reduction_temp = unsafe {
             DeviceSlice::from_raw_parts_mut(
                 self.round_scratch.reduction_temp_storage.as_mut_ptr(),
@@ -291,12 +300,14 @@ where
         let batch_base_ptr =
             unsafe { device_claim_point_in.as_ptr().add(self.folding_steps) } as *const E4;
         let lookup_mul_ptr = device_lookup_and_constraint_ptr as *const E4;
+        // SAFETY: `device_lookup_and_constraint_ptr` points to two contiguous
+        // `E` scalars; offset 1 is the additive lookup challenge.
         let lookup_add_ptr = unsafe { device_lookup_and_constraint_ptr.add(1) } as *const E4;
         let external_challenges_ptr = external_challenges_ptr as *const E4;
 
         // Determine output pointer for eval_recipes.
         let coeff_out_ptr: *mut E4 = if self.flat_use_constant {
-            super::flat::get_constant_coefficients_device_ptr()
+            flat::get_constant_coefficients_device_ptr()
         } else {
             self.flat_coeff_device_buf
                 .as_mut()
@@ -336,10 +347,9 @@ where
             None => return Ok(()),
         };
 
-        let coeff_out_ptr: *mut E4 =
-            super::flat::get_constant_continuation_coefficients_device_ptr();
+        let coeff_out_ptr: *mut E4 = flat::get_constant_continuation_coefficients_device_ptr();
 
-        super::flat::eval_continuation_recipes_e4(
+        flat::eval_continuation_recipes_e4(
             batch_base_ptr,
             lookup_mul_ptr,
             lookup_add_ptr,
@@ -470,6 +480,9 @@ where
         let mut fallback_device_coeffs: Option<DeviceAllocation<E>> = None;
         let coeffs_buffer_ptr: *mut E = if let Some(slab) = proof_slab {
             if coeffs_total_len > 0 {
+                // SAFETY: `layer_slot` selects this layer's slab segment and
+                // the returned region is validated against `coeffs_total_len`
+                // immediately below.
                 let (dst_ptr, dst_len) = unsafe {
                     proof_layout
                         .backward_internal_coeffs_device_mut(slab.as_ptr() as *mut u8, layer_slot)
@@ -518,11 +531,19 @@ where
         );
 
         {
+            // SAFETY: every instantiation uses `E = E4`, so these reinterprets
+            // are byte-for-byte views over live device buffers with identical
+            // ext-field layout.
             let claims_e4: &era_cudart::slice::DeviceSlice<E4> =
                 unsafe { device_claims_in[..claim_layout.len()].transmute::<E4>() };
+            // SAFETY: the last slot of `device_claim_point_in` is the batching
+            // challenge and exists because its length is `folding_steps + 1`.
             let batching_slice = unsafe { device_claim_point_in.slice(self.folding_steps, 1) };
+            // SAFETY: same concrete-layout reinterpret as the claims buffer.
             let batching_e4: &era_cudart::slice::DeviceSlice<E4> =
                 unsafe { batching_slice.transmute::<E4>() };
+            // SAFETY: the one-element outputs are allocated as `E` and viewed
+            // at the concrete `E4` layout used by the kernel helper.
             let claim_out_e4: &mut era_cudart::slice::DeviceSlice<E4> =
                 unsafe { device_claim[..].transmute_mut::<E4>() };
             let eq_out_e4: &mut era_cudart::slice::DeviceSlice<E4> =
@@ -547,9 +568,13 @@ where
         )?;
         // Continuation kernel reads the same 3 challenges via per-element
         // pointers as the round-0 kernel above.
+        // SAFETY: the validated input length is `folding_steps + 1`, so the
+        // last slot still exists for the continuation path.
         let cont_batch_base_ptr =
             unsafe { device_claim_point_in.as_ptr().add(self.folding_steps) } as *const E4;
         let cont_lookup_mul_ptr = device_lookup_and_constraint_ptr as *const E4;
+        // SAFETY: same invariant as the round-0 path above: the additive
+        // lookup challenge is the second scalar in this contiguous pair.
         let cont_lookup_add_ptr = unsafe { device_lookup_and_constraint_ptr.add(1) } as *const E4;
         self.schedule_flat_continuation_eval_recipes(
             cont_batch_base_ptr,
@@ -571,14 +596,17 @@ where
         // No packing buffer or per-round D2D needed.
         let next_claim_point_and_batching_len = self.folding_steps + 1;
         assert!(
-            next_claim_point_and_batching_len <= super::compact::MAX_MAIN_LAYER_CLAIM_POINT_LEN,
+            next_claim_point_and_batching_len <= compact::MAX_MAIN_LAYER_CLAIM_POINT_LEN,
             "main-layer claim point length {} exceeds __constant__ symbol capacity {}",
             next_claim_point_and_batching_len,
-            super::compact::MAX_MAIN_LAYER_CLAIM_POINT_LEN
+            compact::MAX_MAIN_LAYER_CLAIM_POINT_LEN
         );
+        // SAFETY: the constant-buffer symbol is provisioned for
+        // `MAX_MAIN_LAYER_CLAIM_POINT_LEN`; the checked length above keeps the
+        // mutable view in bounds for the whole layer.
         let mut device_claim_point_out = unsafe {
             DeviceClaimPointAndBatching::from_raw_symbol_parts(
-                super::compact::get_main_layer_claim_point_device_ptr() as *mut E,
+                compact::get_main_layer_claim_point_device_ptr() as *mut E,
                 next_claim_point_and_batching_len,
             )
         };
@@ -606,6 +634,8 @@ where
             // pushes the round's 4 coefficients into device_coeffs at
             // [step*4..step*4+4], and emits the next folding challenge
             // directly into `claim_point_out[step]`.
+            // SAFETY: `step < last_step <= folding_steps`, so the single-element
+            // read lies inside the immutable input claim-point buffer.
             let prev_coord_slice = unsafe { device_claim_point_in.slice(step, 1) };
             // SAFETY: see the dim-reducing twin — the coeffs buffer is either
             // a slab subslice (held alive by `_proof_slab` keepalive) or
@@ -614,6 +644,10 @@ where
             // in-bounds (`coeffs_total_len = last_step * 4`).
             let coeffs_round_slice =
                 unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(step * 4), 4) };
+            // SAFETY: `device_claim_point_out` was created with length
+            // `folding_steps + 1`, and `step < last_step <= folding_steps`, so
+            // this one-element output slot is in bounds and uniquely written by
+            // this iteration.
             let challenge_slot = unsafe { device_claim_point_out.slice_mut(step, 1) };
             E::launch_backward_sumcheck_round_update(
                 &self.round_scratch.reduction_output,
@@ -651,6 +685,9 @@ where
         let mut fallback_d_layer_transcript_inputs: Option<DeviceAllocation<E>> = None;
         let transcript_inputs_buffer_ptr: *mut E = if let Some(slab) = proof_slab {
             if transcript_inputs_len > 0 {
+                // SAFETY: `layer_slot` selects this layer's slab segment and
+                // the returned region is validated against
+                // `transcript_inputs_len` immediately below.
                 let (dst_ptr, dst_len) = unsafe {
                     proof_layout
                         .backward_final_step_evals_device_mut(slab.as_ptr() as *mut u8, layer_slot)
@@ -678,6 +715,9 @@ where
                 .values()
                 .map(|p| *p as u64)
                 .collect();
+            // SAFETY: the slab/fallback transcript-input buffer was allocated
+            // for `transcript_inputs_len` ext elements; reinterpreting it as an
+            // `E4` slice matches the only instantiated extension layout.
             let dst = unsafe {
                 DeviceSlice::from_raw_parts_mut(
                     transcript_inputs_buffer_ptr as *mut E4,
@@ -696,6 +736,8 @@ where
                 transcript_inputs_len,
             )
         };
+        // SAFETY: `E = E4` in this scheduler, so the transcript input slice is
+        // byte-identical to the `u32` view that `transcript_commit` expects.
         let d_transcript_inputs_u32 = unsafe { transcript_inputs_e_slice.transmute::<u32>() };
         crate::ops::blake2s::transcript_commit(&mut device_seed, d_transcript_inputs_u32, stream)?;
 
@@ -751,6 +793,8 @@ where
                     transcript_inputs_len,
                 )
             };
+            // SAFETY: the packed eval buffer is laid out as `E4` elements in
+            // this scheduler instantiation.
             let transcript_inputs_e4: &era_cudart::slice::DeviceSlice<E4> =
                 unsafe { transcript_inputs_e_view.transmute::<E4>() };
             // SAFETY: layer-challenge tail lives at
@@ -759,8 +803,12 @@ where
             let challenges_view = unsafe {
                 DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr().add(last_step), 1)
             };
+            // SAFETY: the just-squeezed challenge tail is stored in the same
+            // concrete `E4` layout that the kernel helper expects.
             let challenges_e4: &era_cudart::slice::DeviceSlice<E4> =
                 unsafe { challenges_view.transmute::<E4>() };
+            // SAFETY: `device_new_claims` was allocated as `E` and is viewed at
+            // the concrete `E4` layout used by the kernel helper.
             let new_claims_e4: &mut era_cudart::slice::DeviceSlice<E4> =
                 unsafe { device_new_claims[..num_addresses].transmute_mut::<E4>() };
             crate::ops::blake2s::backward_new_claims_linear(
@@ -790,6 +838,10 @@ where
             // tail starts at `device_new_claims[num_addresses]`.
             let folding_point_ptr = device_claim_point_out.as_ptr();
             let trace_len = 1usize << self.folding_steps;
+            // SAFETY: `device_new_claims` was allocated with
+            // `num_addresses + orphan_count` slots, so the orphan tail starts
+            // at `num_addresses` and has capacity for exactly `orphan_count`
+            // outputs.
             let extras_dst_ptr = unsafe { device_new_claims.as_mut_ptr().add(num_addresses) };
             Some(schedule_main_layer_extras_eval::<E>(
                 self.layer_idx,
@@ -830,14 +882,20 @@ where
             // via B1/B2 and not D2H'd here). The join lets exec wait for the per-layer D2Hs
             // before scheduling the final-readback callback and dropping the source
             // allocations at end of this function.
+            // SAFETY: these pinned host buffers are written by the D2H copies
+            // below before any host callback reads them.
             let mut layer_challenges_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(2) };
             let layer_challenges_accessor = layer_challenges_host.get_accessor();
             let mut new_claims_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(total_new_claims_len.max(1)) };
             let new_claims_accessor = new_claims_host.get_accessor();
+            // SAFETY: same D2H-destination invariant as above for the seed and
+            // folding-challenge mirrors.
             let mut final_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
             let final_seed_accessor = final_seed_host.get_accessor();
+            // SAFETY: this pinned host buffer is also a pure D2H destination
+            // before the final callback consumes it.
             let mut final_folding_challenges_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(last_step) };
             let final_folding_challenges_accessor = final_folding_challenges_host.get_accessor();
@@ -890,6 +948,9 @@ where
             let workflow_state_for_callback = workflow_state;
             let layer_idx = self.layer_idx;
             final_readback_callbacks.schedule(
+                // SAFETY: every accessor captured here points to host buffers
+                // filled earlier on the same stream, and the callback runs only
+                // after the fork/join D2H sequence has completed.
                 move || unsafe {
                     // Populate the rolling state from the D2H'd device state. The
                     // seed captured here is already post-commit+squeeze; the 2

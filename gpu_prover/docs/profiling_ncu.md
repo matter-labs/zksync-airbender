@@ -67,7 +67,7 @@ Then profile with source import enabled and the explicit full-section list:
 
 If the existing ranges are too coarse and cache or inter-kernel dependencies matter, add a temporary raw registered NVTX range near the host-side launch site of the dependent kernel group you want to study. Reuse the `gpu_prover.tests` domain and give the message a session-specific name.
 
-Use the same raw range helper as the profiling test in [`src/prover/tests.rs`](../src/prover/tests.rs):
+Use the same raw range helper as the profiling test in [`src/prover/tests/smoke.rs`](../src/prover/tests/smoke.rs):
 
 ```rust
 let ncu_capture_domain = std::ffi::CStr::from_bytes_with_nul(b"gpu_prover.tests\0").unwrap();

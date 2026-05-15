@@ -3,13 +3,13 @@ use super::super::super::kernels::{
     GpuGKRMainLayerConstraintChallengeTerm, GpuGKRMainLayerConstraintMetadataSource,
     GpuGKRMainLayerDeferredChallengeSource, GpuGKRMainLayerKernelKind,
 };
-use super::super::CoefficientRecipe;
-use super::builder::FlatContinuationDescriptionBuilder;
-use super::emit::{
+use super::super::continuation_emit::{
     emit_continuation_constraint_gate, emit_continuation_cross_product_gate,
     emit_continuation_linear_form, emit_continuation_linear_form_times_ext,
     emit_continuation_materialize_gate, emit_continuation_single_times_linear_form,
 };
+use super::super::CoefficientRecipe;
+use super::builder::FlatContinuationDescriptionBuilder;
 use super::types::FlatContinuationBuildPlan;
 use crate::primitives::field::BF;
 use crate::prover::gkr::immediate_factors::ImmediateFactorRecipeStructural;

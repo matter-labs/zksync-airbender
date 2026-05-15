@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use era_cudart::result::CudaResult;
 
-use super::{GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRLayerSource, GpuGKRStorage};
+use super::super::{GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRLayerSource, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::ProverContext;
 use crate::prover::gkr::storage_layout::{FieldType, StorageSlot};

@@ -14,7 +14,7 @@ use crate::prover::test_utils::make_test_context;
 use super::helpers::{
     copy_small_to_device, decode_base_leaf_values, query_base_trace_holder_for_folded_index,
 };
-use super::{copy_back_bf, make_lde_trace_holder};
+use super::{copy_back, make_lde_trace_holder};
 use crate::upstream::{Blake2sU32MerkleTreeWithCap, ColumnMajorMerkleTreeConstructor, PrimeField};
 
 #[test]
@@ -45,7 +45,7 @@ fn base_query_paths_match_cpu_tree() {
 
     let lde_factor = 1usize << log_lde_factor;
     let cosets_host = (0..lde_factor)
-        .map(|coset_index| copy_back_bf(trace_holder.get_coset_evaluations(coset_index), &context))
+        .map(|coset_index| copy_back(trace_holder.get_coset_evaluations(coset_index), &context))
         .collect::<Vec<_>>();
     let source_storage = cosets_host
         .iter()

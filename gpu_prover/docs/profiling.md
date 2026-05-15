@@ -12,7 +12,7 @@ Tool-specific guides:
 - Exact libtest name: `prover::tests::run_basic_unrolled_proof_job_profile_test`
 - The test is `#[ignore]`; pass `--ignored` when running it.
 - When using `--exact`, do not pass a suffix such as `run_basic_unrolled_proof_job_profile_test` or `tests::run_basic_unrolled_proof_job_profile_test`. Use the full libtest name above.
-- The current top-level registered NVTX capture range in [`src/prover/tests.rs`](../src/prover/tests.rs) uses:
+- The current top-level registered NVTX capture range in [`src/prover/tests/smoke.rs`](../src/prover/tests/smoke.rs) uses:
   - domain `gpu_prover.tests`
   - message `test.gpu.prove.profiled_call`
 - That range is intended to capture only the profiled `prove()` call after warmup.

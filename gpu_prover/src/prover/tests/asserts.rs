@@ -413,20 +413,14 @@ pub(super) fn copy_bf_device_slice_to_host(
     values: &DeviceSlice<BF>,
     context: &ProverContext,
 ) -> Vec<BF> {
-    let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-    memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
-    context.get_exec_stream().synchronize().unwrap();
-    unsafe { host.get_accessor().get().to_vec() }
+    copy_device_slice_to_host(values, context)
 }
 
 pub(super) fn copy_u32_device_slice_to_host(
     values: &DeviceSlice<u32>,
     context: &ProverContext,
 ) -> Vec<u32> {
-    let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-    memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
-    context.get_exec_stream().synchronize().unwrap();
-    unsafe { host.get_accessor().get().to_vec() }
+    copy_device_slice_to_host(values, context)
 }
 
 pub(super) fn copy_base_poly_from_gpu_storage<E: Field>(

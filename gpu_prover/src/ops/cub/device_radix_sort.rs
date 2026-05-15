@@ -112,8 +112,15 @@ impl SortKeys for u32 {
 }
 
 impl SortKeys for BF {
-    fn get_function(_descending: bool) -> SortKeysFunction<Self> {
-        unimplemented!()
+    fn get_function(descending: bool) -> SortKeysFunction<Self> {
+        let function = if descending {
+            ab_sort_keys_d_u32
+        } else {
+            ab_sort_keys_a_u32
+        };
+        // SAFETY: `BF` is a transparent `u32` newtype for this radix-sort path,
+        // so the ABI matches the `u32` kernel entrypoints.
+        unsafe { std::mem::transmute::<SortKeysFunction<u32>, SortKeysFunction<Self>>(function) }
     }
 
     fn sort_keys(

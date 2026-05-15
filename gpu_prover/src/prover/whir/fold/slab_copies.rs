@@ -1,13 +1,14 @@
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
+use era_cudart::slice::CudaSlice;
 
 use super::EXT4_DEGREE;
 use crate::ops::blake2s::Digest;
 use crate::primitives::context::{DeviceAllocation, HostAllocation};
 use crate::primitives::field::{BF, E4};
-use crate::primitives::transfer::memory_copy_async_from_accessor;
-use crate::prover::pow::PowAndQueryIndexesKeepalives;
+use crate::prover::pow::PowAndQueryIndexesState;
 use crate::prover::proof::layout::ProofLayout;
+use crate::prover::whir::GpuWhirScheduledExtensionQuery;
 
 /// D2D-copy the device-resident unified base-layer Merkle cap into the slab's
 /// `whir.{setup,memory,witness}.cap` range. The unified cap is already in the
@@ -25,6 +26,8 @@ pub(super) fn copy_base_layer_cap_to_slab(
     let Some(slab) = proof_slab else {
         return Ok(());
     };
+    // SAFETY: `ProofLayout` computes a live, non-overlapping mutable region for
+    // this cap kind inside the slab allocation.
     let (dst_ptr, dst_len_u32) =
         unsafe { proof_layout.whir_base_cap_device_mut(slab.as_ptr() as *mut u8, kind) };
     if dst_len_u32 == 0 {
@@ -48,22 +51,20 @@ pub(super) fn copy_base_layer_cap_to_slab(
 
 /// Phase 3: H2D-copy one intermediate WHIR query's pinned host data into
 /// the slab's `whir.intermediate[round].query_{indices,leaves,paths}`
-/// sub-ranges at `query_idx`. `leafs_accessor` points at
-/// `values_per_leaf * EXT4_DEGREE` `BF` values whose byte layout matches
-/// the `values_per_leaf` `E4` slab slots (`E4 = #[repr(C, align(16))]
-/// { c0: BF, c1: BF, c0: BF, c1: BF }` via `Ext2`, equivalent to
-/// `[BF; 4]`). `merkle_paths_accessor` points at `path_len` `Digest`s,
-/// reinterpreted as flat `[u32]` for the slab. `None` slab is a no-op
-/// (test paths).
+/// sub-ranges at `query_idx`. `query_index_host` must be the single-element
+/// pinned buffer already scheduled for the folded query lookup. Leaf values
+/// copy directly from the query's pinned host allocation; merkle paths are
+/// flattened into a temporary pinned `[u32]` staging buffer via a scheduled
+/// host callback before the H2D. `None` slab is a no-op (test paths).
 pub(super) fn copy_intermediate_query_to_slab(
-    all_indexes_accessor: crate::primitives::context::UnsafeAccessor<[u32]>,
-    leafs_accessor: crate::primitives::context::UnsafeAccessor<[BF]>,
-    paths_accessor: crate::primitives::context::UnsafeAccessor<[Digest]>,
+    query_index_host: &HostAllocation<[u32]>,
+    query: &mut GpuWhirScheduledExtensionQuery,
     proof_slab: Option<&DeviceAllocation<E4>>,
     proof_layout: &ProofLayout,
     round: usize,
     query_idx: usize,
     stream: &era_cudart::stream::CudaStream,
+    context: &crate::primitives::context::ProverContext,
 ) -> CudaResult<()> {
     let Some(slab) = proof_slab else {
         return Ok(());
@@ -71,6 +72,8 @@ pub(super) fn copy_intermediate_query_to_slab(
     let digest_u32_words = crate::prover::proof::layout::DIGEST_U32_WORDS;
 
     // Index (single u32 at `query_idx` in `all_indexes_accessor`).
+    // SAFETY: `ProofLayout` computes a live, non-overlapping mutable region for
+    // the query-index array of this round.
     let (idx_ptr, idx_total_len) = unsafe {
         proof_layout.whir_intermediate_query_indices_device_mut(slab.as_ptr() as *mut u8, round)
     };
@@ -78,21 +81,22 @@ pub(super) fn copy_intermediate_query_to_slab(
         return Ok(());
     }
     assert!(query_idx < idx_total_len);
-    let idx_src = unsafe { all_indexes_accessor.get() };
     // SAFETY: single-slot write inside the slab index array.
     let idx_dst =
         unsafe { era_cudart::slice::DeviceSlice::from_raw_parts_mut(idx_ptr.add(query_idx), 1) };
-    memory_copy_async(idx_dst, &idx_src[query_idx..query_idx + 1], stream)?;
+    memory_copy_async(idx_dst, query_index_host, stream)?;
 
     // Leaves: `values_per_leaf * EXT4_DEGREE` `BF` → `values_per_leaf` `E4`
     // slots (byte-equivalent). Write as `BF` into the slab, treating the
     // E4 slot as a `[BF; 4]` array.
+    // SAFETY: `ProofLayout` computes a live, non-overlapping mutable region for
+    // the query leaves of this round.
     let (leaves_ptr_e4, leaves_total_e4) = unsafe {
         proof_layout.whir_intermediate_query_leaves_device_mut(slab.as_ptr() as *mut u8, round)
     };
     let leaf_values_len_e4 = leaves_total_e4 / idx_total_len;
     let leaves_src_len_bf = leaf_values_len_e4 * EXT4_DEGREE;
-    assert_eq!(unsafe { leafs_accessor.get() }.len(), leaves_src_len_bf);
+    assert_eq!(query.leafs_host().len(), leaves_src_len_bf);
     // SAFETY: slab `E4` slot at `query_idx` offset has `leaf_values_len_e4 * 4`
     // BFs worth of storage.
     let leaves_dst = unsafe {
@@ -101,30 +105,47 @@ pub(super) fn copy_intermediate_query_to_slab(
             leaves_src_len_bf,
         )
     };
-    unsafe {
-        memory_copy_async_from_accessor(leaves_dst, leafs_accessor, stream)?;
-    }
+    memory_copy_async(leaves_dst, query.leafs_host(), stream)?;
 
     // Paths: flat Digest → `[u32]` reinterpret, `path_len` digests per query.
+    // SAFETY: `ProofLayout` computes a live, non-overlapping mutable region for
+    // the query merkle paths of this round.
     let (paths_ptr, paths_total_u32) = unsafe {
         proof_layout.whir_intermediate_query_paths_device_mut(slab.as_ptr() as *mut u8, round)
     };
     let paths_len_digests_per_query = paths_total_u32 / (idx_total_len * digest_u32_words);
-    let paths_src_digests = unsafe { paths_accessor.get() };
-    assert_eq!(paths_src_digests.len(), paths_len_digests_per_query);
-    let paths_src_u32 = unsafe {
-        std::slice::from_raw_parts(
-            paths_src_digests.as_ptr() as *const u32,
-            paths_src_digests.len() * digest_u32_words,
-        )
+    assert_eq!(query.merkle_paths_host().len(), paths_len_digests_per_query);
+    // SAFETY: this pinned host staging buffer is written by the callback below
+    // before the subsequent H2D reads from it.
+    let mut paths_src_u32 = unsafe {
+        context.alloc_host_uninit_slice::<u32>(paths_len_digests_per_query * digest_u32_words)
     };
+    let paths_src_u32_accessor = paths_src_u32.get_mut_accessor();
+    let paths_accessor = query.merkle_paths_accessor();
+    query.callbacks_mut().schedule(
+        // SAFETY: the callback is the sole writer of `paths_src_u32`, and it
+        // runs before the H2D copy queued below.
+        move || unsafe {
+            let paths_src_digests = paths_accessor.get();
+            let paths_src_u32 = paths_src_u32_accessor.get_mut();
+            for (src, dst_words) in paths_src_digests
+                .iter()
+                .zip(paths_src_u32.chunks_exact_mut(digest_u32_words))
+            {
+                dst_words.copy_from_slice(src);
+            }
+        },
+        stream,
+    )?;
+    // SAFETY: `paths_ptr` names the start of this round's path subrange and the
+    // computed offset stays within that range for `query_idx`.
     let paths_dst = unsafe {
         era_cudart::slice::DeviceSlice::from_raw_parts_mut(
             paths_ptr.add(query_idx * paths_len_digests_per_query * digest_u32_words),
             paths_src_u32.len(),
         )
     };
-    memory_copy_async(paths_dst, paths_src_u32, stream)?;
+    memory_copy_async(paths_dst, &paths_src_u32, stream)?;
 
     Ok(())
 }
@@ -143,6 +164,8 @@ pub(super) fn copy_intermediate_cap_to_slab(
     let Some(slab) = proof_slab else {
         return Ok(());
     };
+    // SAFETY: `ProofLayout` computes a live, non-overlapping mutable region for
+    // this intermediate cap inside the slab allocation.
     let (dst_ptr, dst_len_u32) =
         unsafe { proof_layout.whir_intermediate_cap_device_mut(slab.as_ptr() as *mut u8, round) };
     if dst_len_u32 == 0 {
@@ -180,6 +203,8 @@ pub(super) fn copy_ood_sample_to_slab(
     let Some(slab) = proof_slab else {
         return Ok(());
     };
+    // SAFETY: `ProofLayout` computes a live, non-overlapping mutable region for
+    // the OOD-sample array inside the slab allocation.
     let (dst_ptr, dst_len) =
         unsafe { proof_layout.whir_ood_samples_device_mut(slab.as_ptr() as *mut u8) };
     assert!(
@@ -200,7 +225,7 @@ pub(super) fn copy_ood_sample_to_slab(
 /// sources `pow_nonces` from the slab via the terminal D2H. `None` slab is a
 /// no-op (test paths).
 pub(super) fn copy_pow_nonce_to_slab(
-    pow_keepalives: &PowAndQueryIndexesKeepalives,
+    pow_round_state: &PowAndQueryIndexesState,
     proof_slab: Option<&DeviceAllocation<E4>>,
     proof_layout: &ProofLayout,
     pow_round_idx: usize,
@@ -209,6 +234,8 @@ pub(super) fn copy_pow_nonce_to_slab(
     let Some(slab) = proof_slab else {
         return Ok(());
     };
+    // SAFETY: `ProofLayout` computes a live, non-overlapping mutable region for
+    // the PoW-nonce array inside the slab allocation.
     let (dst_ptr, dst_len) =
         unsafe { proof_layout.whir_pow_nonces_device_mut(slab.as_ptr() as *mut u8) };
     assert!(
@@ -221,6 +248,6 @@ pub(super) fn copy_pow_nonce_to_slab(
     let dst = unsafe {
         era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr.add(pow_round_idx), 1)
     };
-    memory_copy_async(dst, &pow_keepalives.d_nonce[..1], stream)?;
+    memory_copy_async(dst, &pow_round_state.d_nonce[..1], stream)?;
     Ok(())
 }

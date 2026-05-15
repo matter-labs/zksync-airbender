@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::super::GpuSumcheckRound0LaunchDescriptors;
-use super::builders::{
+use super::super::builders::{
     build_initial_grand_product_without_caches_inputs_and_metadata,
     build_inits_and_teardowns_initial_pair_inputs_and_metadata,
     build_linear_base_kernel_inputs_and_metadata,
@@ -10,8 +9,8 @@ use super::builders::{
     build_single_max_quadratic_constraint_inputs_and_metadata,
     canonical_inits_and_teardowns_top_bits,
 };
-use super::kernels::*;
-use super::lookup_builders::{
+use super::super::kernels::*;
+use super::super::lookup_builders::{
     build_lookup_from_vector_input_with_setup_inputs_and_template,
     build_lookup_pair_from_base_inputs_inputs_and_template,
     build_lookup_pair_from_vector_inputs_inputs_and_template,
@@ -20,6 +19,7 @@ use super::lookup_builders::{
     build_materialized_vector_lookup_input_inputs_and_template,
 };
 use crate::primitives::field::BF;
+use crate::prover::gkr::GpuSumcheckRound0LaunchDescriptors;
 use crate::upstream::{
     high_bits_offset_for_inits_and_teardowns, BaseFieldCopyGKRRelation, BatchedGKRKernel,
     DimensionReducingInputOutput, ExtensionCopyGKRRelation, Field, FieldExtension, GKRAddress,
@@ -32,7 +32,9 @@ use crate::upstream::{
     NoFieldGKRRelation, OutputType, SameSizeProductGKRRelation,
 };
 
-pub(super) fn build_dimension_reducing_kernel_blueprints_static<E: Field>(
+pub(in crate::prover::gkr::backward) fn build_dimension_reducing_kernel_blueprints_static<
+    E: Field,
+>(
     layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
 ) -> Vec<DimensionReducingKernelBlueprint<E>> {
     let mut next_batch_challenge_offset = 0usize;

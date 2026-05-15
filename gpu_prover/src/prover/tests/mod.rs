@@ -144,6 +144,24 @@ fn upload_lookup_challenges_for_test(
     d_lookup_challenges
 }
 
+fn upload_slice_to_device_for_test<T: Copy>(
+    values: &[T],
+    context: &ProverContext,
+) -> DeviceAllocation<T> {
+    let mut device = context
+        .alloc(values.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut device, values, context.get_exec_stream()).unwrap();
+    device
+}
+
+fn copy_device_slice_to_host<T: Clone>(values: &DeviceSlice<T>, context: &ProverContext) -> Vec<T> {
+    let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
+    memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    unsafe { host.get_accessor().get().to_vec() }
+}
+
 fn read_test_words(relative_path: &str) -> Vec<u32> {
     let bytes = std::fs::read(test_artifact_path(relative_path)).unwrap();
     assert_eq!(bytes.len() % 4, 0);

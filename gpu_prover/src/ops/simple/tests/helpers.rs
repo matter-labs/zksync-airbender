@@ -51,19 +51,6 @@ type MixedBinaryIntoYDeviceFn<T0, T1> =
 
 type MixedBinaryHostFn<T0, T1, TR> = fn(&T0, &T1) -> TR;
 
-// type TernaryDeviceFn = fn(
-//     &DeviceSlice<BF>,
-//     &DeviceSlice<BF>,
-//     &DeviceSlice<BF>,
-//     &mut DeviceSlice<BF>,
-//     &CudaStream,
-// ) -> CudaResult<()>;
-//
-// type TernaryDeviceInPlaceFn =
-//     fn(&mut DeviceSlice<BF>, &DeviceSlice<BF>, &DeviceSlice<BF>, &CudaStream) -> CudaResult<()>;
-//
-// type TernaryHostFn = fn(&BF, &BF, &BF) -> BF;
-
 #[cfg(feature = "scaffolding_ops")]
 pub(super) fn unary_op_test<T: Field, const LOG_N: u32>(
     device_fn: UnaryDeviceFn<T>,

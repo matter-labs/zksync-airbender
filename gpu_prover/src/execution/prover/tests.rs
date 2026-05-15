@@ -1,6 +1,6 @@
 use super::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration};
 use crate::primitives::machine_type::MachineType;
-use crate::upstream::read_binary;
+use crate::upstream::{read_binary, SecurityLevel};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use serial_test::serial;
 
@@ -20,7 +20,7 @@ fn test_execution_prover() {
         .filter_level(log::LevelFilter::Trace)
         .try_init();
     let configuration = ExecutionProverConfiguration::default();
-    let mut prover = ExecutionProver::with_configuration(configuration);
+    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
     let (_, binary_image) = read_binary(&test_artifact("examples/hashed_fibonacci/app.bin"));
     let (_, text_section) = read_binary(&test_artifact("examples/hashed_fibonacci/app.text"));
     let handle = prover.add_binary(
@@ -51,7 +51,7 @@ fn test_execution_prover_commit_then_prove() {
         .filter_level(log::LevelFilter::Trace)
         .try_init();
     let configuration = ExecutionProverConfiguration::default();
-    let mut prover = ExecutionProver::with_configuration(configuration);
+    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
     let (_, binary_image) = read_binary(&test_artifact("examples/hashed_fibonacci/app.bin"));
     let (_, text_section) = read_binary(&test_artifact("examples/hashed_fibonacci/app.text"));
     let handle = prover.add_binary(
@@ -71,4 +71,20 @@ fn test_execution_prover_commit_then_prove() {
     let prove_result = prover.prove(0, memory_commitment, prove_source);
     drop(prove_result);
     drop(prover);
+}
+
+#[test]
+fn rejects_unsupported_security_level_in_configuration() {
+    let mut configuration = ExecutionProverConfiguration::default();
+    configuration.security_level = SecurityLevel::Sec100;
+
+    let err = ExecutionProver::with_configuration(configuration)
+        .err()
+        .expect("Sec100 should be rejected before GPU prover construction");
+
+    assert_eq!(err.requested, SecurityLevel::Sec100);
+    assert_eq!(
+        ExecutionProverConfiguration::supported_security_levels(),
+        &[SecurityLevel::Sec80],
+    );
 }

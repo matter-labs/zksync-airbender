@@ -48,6 +48,18 @@ pub(crate) struct GpuWhirScheduledExtensionQuery {
 pub(crate) type GpuWhirScheduledExtensionQueryKeepalive = Callbacks<'static>;
 
 impl GpuWhirScheduledExtensionQuery {
+    pub(crate) fn callbacks_mut(&mut self) -> &mut Callbacks<'static> {
+        &mut self._callbacks
+    }
+
+    pub(crate) fn leafs_host(&self) -> &HostAllocation<[BF]> {
+        &self.leafs
+    }
+
+    pub(crate) fn merkle_paths_host(&self) -> &HostAllocation<[Digest]> {
+        &self.merkle_paths
+    }
+
     pub(crate) fn leafs_accessor(&self) -> UnsafeAccessor<[BF]> {
         self.leafs.get_accessor()
     }
@@ -224,7 +236,7 @@ impl GpuWhirExtensionOracle {
 
     pub(crate) fn schedule_query_for_folded_index_from_host(
         &mut self,
-        query_index: HostAllocation<[u32]>,
+        query_index: &HostAllocation<[u32]>,
         context: &ProverContext,
     ) -> CudaResult<GpuWhirScheduledExtensionQuery> {
         let mut callbacks = Callbacks::new();
@@ -255,7 +267,6 @@ impl GpuWhirExtensionOracle {
             context.get_exec_stream(),
         )?;
         drop(tree_index_host);
-        drop(query_index);
         let value_query = self
             .trace_holder
             .get_query_leafs(0, &device_tree_index, context)?;
@@ -771,7 +782,7 @@ pub(crate) mod tests {
                 )
                 .unwrap();
             let scheduled_query = gpu
-                .schedule_query_for_folded_index_from_host(host_query_index, &context)
+                .schedule_query_for_folded_index_from_host(&host_query_index, &context)
                 .unwrap();
             context.get_exec_stream().synchronize().unwrap();
             let (gpu_values, gpu_query) = scheduled_query.decode_with_index(query_index);

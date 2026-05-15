@@ -183,7 +183,9 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
     ) -> Self {
         let batch_id = self.batch_id;
         let jitted_code = {
-            let mut guard = jit_cache.lock().unwrap();
+            let mut guard = jit_cache
+                .lock()
+                .expect("simulation runner JIT cache mutex poisoned");
             let entry = guard.get::<Arc<JittedCode<Self>>>();
             if let Some(entry) = entry {
                 entry.clone()
@@ -215,7 +217,10 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             implementation: mut runner,
         } = context;
         if let Some(trace) = runner.trace.take() {
-            runner.free_trace_chunks_sender.send(trace).unwrap();
+            runner
+                .free_trace_chunks_sender
+                .send(trace)
+                .expect("simulation runner trace-return channel closed during teardown");
         }
         if !runner.is_aborted {
             let final_timestamp = runner.state.timestamp;
@@ -262,7 +267,11 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
         }
         let trace = self.trace.take().unwrap();
         let result = WorkerResult::SnapshotProduced;
-        self.results.as_ref().unwrap().send(result).unwrap();
+        self.results
+            .as_ref()
+            .expect("simulation runner results sender must exist while producing snapshots")
+            .send(result)
+            .expect("simulation runner results channel closed during snapshot production");
         let counters_diff = machine_state
             .counters
             .iter()
@@ -289,7 +298,11 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             final_state,
             trace_ranges,
         };
-        self.snapshots.as_ref().unwrap().send(snapshot).unwrap();
+        self.snapshots
+            .as_ref()
+            .expect("simulation runner snapshots sender must exist while producing snapshots")
+            .send(snapshot)
+            .expect("simulation runner snapshots channel closed during snapshot production");
     }
 }
 
@@ -319,7 +332,9 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType> ContextImpl
         assert_eq!(argument_ptr, current_ptr);
         self.process_trace(machine_state, elapsed);
         if self.trace.is_none() {
-            let trace = self.free_trace_chunks_receiver.recv().unwrap();
+            let trace = self.free_trace_chunks_receiver.recv().expect(
+                "simulation runner trace pool channel closed while requesting a trace chunk",
+            );
             self.trace = Some(trace);
         }
         self.trace.as_mut().unwrap().chunk.len = 0;

@@ -1,4 +1,4 @@
-use era_cudart::execution::{CudaLaunchConfig, Dim3, KernelFunction};
+use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
@@ -11,12 +11,11 @@ use crate::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
 use crate::primitives::field::{BF, E4};
-use crate::primitives::utils::{get_grid_block_dims_for_threads_count, GetChunksCount, WARP_SIZE};
+use crate::primitives::utils::{
+    get_grid_block_dims_for_threads_count, get_grid_block_dims_for_warp_groups, GetChunksCount,
+    WARP_SIZE,
+};
 use crate::upstream::FieldExtension;
-
-fn get_launch_dims(count: u32) -> (Dim3, Dim3) {
-    get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count)
-}
 
 cuda_kernel_signature_arguments_and_function!(
     SerializeWhirE4Columns,
@@ -41,7 +40,7 @@ pub(crate) fn serialize_whir_e4_columns(
     assert_eq!(dst.len(), src.len() * <E4 as FieldExtension<BF>>::DEGREE);
     assert!(src.len() <= u32::MAX as usize);
     let count = src.len() as u32;
-    let (grid_dim, block_dim) = get_launch_dims(count);
+    let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = SerializeWhirE4ColumnsArguments::new(src.as_ptr(), dst.as_mut_ptr(), count);
     SerializeWhirE4ColumnsFunction(ab_serialize_whir_e4_columns_kernel).launch(&config, &args)
@@ -70,7 +69,7 @@ pub(crate) fn deserialize_whir_e4_columns(
     assert_eq!(src.len(), dst.len() * <E4 as FieldExtension<BF>>::DEGREE);
     assert!(dst.len() <= u32::MAX as usize);
     let count = dst.len() as u32;
-    let (grid_dim, block_dim) = get_launch_dims(count);
+    let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = DeserializeWhirE4ColumnsArguments::new(src.as_ptr(), dst.as_mut_ptr(), count);
     DeserializeWhirE4ColumnsFunction(ab_deserialize_whir_e4_columns_kernel).launch(&config, &args)
@@ -149,7 +148,7 @@ pub(crate) fn accumulate_whir_base_columns(
         result,
         rows,
     };
-    let (grid_dim, block_dim) = get_launch_dims(rows);
+    let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, rows);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = AccumulateWhirBaseColumnsArguments::new(metadata);
     AccumulateWhirBaseColumnsFunction(ab_accumulate_whir_base_columns_e4_kernel)
@@ -181,7 +180,7 @@ pub(crate) fn whir_fold_split_half_in_place_vectorized(
 ) -> CudaResult<()> {
     assert!(values.rows().is_power_of_two());
     assert_eq!(values.cols(), 4);
-    let (grid_dim, block_dim) = get_launch_dims(half_len as u32);
+    let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, half_len as u32);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = WhirFoldSplitHalfVectorizedArguments::new(
         values.as_ptr_and_stride(),
@@ -217,7 +216,7 @@ pub(crate) fn whir_fold_split_half_in_place(
     assert!(values.len() >= 2);
     assert!(values.len() / 2 <= u32::MAX as usize);
     let half_len = (values.len() / 2) as u32;
-    let (grid_dim, block_dim) = get_launch_dims(half_len);
+    let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, half_len);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = WhirFoldSplitHalfArguments::new(values.as_mut_ptr(), challenge.as_ptr(), half_len);
     WhirFoldSplitHalfFunction(ab_whir_fold_split_half_e4_kernel).launch(&config, &args)

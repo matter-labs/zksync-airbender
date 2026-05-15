@@ -218,7 +218,9 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let add_sub_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
         UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
     ));
-    let prover_config = add_sub_circuit_type.prover_config(SecurityLevel::Sec80);
+    let prover_config = add_sub_circuit_type
+        .prover_config(SecurityLevel::Sec80)
+        .unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let base_lde_factor = whir_schedule.base_lde_factor;
     let tree_cap_size = whir_schedule.cap_size;
@@ -286,19 +288,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
         .copied()
         .map(|d| d.into())
         .collect_vec();
-    let mut d_decoder_table = context
-        .alloc(h_decoder_table.len(), AllocationPlacement::BestFit)
-        .unwrap();
-    memory_copy_async(
-        &mut d_decoder_table,
-        &h_decoder_table,
-        context.get_exec_stream(),
-    )
-    .unwrap();
-    let mut trace_data = context
-        .alloc(buffer.len(), AllocationPlacement::BestFit)
-        .unwrap();
-    memory_copy_async(&mut trace_data, &buffer[..], context.get_exec_stream()).unwrap();
+    let d_decoder_table = upload_slice_to_device_for_test(&h_decoder_table, &context);
+    let trace_data = upload_slice_to_device_for_test(&buffer, &context);
     let gpu_trace = TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(
         UnrolledNonMemoryTraceDevice {
             tracing_data: trace_data,

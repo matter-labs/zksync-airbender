@@ -10,6 +10,7 @@ mod build_plan;
 mod builder;
 mod compile;
 mod continuation;
+mod continuation_emit;
 mod diagnostics;
 mod emit;
 mod kernel_setup;

@@ -37,7 +37,7 @@ pub(crate) fn ntt_pass_selection(
 mod tests;
 
 mod ntt;
-#[allow(unused)]
+#[allow(dead_code)]
 pub(crate) use ntt::{
     bitreversed_monomials_to_natural_evals, natural_evals_to_bitreversed_monomials,
 };
@@ -252,7 +252,7 @@ pub(crate) fn hypercube_coeffs_to_evals_impl(
     Ok(())
 }
 
-#[allow(unused)]
+#[allow(dead_code)]
 pub(crate) fn hypercube_coeffs_natural_to_natural_evals(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
@@ -262,7 +262,7 @@ pub(crate) fn hypercube_coeffs_natural_to_natural_evals(
     hypercube_coeffs_to_evals_impl(src, dst, log_n, false, stream)
 }
 
-#[allow(unused)]
+#[allow(dead_code)]
 pub(crate) fn hypercube_coeffs_bitrev_to_bitrev_evals(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
@@ -292,7 +292,7 @@ pub(crate) fn natural_evals_to_bitreversed_coeffs(
     Ok(())
 }
 
-#[allow(unused)]
+#[allow(dead_code)]
 pub(crate) fn transpose_monomials_naive(
     values: &mut DeviceSlice<BF>,
     log_n: usize,

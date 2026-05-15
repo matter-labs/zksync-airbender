@@ -484,7 +484,10 @@ impl<T: TracingDataProducerType> TracingDataProducer<T> {
             let next_circuit_index = next_circuit_boundary / cycles_per_circuit;
             assert_eq!(next_circuit_index, self.current_circuit_index + 1);
             if self.chunks.back().map_or(true, |v| v.len() == v.capacity()) {
-                let allocator = self.free_allocators.recv().unwrap();
+                let allocator = self
+                    .free_allocators
+                    .recv()
+                    .expect("tracing allocator channel closed while growing a trace chunk");
                 let capacity = allocator.capacity() / size_of::<T>();
                 let chunk = Arc::new(Vec::with_capacity_in(capacity, allocator));
                 self.chunks.push_back(chunk)
@@ -539,7 +542,9 @@ impl<T: TracingDataProducerType> TracingDataProducer<T> {
             participating_snapshot_indexes,
         };
         let result = WorkerResult::TracingData(data);
-        self.results.send(result).unwrap();
+        self.results
+            .send(result)
+            .expect("tracing results channel closed while sending tracing data");
     }
 
     pub fn finalize(mut self) {
