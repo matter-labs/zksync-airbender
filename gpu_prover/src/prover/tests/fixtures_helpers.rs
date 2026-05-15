@@ -249,23 +249,22 @@ pub(super) fn prepare_basic_unrolled_fixture(
         let mut tracing_data_transfer =
             TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap();
 
-        setup_transfer.schedule_transfer(&context).unwrap();
-        if let Some(decoder_transfer) = decoder_transfer.as_mut() {
-            decoder_transfer.schedule_transfer(&context).unwrap();
-        }
-        tracing_data_transfer.schedule_transfer(&context).unwrap();
-
-        setup_transfer.ensure_transferred(&context).unwrap();
-        if let Some(decoder_transfer) = decoder_transfer.as_ref() {
-            decoder_transfer
-                .transfer
-                .ensure_transferred(&context)
-                .unwrap();
-        }
-        tracing_data_transfer
-            .transfer
-            .ensure_transferred(&context)
-            .unwrap();
+        // One-shot Transfer: schedule every H2D against it, record_transferred,
+        // ensure_transferred, then run `commit_memory` against the now-visible
+        // device buffers.
+        let transfer = crate::primitives::transfer::single_shot_h2d(
+            |t| {
+                setup_transfer.schedule_transfer(t, &context)?;
+                if let Some(decoder_transfer) = decoder_transfer.as_mut() {
+                    decoder_transfer.schedule_transfer(t, &context)?;
+                }
+                tracing_data_transfer.schedule_transfer(t, &context)?;
+                Ok(())
+            },
+            &context,
+        )
+        .unwrap();
+        transfer.ensure_transferred(&context).unwrap();
 
         let job = commit_memory(
             fixture_circuit_type,
@@ -277,6 +276,10 @@ pub(super) fn prepare_basic_unrolled_fixture(
         )
         .unwrap();
         let (tree_caps, _) = job.finish().unwrap();
+        drop(transfer);
+        drop(setup_transfer);
+        drop(decoder_transfer);
+        drop(tracing_data_transfer);
         tree_caps
     };
 
@@ -374,16 +377,24 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
     context.get_h2d_stream().synchronize().unwrap();
     eprintln!("async-backward-from-base: transfers ready");
 
+    let setup_ref = transfers
+        .setup
+        .as_ref()
+        .expect("fixture transfers always include setup");
     let mut stage1_output = generate_stage1_output_for_test(
         base.circuit_type,
         &base.compiled_circuit,
-        &transfers.setup_transfer,
+        setup_ref,
         transfers
-            .decoder_transfer
+            .decoder
             .as_ref()
             .map(|transfer| &transfer.data_device[..]),
         None,
-        &transfers.tracing_data_transfer.data_device,
+        &transfers
+            .tracing_data
+            .as_ref()
+            .expect("fixture transfers always include tracing_data")
+            .data_device,
         &context,
     )
     .unwrap();
@@ -395,8 +406,7 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
     base.external_challenges
         .flatten_into_buffer(&mut transcript_input);
     flatten_merkle_caps_iter_into(
-        transfers
-            .setup_transfer
+        setup_ref
             .trace_holder
             .read_per_coset_caps_synchronously(&context)
             .unwrap()
@@ -429,8 +439,7 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
                 constraints_batch_challenge,
             ]);
     }
-    let mut gpu_forward_setup = transfers
-        .setup_transfer
+    let mut gpu_forward_setup = setup_ref
         .schedule_forward_setup(
             &base.compiled_circuit,
             upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
@@ -441,7 +450,7 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
     eprintln!("async-backward-from-base: forward setup ready");
 
     let gpu_forward_output = schedule_forward_pass(
-        &transfers.setup_transfer,
+        setup_ref,
         &mut stage1_output,
         &mut gpu_forward_setup,
         &base.compiled_circuit,

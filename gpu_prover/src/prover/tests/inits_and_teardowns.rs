@@ -257,18 +257,15 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         );
         let mut inits_and_teardowns_transfer =
             InitsAndTeardownsTransfer::new(inits_and_teardowns_host, &context).unwrap();
-        tracing_data_transfer.schedule_transfer(&context).unwrap();
-        inits_and_teardowns_transfer
-            .schedule_transfer(&context)
-            .unwrap();
-        tracing_data_transfer
-            .transfer
-            .ensure_transferred(&context)
-            .unwrap();
-        inits_and_teardowns_transfer
-            .transfer
-            .ensure_transferred(&context)
-            .unwrap();
+        let transfer = crate::primitives::transfer::single_shot_h2d(
+            |t| {
+                tracing_data_transfer.schedule_transfer(t, &context)?;
+                inits_and_teardowns_transfer.schedule_transfer(t, &context)
+            },
+            &context,
+        )
+        .unwrap();
+        transfer.ensure_transferred(&context).unwrap();
 
         let geometry = GpuGKRTraceGeometry {
             log_domain_size: trace_len.trailing_zeros(),
@@ -493,22 +490,26 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         &context,
     )
     .unwrap();
-    inits_and_teardowns_transfer
-        .schedule_transfer(&context)
-        .unwrap();
-    tracing_data_transfer.schedule_transfer(&context).unwrap();
-    memory_transfer.schedule_transfer(&context).unwrap();
-    let gpu_job = prove::<Global>(
-        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
-        compiled_circuit.clone(),
-        external_challenges,
-        &prover_config,
-        FINAL_TRACE_SIZE_LOG_2,
+    let canonical_top_bits =
+        crate::prover::proof::canonical_inits_and_teardowns_top_bits(&compiled_circuit);
+    let mut bundle = crate::prover::proof::inputs::GpuGKRProofTransfer::<'_, Global>::new(
         None,
         None,
         Some(inits_and_teardowns_transfer),
         Some(tracing_data_transfer),
         memory_transfer,
+        &canonical_top_bits,
+        external_challenges,
+        &context,
+    )
+    .unwrap();
+    bundle.schedule(&context).unwrap();
+    let gpu_job = prove::<Global>(
+        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
+        compiled_circuit.clone(),
+        &prover_config,
+        FINAL_TRACE_SIZE_LOG_2,
+        bundle,
         &context,
     )
     .unwrap();

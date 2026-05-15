@@ -476,16 +476,24 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
     transfers.schedule(&context).unwrap();
     context.get_h2d_stream().synchronize().unwrap();
 
+    let setup_ref = transfers
+        .setup
+        .as_ref()
+        .expect("fixture transfers always include setup");
     let mut stage1_output = generate_stage1_output_for_test(
         base.circuit_type,
         &base.compiled_circuit,
-        &transfers.setup_transfer,
+        setup_ref,
         transfers
-            .decoder_transfer
+            .decoder
             .as_ref()
             .map(|transfer| &transfer.data_device[..]),
         None,
-        &transfers.tracing_data_transfer.data_device,
+        &transfers
+            .tracing_data
+            .as_ref()
+            .expect("fixture transfers always include tracing_data")
+            .data_device,
         &context,
     )
     .unwrap();
@@ -496,8 +504,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
     base.external_challenges
         .flatten_into_buffer(&mut transcript_input);
     flatten_merkle_caps_iter_into(
-        transfers
-            .setup_transfer
+        setup_ref
             .trace_holder
             .read_per_coset_caps_synchronously(&context)
             .unwrap()
@@ -530,8 +537,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
                 constraints_batch_challenge,
             ]);
     }
-    let mut gpu_forward_setup = transfers
-        .setup_transfer
+    let mut gpu_forward_setup = setup_ref
         .schedule_forward_setup(
             &base.compiled_circuit,
             upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
@@ -541,7 +547,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
     context.get_exec_stream().synchronize().unwrap();
 
     let gpu_forward_output = schedule_forward_pass(
-        &transfers.setup_transfer,
+        setup_ref,
         &mut stage1_output,
         &mut gpu_forward_setup,
         &base.compiled_circuit,
