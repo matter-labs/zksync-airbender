@@ -184,13 +184,11 @@ where
         device_claim_point_in: DeviceClaimPointAndBatching<E>,
         device_claims_in: DeviceAllocation<E>,
         claim_layout: &ClaimBufferLayout,
-        // When `Some` (production), per-round kernels write coeffs directly
-        // into the slab's `internal_round_coefficients` range for `layer_slot`
-        // and the per-address gather writes directly into
-        // `final_step_evaluations` (B1 + B2). When `None` (test paths with
-        // placeholder layouts), per-layer fallback device buffers are
-        // allocated so the kernels still have valid destinations.
-        proof_slab: Option<&DeviceAllocation<E4>>,
+        // Per-round kernels write coeffs directly into the slab's
+        // `internal_round_coefficients` range for `layer_slot` and the
+        // per-address gather writes directly into `final_step_evaluations`
+        // (B1 + B2).
+        proof_slab: &DeviceAllocation<E4>,
         proof_layout: &ProofLayout,
         layer_slot: usize,
         mirror_layer_to_host: bool,
@@ -245,34 +243,23 @@ where
             context.alloc(1, AllocationPlacement::Top)?;
         let coeffs_total_len = last_step * 4;
         // B1: per-round kernels write coeffs straight into the slab range for
-        // this layer when `proof_slab` is provided — no standalone allocation
-        // and no post-loop slab D2D. The kernels are stream-ordered against
-        // the terminal D2H of the slab in `prove()`, so the slab is
-        // self-consistent on `exec_stream`. Test paths fall back to a
-        // per-layer device buffer.
-        let mut fallback_device_coeffs: Option<DeviceAllocation<E>> = None;
-        let coeffs_buffer_ptr: *mut E = if let Some(slab) = proof_slab {
-            if coeffs_total_len > 0 {
-                // SAFETY: `layer_slot` selects this layer's slab segment and the
-                // returned region is validated against `coeffs_total_len` below.
-                let (dst_ptr, dst_len) = unsafe {
-                    proof_layout
-                        .backward_internal_coeffs_device_mut(slab.as_ptr() as *mut u8, layer_slot)
-                };
-                debug_assert_eq!(
-                    dst_len, coeffs_total_len,
-                    "slab internal_round_coefficients range must match layer's coeffs_total_len",
-                );
-                dst_ptr as *mut E
-            } else {
-                null_mut()
-            }
+        // this layer — no standalone allocation and no post-loop slab D2D. The
+        // kernels are stream-ordered against the terminal D2H of the slab in
+        // `prove()`, so the slab is self-consistent on `exec_stream`.
+        let coeffs_buffer_ptr: *mut E = if coeffs_total_len > 0 {
+            // SAFETY: `layer_slot` selects this layer's slab segment and the
+            // returned region is validated against `coeffs_total_len` below.
+            let (dst_ptr, dst_len) = unsafe {
+                proof_layout
+                    .backward_internal_coeffs_device_mut(proof_slab.as_ptr() as *mut u8, layer_slot)
+            };
+            debug_assert_eq!(
+                dst_len, coeffs_total_len,
+                "slab internal_round_coefficients range must match layer's coeffs_total_len",
+            );
+            dst_ptr as *mut E
         } else {
-            let alloc: DeviceAllocation<E> =
-                context.alloc(coeffs_total_len.max(1), AllocationPlacement::Top)?;
-            let ptr = alloc.as_ptr() as *mut E;
-            fallback_device_coeffs = Some(alloc);
-            ptr
+            null_mut()
         };
 
         // The `[claim_point || batching_challenge]` input is consumed
@@ -445,36 +432,27 @@ where
         let transcript_input_addresses: Vec<GKRAddress> =
             transcript_input_sources.keys().copied().collect();
         // Per-address gather writes straight into the slab's
-        // `final_step_evaluations` range when `proof_slab` is provided. Test
-        // paths fall back to a per-layer device buffer. The flat layout (4 E
-        // per address, in BTreeMap key order from
-        // `final_evaluation_sources_for_last_step`) matches what
-        // `build_proof_layout_inputs` stored in
+        // `final_step_evaluations` range. The flat layout (4 E per address,
+        // in BTreeMap key order from `final_evaluation_sources_for_last_step`)
+        // matches what `build_proof_layout_inputs` stored in
         // `ProofLayout.backward[slot].final_step_eval_addresses`.
-        let mut fallback_d_layer_transcript_inputs: Option<DeviceAllocation<E>> = None;
-        let transcript_inputs_buffer_ptr: *mut E = if let Some(slab) = proof_slab {
-            if transcript_inputs_len > 0 {
-                // SAFETY: `layer_slot` selects this layer's slab segment and
-                // the returned region is validated against
-                // `transcript_inputs_len` immediately below.
-                let (dst_ptr, dst_len) = unsafe {
-                    proof_layout
-                        .backward_final_step_evals_device_mut(slab.as_ptr() as *mut u8, layer_slot)
-                };
-                debug_assert_eq!(
-                    dst_len, transcript_inputs_len,
-                    "slab final_step_evaluations range must match layer's transcript_inputs_len",
-                );
-                dst_ptr as *mut E
-            } else {
-                null_mut()
-            }
+        let transcript_inputs_buffer_ptr: *mut E = if transcript_inputs_len > 0 {
+            // SAFETY: `layer_slot` selects this layer's slab segment and
+            // the returned region is validated against
+            // `transcript_inputs_len` immediately below.
+            let (dst_ptr, dst_len) = unsafe {
+                proof_layout.backward_final_step_evals_device_mut(
+                    proof_slab.as_ptr() as *mut u8,
+                    layer_slot,
+                )
+            };
+            debug_assert_eq!(
+                dst_len, transcript_inputs_len,
+                "slab final_step_evaluations range must match layer's transcript_inputs_len",
+            );
+            dst_ptr as *mut E
         } else {
-            let alloc: DeviceAllocation<E> =
-                context.alloc(transcript_inputs_len.max(1), AllocationPlacement::Top)?;
-            let ptr = alloc.as_ptr() as *mut E;
-            fallback_d_layer_transcript_inputs = Some(alloc);
-            ptr
+            null_mut()
         };
         // B7: per-address gather kernel — single launch replaces the
         // num_addresses-element D2D loop. Source pointers are scheduling-
@@ -729,10 +707,8 @@ where
             tracing_ranges.push(layer_range);
         }
 
-        drop(fallback_d_layer_transcript_inputs);
         drop(device_claim);
         drop(device_eq_prefactor);
-        drop(fallback_device_coeffs);
         drop(device_claim_point_in);
         drop(device_claims_in);
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {

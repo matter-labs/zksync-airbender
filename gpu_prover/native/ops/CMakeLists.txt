@@ -9,6 +9,7 @@ target_sources(gpu_prover_native PRIVATE
         hash.cuh
         powers.cu
         simple.cu
+        squaring.cu
         transpose.cu
 )
 add_subdirectory(cub)

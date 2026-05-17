@@ -280,9 +280,3 @@ impl GpuScheduledBaseFieldQuery {
         (decoded, cpu_query)
     }
 }
-
-pub(crate) fn clone_scheduled_whir_pre_pow_seeds(
-    shared_state: UnsafeMutAccessor<ScheduledWhirProofState>,
-) -> Vec<Seed> {
-    unsafe { shared_state.get() }.pre_pow_seeds.clone()
-}

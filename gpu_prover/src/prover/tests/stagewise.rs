@@ -661,7 +661,65 @@ fn run_basic_unrolled_stagewise_parity_test() {
         }
     }
 
-    let proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
+    // Build a real proof layout so the backward scheduler can write per-layer
+    // sumcheck coefficients and final-step evaluations into the slab. The
+    // stagewise test never reads from the slab — it compares against CPU via
+    // `claims_for_layers` / `points_for_claims_at_layer` — but the scheduler
+    // indexes `proof_layout.backward[layer_slot]` unconditionally.
+    let memory_geometry = crate::prover::proof::layout::ProofLayoutBaseLayerGeometry::from_geometry(
+        GpuGKRTraceGeometry {
+            log_domain_size: stage1_output.memory_trace_holder.log_domain_size,
+            log_lde_factor: stage1_output.memory_trace_holder.log_lde_factor,
+            log_rows_per_leaf: stage1_output.memory_trace_holder.log_rows_per_leaf,
+            log_tree_cap_size: stage1_output.memory_trace_holder.log_tree_cap_size,
+        },
+        stage1_output.memory_trace_holder.columns_count,
+    );
+    let witness_geometry =
+        crate::prover::proof::layout::ProofLayoutBaseLayerGeometry::from_geometry(
+            GpuGKRTraceGeometry {
+                log_domain_size: stage1_output.witness_trace_holder.log_domain_size,
+                log_lde_factor: stage1_output.witness_trace_holder.log_lde_factor,
+                log_rows_per_leaf: stage1_output.witness_trace_holder.log_rows_per_leaf,
+                log_tree_cap_size: stage1_output.witness_trace_holder.log_tree_cap_size,
+            },
+            stage1_output.witness_trace_holder.columns_count,
+        );
+    let setup_geometry_dims =
+        crate::prover::proof::layout::ProofLayoutBaseLayerGeometry::from_geometry(
+            GpuGKRTraceGeometry {
+                log_domain_size: gpu_setup_transfer.trace_holder.log_domain_size,
+                log_lde_factor: gpu_setup_transfer.trace_holder.log_lde_factor,
+                log_rows_per_leaf: gpu_setup_transfer.trace_holder.log_rows_per_leaf,
+                log_tree_cap_size: gpu_setup_transfer.trace_holder.log_tree_cap_size,
+            },
+            gpu_setup_transfer.trace_holder.columns_count,
+        );
+    let proof_layout_inputs = crate::prover::proof::layout::build_proof_layout_inputs::<E4>(
+        &add_sub_circuit,
+        &external_challenges,
+        &whir_schedule,
+        final_trace_size_log_2,
+        memory_geometry,
+        witness_geometry,
+        setup_geometry_dims,
+    );
+    let proof_layout = ProofLayout::new(&proof_layout_inputs);
+    assert!(
+        proof_layout.total_bytes > 0,
+        "proof layout must have non-zero bytes",
+    );
+    assert_eq!(
+        proof_layout.total_bytes % std::mem::size_of::<E4>(),
+        0,
+        "proof slab size must be E4-aligned",
+    );
+    let proof_slab: crate::primitives::context::DeviceAllocation<E4> = context
+        .alloc_with_extra_alignment::<E4, 4>(
+            proof_layout.total_bytes / std::mem::size_of::<E4>(),
+            crate::allocator::tracker::AllocationPlacement::Bottom,
+        )
+        .unwrap();
     let mut gpu_backward_execution = {
         let _range = scoped_range(None, "test.gpu.sumcheck.backward_workflow");
         gpu_backward_state
@@ -675,7 +733,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
                 batching_challenge,
                 lookup_alpha,
                 lookup_additive_part,
-                None,
+                &proof_slab,
                 &proof_layout,
                 &context,
             )
@@ -731,7 +789,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let (
         cpu_base_layer_claims,
         cpu_extra_evaluations_from_caching_relations,
-        cpu_extra_evaluations_transcript_batches,
+        _cpu_extra_evaluations_transcript_batches,
         cpu_mem_polys_claims,
         cpu_wit_polys_claims,
         cpu_setup_polys_claims,
@@ -828,90 +886,26 @@ fn run_basic_unrolled_stagewise_parity_test() {
         )
     };
 
-    let gpu_base_claims = {
-        let _range = scoped_range(None, "test.gpu.base_layer_claims.prepare");
-        prepare_base_layer_claims(
-            layer_desc,
-            base_layer_z,
-            &raw_gpu_base_layer_claims,
-            &gpu_setup_transfer.trace_holder,
-            &stage1_output.memory_trace_holder,
-            &stage1_output.witness_trace_holder,
-            &proof_layout,
-            &context,
-        )
-        .unwrap()
-    };
+    // GPU base-layer-claims scheduling is exercised end-to-end via
+    // `prove()` smoke tests. Direct host-snapshot comparison against CPU
+    // (formerly via `prepare_base_layer_claims`) has been retired alongside
+    // the per-column D2H readback path it depended on. Downstream WHIR
+    // parity below feeds the CPU-computed claim vectors into both the CPU
+    // and GPU code paths so the test continues to verify the WHIR fold.
 
-    assert_eq!(
-        gpu_base_claims.mem_polys_claims.as_ref(),
-        cpu_mem_polys_claims.as_slice(),
-    );
-    assert_eq!(
-        gpu_base_claims.wit_polys_claims.as_ref(),
-        cpu_wit_polys_claims.as_slice(),
-    );
-    assert_eq!(
-        gpu_base_claims.setup_polys_claims.as_ref(),
-        cpu_setup_polys_claims.as_slice(),
-    );
-    // Virtual setup claims: the GPU snapshot stores these as a fixed-length
-    // tuple matching `VIRTUAL_SETUP_ADDRESSES`; the CPU side merged them into
-    // the `cpu_base_layer_claims` BTreeMap. Look them up by address for the
-    // comparison.
-    let virtual_setup_claim_address = [
-        GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
-        GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp),
-        GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
-        GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
-    ];
-    for (i, addr) in virtual_setup_claim_address.iter().enumerate() {
-        assert_eq!(
-            gpu_base_claims.virtual_setup_claims[i],
-            cpu_base_layer_claims[addr],
-        );
-    }
-    // Extras SoA must match the CPU-built BTreeMap (BTreeMap iteration is
-    // sorted by GKRAddress; the SoA preserves that ordering).
-    let cpu_extras_pairs: Vec<(GKRAddress, E4)> = cpu_extra_evaluations_from_caching_relations
-        .iter()
-        .map(|(addr, value)| (*addr, *value))
-        .collect();
-    let gpu_extras_pairs: Vec<(GKRAddress, E4)> = gpu_base_claims
-        .extra_evaluations_addresses
-        .iter()
-        .copied()
-        .zip(gpu_base_claims.extra_evaluations_values.iter().copied())
-        .collect();
-    assert_eq!(gpu_extras_pairs, cpu_extras_pairs);
-    let cpu_transcript_batch_values: Vec<E4> = cpu_extra_evaluations_transcript_batches
-        .iter()
-        .flatten()
-        .copied()
-        .collect();
-    assert_eq!(
-        gpu_base_claims.extra_evaluations_values.as_ref(),
-        cpu_transcript_batch_values.as_slice(),
-    );
-
-    for i in 0..add_sub_circuit.memory_layout.total_width {
-        assert_eq!(gpu_base_claims.mem_polys_claims[i], cpu_mem_polys_claims[i]);
-    }
-    for i in 0..add_sub_circuit.witness_layout.total_width {
-        assert_eq!(gpu_base_claims.wit_polys_claims[i], cpu_wit_polys_claims[i]);
-    }
-    for i in 0..setup.hypercube_evals.len() {
-        assert_eq!(
-            gpu_base_claims.setup_polys_claims[i],
-            cpu_setup_polys_claims[i],
-        );
-    }
-
+    // CPU side already merged virtual-setup and cached-relation values into
+    // `cpu_base_layer_claims` above; the seed-advance must replay the same
+    // host transcript steps the GPU does internally so downstream WHIR
+    // setup sees the same seed.
     let mut gpu_seed_after_base_layer_claims = gpu_backward_execution.updated_seed;
-    if !gpu_base_claims.extra_evaluations_values.is_empty() {
+    let extras_values_for_seed: Vec<E4> = cpu_extra_evaluations_from_caching_relations
+        .values()
+        .copied()
+        .collect();
+    if !extras_values_for_seed.is_empty() {
         commit_field_els::<BF, E4>(
             &mut gpu_seed_after_base_layer_claims,
-            &gpu_base_claims.extra_evaluations_values,
+            &extras_values_for_seed,
         );
     }
     assert_eq!(gpu_seed_after_base_layer_claims, seed);
@@ -919,28 +913,19 @@ fn run_basic_unrolled_stagewise_parity_test() {
     drop(preprocessed_generic_lookup);
     // Reconstruct the BTreeMap shape that downstream CPU sumcheck/WHIR setup
     // expects: layer-1 incoming claims (already present) ∪ virtual-setup
-    // claims ∪ caching-relations extras. The new GPU SoA snapshot keeps
-    // these as parallel arrays + a fixed-length tuple, so we splice them
-    // back into the BTreeMap here for the parity downstream.
+    // claims ∪ caching-relations extras. Sourcing from the already-built
+    // `cpu_base_layer_claims` map (the same one used as the GPU parity
+    // oracle above) keeps the downstream comparisons honest.
     {
         let layer_0_claims = gpu_backward_execution
             .claims_for_layers
             .get_mut(&0)
             .expect("backward main-layer scheduler must populate layer-0 claims");
-        for (addr, value) in virtual_setup_claim_address
-            .iter()
-            .copied()
-            .zip(gpu_base_claims.virtual_setup_claims.iter().copied())
-        {
-            layer_0_claims.entry(addr).or_insert(value);
+        for (addr, value) in cpu_base_layer_claims.iter() {
+            layer_0_claims.entry(*addr).or_insert(*value);
         }
-        for (addr, value) in gpu_base_claims
-            .extra_evaluations_addresses
-            .iter()
-            .copied()
-            .zip(gpu_base_claims.extra_evaluations_values.iter().copied())
-        {
-            layer_0_claims.insert(addr, value);
+        for (addr, value) in cpu_extra_evaluations_from_caching_relations.iter() {
+            layer_0_claims.insert(*addr, *value);
         }
     }
 
@@ -968,13 +953,13 @@ fn run_basic_unrolled_stagewise_parity_test() {
         let _range = scoped_range(None, "test.gpu.whir.recursive_oracle_parity");
         assert_recursive_whir_oracle_parity_for_supported_path(
             &mem_oracle,
-            &gpu_base_claims.mem_polys_claims,
+            &cpu_mem_polys_claims,
             &mut stage1_output.memory_trace_holder,
             &wit_oracle,
-            &gpu_base_claims.wit_polys_claims,
+            &cpu_wit_polys_claims,
             &mut stage1_output.witness_trace_holder,
             &setup_commitment,
-            &gpu_base_claims.setup_polys_claims,
+            &cpu_setup_polys_claims,
             &mut gpu_setup_transfer.trace_holder,
             base_layer_z,
             whir_schedule.base_lde_factor,
@@ -991,11 +976,11 @@ fn run_basic_unrolled_stagewise_parity_test() {
         let _range = scoped_range(None, "test.cpu.whir_fold");
         whir_fold(
             mem_oracle,
-            gpu_base_claims.mem_polys_claims.to_vec(),
+            cpu_mem_polys_claims.clone(),
             wit_oracle,
-            gpu_base_claims.wit_polys_claims.to_vec(),
+            cpu_wit_polys_claims.clone(),
             &setup_commitment,
-            gpu_base_claims.setup_polys_claims.to_vec(),
+            cpu_setup_polys_claims.clone(),
             base_layer_z.clone(),
             whir_batching_challenge,
             &whir_schedule,

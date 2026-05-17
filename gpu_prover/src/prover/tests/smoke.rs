@@ -20,6 +20,16 @@ fn run_basic_unrolled_async_scheduler_smoke_test() {
     } = prepare_basic_unrolled_async_backward_fixture(8);
 
     let proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
+    // Allocate a minimal placeholder slab — backward scheduling needs a real
+    // device allocation but the placeholder layout has total_bytes == 0, so
+    // every per-field length check inside the schedulers is satisfied with a
+    // single-E4 dummy buffer that is never written through.
+    let proof_slab: crate::primitives::context::DeviceAllocation<E4> = context
+        .alloc_with_extra_alignment::<E4, 4>(
+            1,
+            crate::allocator::tracker::AllocationPlacement::Bottom,
+        )
+        .unwrap();
     let scheduled = gpu_backward_state
         .schedule_execute_backward_workflow(
             compiled_circuit,
@@ -31,7 +41,7 @@ fn run_basic_unrolled_async_scheduler_smoke_test() {
             batching_challenge,
             lookup_multiplicative_part,
             lookup_additive_part,
-            None,
+            &proof_slab,
             &proof_layout,
             &context,
         )
@@ -415,6 +425,13 @@ fn run_basic_unrolled_async_allocator_regression_test() {
     context.reset_scheduler_host_used_mem_peak();
 
     let proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
+    // Minimal placeholder slab (see notes on the first smoke-test site).
+    let proof_slab: crate::primitives::context::DeviceAllocation<E4> = context
+        .alloc_with_extra_alignment::<E4, 4>(
+            1,
+            crate::allocator::tracker::AllocationPlacement::Bottom,
+        )
+        .unwrap();
     let scheduled = gpu_backward_state
         .schedule_execute_backward_workflow(
             compiled_circuit,
@@ -426,7 +443,7 @@ fn run_basic_unrolled_async_allocator_regression_test() {
             batching_challenge,
             lookup_multiplicative_part,
             lookup_additive_part,
-            None,
+            &proof_slab,
             &proof_layout,
             &context,
         )
