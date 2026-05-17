@@ -171,6 +171,7 @@ impl GpuGKRStage1Output {
         decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
         inits_and_teardowns: Option<&InitsAndTeardownsTraceDevice>,
         tracing_data: Option<&TracingDataDevice>,
+        witness_cap_dst: Option<&mut DeviceSlice<u32>>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = compiled_circuit.trace_len;
@@ -516,7 +517,10 @@ impl GpuGKRStage1Output {
 
         let witness_commit_range = Range::new("gkr.stage1.commit.witness_trace")?;
         witness_commit_range.start(stream)?;
-        witness_trace_holder.commit_all(context)?;
+        match witness_cap_dst {
+            Some(dst) => witness_trace_holder.commit_all_into(dst, context)?,
+            None => witness_trace_holder.commit_all(context)?,
+        }
         witness_commit_range.end(stream)?;
         tracing_ranges.push(witness_commit_range);
         stage1_range.end(stream)?;

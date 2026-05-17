@@ -35,6 +35,7 @@ DEVICE_FORCEINLINE void bit_reverse_naive(const matrix_getter<T, ld_modifier::cs
 
 BIT_REVERSE_NAIVE(bf);
 BIT_REVERSE_NAIVE(dg);
+BIT_REVERSE_NAIVE(e4);
 
 DEVICE_FORCEINLINE uint2 triangular_index_flat_to_two_dim(const unsigned index, const unsigned m) {
   const unsigned ii = m * (m + 1) / 2 - 1 - index;
@@ -98,5 +99,6 @@ DEVICE_FORCEINLINE void bit_reverse(const matrix_getter<T, ld_modifier::cs> src,
 
 BIT_REVERSE(bf, bf, 0);
 BIT_REVERSE(dg, e4, 1);
+BIT_REVERSE(e4, bf, 2);
 
 } // namespace airbender::ops
