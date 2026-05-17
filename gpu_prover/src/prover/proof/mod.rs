@@ -19,9 +19,10 @@ use crate::prover::gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget
 use crate::prover::proof::inputs::GpuGKRProofTransfer;
 use crate::upstream::{GKRCircuitArtifact, ProverConfig};
 
+#[cfg(test)]
+pub(crate) use orchestration::grand_product_accumulator_from_explicit_evaluations;
 pub(crate) use orchestration::{
-    assert_gpu_supported_pow_config, canonical_inits_and_teardowns_top_bits,
-    grand_product_accumulator_from_explicit_evaluations, GpuGKRProofJob,
+    assert_gpu_supported_pow_config, canonical_inits_and_teardowns_top_bits, GpuGKRProofJob,
 };
 use orchestration::{
     prepare_backward_handoff, prepare_stage1_and_forward_setup, schedule_backward_phase,
@@ -113,19 +114,20 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         context,
     )?;
 
-    let output_evaluations_slab = proof_slab.as_ref().and_then(|slab| {
-        let (ptr, len) =
-            unsafe { proof_layout.output_evaluations_device_mut(slab.as_ptr() as *mut u8) }?;
-        assert_eq!(
-            ptr,
-            slab.as_ptr() as *mut E4,
-            "output_evaluations must be the proof slab prefix for direct forward writes",
+    let output_evaluations_slab =
+        unsafe { proof_layout.output_evaluations_device_mut(proof_slab.as_ptr() as *mut u8) }.map(
+            |(ptr, len)| {
+                assert_eq!(
+                    ptr,
+                    proof_slab.as_ptr() as *mut E4,
+                    "output_evaluations must be the proof slab prefix for direct forward writes",
+                );
+                ForwardOutputSlabTarget {
+                    backing: Arc::clone(&proof_slab),
+                    len,
+                }
+            },
         );
-        Some(ForwardOutputSlabTarget {
-            backing: Arc::clone(slab),
-            len,
-        })
-    });
     let forward_output = schedule_forward_pass(
         setup.as_ref().map(|setup| &setup.trace_holder),
         synthetic_setup_trace_holder.as_ref(),
@@ -177,27 +179,26 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         initial_d_claims,
         top_layer_claim_layout,
         d_lookup_challenges_for_backward,
-        proof_slab.as_deref(),
+        &proof_slab,
         &proof_layout,
         context,
     )?;
     let WhirPhaseResult {
         transition_ranges,
         post_backward_callbacks,
-        base_layer_claims_scheduled,
+        mut base_layer_claims_scheduled,
         base_layer_claims_shared_state,
         whir_scheduled,
-        whir_shared_state,
+        batching_challenge_device: _batching_challenge_device,
     } = schedule_whir_phase(
         &compiled_circuit,
         whir_schedule,
         &mut setup,
         &mut synthetic_setup_trace_holder,
         &mut stage1_output,
-        &memory,
         &mut backward_scheduled,
         backward_shared_state,
-        proof_slab.as_deref(),
+        &proof_slab,
         &proof_layout,
         context,
     )?;
@@ -210,15 +211,14 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     // callbacks/tracing/host-staging buffers all ride on this struct.
     let backward_keepalive = backward_scheduled;
 
-    let slab = proof_slab
-        .as_ref()
-        .expect("proof slab must be allocated for prove()");
+    let pending_aggregation = base_layer_claims_scheduled.take_pending_aggregation();
     let proof_host_mirror = Some(schedule_terminal_proof_assembly(
-        slab,
+        &proof_slab,
         &proof_layout,
         proof_handle,
-        whir_shared_state,
+        whir_schedule.clone(),
         base_layer_claims_shared_state,
+        pending_aggregation,
         external_challenges.value.clone(),
         canonical_inits_and_teardowns_top_bits(&compiled_circuit),
         &mut callbacks,
@@ -266,6 +266,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             _backward: backward_keepalive,
             _base_layer_claims: base_layer_claims_scheduled,
             _whir: whir_scheduled,
+            _whir_batching_challenge_device: _batching_challenge_device,
             _proof_host_mirror: proof_host_mirror,
             _proof_slab: proof_slab,
         },

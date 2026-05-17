@@ -1,11 +1,14 @@
 use super::super::*;
 
+use crate::ops::blake2s::{transcript_commit, transcript_squeeze_e4};
+use crate::ops::powers::get_powers_by_ref;
+use crate::ops::squaring::squaring_sequence_e4;
+
 /// Commits the next WHIR extension oracle: builds it from `state.sumchecked_poly_monomial_form`,
-/// D2D-copies its unified device cap to the slab at `oracle_idx`, schedules a D2H of the cap
-/// into a pinned host buffer, and registers a `final_callbacks` closure that publishes the
-/// host cap into `proof.intermediate_whir_oracles[oracle_idx].commitment` and folds the
-/// commitment into the host-side transcript seed. Range tracking is the caller's
-/// responsibility.
+/// gathering its unified device cap directly into the slab at `oracle_idx`, then advances
+/// the rolling device transcript seed via `transcript_commit` reading the same slab range.
+/// Production proof assembly sources `intermediate_whir_oracles[oracle_idx].commitment.cap`
+/// from the slab via `parse_whir_proof`.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn schedule_commit_next_oracle_phase(
     state: &GpuWhirState,
@@ -13,240 +16,199 @@ pub(super) fn schedule_commit_next_oracle_phase(
     lde_factor: usize,
     next_folding_steps: usize,
     tree_cap_size: usize,
-    proof_slab: Option<&DeviceAllocation<E4>>,
+    proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
-    shared_state_handle: UnsafeMutAccessor<ScheduledWhirProofState>,
-    seed_accessor: UnsafeMutAccessor<Seed>,
-    intermediate_oracle_cap_hosts: &mut Vec<HostAllocation<[Digest]>>,
-    final_callbacks: &mut Callbacks<'static>,
+    device_seed: &mut DeviceSlice<u32>,
     stream: &era_cudart::stream::CudaStream,
     context: &ProverContext,
 ) -> CudaResult<GpuWhirExtensionOracle> {
-    let oracle = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs(
+    // SAFETY: `ProofLayout` returns a live, non-overlapping mutable region for
+    // this intermediate cap inside the slab allocation.
+    let (cap_ptr, cap_len_u32) = unsafe {
+        proof_layout.whir_intermediate_cap_device_mut(proof_slab.as_ptr() as *mut u8, oracle_idx)
+    };
+    assert!(
+        cap_len_u32 > 0,
+        "intermediate cap slab range must be non-empty"
+    );
+    // SAFETY: `cap_ptr` is 4-byte-aligned (the slab `.cap` range is `u32`-typed
+    // and aligned by `ProofLayout`) and points at a disjoint region inside the
+    // pool-backed `proof_slab` allocation. The gather kernel scheduled by
+    // `schedule_from_device_monomial_coeffs_into_slab` writes it exclusively
+    // on `exec_stream`; the subsequent `transcript_commit` reborrows it as a
+    // shared `*const u32` view, stream-ordered after the gather.
+    let mut cap_dst_u32 =
+        unsafe { era_cudart::slice::DeviceSlice::from_raw_parts_mut(cap_ptr, cap_len_u32) };
+    let oracle = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs_into_slab(
         &state.sumchecked_poly_monomial_form,
         state.current_len,
         lde_factor,
         1 << next_folding_steps,
         tree_cap_size,
+        &mut cap_dst_u32,
         context,
     )?;
-    copy_intermediate_cap_to_slab(
-        oracle.unified_device_cap(),
-        proof_slab,
-        proof_layout,
-        oracle_idx,
-        stream,
-    )?;
-    let oracle_cap_host_for_proof =
-        schedule_unified_cap_d2h(oracle.unified_device_cap(), context, stream)?;
-    let oracle_cap_host_accessor = oracle_cap_host_for_proof.get_accessor();
-    intermediate_oracle_cap_hosts.push(oracle_cap_host_for_proof);
-    final_callbacks.schedule(
-        {
-            let shared_state = shared_state_handle;
-            move || unsafe {
-                let proof_state = shared_state.get_mut();
-                let commitment = &mut proof_state
-                    .proof
-                    .as_mut()
-                    .unwrap()
-                    .intermediate_whir_oracles[oracle_idx]
-                    .commitment;
-                commitment
-                    .cap
-                    .cap
-                    .copy_from_slice(oracle_cap_host_accessor.get());
-                add_whir_commitment_to_transcript(seed_accessor.get_mut(), commitment);
-            }
-        },
-        stream,
-    )?;
+    // Device transcript commit: hash the slab-resident cap (viewed as a flat
+    // u32 stream) into `device_seed`. Reads from the same slab range the
+    // gather kernel just wrote.
+    // SAFETY: the slab cap range is read-only here, after the gather kernel
+    // scheduled above on the same `exec_stream`.
+    let cap_view = unsafe {
+        era_cudart::slice::DeviceSlice::from_raw_parts(cap_ptr as *const u32, cap_len_u32)
+    };
+    transcript_commit(device_seed, cap_view, stream)?;
     Ok(oracle)
 }
 
-/// Draws an OOD sample point, schedules the monomial-eval reduction for the current state's
-/// folded polynomial, registers a `final_callbacks` closure that sums the partial readbacks,
-/// commits the value to the transcript seed, and publishes it into
-/// `proof.ood_samples[oracle_idx]`. Also D2D-copies the OOD value into the slab.
+/// Draws an OOD sample point on device, schedules the monomial-eval reduction
+/// for the current state's folded polynomial, D2D-copies the resulting reduced
+/// E4 into the slab's `whir.ood_samples[oracle_idx]`, then advances the rolling
+/// transcript seed via `transcript_commit` of the slab slot. Pushes the
+/// device-resident OOD point into `ood_point_devices` so the caller's
+/// delinearization phase can read it without a host round-trip.
 ///
-/// Returns `ood_point_host` so the caller can capture an accessor for the subsequent
-/// delinearization phase. Range tracking is the caller's responsibility.
+/// Range tracking is the caller's responsibility.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn schedule_ood_sample_phase(
     state: &mut GpuWhirState,
     oracle_idx: usize,
-    proof_slab: Option<&DeviceAllocation<E4>>,
+    proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
-    shared_state_handle: UnsafeMutAccessor<ScheduledWhirProofState>,
-    seed_accessor: UnsafeMutAccessor<Seed>,
-    ood_points: &mut Vec<WhirHostUpload>,
-    ood_partial_readbacks: &mut Vec<Vec<HostAllocation<[E4]>>>,
-    ood_values: &mut Vec<HostAllocation<[E4]>>,
-    final_callbacks: &mut Callbacks<'static>,
+    device_seed: &mut DeviceSlice<u32>,
+    ood_point_devices: &mut Vec<DeviceAllocation<E4>>,
     stream: &era_cudart::stream::CudaStream,
     context: &ProverContext,
-) -> CudaResult<HostAllocation<[E4]>> {
-    let (ood_point_upload, ood_point_host, ood_point_device) =
-        schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
-            dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
-        })?;
-    let ood_partials = schedule_monomial_eval_device(state, &ood_point_device, context)?;
-    let mut ood_value_host = unsafe { context.alloc_host_uninit_slice(1) };
-    let ood_value_accessor = ood_value_host.get_mut_accessor();
-    final_callbacks.schedule(
-        {
-            let shared_state = shared_state_handle;
-            let partial_accessors = ood_partials
-                .iter()
-                .map(HostAllocation::get_accessor)
-                .collect::<Vec<_>>();
-            move || unsafe {
-                let mut value = E4::ZERO;
-                for partial in partial_accessors.iter() {
-                    value.add_assign(&partial.get()[0]);
-                }
-                ood_value_accessor.get_mut()[0] = value;
-                commit_field_els::<BF, E4>(seed_accessor.get_mut(), &[value]);
-                shared_state.get_mut().proof.as_mut().unwrap().ood_samples[oracle_idx] = value;
-            }
-        },
-        stream,
-    )?;
-    copy_ood_sample_to_slab(
-        &ood_value_host,
-        proof_slab,
-        proof_layout,
-        oracle_idx,
-        stream,
-    )?;
-    ood_partial_readbacks.push(ood_partials);
-    ood_points.push(ood_point_upload);
-    ood_values.push(ood_value_host);
-    Ok(ood_point_host)
+) -> CudaResult<()> {
+    let mut ood_point_device: DeviceAllocation<E4> =
+        context.alloc(1, AllocationPlacement::BestFit)?;
+    transcript_squeeze_e4(device_seed, &mut ood_point_device, stream)?;
+    // SAFETY: `ProofLayout` computes a live, non-overlapping mutable region for
+    // the OOD-sample array inside the slab allocation.
+    let (dst_ptr, dst_len) =
+        unsafe { proof_layout.whir_ood_samples_device_mut(proof_slab.as_ptr() as *mut u8) };
+    assert!(
+        oracle_idx < dst_len,
+        "oracle_idx {oracle_idx} out of slab ood_samples range (len {dst_len})",
+    );
+    // SAFETY: `dst_ptr.add(oracle_idx)` is a 16-byte-aligned, live, disjoint
+    // single-`E4` slot inside the pool-backed `proof_slab` allocation. The CUB
+    // `reduce` write below and the subsequent transcript_commit read are both
+    // stream-ordered on `exec_stream`, so they observe each other's updates
+    // without an explicit barrier.
+    let slab_slot: &mut era_cudart::slice::DeviceVariable<E4> =
+        unsafe { era_cudart::slice::DeviceVariable::from_raw_parts_mut(dst_ptr.add(oracle_idx)) };
+    schedule_monomial_eval_device_impl(state, &ood_point_device, slab_slot, context)?;
+    // SAFETY: same slab slot, viewed as 4 LE u32 words for transcript_commit.
+    let slot_as_u32 = unsafe {
+        era_cudart::slice::DeviceSlice::from_raw_parts(
+            dst_ptr.add(oracle_idx) as *const u32,
+            EXT4_DEGREE,
+        )
+    };
+    transcript_commit(device_seed, slot_as_u32, stream)?;
+    ood_point_devices.push(ood_point_device);
+    Ok(())
 }
 
-/// Schedules the PoW verify + query-index draw for one WHIR round: allocates the host nonce
-/// and per-query index buffers, schedules `schedule_pow_verify_and_query_indexes`, D2D-copies
-/// the nonce into the slab, registers the post-PoW callback that mirrors the seed and
-/// publishes the nonce into `proof.pow_nonces[pow_round_idx]`, and (under `cfg(test)`)
-/// snapshots the pre-PoW seed.
+/// Schedules the PoW verify + query-index draw for one WHIR round driven by the
+/// rolling device transcript seed. The nonce is written directly into the
+/// slab's `whir.pow_nonces[pow_round_idx]` slot by `blake2s_pow`, and the
+/// transcript_commit that consumes the nonce as u32 words reads from that same
+/// slab slot — no intermediate `d_nonce` allocation, no D2D copy.
 ///
-/// Returns `(query_indexes_host, query_index_callbacks_for_round)` so the caller can:
-/// (a) capture the indexes accessor for the subsequent per-query loop, (b) extend the
-/// per-round callbacks container with query-specific work, and (c) eventually push both
-/// into the orchestrator-owned callback/state vectors. The nonce host buffer and PoW
-/// round state are pushed into their respective vectors inside this fn.
+/// Returns a per-round callbacks container (currently empty; retained for
+/// future per-round callback wiring).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn schedule_pow_and_query_indexes_phase(
-    seed_host: &mut HostAllocation<Seed>,
-    seed_accessor: UnsafeMutAccessor<Seed>,
-    shared_state_handle: UnsafeMutAccessor<ScheduledWhirProofState>,
+    device_seed: &mut DeviceSlice<u32>,
     num_queries: usize,
     pow_bits: u32,
     pow_round_idx: usize,
     query_domain_log2: usize,
-    proof_slab: Option<&DeviceAllocation<E4>>,
+    proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     pow_round_state: &mut Vec<PowAndQueryIndexesState>,
-    pow_nonces: &mut Vec<HostAllocation<u64>>,
-    stream: &era_cudart::stream::CudaStream,
+    _stream: &era_cudart::stream::CudaStream,
     context: &ProverContext,
-) -> CudaResult<(HostAllocation<[u32]>, Callbacks<'static>)> {
-    let mut nonce_host = unsafe { context.alloc_host_uninit::<u64>() };
-    let mut query_indexes_host = unsafe { context.alloc_host_uninit_slice(num_queries) };
-    let nonce_accessor = nonce_host.get_mut_accessor();
-    let mut query_index_callbacks_for_round = Callbacks::new();
-    #[cfg(test)]
-    query_index_callbacks_for_round.schedule(
-        {
-            let shared_state = shared_state_handle;
-            move || unsafe {
-                shared_state.get_mut().pre_pow_seeds[pow_round_idx] = *seed_accessor.get();
-            }
-        },
-        stream,
-    )?;
+) -> CudaResult<Callbacks<'static>> {
+    let query_index_callbacks_for_round = Callbacks::new();
+
+    // SAFETY: `ProofLayout` computes a live, non-overlapping mutable region for
+    // the PoW-nonce array inside the slab allocation.
+    let (pow_nonces_ptr, pow_nonces_len) =
+        unsafe { proof_layout.whir_pow_nonces_device_mut(proof_slab.as_ptr() as *mut u8) };
+    assert!(
+        pow_round_idx < pow_nonces_len,
+        "pow_round_idx {pow_round_idx} out of slab pow_nonces range (len {pow_nonces_len})",
+    );
+    // SAFETY: `pow_nonces_ptr.add(pow_round_idx)` is an 8-byte-aligned, live,
+    // disjoint single-`u64` slot inside the pool-backed `proof_slab`
+    // allocation. The subsequent kernel write + transcript_commit read are
+    // both stream-ordered on `exec_stream`, so they observe each other's
+    // updates without an explicit barrier.
+    let nonce_slab_dst: &mut era_cudart::slice::DeviceVariable<u64> = unsafe {
+        era_cudart::slice::DeviceVariable::from_raw_parts_mut(pow_nonces_ptr.add(pow_round_idx))
+    };
+
     let pow_round_state_entry = schedule_pow_verify_and_query_indexes(
-        seed_host,
-        &mut nonce_host,
-        &mut query_indexes_host,
+        device_seed,
         num_queries,
         pow_bits,
         query_domain_log2,
+        nonce_slab_dst,
         context,
     )?;
-    copy_pow_nonce_to_slab(
-        &pow_round_state_entry,
-        proof_slab,
-        proof_layout,
-        pow_round_idx,
-        stream,
-    )?;
-    let h_seed_mirror_accessor = pow_round_state_entry.h_seed_mirror.get_accessor();
     pow_round_state.push(pow_round_state_entry);
-    query_index_callbacks_for_round.schedule(
-        {
-            let shared_state = shared_state_handle;
-            move || unsafe {
-                // Fused post-PoW host bookkeeping: advance the host seed from the device
-                // mirror, then publish the nonce.
-                let src = h_seed_mirror_accessor.get();
-                seed_accessor.get_mut().0.copy_from_slice(src);
-                shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
-                    *nonce_accessor.get();
-            }
-        },
-        stream,
-    )?;
-    pow_nonces.push(nonce_host);
-    Ok((query_indexes_host, query_index_callbacks_for_round))
+    Ok(query_index_callbacks_for_round)
 }
 
-/// Schedules the running-powers upload `[x, x^2, ..., x^(num_queries + 1)]` and an
-/// `accumulate_eq_sample_in_place` device op against the OOD anchor point using power index 0.
-/// CPU weights the OOD contribution by `x` and the i-th query contribution by `x^(i + 2)` when
-/// accumulating `contributions_to_eq_poly` (see `prover/src/gkr/whir/mod.rs`,
-/// `current_delinearization_challenge` loop). The kernel reads a single scalar per call, so
-/// each call site selects the matching power by sub-slicing the returned device buffer.
+/// Schedules the running-powers buffer `[x, x^2, ..., x^(num_queries + 1)]`
+/// fully on device, and dispatches `accumulate_eq_sample_in_place` against the
+/// OOD anchor point using power index 0 (i.e. `x^1`). CPU weights the OOD
+/// contribution by `x` and the i-th query contribution by `x^(i + 2)` when
+/// accumulating `contributions_to_eq_poly`.
 ///
-/// Returns `(delinearization_upload, delinearization_device)`. Caller pushes the upload
-/// into `delinearization_challenges` after the per-query loop has finished using the
-/// device buffer. Used by base and intermediate rounds; the final round has no delinearization
-/// step.
+/// Returns `delinearization_device` so the caller can index into it for each
+/// query (and use it as a keepalive). Used by base and intermediate rounds;
+/// the final round has no delinearization step.
 pub(super) fn schedule_delinearization_running_powers_phase(
     state: &mut GpuWhirState,
     num_queries: usize,
-    ood_point_host: &HostAllocation<[E4]>,
-    seed_accessor: UnsafeMutAccessor<Seed>,
-    ood_points: &mut Vec<WhirHostUpload>,
+    ood_point_device: &DeviceSlice<E4>,
+    device_seed: &mut DeviceSlice<u32>,
+    device_keepalives: &mut Vec<DeviceAllocation<E4>>,
     context: &ProverContext,
-) -> CudaResult<(WhirHostUpload, DeviceAllocation<E4>)> {
-    let (delinearization_upload, _delinearization_host, delinearization_device) =
-        schedule_callback_populated_upload(
-            context,
-            num_queries + 1,
-            move |dst: &mut [E4]| unsafe {
-                let base = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
-                let mut power = base;
-                for dst_el in dst.iter_mut() {
-                    *dst_el = power;
-                    power.mul_assign(&base);
-                }
-            },
-        )?;
-    let ood_point_accessor = ood_point_host.get_accessor();
-    let (eq_upload, _eq_host) = schedule_accumulate_eq_sample_in_place_device(
+) -> CudaResult<DeviceAllocation<E4>> {
+    let stream = context.get_exec_stream();
+    // Draw the delinearization base challenge on device.
+    let mut delin_base: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::BestFit)?;
+    transcript_squeeze_e4(device_seed, &mut delin_base, stream)?;
+    // Materialize [base^1, base^2, ..., base^(num_queries + 1)] on device.
+    let count = num_queries + 1;
+    let mut delinearization_device: DeviceAllocation<E4> =
+        context.alloc(count, AllocationPlacement::BestFit)?;
+    get_powers_by_ref(
+        &delin_base[0],
+        1,
+        false,
+        &mut delinearization_device[..],
+        stream,
+    )?;
+    // Phase C (WHIR-on-device): materialize the OOD anchor squaring sequence
+    // `[x, x^2, x^4, ..., x^(2^(log_n - 1))]` directly on device with
+    // `ab_squaring_sequence_e4_kernel`. No D2H of the OOD point, no host
+    // callback, no H2D of point_pows.
+    let log_n = state.current_len.trailing_zeros() as usize;
+    let mut anchor_powers: DeviceAllocation<E4> =
+        context.alloc(log_n, AllocationPlacement::BestFit)?;
+    squaring_sequence_e4(&ood_point_device[0], &mut anchor_powers[..], stream)?;
+    schedule_accumulate_eq_sample_in_place_device_inner(
         state,
-        move |dst| unsafe {
-            let mut value = ood_point_accessor.get()[0];
-            for dst_el in dst.iter_mut() {
-                *dst_el = value;
-                value.square();
-            }
-        },
+        &anchor_powers[..],
         &delinearization_device[0..1],
         context,
     )?;
-    ood_points.push(eq_upload);
-    Ok((delinearization_upload, delinearization_device))
+    device_keepalives.push(delin_base);
+    device_keepalives.push(anchor_powers);
+    Ok(delinearization_device)
 }
