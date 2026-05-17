@@ -3,7 +3,6 @@ use super::gkr::{
         GpuGKRDimensionReducingBackwardState, GpuGKRMainLayerKernelKind,
         GpuGKRMainLayerSumcheckLayerPlan,
     },
-    base_layer_claims::prepare_base_layer_claims,
     forward::schedule_forward_pass as schedule_forward_pass_impl,
     setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
     stage1::{GpuGKRStage1Output, GpuGKRTraceGeometry},
@@ -35,11 +34,10 @@ use crate::prover::trace::tracing_data::{
     TracingDataTransfer, UnrolledTracingDataDevice, UnrolledTracingDataHost,
 };
 use crate::prover::whir::fold::{
-    clone_scheduled_whir_pre_pow_seeds, debug_apply_initial_fold_challenge_for_test,
-    debug_build_initial_batched_evals_for_test, debug_build_initial_fold_state_for_test,
-    debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
-    debug_initial_round_checkpoint_for_test, schedule_gpu_whir_fold_with_sources,
-    take_scheduled_whir_proof,
+    debug_apply_initial_fold_challenge_for_test, debug_build_initial_batched_evals_for_test,
+    debug_build_initial_fold_state_for_test, debug_build_initial_state_for_test,
+    debug_build_initial_state_snapshots_for_test, debug_initial_round_checkpoint_for_test,
+    schedule_gpu_whir_fold_with_sources,
 };
 use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::witness::trace::ChunkedTraceHolder;
@@ -394,6 +392,7 @@ fn generate_stage1_output_for_test(
         decoder_table,
         inits_and_teardowns,
         Some(tracing_data),
+        None,
         context,
     )
 }

@@ -5,11 +5,9 @@ use crate::primitives::context::{ProverContext, UnsafeMutAccessor};
 use crate::primitives::device_structures::DeviceMatrixMut;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
-use crate::prover::trace::decoder::DecoderTableTransfer;
 use crate::prover::trace::holder::{bitreverse_index, TraceHolder, TreesCacheMode};
 use crate::prover::trace::tracing_data::{
-    DelegationTracingDataDevice, InitsAndTeardownsTransfer, TracingDataDevice, TracingDataTransfer,
-    UnrolledTracingDataDevice,
+    DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
 };
 use crate::witness::memory_delegation::generate_memory_values_delegation;
 use crate::witness::memory_unrolled::{

@@ -4,9 +4,9 @@
 // stages the per-coset memory caps produced by `MemoryCommitmentJob` into a
 // single contiguous pinned host buffer (canonical bit-reversed coset order),
 // allocates a matching device buffer up front, and `schedule_transfer` H2Ds
-// the pinned buffer into the device cap on `h2d_stream`. `prove()` waits on
-// `transfer.transferred` before D2D-copying the unified device cap into the
-// initial-transcript input range and into the proof slab cap region.
+// the pinned buffer into the device cap on `h2d_stream` (overlapped with the
+// prior proof's exec work, outside the WHIR hot range). `prove()` then D2Ds
+// the device cap into the proof slab's `whir.memory.cap` range.
 //
 // `MemoryCommitmentJob` itself is intentionally not threaded into `prove()`
 // — it stays a standalone caps-producer (see `gpu_prover/src/prover/memory.rs`).

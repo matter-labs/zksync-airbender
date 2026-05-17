@@ -69,6 +69,12 @@ fn shared_state_dimension_reduction_purges_storage_after_each_layer() {
     let proof_layout = crate::prover::proof::layout::ProofLayout::new(
         &crate::prover::proof::layout::placeholder_inputs_for_prove(),
     );
+    // Minimal placeholder slab: the placeholder layout has total_bytes == 0,
+    // so per-field length checks inside the scheduler resolve to no-op
+    // writes against a single-E4 dummy allocation.
+    let proof_slab: crate::primitives::context::DeviceAllocation<E4> = context
+        .alloc_with_extra_alignment::<E4, 4>(1, AllocationPlacement::Bottom)
+        .unwrap();
     let mut dimension_reducing_layers = Vec::new();
     let mut purged_layers = 0usize;
     let mut layer_slot = 0usize;
@@ -82,7 +88,7 @@ fn shared_state_dimension_reduction_purges_storage_after_each_layer() {
                 shared_device_claim_point,
                 shared_device_claims,
                 &shared_claim_layout,
-                None,
+                &proof_slab,
                 &proof_layout,
                 layer_slot,
                 true,
@@ -166,7 +172,7 @@ fn shared_state_dimension_reduction_purges_storage_after_each_layer() {
             &shared_claim_layout,
             device_lookup_and_constraint.as_ptr(),
             device_external_challenges.as_ptr(),
-            None,
+            &proof_slab,
             &main_proof_layout,
             0,
             true,

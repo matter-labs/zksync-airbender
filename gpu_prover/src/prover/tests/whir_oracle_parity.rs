@@ -1,5 +1,93 @@
 use super::*;
 
+use crate::prover::proof::layout::{
+    BackwardLayerDims, ProofLayoutInputs, WhirBaseLayerDims, WhirDims, WhirIntermediateDims,
+};
+
+/// Build a minimal `ProofLayoutInputs` tailored to the parity test's WHIR-only
+/// data flow. The test exercises only `schedule_gpu_whir_fold_with_sources`,
+/// so the layout's `output_evaluations` and `backward_layers` are empty —
+/// the slab only carries the WHIR proof fields the test compares against the
+/// CPU reference.
+fn build_whir_only_proof_layout_inputs(
+    whir_schedule: &WhirSchedule,
+    initial_trace_size_log_2: usize,
+    memory_holder: &TraceHolder<BF>,
+    witness_holder: &TraceHolder<BF>,
+    setup_holder: &TraceHolder<BF>,
+) -> ProofLayoutInputs {
+    assert_eq!(
+        whir_schedule.whir_steps_schedule.len(),
+        whir_schedule.whir_queries_schedule.len(),
+    );
+    assert_eq!(
+        whir_schedule.whir_steps_schedule.len(),
+        whir_schedule.whir_pow_schedule.len(),
+    );
+    assert_eq!(
+        whir_schedule.whir_steps_schedule.len(),
+        whir_schedule.whir_steps_lde_factors.len() + 1,
+    );
+    let initial_values_per_leaf = 1usize << whir_schedule.whir_steps_schedule[0];
+    let tree_cap_size = whir_schedule.cap_size;
+    let tree_cap_log2 = tree_cap_size.trailing_zeros() as usize;
+    let initial_query_count = whir_schedule.whir_queries_schedule[0];
+
+    let base_layer_dims = |holder: &TraceHolder<BF>| -> WhirBaseLayerDims {
+        let cap_digest_count = 1usize << holder.log_tree_cap_size;
+        let leaf_values_len = holder.columns_count * initial_values_per_leaf;
+        let path_len = if holder.columns_count == 0 {
+            0
+        } else {
+            (holder.log_domain_size
+                - holder.log_rows_per_leaf
+                - (holder.log_tree_cap_size - holder.log_lde_factor)) as usize
+        };
+        WhirBaseLayerDims {
+            num_columns: holder.columns_count,
+            cap_digest_count,
+            query_count: initial_query_count,
+            leaf_values_len,
+            path_len,
+        }
+    };
+
+    let mut folded_trace_len_log2 = initial_trace_size_log_2;
+    let mut intermediate = Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len());
+    for (oracle_idx, &lde_factor) in whir_schedule.whir_steps_lde_factors.iter().enumerate() {
+        folded_trace_len_log2 -= whir_schedule.whir_steps_schedule[oracle_idx];
+        let values_per_leaf_log2 = whir_schedule.whir_steps_schedule[oracle_idx + 1];
+        let path_len = folded_trace_len_log2 + lde_factor.trailing_zeros() as usize
+            - values_per_leaf_log2
+            - tree_cap_log2;
+        intermediate.push(WhirIntermediateDims {
+            cap_digest_count: tree_cap_size,
+            query_count: whir_schedule.whir_queries_schedule[oracle_idx + 1],
+            leaf_values_len: 1usize << values_per_leaf_log2,
+            path_len,
+        });
+    }
+
+    let total_folding_steps = whir_schedule.whir_steps_schedule.iter().sum::<usize>();
+    let final_monomials_len = 1usize << (initial_trace_size_log_2 - total_folding_steps);
+    let whir = WhirDims {
+        setup: base_layer_dims(setup_holder),
+        memory: base_layer_dims(memory_holder),
+        witness: base_layer_dims(witness_holder),
+        intermediate,
+        num_ood_samples: whir_schedule.whir_steps_lde_factors.len(),
+        total_sumcheck_polys: total_folding_steps,
+        pow_rounds: whir_schedule.whir_pow_schedule.len(),
+        final_monomials_len,
+    };
+
+    ProofLayoutInputs {
+        output_evaluations: std::collections::BTreeMap::new(),
+        backward_layers: Vec::<BackwardLayerDims>::new(),
+        whir,
+    }
+}
+
 pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     mem_oracle: &ColumnMajorBaseOracleForLDE<BF, DefaultTreeConstructor>,
     mem_polys_claims: &[E4],
@@ -631,7 +719,35 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         );
     }
     cpu_recursive_query_indexes.push(final_round_query_indexes);
-    let whir_proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
+    // pre_pow_seeds parity dropped: end-to-end byte equality covers seed correctness.
+    let _ = cpu_pre_pow_seeds;
+    let whir_proof_layout_inputs = build_whir_only_proof_layout_inputs(
+        whir_schedule,
+        trace_len_log2,
+        gpu_mem_trace_holder,
+        gpu_wit_trace_holder,
+        gpu_setup_trace_holder,
+    );
+    let whir_proof_layout = ProofLayout::new(&whir_proof_layout_inputs);
+    // Allocate a real proof slab so the schedule can route every WHIR proof
+    // field through it; the test then D2Hs the slab and runs `parse_whir_proof`
+    // to materialize a `WhirPolyCommitProof` mirror of what production
+    // assembles in `schedule_terminal_proof_assembly`.
+    assert!(
+        whir_proof_layout.total_bytes > 0,
+        "WHIR proof layout produced an empty slab; test misconfigured",
+    );
+    assert_eq!(
+        whir_proof_layout.total_bytes % core::mem::size_of::<E4>(),
+        0,
+        "proof slab size must be E4-aligned",
+    );
+    let proof_slab: DeviceAllocation<E4> = context
+        .alloc_with_extra_alignment::<E4, 4>(
+            whir_proof_layout.total_bytes / core::mem::size_of::<E4>(),
+            AllocationPlacement::BestFit,
+        )
+        .unwrap();
     let mut base_layer_point_device: DeviceAllocation<E4> = context
         .alloc(
             original_evaluation_point.len().max(1),
@@ -659,38 +775,111 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         context.get_exec_stream(),
     )
     .unwrap();
-    // Test path: take ownership of the memory trace holder's unified cap so we
-    // can pass it as a separate parameter to `schedule_gpu_whir_fold_with_sources`
-    // without conflicting with the function's `&mut` borrow of the trace holder
-    // itself (the function does not consult `memory_trace_holder.unified_device_cap`
-    // — `prove()` sources it from `memory_transfer` instead).
-    let memory_unified_device_cap_for_whir = gpu_mem_trace_holder.take_unified_device_cap();
-    let mut scheduled_gpu_whir = schedule_gpu_whir_fold_with_sources(
+    // Test path: stage the witness/memory/setup unified caps into the slab
+    // BEFORE invoking WHIR. Production prepares the same state in
+    // `prepare_stage1_and_forward_setup` (witness via `commit_all_into`,
+    // memory/setup via the pinned-host H2D into the slab). The test holders
+    // already own committed caps in `unified_device_cap`, so a single D2D per
+    // source seeds the slab cap ranges that WHIR (and the slab parser) now
+    // expect.
+    {
+        use crate::prover::proof::layout::WhirBaseLayerKind;
+        let slab_base = proof_slab.as_ptr() as *mut u8;
+        for (holder, kind) in [
+            (&*gpu_mem_trace_holder, WhirBaseLayerKind::Memory),
+            (&*gpu_wit_trace_holder, WhirBaseLayerKind::Witness),
+            (&*gpu_setup_trace_holder, WhirBaseLayerKind::Setup),
+        ] {
+            let (dst_ptr, dst_len_u32) =
+                unsafe { whir_proof_layout.whir_base_cap_device_mut(slab_base, kind) };
+            if dst_len_u32 == 0 {
+                continue;
+            }
+            // SAFETY: `Digest = [u32; DIGEST_U32_WORDS]`; reinterpreting the
+            // device cap as `[u32]` of equal byte length is layout-safe. The
+            // dst range is a live, disjoint subrange of `proof_slab`.
+            let src_u32 = unsafe { holder.unified_device_cap().transmute::<u32>() };
+            assert_eq!(src_u32.len(), dst_len_u32);
+            let dst =
+                unsafe { era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr, dst_len_u32) };
+            era_cudart::memory::memory_copy_async(dst, src_u32, context.get_exec_stream()).unwrap();
+        }
+    }
+    // Test path: stage the host-supplied transcript seed and batching challenge
+    // into device buffers up front so `schedule_gpu_whir_fold_with_sources` can
+    // run on device transcript ops just like prove() does in production.
+    let mut device_seed: DeviceAllocation<u32> = context
+        .alloc(
+            crate::ops::blake2s::STATE_SIZE,
+            AllocationPlacement::BestFit,
+        )
+        .unwrap();
+    let mut device_seed_staging =
+        unsafe { context.alloc_host_uninit_slice::<u32>(crate::ops::blake2s::STATE_SIZE) };
+    let device_seed_staging_accessor = device_seed_staging.get_mut_accessor();
+    unsafe {
+        device_seed_staging_accessor
+            .get_mut()
+            .copy_from_slice(&scheduled_transcript_seed.0);
+    }
+    memory_copy_async(
+        &mut device_seed,
+        &device_seed_staging,
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    let mut batching_challenge_device_test: DeviceAllocation<E4> =
+        context.alloc(1, AllocationPlacement::BestFit).unwrap();
+    let mut batching_challenge_host_test = unsafe { context.alloc_host_uninit_slice::<E4>(1) };
+    let batching_challenge_host_test_accessor = batching_challenge_host_test.get_mut_accessor();
+    unsafe {
+        batching_challenge_host_test_accessor.get_mut()[0] = batching_challenge;
+    }
+    memory_copy_async(
+        &mut batching_challenge_device_test,
+        &batching_challenge_host_test,
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    let scheduled_gpu_whir = schedule_gpu_whir_fold_with_sources(
         gpu_mem_trace_holder,
-        &memory_unified_device_cap_for_whir,
         gpu_wit_trace_holder,
         gpu_setup_trace_holder,
         &base_layer_point_device[..original_evaluation_point.len()],
+        &mut device_seed[..],
+        &batching_challenge_device_test[..],
         original_lde_factor,
-        move || batching_challenge,
         whir_schedule.whir_steps_schedule.clone(),
         whir_schedule.whir_queries_schedule.clone(),
         whir_schedule.whir_steps_lde_factors.clone(),
         whir_schedule.whir_pow_schedule.clone(),
-        move || scheduled_transcript_seed,
         whir_schedule.cap_size,
         trace_len_log2,
         true, // use_hypercube_evals_for_batching
-        None,
+        &proof_slab,
         &whir_proof_layout,
-        None,
         context,
     )
     .unwrap();
-    let scheduled_shared_state = scheduled_gpu_whir.shared_state_handle();
+    // Test-side slab D2H + parse. This mirrors the production terminal
+    // assembly path (`schedule_terminal_proof_assembly`) without going through
+    // the orchestration helper, and replaces the prior cfg(test)-gated
+    // host-mirror writebacks that populated `proof.*` directly via callbacks.
+    let mut slab_mirror =
+        unsafe { context.alloc_host_uninit_slice::<u8>(whir_proof_layout.total_bytes) };
+    {
+        let slab_u8 = unsafe {
+            era_cudart::slice::DeviceSlice::from_raw_parts(
+                proof_slab.as_ptr() as *const u8,
+                whir_proof_layout.total_bytes,
+            )
+        };
+        memory_copy_async(&mut slab_mirror, slab_u8, context.get_exec_stream()).unwrap();
+    }
     context.get_exec_stream().synchronize().unwrap();
-    let gpu_pre_pow_seeds = clone_scheduled_whir_pre_pow_seeds(scheduled_shared_state);
-    let scheduled_gpu_whir_proof = take_scheduled_whir_proof(scheduled_shared_state);
+    let slab_mirror_accessor = slab_mirror.get_accessor();
+    let mut scheduled_gpu_whir_proof =
+        whir_proof_layout.parse_whir_proof(unsafe { slab_mirror_accessor.get() });
     drop(scheduled_gpu_whir);
     let scheduled_recursive_caps = scheduled_gpu_whir_proof
         .intermediate_whir_oracles
@@ -712,7 +901,6 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     // Sumcheck polys: one per folding step. whir_steps_schedule = [1, 4, 4, 4, 4, 4]
     // OOD samples: one per recursive round (rounds 1..N)
     // Recursive caps: one per recursive round
-    // Pre-PoW seeds: one per round
     {
         let mut step_offset = 0;
         for (round_idx, &num_steps) in whir_schedule.whir_steps_schedule.iter().enumerate() {
@@ -744,13 +932,6 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
                     );
                 }
             }
-            // Check pre-PoW seed
-            if round_idx < gpu_pre_pow_seeds.len() {
-                assert_eq!(
-                    gpu_pre_pow_seeds[round_idx], cpu_pre_pow_seeds[round_idx],
-                    "pre-PoW seed diverged at round {round_idx}"
-                );
-            }
             // Check PoW nonce
             if round_idx < scheduled_gpu_whir_proof.pow_nonces.len() {
                 assert_eq!(
@@ -761,7 +942,11 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         }
     }
     let _ = claim;
-    let mut scheduled_gpu_whir_proof = scheduled_gpu_whir_proof;
+    // The parity test returns a `WhirPolyCommitProof` shape compatible with the
+    // upstream WHIR verifier path. `parse_whir_proof` populates every device-
+    // produced field; the base-layer `evals` are sourced separately by the
+    // caller in production (`base_layer_claims` writes them into the slab),
+    // so here we splice in the host-supplied per-oracle claims directly.
     scheduled_gpu_whir_proof
         .memory_commitment
         .evals
@@ -774,5 +959,6 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         .setup_commitment
         .evals
         .copy_from_slice(setup_polys_claims);
+    scheduled_gpu_whir_proof.whir_schedule = whir_schedule.clone();
     scheduled_gpu_whir_proof
 }

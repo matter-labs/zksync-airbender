@@ -225,11 +225,6 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
         self.transfer.record_transferred(context)
     }
 
-    /// One exec-stream wait on the bundle's single `transferred` event.
-    pub(crate) fn ensure_transferred(&self, context: &ProverContext) -> CudaResult<()> {
-        self.transfer.ensure_transferred(context)
-    }
-
     pub(crate) fn into_keepalive(self) -> GpuGKRProofTransferKeepalive<'a, A> {
         let Self {
             transfer,

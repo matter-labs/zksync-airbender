@@ -268,19 +268,10 @@ impl ProverContext {
     /// The scheduling thread must NOT dereference the returned buffer: per the
     /// inverted-access rule in `docs/gpu_scheduling_contract.md`, every read
     /// and write must come from a stream-scheduled op (host callback or
-    /// `memory_copy_async`). The first stream op touching the buffer must be a
-    /// write (an H2D from a callback-populated source, or a D2H of fresh
+    /// `memory_copy_async`). The first stream op touching the buffer must be
+    /// a write (an H2D from a callback-populated source, or a D2H of fresh
     /// device contents); reading from it before that is UB on the uninit
     /// memory.
-    pub(crate) unsafe fn alloc_host_uninit<T: Sized>(&self) -> HostAllocation<T> {
-        HostAllocation::new_uninit_in(self.get_host_allocator())
-    }
-
-    /// # Safety
-    ///
-    /// Same contract as [`Self::alloc_host_uninit`]; see that method's safety
-    /// note. The pool may have just recycled this block from a prior owner
-    /// whose DMA is not yet complete — every access must be stream-ordered.
     pub(crate) unsafe fn alloc_host_uninit_slice<T: Sized>(
         &self,
         len: usize,
@@ -429,18 +420,6 @@ impl<T: ?Sized> UnsafeMutAccessor<T> {
     pub unsafe fn get_mut(&self) -> &mut T {
         &mut *(self.0)
     }
-
-    /// # Safety
-    ///
-    /// Same as [`Self::get_mut`]; writes go through `std::ptr::write`, so
-    /// the referent must be aligned and writable, and no concurrent stream
-    /// op may be reading or writing it.
-    pub unsafe fn write(&self, value: T)
-    where
-        T: Sized,
-    {
-        std::ptr::write(self.0, value);
-    }
 }
 
 impl<T: ?Sized> Clone for UnsafeMutAccessor<T> {
@@ -459,17 +438,11 @@ unsafe impl<T: ?Sized> Sync for UnsafeMutAccessor<T> {}
 pub(crate) struct HostAllocation<T: ?Sized>(Box<T, HostAllocator>);
 
 impl<T: ?Sized> HostAllocation<T> {
-    unsafe fn new_uninit_in(allocator: HostAllocator) -> Self
-    where
-        T: Sized,
-    {
-        Self(Box::new_uninit_in(allocator).assume_init())
-    }
-
     pub fn get_accessor(&self) -> UnsafeAccessor<T> {
         UnsafeAccessor::new(&self.0)
     }
 
+    #[cfg(test)]
     pub fn get_mut_accessor(&mut self) -> UnsafeMutAccessor<T> {
         UnsafeMutAccessor::new(&mut self.0)
     }

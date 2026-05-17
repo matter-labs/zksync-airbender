@@ -153,6 +153,7 @@ cuda_kernel!(
     )
 );
 
+#[cfg(test)]
 pub(crate) fn gather_leaf_rows(
     indexes: &DeviceSlice<u32>,
     bit_reverse_indexes: bool,
@@ -213,6 +214,7 @@ cuda_kernel!(
     )
 );
 
+#[cfg(test)]
 pub(crate) fn gather_merkle_paths_device(
     indexes: &DeviceSlice<u32>,
     values: &DeviceSlice<DG>,
@@ -277,6 +279,7 @@ cuda_kernel!(
     )
 );
 
+#[cfg(test)]
 pub(crate) fn gather_merkle_paths_from_rows(
     indexes: &DeviceSlice<u32>,
     bit_reverse_indexes: bool,
@@ -317,6 +320,255 @@ pub(crate) fn gather_merkle_paths_from_rows(
         merkle_paths,
     );
     GatherMerklePathsFromRowsFunction::default().launch(&config, &args)
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 (WHIR-on-device): slab-write gather variants for base-layer queries.
+//
+// These variants mirror the existing gather kernels' source addressing but
+// write into the proof slab's per-query layout that `parse_whir_proof`
+// consumes:
+// - `query_indices` (`u32`): tree-space index per query.
+// - `query_leaves` (`BF`): row-major per query, `[v0c0, v0c1, ..., v(V-1)c(C-1)]`.
+// - `query_paths` (`u32`): query-major, `[layer0_d, layer1_d, ..., layer(L-1)_d]`
+//   per query, each digest is `STATE_SIZE` u32 words.
+// ---------------------------------------------------------------------------
+
+cuda_kernel!(
+    QueryIndexToTreeIndexMultiOut,
+    ab_query_index_to_tree_index_multi_out_kernel(
+        d_query_indexes: *const u32,
+        d_out_0: *mut u32,
+        d_out_1: *mut u32,
+        d_out_2: *mut u32,
+        indexes_count: u32,
+        log_lde_factor: u32,
+        coset_tree_size_log2: u32,
+    )
+);
+
+pub(crate) fn query_index_to_tree_index_multi_out(
+    d_query_indexes: &DeviceSlice<u32>,
+    d_out_0: Option<&mut DeviceSlice<u32>>,
+    d_out_1: Option<&mut DeviceSlice<u32>>,
+    d_out_2: Option<&mut DeviceSlice<u32>>,
+    log_lde_factor: u32,
+    coset_tree_size_log2: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let n = d_query_indexes.len();
+    assert!(
+        d_out_0.is_some() || d_out_1.is_some() || d_out_2.is_some(),
+        "at least one output destination required",
+    );
+    if let Some(o) = d_out_0.as_ref() {
+        assert_eq!(o.len(), n);
+    }
+    if let Some(o) = d_out_1.as_ref() {
+        assert_eq!(o.len(), n);
+    }
+    if let Some(o) = d_out_2.as_ref() {
+        assert_eq!(o.len(), n);
+    }
+    assert!(n <= u32::MAX as usize);
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE, n as u32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let p0 = d_out_0
+        .map(|s| s.as_mut_ptr())
+        .unwrap_or(std::ptr::null_mut());
+    let p1 = d_out_1
+        .map(|s| s.as_mut_ptr())
+        .unwrap_or(std::ptr::null_mut());
+    let p2 = d_out_2
+        .map(|s| s.as_mut_ptr())
+        .unwrap_or(std::ptr::null_mut());
+    let args = QueryIndexToTreeIndexMultiOutArguments::new(
+        d_query_indexes.as_ptr(),
+        p0,
+        p1,
+        p2,
+        n as u32,
+        log_lde_factor,
+        coset_tree_size_log2,
+    );
+    QueryIndexToTreeIndexMultiOutFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    GatherLeafRowsToSlabForCoset,
+    ab_gather_leaf_rows_to_slab_for_coset_kernel(
+        query_indexes: *const u32,
+        indexes_count: u32,
+        my_coset_index: u32,
+        log_lde_factor: u32,
+        log_leaves_count: u32,
+        log_rows_per_leaf: u32,
+        columns_count: u32,
+        values: PtrAndStride<BF>,
+        slab_dst: *mut BF,
+    )
+);
+
+pub(crate) fn gather_leaf_rows_to_slab_for_coset(
+    query_indexes: &DeviceSlice<u32>,
+    my_coset_index: u32,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    slab_dst: &mut DeviceSlice<BF>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let indexes_len = query_indexes.len();
+    let values_cols = values.cols();
+    let values_rows = values.rows();
+    assert!(values_rows.is_power_of_two());
+    let log_rows_count = values_rows.trailing_zeros();
+    assert!(log_rows_count >= log_rows_per_leaf);
+    let log_leaves_count = log_rows_count - log_rows_per_leaf;
+    let rows_per_leaf = 1usize << log_rows_per_leaf;
+    let expected_dst = indexes_len * rows_per_leaf * values_cols;
+    assert_eq!(slab_dst.len(), expected_dst);
+    assert!(indexes_len <= u32::MAX as usize);
+    let indexes_count = indexes_len as u32;
+    let (mut grid_dim, block_dim) = if log_rows_per_leaf < LOG_WARP_SIZE {
+        get_grid_block_dims_for_threads_count(
+            1 << (LOG_WARP_SIZE - log_rows_per_leaf),
+            indexes_count,
+        )
+    } else {
+        (indexes_count.into(), 1.into())
+    };
+    let block_dim = (rows_per_leaf as u32, block_dim.x);
+    assert!(values_cols <= u32::MAX as usize);
+    grid_dim.y = values_cols as u32;
+    let values_ptr = values.as_ptr_and_stride();
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = GatherLeafRowsToSlabForCosetArguments::new(
+        query_indexes.as_ptr(),
+        indexes_count,
+        my_coset_index,
+        log_lde_factor,
+        log_leaves_count,
+        log_rows_per_leaf,
+        values_cols as u32,
+        values_ptr,
+        slab_dst.as_mut_ptr(),
+    );
+    GatherLeafRowsToSlabForCosetFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    GatherMerklePathsToSlabForCoset,
+    ab_gather_merkle_paths_to_slab_for_coset_kernel(
+        query_indexes: *const u32,
+        indexes_count: u32,
+        my_coset_index: u32,
+        log_lde_factor: u32,
+        values: *const DG,
+        log_leaves_count: u32,
+        layers_count: u32,
+        slab_dst: *mut u32,
+    )
+);
+
+pub(crate) fn gather_merkle_paths_to_slab_for_coset(
+    query_indexes: &DeviceSlice<u32>,
+    my_coset_index: u32,
+    log_lde_factor: u32,
+    values: &DeviceSlice<DG>,
+    slab_dst: &mut DeviceSlice<u32>,
+    layers_count: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(query_indexes.len() <= u32::MAX as usize);
+    let indexes_count = query_indexes.len() as u32;
+    let values_count = values.len();
+    assert!(values_count.is_power_of_two());
+    let log_values_count = values_count.trailing_zeros();
+    assert_ne!(log_values_count, 0);
+    let log_leaves_count = log_values_count - 1;
+    assert!(layers_count <= log_leaves_count);
+    assert_eq!(
+        slab_dst.len(),
+        query_indexes.len() * layers_count as usize * STATE_SIZE
+    );
+    assert_eq!(WARP_SIZE % STATE_SIZE as u32, 0);
+    let (grid_dim, block_dim) =
+        get_grid_block_dims_for_threads_count(WARP_SIZE / STATE_SIZE as u32, indexes_count);
+    let grid_dim = (grid_dim.x, layers_count);
+    let block_dim = (STATE_SIZE as u32, block_dim.x);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = GatherMerklePathsToSlabForCosetArguments::new(
+        query_indexes.as_ptr(),
+        indexes_count,
+        my_coset_index,
+        log_lde_factor,
+        values.as_ptr(),
+        log_leaves_count,
+        layers_count,
+        slab_dst.as_mut_ptr(),
+    );
+    GatherMerklePathsToSlabForCosetFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    GatherMerklePathsFromRowsToSlabForCoset,
+    ab_gather_merkle_paths_from_rows_to_slab_for_coset_kernel(
+        query_indexes: *const u32,
+        indexes_count: u32,
+        my_coset_index: u32,
+        log_lde_factor: u32,
+        values: *const BF,
+        log_rows_per_leaf: u32,
+        cols_count: u32,
+        log_total_leaves_count: u32,
+        tree_bottom: *const Digest,
+        layers_count: u32,
+        slab_dst: *mut u32,
+    )
+);
+
+pub(crate) fn gather_merkle_paths_from_rows_to_slab_for_coset(
+    query_indexes: &DeviceSlice<u32>,
+    my_coset_index: u32,
+    log_lde_factor: u32,
+    values: &DeviceSlice<BF>,
+    log_rows_per_leaf: u32,
+    cols_count: usize,
+    tree_bottom: &DeviceSlice<Digest>,
+    slab_dst: &mut DeviceSlice<u32>,
+    layers_count: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let indexes_len = query_indexes.len();
+    let values_len = values.len();
+    assert_eq!(values_len % cols_count, 0);
+    let log_rows_count = (values_len / cols_count).trailing_zeros();
+    assert!(indexes_len <= u32::MAX as usize);
+    let indexes_count = indexes_len as u32;
+    assert!(layers_count >= LOG_WARP_SIZE);
+    assert_eq!(
+        slab_dst.len(),
+        indexes_len * layers_count as usize * STATE_SIZE
+    );
+    assert!(cols_count <= u32::MAX as usize);
+    let cols_count = cols_count as u32;
+    let log_total_leaves_count = log_rows_count as u32 - log_rows_per_leaf;
+    let config = CudaLaunchConfig::basic(indexes_count, WARP_SIZE, stream);
+    let args = GatherMerklePathsFromRowsToSlabForCosetArguments::new(
+        query_indexes.as_ptr(),
+        indexes_count,
+        my_coset_index,
+        log_lde_factor,
+        values.as_ptr(),
+        log_rows_per_leaf,
+        cols_count,
+        log_total_leaves_count,
+        tree_bottom.as_ptr(),
+        layers_count,
+        slab_dst.as_mut_ptr(),
+    );
+    GatherMerklePathsFromRowsToSlabForCosetFunction::default().launch(&config, &args)
 }
 
 pub(crate) fn merkle_tree_cap(

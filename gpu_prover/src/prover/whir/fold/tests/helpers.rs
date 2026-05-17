@@ -426,13 +426,13 @@ pub(super) fn build_initial_state(
         context,
     )?;
 
-    copy_small_to_device(
-        &mut state.point_pows[..original_evaluation_point.len()],
-        original_evaluation_point,
-        context,
+    let mut point_device: DeviceAllocation<E4> = context.alloc(
+        original_evaluation_point.len(),
+        AllocationPlacement::BestFit,
     )?;
+    copy_small_to_device(&mut point_device[..], original_evaluation_point, context)?;
     launch_build_eq_values_from_point(
-        state.point_pows.as_ptr(),
+        point_device.as_ptr(),
         0,
         original_evaluation_point.len(),
         state.eq_group_tables.as_mut_ptr(),
@@ -441,6 +441,7 @@ pub(super) fn build_initial_state(
         context,
     )?;
     context.get_exec_stream().synchronize()?;
+    drop(point_device);
 
     let mut batched_claim = E4::ZERO;
     for (weights, claims) in
@@ -574,7 +575,16 @@ pub(super) fn evaluate_monomial_form_device(
     let mut d_point = context.alloc(1, AllocationPlacement::BestFit)?;
     memory_copy_async(&mut d_point[..1], &[point], context.get_exec_stream())?;
 
-    schedule_monomial_eval_device_impl(state, &d_point, context)?;
+    // SAFETY: `state.reduce_out[0]` is a live, disjoint single-`E4` slot inside
+    // `state.reduce_out`. The impl below only mutably borrows
+    // `state.{reduce_temp, scratch0, scratch1, sumchecked_poly_monomial_form,
+    // current_len}`, none of which overlap with `state.reduce_out`. Aliasing
+    // through a raw pointer here sidesteps the borrow checker's inability to
+    // split-borrow disjoint fields across a method call; the downstream
+    // `read_reduce_outputs` reads from the same slot.
+    let reduce_out_ptr = state.reduce_out.as_mut_ptr();
+    let out = unsafe { era_cudart::slice::DeviceVariable::from_raw_parts_mut(reduce_out_ptr) };
+    schedule_monomial_eval_device_impl(state, &d_point, out, context)?;
 
     let result = read_reduce_outputs(1, state, context)?[0];
 
@@ -697,13 +707,13 @@ pub(crate) fn debug_build_initial_state_snapshots_for_test(
     )?;
     let pre_eq = copy_back(&state.sumchecked_poly_evaluation_form[..trace_len], context);
 
-    copy_small_to_device(
-        &mut state.point_pows[..original_evaluation_point.len()],
-        original_evaluation_point,
-        context,
+    let mut point_device: DeviceAllocation<E4> = context.alloc(
+        original_evaluation_point.len(),
+        AllocationPlacement::BestFit,
     )?;
+    copy_small_to_device(&mut point_device[..], original_evaluation_point, context)?;
     launch_build_eq_values_from_point(
-        state.point_pows.as_ptr(),
+        point_device.as_ptr(),
         0,
         original_evaluation_point.len(),
         state.eq_group_tables.as_mut_ptr(),
@@ -712,6 +722,7 @@ pub(crate) fn debug_build_initial_state_snapshots_for_test(
         context,
     )?;
     context.get_exec_stream().synchronize()?;
+    drop(point_device);
 
     let mut batched_claim = E4::ZERO;
     for (weights, claims) in

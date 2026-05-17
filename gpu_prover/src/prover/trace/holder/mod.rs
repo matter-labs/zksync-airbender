@@ -6,8 +6,11 @@ use era_cudart::stream::CudaStream;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::{
-    build_merkle_tree, build_merkle_tree_nodes, gather_leaf_rows, gather_merkle_paths_device,
-    gather_merkle_paths_from_rows, gather_tree_caps_inline, merkle_tree_cap, Digest,
+    build_merkle_tree, build_merkle_tree_nodes, gather_tree_caps_inline, merkle_tree_cap, Digest,
+};
+#[cfg(test)]
+use crate::ops::blake2s::{
+    gather_leaf_rows, gather_merkle_paths_device, gather_merkle_paths_from_rows,
 };
 use crate::ops::ntt::{
     bitreversed_monomials_to_natural_evals, hypercube_x1_msb_evals_to_x1_msb_monomials,
@@ -162,13 +165,6 @@ impl<T> TraceHolder<T> {
         self.unified_device_cap
             .as_ref()
             .expect("unified device cap must be materialized before access")
-    }
-
-    #[cfg(test)]
-    pub(crate) fn take_unified_device_cap(&mut self) -> DeviceAllocation<Digest> {
-        self.unified_device_cap
-            .take()
-            .expect("unified device cap must be materialized before keepalive extraction")
     }
 
     pub(crate) fn get_hypercube_evals(&self) -> &DeviceSlice<T> {
@@ -413,16 +409,28 @@ impl TraceHolder<BF> {
         Ok(cap_ptr)
     }
 
-    pub(crate) fn commit_all(&mut self, context: &ProverContext) -> CudaResult<()> {
+    /// Schedules the per-coset Merkle commits and the inline gather kernel,
+    /// writing the unified Merkle cap (in canonical bit-reversed coset order)
+    /// directly into a caller-supplied `dst_u32` device slice. No allocation
+    /// of `self.unified_device_cap` is performed here — callers that still
+    /// own a private cap buffer should use `commit_all`, which wraps this
+    /// function with the legacy allocation behavior.
+    pub(crate) fn commit_all_into(
+        &mut self,
+        dst_u32: &mut DeviceSlice<u32>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
         self.ensure_cosets_materialized(context)?;
-        let cap_size = 1usize << self.log_tree_cap_size;
-        let unified_cap: DeviceAllocation<Digest> =
-            context.alloc(cap_size, AllocationPlacement::BestFit)?;
-        assert!(self.unified_device_cap.replace(unified_cap).is_none());
-
         let lde_factor = 1usize << self.log_lde_factor;
         let log_subtree_cap_size = self.log_tree_cap_size - self.log_lde_factor;
         let per_coset_cap_size = 1usize << log_subtree_cap_size;
+        let cap_size = 1usize << self.log_tree_cap_size;
+        let cap_words_per_coset = (per_coset_cap_size * BLAKE2S_DIGEST_SIZE_U32_WORDS) as u32;
+        assert_eq!(
+            dst_u32.len(),
+            cap_size * BLAKE2S_DIGEST_SIZE_U32_WORDS,
+            "commit_all_into dst_u32 length must match cap_size * DIGEST_U32_WORDS",
+        );
 
         // Local owned tree allocations for `TreesHolder::None` commits, kept
         // alive across all per-coset commits and through the gather launch.
@@ -446,22 +454,33 @@ impl TraceHolder<BF> {
         // needed — `prove()`-time H2Ds would otherwise serialize against
         // the parallel pre-prove H2Ds uploading the next proof's trace.
         let stream = context.get_exec_stream();
-        let cap_words_per_coset = (per_coset_cap_size * BLAKE2S_DIGEST_SIZE_U32_WORDS) as u32;
-        let unified_cap = self
-            .unified_device_cap
-            .as_mut()
-            .expect("unified_device_cap was just placed above");
-        // SAFETY: `unified_cap` is `[Digest]`; the gather kernel writes
-        // `lde_factor * cap_words_per_coset` u32 words = `cap_size *
-        // BLAKE2S_DIGEST_SIZE_U32_WORDS` words = the full unified-cap byte
-        // range. The `Digest` (== `[u32; 8]`) and `u32` share alignment.
-        let dst_u32 = unsafe { unified_cap.transmute_mut::<u32>() };
         gather_tree_caps_inline(&src_ptrs_host, dst_u32, cap_words_per_coset, stream)?;
 
         // `none_mode_trees` drops at end of scope — its pool free is
         // exec-stream-ordered after the gather, so it is safe to drop here.
         drop(none_mode_trees);
         Ok(())
+    }
+
+    pub(crate) fn commit_all(&mut self, context: &ProverContext) -> CudaResult<()> {
+        let cap_size = 1usize << self.log_tree_cap_size;
+        let unified_cap: DeviceAllocation<Digest> =
+            context.alloc(cap_size, AllocationPlacement::BestFit)?;
+        assert!(self.unified_device_cap.replace(unified_cap).is_none());
+        let unified_cap_mut = self
+            .unified_device_cap
+            .as_mut()
+            .expect("unified_device_cap was just placed above");
+        // SAFETY: `unified_cap_mut` owns a `[Digest]` allocation of length
+        // `cap_size`; reinterpreting the same bytes as a `u32` slice of length
+        // `cap_size * BLAKE2S_DIGEST_SIZE_U32_WORDS` is layout-compatible
+        // (`Digest == [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]`). The raw pointer
+        // is rebuilt into a disjoint `&mut DeviceSlice<u32>` so the borrow
+        // checker doesn't conflate it with other `&mut self` reborrows below.
+        let dst_ptr = unified_cap_mut.as_mut_ptr() as *mut u32;
+        let dst_len = cap_size * BLAKE2S_DIGEST_SIZE_U32_WORDS;
+        let dst_u32 = unsafe { DeviceSlice::from_raw_parts_mut(dst_ptr, dst_len) };
+        self.commit_all_into(dst_u32, context)
     }
 
     /// Builds and caches partial trees from already-materialized coset evaluations.
@@ -534,6 +553,106 @@ impl TraceHolder<BF> {
         (layers_count, digests_len)
     }
 
+    /// Phase 3 (WHIR-on-device): gather one coset's leaf rows for those
+    /// queries whose LDE coset matches `coset_index`. Other queries' slots in
+    /// `dst` are left untouched, so callers run this once per coset in
+    /// `0..lde_factor` to fill every query slot exactly once. `dst` must be
+    /// `query_indexes.len() * (1 << log_rows_per_leaf) * columns_count` BFs in
+    /// row-major-per-query layout — matching `BaseFieldQuery.leaf_values_concatenated`.
+    pub(crate) fn schedule_query_leafs_for_coset_into(
+        &mut self,
+        coset_index: usize,
+        query_indexes: &DeviceSlice<u32>,
+        dst: &mut DeviceSlice<BF>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        self.ensure_cosets_materialized(context)?;
+        let queries_count = query_indexes.len();
+        let (domain_size, _) = self.query_leafs_layout(queries_count);
+        let values = self.get_coset_evaluations(coset_index);
+        let values_matrix = DeviceMatrix::new(values, domain_size);
+        let stream = context.get_exec_stream();
+        crate::ops::blake2s::gather_leaf_rows_to_slab_for_coset(
+            query_indexes,
+            coset_index as u32,
+            self.log_lde_factor,
+            self.log_rows_per_leaf,
+            &values_matrix,
+            dst,
+            stream,
+        )
+    }
+
+    /// Phase 3 (WHIR-on-device): gather one coset's merkle paths for those
+    /// queries whose LDE coset matches `coset_index`. Other queries' slots in
+    /// `dst` are left untouched. `dst` must be
+    /// `query_indexes.len() * layers_count * STATE_SIZE` u32 words in
+    /// query-major layout — matching `BaseFieldQuery.path`.
+    pub(crate) fn schedule_query_merkle_paths_for_coset_into(
+        &mut self,
+        coset_index: usize,
+        query_indexes: &DeviceSlice<u32>,
+        dst: &mut DeviceSlice<u32>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        self.ensure_cosets_materialized(context)?;
+        let queries_count = query_indexes.len();
+        let (layers_count, _) = self.query_merkle_path_layout(queries_count);
+        let stream = context.get_exec_stream();
+        match &self.trees {
+            TreesHolder::Full(trees) => {
+                let tree = &trees[coset_index];
+                crate::ops::blake2s::gather_merkle_paths_to_slab_for_coset(
+                    query_indexes,
+                    coset_index as u32,
+                    self.log_lde_factor,
+                    tree,
+                    dst,
+                    layers_count,
+                    stream,
+                )
+            }
+            TreesHolder::Partial(trees) => {
+                let tree_bottom = &trees[coset_index];
+                crate::ops::blake2s::gather_merkle_paths_from_rows_to_slab_for_coset(
+                    query_indexes,
+                    coset_index as u32,
+                    self.log_lde_factor,
+                    self.get_coset_evaluations(coset_index),
+                    self.log_rows_per_leaf,
+                    self.columns_count,
+                    tree_bottom,
+                    dst,
+                    layers_count,
+                    stream,
+                )
+            }
+            TreesHolder::None => {
+                let values = self.get_coset_evaluations(coset_index);
+                let mut tree =
+                    allocate_tree(self.log_domain_size, self.log_rows_per_leaf, context)?;
+                build_merkle_tree(
+                    values,
+                    &mut tree,
+                    self.log_rows_per_leaf,
+                    stream,
+                    layers_count,
+                    false,
+                )?;
+                crate::ops::blake2s::gather_merkle_paths_to_slab_for_coset(
+                    query_indexes,
+                    coset_index as u32,
+                    self.log_lde_factor,
+                    &tree,
+                    dst,
+                    layers_count,
+                    stream,
+                )
+            }
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn get_query_leafs(
         &mut self,
         coset_index: usize,
@@ -562,6 +681,7 @@ impl TraceHolder<BF> {
         Ok(leafs)
     }
 
+    #[cfg(test)]
     pub(crate) fn get_query_merkle_paths(
         &mut self,
         coset_index: usize,

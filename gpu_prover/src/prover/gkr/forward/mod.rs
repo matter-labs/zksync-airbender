@@ -203,13 +203,17 @@ mod materialize_helpers;
 
 use cache_relation::{lower_cache_relation, LoweredCacheRelationOutput};
 
+#[cfg(test)]
 use crate::upstream::{
-    high_bits_offset_for_inits_and_teardowns, AddressSpaceType, CompiledAddressSpaceRelationStrict,
-    CompiledAddressStrict, CompiledMemoryTimestamp, DimensionReducingInputOutput, Field,
-    FieldExtension, GKRAddress, GKRCircuitArtifact, GKRExternalChallenges, GKRLayerDescription,
-    InitsOrTeardownsTimestampAndValue, NoFieldGKRCacheRelation, NoFieldGKRRelation,
-    NoFieldSpecialMemoryContributionRelation, OutputType, PrimeField, RamWordRepresentation,
-    VirtualSetupPoly, DECODER_LOOKUP_FORMAL_SET_INDEX,
+    high_bits_offset_for_inits_and_teardowns, CompiledAddressSpaceRelationStrict,
+    CompiledAddressStrict, CompiledMemoryTimestamp, NoFieldSpecialMemoryContributionRelation,
+    RamWordRepresentation, VirtualSetupPoly,
+};
+use crate::upstream::{
+    AddressSpaceType, DimensionReducingInputOutput, Field, FieldExtension, GKRAddress,
+    GKRCircuitArtifact, GKRExternalChallenges, GKRLayerDescription,
+    InitsOrTeardownsTimestampAndValue, NoFieldGKRCacheRelation, NoFieldGKRRelation, OutputType,
+    PrimeField, DECODER_LOOKUP_FORMAL_SET_INDEX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,

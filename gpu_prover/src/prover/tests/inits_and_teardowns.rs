@@ -281,6 +281,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             None,
             Some(&inits_and_teardowns_transfer.data_device),
             Some(&tracing_data_transfer.data_device),
+            None,
             &context,
         )
         .unwrap();
@@ -474,9 +475,9 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         &timestamps_packed,
     );
     let tracing_data_host = make_non_memory_tracing_host_for_test(Vec::new());
-    let mut inits_and_teardowns_transfer =
+    let inits_and_teardowns_transfer =
         InitsAndTeardownsTransfer::new(inits_and_teardowns_host, &context).unwrap();
-    let mut tracing_data_transfer = TracingDataTransfer::new(tracing_data_host, &context).unwrap();
+    let tracing_data_transfer = TracingDataTransfer::new(tracing_data_host, &context).unwrap();
     let memory_transfer_host = Arc::new(
         crate::prover::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
             &cpu_memory_caps,
@@ -485,7 +486,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         )
         .unwrap(),
     );
-    let mut memory_transfer = crate::prover::trace::memory_transfer::GpuGKRMemoryTransfer::new(
+    let memory_transfer = crate::prover::trace::memory_transfer::GpuGKRMemoryTransfer::new(
         memory_transfer_host,
         &context,
     )

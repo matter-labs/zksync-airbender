@@ -6,9 +6,7 @@ use era_cudart::slice::DeviceSlice;
 use super::dim_reducing::GpuGKRDimensionReducingScheduledLayerExecution;
 use super::main_layer::GpuGKRMainLayerScheduledLayerExecution;
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{
-    DeviceAllocation, HostAllocation, UnsafeAccessor, UnsafeMutAccessor,
-};
+use crate::primitives::context::{DeviceAllocation, UnsafeAccessor, UnsafeMutAccessor};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::upstream::{Field, FieldExtension, GKRAddress, Seed};
@@ -149,6 +147,7 @@ impl<E> DeviceClaimPointAndBatching<E> {
         self.ptr as *mut E
     }
 
+    #[cfg(test)]
     pub(crate) fn as_slice(&self) -> &DeviceSlice<E> {
         unsafe { DeviceSlice::from_raw_parts(self.as_ptr(), self.len) }
     }
@@ -199,16 +198,6 @@ pub(crate) struct GpuGKRBackwardScheduledExecution<B, E: FieldExtension<BF> + Fi
     pub(crate) final_device_seed: Option<DeviceAllocation<u32>>,
     pub(crate) final_device_claim_point_and_batching: Option<DeviceClaimPointAndBatching<E>>,
     pub(crate) final_claim_layout: Option<ClaimBufferLayout>,
-    // Pinned host buffers populated by `schedule_post_backward_handoff`'s D2H. The
-    // host callback that mirrors them into `ScheduledBackwardWorkflowState` reads
-    // via raw-pointer accessors, so the buffers must outlive the callback. Holding
-    // them on `self` (which is parked as the proof's `_backward` keepalive until
-    // the proof finishes) survives multi-prove pool reuse — without this, a sibling
-    // prove can reallocate the freed chunks before this prove's callback fires.
-    #[allow(dead_code)]
-    pub(crate) final_seed_host: Option<HostAllocation<[u32]>>,
-    #[allow(dead_code)]
-    pub(crate) final_claim_point_and_batching_host: Option<HostAllocation<[E]>>,
 }
 
 impl<E> ScheduledBackwardWorkflowState<E>
@@ -234,13 +223,4 @@ where
     E: FieldExtension<BF> + Field,
 {
     Box::new(ScheduledBackwardWorkflowState::deferred())
-}
-
-pub(crate) fn current_backward_seed<E>(
-    shared_state: ScheduledBackwardWorkflowStateHandle<E>,
-) -> Seed
-where
-    E: FieldExtension<BF> + Field,
-{
-    unsafe { shared_state.get() }.seed
 }

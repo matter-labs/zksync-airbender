@@ -30,7 +30,7 @@ use std::collections::BTreeSet;
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::stage1::GpuGKRTraceGeometry;
 use crate::upstream::{
-    DefaultTreeConstructor, ExtensionFieldQuery, GKRAddress, GKRCircuitArtifact,
+    BaseFieldQuery, DefaultTreeConstructor, ExtensionFieldQuery, GKRAddress, GKRCircuitArtifact,
     MerkleTreeCapVarLength, OutputType, SumcheckIntermediateProofValues,
     WhirBaseLayerCommitmentAndQueries, WhirCommitment, WhirIntermediateCommitmentAndQueries,
     WhirPolyCommitProof, WhirSchedule,

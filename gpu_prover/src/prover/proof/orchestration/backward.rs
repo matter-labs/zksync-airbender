@@ -175,7 +175,7 @@ pub(in crate::prover::proof) fn schedule_backward_phase(
     initial_d_claims: DeviceAllocation<E4>,
     top_layer_claim_layout: ClaimBufferLayout,
     d_lookup_challenges_for_backward: DeviceAllocation<E4>,
-    proof_slab: Option<&DeviceAllocation<E4>>,
+    proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     context: &ProverContext,
 ) -> CudaResult<BackwardPhaseResult> {

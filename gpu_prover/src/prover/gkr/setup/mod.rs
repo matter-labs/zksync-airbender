@@ -31,8 +31,8 @@ pub(crate) struct GpuGKRSetupTransfer<'a> {
 
 impl<'a> GpuGKRSetupTransfer<'a> {
     /// Convenience accessor for the unified device cap that
-    /// `schedule_transfer` H2Ds into. Used by `prove()` to D2D the cap into
-    /// the initial-transcript input range.
+    /// `schedule_transfer` H2Ds into. `prove()` consumes it via a D2D into
+    /// the proof slab's `whir.setup.cap` range.
     pub(crate) fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {
         self.trace_holder.unified_device_cap()
     }
@@ -50,8 +50,8 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             context,
         )?;
         // Unified device cap is allocated up front so the pre-prove H2D in
-        // `schedule_transfer` has a stable destination. Length matches the
-        // host-side `unified_tree_cap` that was built during precomputation.
+        // `schedule_transfer` has a stable destination. `prove()` then D2Ds
+        // the cap from this buffer into the proof slab.
         let cap_size = 1usize << host.log_tree_cap_size;
         let unified_cap = context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
         assert!(trace_holder
@@ -89,8 +89,11 @@ impl<'a> GpuGKRSetupTransfer<'a> {
                 .expect("setup transfers require partial-tree caching");
             memory_copy_async(dst_tree, &src_tree[..], stream)?;
         }
-        // H2D the unified host cap directly into the device unified cap on
-        // h2d_stream — gated by the bundle's single `record_transferred` fence.
+        // Pre-prove H2D the unified cap into the trace holder's
+        // `unified_device_cap` for test-only consumers. `prove()` ignores
+        // this buffer and reads the cap from the slab instead (it is
+        // written there directly by `prepare_stage1_and_forward_setup`'s
+        // own H2D, also from `host.unified_tree_cap`).
         let unified_dst = self
             .trace_holder
             .unified_device_cap

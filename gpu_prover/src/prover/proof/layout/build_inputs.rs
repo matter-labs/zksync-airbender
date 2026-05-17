@@ -190,6 +190,17 @@ where
         });
     }
 
+    // Phase 1 of the WHIR-on-device migration: route `final_monomials`
+    // through the proof slab. The device-side WHIR final round writes
+    // `1 << (initial_trace_size_log_2 - sum(whir_steps_schedule))` E4 values
+    // into this range; the terminal slab D2H + `parse_whir_proof` then
+    // populates `WhirPolyCommitProof::final_monomials` from it.
+    let total_folding_steps = whir_schedule.whir_steps_schedule.iter().sum::<usize>();
+    assert!(
+        initial_trace_size_log_2 >= total_folding_steps,
+        "whir_steps_schedule sum {total_folding_steps} exceeds initial_trace_size_log_2 {initial_trace_size_log_2}",
+    );
+    let final_monomials_len = 1usize << (initial_trace_size_log_2 - total_folding_steps);
     let whir = WhirDims {
         setup: base_layer_dims(setup_geometry),
         memory: base_layer_dims(memory_geometry),
@@ -198,11 +209,7 @@ where
         num_ood_samples: whir_schedule.whir_steps_lde_factors.len(),
         total_sumcheck_polys: whir_schedule.whir_steps_schedule.iter().sum::<usize>(),
         pow_rounds: whir_schedule.whir_pow_schedule.len(),
-        // GPU prover currently leaves `WhirPolyCommitProof::final_monomials`
-        // as `vec![]` (whir_fold.rs:1870). If a future commit teaches WHIR
-        // to emit the final monomial basis, lift this from the schedule via
-        // `initial_trace_size_log_2 - sum(whir_steps_schedule)`.
-        final_monomials_len: 0,
+        final_monomials_len,
     };
 
     ProofLayoutInputs {

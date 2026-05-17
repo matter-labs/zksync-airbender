@@ -44,6 +44,12 @@ pub(super) struct GpuGKRProofJobKeepalive<'a, A: GoodAllocator> {
     pub(super) _backward: GpuGKRBackwardScheduledExecution<BF, E4>,
     pub(super) _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
     pub(super) _whir: GpuWhirFoldScheduledExecution,
+    /// Device-resident WHIR base batching-challenge buffer drawn from the
+    /// rolling backward seed before WHIR fold. Kept alive on the proof-job
+    /// keepalive so any scheduled kernel still reading from it remains valid
+    /// until `finish()` syncs the exec stream.
+    #[allow(dead_code)]
+    pub(super) _whir_batching_challenge_device: DeviceAllocation<E4>,
     /// Pinned host mirror of the device-resident proof slab (Phase 4). Populated
     /// by the terminal D2H; read by the single assembly callback.
     #[allow(dead_code)]
@@ -51,7 +57,7 @@ pub(super) struct GpuGKRProofJobKeepalive<'a, A: GoodAllocator> {
     /// Proof slab itself — held here so it outlives all scheduled writes and
     /// the terminal D2H.
     #[allow(dead_code)]
-    pub(super) _proof_slab: Option<Arc<DeviceAllocation<E4>>>,
+    pub(super) _proof_slab: Arc<DeviceAllocation<E4>>,
 }
 
 pub(crate) struct GpuGKRProofJob<'a, A: GoodAllocator> {

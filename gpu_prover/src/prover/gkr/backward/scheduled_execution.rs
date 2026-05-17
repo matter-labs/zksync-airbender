@@ -1,6 +1,7 @@
 #[cfg(test)]
 use std::collections::BTreeMap;
 
+#[cfg(test)]
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::CudaSlice;
@@ -8,6 +9,7 @@ use era_cudart::slice::CudaSlice;
 use super::kernels::*;
 #[cfg(test)]
 use crate::allocator::tracker::AllocationPlacement;
+#[cfg(test)]
 use crate::ops::blake2s::STATE_SIZE;
 use crate::ops::cub::device_reduce::Reduce;
 use crate::ops::simple::{BinaryOp, Mul};
@@ -16,8 +18,10 @@ use crate::primitives::context::{DeviceAllocation, ProverContext};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::proof::layout::ProofLayout;
+#[cfg(test)]
+use crate::upstream::Seed;
 use crate::upstream::{
-    Field, FieldExtension, GKRAddress, GKRCircuitArtifact, GKRExternalChallenges, Seed,
+    Field, FieldExtension, GKRAddress, GKRCircuitArtifact, GKRExternalChallenges,
 };
 
 impl<B, E> GpuGKRBackwardScheduledExecution<B, E>
@@ -26,24 +30,6 @@ where
 {
     pub(crate) fn shared_state_handle(&mut self) -> ScheduledBackwardWorkflowStateHandle<E> {
         crate::primitives::context::UnsafeMutAccessor::new(self.shared_state.as_mut())
-    }
-
-    /// Device-resident layer-0 claim point. The final-device buffer packs
-    /// `[claim_point || batching_challenge]`, so we slice off the trailing batching
-    /// element. Stream-ordered against `exec_stream`; consumers must respect that
-    /// `self` (the keepalive) remains live until any kernel reading the slice has
-    /// been scheduled.
-    pub(crate) fn final_device_claim_point(&self) -> &era_cudart::slice::DeviceSlice<E> {
-        let buffer = self
-            .final_device_claim_point_and_batching
-            .as_ref()
-            .expect("backward claim_point handoff buffer must be allocated before consumption");
-        let len = buffer.len();
-        assert!(
-            len >= 1,
-            "final claim point handoff must include batching challenge"
-        );
-        unsafe { buffer.slice(0, len - 1) }
     }
 
     pub(crate) fn final_device_seed_and_claim_point_mut(
@@ -81,90 +67,77 @@ where
             .addresses
     }
 
+    /// Post-backward host-side handoff. The cfg(test) D2Hs that used to mirror
+    /// the final seed / claim point / batching challenge into `shared_state`
+    /// have been externalized into the `wait()` test helper itself, which now
+    /// owns its pinned host buffers and schedules its own D2Hs after the exec
+    /// stream synchronize. In production every consumer of the post-backward
+    /// handoff already reads the device-resident buffers directly, so this
+    /// entry point is now an unconditional no-op.
     pub(crate) fn schedule_post_backward_handoff(
         &mut self,
-        context: &ProverContext,
+        _context: &ProverContext,
     ) -> CudaResult<Callbacks<'static>>
     where
         E: 'static,
     {
+        Ok(Callbacks::new())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn wait(self, context: &ProverContext) -> CudaResult<GpuGKRBackwardExecution<E>> {
         let stream = context.get_exec_stream();
         let device_seed = self
             .final_device_seed
             .as_ref()
-            .expect("post-backward handoff requires final device seed");
+            .expect("wait requires final device seed");
         let device_claim_point_and_batching = self
             .final_device_claim_point_and_batching
             .as_ref()
-            .expect("post-backward handoff requires final device claim point");
+            .expect("wait requires final device claim point");
         assert!(
             device_claim_point_and_batching.len() >= 1,
             "final claim point handoff must include batching challenge"
         );
 
         let mut final_seed_host = unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
-        let final_seed_accessor = final_seed_host.get_accessor();
-        let mut final_claim_point_and_batching_host =
+        let mut final_cp_host =
             unsafe { context.alloc_host_uninit_slice::<E>(device_claim_point_and_batching.len()) };
-        let final_claim_point_and_batching_accessor =
-            final_claim_point_and_batching_host.get_accessor();
-
         memory_copy_async(&mut final_seed_host, device_seed, stream)?;
         memory_copy_async(
-            &mut final_claim_point_and_batching_host,
+            &mut final_cp_host,
             device_claim_point_and_batching.as_slice(),
             stream,
         )?;
+        stream.synchronize()?;
 
-        let shared_state = self.shared_state_handle();
-        let mut callbacks = Callbacks::new();
-        callbacks.schedule(
-            move || unsafe {
-                let seed = Seed(
-                    <&[u32; STATE_SIZE]>::try_from(final_seed_accessor.get())
-                        .expect("seed handoff has STATE_SIZE words")
-                        .to_owned(),
-                );
-                let claim_point_and_batching = final_claim_point_and_batching_accessor.get();
-                let (claim_point, batching_challenge) =
-                    claim_point_and_batching.split_at(claim_point_and_batching.len() - 1);
-                let current_claim_point = claim_point.to_vec();
-                let current_batching_challenge = batching_challenge[0];
+        // SAFETY: the exec-stream synchronize above guarantees both D2Hs have
+        // completed before we read the pinned host buffers, so no scheduled
+        // op still holds a raw pointer into them.
+        let seed_accessor = final_seed_host.get_accessor();
+        let cp_accessor = final_cp_host.get_accessor();
+        let seed_words = unsafe { seed_accessor.get() };
+        let cp_and_batching = unsafe { cp_accessor.get() };
+        let (claim_point, batching) = cp_and_batching.split_at(cp_and_batching.len() - 1);
+        let current_claim_point = claim_point.to_vec();
+        let current_batching_challenge = batching[0];
+        let updated_seed = Seed(
+            <&[u32; STATE_SIZE]>::try_from(seed_words)
+                .expect("seed handoff has STATE_SIZE words")
+                .to_owned(),
+        );
 
-                let state = shared_state.get_mut();
-                state.current_batching_challenge = current_batching_challenge;
-                state.seed = seed;
-                state
-                    .points_for_claims_at_layer
-                    .insert(0, current_claim_point);
-            },
-            stream,
-        )?;
-
-        // Park the pinned host buffers on `self` so they outlive the scheduled
-        // callback. The callback's accessors are raw pointers into these
-        // chunks; `backward_scheduled` stays alive (via the proof keepalive)
-        // until the proof finishes, which is well after the callback fires.
-        // Storing on `self` instead of dropping at function return prevents
-        // pool reuse from a sibling prove writing into the same chunks before
-        // this prove's callback executes.
-        self.final_seed_host = Some(final_seed_host);
-        self.final_claim_point_and_batching_host = Some(final_claim_point_and_batching_host);
-        Ok(callbacks)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn wait(self, context: &ProverContext) -> CudaResult<GpuGKRBackwardExecution<E>> {
-        context.get_exec_stream().synchronize()?;
         let Self {
             mut shared_state, ..
         } = self;
         let state = shared_state.as_mut();
+        let mut points_for_claims_at_layer = std::mem::take(&mut state.points_for_claims_at_layer);
+        points_for_claims_at_layer.insert(0, current_claim_point);
         Ok(GpuGKRBackwardExecution {
             claims_for_layers: std::mem::take(&mut state.claims_for_layers),
-            points_for_claims_at_layer: std::mem::take(&mut state.points_for_claims_at_layer),
-            next_batching_challenge: state.current_batching_challenge,
-            updated_seed: state.seed,
+            points_for_claims_at_layer,
+            next_batching_challenge: current_batching_challenge,
+            updated_seed,
         })
     }
 }
@@ -193,8 +166,7 @@ where
         // offsets via `ProofLayout` accessors. `extra_evaluations_from_caching_relations`
         // is represented as sparse references into the slab-resident WHIR base
         // eval ranges and merged at parse time.
-        // `None` skips all slab routing (test paths).
-        proof_slab: Option<&DeviceAllocation<E4>>,
+        proof_slab: &DeviceAllocation<E4>,
         proof_layout: &ProofLayout,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {
@@ -379,8 +351,6 @@ where
             final_device_seed: Some(shared_device_seed),
             final_device_claim_point_and_batching: Some(shared_device_claim_point),
             final_claim_layout: Some(shared_claim_layout),
-            final_seed_host: None,
-            final_claim_point_and_batching_host: None,
         })
     }
 
@@ -397,7 +367,7 @@ where
         batching_challenge: E,
         lookup_multiplicative_challenge: E,
         lookup_additive_challenge: E,
-        proof_slab: Option<&DeviceAllocation<E4>>,
+        proof_slab: &DeviceAllocation<E4>,
         proof_layout: &ProofLayout,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {

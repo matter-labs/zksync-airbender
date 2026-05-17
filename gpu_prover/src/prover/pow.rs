@@ -2,123 +2,78 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::{
     assemble_query_indexes, blake2s_pow, transcript_commit, transcript_squeeze, STATE_SIZE,
 };
-use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
-use era_cudart::memory::memory_copy_async;
+use crate::primitives::context::{DeviceAllocation, ProverContext};
 use era_cudart::result::CudaResult;
-use era_cudart::slice::DeviceSlice;
+use era_cudart::slice::{DeviceSlice, DeviceVariable};
 
-use crate::upstream::Seed;
-
-/// Device buffers and callbacks produced by
-/// [`schedule_pow_verify_and_query_indexes`]. They keep the scheduled stream
-/// work alive and also carry per-round state that later slab routing / host
-/// callbacks consume.
+/// Device buffers produced by [`schedule_pow_verify_and_query_indexes`]. The
+/// rolling `device_seed` is owned by the WHIR scheduler and threaded in by the
+/// caller; it does not appear here. The PoW nonce is written directly into the
+/// caller-supplied slab slot, so it is not retained here either.
 pub(crate) struct PowAndQueryIndexesState {
-    #[allow(dead_code)]
-    _seed_upload_callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
-    pub(crate) d_seed: DeviceAllocation<u32>,
-    #[allow(dead_code)]
-    pub(crate) d_nonce: DeviceAllocation<u64>,
     #[allow(dead_code)]
     pub(crate) d_raw_bits: Option<DeviceAllocation<u32>>,
     #[allow(dead_code)]
     pub(crate) d_indexes: DeviceAllocation<u32>,
-    pub(crate) h_seed_mirror: HostAllocation<[u32]>,
 }
 
 /// Fused device-side PoW search + transcript `verify_pow` + query index
-/// assembly.
+/// assembly that advances a caller-owned rolling `device_seed` in place.
 ///
-/// Replaces the host-side callback chain (`verify_pow` →
-/// `draw_query_bits_after_verified_pow` → `assemble_query_index`) with a
-/// straight-line device kernel sequence:
-///   1. H2D the current host seed.
-///   2. (if `pow_bits > 0`) run `ab_blake2s_pow_kernel` to search a nonce;
-///      D2H the nonce into `nonce_host`.
-///   3. (if `pow_bits > 0`) `transcript_commit(d_seed, [nonce_lo, nonce_hi])`
-///      updates `d_seed` to match the post-`verify_pow` state.
-///   4. `transcript_squeeze(d_seed, d_raw_bits)` produces the padded random
-///      u32 buffer.
-///   5. `assemble_query_indexes(d_raw_bits, d_indexes)` builds the query
-///      indexes on device.
-///   6. D2H `d_indexes` into `query_indexes_host` and `d_seed` into
-///      `PowAndQueryIndexesState::h_seed_mirror`. No host callback is
-///      scheduled — the caller is expected to schedule one fused callback
-///      that reads the mirror and writes back `seed_host`, alongside any
-///      other post-PoW host-side work (e.g. populating
-///      `proof.pow_nonces[idx]`).
+/// 1. (if `pow_bits > 0`) run `ab_blake2s_pow_kernel` against `device_seed` to
+///    search a nonce; write the nonce directly into the caller-supplied
+///    `nonce_slab_dst` slot inside the proof slab.
+/// 2. (if `pow_bits > 0`) `transcript_commit(device_seed, [nonce_lo, nonce_hi])`
+///    advances the seed to match the post-`verify_pow` state. The nonce words
+///    are read from the same slab slot.
+/// 3. `transcript_squeeze(device_seed, d_raw_bits)` produces the padded random
+///    u32 buffer.
+/// 4. `assemble_query_indexes(d_raw_bits, d_indexes)` builds the query
+///    indexes on device.
 ///
 /// The prover's own PoW search kernel guarantees the POW validity invariant
 /// that `verify_pow` formerly asserted, so the host-side sanity check is
 /// intentionally elided on this path.
 pub(crate) fn schedule_pow_verify_and_query_indexes(
-    seed_host: &mut HostAllocation<Seed>,
-    nonce_host: &mut HostAllocation<u64>,
-    query_indexes_host: &mut HostAllocation<[u32]>,
+    device_seed: &mut DeviceSlice<u32>,
     num_queries: usize,
     pow_bits: u32,
     query_domain_log2: usize,
+    nonce_slab_dst: &mut DeviceVariable<u64>,
     context: &ProverContext,
 ) -> CudaResult<PowAndQueryIndexesState> {
     let stream = context.get_exec_stream();
+    assert_eq!(device_seed.len(), STATE_SIZE);
     assert!(num_queries > 0);
     assert!(query_domain_log2 > 0 && query_domain_log2 <= 32);
 
-    let seed_accessor = seed_host.get_accessor();
-    let mut seed_upload_callbacks = Callbacks::new();
-    let mut h_seed_staging = unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
-    let h_seed_staging_accessor = h_seed_staging.get_mut_accessor();
-    seed_upload_callbacks.schedule(
-        move || unsafe {
-            h_seed_staging_accessor
-                .get_mut()
-                .copy_from_slice(&seed_accessor.get().0);
-        },
-        &stream,
-    )?;
-
-    // Allocate device buffers.
-    let mut d_seed: DeviceAllocation<u32> =
-        context.alloc(STATE_SIZE, AllocationPlacement::BestFit)?;
-    let mut d_nonce: DeviceAllocation<u64> = context.alloc(1, AllocationPlacement::BestFit)?;
     let mut d_indexes: DeviceAllocation<u32> =
         context.alloc(num_queries, AllocationPlacement::BestFit)?;
 
-    // H2D the current host seed via a callback-populated staging buffer.
-    memory_copy_async(&mut d_seed, &h_seed_staging, &stream)?;
-    drop(h_seed_staging);
-
-    // PoW search (GPU) → nonce. For pow_bits == 0 we emulate `nonce = 0` and
-    // skip the transcript commit (the host `verify_pow` is a no-op in that
-    // case too).
+    // PoW search (GPU) → nonce, written directly into the slab slot. For
+    // pow_bits == 0 we emulate `nonce = 0` and skip the transcript commit
+    // (the host `verify_pow` is a no-op in that case too).
     if pow_bits > 0 {
-        blake2s_pow(&d_seed, pow_bits, u64::MAX, &mut d_nonce[0], stream)?;
+        blake2s_pow(device_seed, pow_bits, u64::MAX, nonce_slab_dst, stream)?;
     } else {
         // SAFETY: `memory_set_async` is byte-granular; zeroing the 8-byte
-        // `u64` allocation through a `u8` view writes the canonical all-zero
+        // `u64` slab slot through a `u8` view writes the canonical all-zero
         // `nonce = 0` bit pattern expected by the `pow_bits == 0` fast path.
         unsafe {
-            era_cudart::memory::memory_set_async(d_nonce.transmute_mut::<u8>(), 0, stream)?;
+            era_cudart::memory::memory_set_async(nonce_slab_dst.transmute_mut::<u8>(), 0, stream)?;
         }
     }
 
-    // D2H nonce — needed on host for proof assembly and for the test fixture
-    // that snapshots per-round nonces. Scheduled early so it overlaps with
-    // the downstream kernels.
-    memory_copy_async(nonce_host, &d_nonce, &stream)?;
-
-    // verify_pow on device: hash seed || [nonce_lo, nonce_hi] → new seed.
+    // verify_pow on device: hash device_seed || [nonce_lo, nonce_hi] → new seed.
     if pow_bits > 0 {
-        // Treat the u64 nonce as 2 LE u32 words on device — transcript_commit
-        // consumes a DeviceSlice<u32>.
-        // SAFETY: `d_nonce` is a single `u64` (8 bytes, align 8) viewable as 2
-        // little-endian `u32` words — the layout `transcript_commit` consumes
-        // (and the host `verify_pow` convention it replaces).
-        let nonce_as_u32: &DeviceSlice<u32> = unsafe { d_nonce.transmute::<u32>() };
+        // SAFETY: the slab slot is a single `u64` (8 bytes, align 8) viewable
+        // as 2 little-endian `u32` words — the layout `transcript_commit`
+        // consumes (and the host `verify_pow` convention it replaces). The
+        // read is stream-ordered on the same `exec_stream` as the preceding
+        // `blake2s_pow` write into this same slot.
+        let nonce_as_u32: &DeviceSlice<u32> = unsafe { nonce_slab_dst.transmute::<u32>() };
         let nonce_words = &nonce_as_u32[..2];
-        transcript_commit(&mut d_seed, nonce_words, stream)?;
+        transcript_commit(device_seed, nonce_words, stream)?;
     }
 
     // Squeeze enough random u32 words to cover the first PoW header word plus
@@ -129,34 +84,20 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     let padded_words = (required_words + 1).next_multiple_of(STATE_SIZE);
     let mut d_raw_bits: DeviceAllocation<u32> =
         context.alloc(padded_words, AllocationPlacement::BestFit)?;
-    transcript_squeeze(&mut d_seed, &mut d_raw_bits, stream)?;
+    transcript_squeeze(device_seed, &mut d_raw_bits, stream)?;
 
-    // Assemble query indexes on device and D2H them.
+    // Assemble query indexes on device. The caller decides whether to D2H
+    // them (current path) or route them directly into slab + gather kernels
+    // (Phase 3/4).
     assemble_query_indexes(
         &d_raw_bits,
         &mut d_indexes,
         query_domain_log2 as u32,
         stream,
     )?;
-    memory_copy_async(query_indexes_host, &d_indexes, &stream)?;
-
-    // Mirror the advanced seed back to host-pinned memory so subsequent
-    // host-side draws (delinearization challenge, etc.) can see the
-    // post-squeeze state. The caller is responsible for scheduling a single
-    // fused callback that reads this mirror plus the nonce and performs all
-    // post-PoW host bookkeeping in one stall.
-    // SAFETY: the slice is uninitialized but is used solely as the D2H
-    // destination on the next line before any host read; the consumer callback
-    // runs only after that D2H completes per stream order.
-    let mut h_seed_mirror = unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
-    memory_copy_async(&mut h_seed_mirror, &d_seed, &stream)?;
 
     Ok(PowAndQueryIndexesState {
-        _seed_upload_callbacks: seed_upload_callbacks,
-        d_seed,
-        d_nonce,
         d_raw_bits: Some(d_raw_bits),
         d_indexes,
-        h_seed_mirror,
     })
 }

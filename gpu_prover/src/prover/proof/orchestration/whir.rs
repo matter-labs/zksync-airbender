@@ -1,11 +1,13 @@
 use era_cudart::result::CudaResult;
 
+use crate::allocator::tracker::AllocationPlacement;
+use crate::ops::blake2s::transcript_squeeze_e4;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, ProverContext, UnsafeMutAccessor};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::kernels::ScheduledBackwardWorkflowStateHandle;
-use crate::prover::gkr::backward::{current_backward_seed, GpuGKRBackwardScheduledExecution};
+use crate::prover::gkr::backward::GpuGKRBackwardScheduledExecution;
 use crate::prover::gkr::base_layer_claims::{
     schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
     ScheduledBaseLayerClaimsState,
@@ -16,11 +18,10 @@ use crate::prover::proof::layout::ProofLayout;
 use crate::prover::trace::holder::{
     allocate_trees, TraceHolder, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
 };
-use crate::prover::trace::memory_transfer::GpuGKRMemoryTransfer;
 use crate::prover::whir::fold::{
-    schedule_gpu_whir_fold_with_sources, GpuWhirFoldScheduledExecution, ScheduledWhirProofState,
+    schedule_gpu_whir_fold_with_sources, GpuWhirFoldScheduledExecution,
 };
-use crate::upstream::{draw_random_field_els, GKRCircuitArtifact, WhirSchedule};
+use crate::upstream::{GKRCircuitArtifact, WhirSchedule};
 
 pub(in crate::prover::proof) struct WhirPhaseResult {
     pub(in crate::prover::proof) transition_ranges: Vec<Range>,
@@ -30,7 +31,10 @@ pub(in crate::prover::proof) struct WhirPhaseResult {
     pub(in crate::prover::proof) base_layer_claims_shared_state:
         UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E4>>,
     pub(in crate::prover::proof) whir_scheduled: GpuWhirFoldScheduledExecution,
-    pub(in crate::prover::proof) whir_shared_state: UnsafeMutAccessor<ScheduledWhirProofState>,
+    // Device-resident batching-challenge buffer drawn from the rolling
+    // backward seed before WHIR fold. Held here so it outlives every kernel
+    // reading from it during WHIR scheduling.
+    pub(in crate::prover::proof) batching_challenge_device: DeviceAllocation<E4>,
 }
 
 fn materialize_pre_whir_trace_inputs<'a>(
@@ -88,10 +92,9 @@ pub(in crate::prover::proof) fn schedule_whir_phase<'a>(
     setup_transfer: &mut Option<GpuGKRSetupTransfer<'a>>,
     synthetic_setup_trace_holder: &mut Option<TraceHolder<BF>>,
     stage1_output: &mut GpuGKRStage1Output,
-    memory_transfer: &GpuGKRMemoryTransfer<'a>,
     backward_scheduled: &mut GpuGKRBackwardScheduledExecution<BF, E4>,
     backward_shared_state: ScheduledBackwardWorkflowStateHandle<E4>,
-    proof_slab: Option<&DeviceAllocation<E4>>,
+    proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     context: &ProverContext,
 ) -> CudaResult<WhirPhaseResult> {
@@ -122,7 +125,7 @@ pub(in crate::prover::proof) fn schedule_whir_phase<'a>(
         &stage1_output.witness_trace_holder,
         proof_slab,
         proof_layout,
-        Some(final_device_seed),
+        final_device_seed,
         context,
     )?;
     let base_layer_claims_shared_state = base_layer_claims_scheduled.shared_state_handle();
@@ -140,7 +143,20 @@ pub(in crate::prover::proof) fn schedule_whir_phase<'a>(
     post_backward_handoff_range.end(stream)?;
     transition_ranges.push(post_backward_handoff_range);
 
-    let mut whir_scheduled = {
+    // Draw the WHIR base batching challenge on device from the rolling
+    // backward seed (mirrors the host `draw_random_field_els::<BF, E4>(seed, 1)`
+    // line in the legacy `batching_challenge_source` closure).
+    let mut batching_challenge_device: DeviceAllocation<E4> =
+        context.alloc(1, AllocationPlacement::BestFit)?;
+    let (final_device_seed_mut, _claim_point_for_squeeze) =
+        backward_scheduled.final_device_seed_and_claim_point_mut();
+    transcript_squeeze_e4(
+        &mut **final_device_seed_mut,
+        &mut batching_challenge_device,
+        stream,
+    )?;
+    let _ = _claim_point_for_squeeze;
+    let whir_scheduled = {
         let setup_trace_holder = if let Some(setup_transfer) = setup_transfer.as_mut() {
             &mut setup_transfer.trace_holder
         } else {
@@ -148,42 +164,29 @@ pub(in crate::prover::proof) fn schedule_whir_phase<'a>(
                 .as_mut()
                 .expect("setup-less proof path must materialize a synthetic setup holder")
         };
+        let (final_device_seed_mut, claim_point) =
+            backward_scheduled.final_device_seed_and_claim_point_mut();
+        let _ = backward_shared_state; // production seed/batching state is now device-resident
         schedule_gpu_whir_fold_with_sources(
             &mut stage1_output.memory_trace_holder,
-            memory_transfer.unified_device_cap(),
             &mut stage1_output.witness_trace_holder,
             setup_trace_holder,
-            backward_scheduled.final_device_claim_point(),
+            claim_point,
+            &mut **final_device_seed_mut,
+            &batching_challenge_device[..],
             whir_schedule.base_lde_factor,
-            {
-                let backward_shared_state = backward_shared_state;
-                move || {
-                    let mut seed = current_backward_seed(backward_shared_state);
-                    draw_random_field_els::<BF, E4>(&mut seed, 1)[0]
-                }
-            },
             whir_schedule.whir_steps_schedule.clone(),
             whir_schedule.whir_queries_schedule.clone(),
             whir_schedule.whir_steps_lde_factors.clone(),
             whir_schedule.whir_pow_schedule.clone(),
-            {
-                let backward_shared_state = backward_shared_state;
-                move || {
-                    let mut seed = current_backward_seed(backward_shared_state);
-                    let _whir_batching_challenge = draw_random_field_els::<BF, E4>(&mut seed, 1);
-                    seed
-                }
-            },
             whir_schedule.cap_size,
             compiled_circuit.trace_len.trailing_zeros() as usize,
             true, // use_hypercube_evals_for_batching
             proof_slab,
             proof_layout,
-            Some(base_layer_claims_scheduled.take_pending_aggregation()),
             context,
         )?
     };
-    let whir_shared_state = whir_scheduled.shared_state_handle();
 
     Ok(WhirPhaseResult {
         transition_ranges,
@@ -191,6 +194,6 @@ pub(in crate::prover::proof) fn schedule_whir_phase<'a>(
         base_layer_claims_scheduled,
         base_layer_claims_shared_state,
         whir_scheduled,
-        whir_shared_state,
+        batching_challenge_device,
     })
 }

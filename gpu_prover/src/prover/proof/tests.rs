@@ -1,5 +1,3 @@
-use super::*;
-
 use crate::primitives::field::{BF, E4};
 use crate::upstream::{
     assemble_query_index, draw_query_bits, BitSource, GKRExternalChallenges, Seed, Transcript,
