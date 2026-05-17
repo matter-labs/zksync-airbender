@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
+use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 
 use crate::allocator::tracker::AllocationPlacement;
@@ -15,7 +17,7 @@ use crate::prover::gkr::setup::{
 use crate::prover::gkr::stage1::{GpuGKRStage1Output, GpuGKRTraceGeometry};
 use crate::prover::proof::inputs::EXTERNAL_CHALLENGES_E4_LEN;
 use crate::prover::proof::layout::{
-    build_proof_layout_inputs, ProofLayout, ProofLayoutBaseLayerGeometry,
+    build_proof_layout_inputs, ProofLayout, ProofLayoutBaseLayerGeometry, WhirBaseLayerKind,
 };
 use crate::prover::trace::decoder::DecoderTableTransfer;
 use crate::prover::trace::holder::{TraceHolder, TreesCacheMode};
@@ -27,7 +29,7 @@ pub(in crate::prover::proof) struct Stage1AndForwardPreparation {
     pub(in crate::prover::proof) stage1_output: GpuGKRStage1Output,
     pub(in crate::prover::proof) synthetic_setup_trace_holder: Option<TraceHolder<BF>>,
     pub(in crate::prover::proof) proof_layout: ProofLayout,
-    pub(in crate::prover::proof) proof_slab: Option<Arc<DeviceAllocation<E4>>>,
+    pub(in crate::prover::proof) proof_slab: Arc<DeviceAllocation<E4>>,
     pub(in crate::prover::proof) forward_setup: GpuGKRForwardSetup<E4>,
     pub(in crate::prover::proof) d_seed: DeviceAllocation<u32>,
 }
@@ -106,58 +108,20 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
         "transcript input must be non-empty for commit_initial",
     );
 
-    let stage1_output = GpuGKRStage1Output::generate(
-        circuit_type,
-        compiled_circuit,
-        setup_geometry,
-        bundle
-            .setup
-            .filter(|transfer| transfer.host.columns_count > 0)
-            .map(|transfer| transfer.trace_holder.get_hypercube_evals()),
-        bundle.decoder.map(|transfer| &transfer.data_device[..]),
-        bundle
-            .inits_and_teardowns
-            .map(|transfer| &transfer.data_device),
-        tracing_data_transfer.map(|transfer| &transfer.data_device),
-        context,
-    )?;
-    let synthetic_setup_trace_holder = if bundle.setup.is_none() {
-        Some(TraceHolder::new_without_cosets(
-            setup_geometry.log_domain_size,
-            setup_geometry.log_lde_factor,
-            setup_geometry.log_rows_per_leaf,
-            setup_geometry.log_tree_cap_size,
-            0,
-            TreesCacheMode::CachePartial,
-            context,
-        )?)
-    } else {
-        None
-    };
-    debug_assert_eq!(
-        stage1_output.memory_trace_holder.log_lde_factor, bundle.memory.host.log_lde_factor,
-        "memory trace holder LDE factor must match the memory transfer geometry",
-    );
-    debug_assert_eq!(
-        stage1_output.witness_trace_holder.unified_device_cap().len()
-            * BLAKE2S_DIGEST_SIZE_U32_WORDS,
-        witness_caps_total_u32,
-        "stage1 witness unified cap size must match the structurally-derived witness_caps_total_u32",
-    );
-
+    // Build proof_layout from bundle/host geometry before stage 1 runs.
+    // The geometries used here come from `bundle.memory.host`, the optional
+    // setup transfer, and `setup_geometry` (which is derived from
+    // `prover_config` when the setup transfer is absent). Each of these is
+    // structurally identical to what stage 1's trace holders will report —
+    // an invariant the debug_asserts below verify after stage 1 runs.
     let proof_layout_setup_columns_count = bundle.setup.map_or(0, |s| s.trace_holder.columns_count);
     let memory_layer_geometry = GpuGKRTraceGeometry {
-        log_domain_size: stage1_output.memory_trace_holder.log_domain_size,
-        log_lde_factor: stage1_output.memory_trace_holder.log_lde_factor,
-        log_rows_per_leaf: stage1_output.memory_trace_holder.log_rows_per_leaf,
-        log_tree_cap_size: stage1_output.memory_trace_holder.log_tree_cap_size,
+        log_domain_size: compiled_circuit.trace_len.trailing_zeros(),
+        log_lde_factor: bundle.memory.host.log_lde_factor,
+        log_rows_per_leaf: prover_config.base_oracles_values_per_leaf.trailing_zeros(),
+        log_tree_cap_size: bundle.memory.host.log_tree_cap_size,
     };
-    let witness_layer_geometry = GpuGKRTraceGeometry {
-        log_domain_size: stage1_output.witness_trace_holder.log_domain_size,
-        log_lde_factor: stage1_output.witness_trace_holder.log_lde_factor,
-        log_rows_per_leaf: stage1_output.witness_trace_holder.log_rows_per_leaf,
-        log_tree_cap_size: stage1_output.witness_trace_holder.log_tree_cap_size,
-    };
+    let witness_layer_geometry = setup_geometry;
     let proof_layout_inputs = build_proof_layout_inputs::<E4>(
         compiled_circuit,
         external_challenges,
@@ -177,12 +141,16 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
         ),
     );
     let proof_layout = ProofLayout::new(&proof_layout_inputs);
-    let proof_slab: Option<Arc<DeviceAllocation<E4>>> = if proof_layout.total_bytes > 0 {
-        assert_eq!(
-            proof_layout.total_bytes % std::mem::size_of::<E4>(),
-            0,
-            "proof slab size must be E4-aligned",
-        );
+    assert!(
+        proof_layout.total_bytes > 0,
+        "proof layout must have non-zero bytes",
+    );
+    assert_eq!(
+        proof_layout.total_bytes % std::mem::size_of::<E4>(),
+        0,
+        "proof slab size must be E4-aligned",
+    );
+    let proof_slab = {
         let slab = context.alloc_with_extra_alignment::<E4, 4>(
             proof_layout.total_bytes / std::mem::size_of::<E4>(),
             AllocationPlacement::Bottom,
@@ -192,10 +160,87 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
             0,
             "proof slab base pointer must be 16-byte aligned for ProofLayout typed casts",
         );
-        Some(Arc::new(slab))
+        Arc::new(slab)
+    };
+
+    // Resolve slab cap destinations now that the slab is live. Stage 1 will
+    // write the witness cap directly into `whir.witness.cap`; the memory and
+    // setup caps land in `whir.memory.cap` / `whir.setup.cap` via the H2Ds
+    // scheduled immediately below.
+    let slab_base = proof_slab.as_ptr() as *mut u8;
+    let (witness_cap_ptr, witness_cap_len_u32) =
+        unsafe { proof_layout.whir_base_cap_device_mut(slab_base, WhirBaseLayerKind::Witness) };
+    debug_assert_eq!(witness_cap_len_u32, witness_caps_total_u32);
+    let (memory_cap_ptr, memory_cap_len_u32) =
+        unsafe { proof_layout.whir_base_cap_device_mut(slab_base, WhirBaseLayerKind::Memory) };
+    debug_assert_eq!(memory_cap_len_u32, memory_caps_total_u32);
+    let (setup_cap_ptr, setup_cap_len_u32) =
+        unsafe { proof_layout.whir_base_cap_device_mut(slab_base, WhirBaseLayerKind::Setup) };
+    debug_assert_eq!(setup_cap_len_u32, setup_caps_total_u32);
+
+    // Memory cap D2D: per-transfer `unified_device_cap` → slab
+    // `whir.memory.cap`. The unified cap was H2D'd from pinned host on
+    // `h2d_stream` pre-prove (overlapped with the prior proof's exec work,
+    // outside the WHIR hot range); here we just copy it into the slab on
+    // `exec_stream` — a few hundred bytes on-device, far cheaper than a
+    // fresh H2D inside the hot range would be.
+    {
+        let src = unsafe { bundle.memory.unified_device_cap().transmute::<u32>() };
+        debug_assert_eq!(src.len(), memory_cap_len_u32);
+        let dst = unsafe { DeviceSlice::from_raw_parts_mut(memory_cap_ptr, memory_cap_len_u32) };
+        memory_copy_async(dst, src, stream)?;
+    }
+    if setup_cap_len_u32 > 0 {
+        let setup_transfer_ref = bundle
+            .setup
+            .expect("setup_caps_total_u32 > 0 requires a setup transfer");
+        let src = unsafe { setup_transfer_ref.unified_device_cap().transmute::<u32>() };
+        debug_assert_eq!(src.len(), setup_cap_len_u32);
+        let dst = unsafe { DeviceSlice::from_raw_parts_mut(setup_cap_ptr, setup_cap_len_u32) };
+        memory_copy_async(dst, src, stream)?;
+    }
+
+    // SAFETY: `witness_cap_ptr` points at the slab's `whir.witness.cap`
+    // range (4-byte aligned, live for the slab's lifetime, disjoint from
+    // every other slab region). Stage 1's witness commit kernel writes
+    // exclusively to this range on `exec_stream`; downstream transcript
+    // reads are stream-ordered after the gather.
+    let mut witness_cap_dst =
+        unsafe { DeviceSlice::from_raw_parts_mut(witness_cap_ptr, witness_cap_len_u32) };
+
+    let stage1_output = GpuGKRStage1Output::generate(
+        circuit_type,
+        compiled_circuit,
+        setup_geometry,
+        bundle
+            .setup
+            .filter(|transfer| transfer.host.columns_count > 0)
+            .map(|transfer| transfer.trace_holder.get_hypercube_evals()),
+        bundle.decoder.map(|transfer| &transfer.data_device[..]),
+        bundle
+            .inits_and_teardowns
+            .map(|transfer| &transfer.data_device),
+        tracing_data_transfer.map(|transfer| &transfer.data_device),
+        Some(&mut witness_cap_dst),
+        context,
+    )?;
+    let synthetic_setup_trace_holder = if bundle.setup.is_none() {
+        Some(TraceHolder::new_without_cosets(
+            setup_geometry.log_domain_size,
+            setup_geometry.log_lde_factor,
+            setup_geometry.log_rows_per_leaf,
+            setup_geometry.log_tree_cap_size,
+            0,
+            TreesCacheMode::CachePartial,
+            context,
+        )?)
     } else {
         None
     };
+    debug_assert_eq!(
+        stage1_output.memory_trace_holder.log_lde_factor, bundle.memory.host.log_lde_factor,
+        "memory trace holder LDE factor must match the memory transfer geometry",
+    );
 
     let mut chunks: Vec<(*const u32, u32)> = Vec::with_capacity(5);
     if let Some(d_canonical_top_bits) = bundle.canonical_top_bits_device {
@@ -207,27 +252,13 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
         chunks.push((external_u32.as_ptr(), external_challenges_u32_len as u32));
     }
     if setup_caps_total_u32 > 0 {
-        let setup_transfer_ref = bundle
-            .setup
-            .expect("setup_caps_total_u32 > 0 requires a setup transfer");
-        let src_u32 = unsafe { setup_transfer_ref.unified_device_cap().transmute::<u32>() };
-        debug_assert_eq!(src_u32.len(), setup_caps_total_u32);
-        chunks.push((src_u32.as_ptr(), setup_caps_total_u32 as u32));
+        chunks.push((setup_cap_ptr as *const u32, setup_caps_total_u32 as u32));
     }
     {
-        let src_u32 = unsafe { bundle.memory.unified_device_cap().transmute::<u32>() };
-        debug_assert_eq!(src_u32.len(), memory_caps_total_u32);
-        chunks.push((src_u32.as_ptr(), memory_caps_total_u32 as u32));
+        chunks.push((memory_cap_ptr as *const u32, memory_caps_total_u32 as u32));
     }
     {
-        let src_u32 = unsafe {
-            stage1_output
-                .witness_trace_holder
-                .unified_device_cap()
-                .transmute::<u32>()
-        };
-        debug_assert_eq!(src_u32.len(), witness_caps_total_u32);
-        chunks.push((src_u32.as_ptr(), witness_caps_total_u32 as u32));
+        chunks.push((witness_cap_ptr as *const u32, witness_caps_total_u32 as u32));
     }
     let mut d_seed: DeviceAllocation<u32> =
         context.alloc(STATE_SIZE, AllocationPlacement::BestFit)?;

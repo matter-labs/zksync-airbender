@@ -67,7 +67,7 @@ pub(crate) fn schedule_main_layer_extras_eval<E>(
     folding_steps: usize,
     trace_len: usize,
     extras_dst_ptr: *mut E,
-    proof_slab: Option<&DeviceAllocation<E4>>,
+    proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     layer_slot: usize,
     context: &ProverContext,
@@ -177,18 +177,16 @@ where
         stream,
     )?;
 
-    // 4. Production slab path: copy the orphan claim values from the
-    //    `device_new_claims` tail into the slab's per-layer-slot
-    //    `extra_evaluations` range so the verifier can parse them
-    //    alongside `final_step_evaluations`. Test paths (no slab)
-    //    skip this — the values still live in the claims buffer for
-    //    the next layer's consumption.
-    if let Some(slab) = proof_slab {
+    // 4. Copy the orphan claim values from the `device_new_claims` tail into
+    //    the slab's per-layer-slot `extra_evaluations` range so the verifier
+    //    can parse them alongside `final_step_evaluations`.
+    {
         // SAFETY: E = E4 in every instantiation; the slab range was
         // sized at `extra_evaluations_addresses.len()` E4 by the
         // proof-layout builder.
         let (slab_dst_ptr, slab_dst_len) = unsafe {
-            proof_layout.backward_extra_evaluations_device_mut(slab.as_ptr() as *mut u8, layer_slot)
+            proof_layout
+                .backward_extra_evaluations_device_mut(proof_slab.as_ptr() as *mut u8, layer_slot)
         };
         debug_assert_eq!(
             slab_dst_len, orphan_count,

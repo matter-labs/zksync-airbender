@@ -94,6 +94,30 @@ impl ProofLayout {
         Self::device_typed::<E4>(slab_base, &self.whir_base(which).evals)
     }
 
+    pub(crate) unsafe fn whir_base_query_indices_device_mut(
+        &self,
+        slab_base: *mut u8,
+        which: WhirBaseLayerKind,
+    ) -> (*mut u32, usize) {
+        Self::device_typed::<u32>(slab_base, &self.whir_base(which).query_indices)
+    }
+
+    pub(crate) unsafe fn whir_base_query_leaves_device_mut(
+        &self,
+        slab_base: *mut u8,
+        which: WhirBaseLayerKind,
+    ) -> (*mut BF, usize) {
+        Self::device_typed::<BF>(slab_base, &self.whir_base(which).query_leaves)
+    }
+
+    pub(crate) unsafe fn whir_base_query_paths_device_mut(
+        &self,
+        slab_base: *mut u8,
+        which: WhirBaseLayerKind,
+    ) -> (*mut u32, usize) {
+        Self::device_typed::<u32>(slab_base, &self.whir_base(which).query_paths)
+    }
+
     pub(crate) unsafe fn whir_intermediate_cap_device_mut(
         &self,
         slab_base: *mut u8,
@@ -145,6 +169,13 @@ impl ProofLayout {
         slab_base: *mut u8,
     ) -> (*mut u64, usize) {
         Self::device_typed::<u64>(slab_base, &self.whir.pow_nonces)
+    }
+
+    pub(crate) unsafe fn whir_final_monomials_device_mut(
+        &self,
+        slab_base: *mut u8,
+    ) -> (*mut E4, usize) {
+        Self::device_typed::<E4>(slab_base, &self.whir.final_monomials)
     }
 
     fn whir_base(&self, which: WhirBaseLayerKind) -> &WhirBaseLayerByteLayout {
@@ -256,12 +287,11 @@ impl ProofLayout {
             .collect()
     }
 
-    /// Phase 4: parse every slab-resident WHIR proof field into a fresh
-    /// `WhirPolyCommitProof`. Base-layer `queries` are left as `Vec::new()`
-    /// (the caller is expected to overwrite from the host-side callback
-    /// path — base-layer queries stay on host per the approved plan);
-    /// `final_monomials` is `vec![]` (GPU prover leaves this empty today,
-    /// matching the layout's `final_monomials_len: 0`).
+    /// Phase 3 (WHIR-on-device): parse every slab-resident WHIR proof field
+    /// into a fresh `WhirPolyCommitProof`. Base-layer `queries` are
+    /// populated directly from the slab — the Phase 3 gather kernels write
+    /// `query_indices` / `query_leaves` / `query_paths` for each base oracle
+    /// in row-major-per-query layout matching what the verifier consumes.
     pub(crate) fn parse_whir_proof(
         &self,
         slab: &[u8],
@@ -285,6 +315,32 @@ impl ProofLayout {
             let cap_flat = self.whir_base_cap_host(slab, which);
             let cap = digest_bytes_of(cap_flat);
             let evals = self.whir_base_evals_host(slab, which).to_vec();
+            let query_count = base_layout.query_count;
+            let leaf_values_len = base_layout.leaf_values_len;
+            let path_len = base_layout.path_len;
+            let queries: Vec<BaseFieldQuery<BF, DefaultTreeConstructor>> = if query_count == 0
+                || base_layout.num_columns == 0
+            {
+                Vec::new()
+            } else {
+                let indices = self.whir_base_query_indices_host(slab, which);
+                let leaves = self.whir_base_query_leaves_host(slab, which);
+                let paths_flat = self.whir_base_query_paths_host(slab, which);
+                (0..query_count)
+                    .map(|q| {
+                        let leaf_start = q * leaf_values_len;
+                        let leaf_end = leaf_start + leaf_values_len;
+                        let path_start_u32 = q * path_len * DIGEST_U32_WORDS;
+                        let path_end_u32 = path_start_u32 + path_len * DIGEST_U32_WORDS;
+                        BaseFieldQuery {
+                            index: indices[q] as usize,
+                            leaf_values_concatenated: leaves[leaf_start..leaf_end].to_vec(),
+                            path: digest_bytes_of(&paths_flat[path_start_u32..path_end_u32]),
+                            _marker: PhantomData,
+                        }
+                    })
+                    .collect()
+            };
             WhirBaseLayerCommitmentAndQueries {
                 commitment: WhirCommitment {
                     cap: MerkleTreeCapVarLength { cap },
@@ -292,7 +348,7 @@ impl ProofLayout {
                 },
                 num_columns: base_layout.num_columns,
                 evals,
-                queries: Vec::new(),
+                queries,
             }
         };
         let setup_commitment = base(WhirBaseLayerKind::Setup);
@@ -451,6 +507,30 @@ impl ProofLayout {
         which: WhirBaseLayerKind,
     ) -> &'a [E4] {
         Self::host_typed::<E4>(slab, &self.whir_base(which).evals)
+    }
+
+    pub(crate) fn whir_base_query_indices_host<'a>(
+        &self,
+        slab: &'a [u8],
+        which: WhirBaseLayerKind,
+    ) -> &'a [u32] {
+        Self::host_typed::<u32>(slab, &self.whir_base(which).query_indices)
+    }
+
+    pub(crate) fn whir_base_query_leaves_host<'a>(
+        &self,
+        slab: &'a [u8],
+        which: WhirBaseLayerKind,
+    ) -> &'a [BF] {
+        Self::host_typed::<BF>(slab, &self.whir_base(which).query_leaves)
+    }
+
+    pub(crate) fn whir_base_query_paths_host<'a>(
+        &self,
+        slab: &'a [u8],
+        which: WhirBaseLayerKind,
+    ) -> &'a [u32] {
+        Self::host_typed::<u32>(slab, &self.whir_base(which).query_paths)
     }
 
     pub(crate) fn whir_intermediate_cap_host<'a>(&self, slab: &'a [u8], round: usize) -> &'a [u32] {
