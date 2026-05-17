@@ -6,4 +6,5 @@ pub(crate) mod cub;
 pub(crate) mod ntt;
 pub(crate) mod powers;
 pub(crate) mod simple;
+pub(crate) mod squaring;
 pub(crate) mod transpose;

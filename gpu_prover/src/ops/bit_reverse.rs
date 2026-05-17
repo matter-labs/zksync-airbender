@@ -120,6 +120,7 @@ macro_rules! bit_reverse_impl {
 
 bit_reverse_impl!(BF, BF);
 bit_reverse_impl!(DG, E4);
+bit_reverse_impl!(E4, BF);
 
 #[cfg(test)]
 mod tests {
@@ -166,6 +167,12 @@ mod tests {
             let mut result = Self::default();
             result.fill_with(|| BF::random_element(rng).0);
             result
+        }
+    }
+
+    impl BitReverseTest for E4 {
+        fn rand(rng: &mut impl rand::Rng) -> Self {
+            E4::random_element(rng)
         }
     }
 
@@ -223,5 +230,39 @@ mod tests {
     #[test]
     fn bit_reverse_in_place_dg() {
         test_bit_reverse::<DG>(true);
+    }
+
+    #[test]
+    fn bit_reverse_e4() {
+        test_bit_reverse::<E4>(false);
+    }
+
+    #[test]
+    fn bit_reverse_in_place_e4() {
+        test_bit_reverse::<E4>(true);
+    }
+
+    /// Cross-check `bit_reverse_in_place::<E4>` against host
+    /// `fft::bitreverse_enumeration_inplace` over a small E4 buffer. This is
+    /// the device-resident replacement for the WHIR final-round
+    /// `final_monomials` bitreverse callback; if the E4 instantiation diverges
+    /// from the host helper, this test surfaces it before the WHIR smoke runs.
+    #[test]
+    fn bit_reverse_e4_matches_host() {
+        use fft::bitreverse_enumeration_inplace;
+        const LOG_N: usize = 4;
+        const N: usize = 1 << LOG_N;
+        let mut rng = rng();
+        let mut host: Vec<E4> = (0..N).map(|_| E4::random_element(&mut rng)).collect();
+        let stream = CudaStream::default();
+        let mut device = DeviceAllocation::<E4>::alloc(N).unwrap();
+        memory_copy_async(&mut device, &host, &stream).unwrap();
+        let mut matrix = DeviceMatrixMut::<E4>::new(&mut device, N);
+        bit_reverse_in_place::<E4>(&mut matrix, &stream).unwrap();
+        let mut device_back = vec![E4::default(); N];
+        memory_copy_async(&mut device_back, &device, &stream).unwrap();
+        stream.synchronize().unwrap();
+        bitreverse_enumeration_inplace(&mut host);
+        assert_eq!(host, device_back);
     }
 }

@@ -1,13 +1,18 @@
 pub(crate) mod fold;
 pub(crate) mod kernels;
 
+#[cfg(test)]
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 
 use crate::allocator::tracker::AllocationPlacement;
+#[cfg(test)]
 use crate::ops::blake2s::Digest;
+#[cfg(test)]
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{HostAllocation, ProverContext, UnsafeAccessor};
+#[cfg(test)]
+use crate::primitives::context::HostAllocation;
+use crate::primitives::context::ProverContext;
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixImpl};
 use crate::primitives::field::{BF, E4};
 use crate::prover::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
@@ -16,8 +21,30 @@ use crate::upstream::FieldExtension;
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 
+/// Where the WHIR oracle's unified Merkle cap should land after its per-coset
+/// trees are committed.
+///
+/// - `OwnAllocation` — the trace holder allocates a private `DeviceAllocation<Digest>`
+///   and stores it on `unified_device_cap` (legacy path used by tests and by
+///   the base/initial WHIR oracle construction).
+/// - `Slab(...)` — the cap is gathered directly into a caller-supplied device
+///   slice (typically a `whir.intermediate[round].cap` slab subrange), and
+///   `unified_device_cap` stays `None`. Downstream readers must source the
+///   cap from the slab.
+enum CapTarget<'a> {
+    /// Constructed only by the cfg(test) helper `schedule_from_device_monomial_coeffs`
+    /// (legacy own-cap path). Production code always uses [`Self::Slab`].
+    #[allow(dead_code)]
+    OwnAllocation,
+    Slab(&'a mut era_cudart::slice::DeviceSlice<u32>),
+}
+
 pub(crate) struct GpuWhirExtensionOracle {
     trace_holder: TraceHolder<BF>,
+    /// Read only by cfg(test) query helpers and the cfg(test) recursive-decode
+    /// path. Production code never reads this field, but its construction is
+    /// shared with the test helpers, so the field remains.
+    #[allow(dead_code)]
     values_per_leaf: usize,
     lde_factor: usize,
     #[allow(dead_code)]
@@ -33,48 +60,15 @@ pub(crate) struct GpuWhirExtensionOracleKeepalive {
     _trace_holder: TraceHolder<BF>,
 }
 
+#[cfg(test)]
 pub(crate) struct GpuWhirScheduledExtensionQuery {
-    #[allow(dead_code)]
     pub(crate) index: usize,
-    #[allow(dead_code)]
     pub(crate) coset_index: usize,
     // Keeps index-fill and query-index callbacks alive until the stream executes them.
     _callbacks: Callbacks<'static>,
     leafs: HostAllocation<[BF]>,
     merkle_paths: HostAllocation<[Digest]>,
     values_per_leaf: usize,
-}
-
-pub(crate) type GpuWhirScheduledExtensionQueryKeepalive = Callbacks<'static>;
-
-impl GpuWhirScheduledExtensionQuery {
-    pub(crate) fn callbacks_mut(&mut self) -> &mut Callbacks<'static> {
-        &mut self._callbacks
-    }
-
-    pub(crate) fn leafs_host(&self) -> &HostAllocation<[BF]> {
-        &self.leafs
-    }
-
-    pub(crate) fn merkle_paths_host(&self) -> &HostAllocation<[Digest]> {
-        &self.merkle_paths
-    }
-
-    pub(crate) fn leafs_accessor(&self) -> UnsafeAccessor<[BF]> {
-        self.leafs.get_accessor()
-    }
-
-    pub(crate) fn merkle_paths_accessor(&self) -> UnsafeAccessor<[Digest]> {
-        self.merkle_paths.get_accessor()
-    }
-
-    pub(crate) fn values_per_leaf(&self) -> usize {
-        self.values_per_leaf
-    }
-
-    pub(crate) fn into_keepalive(self) -> GpuWhirScheduledExtensionQueryKeepalive {
-        self._callbacks
-    }
 }
 
 impl GpuWhirExtensionOracle {
@@ -89,6 +83,7 @@ impl GpuWhirExtensionOracle {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn schedule_from_device_monomial_coeffs(
         monomial_coeffs: &impl DeviceMatrixImpl<BF>,
         trace_len: usize,
@@ -103,6 +98,34 @@ impl GpuWhirExtensionOracle {
             lde_factor,
             values_per_leaf,
             tree_cap_size,
+            CapTarget::OwnAllocation,
+            context,
+        )
+    }
+
+    /// Variant of `schedule_from_device_monomial_coeffs` that writes the
+    /// unified Merkle cap directly into a caller-supplied device slice
+    /// (typically a slab subrange exposed by `ProofLayout`). The constructed
+    /// oracle's `trace_holder.unified_device_cap` stays `None` — downstream
+    /// readers must source the cap from `cap_dst_u32`. Intermediate WHIR
+    /// oracles in the production fold path use this variant to fuse the cap
+    /// gather with the slab commit, eliminating the per-round D2D copy.
+    pub(crate) fn schedule_from_device_monomial_coeffs_into_slab(
+        monomial_coeffs: &impl DeviceMatrixImpl<BF>,
+        trace_len: usize,
+        lde_factor: usize,
+        values_per_leaf: usize,
+        tree_cap_size: usize,
+        cap_dst_u32: &mut era_cudart::slice::DeviceSlice<u32>,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        Self::from_device_monomial_coeffs_impl(
+            monomial_coeffs,
+            trace_len,
+            lde_factor,
+            values_per_leaf,
+            tree_cap_size,
+            CapTarget::Slab(cap_dst_u32),
             context,
         )
     }
@@ -113,6 +136,7 @@ impl GpuWhirExtensionOracle {
         lde_factor: usize,
         values_per_leaf: usize,
         tree_cap_size: usize,
+        cap_target: CapTarget<'_>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         assert!(!monomial_coeffs.slice().is_empty());
@@ -195,7 +219,10 @@ impl GpuWhirExtensionOracle {
         }
 
         trace_holder.mark_cosets_materialized();
-        trace_holder.commit_all(context)?;
+        match cap_target {
+            CapTarget::OwnAllocation => trace_holder.commit_all(context)?,
+            CapTarget::Slab(dst_u32) => trace_holder.commit_all_into(dst_u32, context)?,
+        }
 
         Ok(Self {
             trace_holder,
@@ -210,19 +237,6 @@ impl GpuWhirExtensionOracle {
         self.lde_factor
     }
 
-    pub(crate) fn packed_leaf_count(&self) -> usize {
-        self.packed_leaf_count
-    }
-
-    /// Reference to the oracle's device-resident unified Merkle cap. WHIR
-    /// intermediate oracles are constructed with `log_lde_factor = 0`, so
-    /// this is the single per-coset cap.
-    pub(crate) fn unified_device_cap(
-        &self,
-    ) -> &crate::primitives::context::DeviceAllocation<Digest> {
-        self.trace_holder.unified_device_cap()
-    }
-
     /// Hands the oracle's device unified cap (with the trace holder that
     /// owns it) to the caller as a keepalive. Used by query-emitting paths
     /// that retire the oracle but still need its cap to survive scheduled
@@ -234,6 +248,67 @@ impl GpuWhirExtensionOracle {
         }
     }
 
+    /// Phase 4 (WHIR-on-device): batch-gather all `device_query_indexes` of one
+    /// round directly into the slab's intermediate `query_indices` /
+    /// `query_leaves` / `query_paths` ranges. The tree-index kernel writes
+    /// straight into the slab `query_indices` range — no temp buffer, no D2D.
+    /// The trace_holder is constructed with `log_lde_factor = 0`, so
+    /// `tree_index == query_index` (identity) and the slab-resident indices
+    /// can be reused as the gather kernels' lookup inputs.
+    pub(crate) fn schedule_query_for_folded_indexes_to_slab(
+        &mut self,
+        device_query_indexes: &era_cudart::slice::DeviceSlice<u32>,
+        slab_indices_dst: &mut era_cudart::slice::DeviceSlice<u32>,
+        slab_leaves_dst_bf: &mut era_cudart::slice::DeviceSlice<BF>,
+        slab_paths_dst: &mut era_cudart::slice::DeviceSlice<u32>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let stream = context.get_exec_stream();
+        let num_queries = device_query_indexes.len();
+        let log_lde_factor = self.lde_factor.trailing_zeros();
+        assert!(self.packed_leaf_count.is_power_of_two());
+        let packed_leaf_count_log2 = self.packed_leaf_count.trailing_zeros();
+        assert_eq!(slab_indices_dst.len(), num_queries);
+        // Write tree-indexes directly into the slab `query_indices` range.
+        // With `log_lde_factor == 0` the kernel collapses to the identity
+        // (tree_index == query_index); the kernel handles both cases for
+        // symmetry. The slab range is exclusively written here on
+        // `exec_stream`, then read by the gather kernels below, so the
+        // subsequent shared reborrow is sound.
+        crate::ops::blake2s::query_index_to_tree_index_multi_out(
+            device_query_indexes,
+            Some(slab_indices_dst),
+            None,
+            None,
+            log_lde_factor,
+            packed_leaf_count_log2,
+            stream,
+        )?;
+        // Reborrow as a shared view. The gather kernels take a `&DeviceSlice`
+        // (read-only) and run after the kernel above on the same stream, so
+        // they observe the tree-indexes that were just written.
+        let slab_indices_view: &era_cudart::slice::DeviceSlice<u32> = slab_indices_dst;
+        // The trace_holder is constructed with `log_lde_factor = 0`, so only
+        // coset 0 exists and the gather kernels' coset filter accepts every
+        // query (lde_mask == 0). Tree-indexes act as the raw leaf-row index
+        // into the single packed coset.
+        self.trace_holder.schedule_query_leafs_for_coset_into(
+            0,
+            slab_indices_view,
+            slab_leaves_dst_bf,
+            context,
+        )?;
+        self.trace_holder
+            .schedule_query_merkle_paths_for_coset_into(
+                0,
+                slab_indices_view,
+                slab_paths_dst,
+                context,
+            )?;
+        Ok(())
+    }
+
+    #[cfg(test)]
     pub(crate) fn schedule_query_for_folded_index_from_host(
         &mut self,
         query_index: &HostAllocation<[u32]>,
@@ -398,6 +473,7 @@ pub(crate) mod tests {
                 lde_factor,
                 values_per_leaf,
                 tree_cap_size,
+                CapTarget::OwnAllocation,
                 context,
             )?;
             context.get_exec_stream().synchronize()?;

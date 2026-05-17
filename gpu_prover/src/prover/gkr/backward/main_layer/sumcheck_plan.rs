@@ -412,12 +412,11 @@ where
         claim_layout: &ClaimBufferLayout,
         device_lookup_and_constraint_ptr: *const E,
         device_external_challenges_ptr: *const E,
-        // Same pattern as the dim-reducing scheduler — when `Some` (production),
-        // per-round kernels write coeffs directly into the slab's
-        // `internal_round_coefficients` range and the per-address gather
-        // writes directly into `final_step_evaluations` (B1 + B2). When
-        // `None` (test paths), per-layer fallback device buffers are used.
-        proof_slab: Option<&DeviceAllocation<E4>>,
+        // Same pattern as the dim-reducing scheduler: per-round kernels write
+        // coeffs directly into the slab's `internal_round_coefficients` range
+        // and the per-address gather writes directly into
+        // `final_step_evaluations` (B1 + B2).
+        proof_slab: &DeviceAllocation<E4>,
         proof_layout: &ProofLayout,
         layer_slot: usize,
         mirror_layer_to_host: bool,
@@ -474,33 +473,23 @@ where
             context.alloc(1, AllocationPlacement::Top)?;
         let coeffs_total_len = last_step * 4;
         // B1: per-round kernels write coeffs straight into the slab's
-        // `internal_round_coefficients` range for this layer when `proof_slab`
-        // is provided — no standalone allocation, no post-loop slab D2D. Test
-        // paths fall back to a per-layer buffer.
-        let mut fallback_device_coeffs: Option<DeviceAllocation<E>> = None;
-        let coeffs_buffer_ptr: *mut E = if let Some(slab) = proof_slab {
-            if coeffs_total_len > 0 {
-                // SAFETY: `layer_slot` selects this layer's slab segment and
-                // the returned region is validated against `coeffs_total_len`
-                // immediately below.
-                let (dst_ptr, dst_len) = unsafe {
-                    proof_layout
-                        .backward_internal_coeffs_device_mut(slab.as_ptr() as *mut u8, layer_slot)
-                };
-                debug_assert_eq!(
-                    dst_len, coeffs_total_len,
-                    "slab internal_round_coefficients range must match main-layer coeffs_total_len",
-                );
-                dst_ptr as *mut E
-            } else {
-                null_mut()
-            }
+        // `internal_round_coefficients` range for this layer — no standalone
+        // allocation, no post-loop slab D2D.
+        let coeffs_buffer_ptr: *mut E = if coeffs_total_len > 0 {
+            // SAFETY: `layer_slot` selects this layer's slab segment and
+            // the returned region is validated against `coeffs_total_len`
+            // immediately below.
+            let (dst_ptr, dst_len) = unsafe {
+                proof_layout
+                    .backward_internal_coeffs_device_mut(proof_slab.as_ptr() as *mut u8, layer_slot)
+            };
+            debug_assert_eq!(
+                dst_len, coeffs_total_len,
+                "slab internal_round_coefficients range must match main-layer coeffs_total_len",
+            );
+            dst_ptr as *mut E
         } else {
-            let alloc: DeviceAllocation<E> =
-                context.alloc(coeffs_total_len.max(1), AllocationPlacement::Top)?;
-            let ptr = alloc.as_ptr() as *mut E;
-            fallback_device_coeffs = Some(alloc);
-            ptr
+            null_mut()
         };
         // Consume `[claim_point || batching_challenge]` directly from the
         // orchestrator-owned `device_claim_point_in`; build `eq_group_tables`
@@ -682,30 +671,23 @@ where
         // BTreeMap key order from `final_evaluation_sources_for_last_step`)
         // matches what `build_proof_layout_inputs` stored in
         // `ProofLayout.backward[slot].final_step_eval_addresses`.
-        let mut fallback_d_layer_transcript_inputs: Option<DeviceAllocation<E>> = None;
-        let transcript_inputs_buffer_ptr: *mut E = if let Some(slab) = proof_slab {
-            if transcript_inputs_len > 0 {
-                // SAFETY: `layer_slot` selects this layer's slab segment and
-                // the returned region is validated against
-                // `transcript_inputs_len` immediately below.
-                let (dst_ptr, dst_len) = unsafe {
-                    proof_layout
-                        .backward_final_step_evals_device_mut(slab.as_ptr() as *mut u8, layer_slot)
-                };
-                debug_assert_eq!(
-                    dst_len, transcript_inputs_len,
-                    "slab final_step_evaluations range must match main-layer transcript_inputs_len",
-                );
-                dst_ptr as *mut E
-            } else {
-                null_mut()
-            }
+        let transcript_inputs_buffer_ptr: *mut E = if transcript_inputs_len > 0 {
+            // SAFETY: `layer_slot` selects this layer's slab segment and
+            // the returned region is validated against
+            // `transcript_inputs_len` immediately below.
+            let (dst_ptr, dst_len) = unsafe {
+                proof_layout.backward_final_step_evals_device_mut(
+                    proof_slab.as_ptr() as *mut u8,
+                    layer_slot,
+                )
+            };
+            debug_assert_eq!(
+                dst_len, transcript_inputs_len,
+                "slab final_step_evaluations range must match main-layer transcript_inputs_len",
+            );
+            dst_ptr as *mut E
         } else {
-            let alloc: DeviceAllocation<E> =
-                context.alloc(transcript_inputs_len.max(1), AllocationPlacement::Top)?;
-            let ptr = alloc.as_ptr() as *mut E;
-            fallback_d_layer_transcript_inputs = Some(alloc);
-            ptr
+            null_mut()
         };
         // B7: per-address gather kernel for the main-layer variant (2 E per
         // address). Pointer table rides inline in the kernel-arg struct; see
@@ -1001,10 +983,8 @@ where
         layer_range.end(stream)?;
         tracing_ranges.push(layer_range);
 
-        drop(fallback_d_layer_transcript_inputs);
         drop(device_claim);
         drop(device_eq_prefactor);
-        drop(fallback_device_coeffs);
         drop(device_claim_point_in);
         drop(device_claims_in);
         // Stream-ordered drop: every scheduled extras-eval kernel +

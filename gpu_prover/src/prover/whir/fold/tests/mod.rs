@@ -796,4 +796,4 @@ use helpers::{
 
 mod query_tests;
 
-pub(crate) use query_tests::{clone_scheduled_whir_pre_pow_seeds, GpuScheduledBaseFieldQuery};
+pub(crate) use query_tests::GpuScheduledBaseFieldQuery;
