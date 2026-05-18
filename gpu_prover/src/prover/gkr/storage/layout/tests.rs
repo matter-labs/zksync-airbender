@@ -1,4 +1,5 @@
 use super::*;
+use serial_test::serial;
 use std::path::PathBuf;
 
 fn compiled_circuit_dir() -> PathBuf {
@@ -14,16 +15,17 @@ fn load_artifact(json_path: &PathBuf) -> Option<GKRCircuitArtifact<field::Mersen
 }
 
 const CIRCUIT_BASENAMES: &[&str] = &[
-    "add_sub_lui_auipc_mop_preprocessed",
+    "add_sub_lui_auipc_mop",
     "bigint_with_extended_control",
+    "blake2_g_function",
     "blake2_with_extended_control",
     "inits_and_teardowns_preprocessed",
-    "jump_branch_slt_preprocessed",
+    "jump_branch_slt",
     "keccak_special5",
-    "mem_subword_only_preprocessed",
-    "mem_word_only_preprocessed",
-    "shift_binop_preprocessed",
-    "unsigned_mul_div_preprocessed",
+    "mem_subword_only",
+    "mem_word_only",
+    "shift_binop",
+    "unsigned_mul_div",
 ];
 
 /// Every `GKRAddress` produced by
@@ -33,6 +35,7 @@ const CIRCUIT_BASENAMES: &[&str] = &[
 /// each round, all polys are ext-typed, and the class is always
 /// `ThisLayerInnerLayerWrite` (since `addr.layer == output_layer`).
 #[test]
+#[serial]
 fn tower_layout_covers_dim_reducing_outputs() {
     let dir = compiled_circuit_dir();
     let mut covered = 0;
@@ -121,6 +124,7 @@ fn tower_layout_covers_dim_reducing_outputs() {
 }
 
 #[test]
+#[serial]
 fn layout_matches_audit_for_all_circuits() {
     let dir = compiled_circuit_dir();
     let mut covered = 0;
@@ -180,6 +184,7 @@ fn layout_matches_audit_for_all_circuits() {
 }
 
 #[test]
+#[serial]
 fn no_caches_artifacts_use_only_gpu_forward_supported_variants() {
     use cs::gkr_compiler::NoFieldGKRRelation as R;
 
@@ -423,6 +428,7 @@ fn allocate_base_view_panics_when_address_is_ext_typed() {
 }
 
 #[test]
+#[serial]
 fn relation_outputs_classifies_known_variants() {
     // Spot-check the classification table against the dispatch in
     // forward.rs that distinguishes base vs ext insertion sites.

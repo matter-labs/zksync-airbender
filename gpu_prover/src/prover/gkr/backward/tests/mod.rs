@@ -6,6 +6,7 @@ use crate::primitives::field::{BF, E4};
 
 use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
+use worker::{IterableWithGeometry, Worker};
 
 fn sample_ext(seed: u32) -> E4 {
     E4::from_array_of_base([
@@ -67,22 +68,38 @@ fn copy_device_values<T: Copy>(context: &ProverContext, values: &DeviceSlice<T>)
 
 fn eq_values_for_suffix(challenges: &[E4]) -> Vec<E4> {
     let acc_size = 1usize << challenges.len();
-    let mut result = Vec::with_capacity(acc_size);
-    for gid in 0..acc_size {
-        let mut acc = E4::ONE;
-        for (idx, challenge) in challenges.iter().copied().enumerate() {
-            let bit = ((gid >> (challenges.len() - 1 - idx)) & 1) != 0;
-            let term = if bit {
-                challenge
-            } else {
-                let mut one_minus = E4::ONE;
-                one_minus.sub_assign(&challenge);
-                one_minus
-            };
-            acc.mul_assign(&term);
-        }
-        result.push(acc);
-    }
+    let mut result = vec![E4::ZERO; acc_size];
+    // CPU reference for sumcheck tests: acc_size grows to 2^23 at the
+    // largest test sizes and each entry costs O(challenges.len()) E4
+    // multiplies, so this dominated the test wall time at ~3.4 s each.
+    // Each `gid` is independent — parallelize across the column slice.
+    let worker = Worker::new();
+    worker.scope(acc_size, |scope, geometry| {
+        result
+            .chunks_for_geometry_mut(geometry)
+            .enumerate()
+            .for_each(|(idx, chunk)| {
+                let chunk_start = geometry.get_chunk_start_pos(idx);
+                Worker::smart_spawn(scope, idx == geometry.len() - 1, move |_| {
+                    for (offset, slot) in chunk.iter_mut().enumerate() {
+                        let gid = chunk_start + offset;
+                        let mut acc = E4::ONE;
+                        for (i, challenge) in challenges.iter().copied().enumerate() {
+                            let bit = ((gid >> (challenges.len() - 1 - i)) & 1) != 0;
+                            let term = if bit {
+                                challenge
+                            } else {
+                                let mut one_minus = E4::ONE;
+                                one_minus.sub_assign(&challenge);
+                                one_minus
+                            };
+                            acc.mul_assign(&term);
+                        }
+                        *slot = acc;
+                    }
+                });
+            });
+    });
     result
 }
 

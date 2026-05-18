@@ -115,6 +115,134 @@ pub(super) fn attach_test_ext_output_layout(
     }));
 }
 
+/// Install a storage layout that covers the input layer (`initial_layer_idx`)
+/// plus every dim-reducing tower output layer. Mirrors
+/// `storage::layout::append_tower_layers` so `schedule_dimension_reduction_forward`
+/// can `allocate_ext_view` into each tower round.
+pub(super) fn attach_test_dim_reducing_tower_layout(
+    storage: &mut GpuGKRStorage<BF, E4>,
+    initial_layer_idx: usize,
+    initial_output_map: &BTreeMap<OutputType, Vec<GKRAddress>>,
+    initial_trace_log_2: usize,
+    final_trace_log_2: usize,
+) {
+    use crate::prover::gkr::gkr_address_audit::AddressClass;
+    use crate::prover::gkr::storage_layout::{
+        FieldType, GpuGKRLayerLayout, GpuGKRStorageLayout, StorageSlot,
+    };
+
+    let trace_len = 1usize << initial_trace_log_2;
+    let total_rounds = initial_trace_log_2.saturating_sub(final_trace_log_2);
+    let total_layers = initial_layer_idx + total_rounds + 1;
+    let mut layers = vec![GpuGKRLayerLayout::default(); total_layers];
+
+    // Register the test fixture inputs at `initial_layer_idx`. The test
+    // inserts them into storage via `insert_extension_at_layer`; the layout
+    // entry lets `allocate_ext_view` resolve them back when the dim-reducing
+    // scheduler walks the input set.
+    let mut initial_layer_layout = GpuGKRLayerLayout {
+        log2_stride: initial_trace_log_2 as u32,
+        ..GpuGKRLayerLayout::default()
+    };
+    let mut initial_poly_count = 0u32;
+    for inputs in initial_output_map.values() {
+        for input in inputs.iter() {
+            initial_layer_layout.index.insert(
+                *input,
+                (
+                    AddressClass::ThisLayerInnerLayerWrite,
+                    FieldType::Ext,
+                    initial_poly_count,
+                ),
+            );
+            initial_poly_count += 1;
+        }
+    }
+    if initial_poly_count > 0 {
+        initial_layer_layout.slot_poly_counts.insert(
+            StorageSlot {
+                class: AddressClass::ThisLayerInnerLayerWrite,
+                field: FieldType::Ext,
+            },
+            initial_poly_count,
+        );
+    }
+    layers[initial_layer_idx] = initial_layer_layout;
+
+    // Build per-tower-round layouts. Mirrors `append_tower_layers` exactly.
+    let mut layer_inputs: BTreeMap<OutputType, Vec<GKRAddress>> = initial_output_map.clone();
+    let mut current_layer_idx = initial_layer_idx;
+    for round in 0..total_rounds {
+        let output_layer = current_layer_idx + 1;
+        let input_size_log_2 = initial_trace_log_2 - round;
+        let output_log2_stride = (input_size_log_2 - 1) as u32;
+
+        let mut new_layer_layout = GpuGKRLayerLayout {
+            log2_stride: output_log2_stride,
+            ..GpuGKRLayerLayout::default()
+        };
+        let mut output_idx: u32 = 0;
+        let mut next_inputs: BTreeMap<OutputType, Vec<GKRAddress>> = BTreeMap::new();
+        for (arg_type, inputs) in layer_inputs.iter() {
+            assert_eq!(
+                inputs.len(),
+                2,
+                "dim reduction tower expects 2 inputs per slot for {:?}",
+                arg_type,
+            );
+            let out_a = GKRAddress::InnerLayer {
+                layer: output_layer,
+                offset: output_idx as usize,
+            };
+            let poly_idx_a = output_idx;
+            output_idx += 1;
+            let out_b = GKRAddress::InnerLayer {
+                layer: output_layer,
+                offset: output_idx as usize,
+            };
+            let poly_idx_b = output_idx;
+            output_idx += 1;
+
+            new_layer_layout.index.insert(
+                out_a,
+                (
+                    AddressClass::ThisLayerInnerLayerWrite,
+                    FieldType::Ext,
+                    poly_idx_a,
+                ),
+            );
+            new_layer_layout.index.insert(
+                out_b,
+                (
+                    AddressClass::ThisLayerInnerLayerWrite,
+                    FieldType::Ext,
+                    poly_idx_b,
+                ),
+            );
+            next_inputs.insert(*arg_type, vec![out_a, out_b]);
+        }
+        if output_idx > 0 {
+            new_layer_layout.slot_poly_counts.insert(
+                StorageSlot {
+                    class: AddressClass::ThisLayerInnerLayerWrite,
+                    field: FieldType::Ext,
+                },
+                output_idx,
+            );
+        }
+        layers[output_layer] = new_layer_layout;
+        layer_inputs = next_inputs;
+        current_layer_idx += 1;
+    }
+
+    storage.set_layout(Arc::new(GpuGKRStorageLayout {
+        trace_len,
+        artifact_log2_stride: initial_trace_log_2 as u32,
+        layers,
+        aliases: BTreeMap::new(),
+    }));
+}
+
 pub(super) fn empty_constraints() -> NoFieldMaxQuadraticConstraintsGKRRelation {
     NoFieldMaxQuadraticConstraintsGKRRelation {
         quadratic_terms: Vec::new().into_boxed_slice(),
