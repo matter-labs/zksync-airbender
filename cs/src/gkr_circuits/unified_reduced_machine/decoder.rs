@@ -4,13 +4,10 @@ use crate::gkr_circuits::binary_shifts_family::ShiftBinaryDecoder;
 use crate::gkr_circuits::jump_branch_slt_family::JumpSltBranchDecoder;
 use crate::gkr_circuits::mem_word_only::WordOnlyMemoryFamilyDecoder;
 
-/// Per-family flag offsets within the unified bitmask. Must stay in sync with the
-/// `FAMILY_*_FLAG_OFFSET` constants in `circuit.rs`. Tested in this module.
-// TODO(yoaveshel): maybe reuse the constants from circuit.rs
-const F1_OFFSET: usize = 0;
-const F2_OFFSET: usize = F1_OFFSET + ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS;
-const F3_OFFSET: usize = F2_OFFSET + JUMP_SLT_BRANCH_FAMILY_NUM_BITS;
-const F4_OFFSET: usize = F3_OFFSET + SHIFT_BINARY_FAMILY_NUM_FLAGS;
+use super::circuit::{
+    FAMILY_1_FLAG_OFFSET as F1_OFFSET, FAMILY_2_FLAG_OFFSET as F2_OFFSET,
+    FAMILY_3_FLAG_OFFSET as F3_OFFSET, FAMILY_4_FLAG_OFFSET as F4_OFFSET,
+};
 
 /// Family 4 in the unified bitmask is one-hot LW/SW (2 bits), not the standalone
 /// 1-bit `is_store` encoding. See `circuit.rs` doc comment for rationale.

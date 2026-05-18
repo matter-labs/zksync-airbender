@@ -1,7 +1,11 @@
 use super::*;
 
+mod add_sub;
 mod circuit;
 mod decoder;
+mod jbs;
+mod mem;
+mod shifts;
 
 pub use self::circuit::{
     unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr,

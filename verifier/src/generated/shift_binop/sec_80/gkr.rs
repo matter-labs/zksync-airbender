@@ -1134,8 +1134,8 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 2usize] = [(3usize, 9usize), (4usize, 3usize)];
-            const VAL_QI: [(usize, usize); 12usize] = [
+            const VAL_QO: [(usize, usize); 2usize] = [(3usize, 8usize), (4usize, 2usize)];
+            const VAL_QI: [(usize, usize); 10usize] = [
                 (6usize, 268435454usize),
                 (7usize, 268434910usize),
                 (10usize, 268435454usize),
@@ -1144,12 +1144,10 @@ unsafe fn layer_0_final_step_accumulator(
                 (15usize, 268434910usize),
                 (18usize, 268435454usize),
                 (19usize, 268434910usize),
-                (36usize, 1744830467usize),
                 (6usize, 268435454usize),
                 (7usize, 268434910usize),
-                (36usize, 1744830467usize),
             ];
-            const VAL_LN: [(usize, usize); 0usize] = [];
+            const VAL_LN: [(usize, usize); 1usize] = [(36usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -1161,8 +1159,8 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 2usize] = [(3usize, 9usize), (4usize, 3usize)];
-            const VAL_QI: [(usize, usize); 12usize] = [
+            const VAL_QO: [(usize, usize); 2usize] = [(3usize, 8usize), (4usize, 2usize)];
+            const VAL_QI: [(usize, usize); 10usize] = [
                 (8usize, 268435454usize),
                 (9usize, 268434910usize),
                 (12usize, 268435454usize),
@@ -1171,12 +1169,10 @@ unsafe fn layer_0_final_step_accumulator(
                 (17usize, 268434910usize),
                 (20usize, 268435454usize),
                 (21usize, 268434910usize),
-                (37usize, 1744830467usize),
                 (8usize, 268435454usize),
                 (9usize, 268434910usize),
-                (37usize, 1744830467usize),
             ];
-            const VAL_LN: [(usize, usize); 0usize] = [];
+            const VAL_LN: [(usize, usize); 1usize] = [(37usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;

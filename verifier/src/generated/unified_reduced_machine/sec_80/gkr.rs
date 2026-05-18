@@ -22,7 +22,7 @@ unsafe fn layer_0_compute_claim(
     output_claims: &[BabyBearExt4; 89usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 160usize] = [
+    const DESCS: [(usize, usize, usize); 161usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (1usize, 2usize, 0usize),
@@ -95,6 +95,7 @@ unsafe fn layer_0_compute_claim(
         (2usize, 78usize, 79usize),
         (2usize, 80usize, 81usize),
         (1usize, 82usize, 0usize),
+        (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
@@ -2449,6 +2450,20 @@ unsafe fn layer_0_final_step_accumulator(
                 (90usize, 1744830467usize),
                 (90usize, 1744830467usize),
             ];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(40usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(90usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -6863,7 +6878,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(E::gkr_cache_relation_failed(2usize));
+                        return Err(E::gkr_vector_lookup_cache_relation_failed(2usize, _vl));
                     }
                     _vl += 1;
                 }
@@ -7162,7 +7177,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(E::gkr_cache_relation_failed(1usize));
+                        return Err(E::gkr_vector_lookup_cache_relation_failed(1usize, _vl));
                     }
                     _vl += 1;
                 }
@@ -7349,7 +7364,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(E::gkr_cache_relation_failed(0usize));
+                        return Err(E::gkr_single_lookup_cache_relation_failed(0usize, _sc));
                     }
                     _sc += 1;
                 }
@@ -7455,7 +7470,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(E::gkr_cache_relation_failed(0usize));
+                        return Err(E::gkr_vector_lookup_cache_relation_failed(0usize, _vl));
                     }
                     _vl += 1;
                 }
@@ -7482,7 +7497,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(E::gkr_cache_relation_failed(0usize));
+                        return Err(E::gkr_permutation_cache_relation_failed(0usize, _vs));
                     }
                     _vs += 1;
                 }

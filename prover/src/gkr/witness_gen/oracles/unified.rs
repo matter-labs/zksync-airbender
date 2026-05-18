@@ -251,6 +251,13 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
             return Default::default();
         };
         let pc = cycle_data.initial_pc();
-        self.decoder_table[(pc as usize) / 4]
+        let idx = (pc as usize) / 4;
+        assert!(
+            idx < self.decoder_table.len(),
+            "PC 0x{:08x} out of decoder table bounds (len={})",
+            pc,
+            self.decoder_table.len()
+        );
+        self.decoder_table[idx]
     }
 }

@@ -102,52 +102,6 @@ pub(crate) fn check_logup_identity_after_dimension_reduction<
     true
 }
 
-/// Generate mock output claims by evaluating the global output polynomials at a fixed point.
-/// Returns (readset, writeset, rangechecknum, rangecheckden, timechecknum, timecheckden, lookupnum, lookupden, evaluation_point).
-pub(crate) fn mock_output_claims<F: PrimeField, E: FieldExtension<F> + Field>(
-    compiled_circuit: &GKRCircuitArtifact<F>,
-    gkr_storage: &GKRStorage<F, E>,
-    trace_len: usize,
-    worker: &Worker,
-) -> ((E, E, E, E, E, E, E, E), Vec<E>) {
-    let challenges =
-        vec![E::from_base(F::from_u32_unchecked(42)); trace_len.trailing_zeros() as usize];
-    let eq_precomputed = make_eq_poly_in_full::<E>(&challenges, worker);
-    let eq = eq_precomputed.last().unwrap();
-
-    let mut evals = vec![];
-    for key in [
-        OutputType::PermutationProduct,
-        OutputType::Lookup16Bits,
-        OutputType::LookupTimestamps,
-        OutputType::GenericLookup,
-    ] {
-        let addresses = &compiled_circuit.global_output_map[&key];
-        for address in addresses.iter() {
-            let poly = gkr_storage.get_ext_poly(*address);
-            let evaluation = evaluate_with_precomputed_eq_ext::<E>(poly, &eq[..]);
-            evals.push(evaluation);
-        }
-    }
-
-    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
-        evals.try_into().unwrap();
-
-    (
-        (
-            claim_readset,
-            claim_writeset,
-            claim_rangechecknum,
-            claim_rangecheckden,
-            claim_timechecknum,
-            claim_timecheckden,
-            claim_lookupnum,
-            claim_lookupden,
-        ),
-        challenges,
-    )
-}
-
 pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F> + Field>(
     gkr_storage: &GKRStorage<F, E>,
     eval_point: &[E],

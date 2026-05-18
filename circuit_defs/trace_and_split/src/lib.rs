@@ -65,6 +65,7 @@ where
         trace_len,
         &oracle,
         &worker,
+        None,
         A::default(),
         B::default(),
     );
@@ -130,6 +131,7 @@ where
         trace_len,
         &oracle,
         &worker,
+        None,
         A::default(),
         B::default(),
     );

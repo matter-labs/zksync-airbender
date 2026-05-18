@@ -42,12 +42,12 @@ pub fn create_conditional_op_resolution_table<F: PrimeField>(id: u32) -> LookupT
                     !eq_flag
                 }
                 0b010 | 0b100 => {
-                    // STL or BLT
+                    // SLT or BLT
                     if rs1_sign && !rs2_sign {
-                        // rs1 < 0 and rs2 > 0
+                        // rs1 < 0 and rs2 >= 0
                         true
-                    } else if rs1_sign && !rs2_sign {
-                        // rs1 > 0 and rs2 < 0
+                    } else if !rs1_sign && rs2_sign {
+                        // rs1 >= 0 and rs2 < 0
                         false
                     } else {
                         // same sign, and then it matches unsigned comparison
@@ -59,11 +59,10 @@ pub fn create_conditional_op_resolution_table<F: PrimeField>(id: u32) -> LookupT
                     unsigned_lt_flag
                 }
                 0b101 => {
-                    // BGE
-                    // inverse of BLT
+                    // BGE — inverse of BLT
                     if rs1_sign && !rs2_sign {
                         false
-                    } else if rs1_sign && !rs2_sign {
+                    } else if !rs1_sign && rs2_sign {
                         true
                     } else {
                         !unsigned_lt_flag

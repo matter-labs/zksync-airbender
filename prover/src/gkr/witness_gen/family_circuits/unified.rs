@@ -25,7 +25,7 @@ pub fn build_unified_table_driver<F: PrimeField>(binary: &[u32]) -> TableDriver<
     table_driver
 }
 
-pub fn evaluate_unified_memory_witness<
+pub fn evaluate_gkr_memory_witness_for_unified_family<
     F: PrimeField,
     O: Oracle<F>,
     A: GoodAllocator,
@@ -50,7 +50,7 @@ pub fn evaluate_unified_memory_witness<
     )
 }
 
-pub fn evaluate_unified_full_witness<
+pub fn evaluate_gkr_witness_for_unified_family<
     F: PrimeField,
     O: Oracle<F>,
     A: GoodAllocator,

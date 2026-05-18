@@ -5912,6 +5912,32 @@
                 "quadratic_terms": [
                   [
                     {
+                      "BaseLayerWitness": 40
+                    },
+                    [
+                      [
+                        1,
+                        {
+                          "BaseLayerMemory": 24
+                        }
+                      ]
+                    ]
+                  ]
+                ],
+                "linear_terms": [],
+                "constant": 0
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "EnforceSingleMaxQuadraticConstraint": {
+              "input": {
+                "quadratic_terms": [
+                  [
+                    {
                       "BaseLayerWitness": 41
                     },
                     [
@@ -13090,6 +13116,17 @@
           268435454,
           60,
           77
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          268435454,
+          53,
+          78
         ]
       ],
       "linear_terms": [],

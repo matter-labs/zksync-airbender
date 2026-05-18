@@ -6,7 +6,8 @@ use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::GKRExternalChallenges;
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::family_circuits::{
-    build_unified_table_driver, evaluate_unified_full_witness, evaluate_unified_memory_witness,
+    build_unified_table_driver, evaluate_gkr_memory_witness_for_unified_family,
+    evaluate_gkr_witness_for_unified_family,
 };
 use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
@@ -43,11 +44,11 @@ const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 const USE_GKR_WITH_CACHES: bool = cfg!(not(feature = "no_caches"));
 
 #[test]
-fn unified_basic_fibonacci_sec_80() {
-    unified_basic_fibonacci_impl(SecurityLevel::Sec80);
+fn gkr_run_basic_unrolled_test_sec_80_unified_reduced_machine() {
+    run_unified_smoke_test(SecurityLevel::Sec80);
 }
 
-fn unified_basic_fibonacci_impl(level: SecurityLevel) {
+fn run_unified_smoke_test(level: SecurityLevel) {
     type CountersT = DelegationsAndUnifiedCounters;
 
     let proof_suffix = level.dir_suffix();
@@ -68,8 +69,8 @@ fn unified_basic_fibonacci_impl(level: SecurityLevel) {
     let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
     let ram_bound_bytes: usize = (num_teardown_sets << TRACE_LEN_LOG2) << (WORD_BITS as usize);
 
-    let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
-    let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
+    let binary = std::fs::read("../examples/multi_family_smoke/app.bin").unwrap();
+    let text_section = std::fs::read("../examples/multi_family_smoke/app.text").unwrap();
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
         .as_chunks::<4>()
@@ -99,7 +100,8 @@ fn unified_basic_fibonacci_impl(level: SecurityLevel) {
         CountersT,
         { common_constants::ROM_SECOND_WORD_BITS },
     >::new_with_cycle_limit(cycles_bound, state);
-    let mut non_determinism = QuasiUARTSource::new_with_reads(vec![]);
+    // CSR inputs read by multi_family_smoke: n (loop bound, masked to 0xF) and seed.
+    let mut non_determinism = QuasiUARTSource::new_with_reads(vec![0x9u32, 0xDEAD_BEEFu32]);
 
     let is_program_finished = VM::<CountersT>::run_basic_unrolled::<_, _, _, BabyBearField>(
         &mut state,
@@ -112,7 +114,7 @@ fn unified_basic_fibonacci_impl(level: SecurityLevel) {
     assert!(is_program_finished);
 
     let exact_cycles_passed = (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
-    println!("basic_fibonacci ran {} cycles", exact_cycles_passed);
+    println!("multi_family_smoke ran {} cycles", exact_cycles_passed);
 
     let counters = snapshotter.snapshots.last().unwrap().state.counters;
     let num_calls = counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
@@ -222,7 +224,7 @@ fn unified_basic_fibonacci_impl(level: SecurityLevel) {
     let table_driver = build_unified_table_driver::<BabyBearField>(&binary);
 
     println!("Computing memory trace");
-    let memory_trace = evaluate_unified_memory_witness::<BabyBearField, _, _, _>(
+    let memory_trace = evaluate_gkr_memory_witness_for_unified_family::<BabyBearField, _, _, _>(
         &circuit,
         NUM_CYCLES_PER_CHUNK,
         &oracle,
@@ -233,7 +235,7 @@ fn unified_basic_fibonacci_impl(level: SecurityLevel) {
     );
 
     println!("Computing full trace");
-    let full_trace = evaluate_unified_full_witness::<BabyBearField, _, _, _>(
+    let full_trace = evaluate_gkr_witness_for_unified_family::<BabyBearField, _, _, _>(
         &circuit,
         super::unified_reduced_machine::witness_eval_fn,
         NUM_CYCLES_PER_CHUNK,
@@ -310,6 +312,70 @@ fn unified_basic_fibonacci_impl(level: SecurityLevel) {
             "write set doesn't contain machine-state pair {:?}",
             (pc, ts)
         );
+    }
+    
+    {
+        let flattened_inits_and_teardowns: Vec<_> = shuffle_ram_touched_addresses
+            .iter()
+            .flatten()
+            .copied()
+            .collect();
+        let expected_init_set: Vec<_> = memory_read_set.difference(&memory_write_set).collect();
+        let expected_teardown_set: Vec<_> = memory_write_set.difference(&memory_read_set).collect();
+        assert_eq!(
+            expected_init_set.len(),
+            expected_teardown_set.len(),
+            "inits and teardowns must have the same cardinality"
+        );
+        assert_eq!(
+            total_unique_teardowns,
+            expected_teardown_set.len(),
+            "prover's teardown count must match the read - write difference"
+        );
+        for (idx, (is_register, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
+            assert!(
+                !*is_register,
+                "found an unexpected init for register {} (value={}, ts={})",
+                addr, init_value, ts
+            );
+            assert_eq!(*ts, 0, "init timestamp must be 0 for address {}", addr);
+            assert_eq!(*init_value, 0, "init value must be 0 for address {}", addr);
+            assert_eq!(
+                flattened_inits_and_teardowns[idx].0, *addr,
+                "init address divergence at index {}",
+                idx
+            );
+        }
+        for (idx, (is_register, addr, ts, value)) in expected_teardown_set.iter().enumerate() {
+            assert!(
+                !*is_register,
+                "found an unexpected teardown for register {} (value={}, ts={})",
+                addr, value, ts
+            );
+            assert!(
+                *ts > INITIAL_TIMESTAMP,
+                "teardown ts must be > INITIAL_TIMESTAMP at address {}",
+                addr
+            );
+            assert_eq!(
+                flattened_inits_and_teardowns[idx].1 .0, *ts,
+                "teardown timestamp divergence at index {}",
+                idx
+            );
+            assert_eq!(
+                flattened_inits_and_teardowns[idx].1 .1, *value,
+                "teardown value divergence at index {}",
+                idx
+            );
+        }
+        for ((_, addr_init, _, _), (_, addr_teardown, _, _)) in
+            expected_init_set.iter().zip(expected_teardown_set.iter())
+        {
+            assert_eq!(
+                *addr_init, *addr_teardown,
+                "init/teardown address pair must align"
+            );
+        }
     }
 
     let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
