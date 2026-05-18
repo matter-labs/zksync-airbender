@@ -3,6 +3,7 @@ use crate::constraint::Term;
 use crate::cs::circuit_trait::Circuit;
 use crate::definitions::*;
 use crate::oracle::*;
+use crate::structured_expr::Expr;
 use crate::witness_placer::*;
 // // use crate::tables::TableType;
 use field::PrimeField;
@@ -66,6 +67,14 @@ pub enum Boolean {
     Not(Variable),
     /// Constant (not an allocated variable)
     Constant(bool),
+}
+
+#[derive(Clone, Copy, Debug)]
+enum BooleanBinaryOp {
+    And,
+    Or,
+    Xor,
+    Nor,
 }
 
 impl Boolean {
@@ -199,6 +208,65 @@ impl Boolean {
         }
     }
 
+    fn and_expr<F: PrimeField>(a: Self, b: Self) -> Expr<F> {
+        Expr::from(a) * Expr::from(b)
+    }
+
+    fn or_expr<F: PrimeField>(a: Self, b: Self) -> Expr<F> {
+        Expr::from(1u32) - (Expr::from(1u32) - Expr::from(a)) * (Expr::from(1u32) - Expr::from(b))
+    }
+
+    fn xor_expr<F: PrimeField>(a: Self, b: Self) -> Expr<F> {
+        let a = Expr::<F>::from(a);
+        let b = Expr::<F>::from(b);
+
+        a.clone() + b.clone() - Expr::from(2u32) * (a * b)
+    }
+
+    fn nor_expr<F: PrimeField>(a: Self, b: Self) -> Expr<F> {
+        (Expr::from(1u32) - Expr::from(a)) * (Expr::from(1u32) - Expr::from(b))
+    }
+
+    fn witness_mask_value<F: PrimeField, W: WitnessPlacer<F>>(
+        placer: &mut W,
+        value: Self,
+    ) -> W::Mask {
+        match value {
+            Boolean::Is(var) => placer.get_boolean(var),
+            Boolean::Not(var) => placer.get_boolean(var).negate(),
+            Boolean::Constant(value) => W::Mask::constant(value),
+        }
+    }
+
+    fn apply_binary_op<F: PrimeField, C: Circuit<F>>(
+        cs: &mut C,
+        a: Self,
+        b: Self,
+        expr: Expr<F>,
+        op: BooleanBinaryOp,
+    ) -> Self {
+        let new_var = cs.add_variable();
+
+        let value_fn = move |placer: &mut C::WitnessPlacer| {
+            let a = Self::witness_mask_value::<F, C::WitnessPlacer>(placer, a);
+            let b = Self::witness_mask_value::<F, C::WitnessPlacer>(placer, b);
+            let value = match op {
+                BooleanBinaryOp::And => a.and(&b),
+                BooleanBinaryOp::Or => a.or(&b),
+                BooleanBinaryOp::Xor => {
+                    let not_b = b.negate();
+                    <C::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(&a, &not_b, &b)
+                }
+                BooleanBinaryOp::Nor => a.or(&b).negate(),
+            };
+            placer.assign_mask(new_var, &value);
+        };
+        cs.set_values(value_fn);
+
+        cs.define_variable_from_expr(new_var, expr);
+        Boolean::Is(new_var)
+    }
+
     pub fn and_constraint<F: PrimeField>(a: &Self, b: &Self) -> Constraint<F> {
         match (a, b) {
             // false AND x is always false
@@ -243,34 +311,13 @@ impl Boolean {
             }
             // true AND x is always x
             (&Boolean::Constant(true), x) | (x, &Boolean::Constant(true)) => x.clone(),
-            // a AND (NOT b)
-            (&Boolean::Is(is), &Boolean::Not(not)) | (&Boolean::Not(not), &Boolean::Is(is)) => {
-                // This constrain for and_not: (a) * (1 - b) = (c), ensuring c is 1 iff
-                // a is true and b is false, and otherwise c is 0.
-
-                let var = Boolean::Is(cs.add_variable_from_constraint(
-                    Term::from(is) * (Term::from(1) - Term::from(not)),
-                ));
-
-                var
-            }
-            // (NOT a) AND (NOT b) = (1 - a) * (1 - b)
-            (&Boolean::Not(a), &Boolean::Not(b)) => {
-                let var = Boolean::Is(cs.add_variable_from_constraint(
-                    (Term::from(1) - Term::from(a)) * (Term::from(1) - Term::from(b)),
-                ));
-
-                var
-            }
-            // a AND b
-            (&Boolean::Is(a), &Boolean::Is(b)) => {
-                // This constrain for and (a) * (b) = (c), ensuring c is 1 iff
-                // a AND b are both 1.
-                let var =
-                    Boolean::Is(cs.add_variable_from_constraint(Term::from(a) * Term::from(b)));
-
-                var
-            }
+            (a, b) => Self::apply_binary_op(
+                cs,
+                *a,
+                *b,
+                Self::and_expr::<F>(*a, *b),
+                BooleanBinaryOp::And,
+            ),
         }
     }
 
@@ -282,28 +329,8 @@ impl Boolean {
             }
             // false OR x is always x
             (&Boolean::Constant(false), x) | (x, &Boolean::Constant(false)) => x.clone(),
-            // a OR (NOT b) = NOT( a AND Not b)
-            (&Boolean::Is(is), &Boolean::Not(not)) | (&Boolean::Not(not), &Boolean::Is(is)) => {
-                // 1 - b + ab
-                let var = Boolean::Is(cs.add_variable_from_constraint(
-                    Term::from(1) - Term::from(not) + Term::from(is) * Term::from(not),
-                ));
-
-                var
-            }
-            // (NOT a) OR (NOT b) = a NOR b
-            (&Boolean::Not(_), &Boolean::Not(_)) => {
-                unreachable!();
-            }
-            // a OR b
-            (&Boolean::Is(a), &Boolean::Is(b)) => {
-                // 1 - b + ab
-                // res = 1 - (1 - a)(1-b) = a + b - ab
-                let var = Boolean::Is(cs.add_variable_from_constraint(
-                    Constraint::from(a) + Term::from(b) - Term::from(a) * Term::from(b),
-                ));
-
-                var
+            (a, b) => {
+                Self::apply_binary_op(cs, *a, *b, Self::or_expr::<F>(*a, *b), BooleanBinaryOp::Or)
             }
         }
     }
@@ -313,39 +340,17 @@ impl Boolean {
         match (a, b) {
             (&Boolean::Constant(false), x) | (x, &Boolean::Constant(false)) => x.clone(),
             (&Boolean::Constant(true), x) | (x, &Boolean::Constant(true)) => x.toggle(),
-            // a XOR (NOT b) = NOT(a XOR b)
-            (_is @ &Boolean::Is(_), _not @ &Boolean::Not(_))
-            | (_not @ &Boolean::Not(_), _is @ &Boolean::Is(_)) => {
-                unreachable!();
-
-                //Boolean::xor(is, &not.toggle(), cs).toggle()
+            (a, b) if a == b => Boolean::Constant(false),
+            (&Boolean::Is(a), &Boolean::Not(b)) | (&Boolean::Not(b), &Boolean::Is(a)) if a == b => {
+                Boolean::Constant(true)
             }
-            // a XOR b = (NOT a) XOR (NOT b)
-            (&Boolean::Is(a), &Boolean::Is(b)) => {
-                if a == b {
-                    return Boolean::Constant(false);
-                }
-                // res = 1 - (1 - a)(1-b) = a + b - 2 * ab
-                let var = Boolean::Is(cs.add_variable_from_constraint(
-                    Constraint::from(a) + Term::from(b)
-                        - Term::from(a) * Term::from(b) * Term::from(2),
-                ));
-
-                var
-            }
-            // a XOR b = (NOT a) XOR (NOT b)
-            (&Boolean::Not(_a), &Boolean::Not(_b)) => {
-                unreachable!();
-
-                /*if a == b {
-                    return Boolean::Constant(false);
-                }
-                // res = 1 - (1 - a)(1-b) = a + b - 2 * ab
-                Boolean::Is(cs.add_variable_from_constraint(
-                    Constraint::from(a) + Term::from(b)
-                        - Term::from(a) * Term::from(b) * Term::from(2),
-                ))*/
-            }
+            (a, b) => Self::apply_binary_op(
+                cs,
+                *a,
+                *b,
+                Self::xor_expr::<F>(*a, *b),
+                BooleanBinaryOp::Xor,
+            ),
         }
     }
 
@@ -356,23 +361,13 @@ impl Boolean {
                 Boolean::Constant(false)
             }
             (&Boolean::Constant(false), x) | (x, &Boolean::Constant(false)) => x.toggle(),
-            // a NOR (NOT b) = b AND NOT a
-            (&Boolean::Is(_is), &Boolean::Not(_not)) | (&Boolean::Not(_not), &Boolean::Is(_is)) => {
-                unreachable!();
-            }
-            // (NOT a) NOR (NOT b) = a AND b
-            (&Boolean::Not(_a), &Boolean::Not(_b)) => {
-                unreachable!();
-            }
-            // a NOR b
-            (&Boolean::Is(a), &Boolean::Is(b)) => {
-                // res = (1 - a)(1 - b) = 1 - a - b + ab
-                let var = Boolean::Is(cs.add_variable_from_constraint(
-                    (Term::from(1) - Term::from(a)) * (Term::from(1) - Term::from(b)),
-                ));
-
-                var
-            }
+            (a, b) => Self::apply_binary_op(
+                cs,
+                *a,
+                *b,
+                Self::nor_expr::<F>(*a, *b),
+                BooleanBinaryOp::Nor,
+            ),
         }
     }
 

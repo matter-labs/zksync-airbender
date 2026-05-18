@@ -1,5 +1,6 @@
 use crate::constraint::Constraint;
 use crate::definitions::Variable;
+use crate::types::{Boolean, Num};
 use field::PrimeField;
 
 /// Source-level arithmetic expression metadata for constraints.
@@ -107,6 +108,25 @@ impl<F: PrimeField> Expr<F> {
 impl<F: PrimeField> From<Variable> for Expr<F> {
     fn from(value: Variable) -> Self {
         Self::Var(value)
+    }
+}
+
+impl<F: PrimeField> From<Num<F>> for Expr<F> {
+    fn from(value: Num<F>) -> Self {
+        match value {
+            Num::Var(variable) => Self::Var(variable),
+            Num::Constant(value) => Self::Constant(value),
+        }
+    }
+}
+
+impl<F: PrimeField> From<Boolean> for Expr<F> {
+    fn from(value: Boolean) -> Self {
+        match value {
+            Boolean::Is(variable) => Self::Var(variable),
+            Boolean::Not(variable) => Self::from(1u32) - Self::Var(variable),
+            Boolean::Constant(value) => Self::from(value as u32),
+        }
     }
 }
 
@@ -300,6 +320,112 @@ mod tests {
                 dst,
                 expr: expected_expr,
             }));
+    }
+
+    #[test]
+    fn choose_records_structured_metadata_for_negated_flag_and_constant_input() {
+        let mut cs = BasicAssembly::<F>::new();
+        let cond = cs.add_named_boolean_variable("cond");
+        let a = cs.add_named_variable("a");
+        let constant = F::from_u32_unchecked(7);
+        let flag = cond.toggle();
+
+        let Num::Var(dst) = cs.choose(flag, Num::Constant(constant), Num::Var(a)) else {
+            panic!("non-constant flag should produce a variable output");
+        };
+
+        let expected_expr = Expr::<F>::from(flag)
+            * (Expr::from(Num::Constant(constant)) - Expr::from(Num::Var(a)))
+            + Expr::from(Num::Var(a));
+        let mut expected_flat_constraint = expected_expr.to_max_quadratic_constraint();
+        expected_flat_constraint -= Term::from(dst);
+        expected_flat_constraint.normalize();
+
+        let (output, _) = cs.finalize();
+
+        assert!(output
+            .constraints
+            .iter()
+            .any(|(constraint, _)| constraint == &expected_flat_constraint));
+        assert!(output
+            .structured_statements
+            .contains(&StructuredStatement::Define {
+                dst,
+                expr: expected_expr,
+            }));
+    }
+
+    #[test]
+    fn boolean_and_records_structured_definition_metadata() {
+        let mut cs = BasicAssembly::<F>::new();
+        let a = cs.add_named_boolean_variable("a");
+        let b = cs.add_named_boolean_variable("b");
+        let expr = Expr::<F>::from(a) * Expr::from(b.toggle());
+
+        let Boolean::Is(dst) = Boolean::and::<F, _>(&a, &b.toggle(), &mut cs) else {
+            panic!("non-constant boolean AND should produce a variable output");
+        };
+        let mut expected_flat_constraint = expr.to_max_quadratic_constraint();
+        expected_flat_constraint -= Term::from(dst);
+        expected_flat_constraint.normalize();
+
+        let (output, _) = cs.finalize();
+
+        assert!(output
+            .constraints
+            .iter()
+            .any(|(constraint, _)| constraint == &expected_flat_constraint));
+        assert!(output
+            .structured_statements
+            .contains(&StructuredStatement::Define { dst, expr }));
+    }
+
+    #[test]
+    fn boolean_negated_views_record_structured_definition_metadata() {
+        let mut cs = BasicAssembly::<F>::new();
+        let a = cs.add_named_boolean_variable("a");
+        let b = cs.add_named_boolean_variable("b");
+
+        let or_expr = Expr::<F>::from(1u32)
+            - (Expr::from(1u32) - Expr::from(a.toggle()))
+                * (Expr::from(1u32) - Expr::from(b.toggle()));
+        let Boolean::Is(or_dst) = Boolean::or::<F, _>(&a.toggle(), &b.toggle(), &mut cs) else {
+            panic!("non-constant boolean OR should produce a variable output");
+        };
+
+        let xor_left = Expr::<F>::from(a);
+        let xor_right = Expr::<F>::from(b.toggle());
+        let xor_expr =
+            xor_left.clone() + xor_right.clone() - Expr::from(2u32) * (xor_left * xor_right);
+        let Boolean::Is(xor_dst) = Boolean::xor::<F, _>(&a, &b.toggle(), &mut cs) else {
+            panic!("non-constant boolean XOR should produce a variable output");
+        };
+
+        let nor_expr =
+            (Expr::<F>::from(1u32) - Expr::from(a.toggle())) * (Expr::from(1u32) - Expr::from(b));
+        let Boolean::Is(nor_dst) = Boolean::nor::<F, _>(&a.toggle(), &b, &mut cs) else {
+            panic!("non-constant boolean NOR should produce a variable output");
+        };
+
+        let (output, _) = cs.finalize();
+
+        for (dst, expr) in [
+            (or_dst, or_expr.clone()),
+            (xor_dst, xor_expr.clone()),
+            (nor_dst, nor_expr.clone()),
+        ] {
+            let mut expected_flat_constraint = expr.to_max_quadratic_constraint();
+            expected_flat_constraint -= Term::from(dst);
+            expected_flat_constraint.normalize();
+
+            assert!(output
+                .constraints
+                .iter()
+                .any(|(constraint, _)| constraint == &expected_flat_constraint));
+            assert!(output
+                .structured_statements
+                .contains(&StructuredStatement::Define { dst, expr }));
+        }
     }
 
     #[test]
