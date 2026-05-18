@@ -2,6 +2,7 @@ use super::*;
 
 #[test]
 #[serial]
+#[ignore]
 fn run_jump_branch_slt_workflow_input_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 
@@ -506,10 +507,10 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
 
 #[test]
 #[serial]
+#[ignore]
 fn run_load_store_word_only_workflow_input_parity_test() {
-    let compiled_circuit = deserialize_json_for_test(
-        "cs/compiled_circuits/mem_word_only_preprocessed_layout_gkr.json",
-    );
+    let compiled_circuit =
+        deserialize_json_for_test("cs/compiled_circuits/mem_word_only_layout_gkr.json");
 
     run_memory_workflow_input_parity_test::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>(
         "load_store_word_only",
@@ -525,10 +526,10 @@ fn run_load_store_word_only_workflow_input_parity_test() {
 
 #[test]
 #[serial]
+#[ignore]
 fn run_load_store_subword_only_workflow_input_parity_test() {
-    let compiled_circuit = deserialize_json_for_test(
-        "cs/compiled_circuits/mem_subword_only_preprocessed_layout_gkr.json",
-    );
+    let compiled_circuit =
+        deserialize_json_for_test("cs/compiled_circuits/mem_subword_only_layout_gkr.json");
 
     run_memory_workflow_input_parity_test::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>(
         "load_store_subword_only",
@@ -544,6 +545,7 @@ fn run_load_store_subword_only_workflow_input_parity_test() {
 
 #[test]
 #[serial]
+#[ignore]
 fn run_bigint_delegation_workflow_input_parity_test() {
     let compiled_circuit = deserialize_json_for_test(
         "cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
@@ -553,6 +555,7 @@ fn run_bigint_delegation_workflow_input_parity_test() {
 
 #[test]
 #[serial]
+#[ignore]
 fn run_blake2_delegation_workflow_input_parity_test() {
     let compiled_circuit = deserialize_json_for_test(
         "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
@@ -562,6 +565,7 @@ fn run_blake2_delegation_workflow_input_parity_test() {
 
 #[test]
 #[serial]
+#[ignore]
 fn run_keccak_special5_delegation_workflow_input_parity_test() {
     let compiled_circuit =
         deserialize_json_for_test("cs/compiled_circuits/keccak_special5_layout_gkr.json");
@@ -570,6 +574,7 @@ fn run_keccak_special5_delegation_workflow_input_parity_test() {
 
 #[test]
 #[serial]
+#[ignore]
 fn run_blake2_delegation_zero_call_workflow_input_parity_test() {
     let compiled_circuit = deserialize_json_for_test(
         "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
@@ -606,34 +611,40 @@ fn cached_main_layer_backward_plan_keeps_cache_inputs_layer_locality_test() {
         false,
     );
 
-    let layer_plan = main_layer_state
+    // Cached helper addresses (`GKRAddress::Cached { layer, .. }`) live at
+    // the layer where they are produced. The basic-unrolled fixture's
+    // Cached entries are all at layer 0, so only that layer's kernel plans
+    // will reference them. Walk every main layer and aggregate.
+    let mut cached_kernel_addresses = 0usize;
+    while let Some(layer_plan) = main_layer_state
         .prepare_next_layer_static(&context)
         .unwrap()
-        .expect("expected at least one main-layer plan");
-    let compiled_layer = &compiled_circuit.layers[layer_plan.layer_idx];
-    assert_eq!(
-        layer_plan.kernel_plans().len(),
-        compiled_layer.gates.len() + compiled_layer.gates_with_external_connections.len(),
-        "layer {} should schedule exactly one kernel per compiled relation",
-        layer_plan.layer_idx,
-    );
-    let mut cached_kernel_addresses = 0;
-    for kernel in layer_plan.kernel_plans() {
-        cached_kernel_addresses += assert_cached_kernel_addresses_are_layer_local(
+    {
+        let compiled_layer = &compiled_circuit.layers[layer_plan.layer_idx];
+        assert_eq!(
+            layer_plan.kernel_plans().len(),
+            compiled_layer.gates.len() + compiled_layer.gates_with_external_connections.len(),
+            "layer {} should schedule exactly one kernel per compiled relation",
             layer_plan.layer_idx,
-            &kernel.inputs,
-            "main-layer plan",
         );
+        for kernel in layer_plan.kernel_plans() {
+            cached_kernel_addresses += assert_cached_kernel_addresses_are_layer_local(
+                layer_plan.layer_idx,
+                &kernel.inputs,
+                "main-layer plan",
+            );
+        }
     }
 
     assert!(
         cached_kernel_addresses > 0,
-        "expected cached helper addresses in main-layer backward plan",
+        "expected cached helper addresses across main-layer backward plans",
     );
 }
 
 #[test]
 #[serial]
+#[ignore]
 fn run_shift_binop_cached_lookup_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 

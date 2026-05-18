@@ -183,6 +183,7 @@ mod tests {
     use itertools::Itertools;
     use rand::distr::{Distribution, StandardUniform};
     use rand::random;
+    use serial_test::serial;
 
     use super::*;
 
@@ -226,11 +227,13 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn sort_keys_a_u32() {
         test_sort_keys::<u32>(false);
     }
 
     #[test]
+    #[serial]
     fn sort_keys_d_u32() {
         test_sort_keys::<u32>(true);
     }

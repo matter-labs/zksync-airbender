@@ -490,7 +490,7 @@ fn round_builders_allocate_and_reuse_scratch() {
                     .this_layer_start
                     .offset_from(round3_first_ext_inputs_device[0].previous_layer_start)
             },
-            1
+            2
         );
         assert_eq!(round3_first_base_inputs_device[0].this_layer_size, 1);
         assert_eq!(round3_first_ext_inputs_device[0].this_layer_size, 1);

@@ -146,12 +146,18 @@ mod tests {
     use super::Transfer;
     use crate::allocator::tracker::AllocationPlacement;
     use era_cudart::result::CudaResult;
+    use serial_test::serial;
     use std::sync::Arc;
 
     #[test]
+    #[serial]
     fn test_transfer() -> CudaResult<()> {
         let mut config = ProverContextConfig::default();
-        config.allocator_block_log_size = 2;
+        // 32 MB device arena (32 × default 1 MB blocks). Needs to be larger
+        // than the default `small_allocator_pool_blocks << block_log_size`
+        // (16 × 1 MB) carved out of it; everything beyond that is room for
+        // the 1 KB transfer this test actually exercises.
+        config.max_device_allocation_blocks_count = Some(32);
         let context = ProverContext::new(&config)?;
         let src = Arc::new(vec![0; 1024]);
         let mut transfer = Transfer::new()?;

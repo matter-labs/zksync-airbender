@@ -125,7 +125,7 @@ fn pairwise_round0_kernel_matches_cpu() {
         expected.push(c1);
     }
 
-    assert_eq!(actual, expected);
+    assert_eq!(actual, interleaved_pairs_to_strided(&expected));
 }
 
 #[test]
@@ -277,7 +277,7 @@ fn lookup_round0_kernel_matches_cpu() {
         expected.push(c1);
     }
 
-    assert_eq!(actual, expected);
+    assert_eq!(actual, interleaved_pairs_to_strided(&expected));
 }
 
 #[test]
