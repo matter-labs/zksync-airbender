@@ -307,21 +307,6 @@ impl ProverContext {
         self.host_allocator.reset_used_mem_peak();
     }
 
-    #[cfg(test)]
-    pub fn get_scheduler_host_used_mem_current(&self) -> usize {
-        self.scheduler_host_allocator.get_used_mem_current()
-    }
-
-    #[cfg(test)]
-    pub fn get_scheduler_host_used_mem_peak(&self) -> usize {
-        self.scheduler_host_allocator.get_used_mem_peak()
-    }
-
-    #[cfg(test)]
-    pub fn reset_scheduler_host_used_mem_peak(&self) {
-        self.scheduler_host_allocator.reset_used_mem_peak();
-    }
-
     pub fn reset_used_mem_peak(&self) {
         self.device_allocator.reset_used_mem_peak();
     }
