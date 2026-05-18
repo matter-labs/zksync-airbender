@@ -21,7 +21,7 @@ pub fn generate_dim_reducing_compute_claim<MW: FieldWrapper>(
 
     for group in output_groups {
         match group.output_type {
-            OutputType::PermutationProduct => {
+            OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
                 for _ in 0..group.num_addresses {
                     let idx = out_idx;
                     out_idx += 1;
@@ -79,9 +79,6 @@ pub fn generate_dim_reducing_compute_claim<MW: FieldWrapper>(
                     }
                 });
             }
-            OutputType::InitsAndTeardownsProduct => {
-                todo!()
-            }
         }
     }
 
@@ -117,7 +114,7 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: FieldWrapper>(
 
     for group in output_groups {
         match group.output_type {
-            OutputType::PermutationProduct => {
+            OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
                 for _ in 0..group.num_addresses {
                     let mul_v01 = MW::mul_assign(quote! { v01 }, quote! { e1 });
                     let mul_c0 = MW::mul_assign(quote! { c0 }, quote! { v01 });
@@ -208,12 +205,6 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: FieldWrapper>(
                         #lookup_body
                     }
                 });
-            }
-            OutputType::InitsAndTeardownsProduct => {
-                unimplemented!(
-                    "Phase F — verifier_generator support for inline inits/teardowns output \
-                     channel. See plans/unified_riscv_circuit.md."
-                );
             }
         }
     }

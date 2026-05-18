@@ -118,16 +118,14 @@ pub(crate) fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
 
     let memread_is_reg: Constraint<F> = Constraint::from(is_lw.toggle());
     cs.add_constraint(
-        memread_is_reg.clone()
-            * (readaddr_lo - Term::from(inputs.decoder_data.rs2_index)),
+        memread_is_reg.clone() * (readaddr_lo - Term::from(inputs.decoder_data.rs2_index)),
     );
     cs.add_constraint(memread_is_reg * readaddr_hi);
 
     // memwrite_addr is a register slot for Families 1-3 (rd) and Family 4 LW.
     let memwrite_is_reg: Constraint<F> = Constraint::from(is_sw.toggle());
     cs.add_constraint(
-        memwrite_is_reg.clone()
-            * (writeaddr_lo - Term::from(inputs.decoder_data.rd_index)),
+        memwrite_is_reg.clone() * (writeaddr_lo - Term::from(inputs.decoder_data.rd_index)),
     );
     cs.add_constraint(memwrite_is_reg * writeaddr_hi);
 
@@ -158,15 +156,12 @@ pub(crate) fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     let (is_sw_var, is_sw_neg) = is_sw.variable_and_negation_constant();
     {
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            let rs1_lo_val =
-                placer.get_u16_from_u8_parts([rs1_limbs[0], rs1_limbs[1]]);
-            let rs1_hi_val =
-                placer.get_u16_from_u8_parts([rs1_limbs[2], rs1_limbs[3]]);
+            let rs1_lo_val = placer.get_u16_from_u8_parts([rs1_limbs[0], rs1_limbs[1]]);
+            let rs1_hi_val = placer.get_u16_from_u8_parts([rs1_limbs[2], rs1_limbs[3]]);
             let imm_lo_val = placer.get_u16(imm_var_lo);
             let imm_hi_val = placer.get_u16(imm_var_hi);
             let (_, carry_lo) = rs1_lo_val.overflowing_add(&imm_lo_val);
-            let (_, carry_hi) =
-                rs1_hi_val.overflowing_add_with_carry(&imm_hi_val, &carry_lo);
+            let (_, carry_hi) = rs1_hi_val.overflowing_add_with_carry(&imm_hi_val, &carry_lo);
 
             let is_lw_raw = placer.get_boolean(is_lw_var);
             let is_lw_val = if is_lw_neg {
@@ -197,23 +192,18 @@ pub(crate) fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     let of_lo_term = Term::from(of_lo);
     let of_hi_term = Term::from(of_hi);
     cs.add_constraint(
-        load.clone()
-            * (rs1_low_c.clone() + imm_lo - readaddr_lo - shift16_term * of_lo_term)
+        load.clone() * (rs1_low_c.clone() + imm_lo - readaddr_lo - shift16_term * of_lo_term)
             + store.clone()
                 * (rs1_low_c.clone() + imm_lo - writeaddr_lo - shift16_term * of_lo_term),
     );
     // Constraint on of_hi: same shape with the carry from of_lo folded in.
     cs.add_constraint(
         load.clone()
-            * (rs1_high_c.clone()
-                + imm_hi
-                + Term::from(of_lo)
+            * (rs1_high_c.clone() + imm_hi + Term::from(of_lo)
                 - readaddr_hi
                 - shift16_term * of_hi_term)
             + store.clone()
-                * (rs1_high_c.clone()
-                    + imm_hi
-                    + Term::from(of_lo)
+                * (rs1_high_c.clone() + imm_hi + Term::from(of_lo)
                     - writeaddr_hi
                     - shift16_term * of_hi_term),
     );
@@ -293,10 +283,7 @@ pub(crate) fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
             let gate_rom_val = is_fam4_val.and(&is_rom_val);
             let gate_not_rom_val = is_fam4_val.and(&is_rom_val.negate());
             placer.assign_mask(gate_fam4_rom.get_variable().unwrap(), &gate_rom_val);
-            placer.assign_mask(
-                gate_fam4_not_rom.get_variable().unwrap(),
-                &gate_not_rom_val,
-            );
+            placer.assign_mask(gate_fam4_not_rom.get_variable().unwrap(), &gate_not_rom_val);
         };
         cs.set_values(value_fn);
     }

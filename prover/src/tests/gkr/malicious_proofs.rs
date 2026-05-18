@@ -215,6 +215,7 @@ fn generate_proof(
         &oracle,
         &table_driver,
         &worker,
+        None,
         Global,
         Global,
     );

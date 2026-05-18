@@ -479,7 +479,7 @@ where
     let mut evals_flattened = vec![];
     for (k, v) in dimension_reducing_inputs[&initial_layer_for_sumcheck].iter() {
         match *k {
-            OutputType::PermutationProduct => {
+            OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
                 let mut final_evals: [Vec<E>; 2] = std::array::from_fn(|_| Vec::new());
                 for (i, addr) in v.output.iter().enumerate() {
                     let poly = gkr_storage.get_ext_poly(*addr);
@@ -496,9 +496,6 @@ where
                 let den = gkr_storage.get_ext_poly(den);
                 evals_flattened.extend_from_slice(den);
                 final_explicit_evaluations.insert(*k, [num.to_vec(), den.to_vec()]);
-            }
-            OutputType::InitsAndTeardownsProduct => {
-                todo!();
             }
         }
     }
@@ -520,6 +517,8 @@ where
         claim_timecheckden,
         claim_lookupnum,
         claim_lookupden,
+        claim_initset,
+        claim_teardownset,
     ) = compute_initial_sumcheck_claims(
         &gkr_storage,
         &evaluation_point,
@@ -551,6 +550,11 @@ where
     if let Some(k) = output_map.get(&OutputType::GenericLookup) {
         top_layer_claims.insert(k.output[0], claim_lookupnum);
         top_layer_claims.insert(k.output[1], claim_lookupden);
+    }
+
+    if let Some(k) = output_map.get(&OutputType::InitsAndTeardownsProduct) {
+        top_layer_claims.insert(k.output[0], claim_initset);
+        top_layer_claims.insert(k.output[1], claim_teardownset);
     }
 
     println!("Sumcheck loop is starting");
@@ -813,6 +817,23 @@ where
     let mut grand_product_accumulator_computed = write_set_computed;
     grand_product_accumulator_computed
         .mul_assign(&read_set_computed.inverse().expect("must not be zero"));
+
+    // For circuits with inline inits/teardowns (the unified reduced-machine path),
+    // the proof's I/T product is a separate output channel — fold it into the
+    // accumulator so the caller can do `initial_contribution * accumulator == 1`
+    // as a single check (mirroring the standalone i/t proof's role).
+    if let Some(it_evals) = final_explicit_evaluations.get(&OutputType::InitsAndTeardownsProduct) {
+        let [init_set_computed, teardown_set_computed] = it_evals.clone().map(|els| {
+            let mut result = E::ONE;
+            for el in els.iter() {
+                result.mul_assign(el);
+            }
+            result
+        });
+        let mut it_contribution = teardown_set_computed;
+        it_contribution.mul_assign(&init_set_computed.inverse().expect("must not be zero"));
+        grand_product_accumulator_computed.mul_assign(&it_contribution);
+    }
 
     GKRProof {
         external_challenges: *external_challenges,

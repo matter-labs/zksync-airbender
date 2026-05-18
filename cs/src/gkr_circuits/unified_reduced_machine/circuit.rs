@@ -1,4 +1,5 @@
 use super::*;
+use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
 use crate::gkr_circuits::add_sub_family::{
     add_sub_lui_auipc_mop_table_addition_fn, add_sub_lui_auipc_mop_table_driver_fn,
@@ -17,7 +18,6 @@ use crate::gkr_circuits::mem_word_only::{
 };
 use crate::oracle::Placeholder;
 use crate::tables::TableDriver;
-use crate::constraint::{Constraint, Term};
 use crate::types::{Boolean, LIMB_WIDTH};
 use crate::witness_placer::*;
 use field::PrimeField;
@@ -233,33 +233,25 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     );
     let pc_in = inputs.cycle_start_state.pc;
     let pc_out = inputs.cycle_end_state.pc;
-    apply_mem_word_only_inner(
-        cs,
-        inputs,
-        is_lw,
-        is_sw,
-        rs1_limbs,
-        rs2_access,
-        rd_access,
-    );
+    let execute = inputs.execute;
+    apply_mem_word_only_inner(cs, inputs, is_lw, is_sw, rs1_limbs, rs2_access, rd_access);
 
     // Unified PC bump (gated). Families 1, 3, 4 leave PC handling to the caller;
     // Family 2 (jump_branch_slt) owns its own gated PC logic for jal/jalr/branch/slt.
-    // We add `pc_next = pc + 4` constraints that fire only when no Family-2 sub-opcode
-    // is active, and let Family 2's existing "branch-not-taken" witness default
-    // (pc_out_vars = pc + 4) handle the witness side for non-Family-2 cycles.
-    apply_unified_pc_bump(cs, pc_in, pc_out, family_2_bits);
+    // We add `pc_next = pc + 4` constraints that fire only when (cycle executes) AND
+    // (no Family-2 sub-opcode is active). Padding rows have execute=0 → trivially satisfied.
+    apply_unified_pc_bump(cs, pc_in, pc_out, execute, family_2_bits);
 }
 
-/// Adds the `pc_next = pc + 4` constraint, gated on `no Family-2 bit set`. Family 2's
-/// body owns the un-gated PC machinery for jal/jalr/branch/slt; this function fills in
-/// the constraint for the rest of the families (and padding cycles) without touching
-/// the witness — Family 2's "branch-not-taken" default already writes pc_next = pc + 4
-/// when none of its flag bits is set.
+/// Adds the `pc_next = pc + 4` constraint, gated on `execute AND no Family-2 sub-opcode bit set`.
+/// Family 2's body owns the un-gated PC machinery for jal/jalr/branch/slt; this function fills
+/// in the constraint for the rest of the families AND must trivially hold on padding rows
+/// (execute=0) where pc_in=pc_out=0 would otherwise violate `pc + 4 = pc_out`.
 fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     pc_in: [crate::definitions::Variable; REGISTER_SIZE],
     pc_out: [crate::definitions::Variable; REGISTER_SIZE],
+    execute: crate::definitions::Variable,
     family_2_bits: [Boolean; JUMP_SLT_BRANCH_FAMILY_NUM_BITS],
 ) {
     // Range checks on pc_out are unconditional — Family 2's PC machinery does not
@@ -295,26 +287,104 @@ fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
         cs.set_values(value_fn);
     }
 
-    // gate = 1 - sum(family_2_bits). One-hot decoder bits ⇒ sum is 0 or 1, so gate is
-    // 0 or 1 and degree-1 in the bitmask vars.
-    let mut gate: Constraint<F> = Constraint::from(1u32);
-    for &b in family_2_bits.iter() {
-        gate = gate - Constraint::from(b);
+    // Helper Boolean: gate = execute * (1 - sum(family_2 sub-opcode bits)).
+    // Only the 4 sub-opcode bits (JAL/JALR/SLT/BRANCH at family_2_bits[0..4]) are
+    // mutually exclusive — the 5th bit (RD_IS_ZERO_BIT) is set IN ADDITION to a
+    // sub-opcode bit when rd is x0, so it must not enter the sum.
+    // Wrapping in `execute` makes padding rows (execute=0) trivially satisfy the
+    // PC-bump constraints; keeping the helper as a single Boolean keeps the
+    // top-level constraint at degree 2.
+    let pc_bump_gate = cs.add_named_boolean_variable("unified pc-bump gate");
+    {
+        let execute_var = execute;
+        let f2_vars: [Variable; 4] = std::array::from_fn(|i| {
+            family_2_bits[i]
+                .get_variable()
+                .expect("Boolean::Is expected")
+        });
+        let pc_bump_gate_var = pc_bump_gate.get_variable().unwrap();
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let execute_m = placer.get_boolean(execute_var);
+            let any_f2 = f2_vars
+                .iter()
+                .map(|v| placer.get_boolean(*v))
+                .reduce(|a, b| a.or(&b))
+                .unwrap();
+            let gate_m = execute_m.and(&any_f2.negate());
+            placer.assign_mask(pc_bump_gate_var, &gate_m);
+        };
+        cs.set_values(value_fn);
+    }
+    // Setup constraint: pc_bump_gate = execute - sum(execute * family_2_subop_bits)
+    //   ⇒ pc_bump_gate - execute + sum(execute * family_2_subop_bits) = 0  (deg 2)
+    {
+        let mut setup = Constraint::from(pc_bump_gate) - Term::from(execute);
+        for &b in family_2_bits[..4].iter() {
+            setup = setup + Constraint::from(execute) * Constraint::from(b);
+        }
+        cs.add_constraint(setup);
     }
 
     let pc_step: Term<F> = Term::from(common_constants::PC_STEP as u32);
     let shift16: Term<F> = Term::from(1 << 16);
 
-    // gate * (pc_in[0] + 4 - pc_out[0] - 2^16 * pc_inc_carry) = 0  (deg 2)
+    // pc_bump_gate * (pc_in[0] + 4 - pc_out[0] - 2^16 * pc_inc_carry) = 0  (deg 2)
     cs.add_constraint(
-        gate.clone()
-            * (Constraint::from(pc_in[0]) + pc_step - Term::from(pc_out[0])
+        Constraint::from(pc_bump_gate)
+            * (Constraint::from(pc_in[0]) + pc_step
+                - Term::from(pc_out[0])
                 - shift16 * Term::from(pc_inc_carry)),
     );
-    // gate * (pc_inc_carry + pc_in[1] - pc_out[1]) = 0  (deg 2)
+    // pc_bump_gate * (pc_inc_carry + pc_in[1] - pc_out[1]) = 0  (deg 2)
     cs.add_constraint(
-        gate * (Constraint::from(pc_inc_carry) + Term::from(pc_in[1]) - Term::from(pc_out[1])),
+        Constraint::from(pc_bump_gate)
+            * (Constraint::from(pc_inc_carry) + Term::from(pc_in[1]) - Term::from(pc_out[1])),
     );
+}
+
+/// Register all tables the unified circuit body looks up against. Shared by both
+/// the artifact-build path and the SSA-dump path so they stay in lockstep with
+/// what the prover-side driver does at prove time.
+///
+/// Family 4 (mem_word_only) needs the AlignedRomRead lookup table. It's added
+/// at cs-side with dummy bytecode so `offset_for_decoder_table` accounts for
+/// its size; the prover supplies the real binary-derived content at prove time
+/// via the same `create_mem_word_only_special_tables` call.
+fn unified_register_all_tables<F: ::field::PrimeField, CS: Circuit<F>>(cs: &mut CS) {
+    unified_reduced_machine_table_addition_fn(cs);
+    for (table_type, table) in
+        crate::gkr_circuits::mem_word_only::create_mem_word_only_special_tables::<
+            F,
+            { common_constants::ROM_SECOND_WORD_BITS },
+        >(&[])
+    {
+        cs.add_table_with_content(table_type, table);
+    }
+}
+
+/// Build the unified circuit artifact via the inline-i/t compile path.
+/// Single source of truth used by both the cs-side serialization tests below
+/// and by the verifier_generator integration test (via the
+/// `gkr_circuits!` macro entry in `verifier_common`).
+fn build_unified_artifact<F: ::field::PrimeField>(
+    use_caches: bool,
+) -> crate::gkr_compiler::GKRCircuitArtifact<F> {
+    use crate::cs::circuit_impl::BasicAssembly;
+    use crate::gkr_compiler::GKRCompiler;
+
+    let mut cs = BasicAssembly::<F>::new();
+    unified_register_all_tables(&mut cs);
+    unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
+    let (cs_output, _) = cs.finalize();
+
+    let compiler = GKRCompiler::<F>::default();
+    compiler.compile_family_circuit_with_inline_inits_and_teardowns(
+        cs_output,
+        common_constants::ROM_WORD_SIZE,
+        /* num_inits_and_teardowns_pairs */ 1,
+        /* trace_len_log2 */ 24,
+        use_caches,
+    )
 }
 
 #[cfg(test)]
@@ -322,29 +392,17 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::cs::circuit_impl::BasicAssembly;
-    use crate::cs::circuit_trait::Circuit;
     use crate::definitions::OutputType;
-    use crate::gkr_compiler::GKRCompiler;
+    use crate::utils::serialize_to_file;
 
+    /// Sanity-check the artifact shape: both output channels present + i/t
+    /// teardown_sets populated. Doesn't write anything to disk.
     #[test]
     fn compile_unified_reduced_machine_with_inline_inits_and_teardowns() {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
-        let mut cs = BasicAssembly::<BabyBearField>::new();
-        unified_reduced_machine_table_addition_fn(&mut cs);
-        unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
-        let (cs_output, _) = cs.finalize();
-
-        let compiler = GKRCompiler::<BabyBearField>::default();
-        let artifact = compiler.compile_family_circuit_with_inline_inits_and_teardowns(
-            cs_output,
-            common_constants::ROM_WORD_SIZE,
-            1,
-            24,
-            true,
-        );
+        let artifact = build_unified_artifact::<BabyBearField>(true);
 
         assert!(artifact
             .global_output_map
@@ -361,5 +419,53 @@ mod test {
             2
         );
         assert!(!artifact.memory_layout.teardown_sets.is_empty());
+    }
+
+    /// Serialize the caches-variant artifact to the path the
+    /// `gkr_circuits!` macro entry expects. Mirrors per-family pattern
+    /// (`compile_X_into_gkr` in each family's `circuit.rs::test`).
+    #[test]
+    fn compile_unified_reduced_machine_into_gkr() {
+        skip_if_ci!();
+        use ::field::baby_bear::base::BabyBearField;
+
+        let artifact = build_unified_artifact::<BabyBearField>(true);
+        serialize_to_file(
+            &artifact,
+            "compiled_circuits/unified_reduced_machine_layout_gkr.json",
+        );
+    }
+
+    /// No-caches variant. Matches the per-family `_no_caches` companion tests.
+    #[test]
+    fn compile_unified_reduced_machine_into_no_caches_gkr() {
+        skip_if_ci!();
+        use ::field::baby_bear::base::BabyBearField;
+
+        let artifact = build_unified_artifact::<BabyBearField>(false);
+        serialize_to_file(
+            &artifact,
+            "compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
+        );
+    }
+
+    /// SSA witness graph dump for the unified circuit. Needed by
+    /// `witness_eval_generator::gen_for_gkr` to produce
+    /// `prover/compiled_circuits/unified_reduced_machine_generated_gkr.rs`, which
+    /// the prover-side G1 test imports via a `mod unified_reduced_machine`.
+    #[test]
+    fn compile_unified_reduced_machine_gkr_witness_graph() {
+        skip_if_ci!();
+        use crate::gkr_compiler::dump_ssa_witness_eval_form;
+        use ::field::baby_bear::base::BabyBearField;
+
+        let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
+            &|cs| unified_register_all_tables(cs),
+            &|cs| unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        );
+        serialize_to_file(
+            &ssa_forms,
+            "compiled_circuits/unified_reduced_machine_ssa_gkr.json",
+        );
     }
 }

@@ -21,6 +21,7 @@ pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &s
 
 mod family_circuits;
 mod malicious_proofs;
+mod unified_basic_fibonacci;
 
 pub(crate) fn ensure_memory_trace_consistency<F: PrimeField>(
     memory_trace: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
@@ -525,6 +526,33 @@ mod blake2_g_function {
         let fn_ptr = evaluate_witness_fn::<
             ScalarWitnessTypeSet<BabyBearField, true>,
             ColumnMajorWitnessProxy<'a, Blake2sGFunctionDelegationOracle<'b>, BabyBearField>,
+        >;
+        (fn_ptr)(proxy);
+    }
+}
+
+mod unified_reduced_machine {
+    use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
+    use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
+    use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
+    use ::cs::oracle::Placeholder;
+    use ::cs::witness_placer::WitnessTypeSet;
+    use ::cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
+    };
+    use ::field::baby_bear::base::BabyBearField;
+    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+
+    include!("../../../compiled_circuits/unified_reduced_machine_generated_gkr.rs");
+
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut ColumnMajorWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>, BabyBearField>,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<BabyBearField, true>,
+            ColumnMajorWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>, BabyBearField>,
         >;
         (fn_ptr)(proxy);
     }

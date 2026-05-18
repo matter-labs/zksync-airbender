@@ -407,6 +407,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             NUM_CYCLES_PER_CHUNK,
             &oracle,
             &worker,
+            None,
             Global,
             Global,
         );
@@ -419,6 +420,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &oracle,
             &table_driver,
             &worker,
+            None,
             Global,
             Global,
         );
@@ -607,6 +609,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             NUM_CYCLES_PER_CHUNK,
             &oracle,
             &worker,
+            None,
             Global,
             Global,
         );
@@ -619,6 +622,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &oracle,
             &table_driver,
             &worker,
+            None,
             Global,
             Global,
         );
@@ -807,6 +811,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             NUM_CYCLES_PER_CHUNK,
             &oracle,
             &worker,
+            None,
             Global,
             Global,
         );
@@ -819,6 +824,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &oracle,
             &table_driver,
             &worker,
+            None,
             Global,
             Global,
         );
@@ -1001,6 +1007,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             NUM_CYCLES_PER_CHUNK,
             &oracle,
             &worker,
+            None,
             Global,
             Global,
         );
@@ -1013,6 +1020,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &oracle,
             &table_driver,
             &worker,
+            None,
             Global,
             Global,
         );
@@ -1204,6 +1212,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             NUM_CYCLES_PER_CHUNK,
             &oracle,
             &worker,
+            None,
             Global,
             Global,
         );
@@ -1222,6 +1231,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &oracle,
             &table_driver,
             &worker,
+            None,
             Global,
             Global,
         );
@@ -1413,6 +1423,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             NUM_CYCLES_PER_CHUNK,
             &oracle,
             &worker,
+            None,
             Global,
             Global,
         );
@@ -1425,6 +1436,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &oracle,
             &table_driver,
             &worker,
+            None,
             Global,
             Global,
         );

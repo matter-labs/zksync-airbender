@@ -339,6 +339,7 @@ pub fn evaluate_gkr_witness_for_executor_family<
     oracle: &O,
     table_driver: &TableDriver<F>,
     worker: &Worker,
+    inline_inits_and_teardowns: Option<Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>>,
     inner_allocator: A,
     outer_allocator: B,
 ) -> GKRFullWitnessTrace<F, A, B> {
@@ -487,6 +488,21 @@ pub fn evaluate_gkr_witness_for_executor_family<
 
     // everything but multiplicities is there
     full_trace.set_initialized_and_pad(num_cycles, trace_len, compiled_circuit);
+
+    if let Some(dumped) = inline_inits_and_teardowns {
+        super::init_and_teardown::populate_inline_inits_and_teardowns_columns(
+            &mut full_trace.column_major_memory_trace,
+            dumped,
+            &compiled_circuit.memory_layout.teardown_sets,
+            false,
+        );
+    } else {
+        assert!(
+            compiled_circuit.memory_layout.teardown_sets.is_empty(),
+            "circuit has inline teardown_sets ({} sets) but caller passed None for inline_inits_and_teardowns",
+            compiled_circuit.memory_layout.teardown_sets.len()
+        );
+    }
 
     // copy back multiplicities
     if compiled_circuit

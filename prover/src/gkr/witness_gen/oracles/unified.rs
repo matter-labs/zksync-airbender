@@ -3,7 +3,7 @@ use cs::definitions::TimestampScalar;
 use cs::gkr_circuits::ExecutorFamilyDecoderData;
 use cs::oracle::*;
 use field::PrimeField;
-use risc_v_simulator::machine_mode_only_unrolled::{
+use riscv_transpiler::witness::data_structs::{
     UnifiedOpcodeTracingDataWithTimestamp, MEM_LOAD_TRACE_DATA_MARKER,
 };
 
@@ -99,7 +99,35 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
             return 0;
         };
 
+        let decoded = <Self as cs::oracle::Oracle<F>>::get_executor_family_data(self, trace_step);
+
         match placeholder {
+            // rs1/rs2/rd register-index queries. For Mem-LOAD access 1 (RAM address)
+            // and Mem-STORE access 2 (RAM address) the witness eval queries u32 instead.
+            Placeholder::ShuffleRamAddress(access_idx) => match access_idx {
+                0 => decoded.rs1_index as u16,
+                1 => match cycle_data {
+                    UnifiedOpcodeTracingDataWithTimestamp::NonMem(..) => decoded.rs2_index,
+                    UnifiedOpcodeTracingDataWithTimestamp::Mem(inner) => {
+                        if inner.discr == MEM_LOAD_TRACE_DATA_MARKER {
+                            unreachable!("load: access 1 is a RAM address, must be queried as u32")
+                        } else {
+                            decoded.rs2_index
+                        }
+                    }
+                },
+                2 => match cycle_data {
+                    UnifiedOpcodeTracingDataWithTimestamp::NonMem(..) => decoded.rd_index as u16,
+                    UnifiedOpcodeTracingDataWithTimestamp::Mem(inner) => {
+                        if inner.discr == MEM_LOAD_TRACE_DATA_MARKER {
+                            decoded.rd_index as u16
+                        } else {
+                            unreachable!("store: access 2 is a RAM address, must be queried as u32")
+                        }
+                    }
+                },
+                _ => unreachable!(),
+            },
             Placeholder::DelegationType => {
                 match cycle_data {
                     UnifiedOpcodeTracingDataWithTimestamp::Mem(..) => 0,

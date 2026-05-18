@@ -13,6 +13,7 @@ const TABLES_TOTAL_WIDTH: usize = 3;
 
 pub fn jump_branch_slt_tables() -> Vec<TableType> {
     vec![
+        TableType::ZeroEntry, // padding/non-Family-2 cycles route the gated JumpCleanupOffset lookup here
         TableType::RegIsZero,
         TableType::U16GetSign,
         TableType::ConditionalJmpBranchSlt,
@@ -620,13 +621,105 @@ pub fn apply_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         cs.add_constraint(add_like_high_constraint);
     }
 
-    // cleanup lowest bit for jump address, and ensure that it's aligned
-    let next_pc_bit_1 = cs.add_named_variable("bit 1 for computed next PC");
-    cs.set_variables_from_lookup_constrained(
-        &[LookupInput::from(pc_intermediate_addition_tmp_low)],
-        &[next_pc_bit_1, inputs.cycle_end_state.pc[0]],
-        cs::circuit::LookupQueryTableType::Constant(TableType::JumpCleanupOffset),
+    // Unified-aware "Family 2 fires" helper. is_fam2 = is_jal + is_jalr + is_slt + is_branch
+    // (mutually exclusive, sum ∈ {0, 1}). Used both by the JumpCleanupOffset lookup gating
+    // here and by the rd-write helpers below.
+    //
+    // In Family 2 standalone every executing cycle fires one of the 4 sub-opcodes, so
+    // is_fam2 ≡ execute and the gated form reduces to the previous unconditional
+    // behaviour. In the unified body, non-Family-2 cycles drop all 4 bits so is_fam2 = 0,
+    // collapsing the JumpCleanupOffset lookup tuple to (0, 0, 0) under the ZeroEntry table.
+    let is_fam2 = cs.add_named_boolean_variable("is_fam2");
+    {
+        let is_jal_var = is_jal.get_variable().unwrap();
+        let is_jalr_var = is_jalr.get_variable().unwrap();
+        let is_slt_var = is_slt.get_variable().unwrap();
+        let is_branch_var = is_branch.get_variable().unwrap();
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let any = placer
+                .get_boolean(is_jal_var)
+                .or(&placer.get_boolean(is_jalr_var))
+                .or(&placer.get_boolean(is_slt_var))
+                .or(&placer.get_boolean(is_branch_var));
+            placer.assign_mask(is_fam2.get_variable().unwrap(), &any);
+        };
+        cs.set_values(value_fn);
+    }
+    // Setup: is_fam2 - (is_jal + is_jalr + is_slt + is_branch) = 0  (linear; defines is_fam2)
+    cs.add_constraint_allow_explicit_linear(
+        Constraint::from(is_fam2)
+            - Term::from(is_jal)
+            - Term::from(is_jalr)
+            - Term::from(is_slt)
+            - Term::from(is_branch),
     );
+
+    // Cleanup lowest bit for jump address — replaces the previous unconditional
+    // set_variables_from_lookup_constrained on JumpCleanupOffset. The standalone form
+    // wrote pc_out[0] from the table; in the unified body that overwrites the oracle's
+    // pc_out[0] on non-Family-2 cycles. Now we compute next_pc_bit_1's witness manually
+    // (just bit 1 of pc_intermediate_addition_tmp_low) and enforce the lookup tuple
+    // against a gated table_id so non-Family-2 cycles route to ZeroEntry.
+    let next_pc_bit_1 = cs.add_named_boolean_variable("bit 1 for computed next PC");
+    {
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let tmp_low = placer.get_u16(pc_intermediate_addition_tmp_low);
+            // Bit 1 = ((tmp_low >> 1) & 1) ∈ {0, 1}, then convert U16→Mask via is_one().
+            let bit_1 = tmp_low.shr(1).get_lowest_bits(1).is_one();
+            placer.assign_mask(next_pc_bit_1.get_variable().unwrap(), &bit_1);
+        };
+        cs.set_values(value_fn);
+    }
+
+    // Manually assign pc_out[0] = pc_intermediate_addition_tmp_low & ~0x3 (matches the
+    // JumpCleanupOffset table mapping). Standalone: always correct since Family 2 fires
+    // every cycle. Unified non-Family-2 active cycles: pc_intermediate defaults to
+    // pc + 4 (Family 2's "branch not taken" witness default), which is already
+    // 4-aligned for any 4-aligned input PC, so `aligned == pc + 4 == oracle's pc_out[0]`
+    // and the write is a no-op. Padding: this writes pc_intermediate & ~0x3 = 4,
+    // overriding oracle's 0 — but padding rows have execute=0 so no constraint that
+    // cares about pc_out[0]'s value fires.
+    {
+        let pc_out_low_var = inputs.cycle_end_state.pc[0];
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let tmp_low = placer.get_u16(pc_intermediate_addition_tmp_low);
+            let aligned = tmp_low.and(&<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                0xFFFCu16,
+            ));
+            placer.assign_u16(pc_out_low_var, &aligned);
+        };
+        cs.set_values(value_fn);
+    }
+
+    // Gated lookup tuple: (is_fam2 * input, is_fam2 * bit_1, is_fam2 * pc_out_low) against
+    // JumpCleanupOffset (table_id = is_fam2 * JumpCleanupOffset.to_num()).
+    // On non-Family-2 cycles, all 4 components collapse to 0 and the tuple matches
+    // ZeroEntry (table_id 0). Mirrors Family 4's mem_word_only ROM lookup pattern.
+    {
+        let jump_cleanup_table_num = Term::from(TableType::JumpCleanupOffset.to_num());
+        let gated_input = cs.add_intermediate_named_variable_from_constraint(
+            Constraint::from(is_fam2) * Term::from(pc_intermediate_addition_tmp_low),
+            "JumpCleanup gated input",
+        );
+        let gated_bit_1 = cs.add_intermediate_named_variable_from_constraint(
+            Constraint::from(is_fam2) * Term::from(next_pc_bit_1),
+            "JumpCleanup gated bit_1",
+        );
+        let gated_pc_out_low = cs.add_intermediate_named_variable_from_constraint(
+            Constraint::from(is_fam2) * Term::from(inputs.cycle_end_state.pc[0]),
+            "JumpCleanup gated pc_out_low",
+        );
+        let gated_table_id = cs.add_intermediate_named_variable_from_constraint(
+            Constraint::from(is_fam2) * jump_cleanup_table_num,
+            "JumpCleanup gated table_id",
+        );
+        let tuple = [
+            LookupInput::from(gated_input),
+            LookupInput::from(gated_bit_1),
+            LookupInput::from(gated_pc_out_low),
+        ];
+        cs.enforce_lookup_tuple_for_variable_table(&tuple, gated_table_id);
+    }
 
     // unaligned jump is unprovable, and we only need to check bit number 1, as jump offset is always 0 mod 2,
     // and PC is 0 mod 4
@@ -638,60 +731,77 @@ pub fn apply_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // our final touch is to write into RD. We should select and constraint.
     // NOTE: under preprocessing SLT with rd == x0 is preprocessed into NOP, but we write constraint explicitly
     // for clarity
+    //
+    // Unified-aware rd-write encoding. Drops the `selected_rd_*`
+    // mediator the standalone form used and writes per-opcode constraints
+    // directly. Standalone Family 2 always has one of {jal, jalr, slt, branch}
+    // firing, so this matches the previous semantics. In the unified body,
+    // non-Family-2 cycles have all four Booleans 0 → every helper below
+    // collapses to 0 → every rd-write constraint trivially holds, letting
+    // Families 1/3/4 own rd_write_limbs on their own cycles.
 
-    let selected_rd_low = cs.add_named_variable("selected rd[0]");
-    let selected_rd_high = cs.add_named_variable("selected rd[1]");
+    let is_jal_writes_rd = cs.add_named_boolean_variable("is_jal_writes_rd");
+    let is_jalr_writes_rd = cs.add_named_boolean_variable("is_jalr_writes_rd");
+    let is_slt_writes_rd = cs.add_named_boolean_variable("is_slt_writes_rd");
+    let gate_fam2_rd_zero = cs.add_named_boolean_variable("gate_fam2_rd_zero");
 
     {
-        let is_slt_var = is_slt.get_variable().unwrap();
         let is_jal_var = is_jal.get_variable().unwrap();
         let is_jalr_var = is_jalr.get_variable().unwrap();
-
+        let is_slt_var = is_slt.get_variable().unwrap();
+        let is_branch_var = is_branch.get_variable().unwrap();
+        let rd_is_zero_var = rd_is_zero.get_variable().unwrap();
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            // NOTE: it is UNCONDITIONAL assignment, even though we select across multiple variants
-
-            let jal_jalr_value = placer.get_u32_from_u16_parts([
-                comparison_rel_or_jump_saved_pc_low,
-                comparison_rel_or_jump_saved_pc_high,
-            ]);
-            let slt_value = placer.get_u16(should_jump_or_slt_value).widen();
-
-            let mut out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
-
-            {
-                // JAL/JALR
-                let is_jal = placer.get_boolean(is_jal_var);
-                let is_jalr = placer.get_boolean(is_jalr_var);
-                let is_jump = is_jal.or(&is_jalr);
-                out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                    &is_jump,
-                    &jal_jalr_value,
-                    &out_value,
-                );
-            }
-            {
-                // SLT
-                let is_slt = placer.get_boolean(is_slt_var);
-                out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                    &is_slt, &slt_value, &out_value,
-                );
-            }
-
-            placer.assign_u32_from_u16_parts([selected_rd_low, selected_rd_high], &out_value);
+            let is_jal_m = placer.get_boolean(is_jal_var);
+            let is_jalr_m = placer.get_boolean(is_jalr_var);
+            let is_slt_m = placer.get_boolean(is_slt_var);
+            let is_branch_m = placer.get_boolean(is_branch_var);
+            let rd_is_zero_m = placer.get_boolean(rd_is_zero_var);
+            let not_rd_zero = rd_is_zero_m.negate();
+            placer.assign_mask(
+                is_jal_writes_rd.get_variable().unwrap(),
+                &is_jal_m.and(&not_rd_zero),
+            );
+            placer.assign_mask(
+                is_jalr_writes_rd.get_variable().unwrap(),
+                &is_jalr_m.and(&not_rd_zero),
+            );
+            placer.assign_mask(
+                is_slt_writes_rd.get_variable().unwrap(),
+                &is_slt_m.and(&not_rd_zero),
+            );
+            let any_f2 = is_jal_m.or(&is_jalr_m).or(&is_slt_m).or(&is_branch_m);
+            placer.assign_mask(
+                gate_fam2_rd_zero.get_variable().unwrap(),
+                &any_f2.and(&rd_is_zero_m),
+            );
         };
         cs.set_values(value_fn);
     }
 
+    // Helper-Boolean setup (deg 2 each).
+    // is_X_writes_rd = is_X * (1 - rd_is_zero)  for X ∈ {jal, jalr, slt}
+    // Rearranged: is_X_writes_rd + is_X * rd_is_zero - is_X = 0
     cs.add_constraint(
-        Term::from(is_slt) * Term::from(should_jump_or_slt_value)
-            + (Constraint::from(is_jal) + Term::from(is_jalr))
-                * Term::from(comparison_rel_or_jump_saved_pc_low)
-            - Term::from(selected_rd_low),
+        Constraint::from(is_jal_writes_rd) + Term::from(is_jal) * Term::from(rd_is_zero)
+            - Term::from(is_jal),
     );
     cs.add_constraint(
-        (Constraint::from(is_jal) + Term::from(is_jalr))
-            * Term::from(comparison_rel_or_jump_saved_pc_high)
-            - Term::from(selected_rd_high),
+        Constraint::from(is_jalr_writes_rd) + Term::from(is_jalr) * Term::from(rd_is_zero)
+            - Term::from(is_jalr),
+    );
+    cs.add_constraint(
+        Constraint::from(is_slt_writes_rd) + Term::from(is_slt) * Term::from(rd_is_zero)
+            - Term::from(is_slt),
+    );
+    // gate_fam2_rd_zero = (is_jal + is_jalr + is_slt + is_branch) * rd_is_zero  (deg 2)
+    cs.add_constraint(
+        Constraint::from(gate_fam2_rd_zero)
+            - (Constraint::from(is_jal)
+                + Term::from(is_jalr)
+                + Term::from(is_slt)
+                + Term::from(is_branch))
+                * Term::from(rd_is_zero),
     );
 
     assert!(
@@ -699,14 +809,30 @@ pub fn apply_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         "TODO: add witness generation here"
     );
 
+    // Per-opcode rd-write constraints. Gated on (this opcode fires) AND (rd != 0).
+    // Low limb: jal/jalr → saved_pc_low; slt → slt_value.
     cs.add_constraint(
-        (Term::from(1u32) - Term::from(rd_is_zero)) * Term::from(selected_rd_low)
-            - Term::from(rd_write_limbs[0]),
+        Term::from(is_jal_writes_rd) * Term::from(comparison_rel_or_jump_saved_pc_low)
+            + Term::from(is_jalr_writes_rd) * Term::from(comparison_rel_or_jump_saved_pc_low)
+            + Term::from(is_slt_writes_rd) * Term::from(should_jump_or_slt_value)
+            - (Constraint::from(is_jal_writes_rd)
+                + Term::from(is_jalr_writes_rd)
+                + Term::from(is_slt_writes_rd))
+                * Term::from(rd_write_limbs[0]),
     );
+    // High limb: only jal/jalr contribute (SLT's 0/1 result fits in low limb only).
     cs.add_constraint(
-        (Term::from(1u32) - Term::from(rd_is_zero)) * Term::from(selected_rd_high)
-            - Term::from(rd_write_limbs[1]),
+        (Constraint::from(is_jal_writes_rd) + Term::from(is_jalr_writes_rd))
+            * (Constraint::from(comparison_rel_or_jump_saved_pc_high)
+                - Term::from(rd_write_limbs[1])),
     );
+
+    // rd_is_zero case: Family 2 fires with rd=0 (BRANCH always, or JAL/JALR/SLT w/ rd=0)
+    // forces rd_write = 0. In standalone this was implicit (rd=x0 reads/writes 0
+    // via the memory bus); making it explicit lets the unified body keep its own
+    // rd_write handling for non-Family-2 cycles.
+    cs.add_constraint(Term::from(gate_fam2_rd_zero) * Term::from(rd_write_limbs[0]));
+    cs.add_constraint(Term::from(gate_fam2_rd_zero) * Term::from(rd_write_limbs[1]));
 }
 
 pub fn jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr<F: PrimeField, CS: Circuit<F>>(

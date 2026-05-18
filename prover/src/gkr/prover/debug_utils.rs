@@ -153,7 +153,7 @@ pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F
     eval_point: &[E],
     output_layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
     worker: &Worker,
-) -> (E, E, E, E, E, E, E, E) {
+) -> (E, E, E, E, E, E, E, E, E, E) {
     let eq_precomputed = make_eq_poly_in_full::<E>(&eval_point, worker);
     let eq = eq_precomputed.last().unwrap();
 
@@ -163,6 +163,7 @@ pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F
         OutputType::Lookup16Bits,
         OutputType::LookupTimestamps,
         OutputType::GenericLookup,
+        OutputType::InitsAndTeardownsProduct,
     ] {
         if let Some(addresses) = &output_layer.get(&key) {
             for address in addresses.output.iter() {
@@ -176,7 +177,7 @@ pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F
         }
     }
 
-    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
+    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden, claim_initset, claim_teardownset] =
         evals.try_into().unwrap();
 
     (
@@ -188,6 +189,8 @@ pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F
         claim_timecheckden,
         claim_lookupnum,
         claim_lookupden,
+        claim_initset,
+        claim_teardownset,
     )
 }
 

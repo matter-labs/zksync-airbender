@@ -948,6 +948,17 @@ impl<F: PrimeField> GKRCompiler<F> {
             }
         };
 
+        // RISC-V word size is fixed at 4 bytes = log2(4) = 2 word_bits. The
+        // standalone i/t circuit makes this a const generic (see
+        // `compile_inits_and_teardowns_circuit<F, const WORD_BITS: u32>`),
+        // but the unified circuit always handles RISC-V 32-bit words so we
+        // hardcode `Some(2)` here. verifier_generator (`gkr/mod.rs:345,920,1228`)
+        // requires `Some(_)` whenever `teardown_sets` is non-empty.
+        let inits_and_teardowns_word_bits = if inline_it_teardown_sets.is_empty() {
+            None
+        } else {
+            Some(2u32)
+        };
         let memory_layout = GKRMemoryLayout {
             ram_access_sets,
             machine_state: Some(machine_state),
@@ -956,7 +967,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             total_width: graph.base_layer_memory.len(),
             teardown_sets: inline_it_teardown_sets.clone(),
             decoder_input: Some(decoder_input),
-            inits_and_teardowns_word_bits: None,
+            inits_and_teardowns_word_bits,
         };
 
         let multiplicities_columns_for_range_check_16 =

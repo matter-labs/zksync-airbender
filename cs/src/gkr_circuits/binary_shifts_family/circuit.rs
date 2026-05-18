@@ -304,6 +304,9 @@ pub fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
 
     // select and write to RD - easiest part
 
+    // rd-write constraint, gated on Family 3 firing so non-Family-3 cycles in the
+    // unified circuit aren't forced to rd_write = 0. is_binary_op + is_shift is
+    // the family-firing indicator (mutually exclusive ⇒ sum is 0 or 1).
     let mut low_constraint = Constraint::empty();
     low_constraint += Term::from(is_binary_op)
         * (Term::from(1 << 8) * Term::from(binary_ops_outputs[1])
@@ -313,7 +316,8 @@ pub fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
         low_constraint += Term::from(is_shift)
             * (Term::from(1 << 8) * Term::from(shift_outputs[1]) + Term::from(shift_outputs[0]));
     }
-    low_constraint -= Term::from(rd_write_limbs[0]);
+    low_constraint -=
+        (Constraint::from(is_binary_op) + Term::from(is_shift)) * Term::from(rd_write_limbs[0]);
     cs.add_constraint(low_constraint);
 
     let mut high_constraint = Constraint::empty();
@@ -325,7 +329,8 @@ pub fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
         high_constraint += Term::from(is_shift)
             * (Term::from(1 << 8) * Term::from(shift_outputs[3]) + Term::from(shift_outputs[2]));
     }
-    high_constraint -= Term::from(rd_write_limbs[1]);
+    high_constraint -=
+        (Constraint::from(is_binary_op) + Term::from(is_shift)) * Term::from(rd_write_limbs[1]);
     cs.add_constraint(high_constraint);
 
     if let Some(rd_reg) = Register(rd_write_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {

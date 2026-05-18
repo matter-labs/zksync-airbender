@@ -626,7 +626,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
         for (k, v) in layer {
             match *k {
-                OutputType::PermutationProduct => {
+                OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
                     for (inp, out) in v.inputs.iter().zip(v.output.iter()) {
                         let challenge = [get_challenge(&mut collector.current_batch_challenge)];
                         collector.register(KernelVariant::PairwiseProductDimensionReducing(
@@ -638,9 +638,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                             *out,
                         ));
                     }
-                }
-                OutputType::InitsAndTeardownsProduct => {
-                    todo!()
                 }
                 OutputType::Lookup16Bits
                 | OutputType::LookupTimestamps

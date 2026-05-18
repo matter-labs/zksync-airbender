@@ -284,7 +284,7 @@ fn test_rejects_non_canonical_field_element(name: &str) {
             SecurityLevel::Sec80,
             "non_canonical_field_element",
             |nds| {
-                nds[gkr_off + 4] ^= 0x7800_0001;
+                nds[gkr_off + 4] |= 0x8000_0000;
             },
             |r| matches!(r, VerifyRejection::Error(..)),
         );
@@ -353,78 +353,78 @@ macro_rules! generate_corruption_tests {
         $(
             paste::paste! {
                 #[test]
-                fn [<rejects_garbage_proof_ $name>]() {
+                fn [<rejects_garbage_proof_ $name _sec_80>]() {
                     test_rejects_garbage_proof(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corruption_ $name>]() {
+                fn [<rejects_corruption_ $name _sec_80>]() {
                     test_rejects_corruption_at_fractions(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_gkr_region_ $name>]() {
+                fn [<rejects_corrupted_gkr_region_ $name _sec_80>]() {
                     test_rejects_corrupted_gkr_region(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_whir_region_ $name>]() {
+                fn [<rejects_corrupted_whir_region_ $name _sec_80>]() {
                     test_rejects_corrupted_whir_region(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_zeroed_regions_ $name>]() {
+                fn [<rejects_zeroed_regions_ $name _sec_80>]() {
                     test_rejects_zeroed_regions(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_shifted_nds_ $name>]() {
+                fn [<rejects_shifted_nds_ $name _sec_80>]() {
                     test_rejects_shifted_nds(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_oracle_caps_ $name>]() {
+                fn [<rejects_corrupted_oracle_caps_ $name _sec_80>]() {
                     test_rejects_corrupted_oracle_caps(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_truncated_nds_ $name>]() {
+                fn [<rejects_truncated_nds_ $name _sec_80>]() {
                     test_rejects_truncated_nds(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_final_monomials_ $name>]() {
+                fn [<rejects_corrupted_final_monomials_ $name _sec_80>]() {
                     test_rejects_corrupted_final_monomials(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_cross_circuit_nds_ $name>]() {
+                fn [<rejects_cross_circuit_nds_ $name _sec_80>]() {
                     test_rejects_cross_circuit_nds(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_init_teardown_bits_ $name>]() {
+                fn [<rejects_corrupted_init_teardown_bits_ $name _sec_80>]() {
                     test_rejects_corrupted_init_teardown_bits(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_non_canonical_field_element_ $name>]() {
+                fn [<rejects_non_canonical_field_element_ $name _sec_80>]() {
                     test_rejects_non_canonical_field_element(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_ood_sample_ $name>]() {
+                fn [<rejects_corrupted_ood_sample_ $name _sec_80>]() {
                     test_rejects_corrupted_ood_sample(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_pow_nonce_ $name>]() {
+                fn [<rejects_corrupted_pow_nonce_ $name _sec_80>]() {
                     test_rejects_corrupted_pow_nonce(stringify!($name));
                 }
 
                 #[cfg(not(feature = "no_caches"))]
                 #[test]
-                fn [<rejects_corrupted_cache_relations_ $name>]() {
+                fn [<rejects_corrupted_cache_relations_ $name _sec_80>]() {
                     test_rejects_corrupted_cache_relations(stringify!($name));
                 }
 
