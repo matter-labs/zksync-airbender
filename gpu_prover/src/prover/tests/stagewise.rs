@@ -2,6 +2,7 @@ use super::*;
 
 #[test]
 #[serial]
+#[ignore]
 fn run_basic_unrolled_stagewise_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 

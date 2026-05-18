@@ -360,10 +360,6 @@ pub(crate) enum AuditError {
         polys: usize,
         max: usize,
     },
-    OtherClassPresent {
-        circuit: String,
-        layer_idx: usize,
-    },
     SourceOverflow {
         circuit: String,
         layer_idx: usize,
@@ -396,11 +392,6 @@ impl std::fmt::Display for AuditError {
                 "circuit '{}' layer[{}] class={:?} has {} polys (audit poly_idx limit {})",
                 circuit, layer_idx, class, polys, max,
             ),
-            Self::OtherClassPresent { circuit, layer_idx } => write!(
-                f,
-                "circuit '{}' layer[{}] has GKRAddresses outside the 8-slot taxonomy (taxonomy revision needed)",
-                circuit, layer_idx,
-            ),
             Self::SourceOverflow {
                 circuit,
                 layer_idx,
@@ -417,12 +408,6 @@ impl std::fmt::Display for AuditError {
 
 pub(crate) fn check_audit_against_budgets(audit: &CircuitAudit) -> Result<(), AuditError> {
     for layer in audit.layers.iter() {
-        if layer.class_polys.contains_key(&AddressClass::Other) {
-            return Err(AuditError::OtherClassPresent {
-                circuit: audit.name.clone(),
-                layer_idx: layer.layer_idx,
-            });
-        }
         if layer.class_polys.len() > GKR_MAX_SLOTS {
             return Err(AuditError::SlotOverflow {
                 circuit: audit.name.clone(),

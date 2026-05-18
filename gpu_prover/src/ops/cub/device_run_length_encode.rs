@@ -149,6 +149,7 @@ mod tests {
     use itertools::Itertools;
     use rand::distr::Uniform;
     use rand::Rng;
+    use serial_test::serial;
 
     fn encode<T>()
     where
@@ -206,6 +207,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn encode_u32() {
         encode::<u32>();
     }

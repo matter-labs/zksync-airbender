@@ -48,7 +48,7 @@ pub(super) fn run_evals_to_monomials(
         bool,
         &CudaStream,
     ) -> CudaResult<()>,
-    mut cpu_fn: impl FnMut(&mut [BF], &[BF], usize),
+    cpu_fn: fn(&mut [BF], &[BF], usize),
     in_or_out_of_place: InOrOutOfPlace,
     transposed_monomials: bool,
 ) {
@@ -169,21 +169,36 @@ pub(super) fn run_evals_to_monomials(
             bitreverse_enumeration_inplace(&mut outputs_host[range]);
         }
 
-        for ntt in 0..num_bf_cols {
-            let start = ntt * stride + OFFSET as usize;
-            let xs_range = start..start + n;
-            let twiddles = &twiddles[..(n >> 1)];
-            let gpu_results = &outputs_host[xs_range.clone()];
-            let mut cpu_refs: Vec<BF> = (&inputs_host[xs_range.clone()]).to_vec();
-            cpu_fn(&mut cpu_refs, twiddles, log_n);
-            for k in 0..n {
-                assert_eq!(
-                    gpu_results[k], cpu_refs[k],
-                    "2^{} ntt {} k {}",
-                    log_n, ntt, k
-                );
+        // Parallelize the per-column CPU NTT comparison: each column is an
+        // independent serial NTT over `n` elements (~O(n log n)) and they
+        // dominate the test wall time at large `log_n`. Column slices are
+        // disjoint, so concurrent reads of `outputs_host` / `inputs_host`
+        // and per-column work-buffers are race-free.
+        let twiddles_slice = &twiddles[..(n >> 1)];
+        let outputs_slice: &[BF] = &outputs_host;
+        let inputs_slice: &[BF] = &inputs_host;
+        worker.scope(num_bf_cols, |scope, geometry| {
+            for thread_idx in 0..geometry.num_chunks {
+                Worker::smart_spawn(scope, thread_idx == geometry.num_chunks - 1, move |_| {
+                    let chunk_size = geometry.get_chunk_size(thread_idx);
+                    let start_col = geometry.get_chunk_start_pos(thread_idx);
+                    for ntt in start_col..start_col + chunk_size {
+                        let start = ntt * stride + OFFSET as usize;
+                        let xs_range = start..start + n;
+                        let gpu_results = &outputs_slice[xs_range.clone()];
+                        let mut cpu_refs: Vec<BF> = inputs_slice[xs_range].to_vec();
+                        cpu_fn(&mut cpu_refs, twiddles_slice, log_n);
+                        for k in 0..n {
+                            assert_eq!(
+                                gpu_results[k], cpu_refs[k],
+                                "2^{} ntt {} k {}",
+                                log_n, ntt, k
+                            );
+                        }
+                    }
+                });
             }
-        }
+        });
     }
     // ctx.destroy().unwrap();
 }
@@ -320,24 +335,42 @@ pub(super) fn run_monomials_to_evals(
         let mut adjustments = vec![BF::ONE; n];
         distribute_powers_serial(&mut adjustments, BF::ONE, tau.pow(TEST_COSET_INDEX as u32));
         bitreverse_enumeration_inplace(&mut adjustments);
-        for ntt in 0..num_bf_cols {
-            let start = ntt * stride + OFFSET as usize;
-            let xs_range = start..start + n;
-            let twiddles = &twiddles[..(n >> 1)];
-            let gpu_results = &outputs_host[xs_range.clone()];
-            let mut cpu_refs: Vec<BF> = (&inputs_orig_host[xs_range.clone()]).to_vec();
-            for (val, adjustment) in cpu_refs.iter_mut().zip(adjustments.iter()) {
-                val.mul_assign(adjustment);
+        // Same column-parallel pattern as `run_evals_to_monomials`: the
+        // CPU NTT dominates wall time at large `log_n`, and the per-column
+        // slices are disjoint.
+        let twiddles_slice = &twiddles[..(n >> 1)];
+        let adjustments_slice: &[BF] = &adjustments;
+        let outputs_slice: &[BF] = &outputs_host;
+        let inputs_orig_slice: &[BF] = &inputs_orig_host;
+        worker.scope(num_bf_cols, |scope, geometry| {
+            for thread_idx in 0..geometry.num_chunks {
+                Worker::smart_spawn(scope, thread_idx == geometry.num_chunks - 1, move |_| {
+                    let chunk_size = geometry.get_chunk_size(thread_idx);
+                    let start_col = geometry.get_chunk_start_pos(thread_idx);
+                    for ntt in start_col..start_col + chunk_size {
+                        let start = ntt * stride + OFFSET as usize;
+                        let xs_range = start..start + n;
+                        let gpu_results = &outputs_slice[xs_range.clone()];
+                        let mut cpu_refs: Vec<BF> = inputs_orig_slice[xs_range].to_vec();
+                        for (val, adjustment) in cpu_refs.iter_mut().zip(adjustments_slice.iter()) {
+                            val.mul_assign(adjustment);
+                        }
+                        serial_ct_ntt_bitreversed_to_natural(
+                            &mut cpu_refs,
+                            log_n as u32,
+                            twiddles_slice,
+                        );
+                        for k in 0..n {
+                            assert_eq!(
+                                gpu_results[k], cpu_refs[k],
+                                "2^{} ntt {} k {}",
+                                log_n, ntt, k
+                            );
+                        }
+                    }
+                });
             }
-            serial_ct_ntt_bitreversed_to_natural(&mut cpu_refs, log_n as u32, twiddles);
-            for k in 0..n {
-                assert_eq!(
-                    gpu_results[k], cpu_refs[k],
-                    "2^{} ntt {} k {}",
-                    log_n, ntt, k
-                );
-            }
-        }
+        });
     }
     // ctx.destroy().unwrap();
 }
