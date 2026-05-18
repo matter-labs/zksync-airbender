@@ -6,6 +6,19 @@
 - Avoid dependency or version churn unless explicitly requested.
 - If a subdirectory has its own `AGENTS.md`, follow it for that area.
 
+## Nested Instructions
+
+- `gpu_prover/` has crate-specific rules for CUDA build behavior, upstream-import policy, validation, formatting, and the GPU scheduling contract.
+- `gpu_prover/native/` has additional native-only rules for `clang-format`, Rust↔CUDA interface stability, and upstream-constant drift guards.
+- `gpu_prover/src/prover/` is a pointer scope that exists specifically to force a read of the full GPU scheduling contract before editing prover scheduling code.
+- `gpu_prover_test/` and `gpu_witness_eval_generator/` each have their own `AGENTS.md`; read them when touching those crates.
+
+## Worktrees
+
+- Prefer external sibling worktrees under `../zksync-airbender-worktrees/` rather than nesting worktrees inside the repo tree.
+- Name worktree directories by branch or task so they stay easy to map back to `git worktree list`.
+- Do not create new worktrees under `.claude/`, `.codex/`, or any other tool-specific in-repo folder unless the user explicitly asks for that layout.
+
 ## Commits And PRs
 
 - Use Conventional Commits for commit messages and PR titles, for example `fix(gpu_prover): shorten lock scope`.
