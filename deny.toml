@@ -7,7 +7,10 @@ ignore = [
     # TODO: replace instant with web-time
     { id = "RUSTSEC-2024-0384", reason = "Use of unmaintained crate instant" },
     { id = "RUSTSEC-2025-0141", reason = "Use of unmaintained crate bincode" },
-    { id = "RUSTSEC-2024-0388", reason = "Use of unmaintained crate derivative" }
+    { id = "RUSTSEC-2024-0388", reason = "Use of unmaintained crate derivative" },
+    { id = "RUSTSEC-2026-0103", reason = "thin-vec is only pulled in through the proc-macro dependency chain super-seq-macro -> rhai and is not part of shipped runtime code in this PR" },
+    # TODO: upgrade rand from 0.8.5/0.9.2 to 0.8.6/0.9.3+ in a dependency update PR
+    { id = "RUSTSEC-2026-0097", reason = "This workspace does not define a custom log::Log implementation or call rand from logger callbacks; the reported unsoundness precondition is not present in this PR" }
 ]
 
 
