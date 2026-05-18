@@ -2,6 +2,7 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 
 use itertools::Itertools;
 use rand::Rng;
+use serial_test::serial;
 
 use super::super::*;
 use crate::ops::simple::set_to_zero;
@@ -11,6 +12,7 @@ use super::{gather_rows, leaf_source_row, random_digest, verify_leaves, verify_n
 use crate::upstream::Field;
 
 #[test]
+#[serial]
 fn leaves() {
     const LOG_N: usize = 10;
     const N: usize = 1 << LOG_N;
@@ -37,6 +39,7 @@ fn leaves() {
 }
 
 #[test]
+#[serial]
 fn blake2s_nodes() {
     const LOG_N: usize = 10;
     const N: usize = 1 << LOG_N;
@@ -95,17 +98,19 @@ fn test_merkle_tree(log_n: usize) {
 }
 
 #[test]
+#[serial]
 fn merkle_tree_small() {
     test_merkle_tree(8);
 }
 
 #[test]
-#[ignore]
+#[serial]
 fn merkle_tree_large() {
     test_merkle_tree(16);
 }
 
 #[test]
+#[serial]
 fn test_gather_rows() {
     const SRC_LOG_ROWS: usize = 12;
     const SRC_ROWS: usize = 1 << SRC_LOG_ROWS;
@@ -152,6 +157,7 @@ fn test_gather_rows() {
 }
 
 #[test]
+#[serial]
 fn gather_leaf_rows() {
     const SRC_LOG_ROWS: usize = 12;
     const SRC_ROWS: usize = 1 << SRC_LOG_ROWS;
@@ -199,6 +205,7 @@ fn gather_leaf_rows() {
 }
 
 #[test]
+#[serial]
 fn gather_merkle_paths() {
     const LOG_LEAVES_COUNT: usize = 12;
     const INDEXES_COUNT: usize = 42;
@@ -243,6 +250,7 @@ fn gather_merkle_paths() {
 }
 
 #[test]
+#[serial]
 fn merkle_tree_cap() {
     const LOG_N: u32 = 10;
     const N: usize = 1 << LOG_N;

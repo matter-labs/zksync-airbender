@@ -51,6 +51,13 @@ pub(super) fn assert_main_layer_plan_for_test<E: Field + std::fmt::Debug>(
                 assert_eq!(descriptor.next_layer_size, 0);
                 continue;
             }
+            // `VirtualSetup` polys are not stored — the kernel synthesizes
+            // them from `source_kind`. The descriptor's `start` is null
+            // and there is no backing poly to compare against.
+            if matches!(address, GKRAddress::VirtualSetup(_)) {
+                assert!(descriptor.start.is_null());
+                continue;
+            }
             let poly = storage.get_base_layer(*address);
             assert_eq!(
                 descriptor.start,

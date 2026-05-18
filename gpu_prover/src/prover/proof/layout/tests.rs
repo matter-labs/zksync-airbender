@@ -1,36 +1,6 @@
 use super::*;
 use crate::upstream::{FieldExtension, PrimeField};
 
-/// Placeholder — returns empty dims for every section. Retained for
-/// unit-test coverage of the empty-slab edge case. Real `prove()` uses
-/// [`build_proof_layout_inputs`].
-pub(crate) fn placeholder_inputs_for_prove() -> ProofLayoutInputs {
-    ProofLayoutInputs {
-        output_evaluations: BTreeMap::new(),
-        backward_layers: Vec::new(),
-        whir: WhirDims {
-            setup: empty_base_layer_dims(),
-            memory: empty_base_layer_dims(),
-            witness: empty_base_layer_dims(),
-            intermediate: Vec::new(),
-            num_ood_samples: 0,
-            total_sumcheck_polys: 0,
-            pow_rounds: 0,
-            final_monomials_len: 0,
-        },
-    }
-}
-
-fn empty_base_layer_dims() -> WhirBaseLayerDims {
-    WhirBaseLayerDims {
-        num_columns: 0,
-        cap_digest_count: 0,
-        query_count: 0,
-        leaf_values_len: 0,
-        path_len: 0,
-    }
-}
-
 fn sample_inputs() -> ProofLayoutInputs {
     let backward_layers = vec![
         BackwardLayerDims {
