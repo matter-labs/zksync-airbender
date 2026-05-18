@@ -1,167 +1,13 @@
 use crate::statement_common::{
-    read_setups, FINAL_PC_BUFFER_PC_IDX, FINAL_PC_BUFFER_TS_HIGH_IDX, FINAL_PC_BUFFER_TS_LOW_IDX,
+    read_setup_cap, FINAL_PC_BUFFER_PC_IDX, FINAL_PC_BUFFER_TS_HIGH_IDX, FINAL_PC_BUFFER_TS_LOW_IDX,
 };
 use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
-use verifier_common::{cs::definitions::split_timestamp, DefaultNonDeterminismSource};
+use verifier_common::cs::definitions::split_timestamp;
+use verifier_common::cs::definitions::NUM_REGISTERS;
 
 use super::*;
-use crate::imports::*;
-
-pub fn caps_flattened(caps: &'_ [MerkleTreeCap<CAP_SIZE>; NUM_COSETS]) -> &'_ [u32] {
-    unsafe {
-        verifier_common::slice_from_ptr_range(
-            caps.as_ptr_range().start.cast::<u32>()..caps.as_ptr_range().end.cast::<u32>(),
-        )
-    }
-}
-
-#[repr(usize)]
-pub enum VerificationFunctionPointer {
-    UnrolledNoDelegation(VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, 0, 0, 0, 1>),
-    UnrolledWithDelegation(VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, 1, 0, 0, 1>),
-}
-
-pub const INITS_AND_TEARDOWNS_CAPACITY_PER_SET: u32 =
-    (inits_and_teardowns_verifier::concrete::size_constants::TRACE_LEN - 1) as u32;
-pub const MAX_MEMORY_CELLS_TO_INIT: u32 = const {
-    let mut max_cells = 1u32 << 30;
-    max_cells -= common_constants::rom::ROM_WORD_SIZE as u32;
-
-    max_cells
-};
-
-pub const ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledNoDelegation(add_sub_lui_auipc_mop_verifier::verify);
-pub const JUMP_BRANCH_SLT_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledNoDelegation(jump_branch_slt_verifier::verify);
-pub const LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledNoDelegation(load_store_subword_only_verifier::verify);
-pub const LOAD_STORE_WORD_ONLY_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledNoDelegation(load_store_word_only_verifier::verify);
-// pub const MUL_DIV_VERIFIER_PTR: VerificationFunctionPointer =
-//     VerificationFunctionPointer::UnrolledNoDelegation(mul_div_verifier::verify);
-pub const MUL_DIV_UNSIGNED_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledNoDelegation(mul_div_unsigned_verifier::verify);
-pub const SHIFT_BINARY_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledWithDelegation(shift_binary_verifier::verify);
-
-pub const FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
-    u32, // family
-    u32, // capacity
-    VerificationFunctionPointer,
-)] = &[
-    (
-        common_constants::circuit_families::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
-        (add_sub_lui_auipc_mop_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR,
-    ),
-    (
-        common_constants::circuit_families::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
-        (jump_branch_slt_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        JUMP_BRANCH_SLT_VERIFIER_PTR,
-    ),
-    (
-        common_constants::circuit_families::SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX as u32,
-        (shift_binary_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        shift_binary_verifier_PTR,
-    ),
-    // (
-    //     common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX as u32,
-    //     (mul_div_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-    //     MUL_DIV_VERIFIER_PTR,
-    // ),
-    (
-        common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
-        (load_store_word_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        LOAD_STORE_WORD_ONLY_VERIFIER_PTR,
-    ),
-    (
-        common_constants::circuit_families::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
-        (load_store_subword_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR,
-    ),
-];
-
-pub const FULL_MACHINE_NUM_UNROLLED_CIRCUITS: usize =
-    const { FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS.len() };
-
-pub const FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
-    u32, // family
-    u32, // capacity
-    VerificationFunctionPointer,
-)] = &[
-    (
-        common_constants::circuit_families::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
-        (add_sub_lui_auipc_mop_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR,
-    ),
-    (
-        common_constants::circuit_families::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
-        (jump_branch_slt_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        JUMP_BRANCH_SLT_VERIFIER_PTR,
-    ),
-    (
-        common_constants::circuit_families::SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX as u32,
-        (shift_binary_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        shift_binary_verifier_PTR,
-    ),
-    (
-        common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX as u32,
-        (mul_div_unsigned_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        MUL_DIV_UNSIGNED_VERIFIER_PTR,
-    ),
-    (
-        common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
-        (load_store_word_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        LOAD_STORE_WORD_ONLY_VERIFIER_PTR,
-    ),
-    (
-        common_constants::circuit_families::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
-        (load_store_subword_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR,
-    ),
-];
-
-pub const FULL_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS: usize =
-    const { FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS.len() };
-
-pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
-    u32, // family
-    u32, // capacity
-    VerificationFunctionPointer,
-)] = &[
-    (
-        common_constants::circuit_families::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
-        (add_sub_lui_auipc_mop_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR,
-    ),
-    (
-        common_constants::circuit_families::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
-        (jump_branch_slt_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        JUMP_BRANCH_SLT_VERIFIER_PTR,
-    ),
-    (
-        common_constants::circuit_families::SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX as u32,
-        (shift_binary_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        shift_binary_verifier_PTR,
-    ),
-    (
-        common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
-        (load_store_word_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        LOAD_STORE_WORD_ONLY_VERIFIER_PTR,
-    ),
-];
-
-pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS: usize =
-    const { RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS.len() };
-
-pub const INITS_AND_TEARDOWNS_VERIFIER_PTR: VerifierFunctionPointer<
-    CAP_SIZE,
-    NUM_COSETS,
-    0,
-    { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
-    0,
-> = inits_and_teardowns_verifier::verify;
+use crate::delegation_params::*;
+use crate::unrolled_circuit_params::*;
 
 /// If we recurse over user's program -> we must provide expected final PC,
 /// and setup caps (that encode the program itself!),
@@ -169,40 +15,48 @@ pub const INITS_AND_TEARDOWNS_VERIFIER_PTR: VerifierFunctionPointer<
 #[allow(invalid_value)]
 #[inline(never)]
 pub unsafe fn verify_full_statement_for_unrolled_circuits<
+    I: NonDeterminismSource,
+    E: ErrorCreator,
     const BASE_LAYER: bool,
-    const NUM_INIT_AND_TEARDOWN_SETS: usize,
+    const REDUCED_ROUNDS: bool,
 >(
-    circuits_families_setups: &[&[MerkleTreeCap<CAP_SIZE>; NUM_COSETS]],
-    // circuit type/delegation type, capacity, setup, verifier function
-    circuits_families_verifiers: &[(u32, u32, VerificationFunctionPointer)],
-    // capacity per set, setup, verifier function
-    inits_and_teardowns_verifier: (
-        &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-        VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, 0, NUM_INIT_AND_TEARDOWN_SETS, 0, 0>,
-    ),
-    // circuit type/delegation type, capacity, setup, verifier function
-    delegation_circuits_verifiers: &[(
+    circuits_families_setups: &[&MerkleTreeCap<{ prover::definitions::DEFAULT_CAP_SIZE }>],
+    // circuit type/delegation type, verifier function
+    circuits_families_verifiers: &[(
         u32,
-        u32,
-        &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-        VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, NUM_DELEGATION_CHALLENGES, 0, 0, 0>,
+        fn(
+            &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+        ) -> Result<crate::imports::UnrolledCircuitOutput, E::Error>,
     )],
-) -> [u32; 16] {
+    inits_and_teardowns_verifier: fn(
+        &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    ) -> Result<
+        crate::imports::InitsAndTeardownsCircuitOutput,
+        E::Error,
+    >,
+    // circuit type/delegation type, capacity, setup, verifier function
+    delegation_circuits_params: &[DelegationCircuitSetupData<{ prover::definitions::DEFAULT_CAP_SIZE }>;
+         NUM_DELEGATION_CIRCUIT_TYPES],
+    delegation_circuits_verifiers: &[fn(
+        &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    ) -> Result<crate::imports::DelegationCircuitOutput, E::Error>;
+         NUM_DELEGATION_CIRCUIT_TYPES],
+) -> Result<[u32; 16], E::Error> {
     assert_eq!(
         circuits_families_setups.len(),
         circuits_families_verifiers.len()
     );
     debug_assert!(circuits_families_verifiers.is_sorted_by(|a, b| { a.0 < b.0 }));
     // we should in parallel verify proofs, and drag along the transcript to assert equality of challenges
-    let mut transcript = Blake2sBufferingTranscript::new();
+    let mut transcript = Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new();
 
     let mut registers_buffer = MaybeUninit::<[u32; 32 + 2 * 32]>::uninit().assume_init();
 
     // first we need to get final register values and timestamps
     for reg_idx in 0..32 {
-        let value = verifier_common::DefaultNonDeterminismSource::read_word();
-        let timestamp_low = verifier_common::DefaultNonDeterminismSource::read_word();
-        let timestamp_high = verifier_common::DefaultNonDeterminismSource::read_word();
+        let value = I::read_word();
+        let timestamp_low = I::read_word();
+        let timestamp_high = I::read_word();
         registers_buffer[reg_idx * 3] = value;
         registers_buffer[reg_idx * 3 + 1] = timestamp_low;
         registers_buffer[reg_idx * 3 + 2] = timestamp_high;
@@ -214,9 +68,9 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     transcript.absorb(&registers_buffer);
 
     let mut final_pc_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
-    let final_pc = verifier_common::DefaultNonDeterminismSource::read_word();
-    let final_ts_low = verifier_common::DefaultNonDeterminismSource::read_word();
-    let final_ts_high = verifier_common::DefaultNonDeterminismSource::read_word();
+    let final_pc = I::read_word();
+    let final_ts_low = I::read_word();
+    let final_ts_high = I::read_word();
     final_pc_buffer[FINAL_PC_BUFFER_PC_IDX] = final_pc;
     final_pc_buffer[FINAL_PC_BUFFER_TS_LOW_IDX] = final_ts_low;
     final_pc_buffer[FINAL_PC_BUFFER_TS_HIGH_IDX] = final_ts_high;
@@ -224,134 +78,56 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     transcript.absorb(&final_pc_buffer);
 
     // continue with main RISC-V cycles
-    let mut grand_product_accumulator = Mersenne31Quartic::ONE;
-    let mut delegation_set_accumulator = Mersenne31Quartic::ZERO;
-
-    // loop over main circuit type
-    let mut proof_output_0: ProofOutput<CAP_SIZE, NUM_COSETS, 0, 0, 1> =
-        MaybeUninit::uninit().assume_init();
-    let mut proof_output_1: ProofOutput<CAP_SIZE, NUM_COSETS, 0, 0, 1> =
-        MaybeUninit::uninit().assume_init();
-    let mut proof_output_with_delegation_0: ProofOutput<CAP_SIZE, NUM_COSETS, 1, 0, 1> =
-        MaybeUninit::uninit().assume_init();
-    let mut proof_output_with_delegation_1: ProofOutput<CAP_SIZE, NUM_COSETS, 1, 0, 1> =
-        MaybeUninit::uninit().assume_init();
-    let mut state_variables = ProofPublicInputs::uninit();
-    let mut delegation_used = false;
+    let mut read_set_product_accumulator = BabyBearExt4::ONE;
+    let mut write_set_product_accumulator = BabyBearExt4::ONE;
 
     // NOTE: in unrolled circuits we do have contribution from setup values into
     // memory or delegation, so we skip setups here (same as we do with delegation circuits in general)
 
+    // read external challenges
+    let external_challenges =
+        ::verifier_common::read_external_challenges::<BabyBearField, BabyBearExt4, I>();
+
     let mut total_cycles = 0u64;
-    for ((circuit_family, capacity, verifier_fn), setup) in circuits_families_verifiers
+    for ((circuit_family, verifier_fn), setup) in circuits_families_verifiers
         .iter()
         .zip(circuits_families_setups.iter())
     {
-        let num_circuits = verifier_common::DefaultNonDeterminismSource::read_word();
+        let num_circuits = I::read_word();
         if num_circuits > 0 {
             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
             buffer[0] = *circuit_family;
             transcript.absorb(&buffer);
         }
 
-        for circuit_sequence in 0..num_circuits {
-            total_cycles += *capacity as u64;
+        for _circuit_sequence in 0..num_circuits {
+            total_cycles += 1u64 << 24; // TODO
             assert!(total_cycles < MAX_CYCLES);
-            match verifier_fn {
-                VerificationFunctionPointer::UnrolledNoDelegation(verifier_fn) => {
-                    let (current, previous) = if circuit_sequence & 1 == 0 {
-                        (&mut proof_output_0, &proof_output_1)
-                    } else {
-                        (&mut proof_output_1, &proof_output_0)
-                    };
-                    (verifier_fn)(current, &mut state_variables);
 
-                    assert_eq!(current.circuit_sequence, 0);
-                    assert_eq!(current.delegation_type, 0);
+            let proof_output = (*verifier_fn)(&external_challenges)?;
 
-                    // and commit memory caps
-                    transcript.absorb(current.memory_caps_flattened());
+            // and commit memory caps
+            transcript.absorb(proof_output.memory_caps_flattened());
 
-                    // now we should check all invariants about continuity
+            // now we should check all invariants about continuity
 
-                    if circuit_sequence > 0 {
-                        // and check equality of the setup
-                        assert!(MerkleTreeCap::compare(
-                            &previous.setup_caps,
-                            &current.setup_caps
-                        ));
-                        // check that all challenges are the same
-                        assert_eq!(previous.memory_challenges, current.memory_challenges);
-                        assert_eq!(
-                            previous.delegation_challenges,
-                            current.delegation_challenges
-                        );
-                    } else {
-                        assert!(MerkleTreeCap::compare(*setup, &current.setup_caps));
-                    }
+            assert!(MerkleTreeCap::compare_single_with_flattened(
+                *setup,
+                &proof_output.setup_caps[0]
+            ));
 
-                    // update accumulators
-                    grand_product_accumulator.mul_assign(&current.grand_product_accumulator);
-                    // no update for delegation accumulator
-                }
-                VerificationFunctionPointer::UnrolledWithDelegation(verifier_fn) => {
-                    let (current, previous) = if circuit_sequence & 1 == 0 {
-                        (
-                            &mut proof_output_with_delegation_0,
-                            &proof_output_with_delegation_1,
-                        )
-                    } else {
-                        (
-                            &mut proof_output_with_delegation_1,
-                            &proof_output_with_delegation_0,
-                        )
-                    };
-                    (verifier_fn)(current, &mut state_variables);
-
-                    assert_eq!(current.circuit_sequence, 0);
-                    assert_eq!(current.delegation_type, 0);
-
-                    // and commit memory caps
-                    transcript.absorb(current.memory_caps_flattened());
-
-                    // now we should check all invariants about continuity
-
-                    delegation_used |= true;
-
-                    if circuit_sequence > 0 {
-                        // and check equality of the setup
-                        assert!(MerkleTreeCap::compare(
-                            &previous.setup_caps,
-                            &current.setup_caps
-                        ));
-                        // check that all challenges are the same
-                        assert_eq!(previous.memory_challenges, current.memory_challenges);
-                        assert_eq!(
-                            previous.delegation_challenges,
-                            current.delegation_challenges
-                        );
-                    } else {
-                        assert!(MerkleTreeCap::compare(*setup, &current.setup_caps));
-                    }
-
-                    // update accumulators
-                    grand_product_accumulator.mul_assign(&current.grand_product_accumulator);
-                    delegation_set_accumulator
-                        .add_assign(&current.delegation_argument_accumulator[0]);
-                }
-            }
+            // update accumulators
+            read_set_product_accumulator
+                .mul_assign(&proof_output.grand_product_read_set_accumulator);
+            write_set_product_accumulator
+                .mul_assign(&proof_output.grand_product_write_set_accumulator);
         }
     }
 
-    // then init/teardown circuits
+    // then init/teardown circuits - we expect to have exactly 1
     {
-        let mut proof_output_0: ProofOutput<CAP_SIZE, NUM_COSETS, 0, NUM_INIT_AND_TEARDOWN_SETS> =
-            MaybeUninit::uninit().assume_init();
-        let mut proof_output_1: ProofOutput<CAP_SIZE, NUM_COSETS, 0, NUM_INIT_AND_TEARDOWN_SETS> =
-            MaybeUninit::uninit().assume_init();
-        let mut state_variables = ProofPublicInputs::uninit();
-
-        let num_circuits = verifier_common::DefaultNonDeterminismSource::read_word();
+        let num_circuits = I::read_word();
+        assert_eq!(num_circuits, 1);
         if num_circuits > 0 {
             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
             buffer[0] =
@@ -360,209 +136,106 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
             transcript.absorb(&buffer);
         }
 
-        let mut cells_initialized = 0;
-        for circuit_sequence in 0..num_circuits {
-            assert!(cells_initialized < MAX_MEMORY_CELLS_TO_INIT);
-            let (setup, verifier_fn) = inits_and_teardowns_verifier;
-            let (current, previous) = if circuit_sequence & 1 == 0 {
-                (&mut proof_output_0, &proof_output_1)
-            } else {
-                (&mut proof_output_1, &proof_output_0)
-            };
-            (verifier_fn)(current, &mut state_variables);
+        for _circuit_sequence in 0..num_circuits {
+            let proof_output = (inits_and_teardowns_verifier)(&external_challenges)?;
 
-            assert_eq!(current.circuit_sequence, 0);
-            assert_eq!(current.delegation_type, 0);
+            // we expect that for all the top bits we have a continuous sequence
+            for i in 0..proof_output.inits_and_teardowns_top_bits.len() {
+                assert_eq!(i as u32, proof_output.inits_and_teardowns_top_bits[i]);
+            }
 
             // and commit memory caps
-            transcript.absorb(current.memory_caps_flattened());
+            transcript.absorb(proof_output.memory_caps_flattened());
 
-            // now we should check all invariants about continuity
-
-            if circuit_sequence > 0 {
-                // and check equality of the setup
-                assert!(MerkleTreeCap::compare(
-                    &previous.setup_caps,
-                    &current.setup_caps
-                ));
-                // check that all challenges are the same
-                assert_eq!(previous.memory_challenges, current.memory_challenges);
-                assert_eq!(
-                    previous.delegation_challenges,
-                    current.delegation_challenges
-                );
-            } else {
-                assert!(MerkleTreeCap::compare(setup, &current.setup_caps));
-            }
+            // there is no setup for inits/teardowns
+            debug_assert_eq!(proof_output.setup_caps.len(), 0);
 
             // update accumulators
-            grand_product_accumulator.mul_assign(&current.grand_product_accumulator);
-
-            let mut last_previous = if circuit_sequence == 0 {
-                InitAndTeardownTuple {
-                    address: 0u32,
-                    teardown_value: 0u32,
-                    teardown_ts_pair: (0u32, 0u32),
-                }
-            } else {
-                InitAndTeardownTuple::from_aux_values_one_before_last_row(
-                    &previous.lazy_init_boundary_values[NUM_INIT_AND_TEARDOWN_SETS - 1],
-                )
-            };
-
-            // check that addresses are sorted at juctions
-            for i in 0..NUM_INIT_AND_TEARDOWN_SETS {
-                cells_initialized += INITS_AND_TEARDOWNS_CAPACITY_PER_SET;
-                let first_current_address = parse_field_els_as_u32_from_u16_limbs_checked(
-                    current.lazy_init_boundary_values[i].lazy_init_first_row,
-                );
-
-                // if it's
-                if last_previous.address < first_current_address {
-                    // nothing, we are all good
-                } else {
-                    // we require padding of 0 init address, and 0 teardown value and timestamp
-                    assert_eq!(last_previous.address, 0);
-                    assert_eq!(last_previous.teardown_value, 0);
-
-                    // just compare to 0 after reduction to avoid parsing u16 or timestamp bits
-                    assert_eq!(last_previous.teardown_ts_pair.0, 0);
-                    assert_eq!(last_previous.teardown_ts_pair.1, 0);
-                }
-
-                // circuits sort addresses in the column, so we just need to re-assign
-                last_previous = InitAndTeardownTuple::from_aux_values_one_before_last_row(
-                    &current.lazy_init_boundary_values[i],
-                )
-            }
+            read_set_product_accumulator
+                .mul_assign(&proof_output.grand_product_read_set_accumulator);
+            write_set_product_accumulator
+                .mul_assign(&proof_output.grand_product_write_set_accumulator);
         }
     }
 
     // If we will even want to break an execution here, we will have full buffer (unflushed)
     assert!(transcript.get_current_buffer_offset() == BLAKE2S_BLOCK_SIZE_U32_WORDS);
 
-    // since we have > 0 main circuits, then we can always use `proof_output_0` below
+    let mut total_permutation_elements = total_cycles << 2; // 4 permutation elements per cycle - 1 from machine state and 3 memory accesses
 
     // ok, now we forget about main circuit and potentially parse delegations
-    if NUM_DELEGATION_CHALLENGES > 0 {
-        let mut previous_delegation_type = 0u32;
-        let mut state_variables = ProofPublicInputs::uninit();
-        let mut delegation_proof_output = MaybeUninit::uninit().assume_init();
-
-        let mut total_delegation_requests = 0u64;
-
-        for (delegation_type, delegation_requests_per_circuit, setup_caps, verification_function) in
-            delegation_circuits_verifiers.iter()
+    {
+        for (delegation_circuit_params, verifier_fn) in delegation_circuits_params
+            .iter()
+            .zip(delegation_circuits_verifiers)
         {
-            assert!(previous_delegation_type < *delegation_type);
-            previous_delegation_type = *delegation_type;
-
-            let num_circuits = verifier_common::DefaultNonDeterminismSource::read_word();
+            let num_circuits = I::read_word();
 
             if num_circuits > 0 {
-                delegation_used |= true;
                 let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
-                buffer[0] = *delegation_type;
+                buffer[0] = delegation_circuit_params.delegation_type;
                 transcript.absorb(&buffer);
             }
 
             for _circuit_sequence in 0..num_circuits {
-                // Note: this will make sure that all external challenges are the same as we progress,
-                // and so we will only need to save the result at the very end
-                (verification_function)(&mut delegation_proof_output, &mut state_variables);
-
-                assert_eq!(delegation_proof_output.circuit_sequence, 0);
-                assert_eq!(delegation_proof_output.delegation_type, *delegation_type);
-                assert!(MerkleTreeCap::compare(
-                    &delegation_proof_output.setup_caps,
-                    setup_caps
-                ));
+                let proof_output = (verifier_fn)(&external_challenges)?;
 
                 // and commit memory caps
-                transcript.absorb(delegation_proof_output.memory_caps_flattened());
+                transcript.absorb(proof_output.memory_caps_flattened());
 
-                // check that we use the same challenges
-                assert_eq!(
-                    delegation_proof_output.memory_challenges,
-                    proof_output_0.memory_challenges
-                );
-                assert_eq!(
-                    delegation_proof_output.delegation_challenges,
-                    proof_output_with_delegation_0.delegation_challenges
-                );
+                assert!(MerkleTreeCap::compare_single_with_flattened(
+                    &delegation_circuit_params.setup_cap,
+                    &proof_output.setup_caps[0]
+                ));
 
                 // update accumulators
-                grand_product_accumulator
-                    .mul_assign(&delegation_proof_output.grand_product_accumulator);
-                delegation_set_accumulator
-                    .sub_assign(&delegation_proof_output.delegation_argument_accumulator[0]);
+                read_set_product_accumulator
+                    .mul_assign(&proof_output.grand_product_read_set_accumulator);
+                write_set_product_accumulator
+                    .mul_assign(&proof_output.grand_product_write_set_accumulator);
 
-                total_delegation_requests += (*delegation_requests_per_circuit) as u64;
+                total_permutation_elements +=
+                    delegation_circuit_params.num_permutation_terms_per_circuit as u64;
             }
 
             // If we will even want to break an execution here, we will have full buffer (unflushed)
             assert!(transcript.get_current_buffer_offset() == BLAKE2S_BLOCK_SIZE_U32_WORDS);
         }
-
-        // we use LogUp like argument for permutation between all delegation requests and responses.
-        // All requests are unique (due to timestamps), so to ensure soundness we just require that total number
-        // of responses processed it < field size
-        assert!(total_delegation_requests < Mersenne31Field::CHARACTERISTICS as u64);
     }
+
+    // TODO: assert that number of permutation elements is less than we computed for security levels
+    assert!(total_permutation_elements < 1u64 << 40);
 
     // finish with the transcript, compare memory values from transcript with ones used in proofs
     let memory_seed = transcript.finalize_reset();
 
-    let pow_challenge_low = verifier_common::DefaultNonDeterminismSource::read_word();
-    let pow_challenge_high = verifier_common::DefaultNonDeterminismSource::read_word();
+    let pow_challenge_low = I::read_word();
+    let pow_challenge_high = I::read_word();
     let pow_challenge = (pow_challenge_high as u64) << 32 | (pow_challenge_low as u64);
 
-    let expected_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
+    let expected_challenges = GKRExternalChallenges::draw_from_transcript_seed(
         memory_seed,
         MEMORY_DELEGATION_POW_BITS,
         pow_challenge,
     );
 
-    assert_eq!(
-        expected_challenges.memory_argument,
-        proof_output_0.memory_challenges
-    );
-    if delegation_used {
-        assert_eq!(
-            expected_challenges.delegation_argument.unwrap_unchecked(),
-            proof_output_with_delegation_0.delegation_challenges[0]
-        );
-    }
-    assert_eq!(
-        expected_challenges
-            .machine_state_permutation_argument
-            .unwrap_unchecked(),
-        proof_output_0.machine_state_permutation_challenges[0]
-    );
+    assert_eq!(expected_challenges, external_challenges);
 
     // conclude that our memory argument is valid
-    let register_contribution =
-        prover::definitions::produce_register_contribution_into_memory_accumulator_raw(
-            core::mem::transmute(&registers_buffer),
-            proof_output_0
-                .memory_challenges
-                .memory_argument_linearization_challenges,
-            proof_output_0.memory_challenges.memory_argument_gamma,
-        );
-    let machine_state_contribution =
-        prover::definitions::produce_pc_into_permutation_accumulator_raw(
+    let (machine_state_read_set_contribution, machine_state_write_set_contribution) =
+        prover::definitions::produce_initial_permutation_product_separate_contributions(
+            core::mem::transmute::<_, &[(u32, (u32, u32)); NUM_REGISTERS]>(&registers_buffer),
             INITIAL_PC,
             split_timestamp(INITIAL_TIMESTAMP),
             final_pc,
             (final_ts_low, final_ts_high),
-            &proof_output_0.machine_state_permutation_challenges[0].linearization_challenges,
-            &proof_output_0.machine_state_permutation_challenges[0].additive_term,
+            &external_challenges,
         );
-    grand_product_accumulator.mul_assign(&register_contribution);
-    grand_product_accumulator.mul_assign(&machine_state_contribution);
 
-    assert_eq!(grand_product_accumulator, Mersenne31Quartic::ONE);
-    assert_eq!(delegation_set_accumulator, Mersenne31Quartic::ZERO);
+    read_set_product_accumulator.mul_assign(&machine_state_read_set_contribution);
+    write_set_product_accumulator.mul_assign(&machine_state_write_set_contribution);
+
+    assert_eq!(read_set_product_accumulator, write_set_product_accumulator);
 
     // Now we only need to reason about "which program do we execute", and "did it finish successfully or not".
 
@@ -575,7 +248,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     // the final piece is to make sure that we ended on the PC that is "expected" (basically - loops to itself, and at the right place),
     // so the program ended logical execution and we can conclude that the set of register values is meaningful
 
-    let mut result_hasher = Blake2sBufferingTranscript::new();
+    let mut result_hasher = Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new();
     // NOTE: for parameters we are no longer interested in the timestamp when we ended execution,
     // just on PC
     final_pc_buffer[FINAL_PC_BUFFER_TS_LOW_IDX] = 0;
@@ -583,9 +256,8 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
 
     result_hasher.absorb(&final_pc_buffer);
     for setup in circuits_families_setups.iter() {
-        result_hasher.absorb(caps_flattened(*setup));
+        result_hasher.absorb(MerkleTreeCap::flatten_single(*setup));
     }
-    result_hasher.absorb(caps_flattened(&inits_and_teardowns_verifier.0));
     let end_params_output = result_hasher.finalize_reset();
 
     // `end_params_output` now fully describes an ending PC + setups (and setups include program binary)
@@ -624,7 +296,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         let mut preimage: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2] =
             MaybeUninit::uninit().assume_init();
         for i in 0..BLAKE2S_DIGEST_SIZE_U32_WORDS * 2 {
-            preimage[i] = verifier_common::DefaultNonDeterminismSource::read_word();
+            preimage[i] = I::read_word();
         }
         result_hasher.absorb(&preimage);
         let preimage_hash = result_hasher.finalize_reset();
@@ -664,62 +336,67 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         }
     }
 
-    output
+    Ok(output)
 }
 
-pub fn verify_unrolled_base_layer() -> [u32; 16] {
+pub fn verify_unrolled_base_layer<
+    I: NonDeterminismSource,
+    E: ErrorCreator,
+    const REDUCED_ROUNDS: bool,
+>() -> Result<[u32; 16], E::Error> {
     unsafe {
-        let circuits_setups = read_setups::<
-            DefaultNonDeterminismSource,
-            FULL_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS,
-        >();
+        let circuits_setups: [MerkleTreeCap<_>; NUM_BASE_LAYER_CIRCUITS] =
+            core::array::from_fn(|_| {
+                read_setup_cap::<I, { prover::definitions::DEFAULT_CAP_SIZE }>()
+            });
         let circuits_setups_refs = circuits_setups.each_ref();
-        let inits_and_teardowns_setups = read_setups::<DefaultNonDeterminismSource, 1>();
-        verify_full_statement_for_unrolled_circuits::<
-            true,
-            { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
-        >(
+        verify_full_statement_for_unrolled_circuits::<I, E, true, REDUCED_ROUNDS>(
             &circuits_setups_refs,
-            &FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS,
-            (
-                &inits_and_teardowns_setups[0],
-                INITS_AND_TEARDOWNS_VERIFIER_PTR,
-            ),
-            BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS,
+            &crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer::<I, E>(),
+            crate::unrolled_circuit_params::inits_and_teardowns_verifier::<I, E>(),
+            &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
+            &crate::delegation_params::all_delegation_circuit_verifiers::<I, E>(),
         )
     }
 }
 
-pub fn verify_unrolled_recursion_layer() -> [u32; 16] {
+pub fn verify_unrolled_recursion_layer<
+    I: NonDeterminismSource,
+    E: ErrorCreator,
+    const REDUCED_ROUNDS: bool,
+>() -> Result<[u32; 16], E::Error> {
     unsafe {
-        let circuits_setups = read_setups::<
-            DefaultNonDeterminismSource,
-            RECURSION_WORD_ONLY_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS,
-        >();
+        let circuits_setups: [MerkleTreeCap<_>; NUM_RECURSION_LAYER_CIRCUITS] =
+            core::array::from_fn(|_| {
+                read_setup_cap::<I, { prover::definitions::DEFAULT_CAP_SIZE }>()
+            });
         let circuits_setups_refs = circuits_setups.each_ref();
-        let inits_and_teardowns_setups = read_setups::<DefaultNonDeterminismSource, 1>();
-        verify_full_statement_for_unrolled_circuits::<
-            false,
-            { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
-        >(
+        verify_full_statement_for_unrolled_circuits::<I, E, false, REDUCED_ROUNDS>(
             &circuits_setups_refs,
-            &RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS,
-            (
-                &inits_and_teardowns_setups[0],
-                INITS_AND_TEARDOWNS_VERIFIER_PTR,
+            &crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_recursion_layer::<I, E>(
             ),
-            RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS,
+            crate::unrolled_circuit_params::inits_and_teardowns_verifier::<I, E>(),
+            &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
+            &crate::delegation_params::all_delegation_circuit_verifiers::<I, E>(),
         )
     }
 }
 
-pub fn verify_base_or_recursion_unrolled_circuits() -> [u32; 16] {
+pub fn verify_base_or_recursion_unrolled_circuits<
+    I: NonDeterminismSource,
+    E: ErrorCreator,
+    const REDUCED_ROUNDS: bool,
+>() -> Result<[u32; 16], E::Error> {
     // we just branch
-    let op_type = DefaultNonDeterminismSource::read_word();
+    let op_type = I::read_word();
     use crate::definitions::*;
     match op_type {
-        OP_VERIFY_BASE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_base_layer(),
-        OP_VERIFY_RECURSIVE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_recursion_layer(),
+        OP_VERIFY_BASE_LAYER_IN_UNROLLED_CIRCUITS => {
+            verify_unrolled_base_layer::<I, E, REDUCED_ROUNDS>()
+        }
+        OP_VERIFY_RECURSIVE_LAYER_IN_UNROLLED_CIRCUITS => {
+            verify_unrolled_recursion_layer::<I, E, REDUCED_ROUNDS>()
+        }
         _ => {
             panic!("Unknown op");
         }

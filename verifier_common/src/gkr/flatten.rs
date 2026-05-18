@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::{Field, FieldExtension, PrimeField};
-use prover::gkr::prover::{GKRProof, WhirSchedule};
+use prover::gkr::prover::GKRProof;
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 
 fn flatten_field_els<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut Vec<u32>)
@@ -22,8 +22,6 @@ where
 pub fn flatten_gkr_proof_for_nds<F: PrimeField, E: FieldExtension<F> + Field, T>(
     proof: &GKRProof<F, E, T>,
     compiled_circuit: &GKRCircuitArtifact<F>,
-    whir_schedule: &WhirSchedule,
-    inits_and_teardowns_top_bits: &[u32],
 ) -> Vec<u32>
 where
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -31,8 +29,8 @@ where
 {
     let mut result = Vec::new();
 
-    result.extend_from_slice(inits_and_teardowns_top_bits);
-    if compiled_circuit.generic_lookup_tables_width > 0 {
+    result.extend_from_slice(&proof.inits_and_teardowns_top_bits);
+    if proof.whir_proof.setup_commitment.num_columns > 0 {
         proof
             .whir_proof
             .setup_commitment
@@ -40,7 +38,7 @@ where
             .cap
             .add_into_buffer(&mut result);
     }
-    if compiled_circuit.memory_layout.total_width > 0 {
+    if proof.whir_proof.memory_commitment.num_columns > 0 {
         proof
             .whir_proof
             .memory_commitment
@@ -48,7 +46,7 @@ where
             .cap
             .add_into_buffer(&mut result);
     }
-    if compiled_circuit.witness_layout.total_width > 0 {
+    if proof.whir_proof.witness_commitment.num_columns > 0 {
         proof
             .whir_proof
             .witness_commitment
@@ -95,6 +93,7 @@ where
     }
 
     let whir = &proof.whir_proof;
+    let whir_schedule = &whir.whir_schedule;
 
     let num_rounds = whir
         .ood_samples

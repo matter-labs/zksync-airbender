@@ -625,7 +625,7 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(E::gkr_cache_relation_failed(#layer_idx));
+                        return Err(E::gkr_single_lookup_cache_relation_failed(#layer_idx, _sc));
                     }
                     _sc += 1;
                 }
@@ -695,7 +695,7 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(E::gkr_cache_relation_failed(#layer_idx));
+                        return Err(E::gkr_vector_lookup_cache_relation_failed(#layer_idx, _vl));
                     }
                     _vl += 1;
                 }
@@ -739,7 +739,7 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(E::gkr_cache_relation_failed(#layer_idx));
+                        return Err(E::gkr_permutation_cache_relation_failed(#layer_idx, _vs));
                     }
                     _vs += 1;
                 }

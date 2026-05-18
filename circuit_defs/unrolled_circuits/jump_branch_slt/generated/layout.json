@@ -54,7 +54,7 @@
   "has_decoder_lookup": true,
   "layers": [
     {
-      "layer": 1,
+      "layer": 0,
       "gates_with_external_connections": [],
       "cached_relations": [
         [
@@ -2929,10 +2929,11 @@
             }
           }
         }
-      ]
+      ],
+      "intermediate_layer_width": null
     },
     {
-      "layer": 2,
+      "layer": 1,
       "gates_with_external_connections": [],
       "cached_relations": [],
       "gates": [
@@ -3307,10 +3308,11 @@
             }
           }
         }
-      ]
+      ],
+      "intermediate_layer_width": 25
     },
     {
-      "layer": 3,
+      "layer": 2,
       "gates_with_external_connections": [],
       "cached_relations": [],
       "gates": [
@@ -3555,10 +3557,11 @@
             }
           }
         }
-      ]
+      ],
+      "intermediate_layer_width": 17
     },
     {
-      "layer": 4,
+      "layer": 3,
       "gates_with_external_connections": [
         {
           "output_layer": 4,
@@ -3727,7 +3730,8 @@
         }
       ],
       "cached_relations": [],
-      "gates": []
+      "gates": [],
+      "intermediate_layer_width": 10
     }
   ],
   "global_output_map": {
@@ -3915,7 +3919,8 @@
     },
     "indirect_access_variable_offsets": [],
     "teardown_sets": [],
-    "total_width": 26
+    "total_width": 26,
+    "inits_and_teardowns_word_bits": null
   },
   "witness_layout": {
     "multiplicities_columns_for_range_check_16": {
@@ -5452,9 +5457,9 @@
     "45": "bit 1 for computed next PC",
     "46": "selected rd[0]",
     "47": "selected rd[1]",
-    "48": "query 0, interm ts borrow",
-    "49": "query 1, interm ts borrow",
-    "50": "query 2, interm ts borrow",
+    "48": "query 0, interim ts borrow",
+    "49": "query 1, interim ts borrow",
+    "50": "query 2, interim ts borrow",
     "51": "Multiplicity for range check 16",
     "52": "Multiplicity for timestamp range check",
     "53": "Multiplicity for generic lookup"

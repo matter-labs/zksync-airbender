@@ -43,9 +43,11 @@ fn run_transpiler(name: &str, level: SecurityLevel) {
     let mut non_determinism = QuasiUARTSource::new_with_reads(oracle_responses);
 
     let symbols_path = std::path::PathBuf::from(&elf_path);
-    let output_path = std::env::current_dir()
-        .unwrap()
-        .join(format!("gkr_flamegraph_{}.svg", name));
+    let output_path = std::env::current_dir().unwrap().join(format!(
+        "gkr_flamegraph_{}_{}.svg",
+        name,
+        level.dir_suffix()
+    ));
     let mut fg_config =
         riscv_transpiler::vm::FlamegraphConfig::new(symbols_path, output_path.clone());
     fg_config.frequency_recip = 1;

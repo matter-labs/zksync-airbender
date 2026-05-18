@@ -344,7 +344,14 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
         SecurityLevel::Sec80,
         "corrupted cache relation",
         &proof,
-        |e| matches!(e, VerificationError::GkrCacheRelationFailed { .. }),
+        |e| {
+            matches!(
+                e,
+                VerificationError::GkrSingleLookupCacheRelationFailed { .. }
+                    | VerificationError::GkrVectorLookupCacheRelationFailed { .. }
+                    | VerificationError::GkrPermutationCacheRelationFailed { .. }
+            )
+        },
     );
 }
 

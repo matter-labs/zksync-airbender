@@ -1,9 +1,6 @@
 use super::*;
 use crate::query_utils::BitSource;
-use crate::{
-    definitions::{Transcript, DIGEST_SIZE_U32_WORDS},
-    gkr::whir::WhirCommitment,
-};
+use crate::{definitions::Transcript, gkr::whir::WhirCommitment};
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use field::FixedArrayConvertible;
 use transcript::Seed;
@@ -63,7 +60,8 @@ pub fn add_whir_commitment_to_transcript<F: PrimeField, T: ColumnMajorMerkleTree
     seed: &mut Seed,
     commitment: &WhirCommitment<F, T>,
 ) {
-    let mut transcript_input = Vec::with_capacity(commitment.cap.cap.len() * DIGEST_SIZE_U32_WORDS);
+    let mut transcript_input =
+        Vec::with_capacity(commitment.cap.cap.len() * BLAKE2S_DIGEST_SIZE_U32_WORDS);
     commitment.cap.add_into_buffer(&mut transcript_input);
 
     Transcript::commit_with_seed(seed, &transcript_input);

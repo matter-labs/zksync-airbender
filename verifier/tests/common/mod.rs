@@ -314,10 +314,7 @@ pub fn proof_to_nds(
         .map(|i| i as u32)
         .collect();
     let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-        proof,
-        &compiled,
-        circuit_data.whir_schedule_for(level),
-        &inits_and_teardowns_top_bits,
+        proof, &compiled,
     );
     let external_challenges = proof.external_challenges;
 
