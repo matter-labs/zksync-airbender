@@ -12,7 +12,6 @@ use field::PrimeField;
 pub enum Expr<F: PrimeField> {
     Constant(F),
     Var(Variable),
-    Scale(F, Box<Expr<F>>),
     Sum(Vec<Expr<F>>),
     Product(Vec<Expr<F>>),
 }
@@ -46,7 +45,6 @@ impl<F: PrimeField> Expr<F> {
         match self {
             Self::Constant(_) => 0,
             Self::Var(_) => 1,
-            Self::Scale(_, expr) => expr.degree(),
             Self::Sum(terms) => terms.iter().map(Self::degree).max().unwrap_or(0),
             Self::Product(factors) => factors.iter().map(Self::degree).sum(),
         }
@@ -86,11 +84,6 @@ impl<F: PrimeField> Expr<F> {
         match self {
             Self::Constant(value) => Constraint::constant(*value),
             Self::Var(variable) => Constraint::from(*variable),
-            Self::Scale(scale, expr) => {
-                let mut constraint = expr.to_constraint_unchecked();
-                constraint.scale(*scale);
-                constraint
-            }
             Self::Sum(terms) => {
                 let mut result = Constraint::empty();
                 for term in terms {
@@ -143,7 +136,7 @@ impl<F: PrimeField> std::ops::Neg for Expr<F> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        Self::Scale(F::MINUS_ONE, Box::new(self))
+        Self::Product(vec![Self::Constant(F::MINUS_ONE), self])
     }
 }
 
@@ -159,7 +152,7 @@ impl<F: PrimeField> std::ops::Mul<F> for Expr<F> {
     type Output = Self;
 
     fn mul(self, rhs: F) -> Self::Output {
-        Self::Scale(rhs, Box::new(self))
+        Self::Product(vec![Self::Constant(rhs), self])
     }
 }
 
