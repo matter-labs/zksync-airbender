@@ -8,7 +8,7 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::Digest;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{HostAllocation, ProverContext, UnsafeAccessor};
-use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixImpl};
+use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixImpl, DeviceMatrixMut};
 use crate::primitives::field::{BF, E4};
 use crate::prover::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
 use crate::prover::whir::kernels::pack_rows_for_whir_leaves;
@@ -143,17 +143,19 @@ impl GpuWhirExtensionOracle {
             trees_cache_mode,
             context,
         )?;
-        let mut natural_coset_values =
-            context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
+        let mut vectorized_coset_evaluations_alloc =
+            context.alloc(lde_factor * trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
 
         let monomial_coeffs_slice = monomial_coeffs.slice();
         let monomial_coeffs_stride = monomial_coeffs.stride();
+        let vectorized_coset_evaluations_stride = lde_factor * trace_len;
         for coset_index in 0..lde_factor {
+            let coset_offset = bitreverse_index(coset_index, log_lde_factor) * trace_len;
             for base_column in 0..EXT4_DEGREE {
-                let src_column_start = base_column * monomial_coeffs_stride;
-                let dst_column_start = base_column * trace_len;
-                let src = &monomial_coeffs_slice[src_column_start..src_column_start + trace_len];
-                let dst = &mut natural_coset_values[dst_column_start..dst_column_start + trace_len];
+                let src_start = base_column * monomial_coeffs_stride;
+                let dst_start = coset_offset + base_column * vectorized_coset_evaluations_stride;
+                let src = &monomial_coeffs_slice[src_start..src_start + trace_len];
+                let dst = &mut vectorized_coset_evaluations_alloc[dst_start..dst_start + trace_len];
                 crate::ops::ntt::bitreversed_coeffs_to_natural_coset(
                     src,
                     dst,
@@ -163,24 +165,23 @@ impl GpuWhirExtensionOracle {
                     stream,
                 )?;
             }
-            let natural_matrix = DeviceMatrix::new(&natural_coset_values, trace_len);
-            let packed_trace = trace_holder.get_uninit_coset_evaluations_mut(0);
-            let stage1_coset_index = bitreverse_index(coset_index, log_lde_factor);
-            let mut packed_matrix = DeviceMatrixChunkMut::new(
-                packed_trace,                           // slice
-                packed_leaf_count << log_lde_factor,    // stride
-                stage1_coset_index * packed_leaf_count, // offset
-                packed_leaf_count,                      // rows
-            );
-            pack_rows_for_whir_leaves(
-                &natural_matrix,
-                &mut packed_matrix,
-                log_values_per_leaf,
-                1,
-                0,
-                stream,
-            )?;
         }
+
+        let vectorized_coset_evaluations_matrix = DeviceMatrix::new(
+            &vectorized_coset_evaluations_alloc,
+            vectorized_coset_evaluations_stride,
+        );
+        let packed_alloc = trace_holder.get_uninit_coset_evaluations_mut(0);
+        let packed_stride = packed_leaf_count * lde_factor;
+        let mut packed_matrix = DeviceMatrixMut::new(packed_alloc, packed_stride);
+        pack_rows_for_whir_leaves(
+            &vectorized_coset_evaluations_matrix,
+            &mut packed_matrix,
+            trace_len_log2 as u32,
+            log_lde_factor,
+            log_values_per_leaf,
+            stream,
+        )?;
 
         trace_holder.mark_cosets_materialized();
         trace_holder.commit_all(context)?;

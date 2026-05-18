@@ -1,29 +1,44 @@
 #include "../../common.cuh"
 #include "../../primitives/field.cuh"
 #include "../../primitives/memory.cuh"
+#include "../../primitives/vectorized.cuh"
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
+using namespace ::airbender::primitives::vectorized;
 
 namespace airbender::prover::whir {
 
 DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsigned num_bits) { return __brev(value) >> (32 - num_bits); }
 
-EXTERN __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(const matrix_getter<bf, ld_modifier::cs> src, const matrix_setter<bf, st_modifier::cs> dst,
-                                                              const unsigned log_values_per_leaf, const unsigned dst_rows_per_slot, const unsigned row_stride,
-                                                              const unsigned row_offset, const unsigned src_cols) {
-  const unsigned row = blockIdx.x * blockDim.x + threadIdx.x;
-  if (row >= dst_rows_per_slot)
+EXTERN __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(vectorized_e4_matrix_getter<ld_modifier::cs> src,
+                                                              vectorized_e4_matrix_setter<st_modifier::cs> dst,
+                                                              const unsigned log_trace_len,
+                                                              const unsigned log_blocks_per_coset,
+                                                              const unsigned log_values_per_leaf,
+                                                              const unsigned dst_rows_per_coset) {
+  const unsigned coset = blockIdx.x >> log_blocks_per_coset;
+  const unsigned block_in_coset_mask = (1 << log_blocks_per_coset) - 1;
+  const unsigned block_in_coset = blockIdx.x & block_in_coset_mask;
+
+  src.add_row(coset << log_trace_len);
+  dst.add_row(coset << (log_trace_len - log_values_per_leaf));
+
+  const unsigned dst_row = block_in_coset * blockDim.x + threadIdx.x;
+  if (dst_row >= dst_rows_per_coset)
     return;
-  const unsigned col = blockIdx.y * blockDim.y + threadIdx.y;
-  const unsigned dst_cols = src_cols << log_values_per_leaf;
-  if (col >= dst_cols)
-    return;
-  const unsigned value_slot = col / src_cols;
-  const unsigned coeff_col = col % src_cols;
-  const unsigned src_row = row + bitreverse_low_bits(value_slot, log_values_per_leaf) * dst_rows_per_slot;
-  const unsigned dst_row = row * row_stride + row_offset;
-  dst.set(dst_row, col, src.get(src_row, coeff_col));
+
+  extern __shared__ e4 smem[];
+  e4 *smem_warp = smem + 64 * threadIdx.y;
+
+  unsigned dst_slot_in_leaf = 2 * threadIdx.y;
+  unsigned src_row = dst_row + bitreverse_low_bits(dst_slot_in_leaf, log_values_per_leaf) * dst_rows_per_coset;
+  for (; dst_slot_in_leaf < 2 * threadIdx.y + 2; dst_slot_in_leaf++, src_row += (dst_rows_per_coset >> 1)) {
+    const e4 val = src.get_at_row(src_row);
+    dst.add_row(dst_row);
+    dst.set_at_col(dst_slot_in_leaf, val);
+    dst.sub_row(dst_row);
+  }
 }
 
 } // namespace airbender::prover::whir
