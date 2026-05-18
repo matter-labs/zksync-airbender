@@ -28,16 +28,16 @@ EXTERN __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(vectorized_e4_matr
   if (dst_row >= dst_rows_per_coset)
     return;
 
-  extern __shared__ e4 smem[];
-  e4 *smem_warp = smem + 64 * threadIdx.y;
+  dst.add_row(dst_row);
+
+  // extern __shared__ e4 smem[];
+  // e4 *smem_warp = smem + 64 * threadIdx.y;
 
   unsigned dst_slot_in_leaf = 2 * threadIdx.y;
   unsigned src_row = dst_row + bitreverse_low_bits(dst_slot_in_leaf, log_values_per_leaf) * dst_rows_per_coset;
-  for (; dst_slot_in_leaf < 2 * threadIdx.y + 2; dst_slot_in_leaf++, src_row += (dst_rows_per_coset >> 1)) {
+  for (; dst_slot_in_leaf < 2 * threadIdx.y + 2; dst_slot_in_leaf++, src_row += dst_rows_per_coset << (log_values_per_leaf - 1)) {
     const e4 val = src.get_at_row(src_row);
-    dst.add_row(dst_row);
     dst.set_at_col(dst_slot_in_leaf, val);
-    dst.sub_row(dst_row);
   }
 }
 
