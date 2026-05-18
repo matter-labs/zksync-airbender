@@ -1,6 +1,7 @@
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 
 use rand::Rng;
+use serial_test::serial;
 
 use super::super::*;
 use crate::upstream::{Field, Seed};
@@ -141,6 +142,7 @@ fn assert_backward_round_parity(
 }
 
 #[test]
+#[serial]
 fn backward_round_update_parity_fixed() {
     let seed = Seed([
         0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x66666666, 0x77777777,
@@ -155,6 +157,7 @@ fn backward_round_update_parity_fixed() {
 }
 
 #[test]
+#[serial]
 fn backward_round_update_parity_randomized() {
     let mut rng = rand::rng();
     for _ in 0..16 {
@@ -309,6 +312,7 @@ fn assert_whir_fold_round_parity(seed_in: Seed, f_at_0: E4, f_at_1: E4, raw_half
 }
 
 #[test]
+#[serial]
 fn whir_fold_round_update_parity_fixed() {
     let seed = Seed([
         0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x66666666, 0x77777777,
@@ -321,6 +325,7 @@ fn whir_fold_round_update_parity_fixed() {
 }
 
 #[test]
+#[serial]
 fn whir_fold_round_update_parity_randomized() {
     let mut rng = rand::rng();
     for _ in 0..16 {
@@ -333,6 +338,7 @@ fn whir_fold_round_update_parity_randomized() {
 }
 
 #[test]
+#[serial]
 fn whir_fold_round_update_parity_chained() {
     // Emulates multiple sequential fold rounds: the output seed of one
     // round becomes the input of the next. Catches state-propagation
@@ -401,6 +407,7 @@ fn assert_assemble_query_indexes_parity(
 }
 
 #[test]
+#[serial]
 fn assemble_query_indexes_parity_small() {
     // 4 queries, 8-bit domain: 32 + 4*8 = 64 bits = 2 words (pad to 8 for
     // squeeze alignment).
@@ -409,6 +416,7 @@ fn assemble_query_indexes_parity_small() {
 }
 
 #[test]
+#[serial]
 fn assemble_query_indexes_parity_realistic() {
     // Matches a typical WHIR round: ~32-64 queries with ~20-24-bit domain.
     let mut rng = rand::rng();
@@ -425,6 +433,7 @@ fn assemble_query_indexes_parity_realistic() {
 }
 
 #[test]
+#[serial]
 fn backward_round_update_parity_chained() {
     // Emulates multiple sequential rounds: the output seed/claim/eq of one
     // round becomes the input of the next. This catches state-propagation
@@ -544,6 +553,7 @@ fn run_device_new_claims_linear(packed_values: &[E4], last_r: E4) -> Vec<E4> {
 }
 
 #[test]
+#[serial]
 fn backward_new_claims_two_var_parity_fixed() {
     let r_before_last = sample_e4(17);
     let r_last = sample_e4(23);
@@ -561,6 +571,7 @@ fn backward_new_claims_two_var_parity_fixed() {
 }
 
 #[test]
+#[serial]
 fn backward_new_claims_two_var_parity_randomized() {
     use rand::Rng;
     let mut rng = rand::rng();
@@ -580,6 +591,7 @@ fn backward_new_claims_two_var_parity_randomized() {
 }
 
 #[test]
+#[serial]
 fn backward_new_claims_linear_parity_fixed() {
     let last_r = sample_e4(31);
     let num_addresses = 5usize;
@@ -597,6 +609,7 @@ fn backward_new_claims_linear_parity_fixed() {
 }
 
 #[test]
+#[serial]
 fn backward_new_claims_linear_parity_randomized() {
     use rand::Rng;
     let mut rng = rand::rng();
@@ -656,6 +669,7 @@ fn run_device_combined_claim(claims: &[E4], batching: E4, exp_idx: &[(u32, u32)]
 }
 
 #[test]
+#[serial]
 fn build_combined_claim_parity_fixed() {
     let claims: Vec<E4> = (0..6usize).map(|idx| sample_e4(500 + idx as u32)).collect();
     let batching = sample_e4(999);
@@ -667,6 +681,7 @@ fn build_combined_claim_parity_fixed() {
 }
 
 #[test]
+#[serial]
 fn build_combined_claim_parity_randomized() {
     use rand::Rng;
     let mut rng = rand::rng();
