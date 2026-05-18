@@ -190,14 +190,20 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
         let dst = unsafe { DeviceSlice::from_raw_parts_mut(memory_cap_ptr, memory_cap_len_u32) };
         memory_copy_async(dst, src, stream)?;
     }
-    if setup_cap_len_u32 > 0 {
-        let setup_transfer_ref = bundle
-            .setup
-            .expect("setup_caps_total_u32 > 0 requires a setup transfer");
-        let src = unsafe { setup_transfer_ref.unified_device_cap().transmute::<u32>() };
-        debug_assert_eq!(src.len(), setup_cap_len_u32);
-        let dst = unsafe { DeviceSlice::from_raw_parts_mut(setup_cap_ptr, setup_cap_len_u32) };
-        memory_copy_async(dst, src, stream)?;
+    // The layout always reserves a setup cap region sized by
+    // `setup_geometry.log_tree_cap_size`. For setup-less circuits (e.g.
+    // InitsAndTeardowns), `bundle.setup` is `None` and there is no setup
+    // transfer to copy — the corresponding `setup_caps_total_u32` is `0`,
+    // the transcript excludes that region, and downstream consumers gate on
+    // `bundle.setup.is_some()` / `setup_trace_holder.columns_count > 0`. So
+    // skip the D2D entirely in that case rather than asserting.
+    if let Some(setup_transfer_ref) = bundle.setup {
+        if setup_cap_len_u32 > 0 {
+            let src = unsafe { setup_transfer_ref.unified_device_cap().transmute::<u32>() };
+            debug_assert_eq!(src.len(), setup_cap_len_u32);
+            let dst = unsafe { DeviceSlice::from_raw_parts_mut(setup_cap_ptr, setup_cap_len_u32) };
+            memory_copy_async(dst, src, stream)?;
+        }
     }
 
     // SAFETY: `witness_cap_ptr` points at the slab's `whir.witness.cap`

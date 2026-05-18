@@ -6,6 +6,7 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
+use serial_test::serial;
 
 fn set_by_val<T: Field + SetByVal, const LOG_N: u32>() {
     let n = 1 << LOG_N;
@@ -21,21 +22,25 @@ fn set_by_val<T: Field + SetByVal, const LOG_N: u32>() {
 }
 
 #[test]
+#[serial]
 fn set_by_val_bf() {
     set_by_val::<BF, 20>();
 }
 
 #[test]
+#[serial]
 fn set_by_val_e2() {
     set_by_val::<E2, 19>();
 }
 
 #[test]
+#[serial]
 fn set_by_val_e4() {
     set_by_val::<E4, 18>();
 }
 
 #[test]
+#[serial]
 fn set_by_val_e6() {
     set_by_val::<E6, 18>();
 }
@@ -56,21 +61,25 @@ fn set_by_ref<T: Field + SetByVal + SetByRef, const LOG_N: u32>() {
 }
 
 #[test]
+#[serial]
 fn set_by_ref_bf() {
     set_by_ref::<BF, 20>();
 }
 
 #[test]
+#[serial]
 fn set_by_ref_e2() {
     set_by_ref::<E2, 19>();
 }
 
 #[test]
+#[serial]
 fn set_by_ref_e4() {
     set_by_ref::<E4, 18>();
 }
 
 #[test]
+#[serial]
 fn set_by_ref_e6() {
     set_by_ref::<E6, 18>();
 }
@@ -88,16 +97,19 @@ fn set_to_zero<T: Field, const LOG_N: u32>() {
 }
 
 #[test]
+#[serial]
 fn set_to_zero_bf() {
     set_to_zero::<BF, 20>();
 }
 
 #[test]
+#[serial]
 fn set_to_zero_e2() {
     set_to_zero::<E2, 19>();
 }
 
 #[test]
+#[serial]
 fn set_to_zero_e4() {
     set_to_zero::<E4, 18>();
 }
@@ -116,21 +128,25 @@ mod scaffolding_unary {
     }
 
     #[test]
+    #[serial]
     fn dbl_bf() {
         dbl::<BF, 20>(&BF_VALUES);
     }
 
     #[test]
+    #[serial]
     fn dbl_e2() {
         dbl::<E2, 19>(&E2_VALUES);
     }
 
     #[test]
+    #[serial]
     fn dbl_e4() {
         dbl::<E4, 18>(&E4_VALUES);
     }
 
     #[test]
+    #[serial]
     fn dbl_e6() {
         dbl::<E6, 18>(&E6_VALUES);
     }
@@ -145,21 +161,25 @@ mod scaffolding_unary {
     }
 
     #[test]
+    #[serial]
     fn dbl_in_place_bf() {
         dbl_in_place::<BF, 20>(&BF_VALUES);
     }
 
     #[test]
+    #[serial]
     fn dbl_in_place_e2() {
         dbl_in_place::<E2, 19>(&E2_VALUES);
     }
 
     #[test]
+    #[serial]
     fn dbl_in_place_e4() {
         dbl_in_place::<E4, 18>(&E4_VALUES);
     }
 
     #[test]
+    #[serial]
     fn dbl_in_place_e6() {
         dbl_in_place::<E6, 18>(&E6_VALUES);
     }
@@ -174,21 +194,25 @@ mod scaffolding_unary {
     }
 
     #[test]
+    #[serial]
     fn inv_bf() {
         inv::<BF, 20>(&BF_VALUES);
     }
 
     #[test]
+    #[serial]
     fn inv_e2() {
         inv::<E2, 19>(&E2_VALUES);
     }
 
     #[test]
+    #[serial]
     fn inv_e4() {
         inv::<E4, 18>(&E4_VALUES);
     }
 
     #[test]
+    #[serial]
     fn inv_e6() {
         inv::<E6, 18>(&E6_VALUES);
     }
@@ -203,21 +227,25 @@ mod scaffolding_unary {
     }
 
     #[test]
+    #[serial]
     fn inv_in_place_bf() {
         inv_in_place::<BF, 20>(&BF_VALUES);
     }
 
     #[test]
+    #[serial]
     fn inv_in_place_e2() {
         inv_in_place::<E2, 19>(&E2_VALUES);
     }
 
     #[test]
+    #[serial]
     fn inv_in_place_e4() {
         inv_in_place::<E4, 18>(&E4_VALUES);
     }
 
     #[test]
+    #[serial]
     fn inv_in_place_e6() {
         inv_in_place::<E6, 18>(&E6_VALUES);
     }
@@ -232,21 +260,25 @@ mod scaffolding_unary {
     }
 
     #[test]
+    #[serial]
     fn neg_bf() {
         neg::<BF, 20>(&BF_VALUES);
     }
 
     #[test]
+    #[serial]
     fn neg_e2() {
         neg::<E2, 19>(&E2_VALUES);
     }
 
     #[test]
+    #[serial]
     fn neg_e4() {
         neg::<E4, 18>(&E4_VALUES);
     }
 
     #[test]
+    #[serial]
     fn neg_e6() {
         neg::<E6, 18>(&E6_VALUES);
     }
@@ -261,21 +293,25 @@ mod scaffolding_unary {
     }
 
     #[test]
+    #[serial]
     fn neg_in_place_bf() {
         neg_in_place::<BF, 20>(&BF_VALUES);
     }
 
     #[test]
+    #[serial]
     fn neg_in_place_e2() {
         neg_in_place::<E2, 19>(&E2_VALUES);
     }
 
     #[test]
+    #[serial]
     fn neg_in_place_e4() {
         neg_in_place::<E4, 18>(&E4_VALUES);
     }
 
     #[test]
+    #[serial]
     fn neg_in_place_e6() {
         neg_in_place::<E6, 18>(&E6_VALUES);
     }
@@ -290,21 +326,25 @@ mod scaffolding_unary {
     }
 
     #[test]
+    #[serial]
     fn sqr_bf() {
         sqr::<BF, 20>(&BF_VALUES);
     }
 
     #[test]
+    #[serial]
     fn sqr_e2() {
         sqr::<E2, 19>(&E2_VALUES);
     }
 
     #[test]
+    #[serial]
     fn sqr_e4() {
         sqr::<E4, 18>(&E4_VALUES);
     }
 
     #[test]
+    #[serial]
     fn sqr_e6() {
         sqr::<E6, 18>(&E6_VALUES);
     }
@@ -319,21 +359,25 @@ mod scaffolding_unary {
     }
 
     #[test]
+    #[serial]
     fn sqr_in_place_bf() {
         sqr_in_place::<BF, 20>(&BF_VALUES);
     }
 
     #[test]
+    #[serial]
     fn sqr_in_place_e2() {
         sqr_in_place::<E2, 19>(&E2_VALUES);
     }
 
     #[test]
+    #[serial]
     fn sqr_in_place_e4() {
         sqr_in_place::<E4, 18>(&E4_VALUES);
     }
 
     #[test]
+    #[serial]
     fn sqr_in_place_e6() {
         sqr_in_place::<E6, 18>(&E6_VALUES);
     }
@@ -349,21 +393,25 @@ where
 }
 
 #[test]
+#[serial]
 fn add_bf() {
     add::<BF, 10>(&BF_VALUES);
 }
 
 #[test]
+#[serial]
 fn add_e2() {
     add::<E2, 9>(&E2_VALUES);
 }
 
 #[test]
+#[serial]
 fn add_e4() {
     add::<E4, 8>(&E4_VALUES);
 }
 
 #[test]
+#[serial]
 fn add_e6() {
     add::<E6, 8>(&E6_VALUES);
 }
@@ -378,21 +426,25 @@ where
 }
 
 #[test]
+#[serial]
 fn add_into_x_bf() {
     add_into_x::<BF, 10>(&BF_VALUES);
 }
 
 #[test]
+#[serial]
 fn add_into_x_e2() {
     add_into_x::<E2, 9>(&E2_VALUES);
 }
 
 #[test]
+#[serial]
 fn add_into_x_e4() {
     add_into_x::<E4, 8>(&E4_VALUES);
 }
 
 #[test]
+#[serial]
 fn add_into_x_e6() {
     add_into_x::<E6, 8>(&E6_VALUES);
 }
@@ -409,21 +461,25 @@ where
 }
 
 #[test]
+#[serial]
 fn add_into_y_bf() {
     add_into_y::<BF, 10>(&BF_VALUES);
 }
 
 #[test]
+#[serial]
 fn add_into_y_e2() {
     add_into_y::<E2, 9>(&E2_VALUES);
 }
 
 #[test]
+#[serial]
 fn add_into_y_e4() {
     add_into_y::<E4, 8>(&E4_VALUES);
 }
 
 #[test]
+#[serial]
 fn add_into_y_e6() {
     add_into_y::<E6, 8>(&E6_VALUES);
 }
@@ -438,21 +494,25 @@ where
 }
 
 #[test]
+#[serial]
 fn mul_bf() {
     mul::<BF, 10>(&BF_VALUES);
 }
 
 #[test]
+#[serial]
 fn mul_e2() {
     mul::<E2, 9>(&E2_VALUES);
 }
 
 #[test]
+#[serial]
 fn mul_e4() {
     mul::<E4, 8>(&E4_VALUES);
 }
 
 #[test]
+#[serial]
 fn mul_e6() {
     mul::<E6, 8>(&E6_VALUES);
 }
@@ -467,21 +527,25 @@ where
 }
 
 #[test]
+#[serial]
 fn mul_into_x_bf() {
     mul_into_x::<BF, 10>(&BF_VALUES);
 }
 
 #[test]
+#[serial]
 fn mul_into_x_e2() {
     mul_into_x::<E2, 9>(&E2_VALUES);
 }
 
 #[test]
+#[serial]
 fn mul_into_x_e4() {
     mul_into_x::<E4, 8>(&E4_VALUES);
 }
 
 #[test]
+#[serial]
 fn mul_into_x_e6() {
     mul_into_x::<E6, 8>(&E6_VALUES);
 }
@@ -498,21 +562,25 @@ where
 }
 
 #[test]
+#[serial]
 fn mul_into_y_bf() {
     mul_into_y::<BF, 10>(&BF_VALUES);
 }
 
 #[test]
+#[serial]
 fn mul_into_y_e2() {
     mul_into_y::<E2, 9>(&E2_VALUES);
 }
 
 #[test]
+#[serial]
 fn mul_into_y_e4() {
     mul_into_y::<E4, 8>(&E4_VALUES);
 }
 
 #[test]
+#[serial]
 fn mul_into_y_e6() {
     mul_into_y::<E6, 8>(&E6_VALUES);
 }
@@ -527,21 +595,25 @@ where
 }
 
 #[test]
+#[serial]
 fn sub_bf() {
     sub::<BF, 10>(&BF_VALUES);
 }
 
 #[test]
+#[serial]
 fn sub_e2() {
     sub::<E2, 9>(&E2_VALUES);
 }
 
 #[test]
+#[serial]
 fn sub_e4() {
     sub::<E4, 8>(&E4_VALUES);
 }
 
 #[test]
+#[serial]
 fn sub_e6() {
     sub::<E6, 8>(&E6_VALUES);
 }
@@ -556,21 +628,25 @@ where
 }
 
 #[test]
+#[serial]
 fn sub_into_x_bf() {
     sub_into_x::<BF, 10>(&BF_VALUES);
 }
 
 #[test]
+#[serial]
 fn sub_into_x_e2() {
     sub_into_x::<E2, 9>(&E2_VALUES);
 }
 
 #[test]
+#[serial]
 fn sub_into_x_e4() {
     sub_into_x::<E4, 8>(&E4_VALUES);
 }
 
 #[test]
+#[serial]
 fn sub_into_x_e6() {
     sub_into_x::<E6, 8>(&E6_VALUES);
 }
@@ -587,26 +663,31 @@ where
 }
 
 #[test]
+#[serial]
 fn sub_into_y_bf() {
     sub_into_y::<BF, 10>(&BF_VALUES);
 }
 
 #[test]
+#[serial]
 fn sub_into_y_e2() {
     sub_into_y::<E2, 9>(&E2_VALUES);
 }
 
 #[test]
+#[serial]
 fn sub_into_y_e4() {
     sub_into_y::<E4, 8>(&E4_VALUES);
 }
 
 #[test]
+#[serial]
 fn sub_into_y_e6() {
     sub_into_y::<E6, 8>(&E6_VALUES);
 }
 
 #[test]
+#[serial]
 fn add_mixed_bf_e4() {
     mixed_binary_op_test(&BF_VALUES, &E4_VALUES, super::add::<BF, E4, E4>, |x, y| {
         let mut result = *y;
@@ -616,6 +697,7 @@ fn add_mixed_bf_e4() {
 }
 
 #[test]
+#[serial]
 fn add_into_y_mixed_bf_e4() {
     mixed_binary_into_y_test(
         &BF_VALUES,
@@ -630,6 +712,7 @@ fn add_into_y_mixed_bf_e4() {
 }
 
 #[test]
+#[serial]
 fn add_mixed_e4_bf() {
     mixed_binary_op_test(&E4_VALUES, &BF_VALUES, super::add::<E4, BF, E4>, |x, y| {
         let mut result = *x;
@@ -639,6 +722,7 @@ fn add_mixed_e4_bf() {
 }
 
 #[test]
+#[serial]
 fn add_into_x_mixed_e4_bf() {
     mixed_binary_into_x_test(
         &E4_VALUES,
@@ -653,6 +737,7 @@ fn add_into_x_mixed_e4_bf() {
 }
 
 #[test]
+#[serial]
 fn mul_mixed_bf_e4() {
     mixed_binary_op_test(&BF_VALUES, &E4_VALUES, super::mul::<BF, E4, E4>, |x, y| {
         let mut result = *y;
@@ -662,6 +747,7 @@ fn mul_mixed_bf_e4() {
 }
 
 #[test]
+#[serial]
 fn mul_into_y_mixed_bf_e4() {
     mixed_binary_into_y_test(
         &BF_VALUES,
@@ -676,6 +762,7 @@ fn mul_into_y_mixed_bf_e4() {
 }
 
 #[test]
+#[serial]
 fn mul_mixed_e4_bf() {
     mixed_binary_op_test(&E4_VALUES, &BF_VALUES, super::mul::<E4, BF, E4>, |x, y| {
         let mut result = *x;
@@ -685,6 +772,7 @@ fn mul_mixed_e4_bf() {
 }
 
 #[test]
+#[serial]
 fn mul_into_x_mixed_e4_bf() {
     mixed_binary_into_x_test(
         &E4_VALUES,
@@ -699,6 +787,7 @@ fn mul_into_x_mixed_e4_bf() {
 }
 
 #[test]
+#[serial]
 fn sub_mixed_bf_e4() {
     mixed_binary_op_test(&BF_VALUES, &E4_VALUES, super::sub::<BF, E4, E4>, |x, y| {
         let mut result = *y;
@@ -709,6 +798,7 @@ fn sub_mixed_bf_e4() {
 }
 
 #[test]
+#[serial]
 fn sub_into_y_mixed_bf_e4() {
     mixed_binary_into_y_test(
         &BF_VALUES,
@@ -724,6 +814,7 @@ fn sub_into_y_mixed_bf_e4() {
 }
 
 #[test]
+#[serial]
 fn sub_mixed_e4_bf() {
     mixed_binary_op_test(&E4_VALUES, &BF_VALUES, super::sub::<E4, BF, E4>, |x, y| {
         let mut result = *x;
@@ -733,6 +824,7 @@ fn sub_mixed_e4_bf() {
 }
 
 #[test]
+#[serial]
 fn sub_into_x_mixed_e4_bf() {
     mixed_binary_into_x_test(
         &E4_VALUES,

@@ -380,6 +380,7 @@ pub(crate) mod tests {
         ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
     };
     use prover::utils::extension_field_from_base_coeffs;
+    use serial_test::serial;
     use worker::Worker;
 
     use super::*;
@@ -767,6 +768,7 @@ pub(crate) mod tests {
     }
 
     #[test]
+    #[serial]
     fn recursive_oracle_lde_matches_cpu() {
         let worker = Worker::new();
         let context = make_test_context(256, 32);
@@ -788,18 +790,21 @@ pub(crate) mod tests {
     }
 
     #[test]
+    #[serial]
     fn recursive_oracle_caps_and_queries_match_cpu() {
         let monomial_coeffs = sample_monomial_coeffs(1 << 5);
         assert_recursive_oracle_caps_and_queries_match_cpu(&monomial_coeffs, 2, false);
     }
 
     #[test]
+    #[serial]
     fn recursive_oracle_large_partial_cache_matches_cpu() {
         let monomial_coeffs = sample_monomial_coeffs(1 << 8);
         assert_recursive_oracle_caps_and_queries_match_cpu(&monomial_coeffs, 2, true);
     }
 
     #[test]
+    #[serial]
     fn scheduled_recursive_oracle_caps_and_queries_match_cpu() {
         let worker = Worker::new();
         let context = make_test_context(256, 32);
@@ -861,7 +866,16 @@ pub(crate) mod tests {
                 .schedule_query_for_folded_index_from_host(&host_query_index, &context)
                 .unwrap();
             context.get_exec_stream().synchronize().unwrap();
-            let (gpu_values, gpu_query) = scheduled_query.decode_with_index(query_index);
+            // `decode_with_index` needs the *tree* index (the order leaves are
+            // stored in), not the *folded* query_index. Mirror the computation
+            // in `schedule_query_for_folded_index` so it matches CPU's
+            // `cpu_query.index`.
+            let coset_index = query_index & (gpu.lde_factor - 1);
+            let internal_index = query_index / gpu.lde_factor;
+            let coset_dest_index =
+                super::bitreverse_index(coset_index, gpu.lde_factor.trailing_zeros());
+            let tree_index = coset_dest_index * gpu.packed_leaf_count + internal_index;
+            let (gpu_values, gpu_query) = scheduled_query.decode_with_index(tree_index);
 
             assert_eq!(
                 gpu_values, cpu_values,
@@ -878,6 +892,7 @@ pub(crate) mod tests {
     }
 
     #[test]
+    #[serial]
     fn recursive_oracle_cache_mode_branch_selection() {
         let context = make_test_context(256, 32);
         let small = sample_monomial_coeffs(1 << 5);
@@ -899,6 +914,7 @@ pub(crate) mod tests {
     }
 
     #[test]
+    #[serial]
     fn recursive_query_leaf_and_path_helpers_match_combined_queries() {
         let context = make_test_context(256, 32);
         let monomial_coeffs = sample_monomial_coeffs(1 << 8);

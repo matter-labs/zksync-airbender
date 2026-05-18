@@ -66,15 +66,8 @@ fn shared_state_dimension_reduction_purges_storage_after_each_layer() {
         )
         .unwrap();
 
-    let proof_layout = crate::prover::proof::layout::ProofLayout::new(
-        &crate::prover::proof::layout::placeholder_inputs_for_prove(),
-    );
-    // Minimal placeholder slab: the placeholder layout has total_bytes == 0,
-    // so per-field length checks inside the scheduler resolve to no-op
-    // writes against a single-E4 dummy allocation.
-    let proof_slab: crate::primitives::context::DeviceAllocation<E4> = context
-        .alloc_with_extra_alignment::<E4, 4>(1, AllocationPlacement::Bottom)
-        .unwrap();
+    let proof_layout = fixture.proof_layout.clone();
+    let proof_slab = fixture.proof_slab;
     let mut dimension_reducing_layers = Vec::new();
     let mut purged_layers = 0usize;
     let mut layer_slot = 0usize;
@@ -160,9 +153,10 @@ fn shared_state_dimension_reduction_purges_storage_after_each_layer() {
     )
     .unwrap();
     drop(external_challenges_host);
-    let main_proof_layout = crate::prover::proof::layout::ProofLayout::new(
-        &crate::prover::proof::layout::placeholder_inputs_for_prove(),
-    );
+    // Use the real fixture layout for the main-layer scheduler too. The
+    // main-layer slot starts at `num_dim_reducing_layers` per
+    // `build_proof_layout_inputs`'s scheduler-order numbering.
+    let main_layer_slot = expected_dimension_reducing_layers;
     let _first_main_layer_execution = first_main_layer
         .schedule_execute_main_layer_from_workflow_state(
             shared_state_handle,
@@ -173,13 +167,10 @@ fn shared_state_dimension_reduction_purges_storage_after_each_layer() {
             device_lookup_and_constraint.as_ptr(),
             device_external_challenges.as_ptr(),
             &proof_slab,
-            &main_proof_layout,
-            0,
+            &proof_layout,
+            main_layer_slot,
             true,
-            // Test path: placeholder proof layout has empty
-            // `extra_evaluations_addresses` for every slot, so no
-            // extras work runs and storage isn't dereferenced.
-            None,
+            Some(main_state.storage()),
             context,
         )
         .unwrap();

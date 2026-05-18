@@ -858,6 +858,14 @@ fn dimension_reducing_forward_tower_matches_reference() {
         (OutputType::GenericLookup, vec![generic_num, generic_den]),
     ]);
 
+    attach_test_dim_reducing_tower_layout(
+        &mut storage,
+        current_layer_idx,
+        &initial_output_map,
+        initial_trace_log_2,
+        final_trace_log_2,
+    );
+
     let mut tracing_ranges = Vec::new();
     let (final_layer_idx, dim_reducing_inputs) = schedule_dimension_reduction_forward::<E4>(
         &mut storage,

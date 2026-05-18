@@ -3,6 +3,7 @@ use era_cudart::stream::CudaStream;
 
 use itertools::Itertools;
 use rand::rng;
+use serial_test::serial;
 
 use crate::ops::cub::device_reduce::{Reduce, ReduceOperation};
 use crate::primitives::device_structures::DeviceMatrix;
@@ -104,41 +105,49 @@ fn test_product<F: Field>(test_function: TestFunction<F>) {
 }
 
 #[test]
+#[serial]
 fn sum_bf() {
     test_sum(reduce::<super::BF>)
 }
 
 #[test]
+#[serial]
 fn batch_sum_bf() {
     test_sum(batch_reduce::<super::BF>)
 }
 
 #[test]
+#[serial]
 fn product_bf() {
     test_product(reduce::<super::BF>)
 }
 
 #[test]
+#[serial]
 fn batch_product_bf() {
     test_product(batch_reduce::<super::BF>)
 }
 
 #[test]
+#[serial]
 fn sum_e4() {
     test_sum(reduce::<super::E4>)
 }
 
 #[test]
+#[serial]
 fn batch_sum_e4() {
     test_sum(batch_reduce::<super::E4>)
 }
 
 #[test]
+#[serial]
 fn product_e4() {
     test_product(reduce::<super::E4>)
 }
 
 #[test]
+#[serial]
 fn batch_product_e4() {
     test_product(batch_reduce::<super::E4>)
 }

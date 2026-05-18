@@ -4,6 +4,7 @@ use std::mem::size_of;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
+use serial_test::serial;
 
 use super::*;
 use crate::allocator::tracker::AllocationPlacement;
@@ -277,6 +278,7 @@ where
 }
 
 #[test]
+#[serial]
 fn pack_source_u16_round_trips() {
     for first_access in [false, true] {
         for ptr_idx in 0u8..(GKR_DIM_REDUCING_BASE_SLOTS as u8) {
@@ -292,6 +294,7 @@ fn pack_source_u16_round_trips() {
 }
 
 #[test]
+#[serial]
 fn pack_source_u16_layout_bits() {
     // bit 15 = first_access, bits 14..11 = ptr_idx (4 bits, 16 slots),
     // bits 10..0 = poly_idx (11 bits, max 2048).
@@ -303,6 +306,7 @@ fn pack_source_u16_layout_bits() {
 }
 
 #[test]
+#[serial]
 fn compact_descriptor_sizes_under_kernel_arg_ceiling() {
     let r0 = size_of::<GpuGKRDimensionReducingRound0BatchCompact<E4>>();
     let cont = size_of::<GpuGKRDimensionReducingContinuationBatchCompact<E4>>();
@@ -321,6 +325,7 @@ fn compact_descriptor_sizes_under_kernel_arg_ceiling() {
 }
 
 #[test]
+#[serial]
 fn compact_record_is_16_bytes() {
     // Audit's projected post-compaction footprint depends on this size.
     assert_eq!(

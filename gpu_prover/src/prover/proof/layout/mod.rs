@@ -226,9 +226,6 @@ pub(crate) struct ProofLayout {
     pub(crate) total_bytes: usize,
 }
 
-#[cfg(test)]
-pub(crate) use tests::placeholder_inputs_for_prove;
-
 mod accessors;
 mod build_inputs;
 pub(crate) use accessors::WhirBaseLayerKind;

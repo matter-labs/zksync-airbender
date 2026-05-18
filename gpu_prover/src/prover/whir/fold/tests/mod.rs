@@ -759,7 +759,6 @@ fn whir_initial_state_matches_cpu_use_coset_0_for_batching_small() {
 #[test]
 #[cfg(not(no_cuda))]
 #[serial]
-#[ignore]
 fn whir_initial_state_matches_cpu_use_coset_0_for_batching_large() {
     run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, false, true);
 }
@@ -774,7 +773,6 @@ fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_small() {
 #[test]
 #[cfg(not(no_cuda))]
 #[serial]
-#[ignore]
 fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_large() {
     run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true, true);
 }

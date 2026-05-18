@@ -1,7 +1,9 @@
 use super::*;
+use serial_test::serial;
 
 #[test]
 #[ignore]
+#[serial]
 fn test_commit_memory_matches_cpu() {
     let compiled_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
         &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
@@ -21,6 +23,7 @@ fn test_commit_memory_matches_cpu() {
 
 #[test]
 #[ignore]
+#[serial]
 fn test_jump_branch_slt_commit_memory_matches_cpu() {
     let compiled_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
         &|cs| jump_branch_slt_table_addition_fn(cs),
@@ -40,6 +43,7 @@ fn test_jump_branch_slt_commit_memory_matches_cpu() {
 
 #[test]
 #[ignore]
+#[serial]
 fn test_shift_binop_commit_memory_matches_cpu() {
     let compiled_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
         &|cs| shift_binop_table_addition_fn(cs),
@@ -59,6 +63,7 @@ fn test_shift_binop_commit_memory_matches_cpu() {
 
 #[test]
 #[ignore]
+#[serial]
 fn test_load_store_word_only_commit_memory_matches_cpu() {
     let binary = read_test_words("examples/hashed_fibonacci/app.bin");
     let compiled_circuit = compile_mem_word_only_circuit_for_test(&binary);
@@ -73,6 +78,7 @@ fn test_load_store_word_only_commit_memory_matches_cpu() {
 
 #[test]
 #[ignore]
+#[serial]
 fn test_load_store_subword_only_commit_memory_matches_cpu() {
     let binary = read_test_words("riscv_transpiler/examples/keccak_f1600/app.bin");
     let compiled_circuit = compile_mem_subword_only_circuit_for_test(&binary);
@@ -87,6 +93,7 @@ fn test_load_store_subword_only_commit_memory_matches_cpu() {
 
 #[test]
 #[ignore]
+#[serial]
 fn test_bigint_delegation_commit_memory_matches_cpu() {
     let compiled_circuit = deserialize_json_for_test(
         "cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
@@ -96,6 +103,7 @@ fn test_bigint_delegation_commit_memory_matches_cpu() {
 
 #[test]
 #[ignore]
+#[serial]
 fn test_blake2_delegation_commit_memory_matches_cpu() {
     let compiled_circuit = deserialize_json_for_test(
         "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
@@ -105,6 +113,7 @@ fn test_blake2_delegation_commit_memory_matches_cpu() {
 
 #[test]
 #[ignore]
+#[serial]
 fn test_keccak_special5_delegation_commit_memory_matches_cpu() {
     let compiled_circuit =
         deserialize_json_for_test("cs/compiled_circuits/keccak_special5_layout_gkr.json");
@@ -113,6 +122,7 @@ fn test_keccak_special5_delegation_commit_memory_matches_cpu() {
 
 #[test]
 #[ignore]
+#[serial]
 fn test_blake2_delegation_zero_call_commit_memory_matches_cpu() {
     let compiled_circuit = deserialize_json_for_test(
         "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",

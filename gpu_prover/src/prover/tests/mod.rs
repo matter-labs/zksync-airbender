@@ -19,7 +19,7 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::primitives::nvtx::scoped_range;
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
-use crate::prover::proof::layout::{placeholder_inputs_for_prove, ProofLayout};
+use crate::prover::proof::layout::ProofLayout;
 use crate::prover::proof::{
     grand_product_accumulator_from_explicit_evaluations, prove, GpuGKRProofJob,
 };
@@ -639,13 +639,23 @@ fn assert_gpu_and_cpu_gkr_storage_match<
             .base_field_inputs
             .keys()
             .copied()
-            .filter(|address| !matches!(address, GKRAddress::VirtualSetup(..)))
+            .filter(|address| {
+                !matches!(
+                    address,
+                    GKRAddress::VirtualSetup(..) | GKRAddress::ScratchSpace(..)
+                )
+            })
             .collect_vec();
         let cpu_base_keys = cpu_layer
             .base_field_inputs
             .keys()
             .copied()
-            .filter(|address| !matches!(address, GKRAddress::VirtualSetup(..)))
+            .filter(|address| {
+                !matches!(
+                    address,
+                    GKRAddress::VirtualSetup(..) | GKRAddress::ScratchSpace(..)
+                )
+            })
             .collect_vec();
         assert_eq!(
             gpu_base_keys, cpu_base_keys,

@@ -15,15 +15,13 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::{ProverContext, ProverContextConfig};
 use crate::primitives::field::BF;
 
-const TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 2;
-
 fn make_context() -> ProverContext {
     let mut config = ProverContextConfig::default();
-    let default_block_log_size = config.allocator_block_log_size;
-    let arena_bytes = 256usize << default_block_log_size;
-    config.allocator_block_log_size = TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
-    config.max_device_allocation_blocks_count =
-        Some(arena_bytes >> TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE);
+    // 8 GB device arena (8192 × 1 MB blocks). The heaviest NTT tests run
+    // multi-pass at log_n=24 over E4 (16 B/element) — a single buffer is
+    // 256 MB and the tests hold several at a time. 8 GB leaves comfortable
+    // headroom without claiming half the GPU.
+    config.max_device_allocation_blocks_count = Some(8 * 1024);
     // 32 MB host pool: with 8 KB blocks this is 4096 blocks
     let host_block_size = 1usize << config.host_allocator_block_log_size;
     config.host_allocator_blocks_count = (32 * 1024 * 1024) / host_block_size;
@@ -33,6 +31,7 @@ fn make_context() -> ProverContext {
 const TEST_LOG_NS: &[usize] = &[1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20];
 
 #[test]
+#[serial]
 fn characterize_cpu_hypercube_ordering() {
     let coeffs = vec![
         BF::new(3),
@@ -253,7 +252,7 @@ enum InOrOutOfPlace {
 fn test_hypercube_evals_to_monomials_2_pass_out_of_place() {
     run_evals_to_monomials(
         23..25,
-        8,
+        4,
         wrap_hypercube_evals_to_monomials_2_pass,
         hypercube_evals_to_monomials_cpu_fn,
         InOrOutOfPlace::Out,
@@ -267,7 +266,7 @@ fn test_hypercube_evals_to_monomials_2_pass_out_of_place() {
 fn test_hypercube_evals_to_monomials_2_pass_in_place() {
     run_evals_to_monomials(
         23..25,
-        8,
+        4,
         wrap_hypercube_evals_to_monomials_2_pass,
         hypercube_evals_to_monomials_cpu_fn,
         InOrOutOfPlace::In,
@@ -281,7 +280,7 @@ fn test_hypercube_evals_to_monomials_2_pass_in_place() {
 fn test_hypercube_evals_to_monomials_2_pass_transposed_monomials_out_of_place() {
     run_evals_to_monomials(
         23..25,
-        8,
+        4,
         wrap_hypercube_evals_to_monomials_2_pass,
         hypercube_evals_to_monomials_cpu_fn,
         InOrOutOfPlace::Out,
@@ -295,7 +294,7 @@ fn test_hypercube_evals_to_monomials_2_pass_transposed_monomials_out_of_place() 
 fn test_hypercube_evals_to_monomials_2_pass_transposed_monomials_in_place() {
     run_evals_to_monomials(
         23..25,
-        8,
+        4,
         wrap_hypercube_evals_to_monomials_2_pass,
         hypercube_evals_to_monomials_cpu_fn,
         InOrOutOfPlace::In,
@@ -309,7 +308,7 @@ fn test_hypercube_evals_to_monomials_2_pass_transposed_monomials_in_place() {
 fn test_hypercube_evals_to_monomials_3_pass_out_of_place() {
     run_evals_to_monomials(
         21..25,
-        8,
+        4,
         wrap_hypercube_evals_to_monomials_3_pass,
         hypercube_evals_to_monomials_cpu_fn,
         InOrOutOfPlace::Out,
@@ -323,7 +322,7 @@ fn test_hypercube_evals_to_monomials_3_pass_out_of_place() {
 fn test_hypercube_evals_to_monomials_3_pass_in_place() {
     run_evals_to_monomials(
         21..25,
-        8,
+        4,
         wrap_hypercube_evals_to_monomials_3_pass,
         hypercube_evals_to_monomials_cpu_fn,
         InOrOutOfPlace::In,
@@ -337,7 +336,7 @@ fn test_hypercube_evals_to_monomials_3_pass_in_place() {
 fn test_hypercube_evals_to_monomials_3_pass_transposed_monomials_out_of_place() {
     run_evals_to_monomials(
         21..25,
-        8,
+        4,
         wrap_hypercube_evals_to_monomials_3_pass,
         hypercube_evals_to_monomials_cpu_fn,
         InOrOutOfPlace::Out,
@@ -351,7 +350,7 @@ fn test_hypercube_evals_to_monomials_3_pass_transposed_monomials_out_of_place() 
 fn test_hypercube_evals_to_monomials_3_pass_transposed_monomials_in_place() {
     run_evals_to_monomials(
         21..25,
-        8,
+        4,
         wrap_hypercube_evals_to_monomials_3_pass,
         hypercube_evals_to_monomials_cpu_fn,
         InOrOutOfPlace::In,
@@ -365,7 +364,7 @@ fn test_hypercube_evals_to_monomials_3_pass_transposed_monomials_in_place() {
 fn test_evals_to_monomials_2_pass_out_of_place() {
     run_evals_to_monomials(
         23..25,
-        8,
+        4,
         wrap_evals_to_monomials_2_pass,
         evals_to_monomials_cpu_fn,
         InOrOutOfPlace::Out,
@@ -379,7 +378,7 @@ fn test_evals_to_monomials_2_pass_out_of_place() {
 fn test_evals_to_monomials_2_pass_in_place() {
     run_evals_to_monomials(
         23..25,
-        8,
+        4,
         wrap_evals_to_monomials_2_pass,
         evals_to_monomials_cpu_fn,
         InOrOutOfPlace::In,
@@ -393,7 +392,7 @@ fn test_evals_to_monomials_2_pass_in_place() {
 fn test_evals_to_monomials_2_pass_transposed_monomials_out_of_place() {
     run_evals_to_monomials(
         23..25,
-        8,
+        4,
         wrap_evals_to_monomials_2_pass,
         evals_to_monomials_cpu_fn,
         InOrOutOfPlace::Out,
@@ -407,7 +406,7 @@ fn test_evals_to_monomials_2_pass_transposed_monomials_out_of_place() {
 fn test_evals_to_monomials_2_pass_transposed_monomials_in_place() {
     run_evals_to_monomials(
         23..25,
-        8,
+        4,
         wrap_evals_to_monomials_2_pass,
         evals_to_monomials_cpu_fn,
         InOrOutOfPlace::In,
@@ -421,7 +420,7 @@ fn test_evals_to_monomials_2_pass_transposed_monomials_in_place() {
 fn test_evals_to_monomials_3_pass_out_of_place() {
     run_evals_to_monomials(
         21..25,
-        8,
+        4,
         wrap_evals_to_monomials_3_pass,
         evals_to_monomials_cpu_fn,
         InOrOutOfPlace::Out,
@@ -435,7 +434,7 @@ fn test_evals_to_monomials_3_pass_out_of_place() {
 fn test_evals_to_monomials_3_pass_in_place() {
     run_evals_to_monomials(
         21..25,
-        8,
+        4,
         wrap_evals_to_monomials_3_pass,
         evals_to_monomials_cpu_fn,
         InOrOutOfPlace::In,
@@ -449,7 +448,7 @@ fn test_evals_to_monomials_3_pass_in_place() {
 fn test_evals_to_monomials_3_pass_transposed_monomials_out_of_place() {
     run_evals_to_monomials(
         21..25,
-        8,
+        4,
         wrap_evals_to_monomials_3_pass,
         evals_to_monomials_cpu_fn,
         InOrOutOfPlace::Out,
@@ -463,7 +462,7 @@ fn test_evals_to_monomials_3_pass_transposed_monomials_out_of_place() {
 fn test_evals_to_monomials_3_pass_transposed_monomials_in_place() {
     run_evals_to_monomials(
         21..25,
-        8,
+        4,
         wrap_evals_to_monomials_3_pass,
         evals_to_monomials_cpu_fn,
         InOrOutOfPlace::In,
@@ -477,7 +476,7 @@ fn test_evals_to_monomials_3_pass_transposed_monomials_in_place() {
 fn test_monomials_to_evals_3_pass_out_of_place() {
     run_monomials_to_evals(
         21..25,
-        8,
+        4,
         wrap_monomials_to_evals_3_pass,
         InOrOutOfPlace::Out,
         false,
@@ -490,7 +489,7 @@ fn test_monomials_to_evals_3_pass_out_of_place() {
 fn test_monomials_to_evals_3_pass_in_place() {
     run_monomials_to_evals(
         21..25,
-        8,
+        4,
         wrap_monomials_to_evals_3_pass,
         InOrOutOfPlace::In,
         false,
@@ -503,7 +502,7 @@ fn test_monomials_to_evals_3_pass_in_place() {
 fn test_monomials_to_evals_3_pass_transposed_monomials_out_of_place() {
     run_monomials_to_evals(
         21..25,
-        8,
+        4,
         wrap_monomials_to_evals_3_pass,
         InOrOutOfPlace::Out,
         true,
@@ -516,7 +515,7 @@ fn test_monomials_to_evals_3_pass_transposed_monomials_out_of_place() {
 fn test_monomials_to_evals_3_pass_transposed_monomials_in_place() {
     run_monomials_to_evals(
         21..25,
-        8,
+        4,
         wrap_monomials_to_evals_3_pass,
         InOrOutOfPlace::In,
         true,
@@ -529,7 +528,7 @@ fn test_monomials_to_evals_3_pass_transposed_monomials_in_place() {
 fn test_monomials_to_evals_2_pass_out_of_place() {
     run_monomials_to_evals(
         23..25,
-        8,
+        4,
         wrap_monomials_to_evals_2_pass,
         InOrOutOfPlace::Out,
         false,
@@ -542,7 +541,7 @@ fn test_monomials_to_evals_2_pass_out_of_place() {
 fn test_monomials_to_evals_2_pass_in_place() {
     run_monomials_to_evals(
         23..25,
-        8,
+        4,
         wrap_monomials_to_evals_2_pass,
         InOrOutOfPlace::In,
         false,
@@ -555,7 +554,7 @@ fn test_monomials_to_evals_2_pass_in_place() {
 fn test_monomials_to_evals_2_pass_transposed_monomials_out_of_place() {
     run_monomials_to_evals(
         23..25,
-        8,
+        4,
         wrap_monomials_to_evals_2_pass,
         InOrOutOfPlace::Out,
         true,
@@ -568,7 +567,7 @@ fn test_monomials_to_evals_2_pass_transposed_monomials_out_of_place() {
 fn test_monomials_to_evals_2_pass_transposed_monomials_in_place() {
     run_monomials_to_evals(
         23..25,
-        8,
+        4,
         wrap_monomials_to_evals_2_pass,
         InOrOutOfPlace::In,
         true,

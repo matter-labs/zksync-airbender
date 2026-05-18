@@ -7,18 +7,25 @@
 //! The pass walks `cs::gkr_compiler::GKRCircuitArtifact` directly — no GPU
 //! allocations, no challenges, no kernel launches. It is structural only.
 //!
-//! 8-slot pointer-table taxonomy (the per-launch `bases[8]`):
+//! Storage-partition taxonomy used as the backing-buffer key by
+//! `base_class_backings` / `ext_class_backings` and as the per-launch slot
+//! key by the dim-reducing kernel's dynamic `bases[16]` pointer table.
+//! Slot assignment within a launch is now dynamic and deduplicated by
+//! backing pointer (see `SlotTableBuilder` in `backward::compact::encoder`),
+//! so the per-layer ceiling is the kernel's `bases[]` width.
 //!
-//! | slot | class                      |
-//! |------|----------------------------|
-//! | 0    | BaseLayerWitness           |
-//! | 1    | BaseLayerMemory            |
-//! | 2    | Setup + VirtualSetup       |
-//! | 3    | prev-layer InnerLayer      |
-//! | 4    | prev-layer Cached          |
-//! | 5    | this-layer Cached write    |
-//! | 6    | this-layer InnerLayer      |
-//! | 7    | reserved (also ScratchSpace)|
+//! | class                       | role                                      |
+//! |-----------------------------|-------------------------------------------|
+//! | BaseLayerWitness            | base-layer witness columns                |
+//! | BaseLayerMemory             | base-layer memory columns                 |
+//! | Setup / VirtualSetup        | setup polys (shared across all layers)    |
+//! | PrevInnerLayer              | reads of layer (out-1)'s inner-layer      |
+//! | PrevCached                  | reads of layer (out-1)'s cached output    |
+//! | ThisLayerInnerLayerWrite    | this layer's own inner-layer writes/reads |
+//! | ThisLayerCachedWrite        | this layer's own cached writes/reads      |
+//! | ScratchSpace                | ext scratch backing                       |
+//! | Other                       | cross-layer reads outside ±1 (real        |
+//! |                             | backing partition; not an error sentinel) |
 
 use crate::upstream::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp, GKRAddress,
@@ -27,13 +34,17 @@ use crate::upstream::{
     NoFieldSingleColumnLookupRelation, NoFieldSpecialMemoryContributionRelation,
     NoFieldVectorLookupRelation, RamWordRepresentation,
 };
-/// Hard cap on `OutputType` slots driving the dim-reducing batch fan-out.
-/// Plan-targeted ceilings. The audit pass below verifies every circuit fits.
-pub(crate) const GKR_MAX_SLOTS: usize = 8;
+
+/// Per-launch hard cap on distinct backings. Matches the dim-reducing
+/// kernel's `bases: [*const u8; 16]` pointer table width
+/// (`GKR_DIM_REDUCING_BASE_SLOTS` in `backward::kernels::encoding`).
+pub(crate) const GKR_MAX_SLOTS: usize = 16;
 pub(crate) const GKR_MAX_POLYS_PER_SLOT: usize = 4096;
 
-/// 8-slot taxonomy. `Other` is anything outside the 8 slots and triggers an
-/// abort (the audit pass must show no real circuit hits it).
+/// Storage-partition class. Each variant maps to a distinct backing
+/// allocation in `GpuGKRStorage::{base,ext}_class_backings`, so it also
+/// serves as a backing-pointer identity proxy for the kernel's dynamic
+/// 16-slot pointer table. No variant is treated as an error.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum AddressClass {
     BaseLayerWitness = 0,
@@ -44,7 +55,8 @@ pub(crate) enum AddressClass {
     ThisLayerCachedWrite = 5,
     ThisLayerInnerLayerWrite = 6,
     ScratchSpace = 7,
-    /// Outside the 8-slot taxonomy (taxonomy revision needed).
+    /// Cross-layer reads outside the ±1 relative-layer window. Has its
+    /// own backing partition at runtime; counted as one slot.
     Other = 255,
 }
 

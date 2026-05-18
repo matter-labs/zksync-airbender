@@ -51,6 +51,7 @@ mod tests {
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use era_cudart::stream::CudaStream;
     use rand::Rng;
+    use serial_test::serial;
 
     use crate::primitives::field::{BaseField, E4};
     use field::{Field, PrimeField};
@@ -76,6 +77,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn initial_inner_product_e4_parity() {
         let stream = CudaStream::default();
         let mut rng = rand::rng();

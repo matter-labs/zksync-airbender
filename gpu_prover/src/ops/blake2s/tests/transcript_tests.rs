@@ -4,6 +4,7 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 type Blake2sTranscript =
     prover::transcript::Blake2sTranscript<{ prover::definitions::USE_REDUCED_BLAKE2_ROUNDS }>;
 use rand::Rng;
+use serial_test::serial;
 #[cfg(feature = "deterministic_pow")]
 use worker::Worker;
 
@@ -13,6 +14,7 @@ use super::{gather_tree_caps, transcript_commit_initial, BLOCK_SIZE, USE_REDUCED
 use crate::upstream::{Field, Seed};
 
 #[test]
+#[serial]
 fn pow() {
     const BITS_COUNT: u32 = 24;
     let h_seed = [42u32; STATE_SIZE];
@@ -36,6 +38,7 @@ fn pow() {
 
 #[cfg(feature = "deterministic_pow")]
 #[test]
+#[serial]
 fn pow_deterministic_matches_cpu_baseline() {
     let seeds = [
         Seed([0, 1, 2, 3, 4, 5, 6, 7]),
@@ -110,6 +113,7 @@ fn host_commit(seed: &[u32; STATE_SIZE], input: &[u32]) -> [u32; STATE_SIZE] {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_parity_small() {
     // 8 (seed) + 4 (input) = 12 words — fits in one block with padding.
     let seed = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -118,6 +122,7 @@ fn transcript_commit_parity_small() {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_parity_exact_block() {
     // 8 + 8 = 16 words — exactly one full block.
     let seed = [0xaa; STATE_SIZE];
@@ -126,6 +131,7 @@ fn transcript_commit_parity_exact_block() {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_parity_two_blocks() {
     // 8 + 12 = 20 words — two blocks (16 + 4). This is the typical backward
     // sumcheck case: commit_field_els with 3 E4 elements.
@@ -135,6 +141,7 @@ fn transcript_commit_parity_two_blocks() {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_parity_large() {
     // 8 + 32 = 40 words — three blocks (16 + 16 + 8).
     let seed = [0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe];
@@ -143,6 +150,7 @@ fn transcript_commit_parity_large() {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_parity_randomized() {
     let mut rng = rand::rng();
     let stream = CudaStream::default();
@@ -169,6 +177,7 @@ fn transcript_commit_parity_randomized() {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_initial_parity_small() {
     // 4 words — fits inside one block with padding.
     let input: Vec<u32> = (10..14).collect();
@@ -176,6 +185,7 @@ fn transcript_commit_initial_parity_small() {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_initial_parity_exact_block() {
     // 16 words — exactly one full block.
     let input: Vec<u32> = (0..BLOCK_SIZE as u32).collect();
@@ -183,6 +193,7 @@ fn transcript_commit_initial_parity_exact_block() {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_initial_parity_two_blocks() {
     // 20 words — two blocks (16 + 4).
     let input: Vec<u32> = (100..120).collect();
@@ -190,6 +201,7 @@ fn transcript_commit_initial_parity_two_blocks() {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_initial_parity_randomized() {
     let mut rng = rand::rng();
     for input_len in [
@@ -234,6 +246,7 @@ fn device_commit_initial_chunked(chunks: &[Vec<u32>]) -> [u32; STATE_SIZE] {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_initial_chunked_parity_single_chunk() {
     // One chunk only — must equal the single-buffer kernel.
     let input: Vec<u32> = (10..30).collect();
@@ -245,6 +258,7 @@ fn transcript_commit_initial_chunked_parity_single_chunk() {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_initial_chunked_parity_block_aligned_split() {
     // Two chunks, split exactly on a block boundary (16 u32 words).
     let total: Vec<u32> = (0..32).collect();
@@ -256,6 +270,7 @@ fn transcript_commit_initial_chunked_parity_block_aligned_split() {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_initial_chunked_parity_mid_block_split() {
     // Two chunks split mid-block: chunk boundary should not affect the
     // final digest because Blake2s streams 64-byte (= 16 u32) blocks.
@@ -268,6 +283,7 @@ fn transcript_commit_initial_chunked_parity_mid_block_split() {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_initial_chunked_parity_five_chunks() {
     // Five chunks — matches the production transcript pack
     // (canonical-top-bits + external_challenges + setup + memory + witness).
@@ -286,6 +302,7 @@ fn transcript_commit_initial_chunked_parity_five_chunks() {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_initial_chunked_parity_randomized() {
     let mut rng = rand::rng();
     for total_len in [1usize, 4, 8, 16, 17, 20, 32, 48, 64, 100, 128, 256, 512] {
@@ -318,6 +335,7 @@ fn transcript_commit_initial_chunked_parity_randomized() {
 }
 
 #[test]
+#[serial]
 fn gather_tree_caps_parity() {
     let stream = CudaStream::default();
     // Pretend each "tree" is just `cap_words_per_coset` words; gather expects u64-encoded
@@ -364,6 +382,7 @@ fn gather_tree_caps_parity() {
 }
 
 #[test]
+#[serial]
 fn gather_tree_caps_inline_parity() {
     let stream = CudaStream::default();
     // Mirrors `gather_tree_caps_parity` but exercises the inline-descriptor
@@ -403,6 +422,7 @@ fn gather_tree_caps_inline_parity() {
 }
 
 #[test]
+#[serial]
 fn gather_e_addresses_parity() {
     let stream = CudaStream::default();
     // Each address holds `elements_per_addr` E4 values; the kernel copies
@@ -465,6 +485,7 @@ fn host_squeeze(seed: &[u32; STATE_SIZE], output_len: usize) -> (Vec<u32>, [u32;
 }
 
 #[test]
+#[serial]
 fn transcript_squeeze_parity_one_round() {
     // 8 words = 1 round, seed unchanged, output = seed.
     let seed = [10, 20, 30, 40, 50, 60, 70, 80];
@@ -477,6 +498,7 @@ fn transcript_squeeze_parity_one_round() {
 }
 
 #[test]
+#[serial]
 fn transcript_squeeze_parity_two_rounds() {
     // 16 words = 2 rounds. Second round hashes the seed.
     let seed = [0xff; STATE_SIZE];
@@ -487,6 +509,7 @@ fn transcript_squeeze_parity_two_rounds() {
 }
 
 #[test]
+#[serial]
 fn transcript_squeeze_parity_many_rounds() {
     // 40 words = 5 rounds.
     let seed = [0x42; STATE_SIZE];
@@ -497,6 +520,7 @@ fn transcript_squeeze_parity_many_rounds() {
 }
 
 #[test]
+#[serial]
 fn transcript_commit_then_squeeze_parity() {
     // Simulates the backward sumcheck pattern: commit 3 E4 coefficients (12
     // words), then draw 1 E4 challenge (4 words, padded to 8 = 1 round).
@@ -552,6 +576,7 @@ fn host_draw_e4(seed: &[u32; STATE_SIZE], count: usize) -> (Vec<E4>, [u32; STATE
 }
 
 #[test]
+#[serial]
 fn transcript_squeeze_e4_parity_single() {
     // 1 E4 = 4 u32 words, padded to 1 round (STATE_SIZE = 8).
     let seed = [0x11; STATE_SIZE];
@@ -562,6 +587,7 @@ fn transcript_squeeze_e4_parity_single() {
 }
 
 #[test]
+#[serial]
 fn transcript_squeeze_e4_parity_two_in_one_round() {
     // 2 E4 = 8 u32 words, exactly 1 round. Both E4s drawn from the verbatim seed.
     let seed = [0x22; STATE_SIZE];
@@ -572,6 +598,7 @@ fn transcript_squeeze_e4_parity_two_in_one_round() {
 }
 
 #[test]
+#[serial]
 fn transcript_squeeze_e4_parity_three() {
     // 3 E4 = 12 u32 words, padded to 16 = 2 rounds. Matches the initial lookup
     // challenge draw in prove(): 3 E4 challenges off the seed.
@@ -583,6 +610,7 @@ fn transcript_squeeze_e4_parity_three() {
 }
 
 #[test]
+#[serial]
 fn transcript_squeeze_e4_parity_many_rounds() {
     // 10 E4 = 40 u32 words, padded to 40 = 5 rounds.
     let seed = [0xcd; STATE_SIZE];
@@ -593,6 +621,7 @@ fn transcript_squeeze_e4_parity_many_rounds() {
 }
 
 #[test]
+#[serial]
 fn transcript_squeeze_e4_parity_randomized() {
     let mut rng = rand::rng();
     for count in [1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17] {
