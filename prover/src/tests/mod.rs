@@ -68,9 +68,9 @@ use super::*;
 
 mod unrolled;
 
+mod circuit;
 #[cfg(test)]
 mod lde_tests;
-
 pub use unrolled::with_transpiler::{
     run_basic_unrolled_test_in_transpiler_with_word_specialization_impl,
     run_unrolled_test_program_in_transpiler_with_word_specialization_impl,

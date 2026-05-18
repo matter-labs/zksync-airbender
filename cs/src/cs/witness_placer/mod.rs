@@ -187,6 +187,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
         *self = this.append(node);
     }
 
+    pub fn evaluate(&self, placer: &mut W) {
+        self.inner.evaluate(placer);
+    }
+
     pub fn new() -> Self {
         let first_step = WitnessResolutionNode {
             a: Box::new(EmptyResolution) as Box<dyn WitnessResolutionDescription<F, W>>,

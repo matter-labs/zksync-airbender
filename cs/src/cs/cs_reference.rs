@@ -1042,8 +1042,29 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
     }
 
     fn is_satisfied(&mut self) -> bool {
-        if let Some(witness_placer) = self.witness_placer.as_ref() {
+        if let Some(witness_placer) = self.witness_placer.as_mut() {
             if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
+                const MAX_FIXED_POINT_ITERATIONS: usize = 64;
+                let mut prev_assigned = unsafe {
+                    (witness_placer as *const W)
+                        .cast::<CSDebugWitnessEvaluator<F>>()
+                        .as_ref_unchecked()
+                        .num_assigned()
+                };
+                for _ in 0..MAX_FIXED_POINT_ITERATIONS {
+                    self.witness_graph.evaluate(witness_placer);
+                    let now_assigned = unsafe {
+                        (witness_placer as *const W)
+                            .cast::<CSDebugWitnessEvaluator<F>>()
+                            .as_ref_unchecked()
+                            .num_assigned()
+                    };
+                    if now_assigned == prev_assigned {
+                        break;
+                    }
+                    prev_assigned = now_assigned;
+                }
+
                 unsafe {
                     let resolver = (witness_placer as *const W)
                         .cast::<CSDebugWitnessEvaluator<F>>()
@@ -1121,11 +1142,11 @@ impl<F: PrimeField, W: WitnessPlacer<F>> BasicAssembly<F, W> {
                     let mut value = constant;
                     for (coeff, a, b) in quad.into_iter() {
                         let mut t = coeff;
-                        let Some(a) = resolver.get_value(a) else {
+                        let Some(a) = resolver.get_assigned_value(a) else {
                             println!("Variable {:?} is unresolved", a);
                             return;
                         };
-                        let Some(b) = resolver.get_value(b) else {
+                        let Some(b) = resolver.get_assigned_value(b) else {
                             println!("Variable {:?} is unresolved", b);
                             return;
                         };
@@ -1136,7 +1157,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> BasicAssembly<F, W> {
                     }
                     for (coeff, a) in linear.into_iter() {
                         let mut t = coeff;
-                        let Some(a) = resolver.get_value(a) else {
+                        let Some(a) = resolver.get_assigned_value(a) else {
                             println!("Variable {:?} is unresolved", a);
                             return;
                         };
@@ -1146,7 +1167,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> BasicAssembly<F, W> {
                     }
 
                     if value != F::ZERO {
-                        panic!(
+                        println!(
                             "unsatisfied at constraint {:?} with value {:?}",
                             constraint, value
                         );

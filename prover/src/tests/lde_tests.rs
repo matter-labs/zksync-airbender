@@ -2,6 +2,8 @@ use super::*;
 
 use crate::prover_stages::stage1::compute_wide_ldes;
 use crate::prover_stages::stage1::compute_wide_ldes_row_major;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use trace_holder::RowMajorTrace;
 
 #[test]
@@ -17,7 +19,7 @@ fn test_compute_wide_lde() {
 
     let mut input = vec![Mersenne31Complex::ONE; trace_len];
 
-    let mut rng = rand::rng();
+    let mut rng = StdRng::seed_from_u64(0xDEAD_BEEF);
     for i in 0..input.len() {
         input[i] = Mersenne31Complex::random_element(&mut rng);
     }
