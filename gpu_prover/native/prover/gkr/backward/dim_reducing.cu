@@ -1,3 +1,4 @@
+#include "../support/eq_inline.cuh"
 #include "../support/lookup_helpers.cuh"
 
 __device__ __constant__ e4 ab_gkr_dim_reducing_batch_challenge_table[airbender::prover::gkr::GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN];
@@ -43,6 +44,27 @@ EXTERN __global__ void ab_gkr_dim_reducing_build_eq_group_tables_from_point_e4_k
   gkr_build_eq_group_tables_from_point(claim_point, challenge_offset, challenge_count, eq_group_tables);
 }
 
+// Builds the factored eq representation directly from a claim point. The
+// inner helper stores each group at `dst + blockIdx.x * GKR_EQ_GROUP_TABLE_LEN`,
+// so for the low (last) group we offset the base pointer backwards by
+// `blockIdx.x * GKR_EQ_GROUP_TABLE_LEN` to land the store at `low_buffer`.
+// High groups 0..(G-2) go to `high_slab`; the last group (G-1) goes to
+// `low_buffer`. Works for both backward layer kinds (main / dim-reducing)
+// since storage is supplied by the caller as plain device pointers.
+EXTERN __global__ void ab_gkr_dim_reducing_build_eq_high_low_from_point_e4_kernel(const e4 *claim_point, const unsigned challenge_offset,
+                                                                                  const unsigned challenge_count, e4 *high_slab, e4 *low_buffer) {
+  const unsigned groups_count = gkr_eq_group_count(challenge_count);
+  if (blockIdx.x >= groups_count)
+    return;
+  e4 *dst;
+  if (blockIdx.x + 1u == groups_count) {
+    dst = low_buffer - static_cast<size_t>(blockIdx.x) * GKR_EQ_GROUP_TABLE_LEN;
+  } else {
+    dst = high_slab;
+  }
+  gkr_build_eq_group_tables_from_point(claim_point, challenge_offset, challenge_count, dst);
+}
+
 EXTERN __global__ void ab_gkr_dim_reducing_build_eq_values_from_group_tables_e4_kernel(const e4 *eq_group_tables, const unsigned challenge_count, e4 *eq_values,
                                                                                        const unsigned acc_size) {
   gkr_build_eq_values_from_group_tables(eq_group_tables, challenge_count, eq_values, acc_size);
@@ -50,6 +72,13 @@ EXTERN __global__ void ab_gkr_dim_reducing_build_eq_values_from_group_tables_e4_
 
 EXTERN __global__ void ab_gkr_dim_reducing_fold_eq_values_e4_kernel(e4 *eq_values, const unsigned half_len) {
   gkr_fold_eq_values_in_place(eq_values, half_len);
+}
+
+// Single pointer-driven fold kernel for the factored-eq high slab. The Rust
+// launcher offsets `high_slab_group_base` to the slot to fold, so this kernel
+// is layer-kind agnostic (works for both main-layer and dim-reducing slabs).
+EXTERN __global__ void ab_gkr_dim_reducing_fold_eq_high_group_in_place_e4_kernel(e4 *high_slab_group_base, const unsigned new_g_len) {
+  gkr_fold_eq_high_group_in_place(high_slab_group_base, new_g_len);
 }
 
 EXTERN __global__ void ab_gkr_dim_reducing_trace_holder_block_partials_e4_kernel(const bf *raw_values, const e4 *eq_values, e4 *block_partials,
@@ -77,6 +106,18 @@ EXTERN __global__ void ab_gkr_dim_reducing_continuation_batched_compact_e4_kerne
     gkr_dim_reducing_continuation_batched_compact_inner<e4, true>(batch, acc_size, step);
   else
     gkr_dim_reducing_continuation_batched_compact_inner<e4, false>(batch, acc_size, step);
+}
+
+// Microbench / parity-test kernel: materializes dense `eq_values[gid] =
+// gkr_compute_eq_inline(high_slab, layout, low_buffer, gid)` for gid in
+// 0..acc_size. Used by Rust-side tests to compare the factored representation
+// against the CPU ground truth. Not part of the production hot path.
+EXTERN __global__ void ab_gkr_eq_inline_materialize_for_test_e4_kernel(const e4 *high_slab, const e4 *low_buffer, const gkr_eq_layout_compact layout,
+                                                                       e4 *eq_values, const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+  eq_values[gid] = gkr_compute_eq_inline<e4>(high_slab, layout, low_buffer, gid);
 }
 
 } // namespace airbender::prover::gkr::backward
