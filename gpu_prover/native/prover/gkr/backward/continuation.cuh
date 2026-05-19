@@ -7,10 +7,6 @@ EXTERN __device__ __constant__ e4 ab_gkr_main_layer_claim_point[airbender::prove
 
 namespace airbender::prover::gkr {
 
-// Maximum coefficient count that fits in __constant__ memory.
-// 1024 entries = 16KB of E4 values.
-constexpr unsigned FLAT_CONT_CONST_MAX = 1024;
-
 // Maximum array sizes for the flat continuation static description.
 // The entire struct is passed as __grid_constant__ (~28KB budget).
 constexpr unsigned FLAT_CONT_MAX_SOURCES = 512;
@@ -348,16 +344,15 @@ static_assert(sizeof(flat_round2_unified_desc_compact) <= 32 * 1024, "flat_round
 
 } // namespace airbender::prover::gkr
 
-// __constant__ coefficient symbol for continuation rounds.
-// Separate from round 0's symbol to avoid coupling.
-// Defined in round3_compute_coeff.cu.
-EXTERN __device__ __constant__ e4 ab_gkr_flat_continuation_coefficients[airbender::prover::gkr::FLAT_CONT_CONST_MAX];
+// The __constant__ coefficient symbol is declared in flat.cuh and shared
+// between round 0 and continuation phases. coeff_loader_constant_indexed
+// below reads from it via explicit index (not idx++).
 
 namespace airbender::prover::gkr {
 
 // Indexed __constant__ coefficient loader: reads by explicit index (not idx++).
 struct coeff_loader_constant_indexed {
-  DEVICE_FORCEINLINE e4 operator()(unsigned idx) const { return ::ab_gkr_flat_continuation_coefficients[idx]; }
+  DEVICE_FORCEINLINE e4 operator()(unsigned idx) const { return ::ab_gkr_flat_coefficients[idx]; }
 };
 
 // --- Unified tiled kernel: per-tile fold → sync → compute from cache ---

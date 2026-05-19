@@ -1,7 +1,7 @@
 #include "coeff.cuh"
 #include "continuation.cuh"
 
-__device__ __constant__ e4 ab_gkr_flat_continuation_coefficients[airbender::prover::gkr::FLAT_CONT_CONST_MAX];
+__device__ __constant__ e4 ab_gkr_flat_coefficients[airbender::prover::gkr::FLAT_CONST_MAX];
 
 namespace airbender::prover::gkr::backward {
 
