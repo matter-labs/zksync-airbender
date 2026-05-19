@@ -69,6 +69,23 @@ static constexpr unsigned GKR_EQ_GROUP_TABLE_LEN = 1u << GKR_EQ_GROUP_SIZE;
 static constexpr unsigned GKR_EQ_CHUNK_SIZE = 2;
 static constexpr unsigned GKR_EQ_CHUNK_TABLE_LEN = 1u << GKR_EQ_CHUNK_SIZE;
 static constexpr unsigned GKR_EQ_MAX_CHUNKS_PER_GROUP = GKR_EQ_GROUP_SIZE / GKR_EQ_CHUNK_SIZE;
+// Maximum number of "high" (warp-uniform) eq groups consumed inline by per-
+// round backward kernels. Max challenge_count = GKR_BACKWARD_MAX_TRACE_LEN_LOG2
+// - 1 = 23; with GKR_EQ_GROUP_SIZE = 8 the partitioning is [8,8,7], leaving
+// 2 high groups + 1 low group.
+static constexpr unsigned GKR_EQ_MAX_HIGH_GROUPS = 2;
+
+// Per-round inline-eq descriptor (8 bytes including padding) passed as a
+// kernel arg.
+struct gkr_eq_layout_compact {
+  unsigned char num_high_groups;                          // 0..GKR_EQ_MAX_HIGH_GROUPS
+  unsigned char high_group_base_idx;                      // 0 or 1; shifts which slab slot is "group 0"
+  unsigned char high_group_sizes[GKR_EQ_MAX_HIGH_GROUPS]; // bit-widths
+  unsigned char low_group_size;                           // bit-width of the lane-varying low group; 0..8
+  unsigned char padding[3];
+};
+
+static_assert(sizeof(gkr_eq_layout_compact) == 8, "compact eq layout must be 8 B");
 
 enum gkr_dim_reducing_kernel_kind : u32 {
   GKR_DIM_REDUCING_PAIRWISE = 0,
@@ -111,7 +128,9 @@ template <typename E> struct gkr_dim_reducing_round0_batch_compact {
   u32 reserved0;
   u32 reserved1;
   u32 reserved2;
-  const E *eq_values;
+  const E *eq_high_groups;
+  const E *eq_low_buffer;
+  gkr_eq_layout_compact eq_layout;
   E *contributions;
   gkr_dim_reducing_tables tables;
   gkr_dim_reducing_batch_record_compact records[GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER];
@@ -123,7 +142,9 @@ template <typename E> struct gkr_dim_reducing_continuation_batch_compact {
   u32 reserved0;
   u32 reserved1;
   u32 reserved2;
-  const E *eq_values;
+  const E *eq_high_groups;
+  const E *eq_low_buffer;
+  gkr_eq_layout_compact eq_layout;
   E *contributions;
   bool explicit_form;
   u8 padding[7];

@@ -91,9 +91,10 @@ where
     ) -> CudaResult<()> {
         debug_assert!(acc_size.is_power_of_two());
         debug_assert!(acc_size >= 2);
-        launch_fold_eq_values_in_place(
-            self.round_scratch.eq_values.as_mut_ptr(),
-            acc_size / 2,
+        fold_factored_eq_one_round::<E>(
+            &mut self.eq_layout,
+            self.round_scratch.eq_high_groups.as_mut_ptr(),
+            self.round_scratch.eq_low_group.as_mut_ptr(),
             context,
         )
     }
@@ -114,7 +115,9 @@ where
         if self.flat_use_constant {
             compact::launch_main_round0_constant(
                 &plan_compact.static_desc,
-                self.round_scratch.eq_values.as_ptr(),
+                self.round_scratch.eq_high_groups.as_ptr(),
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_layout,
                 self.round_scratch.accumulator.as_mut_ptr(),
                 acc_size as u32,
                 context,
@@ -123,7 +126,9 @@ where
             compact::launch_main_round0(
                 &plan_compact.static_desc,
                 self.flat_coeff_device_buf.as_ref().unwrap().as_ptr(),
-                self.round_scratch.eq_values.as_ptr(),
+                self.round_scratch.eq_high_groups.as_ptr(),
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_layout,
                 self.round_scratch.accumulator.as_mut_ptr(),
                 acc_size as u32,
                 context,
@@ -153,7 +158,9 @@ where
             null(),
             sizes.fold_stride,
             sizes.next_layer_size,
-            self.round_scratch.eq_values.as_ptr(),
+            self.round_scratch.eq_high_groups.as_ptr(),
+            self.round_scratch.eq_low_group.as_ptr(),
+            &self.eq_layout,
             self.round_scratch.accumulator.as_mut_ptr(),
             acc_size as u32,
             context,
@@ -182,7 +189,9 @@ where
             compact::get_main_layer_claim_point_device_ptr() as *const E,
             sizes.fold_stride,
             sizes.next_layer_size,
-            self.round_scratch.eq_values.as_ptr(),
+            self.round_scratch.eq_high_groups.as_ptr(),
+            self.round_scratch.eq_low_group.as_ptr(),
+            &self.eq_layout,
             self.round_scratch.accumulator.as_mut_ptr(),
             acc_size as u32,
             context,
@@ -219,7 +228,9 @@ where
             sizes.fold_stride,
             sizes.next_layer_size,
             (step - 1) as u32,
-            self.round_scratch.eq_values.as_ptr(),
+            self.round_scratch.eq_high_groups.as_ptr(),
+            self.round_scratch.eq_low_group.as_ptr(),
+            &self.eq_layout,
             self.round_scratch.accumulator.as_mut_ptr(),
             acc_size as u32,
             explicit_form,
@@ -492,9 +503,13 @@ where
             null_mut()
         };
         // Consume `[claim_point || batching_challenge]` directly from the
-        // orchestrator-owned `device_claim_point_in`; build `eq_group_tables`
-        // + `eq_values` from it (offset 1, count folding_steps - 1) — same
-        // pattern as the dim-reducing twin.
+        // orchestrator-owned `device_claim_point_in`; build the factored eq
+        // representation (`eq_high_groups` slab + `eq_low_group` buffer) from
+        // it (offset 1, count folding_steps - 1). Replaces the dense
+        // `eq_values` materialisation with on-device factored storage; the
+        // main-layer flat compact consumer kernels compute eq per-row inline
+        // from `(eq_high_groups, eq_low_group, eq_layout)` via the inline-eq
+        // helper — same pattern as the dim-reducing twin.
         let claim_point_and_batching_len = self.folding_steps + 1;
         assert_eq!(
             device_claim_point_in.len(),
@@ -502,16 +517,17 @@ where
             "device claim_point input size must match this layer's folding_steps + 1",
         );
         let challenge_count = self.folding_steps.saturating_sub(1);
-        let acc_size = 1usize << challenge_count;
-        launch_build_eq_values_from_point(
+        launch_build_eq_high_and_low_groups_from_point::<E>(
             device_claim_point_in.as_ptr(),
             1,
             challenge_count,
-            self.round_scratch.eq_group_tables.as_mut_ptr(),
-            self.round_scratch.eq_values.as_mut_ptr(),
-            acc_size,
+            self.round_scratch.eq_high_groups.as_mut_ptr(),
+            self.round_scratch.eq_low_group.as_mut_ptr(),
             context,
         )?;
+        // Host-side bookkeeping for the per-round factored-eq layout. Mutated
+        // in place by `fold_eq_values_for_next_round` between sumcheck rounds.
+        self.eq_layout = make_eq_layout_compact(challenge_count, 0);
 
         assert_eq!(
             device_claims_in.len(),
