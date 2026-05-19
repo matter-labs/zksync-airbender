@@ -4,7 +4,7 @@ use super::super::super::{
     GpuGKRStorage, GpuSumcheckRound0LaunchDescriptors, GpuSumcheckRound1PreparedStorage,
     GpuSumcheckRound2PreparedStorage, GpuSumcheckRound3AndBeyondPreparedStorage,
 };
-use super::launchers::GkrEqLayoutCompact;
+use super::launchers::GkrEqSizes;
 use super::shared::{
     ClaimBufferLayout, DeviceClaimPointAndBatching, ScheduledChallengeBuffer,
     ScheduledChallengeStorage, ScheduledDimensionReducingFinalReadback,
@@ -136,7 +136,6 @@ pub(crate) struct GpuGKRMainLayerRound3Prepared<E> {
 #[allow(dead_code)]
 pub(crate) struct GpuGKRMainLayerRoundScratch<E> {
     pub(crate) claim_point: DeviceAllocation<E>,
-    pub(crate) eq_high_groups: DeviceAllocation<E>,
     pub(crate) eq_low_group: DeviceAllocation<E>,
     pub(crate) accumulator: DeviceAllocation<E>,
     pub(crate) reduction_output: DeviceAllocation<E>,
@@ -215,12 +214,11 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     /// `round_scratch.claim_point` D2D is no longer needed.
     #[allow(dead_code)]
     pub(crate) batch_challenge_base_override_ptr: Option<*const E>,
-    /// Compact descriptor of the per-round factored-eq layout (high slab +
-    /// low buffer). Initialised at layer start from
-    /// `make_eq_layout_compact(folding_steps - 1, 0)`, mutated in place by
+    /// Strict 3-slot eq-sizes descriptor. Initialised at layer start from
+    /// `make_eq_sizes(folding_steps - 1)`, mutated in place by
     /// `fold_eq_values_for_next_round` between sumcheck rounds, and passed by
     /// value into each main-layer flat compact kernel-arg struct.
-    pub(crate) eq_layout: GkrEqLayoutCompact,
+    pub(crate) eq_sizes: GkrEqSizes,
 }
 
 // SAFETY: `batch_challenge_base_override_ptr` only stores a raw pointer into a
