@@ -20,6 +20,78 @@ pub(crate) const GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK: u32 = 512;
 pub(crate) const GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK: usize = 4;
 pub(crate) const GKR_EQ_GROUP_SIZE: usize = 8;
 pub(crate) const GKR_EQ_GROUP_TABLE_LEN: usize = 1 << GKR_EQ_GROUP_SIZE;
+// Maximum number of "high" (warp-uniform) eq groups consumed inline by per-
+// round backward kernels. Mirrors `GKR_EQ_MAX_HIGH_GROUPS` in
+// `gpu_prover/native/prover/gkr/support/descriptors.cuh`.
+pub(crate) const GKR_EQ_MAX_HIGH_GROUPS: usize = 2;
+
+/// Rust-side mirror of the CUDA `gkr_eq_layout_compact` struct in
+/// `gpu_prover/native/prover/gkr/support/descriptors.cuh`. The 8-byte layout
+/// and field order/types/padding MUST match the CUDA side exactly; the size
+/// is guarded both there (via `static_assert(sizeof(...) == 8)`) and here
+/// (via the `const _: ()` size assertion below).
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct GkrEqLayoutCompact {
+    pub(crate) num_high_groups: u8,
+    pub(crate) high_group_base_idx: u8,
+    pub(crate) high_group_sizes: [u8; GKR_EQ_MAX_HIGH_GROUPS],
+    pub(crate) low_group_size: u8,
+    pub(crate) padding: [u8; 3],
+}
+
+const _: () = assert!(std::mem::size_of::<GkrEqLayoutCompact>() == 8);
+
+impl GkrEqLayoutCompact {
+    /// Zero-initialised descriptor; used as the `Default` impl for the compact
+    /// batch structs before the scheduler fills in the real layout from
+    /// [`make_eq_layout_compact`].
+    pub(crate) const fn zeroed() -> Self {
+        Self {
+            num_high_groups: 0,
+            high_group_base_idx: 0,
+            high_group_sizes: [0; GKR_EQ_MAX_HIGH_GROUPS],
+            low_group_size: 0,
+            padding: [0; 3],
+        }
+    }
+}
+
+/// Builds the compact eq layout descriptor for a fresh factored-eq build
+/// (groups 0..G-2 are the high groups stored in the high slab; group G-1 is
+/// the low group stored in the low buffer). `high_group_base_idx` is the slab
+/// slot treated as "group 0" by inline-eq consumers — always `0` for an
+/// initial build, but kept here so the fold path can advance it without
+/// rebuilding this descriptor.
+pub(crate) fn make_eq_layout_compact(
+    challenge_count: usize,
+    high_group_base_idx: u8,
+) -> GkrEqLayoutCompact {
+    let g_count = eq_group_count(challenge_count);
+    let mut high_group_sizes = [0u8; GKR_EQ_MAX_HIGH_GROUPS];
+    let mut num_high_groups: u8 = 0;
+    let mut low_group_size: u8 = 0;
+    let mut consumed = 0usize;
+    for g in 0..g_count {
+        let remaining = challenge_count - consumed;
+        let g_size = remaining.min(GKR_EQ_GROUP_SIZE) as u8;
+        if g + 1 == g_count {
+            low_group_size = g_size;
+        } else {
+            assert!((num_high_groups as usize) < GKR_EQ_MAX_HIGH_GROUPS);
+            high_group_sizes[num_high_groups as usize] = g_size;
+            num_high_groups += 1;
+        }
+        consumed += g_size as usize;
+    }
+    GkrEqLayoutCompact {
+        num_high_groups,
+        high_group_base_idx,
+        high_group_sizes,
+        low_group_size,
+        padding: [0; 3],
+    }
+}
 
 cuda_kernel_signature_arguments_and_function!(
     pub(crate) GpuDimensionReducingPairwiseRound0<T>,
@@ -75,6 +147,15 @@ cuda_kernel_signature_arguments_and_function!(
 );
 
 cuda_kernel_signature_arguments_and_function!(
+    pub(crate) GpuDimensionReducingBuildEqHighLowFromPoint<T>,
+    claim_point: *const T,
+    challenge_offset: u32,
+    challenge_count: u32,
+    high_slab: *mut T,
+    low_buffer: *mut T,
+);
+
+cuda_kernel_signature_arguments_and_function!(
     pub(crate) GpuDimensionReducingBuildEqValuesFromGroupTables<T>,
     eq_group_tables: *const T,
     challenge_count: u32,
@@ -86,6 +167,12 @@ cuda_kernel_signature_arguments_and_function!(
     pub(crate) GpuDimensionReducingFoldEqValues<T>,
     eq_values: *mut T,
     half_len: u32,
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    pub(crate) GpuDimensionReducingFoldEqHighGroup<T>,
+    high_slab_group_base: *mut T,
+    new_g_len: u32,
 );
 
 cuda_kernel_signature_arguments_and_function!(
@@ -116,6 +203,15 @@ cuda_kernel_signature_arguments_and_function!(
     batch: GpuGKRDimensionReducingContinuationBatchCompact<T>,
     acc_size: u32,
     step: u32,
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    pub(crate) GpuGKREqInlineMaterializeForTest<T>,
+    high_slab: *const T,
+    low_buffer: *const T,
+    layout: GkrEqLayoutCompact,
+    eq_values: *mut T,
+    acc_size: u32,
 );
 
 cuda_kernel_declaration!(pub(crate)
@@ -172,6 +268,15 @@ cuda_kernel_declaration!(pub(crate)
     )
 );
 cuda_kernel_declaration!(pub(crate)
+    ab_gkr_dim_reducing_build_eq_high_low_from_point_e4_kernel(
+        claim_point: *const E4,
+        challenge_offset: u32,
+        challenge_count: u32,
+        high_slab: *mut E4,
+        low_buffer: *mut E4,
+    )
+);
+cuda_kernel_declaration!(pub(crate)
     ab_gkr_dim_reducing_build_eq_values_from_group_tables_e4_kernel(
         eq_group_tables: *const E4,
         challenge_count: u32,
@@ -183,6 +288,12 @@ cuda_kernel_declaration!(pub(crate)
     ab_gkr_dim_reducing_fold_eq_values_e4_kernel(
         eq_values: *mut E4,
         half_len: u32,
+    )
+);
+cuda_kernel_declaration!(pub(crate)
+    ab_gkr_dim_reducing_fold_eq_high_group_in_place_e4_kernel(
+        high_slab_group_base: *mut E4,
+        new_g_len: u32,
     )
 );
 cuda_kernel_declaration!(pub(crate)
@@ -213,6 +324,15 @@ cuda_kernel_declaration!(pub(crate)
         batch: GpuGKRDimensionReducingContinuationBatchCompact<E4>,
         acc_size: u32,
         step: u32,
+    )
+);
+cuda_kernel_declaration!(pub(crate)
+    ab_gkr_eq_inline_materialize_for_test_e4_kernel(
+        high_slab: *const E4,
+        low_buffer: *const E4,
+        layout: GkrEqLayoutCompact,
+        eq_values: *mut E4,
+        acc_size: u32,
     )
 );
 
@@ -350,6 +470,70 @@ pub(crate) fn launch_build_eq_values_from_point<E: crate::prover::gkr::GpuKernel
         .launch(&config, &args)
 }
 
+/// Builds the factored eq representation directly from a claim point:
+/// high groups 0..(G-2) land in `high_slab` (stride `GKR_EQ_GROUP_TABLE_LEN`),
+/// the last (low) group lands in `low_buffer`. Used by the backward GKR
+/// sumcheck factored-eq path; WHIR continues to use
+/// [`launch_build_eq_values_from_point`] for the materialized eq path.
+pub(crate) fn launch_build_eq_high_and_low_groups_from_point<E: crate::prover::gkr::GpuKernels>(
+    claim_point: *const E,
+    challenge_offset: usize,
+    challenge_count: usize,
+    high_slab: *mut E,
+    low_buffer: *mut E,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(challenge_offset <= u32::MAX as usize);
+    assert!(challenge_count <= u32::MAX as usize);
+    let group_count = eq_group_count(challenge_count);
+    if group_count == 0 {
+        // challenge_count == 0; nothing to build. The consumer reads the
+        // low-group's slot 0 as E::ONE — the caller is responsible for
+        // ensuring either the buffer is initialized to ONE or never read.
+        return Ok(());
+    }
+    let config = CudaLaunchConfig::basic(
+        group_count as u32,
+        GKR_EQ_GROUP_TABLE_LEN as u32,
+        context.get_exec_stream(),
+    );
+    let args = GpuDimensionReducingBuildEqHighLowFromPointArguments::new(
+        claim_point,
+        challenge_offset as u32,
+        challenge_count as u32,
+        high_slab,
+        low_buffer,
+    );
+    GpuDimensionReducingBuildEqHighLowFromPointFunction(E::BUILD_EQ_HIGH_LOW_FROM_POINT)
+        .launch(&config, &args)
+}
+
+/// Test-only launcher that materializes a dense `eq_values[0..acc_size]`
+/// buffer by calling the inline-eq device helper for each `gid`. Used by
+/// parity tests to compare the factored representation against the CPU
+/// ground truth.
+#[cfg(test)]
+pub(crate) fn launch_materialize_eq_from_factored_for_test<E: crate::prover::gkr::GpuKernels>(
+    high_slab: *const E,
+    low_buffer: *const E,
+    layout: &GkrEqLayoutCompact,
+    eq_values: *mut E,
+    acc_size: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(acc_size <= u32::MAX as usize);
+    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
+    let args = GpuGKREqInlineMaterializeForTestArguments::new(
+        high_slab,
+        low_buffer,
+        *layout,
+        eq_values,
+        acc_size as u32,
+    );
+    GpuGKREqInlineMaterializeForTestFunction(E::EQ_INLINE_MATERIALIZE_FOR_TEST)
+        .launch(&config, &args)
+}
+
 pub(crate) fn round0_eq_pair_values_len(folding_steps: usize) -> usize {
     2 * folding_steps.saturating_sub(1)
 }
@@ -366,6 +550,7 @@ pub(crate) fn round0_eq_group_tables_len(folding_steps: usize) -> usize {
     eq_group_tables_len(folding_steps.saturating_sub(1))
 }
 
+#[cfg(test)]
 pub(crate) fn launch_fold_eq_values_in_place<E: crate::prover::gkr::GpuKernels>(
     eq_values: *mut E,
     half_len: usize,
@@ -375,6 +560,82 @@ pub(crate) fn launch_fold_eq_values_in_place<E: crate::prover::gkr::GpuKernels>(
     let config = gkr_dim_reducing_launch_config(half_len as u32, context);
     let args = GpuDimensionReducingFoldEqValuesArguments::new(eq_values, half_len as u32);
     GpuDimensionReducingFoldEqValuesFunction(E::FOLD_EQ_VALUES).launch(&config, &args)
+}
+
+/// Halves the high-group slot at `high_group_base_idx` in the factored-eq
+/// high slab in place. After the call the top half of the slot is summed into
+/// the bottom half; the high slab logically loses one bit at that slot.
+/// `g_size_before` is the slot's bit-count BEFORE the fold (must be >= 1);
+/// after the call its size is `g_size_before - 1`. When `g_size_before == 1`
+/// the slot becomes a single E::ONE-effective entry — callers typically bump
+/// `high_group_base_idx` and decrement `num_high_groups` at that point.
+pub(crate) fn launch_fold_eq_high_group_in_place<E: crate::prover::gkr::GpuKernels>(
+    high_slab: *mut E,
+    high_group_base_idx: usize,
+    g_size_before: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(g_size_before >= 1);
+    assert!(g_size_before <= GKR_EQ_GROUP_SIZE);
+    let new_g_len = 1u32 << (g_size_before - 1);
+    let slab_offset = high_group_base_idx
+        .checked_mul(GKR_EQ_GROUP_TABLE_LEN)
+        .expect("slab offset overflow");
+    // SAFETY: the caller guarantees `high_slab` points at a slab with at least
+    // `(high_group_base_idx + 1) * GKR_EQ_GROUP_TABLE_LEN` elements.
+    let group_base = unsafe { high_slab.add(slab_offset) };
+    // One block, up to GKR_EQ_GROUP_TABLE_LEN / 2 = 128 threads. Single block
+    // is fine: the largest fold has 128 active threads, well under occupancy
+    // limits, and a single-block launch keeps the kernel pointer-driven and
+    // layer-kind agnostic.
+    let config = CudaLaunchConfig::basic(1, new_g_len, context.get_exec_stream());
+    let args = GpuDimensionReducingFoldEqHighGroupArguments::new(group_base, new_g_len);
+    GpuDimensionReducingFoldEqHighGroupFunction(E::FOLD_EQ_HIGH_GROUP_IN_PLACE)
+        .launch(&config, &args)
+}
+
+/// Folds the factored eq representation by one bit. The "active topmost" bit
+/// lives in `eq_layout.high_group_sizes[0]` while `num_high_groups > 0` (slab
+/// slot offset by `high_group_base_idx`), and in `low_group_size` once all
+/// high groups are exhausted. The fold kernel is the same generic halving
+/// (`low + high` in place) for both, so we reuse
+/// `launch_fold_eq_high_group_in_place` for the low buffer with
+/// `base_idx = 0`. Metadata-only transitions (compacting a fully-consumed high
+/// group) require no kernel launch.
+pub(crate) fn fold_factored_eq_one_round<E: crate::prover::gkr::GpuKernels>(
+    eq_layout: &mut GkrEqLayoutCompact,
+    eq_high_groups: *mut E,
+    eq_low_group: *mut E,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    if eq_layout.num_high_groups > 0 {
+        let active_slab_slot = eq_layout.high_group_base_idx as usize;
+        let g_size_before = eq_layout.high_group_sizes[0] as usize;
+        debug_assert!(g_size_before >= 1);
+        launch_fold_eq_high_group_in_place::<E>(
+            eq_high_groups,
+            active_slab_slot,
+            g_size_before,
+            context,
+        )?;
+        eq_layout.high_group_sizes[0] -= 1;
+        if eq_layout.high_group_sizes[0] == 0 {
+            // Compact: shift sizes left by one, zero the now-vacated tail
+            // slot, advance the slab base index, and shrink num_high_groups.
+            for i in 0..(GKR_EQ_MAX_HIGH_GROUPS - 1) {
+                eq_layout.high_group_sizes[i] = eq_layout.high_group_sizes[i + 1];
+            }
+            eq_layout.high_group_sizes[GKR_EQ_MAX_HIGH_GROUPS - 1] = 0;
+            eq_layout.high_group_base_idx += 1;
+            eq_layout.num_high_groups -= 1;
+        }
+    } else {
+        let g_size_before = eq_layout.low_group_size as usize;
+        debug_assert!(g_size_before >= 1);
+        launch_fold_eq_high_group_in_place::<E>(eq_low_group, 0, g_size_before, context)?;
+        eq_layout.low_group_size -= 1;
+    }
+    Ok(())
 }
 
 pub(crate) fn launch_trace_holder_block_partials<E: crate::prover::gkr::GpuKernels>(

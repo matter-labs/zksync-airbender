@@ -13,6 +13,7 @@ use super::super::super::{
 use super::encoding::{
     GpuGKRDimensionReducingContinuationBatchCompact, GpuGKRDimensionReducingRound0BatchCompact,
 };
+use super::launchers::GkrEqLayoutCompact;
 use super::shared::{
     ClaimBufferLayout, DeviceClaimPointAndBatching, ScheduledDimensionReducingFinalReadback,
     GKR_BACKWARD_MAX_TRACE_LEN_LOG2,
@@ -124,9 +125,8 @@ pub(crate) struct GpuGKRDimensionReducingRound3Prepared<E> {
 #[allow(dead_code)]
 pub(crate) struct GpuGKRDimensionReducingRoundScratch<E> {
     pub(crate) claim_point: DeviceAllocation<E>,
-    pub(crate) eq_pair_values: DeviceAllocation<E>,
-    pub(crate) eq_group_tables: DeviceAllocation<E>,
-    pub(crate) eq_values: DeviceAllocation<E>,
+    pub(crate) eq_high_groups: DeviceAllocation<E>,
+    pub(crate) eq_low_group: DeviceAllocation<E>,
     pub(crate) accumulator: DeviceAllocation<E>,
     pub(crate) reduction_output: DeviceAllocation<E>,
     pub(crate) reduction_temp_storage: DeviceAllocation<u8>,
@@ -168,6 +168,12 @@ pub(crate) struct GpuGKRDimensionReducingSumcheckLayerPlan<B, E> {
     /// `device_claim_point_in[folding_steps]` so the per-layer
     /// `round_scratch.claim_point` D2D is no longer needed.
     pub(crate) batch_challenge_base_override_ptr: Option<*const E>,
+    /// Compact descriptor of the per-round factored-eq layout (high slab +
+    /// low buffer). Initialised at layer start from
+    /// `make_eq_layout_compact(folding_steps - 1, 0)`, mutated in place by
+    /// `fold_eq_values_for_next_round` between sumcheck rounds, and passed by
+    /// value into the dim-reducing consumer kernel arg structs.
+    pub(crate) eq_layout: GkrEqLayoutCompact,
 }
 
 // SAFETY: `batch_challenge_base_override_ptr` only stores a raw pointer into a
