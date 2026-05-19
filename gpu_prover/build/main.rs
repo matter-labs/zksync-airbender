@@ -70,6 +70,7 @@ fn main() {
         let gpu_prover_native_path = dst.to_str().unwrap();
         println!("cargo:rustc-link-search=native={gpu_prover_native_path}");
         println!("cargo:rustc-link-lib=static=gpu_prover_native");
+        println!("cargo:rustc-link-lib=static=gpu_prover_ntt");
         let cuda_lib_path = get_cuda_lib_path().unwrap();
         let cuda_lib_path_str = cuda_lib_path.to_str().unwrap();
         println!("cargo:rustc-link-search=native={cuda_lib_path_str}");
