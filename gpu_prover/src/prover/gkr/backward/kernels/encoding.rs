@@ -1,7 +1,7 @@
 use std::ptr::{null, null_mut};
 
 use super::dim_reducing::GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER;
-use super::launchers::GkrEqLayoutCompact;
+use super::launchers::GkrEqSizes;
 use crate::upstream::Field;
 
 // ---------------------------------------------------------------------------
@@ -93,9 +93,8 @@ pub(crate) struct GpuGKRDimensionReducingRound0BatchCompact<E> {
     pub(crate) _reserved0: u32,
     pub(crate) _reserved1: u32,
     pub(crate) _reserved2: u32,
-    pub(crate) eq_high_groups: *const E,
-    pub(crate) eq_low_buffer: *const E,
-    pub(crate) eq_layout: GkrEqLayoutCompact,
+    pub(crate) eq_low: *const E,
+    pub(crate) eq_sizes: GkrEqSizes,
     pub(crate) contributions: *mut E,
     pub(crate) tables: GpuGKRDimensionReducingTables,
     pub(crate) records:
@@ -110,9 +109,8 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound0BatchCompact<E> {
             _reserved0: 0,
             _reserved1: 0,
             _reserved2: 0,
-            eq_high_groups: null(),
-            eq_low_buffer: null(),
-            eq_layout: GkrEqLayoutCompact::zeroed(),
+            eq_low: null(),
+            eq_sizes: GkrEqSizes::zeroed(),
             contributions: null_mut(),
             tables: GpuGKRDimensionReducingTables::default(),
             records: [GpuGKRDimensionReducingBatchRecordCompact::default();
@@ -134,9 +132,8 @@ pub(crate) struct GpuGKRDimensionReducingContinuationBatchCompact<E> {
     pub(crate) _reserved0: u32,
     pub(crate) _reserved1: u32,
     pub(crate) _reserved2: u32,
-    pub(crate) eq_high_groups: *const E,
-    pub(crate) eq_low_buffer: *const E,
-    pub(crate) eq_layout: GkrEqLayoutCompact,
+    pub(crate) eq_low: *const E,
+    pub(crate) eq_sizes: GkrEqSizes,
     pub(crate) contributions: *mut E,
     pub(crate) explicit_form: bool,
     pub(crate) _padding: [u8; 7],
@@ -153,9 +150,8 @@ impl<E: Field> Default for GpuGKRDimensionReducingContinuationBatchCompact<E> {
             _reserved0: 0,
             _reserved1: 0,
             _reserved2: 0,
-            eq_high_groups: null(),
-            eq_low_buffer: null(),
-            eq_layout: GkrEqLayoutCompact::zeroed(),
+            eq_low: null(),
+            eq_sizes: GkrEqSizes::zeroed(),
             contributions: null_mut(),
             explicit_form: false,
             _padding: [0; 7],

@@ -49,8 +49,7 @@ where
         debug_assert!(acc_size.is_power_of_two());
         debug_assert!(acc_size >= 2);
         fold_factored_eq_one_round::<E>(
-            &mut self.eq_layout,
-            self.round_scratch.eq_high_groups.as_mut_ptr(),
+            &mut self.eq_sizes,
             self.round_scratch.eq_low_group.as_mut_ptr(),
             context,
         )
@@ -62,9 +61,8 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         let mut batch = self.round0_batch_template_compact;
-        batch.eq_high_groups = self.round_scratch.eq_high_groups.as_ptr();
-        batch.eq_low_buffer = self.round_scratch.eq_low_group.as_ptr();
-        batch.eq_layout = self.eq_layout;
+        batch.eq_low = self.round_scratch.eq_low_group.as_ptr();
+        batch.eq_sizes = self.eq_sizes;
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
         launch_dim_reducing_round0_batched_compact(&batch, acc_size, context)
     }
@@ -76,9 +74,8 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         let mut batch = self.round1_batch_template_compact;
-        batch.eq_high_groups = self.round_scratch.eq_high_groups.as_ptr();
-        batch.eq_low_buffer = self.round_scratch.eq_low_group.as_ptr();
-        batch.eq_layout = self.eq_layout;
+        batch.eq_low = self.round_scratch.eq_low_group.as_ptr();
+        batch.eq_sizes = self.eq_sizes;
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
         batch.explicit_form = explicit_form;
         launch_dim_reducing_round1_batched_compact(&batch, null(), acc_size, context)
@@ -92,9 +89,8 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         let mut batch = self.continuation_batch_template_compact;
-        batch.eq_high_groups = self.round_scratch.eq_high_groups.as_ptr();
-        batch.eq_low_buffer = self.round_scratch.eq_low_group.as_ptr();
-        batch.eq_layout = self.eq_layout;
+        batch.eq_low = self.round_scratch.eq_low_group.as_ptr();
+        batch.eq_sizes = self.eq_sizes;
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
         batch.explicit_form = explicit_form;
         launch_dim_reducing_continuation_batched_compact(&batch, null(), acc_size, step, context)
@@ -291,26 +287,25 @@ where
             self.batch_challenge_base_ptr() as *const E4,
             context,
         )?;
-        // Build the factored eq representation (`eq_high_groups` slab +
-        // `eq_low_group` buffer) directly from the device claim_point (using
-        // coords `[1..folding_steps]` — the suffix that
-        // `fill_round0_eq_pair_values` used to expand on host). Replaces the
-        // dense `eq_values` materialisation with on-device factored storage;
-        // dim-reducing consumer kernels compute eq per-row inline from
-        // `(eq_high_groups, eq_low_group, eq_layout)` via the inline-eq
-        // helper.
+        // Build the factored eq representation (high slabs in the
+        // `ab_gkr_eq_high` __constant__ symbol + `eq_low_group` buffer in
+        // global memory) directly from the device claim_point (using coords
+        // `[1..folding_steps]` — the suffix that `fill_round0_eq_pair_values`
+        // used to expand on host). Dim-reducing consumer kernels compute eq
+        // per-row inline from `(eq_low, eq_sizes)` via the inline-eq helper
+        // (high slabs read from the __constant__ symbol).
         let challenge_count = self.folding_steps.saturating_sub(1);
         launch_build_eq_high_and_low_groups_from_point::<E>(
             device_claim_point_in.as_ptr(),
             1,
             challenge_count,
-            self.round_scratch.eq_high_groups.as_mut_ptr(),
+            get_eq_high_constant_device_ptr() as *mut E,
             self.round_scratch.eq_low_group.as_mut_ptr(),
             context,
         )?;
-        // Host-side bookkeeping for the per-round factored-eq layout. Mutated
+        // Host-side bookkeeping for the per-round factored-eq sizes. Mutated
         // in place by `fold_eq_values_for_next_round` between sumcheck rounds.
-        self.eq_layout = make_eq_layout_compact(challenge_count, 0);
+        self.eq_sizes = make_eq_sizes(challenge_count);
 
         assert_eq!(
             device_claims_in.len(),

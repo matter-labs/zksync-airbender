@@ -975,18 +975,23 @@ DEVICE_FORCEINLINE void stage_round2_challenges(const e4 *folding_challenges, e4
 }
 
 template <typename E, unsigned NUM_WARPS>
-DEVICE_FORCEINLINE void flat_store_unified_contributions(E (*smem)[32], const E *eq_high_groups, const E *eq_low_buffer, const gkr_eq_layout_compact &eq_layout,
-                                                         E *contributions, const unsigned acc_size, const unsigned gid, const unsigned lane,
-                                                         const unsigned warp_id, const E c0, const E c1) {
-  const E eq = gkr_compute_eq_inline<E>(eq_high_groups, eq_layout, eq_low_buffer, gid);
+DEVICE_FORCEINLINE void flat_store_unified_contributions(E (*smem)[32], const E *eq_low, const gkr_eq_sizes &eq_sizes, E *contributions,
+                                                         const unsigned acc_size, const unsigned gid, const unsigned lane, const unsigned warp_id, const E c0,
+                                                         const E c1) {
+  // Eq is computed only in warp 0 — every other warp's reads would be redundant
+  // since only warp 0 writes the consolidated row. The eq register is dead in
+  // other warps and will be eliminated by the compiler.
+  E eq;
 
   if (warp_id != 0)
     smem[warp_id - 1][lane] = c0;
   __syncthreads();
   if (warp_id == 0) {
     E sum_c0 = c0;
+#pragma unroll
     for (unsigned w = 0; w < NUM_WARPS - 1; w++)
       sum_c0 = E::add(sum_c0, smem[w][lane]);
+    eq = gkr_compute_eq_inline<E>(eq_low, eq_sizes, gid);
     store<E, st_modifier::cs>(contributions, E::mul(sum_c0, eq), gid);
   }
 
@@ -997,6 +1002,7 @@ DEVICE_FORCEINLINE void flat_store_unified_contributions(E (*smem)[32], const E 
   __syncthreads();
   if (warp_id == 0) {
     E sum_c1 = c1;
+#pragma unroll
     for (unsigned w = 0; w < NUM_WARPS - 1; w++)
       sum_c1 = E::add(sum_c1, smem[w][lane]);
     store<E, st_modifier::cs>(contributions + acc_size, E::mul(sum_c1, eq), gid);
