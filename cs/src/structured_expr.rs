@@ -1,4 +1,4 @@
-use crate::constraint::Constraint;
+use crate::constraint::{Constraint, Term};
 use crate::definitions::Variable;
 use crate::types::{Boolean, Num};
 use field::PrimeField;
@@ -119,6 +119,47 @@ impl<F: PrimeField> From<Variable> for Expr<F> {
     }
 }
 
+impl<F: PrimeField> From<Term<F>> for Expr<F> {
+    fn from(value: Term<F>) -> Self {
+        match value {
+            Term::Constant(value) => Self::Constant(value),
+            Term::Expression {
+                coeff,
+                inner,
+                degree,
+            } => {
+                if coeff == F::ZERO {
+                    return Self::zero();
+                }
+
+                let mut factors = Vec::with_capacity(degree + usize::from(coeff != F::ONE));
+                if coeff != F::ONE {
+                    factors.push(Self::Constant(coeff));
+                }
+                factors.extend(inner[..degree].iter().copied().map(Self::Var));
+
+                match factors.len() {
+                    0 => Self::one(),
+                    1 => factors.pop().expect("single expression factor must exist"),
+                    _ => Self::Product(factors),
+                }
+            }
+        }
+    }
+}
+
+impl<F: PrimeField> From<Constraint<F>> for Expr<F> {
+    fn from(value: Constraint<F>) -> Self {
+        let mut terms = value.terms.into_iter().map(Self::from).collect::<Vec<_>>();
+
+        match terms.len() {
+            0 => Self::zero(),
+            1 => terms.pop().expect("single expression term must exist"),
+            _ => Self::Sum(terms),
+        }
+    }
+}
+
 impl<F: PrimeField> From<Num<F>> for Expr<F> {
     fn from(value: Num<F>) -> Self {
         match value {
@@ -193,10 +234,11 @@ impl<F: PrimeField> std::ops::Mul<F> for Expr<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constraint::Term;
+    use crate::constraint::{Constraint, Term};
     use crate::cs::circuit::RegisterAccessRequest;
     use crate::cs::circuit_impl::BasicAssembly;
     use crate::cs::circuit_trait::Circuit;
+    use crate::cs::utils::{mask_by_boolean_into_accumulator_expr, mask_linear_term};
     use crate::definitions::LookupInput;
     use crate::gkr_compiler::GKRCompiler;
     use crate::tables::TableType;
@@ -265,6 +307,70 @@ mod tests {
         expected.normalize();
 
         assert_eq!(expr.to_max_quadratic_constraint(), expected);
+    }
+
+    #[test]
+    fn converts_flat_terms_and_constraints_to_structured_expr() {
+        let a = var(0);
+        let b = var(1);
+        let coeff = F::from_u32_unchecked(7);
+
+        assert_eq!(
+            Expr::from(Term::from((coeff, a))),
+            Expr::Product(vec![Expr::Constant(coeff), Expr::Var(a)])
+        );
+        assert_eq!(
+            Expr::from(Constraint {
+                terms: vec![Term::from(a), Term::from((coeff, b))],
+            }),
+            Expr::Sum(vec![
+                Expr::Var(a),
+                Expr::Product(vec![Expr::Constant(coeff), Expr::Var(b)]),
+            ])
+        );
+    }
+
+    #[test]
+    fn masking_helper_preserves_negated_boolean_shape() {
+        let value = Num::Var(var(0));
+        let flag = Boolean::Not(var(1));
+        let accumulator = Expr::<F>::from(var(2));
+
+        let expr = mask_by_boolean_into_accumulator_expr(&flag, &value, accumulator.clone());
+        let expected_expr = accumulator + Expr::from(value) * Expr::from(flag);
+
+        let mut expected_flat_constraint = Constraint::<F>::from(var(2))
+            + Term::from(var(0)) * (Term::from(1) - Term::from(var(1)));
+        expected_flat_constraint.normalize();
+
+        assert_eq!(expr, expected_expr);
+        assert_eq!(expr.to_max_quadratic_constraint(), expected_flat_constraint);
+    }
+
+    #[test]
+    fn mask_linear_term_records_negated_mask_definition_metadata() {
+        let mut cs = BasicAssembly::<F>::new();
+        let value = cs.add_named_variable("value");
+        let mask = cs.add_named_boolean_variable("mask").toggle();
+
+        let dst = mask_linear_term(&mut cs, Term::from(value), mask);
+        let expected_expr = Expr::<F>::from(value) * Expr::from(mask);
+        let mut expected_flat_constraint = expected_expr.to_max_quadratic_constraint();
+        expected_flat_constraint -= Term::from(dst);
+        expected_flat_constraint.normalize();
+
+        let (output, _) = cs.finalize();
+
+        assert!(output
+            .constraints
+            .iter()
+            .any(|(constraint, _)| constraint == &expected_flat_constraint));
+        assert!(output
+            .structured_statements
+            .contains(&StructuredStatement::Define {
+                dst,
+                expr: expected_expr,
+            }));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use super::*;
 use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
+use crate::structured_expr::Expr;
 use crate::types::*;
 use crate::witness_placer::*;
 use field::PrimeField;
@@ -11,7 +12,21 @@ pub fn mask_linear_term<F: PrimeField, C: Circuit<F>>(
     term: Term<F>,
     mask: Boolean,
 ) -> Variable {
-    cs.add_variable_from_constraint(term * mask.get_terms())
+    let expr = mask_linear_term_into_expr(&Constraint::from(term), &mask);
+    add_variable_from_max_quadratic_expr(cs, expr)
+}
+
+#[track_caller]
+fn add_variable_from_max_quadratic_expr<F: PrimeField, C: Circuit<F>>(
+    cs: &mut C,
+    expr: Expr<F>,
+) -> Variable {
+    match expr.degree() {
+        0 => panic!("masked expression must contain at least one variable"),
+        1 => cs.add_variable_from_expr_allow_explicit_linear(expr),
+        2 => cs.add_variable_from_expr(expr),
+        degree => panic!("masked expression degree {degree} exceeds max-quadratic lowering"),
+    }
 }
 
 #[track_caller]
@@ -42,47 +57,16 @@ pub fn mask_by_boolean_into_accumulator_constraint<F: PrimeField>(
     variable: &Num<F>,
     accumulator: Constraint<F>,
 ) -> Constraint<F> {
-    match (variable, boolean) {
-        (&Num::Var(self_var), _) => {
-            match boolean {
-                &Boolean::Constant(flag) => {
-                    if flag {
-                        let constr = accumulator + Term::from(self_var);
-                        constr
-                    } else {
-                        accumulator
-                    }
-                }
-                &Boolean::Is(bit) => {
-                    let constr = (Term::from(self_var) * Term::from(bit)) + accumulator;
-                    constr
-                }
-                &Boolean::Not(not_bit) => {
-                    // a - a*bit + accumulator
-                    let constr =
-                        Term::from(self_var) * (Term::from(1) - Term::from(not_bit)) + accumulator;
-                    constr
-                }
-            }
-        }
-        (&Num::Constant(variable), &Boolean::Is(bit)) => {
-            let constr = Term::from_field(variable) * Term::from(bit) + accumulator;
-            constr
-        }
-        (&Num::Constant(constant), &Boolean::Not(bit)) => {
-            let constr =
-                Term::from_field(constant) * (Term::from(1) - Term::from(bit)) + accumulator;
-            constr
-        }
-        (&Num::Constant(constant), &Boolean::Constant(bit)) => {
-            if bit {
-                let constr = accumulator + Term::from_field(constant);
-                constr
-            } else {
-                accumulator
-            }
-        }
-    }
+    mask_by_boolean_into_accumulator_expr(boolean, variable, Expr::from(accumulator))
+        .to_max_quadratic_constraint()
+}
+
+pub fn mask_by_boolean_into_accumulator_expr<F: PrimeField>(
+    boolean: &Boolean,
+    variable: &Num<F>,
+    accumulator: Expr<F>,
+) -> Expr<F> {
+    accumulator + mask_into_expr(variable, boolean)
 }
 
 pub fn mask_by_boolean_into_accumulator_constraint_with_shift<F: PrimeField>(
@@ -91,107 +75,47 @@ pub fn mask_by_boolean_into_accumulator_constraint_with_shift<F: PrimeField>(
     accumulator: Constraint<F>,
     shift: F,
 ) -> Constraint<F> {
-    match (variable, boolean) {
-        (&Num::Var(self_var), _) => {
-            match boolean {
-                &Boolean::Constant(flag) => {
-                    if flag {
-                        let constr = accumulator + Term::from((shift, self_var));
-                        constr
-                    } else {
-                        accumulator
-                    }
-                }
-                &Boolean::Is(bit) => {
-                    let constr = (Term::from((shift, self_var)) * Term::from(bit)) + accumulator;
-                    constr
-                }
-                &Boolean::Not(not_bit) => {
-                    // a - a*bit + accumulator
-                    let constr = Term::from((shift, self_var))
-                        * (Term::from(1) - Term::from(not_bit))
-                        + accumulator;
-                    constr
-                }
-            }
-        }
-        (&Num::Constant(constant), &Boolean::Is(bit)) => {
-            let mut constant = constant;
-            constant.mul_assign(&shift);
-            let constr = Term::from_field(constant) * Term::from(bit) + accumulator;
-            constr
-        }
-        (&Num::Constant(constant), &Boolean::Not(bit)) => {
-            let mut constant = constant;
-            constant.mul_assign(&shift);
-            let constr =
-                Term::from_field(constant) * (Term::from(1) - Term::from(bit)) + accumulator;
-            constr
-        }
-        (&Num::Constant(constant), &Boolean::Constant(bit)) => {
-            let mut constant = constant;
-            constant.mul_assign(&shift);
-            if bit {
-                let constr = accumulator + Term::from_field(constant);
-                constr
-            } else {
-                accumulator
-            }
-        }
-    }
+    mask_by_boolean_into_accumulator_expr_with_shift(
+        boolean,
+        variable,
+        Expr::from(accumulator),
+        shift,
+    )
+    .to_max_quadratic_constraint()
+}
+
+pub fn mask_by_boolean_into_accumulator_expr_with_shift<F: PrimeField>(
+    boolean: &Boolean,
+    variable: &Num<F>,
+    accumulator: Expr<F>,
+    shift: F,
+) -> Expr<F> {
+    accumulator + mask_into_expr(variable, boolean) * shift
 }
 
 /// returns 0 if condition == `false` and `a` if condition == `true`
 pub fn mask_into_constraint<F: PrimeField>(a: &Num<F>, condition: &Boolean) -> Constraint<F> {
-    match (a, condition) {
-        (&Num::Constant(a), &Boolean::Constant(flag)) => {
-            if flag {
-                Constraint::from_field(a)
-            } else {
-                Constraint::from(0)
-            }
-        }
-        (&Num::Var(var), &Boolean::Constant(flag)) => {
-            if flag {
-                Constraint::from(var)
-            } else {
-                Constraint::from(0)
-            }
-        }
-        (&Num::Var(var), &Boolean::Is(bit)) => {
-            let cnstr: Constraint<F> = { Term::from(var) * Term::from(bit) };
-            cnstr
-        }
-        (&Num::Var(var), &Boolean::Not(bit)) => {
-            let cnstr: Constraint<F> = { Term::from(var) * (Term::from(1) - Term::from(bit)) };
-            cnstr
-        }
-        (&Num::Constant(a), &Boolean::Is(bit)) => {
-            let cnstr: Constraint<F> = { Term::from_field(a) * Term::from(bit) };
-            cnstr
-        }
-        (&Num::Constant(a), &Boolean::Not(bit)) => {
-            let cnstr: Constraint<F> = { Term::from_field(a) * (Term::from(1) - Term::from(bit)) };
-            cnstr
-        }
-    }
+    mask_into_expr(a, condition).to_max_quadratic_constraint()
+}
+
+/// returns 0 if condition == `false` and `a` if condition == `true`
+pub fn mask_into_expr<F: PrimeField>(a: &Num<F>, condition: &Boolean) -> Expr<F> {
+    Expr::from(*a) * Expr::from(*condition)
 }
 
 pub fn mask_linear_term_into_constraint<F: PrimeField>(
     a: &Constraint<F>,
     condition: &Boolean,
 ) -> Constraint<F> {
-    assert!(a.degree() <= 1);
-    let result = if a.degree() == 0 {
-        let constant_value = a.as_constant();
-        let mut result = Constraint::<F>::from(condition.get_terms());
-        result.scale(constant_value);
+    mask_linear_term_into_expr(a, condition).to_max_quadratic_constraint()
+}
 
-        result
-    } else {
-        let term = condition.get_terms();
-        a.clone() * term
-    };
+pub fn mask_linear_term_into_expr<F: PrimeField>(
+    a: &Constraint<F>,
+    condition: &Boolean,
+) -> Expr<F> {
+    assert!(a.degree() <= 1);
+    let result = Expr::from(a.clone()) * Expr::from(*condition);
     assert!(result.degree() <= 2);
 
     result
@@ -202,7 +126,17 @@ pub fn mask_linear_term_by_boolean_into_accumulator_constraint<F: PrimeField>(
     input: &Constraint<F>,
     accumulator: Constraint<F>,
 ) -> Constraint<F> {
-    accumulator + (input.clone() * Constraint::from(*boolean))
+    mask_linear_term_by_boolean_into_accumulator_expr(boolean, input, Expr::from(accumulator))
+        .to_max_quadratic_constraint()
+}
+
+pub fn mask_linear_term_by_boolean_into_accumulator_expr<F: PrimeField>(
+    boolean: &Boolean,
+    input: &Constraint<F>,
+    accumulator: Expr<F>,
+) -> Expr<F> {
+    assert!(input.degree() <= 1);
+    accumulator + Expr::from(input.clone()) * Expr::from(*boolean)
 }
 
 #[derive(Clone, Debug)]
