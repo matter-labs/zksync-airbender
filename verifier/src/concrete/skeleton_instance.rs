@@ -9,20 +9,29 @@ macro_rules! field_size {
         }
         size_of_raw(p)
     }};
+    ($t:ty, $field:ident) => {{
+        let m = core::mem::MaybeUninit::<$t>::uninit();
+        #[allow(unused_unsafe)]
+        let p = unsafe { core::ptr::addr_of!((*m.as_ptr()).$field) };
+
+        const fn size_of_raw<T>(_: *const T) -> usize {
+            core::mem::size_of::<T>()
+        }
+        size_of_raw(p)
+    }};
 }
 
 use super::size_constants::*;
 use crate::skeleton::*;
 use core::mem::offset_of;
 use field::Mersenne31Field;
-use field::Mersenne31Quartic;
 use field::PrimeField;
 use verifier_common::blake2s_u32::AlignedSlice64;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::prover::definitions::LeafInclusionVerifier;
 use verifier_common::prover::definitions::MerkleTreeCap;
 
-pub type ProofSkeletonInstance = ProofSkeleton<
+pub type ProofSkeletonInstance<S: verifier_common::SecurityConfig<NUM_FRI_STEPS>> = ProofSkeleton<
     SKELETON_PADDING,
     TREE_CAP_SIZE,
     NUM_COSETS,
@@ -34,126 +43,142 @@ pub type ProofSkeletonInstance = ProofSkeleton<
     NUM_OPENINGS_AT_Z,
     NUM_OPENINGS_AT_Z_OMEGA,
     NUM_FRI_STEPS,
-    NUM_FRI_STEPS_WITH_ORACLES,
-    LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET,
+    { Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES },
+    { Geometry::<S>::LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET },
     FRI_FINAL_DEGREE,
 >;
 
-pub(crate) const BASE_CIRCUIT_PROOF_SKELETON_NO_PADDING_AND_GAPS_START_U32_WORDS: usize = const {
-    let total_size = offset_of!(ProofSkeletonInstance, circuit_sequence_idx);
-
-    assert!(total_size % core::mem::size_of::<u32>() == 0);
-
-    total_size / core::mem::size_of::<u32>()
-};
-
-pub(crate) const BASE_CIRCUIT_PROOF_SKELETON_NO_PADDING_AND_GAPS_U32_WORDS: usize = const {
-    // check that no spacing exists in the skeleton main part
-    let mut total_size = 0;
-
-    total_size += field_size!(ProofSkeletonInstance::_padding);
-    assert!(offset_of!(ProofSkeletonInstance, circuit_sequence_idx) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::circuit_sequence_idx);
-    assert!(offset_of!(ProofSkeletonInstance, delegation_type) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::delegation_type);
-    assert!(offset_of!(ProofSkeletonInstance, public_inputs) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::public_inputs);
-    assert!(offset_of!(ProofSkeletonInstance, setup_caps) == total_size,);
-
-    assert!(offset_of!(ProofSkeletonInstance, setup_caps) % 16 == 0);
-
-    total_size += field_size!(ProofSkeletonInstance::setup_caps);
-    assert!(offset_of!(ProofSkeletonInstance, memory_argument_challenges) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::memory_argument_challenges);
-    assert!(offset_of!(ProofSkeletonInstance, delegation_argument_challenges) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::delegation_argument_challenges);
-    assert!(offset_of!(ProofSkeletonInstance, machine_state_permutation_challenges) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::machine_state_permutation_challenges);
-    assert!(offset_of!(ProofSkeletonInstance, aux_boundary_values) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::aux_boundary_values);
-    assert!(offset_of!(ProofSkeletonInstance, witness_caps) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::witness_caps);
-    assert!(offset_of!(ProofSkeletonInstance, memory_caps) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::memory_caps);
-    assert!(offset_of!(ProofSkeletonInstance, stage_2_caps) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::stage_2_caps);
-    assert!(offset_of!(ProofSkeletonInstance, grand_product_accumulator) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::grand_product_accumulator);
-    assert!(offset_of!(ProofSkeletonInstance, delegation_argument_accumulator) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::delegation_argument_accumulator);
-    assert!(offset_of!(ProofSkeletonInstance, quotient_caps) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::quotient_caps);
-    assert!(offset_of!(ProofSkeletonInstance, openings_at_z) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::openings_at_z);
-    assert!(offset_of!(ProofSkeletonInstance, openings_at_z_omega) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::openings_at_z_omega);
-    assert!(offset_of!(ProofSkeletonInstance, fri_intermediate_oracles) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::fri_intermediate_oracles);
-    assert!(offset_of!(ProofSkeletonInstance, fri_final_step_leafs) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::fri_final_step_leafs);
-    assert!(offset_of!(ProofSkeletonInstance, monomial_coeffs) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::monomial_coeffs);
-    assert!(offset_of!(ProofSkeletonInstance, pow_challenges) == total_size,);
-
-    total_size += field_size!(ProofSkeletonInstance::pow_challenges);
-
-    assert!(total_size <= core::mem::size_of::<ProofSkeletonInstance>());
-
-    assert!(total_size % core::mem::size_of::<u32>() == 0);
-
-    total_size / core::mem::size_of::<u32>()
-};
-
-pub type QueryValuesInstance = QueryValues<
+pub type QueryValuesInstance<S: verifier_common::SecurityConfig<NUM_FRI_STEPS>> = QueryValues<
     BITS_FOR_QUERY_INDEX,
     DEFAULT_MERKLE_PATH_LENGTH,
-    TOTAL_FRI_ORACLES_PATHS_LENGTH,
+    { Geometry::<S>::TOTAL_FRI_ORACLES_PATHS_LENGTH },
     LEAF_SIZE_SETUP,
     LEAF_SIZE_WITNESS_TREE,
     LEAF_SIZE_MEMORY_TREE,
     LEAF_SIZE_STAGE_2,
     LEAF_SIZE_QUOTIENT,
-    TOTAL_FRI_LEAFS_SIZES,
+    { Geometry::<S>::TOTAL_FRI_LEAFS_SIZES },
     NUM_FRI_STEPS,
 >;
 
-const NUM_QUERIES: usize = LEAF_SIZE_SETUP
-    + LEAF_SIZE_WITNESS_TREE
-    + LEAF_SIZE_MEMORY_TREE
-    + LEAF_SIZE_STAGE_2
-    + LEAF_SIZE_QUOTIENT
-    + TOTAL_FRI_LEAFS_SIZES;
+const fn proof_skeleton_no_padding_start_u32_words<S>() -> usize
+where
+    S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
+    [(); Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES]:,
+    [(); Geometry::<S>::LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET]:,
+{
+    let total_size = offset_of!(ProofSkeletonInstance<S>, circuit_sequence_idx);
 
-/// offsets of each query word from the previous one
-/// e.g. `BASE_CIRCUIT_QUERY_VALUES_OFFSETS[0]` is the offset between `setup_leaf` and `query_index`
-pub const BASE_CIRCUIT_QUERY_VALUES_OFFSETS: [usize; NUM_QUERIES] = const {
-    let mut offsets = [0; NUM_QUERIES];
+    assert!(total_size % core::mem::size_of::<u32>() == 0);
+
+    total_size / core::mem::size_of::<u32>()
+}
+
+const fn proof_skeleton_no_padding_u32_words<S>() -> usize
+where
+    S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
+    [(); Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES]:,
+    [(); Geometry::<S>::LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET]:,
+{
+    // We prove these offsets once at compile time so the low-level CSR loader can
+    // treat the skeleton body as a flat stream of words without hidden padding.
+    let mut total_size = 0;
+
+    total_size += field_size!(ProofSkeletonInstance<S>, _padding);
+    assert!(offset_of!(ProofSkeletonInstance<S>, circuit_sequence_idx) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, circuit_sequence_idx);
+    assert!(offset_of!(ProofSkeletonInstance<S>, delegation_type) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, delegation_type);
+    assert!(offset_of!(ProofSkeletonInstance<S>, public_inputs) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, public_inputs);
+    assert!(offset_of!(ProofSkeletonInstance<S>, setup_caps) == total_size,);
+
+    assert!(offset_of!(ProofSkeletonInstance<S>, setup_caps) % 16 == 0);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, setup_caps);
+    assert!(offset_of!(ProofSkeletonInstance<S>, memory_argument_challenges) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, memory_argument_challenges);
+    assert!(offset_of!(ProofSkeletonInstance<S>, delegation_argument_challenges) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, delegation_argument_challenges);
+    assert!(
+        offset_of!(
+            ProofSkeletonInstance<S>,
+            machine_state_permutation_challenges
+        ) == total_size,
+    );
+
+    total_size += field_size!(
+        ProofSkeletonInstance<S>,
+        machine_state_permutation_challenges
+    );
+    assert!(offset_of!(ProofSkeletonInstance<S>, aux_boundary_values) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, aux_boundary_values);
+    assert!(offset_of!(ProofSkeletonInstance<S>, witness_caps) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, witness_caps);
+    assert!(offset_of!(ProofSkeletonInstance<S>, memory_caps) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, memory_caps);
+    assert!(offset_of!(ProofSkeletonInstance<S>, stage_2_caps) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, stage_2_caps);
+    assert!(offset_of!(ProofSkeletonInstance<S>, grand_product_accumulator) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, grand_product_accumulator);
+    assert!(offset_of!(ProofSkeletonInstance<S>, delegation_argument_accumulator) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, delegation_argument_accumulator);
+    assert!(offset_of!(ProofSkeletonInstance<S>, quotient_caps) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, quotient_caps);
+    assert!(offset_of!(ProofSkeletonInstance<S>, openings_at_z) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, openings_at_z);
+    assert!(offset_of!(ProofSkeletonInstance<S>, openings_at_z_omega) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, openings_at_z_omega);
+    assert!(offset_of!(ProofSkeletonInstance<S>, fri_intermediate_oracles) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, fri_intermediate_oracles);
+    assert!(offset_of!(ProofSkeletonInstance<S>, fri_final_step_leafs) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, fri_final_step_leafs);
+    assert!(offset_of!(ProofSkeletonInstance<S>, monomial_coeffs) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, monomial_coeffs);
+    assert!(offset_of!(ProofSkeletonInstance<S>, pow_challenges) == total_size,);
+
+    total_size += field_size!(ProofSkeletonInstance<S>, pow_challenges);
+
+    assert!(total_size <= core::mem::size_of::<ProofSkeletonInstance<S>>());
+
+    assert!(total_size % core::mem::size_of::<u32>() == 0);
+
+    total_size / core::mem::size_of::<u32>()
+}
+
+const fn base_circuit_query_values_offsets<S>() -> [usize; Geometry::<S>::NUM_QUERY_VALUES]
+where
+    S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
+    [(); Geometry::<S>::TOTAL_FRI_ORACLES_PATHS_LENGTH]:,
+    [(); Geometry::<S>::TOTAL_FRI_LEAFS_SIZES]:,
+    [(); Geometry::<S>::NUM_QUERY_VALUES]:,
+{
+    let mut offsets = [0; Geometry::<S>::NUM_QUERY_VALUES];
 
     const fn round_up_to_64(addr: usize) -> usize {
         (addr + 63) & !63
     }
 
     let query_index_end =
-        offset_of!(QueryValuesInstance, query_index) + core::mem::size_of::<u32>();
-    let setup_leaf_start = offset_of!(QueryValuesInstance, setup_leaf);
+        offset_of!(QueryValuesInstance<S>, query_index) + core::mem::size_of::<u32>();
+    let setup_leaf_start = offset_of!(QueryValuesInstance<S>, setup_leaf);
     assert!(setup_leaf_start == round_up_to_64(query_index_end));
     offsets[0] = setup_leaf_start / core::mem::size_of::<u32>();
 
@@ -164,7 +189,7 @@ pub const BASE_CIRCUIT_QUERY_VALUES_OFFSETS: [usize; NUM_QUERIES] = const {
     }
 
     let setup_leaf_end = setup_leaf_start + LEAF_SIZE_SETUP * core::mem::size_of::<u32>();
-    let witness_leaf_start = offset_of!(QueryValuesInstance, witness_leaf);
+    let witness_leaf_start = offset_of!(QueryValuesInstance<S>, witness_leaf);
     assert!(witness_leaf_start == round_up_to_64(setup_leaf_end));
     offsets[i] = witness_leaf_start / core::mem::size_of::<u32>();
     i += 1;
@@ -176,7 +201,7 @@ pub const BASE_CIRCUIT_QUERY_VALUES_OFFSETS: [usize; NUM_QUERIES] = const {
 
     let witness_leaf_end =
         witness_leaf_start + LEAF_SIZE_WITNESS_TREE * core::mem::size_of::<u32>();
-    let memory_leaf_start = offset_of!(QueryValuesInstance, memory_leaf);
+    let memory_leaf_start = offset_of!(QueryValuesInstance<S>, memory_leaf);
     assert!(memory_leaf_start == round_up_to_64(witness_leaf_end));
     offsets[i] = memory_leaf_start / core::mem::size_of::<u32>();
     i += 1;
@@ -187,7 +212,7 @@ pub const BASE_CIRCUIT_QUERY_VALUES_OFFSETS: [usize; NUM_QUERIES] = const {
     }
 
     let memory_leaf_end = memory_leaf_start + LEAF_SIZE_MEMORY_TREE * core::mem::size_of::<u32>();
-    let stage_2_leaf_start = offset_of!(QueryValuesInstance, stage_2_leaf);
+    let stage_2_leaf_start = offset_of!(QueryValuesInstance<S>, stage_2_leaf);
     assert!(stage_2_leaf_start == round_up_to_64(memory_leaf_end));
     offsets[i] = stage_2_leaf_start / core::mem::size_of::<u32>();
     i += 1;
@@ -198,7 +223,7 @@ pub const BASE_CIRCUIT_QUERY_VALUES_OFFSETS: [usize; NUM_QUERIES] = const {
     }
 
     let stage_2_leaf_end = stage_2_leaf_start + LEAF_SIZE_STAGE_2 * core::mem::size_of::<u32>();
-    let quotient_leaf_start = offset_of!(QueryValuesInstance, quotient_leaf);
+    let quotient_leaf_start = offset_of!(QueryValuesInstance<S>, quotient_leaf);
     assert!(quotient_leaf_start == round_up_to_64(stage_2_leaf_end));
     offsets[i] = quotient_leaf_start / core::mem::size_of::<u32>();
     i += 1;
@@ -214,100 +239,145 @@ pub const BASE_CIRCUIT_QUERY_VALUES_OFFSETS: [usize; NUM_QUERIES] = const {
     }
 
     let quotient_leaf_end = quotient_leaf_start + LEAF_SIZE_QUOTIENT * core::mem::size_of::<u32>();
-    let fri_oracle_leafs_start = offset_of!(QueryValuesInstance, fri_oracles_leafs);
+    let fri_oracle_leafs_start = offset_of!(QueryValuesInstance<S>, fri_oracles_leafs);
     assert!(fri_oracle_leafs_start == round_up_to_64(quotient_leaf_end));
     offsets[i] = fri_oracle_leafs_start / core::mem::size_of::<u32>();
     i += 1;
 
-    while i < LEAF_SIZE_SETUP
-        + LEAF_SIZE_WITNESS_TREE
-        + LEAF_SIZE_MEMORY_TREE
-        + LEAF_SIZE_STAGE_2
-        + LEAF_SIZE_QUOTIENT
-        + TOTAL_FRI_LEAFS_SIZES
-    {
+    while i < Geometry::<S>::NUM_QUERY_VALUES {
         offsets[i] = offsets[i - 1] + 1;
         i += 1;
     }
 
     offsets
-};
+}
 
-impl ProofSkeletonInstance {
+pub trait ProofSkeletonInstanceExt<S>
+where
+    S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
+    [(); Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES]:,
+    [(); Geometry::<S>::LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET]:,
+{
+    const BASE_CIRCUIT_PROOF_SKELETON_NO_PADDING_AND_GAPS_START_U32_WORDS: usize;
+    const BASE_CIRCUIT_PROOF_SKELETON_NO_PADDING_AND_GAPS_U32_WORDS: usize;
+
+    unsafe fn fill<I: NonDeterminismSource>(this: *mut Self);
+    fn transcript_elements_before_stage2(&self) -> &[u32];
+    fn transcript_elements_stage2_to_stage3(&self) -> &[u32];
+    fn transcript_elements_stage3_to_stage4(&self) -> &[u32];
+    fn transcript_elements_evaluations_at_z(&self) -> &[u32];
+    fn transcript_elements_fri_intermediate_oracles(
+        &self,
+    ) -> [&[u32]; Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES];
+    fn transcript_elements_last_fri_step_leaf_values(&self) -> &[u32];
+    fn transcript_elements_monomial_coefficients(&self) -> &[u32];
+}
+
+pub trait QueryValuesInstanceExt<S>: Sized
+where
+    S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
+    [(); Geometry::<S>::TOTAL_FRI_ORACLES_PATHS_LENGTH]:,
+    [(); Geometry::<S>::TOTAL_FRI_LEAFS_SIZES]:,
+    [(); Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES]:,
+    [(); Geometry::<S>::LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET]:,
+    [(); Geometry::<S>::NUM_QUERY_VALUES]:,
+{
+    const NUM_QUERY_VALUES: usize;
+    const BASE_CIRCUIT_QUERY_VALUES_OFFSETS: [usize; Geometry::<S>::NUM_QUERY_VALUES];
+
+    unsafe fn fill<I: NonDeterminismSource, V: LeafInclusionVerifier>(
+        this: *mut Self,
+        proof_skeleton: &ProofSkeletonInstance<S>,
+        hasher: &mut V,
+    );
+    unsafe fn fill_array<I: NonDeterminismSource, V: LeafInclusionVerifier, const N: usize>(
+        dst: *mut [Self; N],
+        proof_skeleton: &ProofSkeletonInstance<S>,
+        hasher: &mut V,
+    );
+}
+
+impl<S> ProofSkeletonInstanceExt<S> for ProofSkeletonInstance<S>
+where
+    S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
+    [(); Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES]:,
+    [(); Geometry::<S>::LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET]:,
+{
+    const BASE_CIRCUIT_PROOF_SKELETON_NO_PADDING_AND_GAPS_START_U32_WORDS: usize =
+        proof_skeleton_no_padding_start_u32_words::<S>();
+    const BASE_CIRCUIT_PROOF_SKELETON_NO_PADDING_AND_GAPS_U32_WORDS: usize =
+        proof_skeleton_no_padding_u32_words::<S>();
+
     #[inline(never)]
-    pub unsafe fn fill<I: NonDeterminismSource>(this: *mut Self) {
+    unsafe fn fill<I: NonDeterminismSource>(this: *mut Self) {
         let dst = this.cast::<u32>();
         let modulus = Mersenne31Field::CHARACTERISTICS as u32;
         // we need to make few stops here and switch between field elements and u32 unstructured values
-        let mut i = BASE_CIRCUIT_PROOF_SKELETON_NO_PADDING_AND_GAPS_START_U32_WORDS;
+        let mut i = Self::BASE_CIRCUIT_PROOF_SKELETON_NO_PADDING_AND_GAPS_START_U32_WORDS;
         // circuit sequence and delegation types
-        while i < offset_of!(ProofSkeletonInstance, public_inputs) / core::mem::size_of::<u32>() {
+        while i < offset_of!(Self, public_inputs) / core::mem::size_of::<u32>() {
             // values are unstructured u32, and we will check the logic over them separately
             dst.add(i).write(I::read_word());
             i += 1;
         }
         // public inputs
-        while i < offset_of!(ProofSkeletonInstance, setup_caps) / core::mem::size_of::<u32>() {
+        while i < offset_of!(Self, setup_caps) / core::mem::size_of::<u32>() {
             // field elements mut be reduced in full
             dst.add(i).write(I::read_reduced_field_element(modulus));
             i += 1;
         }
         // setup tree
-        while i < offset_of!(ProofSkeletonInstance, memory_argument_challenges)
-            / core::mem::size_of::<u32>()
-        {
+        while i < offset_of!(Self, memory_argument_challenges) / core::mem::size_of::<u32>() {
             // hashes are unstructured u32
             dst.add(i).write(I::read_word());
             i += 1;
         }
         // various external challenges - field elements
-        while i < offset_of!(ProofSkeletonInstance, witness_caps) / core::mem::size_of::<u32>() {
+        while i < offset_of!(Self, witness_caps) / core::mem::size_of::<u32>() {
             // field elements mut be reduced in full
             dst.add(i).write(I::read_reduced_field_element(modulus));
             i += 1;
         }
         // witness, memory, stage 2 tree
-        while i < offset_of!(ProofSkeletonInstance, grand_product_accumulator)
-            / core::mem::size_of::<u32>()
-        {
+        while i < offset_of!(Self, grand_product_accumulator) / core::mem::size_of::<u32>() {
             // hashes are unstructured u32
             dst.add(i).write(I::read_word());
             i += 1;
         }
         // memory grand product + delegation accumulators
-        while i < offset_of!(ProofSkeletonInstance, quotient_caps) / core::mem::size_of::<u32>() {
+        while i < offset_of!(Self, quotient_caps) / core::mem::size_of::<u32>() {
             // field elements mut be reduced in full
             dst.add(i).write(I::read_reduced_field_element(modulus));
             i += 1;
         }
         // quotient tree
-        while i < offset_of!(ProofSkeletonInstance, openings_at_z) / core::mem::size_of::<u32>() {
+        while i < offset_of!(Self, openings_at_z) / core::mem::size_of::<u32>() {
             // hashes are unstructured u32
             dst.add(i).write(I::read_word());
             i += 1;
         }
         // values at z and z*omega
-        while i < offset_of!(ProofSkeletonInstance, fri_intermediate_oracles)
-            / core::mem::size_of::<u32>()
-        {
+        while i < offset_of!(Self, fri_intermediate_oracles) / core::mem::size_of::<u32>() {
             // field elements mut be reduced in full
             dst.add(i).write(I::read_reduced_field_element(modulus));
             i += 1;
         }
         // fri intermediate oracles
-        while i < offset_of!(ProofSkeletonInstance, monomial_coeffs) / core::mem::size_of::<u32>() {
+        while i < offset_of!(Self, monomial_coeffs) / core::mem::size_of::<u32>() {
             // hashes are unstructured u32
             dst.add(i).write(I::read_word());
             i += 1;
         }
         // monomial coeffs
-        while i < offset_of!(ProofSkeletonInstance, pow_challenges) / core::mem::size_of::<u32>() {
+        while i < offset_of!(Self, pow_challenges) / core::mem::size_of::<u32>() {
             // field elements mut be reduced in full
             dst.add(i).write(I::read_reduced_field_element(modulus));
             i += 1;
         }
         // nonce for PoW
-        while i < core::hint::black_box(BASE_CIRCUIT_PROOF_SKELETON_NO_PADDING_AND_GAPS_U32_WORDS) {
+        while i < core::hint::black_box(
+            Self::BASE_CIRCUIT_PROOF_SKELETON_NO_PADDING_AND_GAPS_U32_WORDS,
+        ) {
             dst.add(i).write(I::read_word());
             i += 1;
         }
@@ -321,64 +391,61 @@ impl ProofSkeletonInstance {
         );
     }
 
-    pub fn transcript_elements_before_stage2(&'_ self) -> &'_ [u32] {
-        unsafe {
-            let start = (self as *const Self).cast::<u32>().add(
-                offset_of!(ProofSkeletonInstance, circuit_sequence_idx)
-                    / core::mem::size_of::<u32>(),
-            );
-            let end = (self as *const Self)
-                .cast::<u32>()
-                .add(offset_of!(ProofSkeletonInstance, stage_2_caps) / core::mem::size_of::<u32>());
-            core::slice::from_ptr_range(start..end)
-        }
-    }
-
-    pub fn transcript_elements_stage2_to_stage3(&'_ self) -> &'_ [u32] {
+    fn transcript_elements_before_stage2(&'_ self) -> &'_ [u32] {
         unsafe {
             let start = (self as *const Self)
                 .cast::<u32>()
-                .add(offset_of!(ProofSkeletonInstance, stage_2_caps) / core::mem::size_of::<u32>());
-            let end = (self as *const Self).cast::<u32>().add(
-                offset_of!(ProofSkeletonInstance, quotient_caps) / core::mem::size_of::<u32>(),
-            );
+                .add(offset_of!(Self, circuit_sequence_idx) / core::mem::size_of::<u32>());
+            let end = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, stage_2_caps) / core::mem::size_of::<u32>());
             core::slice::from_ptr_range(start..end)
         }
     }
 
-    pub fn transcript_elements_stage3_to_stage4(&'_ self) -> &'_ [u32] {
+    fn transcript_elements_stage2_to_stage3(&'_ self) -> &'_ [u32] {
         unsafe {
-            let start = (self as *const Self).cast::<u32>().add(
-                offset_of!(ProofSkeletonInstance, quotient_caps) / core::mem::size_of::<u32>(),
-            );
-            let end = (self as *const Self).cast::<u32>().add(
-                offset_of!(ProofSkeletonInstance, openings_at_z) / core::mem::size_of::<u32>(),
-            );
+            let start = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, stage_2_caps) / core::mem::size_of::<u32>());
+            let end = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, quotient_caps) / core::mem::size_of::<u32>());
             core::slice::from_ptr_range(start..end)
         }
     }
 
-    pub fn transcript_elements_evaluations_at_z(&'_ self) -> &'_ [u32] {
+    fn transcript_elements_stage3_to_stage4(&'_ self) -> &'_ [u32] {
         unsafe {
-            let start = (self as *const Self).cast::<u32>().add(
-                offset_of!(ProofSkeletonInstance, openings_at_z) / core::mem::size_of::<u32>(),
-            );
-            let end = (self as *const Self).cast::<u32>().add(
-                offset_of!(ProofSkeletonInstance, fri_intermediate_oracles)
-                    / core::mem::size_of::<u32>(),
-            );
+            let start = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, quotient_caps) / core::mem::size_of::<u32>());
+            let end = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, openings_at_z) / core::mem::size_of::<u32>());
             core::slice::from_ptr_range(start..end)
         }
     }
 
-    pub fn transcript_elements_fri_intermediate_oracles(
+    fn transcript_elements_evaluations_at_z(&'_ self) -> &'_ [u32] {
+        unsafe {
+            let start = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, openings_at_z) / core::mem::size_of::<u32>());
+            let end = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, fri_intermediate_oracles) / core::mem::size_of::<u32>());
+            core::slice::from_ptr_range(start..end)
+        }
+    }
+
+    fn transcript_elements_fri_intermediate_oracles(
         &'_ self,
-    ) -> [&'_ [u32]; NUM_FRI_STEPS_WITH_ORACLES] {
+    ) -> [&'_ [u32]; Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES] {
         unsafe {
-            let start_of_oracles = (self as *const Self).cast::<u32>().add(
-                offset_of!(ProofSkeletonInstance, fri_intermediate_oracles)
-                    / core::mem::size_of::<u32>(),
-            );
+            let start_of_oracles = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, fri_intermediate_oracles) / core::mem::size_of::<u32>());
             let cap_size_u32_words =
                 core::mem::size_of::<[MerkleTreeCap<TREE_CAP_SIZE>; NUM_COSETS]>()
                     / core::mem::size_of::<u32>();
@@ -391,15 +458,13 @@ impl ProofSkeletonInstance {
         }
     }
 
-    pub fn transcript_elements_last_fri_step_leaf_values(&'_ self) -> &'_ [u32] {
+    fn transcript_elements_last_fri_step_leaf_values(&'_ self) -> &'_ [u32] {
         unsafe {
-            let start_of_oracles = (self as *const Self).cast::<u32>().add(
-                offset_of!(ProofSkeletonInstance, fri_final_step_leafs)
-                    / core::mem::size_of::<u32>(),
-            );
-            let set_size_u32_words = core::mem::size_of::<
-                [[Mersenne31Quartic; LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET]; NUM_COSETS],
-            >() / core::mem::size_of::<u32>();
+            let start_of_oracles = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, fri_final_step_leafs) / core::mem::size_of::<u32>());
+            let set_size_u32_words =
+                field_size!(Self::fri_final_step_leafs) / core::mem::size_of::<u32>();
 
             let start = start_of_oracles;
             let end = start.add(set_size_u32_words);
@@ -408,23 +473,37 @@ impl ProofSkeletonInstance {
         }
     }
 
-    pub fn transcript_elements_monomial_coefficients(&'_ self) -> &'_ [u32] {
+    fn transcript_elements_monomial_coefficients(&'_ self) -> &'_ [u32] {
         unsafe {
-            let start = (self as *const Self).cast::<u32>().add(
-                offset_of!(ProofSkeletonInstance, monomial_coeffs) / core::mem::size_of::<u32>(),
-            );
-            let len =
-                field_size!(ProofSkeletonInstance::monomial_coeffs) / core::mem::size_of::<u32>();
+            let start = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, monomial_coeffs) / core::mem::size_of::<u32>());
+            let len = field_size!(Self::monomial_coeffs) / core::mem::size_of::<u32>();
             core::slice::from_raw_parts(start, len)
         }
     }
 }
 
-impl QueryValuesInstance {
+impl<S> QueryValuesInstanceExt<S> for QueryValuesInstance<S>
+where
+    S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
+    [(); Geometry::<S>::TOTAL_FRI_ORACLES_PATHS_LENGTH]:,
+    [(); Geometry::<S>::TOTAL_FRI_LEAFS_SIZES]:,
+    [(); Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES]:,
+    [(); Geometry::<S>::LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET]:,
+    [(); Geometry::<S>::NUM_QUERY_VALUES]:,
+{
+    const NUM_QUERY_VALUES: usize = Geometry::<S>::NUM_QUERY_VALUES;
+
+    /// Offsets of each query word from the previous one.
+    /// `BASE_CIRCUIT_QUERY_VALUES_OFFSETS[0]` points from `query_index` to `setup_leaf`.
+    const BASE_CIRCUIT_QUERY_VALUES_OFFSETS: [usize; Geometry::<S>::NUM_QUERY_VALUES] =
+        base_circuit_query_values_offsets::<S>();
+
     #[inline(never)]
-    pub unsafe fn fill<I: NonDeterminismSource, V: LeafInclusionVerifier>(
+    unsafe fn fill<I: NonDeterminismSource, V: LeafInclusionVerifier>(
         this: *mut Self,
-        proof_skeleton: &ProofSkeletonInstance,
+        proof_skeleton: &ProofSkeletonInstance<S>,
         hasher: &mut V,
     ) {
         let dst = this.cast::<u32>();
@@ -441,8 +520,8 @@ impl QueryValuesInstance {
 
         let mut i = 0;
         // leaf values are field elements
-        while i < NUM_QUERIES {
-            dst.add(BASE_CIRCUIT_QUERY_VALUES_OFFSETS[i])
+        while i < Self::NUM_QUERY_VALUES {
+            dst.add(Self::BASE_CIRCUIT_QUERY_VALUES_OFFSETS[i])
                 .write(I::read_reduced_field_element(modulus));
             i += 1;
         }
@@ -515,7 +594,7 @@ impl QueryValuesInstance {
         let mut fri_tree_index = tree_index;
         let mut fri_path_length = DEFAULT_MERKLE_PATH_LENGTH;
         let mut fri_leaf_start = this.as_ref_unchecked().fri_oracles_leafs.as_ptr();
-        for fri_step in 0..NUM_FRI_STEPS_WITH_ORACLES {
+        for fri_step in 0..Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES {
             let caps = &proof_skeleton.fri_intermediate_oracles[fri_step];
             fri_tree_index >>= FRI_FOLDING_SCHEDULE[fri_step];
             fri_path_length -= FRI_FOLDING_SCHEDULE[fri_step];
@@ -533,9 +612,9 @@ impl QueryValuesInstance {
         }
     }
 
-    pub unsafe fn fill_array<I: NonDeterminismSource, V: LeafInclusionVerifier, const N: usize>(
+    unsafe fn fill_array<I: NonDeterminismSource, V: LeafInclusionVerifier, const N: usize>(
         dst: *mut [Self; N],
-        proof_skeleton: &ProofSkeletonInstance,
+        proof_skeleton: &ProofSkeletonInstance<S>,
         hasher: &mut V,
     ) {
         let dst = dst.cast::<Self>();
