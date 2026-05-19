@@ -506,6 +506,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             total_width: graph.base_layer_memory.len(),
             teardown_sets: Vec::new(),
             decoder_input: None,
+            inits_and_teardowns_word_bits: None,
         };
 
         let multiplicities_columns_for_range_check_16 =

@@ -38,16 +38,10 @@ compile_error!(
     "one security level must be selected: enable either `security_80` or `security_100`"
 );
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum SecurityLevel {
-    Security80,
-    Security100,
-}
-
 #[cfg(feature = "security_80")]
-pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security80;
+pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Sec80;
 #[cfg(feature = "security_100")]
-pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security100;
+pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Sec100;
 
 #[cfg(feature = "security_80")]
 const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 1;

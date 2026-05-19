@@ -63,6 +63,8 @@ pub struct GKRMemoryLayout {
     pub indirect_access_variable_offsets: Vec<usize>,
     pub teardown_sets: Vec<([GKRAddress; 2], [GKRAddress; 2])>,
     pub total_width: usize,
+    #[serde(default)]
+    pub inits_and_teardowns_word_bits: Option<u32>,
 }
 
 #[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]

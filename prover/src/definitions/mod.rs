@@ -16,9 +16,33 @@ mod leaf_inclusion_verifier;
 mod optimal_folding;
 pub mod sumcheck_kernel;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct FinalRegisterValue {
+    pub value: u32,
+    pub last_access_timestamp: TimestampScalar,
+}
+
 pub const DEFAULT_LDE_FACTOR: usize = 2;
 pub const DEFAULT_CAP_SIZE: usize = 16;
 pub const DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2: usize = 4;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(usize)]
+pub enum SecurityLevel {
+    Sec80 = 0,
+    Sec100 = 1,
+}
+
+impl SecurityLevel {
+    pub const ALL: &'static [SecurityLevel] = &[SecurityLevel::Sec80, SecurityLevel::Sec100];
+
+    pub fn dir_suffix(self) -> &'static str {
+        match self {
+            SecurityLevel::Sec80 => "sec_80",
+            SecurityLevel::Sec100 => "sec_100",
+        }
+    }
+}
 
 use cs::definitions::gkr::AddressSpaceType;
 
@@ -159,7 +183,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
 }
 
 /// (value, timestamp) for registers
-pub fn produce_initial_permutation_product_contribution<
+pub fn produce_initial_permutation_product_separate_contributions<
     F: PrimeField,
     E: FieldExtension<F> + Field,
 >(
@@ -169,7 +193,7 @@ pub fn produce_initial_permutation_product_contribution<
     final_pc: u32,
     final_timestamp: (u32, u32),
     external_challenges: &GKRExternalChallenges<F, E>,
-) -> E {
+) -> (E, E) {
     let mut write_set_contribution = E::ONE;
     // all registers are write 0 at timestamp 0
     for reg_idx in 0..NUM_REGISTERS {
@@ -253,6 +277,31 @@ pub fn produce_initial_permutation_product_contribution<
         contribution.add_assign(&external_challenges.permutation_argument_additive_part);
         dst.mul_assign(&contribution);
     }
+
+    (read_set_contribution, write_set_contribution)
+}
+
+/// (value, timestamp) for registers
+pub fn produce_initial_permutation_product_contribution<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    register_final_data: &[(u32, (u32, u32)); NUM_REGISTERS],
+    initial_pc: u32,
+    initial_timestamp: (u32, u32),
+    final_pc: u32,
+    final_timestamp: (u32, u32),
+    external_challenges: &GKRExternalChallenges<F, E>,
+) -> E {
+    let (read_set_contribution, write_set_contribution) =
+        produce_initial_permutation_product_separate_contributions(
+            register_final_data,
+            initial_pc,
+            initial_timestamp,
+            final_pc,
+            final_timestamp,
+            external_challenges,
+        );
 
     let mut result = write_set_contribution;
     result.mul_assign(&read_set_contribution.inverse().unwrap());

@@ -558,8 +558,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(super) fn register(&mut self, kernel: KernelVariant<F, E>) {
         // Kernels can have a bug in them, place to debug
         match kernel {
-            // KernelVariant::LookupExtensionMinusMultiplicityByExtension(..) if self.layer == 0 => {}
-            // KernelVariant::MaterializeVectorLookupInput(..) if self.layer == 0 => {}
+            // KernelVariant::LookupVectorPair(..) if self.layer == 1 => {}
+            // KernelVariant::AggregateLookupPair(..) if self.layer == 1 => {}
+            // KernelVariant::EnforceSingleMaxQuadraticConstraint(..) if self.layer == 1 => {}
             // KernelVariant::LookupUnbalancedWithExtensionWithoutCaches(..) => {}
             _ => self.kernels.push(kernel),
         }
@@ -567,25 +568,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
     pub(super) fn compute_combined_claim(&self, output_claims: &BTreeMap<GKRAddress, E>) -> E {
         self.kernels.iter().fold(E::ZERO, |mut acc, kernel| {
-            // if let KernelVariant::LookupVectorPairWithoutCaches(.., challenges, addrs) = kernel {
-            //     if self.layer == 0 {
-            //         let mut res = E::ZERO;
-            //         for (challenge, addr) in challenges.iter().zip(addrs.iter()).take(1) {
-            //             if let Some(claim) = output_claims.get(addr) {
-            //                 let mut weighted = *claim;
-            //                 weighted.mul_assign(challenge);
-            //                 res.add_assign(&weighted);
-            //             } else {
-            //                 panic!("Claim missing for {:?} in kernel {:?}", addr, kernel);
-            //             }
-            //         }
-            //         acc.add_assign(&res);
-            //     } else {
-            //         acc.add_assign(&kernel.compute_output_claim(output_claims));
-            //     }
-            // } else {
             acc.add_assign(&kernel.compute_output_claim(output_claims));
-            // }
             acc
         })
     }

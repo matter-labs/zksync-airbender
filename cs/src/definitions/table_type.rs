@@ -42,7 +42,7 @@ pub enum TableType {
     RangeCheck12,
     RangeCheck13,
     U16SelectByteAndGetByteSign,
-    ExtendLoadedValue,
+    BlakeGFunctionControlLookup,
     StoreByteSourceContribution,
     StoreByteExistingContribution,
     ConditionalJmpBranchSlt,

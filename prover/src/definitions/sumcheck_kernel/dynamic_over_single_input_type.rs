@@ -18,6 +18,11 @@ pub trait SingleInputTypeBatchSumcheckEvaluationKernel<
     fn num_challenges(&self) -> usize {
         OUT
     }
+    fn evaluate_forward<SB: EvaluationFormStorage<F, E, BaseFieldRepresentation<F>>>(
+        &self,
+        index: usize,
+        sources: &[SB],
+    ) -> [F; OUT];
     fn evaluate_first_round<
         R0: EvaluationRepresentation<F, E>,
         S0: EvaluationFormStorage<F, E, R0>,

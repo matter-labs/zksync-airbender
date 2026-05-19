@@ -683,7 +683,7 @@ impl<F: PrimeField> GKRCompiler<F> {
         } else {
             // put all variables into base layer
             for var in all_variables_to_place.clone().iter() {
-                let _ = graph.layout_witness_subtree_multiple_variables(
+                let [_place] = graph.layout_witness_subtree_multiple_variables(
                     [*var],
                     &mut all_variables_to_place,
                     &layers_mapping,
@@ -920,6 +920,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             total_width: graph.base_layer_memory.len(),
             teardown_sets: Vec::new(),
             decoder_input: Some(decoder_input),
+            inits_and_teardowns_word_bits: None,
         };
 
         let multiplicities_columns_for_range_check_16 =
@@ -1015,6 +1016,8 @@ impl<F: PrimeField> GKRCompiler<F> {
                 }
             }
         }
+
+        // dbg!(&graph.base_layer_witness);
 
         GKRCircuitArtifact {
             trace_len,

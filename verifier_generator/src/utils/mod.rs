@@ -1,15 +1,11 @@
-use proc_macro2::TokenStream;
-use quote::quote;
-
 use std::collections::BTreeSet;
 
 use prover::cs::definitions::gkr::RamWordRepresentation;
-use prover::cs::definitions::{GKRAddress, VirtualSetupPoly};
+use prover::cs::definitions::GKRAddress;
 use prover::cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
     GKRLayerDescription, NoFieldGKRRelation, NoFieldSpecialMemoryContributionRelation,
 };
-use prover::field::PrimeField;
 
 pub mod sumcheck;
 pub mod transcript;
@@ -18,54 +14,10 @@ pub use verifier_common::{
     BATCHING_CHALLENGE_EXTRA, DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS,
 };
 
-pub fn coeff_to_internal_repr<F: PrimeField>(coeff: u32) -> u32 {
-    F::from_u32_with_reduction(coeff).as_u32_raw_repr_reduced()
-}
-
 pub fn addr_to_idx(addr: &GKRAddress, sorted: &[GKRAddress]) -> usize {
     sorted
         .binary_search(addr)
         .unwrap_or_else(|_| panic!("address {:?} not found in sorted list", addr))
-}
-
-pub fn transform_gkr_address(addr: &GKRAddress) -> TokenStream {
-    match addr {
-        GKRAddress::BaseLayerWitness(offset) => {
-            quote! { GKRAddress::BaseLayerWitness(#offset) }
-        }
-        GKRAddress::BaseLayerMemory(offset) => {
-            quote! { GKRAddress::BaseLayerMemory(#offset) }
-        }
-        GKRAddress::InnerLayer { layer, offset } => {
-            quote! { GKRAddress::InnerLayer { layer: #layer, offset: #offset } }
-        }
-        GKRAddress::Setup(offset) => {
-            quote! { GKRAddress::Setup(#offset) }
-        }
-        GKRAddress::ScratchSpace(offset) => {
-            quote! { GKRAddress::ScratchSpace(#offset) }
-        }
-        GKRAddress::Cached { layer, offset } => {
-            quote! { GKRAddress::Cached { layer: #layer, offset: #offset } }
-        }
-        GKRAddress::VirtualSetup(poly) => {
-            let variant = match poly {
-                VirtualSetupPoly::RangeCheck16Bits => {
-                    quote! { VirtualSetupPoly::RangeCheck16Bits }
-                }
-                VirtualSetupPoly::RangeCheckTimestamp => {
-                    quote! { VirtualSetupPoly::RangeCheckTimestamp }
-                }
-                VirtualSetupPoly::InitsAndTeardownsLow => {
-                    quote! { VirtualSetupPoly::InitsAndTeardownsLow }
-                }
-                VirtualSetupPoly::InitsAndTeardownsHigh => {
-                    quote! { VirtualSetupPoly::InitsAndTeardownsHigh }
-                }
-            };
-            quote! { GKRAddress::VirtualSetup(#variant) }
-        }
-    }
 }
 
 fn collect_mem_expr_addrs(
@@ -347,21 +299,4 @@ pub fn collect_extra_addrs_from_cached_relations(
         }
     }
     extra.into_iter().collect()
-}
-
-pub fn compute_max_pow(layer: &GKRLayerDescription) -> usize {
-    use NoFieldGKRRelation as R;
-    for gate in layer
-        .gates
-        .iter()
-        .chain(layer.gates_with_external_connections.iter())
-    {
-        if let R::EnforceConstraintsMaxQuadratic { .. } = &gate.enforced_relation {
-            // TODO: remove once all circuits use individual EnforceSingleMaxQuadraticConstraint gates
-            unimplemented!(
-                "EnforceConstraintsMaxQuadratic is not supported by the verifier generator"
-            );
-        }
-    }
-    0
 }

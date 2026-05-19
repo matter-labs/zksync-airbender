@@ -1,6 +1,5 @@
-use crate::definitions::DIGEST_SIZE_U32_WORDS;
-
 use super::*;
+use crate::definitions::DIGEST_SIZE_U32_WORDS;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(bound = "F: serde::Serialize + serde::de::DeserializeOwned")]

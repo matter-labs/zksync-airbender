@@ -1,16 +1,22 @@
 mod common;
 
+use common::SecurityLevel;
 use field::baby_bear::base::BabyBearField;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::*;
 use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 use riscv_transpiler::vm::*;
 
-fn run_transpiler(name: &str) {
-    let (nds, external_challenges) = common::load_nds(name);
-    println!("{}: oracle data length: {} u32 words", name, nds.len());
+fn run_transpiler(name: &str, level: SecurityLevel) {
+    let (nds, external_challenges) = common::load_nds(name, level);
+    println!(
+        "{} {:?}: oracle data length: {} u32 words",
+        name,
+        level,
+        nds.len()
+    );
 
-    let (bin_path, text_path, elf_path) = common::binary_paths(name);
+    let (bin_path, text_path, elf_path) = common::binary_paths(name, level);
 
     let binary = common::load_binary_section(&bin_path);
     let text_section = common::load_binary_section(&text_path);
@@ -37,9 +43,11 @@ fn run_transpiler(name: &str) {
     let mut non_determinism = QuasiUARTSource::new_with_reads(oracle_responses);
 
     let symbols_path = std::path::PathBuf::from(&elf_path);
-    let output_path = std::env::current_dir()
-        .unwrap()
-        .join(format!("gkr_flamegraph_{}.svg", name));
+    let output_path = std::env::current_dir().unwrap().join(format!(
+        "gkr_flamegraph_{}_{}.svg",
+        name,
+        level.dir_suffix()
+    ));
     let mut fg_config =
         riscv_transpiler::vm::FlamegraphConfig::new(symbols_path, output_path.clone());
     fg_config.frequency_recip = 1;
@@ -111,14 +119,23 @@ fn run_transpiler(name: &str) {
 }
 
 macro_rules! generate_transpiler_tests {
-    ($($name:ident: $schedule:ident: $layout_suffix:expr),* $(,)?) => {
-        $(
-            #[test]
-            #[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
-            fn $name() {
-                run_transpiler(stringify!($name));
-            }
-        )*
+    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
+        paste::paste! {
+            $(
+                #[cfg(feature = "security_80")]
+                #[test]
+                #[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
+                fn [<$name _sec_80>]() {
+                    run_transpiler(stringify!($name), SecurityLevel::Sec80);
+                }
+                #[cfg(feature = "security_100")]
+                #[test]
+                #[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
+                fn [<$name _sec_100>]() {
+                    run_transpiler(stringify!($name), SecurityLevel::Sec100);
+                }
+            )*
+        }
     };
 }
 verifier_common::gkr_circuits!(generate_transpiler_tests);

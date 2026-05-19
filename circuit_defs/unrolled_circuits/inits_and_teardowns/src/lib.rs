@@ -12,6 +12,7 @@ use prover::*;
 pub const FAMILY_IDX: u8 = INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX;
 pub const TRACE_LEN_LOG2: u32 = 24;
 pub const NUM_INIT_AND_TEARDOWN_SETS: usize = 16;
+pub const WORD_BITS: u32 = 2;
 
 fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();
@@ -19,7 +20,10 @@ fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
 }
 
 pub fn get_inits_and_teardowns_circuit<F: PrimeField>() -> GKRCircuitArtifact<F> {
-    compile_inits_and_teardowns_circuit::<F, 2>(NUM_INIT_AND_TEARDOWN_SETS, TRACE_LEN_LOG2 as usize)
+    compile_inits_and_teardowns_circuit::<F, WORD_BITS>(
+        NUM_INIT_AND_TEARDOWN_SETS,
+        TRACE_LEN_LOG2 as usize,
+    )
 }
 
 pub fn get_table_driver<F: PrimeField>() -> prover::cs::tables::TableDriver<F> {

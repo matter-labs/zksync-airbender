@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::gkr::{OracleInfo, OracleType};
 use crate::field_wrapper::FieldWrapper;
+use crate::gkr::{OracleInfo, OracleType};
 use prover::gkr::prover::WhirSchedule;
 
 /// Compute draw_words for a given number of queries and query index bits.
@@ -240,8 +240,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 {
                     let mut col_idx = 0;
                     while col_idx < TOTAL_ORACLE_COLS {
-                        let claim_idx = *INITIAL_WHIR_CLAIM_INDICES.get_unchecked(col_idx);
-                        let eval: #quartic_struct = *base_layer_claims.get_unchecked(claim_idx);
+                        let eval: #quartic_struct = *base_layer_claims.get_unchecked(col_idx);
                         let mut term = *gamma_powers.get_unchecked(col_idx);
                         #batch_mul_eval;
                         #add_claim_eval;

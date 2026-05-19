@@ -92,14 +92,14 @@ impl Blake2RoundFunctionEvaluator {
             if REDUCED_ROUNDS {
                 unsafe {
                     blake_g_function_csr_trigger_delegation_reduced_rounds(
-                        self.state.as_mut_ptr(),
+                        self.extended_state.as_mut_ptr(),
                         input_buffer.as_ptr(),
                     );
                 }
             } else {
                 unsafe {
                     blake_g_function_csr_trigger_delegation_full_rounds(
-                        self.state.as_mut_ptr(),
+                        self.extended_state.as_mut_ptr(),
                         input_buffer.as_ptr(),
                     );
                 }
@@ -156,14 +156,14 @@ impl Blake2RoundFunctionEvaluator {
             if REDUCED_ROUNDS {
                 unsafe {
                     blake_g_function_csr_trigger_delegation_reduced_rounds(
-                        self.state.as_mut_ptr(),
+                        self.extended_state.as_mut_ptr(),
                         self.input_buffer.as_ptr(),
                     );
                 }
             } else {
                 unsafe {
                     blake_g_function_csr_trigger_delegation_full_rounds(
-                        self.state.as_mut_ptr(),
+                        self.extended_state.as_mut_ptr(),
                         self.input_buffer.as_ptr(),
                     );
                 }
@@ -219,14 +219,14 @@ impl Blake2RoundFunctionEvaluator {
             if REDUCED_ROUNDS {
                 unsafe {
                     blake_g_function_csr_trigger_delegation_reduced_rounds(
-                        self.state.as_mut_ptr(),
+                        self.extended_state.as_mut_ptr(),
                         self.input_buffer.as_ptr().cast(),
                     );
                 }
             } else {
                 unsafe {
                     blake_g_function_csr_trigger_delegation_full_rounds(
-                        self.state.as_mut_ptr(),
+                        self.extended_state.as_mut_ptr(),
                         self.input_buffer.as_ptr().cast(),
                     );
                 }

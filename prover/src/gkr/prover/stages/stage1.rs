@@ -485,7 +485,7 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part(
+    let mem: ColumnMajorBaseOracleForLDE<F, T> = commit_trace_part(
         &mem_inputs,
         twiddles,
         lde_factor,
@@ -500,7 +500,7 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let wit = commit_trace_part(
+    let wit: ColumnMajorBaseOracleForLDE<F, T> = commit_trace_part(
         &wit_inputs,
         twiddles,
         lde_factor,

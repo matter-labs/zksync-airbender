@@ -68,6 +68,7 @@ use crate::gkr::prover::stages::stage1::{
 use crate::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
 };
+use crate::gkr::prover::WhirSchedule;
 use crate::gkr::sumcheck::eq_poly::{make_domain_eq_poly_in_full, make_eq_poly_in_full};
 use crate::gkr::sumcheck::*;
 use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
@@ -85,8 +86,12 @@ use transcript::Seed;
 use worker::{IterableWithGeometry, Worker};
 
 pub mod hypercube_to_monomial;
+pub mod proximity_testing_modes;
 pub mod queries;
 pub mod whir_proof;
+
+#[cfg(test)]
+mod monomial_basis_self_check;
 
 pub use self::queries::*;
 pub use self::whir_proof::*;
@@ -318,6 +323,14 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
                     result.push(value);
                 }
             }
+            32 => {
+                let offsets = offsets_for_leaf_construction::<32>(trace_len);
+                for offset in offsets.iter() {
+                    let i = *offset + index;
+                    let value = self.values_normal_order.column[i];
+                    result.push(value);
+                }
+            }
             a @ _ => {
                 panic!("unsupported: {} values per leaf", a);
             }
@@ -382,12 +395,8 @@ pub fn whir_fold<
     setup_oracle: &ColumnMajorBaseOracleForLDE<F, T>,
     setup_polys_claims: Vec<E>,
     original_evaluation_point: Vec<E>,
-    original_lde_factor: usize,
     batching_challenge: E,
-    whir_steps_schedule: Vec<usize>,
-    whir_queries_schedule: Vec<usize>,
-    whir_steps_lde_factors: Vec<usize>,
-    whir_pow_schedule: Vec<u32>,
+    whir_schedule: &WhirSchedule,
     twiddles: &Twiddles<F, Global>,
     mut transcript_seed: Seed,
     tree_cap_size: usize,
@@ -456,23 +465,33 @@ where
         memory_commitment,
         setup_commitment,
         sumcheck_polys: vec![],
-        intermediate_whir_oracles: Vec::with_capacity(whir_steps_lde_factors.len()),
+        intermediate_whir_oracles: Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len()),
         ood_samples: vec![],
         pow_nonces: vec![],
         final_monomials: vec![],
+        whir_schedule: whir_schedule.clone(),
     };
 
     let mut final_poly_log2 = trace_len_log2;
-    for el in whir_steps_schedule.iter() {
+    for el in whir_schedule.whir_steps_schedule.iter() {
         assert!(*el <= final_poly_log2);
         final_poly_log2 -= *el;
     }
 
-    assert!(original_lde_factor.is_power_of_two());
-    let num_whir_steps = whir_steps_lde_factors.len();
-    assert_eq!(whir_steps_schedule.len(), whir_steps_lde_factors.len() + 1);
-    assert_eq!(whir_steps_schedule.len(), whir_queries_schedule.len());
-    assert_eq!(whir_steps_schedule.len(), whir_pow_schedule.len());
+    assert!(whir_schedule.base_lde_factor.is_power_of_two());
+    let num_whir_steps = whir_schedule.whir_steps_lde_factors.len();
+    assert_eq!(
+        whir_schedule.whir_steps_schedule.len(),
+        whir_schedule.whir_steps_lde_factors.len() + 1
+    );
+    assert_eq!(
+        whir_schedule.whir_steps_schedule.len(),
+        whir_schedule.whir_queries_schedule.len()
+    );
+    assert_eq!(
+        whir_schedule.whir_steps_schedule.len(),
+        whir_schedule.whir_pow_schedule.len()
+    );
 
     let mut rs_oracle;
 
@@ -576,13 +595,13 @@ where
 
     // our initial sumcheck claim is `batched_claim` = \sum_{hypercube} eq(x, `original_evaluation_point`) batched_poly(x)
 
-    let num_rounds = whir_steps_schedule.len();
+    let num_rounds = whir_schedule.whir_steps_schedule.len();
     assert!(num_rounds >= 2);
 
-    let mut whir_steps_schedule = whir_steps_schedule.into_iter().peekable();
-    let mut whir_queries_schedule = whir_queries_schedule.into_iter();
-    let mut whir_steps_lde_factors = whir_steps_lde_factors.into_iter();
-    let mut whir_pow_schedule = whir_pow_schedule.into_iter();
+    let mut whir_steps_schedule = whir_schedule.whir_steps_schedule.iter().peekable();
+    let mut whir_queries_schedule = whir_schedule.whir_queries_schedule.iter();
+    let mut whir_steps_lde_factors = whir_schedule.whir_steps_lde_factors.iter();
+    let mut whir_pow_schedule = whir_schedule.whir_pow_schedule.iter();
 
     // as we will eventually continue to mix-in additional equality polys into sumcheck kernel,
     // so we can NOT easily use the same trick with splitting out eq poly highest coordinate in sumcheck.
@@ -614,13 +633,14 @@ where
 
     // initial round where we fold and query existing oracles
     {
-        let num_initial_folding_rounds = whir_steps_schedule.next().unwrap();
-        let num_queries = whir_queries_schedule.next().unwrap();
-        let pow_bits = whir_pow_schedule.next().unwrap();
+        let num_initial_folding_rounds = *whir_steps_schedule.next().unwrap();
+        let num_queries = *whir_queries_schedule.next().unwrap();
+        let pow_bits = *whir_pow_schedule.next().unwrap();
         println!("Initial round: fold by {}", 1 << num_initial_folding_rounds);
 
         assert!(num_initial_folding_rounds <= poly_size_log2);
-        let rs_domain_log2 = trace_len_log2 + (original_lde_factor.trailing_zeros() as usize);
+        let rs_domain_log2 =
+            trace_len_log2 + (whir_schedule.base_lde_factor.trailing_zeros() as usize);
         let query_domain_log2 = rs_domain_log2 - num_initial_folding_rounds;
 
         // Even though we can do all the same trick as in our GKR kernels and only evaluate sum of half-size,
@@ -714,7 +734,7 @@ where
 
         // compute RS for folded one (we will NOT query it this round)
         {
-            let lde_factor = whir_steps_lde_factors.next().unwrap();
+            let lde_factor = *whir_steps_lde_factors.next().unwrap();
             let rs = compute_column_major_lde_from_monomial_form(
                 &sumchecked_poly_monomial_form,
                 twiddles,
@@ -938,9 +958,9 @@ where
     // - update claim and eq poly
     for internal_round in 0..num_internal_whir_steps {
         // commit
-        let num_folding_steps = whir_steps_schedule.next().unwrap();
-        let num_queries = whir_queries_schedule.next().unwrap();
-        let pow_bits = whir_pow_schedule.next().unwrap();
+        let num_folding_steps = *whir_steps_schedule.next().unwrap();
+        let num_queries = *whir_queries_schedule.next().unwrap();
+        let pow_bits = *whir_pow_schedule.next().unwrap();
         assert!(num_folding_steps <= poly_size_log2);
 
         println!(
@@ -1032,7 +1052,7 @@ where
         folding_challenges.push(folding_challenges_in_round.clone());
 
         let rs_oracle_to_query = {
-            let lde_factor = whir_steps_lde_factors.next().unwrap();
+            let lde_factor = *whir_steps_lde_factors.next().unwrap();
             let rs = compute_column_major_lde_from_monomial_form(
                 &sumchecked_poly_monomial_form,
                 twiddles,
@@ -1212,9 +1232,9 @@ where
     // and final step is almost the same as the first one - we can fold few times, output evaluation form, and draw final query indexes,
     // check consistency between them, and perform final explicit sumcheck
     {
-        let num_folding_steps = whir_steps_schedule.next().unwrap();
-        let num_queries = whir_queries_schedule.next().unwrap();
-        let pow_bits = whir_pow_schedule.next().unwrap();
+        let num_folding_steps = *whir_steps_schedule.next().unwrap();
+        let num_queries = *whir_queries_schedule.next().unwrap();
+        let pow_bits = *whir_pow_schedule.next().unwrap();
         assert!(num_folding_steps <= poly_size_log2);
 
         println!("Final round: fold by {}", 1 << num_folding_steps);
@@ -2498,6 +2518,15 @@ mod test {
 
         let [a, b, c] = original_claims.try_into().unwrap();
 
+        let whir_schedule = WhirSchedule {
+            base_lde_factor: 2,
+            cap_size: 1,
+            whir_steps_schedule: vec![1, 2, 3],
+            whir_queries_schedule: vec![4, 4, 4],
+            whir_steps_lde_factors: vec![8, 16],
+            whir_pow_schedule: vec![10, 10, 10],
+        };
+
         let proof = whir_fold(
             mem,
             a,
@@ -2506,12 +2535,8 @@ mod test {
             &setup,
             c,
             original_evaluation_point,
-            2,
             E::from_base(F::from_u32_with_reduction(7)),
-            vec![1, 2, 3],
-            vec![4, 4, 4],
-            vec![8, 16],
-            vec![10, 10, 10],
+            &whir_schedule,
             &twiddles,
             Seed::default(),
             1,

@@ -1,6 +1,8 @@
 // NOTE: here we need struct definition for external crates, but we will panic in implementations instead
 use super::*;
 use crate::aligned_array::AlignedArray64;
+#[cfg(feature = "blake2_g_function")]
+use crate::aligned_array::A64;
 
 #[cfg(all(
     target_arch = "riscv32",
@@ -31,6 +33,9 @@ mod mixing_function_delegation_impl;
 #[repr(C, align(128))]
 pub struct Blake2RoundFunctionEvaluator {
     pub state: [u32; BLAKE2S_STATE_WIDTH_IN_U32_WORDS], // represents current state
+    #[cfg(feature = "blake2_g_function")]
+    _aligner: A64,
+
     pub extended_state: [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS], // represents scratch space for evaluation
     // there is no input buffer, and we will use registers to actually pass control flow flags
     // there will be special buffer for witness to write into, that

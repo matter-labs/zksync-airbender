@@ -76,16 +76,6 @@ pub(crate) fn increment_family_counter<C: Counters, const FAMILY: u8>(state: &mu
 }
 
 #[inline(always)]
-pub(crate) fn increment_family_counter_by<C: Counters, const FAMILY: u8>(
-    state: &mut State<C>,
-    by: usize,
-) {
-    state
-        .counters
-        .log_multiple_circuit_family_calls::<FAMILY>(by);
-}
-
-#[inline(always)]
 pub(crate) fn illegal<C: Counters, S: Snapshotter<C>, R: RAM>(
     state: &mut State<C>,
     _ram: &mut R,
