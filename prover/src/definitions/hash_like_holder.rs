@@ -57,7 +57,10 @@ impl<const N: usize> MerkleTreeCap<N> {
     }
 
     #[inline(always)]
-    pub unsafe fn read_caps_into<I: NonDeterminismSource, const M: usize>(dst: *mut [Self; M], nd_source: &mut I) {
+    pub unsafe fn read_caps_into<I: NonDeterminismSource, const M: usize>(
+        dst: *mut [Self; M],
+        nd_source: &mut I,
+    ) {
         let mut ptr: *mut u32 = dst.cast();
         let end = ptr.add(DIGEST_SIZE_U32_WORDS * N * M);
         while ptr < end {

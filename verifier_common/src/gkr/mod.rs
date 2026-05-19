@@ -172,7 +172,7 @@ pub fn make_initial_transcript<
     const PADDING_WORDS: usize,
 >(
     external_challenges: &prover::definitions::GKRExternalChallenges<F, E>,
-    nd_source: &mut I
+    nd_source: &mut I,
 ) -> (
     InitialGKRTranscript<
         E,

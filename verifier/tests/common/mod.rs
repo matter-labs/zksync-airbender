@@ -257,8 +257,7 @@ pub fn verify_nds(
                 let mut it = nds.into_iter();
                 // set_iterator(nds.into_iter());
                 with_circuit!(name, level, |m| {
-                    m::verify::<_, DebugErrorCreator>(external_challenges, &mut it)
-                        .map(|_| ())
+                    m::verify::<_, DebugErrorCreator>(external_challenges, &mut it).map(|_| ())
                 })
             })
             .expect("failed to spawn thread");

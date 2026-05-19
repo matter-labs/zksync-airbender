@@ -104,7 +104,9 @@ pub fn ext_from_nds<
     F: field::PrimeField,
     E: field::FieldExtension<F>,
     I: non_determinism_source::NonDeterminismSource,
->(nd_source: &mut I) -> E {
+>(
+    nd_source: &mut I,
+) -> E {
     // layout of E should be [F; E::DEGREE]
     debug_assert_eq!(
         core::mem::size_of::<E>(),
