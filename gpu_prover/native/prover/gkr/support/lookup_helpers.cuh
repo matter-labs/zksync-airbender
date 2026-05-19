@@ -494,7 +494,7 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched_compact(const gkr_dim_re
     total1 = E::add(total1, c1);
   }
 
-  const E eq = gkr_compute_eq_inline<E>(batch.eq_high_groups, batch.eq_layout, batch.eq_low_buffer, gid);
+  const E eq = gkr_compute_eq_inline<E>(batch.eq_low, batch.eq_sizes, gid);
   store<E, st_modifier::cs>(batch.contributions, E::mul(total0, eq), gid);
   store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
 }
@@ -560,7 +560,7 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_round1_batched_compact_inner(const gkr_
     total1 = E::add(total1, c1);
   }
 
-  const E eq = gkr_compute_eq_inline<E>(batch.eq_high_groups, batch.eq_layout, batch.eq_low_buffer, gid);
+  const E eq = gkr_compute_eq_inline<E>(batch.eq_low, batch.eq_sizes, gid);
   store<E, st_modifier::cs>(batch.contributions, E::mul(total0, eq), gid);
   store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
 }
@@ -630,7 +630,7 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched_compact_inner(cons
     total1 = E::add(total1, c1);
   }
 
-  const E eq = gkr_compute_eq_inline<E>(batch.eq_high_groups, batch.eq_layout, batch.eq_low_buffer, gid);
+  const E eq = gkr_compute_eq_inline<E>(batch.eq_low, batch.eq_sizes, gid);
   store<E, st_modifier::cs>(batch.contributions, E::mul(total0, eq), gid);
   store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
 }

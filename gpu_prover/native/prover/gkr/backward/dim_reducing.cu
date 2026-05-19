@@ -44,15 +44,26 @@ EXTERN __global__ void ab_gkr_dim_reducing_build_eq_group_tables_from_point_e4_k
   gkr_build_eq_group_tables_from_point(claim_point, challenge_offset, challenge_count, eq_group_tables);
 }
 
-// Builds the factored eq representation directly from a claim point. The
-// inner helper stores each group at `dst + blockIdx.x * GKR_EQ_GROUP_TABLE_LEN`,
-// so for the low (last) group we offset the base pointer backwards by
-// `blockIdx.x * GKR_EQ_GROUP_TABLE_LEN` to land the store at `low_buffer`.
-// High groups 0..(G-2) go to `high_slab`; the last group (G-1) goes to
-// `low_buffer`. Works for both backward layer kinds (main / dim-reducing)
-// since storage is supplied by the caller as plain device pointers.
+// Builds the factored eq representation directly from a claim point into the
+// strict 3-slot layout: high slabs (slots 0..GKR_EQ_HIGH_SLOTS-1) live in the
+// `__constant__` symbol via `high_slab` (the device pointer obtained from
+// `cudaGetSymbolAddress`), and the lane-varying low slab in regular global
+// memory via `low_buffer`. Group 0..(G-2) populate slot 0..(G-2); the last
+// group (G-1) populates `low_buffer` via the negative-offset trick (the inner
+// helper stores at `dst + blockIdx.x * stride`).
+//
+// To support the strict 3-slot read in `gkr_compute_eq_inline` for small
+// `challenge_count` (where some high slabs are not active), thread 0 of
+// every block writes `e4::ONE()` to its slot's [0] entry before the group
+// build runs. Active slots overwrite the sentinel with real data; unused
+// slots retain the identity so the inline-eq read returns 1. Launch must
+// be sized `max(groups_count, GKR_EQ_HIGH_SLOTS)` blocks for this to
+// initialize every high slab.
 EXTERN __global__ void ab_gkr_dim_reducing_build_eq_high_low_from_point_e4_kernel(const e4 *claim_point, const unsigned challenge_offset,
                                                                                   const unsigned challenge_count, e4 *high_slab, e4 *low_buffer) {
+  if (blockIdx.x < GKR_EQ_HIGH_SLOTS && threadIdx.x == 0) {
+    high_slab[static_cast<size_t>(blockIdx.x) * GKR_EQ_GROUP_TABLE_LEN] = e4::ONE();
+  }
   const unsigned groups_count = gkr_eq_group_count(challenge_count);
   if (blockIdx.x >= groups_count)
     return;
@@ -109,15 +120,14 @@ EXTERN __global__ void ab_gkr_dim_reducing_continuation_batched_compact_e4_kerne
 }
 
 // Microbench / parity-test kernel: materializes dense `eq_values[gid] =
-// gkr_compute_eq_inline(high_slab, layout, low_buffer, gid)` for gid in
-// 0..acc_size. Used by Rust-side tests to compare the factored representation
-// against the CPU ground truth. Not part of the production hot path.
-EXTERN __global__ void ab_gkr_eq_inline_materialize_for_test_e4_kernel(const e4 *high_slab, const e4 *low_buffer, const gkr_eq_layout_compact layout,
-                                                                       e4 *eq_values, const unsigned acc_size) {
+// gkr_compute_eq_inline(eq_low, sizes, gid)` for gid in 0..acc_size.
+// High slabs are read from the `ab_gkr_eq_high` __constant__ symbol; the
+// caller must have populated it before launching (via the build / fold path).
+EXTERN __global__ void ab_gkr_eq_inline_materialize_for_test_e4_kernel(const e4 *eq_low, const gkr_eq_sizes sizes, e4 *eq_values, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
-  eq_values[gid] = gkr_compute_eq_inline<e4>(high_slab, layout, low_buffer, gid);
+  eq_values[gid] = gkr_compute_eq_inline<e4>(eq_low, sizes, gid);
 }
 
 } // namespace airbender::prover::gkr::backward
