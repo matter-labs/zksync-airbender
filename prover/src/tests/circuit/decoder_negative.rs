@@ -8,7 +8,7 @@
 //!
 //! These tests poke each family's decoder with malformed encodings (wrong
 //! opcode, bad funct3, bad funct7, bad SYSTEM custom-op funct7) and assert that
-//! the decoder leaves the slot empty and produces the default witness data with opcode_family_bits == 0. 
+//! the decoder leaves the slot empty and produces the default witness data with opcode_family_bits == 0.
 //! Both bytecode_preprocessor.rs:53 propagates an Err(()) from define_decoder_subspace.
 
 use super::encoding::{encode_b, encode_i, encode_r, encode_r_system, encode_u};

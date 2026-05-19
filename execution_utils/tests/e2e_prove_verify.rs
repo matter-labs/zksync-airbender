@@ -67,6 +67,7 @@ fn prove_and_verify_with_uart(
         non_determinism,
         ram_bound,
         &worker,
+        verifier_common::SecurityModel::Security80,
     );
 
     println!("[prove] done in {:?}", now.elapsed());
@@ -85,9 +86,14 @@ fn prove_and_verify_with_uart(
     println!("[verify] {}", label);
     let now = std::time::Instant::now();
 
-    let output =
-        verify_unrolled_layer_proof(&program_proof, &program_setup, &compiled_layouts, true)
-            .expect("proof verification failed");
+    let output = verify_unrolled_layer_proof(
+        &program_proof,
+        &program_setup,
+        &compiled_layouts,
+        true,
+        verifier_common::SecurityModel::Security80,
+    )
+    .expect("proof verification failed");
 
     println!("[verify] done in {:?}", now.elapsed());
     println!("[PASS] {}", label);
