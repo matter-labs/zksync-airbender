@@ -257,6 +257,22 @@ template <typename E> DEVICE_FORCEINLINE void gkr_fold_eq_values_in_place(E *eq_
   store<E, st_modifier::cs>(eq_values, E::add(low, high), gid);
 }
 
+// Halves the top high-group slot in place: for each i < new_g_len,
+// high_slab_group_base[i] := high_slab_group_base[i] + high_slab_group_base[i + new_g_len].
+// Single-block launch — the largest fold has GKR_EQ_GROUP_TABLE_LEN / 2 = 128
+// active threads, well under occupancy limits. The caller passes the slab
+// base pointer offset to the slot being folded (i.e. the per-group base, not
+// the global slab base), keeping the kernel pointer-driven and layer-kind
+// agnostic.
+template <typename E> DEVICE_FORCEINLINE void gkr_fold_eq_high_group_in_place(E *high_slab_group_base, const unsigned new_g_len) {
+  const unsigned tid = threadIdx.x;
+  if (tid >= new_g_len)
+    return;
+  const E low = load<E, ld_modifier::cs>(high_slab_group_base, tid);
+  const E high = load<E, ld_modifier::cs>(high_slab_group_base, tid + new_g_len);
+  store<E, st_modifier::cs>(high_slab_group_base, E::add(low, high), tid);
+}
+
 template <typename E>
 DEVICE_FORCEINLINE E gkr_trace_holder_partials_shfl_xor_words(const E value, const int lane_mask, const unsigned mask, const unsigned width) {
   E result;

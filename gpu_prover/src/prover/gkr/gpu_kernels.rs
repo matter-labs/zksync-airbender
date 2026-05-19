@@ -25,8 +25,10 @@ use crate::prover::gkr::backward::compact::{
 use crate::prover::gkr::backward::kernels::{
     ab_gkr_dim_reducing_build_eq_group_tables_from_pairs_e4_kernel,
     ab_gkr_dim_reducing_build_eq_group_tables_from_point_e4_kernel,
+    ab_gkr_dim_reducing_build_eq_high_low_from_point_e4_kernel,
     ab_gkr_dim_reducing_build_eq_values_from_group_tables_e4_kernel,
     ab_gkr_dim_reducing_continuation_batched_compact_e4_kernel,
+    ab_gkr_dim_reducing_fold_eq_high_group_in_place_e4_kernel,
     ab_gkr_dim_reducing_fold_eq_values_e4_kernel,
     ab_gkr_dim_reducing_lookup_continuation_e4_kernel, ab_gkr_dim_reducing_lookup_round0_e4_kernel,
     ab_gkr_dim_reducing_pairwise_continuation_e4_kernel,
@@ -34,16 +36,19 @@ use crate::prover::gkr::backward::kernels::{
     ab_gkr_dim_reducing_round0_batched_compact_e4_kernel,
     ab_gkr_dim_reducing_round1_batched_compact_e4_kernel,
     ab_gkr_dim_reducing_trace_holder_block_partials_e4_kernel,
-    launch_backward_sumcheck_round_update_e4,
+    ab_gkr_eq_inline_materialize_for_test_e4_kernel, launch_backward_sumcheck_round_update_e4,
     GpuDimensionReducingBuildEqGroupTablesFromPairsSignature,
     GpuDimensionReducingBuildEqGroupTablesFromPointSignature,
+    GpuDimensionReducingBuildEqHighLowFromPointSignature,
     GpuDimensionReducingBuildEqValuesFromGroupTablesSignature,
     GpuDimensionReducingContinuationBatchedCompactSignature,
-    GpuDimensionReducingFoldEqValuesSignature, GpuDimensionReducingLookupContinuationSignature,
-    GpuDimensionReducingLookupRound0Signature, GpuDimensionReducingPairwiseContinuationSignature,
-    GpuDimensionReducingPairwiseRound0Signature, GpuDimensionReducingRound0BatchedCompactSignature,
+    GpuDimensionReducingFoldEqHighGroupSignature, GpuDimensionReducingFoldEqValuesSignature,
+    GpuDimensionReducingLookupContinuationSignature, GpuDimensionReducingLookupRound0Signature,
+    GpuDimensionReducingPairwiseContinuationSignature, GpuDimensionReducingPairwiseRound0Signature,
+    GpuDimensionReducingRound0BatchedCompactSignature,
     GpuDimensionReducingRound1BatchedCompactSignature,
     GpuDimensionReducingTraceHolderBlockPartialsSignature,
+    GpuGKREqInlineMaterializeForTestSignature,
 };
 use crate::prover::gkr::forward::kernels::{
     ab_gkr_dim_reducing_forward_tower_lookup_e4_kernel,
@@ -88,15 +93,18 @@ pub(crate) trait GpuKernels: Copy + Sized {
         GpuDimensionReducingBuildEqGroupTablesFromPairsSignature<Self>;
     const BUILD_EQ_GROUP_TABLES_FROM_POINT:
         GpuDimensionReducingBuildEqGroupTablesFromPointSignature<Self>;
+    const BUILD_EQ_HIGH_LOW_FROM_POINT: GpuDimensionReducingBuildEqHighLowFromPointSignature<Self>;
     const BUILD_EQ_VALUES_FROM_GROUP_TABLES:
         GpuDimensionReducingBuildEqValuesFromGroupTablesSignature<Self>;
     const FOLD_EQ_VALUES: GpuDimensionReducingFoldEqValuesSignature<Self>;
+    const FOLD_EQ_HIGH_GROUP_IN_PLACE: GpuDimensionReducingFoldEqHighGroupSignature<Self>;
     const TRACE_HOLDER_BLOCK_PARTIALS: GpuDimensionReducingTraceHolderBlockPartialsSignature<Self>;
     const ROUND0_BATCHED_COMPACT: GpuDimensionReducingRound0BatchedCompactSignature<Self>;
     const ROUND1_BATCHED_COMPACT: GpuDimensionReducingRound1BatchedCompactSignature<Self>;
     const CONTINUATION_BATCHED_COMPACT: GpuDimensionReducingContinuationBatchedCompactSignature<
         Self,
     >;
+    const EQ_INLINE_MATERIALIZE_FOR_TEST: GpuGKREqInlineMaterializeForTestSignature<Self>;
     #[allow(clippy::too_many_arguments)]
     fn launch_backward_sumcheck_round_update(
         reduction_output: &DeviceSlice<Self>,
@@ -163,11 +171,15 @@ impl GpuKernels for E4 {
     const BUILD_EQ_GROUP_TABLES_FROM_POINT:
         GpuDimensionReducingBuildEqGroupTablesFromPointSignature<Self> =
         ab_gkr_dim_reducing_build_eq_group_tables_from_point_e4_kernel;
+    const BUILD_EQ_HIGH_LOW_FROM_POINT: GpuDimensionReducingBuildEqHighLowFromPointSignature<Self> =
+        ab_gkr_dim_reducing_build_eq_high_low_from_point_e4_kernel;
     const BUILD_EQ_VALUES_FROM_GROUP_TABLES:
         GpuDimensionReducingBuildEqValuesFromGroupTablesSignature<Self> =
         ab_gkr_dim_reducing_build_eq_values_from_group_tables_e4_kernel;
     const FOLD_EQ_VALUES: GpuDimensionReducingFoldEqValuesSignature<Self> =
         ab_gkr_dim_reducing_fold_eq_values_e4_kernel;
+    const FOLD_EQ_HIGH_GROUP_IN_PLACE: GpuDimensionReducingFoldEqHighGroupSignature<Self> =
+        ab_gkr_dim_reducing_fold_eq_high_group_in_place_e4_kernel;
     const TRACE_HOLDER_BLOCK_PARTIALS: GpuDimensionReducingTraceHolderBlockPartialsSignature<Self> =
         ab_gkr_dim_reducing_trace_holder_block_partials_e4_kernel;
     const ROUND0_BATCHED_COMPACT: GpuDimensionReducingRound0BatchedCompactSignature<Self> =
@@ -177,6 +189,8 @@ impl GpuKernels for E4 {
     const CONTINUATION_BATCHED_COMPACT: GpuDimensionReducingContinuationBatchedCompactSignature<
         Self,
     > = ab_gkr_dim_reducing_continuation_batched_compact_e4_kernel;
+    const EQ_INLINE_MATERIALIZE_FOR_TEST: GpuGKREqInlineMaterializeForTestSignature<Self> =
+        ab_gkr_eq_inline_materialize_for_test_e4_kernel;
 
     fn launch_backward_sumcheck_round_update(
         reduction_output: &DeviceSlice<Self>,

@@ -12,6 +12,7 @@ use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart_sys::cudaGetSymbolAddress;
 
 use super::super::kernels::gkr_dim_reducing_launch_config;
+use super::super::kernels::GkrEqLayoutCompact;
 use super::cont_descs::GpuFlatContinuationUnifiedDesc;
 use super::cont_descs::{GpuFlatRound1UnifiedDesc, GpuFlatRound2UnifiedDesc};
 use super::kernel_limits::MAX_MAIN_LAYER_CLAIM_POINT_LEN;
@@ -27,7 +28,9 @@ era_cudart::cuda_kernel_signature_arguments_and_function!(
     pub(crate) GpuGKRMainRound0FlatCompact<T>,
     static_desc: GpuFlatRound0StaticDesc,
     coefficients: *const T,
-    eq_values: *const T,
+    eq_high_groups: *const T,
+    eq_low_buffer: *const T,
+    eq_layout: GkrEqLayoutCompact,
     contributions: *mut T,
     acc_size: u32,
 );
@@ -36,7 +39,9 @@ cuda_kernel_declaration!(pub(crate)
     ab_gkr_main_round0_flat_compact_e4_kernel(
         static_desc: GpuFlatRound0StaticDesc,
         coefficients: *const E4,
-        eq_values: *const E4,
+        eq_high_groups: *const E4,
+        eq_low_buffer: *const E4,
+        eq_layout: GkrEqLayoutCompact,
         contributions: *mut E4,
         acc_size: u32,
     )
@@ -45,7 +50,9 @@ cuda_kernel_declaration!(pub(crate)
 pub(crate) fn launch_main_round0<E: crate::prover::gkr::GpuKernels>(
     static_desc: &GpuFlatRound0StaticDesc,
     coefficients: *const E,
-    eq_values: *const E,
+    eq_high_groups: *const E,
+    eq_low_buffer: *const E,
+    eq_layout: &GkrEqLayoutCompact,
     contributions: *mut E,
     acc_size: u32,
     context: &ProverContext,
@@ -54,7 +61,9 @@ pub(crate) fn launch_main_round0<E: crate::prover::gkr::GpuKernels>(
     let args = GpuGKRMainRound0FlatCompactArguments::new(
         *static_desc,
         coefficients,
-        eq_values,
+        eq_high_groups,
+        eq_low_buffer,
+        *eq_layout,
         contributions,
         acc_size,
     );
@@ -68,7 +77,9 @@ pub(crate) fn launch_main_round0<E: crate::prover::gkr::GpuKernels>(
 era_cudart::cuda_kernel_signature_arguments_and_function!(
     pub(crate) GpuGKRMainRound0FlatConstantCompact<T>,
     static_desc: GpuFlatRound0StaticDesc,
-    eq_values: *const T,
+    eq_high_groups: *const T,
+    eq_low_buffer: *const T,
+    eq_layout: GkrEqLayoutCompact,
     contributions: *mut T,
     acc_size: u32,
 );
@@ -76,7 +87,9 @@ era_cudart::cuda_kernel_signature_arguments_and_function!(
 cuda_kernel_declaration!(pub(crate)
     ab_gkr_main_round0_flat_constant_compact_e4_kernel(
         static_desc: GpuFlatRound0StaticDesc,
-        eq_values: *const E4,
+        eq_high_groups: *const E4,
+        eq_low_buffer: *const E4,
+        eq_layout: GkrEqLayoutCompact,
         contributions: *mut E4,
         acc_size: u32,
     )
@@ -84,7 +97,9 @@ cuda_kernel_declaration!(pub(crate)
 
 pub(crate) fn launch_main_round0_constant<E: crate::prover::gkr::GpuKernels>(
     static_desc: &GpuFlatRound0StaticDesc,
-    eq_values: *const E,
+    eq_high_groups: *const E,
+    eq_low_buffer: *const E,
+    eq_layout: &GkrEqLayoutCompact,
     contributions: *mut E,
     acc_size: u32,
     context: &ProverContext,
@@ -92,7 +107,9 @@ pub(crate) fn launch_main_round0_constant<E: crate::prover::gkr::GpuKernels>(
     let config = gkr_dim_reducing_launch_config(acc_size, context);
     let args = GpuGKRMainRound0FlatConstantCompactArguments::new(
         *static_desc,
-        eq_values,
+        eq_high_groups,
+        eq_low_buffer,
+        *eq_layout,
         contributions,
         acc_size,
     );
@@ -157,7 +174,9 @@ era_cudart::cuda_kernel_signature_arguments_and_function!(
     fold_stride: u32,
     next_layer_size: u32,
     folding_challenge_slot: u32,
-    eq_values: *const T,
+    eq_high_groups: *const T,
+    eq_low_buffer: *const T,
+    eq_layout: GkrEqLayoutCompact,
     contributions: *mut T,
     acc_size: u32,
 );
@@ -168,7 +187,9 @@ cuda_kernel_declaration!(pub(crate)
         fold_stride: u32,
         next_layer_size: u32,
         folding_challenge_slot: u32,
-        eq_values: *const E4,
+        eq_high_groups: *const E4,
+        eq_low_buffer: *const E4,
+        eq_layout: GkrEqLayoutCompact,
         contributions: *mut E4,
         acc_size: u32,
     )
@@ -180,7 +201,9 @@ cuda_kernel_declaration!(pub(crate)
         fold_stride: u32,
         next_layer_size: u32,
         folding_challenge_slot: u32,
-        eq_values: *const E4,
+        eq_high_groups: *const E4,
+        eq_low_buffer: *const E4,
+        eq_layout: GkrEqLayoutCompact,
         contributions: *mut E4,
         acc_size: u32,
     )
@@ -192,7 +215,9 @@ pub(crate) fn launch_main_round3_unified<E: crate::prover::gkr::GpuKernels>(
     fold_stride: u32,
     next_layer_size: u32,
     folding_challenge_slot: u32,
-    eq_values: *const E,
+    eq_high_groups: *const E,
+    eq_low_buffer: *const E,
+    eq_layout: &GkrEqLayoutCompact,
     contributions: *mut E,
     acc_size: u32,
     explicit_form: bool,
@@ -208,7 +233,9 @@ pub(crate) fn launch_main_round3_unified<E: crate::prover::gkr::GpuKernels>(
         fold_stride,
         next_layer_size,
         folding_challenge_slot,
-        eq_values,
+        eq_high_groups,
+        eq_low_buffer,
+        *eq_layout,
         contributions,
         acc_size,
     );
@@ -229,7 +256,9 @@ era_cudart::cuda_kernel_signature_arguments_and_function!(
     desc: GpuFlatRound1UnifiedDesc,
     fold_stride: u32,
     next_layer_size: u32,
-    eq_values: *const T,
+    eq_high_groups: *const T,
+    eq_low_buffer: *const T,
+    eq_layout: GkrEqLayoutCompact,
     contributions: *mut T,
     acc_size: u32,
 );
@@ -239,7 +268,9 @@ cuda_kernel_declaration!(pub(crate)
         desc: GpuFlatRound1UnifiedDesc,
         fold_stride: u32,
         next_layer_size: u32,
-        eq_values: *const E4,
+        eq_high_groups: *const E4,
+        eq_low_buffer: *const E4,
+        eq_layout: GkrEqLayoutCompact,
         contributions: *mut E4,
         acc_size: u32,
     )
@@ -250,7 +281,9 @@ pub(crate) fn launch_main_round1_unified<E: crate::prover::gkr::GpuKernels>(
     _folding_challenge: *const E,
     fold_stride: u32,
     next_layer_size: u32,
-    eq_values: *const E,
+    eq_high_groups: *const E,
+    eq_low_buffer: *const E,
+    eq_layout: &GkrEqLayoutCompact,
     contributions: *mut E,
     acc_size: u32,
     context: &ProverContext,
@@ -264,7 +297,9 @@ pub(crate) fn launch_main_round1_unified<E: crate::prover::gkr::GpuKernels>(
         *desc,
         fold_stride,
         next_layer_size,
-        eq_values,
+        eq_high_groups,
+        eq_low_buffer,
+        *eq_layout,
         contributions,
         acc_size,
     );
@@ -296,7 +331,9 @@ era_cudart::cuda_kernel_signature_arguments_and_function!(
     desc: GpuFlatRound2UnifiedDesc,
     fold_stride: u32,
     next_layer_size: u32,
-    eq_values: *const T,
+    eq_high_groups: *const T,
+    eq_low_buffer: *const T,
+    eq_layout: GkrEqLayoutCompact,
     contributions: *mut T,
     acc_size: u32,
 );
@@ -306,7 +343,9 @@ cuda_kernel_declaration!(pub(crate)
         desc: GpuFlatRound2UnifiedDesc,
         fold_stride: u32,
         next_layer_size: u32,
-        eq_values: *const E4,
+        eq_high_groups: *const E4,
+        eq_low_buffer: *const E4,
+        eq_layout: GkrEqLayoutCompact,
         contributions: *mut E4,
         acc_size: u32,
     )
@@ -317,7 +356,9 @@ pub(crate) fn launch_main_round2_unified<E: crate::prover::gkr::GpuKernels>(
     folding_challenges: *const E,
     fold_stride: u32,
     next_layer_size: u32,
-    eq_values: *const E,
+    eq_high_groups: *const E,
+    eq_low_buffer: *const E,
+    eq_layout: &GkrEqLayoutCompact,
     contributions: *mut E,
     acc_size: u32,
     context: &ProverContext,
@@ -339,7 +380,9 @@ pub(crate) fn launch_main_round2_unified<E: crate::prover::gkr::GpuKernels>(
         *desc,
         fold_stride,
         next_layer_size,
-        eq_values,
+        eq_high_groups,
+        eq_low_buffer,
+        *eq_layout,
         contributions,
         acc_size,
     );

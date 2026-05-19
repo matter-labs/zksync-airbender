@@ -285,15 +285,11 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, max_acc_size as i32)?;
         let round_scratch = GpuGKRMainLayerRoundScratch {
             claim_point: context.alloc(folding_steps + 1, AllocationPlacement::Top)?,
-            eq_pair_values: context.alloc(
-                round0_eq_pair_values_len(folding_steps).max(1),
+            eq_high_groups: context.alloc(
+                GKR_EQ_MAX_HIGH_GROUPS * GKR_EQ_GROUP_TABLE_LEN,
                 AllocationPlacement::Top,
             )?,
-            eq_group_tables: context.alloc(
-                round0_eq_group_tables_len(folding_steps).max(1),
-                AllocationPlacement::Top,
-            )?,
-            eq_values: context.alloc(max_acc_size.max(1), AllocationPlacement::Top)?,
+            eq_low_group: context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?,
             accumulator: context.alloc(max_acc_size * 2, AllocationPlacement::Top)?,
             reduction_output: context.alloc(2, AllocationPlacement::Top)?,
             reduction_temp_storage: context
@@ -408,6 +404,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             round_scratch,
             recipe_upload_callbacks: recipe_callbacks,
             batch_challenge_base_override_ptr: None,
+            eq_layout: GkrEqLayoutCompact::zeroed(),
         })
     }
 

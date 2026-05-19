@@ -746,3 +746,340 @@ fn fold_eq_values_in_place_matches_cpu() {
         current_len = half_len;
     }
 }
+
+// ---------------------------------------------------------------------------
+// CPU ground-truth helpers for the GPU factored-eq layout used by the
+// backward GKR sumcheck (Task 1 of the eq-factor plan).
+// ---------------------------------------------------------------------------
+
+fn random_e4<R: rand::Rng>(rng: &mut R) -> E4 {
+    use field::PrimeField;
+    E4::from_array_of_base([
+        BF::from_u64_with_reduction(rng.random()),
+        BF::from_u64_with_reduction(rng.random()),
+        BF::from_u64_with_reduction(rng.random()),
+        BF::from_u64_with_reduction(rng.random()),
+    ])
+}
+
+/// Mirror of the GPU factored eq layout. Returns
+/// `(high_groups: Vec<Vec<E4>>, low_group: Vec<E4>)`.
+/// Group ordering matches `gkr_build_eq_values_from_group_tables`: group 0
+/// covers the HIGH bits of gid, last group covers the LOW bits.
+fn cpu_factored_eq(
+    claim_point: &[E4],
+    challenge_offset: usize,
+    challenge_count: usize,
+) -> (Vec<Vec<E4>>, Vec<E4>) {
+    use crate::prover::gkr::backward::{eq_group_count, GKR_EQ_GROUP_SIZE};
+    let g_count = eq_group_count(challenge_count);
+    let mut groups: Vec<Vec<E4>> = Vec::with_capacity(g_count);
+    let mut consumed = 0usize;
+    for _g in 0..g_count {
+        let remaining = challenge_count - consumed;
+        let g_size = remaining.min(GKR_EQ_GROUP_SIZE);
+        let g_len = 1usize << g_size;
+        let mut table = vec![E4::ONE; g_len];
+        for local in 0..g_len {
+            for bit in 0..g_size {
+                let shift_in_group = g_size - 1 - bit;
+                let is_one = ((local >> shift_in_group) & 1) == 1;
+                let challenge_idx = challenge_offset + consumed + bit;
+                let r = claim_point[challenge_idx];
+                let factor = if is_one {
+                    r
+                } else {
+                    let mut one_minus = E4::ONE;
+                    one_minus.sub_assign(&r);
+                    one_minus
+                };
+                table[local].mul_assign(&factor);
+            }
+        }
+        groups.push(table);
+        consumed += g_size;
+    }
+    let low = if groups.is_empty() {
+        vec![E4::ONE]
+    } else {
+        groups.pop().unwrap()
+    };
+    (groups, low)
+}
+
+/// Reconstruct eq_values[gid] for gid in 0..2^challenge_count from the factored
+/// representation. Used by tests to compare against `eq_values_for_suffix`.
+fn cpu_eval_factored_eq(
+    high_groups: &[Vec<E4>],
+    low_group: &[E4],
+    challenge_count: usize,
+) -> Vec<E4> {
+    let n = 1usize << challenge_count;
+    let mut out = vec![E4::ONE; n];
+    for gid in 0..n {
+        let mut acc = E4::ONE;
+        let mut consumed = 0usize;
+        for hg in high_groups {
+            let g_size = hg.len().trailing_zeros() as usize;
+            let shift = challenge_count - consumed - g_size;
+            let local = (gid >> shift) & ((1usize << g_size) - 1);
+            acc.mul_assign(&hg[local]);
+            consumed += g_size;
+        }
+        let low_size = low_group.len().trailing_zeros() as usize;
+        let local_low = gid & ((1usize << low_size) - 1);
+        acc.mul_assign(&low_group[local_low]);
+        out[gid] = acc;
+    }
+    out
+}
+
+#[test]
+fn cpu_factored_eq_matches_eq_values_for_suffix() {
+    use rand::SeedableRng;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(0xEF_FA_C7);
+    for &(offset, count) in &[(0, 0), (0, 1), (0, 7), (0, 8), (0, 9), (0, 23), (1, 22)] {
+        let total = offset + count + 4;
+        let claim_point: Vec<E4> = (0..total).map(|_| random_e4(&mut rng)).collect();
+        let (highs, low) = cpu_factored_eq(&claim_point, offset, count);
+        let reconstructed = cpu_eval_factored_eq(&highs, &low, count);
+        let reference = eq_values_for_suffix(&claim_point[offset..offset + count]);
+        assert_eq!(reconstructed, reference, "offset={offset} count={count}");
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn build_eq_factored_matches_cpu() {
+    use rand::SeedableRng;
+    let context = make_test_context(64, 8);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(0x_E4_FA_C7_01);
+
+    for &(offset, count) in &[
+        (0, 1),
+        (0, 7),
+        (0, 8),
+        (0, 9),
+        (0, 16),
+        (0, 17),
+        (0, 23),
+        (1, 22),
+    ] {
+        let claim_point: Vec<E4> = (0..(offset + count + 1))
+            .map(|_| random_e4(&mut rng))
+            .collect();
+        let d_claim_point = alloc_and_copy(&context, &claim_point);
+        let mut d_high: DeviceAllocation<E4> = context
+            .alloc(
+                GKR_EQ_MAX_HIGH_GROUPS * GKR_EQ_GROUP_TABLE_LEN,
+                AllocationPlacement::Top,
+            )
+            .unwrap();
+        let mut d_low: DeviceAllocation<E4> = context
+            .alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)
+            .unwrap();
+        launch_build_eq_high_and_low_groups_from_point::<E4>(
+            d_claim_point.as_ptr(),
+            offset,
+            count,
+            d_high.as_mut_ptr(),
+            d_low.as_mut_ptr(),
+            &context,
+        )
+        .unwrap();
+        // copy_device_values synchronizes the stream before returning.
+        let high_back = copy_device_values(&context, &d_high[..]);
+        let low_back = copy_device_values(&context, &d_low[..]);
+
+        let (cpu_highs, cpu_low) = cpu_factored_eq(&claim_point, offset, count);
+        for (g, hg) in cpu_highs.iter().enumerate() {
+            for (local, expected) in hg.iter().enumerate() {
+                assert_eq!(
+                    high_back[g * GKR_EQ_GROUP_TABLE_LEN + local],
+                    *expected,
+                    "offset={offset} count={count} g={g} local={local}"
+                );
+            }
+        }
+        for (local, expected) in cpu_low.iter().enumerate() {
+            assert_eq!(
+                low_back[local], *expected,
+                "offset={offset} count={count} low local={local}"
+            );
+        }
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn inline_eq_matches_cpu_factored() {
+    use rand::SeedableRng;
+    // Sized to fit the largest case (count = 23): `d_out` is 2^23 * 16 B =
+    // 128 MiB on its own; the rest of the per-iteration allocations are
+    // small. The same sizing as `build_eq_values_from_point_matches_cpu`.
+    let context = make_test_context(1024, 512);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(0x_E4_FA_C7_02);
+
+    for &count in &[1usize, 7, 8, 9, 16, 17, 23] {
+        let claim_point: Vec<E4> = (0..(count + 1)).map(|_| random_e4(&mut rng)).collect();
+        let d_claim_point = alloc_and_copy(&context, &claim_point);
+        let mut d_high: DeviceAllocation<E4> = context
+            .alloc(
+                GKR_EQ_MAX_HIGH_GROUPS * GKR_EQ_GROUP_TABLE_LEN,
+                AllocationPlacement::Top,
+            )
+            .unwrap();
+        let mut d_low: DeviceAllocation<E4> = context
+            .alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)
+            .unwrap();
+        launch_build_eq_high_and_low_groups_from_point::<E4>(
+            d_claim_point.as_ptr(),
+            0,
+            count,
+            d_high.as_mut_ptr(),
+            d_low.as_mut_ptr(),
+            &context,
+        )
+        .unwrap();
+
+        let acc_size = 1usize << count;
+        let mut d_out: DeviceAllocation<E4> =
+            context.alloc(acc_size, AllocationPlacement::Top).unwrap();
+
+        let layout = make_eq_layout_compact(count, 0);
+        launch_materialize_eq_from_factored_for_test::<E4>(
+            d_high.as_ptr(),
+            d_low.as_ptr(),
+            &layout,
+            d_out.as_mut_ptr(),
+            acc_size,
+            &context,
+        )
+        .unwrap();
+
+        let got = copy_device_values(&context, &d_out[..]);
+        let want = eq_values_for_suffix(&claim_point[0..count]);
+        assert_eq!(got, want, "count={count}");
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn fold_eq_high_group_matches_cpu() {
+    use rand::SeedableRng;
+    let context = make_test_context(1024, 512);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(0x_E4_FA_C7_03);
+    let count = 17usize;
+    let claim_point: Vec<E4> = (0..(count + 1)).map(|_| random_e4(&mut rng)).collect();
+    let d_claim_point = alloc_and_copy(&context, &claim_point);
+    let mut d_high: DeviceAllocation<E4> = context
+        .alloc(
+            GKR_EQ_MAX_HIGH_GROUPS * GKR_EQ_GROUP_TABLE_LEN,
+            AllocationPlacement::Top,
+        )
+        .unwrap();
+    let mut d_low: DeviceAllocation<E4> = context
+        .alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)
+        .unwrap();
+    launch_build_eq_high_and_low_groups_from_point::<E4>(
+        d_claim_point.as_ptr(),
+        0,
+        count,
+        d_high.as_mut_ptr(),
+        d_low.as_mut_ptr(),
+        &context,
+    )
+    .unwrap();
+
+    // CPU expected result: fold the top high group in half.
+    let (mut cpu_highs, _cpu_low) = cpu_factored_eq(&claim_point, 0, count);
+    let g0_size_before = (cpu_highs[0].len() as usize).trailing_zeros() as usize;
+    let new_g0_size = g0_size_before - 1;
+    let new_g0_len = 1usize << new_g0_size;
+    let mut new_g0 = vec![E4::ZERO; new_g0_len];
+    for i in 0..new_g0_len {
+        let mut sum = cpu_highs[0][i];
+        sum.add_assign(&cpu_highs[0][i | new_g0_len]);
+        new_g0[i] = sum;
+    }
+    cpu_highs[0] = new_g0;
+
+    // GPU: fold high group 0 in place (high_group_base_idx = 0).
+    launch_fold_eq_high_group_in_place::<E4>(
+        d_high.as_mut_ptr(),
+        /* high_group_base_idx */ 0,
+        g0_size_before,
+        &context,
+    )
+    .unwrap();
+
+    let high_back = copy_device_values(&context, &d_high[..]);
+    for (local, expected) in cpu_highs[0].iter().enumerate() {
+        assert_eq!(high_back[local], *expected, "local={local}");
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn multi_round_fold_with_base_idx_matches_cpu() {
+    use rand::SeedableRng;
+    let context = make_test_context(1024, 512);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(0x_E4_FA_C7_04);
+    let count = 17usize;
+    let claim_point: Vec<E4> = (0..(count + 1)).map(|_| random_e4(&mut rng)).collect();
+    let d_claim_point = alloc_and_copy(&context, &claim_point);
+    let mut d_high: DeviceAllocation<E4> = context
+        .alloc(
+            GKR_EQ_MAX_HIGH_GROUPS * GKR_EQ_GROUP_TABLE_LEN,
+            AllocationPlacement::Top,
+        )
+        .unwrap();
+    let mut d_low: DeviceAllocation<E4> = context
+        .alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)
+        .unwrap();
+    launch_build_eq_high_and_low_groups_from_point::<E4>(
+        d_claim_point.as_ptr(),
+        0,
+        count,
+        d_high.as_mut_ptr(),
+        d_low.as_mut_ptr(),
+        &context,
+    )
+    .unwrap();
+
+    // Drive the production fold helper across all `count` rounds, covering
+    // both the high-group fold path (rounds 0..16) and the low-group fold
+    // path (round 16). The cross-group transition (slot 0 → slot 1) fires at
+    // round 8 of the [8,8,1] partition.
+    let mut layout = make_eq_layout_compact(count, 0);
+
+    for round in 0..count {
+        let acc_size = 1usize << (count - round);
+        let mut d_out: DeviceAllocation<E4> =
+            context.alloc(acc_size, AllocationPlacement::Top).unwrap();
+        launch_materialize_eq_from_factored_for_test::<E4>(
+            d_high.as_ptr(),
+            d_low.as_ptr(),
+            &layout,
+            d_out.as_mut_ptr(),
+            acc_size,
+            &context,
+        )
+        .unwrap();
+        let got = copy_device_values(&context, &d_out[..]);
+        let want = eq_values_for_suffix(&claim_point[round..count]);
+        assert_eq!(got, want, "round={round}");
+
+        fold_factored_eq_one_round::<E4>(
+            &mut layout,
+            d_high.as_mut_ptr(),
+            d_low.as_mut_ptr(),
+            &context,
+        )
+        .unwrap();
+    }
+}
