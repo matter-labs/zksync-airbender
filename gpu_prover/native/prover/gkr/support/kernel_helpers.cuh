@@ -155,14 +155,15 @@ DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_pairs(const E *eq_pair_va
   if (tid >= group_len)
     return;
 
-  E acc = E::ONE();
+  E acc;
   unsigned consumed_bits = 0;
   for (unsigned chunk_idx = 0; chunk_idx < chunk_count; ++chunk_idx) {
     const unsigned remaining = group_size - consumed_bits;
     const unsigned chunk_size = remaining < GKR_EQ_CHUNK_SIZE ? remaining : GKR_EQ_CHUNK_SIZE;
     const unsigned shift = group_size - consumed_bits - chunk_size;
     const unsigned chunk_table_idx = (tid >> shift) & ((1u << chunk_size) - 1u);
-    acc = E::mul(acc, chunk_tables[chunk_idx][chunk_table_idx]);
+    const E factor = chunk_tables[chunk_idx][chunk_table_idx];
+    acc = (chunk_idx == 0) ? factor : E::mul(acc, factor);
     consumed_bits += chunk_size;
   }
 
@@ -209,14 +210,15 @@ DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_point(const E *claim_poin
   if (tid >= group_len)
     return;
 
-  E acc = E::ONE();
+  E acc;
   unsigned consumed_bits = 0;
   for (unsigned chunk_idx = 0; chunk_idx < chunk_count; ++chunk_idx) {
     const unsigned remaining = group_size - consumed_bits;
     const unsigned chunk_size = remaining < GKR_EQ_CHUNK_SIZE ? remaining : GKR_EQ_CHUNK_SIZE;
     const unsigned shift = group_size - consumed_bits - chunk_size;
     const unsigned chunk_table_idx = (tid >> shift) & ((1u << chunk_size) - 1u);
-    acc = E::mul(acc, chunk_tables[chunk_idx][chunk_table_idx]);
+    const E factor = chunk_tables[chunk_idx][chunk_table_idx];
+    acc = (chunk_idx == 0) ? factor : E::mul(acc, factor);
     consumed_bits += chunk_size;
   }
 
@@ -233,14 +235,15 @@ DEVICE_FORCEINLINE void gkr_build_eq_values_from_group_tables(const E *eq_group_
     return;
   }
 
-  E acc = E::ONE();
+  E acc;
   const unsigned groups_count = gkr_eq_group_count(challenge_count);
   unsigned consumed_bits = 0;
   for (unsigned group_idx = 0; group_idx < groups_count; ++group_idx) {
     const unsigned group_size = gkr_eq_group_size(challenge_count, group_idx);
     const unsigned shift = challenge_count - consumed_bits - group_size;
     const unsigned local_gid = (gid >> shift) & ((1u << group_size) - 1u);
-    acc = E::mul(acc, load<E, ld_modifier::cs>(eq_group_tables + group_idx * GKR_EQ_GROUP_TABLE_LEN, local_gid));
+    const E factor = load<E, ld_modifier::cs>(eq_group_tables + group_idx * GKR_EQ_GROUP_TABLE_LEN, local_gid);
+    acc = (group_idx == 0) ? factor : E::mul(acc, factor);
     consumed_bits += group_size;
   }
 
