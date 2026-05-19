@@ -1,12 +1,13 @@
 //! One-time kernel shared-memory carveout setup and the device-symbol address
-//! lookup for the flat round-0 `__constant__` coefficient buffer.
+//! lookup for the flat `__constant__` coefficient buffer shared by round-0
+//! and continuation phases.
 
 use std::ffi::c_void;
 
 use era_cudart::result::CudaResultWrap;
 use era_cudart_sys::cudaGetSymbolAddress;
 
-use super::types::FLAT_ROUND0_CONST_MAX;
+use super::types::FLAT_CONST_MAX;
 use crate::primitives::field::E4;
 use crate::primitives::utils::{
     compute_minimal_carveout, set_shared_carveout, smem_pool_bytes_per_sm,
@@ -61,22 +62,24 @@ pub(in crate::prover) fn configure_flat_kernel_cache_preference() {
 // ---------------------------------------------------------------------------
 
 extern "C" {
-    static ab_gkr_flat_round0_coefficients: [E4; FLAT_ROUND0_CONST_MAX];
+    static ab_gkr_flat_coefficients: [E4; FLAT_CONST_MAX];
 }
 
 /// Get the device address of the `__constant__` coefficient symbol.
 /// This is a trivial host-side symbol lookup (no GPU blocking).
+/// The same pointer is used by both round-0 and continuation compiler
+/// kernels (their writes are stream-serialized into disjoint phases).
 pub(crate) fn get_constant_coefficients_device_ptr() -> *mut E4 {
     let mut ptr: *mut c_void = std::ptr::null_mut();
-    // SAFETY: ab_gkr_flat_round0_coefficients is a valid __constant__ symbol
-    // defined in backward/round0_flat.cu.
+    // SAFETY: ab_gkr_flat_coefficients is a valid __constant__ symbol
+    // defined in backward/round3_compute_coeff.cu.
     unsafe {
         cudaGetSymbolAddress(
             &mut ptr,
-            &ab_gkr_flat_round0_coefficients as *const _ as *const c_void,
+            &ab_gkr_flat_coefficients as *const _ as *const c_void,
         )
     }
     .wrap()
-    .expect("cudaGetSymbolAddress failed for ab_gkr_flat_round0_coefficients");
+    .expect("cudaGetSymbolAddress failed for ab_gkr_flat_coefficients");
     ptr as *mut E4
 }

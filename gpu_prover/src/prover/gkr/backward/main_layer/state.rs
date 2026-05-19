@@ -255,10 +255,10 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
                     let use_constant = !self.is_delegation || layer_idx != 0;
                     if use_constant {
                         assert!(
-                            total <= flat::FLAT_ROUND0_CONST_MAX,
+                            total <= flat::FLAT_CONST_MAX,
                             "flat round 0: {} coefficients exceeds __constant__ limit of {}",
                             total,
-                            flat::FLAT_ROUND0_CONST_MAX,
+                            flat::FLAT_CONST_MAX,
                         );
                     }
                     let coeff_buf = if use_constant {
@@ -697,7 +697,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
     )> {
         use flat::{
             build_flat_continuation_plan, compile_recipes_for_device, GpuFlatContinuingSourceEntry,
-            PreparedGateForFlatContinuationPlan, FLAT_CONT_CONST_MAX, FLAT_CONT_MAX_SOURCES,
+            PreparedGateForFlatContinuationPlan, FLAT_CONST_MAX, FLAT_CONT_MAX_SOURCES,
         };
 
         // Use the first round 3 step's prepared storage to build the term arrays.
@@ -733,10 +733,10 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         let compiled = compile_recipes_for_device(&plan.recipes);
         let cont_recipe_callbacks = Callbacks::new();
         assert!(
-            total <= FLAT_CONT_CONST_MAX,
+            total <= FLAT_CONST_MAX,
             "flat continuation: {} coefficients exceeds __constant__ limit of {}",
             total,
-            FLAT_CONT_CONST_MAX,
+            FLAT_CONST_MAX,
         );
 
         // Build a key→source index map using round3 prepared cache pointers (same as plan).

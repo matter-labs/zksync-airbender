@@ -1,11 +1,7 @@
-use std::ffi::c_void;
-
 use era_cudart::execution::KernelFunction;
-use era_cudart::result::{CudaResult, CudaResultWrap};
+use era_cudart::result::CudaResult;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
-use era_cudart_sys::cudaGetSymbolAddress;
 
-use super::types::FLAT_CONT_CONST_MAX;
 use crate::primitives::field::E4;
 use crate::prover::gkr::eval_recipes::GpuFlatRecipeEvalDesc;
 
@@ -38,28 +34,9 @@ cuda_kernel_declaration!(
     )
 );
 
-// ---------------------------------------------------------------------------
-// __constant__ symbol address for continuation coefficients
-// ---------------------------------------------------------------------------
-
-extern "C" {
-    static ab_gkr_flat_continuation_coefficients: [E4; FLAT_CONT_CONST_MAX];
-}
-
-pub(crate) fn get_constant_continuation_coefficients_device_ptr() -> *mut E4 {
-    let mut ptr: *mut c_void = std::ptr::null_mut();
-    // SAFETY: ab_gkr_flat_continuation_coefficients is a valid __constant__ symbol
-    // defined in backward/round3_compute_coeff.cu.
-    unsafe {
-        cudaGetSymbolAddress(
-            &mut ptr,
-            &ab_gkr_flat_continuation_coefficients as *const _ as *const c_void,
-        )
-    }
-    .wrap()
-    .expect("cudaGetSymbolAddress failed for ab_gkr_flat_continuation_coefficients");
-    ptr as *mut E4
-}
+// The `__constant__` coefficient symbol address comes from the shared
+// `flat::kernel_setup::get_constant_coefficients_device_ptr` helper;
+// round-0 and continuation phases use the same device pointer.
 
 // ---------------------------------------------------------------------------
 // Eval recipes launch for continuation
