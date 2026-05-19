@@ -274,9 +274,8 @@ DEVICE_FORCEINLINE void flat_round0_compute_constant(const flat_round0_static_de
 
 template <typename E, typename CoeffLoader>
 DEVICE_FORCEINLINE void flat_round0_compute_compact_impl(const flat_round0_static_desc_compact &desc, CoeffLoader coeff_loader,
-                                                         const E *__restrict__ eq_high_groups, const E *__restrict__ eq_low_buffer,
-                                                         const gkr_eq_layout_compact &eq_layout, E *__restrict__ contributions, const unsigned acc_size,
-                                                         const unsigned gid) {
+                                                         const E *__restrict__ eq_low, const gkr_eq_sizes &eq_sizes, E *__restrict__ contributions,
+                                                         const unsigned acc_size, const unsigned gid) {
   E c0 = E::ZERO();
 
   for (unsigned i = 0; i < desc.num_c0_bf; i++) {
@@ -317,26 +316,25 @@ DEVICE_FORCEINLINE void flat_round0_compute_compact_impl(const flat_round0_stati
     c1 = E::fma(coeff_loader(), d, c1);
   }
 
-  const E eq = gkr_compute_eq_inline<E>(eq_high_groups, eq_layout, eq_low_buffer, gid);
+  const E eq = gkr_compute_eq_inline<E>(eq_low, eq_sizes, gid);
   store<E, st_modifier::cs>(contributions, E::mul(c0, eq), gid);
   store<E, st_modifier::cs>(contributions + acc_size, E::mul(c1, eq), gid);
 }
 
 template <typename E>
 DEVICE_FORCEINLINE void flat_round0_compute_compact(const flat_round0_static_desc_compact &desc, const E *__restrict__ coefficients,
-                                                    const E *__restrict__ eq_high_groups, const E *__restrict__ eq_low_buffer,
-                                                    const gkr_eq_layout_compact &eq_layout, E *__restrict__ contributions, const unsigned acc_size,
-                                                    const unsigned gid) {
+                                                    const E *__restrict__ eq_low, const gkr_eq_sizes &eq_sizes, E *__restrict__ contributions,
+                                                    const unsigned acc_size, const unsigned gid) {
   coeff_loader_ptr<E> loader{coefficients};
-  flat_round0_compute_compact_impl(desc, loader, eq_high_groups, eq_low_buffer, eq_layout, contributions, acc_size, gid);
+  flat_round0_compute_compact_impl(desc, loader, eq_low, eq_sizes, contributions, acc_size, gid);
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void flat_round0_compute_constant_compact(const flat_round0_static_desc_compact &desc, const E *__restrict__ eq_high_groups,
-                                                             const E *__restrict__ eq_low_buffer, const gkr_eq_layout_compact &eq_layout,
-                                                             E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
+DEVICE_FORCEINLINE void flat_round0_compute_constant_compact(const flat_round0_static_desc_compact &desc, const E *__restrict__ eq_low,
+                                                             const gkr_eq_sizes &eq_sizes, E *__restrict__ contributions, const unsigned acc_size,
+                                                             const unsigned gid) {
   coeff_loader_round0_constant loader{};
-  flat_round0_compute_compact_impl<E>(desc, loader, eq_high_groups, eq_low_buffer, eq_layout, contributions, acc_size, gid);
+  flat_round0_compute_compact_impl<E>(desc, loader, eq_low, eq_sizes, contributions, acc_size, gid);
 }
 
 } // namespace airbender::prover::gkr

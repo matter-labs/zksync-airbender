@@ -870,26 +870,31 @@ fn build_eq_factored_matches_cpu() {
             .map(|_| random_e4(&mut rng))
             .collect();
         let d_claim_point = alloc_and_copy(&context, &claim_point);
-        let mut d_high: DeviceAllocation<E4> = context
-            .alloc(
-                GKR_EQ_MAX_HIGH_GROUPS * GKR_EQ_GROUP_TABLE_LEN,
-                AllocationPlacement::Top,
-            )
-            .unwrap();
         let mut d_low: DeviceAllocation<E4> = context
             .alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)
             .unwrap();
+        let high_ptr = get_eq_high_constant_device_ptr();
         launch_build_eq_high_and_low_groups_from_point::<E4>(
             d_claim_point.as_ptr(),
             offset,
             count,
-            d_high.as_mut_ptr(),
+            high_ptr,
             d_low.as_mut_ptr(),
             &context,
         )
         .unwrap();
-        // copy_device_values synchronizes the stream before returning.
-        let high_back = copy_device_values(&context, &d_high[..]);
+        // Read back the __constant__ high slab via a DeviceSlice synthesized
+        // from the symbol's device pointer.
+        // SAFETY: ab_gkr_eq_high has GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN
+        // elements; the synthesized slice is short-lived and used only for the
+        // device→host copy below.
+        let high_slice = unsafe {
+            era_cudart::slice::DeviceSlice::<E4>::from_raw_parts(
+                high_ptr,
+                GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN,
+            )
+        };
+        let high_back = copy_device_values(&context, high_slice);
         let low_back = copy_device_values(&context, &d_low[..]);
 
         let (cpu_highs, cpu_low) = cpu_factored_eq(&claim_point, offset, count);
@@ -925,20 +930,15 @@ fn inline_eq_matches_cpu_factored() {
     for &count in &[1usize, 7, 8, 9, 16, 17, 23] {
         let claim_point: Vec<E4> = (0..(count + 1)).map(|_| random_e4(&mut rng)).collect();
         let d_claim_point = alloc_and_copy(&context, &claim_point);
-        let mut d_high: DeviceAllocation<E4> = context
-            .alloc(
-                GKR_EQ_MAX_HIGH_GROUPS * GKR_EQ_GROUP_TABLE_LEN,
-                AllocationPlacement::Top,
-            )
-            .unwrap();
         let mut d_low: DeviceAllocation<E4> = context
             .alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)
             .unwrap();
+        let high_ptr = get_eq_high_constant_device_ptr();
         launch_build_eq_high_and_low_groups_from_point::<E4>(
             d_claim_point.as_ptr(),
             0,
             count,
-            d_high.as_mut_ptr(),
+            high_ptr,
             d_low.as_mut_ptr(),
             &context,
         )
@@ -948,11 +948,10 @@ fn inline_eq_matches_cpu_factored() {
         let mut d_out: DeviceAllocation<E4> =
             context.alloc(acc_size, AllocationPlacement::Top).unwrap();
 
-        let layout = make_eq_layout_compact(count, 0);
+        let sizes = make_eq_sizes(count);
         launch_materialize_eq_from_factored_for_test::<E4>(
-            d_high.as_ptr(),
             d_low.as_ptr(),
-            &layout,
+            &sizes,
             d_out.as_mut_ptr(),
             acc_size,
             &context,
@@ -975,20 +974,15 @@ fn fold_eq_high_group_matches_cpu() {
     let count = 17usize;
     let claim_point: Vec<E4> = (0..(count + 1)).map(|_| random_e4(&mut rng)).collect();
     let d_claim_point = alloc_and_copy(&context, &claim_point);
-    let mut d_high: DeviceAllocation<E4> = context
-        .alloc(
-            GKR_EQ_MAX_HIGH_GROUPS * GKR_EQ_GROUP_TABLE_LEN,
-            AllocationPlacement::Top,
-        )
-        .unwrap();
     let mut d_low: DeviceAllocation<E4> = context
         .alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)
         .unwrap();
+    let high_ptr = get_eq_high_constant_device_ptr();
     launch_build_eq_high_and_low_groups_from_point::<E4>(
         d_claim_point.as_ptr(),
         0,
         count,
-        d_high.as_mut_ptr(),
+        high_ptr,
         d_low.as_mut_ptr(),
         &context,
     )
@@ -1007,16 +1001,15 @@ fn fold_eq_high_group_matches_cpu() {
     }
     cpu_highs[0] = new_g0;
 
-    // GPU: fold high group 0 in place (high_group_base_idx = 0).
-    launch_fold_eq_high_group_in_place::<E4>(
-        d_high.as_mut_ptr(),
-        /* high_group_base_idx */ 0,
-        g0_size_before,
-        &context,
-    )
-    .unwrap();
+    // GPU: fold high slot 0 in the __constant__ symbol in place.
+    launch_fold_eq_high_in_constant::<E4>(0, g0_size_before, &context).unwrap();
 
-    let high_back = copy_device_values(&context, &d_high[..]);
+    // Read back slot 0 of the __constant__ symbol.
+    // SAFETY: see equivalent block in `cpu_factored_eq_matches_kernel_build`.
+    let high_slice = unsafe {
+        era_cudart::slice::DeviceSlice::<E4>::from_raw_parts(high_ptr, GKR_EQ_GROUP_TABLE_LEN)
+    };
+    let high_back = copy_device_values(&context, high_slice);
     for (local, expected) in cpu_highs[0].iter().enumerate() {
         assert_eq!(high_back[local], *expected, "local={local}");
     }
@@ -1025,46 +1018,40 @@ fn fold_eq_high_group_matches_cpu() {
 #[test]
 #[cfg(not(no_cuda))]
 #[serial]
-fn multi_round_fold_with_base_idx_matches_cpu() {
+fn multi_round_fold_matches_cpu() {
     use rand::SeedableRng;
     let context = make_test_context(1024, 512);
     let mut rng = rand::rngs::StdRng::seed_from_u64(0x_E4_FA_C7_04);
     let count = 17usize;
     let claim_point: Vec<E4> = (0..(count + 1)).map(|_| random_e4(&mut rng)).collect();
     let d_claim_point = alloc_and_copy(&context, &claim_point);
-    let mut d_high: DeviceAllocation<E4> = context
-        .alloc(
-            GKR_EQ_MAX_HIGH_GROUPS * GKR_EQ_GROUP_TABLE_LEN,
-            AllocationPlacement::Top,
-        )
-        .unwrap();
     let mut d_low: DeviceAllocation<E4> = context
         .alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)
         .unwrap();
+    let high_ptr = get_eq_high_constant_device_ptr();
     launch_build_eq_high_and_low_groups_from_point::<E4>(
         d_claim_point.as_ptr(),
         0,
         count,
-        d_high.as_mut_ptr(),
+        high_ptr,
         d_low.as_mut_ptr(),
         &context,
     )
     .unwrap();
 
     // Drive the production fold helper across all `count` rounds, covering
-    // both the high-group fold path (rounds 0..16) and the low-group fold
-    // path (round 16). The cross-group transition (slot 0 → slot 1) fires at
+    // both the high-slab fold path (rounds 0..16) and the low-slab fold path
+    // (round 16). The cross-slot transition (slot 0 → slot 1) fires at
     // round 8 of the [8,8,1] partition.
-    let mut layout = make_eq_layout_compact(count, 0);
+    let mut sizes = make_eq_sizes(count);
 
     for round in 0..count {
         let acc_size = 1usize << (count - round);
         let mut d_out: DeviceAllocation<E4> =
             context.alloc(acc_size, AllocationPlacement::Top).unwrap();
         launch_materialize_eq_from_factored_for_test::<E4>(
-            d_high.as_ptr(),
             d_low.as_ptr(),
-            &layout,
+            &sizes,
             d_out.as_mut_ptr(),
             acc_size,
             &context,
@@ -1074,12 +1061,6 @@ fn multi_round_fold_with_base_idx_matches_cpu() {
         let want = eq_values_for_suffix(&claim_point[round..count]);
         assert_eq!(got, want, "round={round}");
 
-        fold_factored_eq_one_round::<E4>(
-            &mut layout,
-            d_high.as_mut_ptr(),
-            d_low.as_mut_ptr(),
-            &context,
-        )
-        .unwrap();
+        fold_factored_eq_one_round::<E4>(&mut sizes, d_low.as_mut_ptr(), &context).unwrap();
     }
 }
