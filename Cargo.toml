@@ -163,6 +163,8 @@ itertools = { version = "0.14" }
 inferno = "0.12"
 log = "0.4"
 sha3 = { version = "*", default-features = false }
+insta = "1.47.2"
+tempfile = "3.27.0"
 
 [profile.dev]
 debug-assertions = true
