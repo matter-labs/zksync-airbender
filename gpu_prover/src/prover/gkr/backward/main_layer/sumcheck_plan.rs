@@ -358,7 +358,7 @@ where
             None => return Ok(()),
         };
 
-        let coeff_out_ptr: *mut E4 = flat::get_constant_continuation_coefficients_device_ptr();
+        let coeff_out_ptr: *mut E4 = flat::get_constant_coefficients_device_ptr();
 
         flat::eval_continuation_recipes_e4(
             batch_base_ptr,
@@ -581,13 +581,12 @@ where
         // SAFETY: same invariant as the round-0 path above: the additive
         // lookup challenge is the second scalar in this contiguous pair.
         let cont_lookup_add_ptr = unsafe { device_lookup_and_constraint_ptr.add(1) } as *const E4;
-        self.schedule_flat_continuation_eval_recipes(
-            cont_batch_base_ptr,
-            cont_lookup_mul_ptr,
-            cont_lookup_add_ptr,
-            device_external_challenges_ptr as *const E4,
-            context,
-        )?;
+        // Continuation eval_recipes is scheduled *inside* the sumcheck loop
+        // after `launch_round0_kernels`: round-0 and continuation share the
+        // `ab_gkr_flat_coefficients` __constant__ symbol, so scheduling the
+        // continuation write here would clobber round-0's coefficients
+        // before round-0's kernel reads them (both ops are stream-ordered
+        // on `exec_stream`).
         // Hoisted: `device_claim_point_out` holds the next layer's
         // `[claim_point || batching_challenge]` buffer. Slots `[0..folding_steps - 1]`
         // are written in-place by the per-round update kernels; slots
@@ -620,6 +619,17 @@ where
             let acc_size = 1usize << (self.folding_steps - step - 1);
             if step == 0 {
                 self.launch_round0_kernels(acc_size, context)?;
+                // Round-0 kernel reads are now ordered before this point on
+                // `exec_stream`; the continuation eval_recipes write can
+                // safely target the shared `ab_gkr_flat_coefficients`
+                // __constant__ symbol without clobbering round-0's input.
+                self.schedule_flat_continuation_eval_recipes(
+                    cont_batch_base_ptr,
+                    cont_lookup_mul_ptr,
+                    cont_lookup_add_ptr,
+                    device_external_challenges_ptr as *const E4,
+                    context,
+                )?;
             } else {
                 match step {
                     1 => self.launch_round1_kernels_from_symbol(acc_size, context)?,

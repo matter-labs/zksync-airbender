@@ -5,10 +5,14 @@
 
 namespace airbender::prover::gkr {
 
+// Unified coefficient symbol size for round 0 and continuation phases.
+// The two phases never run concurrently within a proof (stream ordering
+// serializes phase A reads before phase B writes), so a single 16 KB
+// backing store serves both. Sized for the larger phase (continuation).
+constexpr unsigned FLAT_CONST_MAX = 1024;
+
 // Maximum array sizes for the flat round 0 static description.
 // The entire struct is passed as __grid_constant__.
-constexpr unsigned FLAT_ROUND0_CONST_MAX = 512; // 8KB — fits all non-delegation L1 and all L2+
-
 constexpr unsigned FLAT_ROUND0_MAX_SOURCES = 1280;
 constexpr unsigned FLAT_ROUND0_MAX_C0_BF = 128;
 constexpr unsigned FLAT_ROUND0_MAX_C0_EXT = 512;
@@ -240,8 +244,8 @@ DEVICE_FORCEINLINE void flat_round0_compute(const flat_round0_static_desc &desc,
 } // namespace airbender::prover::gkr
 
 // __constant__ coefficient symbol — declared at global scope (NTT pattern).
-// Defined in round0_flat.cu.
-EXTERN __device__ __constant__ e4 ab_gkr_flat_round0_coefficients[airbender::prover::gkr::FLAT_ROUND0_CONST_MAX];
+// Shared by round 0 and continuation phases. Defined in round3_compute_coeff.cu.
+EXTERN __device__ __constant__ e4 ab_gkr_flat_coefficients[airbender::prover::gkr::FLAT_CONST_MAX];
 
 namespace airbender::prover::gkr {
 
@@ -249,7 +253,7 @@ namespace airbender::prover::gkr {
 // Not templated: the __constant__ symbol is e4, direct access is required for LDC.
 struct coeff_loader_round0_constant {
   unsigned idx = 0;
-  DEVICE_FORCEINLINE e4 operator()() { return ::ab_gkr_flat_round0_coefficients[idx++]; }
+  DEVICE_FORCEINLINE e4 operator()() { return ::ab_gkr_flat_coefficients[idx++]; }
 };
 
 // --- Constant-path round 0 kernel ---

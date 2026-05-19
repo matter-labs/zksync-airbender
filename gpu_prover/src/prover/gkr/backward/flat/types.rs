@@ -13,7 +13,7 @@ use crate::upstream::Field;
 // ---------------------------------------------------------------------------
 
 // Must match backward/flat.cuh.
-pub(crate) const FLAT_ROUND0_CONST_MAX: usize = 512;
+pub(crate) const FLAT_CONST_MAX: usize = 1024;
 pub(crate) const FLAT_ROUND0_MAX_SOURCES: usize = 1280;
 pub(crate) const FLAT_ROUND0_MAX_C0_BF: usize = 128;
 pub(crate) const FLAT_ROUND0_MAX_C0_EXT: usize = 512;
