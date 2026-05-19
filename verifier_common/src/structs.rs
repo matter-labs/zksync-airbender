@@ -104,7 +104,7 @@ pub fn ext_from_nds<
     F: field::PrimeField,
     E: field::FieldExtension<F>,
     I: non_determinism_source::NonDeterminismSource,
->() -> E {
+>(nd_source: &mut I) -> E {
     // layout of E should be [F; E::DEGREE]
     debug_assert_eq!(
         core::mem::size_of::<E>(),
@@ -119,7 +119,7 @@ pub fn ext_from_nds<
         let mut i = 0;
         while i < E::DEGREE {
             dst.get_unchecked_mut(i).write(F::from_reduced_raw_repr(
-                I::read_reduced_field_element(F::CHARACTERISTICS),
+                nd_source.read_reduced_field_element(F::CHARACTERISTICS),
             ));
             i += 1;
         }

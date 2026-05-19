@@ -172,6 +172,7 @@ pub fn make_initial_transcript<
     const PADDING_WORDS: usize,
 >(
     external_challenges: &prover::definitions::GKRExternalChallenges<F, E>,
+    nd_source: &mut I
 ) -> (
     InitialGKRTranscript<
         E,
@@ -221,16 +222,16 @@ pub fn make_initial_transcript<
 
     unsafe {
         let initial_transcript_state = InitialGKRTranscript {
-            inits_and_teardowns_top_bits: core::array::from_fn(|_| I::read_word()),
+            inits_and_teardowns_top_bits: core::array::from_fn(|_| nd_source.read_word()),
             external_challenges_flattened: external_challenges.flatten_into_fixed_size_buffer(),
             setup_caps: core::array::from_fn(|_| {
-                core::array::from_fn(|_| core::array::from_fn(|_| I::read_word()))
+                core::array::from_fn(|_| core::array::from_fn(|_| nd_source.read_word()))
             }),
             memory_caps: core::array::from_fn(|_| {
-                core::array::from_fn(|_| core::array::from_fn(|_| I::read_word()))
+                core::array::from_fn(|_| core::array::from_fn(|_| nd_source.read_word()))
             }),
             witness_caps: core::array::from_fn(|_| {
-                core::array::from_fn(|_| core::array::from_fn(|_| I::read_word()))
+                core::array::from_fn(|_| core::array::from_fn(|_| nd_source.read_word()))
             }),
             padding: [0u32; PADDING_WORDS],
             _marker: core::marker::PhantomData,

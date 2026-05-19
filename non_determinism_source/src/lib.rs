@@ -8,18 +8,18 @@ pub trait NonDeterminismSource: Send + Sync {
     fn read_reduced_field_element(&mut self, modulus: u32) -> u32;
 }
 
-impl NonDeterminismSource for () {
-    #[inline(always)]
-    fn read_word(&mut self) -> u32 {
-        0
-    }
-    #[inline(always)]
-    fn read_reduced_field_element(&mut self, _modulus: u32) -> u32 {
-        0
-    }
-}
+// impl NonDeterminismSource for () {
+//     #[inline(always)]
+//     fn read_word(&mut self) -> u32 {
+//         0
+//     }
+//     #[inline(always)]
+//     fn read_reduced_field_element(&mut self, _modulus: u32) -> u32 {
+//         0
+//     }
+// }
 
-impl<T: core::iter::Iterator<Item = u32>> NonDeterminismSource for T {
+impl<T: core::iter::Iterator<Item = u32> + Send + Sync + ?Sized> NonDeterminismSource for T {
     #[inline(always)]
     fn read_word(&mut self) -> u32 {
         self.next().expect("next word")

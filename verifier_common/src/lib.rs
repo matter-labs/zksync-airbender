@@ -179,6 +179,7 @@ pub trait ConcreteVerifierImpl<
             PADDING_WORDS,
         >,
         transcript_state: &mut ::transcript::TranscriptState,
+        nd_source: &mut I
     ) -> Result<GKRVerifierOutput<EE, ROUNDS, ADDRS>, E::Error>;
     fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
         initial_transcript: &InitialGKRTranscript<
@@ -195,6 +196,7 @@ pub trait ConcreteVerifierImpl<
         whir_batching_challenge: EE,
         base_layer_claims: &[EE],
         initial_claim_point: &[EE],
+        nd_source: &mut I
     ) -> Result<(), E::Error>;
 }
 
@@ -227,6 +229,7 @@ pub fn verify_impl<
     >,
 >(
     external_challenges: &prover::definitions::GKRExternalChallenges<F, EE>,
+    nd_source: &mut I
 ) -> Result<
     VerifierOutput<EE, INIT_AND_TEARDOWN_SETS, CAP_SIZE, NUM_MEMORY_COMMITS, NUM_SETUP_COMMITS>,
     E::Error,
@@ -243,15 +246,16 @@ pub fn verify_impl<
         NUM_WITNESS_COMMITS,
         NUM_SETUP_COMMITS,
         PADDING_WORDS,
-    >(external_challenges);
+    >(external_challenges, nd_source);
     let gkr_output =
-        V::verify_gkr::<I, E>(external_challenges, &initial_transcript_values, &mut ts)?;
+        V::verify_gkr::<I, E>(external_challenges, &initial_transcript_values, &mut ts, nd_source)?;
     V::verify_whir::<I, E>(
         &initial_transcript_values,
         &mut ts,
         gkr_output.whir_batching_challenge,
         gkr_output.base_layer_claims.as_slice(),
         &gkr_output.evaluation_point[..gkr_output.evaluation_point_len],
+        nd_source,
     )?;
 
     Ok(VerifierOutput {
@@ -267,14 +271,14 @@ pub fn read_external_challenges<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     I: NonDeterminismSource,
->() -> prover::definitions::GKRExternalChallenges<F, E> {
+>(nd_source: &mut I) -> prover::definitions::GKRExternalChallenges<F, E> {
     use crate::structs::ext_from_nds;
     use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
 
     let permutation_argument_linearization_challenges: [E;
         NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES] =
-        core::array::from_fn(|_| ext_from_nds::<F, E, I>());
-    let permutation_argument_additive_part: E = ext_from_nds::<F, E, I>();
+        core::array::from_fn(|_| ext_from_nds::<F, E, I>(nd_source));
+    let permutation_argument_additive_part: E = ext_from_nds::<F, E, I>(nd_source);
 
     prover::definitions::GKRExternalChallenges {
         permutation_argument_linearization_challenges,

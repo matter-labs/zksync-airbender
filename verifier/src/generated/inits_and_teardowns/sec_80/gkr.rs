@@ -2158,6 +2158,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     initial_transcript: &ConcreteInitialTranscript,
     ts: &mut ::verifier_common::structs::TranscriptState,
+    nd_source: &mut I,
 ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
     unsafe {
         let mut init_challenges = LazyVec::<BabyBearExt4, 2>::new();
@@ -2173,7 +2174,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
         {
             let mut i = 0;
             while i < evals_data_words {
-                evals_commit_buf.data_write(i, read_reduced_field_el::<I>());
+                evals_commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                 i += 1;
             }
         }
@@ -2261,7 +2262,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -2327,7 +2328,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -2393,7 +2394,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -2459,7 +2460,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -2525,7 +2526,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -2591,7 +2592,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -2657,7 +2658,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -2723,7 +2724,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -2789,7 +2790,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -2855,7 +2856,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -2921,7 +2922,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -2987,7 +2988,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -3053,7 +3054,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -3119,7 +3120,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -3185,7 +3186,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -3251,7 +3252,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -3317,7 +3318,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -3383,7 +3384,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -3449,7 +3450,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -3515,7 +3516,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -3581,7 +3582,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -3641,7 +3642,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -3701,7 +3702,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -3761,7 +3762,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -3892,8 +3893,14 @@ impl
         external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
         initial_transcript: &ConcreteInitialTranscript,
         transcript_state: &mut ::verifier_common::structs::TranscriptState,
+        nd_source: &mut I,
     ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
-        verify_gkr::<I, E>(external_challenges, initial_transcript, transcript_state)
+        verify_gkr::<I, E>(
+            external_challenges,
+            initial_transcript,
+            transcript_state,
+            nd_source,
+        )
     }
     #[inline(always)]
     fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
@@ -3902,6 +3909,7 @@ impl
         whir_batching_challenge: BabyBearExt4,
         base_layer_claims: &[BabyBearExt4],
         initial_claim_point: &[BabyBearExt4],
+        nd_source: &mut I,
     ) -> Result<(), E::Error> {
         super::whir::verify_whir::<I, E>(
             initial_transcript,
@@ -3909,6 +3917,7 @@ impl
             whir_batching_challenge,
             base_layer_claims,
             initial_claim_point,
+            nd_source,
         )
     }
 }

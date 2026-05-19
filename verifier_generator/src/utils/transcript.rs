@@ -9,20 +9,20 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
 
     quote! {
         #[inline(always)]
-        pub fn read_reduced_field_el<I: NonDeterminismSource>() -> u32 {
-            I::read_reduced_field_element(#field_struct::ORDER)
+        pub fn read_reduced_field_el<I: NonDeterminismSource>(nd_source: &mut I) -> u32 {
+            nd_source.read_reduced_field_element(#field_struct::ORDER)
         }
 
         #[inline(always)]
-        pub fn read_field_el<I: NonDeterminismSource>() -> #quartic_struct {
-            ext_from_nds::<#field_struct, #quartic_struct, I>()
+        pub fn read_field_el<I: NonDeterminismSource>(nd_source: &mut I) -> #quartic_struct {
+            ext_from_nds::<#field_struct, #quartic_struct, I>(nd_source)
         }
 
         #[inline(always)]
-        pub fn read_field_els<I: NonDeterminismSource>(dst: &mut [#quartic_struct]) {
+        pub fn read_field_els<I: NonDeterminismSource>(dst: &mut [#quartic_struct], nd_source: &mut I) {
             let mut i = 0;
             while i < dst.len() {
-                dst[i] = read_field_el::<I>();
+                dst[i] = read_field_el::<I>(nd_source);
                 i += 1;
             }
         }
