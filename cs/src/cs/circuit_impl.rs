@@ -267,6 +267,17 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
     }
 
     #[track_caller]
+    fn add_variable_from_expr_allow_explicit_linear(&mut self, expr: Expr<F>) -> Variable {
+        expr.validate_degree_at_most(4);
+        let constraint = expr.to_max_quadratic_constraint();
+        let new_var = self.add_variable_from_constraint_allow_explicit_linear(constraint);
+        self.structured_statements
+            .push(StructuredStatement::Define { dst: new_var, expr });
+
+        new_var
+    }
+
+    #[track_caller]
     fn add_variable_from_constraint_allow_explicit_linear_without_witness_evaluation(
         &mut self,
         mut constraint: Constraint<F>,

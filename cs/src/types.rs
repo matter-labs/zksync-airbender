@@ -267,41 +267,6 @@ impl Boolean {
         Boolean::Is(new_var)
     }
 
-    pub fn and_constraint<F: PrimeField>(a: &Self, b: &Self) -> Constraint<F> {
-        match (a, b) {
-            // false AND x is always false
-            (&Boolean::Constant(false), _) | (_, &Boolean::Constant(false)) => {
-                Constraint::from(false)
-            }
-            // true AND x is always x
-            (&Boolean::Constant(true), &x) | (&x, &Boolean::Constant(true)) => Constraint::from(x),
-            // a AND (NOT b)
-            (&Boolean::Is(is), &Boolean::Not(not)) | (&Boolean::Not(not), &Boolean::Is(is)) => {
-                // This constrain for and_not: (a) * (1 - b) = (c), ensuring c is 1 iff
-                // a is true and b is false, and otherwise c is 0.
-                let constr = Term::from(is) * (Term::from(1) - Term::from(not));
-                constr
-            }
-            // (NOT a) AND (NOT b) = a NOR b
-            (&Boolean::Not(a), &Boolean::Not(b)) => {
-                // This constrain for nor: (1 - a) * (1 - b) = (c), ensuring c is 1 iff
-                // a and b are both false, and otherwise c is 0.
-
-                // a*b - a - b  + 1 = c
-                let constr =
-                    Term::from(a) * Term::from(b) - Term::from(a) - Term::from(b) + (Term::from(1));
-                constr
-            }
-            // a AND b
-            (&Boolean::Is(a), &Boolean::Is(b)) => {
-                // This constrain for and (a) * (b) = (c), ensuring c is 1 iff
-                // a AND b are both 1.
-                let constr = Term::from(a) * Term::from(b);
-                constr
-            }
-        }
-    }
-
     #[track_caller]
     pub fn and<F: PrimeField, C: Circuit<F>>(a: &Self, b: &Self, cs: &mut C) -> Self {
         match (a, b) {
@@ -398,12 +363,13 @@ impl Boolean {
                 .skip(1)
                 .fold(meaningful_terms[0], |acc, x| Self::and::<F, C>(&acc, x, cs))
         } else {
-            let mut cnstr = meaningful_terms
+            // (sum of booleans) - N: equals 0 iff every input was true. We
+            // reduce that via is_zero rather than chaining N-1 AND gates.
+            let sum_expr = meaningful_terms
                 .iter()
-                .fold(Constraint::<F>::empty(), |acc, x| acc + x.get_terms());
-            cnstr -= Term::from(meaningful_terms.len() as u32);
-            let tmp = Num::Var(cs.add_variable_from_constraint_allow_explicit_linear(cnstr));
-            // if sum of booleans is equal to number of them - than all of those were `true`
+                .fold(Expr::<F>::zero(), |acc, x| acc + Expr::<F>::from(*x))
+                - Expr::<F>::from(meaningful_terms.len() as u32);
+            let tmp = Num::Var(cs.add_variable_from_expr_allow_explicit_linear(sum_expr));
 
             cs.is_zero(tmp)
         };
@@ -439,11 +405,12 @@ impl Boolean {
                 .skip(1)
                 .fold(meaningful_terms[0], |acc, x| Self::or::<F, C>(&acc, x, cs))
         } else {
-            let cnstr = meaningful_terms
+            // sum-of-booleans == 0 iff every input was false; the negation of
+            // that is "at least one true", i.e. OR.
+            let sum_expr = meaningful_terms
                 .iter()
-                .fold(Constraint::<F>::empty(), |acc, x| acc + Term::from(*x));
-            let tmp = cs.add_variable_from_constraint(cnstr);
-            let tmp = Num::Var(tmp);
+                .fold(Expr::<F>::zero(), |acc, x| acc + Expr::<F>::from(*x));
+            let tmp = Num::Var(cs.add_variable_from_expr_allow_explicit_linear(sum_expr));
 
             let sum_is_zero = cs.is_zero(tmp);
             sum_is_zero.toggle()
@@ -458,444 +425,28 @@ impl Boolean {
         flags: &[Self],
     ) -> Self {
         assert_eq!(conds.len(), flags.len());
-        let mut constraint = Constraint::<F>::empty();
+
+        // Accumulate one `cond * flag` term per pair. `Expr::from(Boolean)`
+        // lowers `Not(v)` to `1 - v` for us, so every Is/Not/Constant combo
+        // funnels through a single Expr-level multiplication.
+        let mut terms = Vec::with_capacity(conds.len());
         for (condition, flag) in conds.iter().zip(flags.iter()) {
-            match *flag {
-                Boolean::Constant(false) => {
-                    // we can just ignore it
-                    continue;
-                }
-                _ => {}
+            if matches!(flag, Boolean::Constant(false)) {
+                continue;
             }
 
             match *condition {
-                Boolean::Constant(cond) => {
-                    if cond {
-                        panic!("Constant true in orthogonal flags");
-                    } else {
-                        // just ignore
-                    }
-                }
-                cond @ _ => {
-                    constraint = constraint + Boolean::and_constraint(&cond, flag);
-                }
-            };
+                Boolean::Constant(true) => panic!("Constant true in orthogonal flags"),
+                Boolean::Constant(false) => continue,
+                cond => terms.push(Expr::<F>::from(cond) * Expr::<F>::from(*flag)),
+            }
         }
 
-        if constraint.is_empty() {
+        if terms.is_empty() {
             return Boolean::Constant(false);
         }
-        let res = cs.add_variable_from_constraint(constraint);
 
-        Boolean::Is(res)
-    }
-
-    #[track_caller]
-    pub fn choose<F: PrimeField, CS: Circuit<F>>(
-        cs: &mut CS,
-        flag: &Self,
-        if_true_val: &Self,
-        if_false_val: &Self,
-    ) -> Self {
-        match (if_true_val, if_false_val) {
-            (&Boolean::Constant(a), &Boolean::Constant(b)) => {
-                if a == b {
-                    return Boolean::Constant(a);
-                }
-                match flag {
-                    &Boolean::Constant(flag) => {
-                        let result_value = if flag { a } else { b };
-
-                        Boolean::Constant(result_value)
-                    }
-                    &Boolean::Is(cond) => {
-                        let new_var = cs.add_variable();
-
-                        let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                            let a = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(a);
-                            let b = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(b);
-                            let mask = placer.get_boolean(cond);
-                            let value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                                &mask, &a, &b,
-                            );
-                            placer.assign_mask(new_var, &value);
-                        };
-                        cs.set_values(value_fn);
-
-                        // a * condition + b*(1-condition) = c ->
-                        // (a - b) *condition - c + b = 0
-                        let cnstr: Constraint<F> = {
-                            Term::from(cond) * (Term::from(a as u32) - Term::from(b as u32))
-                                + Term::from(b as u32)
-                                - Term::from(new_var)
-                        };
-                        cs.add_constraint_allow_explicit_linear(cnstr);
-                        Boolean::Is(new_var)
-                    }
-
-                    &Boolean::Not(_cond) => {
-                        unreachable!();
-                    }
-                }
-            }
-            (&Boolean::Is(a), &Boolean::Is(b)) => {
-                if a == b {
-                    return if_true_val.clone();
-                }
-
-                match flag {
-                    &Boolean::Constant(flag) => {
-                        if flag {
-                            *if_true_val
-                        } else {
-                            *if_false_val
-                        }
-                    }
-                    &Boolean::Is(cond) => {
-                        let new_var = cs.add_variable();
-
-                        let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                            let a = placer.get_boolean(a);
-                            let b = placer.get_boolean(b);
-                            let mask = placer.get_boolean(cond);
-                            let value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                                &mask, &a, &b,
-                            );
-                            placer.assign_mask(new_var, &value);
-                        };
-
-                        cs.set_values(value_fn);
-                        // if_true_val = a, if_false_val = b
-                        // new_var = flag * a + (1 - flag) * b = flag * (a - b) + b
-                        let cnstr: Constraint<F> = {
-                            Term::from(cond) * (Term::from(a) - Term::from(b)) + Term::from(b)
-                                - Term::from(new_var)
-                        };
-                        cs.add_constraint(cnstr);
-                        Boolean::Is(new_var)
-                    }
-
-                    &Boolean::Not(cond) => {
-                        // new_var = flag * b + (1-flag) * a
-                        let new_var = cs.add_variable();
-
-                        let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                            let mask = placer.get_boolean(cond).negate();
-                            let selection_result =
-                                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                                    &mask,
-                                    &placer.get_boolean(a),
-                                    &placer.get_boolean(b),
-                                );
-                            placer.assign_mask(new_var, &selection_result);
-                        };
-                        cs.set_values(value_fn);
-
-                        cs.add_constraint(
-                            Constraint::from(new_var)
-                                - (Term::from(cond) * Term::from(b)
-                                    + (Term::from(1) - Term::from(cond)) * Term::from(a)),
-                        );
-                        Boolean::Is(new_var)
-                    }
-                }
-            }
-            (&Boolean::Not(_a), &Boolean::Not(_b)) => {
-                unreachable!();
-            }
-            (&Boolean::Is(a), &Boolean::Constant(constant)) => {
-                match flag {
-                    &Boolean::Constant(flag) => {
-                        if flag {
-                            return Boolean::Is(a.clone());
-                        } else {
-                            return Boolean::Constant(constant);
-                        }
-                    }
-                    &Boolean::Is(cond) => {
-                        let new_var = cs.add_variable();
-
-                        let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                            let a = placer.get_boolean(a);
-                            let b =
-                                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(constant);
-                            let mask = placer.get_boolean(cond);
-                            let value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                                &mask, &a, &b,
-                            );
-                            placer.assign_mask(new_var, &value);
-                        };
-
-                        cs.set_values(value_fn);
-
-                        // new_var = flag * a + (1 - flag) * constant = flag * (if_true - constant) + constant
-                        let cnstr: Constraint<F> = {
-                            Term::from(cond)
-                                * (Term::from(a)
-                                    - Term::from_field(F::from_u32_unchecked(constant as u32)))
-                                + Term::from_field(F::from_u32_unchecked(constant as u32))
-                                - Term::from(new_var)
-                        };
-                        cs.add_constraint(cnstr);
-                        Boolean::Is(new_var)
-                    }
-
-                    &Boolean::Not(_cond) => {
-                        unreachable!();
-                    }
-                }
-            }
-            (&Boolean::Constant(constant), &Boolean::Is(b)) => {
-                // Self::choose(cs, &flag.toggle(), if_false_val, if_true_val)
-                match flag {
-                    &Boolean::Constant(flag) => {
-                        if flag {
-                            return Boolean::Constant(constant);
-                        } else {
-                            return Boolean::Is(b.clone());
-                        }
-                    }
-                    &Boolean::Is(cond) => {
-                        let new_var = cs.add_variable();
-
-                        let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                            let a =
-                                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(constant);
-                            let b = placer.get_boolean(b);
-                            let mask = placer.get_boolean(cond);
-                            let value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                                &mask, &a, &b,
-                            );
-                            placer.assign_mask(new_var, &value);
-                        };
-
-                        cs.set_values(value_fn);
-
-                        // new_var = flag * constant + (1 - flag) * b = flag * (constant - b) + b
-                        let cnstr: Constraint<F> = {
-                            Term::from(cond)
-                                * (Term::from_field(F::from_u32_unchecked(constant as u32))
-                                    - Term::from(b))
-                                + Term::from(b)
-                                - Term::from(new_var)
-                        };
-                        cs.add_constraint(cnstr);
-                        Boolean::Is(new_var)
-                    }
-
-                    &Boolean::Not(..) => {
-                        unreachable!();
-                    }
-                }
-            }
-            (&Boolean::Not(_a), &Boolean::Constant(_constant)) => {
-                unreachable!();
-            }
-            (&Boolean::Constant(..), &Boolean::Not(..)) => {
-                unreachable!();
-            }
-            (&Boolean::Is(_a), &Boolean::Not(_b)) => {
-                unreachable!();
-            }
-            (&Boolean::Not(..), &Boolean::Is(..)) => {
-                unreachable!();
-            }
-        }
-    }
-
-    #[track_caller]
-    pub fn choose_from_orthogonal_flag<F: PrimeField, CS: Circuit<F>>(
-        cs: &mut CS,
-        flag: &Self,
-        if_true_val: &Self,
-        if_false_val: &Self,
-    ) -> Self {
-        match (if_true_val, if_false_val) {
-            (&Boolean::Constant(a), &Boolean::Constant(b)) => {
-                if a == b {
-                    return Boolean::Constant(a);
-                }
-                match flag {
-                    &Boolean::Constant(flag) => {
-                        let result_value = if flag { a } else { b };
-
-                        Boolean::Constant(result_value)
-                    }
-                    &Boolean::Is(cond) => {
-                        let new_var = cs.add_variable();
-
-                        let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                            let a = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(a);
-                            let b = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(b);
-                            let mask = placer.get_boolean(cond);
-                            let value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                                &mask, &a, &b,
-                            );
-                            placer.assign_mask(new_var, &value);
-                        };
-
-                        cs.set_values(value_fn);
-
-                        // a * condition + b*(1-condition) = c ->
-                        // (a - b) *condition - c + b = 0
-                        let cnstr: Constraint<F> = {
-                            Term::from(cond) * (Term::from(a as u32) - Term::from(b as u32))
-                                + Term::from(b as u32)
-                                - Term::from(new_var)
-                        };
-                        cs.add_constraint_allow_explicit_linear(cnstr);
-                        Boolean::Is(new_var)
-                    }
-
-                    &Boolean::Not(_cond) => {
-                        unreachable!();
-                    }
-                }
-            }
-            (&Boolean::Is(a), &Boolean::Is(b)) => {
-                if a == b {
-                    return if_true_val.clone();
-                }
-
-                match flag {
-                    &Boolean::Constant(flag) => {
-                        if flag {
-                            *if_true_val
-                        } else {
-                            *if_false_val
-                        }
-                    }
-                    &Boolean::Is(cond) => {
-                        let new_var = cs.add_variable();
-
-                        let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                            let a = placer.get_boolean(a);
-                            let b = placer.get_boolean(b);
-                            let mask = placer.get_boolean(cond);
-                            let value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                                &mask, &a, &b,
-                            );
-                            placer.assign_mask(new_var, &value);
-                        };
-
-                        cs.set_values(value_fn);
-
-                        // if_true_val = a, if_false_val = b
-                        // new_var = flag * a + (1 - flag) * b = flag * (a - b) + b
-                        let cnstr: Constraint<F> = {
-                            Term::from(cond) * (Term::from(a) - Term::from(b)) + Term::from(b)
-                                - Term::from(new_var)
-                        };
-                        cs.add_constraint(cnstr);
-                        Boolean::Is(new_var)
-                    }
-
-                    &Boolean::Not(_cond) => {
-                        unreachable!();
-                    }
-                }
-            }
-            (&Boolean::Not(_a), &Boolean::Not(_b)) => {
-                unreachable!();
-            }
-            (&Boolean::Is(a), &Boolean::Constant(constant)) => {
-                match flag {
-                    &Boolean::Constant(flag) => {
-                        if flag {
-                            return Boolean::Is(a.clone());
-                        } else {
-                            return Boolean::Constant(constant);
-                        }
-                    }
-                    &Boolean::Is(cond) => {
-                        let new_var = cs.add_variable();
-
-                        let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                            let a = placer.get_boolean(a);
-                            let b =
-                                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(constant);
-                            let mask = placer.get_boolean(cond);
-                            let value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                                &mask, &a, &b,
-                            );
-                            placer.assign_mask(new_var, &value);
-                        };
-
-                        cs.set_values(value_fn);
-
-                        // new_var = flag * a + (1 - flag) * constant = flag * (if_true - constant) + constant
-                        let cnstr: Constraint<F> = {
-                            Term::from(cond)
-                                * (Term::from(a)
-                                    - Term::from_field(F::from_u32_unchecked(constant as u32)))
-                                + Term::from_field(F::from_u32_unchecked(constant as u32))
-                                - Term::from(new_var)
-                        };
-                        cs.add_constraint(cnstr);
-                        Boolean::Is(new_var)
-                    }
-
-                    &Boolean::Not(_cond) => {
-                        unreachable!();
-                    }
-                }
-            }
-            (&Boolean::Constant(constant), &Boolean::Is(b)) => {
-                // Self::choose(cs, &flag.toggle(), if_false_val, if_true_val)
-                match flag {
-                    &Boolean::Constant(flag) => {
-                        if flag {
-                            return Boolean::Constant(constant);
-                        } else {
-                            return Boolean::Is(b.clone());
-                        }
-                    }
-                    &Boolean::Is(cond) => {
-                        let new_var = cs.add_variable();
-
-                        let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                            let a =
-                                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(constant);
-                            let b = placer.get_boolean(b);
-                            let mask = placer.get_boolean(cond);
-                            let value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                                &mask, &a, &b,
-                            );
-                            placer.assign_mask(new_var, &value);
-                        };
-
-                        cs.set_values(value_fn);
-
-                        // new_var = flag * constant + (1 - flag) * b = flag * (constant - b) + b
-                        let cnstr: Constraint<F> = {
-                            Term::from(cond)
-                                * (Term::from_field(F::from_u32_unchecked(constant as u32))
-                                    - Term::from(b))
-                                + Term::from(b)
-                                - Term::from(new_var)
-                        };
-                        cs.add_constraint(cnstr);
-                        Boolean::Is(new_var)
-                    }
-
-                    &Boolean::Not(..) => {
-                        unreachable!();
-                    }
-                }
-            }
-            (&Boolean::Not(_a), &Boolean::Constant(_constant)) => {
-                unreachable!();
-            }
-            (&Boolean::Constant(..), &Boolean::Not(..)) => {
-                unreachable!();
-            }
-            (&Boolean::Is(_a), &Boolean::Not(_b)) => {
-                unreachable!();
-            }
-            (&Boolean::Not(..), &Boolean::Is(..)) => {
-                unreachable!();
-            }
-        }
+        Boolean::Is(cs.add_variable_from_expr(Expr::Sum(terms)))
     }
 }
 

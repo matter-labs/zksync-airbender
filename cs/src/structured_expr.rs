@@ -42,6 +42,14 @@ impl<F: PrimeField> Expr<F> {
         Self::Var(variable)
     }
 
+    pub fn zero() -> Self {
+        Self::Constant(F::ZERO)
+    }
+
+    pub fn one() -> Self {
+        Self::Constant(F::ONE)
+    }
+
     pub fn degree(&self) -> usize {
         match self {
             Self::Constant(_) => 0,
@@ -133,6 +141,12 @@ impl<F: PrimeField> From<Boolean> for Expr<F> {
 impl<F: PrimeField> From<u32> for Expr<F> {
     fn from(value: u32) -> Self {
         Self::Constant(F::from_u32_with_reduction(value))
+    }
+}
+
+impl<F: PrimeField> From<bool> for Expr<F> {
+    fn from(value: bool) -> Self {
+        Self::from(value as u32)
     }
 }
 
@@ -356,6 +370,19 @@ mod tests {
     }
 
     #[test]
+    fn equals_to_identical_variable_folds_without_constraints() {
+        let mut cs = BasicAssembly::<F>::new();
+        let a = cs.add_named_variable("a");
+
+        let is_equal = cs.equals_to(Num::Var(a), Num::Var(a));
+        let (output, _) = cs.finalize();
+
+        assert_eq!(is_equal, Boolean::Constant(true));
+        assert!(output.constraints.is_empty());
+        assert!(output.structured_statements.is_empty());
+    }
+
+    #[test]
     fn boolean_and_records_structured_definition_metadata() {
         let mut cs = BasicAssembly::<F>::new();
         let a = cs.add_named_boolean_variable("a");
@@ -378,6 +405,33 @@ mod tests {
         assert!(output
             .structured_statements
             .contains(&StructuredStatement::Define { dst, expr }));
+    }
+
+    #[test]
+    fn large_boolean_or_records_linear_sum_definition_metadata() {
+        let mut cs = BasicAssembly::<F>::new();
+        let booleans = [
+            cs.add_named_boolean_variable("a"),
+            cs.add_named_boolean_variable("b"),
+            cs.add_named_boolean_variable("c"),
+            cs.add_named_boolean_variable("d"),
+            cs.add_named_boolean_variable("e"),
+        ];
+        let expected_sum_expr = booleans
+            .iter()
+            .fold(Expr::<F>::zero(), |acc, boolean| acc + Expr::from(*boolean));
+
+        let result = Boolean::multi_or::<F, _>(&booleans, &mut cs);
+        let (output, _) = cs.finalize();
+
+        assert!(matches!(result, Boolean::Not(_)));
+        assert!(output
+            .structured_statements
+            .iter()
+            .any(|statement| matches!(
+                statement,
+                StructuredStatement::Define { expr, .. } if expr == &expected_sum_expr
+            )));
     }
 
     #[test]
