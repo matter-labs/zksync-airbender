@@ -2,7 +2,6 @@ use super::super::{CoefficientRecipe, GpuFlatC0Ref, GpuFlatC1Pair};
 use crate::primitives::field::BF;
 use crate::upstream::Field;
 
-pub(crate) const FLAT_CONT_CONST_MAX: usize = 1024;
 pub(crate) const FLAT_CONT_MAX_SOURCES: usize = 512;
 pub(crate) const FLAT_CONT_MAX_C0_ONLY_LINEAR: usize = 640;
 pub(crate) const FLAT_CONT_MAX_UNIFIED_QUADRATIC: usize = 4608;
