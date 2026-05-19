@@ -13,6 +13,16 @@
 - `gpu_prover/src/prover/` is a pointer scope that exists specifically to force a read of the full GPU scheduling contract before editing prover scheduling code.
 - `gpu_prover_test/` and `gpu_witness_eval_generator/` each have their own `AGENTS.md`; read them when touching those crates.
 
+## Agent Artifact Locations
+
+These paths override any plugin or skill default (e.g. Superpowers' `docs/superpowers/...`) and any tendency to write under a personal agent-tool home directory such as `~/.claude/...` or `~/.codex/...`. Skill workflows must redirect here and skip their "commit" step — these subdirectories are gitignored on purpose.
+
+- Implementation plans → `.agents/plans/YYYY-MM-DD-<name>.md` (applies to `writing-plans`, `executing-plans`, `subagent-driven-development`, `requesting-code-review`, and any plan reference passed between agents).
+- Design specs / brainstorm outputs → `.agents/specs/YYYY-MM-DD-<topic>-design.md` (applies to `brainstorming` and its review subagents).
+- Audits, code reviews, security-review reports → `.agents/audits/YYYY-MM-DD-<topic>.md`.
+- Keep the filename shape that the skill expects (date + slug) so cross-skill references still resolve; only the parent directory changes.
+- Do not commit these directories; do not propose committing them. Share artifacts by path reference in conversation, not via git.
+
 ## Worktrees
 
 - Prefer external sibling worktrees under `../zksync-airbender-worktrees/` rather than nesting worktrees inside the repo tree.
