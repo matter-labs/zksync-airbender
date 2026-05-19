@@ -1,4 +1,4 @@
-target_sources(gpu_prover_native PRIVATE
+target_sources(gpu_prover_ntt PRIVATE
         context.cuh
         context.cu
         evals_to_monomials_three_pass.cu
