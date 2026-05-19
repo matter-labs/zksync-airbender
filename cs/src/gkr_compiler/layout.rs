@@ -157,8 +157,10 @@ impl GKRGraph {
                                     });
                             }
                         }
-                        a @ _ => {
-                            let current_output = match a {
+                        OutputType::Lookup16Bits
+                        | OutputType::LookupTimestamps
+                        | OutputType::GenericLookup => {
+                            let current_output = match k {
                                 OutputType::Lookup16Bits => {
                                     lookup_outputs.get_mut(&LookupType::RangeCheck16).unwrap()
                                 }
@@ -168,9 +170,10 @@ impl GKRGraph {
                                 OutputType::GenericLookup => {
                                     lookup_outputs.get_mut(&LookupType::Generic).unwrap()
                                 }
-                                _ => {
-                                    todo!()
-                                }
+                                OutputType::PermutationProduct
+                                | OutputType::InitsAndTeardownsProduct => unreachable!(
+                                    "outer arm matched lookup variants; can't see {k:?} here"
+                                ),
                             };
                             for next_layer in (output_layer_idx + 1)..=max_output_layer {
                                 // copy

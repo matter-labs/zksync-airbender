@@ -14,4 +14,4 @@ pub use self::circuit::{
     FAMILY_1_FLAG_OFFSET, FAMILY_2_FLAG_OFFSET, FAMILY_3_FLAG_OFFSET, FAMILY_4_FLAG_OFFSET,
     FAMILY_4_LW_BIT, FAMILY_4_SW_BIT, UNIFIED_FAMILY_4_NUM_FLAGS, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
-pub use self::decoder::UnifiedReducedMachineDecoder;
+pub use self::decoder::{UnifiedReducedMachineDecoder, UnifiedReducedMachineFamilyCircuitMask};

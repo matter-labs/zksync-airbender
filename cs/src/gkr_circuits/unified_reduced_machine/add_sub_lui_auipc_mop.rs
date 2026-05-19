@@ -107,8 +107,8 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
 
     // Witness function - added before any constraints, so we can use debug machinery
     {
-        let of_var = carry.get_variable().unwrap();
-        let intermediate_of_var = intermediate_carry.get_variable().unwrap();
+        let of_var = carry.expect_variable();
+        let intermediate_of_var = intermediate_carry.expect_variable();
         let out_vars = [out_low, out_high];
         let intermediate_vars = intermediate_tmp.0.map(|el| el.get_variable());
         let imm_vars = inputs.decoder_data.imm;
@@ -116,13 +116,13 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         let rs1_vars = rs1_limbs;
         let rs2_vars = rs2_limbs;
 
-        let is_add_var = is_add.get_variable().unwrap();
-        let is_sub_var = is_sub.get_variable().unwrap();
-        let is_auipc_var = is_auipc.get_variable().unwrap();
-        let is_addmod_var = is_addmod.get_variable().unwrap();
-        let is_submod_var = is_submod.get_variable().unwrap();
-        let is_mulmod_var = is_mulmod.get_variable().unwrap();
-        let is_non_determinism_read_var = is_non_determinism_read.get_variable().unwrap();
+        let is_add_var = is_add.expect_variable();
+        let is_sub_var = is_sub.expect_variable();
+        let is_auipc_var = is_auipc.expect_variable();
+        let is_addmod_var = is_addmod.expect_variable();
+        let is_submod_var = is_submod.expect_variable();
+        let is_mulmod_var = is_mulmod.expect_variable();
+        let is_non_determinism_read_var = is_non_determinism_read.expect_variable();
 
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             // NOTE: it is UNCONDITIONAL assignment, even though we select across multiple variants
@@ -414,9 +414,9 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         add_like_low_constraint += Term::from(is_add) * Term::from(inputs.decoder_data.imm[0]);
         add_like_low_constraint += Term::from(is_auipc) * Term::from(inputs.decoder_data.imm[0]);
         add_like_low_constraint += Term::from(is_sub) * rs2_low_c.clone();
-        add_like_low_constraint += Term::from((modulus_low, is_addmod.get_variable().unwrap()));
-        add_like_low_constraint += Term::from((modulus_low, is_submod.get_variable().unwrap()));
-        add_like_low_constraint += Term::from((modulus_low, is_mulmod.get_variable().unwrap()));
+        add_like_low_constraint += Term::from((modulus_low, is_addmod.expect_variable()));
+        add_like_low_constraint += Term::from((modulus_low, is_submod.expect_variable()));
+        add_like_low_constraint += Term::from((modulus_low, is_mulmod.expect_variable()));
         // rd
         add_like_low_constraint -= Term::from(is_add) * Term::from(out_low);
         add_like_low_constraint -= Term::from(is_auipc) * Term::from(out_low);
@@ -426,7 +426,7 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         add_like_low_constraint -= Term::from(is_mulmod) * Term::from(out_low);
 
         // intermediate carry
-        let intermediate_carry_var = intermediate_carry.get_variable().unwrap();
+        let intermediate_carry_var = intermediate_carry.expect_variable();
         add_like_low_constraint -=
             Term::from(is_add) * Term::from((carry_shift, intermediate_carry_var));
         add_like_low_constraint -=
@@ -467,9 +467,9 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         add_like_high_constraint += Term::from(is_add) * Term::from(inputs.decoder_data.imm[1]);
         add_like_high_constraint += Term::from(is_auipc) * Term::from(inputs.decoder_data.imm[1]);
         add_like_high_constraint += Term::from(is_sub) * rs2_high_c.clone();
-        add_like_high_constraint += Term::from((modulus_high, is_addmod.get_variable().unwrap()));
-        add_like_high_constraint += Term::from((modulus_high, is_submod.get_variable().unwrap()));
-        add_like_high_constraint += Term::from((modulus_high, is_mulmod.get_variable().unwrap()));
+        add_like_high_constraint += Term::from((modulus_high, is_addmod.expect_variable()));
+        add_like_high_constraint += Term::from((modulus_high, is_submod.expect_variable()));
+        add_like_high_constraint += Term::from((modulus_high, is_mulmod.expect_variable()));
         // rd
         add_like_high_constraint -= Term::from(is_add) * Term::from(out_high);
         add_like_high_constraint -= Term::from(is_auipc) * Term::from(out_high);
@@ -478,7 +478,7 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         add_like_high_constraint += Term::from(is_submod) * Term::from(out_high);
         add_like_high_constraint += Term::from(is_mulmod) * Term::from(out_high);
         // final carry
-        let carry_var = carry.get_variable().unwrap();
+        let carry_var = carry.expect_variable();
         add_like_high_constraint -= Term::from(is_add) * Term::from((carry_shift, carry_var));
         add_like_high_constraint -= Term::from(is_auipc) * Term::from((carry_shift, carry_var));
         add_like_high_constraint -= Term::from(is_sub) * Term::from((carry_shift, carry_var));

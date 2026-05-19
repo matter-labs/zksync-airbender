@@ -7,14 +7,12 @@ use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
 use crate::gkr_circuits::add_sub_family::{
     add_sub_lui_auipc_mop_table_addition_fn, add_sub_lui_auipc_mop_table_driver_fn,
-    AddSubLuiAuipcMopFamilyCircuitMask,
 };
 use crate::gkr_circuits::binary_shifts_family::{
-    shift_binop_table_addition_fn, shift_binop_table_driver_fn, ShiftBinaryFamilyCircuitMask,
+    shift_binop_table_addition_fn, shift_binop_table_driver_fn,
 };
 use crate::gkr_circuits::jump_branch_slt_family::{
     jump_branch_slt_table_addition_fn, jump_branch_slt_table_driver_fn,
-    JumpSltBranchFamilyCircuitMask,
 };
 use crate::gkr_circuits::mem_word_only::{
     mem_word_only_table_addition_fn, mem_word_only_table_driver_fn,
@@ -103,21 +101,9 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     inputs: OpcodeFamilyCircuitState<F>,
     bitmask: [Boolean; UNIFIED_REDUCED_MACHINE_NUM_FLAGS],
 ) {
-    // Slice the unified bitmask into per-family decoders. Each family's apply_inner
-    // sees only its own flag bits and is unaware of the unified layout.
-    let family_1_bits: [Boolean; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS] =
-        std::array::from_fn(|i| bitmask[FAMILY_1_FLAG_OFFSET + i]);
-    let family_2_bits: [Boolean; JUMP_SLT_BRANCH_FAMILY_NUM_BITS] =
-        std::array::from_fn(|i| bitmask[FAMILY_2_FLAG_OFFSET + i]);
-    let family_3_bits: [Boolean; SHIFT_BINARY_FAMILY_NUM_FLAGS] =
-        std::array::from_fn(|i| bitmask[FAMILY_3_FLAG_OFFSET + i]);
-
-    let family_1_decoder = AddSubLuiAuipcMopFamilyCircuitMask::from_mask(family_1_bits);
-    let family_2_decoder = JumpSltBranchFamilyCircuitMask::from_mask(family_2_bits);
-    let family_3_decoder = ShiftBinaryFamilyCircuitMask::from_mask(family_3_bits);
-
-    let is_lw = bitmask[FAMILY_4_LW_BIT];
-    let is_sw = bitmask[FAMILY_4_SW_BIT];
+    let unified_mask = UnifiedReducedMachineFamilyCircuitMask::from_full_mask(bitmask);
+    let is_lw = unified_mask.is_lw();
+    let is_sw = unified_mask.is_sw();
 
     // Allocate the 3 memory accesses ONCE — shared across all families.
     //
@@ -215,7 +201,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     apply_unified_add_sub_lui_auipc_mop_inner(
         cs,
         inputs.clone(),
-        family_1_decoder,
+        unified_mask.add_sub_lui_auipc_mop(),
         rs1_limbs,
         rs2_limbs,
         rd_write_limbs,
@@ -224,7 +210,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     apply_unified_jump_branch_slt_inner(
         cs,
         inputs.clone(),
-        family_2_decoder,
+        unified_mask.jump_branch_slt(),
         rs1_limbs,
         rs2_limbs,
         rd_write_limbs,
@@ -232,7 +218,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     apply_unified_binary_shifts_inner(
         cs,
         inputs.clone(),
-        family_3_decoder,
+        unified_mask.binary_shifts(),
         rs1_limbs,
         rs2_limbs,
         rd_write_limbs,
@@ -246,17 +232,9 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     // Family 2 (jump_branch_slt) owns its own gated PC logic for jal/jalr/branch/slt.
     // We add `pc_next = pc + 4` constraints that fire only when (cycle executes) AND
     // (no Family-2 sub-opcode is active). Padding rows have execute=0 → trivially satisfied.
-    apply_unified_pc_bump(cs, pc_in, pc_out, execute, family_2_bits);
+    apply_unified_pc_bump(cs, pc_in, pc_out, execute, unified_mask.jump_branch_slt_bits());
 
-    apply_unified_family_dispatch_one_hot(
-        cs,
-        execute,
-        family_1_bits,
-        family_2_bits,
-        family_3_bits,
-        is_lw,
-        is_sw,
-    );
+    apply_unified_family_dispatch_one_hot(cs, execute, &unified_mask);
 }
 
 /// Adds the `pc_next = pc + 4` constraint, gated on `execute AND no Family-2 sub-opcode bit set`.
@@ -303,7 +281,7 @@ fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
                 common_constants::PC_STEP as u16,
             );
             let (_, carry) = pc_lo.overflowing_add(&four);
-            placer.assign_mask(pc_inc_carry.get_variable().unwrap(), &carry);
+            placer.assign_mask(pc_inc_carry.expect_variable(), &carry);
         };
         cs.set_values(value_fn);
     }
@@ -323,7 +301,7 @@ fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
                 .get_variable()
                 .expect("Boolean::Is expected")
         });
-        let pc_bump_gate_var = pc_bump_gate.get_variable().unwrap();
+        let pc_bump_gate_var = pc_bump_gate.expect_variable();
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let execute_m = placer.get_boolean(execute_var);
             let any_f2 = f2_vars
@@ -367,25 +345,27 @@ fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
 fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     execute: crate::definitions::Variable,
-    family_1_bits: [Boolean; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS],
-    family_2_bits: [Boolean; JUMP_SLT_BRANCH_FAMILY_NUM_BITS],
-    family_3_bits: [Boolean; SHIFT_BINARY_FAMILY_NUM_FLAGS],
-    is_lw: Boolean,
-    is_sw: Boolean,
+    unified_mask: &UnifiedReducedMachineFamilyCircuitMask,
 ) {
+    let family_1_bits = unified_mask.add_sub_lui_auipc_mop_bits();
+    let family_2_bits = unified_mask.jump_branch_slt_bits();
+    let family_3_bits = unified_mask.binary_shifts_bits();
+    let is_lw = unified_mask.is_lw();
+    let is_sw = unified_mask.is_sw();
+
     let is_any_family_active = cs.add_named_boolean_variable("unified family-dispatch one-hot");
 
     // Witness: is_any_family_active = execute AND (any of the family-dispatch bits)
     {
         let f1_vars: [Variable; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS] =
-            std::array::from_fn(|i| family_1_bits[i].get_variable().unwrap());
+            std::array::from_fn(|i| family_1_bits[i].expect_variable());
         let f2_vars: [Variable; 4] =
-            std::array::from_fn(|i| family_2_bits[i].get_variable().unwrap());
+            std::array::from_fn(|i| family_2_bits[i].expect_variable());
         let f3_vars: [Variable; SHIFT_BINARY_FAMILY_NUM_FLAGS] =
-            std::array::from_fn(|i| family_3_bits[i].get_variable().unwrap());
-        let is_lw_var = is_lw.get_variable().unwrap();
-        let is_sw_var = is_sw.get_variable().unwrap();
-        let target = is_any_family_active.get_variable().unwrap();
+            std::array::from_fn(|i| family_3_bits[i].expect_variable());
+        let is_lw_var = is_lw.expect_variable();
+        let is_sw_var = is_sw.expect_variable();
+        let target = is_any_family_active.expect_variable();
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let execute_m = placer.get_boolean(execute);
             let any_bit = f1_vars

@@ -1,12 +1,18 @@
 use super::*;
-use crate::gkr_circuits::add_sub_family::AddSubLuiAuipcMopDecoder;
-use crate::gkr_circuits::binary_shifts_family::ShiftBinaryDecoder;
-use crate::gkr_circuits::jump_branch_slt_family::JumpSltBranchDecoder;
+use crate::gkr_circuits::add_sub_family::{
+    AddSubLuiAuipcMopDecoder, AddSubLuiAuipcMopFamilyCircuitMask,
+};
+use crate::gkr_circuits::binary_shifts_family::{ShiftBinaryDecoder, ShiftBinaryFamilyCircuitMask};
+use crate::gkr_circuits::jump_branch_slt_family::{
+    JumpSltBranchDecoder, JumpSltBranchFamilyCircuitMask,
+};
 use crate::gkr_circuits::mem_word_only::WordOnlyMemoryFamilyDecoder;
+use crate::types::Boolean;
 
 use super::circuit::{
     FAMILY_1_FLAG_OFFSET as F1_OFFSET, FAMILY_2_FLAG_OFFSET as F2_OFFSET,
     FAMILY_3_FLAG_OFFSET as F3_OFFSET, FAMILY_4_FLAG_OFFSET as F4_OFFSET,
+    UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
 
 /// Family 4 in the unified bitmask is one-hot LW/SW (2 bits), not the standalone
@@ -20,6 +26,59 @@ const F4_STANDALONE_IS_STORE_BIT: usize = 0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct UnifiedReducedMachineDecoder;
+
+#[derive(Clone, Copy, Debug)]
+pub struct UnifiedReducedMachineFamilyCircuitMask {
+    add_sub_lui_auipc_mop_bits: [Boolean; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS],
+    jump_branch_slt_bits: [Boolean; JUMP_SLT_BRANCH_FAMILY_NUM_BITS],
+    binary_shifts_bits: [Boolean; SHIFT_BINARY_FAMILY_NUM_FLAGS],
+    is_lw: Boolean,
+    is_sw: Boolean,
+}
+
+impl UnifiedReducedMachineFamilyCircuitMask {
+    pub fn from_full_mask(bitmask: [Boolean; UNIFIED_REDUCED_MACHINE_NUM_FLAGS]) -> Self {
+        Self {
+            add_sub_lui_auipc_mop_bits: std::array::from_fn(|i| bitmask[F1_OFFSET + i]),
+            jump_branch_slt_bits: std::array::from_fn(|i| bitmask[F2_OFFSET + i]),
+            binary_shifts_bits: std::array::from_fn(|i| bitmask[F3_OFFSET + i]),
+            is_lw: bitmask[F4_LW_BIT],
+            is_sw: bitmask[F4_SW_BIT],
+        }
+    }
+
+    pub fn add_sub_lui_auipc_mop(&self) -> AddSubLuiAuipcMopFamilyCircuitMask {
+        AddSubLuiAuipcMopFamilyCircuitMask::from_mask(self.add_sub_lui_auipc_mop_bits)
+    }
+
+    pub fn jump_branch_slt(&self) -> JumpSltBranchFamilyCircuitMask {
+        JumpSltBranchFamilyCircuitMask::from_mask(self.jump_branch_slt_bits)
+    }
+
+    pub fn binary_shifts(&self) -> ShiftBinaryFamilyCircuitMask {
+        ShiftBinaryFamilyCircuitMask::from_mask(self.binary_shifts_bits)
+    }
+
+    pub fn is_lw(&self) -> Boolean {
+        self.is_lw
+    }
+
+    pub fn is_sw(&self) -> Boolean {
+        self.is_sw
+    }
+
+    pub fn add_sub_lui_auipc_mop_bits(&self) -> [Boolean; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS] {
+        self.add_sub_lui_auipc_mop_bits
+    }
+
+    pub fn jump_branch_slt_bits(&self) -> [Boolean; JUMP_SLT_BRANCH_FAMILY_NUM_BITS] {
+        self.jump_branch_slt_bits
+    }
+
+    pub fn binary_shifts_bits(&self) -> [Boolean; SHIFT_BINARY_FAMILY_NUM_FLAGS] {
+        self.binary_shifts_bits
+    }
+}
 
 impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
     /// The unified circuit has no per-instance circuit mask parser since the bitmask

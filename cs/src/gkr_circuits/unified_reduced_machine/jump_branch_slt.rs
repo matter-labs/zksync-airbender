@@ -124,11 +124,11 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     let [comparison_rel_or_jump_saved_pc_low, comparison_rel_or_jump_saved_pc_high] =
         intermediate_reg.0.map(|el| el.get_variable());
 
-    let add_rel_0_intermediate_of_var = add_rel_0_intermediate_of.get_variable().unwrap();
-    let add_rel_0_final_of_var = add_rel_0_final_of.get_variable().unwrap();
+    let add_rel_0_intermediate_of_var = add_rel_0_intermediate_of.expect_variable();
+    let add_rel_0_final_of_var = add_rel_0_final_of.expect_variable();
 
-    let add_rel_1_intermediate_of_var = add_rel_1_intermediate_of.get_variable().unwrap();
-    let add_rel_1_final_of_var = add_rel_1_final_of.get_variable().unwrap();
+    let add_rel_1_intermediate_of_var = add_rel_1_intermediate_of.expect_variable();
+    let add_rel_1_final_of_var = add_rel_1_final_of.expect_variable();
 
     {
         let imm_vars = inputs.decoder_data.imm;
@@ -136,10 +136,10 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         let rs1_vars = rs1_limbs;
         let rs2_vars = rs2_limbs;
 
-        let is_branch_var = is_branch.get_variable().unwrap();
-        let is_slt_var = is_slt.get_variable().unwrap();
-        let is_jal_var = is_jal.get_variable().unwrap();
-        let is_jalr_var = is_jalr.get_variable().unwrap();
+        let is_branch_var = is_branch.expect_variable();
+        let is_slt_var = is_slt.expect_variable();
+        let is_jal_var = is_jal.expect_variable();
+        let is_jalr_var = is_jalr.expect_variable();
 
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             // NOTE: it is UNCONDITIONAL assignment, even though we select across multiple variants
@@ -384,10 +384,10 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         ];
         let rs1_vars = rs1_limbs;
 
-        let is_slt_var = is_slt.get_variable().unwrap();
-        let is_jal_var = is_jal.get_variable().unwrap();
-        let is_jalr_var = is_jalr.get_variable().unwrap();
-        let is_branch_var = is_branch.get_variable().unwrap();
+        let is_slt_var = is_slt.expect_variable();
+        let is_jal_var = is_jal.expect_variable();
+        let is_jalr_var = is_jalr.expect_variable();
+        let is_branch_var = is_branch.expect_variable();
 
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             // NOTE: it is UNCONDITIONAL assignment, even though we select across multiple variants
@@ -603,17 +603,17 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // non-Family-2 cycles route the lookup to ZeroEntry and don't pin rd_write_limbs.
     let is_fam2 = cs.add_named_boolean_variable("is_fam2");
     {
-        let is_jal_var = is_jal.get_variable().unwrap();
-        let is_jalr_var = is_jalr.get_variable().unwrap();
-        let is_slt_var = is_slt.get_variable().unwrap();
-        let is_branch_var = is_branch.get_variable().unwrap();
+        let is_jal_var = is_jal.expect_variable();
+        let is_jalr_var = is_jalr.expect_variable();
+        let is_slt_var = is_slt.expect_variable();
+        let is_branch_var = is_branch.expect_variable();
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let any = placer
                 .get_boolean(is_jal_var)
                 .or(&placer.get_boolean(is_jalr_var))
                 .or(&placer.get_boolean(is_slt_var))
                 .or(&placer.get_boolean(is_branch_var));
-            placer.assign_mask(is_fam2.get_variable().unwrap(), &any);
+            placer.assign_mask(is_fam2.expect_variable(), &any);
         };
         cs.set_values(value_fn);
     }
@@ -633,7 +633,7 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let tmp_low = placer.get_u16(pc_intermediate_addition_tmp_low);
             let bit_1 = tmp_low.shr(1).get_lowest_bits(1).is_one();
-            placer.assign_mask(next_pc_bit_1.get_variable().unwrap(), &bit_1);
+            placer.assign_mask(next_pc_bit_1.expect_variable(), &bit_1);
         };
         cs.set_values(value_fn);
     }
@@ -700,11 +700,11 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     let gate_fam2_rd_zero = cs.add_named_boolean_variable("gate_fam2_rd_zero");
 
     {
-        let is_jal_var = is_jal.get_variable().unwrap();
-        let is_jalr_var = is_jalr.get_variable().unwrap();
-        let is_slt_var = is_slt.get_variable().unwrap();
-        let is_branch_var = is_branch.get_variable().unwrap();
-        let rd_is_zero_var = rd_is_zero.get_variable().unwrap();
+        let is_jal_var = is_jal.expect_variable();
+        let is_jalr_var = is_jalr.expect_variable();
+        let is_slt_var = is_slt.expect_variable();
+        let is_branch_var = is_branch.expect_variable();
+        let rd_is_zero_var = rd_is_zero.expect_variable();
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let is_jal_m = placer.get_boolean(is_jal_var);
             let is_jalr_m = placer.get_boolean(is_jalr_var);
@@ -713,20 +713,20 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
             let rd_is_zero_m = placer.get_boolean(rd_is_zero_var);
             let not_rd_zero = rd_is_zero_m.negate();
             placer.assign_mask(
-                is_jal_writes_rd.get_variable().unwrap(),
+                is_jal_writes_rd.expect_variable(),
                 &is_jal_m.and(&not_rd_zero),
             );
             placer.assign_mask(
-                is_jalr_writes_rd.get_variable().unwrap(),
+                is_jalr_writes_rd.expect_variable(),
                 &is_jalr_m.and(&not_rd_zero),
             );
             placer.assign_mask(
-                is_slt_writes_rd.get_variable().unwrap(),
+                is_slt_writes_rd.expect_variable(),
                 &is_slt_m.and(&not_rd_zero),
             );
             let any_f2 = is_jal_m.or(&is_jalr_m).or(&is_slt_m).or(&is_branch_m);
             placer.assign_mask(
-                gate_fam2_rd_zero.get_variable().unwrap(),
+                gate_fam2_rd_zero.expect_variable(),
                 &any_f2.and(&rd_is_zero_m),
             );
         };

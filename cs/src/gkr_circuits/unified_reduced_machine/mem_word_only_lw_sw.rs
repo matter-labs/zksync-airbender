@@ -109,9 +109,9 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
                 <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(&is_active, &carry_lo, &off);
             let of_hi_val =
                 <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(&is_active, &carry_hi, &off);
-            placer.assign_mask(of_lo.get_variable().unwrap(), &of_lo_val);
-            placer.assign_mask(of_hi.get_variable().unwrap(), &of_hi_val);
-            placer.assign_mask(is_fam4.get_variable().unwrap(), &is_active);
+            placer.assign_mask(of_lo.expect_variable(), &of_lo_val);
+            placer.assign_mask(of_hi.expect_variable(), &of_hi_val);
+            placer.assign_mask(is_fam4.expect_variable(), &is_active);
         };
         cs.set_values(value_fn);
     }
@@ -162,7 +162,7 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
                     .as_integer()
                     .shr(common_constants::ROM_SECOND_WORD_BITS as u32);
                 let rom = extrabits.is_zero();
-                placer.assign_mask(is_rom.get_variable().unwrap(), &rom);
+                placer.assign_mask(is_rom.expect_variable(), &rom);
             };
             cs.set_values(value_fn);
         }
@@ -205,12 +205,12 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     );
     {
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            let is_fam4_val = placer.get_boolean(is_fam4.get_variable().unwrap());
-            let is_rom_val = placer.get_boolean(is_rom_base_layer.get_variable().unwrap());
+            let is_fam4_val = placer.get_boolean(is_fam4.expect_variable());
+            let is_rom_val = placer.get_boolean(is_rom_base_layer.expect_variable());
             let gate_rom_val = is_fam4_val.and(&is_rom_val);
             let gate_not_rom_val = is_fam4_val.and(&is_rom_val.negate());
-            placer.assign_mask(gate_fam4_rom.get_variable().unwrap(), &gate_rom_val);
-            placer.assign_mask(gate_fam4_not_rom.get_variable().unwrap(), &gate_not_rom_val);
+            placer.assign_mask(gate_fam4_rom.expect_variable(), &gate_rom_val);
+            placer.assign_mask(gate_fam4_not_rom.expect_variable(), &gate_not_rom_val);
         };
         cs.set_values(value_fn);
     }
@@ -320,8 +320,8 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         );
 
         let writeaddr_lo_var = memwrite_addr[0];
-        let bit_0_var = bit_0.get_variable().unwrap();
-        let bit_1_var = bit_1.get_variable().unwrap();
+        let bit_0_var = bit_0.expect_variable();
+        let bit_1_var = bit_1.expect_variable();
         {
             let value_fn = move |placer: &mut CS::WitnessPlacer| {
                 let lo = placer.get_u16(writeaddr_lo_var);

@@ -95,6 +95,15 @@ impl Boolean {
     }
 
     #[track_caller]
+    pub fn expect_variable(&self) -> Variable {
+        match *self {
+            Boolean::Is(v) => v,
+            Boolean::Not(_) => panic!("expected Boolean::Is, got Boolean::Not"),
+            Boolean::Constant(_) => panic!("expected Boolean::Is, got Boolean::Constant"),
+        }
+    }
+
+    #[track_caller]
     pub fn new<F: PrimeField, C: Circuit<F>>(circuit: &mut C) -> Self {
         circuit.add_boolean_variable()
     }
