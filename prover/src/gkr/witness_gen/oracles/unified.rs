@@ -1,15 +1,55 @@
+use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use common_constants::NON_DETERMINISM_CSR;
 use cs::definitions::TimestampScalar;
-use cs::gkr_circuits::ExecutorFamilyDecoderData;
+use cs::gkr_circuits::unified_reduced_machine::UnifiedReducedMachineDecoder;
+use cs::gkr_circuits::{
+    process_binary_into_separate_tables_ext, ExecutorFamilyDecoderData, OpcodeFamilyDecoder,
+};
 use cs::oracle::*;
 use field::PrimeField;
+use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 use riscv_transpiler::witness::data_structs::{
     UnifiedOpcodeTracingDataWithTimestamp, MEM_LOAD_TRACE_DATA_MARKER,
 };
+use std::alloc::Global;
 
 pub struct UnifiedRiscvCircuitOracle<'a> {
-    pub inner: &'a [UnifiedOpcodeTracingDataWithTimestamp],
-    pub decoder_table: &'a [ExecutorFamilyDecoderData],
+    pub(crate) inner: &'a [UnifiedOpcodeTracingDataWithTimestamp],
+    decoder_table_with_options: Vec<Option<ExecutorFamilyDecoderData>>,
+    decoder_table: Vec<ExecutorFamilyDecoderData>,
+}
+
+impl<'a> UnifiedRiscvCircuitOracle<'a> {
+    pub fn new<F: PrimeField>(
+        inner: &'a [UnifiedOpcodeTracingDataWithTimestamp],
+        text_section: &[u32],
+        bytecode_size_words: usize,
+    ) -> Self {
+        let decoders: Vec<Box<dyn OpcodeFamilyDecoder>> =
+            vec![Box::new(UnifiedReducedMachineDecoder)];
+        let mut preprocessing_data = process_binary_into_separate_tables_ext::<
+            F,
+            FullUnsignedMachineDecoderConfig,
+            true,
+            Global,
+        >(text_section, &decoders, bytecode_size_words, &[]);
+        let decoder_table_with_options = preprocessing_data
+            .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
+            .expect("UnifiedReducedMachineDecoder must produce a family-128 entry");
+        let decoder_table = decoder_table_with_options
+            .iter()
+            .map(|el| el.unwrap_or_default())
+            .collect();
+        Self {
+            inner,
+            decoder_table_with_options,
+            decoder_table,
+        }
+    }
+
+    pub fn decoder_table_with_options(&self) -> &[Option<ExecutorFamilyDecoderData>] {
+        &self.decoder_table_with_options
+    }
 }
 
 impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
@@ -28,9 +68,19 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
 
     fn get_u32_witness_from_placeholder(&self, placeholder: Placeholder, trace_step: usize) -> u32 {
         let Some(cycle_data) = self.inner.get(trace_step) else {
-            // there are few cases of conventional values
             return match placeholder {
-                _ => 0,
+                Placeholder::PcInit
+                | Placeholder::PcFin
+                | Placeholder::ShuffleRamAddress(_)
+                | Placeholder::ShuffleRamReadValue(_)
+                | Placeholder::ShuffleRamWriteValue(_)
+                | Placeholder::ExternalOracle => 0,
+                a => panic!(
+                    "padding-row u32 query: placeholder {:?} has no defined default \
+                     (trace_step={trace_step} >= inner.len()={})",
+                    a,
+                    self.inner.len()
+                ),
             };
         };
 

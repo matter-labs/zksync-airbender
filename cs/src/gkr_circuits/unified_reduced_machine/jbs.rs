@@ -760,7 +760,8 @@ pub fn apply_unified_jbs_inner<F: PrimeField, CS: Circuit<F>>(
 
     assert!(
         CS::ASSUME_MEMORY_VALUES_ASSIGNED,
-        "TODO: add witness generation here"
+        "Family 2 rd-write witness path requires CS::ASSUME_MEMORY_VALUES_ASSIGNED = true; \
+         the no-ASSUME path is not implemented"
     );
 
     // Per-opcode rd-write constraints. Low limb: jal/jalr → saved_pc_low; slt → slt_value.

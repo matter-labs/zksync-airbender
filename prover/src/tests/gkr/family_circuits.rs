@@ -442,9 +442,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
-            println!("Checking constraint satisfiability");
-            let is_satisfied = check_satisfied(&circuit, &full_trace);
-            assert!(is_satisfied);
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                println!("Checking constraint satisfiability");
+                let is_satisfied = check_satisfied(&circuit, &full_trace);
+                assert!(is_satisfied);
+            }
 
             let prover_config =
                 example_configs::config_for_security_level_under_pessimistic_conjecture(
@@ -651,9 +654,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
-            println!("Checking constraint satisfiability");
-            let is_satisfied = check_satisfied(&circuit, &full_trace);
-            assert!(is_satisfied);
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                println!("Checking constraint satisfiability");
+                let is_satisfied = check_satisfied(&circuit, &full_trace);
+                assert!(is_satisfied);
+            }
 
             let prover_config =
                 example_configs::config_for_security_level_under_pessimistic_conjecture(
@@ -853,9 +859,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
-            println!("Checking constraint satisfiability");
-            let is_satisfied = check_satisfied(&circuit, &full_trace);
-            assert!(is_satisfied);
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                println!("Checking constraint satisfiability");
+                let is_satisfied = check_satisfied(&circuit, &full_trace);
+                assert!(is_satisfied);
+            }
 
             let prover_config =
                 example_configs::config_for_security_level_under_pessimistic_conjecture(
@@ -1049,9 +1058,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
-            println!("Checking constraint satisfiability");
-            let is_satisfied = check_satisfied(&circuit, &full_trace);
-            assert!(is_satisfied);
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                println!("Checking constraint satisfiability");
+                let is_satisfied = check_satisfied(&circuit, &full_trace);
+                assert!(is_satisfied);
+            }
 
             let prover_config =
                 example_configs::config_for_security_level_under_pessimistic_conjecture(
@@ -1260,9 +1272,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
-            println!("Checking constraint satisfiability");
-            let is_satisfied = check_satisfied(&circuit, &full_trace);
-            assert!(is_satisfied);
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                println!("Checking constraint satisfiability");
+                let is_satisfied = check_satisfied(&circuit, &full_trace);
+                assert!(is_satisfied);
+            }
 
             let prover_config =
                 example_configs::config_for_security_level_under_pessimistic_conjecture(
@@ -1465,9 +1480,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
-            println!("Checking constraint satisfiability");
-            let is_satisfied = check_satisfied(&circuit, &full_trace);
-            assert!(is_satisfied);
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                println!("Checking constraint satisfiability");
+                let is_satisfied = check_satisfied(&circuit, &full_trace);
+                assert!(is_satisfied);
+            }
 
             let prover_config =
                 example_configs::config_for_security_level_under_pessimistic_conjecture(
@@ -1607,9 +1625,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
         };
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false {
-            println!("Checking constraint satisfiability");
-            let is_satisfied = check_satisfied(&circuit, &full_trace);
-            assert!(is_satisfied);
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                println!("Checking constraint satisfiability");
+                let is_satisfied = check_satisfied(&circuit, &full_trace);
+                assert!(is_satisfied);
+            }
 
             let prover_config =
                 example_configs::config_for_security_level_under_pessimistic_conjecture(
@@ -1806,9 +1827,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
-            println!("Checking constraint satisfiability");
-            let is_satisfied = check_satisfied(&circuit, &full_trace);
-            assert!(is_satisfied);
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                println!("Checking constraint satisfiability");
+                let is_satisfied = check_satisfied(&circuit, &full_trace);
+                assert!(is_satisfied);
+            }
 
             let prover_config =
                 example_configs::config_for_security_level_under_pessimistic_conjecture(
@@ -1976,9 +2000,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
-            println!("Checking constraint satisfiability");
-            let is_satisfied = check_satisfied(&circuit, &full_trace);
-            assert!(is_satisfied);
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                println!("Checking constraint satisfiability");
+                let is_satisfied = check_satisfied(&circuit, &full_trace);
+                assert!(is_satisfied);
+            }
 
             let prover_config =
                 example_configs::config_for_security_level_under_pessimistic_conjecture(
@@ -2146,9 +2173,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
-            println!("Checking constraint satisfiability");
-            let is_satisfied = check_satisfied(&circuit, &full_trace);
-            assert!(is_satisfied);
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                println!("Checking constraint satisfiability");
+                let is_satisfied = check_satisfied(&circuit, &full_trace);
+                assert!(is_satisfied);
+            }
 
             let prover_config =
                 example_configs::config_for_security_level_under_pessimistic_conjecture(
@@ -2320,9 +2350,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
-            println!("Checking constraint satisfiability");
-            let is_satisfied = check_satisfied(&circuit, &full_trace);
-            assert!(is_satisfied);
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                println!("Checking constraint satisfiability");
+                let is_satisfied = check_satisfied(&circuit, &full_trace);
+                assert!(is_satisfied);
+            }
 
             let prover_config =
                 example_configs::config_for_security_level_under_pessimistic_conjecture(

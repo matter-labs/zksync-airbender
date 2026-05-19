@@ -6,6 +6,7 @@ rustflags = [
   "-C", "link-arg=-Tlink.x",
   "-C", "link-arg=--save-temps",
   "-C", "force-frame-pointers",
+  "-A", "warnings",
 ]
 
 [unstable]

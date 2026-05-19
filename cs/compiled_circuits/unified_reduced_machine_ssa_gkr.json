@@ -7937,6 +7937,115 @@
   [
     {
       "Integer": {
+        "U16Place": 46
+      }
+    },
+    {
+      "Integer": {
+        "LowestBits": {
+          "value": {
+            "U16SubExpression": 0
+          },
+          "num_bits": 1
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 1
+      }
+    },
+    {
+      "Bool": {
+        "FromGenericIntegerEquality": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "rhs": {
+            "U16SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 154,
+        "source_subexpr": {
+          "Bool": {
+            "SubExpression": 3
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 1
+        }
+      }
+    },
+    {
+      "Integer": {
+        "LowestBits": {
+          "value": {
+            "U16SubExpression": 5
+          },
+          "num_bits": 1
+        }
+      }
+    },
+    {
+      "Bool": {
+        "FromGenericIntegerEquality": {
+          "lhs": {
+            "U16SubExpression": 6
+          },
+          "rhs": {
+            "U16SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 155,
+        "source_subexpr": {
+          "Bool": {
+            "SubExpression": 7
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 2
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 156,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 9
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    }
+  ],
+  [
+    {
+      "Integer": {
         "U16Place": 0
       }
     },
@@ -7959,7 +8068,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 154,
+        "into_variable": 157,
         "source_subexpr": {
           "Bool": {
             "SubExpression": 2
@@ -8052,10 +8161,300 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 155,
+        "into_variable": 158,
         "source_subexpr": {
           "Bool": {
             "SubExpression": 9
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    }
+  ],
+  [
+    {
+      "Bool": {
+        "Place": 4
+      }
+    },
+    {
+      "Bool": {
+        "Place": 11
+      }
+    },
+    {
+      "Bool": {
+        "Place": 12
+      }
+    },
+    {
+      "Bool": {
+        "Place": 13
+      }
+    },
+    {
+      "Bool": {
+        "Place": 14
+      }
+    },
+    {
+      "Bool": {
+        "Place": 15
+      }
+    },
+    {
+      "Bool": {
+        "Place": 16
+      }
+    },
+    {
+      "Bool": {
+        "Place": 17
+      }
+    },
+    {
+      "Bool": {
+        "Place": 18
+      }
+    },
+    {
+      "Bool": {
+        "Place": 19
+      }
+    },
+    {
+      "Bool": {
+        "Place": 20
+      }
+    },
+    {
+      "Bool": {
+        "Place": 21
+      }
+    },
+    {
+      "Bool": {
+        "Place": 22
+      }
+    },
+    {
+      "Bool": {
+        "Place": 24
+      }
+    },
+    {
+      "Bool": {
+        "Place": 25
+      }
+    },
+    {
+      "Bool": {
+        "Place": 26
+      }
+    },
+    {
+      "Bool": {
+        "Place": 27
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 1
+          },
+          "rhs": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 17
+          },
+          "rhs": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 18
+          },
+          "rhs": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 19
+          },
+          "rhs": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 20
+          },
+          "rhs": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 21
+          },
+          "rhs": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 22
+          },
+          "rhs": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 23
+          },
+          "rhs": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 24
+          },
+          "rhs": {
+            "SubExpression": 10
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 25
+          },
+          "rhs": {
+            "SubExpression": 11
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 26
+          },
+          "rhs": {
+            "SubExpression": 12
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 27
+          },
+          "rhs": {
+            "SubExpression": 13
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 28
+          },
+          "rhs": {
+            "SubExpression": 14
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 29
+          },
+          "rhs": {
+            "SubExpression": 15
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 30
+          },
+          "rhs": {
+            "SubExpression": 16
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "And": {
+          "lhs": {
+            "SubExpression": 0
+          },
+          "rhs": {
+            "SubExpression": 31
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 159,
+        "source_subexpr": {
+          "Bool": {
+            "SubExpression": 32
           }
         },
         "condition_subexpr_idx": null

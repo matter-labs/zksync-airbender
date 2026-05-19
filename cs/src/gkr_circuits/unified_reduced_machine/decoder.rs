@@ -18,17 +18,6 @@ const F4_SW_BIT: usize = F4_OFFSET + 1;
 /// `= 1` for SW (bit 0 = is_store).
 const F4_STANDALONE_IS_STORE_BIT: usize = 0;
 
-/// The unified body allocates a funct3 column unconditionally (Families 2 and 3
-/// need it). Families that don't natively use funct3 (Family 1, Family 4) leave
-/// it as `None` in their `ExecutorFamilyDecoderData`. The witness-gen path
-/// asserts `funct3 = Some(_)` for executed rows, so normalize `None → Some(0)`
-/// after dispatch — the decoder lookup binds the column to 0 in those cases.
-fn normalize_funct3(decoded: &mut ExecutorFamilyDecoderData) {
-    if decoded.funct3.is_none() {
-        decoded.funct3 = Some(0);
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct UnifiedReducedMachineDecoder;
 
@@ -55,32 +44,29 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
             AddSubLuiAuipcMopDecoder.define_decoder_subspace(preprocessed_opcode)
         {
             decoded.opcode_family_bits <<= F1_OFFSET;
-            normalize_funct3(&mut decoded);
             return Ok(decoded);
         }
         // Try Family 2.
         if let Ok(mut decoded) = JumpSltBranchDecoder.define_decoder_subspace(preprocessed_opcode) {
             decoded.opcode_family_bits <<= F2_OFFSET;
-            normalize_funct3(&mut decoded);
             return Ok(decoded);
         }
         // Try Family 3.
         if let Ok(mut decoded) = ShiftBinaryDecoder.define_decoder_subspace(preprocessed_opcode) {
             decoded.opcode_family_bits <<= F3_OFFSET;
-            normalize_funct3(&mut decoded);
             return Ok(decoded);
         }
         // Try Family 4 — needs the 1-bit → 2-bit one-hot conversion.
         if let Ok(mut decoded) =
             WordOnlyMemoryFamilyDecoder.define_decoder_subspace(preprocessed_opcode)
         {
-            let is_store = (decoded.opcode_family_bits >> F4_STANDALONE_IS_STORE_BIT) & 1;
             // Sanity-check the standalone encoding to catch upstream drift.
             assert!(
                 decoded.opcode_family_bits == 0 || decoded.opcode_family_bits == 1,
                 "WordOnlyMemoryFamilyDecoder.opcode_family_bits expected 0 (Lw) or 1 (Sw), got {}",
                 decoded.opcode_family_bits
             );
+            let is_store = (decoded.opcode_family_bits >> F4_STANDALONE_IS_STORE_BIT) & 1;
             // One-hot in the unified bitmask:
             //   Lw → bit F4_LW_BIT
             //   Sw → bit F4_SW_BIT
@@ -89,7 +75,6 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
             } else {
                 1u32 << F4_LW_BIT
             };
-            normalize_funct3(&mut decoded);
             return Ok(decoded);
         }
         Err(())

@@ -64,7 +64,11 @@ impl OpcodeFamilyDecoder for WordOnlyMemoryFamilyDecoder {
             rs1_index,
             rs2_index,
             rd_index,
-            funct3: None,
+            // Family 4 (LW/SW) doesn't use funct3 internally — but the unified
+            // circuit allocates a funct3 column unconditionally and the
+            // witness-eval path reads `funct3.expect(...)`. Emit `Some(0)` here;
+            // the decoder lookup binds the column to 0 when Family 4 fires.
+            funct3: Some(0),
             funct7: None,
             opcode_family_bits: bitmask,
         };

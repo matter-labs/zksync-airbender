@@ -306,4 +306,61 @@ pub fn apply_unified_mem_inner<F: PrimeField, CS: Circuit<F>>(
         ];
         cs.enforce_lookup_tuple_for_variable_table(&tuple, layer_3_selected_table_id);
     }
+
+    // SW alignment check: when `is_sw = 1`, `writeaddr_lo` must be a multiple of 4
+    // (RISC-V word-aligned). Dev's `StoreOp<false>::spec_apply` emits this via the
+    // `MemoryOffsetGetBits` lookup; we don't carry that table in the GKR path, so
+    // we decompose `writeaddr_lo` into `4 * top_14 + 2 * bit_1 + bit_0` and force
+    // `is_sw * (bit_0 + bit_1) = 0`. The decomposition itself is ungated — it just
+    // splits whatever `writeaddr_lo` is for any row — and is enforced for every
+    // cycle. Cost: 3 cols + 2 constraints.
+    //
+    // For SW=0 rows `writeaddr_lo = rd_index ∈ {0..31}` so bit_0/bit_1 may be 1;
+    // the alignment constraint trivially passes. For SW=1 rows `writeaddr_lo` is
+    // the RAM write address; the constraint forces its low 2 bits to be 0.
+    //
+    // Soundness precondition: `writeaddr_lo` MUST be 16-bit range-checked (it is,
+    // by virtue of being a U16 limb of the memory-subtree-allocated address). If
+    // that range check were ever weakened, the prover could pick `top_14 > 2^14`
+    // (still within 16 bits) to absorb non-zero `bit_0`/`bit_1` while satisfying
+    // the linear equation modulo p — defeating the alignment trap.
+    {
+        let bit_0 = cs.add_named_boolean_variable("sw align bit_0");
+        let bit_1 = cs.add_named_boolean_variable("sw align bit_1");
+        let top_14 = cs.add_named_variable("sw align: writeaddr_lo >> 2");
+        cs.require_invariant(
+            top_14,
+            Invariant::RangeChecked {
+                width: LIMB_WIDTH as u32,
+            },
+        );
+
+        let writeaddr_lo_var = memwrite_addr[0];
+        let bit_0_var = bit_0.get_variable().unwrap();
+        let bit_1_var = bit_1.get_variable().unwrap();
+        {
+            let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                let lo = placer.get_u16(writeaddr_lo_var);
+                let b0 = lo.get_lowest_bits(1).is_one();
+                let b1 = lo.shr(1).get_lowest_bits(1).is_one();
+                let top = lo.shr(2);
+                placer.assign_mask(bit_0_var, &b0);
+                placer.assign_mask(bit_1_var, &b1);
+                placer.assign_u16(top_14, &top);
+            };
+            cs.set_values(value_fn);
+        }
+
+        // Decomposition (deg 1, ungated): 4 * top_14 + 2 * bit_1 + bit_0 = writeaddr_lo.
+        cs.add_constraint_allow_explicit_linear(
+            Term::from(4u32) * Term::from(top_14)
+                + Term::from(2u32) * Term::from(bit_1)
+                + Term::from(bit_0)
+                - Term::from(writeaddr_lo_var),
+        );
+        // Alignment trap (deg 2, gated on is_sw): bit_0 + bit_1 = 0 when SW fires.
+        cs.add_constraint(
+            Constraint::from(is_sw) * (Constraint::from(bit_0) + Constraint::from(bit_1)),
+        );
+    }
 }

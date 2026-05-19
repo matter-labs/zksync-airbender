@@ -25,7 +25,7 @@ use crate::types::{Boolean, LIMB_WIDTH};
 use crate::witness_placer::*;
 use field::PrimeField;
 
-/// Unified reduced-machine flag layout (Stage 4: Families 1 + 2 + 3 + 4):
+/// Unified reduced-machine flag layout:
 ///
 /// | Bit range  | Family                            | Count |
 /// |------------|-----------------------------------|-------|
@@ -247,12 +247,28 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     // We add `pc_next = pc + 4` constraints that fire only when (cycle executes) AND
     // (no Family-2 sub-opcode is active). Padding rows have execute=0 → trivially satisfied.
     apply_unified_pc_bump(cs, pc_in, pc_out, execute, family_2_bits);
+
+    apply_unified_family_dispatch_one_hot(
+        cs,
+        execute,
+        family_1_bits,
+        family_2_bits,
+        family_3_bits,
+        is_lw,
+        is_sw,
+    );
 }
 
 /// Adds the `pc_next = pc + 4` constraint, gated on `execute AND no Family-2 sub-opcode bit set`.
 /// Family 2's body owns the un-gated PC machinery for jal/jalr/branch/slt; this function fills
 /// in the constraint for the rest of the families AND must trivially hold on padding rows
 /// (execute=0) where pc_in=pc_out=0 would otherwise violate `pc + 4 = pc_out`.
+///
+/// Soundness precondition: `pc_in[0]` MUST be 16-bit-valued for the `pc_inc_carry` witness
+/// `(pc_in[0] + 4) >> 16 ∈ {0, 1}` to be Boolean. This is enforced transitively across
+/// cycles: this function range-checks `pc_out[0]` to 16 bits, and the memory permutation
+/// argument identifies cycle N's `pc_out` with cycle N+1's `pc_in`. The chain anchors at
+/// cycle 0 where `pc_in = INITIAL_PC = 0` (range-trivially-16-bit).
 fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     pc_in: [crate::definitions::Variable; REGISTER_SIZE],
@@ -260,10 +276,9 @@ fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
     execute: crate::definitions::Variable,
     family_2_bits: [Boolean; JUMP_SLT_BRANCH_FAMILY_NUM_BITS],
 ) {
-    // Range checks on pc_out are unconditional — Family 2's PC machinery does not
-    // explicitly range-check its outputs in the standalone path, so we add them
-    // here for the unified circuit (the standalone wrapper for Family 2 backports
-    // them too for parity).
+    // Unconditional 16-bit range checks on pc_out limbs. Family 2's standalone
+    // PC path does not enforce this, so the unified body owns it (and Family 2's
+    // standalone wrapper adds the same checks for parity).
     cs.require_invariant(
         pc_out[0],
         Invariant::RangeChecked {
@@ -346,6 +361,64 @@ fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
         Constraint::from(pc_bump_gate)
             * (Constraint::from(pc_inc_carry) + Term::from(pc_in[1]) - Term::from(pc_out[1])),
     );
+}
+
+/// pin that at most one family fires per executing cycle.
+fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
+    cs: &mut CS,
+    execute: crate::definitions::Variable,
+    family_1_bits: [Boolean; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS],
+    family_2_bits: [Boolean; JUMP_SLT_BRANCH_FAMILY_NUM_BITS],
+    family_3_bits: [Boolean; SHIFT_BINARY_FAMILY_NUM_FLAGS],
+    is_lw: Boolean,
+    is_sw: Boolean,
+) {
+    let is_any_family_active = cs.add_named_boolean_variable("unified family-dispatch one-hot");
+
+    // Witness: is_any_family_active = execute AND (any of the family-dispatch bits)
+    {
+        let f1_vars: [Variable; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS] =
+            std::array::from_fn(|i| family_1_bits[i].get_variable().unwrap());
+        let f2_vars: [Variable; 4] =
+            std::array::from_fn(|i| family_2_bits[i].get_variable().unwrap());
+        let f3_vars: [Variable; SHIFT_BINARY_FAMILY_NUM_FLAGS] =
+            std::array::from_fn(|i| family_3_bits[i].get_variable().unwrap());
+        let is_lw_var = is_lw.get_variable().unwrap();
+        let is_sw_var = is_sw.get_variable().unwrap();
+        let target = is_any_family_active.get_variable().unwrap();
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let execute_m = placer.get_boolean(execute);
+            let any_bit = f1_vars
+                .iter()
+                .chain(f2_vars.iter())
+                .chain(f3_vars.iter())
+                .chain(std::iter::once(&is_lw_var))
+                .chain(std::iter::once(&is_sw_var))
+                .map(|v| placer.get_boolean(*v))
+                .reduce(|a, b| a.or(&b))
+                .unwrap();
+            let result = execute_m.and(&any_bit);
+            placer.assign_mask(target, &result);
+        };
+        cs.set_values(value_fn);
+    }
+
+    // Setup constraint (deg 2):
+    //   is_any_family_active - execute * (sum of dispatch bits) = 0
+    // sum = family_1_bits[..] + family_2_bits[..4] + family_3_bits[..] + is_lw + is_sw
+    let mut setup = Constraint::from(is_any_family_active);
+    for &b in family_1_bits.iter() {
+        setup = setup - Constraint::from(execute) * Constraint::from(b);
+    }
+    for &b in family_2_bits[..4].iter() {
+        setup = setup - Constraint::from(execute) * Constraint::from(b);
+    }
+    for &b in family_3_bits.iter() {
+        setup = setup - Constraint::from(execute) * Constraint::from(b);
+    }
+    setup = setup - Constraint::from(execute) * Constraint::from(is_lw);
+    setup = setup - Constraint::from(execute) * Constraint::from(is_sw);
+    cs.add_constraint(setup);
 }
 
 /// Register all tables the unified circuit body looks up against. Shared by both

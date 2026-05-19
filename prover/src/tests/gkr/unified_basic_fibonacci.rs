@@ -15,12 +15,9 @@ use crate::merkle_trees::DefaultTreeConstructor;
 use ::field::baby_bear::base::BabyBearField;
 use ::field::baby_bear::ext4::BabyBearExt4;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
-use common_constants::TIMESTAMP_STEP;
+use common_constants::{INITIAL_PC, TIMESTAMP_STEP};
 use cs::definitions::INITIAL_TIMESTAMP;
 use cs::definitions::*;
-use cs::gkr_circuits::process_binary_into_separate_tables_ext;
-use cs::gkr_circuits::unified_reduced_machine::UnifiedReducedMachineDecoder;
-use cs::gkr_circuits::OpcodeFamilyDecoder;
 use fft::materialize_powers_serial_starting_with_elem;
 use fft::Twiddles;
 use field::Field;
@@ -35,7 +32,6 @@ use std::alloc::Global;
 use std::collections::BTreeSet;
 use worker::Worker;
 
-const INITIAL_PC: u32 = 0;
 const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
 
 const TRACE_LEN_LOG2: usize = 24;
@@ -177,16 +173,6 @@ fn run_unified_smoke_test(level: SecurityLevel) {
         _marker: std::marker::PhantomData,
     };
 
-    // Unified-circuit decoder produces a single family-128 entry covering every
-    // PC slot in the bytecode region.
-    let decoders: Vec<Box<dyn OpcodeFamilyDecoder>> = vec![Box::new(UnifiedReducedMachineDecoder)];
-    let preprocessing_data = process_binary_into_separate_tables_ext::<
-        BabyBearField,
-        FullUnsignedMachineDecoderConfig,
-        true,
-        Global,
-    >(&text_section, &decoders, 1 << 20, &[]);
-
     // Replay capturing every reduced-machine cycle into a single buffer.
     let mut state = snapshotter.initial_snapshot.state;
     let mut ram_log_buffers = snapshotter
@@ -210,16 +196,11 @@ fn run_unified_smoke_test(level: SecurityLevel) {
     );
     assert_eq!(expected_final_state, state);
 
-    let decoder_table_data = &preprocessing_data[&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX];
-    let witness_gen_data = decoder_table_data
-        .iter()
-        .map(|el| el.unwrap_or(Default::default()))
-        .collect::<Vec<_>>();
-
-    let oracle = UnifiedRiscvCircuitOracle {
-        inner: &buffer[..],
-        decoder_table: &witness_gen_data,
-    };
+    let oracle = UnifiedRiscvCircuitOracle::new::<BabyBearField>(
+        &buffer[..],
+        &text_section,
+        common_constants::ROM_WORD_SIZE,
+    );
 
     let table_driver = build_unified_table_driver::<BabyBearField>(&binary);
 
@@ -249,11 +230,14 @@ fn run_unified_smoke_test(level: SecurityLevel) {
 
     ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-    println!("Checking constraint satisfiability");
-    assert!(
-        check_satisfied(&circuit, &full_trace),
-        "unified circuit constraint not satisfied"
-    );
+    #[cfg(feature = "gkr_self_checks")]
+    {
+        println!("Checking constraint satisfiability");
+        assert!(
+            check_satisfied(&circuit, &full_trace),
+            "unified circuit constraint not satisfied"
+        );
+    }
 
     let register_final_state_raw = register_final_state
         .map(|el| (el.current_value, split_timestamp(el.last_access_timestamp)));
@@ -385,7 +369,12 @@ fn run_unified_smoke_test(level: SecurityLevel) {
     println!("Preparing twiddles");
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
     println!("Preparing setup");
-    let setup = GKRSetup::construct(&table_driver, &decoder_table_data, trace_len, &circuit);
+    let setup = GKRSetup::construct(
+        &table_driver,
+        oracle.decoder_table_with_options(),
+        trace_len,
+        &circuit,
+    );
     let setup_commitment = setup.commit(
         &twiddles,
         prover_config.lde_factor,

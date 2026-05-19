@@ -286,7 +286,21 @@ fn test_rejects_non_canonical_field_element(name: &str) {
             |nds| {
                 nds[gkr_off + 4] |= 0x8000_0000;
             },
-            |r| matches!(r, VerifyRejection::Error(..)),
+            |r| {
+                matches!(
+                    r,
+                    VerifyRejection::Error(
+                        VerificationError::GkrSumcheckRoundFailed { .. }
+                            | VerificationError::GkrFinalStepCheckFailed { .. }
+                            | VerificationError::GkrGrandProductCheckFailed
+                            | VerificationError::GkrPermutationCacheRelationFailed { .. }
+                            | VerificationError::GkrSingleLookupCacheRelationFailed { .. }
+                            | VerificationError::GkrVectorLookupCacheRelationFailed { .. }
+                            | VerificationError::GkrLookupIdentityFailed { .. }
+                            | VerificationError::GkrVirtualSetupEvalMismatch { .. }
+                    )
+                )
+            },
         );
     });
 }
