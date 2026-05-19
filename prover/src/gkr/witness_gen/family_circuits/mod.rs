@@ -18,10 +18,7 @@ pub(crate) mod witness;
 
 pub use self::init_and_teardown::evaluate_init_and_teardown_memory_witness;
 pub use self::memory::evaluate_gkr_memory_witness_for_executor_family;
-pub use self::unified::{
-    build_unified_table_driver, evaluate_gkr_memory_witness_for_unified_family,
-    evaluate_gkr_witness_for_unified_family,
-};
+pub use self::unified::build_unified_table_driver;
 pub use self::witness::evaluate_gkr_witness_for_executor_family;
 
 pub use self::memory::GKRMemoryOnlyWitnessTrace;

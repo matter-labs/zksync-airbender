@@ -14,7 +14,7 @@ use field::PrimeField;
 /// requesting memory accesses internally. Non-Family-1 cycles have all
 /// `decoder.perform_*()` Booleans = 0 so every constraint here is multiplied
 /// by 0 and is trivially satisfied.
-pub fn apply_unified_add_sub_inner<F: PrimeField, CS: Circuit<F>>(
+pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     decoder: AddSubLuiAuipcMopFamilyCircuitMask,
@@ -122,7 +122,6 @@ pub fn apply_unified_add_sub_inner<F: PrimeField, CS: Circuit<F>>(
         let is_addmod_var = is_addmod.get_variable().unwrap();
         let is_submod_var = is_submod.get_variable().unwrap();
         let is_mulmod_var = is_mulmod.get_variable().unwrap();
-        let _is_delegation_call_var = is_delegation_call.get_variable().unwrap();
         let is_non_determinism_read_var = is_non_determinism_read.get_variable().unwrap();
 
         let value_fn = move |placer: &mut CS::WitnessPlacer| {

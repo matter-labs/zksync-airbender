@@ -9,7 +9,7 @@ use field::PrimeField;
 /// Family 3 (binary ops / shifts) constraints for the unified circuit. Mirrors the
 /// audited standalone inner; rd-write constraints are gated on `is_binary_op + is_shift`
 /// so non-Family-3 cycles don't pin rd_write_limbs.
-pub fn apply_unified_shifts_inner<F: PrimeField, CS: Circuit<F>>(
+pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     decoder: ShiftBinaryFamilyCircuitMask,

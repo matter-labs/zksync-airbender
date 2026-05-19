@@ -91,7 +91,6 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
             Placeholder::PcFin => cycle_data.final_pc(),
 
             Placeholder::ShuffleRamAddress(access_idx) => match access_idx {
-                // 0 => decoded.rs1_index,
                 1 => match cycle_data {
                     UnifiedOpcodeTracingDataWithTimestamp::NonMem(..) => decoded.rs2_index as u32,
                     UnifiedOpcodeTracingDataWithTimestamp::Mem(inner) => {
@@ -211,8 +210,6 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
         match placeholder {
             Placeholder::ShuffleRamAddress(access_idx) => match access_idx {
                 0 => decoded.rs1_index,
-                // 1 => decoded.rs2_index,
-                // 2 => decoded.rd_index,
                 _ => {
                     unreachable!()
                 }

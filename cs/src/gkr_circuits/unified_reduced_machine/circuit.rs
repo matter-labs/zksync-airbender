@@ -1,7 +1,7 @@
-use super::add_sub::apply_unified_add_sub_inner;
-use super::jbs::apply_unified_jbs_inner;
-use super::mem::apply_unified_mem_inner;
-use super::shifts::apply_unified_shifts_inner;
+use super::add_sub_lui_auipc_mop::apply_unified_add_sub_lui_auipc_mop_inner;
+use super::binary_shifts::apply_unified_binary_shifts_inner;
+use super::jump_branch_slt::apply_unified_jump_branch_slt_inner;
+use super::mem_word_only::apply_unified_mem_word_only_inner;
 use super::*;
 use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
@@ -43,19 +43,19 @@ use field::PrimeField;
 /// (`REDUCED_MACHINE_NUM_FLAGS = 18` in `definitions::unrolled_families` includes
 /// 1 reserved bit — `mem_subword_only`'s third sub-opcode bit (`SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS = 3`)
 ///  — that the unified reduced-machine layout doesn't allocate because mem_subword isn't part of the reduced-machine family set.)
-pub(super) const FAMILY_1_FLAG_OFFSET: usize = 0;
-pub(super) const FAMILY_2_FLAG_OFFSET: usize =
+pub const FAMILY_1_FLAG_OFFSET: usize = 0;
+pub const FAMILY_2_FLAG_OFFSET: usize =
     FAMILY_1_FLAG_OFFSET + ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS;
-pub(super) const FAMILY_3_FLAG_OFFSET: usize =
+pub const FAMILY_3_FLAG_OFFSET: usize =
     FAMILY_2_FLAG_OFFSET + JUMP_SLT_BRANCH_FAMILY_NUM_BITS;
-pub(super) const FAMILY_4_FLAG_OFFSET: usize =
+pub const FAMILY_4_FLAG_OFFSET: usize =
     FAMILY_3_FLAG_OFFSET + SHIFT_BINARY_FAMILY_NUM_FLAGS;
 
 /// Family 4 occupies 2 unified flags (one-hot LW/SW), independent of the standalone
 /// `WORD_ONLY_MEMORY_FAMILY_NUM_FLAGS = 1` encoding.
-pub(super) const UNIFIED_FAMILY_4_NUM_FLAGS: usize = 2;
-const FAMILY_4_LW_BIT: usize = FAMILY_4_FLAG_OFFSET;
-const FAMILY_4_SW_BIT: usize = FAMILY_4_FLAG_OFFSET + 1;
+pub const UNIFIED_FAMILY_4_NUM_FLAGS: usize = 2;
+pub const FAMILY_4_LW_BIT: usize = FAMILY_4_FLAG_OFFSET;
+pub const FAMILY_4_SW_BIT: usize = FAMILY_4_FLAG_OFFSET + 1;
 
 pub const UNIFIED_REDUCED_MACHINE_NUM_FLAGS: usize = ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS
     + JUMP_SLT_BRANCH_FAMILY_NUM_BITS
@@ -212,7 +212,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     // is_* flags are 1 per cycle. Family 4's body owns the cleanaddr/ROM/lookup
     // logic and the register-side address-binding constraints (gated on
     // `NOT is_lw` / `NOT is_sw`, which fire for Families 1-3 too).
-    apply_unified_add_sub_inner(
+    apply_unified_add_sub_lui_auipc_mop_inner(
         cs,
         inputs.clone(),
         family_1_decoder,
@@ -221,7 +221,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         rd_write_limbs,
         rs2_read_timestamp,
     );
-    apply_unified_jbs_inner(
+    apply_unified_jump_branch_slt_inner(
         cs,
         inputs.clone(),
         family_2_decoder,
@@ -229,7 +229,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         rs2_limbs,
         rd_write_limbs,
     );
-    apply_unified_shifts_inner(
+    apply_unified_binary_shifts_inner(
         cs,
         inputs.clone(),
         family_3_decoder,
@@ -240,7 +240,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     let pc_in = inputs.cycle_start_state.pc;
     let pc_out = inputs.cycle_end_state.pc;
     let execute = inputs.execute;
-    apply_unified_mem_inner(cs, inputs, is_lw, is_sw, rs1_limbs, rs2_access, rd_access);
+    apply_unified_mem_word_only_inner(cs, inputs, is_lw, is_sw, rs1_limbs, rs2_access, rd_access);
 
     // Unified PC bump (gated). Families 1, 3, 4 leave PC handling to the caller;
     // Family 2 (jump_branch_slt) owns its own gated PC logic for jal/jalr/branch/slt.

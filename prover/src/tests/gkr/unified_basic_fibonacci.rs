@@ -6,8 +6,8 @@ use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::GKRExternalChallenges;
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::family_circuits::{
-    build_unified_table_driver, evaluate_gkr_memory_witness_for_unified_family,
-    evaluate_gkr_witness_for_unified_family,
+    build_unified_table_driver, evaluate_gkr_memory_witness_for_executor_family,
+    evaluate_gkr_witness_for_executor_family,
 };
 use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
@@ -205,7 +205,7 @@ fn run_unified_smoke_test(level: SecurityLevel) {
     let table_driver = build_unified_table_driver::<BabyBearField>(&binary);
 
     println!("Computing memory trace");
-    let memory_trace = evaluate_gkr_memory_witness_for_unified_family::<BabyBearField, _, _, _>(
+    let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BabyBearField, _, _, _>(
         &circuit,
         NUM_CYCLES_PER_CHUNK,
         &oracle,
@@ -216,7 +216,7 @@ fn run_unified_smoke_test(level: SecurityLevel) {
     );
 
     println!("Computing full trace");
-    let full_trace = evaluate_gkr_witness_for_unified_family::<BabyBearField, _, _, _>(
+    let full_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
         &circuit,
         super::unified_reduced_machine::witness_eval_fn,
         NUM_CYCLES_PER_CHUNK,

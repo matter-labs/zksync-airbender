@@ -22,6 +22,7 @@ pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &s
 mod family_circuits;
 mod malicious_proofs;
 mod unified_basic_fibonacci;
+mod unified_negative_tests;
 
 pub(crate) fn ensure_memory_trace_consistency<F: PrimeField>(
     memory_trace: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
