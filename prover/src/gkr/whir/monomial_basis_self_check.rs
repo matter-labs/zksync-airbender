@@ -213,40 +213,50 @@ fn quick_test_binding_poly_and_sumcheck() {
     dbg!(&output);
     dbg!(&eqs_at_zero_inf);
 
+    // it should be equal to our initial claim
+    let eq_table_at_zero_inf = eqs_at_zero_inf.last().unwrap();
+    let mut output_at_random_point = F::ZERO;
+    for i in 0..size {
+        let mut t = output[i];
+        t.mul_assign(&eq_table_at_zero_inf[i]);
+        output_at_random_point.add_assign(&t);
+        dbg!(t);
+    }
+    dbg!(output_at_random_point);
+
     // there are multiple ways to "save" on computations in sumcheck of the special form
-    // like we have - \sum_x eq(x, r) * a(x) * b(x), and below we will split it as G(X) = \sum_x eq(X, r0) * eq(x, r1, ...) * A(X, x) * B(X, x)
+    // like we have - \sum_{ x = {0/inf}^N } eq(x, r) * a(x) * b(x), and below we will split it as G(X) = \sum_x eq(X, r0) * eq(x, r1, ...) * A(X, x) * B(X, x)
 
     // We always have the following constraints to consider
     // claim = G(0) + G(inf)
-    // eq(X, r0) == 1 + r0 * X
+    // eq_{0/inf}(X, r0) == 1 + r0 * X
 
     // and in general G(X) = (r0 * X + 1) * (c * X^2 + d * X + e)
     // where quadratic part comes from the A(X) * B(X)
 
     // note that G(0) and G(infinity) are nice to compute in initial rounds as they are
-    // just exactly the output values of the GKR layer
-    // So we choose to compute G(0) and get
-    // G(0) == `e`
-    // claim - G(0) = G(infinity) = r0 * `c`
-    // and the only thing we need to identify now is `d`,
-    // so we need one more evaluation and we can pick any evaluation point and it's natural to do G(1)
-
-    // NOTE: we will need to be more careful when we mix linear and quadratic terms in the batched sumcheck
-
-    // Alternative is to define a sumcheck in different "coordinates" than default representation itself.
-    // So we will say that
-    // claim = G(0) + G(1) = e + (r0 + 1) * (c + d + e),
-    // and prover will compute G(0) (because it's nice to compute), getting
-    // `e` and then we get G(1) = (r0 + 1) * (c + d + e),
-    // and then compute G(infinity) as it's also nice to compute, getting `c`, so we have enough points
-    // to get all the values. But such aproach only works for the first round,
-    // so we will have output(r) = claim = \sum_{x_0 = {0, 1}, x_{1,...} = {0, inf}^{N-1}} eq_{0/1}(x, r0) * eq_{0/inf}(x1, ..., r1, ...) * a(x) * b(x)
-
+    // just exactly the output values of the GKR layer, so we will do the following trick
+    // - we only compute relations like claim = output(r) =  \sum_{x = {0/inf}^N} eq_{0/inf}(x, r) * a(x) * b(x)
+    // - instead we can write it as (change of basis)
+    // claim = output(r) = \sum_{x0 = {0/1}} \sum_{x1... = {0/inf}^{N-1}} eq_{0/1}(x0, r0) eq_{0/inf}(x1..., r1...) * a(x) * b(x),
+    // and if we would want to compute it naively we would need to materialize the table for a(x0 = 0/1, x1 = 0/inf, ...)
+    // and so G(X) = \sum_{x1.. = {0/inf}^{N-1}} eq_{0/1}(X, r0) eq_{0/inf}(x1..., r1...) * a(X, x1...) * b(X, x1...),
+    // but instead it gives us a right to use the fact that claim = G(0) + G(1)
+    // so we choose our missing evaluation point for interpolation to be G(inf), and in the first sumcheck round we only have a(x) * b(x)
+    // at the "defining" hypercube, so we can use those values directly.
+    // In the later rounds we can use exactly the same trick, and we will need to compute something like
+    // G_1(X) = prefactor * \sum_{x2.. = {0/inf}^{N-2}} eq_{0/1}(X, r1) eq_{0/inf}(x2..., r2...) * a(t, X, x2...) * b(t, X, x2...),
+    // that again has a nice property that we do not need to get some "mixed" values like a(t, 1, x2...) that would require reading both
+    // a(t, 0, x2...) and a(t, inf, x2...) from our poly storage format (so - reading 2 values at once). Instead we can
+    // read only a(t, 0, x2...) when computing G(0) and a(t, inf, x2...) for G(inf)
+    
     // Here we self-check our second approach
 
     let eq_table_at_zero_inf = eqs_at_zero_inf.last().unwrap();
     let mut claim = F::ZERO;
     let mut g_0_self_check = F::ZERO;
+
+    // we honestly compute our first claim as 
     for i in 0..size / 2 {
         let a_at_0 = a[i];
         let b_at_0 = b[i];
@@ -274,10 +284,75 @@ fn quick_test_binding_poly_and_sumcheck() {
         out_at_0.mul_assign(&eq_at_0);
         out_at_1.mul_assign(&eq_at_1);
 
+        dbg!((out_at_0, out_at_1));
+
         claim.add_assign(&out_at_0);
         claim.add_assign(&out_at_1);
 
         g_0_self_check.add_assign(&out_at_0);
+    }
+
+    dbg!(claim);
+
+    panic!();
+
+    // assert_eq!(claim, output_at_random_point);
+
+    {
+        let all_eq_except_last = eqs_at_zero_inf.iter().rev().skip(1).next().unwrap().clone();
+        let mut mixed_eq = vec![F::ZERO; size].into_boxed_slice();
+
+        // eq_{0/1} is xy + (1-x)(1-y)
+        let mut eq_at_0 = F::ONE;
+        eq_at_0.sub_assign(&challenge_coordiantes[0]);
+
+        let eq_at_1 = challenge_coordiantes[0];
+
+        for index in 0..size/2 {
+            let mut left = all_eq_except_last[index];
+            let mut right = left;
+            left.mul_assign(&eq_at_0);
+            right.mul_assign(&eq_at_1);
+            mixed_eq[index] = left;
+            mixed_eq[index + size/2] = right;
+        }
+
+        let mut alt_claim = F::ZERO;
+        for i in 0..size / 2 {
+            let a_at_0 = a[i];
+            let b_at_0 = b[i];
+            let a_at_inf = a[i + size / 2];
+            let b_at_inf = b[i + size / 2];
+
+            let mut a_at_1 = a_at_inf;
+            a_at_1.add_assign(&a_at_0);
+            let mut b_at_1 = b_at_inf;
+            b_at_1.add_assign(&b_at_0);
+
+            let naive_out_at_0 = output[i];
+
+            let mut out_at_0 = a_at_0;
+            out_at_0.mul_assign(&b_at_0);
+            let mut out_at_1 = a_at_1;
+            out_at_1.mul_assign(&b_at_1);
+
+            assert_eq!(naive_out_at_0, out_at_0);
+
+            let eq_at_0 = mixed_eq[i];
+            let eq_at_1 = mixed_eq[i + size / 2];
+
+            dbg!((eq_at_0, eq_at_1));
+
+            out_at_0.mul_assign(&eq_at_0);
+            out_at_1.mul_assign(&eq_at_1);
+
+            alt_claim.add_assign(&out_at_0);
+            alt_claim.add_assign(&out_at_1);
+        }
+
+        dbg!(alt_claim);
+
+        assert_eq!(alt_claim, claim);
     }
 
     // now we actually do the sumcheck, and we will only do one round for our self-check

@@ -869,7 +869,7 @@ impl NoFieldGKRRelation {
             Self::LookupFromMaterializedVectorInputWithSetup {
                 input,
                 setup,
-                output,
+                ..
             } => {
                 result.insert(*input);
                 result.insert(setup[0]);
@@ -880,6 +880,35 @@ impl NoFieldGKRRelation {
                 result.insert(input[0][1]);
                 result.insert(input[1][0]);
                 result.insert(input[1][1]);
+            }
+            Self::LookupWithDensAndSetupExpressions {
+                input,
+                setup,
+                ..
+            } => {
+                result.insert(input.0);
+                for el in input.1.columns.iter() {
+                    for (_, el) in el.linear_terms.iter() {
+                        result.insert(*el);
+                    }
+                }
+                result.insert(setup.0);
+
+                // // NOTE: temporary disabled for liveness analysis
+                // for el in setup.1.iter() {
+                //     result.insert(*el);
+                // }
+            }
+            Self::EnforceSingleMaxQuadraticConstraint { input } => {
+                for (a, other) in input.quadratic_terms.iter() {
+                    result.insert(*a);
+                    for (_, b) in other.iter() {
+                        result.insert(*b);
+                    }
+                }
+                for (_, el) in input.linear_terms.iter() {
+                    result.insert(*el);
+                }
             }
             a @ _ => {
                 panic!("Not yet implemented for relation {:?}", a);
