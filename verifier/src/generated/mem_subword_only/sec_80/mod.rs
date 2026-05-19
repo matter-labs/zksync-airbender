@@ -10,6 +10,7 @@ use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::GKRExternalChallenges;
 pub fn verify<I: NonDeterminismSource, E: ErrorCreator>(
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    nd_source: &mut I,
 ) -> Result<constants::ConcreteVerifierOutput, E::Error> {
     ::verifier_common::verify_impl::<
         I,
@@ -26,5 +27,5 @@ pub fn verify<I: NonDeterminismSource, E: ErrorCreator>(
         { constants::GKR_ROUNDS },
         { constants::GKR_ADDRS },
         gkr::VerifierImplementation,
-    >(external_challenges)
+    >(external_challenges, nd_source)
 }

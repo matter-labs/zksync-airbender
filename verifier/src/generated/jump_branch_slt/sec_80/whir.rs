@@ -38,7 +38,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     base_layer_claims: &[BabyBearExt4],
     z_initial: &[BabyBearExt4],
     accumulator: &mut ::verifier_common::whir::WhirAccumulator<BabyBearExt4, MAX_POW_ENTRIES>,
-    ns_source: &mut I,
+    nd_source: &mut I,
 ) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), E::Error> {
     unsafe {
         let gamma_powers: [BabyBearExt4; TOTAL_ORACLE_COLS] =
@@ -316,7 +316,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 tree_index,
                 oracle_depth,
                 prev_oracle_cap,
-                ns_source,
+                nd_source,
             ) {
                 return Err(E::whir_merkle_path_failed(q));
             }
@@ -375,6 +375,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
     z_initial: &[BabyBearExt4],
     accumulator: &mut ::verifier_common::whir::WhirAccumulator<BabyBearExt4, MAX_POW_ENTRIES>,
+    nd_source: &mut I,
 ) -> Result<(), E::Error> {
     unsafe {
         let mut claim = claim;
@@ -455,7 +456,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 tree_index,
                 oracle_depth,
                 prev_oracle_cap,
-                ns_source,
+                nd_source,
             ) {
                 return Err(E::whir_merkle_path_failed(q));
             }
@@ -666,7 +667,15 @@ pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
         cap = new_cap;
         round_idx += 1;
     }
-    verify_final_whir_round::<I, E>(ts, &mut hash_buf, claim, &cap, z_initial, &mut accumulator)?;
+    verify_final_whir_round::<I, E>(
+        ts,
+        &mut hash_buf,
+        claim,
+        &cap,
+        z_initial,
+        &mut accumulator,
+        nd_source,
+    )?;
     #[cfg(feature = "verifier_stats")]
     verifier_common::stats::log(
         [

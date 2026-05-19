@@ -1067,7 +1067,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 let initial_claim = dim_reducing_compute_claim(state.prev_claims.as_array::<#total_output_polys>(), state.batching_challenge);
                 let (final_claim, final_eq_prefactor) =
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
-                        ts, initial_claim, &mut state.prev_point, #config_idx)?;
+                        ts, initial_claim, &mut state.prev_point, #config_idx, nd_source)?;
                 let mut fc_len = #num_regular_rounds;
                 let data_words = #num_input_addrs * 4 * EXT_DEGREE;
                 {
@@ -1425,7 +1425,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 let initial_claim = #compute_claim_fn(state.prev_claims.as_array::<#num_output_addrs>(), state.batching_challenge);
                 let (final_claim, final_eq_prefactor) =
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
-                        ts, initial_claim, &mut state.prev_point, #config_idx)?;
+                        ts, initial_claim, &mut state.prev_point, #config_idx, nd_source)?;
                 let mut fc_len = #num_regular_rounds;
                 let data_words = #num_dedup_addrs * 2 * EXT_DEGREE;
                 {

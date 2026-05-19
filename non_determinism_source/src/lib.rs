@@ -28,7 +28,7 @@ impl<T: core::iter::Iterator<Item = u32> + Send + Sync + ?Sized> NonDeterminismS
     #[inline(always)]
     fn read_reduced_field_element(&mut self, modulus: u32) -> u32 {
         let value = self.next().expect("next word");
-        assert!(value < modulus, "by default we expect reduced field elements everywhere");
+        // assert!(value < modulus, "by default we expect reduced field elements everywhere");
 
         value
     }

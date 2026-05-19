@@ -67,7 +67,7 @@ pub fn generate_whir_verify<MW: FieldWrapper>(whir_hash_buf_size: usize) -> Toke
                 round_idx += 1;
             }
             verify_final_whir_round::<I, E>(
-                ts, &mut hash_buf, claim, &cap, z_initial, &mut accumulator,
+                ts, &mut hash_buf, claim, &cap, z_initial, &mut accumulator, nd_source,
             )?;
             #[cfg(feature = "verifier_stats")]
                     verifier_common::stats::log(#labels[NUM_INTERNAL_ROUNDS+1]);

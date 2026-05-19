@@ -7,7 +7,6 @@ use prover::gkr::prover::GKRProof;
 use prover::merkle_trees::DefaultTreeConstructor;
 use verifier_common::errors::{DebugErrorCreator, VerificationError};
 use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
-use verifier_common::prover::nd_source_std::{set_iterator, ThreadLocalBasedSource};
 
 pub const VERIFIER_STACK_SIZE: usize = 1 << 27;
 
@@ -255,9 +254,10 @@ pub fn verify_nds(
             .name(format!("verify_{}_{:?}", name, level))
             .stack_size(VERIFIER_STACK_SIZE)
             .spawn_scoped(s, move || {
-                set_iterator(nds.into_iter());
+                let mut it = nds.into_iter();
+                // set_iterator(nds.into_iter());
                 with_circuit!(name, level, |m| {
-                    m::verify::<ThreadLocalBasedSource, DebugErrorCreator>(external_challenges)
+                    m::verify::<_, DebugErrorCreator>(external_challenges, &mut it)
                         .map(|_| ())
                 })
             })

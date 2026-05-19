@@ -81,7 +81,7 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
         let init_buf = hash_buf.assume_init_subarray::<#hash_buf_size_const>();
         hash_leaf_data_into_state(&mut ts.hasher, init_buf, #leaf_ext_words_expr);
         if !verify_merkle_path::<I>(
-            &mut ts.hasher, tree_index, #oracle_depth_expr, #oracle_cap_expr, ns_source,
+            &mut ts.hasher, tree_index, #oracle_depth_expr, #oracle_cap_expr, nd_source,
         ) {
             return Err(E::whir_merkle_path_failed(q));
         }
@@ -233,7 +233,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
                 #quartic_struct, MAX_POW_ENTRIES,
             >,
-            ns_source: &mut I,
+            nd_source: &mut I,
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
             unsafe {
                 let gamma_powers: [#quartic_struct; TOTAL_ORACLE_COLS] =
@@ -679,6 +679,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
                 #quartic_struct, MAX_POW_ENTRIES,
             >,
+            nd_source: &mut I,
         ) -> Result<(), E::Error> {
             unsafe {
                 let mut claim = claim;

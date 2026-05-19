@@ -2294,6 +2294,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     22usize,
+                    nd_source,
                 )?;
             let mut fc_len = 3usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -2360,6 +2361,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     21usize,
+                    nd_source,
                 )?;
             let mut fc_len = 4usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -2426,6 +2428,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     20usize,
+                    nd_source,
                 )?;
             let mut fc_len = 5usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -2492,6 +2495,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     19usize,
+                    nd_source,
                 )?;
             let mut fc_len = 6usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -2558,6 +2562,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     18usize,
+                    nd_source,
                 )?;
             let mut fc_len = 7usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -2624,6 +2629,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     17usize,
+                    nd_source,
                 )?;
             let mut fc_len = 8usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -2690,6 +2696,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     16usize,
+                    nd_source,
                 )?;
             let mut fc_len = 9usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -2756,6 +2763,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     15usize,
+                    nd_source,
                 )?;
             let mut fc_len = 10usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -2822,6 +2830,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     14usize,
+                    nd_source,
                 )?;
             let mut fc_len = 11usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -2888,6 +2897,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     13usize,
+                    nd_source,
                 )?;
             let mut fc_len = 12usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -2954,6 +2964,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     12usize,
+                    nd_source,
                 )?;
             let mut fc_len = 13usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -3020,6 +3031,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     11usize,
+                    nd_source,
                 )?;
             let mut fc_len = 14usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -3086,6 +3098,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     10usize,
+                    nd_source,
                 )?;
             let mut fc_len = 15usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -3152,6 +3165,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     9usize,
+                    nd_source,
                 )?;
             let mut fc_len = 16usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -3218,6 +3232,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     8usize,
+                    nd_source,
                 )?;
             let mut fc_len = 17usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -3284,6 +3299,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     7usize,
+                    nd_source,
                 )?;
             let mut fc_len = 18usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -3350,6 +3366,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     6usize,
+                    nd_source,
                 )?;
             let mut fc_len = 19usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -3416,6 +3433,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     5usize,
+                    nd_source,
                 )?;
             let mut fc_len = 20usize;
             let data_words = 6usize * 4 * EXT_DEGREE;
@@ -3482,6 +3500,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     4usize,
+                    nd_source,
                 )?;
             let mut fc_len = 21usize;
             let data_words = 11usize * 2 * EXT_DEGREE;
@@ -3542,6 +3561,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     3usize,
+                    nd_source,
                 )?;
             let mut fc_len = 21usize;
             let data_words = 17usize * 2 * EXT_DEGREE;
@@ -3602,6 +3622,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     2usize,
+                    nd_source,
                 )?;
             let mut fc_len = 21usize;
             let data_words = 29usize * 2 * EXT_DEGREE;
@@ -3662,6 +3683,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     1usize,
+                    nd_source,
                 )?;
             let mut fc_len = 21usize;
             let data_words = 52usize * 2 * EXT_DEGREE;
@@ -3722,6 +3744,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     initial_claim,
                     &mut state.prev_point,
                     0usize,
+                    nd_source,
                 )?;
             let mut fc_len = 21usize;
             let data_words = 123usize * 2 * EXT_DEGREE;

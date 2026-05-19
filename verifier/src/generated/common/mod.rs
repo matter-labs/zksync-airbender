@@ -631,6 +631,7 @@ pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
     gamma_offset: usize,
     acc0: &mut BabyBearExt4,
     acc1: &mut BabyBearExt4,
+    nd_source: &mut I,
 ) {
     let mut col = 0;
     while col < num_columns {
@@ -733,6 +734,7 @@ pub unsafe fn process_oracle_query<
         gamma_offset,
         acc0,
         acc1,
+        nd_source,
     );
     let block_end =
         LEAF_WORDS.next_multiple_of(::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS);

@@ -266,6 +266,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             gamma_offset: usize,
             acc0: &mut #quartic_struct,
             acc1: &mut #quartic_struct,
+            nd_source: &mut I,
         ) {
             let mut col = 0;
             while col < num_columns {
@@ -366,7 +367,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
             read_and_batch_leaf::<I>(
                 &mut buf[..LEAF_WORDS], num_columns,
-                gamma_powers, gamma_offset, acc0, acc1,
+                gamma_powers, gamma_offset, acc0, acc1, nd_source,
             );
 
             let block_end = LEAF_WORDS.next_multiple_of(
