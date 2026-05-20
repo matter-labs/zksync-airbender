@@ -4705,6 +4705,1479 @@
       "constant_term": 2013233153
     }
   ],
+  "structured_statements": [
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 32
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268295646
+                        },
+                        {
+                          "Var": 33
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Sum": [
+                        {
+                          "Sum": [
+                            {
+                              "Var": 24
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 268295646
+                                },
+                                {
+                                  "Var": 25
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "Sum": [
+                            {
+                              "Var": 28
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 268295646
+                                },
+                                {
+                                  "Var": 29
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 13
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Constant": 268435454
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Var": 39
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 13
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 32
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268295646
+                        },
+                        {
+                          "Var": 33
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Sum": [
+                        {
+                          "Sum": [
+                            {
+                              "Var": 24
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 268295646
+                                },
+                                {
+                                  "Var": 25
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "Product": [
+                            {
+                              "Constant": 1744830467
+                            },
+                            {
+                              "Sum": [
+                                {
+                                  "Var": 28
+                                },
+                                {
+                                  "Product": [
+                                    {
+                                      "Constant": 268295646
+                                    },
+                                    {
+                                      "Var": 29
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 14
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Constant": 268435454
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Var": 39
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 14
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 24
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268295646
+                        },
+                        {
+                          "Var": 25
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 28
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268295646
+                        },
+                        {
+                          "Var": 29
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 40
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 32
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268295646
+                        },
+                        {
+                          "Var": 33
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Var": 40
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 15
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Constant": 268435454
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Var": 39
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 15
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Sum": [
+                {
+                  "Sum": [
+                    {
+                      "Sum": [
+                        {
+                          "Sum": [
+                            {
+                              "Sum": [
+                                {
+                                  "Sum": [
+                                    {
+                                      "Sum": [
+                                        {
+                                          "Sum": [
+                                            {
+                                              "Sum": [
+                                                {
+                                                  "Sum": [
+                                                    {
+                                                      "Sum": [
+                                                        {
+                                                          "Sum": [
+                                                            {
+                                                              "Sum": [
+                                                                {
+                                                                  "Sum": [
+                                                                    {
+                                                                      "Sum": [
+                                                                        {
+                                                                          "Sum": [
+                                                                            {
+                                                                              "Sum": [
+                                                                                {
+                                                                                  "Sum": [
+                                                                                    {
+                                                                                      "Sum": [
+                                                                                        {
+                                                                                          "Sum": [
+                                                                                            {
+                                                                                              "Sum": [
+                                                                                                {
+                                                                                                  "Sum": [
+                                                                                                    {
+                                                                                                      "Sum": [
+                                                                                                        {
+                                                                                                          "Sum": [
+                                                                                                            {
+                                                                                                              "Constant": 0
+                                                                                                            },
+                                                                                                            {
+                                                                                                              "Product": [
+                                                                                                                {
+                                                                                                                  "Var": 24
+                                                                                                                },
+                                                                                                                {
+                                                                                                                  "Var": 10
+                                                                                                                }
+                                                                                                              ]
+                                                                                                            }
+                                                                                                          ]
+                                                                                                        },
+                                                                                                        {
+                                                                                                          "Product": [
+                                                                                                            {
+                                                                                                              "Var": 0
+                                                                                                            },
+                                                                                                            {
+                                                                                                              "Var": 12
+                                                                                                            }
+                                                                                                          ]
+                                                                                                        }
+                                                                                                      ]
+                                                                                                    },
+                                                                                                    {
+                                                                                                      "Product": [
+                                                                                                        {
+                                                                                                          "Var": 32
+                                                                                                        },
+                                                                                                        {
+                                                                                                          "Var": 11
+                                                                                                        }
+                                                                                                      ]
+                                                                                                    }
+                                                                                                  ]
+                                                                                                },
+                                                                                                {
+                                                                                                  "Product": [
+                                                                                                    {
+                                                                                                      "Var": 36
+                                                                                                    },
+                                                                                                    {
+                                                                                                      "Var": 13
+                                                                                                    }
+                                                                                                  ]
+                                                                                                }
+                                                                                              ]
+                                                                                            },
+                                                                                            {
+                                                                                              "Product": [
+                                                                                                {
+                                                                                                  "Var": 36
+                                                                                                },
+                                                                                                {
+                                                                                                  "Var": 14
+                                                                                                }
+                                                                                              ]
+                                                                                            }
+                                                                                          ]
+                                                                                        },
+                                                                                        {
+                                                                                          "Product": [
+                                                                                            {
+                                                                                              "Var": 36
+                                                                                            },
+                                                                                            {
+                                                                                              "Var": 15
+                                                                                            }
+                                                                                          ]
+                                                                                        }
+                                                                                      ]
+                                                                                    },
+                                                                                    {
+                                                                                      "Product": [
+                                                                                        {
+                                                                                          "Var": 28
+                                                                                        },
+                                                                                        {
+                                                                                          "Var": 10
+                                                                                        }
+                                                                                      ]
+                                                                                    }
+                                                                                  ]
+                                                                                },
+                                                                                {
+                                                                                  "Product": [
+                                                                                    {
+                                                                                      "Var": 8
+                                                                                    },
+                                                                                    {
+                                                                                      "Var": 10
+                                                                                    }
+                                                                                  ]
+                                                                                }
+                                                                              ]
+                                                                            },
+                                                                            {
+                                                                              "Product": [
+                                                                                {
+                                                                                  "Var": 8
+                                                                                },
+                                                                                {
+                                                                                  "Var": 12
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        {
+                                                                          "Product": [
+                                                                            {
+                                                                              "Var": 28
+                                                                            },
+                                                                            {
+                                                                              "Var": 11
+                                                                            }
+                                                                          ]
+                                                                        }
+                                                                      ]
+                                                                    },
+                                                                    {
+                                                                      "Product": [
+                                                                        {
+                                                                          "Constant": 268435454
+                                                                        },
+                                                                        {
+                                                                          "Var": 13
+                                                                        }
+                                                                      ]
+                                                                    }
+                                                                  ]
+                                                                },
+                                                                {
+                                                                  "Product": [
+                                                                    {
+                                                                      "Constant": 268435454
+                                                                    },
+                                                                    {
+                                                                      "Var": 14
+                                                                    }
+                                                                  ]
+                                                                }
+                                                              ]
+                                                            },
+                                                            {
+                                                              "Product": [
+                                                                {
+                                                                  "Constant": 268435454
+                                                                },
+                                                                {
+                                                                  "Var": 15
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "Product": [
+                                                            {
+                                                              "Constant": 1744830467
+                                                            },
+                                                            {
+                                                              "Product": [
+                                                                {
+                                                                  "Var": 32
+                                                                },
+                                                                {
+                                                                  "Var": 10
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "Product": [
+                                                        {
+                                                          "Constant": 1744830467
+                                                        },
+                                                        {
+                                                          "Product": [
+                                                            {
+                                                              "Var": 32
+                                                            },
+                                                            {
+                                                              "Var": 12
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "Product": [
+                                                    {
+                                                      "Constant": 1744830467
+                                                    },
+                                                    {
+                                                      "Product": [
+                                                        {
+                                                          "Var": 24
+                                                        },
+                                                        {
+                                                          "Var": 11
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "Product": [
+                                                {
+                                                  "Constant": 1744830467
+                                                },
+                                                {
+                                                  "Product": [
+                                                    {
+                                                      "Var": 32
+                                                    },
+                                                    {
+                                                      "Var": 13
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "Product": [
+                                            {
+                                              "Constant": 1744830467
+                                            },
+                                            {
+                                              "Product": [
+                                                {
+                                                  "Var": 32
+                                                },
+                                                {
+                                                  "Var": 14
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "Product": [
+                                        {
+                                          "Constant": 1744830467
+                                        },
+                                        {
+                                          "Product": [
+                                            {
+                                              "Var": 32
+                                            },
+                                            {
+                                              "Var": 15
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "Product": [
+                                    {
+                                      "Constant": 1744830467
+                                    },
+                                    {
+                                      "Product": [
+                                        {
+                                          "Product": [
+                                            {
+                                              "Constant": 268295646
+                                            },
+                                            {
+                                              "Var": 38
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "Var": 10
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 1744830467
+                                },
+                                {
+                                  "Product": [
+                                    {
+                                      "Product": [
+                                        {
+                                          "Constant": 268295646
+                                        },
+                                        {
+                                          "Var": 38
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "Var": 12
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "Product": [
+                            {
+                              "Constant": 1744830467
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Product": [
+                                    {
+                                      "Constant": 268295646
+                                    },
+                                    {
+                                      "Var": 38
+                                    }
+                                  ]
+                                },
+                                {
+                                  "Var": 11
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Product": [
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 268295646
+                                },
+                                {
+                                  "Var": 38
+                                }
+                              ]
+                            },
+                            {
+                              "Var": 13
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Product": [
+                            {
+                              "Constant": 268295646
+                            },
+                            {
+                              "Var": 38
+                            }
+                          ]
+                        },
+                        {
+                          "Var": 14
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Product": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268295646
+                        },
+                        {
+                          "Var": 38
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 15
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Sum": [
+                {
+                  "Sum": [
+                    {
+                      "Sum": [
+                        {
+                          "Sum": [
+                            {
+                              "Sum": [
+                                {
+                                  "Sum": [
+                                    {
+                                      "Sum": [
+                                        {
+                                          "Sum": [
+                                            {
+                                              "Sum": [
+                                                {
+                                                  "Sum": [
+                                                    {
+                                                      "Sum": [
+                                                        {
+                                                          "Sum": [
+                                                            {
+                                                              "Sum": [
+                                                                {
+                                                                  "Sum": [
+                                                                    {
+                                                                      "Sum": [
+                                                                        {
+                                                                          "Sum": [
+                                                                            {
+                                                                              "Sum": [
+                                                                                {
+                                                                                  "Sum": [
+                                                                                    {
+                                                                                      "Sum": [
+                                                                                        {
+                                                                                          "Sum": [
+                                                                                            {
+                                                                                              "Sum": [
+                                                                                                {
+                                                                                                  "Sum": [
+                                                                                                    {
+                                                                                                      "Sum": [
+                                                                                                        {
+                                                                                                          "Sum": [
+                                                                                                            {
+                                                                                                              "Sum": [
+                                                                                                                {
+                                                                                                                  "Sum": [
+                                                                                                                    {
+                                                                                                                      "Sum": [
+                                                                                                                        {
+                                                                                                                          "Sum": [
+                                                                                                                            {
+                                                                                                                              "Sum": [
+                                                                                                                                {
+                                                                                                                                  "Sum": [
+                                                                                                                                    {
+                                                                                                                                      "Constant": 0
+                                                                                                                                    },
+                                                                                                                                    {
+                                                                                                                                      "Product": [
+                                                                                                                                        {
+                                                                                                                                          "Var": 38
+                                                                                                                                        },
+                                                                                                                                        {
+                                                                                                                                          "Var": 10
+                                                                                                                                        }
+                                                                                                                                      ]
+                                                                                                                                    }
+                                                                                                                                  ]
+                                                                                                                                },
+                                                                                                                                {
+                                                                                                                                  "Product": [
+                                                                                                                                    {
+                                                                                                                                      "Var": 38
+                                                                                                                                    },
+                                                                                                                                    {
+                                                                                                                                      "Var": 12
+                                                                                                                                    }
+                                                                                                                                  ]
+                                                                                                                                }
+                                                                                                                              ]
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                              "Product": [
+                                                                                                                                {
+                                                                                                                                  "Var": 38
+                                                                                                                                },
+                                                                                                                                {
+                                                                                                                                  "Var": 11
+                                                                                                                                }
+                                                                                                                              ]
+                                                                                                                            }
+                                                                                                                          ]
+                                                                                                                        },
+                                                                                                                        {
+                                                                                                                          "Product": [
+                                                                                                                            {
+                                                                                                                              "Var": 38
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                              "Var": 13
+                                                                                                                            }
+                                                                                                                          ]
+                                                                                                                        }
+                                                                                                                      ]
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                      "Product": [
+                                                                                                                        {
+                                                                                                                          "Var": 38
+                                                                                                                        },
+                                                                                                                        {
+                                                                                                                          "Var": 14
+                                                                                                                        }
+                                                                                                                      ]
+                                                                                                                    }
+                                                                                                                  ]
+                                                                                                                },
+                                                                                                                {
+                                                                                                                  "Product": [
+                                                                                                                    {
+                                                                                                                      "Var": 38
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                      "Var": 15
+                                                                                                                    }
+                                                                                                                  ]
+                                                                                                                }
+                                                                                                              ]
+                                                                                                            },
+                                                                                                            {
+                                                                                                              "Product": [
+                                                                                                                {
+                                                                                                                  "Var": 25
+                                                                                                                },
+                                                                                                                {
+                                                                                                                  "Var": 10
+                                                                                                                }
+                                                                                                              ]
+                                                                                                            }
+                                                                                                          ]
+                                                                                                        },
+                                                                                                        {
+                                                                                                          "Product": [
+                                                                                                            {
+                                                                                                              "Var": 1
+                                                                                                            },
+                                                                                                            {
+                                                                                                              "Var": 12
+                                                                                                            }
+                                                                                                          ]
+                                                                                                        }
+                                                                                                      ]
+                                                                                                    },
+                                                                                                    {
+                                                                                                      "Product": [
+                                                                                                        {
+                                                                                                          "Var": 33
+                                                                                                        },
+                                                                                                        {
+                                                                                                          "Var": 11
+                                                                                                        }
+                                                                                                      ]
+                                                                                                    }
+                                                                                                  ]
+                                                                                                },
+                                                                                                {
+                                                                                                  "Product": [
+                                                                                                    {
+                                                                                                      "Var": 37
+                                                                                                    },
+                                                                                                    {
+                                                                                                      "Var": 13
+                                                                                                    }
+                                                                                                  ]
+                                                                                                }
+                                                                                              ]
+                                                                                            },
+                                                                                            {
+                                                                                              "Product": [
+                                                                                                {
+                                                                                                  "Var": 37
+                                                                                                },
+                                                                                                {
+                                                                                                  "Var": 14
+                                                                                                }
+                                                                                              ]
+                                                                                            }
+                                                                                          ]
+                                                                                        },
+                                                                                        {
+                                                                                          "Product": [
+                                                                                            {
+                                                                                              "Var": 37
+                                                                                            },
+                                                                                            {
+                                                                                              "Var": 15
+                                                                                            }
+                                                                                          ]
+                                                                                        }
+                                                                                      ]
+                                                                                    },
+                                                                                    {
+                                                                                      "Product": [
+                                                                                        {
+                                                                                          "Var": 29
+                                                                                        },
+                                                                                        {
+                                                                                          "Var": 10
+                                                                                        }
+                                                                                      ]
+                                                                                    }
+                                                                                  ]
+                                                                                },
+                                                                                {
+                                                                                  "Product": [
+                                                                                    {
+                                                                                      "Var": 9
+                                                                                    },
+                                                                                    {
+                                                                                      "Var": 10
+                                                                                    }
+                                                                                  ]
+                                                                                }
+                                                                              ]
+                                                                            },
+                                                                            {
+                                                                              "Product": [
+                                                                                {
+                                                                                  "Var": 9
+                                                                                },
+                                                                                {
+                                                                                  "Var": 12
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        {
+                                                                          "Product": [
+                                                                            {
+                                                                              "Var": 29
+                                                                            },
+                                                                            {
+                                                                              "Var": 11
+                                                                            }
+                                                                          ]
+                                                                        }
+                                                                      ]
+                                                                    },
+                                                                    {
+                                                                      "Product": [
+                                                                        {
+                                                                          "Constant": 2013200385
+                                                                        },
+                                                                        {
+                                                                          "Var": 13
+                                                                        }
+                                                                      ]
+                                                                    }
+                                                                  ]
+                                                                },
+                                                                {
+                                                                  "Product": [
+                                                                    {
+                                                                      "Constant": 2013200385
+                                                                    },
+                                                                    {
+                                                                      "Var": 14
+                                                                    }
+                                                                  ]
+                                                                }
+                                                              ]
+                                                            },
+                                                            {
+                                                              "Product": [
+                                                                {
+                                                                  "Constant": 2013200385
+                                                                },
+                                                                {
+                                                                  "Var": 15
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "Product": [
+                                                            {
+                                                              "Constant": 1744830467
+                                                            },
+                                                            {
+                                                              "Product": [
+                                                                {
+                                                                  "Var": 33
+                                                                },
+                                                                {
+                                                                  "Var": 10
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "Product": [
+                                                        {
+                                                          "Constant": 1744830467
+                                                        },
+                                                        {
+                                                          "Product": [
+                                                            {
+                                                              "Var": 33
+                                                            },
+                                                            {
+                                                              "Var": 12
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "Product": [
+                                                    {
+                                                      "Constant": 1744830467
+                                                    },
+                                                    {
+                                                      "Product": [
+                                                        {
+                                                          "Var": 25
+                                                        },
+                                                        {
+                                                          "Var": 11
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "Product": [
+                                                {
+                                                  "Var": 33
+                                                },
+                                                {
+                                                  "Var": 13
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "Product": [
+                                            {
+                                              "Var": 33
+                                            },
+                                            {
+                                              "Var": 14
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "Product": [
+                                        {
+                                          "Var": 33
+                                        },
+                                        {
+                                          "Var": 15
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "Product": [
+                                    {
+                                      "Constant": 1744830467
+                                    },
+                                    {
+                                      "Product": [
+                                        {
+                                          "Product": [
+                                            {
+                                              "Constant": 268295646
+                                            },
+                                            {
+                                              "Var": 39
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "Var": 10
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 1744830467
+                                },
+                                {
+                                  "Product": [
+                                    {
+                                      "Product": [
+                                        {
+                                          "Constant": 268295646
+                                        },
+                                        {
+                                          "Var": 39
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "Var": 12
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "Product": [
+                            {
+                              "Constant": 1744830467
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Product": [
+                                    {
+                                      "Constant": 268295646
+                                    },
+                                    {
+                                      "Var": 39
+                                    }
+                                  ]
+                                },
+                                {
+                                  "Var": 11
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Product": [
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 268295646
+                                },
+                                {
+                                  "Var": 39
+                                }
+                              ]
+                            },
+                            {
+                              "Var": 13
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Product": [
+                            {
+                              "Constant": 268295646
+                            },
+                            {
+                              "Var": 39
+                            }
+                          ]
+                        },
+                        {
+                          "Var": 14
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Product": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268295646
+                        },
+                        {
+                          "Var": 39
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 15
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 28
+            },
+            {
+              "Var": 16
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 29
+            },
+            {
+              "Var": 16
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 26
+            },
+            {
+              "Var": 16
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 27
+            },
+            {
+              "Var": 16
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 32
+            },
+            {
+              "Var": 16
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 33
+            },
+            {
+              "Var": 16
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    }
+  ],
   "generic_lookups": [],
   "range_check_16_lookup_expressions": [
     {
