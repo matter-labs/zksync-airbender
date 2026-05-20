@@ -590,21 +590,6 @@ impl<F: PrimeField> Register<F> {
         *self = Register::choose(cs, flag, new_val, self);
     }
 
-    #[track_caller]
-    pub fn choose_from_orthogonal_variants<C: Circuit<F>>(
-        cs: &mut C,
-        flags: &[Boolean],
-        variants: &[Self],
-    ) -> Self {
-        assert_eq!(flags.len(), variants.len());
-        let low_parts: Vec<Num<F>> = variants.iter().map(|x| x.0[0]).collect();
-        let high_parts: Vec<Num<F>> = variants.iter().map(|x| x.0[1]).collect();
-
-        let low = cs.choose_from_orthogonal_variants(&flags, &low_parts);
-        let high = cs.choose_from_orthogonal_variants(&flags, &high_parts);
-        Register([low, high])
-    }
-
     pub fn equals_to<C: Circuit<F>>(&self, cs: &mut C, cnst: u32) -> Boolean {
         let low_cnst = Num::Constant(F::from_u32_unchecked((cnst & 0xffff) as u32));
         let high_cnst = Num::Constant(F::from_u32_unchecked((cnst >> 16) as u32));

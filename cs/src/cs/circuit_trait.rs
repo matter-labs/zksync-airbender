@@ -319,32 +319,6 @@ pub trait Circuit<F: PrimeField>: Sized {
         Num::Var(new_var)
     }
 
-    #[track_caller]
-    fn choose_from_orthogonal_variants(
-        &mut self,
-        flags: &[Boolean],
-        variants: &[Num<F>],
-    ) -> Num<F> {
-        todo!();
-
-        // assert!(flags.len() > 0);
-        // assert_eq!(flags.len(), variants.len());
-        // return spec_choose_from_orthogonal_variants(self, flags, variants);
-    }
-
-    #[track_caller]
-    fn choose_from_orthogonal_variants_for_linear_terms(
-        &mut self,
-        flags: &[Boolean],
-        variants: &[Constraint<F>],
-    ) -> Num<F> {
-        todo!();
-
-        // assert!(flags.len() > 0);
-        // assert_eq!(flags.len(), variants.len());
-        // return spec_choose_from_orthogonal_variants_for_linear_terms(self, flags, variants);
-    }
-
     fn is_zero(&mut self, var: Num<F>) -> Boolean {
         self.equals_to(var, Num::Constant(F::ZERO))
     }
@@ -515,7 +489,5 @@ pub trait Circuit<F: PrimeField>: Sized {
         table_type: LookupQueryTableType<F>,
     );
 
-    // fn set_log(&mut self, opt_ctx: &OptimizationContext<F, Self>, name: &'static str);
-    // fn view_log(&self, name: &'static str);
     fn is_satisfied(&mut self) -> bool;
 }

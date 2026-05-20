@@ -38,20 +38,6 @@ pub fn collapse_max_quadratic_constraint_into<F: PrimeField, C: Circuit<F>>(
     return collapse_max_quadratic_constraint_into_fixed(cs, constraint, result);
 }
 
-pub(crate) fn check_constants<F: PrimeField>(num1: &Num<F>, num2: &Num<F>) -> (bool, bool) {
-    let first_is_constant = match num1 {
-        Num::Constant(_) => true,
-        _ => false,
-    };
-
-    let second_is_constant = match num2 {
-        Num::Constant(_) => true,
-        _ => false,
-    };
-
-    (first_is_constant, second_is_constant)
-}
-
 pub fn mask_by_boolean_into_accumulator_constraint<F: PrimeField>(
     boolean: &Boolean,
     variable: &Num<F>,
