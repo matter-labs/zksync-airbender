@@ -8,7 +8,7 @@ die() { echo "ERROR: $*" >&2; exit 2; }
   || die "must run from airbender repo root (Cargo.toml + tools/gkr_verifier/src/bin not found)"
 
 ALL_CIRCUITS=($(ls tools/gkr_verifier/src/bin/*.rs | sed 's|.*/||;s|\.rs||;s|_sec_[0-9]*$||' | sort -u))
-ALL_STEPS=(circuits witness_gen prover generator native corruption binaries transpiler)
+ALL_STEPS=(circuits witness_gen generator prover native corruption binaries transpiler)
 
 usage() {
   cat <<EOF
@@ -31,8 +31,8 @@ Options:
 Steps (run in this canonical order):
   circuits      Compile GKR circuits
   witness_gen   Generate witness evaluation functions
-  prover        Generate proof
   generator     Regenerate inlined verifier
+  prover        Generate proof
   native        Run native tests
   corruption    Run corruption tests
   binaries      Build RISC-V binaries

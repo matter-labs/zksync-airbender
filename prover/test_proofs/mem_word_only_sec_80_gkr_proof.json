@@ -92554,7 +92554,42 @@
           "c1": 1008350764
         }
       }
-    ]
+    ],
+    "whir_schedule": {
+      "base_lde_factor": 2,
+      "cap_size": 16,
+      "whir_steps_schedule": [
+        1,
+        5,
+        5,
+        5,
+        4,
+        3
+      ],
+      "whir_queries_schedule": [
+        63,
+        17,
+        8,
+        5,
+        3,
+        3
+      ],
+      "whir_steps_lde_factors": [
+        16,
+        512,
+        16384,
+        524288,
+        524288
+      ],
+      "whir_pow_schedule": [
+        28,
+        20,
+        17,
+        10,
+        23,
+        23
+      ]
+    }
   },
   "grand_product_accumulator_computed": {
     "c0": {
@@ -92565,5 +92600,6 @@
       "c0": 1289375311,
       "c1": 998307947
     }
-  }
+  },
+  "inits_and_teardowns_top_bits": []
 }

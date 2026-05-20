@@ -188,9 +188,9 @@ pub fn make_setup_for_with_mem_circuit<
 //     include!("../generated/all_delegation_circuits_params.rs");
 // }
 
-use prover::definitions::{DEFAULT_CAP_SIZE, DEFAULT_LDE_FACTOR};
+use prover::definitions::DEFAULT_CAP_SIZE;
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UnrolledCircuitSetupParams {
     pub family_idx: u32,
     pub capacity: u32,
@@ -200,7 +200,7 @@ pub struct UnrolledCircuitSetupParams {
     pub setup_caps: MerkleTreeCap<DEFAULT_CAP_SIZE>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DelegationCircuitSetupParams {
     pub delegation_type: u32,
     pub capacity: u32,

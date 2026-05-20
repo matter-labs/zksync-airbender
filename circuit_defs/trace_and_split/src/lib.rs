@@ -10,6 +10,8 @@ use merkle_trees::MerkleTreeCapVarLength;
 use prover::cs::definitions::TimestampScalar;
 use prover::cs::gkr_compiler::GKRCircuitArtifact;
 use prover::cs::utils::split_timestamp;
+use prover::definitions::FinalRegisterValue;
+use prover::gkr::prover_config::ProverConfig;
 use prover::gkr::witness_gen::delegation_circuits::evaluate_gkr_memory_witness_for_delegation_circuit;
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
@@ -28,12 +30,6 @@ pub const ENTRY_POINT: u32 = INITIAL_PC;
 pub use prover;
 pub use setups;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct FinalRegisterValue {
-    pub value: u32,
-    pub last_access_timestamp: TimestampScalar,
-}
-
 pub fn commit_memory_tree_for_unrolled_nonmem_circuits<
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -43,8 +39,7 @@ pub fn commit_memory_tree_for_unrolled_nonmem_circuits<
     circuit: &GKRCircuitArtifact<F>,
     witness_chunk: &[NonMemoryOpcodeTracingDataWithTimestamp],
     twiddles: &Twiddles<F, Global>,
-    tree_cap_size: usize,
-    lde_factor: usize,
+    prover_config: &ProverConfig,
     default_pc_value_in_padding: u32,
     decoder_data: &[ExecutorFamilyDecoderData],
     worker: &Worker,
@@ -88,9 +83,9 @@ where
     let mem = commit_trace_part::<F, T>(
         &mem_inputs,
         twiddles,
-        lde_factor,
-        lde_factor.trailing_zeros() as usize,
-        tree_cap_size,
+        prover_config.lde_factor,
+        prover_config.whir_schedule.whir_steps_schedule[0],
+        prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
         worker,
     );
@@ -111,8 +106,7 @@ pub fn commit_memory_tree_for_unrolled_mem_circuits<
     circuit: &GKRCircuitArtifact<F>,
     witness_chunk: &[MemoryOpcodeTracingDataWithTimestamp],
     twiddles: &Twiddles<F, Global>,
-    tree_cap_size: usize,
-    lde_factor: usize,
+    prover_config: &ProverConfig,
     decoder_data: &[ExecutorFamilyDecoderData],
     worker: &Worker,
 ) -> MerkleTreeCapVarLength
@@ -154,9 +148,9 @@ where
     let mem = commit_trace_part::<F, T>(
         &mem_inputs,
         twiddles,
-        lde_factor,
-        lde_factor.trailing_zeros() as usize,
-        tree_cap_size,
+        prover_config.lde_factor,
+        prover_config.whir_schedule.whir_steps_schedule[0],
+        prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
         worker,
     );
@@ -177,8 +171,7 @@ pub fn commit_memory_tree_for_inits_and_teardowns<
     circuit: &GKRCircuitArtifact<F>,
     inits_and_teardowns: Vec<([Vec<F>; 2], [Vec<F>; 2])>,
     twiddles: &Twiddles<F, Global>,
-    tree_cap_size: usize,
-    lde_factor: usize,
+    prover_config: &ProverConfig,
     worker: &Worker,
 ) -> MerkleTreeCapVarLength
 where
@@ -205,9 +198,9 @@ where
     let mem = commit_trace_part::<F, T>(
         &mem_inputs,
         twiddles,
-        lde_factor,
-        lde_factor.trailing_zeros() as usize,
-        tree_cap_size,
+        prover_config.lde_factor,
+        prover_config.whir_schedule.whir_steps_schedule[0],
+        prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
         worker,
     );
@@ -330,8 +323,7 @@ pub fn commit_memory_tree_for_delegation_circuit<
         VARIABLE_OFFSETS,
     >],
     twiddles: &Twiddles<F, Global>,
-    tree_cap_size: usize,
-    lde_factor: usize,
+    prover_config: &ProverConfig,
     worker: &Worker,
 ) -> MerkleTreeCapVarLength
 where
@@ -370,9 +362,9 @@ where
     let mem = commit_trace_part::<F, T>(
         &mem_inputs,
         twiddles,
-        lde_factor,
-        lde_factor.trailing_zeros() as usize,
-        tree_cap_size,
+        prover_config.lde_factor,
+        prover_config.whir_schedule.whir_steps_schedule[0],
+        prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
         worker,
     );
@@ -395,7 +387,7 @@ fn flatten_merkle_cap(cap: &MerkleTreeCapVarLength) -> Vec<u32> {
 
 /// We need to draw a common challenge based on all the values that will contribute to the memory permutation grand product, and
 /// delegation argument set equality
-pub fn fs_transform_for_permutation_argument(
+pub fn fs_transform_for_permutation_argument<const REDUCED_ROUNDS: bool>(
     final_register_values: &[FinalRegisterValue],
     final_pc: u32,
     final_timestamp: TimestampScalar,
@@ -405,7 +397,8 @@ pub fn fs_transform_for_permutation_argument(
 ) -> Seed {
     use transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
 
-    let mut memory_trace_transcript = transcript::Blake2sBufferingTranscript::new();
+    let mut memory_trace_transcript =
+        transcript::Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new();
 
     // commit all registers
     let mut register_values_and_timestamps = Vec::with_capacity(32 + 32 * 2);
