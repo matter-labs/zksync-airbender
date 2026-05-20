@@ -186,8 +186,8 @@ pub(crate) struct DeviceContext {
 impl DeviceContext {
     pub(crate) fn create(powers_of_w_coarse_log_count: u32) -> CudaResult<Self> {
         assert!(powers_of_w_coarse_log_count < OMEGA_LOG_ORDER);
-        let fine_log_count = OMEGA_LOG_ORDER - powers_of_w_coarse_log_count - 1;
-        let length_fine = 1usize << fine_log_count;
+        let powers_of_w_fine_log_count = OMEGA_LOG_ORDER - powers_of_w_coarse_log_count;
+        let length_fine = 1usize << powers_of_w_fine_log_count;
         let length_coarse = 1usize << powers_of_w_coarse_log_count;
 
         let mut powers_of_w_fine_for_ntt = DeviceAllocation::<BF>::alloc(length_fine)?;
@@ -195,17 +195,17 @@ impl DeviceContext {
         let mut powers_of_w_inv_fine_for_ntt = DeviceAllocation::<BF>::alloc(length_fine)?;
         let mut powers_of_w_inv_coarse_for_ntt = DeviceAllocation::<BF>::alloc(length_coarse)?;
 
-        let coarse_base = domain_generator_for_size::<BF>(1u64 << OMEGA_LOG_ORDER);
-        let mut fine_base = coarse_base;
-        for _ in 0..powers_of_w_coarse_log_count {
-            fine_base.square();
+        let fine_base = domain_generator_for_size::<BF>(1u64 << OMEGA_LOG_ORDER);
+        let mut coarse_base = fine_base;
+        for _ in 0..powers_of_w_fine_log_count {
+            coarse_base.square();
         }
-        let coarse_base_inv = coarse_base
+        let fine_base_inv = fine_base
             .inverse()
             .expect("BabyBear inverse coarse twiddle generator must exist");
-        let mut fine_base_inv = coarse_base_inv;
-        for _ in 0..powers_of_w_coarse_log_count {
-            fine_base_inv.square();
+        let mut coarse_base_inv = fine_base_inv;
+        for _ in 0..powers_of_w_fine_log_count {
+            coarse_base_inv.square();
         }
 
         generate_powers_dev(fine_base, &mut powers_of_w_fine_for_ntt, false, false)?;
@@ -286,7 +286,7 @@ impl DeviceContext {
         unsafe {
             copy_to_symbols(
                 powers_of_w_fine_for_ntt.as_ptr(),
-                fine_log_count,
+                powers_of_w_fine_log_count,
                 powers_of_w_coarse_for_ntt.as_ptr(),
                 powers_of_w_coarse_log_count,
                 powers_of_w_inv_fine_for_ntt.as_ptr(),

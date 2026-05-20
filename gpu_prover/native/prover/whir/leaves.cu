@@ -1,8 +1,10 @@
 #include "../../common.cuh"
+#include "../../ntt/context.cuh"
 #include "../../primitives/field.cuh"
 #include "../../primitives/memory.cuh"
 #include "../../primitives/vectorized.cuh"
 
+using namespace ::airbender::ntt;
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
 using namespace ::airbender::primitives::vectorized;
@@ -14,6 +16,7 @@ DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsi
 EXTERN __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(vectorized_e4_matrix_getter<ld_modifier::cs> src,
                                                               vectorized_e4_matrix_setter<st_modifier::cs> dst,
                                                               const unsigned log_trace_len,
+                                                              const unsigned log_lde_factor,
                                                               const unsigned log_blocks_per_coset,
                                                               const unsigned log_values_per_leaf,
                                                               const unsigned dst_rows_per_coset) {
@@ -33,12 +36,23 @@ EXTERN __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(vectorized_e4_matr
   // extern __shared__ e4 smem[];
   // e4 *smem_warp = smem + 64 * threadIdx.y;
 
-  unsigned dst_slot_in_leaf = 2 * threadIdx.y;
-  unsigned src_row = dst_row + bitreverse_low_bits(dst_slot_in_leaf, log_values_per_leaf) * dst_rows_per_coset;
-  for (; dst_slot_in_leaf < 2 * threadIdx.y + 2; dst_slot_in_leaf++, src_row += dst_rows_per_coset << (log_values_per_leaf - 1)) {
-    const e4 val = src.get_at_row(src_row);
-    dst.set_at_col(dst_slot_in_leaf, val);
-  }
+  const unsigned dst_slot_in_leaf = 2 * threadIdx.y;
+  const unsigned src_row_a = dst_row + bitreverse_low_bits(dst_slot_in_leaf, log_values_per_leaf) * dst_rows_per_coset;
+  const unsigned src_row_b = src_row_a + (dst_rows_per_coset << (log_values_per_leaf - 1));
+
+  const e4 a = src.get_at_row(src_row_a);
+  const e4 b = src.get_at_row(src_row_b);
+
+  const unsigned coset_offset = coset << (OMEGA_LOG_ORDER - log_trace_len - log_lde_factor);
+  const bf x_inv = get_inverse_twiddle_power(bitreverse_low_bits(src_row_a, log_trace_len) << (OMEGA_LOG_ORDER - log_trace_len) + coset_offset);
+
+  const bf two_inv_power = ab_inv_sizes[log_values_per_leaf];
+
+  const e4 c = e4::add(a, b); // e4::mul(two_inv_power, e4::add(a, b));
+  const e4 d = e4::sub(a, b); // e4::mul(bf::mul(two_inv_power, x_inv), e4::sub(a, b));
+
+  dst.set_at_col(dst_slot_in_leaf, c);
+  dst.set_at_col(dst_slot_in_leaf + 1, d);
 }
 
 } // namespace airbender::prover::whir

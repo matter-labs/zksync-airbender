@@ -161,6 +161,8 @@ impl GpuWhirExtensionOracle {
         let trees_cache_mode =
             Self::recursive_tree_cache_mode(total_leaf_count_log2, log_tree_cap_size);
 
+        println!("trace_len_log2 {} log_lde_factor {} log_values_per_leaf {}", trace_len_log2, log_lde_factor, log_values_per_leaf);
+
         // let mut serialized_coeffs_device =
         //     context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
         // serialize_whir_e4_columns(monomial_coeffs, &mut serialized_coeffs_device, stream)?;
@@ -376,7 +378,10 @@ pub(crate) mod tests {
     use fft::{bitreverse_enumeration_inplace, domain_generator_for_size, Twiddles};
     use field::Field;
     use prover::gkr::prover::stages::stage1::ColumnMajorCosetBoundTracePart;
-    use prover::gkr::whir::{ColumnMajorExtensionOracleForCoset, ColumnMajorExtensionOracleForLDE};
+    use prover::gkr::whir::{
+        ColumnMajorExtensionOracleForCoset, ColumnMajorExtensionOracleForLDE,
+        commit_single_ext_poly, commit_single_ext_poly_yoav_style_for_test,
+    };
     use prover::merkle_trees::{
         ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
     };
@@ -670,41 +675,44 @@ pub(crate) mod tests {
             twiddles,
             lde_factor,
         );
-        let trace_len_log2 = monomial_coeffs.len().trailing_zeros() as usize;
-        let mut wrapped_cosets = Vec::with_capacity(cosets.len());
-        for (column, offset) in cosets.iter() {
-            wrapped_cosets.push(ColumnMajorExtensionOracleForCoset {
-                values_normal_order: ColumnMajorCosetBoundTracePart {
-                    column: column.clone().into(),
-                    offset: *offset,
-                },
-            });
-        }
-        let source: Vec<_> = wrapped_cosets
-            .iter()
-            .map(|coset| vec![&coset.values_normal_order.column[..]])
-            .collect();
-        let source_ref: Vec<_> = source.iter().map(|entry| &entry[..]).collect();
-        let tree =
-            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::construct_from_cosets::<
-                E4,
-                Global,
-            >(
-                &source_ref,
-                values_per_leaf,
-                tree_cap_size,
-                true,
-                true,
-                false,
-                worker,
-            );
 
-        ColumnMajorExtensionOracleForLDE {
-            cosets: wrapped_cosets,
-            tree,
-            values_per_leaf,
-            trace_len_log2,
-        }
+        // commit_single_ext_poly(cosets, values_per_leaf, tree_cap_size, worker)
+        commit_single_ext_poly_yoav_style_for_test(cosets, values_per_leaf, tree_cap_size, worker)
+        // let trace_len_log2 = monomial_coeffs.len().trailing_zeros() as usize;
+        // let mut wrapped_cosets = Vec::with_capacity(cosets.len());
+        // for (column, offset) in cosets.iter() {
+        //     wrapped_cosets.push(ColumnMajorExtensionOracleForCoset {
+        //         values_normal_order: ColumnMajorCosetBoundTracePart {
+        //             column: column.clone().into(),
+        //             offset: *offset,
+        //         },
+        //     });
+        // }
+        // let source: Vec<_> = wrapped_cosets
+        //     .iter()
+        //     .map(|coset| vec![&coset.values_normal_order.column[..]])
+        //     .collect();
+        // let source_ref: Vec<_> = source.iter().map(|entry| &entry[..]).collect();
+        // let tree =
+        //     <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::construct_from_cosets::<
+        //         E4,
+        //         Global,
+        //     >(
+        //         &source_ref,
+        //         values_per_leaf,
+        //         tree_cap_size,
+        //         true,
+        //         true,
+        //         false,
+        //         worker,
+        //     );
+
+        // ColumnMajorExtensionOracleForLDE {
+        //     cosets: wrapped_cosets,
+        //     tree,
+        //     values_per_leaf,
+        //     trace_len_log2,
+        // }
     }
 
     fn assert_recursive_oracle_caps_and_queries_match_cpu(

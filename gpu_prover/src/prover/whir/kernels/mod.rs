@@ -16,6 +16,8 @@ use crate::primitives::utils::{
 };
 use crate::upstream::FieldExtension;
 
+use std::mem::size_of;
+
 cuda_kernel_signature_arguments_and_function!(
     SerializeWhirE4Columns,
     src: *const E4,
@@ -226,6 +228,7 @@ cuda_kernel_signature_arguments_and_function!(
     src: PtrAndStride<BF>,
     dst: MutPtrAndStride<BF>,
     log_trace_len: u32,
+    log_lde_factor: u32,
     log_blocks_per_coset: u32,
     log_values_per_leaf: u32,
     dst_rows_per_coset: u32,
@@ -236,6 +239,7 @@ cuda_kernel_declaration!(
         src: PtrAndStride<BF>,
         dst: MutPtrAndStride<BF>,
         log_trace_len: u32,
+        log_lde_factor: u32,
         log_blocks_per_coset: u32,
         log_values_per_leaf: u32,
         dst_rows_per_coset: u32,
@@ -285,6 +289,7 @@ pub(crate) fn pack_rows_for_whir_leaves(
         src.as_ptr_and_stride(),
         dst.as_mut_ptr_and_stride(),
         log_trace_len,
+        log_lde_factor,
         log_blocks_per_coset,
         log_values_per_leaf,
         dst_rows_per_coset as u32,

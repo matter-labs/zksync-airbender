@@ -53,8 +53,8 @@ EXTERN __device__ __constant__ const base_field *ab_inv_gmem_twiddles_coarse;
 namespace airbender::ntt {
 
 DEVICE_FORCEINLINE bf get_power_from_layers(const powers_data_2_layer &data, const unsigned idx) {
-  const unsigned fine_idx = (idx >> data.coarse.log_count) & data.fine.mask;
-  const unsigned coarse_idx = idx & data.coarse.mask;
+  const unsigned coarse_idx = (idx >> data.fine.log_count) & data.coarse.mask;
+  const unsigned fine_idx = idx & data.fine.mask;
   bf value = load_ca(data.coarse.values + coarse_idx);
   if (fine_idx != 0) {
     value = bf::mul(value, load_ca(data.fine.values + fine_idx));
