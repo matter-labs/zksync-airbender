@@ -15,7 +15,7 @@ env:
 jobs:
   tests:
     name: tests
-    runs-on: [matterlabs-ci-runner-highmem]
+    runs-on: [ci-runner-high-performance]
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
