@@ -38,7 +38,7 @@ impl<F: PrimeField> Expr<F> {
         Self::Constant(value)
     }
 
-    pub fn variable(variable: Variable) -> Self {
+    pub fn var(variable: Variable) -> Self {
         Self::Var(variable)
     }
 
@@ -48,6 +48,10 @@ impl<F: PrimeField> Expr<F> {
 
     pub fn one() -> Self {
         Self::Constant(F::ONE)
+    }
+
+    pub fn mask(self, flag: Boolean) -> Self {
+        self * Self::from(flag)
     }
 
     pub fn degree(&self) -> usize {
@@ -262,10 +266,10 @@ mod tests {
         let f = var(5);
 
         let expr = Expr::<F>::Product(vec![
-            Expr::from(a),
-            Expr::from(b),
-            Expr::from(c),
-            Expr::Sum(vec![Expr::from(d), Expr::from(e), Expr::from(f)]),
+            Expr::var(a),
+            Expr::var(b),
+            Expr::var(c),
+            Expr::Sum(vec![Expr::var(d), Expr::var(e), Expr::var(f)]),
         ]);
 
         assert_eq!(expr.degree(), 4);
@@ -283,7 +287,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "structured expression degree 5 exceeds supported degree 4")]
     fn rejects_degree_above_structured_limit() {
-        let expr = Expr::<F>::Product((0..5).map(var).map(Expr::from).collect());
+        let expr = Expr::<F>::Product((0..5).map(var).map(Expr::var).collect());
 
         expr.validate_degree_at_most(4);
     }
@@ -291,7 +295,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "structured expression degree 3 exceeds supported degree 2")]
     fn rejects_non_quadratic_expressions_for_current_constraint_lowering() {
-        let expr = Expr::<F>::Product((0..3).map(var).map(Expr::from).collect());
+        let expr = Expr::<F>::Product((0..3).map(var).map(Expr::var).collect());
 
         let _ = expr.to_max_quadratic_constraint();
     }
@@ -302,7 +306,7 @@ mod tests {
         let b = var(1);
         let c = var(2);
 
-        let expr = Expr::<F>::from(a) * (Expr::from(b) + Expr::from(c));
+        let expr = Expr::<F>::var(a) * (Expr::var(b) + Expr::var(c));
         let mut expected = Term::from(a) * Term::from(b) + Term::from(a) * Term::from(c);
         expected.normalize();
 
@@ -334,10 +338,10 @@ mod tests {
     fn masking_helper_preserves_negated_boolean_shape() {
         let value = Num::Var(var(0));
         let flag = Boolean::Not(var(1));
-        let accumulator = Expr::<F>::from(var(2));
+        let accumulator = Expr::<F>::var(var(2));
 
         let expr = mask_by_boolean_into_accumulator_expr(&flag, &value, accumulator.clone());
-        let expected_expr = accumulator + Expr::from(value) * Expr::from(flag);
+        let expected_expr = accumulator + Expr::from(value).mask(flag);
 
         let mut expected_flat_constraint = Constraint::<F>::from(var(2))
             + Term::from(var(0)) * (Term::from(1) - Term::from(var(1)));
@@ -354,7 +358,7 @@ mod tests {
         let mask = cs.add_named_boolean_variable("mask").toggle();
 
         let dst = mask_linear_term(&mut cs, Term::from(value), mask);
-        let expected_expr = Expr::<F>::from(value) * Expr::from(mask);
+        let expected_expr = Expr::<F>::var(value).mask(mask);
         let mut expected_flat_constraint = expected_expr.to_max_quadratic_constraint();
         expected_flat_constraint -= Term::from(dst);
         expected_flat_constraint.normalize();
@@ -394,7 +398,7 @@ mod tests {
     }
 
     #[test]
-    fn variable_expression_api_stores_definition_metadata() {
+    fn var_expression_api_stores_definition_metadata() {
         let mut cs = BasicAssembly::<F>::new();
         let a = cs.add_named_variable("a");
         let b = cs.add_named_variable("b");
