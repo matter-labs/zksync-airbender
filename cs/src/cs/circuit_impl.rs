@@ -7,12 +7,12 @@ use crate::cs::circuit_output::CircuitOutput;
 use crate::cs::circuit_trait::*;
 use crate::oracle::*;
 use crate::structured_expr::{Expr, StructuredStatement};
-use crate::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator;
-use crate::witness_placer::*;
-use std::collections::BTreeMap;
 use crate::tables::TableDriver;
 use crate::types::*;
+use crate::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator;
+use crate::witness_placer::*;
 use field::PrimeField;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::vec;
@@ -160,6 +160,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
     }
 
     fn add_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable {
+        let expr = expr.canonicalize();
         expr.validate_degree_at_most(4);
         let constraint = expr.to_max_quadratic_constraint();
         let new_var = self.add_named_variable_from_constraint(constraint, name);
@@ -211,6 +212,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
     }
 
     fn add_intermediate_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable {
+        let expr = expr.canonicalize();
         expr.validate_degree_at_most(4);
         let constraint = expr.to_max_quadratic_constraint();
         let new_var = self.add_intermediate_named_variable_from_constraint(constraint, name);
@@ -263,6 +265,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
     #[track_caller]
     fn add_variable_from_expr_allow_explicit_linear(&mut self, expr: Expr<F>) -> Variable {
+        let expr = expr.canonicalize();
         expr.validate_degree_at_most(4);
         let constraint = expr.to_max_quadratic_constraint();
         let new_var = self.add_variable_from_constraint_allow_explicit_linear(constraint);
@@ -384,6 +387,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
     #[track_caller]
     fn add_constraint_expr(&mut self, expr: Expr<F>) {
+        let expr = expr.canonicalize();
         expr.validate_degree_at_most(4);
         let constraint = expr.to_max_quadratic_constraint();
         self.add_constraint(constraint);
@@ -396,6 +400,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
     #[track_caller]
     fn add_constraint_allow_explicit_linear_expr(&mut self, expr: Expr<F>) {
+        let expr = expr.canonicalize();
         expr.validate_degree_at_most(4);
         let constraint = expr.to_max_quadratic_constraint();
         self.add_constraint_allow_explicit_linear(constraint);
@@ -408,6 +413,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
     #[track_caller]
     fn add_constraint_allow_explicit_linear_prevent_optimizations_expr(&mut self, expr: Expr<F>) {
+        let expr = expr.canonicalize();
         expr.validate_degree_at_most(4);
         let constraint = expr.to_max_quadratic_constraint();
         self.add_constraint_allow_explicit_linear_prevent_optimizations(constraint);
@@ -420,6 +426,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
     #[track_caller]
     fn define_variable_from_expr(&mut self, dst: Variable, expr: Expr<F>) {
+        let expr = expr.canonicalize();
         expr.validate_degree_at_most(4);
         let mut constraint = expr.to_max_quadratic_constraint();
         constraint -= Term::from(dst);

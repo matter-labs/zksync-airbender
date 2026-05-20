@@ -50,6 +50,60 @@ impl<F: PrimeField> Expr<F> {
         Self::Constant(F::ONE)
     }
 
+    /// Builds a sum while dropping additive identity terms and flattening nested sums.
+    pub fn sum(terms: Vec<Self>) -> Self {
+        let mut normalized_terms = Vec::with_capacity(terms.len());
+        for term in terms {
+            Self::push_sum_term(&mut normalized_terms, term);
+        }
+
+        match normalized_terms.len() {
+            0 => Self::zero(),
+            1 => normalized_terms.pop().expect("single sum term must exist"),
+            _ => Self::Sum(normalized_terms),
+        }
+    }
+
+    /// Builds a product while dropping multiplicative identity factors and flattening nested products.
+    pub fn product(factors: Vec<Self>) -> Self {
+        let mut normalized_factors = Vec::with_capacity(factors.len());
+        for factor in factors {
+            Self::push_product_factor(&mut normalized_factors, factor);
+        }
+
+        match normalized_factors.len() {
+            0 => Self::one(),
+            1 => normalized_factors
+                .pop()
+                .expect("single product factor must exist"),
+            _ => Self::Product(normalized_factors),
+        }
+    }
+
+    fn push_sum_term(terms: &mut Vec<Self>, term: Self) {
+        match term {
+            Self::Constant(value) if value == F::ZERO => {}
+            Self::Sum(nested_terms) => {
+                for nested_term in nested_terms {
+                    Self::push_sum_term(terms, nested_term);
+                }
+            }
+            term => terms.push(term),
+        }
+    }
+
+    fn push_product_factor(factors: &mut Vec<Self>, factor: Self) {
+        match factor {
+            Self::Constant(value) if value == F::ONE => {}
+            Self::Product(nested_factors) => {
+                for nested_factor in nested_factors {
+                    Self::push_product_factor(factors, nested_factor);
+                }
+            }
+            factor => factors.push(factor),
+        }
+    }
+
     pub fn mask(self, flag: Boolean) -> Self {
         self * Self::from(flag)
     }
@@ -72,9 +126,19 @@ impl<F: PrimeField> Expr<F> {
         );
     }
 
+    /// Applies the minimal normalization we currently want for metadata.
+    ///
+    /// This intentionally only removes neutral elements, flattens same-kind
+    /// associative nodes, and collapses empty or single-item nodes. It does not
+    /// combine constants, sort terms, or distribute multiplication over addition.
     pub fn canonicalize(self) -> Self {
-        // TODO: Implement once the desired structured-expression normalization is known.
-        self
+        match self {
+            Self::Sum(terms) => Self::sum(terms.into_iter().map(Self::canonicalize).collect()),
+            Self::Product(factors) => {
+                Self::product(factors.into_iter().map(Self::canonicalize).collect())
+            }
+            expr => expr,
+        }
     }
 
     /// Lower the expression into today's executable constraint representation.
@@ -142,11 +206,7 @@ impl<F: PrimeField> From<Term<F>> for Expr<F> {
                 }
                 factors.extend(inner[..degree].iter().copied().map(Self::Var));
 
-                match factors.len() {
-                    0 => Self::one(),
-                    1 => factors.pop().expect("single expression factor must exist"),
-                    _ => Self::Product(factors),
-                }
+                Self::product(factors)
             }
         }
     }
@@ -154,13 +214,7 @@ impl<F: PrimeField> From<Term<F>> for Expr<F> {
 
 impl<F: PrimeField> From<Constraint<F>> for Expr<F> {
     fn from(value: Constraint<F>) -> Self {
-        let mut terms = value.terms.into_iter().map(Self::from).collect::<Vec<_>>();
-
-        match terms.len() {
-            0 => Self::zero(),
-            1 => terms.pop().expect("single expression term must exist"),
-            _ => Self::Sum(terms),
-        }
+        Self::sum(value.terms.into_iter().map(Self::from).collect())
     }
 }
 
@@ -199,7 +253,7 @@ impl<F: PrimeField> std::ops::Add for Expr<F> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        Self::Sum(vec![self, rhs])
+        Self::sum(vec![self, rhs])
     }
 }
 
@@ -207,7 +261,7 @@ impl<F: PrimeField> std::ops::Sub for Expr<F> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        Self::Sum(vec![self, -rhs])
+        Self::sum(vec![self, -rhs])
     }
 }
 
@@ -215,7 +269,13 @@ impl<F: PrimeField> std::ops::Neg for Expr<F> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        Self::Product(vec![Self::Constant(F::MINUS_ONE), self])
+        match self {
+            Self::Constant(mut value) => {
+                value.negate();
+                Self::Constant(value)
+            }
+            expr => Self::product(vec![Self::Constant(F::MINUS_ONE), expr]),
+        }
     }
 }
 
@@ -223,7 +283,7 @@ impl<F: PrimeField> std::ops::Mul for Expr<F> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        Self::Product(vec![self, rhs])
+        Self::product(vec![self, rhs])
     }
 }
 
@@ -231,7 +291,7 @@ impl<F: PrimeField> std::ops::Mul<F> for Expr<F> {
     type Output = Self;
 
     fn mul(self, rhs: F) -> Self::Output {
-        Self::Product(vec![Self::Constant(rhs), self])
+        Self::product(vec![Self::Constant(rhs), self])
     }
 }
 
@@ -281,6 +341,37 @@ mod tests {
                 Expr::Var(c),
                 Expr::Sum(vec![Expr::Var(d), Expr::Var(e), Expr::Var(f)]),
             ])
+        );
+    }
+
+    #[test]
+    fn normalizes_additive_and_multiplicative_identities() {
+        let a = var(0);
+        let b = var(1);
+
+        assert_eq!(Expr::<F>::zero() + Expr::var(a), Expr::var(a));
+        assert_eq!(Expr::<F>::var(a) - Expr::zero(), Expr::var(a));
+        assert_eq!(Expr::<F>::one() * Expr::var(a), Expr::var(a));
+        assert_eq!(Expr::<F>::var(a) * Expr::one(), Expr::var(a));
+
+        assert_eq!(
+            Expr::<F>::var(a) + Expr::Sum(vec![Expr::zero(), Expr::var(b)]),
+            Expr::Sum(vec![Expr::var(a), Expr::var(b)])
+        );
+        assert_eq!(
+            Expr::<F>::var(a) * Expr::Product(vec![Expr::one(), Expr::var(b)]),
+            Expr::Product(vec![Expr::var(a), Expr::var(b)])
+        );
+
+        let expr = Expr::<F>::Sum(vec![
+            Expr::zero(),
+            Expr::Product(vec![Expr::one(), Expr::var(a)]),
+            Expr::Product(vec![Expr::var(b), Expr::one()]),
+        ]);
+
+        assert_eq!(
+            expr.canonicalize(),
+            Expr::Sum(vec![Expr::var(a), Expr::var(b)])
         );
     }
 

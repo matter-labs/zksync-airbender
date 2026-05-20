@@ -463,8 +463,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             - Expr::var(out_low)
             - Expr::var(intermediate_carry_var) * carry_shift;
         // SUB rearranged: 2^16*of + out + rs2 - rs1
-        let eq_sub_low = Expr::var(out_low)
-            + Expr::var(rs2_limbs[0])
+        let eq_sub_low = Expr::var(out_low) + Expr::var(rs2_limbs[0])
             - Expr::var(rs1_limbs[0])
             - Expr::var(intermediate_carry_var) * carry_shift;
         // modular ops: 2^16*of + out - modulus = intermediate_tmp
@@ -493,11 +492,10 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             + Expr::var(inputs.decoder_data.imm[1])
             - Expr::var(out_high)
             - Expr::var(carry_var) * carry_shift;
-        let eq_sub_high = Expr::<F>::from(intermediate_carry)
-            + Expr::var(out_high)
-            + Expr::var(rs2_limbs[1])
-            - Expr::var(rs1_limbs[1])
-            - Expr::var(carry_var) * carry_shift;
+        let eq_sub_high =
+            Expr::<F>::from(intermediate_carry) + Expr::var(out_high) + Expr::var(rs2_limbs[1])
+                - Expr::var(rs1_limbs[1])
+                - Expr::var(carry_var) * carry_shift;
         // modular ops flip the out_high sign (canonical reduction goes the other way)
         let eq_modular_high = Expr::<F>::from(intermediate_carry)
             + Expr::var(intermediate_tmp.0[1].get_variable())
