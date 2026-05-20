@@ -2239,12 +2239,12 @@ fn evals_to_multilinear_coeffs<F: PrimeField + TwoAdicField, E: FieldExtension<F
 
                 let mut c_even = a;
                 c_even.add_assign(&b);
-                // c_even.mul_assign_by_base(two_inv);
+                c_even.mul_assign_by_base(two_inv);
 
                 let mut c_odd = a;
                 c_odd.sub_assign(&b);
-                // c_odd.mul_assign_by_base(&root);
-                // c_odd.mul_assign_by_base(two_inv);
+                c_odd.mul_assign_by_base(&root);
+                c_odd.mul_assign_by_base(two_inv);
 
                 dst[out_base + set_idx] = c_even;
                 dst[linear_base + set_idx] = c_odd;

@@ -43,13 +43,13 @@ EXTERN __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(vectorized_e4_matr
   const e4 a = src.get_at_row(src_row_a);
   const e4 b = src.get_at_row(src_row_b);
 
-  const unsigned coset_offset = coset << (OMEGA_LOG_ORDER - log_trace_len - log_lde_factor);
-  const bf x_inv = get_inverse_twiddle_power(bitreverse_low_bits(src_row_a, log_trace_len) << (OMEGA_LOG_ORDER - log_trace_len) + coset_offset);
+  const unsigned coset_offset = bitreverse_low_bits(coset, log_lde_factor) << (OMEGA_LOG_ORDER - log_trace_len - log_lde_factor);
+  const bf x_inv = get_inverse_twiddle_power((src_row_a << (OMEGA_LOG_ORDER - log_trace_len)) + coset_offset);
 
   const bf two_inv_power = ab_inv_sizes[log_values_per_leaf];
 
-  const e4 c = e4::add(a, b); // e4::mul(two_inv_power, e4::add(a, b));
-  const e4 d = e4::sub(a, b); // e4::mul(bf::mul(two_inv_power, x_inv), e4::sub(a, b));
+  const e4 c = e4::mul(two_inv_power, e4::add(a, b));
+  const e4 d = e4::mul(bf::mul(x_inv, two_inv_power), e4::sub(a, b));
 
   dst.set_at_col(dst_slot_in_leaf, c);
   dst.set_at_col(dst_slot_in_leaf + 1, d);
