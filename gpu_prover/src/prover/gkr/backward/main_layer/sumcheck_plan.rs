@@ -232,6 +232,155 @@ where
         )
     }
 
+    /// Warp-partial round-kernel launcher. `step == 0` uses the round-0
+    /// warp-partial kernel; `step >= 1` uses the continuation warp-partial
+    /// kernel for the matching round family (rounds 3+ all share the
+    /// round-3 kernel). Requires `acc_size >= 32` — the warp shfl_xor
+    /// inside the kernel uses a full 0xFFFFFFFF mask and would deadlock
+    /// with dead lanes.
+    fn launch_round_kernel_warp_partial(
+        &mut self,
+        step: usize,
+        acc_size: usize,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        debug_assert!(acc_size >= 32);
+        assert!(
+            self.flat_use_constant,
+            "warp-partial main-layer dispatch only supports the constant-coefficient path"
+        );
+        let partials_ptr = self.round_scratch.partials.as_mut_ptr() as *mut E4;
+        let eq_low_ptr = self.round_scratch.eq_low_group.as_ptr() as *const E4;
+
+        if step == 0 {
+            let plan_compact = self
+                .flat_round0_template_compact
+                .as_ref()
+                .expect("compact flat round 0 plan must be built");
+            return super::super::kernels::launch_main_round0_constant_warp_partial(
+                &plan_compact.static_desc,
+                eq_low_ptr,
+                &self.eq_sizes,
+                partials_ptr,
+                acc_size as u32,
+                context,
+            );
+        }
+
+        match step {
+            1 => {
+                let sizes = self
+                    .flat_round1_size_check()
+                    .resolve(acc_size)
+                    .expect("flat round 1 size check must be consistent");
+                let compact_desc = self
+                    .flat_round1_unified_desc_compact
+                    .as_ref()
+                    .expect("flat round 1 compact desc must be built");
+                super::super::kernels::launch_main_round1_unified_warp_partial(
+                    compact_desc,
+                    sizes.fold_stride,
+                    sizes.next_layer_size,
+                    eq_low_ptr,
+                    &self.eq_sizes,
+                    partials_ptr,
+                    acc_size as u32,
+                    context,
+                )
+            }
+            2 => {
+                let sizes = self
+                    .flat_round2_size_check()
+                    .resolve(acc_size)
+                    .expect("flat round 2 size check must be consistent");
+                let compact_desc = self
+                    .flat_round2_unified_desc_compact
+                    .as_ref()
+                    .expect("flat round 2 compact desc must be built");
+                super::super::kernels::launch_main_round2_unified_warp_partial(
+                    compact_desc,
+                    super::super::compact::get_main_layer_claim_point_device_ptr() as *const E4,
+                    sizes.fold_stride,
+                    sizes.next_layer_size,
+                    eq_low_ptr,
+                    &self.eq_sizes,
+                    partials_ptr,
+                    acc_size as u32,
+                    context,
+                )
+            }
+            step => {
+                let sizes = self
+                    .flat_round3_size_check(step)
+                    .resolve(acc_size)
+                    .unwrap_or_else(|| {
+                        panic!("flat round 3 size check must be consistent for step {step}")
+                    });
+                let (_, compact_desc) = self
+                    .flat_continuation_unified_descs_compact
+                    .iter()
+                    .find(|(s, _)| *s == step)
+                    .unwrap_or_else(|| {
+                        panic!("flat continuation compact desc must be built for step {step}")
+                    });
+                super::super::kernels::launch_main_round3_unified_warp_partial(
+                    compact_desc,
+                    sizes.fold_stride,
+                    sizes.next_layer_size,
+                    (step - 1) as u32,
+                    eq_low_ptr,
+                    &self.eq_sizes,
+                    partials_ptr,
+                    acc_size as u32,
+                    context,
+                )
+            }
+        }
+    }
+
+    /// Fused-tail dispatcher for the warp-partial round kernels. The round
+    /// kernel — round 0 or continuation — wrote `acc_size / 32` partial
+    /// pairs to `partials[]`; this stage runs the mega-finalize-from-partials
+    /// kernel to reduce + round-update + fold-eq.
+    #[allow(clippy::too_many_arguments)]
+    fn dispatch_warp_partial_tail(
+        &mut self,
+        acc_size: usize,
+        prev_claim_coord: *const E,
+        seed: *mut u32,
+        claim: *mut E,
+        eq_prefactor: *mut E,
+        coeffs_out: *mut E,
+        challenge_out: *mut E,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let prev_e4 = prev_claim_coord as *const E4;
+        let claim_e4 = claim as *mut E4;
+        let eq_pref_e4 = eq_prefactor as *mut E4;
+        let coeffs_e4 = coeffs_out as *mut E4;
+        let chal_e4 = challenge_out as *mut E4;
+        let eq_low_ptr_mut = self.round_scratch.eq_low_group.as_mut_ptr() as *mut E4;
+        let partials_ptr = self.round_scratch.partials.as_mut_ptr() as *mut E4;
+        let num_partials = super::super::kernels::warp_partial_count(acc_size);
+        let (slot_base, slot_size_before_fold) =
+            super::super::kernels::resolve_active_eq_slot(&self.eq_sizes, eq_low_ptr_mut);
+        super::super::kernels::launch_backward_dual_finalize_from_partials(
+            partials_ptr as *const E4,
+            num_partials,
+            prev_e4,
+            seed,
+            claim_e4,
+            eq_pref_e4,
+            coeffs_e4,
+            chal_e4,
+            slot_base,
+            slot_size_before_fold,
+            context,
+        )?;
+        super::super::kernels::record_active_eq_slot_fold(&mut self.eq_sizes);
+        Ok(())
+    }
+
     /// Main-layer variant of the device-only sumcheck accumulator reduction.
     fn run_round_coefficients_reduction_device(
         &mut self,
@@ -610,7 +759,26 @@ where
 
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
-            if step == 0 {
+            // Warp-partial round kernel + fused tail when the block can
+            // fill a full warp's worth of gids; otherwise reduce-fold-update
+            // fallback. The warp shfl_xor in the warp-partial kernel uses a
+            // full 0xFFFFFFFF mask, so `acc_size < 32` would deadlock with
+            // dead lanes — late rounds run the unfused 5-launch path.
+            let use_warp_partial = acc_size >= 32;
+
+            // Round-kernel launch.
+            if use_warp_partial {
+                self.launch_round_kernel_warp_partial(step, acc_size, context)?;
+                if step == 0 {
+                    self.schedule_flat_continuation_eval_recipes(
+                        cont_batch_base_ptr,
+                        cont_lookup_mul_ptr,
+                        cont_lookup_add_ptr,
+                        device_external_challenges_ptr as *const E4,
+                        context,
+                    )?;
+                }
+            } else if step == 0 {
                 self.launch_round0_kernels(acc_size, context)?;
                 // Round-0 kernel reads are now ordered before this point on
                 // `exec_stream`; the continuation eval_recipes write can
@@ -633,15 +801,6 @@ where
                 }
             }
 
-            // Device-only reduction into round_scratch.reduction_output.
-            self.run_round_coefficients_reduction_device(step, acc_size, context)?;
-            self.fold_eq_values_for_next_round(acc_size, context)?;
-
-            // Fused per-round update: reads (seed, claim, eq_prefactor) +
-            // (e, c) reduction output + prev_coord; writes updated state,
-            // pushes the round's 4 coefficients into device_coeffs at
-            // [step*4..step*4+4], and emits the next folding challenge
-            // directly into `claim_point_out[step]`.
             // SAFETY: `step < last_step <= folding_steps`, so the single-element
             // read lies inside the immutable input claim-point buffer.
             let prev_coord_slice = unsafe { device_claim_point_in.slice(step, 1) };
@@ -657,16 +816,33 @@ where
             // this one-element output slot is in bounds and uniquely written by
             // this iteration.
             let challenge_slot = unsafe { device_claim_point_out.slice_mut(step, 1) };
-            E::launch_backward_sumcheck_round_update(
-                &self.round_scratch.reduction_output,
-                prev_coord_slice,
-                &mut device_seed,
-                &mut device_claim,
-                &mut device_eq_prefactor,
-                coeffs_round_slice,
-                challenge_slot,
-                stream,
-            )?;
+
+            if use_warp_partial {
+                self.dispatch_warp_partial_tail(
+                    acc_size,
+                    prev_coord_slice.as_ptr(),
+                    device_seed.as_mut_ptr(),
+                    device_claim.as_mut_ptr(),
+                    device_eq_prefactor.as_mut_ptr(),
+                    coeffs_round_slice.as_mut_ptr(),
+                    challenge_slot.as_mut_ptr(),
+                    context,
+                )?;
+            } else {
+                // Unfused reduce-fold-update fallback (small acc_size only).
+                self.run_round_coefficients_reduction_device(step, acc_size, context)?;
+                self.fold_eq_values_for_next_round(acc_size, context)?;
+                E::launch_backward_sumcheck_round_update(
+                    &self.round_scratch.reduction_output,
+                    prev_coord_slice,
+                    &mut device_seed,
+                    &mut device_claim,
+                    &mut device_eq_prefactor,
+                    coeffs_round_slice,
+                    challenge_slot,
+                    stream,
+                )?;
+            }
         }
         self.launch_round3_kernels_from_symbol(last_step, 1, true, context)?;
 

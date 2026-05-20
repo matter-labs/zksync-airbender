@@ -293,6 +293,8 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
         let max_acc_size = trace_len_after_reduction / 2;
         let reduction_temp_storage_bytes =
             get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, max_acc_size as i32)?;
+        let partials_len = kernels::max_partials_len(max_acc_size);
+        let partials = context.alloc(partials_len, AllocationPlacement::Top)?;
 
         let round_scratch = GpuGKRDimensionReducingRoundScratch {
             claim_point: context.alloc(folding_steps + 1, AllocationPlacement::Top)?,
@@ -304,6 +306,7 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
                     reduction_temp_storage_bytes,
                     AllocationPlacement::Top,
                 )?,
+            partials,
         };
 
         self.next_trace_len_after_reduction *= 2;
