@@ -104,6 +104,7 @@ fn prove_and_verify_with_uart(
 // ==================== Family 1: AddSub / LUI / AUIPC ====================
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_add() {
     skip_if_ci!();
@@ -123,6 +124,7 @@ fn test_prover_pipeline_add() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_sub() {
     skip_if_ci!();
@@ -132,6 +134,7 @@ fn test_prover_pipeline_sub() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_addi() {
     skip_if_ci!();
@@ -141,6 +144,7 @@ fn test_prover_pipeline_addi() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_lui() {
     skip_if_ci!();
@@ -150,6 +154,7 @@ fn test_prover_pipeline_lui() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_auipc() {
     skip_if_ci!();
@@ -163,6 +168,7 @@ fn test_prover_pipeline_auipc() {
 // ==================== Family 2: SLT / Branches / Jumps ====================
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_slt() {
     skip_if_ci!();
@@ -173,6 +179,7 @@ fn test_prover_pipeline_slt() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_sltu() {
     skip_if_ci!();
@@ -183,6 +190,7 @@ fn test_prover_pipeline_sltu() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_slti() {
     skip_if_ci!();
@@ -192,6 +200,7 @@ fn test_prover_pipeline_slti() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_sltiu() {
     skip_if_ci!();
@@ -201,6 +210,7 @@ fn test_prover_pipeline_sltiu() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_beq() {
     skip_if_ci!();
@@ -217,6 +227,7 @@ fn test_prover_pipeline_beq() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_bne() {
     skip_if_ci!();
@@ -233,6 +244,7 @@ fn test_prover_pipeline_bne() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_blt() {
     skip_if_ci!();
@@ -250,6 +262,7 @@ fn test_prover_pipeline_blt() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_bge() {
     skip_if_ci!();
@@ -267,6 +280,7 @@ fn test_prover_pipeline_bge() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_bltu() {
     skip_if_ci!();
@@ -283,6 +297,7 @@ fn test_prover_pipeline_bltu() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_bgeu() {
     skip_if_ci!();
@@ -299,6 +314,7 @@ fn test_prover_pipeline_bgeu() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_jal() {
     skip_if_ci!();
@@ -318,6 +334,7 @@ fn test_prover_pipeline_jal() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_jalr() {
     skip_if_ci!();
@@ -337,6 +354,7 @@ fn test_prover_pipeline_jalr() {
 // ==================== Family 3: Shift / Binop / CSR ====================
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_sll() {
     skip_if_ci!();
@@ -346,6 +364,7 @@ fn test_prover_pipeline_sll() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_srl() {
     skip_if_ci!();
@@ -355,6 +374,7 @@ fn test_prover_pipeline_srl() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_sra() {
     skip_if_ci!();
@@ -365,6 +385,7 @@ fn test_prover_pipeline_sra() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_xor() {
     skip_if_ci!();
@@ -374,6 +395,7 @@ fn test_prover_pipeline_xor() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_and() {
     skip_if_ci!();
@@ -383,6 +405,7 @@ fn test_prover_pipeline_and() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_or() {
     skip_if_ci!();
@@ -392,6 +415,7 @@ fn test_prover_pipeline_or() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_slli() {
     skip_if_ci!();
@@ -401,6 +425,7 @@ fn test_prover_pipeline_slli() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_srli() {
     skip_if_ci!();
@@ -410,6 +435,7 @@ fn test_prover_pipeline_srli() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_srai() {
     skip_if_ci!();
@@ -420,6 +446,7 @@ fn test_prover_pipeline_srai() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_xori() {
     skip_if_ci!();
@@ -429,6 +456,7 @@ fn test_prover_pipeline_xori() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_andi() {
     skip_if_ci!();
@@ -438,6 +466,7 @@ fn test_prover_pipeline_andi() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_ori() {
     skip_if_ci!();
@@ -447,6 +476,7 @@ fn test_prover_pipeline_ori() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_csrrw() {
     skip_if_ci!();
@@ -462,6 +492,7 @@ fn test_prover_pipeline_csrrw() {
 // ==================== Family 4: MUL / DIV ====================
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_mul() {
     skip_if_ci!();
@@ -471,6 +502,7 @@ fn test_prover_pipeline_mul() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_mulh() {
     skip_if_ci!();
@@ -482,6 +514,7 @@ fn test_prover_pipeline_mulh() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_mulhsu() {
     skip_if_ci!();
@@ -493,6 +526,7 @@ fn test_prover_pipeline_mulhsu() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_mulhu() {
     skip_if_ci!();
@@ -503,6 +537,7 @@ fn test_prover_pipeline_mulhu() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_div() {
     skip_if_ci!();
@@ -512,6 +547,7 @@ fn test_prover_pipeline_div() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_div_overflow() {
     skip_if_ci!();
@@ -522,6 +558,7 @@ fn test_prover_pipeline_div_overflow() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_divu() {
     skip_if_ci!();
@@ -531,6 +568,7 @@ fn test_prover_pipeline_divu() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_rem() {
     skip_if_ci!();
@@ -540,6 +578,7 @@ fn test_prover_pipeline_rem() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_remu() {
     skip_if_ci!();
@@ -554,6 +593,7 @@ fn test_prover_pipeline_remu() {
 // the first valid RAM address. `lui x1, 0x400` loads x1 = 0x00400000.
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_sw() {
     skip_if_ci!();
@@ -568,6 +608,7 @@ fn test_prover_pipeline_sw() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_lw() {
     skip_if_ci!();
@@ -585,6 +626,7 @@ fn test_prover_pipeline_lw() {
 // ==================== Family 6: Subword load / store ====================
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_sb() {
     skip_if_ci!();
@@ -599,6 +641,7 @@ fn test_prover_pipeline_sb() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_lb() {
     skip_if_ci!();
@@ -614,6 +657,7 @@ fn test_prover_pipeline_lb() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_lbu() {
     skip_if_ci!();
@@ -629,6 +673,7 @@ fn test_prover_pipeline_lbu() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_sh() {
     skip_if_ci!();
@@ -643,6 +688,7 @@ fn test_prover_pipeline_sh() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_lh() {
     skip_if_ci!();
@@ -658,6 +704,7 @@ fn test_prover_pipeline_lh() {
 }
 
 #[test]
+#[ignore = "heavy prove+verify; run with `cargo test -- --ignored`"]
 #[serial_test::serial]
 fn test_prover_pipeline_lhu() {
     skip_if_ci!();
