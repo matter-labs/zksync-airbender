@@ -18,7 +18,7 @@ Runs the GKR pipeline. Steps execute in canonical pipeline order regardless of
 the order they are passed on the command line. Default with no steps is "all".
 
 Options:
-  --blake MODE          blake2_with_compression (default), blake2_g_function, mop_extension
+  --blake MODE          blake2_with_compression (default), blake2_g_function, mop_extension, special_opcodes_extension
   --variant VAR         no_caches (default) or caches
   --security-level L    80 (default), 100, or both
   --from STEP           run STEP and everything after it (canonical order)
