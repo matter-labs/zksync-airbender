@@ -283,6 +283,8 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         let max_acc_size = self.trace_len / 2;
         let reduction_temp_storage_bytes =
             get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, max_acc_size as i32)?;
+        let partials_len = super::super::kernels::max_partials_len(max_acc_size);
+        let partials = context.alloc(partials_len, AllocationPlacement::Top)?;
         let round_scratch = GpuGKRMainLayerRoundScratch {
             claim_point: context.alloc(folding_steps + 1, AllocationPlacement::Top)?,
             eq_low_group: context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?,
@@ -293,6 +295,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
                     reduction_temp_storage_bytes,
                     AllocationPlacement::Top,
                 )?,
+            partials,
         };
 
         // --- Build flat continuation plan for rounds 1+ ---

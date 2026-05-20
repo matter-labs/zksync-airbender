@@ -129,6 +129,9 @@ pub(crate) struct GpuGKRDimensionReducingRoundScratch<E> {
     pub(crate) accumulator: DeviceAllocation<E>,
     pub(crate) reduction_output: DeviceAllocation<E>,
     pub(crate) reduction_temp_storage: DeviceAllocation<u8>,
+    /// Per-block partials buffer for the fused tail (stage-1 dual-reduce
+    /// output, stage-2 mega-finalize input).
+    pub(crate) partials: DeviceAllocation<E>,
 }
 
 #[derive(Clone, Debug)]

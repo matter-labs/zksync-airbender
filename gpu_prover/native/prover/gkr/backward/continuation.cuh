@@ -1009,6 +1009,59 @@ DEVICE_FORCEINLINE void flat_store_unified_contributions(E (*smem)[32], const E 
   }
 }
 
+// Warp-reduce continuation epilogue. The 4 producer warps each hold partial
+// (c0, c1) for the same 32 gids (`blockIdx.x * 32 + lane`). We:
+//   1. cross-warp-aggregate c0 and c1 into warp 0 (mirrors
+//      `flat_store_unified_contributions`),
+//   2. apply eq per lane (full inline via `gkr_compute_eq_inline`),
+//   3. warp-reduce warp 0's 32 lanes into a single (c0, c1) pair,
+//   4. lane 0 stores one (c0, c1) pair to `partials[blockIdx.x * 2 ..]`.
+//
+// Each block produces one partial pair; the caller's mega-tail reads
+// `acc_size / 32` partials.
+template <typename E, unsigned NUM_WARPS>
+DEVICE_FORCEINLINE void flat_store_unified_partials_warp_reduce(E (*smem)[32], const E *eq_low, const gkr_eq_sizes &eq_sizes, E *partials, const unsigned gid,
+                                                                const unsigned lane, const unsigned warp_id, const E c0, const E c1) {
+  // Cross-warp aggregate c0 into warp 0.
+  if (warp_id != 0)
+    smem[warp_id - 1][lane] = c0;
+  __syncthreads();
+  E sum_c0 = c0;
+  if (warp_id == 0) {
+#pragma unroll
+    for (unsigned w = 0; w < NUM_WARPS - 1; w++)
+      sum_c0 = E::add(sum_c0, smem[w][lane]);
+  }
+  __syncthreads();
+
+  // Cross-warp aggregate c1 into warp 0 (reusing smem).
+  if (warp_id != 0)
+    smem[warp_id - 1][lane] = c1;
+  __syncthreads();
+  E sum_c1 = c1;
+  if (warp_id == 0) {
+#pragma unroll
+    for (unsigned w = 0; w < NUM_WARPS - 1; w++)
+      sum_c1 = E::add(sum_c1, smem[w][lane]);
+  }
+
+  // Remaining work lives entirely on warp 0; the other warps exit.
+  if (warp_id != 0)
+    return;
+
+  const E eq = gkr_compute_eq_inline<E>(eq_low, eq_sizes, gid);
+  sum_c0 = E::mul(sum_c0, eq);
+  sum_c1 = E::mul(sum_c1, eq);
+
+  sum_c0 = gkr_trace_holder_partials_warp_reduce_sum<E>(sum_c0);
+  sum_c1 = gkr_trace_holder_partials_warp_reduce_sum<E>(sum_c1);
+
+  if (lane == 0) {
+    partials[blockIdx.x * 2u + 0u] = sum_c0;
+    partials[blockIdx.x * 2u + 1u] = sum_c1;
+  }
+}
+
 template <typename E, unsigned NUM_WARPS>
 DEVICE_FORCEINLINE void flat_round1_accumulate_unified_compact(const flat_round1_unified_desc_compact &desc, const unsigned fold_stride,
                                                                const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
