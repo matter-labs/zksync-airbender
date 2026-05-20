@@ -436,111 +436,81 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     // - one that links register/imm inputs and output
     // - another that enforces reduction for GKR
 
-    // generic constraint for addition-like ops links to RD directly
+    // generic constraint for addition-like ops links to RD directly.
+    // each opcode contributes one linear equation per limb; we mask by its family bit and sum.
+    // addmod/submod/mulmod share an equation per limb, so we factor it once and multiply
+    // it by the sum of their opcode masks.
+    // NOTE: for additions we blindly mix imm and rs2 as preprocessing ensures that if imm != 0 then rs2 = x0
     {
-        let mut add_like_low_expr = Expr::<F>::zero();
-        // rs1
-        add_like_low_expr = add_like_low_expr + Expr::var(rs1_limbs[0]).mask(is_add);
-        add_like_low_expr =
-            add_like_low_expr + Expr::var(inputs.cycle_start_state.pc[0]).mask(is_auipc);
-        // for subtraction 2^16*of + a - b = c -> 2^16*of + a = b + c
-        add_like_low_expr = add_like_low_expr + Expr::var(out_low).mask(is_sub);
-        // for modular ops we also do 2^16*of + out - modulus -> intermediate
-        add_like_low_expr =
-            add_like_low_expr + Expr::var(intermediate_tmp.0[0].get_variable()).mask(is_addmod);
-        add_like_low_expr =
-            add_like_low_expr + Expr::var(intermediate_tmp.0[0].get_variable()).mask(is_submod);
-        add_like_low_expr =
-            add_like_low_expr + Expr::var(intermediate_tmp.0[0].get_variable()).mask(is_mulmod);
-        // rs2
-        // NOTE: for additions we blindly mix imm and rs2 as preprocessing ensures that if imm !=0 then rs2 = x0
-        add_like_low_expr = add_like_low_expr + Expr::var(rs2_limbs[0]).mask(is_add);
-        add_like_low_expr = add_like_low_expr + Expr::var(inputs.decoder_data.imm[0]).mask(is_add);
-        add_like_low_expr =
-            add_like_low_expr + Expr::var(inputs.decoder_data.imm[0]).mask(is_auipc);
-        add_like_low_expr = add_like_low_expr + Expr::var(rs2_limbs[0]).mask(is_sub);
-        add_like_low_expr = add_like_low_expr + Expr::<F>::constant(modulus_low).mask(is_addmod);
-        add_like_low_expr = add_like_low_expr + Expr::<F>::constant(modulus_low).mask(is_submod);
-        add_like_low_expr = add_like_low_expr + Expr::<F>::constant(modulus_low).mask(is_mulmod);
-        // rd
-        add_like_low_expr = add_like_low_expr - Expr::var(out_low).mask(is_add);
-        add_like_low_expr = add_like_low_expr - Expr::var(out_low).mask(is_auipc);
-        add_like_low_expr = add_like_low_expr - Expr::var(rs1_limbs[0]).mask(is_sub);
-        add_like_low_expr = add_like_low_expr - Expr::var(out_low).mask(is_addmod);
-        add_like_low_expr = add_like_low_expr - Expr::var(out_low).mask(is_submod);
-        add_like_low_expr = add_like_low_expr - Expr::var(out_low).mask(is_mulmod);
-
-        // intermediate carry
         let intermediate_carry_var = intermediate_carry.get_variable().unwrap();
-        add_like_low_expr =
-            add_like_low_expr - (Expr::var(intermediate_carry_var) * carry_shift).mask(is_add);
-        add_like_low_expr =
-            add_like_low_expr - (Expr::var(intermediate_carry_var) * carry_shift).mask(is_auipc);
-        add_like_low_expr =
-            add_like_low_expr - (Expr::var(intermediate_carry_var) * carry_shift).mask(is_sub);
-        add_like_low_expr =
-            add_like_low_expr - (Expr::var(intermediate_carry_var) * carry_shift).mask(is_addmod);
-        add_like_low_expr =
-            add_like_low_expr - (Expr::var(intermediate_carry_var) * carry_shift).mask(is_submod);
-        add_like_low_expr =
-            add_like_low_expr - (Expr::var(intermediate_carry_var) * carry_shift).mask(is_mulmod);
-        cs.add_constraint_expr(add_like_low_expr);
-
-        // high part
-        let mut add_like_high_expr = Expr::<F>::zero();
-        // intermediate carry
-        add_like_high_expr = add_like_high_expr + Expr::<F>::from(intermediate_carry).mask(is_add);
-        add_like_high_expr =
-            add_like_high_expr + Expr::<F>::from(intermediate_carry).mask(is_auipc);
-        add_like_high_expr = add_like_high_expr + Expr::<F>::from(intermediate_carry).mask(is_sub);
-        add_like_high_expr =
-            add_like_high_expr + Expr::<F>::from(intermediate_carry).mask(is_addmod);
-        add_like_high_expr =
-            add_like_high_expr + Expr::<F>::from(intermediate_carry).mask(is_submod);
-        add_like_high_expr =
-            add_like_high_expr + Expr::<F>::from(intermediate_carry).mask(is_mulmod);
-        // rs1
-        add_like_high_expr = add_like_high_expr + Expr::var(rs1_limbs[1]).mask(is_add);
-        add_like_high_expr =
-            add_like_high_expr + Expr::var(inputs.cycle_start_state.pc[1]).mask(is_auipc);
-        add_like_high_expr = add_like_high_expr + Expr::var(out_high).mask(is_sub);
-        add_like_high_expr =
-            add_like_high_expr + Expr::var(intermediate_tmp.0[1].get_variable()).mask(is_addmod);
-        add_like_high_expr =
-            add_like_high_expr + Expr::var(intermediate_tmp.0[1].get_variable()).mask(is_submod);
-        add_like_high_expr =
-            add_like_high_expr + Expr::var(intermediate_tmp.0[1].get_variable()).mask(is_mulmod);
-        // rs2
-        // NOTE: for additions we blindly mix imm and rs2 as preprocessing ensures that if imm !=0 then rs2 = x0
-        add_like_high_expr = add_like_high_expr + Expr::var(rs2_limbs[1]).mask(is_add);
-        add_like_high_expr =
-            add_like_high_expr + Expr::var(inputs.decoder_data.imm[1]).mask(is_add);
-        add_like_high_expr =
-            add_like_high_expr + Expr::var(inputs.decoder_data.imm[1]).mask(is_auipc);
-        add_like_high_expr = add_like_high_expr + Expr::var(rs2_limbs[1]).mask(is_sub);
-        add_like_high_expr = add_like_high_expr + Expr::<F>::constant(modulus_high).mask(is_addmod);
-        add_like_high_expr = add_like_high_expr + Expr::<F>::constant(modulus_high).mask(is_submod);
-        add_like_high_expr = add_like_high_expr + Expr::<F>::constant(modulus_high).mask(is_mulmod);
-        // rd
-        add_like_high_expr = add_like_high_expr - Expr::var(out_high).mask(is_add);
-        add_like_high_expr = add_like_high_expr - Expr::var(out_high).mask(is_auipc);
-        add_like_high_expr = add_like_high_expr - Expr::var(rs1_limbs[1]).mask(is_sub);
-        add_like_high_expr = add_like_high_expr + Expr::var(out_high).mask(is_addmod);
-        add_like_high_expr = add_like_high_expr + Expr::var(out_high).mask(is_submod);
-        add_like_high_expr = add_like_high_expr + Expr::var(out_high).mask(is_mulmod);
-        // final carry
         let carry_var = carry.get_variable().unwrap();
-        add_like_high_expr = add_like_high_expr - (Expr::var(carry_var) * carry_shift).mask(is_add);
-        add_like_high_expr =
-            add_like_high_expr - (Expr::var(carry_var) * carry_shift).mask(is_auipc);
-        add_like_high_expr = add_like_high_expr - (Expr::var(carry_var) * carry_shift).mask(is_sub);
-        add_like_high_expr =
-            add_like_high_expr - (Expr::var(carry_var) * carry_shift).mask(is_addmod);
-        add_like_high_expr =
-            add_like_high_expr - (Expr::var(carry_var) * carry_shift).mask(is_submod);
-        add_like_high_expr =
-            add_like_high_expr - (Expr::var(carry_var) * carry_shift).mask(is_mulmod);
-        cs.add_constraint_expr(add_like_high_expr);
+        let is_modular = Expr::<F>::Sum(vec![
+            Expr::from(is_addmod),
+            Expr::from(is_submod),
+            Expr::from(is_mulmod),
+        ]);
+
+        // low limb
+        // ADD/ADDI/LUI: rs1 + rs2 + imm - rd - 2^16 * intermediate_carry
+        let eq_add_low = Expr::var(rs1_limbs[0])
+            + Expr::var(rs2_limbs[0])
+            + Expr::var(inputs.decoder_data.imm[0])
+            - Expr::var(out_low)
+            - Expr::var(intermediate_carry_var) * carry_shift;
+        // AUIPC: pc + imm (no rs1/rs2)
+        let eq_auipc_low = Expr::var(inputs.cycle_start_state.pc[0])
+            + Expr::var(inputs.decoder_data.imm[0])
+            - Expr::var(out_low)
+            - Expr::var(intermediate_carry_var) * carry_shift;
+        // SUB rearranged: 2^16*of + out + rs2 - rs1
+        let eq_sub_low = Expr::var(out_low)
+            + Expr::var(rs2_limbs[0])
+            - Expr::var(rs1_limbs[0])
+            - Expr::var(intermediate_carry_var) * carry_shift;
+        // modular ops: 2^16*of + out - modulus = intermediate_tmp
+        let eq_modular_low = Expr::var(intermediate_tmp.0[0].get_variable())
+            + Expr::<F>::constant(modulus_low)
+            - Expr::var(out_low)
+            - Expr::var(intermediate_carry_var) * carry_shift;
+
+        cs.add_constraint_expr(Expr::Sum(vec![
+            eq_add_low.mask(is_add),
+            eq_auipc_low.mask(is_auipc),
+            eq_sub_low.mask(is_sub),
+            eq_modular_low * is_modular.clone(),
+        ]));
+
+        // high limb: same structure plus intermediate_carry (carry-in from low limb),
+        // and final carry-out shifted by 2^16
+        let eq_add_high = Expr::<F>::from(intermediate_carry)
+            + Expr::var(rs1_limbs[1])
+            + Expr::var(rs2_limbs[1])
+            + Expr::var(inputs.decoder_data.imm[1])
+            - Expr::var(out_high)
+            - Expr::var(carry_var) * carry_shift;
+        let eq_auipc_high = Expr::<F>::from(intermediate_carry)
+            + Expr::var(inputs.cycle_start_state.pc[1])
+            + Expr::var(inputs.decoder_data.imm[1])
+            - Expr::var(out_high)
+            - Expr::var(carry_var) * carry_shift;
+        let eq_sub_high = Expr::<F>::from(intermediate_carry)
+            + Expr::var(out_high)
+            + Expr::var(rs2_limbs[1])
+            - Expr::var(rs1_limbs[1])
+            - Expr::var(carry_var) * carry_shift;
+        // modular ops flip the out_high sign (canonical reduction goes the other way)
+        let eq_modular_high = Expr::<F>::from(intermediate_carry)
+            + Expr::var(intermediate_tmp.0[1].get_variable())
+            + Expr::<F>::constant(modulus_high)
+            + Expr::var(out_high)
+            - Expr::var(carry_var) * carry_shift;
+
+        cs.add_constraint_expr(Expr::Sum(vec![
+            eq_add_high.mask(is_add),
+            eq_auipc_high.mask(is_auipc),
+            eq_sub_high.mask(is_sub),
+            eq_modular_high * is_modular,
+        ]));
     }
 
     // Delegation call
