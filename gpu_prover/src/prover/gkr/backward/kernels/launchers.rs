@@ -92,11 +92,9 @@ extern "C" {
 /// helper.
 pub(crate) fn get_eq_high_constant_device_ptr() -> *mut E4 {
     let mut ptr: *mut c_void = std::ptr::null_mut();
-    unsafe {
-        cudaGetSymbolAddress(&mut ptr, &ab_gkr_eq_high as *const _ as *const c_void)
-    }
-    .wrap()
-    .expect("cudaGetSymbolAddress failed for ab_gkr_eq_high");
+    unsafe { cudaGetSymbolAddress(&mut ptr, &ab_gkr_eq_high as *const _ as *const c_void) }
+        .wrap()
+        .expect("cudaGetSymbolAddress failed for ab_gkr_eq_high");
     ptr as *mut E4
 }
 
@@ -534,12 +532,8 @@ pub(crate) fn launch_materialize_eq_from_factored_for_test<E: crate::prover::gkr
 ) -> CudaResult<()> {
     assert!(acc_size <= u32::MAX as usize);
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuGKREqInlineMaterializeForTestArguments::new(
-        eq_low,
-        *sizes,
-        eq_values,
-        acc_size as u32,
-    );
+    let args =
+        GpuGKREqInlineMaterializeForTestArguments::new(eq_low, *sizes, eq_values, acc_size as u32);
     GpuGKREqInlineMaterializeForTestFunction(E::EQ_INLINE_MATERIALIZE_FOR_TEST)
         .launch(&config, &args)
 }
