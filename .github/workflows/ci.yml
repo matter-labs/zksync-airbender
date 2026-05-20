@@ -34,7 +34,7 @@ jobs:
       - name: Unit tests (CI)
         env:
           CI: "true"
-        run: cargo test --profile cli -- --nocapture
+        run: cargo test --profile cli -- --nocapture --test-threads 1
 
   formatting:
     name: cargo fmt

@@ -138,7 +138,14 @@ fn test_prover_pipeline_sub() {
 #[serial_test::serial]
 fn test_prover_pipeline_addi() {
     skip_if_ci!();
-    let text = assemble_program(&["addi x10, x0, 42"]);
+    // EXIT_SEQUENCE loads x10..x25 from [s10..s10+60]; base-layer verifier
+    // requires x18..x25 to be zero, so point s10 (x26) at zero-init RAM and
+    // store the result at offset 0.
+    let text = assemble_program(&[
+        "addi x1, x0, 42",
+        "lui x26, 0x400",
+        "sw x1, 0(x26)",
+    ]);
     let output = prove_and_verify(&text, "ADDI: 0 + 42 = 42");
     assert_eq!(output[0], 42, "x10 should be 42");
 }
