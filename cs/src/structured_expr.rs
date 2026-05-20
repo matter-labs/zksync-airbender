@@ -53,8 +53,20 @@ impl<F: PrimeField> Expr<F> {
     /// Builds a sum while dropping additive identity terms and flattening nested sums.
     pub fn sum(terms: Vec<Self>) -> Self {
         let mut normalized_terms = Vec::with_capacity(terms.len());
+        let mut constant = F::ZERO;
+        let mut constant_index = None;
         for term in terms {
-            Self::push_sum_term(&mut normalized_terms, term);
+            Self::push_sum_term(
+                &mut normalized_terms,
+                &mut constant,
+                &mut constant_index,
+                term,
+            );
+        }
+
+        if constant != F::ZERO {
+            let constant_index = constant_index.expect("sum constant must have an insertion index");
+            normalized_terms.insert(constant_index, Self::Constant(constant));
         }
 
         match normalized_terms.len() {
@@ -67,8 +79,25 @@ impl<F: PrimeField> Expr<F> {
     /// Builds a product while dropping multiplicative identity factors and flattening nested products.
     pub fn product(factors: Vec<Self>) -> Self {
         let mut normalized_factors = Vec::with_capacity(factors.len());
+        let mut constant = F::ONE;
+        let mut constant_index = None;
         for factor in factors {
-            Self::push_product_factor(&mut normalized_factors, factor);
+            if Self::push_product_factor(
+                &mut normalized_factors,
+                &mut constant,
+                &mut constant_index,
+                factor,
+            ) {
+                // A single zero factor makes the whole product zero, so any
+                // structure accumulated from the other factors is irrelevant.
+                return Self::zero();
+            }
+        }
+
+        if constant != F::ONE {
+            let constant_index =
+                constant_index.expect("product constant must have an insertion index");
+            normalized_factors.insert(constant_index, Self::Constant(constant));
         }
 
         match normalized_factors.len() {
@@ -80,27 +109,57 @@ impl<F: PrimeField> Expr<F> {
         }
     }
 
-    fn push_sum_term(terms: &mut Vec<Self>, term: Self) {
+    fn push_sum_term(
+        terms: &mut Vec<Self>,
+        constant: &mut F,
+        constant_index: &mut Option<usize>,
+        term: Self,
+    ) {
         match term {
             Self::Constant(value) if value == F::ZERO => {}
+            Self::Constant(value) => {
+                constant_index.get_or_insert(terms.len());
+                constant.add_assign(&value);
+            }
             Self::Sum(nested_terms) => {
                 for nested_term in nested_terms {
-                    Self::push_sum_term(terms, nested_term);
+                    Self::push_sum_term(terms, constant, constant_index, nested_term);
                 }
             }
             term => terms.push(term),
         }
     }
 
-    fn push_product_factor(factors: &mut Vec<Self>, factor: Self) {
+    /// Pushes a product factor into the normalized accumulator.
+    ///
+    /// Returns `true` when the factor tree contains zero, which means the caller
+    /// can replace the whole product by zero.
+    fn push_product_factor(
+        factors: &mut Vec<Self>,
+        constant: &mut F,
+        constant_index: &mut Option<usize>,
+        factor: Self,
+    ) -> bool {
         match factor {
-            Self::Constant(value) if value == F::ONE => {}
+            Self::Constant(value) if value == F::ZERO => true,
+            Self::Constant(value) if value == F::ONE => false,
+            Self::Constant(value) => {
+                constant_index.get_or_insert(factors.len());
+                constant.mul_assign(&value);
+                false
+            }
             Self::Product(nested_factors) => {
                 for nested_factor in nested_factors {
-                    Self::push_product_factor(factors, nested_factor);
+                    if Self::push_product_factor(factors, constant, constant_index, nested_factor) {
+                        return true;
+                    }
                 }
+                false
             }
-            factor => factors.push(factor),
+            factor => {
+                factors.push(factor);
+                false
+            }
         }
     }
 
@@ -128,9 +187,10 @@ impl<F: PrimeField> Expr<F> {
 
     /// Applies the minimal normalization we currently want for metadata.
     ///
-    /// This intentionally only removes neutral elements, flattens same-kind
-    /// associative nodes, and collapses empty or single-item nodes. It does not
-    /// combine constants, sort terms, or distribute multiplication over addition.
+    /// This intentionally only removes neutral elements, folds constants within
+    /// the same associative node, flattens same-kind associative nodes, and
+    /// collapses empty or single-item nodes. It does not sort terms or distribute
+    /// multiplication over addition.
     pub fn canonicalize(self) -> Self {
         match self {
             Self::Sum(terms) => Self::sum(terms.into_iter().map(Self::canonicalize).collect()),
@@ -348,6 +408,10 @@ mod tests {
     fn normalizes_additive_and_multiplicative_identities() {
         let a = var(0);
         let b = var(1);
+        let three = F::from_u32_unchecked(3);
+        let four = F::from_u32_unchecked(4);
+        let seven = F::from_u32_unchecked(7);
+        let twelve = F::from_u32_unchecked(12);
 
         assert_eq!(Expr::<F>::zero() + Expr::var(a), Expr::var(a));
         assert_eq!(Expr::<F>::var(a) - Expr::zero(), Expr::var(a));
@@ -361,6 +425,27 @@ mod tests {
         assert_eq!(
             Expr::<F>::var(a) * Expr::Product(vec![Expr::one(), Expr::var(b)]),
             Expr::Product(vec![Expr::var(a), Expr::var(b)])
+        );
+        assert_eq!(
+            Expr::<F>::sum(vec![
+                Expr::var(a),
+                Expr::constant(three),
+                Expr::var(b),
+                Expr::constant(four),
+            ]),
+            Expr::Sum(vec![Expr::var(a), Expr::constant(seven), Expr::var(b),])
+        );
+        assert_eq!(
+            Expr::<F>::product(vec![
+                Expr::constant(three),
+                Expr::constant(four),
+                Expr::var(a),
+            ]),
+            Expr::Product(vec![Expr::constant(twelve), Expr::var(a)])
+        );
+        assert_eq!(
+            Expr::<F>::product(vec![Expr::var(a), Expr::zero(), Expr::var(b),]),
+            Expr::zero()
         );
 
         let expr = Expr::<F>::Sum(vec![
