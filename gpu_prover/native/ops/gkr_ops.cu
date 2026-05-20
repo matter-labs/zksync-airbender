@@ -1,125 +1,23 @@
-#include "hash.cuh"
+#include "gkr_ops_helpers.cuh"
 
 namespace airbender::ops::blake2s {
 
 // ---------------------------------------------------------------------------
 // Backward sumcheck per-round state update (device-side).
 //
-// Replaces the host callback that runs after each CUB reduction. Consumes the
-// reduction outputs (c_partial, e_partial), the previous-round claim point
-// coordinate, and the running (seed, claim, eq_prefactor) state, then:
-//   1. normalizes the claim by inverting the eq prefactor,
-//   2. derives the round's 4 univariate coefficients [c0..c3],
-//   3. commits those coefficients to the transcript (Blake2s),
-//   4. extracts the new folding challenge from the first 4 u32 words of the
-//      updated seed (matching host `BabyBearField::from_raw_repr_with_reduction`),
-//   5. folds the claim through the univariate poly at the challenge,
-//   6. refreshes eq_prefactor = eq(challenge, prev_coord).
-//
-// All I/O buffers are on device. The kernel is launched <<<1,1>>>. Memory
-// layout of e4 is 4 consecutive u32 words (Montgomery-form base field limbs),
-// matching the host flatten order for commit_field_els.
+// Standalone entry point used by the small-`acc_size` fallback in the
+// backward main-layer scheduler. Wraps the shared
+// `run_round_update_single_thread` helper (see `gkr_ops_helpers.cuh`); the
+// fused-tail kernels in `prover/gkr/backward/` reuse the same helper inside
+// their mega-finalize blocks so the two paths produce byte-identical
+// per-round outputs.
 // ---------------------------------------------------------------------------
-
-DEVICE_FORCEINLINE e4 e4_from_raw_u32x4(const u32 *words) {
-  return e4(e2(bf::from_raw_repr_with_reduction(words[0]), bf::from_raw_repr_with_reduction(words[1])),
-            e2(bf::from_raw_repr_with_reduction(words[2]), bf::from_raw_repr_with_reduction(words[3])));
-}
-
-// Port of prover::gkr::sumcheck::output_univariate_monomial_form_max_quadratic.
-DEVICE_FORCEINLINE void compute_univariate_coeffs_max_quadratic(const e4 prev_challenge, const e4 prev_claim, const e4 e, const e4 c, e4 out[4]) {
-  const e4 ONE = e4::ONE();
-  const e4 b = e4::sub(ONE, prev_challenge);
-  const e4 a = e4::sub(e4::dbl(prev_challenge), ONE);
-  // a + b = prev_challenge.
-  const e4 a_plus_b_inv = e4::inv(prev_challenge);
-
-  const e4 be = e4::mul(b, e);
-  e4 d = e4::sub(prev_claim, be);
-  d = e4::mul(d, a_plus_b_inv);
-  d = e4::sub(d, c);
-  d = e4::sub(d, e);
-
-  out[0] = be;
-  out[1] = e4::add(e4::mul(a, e), e4::mul(b, d));
-  out[2] = e4::add(e4::mul(a, d), e4::mul(b, c));
-  out[3] = e4::mul(a, c);
-}
-
-// Horner evaluation of a degree-3 polynomial with 4 coefficients.
-DEVICE_FORCEINLINE e4 eval_degree3_poly(const e4 coeffs[4], const e4 point) {
-  e4 r = coeffs[3];
-  r = e4::add(e4::mul(r, point), coeffs[2]);
-  r = e4::add(e4::mul(r, point), coeffs[1]);
-  r = e4::add(e4::mul(r, point), coeffs[0]);
-  return r;
-}
-
-// eq(x, y) = x*y + (1-x)*(1-y).
-DEVICE_FORCEINLINE e4 eq_poly(const e4 x, const e4 y) {
-  const e4 ONE = e4::ONE();
-  const e4 t = e4::mul(e4::sub(ONE, x), e4::sub(ONE, y));
-  return e4::add(e4::mul(x, y), t);
-}
-
 EXTERN __global__ void ab_backward_sumcheck_round_update_kernel(const e4 *reduction_output, const e4 *prev_claim_coord, u32 *seed_io, e4 *claim_io,
                                                                 e4 *eq_prefactor_io, e4 *coeffs_out, e4 *challenge_out) {
-  // Load state.
   const e4 e_partial = reduction_output[0];
   const e4 c_partial = reduction_output[1];
   const e4 prev_coord = *prev_claim_coord;
-  const e4 claim = *claim_io;
-  const e4 eq_prefactor = *eq_prefactor_io;
-
-  // Normalize the running claim by the accumulated eq prefactor.
-  const e4 normalized_claim = e4::mul(claim, e4::inv(eq_prefactor));
-
-  // Derive the round's 4 univariate coefficients.
-  e4 coeffs[4];
-  compute_univariate_coeffs_max_quadratic(prev_coord, normalized_claim, e_partial, c_partial, coeffs);
-#pragma unroll
-  for (unsigned i = 0; i < 4; i++)
-    coeffs_out[i] = coeffs[i];
-
-  // Blake2s commit: seed (8 words) || flatten(coeffs) (16 words) = 24 words,
-  // processed as one non-final 16-word block followed by one final 8-word
-  // block. e4 layout is 4 contiguous u32 limbs per element, already Montgomery,
-  // matching the host's as_u32_raw_repr_reduced flatten order.
-  u32 state[STATE_SIZE];
-  initialize(state);
-  u32 t = 0;
-  u32 block[BLOCK_SIZE];
-
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    block[i] = seed_io[i];
-  const u32 *coeff_words = reinterpret_cast<const u32 *>(&coeffs[0]);
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    block[STATE_SIZE + i] = coeff_words[i];
-  compress<false>(state, t, block, BLOCK_SIZE);
-
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    block[i] = coeff_words[STATE_SIZE + i];
-#pragma unroll
-  for (unsigned i = STATE_SIZE; i < BLOCK_SIZE; i++)
-    block[i] = 0;
-  compress<true>(state, t, block, STATE_SIZE);
-
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    seed_io[i] = state[i];
-
-  // Derive the folding challenge from the first 4 words of the new seed.
-  // draw_random_field_els<E4>(seed, 1) produces 8 padding words but consumes
-  // only 4 — the seed itself is not further hashed for a single draw.
-  const e4 challenge = e4_from_raw_u32x4(state);
-  *challenge_out = challenge;
-
-  // Fold the claim and refresh the eq prefactor.
-  *claim_io = eval_degree3_poly(coeffs, challenge);
-  *eq_prefactor_io = eq_poly(challenge, prev_coord);
+  run_round_update_single_thread(e_partial, c_partial, prev_coord, seed_io, claim_io, eq_prefactor_io, coeffs_out, challenge_out);
 }
 
 // ---------------------------------------------------------------------------

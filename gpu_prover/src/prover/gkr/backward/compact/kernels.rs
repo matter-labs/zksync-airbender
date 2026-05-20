@@ -137,7 +137,7 @@ pub(crate) fn get_main_layer_claim_point_device_ptr() -> *mut E4 {
     ptr as *mut E4
 }
 
-fn get_round2_challenges_device_ptr() -> *mut E4 {
+pub(crate) fn get_round2_challenges_device_ptr() -> *mut E4 {
     static PTR: OnceLock<usize> = OnceLock::new();
     let ptr = *PTR.get_or_init(|| {
         let mut p: *mut c_void = null_mut();
@@ -332,6 +332,25 @@ cuda_kernel_declaration!(pub(crate)
     )
 );
 
+/// Stage the three round-2 folding challenges into the
+/// `ab_gkr_round2_challenges` `__constant__` symbol. Every round-2 kernel
+/// (unfused or warp-partial) depends on this prelude having run on the
+/// same `exec_stream` immediately before its launch — round 2's lazy
+/// base-fold reads three values from that symbol.
+pub(crate) fn launch_round2_challenges_prelude<E: crate::prover::gkr::GpuKernels>(
+    folding_challenges: *const E,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    use era_cudart::execution::CudaLaunchConfig;
+    let prelude_config = CudaLaunchConfig::basic(1, 1, context.get_exec_stream());
+    let prelude_args = GpuGKRRound2ChallengesPreludeArguments::new(
+        folding_challenges,
+        get_round2_challenges_device_ptr() as *mut E,
+    );
+    GpuGKRRound2ChallengesPreludeFunction(E::ROUND2_CHALLENGES_PRELUDE)
+        .launch(&prelude_config, &prelude_args)
+}
+
 pub(crate) fn launch_main_round2_unified<E: crate::prover::gkr::GpuKernels>(
     desc: &GpuFlatRound2UnifiedDesc,
     folding_challenges: *const E,
@@ -347,13 +366,7 @@ pub(crate) fn launch_main_round2_unified<E: crate::prover::gkr::GpuKernels>(
     let block_dim = 128u32;
     let grid_dim = acc_size.div_ceil(32);
     let stream = context.get_exec_stream();
-    let prelude_config = CudaLaunchConfig::basic(1, 1, stream);
-    let prelude_args = GpuGKRRound2ChallengesPreludeArguments::new(
-        folding_challenges,
-        get_round2_challenges_device_ptr() as *mut E,
-    );
-    GpuGKRRound2ChallengesPreludeFunction(E::ROUND2_CHALLENGES_PRELUDE)
-        .launch(&prelude_config, &prelude_args)?;
+    launch_round2_challenges_prelude::<E>(folding_challenges, context)?;
 
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GpuGKRMainRound2FlatConstantCompactUnifiedCompactArguments::new(

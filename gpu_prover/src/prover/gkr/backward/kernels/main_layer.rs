@@ -140,6 +140,9 @@ pub(crate) struct GpuGKRMainLayerRoundScratch<E> {
     pub(crate) accumulator: DeviceAllocation<E>,
     pub(crate) reduction_output: DeviceAllocation<E>,
     pub(crate) reduction_temp_storage: DeviceAllocation<u8>,
+    /// Per-block partials buffer holding warp-partial output from the round
+    /// kernels — consumed by the fused-tail mega-finalize.
+    pub(crate) partials: DeviceAllocation<E>,
 }
 
 pub(crate) struct GpuGKRMainLayerKernelPlan<E> {

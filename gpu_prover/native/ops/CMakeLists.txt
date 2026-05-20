@@ -5,6 +5,7 @@ target_sources(gpu_prover_native PRIVATE
         gather.cu
         gkr_initial_inner_products.cu
         gkr_ops.cu
+        gkr_ops_helpers.cuh
         hash.cu
         hash.cuh
         powers.cu
