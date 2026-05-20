@@ -5663,6 +5663,1121 @@
       "constant_term": 2013233153
     }
   ],
+  "structured_statements": [
+    {
+      "Define": {
+        "dst": 52,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 9
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 25
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 53,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 35
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 26
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 54,
+        "expr": {
+          "Product": [
+            {
+              "Var": 35
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 55,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Constant": 134217711
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 805306362
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 56,
+        "expr": {
+          "Product": [
+            {
+              "Var": 19
+            },
+            {
+              "Var": 12
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 57,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 25
+                    },
+                    {
+                      "Var": 8
+                    }
+                  ]
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 19
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 58,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 36
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 35
+                    },
+                    {
+                      "Var": 8
+                    }
+                  ]
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 59,
+        "expr": {
+          "Product": [
+            {
+              "Var": 10
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 60,
+        "expr": {
+          "Product": [
+            {
+              "Var": 36
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 61,
+        "expr": {
+          "Product": [
+            {
+              "Var": 37
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 62,
+        "expr": {
+          "Product": [
+            {
+              "Var": 38
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 63,
+        "expr": {
+          "Product": [
+            {
+              "Var": 39
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 64,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Constant": 402653165
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 10
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 65,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 20
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 66,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 26
+                    },
+                    {
+                      "Var": 9
+                    }
+                  ]
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 20
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 67,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 37
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 35
+                    },
+                    {
+                      "Var": 8
+                    }
+                  ]
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 68,
+        "expr": {
+          "Product": [
+            {
+              "Var": 10
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 69,
+        "expr": {
+          "Product": [
+            {
+              "Var": 40
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 70,
+        "expr": {
+          "Product": [
+            {
+              "Var": 41
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 71,
+        "expr": {
+          "Product": [
+            {
+              "Var": 42
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 72,
+        "expr": {
+          "Product": [
+            {
+              "Var": 43
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 73,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Constant": 402653165
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 10
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 74,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 536870908
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 75,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 27
+                    },
+                    {
+                      "Var": 35
+                    }
+                  ]
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 76,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 38
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 35
+                    },
+                    {
+                      "Var": 8
+                    }
+                  ]
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 77,
+        "expr": {
+          "Product": [
+            {
+              "Var": 10
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 78,
+        "expr": {
+          "Product": [
+            {
+              "Var": 44
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 79,
+        "expr": {
+          "Product": [
+            {
+              "Var": 45
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 80,
+        "expr": {
+          "Product": [
+            {
+              "Var": 46
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 81,
+        "expr": {
+          "Product": [
+            {
+              "Var": 47
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 82,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Constant": 402653165
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 10
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 83,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 805306362
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 84,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 28
+                    },
+                    {
+                      "Var": 35
+                    }
+                  ]
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 85,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 39
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 35
+                    },
+                    {
+                      "Var": 8
+                    }
+                  ]
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 86,
+        "expr": {
+          "Product": [
+            {
+              "Var": 10
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 87,
+        "expr": {
+          "Product": [
+            {
+              "Var": 48
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 88,
+        "expr": {
+          "Product": [
+            {
+              "Var": 49
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 89,
+        "expr": {
+          "Product": [
+            {
+              "Var": 50
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 90,
+        "expr": {
+          "Product": [
+            {
+              "Var": 51
+            },
+            {
+              "Var": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 91,
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Constant": 402653165
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 10
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 36
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268434910
+                        },
+                        {
+                          "Var": 37
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 36
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268434910
+                        },
+                        {
+                          "Var": 37
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 40
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268434910
+                        },
+                        {
+                          "Var": 41
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 44
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268434910
+                        },
+                        {
+                          "Var": 45
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 48
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268434910
+                        },
+                        {
+                          "Var": 49
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 31
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 38
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268434910
+                        },
+                        {
+                          "Var": 39
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 38
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268434910
+                        },
+                        {
+                          "Var": 39
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 42
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268434910
+                        },
+                        {
+                          "Var": 43
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 46
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268434910
+                        },
+                        {
+                          "Var": 47
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 50
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268434910
+                        },
+                        {
+                          "Var": 51
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 32
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    }
+  ],
   "generic_lookups": [
     {
       "columns": [
