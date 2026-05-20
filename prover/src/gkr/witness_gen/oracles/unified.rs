@@ -1,5 +1,9 @@
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
-use common_constants::NON_DETERMINISM_CSR;
+use common_constants::{
+    BIGINT_OPS_WITH_CONTROL_CSR_REGISTER, BLAKE2S_DELEGATION_CSR_REGISTER,
+    BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER,
+    NON_DETERMINISM_CSR,
+};
 use cs::definitions::TimestampScalar;
 use cs::gkr_circuits::unified_reduced_machine::UnifiedReducedMachineDecoder;
 use cs::gkr_circuits::{
@@ -27,12 +31,19 @@ impl<'a> UnifiedRiscvCircuitOracle<'a> {
     ) -> Self {
         let decoders: Vec<Box<dyn OpcodeFamilyDecoder>> =
             vec![Box::new(UnifiedReducedMachineDecoder)];
+        const SUPPORTED_CSRS: &[u16] = &[
+            NON_DETERMINISM_CSR as u16,
+            BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
+            KECCAK_SPECIAL5_CSR_REGISTER as u16,
+            BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
+        ];
         let mut preprocessing_data = process_binary_into_separate_tables_ext::<
             F,
             FullUnsignedMachineDecoderConfig,
             true,
             Global,
-        >(text_section, &decoders, bytecode_size_words, &[]);
+        >(text_section, &decoders, bytecode_size_words, SUPPORTED_CSRS);
         let decoder_table_with_options = preprocessing_data
             .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
             .expect("UnifiedReducedMachineDecoder must produce a family-128 entry");

@@ -1,4 +1,5 @@
 use super::*;
+use super::orchestration::common::{run_vm_and_capture, ProgramConfig};
 use crate::gkr::witness_gen::family_circuits::{
     build_unified_table_driver, evaluate_gkr_witness_for_executor_family,
 };
@@ -7,9 +8,6 @@ use ::field::baby_bear::base::BabyBearField;
 use ::field::Field;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use cs::gkr_circuits::unified_reduced_machine::{FAMILY_4_LW_BIT, FAMILY_4_SW_BIT};
-use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
-use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 use riscv_transpiler::replayer::*;
 use riscv_transpiler::vm::*;
 use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp;
@@ -19,7 +17,6 @@ use worker::Worker;
 
 const TRACE_LEN_LOG2: usize = 24;
 const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
-const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
 
 const USE_GKR_WITH_CACHES: bool = cfg!(not(feature = "no_caches"));
 
@@ -91,58 +88,20 @@ fn build_satisfying_trace_with_mutation(
             "../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
         )
     };
-    let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
-    let ram_bound_bytes: usize = (num_teardown_sets << TRACE_LEN_LOG2) << (WORD_BITS as usize);
 
-    let binary = std::fs::read("../examples/multi_family_smoke/app.bin").unwrap();
-    let text_section = std::fs::read("../examples/multi_family_smoke/app.text").unwrap();
-    assert!(binary.len() % 4 == 0);
-    let binary: Vec<_> = binary
-        .as_chunks::<4>()
-        .0
-        .into_iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
-    assert!(text_section.len() % 4 == 0);
-    let text_section: Vec<_> = text_section
-        .as_chunks::<4>()
-        .0
-        .into_iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
+    // VM run via orchestration::common — same code path as the unified
+    // prove. Either Blake variant works since these tests only mutate
+    // F1-F4 cells; pick the g_function variant to match the unified test's
+    // default selection.
+    let config = ProgramConfig::multi_family_smoke_blake_g_function();
+    let vm = run_vm_and_capture::<CountersT>(&config, &worker);
 
-    let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
-    let tape = SimpleTape::new(&instructions);
-    let mut ram = RamWithRomRegion::<{ common_constants::ROM_SECOND_WORD_BITS }>::from_rom_content(
-        &binary,
-        ram_bound_bytes,
-    );
-    let cycles_bound = 1 << 20;
-
-    let mut state = State::initial_with_counters(CountersT::default());
-    let mut snapshotter = SimpleSnapshotter::<
-        CountersT,
-        { common_constants::ROM_SECOND_WORD_BITS },
-    >::new_with_cycle_limit(cycles_bound, state);
-    let mut non_determinism = QuasiUARTSource::new_with_reads(vec![0x9u32, 0xDEAD_BEEFu32]);
-
-    let is_program_finished = VM::<CountersT>::run_basic_unrolled::<_, _, _, BabyBearField>(
-        &mut state,
-        &mut ram,
-        &mut snapshotter,
-        &tape,
-        cycles_bound,
-        &mut non_determinism,
-    );
-    assert!(is_program_finished);
-
-    let counters = snapshotter.snapshots.last().unwrap().state.counters;
-    let num_calls = counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
+    let num_calls = vm
+        .counters
+        .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
     assert!(num_calls < NUM_CYCLES_PER_CHUNK);
 
-    let _shuffle_ram_touched_addresses = ram.collect_inits_and_teardowns(&worker, Global);
-
+    let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
     let mut inits_and_teardowns = Vec::with_capacity(num_teardown_sets);
     for _ in 0..num_teardown_sets {
         let a = Vec::with_capacity(1 << TRACE_LEN_LOG2);
@@ -151,20 +110,19 @@ fn build_satisfying_trace_with_mutation(
         let d = Vec::with_capacity(1 << TRACE_LEN_LOG2);
         inits_and_teardowns.push(([a, b], [c, d]));
     }
-    ram.collect_inits_and_teardowns_into_columns::<BabyBearField, _>(
+    vm.ram.collect_inits_and_teardowns_into_columns::<BabyBearField, _>(
         &worker,
         TRACE_LEN_LOG2,
         0,
         &mut inits_and_teardowns,
     );
 
-    let mut expected_final_state = state;
-    expected_final_state.counters = Default::default();
-
-    let mut state = snapshotter.initial_snapshot.state;
-    let mut ram_log_buffers = snapshotter
+    // Replay the snapshotter into the unified destination tracer.
+    let mut state = vm.snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = vm
+        .snapshotter
         .reads_buffer
-        .make_range(0..snapshotter.reads_buffer.len());
+        .make_range(0..vm.snapshotter.reads_buffer.len());
     let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
         ram_log: &mut ram_log_buffers,
     };
@@ -176,20 +134,20 @@ fn build_satisfying_trace_with_mutation(
     ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _, BabyBearField>(
         &mut state,
         &mut ram,
-        &tape,
+        &vm.tape,
         &mut (),
-        cycles_bound,
+        vm.cycles_bound,
         &mut tracer,
     );
-    assert_eq!(expected_final_state, state);
+    assert_eq!(vm.expected_final_state, state);
 
     let oracle = UnifiedRiscvCircuitOracle::new::<BabyBearField>(
         &buffer[..],
-        &text_section,
+        &vm.text_section,
         common_constants::ROM_WORD_SIZE,
     );
 
-    let table_driver = build_unified_table_driver::<BabyBearField>(&binary);
+    let table_driver = build_unified_table_driver::<BabyBearField>(&vm.binary);
 
     let mut full_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
         &circuit,

@@ -5,12 +5,6 @@
 #![no_main]
 #![no_builtins]
 
-// Multi-family RISC-V smoke test for the unified reduced-machine circuit.
-// Exercises Family 1 (add/sub), Family 2 (branches/SLT/JAL), Family 3
-// (shifts + binary ops), and Family 4 (LW/SW). Avoids MUL/DIV/REM and any
-// delegation (BLAKE / bigint / keccak) since the reduced machine does not
-// support them.
-
 use riscv_common::{csr_read_word, zksync_os_finish_success};
 
 extern "C" {
@@ -103,7 +97,18 @@ unsafe fn workload() -> ! {
         i = i.wrapping_add(1);
     }
 
-    zksync_os_finish_success(&[sum, slt_acc, sltu_acc, n, seed, 0, 0, 0]);
+    #[cfg(any(feature = "blake2_with_compression", feature = "blake2_g_function"))]
+    let blake_out = {
+        let mut hasher = blake2s_u32::DelegatedBlake2sState::new();
+        hasher.input_buffer.fill(0);
+        hasher.input_buffer[0] = seed;
+        hasher.run_round_function::<false>(1, true);
+        hasher.read_state_for_output_ref()[0]
+    };
+    #[cfg(not(any(feature = "blake2_with_compression", feature = "blake2_g_function")))]
+    let blake_out: u32 = 0;
+
+    zksync_os_finish_success(&[sum, slt_acc, sltu_acc, n, seed, blake_out, 0, 0]);
 }
 
 #[inline(never)]

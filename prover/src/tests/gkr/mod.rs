@@ -19,9 +19,11 @@ pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &s
     serde_json::from_reader(src).unwrap()
 }
 
+mod orchestration;
+
 mod family_circuits;
 mod malicious_proofs;
-mod unified_basic_fibonacci;
+mod unified_circuit;
 mod unified_negative_tests;
 
 pub(crate) fn ensure_memory_trace_consistency<F: PrimeField>(

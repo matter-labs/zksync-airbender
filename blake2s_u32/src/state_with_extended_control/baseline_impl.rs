@@ -18,6 +18,8 @@ impl Blake2RoundFunctionEvaluator {
     pub fn new() -> Self {
         Self {
             state: CONFIGURED_IV,
+            #[cfg(feature = "blake2_g_function")]
+            _aligner: crate::aligned_array::A64,
             extended_state: EXTENDED_CONFIGURED_IV,
             input_buffer: AlignedArray64::from_value(0u32),
             t: 0,
