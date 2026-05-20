@@ -8,11 +8,10 @@ use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
 use super::kernels::*;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::STATE_SIZE;
-use crate::ops::cub::device_reduce::{reduce, Reduce, ReduceOperation};
+use crate::ops::cub::device_reduce::Reduce;
 use crate::ops::simple::{BinaryOp, Mul};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
-use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::proof::layout::ProofLayout;
@@ -39,20 +38,6 @@ where
                 .as_ptr()
                 .add(self.folding_steps)
         }
-    }
-
-    fn fold_eq_values_for_next_round(
-        &mut self,
-        acc_size: usize,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
-        debug_assert!(acc_size.is_power_of_two());
-        debug_assert!(acc_size >= 2);
-        fold_factored_eq_one_round::<E>(
-            &mut self.eq_sizes,
-            self.round_scratch.eq_low_group.as_mut_ptr(),
-            context,
-        )
     }
 
     fn launch_round0_kernels(
@@ -96,49 +81,77 @@ where
         launch_dim_reducing_continuation_batched_compact(&batch, null(), acc_size, step, context)
     }
 
-    /// Runs the two CUB reductions for a round's sumcheck accumulator without
-    /// copying the result back to the host. Used by the on-device per-round
-    /// update path where the reduction output stays on the GPU and is consumed
-    /// by `launch_backward_sumcheck_round_update` directly.
-    fn run_round_coefficients_reduction_device(
+    /// Fused-tail dispatcher: after the round kernel wrote
+    /// `acc[0..2*acc_size)`, this replaces the unfused 5-launch sequence
+    /// (2× CUB reduce + fold_eq + round_update) with either a single
+    /// combined launch (when acc_size <= BLOCK_THREADS) or a two-stage
+    /// block-reduce + mega-finalize pair. The active eq slot is folded
+    /// inside the same kernel as the round update.
+    ///
+    /// E is generic but E4-only in this build; pointer casts below are safe
+    /// (both `Field` and `E4` are `#[repr(C)]` with identical layouts).
+    #[allow(clippy::too_many_arguments)]
+    fn dispatch_fused_tail(
         &mut self,
-        step: usize,
         acc_size: usize,
+        prev_claim_coord: *const E,
+        seed: *mut u32,
+        claim: *mut E,
+        eq_prefactor: *mut E,
+        coeffs_out: *mut E,
+        challenge_out: *mut E,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let challenge_count = self.folding_steps - step - 1;
-        assert_eq!(acc_size, 1usize << challenge_count);
-        let stream = context.get_exec_stream();
-        // SAFETY: `reduction_temp_storage` owns a live device allocation sized
-        // exactly to its backing buffer; this temporary mutable view is used
-        // only by the reductions below.
-        let reduction_temp = unsafe {
-            DeviceSlice::from_raw_parts_mut(
-                self.round_scratch.reduction_temp_storage.as_mut_ptr(),
-                self.round_scratch.reduction_temp_storage.len(),
-            )
-        };
-        {
-            let low_half = DeviceVectorChunk::new(&self.round_scratch.accumulator, 0, acc_size);
-            reduce(
-                ReduceOperation::Sum,
-                reduction_temp,
-                &low_half,
-                &mut self.round_scratch.reduction_output[0],
-                stream,
+        let prev_e4 = prev_claim_coord as *const E4;
+        let claim_e4 = claim as *mut E4;
+        let eq_pref_e4 = eq_prefactor as *mut E4;
+        let coeffs_e4 = coeffs_out as *mut E4;
+        let chal_e4 = challenge_out as *mut E4;
+        let acc_ptr = self.round_scratch.accumulator.as_ptr() as *const E4;
+        let eq_low_ptr = self.round_scratch.eq_low_group.as_mut_ptr() as *mut E4;
+        let partials_ptr = self.round_scratch.partials.as_mut_ptr() as *mut E4;
+
+        let (slot_base, slot_size_before_fold) =
+            super::kernels::resolve_active_eq_slot(&self.eq_sizes, eq_low_ptr);
+
+        let num_blocks = super::kernels::dual_reduce_num_stage1_blocks(acc_size);
+        if num_blocks == 0 {
+            super::kernels::launch_backward_dual_finalize_from_acc(
+                acc_ptr,
+                acc_size,
+                prev_e4,
+                seed,
+                claim_e4,
+                eq_pref_e4,
+                coeffs_e4,
+                chal_e4,
+                slot_base,
+                slot_size_before_fold,
+                context,
+            )?;
+        } else {
+            super::kernels::launch_backward_dual_reduce_blockwise(
+                acc_ptr,
+                acc_size,
+                partials_ptr,
+                context,
+            )?;
+            super::kernels::launch_backward_dual_finalize_from_partials(
+                partials_ptr as *const E4,
+                num_blocks,
+                prev_e4,
+                seed,
+                claim_e4,
+                eq_pref_e4,
+                coeffs_e4,
+                chal_e4,
+                slot_base,
+                slot_size_before_fold,
+                context,
             )?;
         }
-        {
-            let high_half =
-                DeviceVectorChunk::new(&self.round_scratch.accumulator, acc_size, acc_size);
-            reduce(
-                ReduceOperation::Sum,
-                reduction_temp,
-                &high_half,
-                &mut self.round_scratch.reduction_output[1],
-                stream,
-            )?;
-        }
+
+        super::kernels::record_active_eq_slot_fold(&mut self.eq_sizes);
         Ok(())
     }
 
@@ -366,6 +379,8 @@ where
 
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
+            // Variant-agnostic round-kernel head (V_combined will replace
+            // this with a cooperative-launch single kernel in Task 9).
             if step == 0 {
                 self.launch_round0_kernels(acc_size, context)?;
             } else {
@@ -376,18 +391,6 @@ where
                 }
             }
 
-            // Device-only reduction: sums accumulator halves into
-            // `round_scratch.reduction_output` (2 E4 values) without any D2H.
-            self.run_round_coefficients_reduction_device(step, acc_size, context)?;
-            self.fold_eq_values_for_next_round(acc_size, context)?;
-
-            // Fused on-device per-round update: reads the reduction output and
-            // current (seed, claim, eq_prefactor) state, derives the 4
-            // univariate coefficients, commits them to the transcript, extracts
-            // the next folding challenge, and folds claim/eq_prefactor — all in
-            // one single-thread kernel. The challenge lands directly in
-            // `device_claim_point_out[step]`, ready for the next round's
-            // kernel to read and for the next layer to consume.
             // SAFETY: `step < last_step <= folding_steps`, so the one-element
             // slice lies within the immutable input claim-point buffer.
             let prev_coord_slice = unsafe { device_claim_point_in.slice(step, 1) };
@@ -403,15 +406,19 @@ where
             // and `step < last_step <= folding_steps - 1`, so this output slot
             // is in bounds and uniquely written by this iteration.
             let challenge_slice = unsafe { device_claim_point_out.slice_mut(step, 1) };
-            E::launch_backward_sumcheck_round_update(
-                &self.round_scratch.reduction_output,
-                prev_coord_slice,
-                &mut device_seed,
-                &mut device_claim,
-                &mut device_eq_prefactor,
-                coeffs_round_slice,
-                challenge_slice,
-                stream,
+
+            // Unfused round-kernel head + fused tail (reduce + round-update +
+            // fold-eq in one kernel; -0.9 ms vs the unfused 5-launch tail on this
+            // fixture).
+            self.dispatch_fused_tail(
+                acc_size,
+                prev_coord_slice.as_ptr(),
+                device_seed.as_mut_ptr(),
+                device_claim.as_mut_ptr(),
+                device_eq_prefactor.as_mut_ptr(),
+                coeffs_round_slice.as_mut_ptr(),
+                challenge_slice.as_mut_ptr(),
+                context,
             )?;
         }
 

@@ -326,7 +326,7 @@ DEVICE_FORCEINLINE void flat_round0_compute_compact(const flat_round0_static_des
                                                     const E *__restrict__ eq_low, const gkr_eq_sizes &eq_sizes, E *__restrict__ contributions,
                                                     const unsigned acc_size, const unsigned gid) {
   coeff_loader_ptr<E> loader{coefficients};
-  flat_round0_compute_compact_impl(desc, loader, eq_low, eq_sizes, contributions, acc_size, gid);
+  flat_round0_compute_compact_impl<E, decltype(loader)>(desc, loader, eq_low, eq_sizes, contributions, acc_size, gid);
 }
 
 template <typename E>
@@ -334,7 +334,65 @@ DEVICE_FORCEINLINE void flat_round0_compute_constant_compact(const flat_round0_s
                                                              const gkr_eq_sizes &eq_sizes, E *__restrict__ contributions, const unsigned acc_size,
                                                              const unsigned gid) {
   coeff_loader_round0_constant loader{};
-  flat_round0_compute_compact_impl<E>(desc, loader, eq_low, eq_sizes, contributions, acc_size, gid);
+  flat_round0_compute_compact_impl<E, decltype(loader)>(desc, loader, eq_low, eq_sizes, contributions, acc_size, gid);
+}
+
+// Compute-only variant: returns c0/c1 by reference without applying eq or
+// writing to a global contributions buffer. Used by the warp-partial round
+// kernel which fuses the eq mul + warp reduce into a single launch and
+// writes one partial per warp instead of one per row.
+template <typename E, typename CoeffLoader>
+DEVICE_FORCEINLINE void flat_round0_compute_compact_c0_c1(const flat_round0_static_desc_compact &desc, CoeffLoader coeff_loader, const unsigned acc_size,
+                                                          const unsigned gid, E &c0_out, E &c1_out) {
+  E c0 = E::ZERO();
+
+  for (unsigned i = 0; i < desc.num_c0_bf; i++) {
+    const bf val = flat_load_bf_value_compact(desc.tables, desc.sources[desc.c0_bf[i].source_idx], gid);
+    c0 = E::fma(coeff_loader(), val, c0);
+  }
+
+  for (unsigned i = 0; i < desc.num_c0_ext; i++) {
+    const E val = flat_load_ext_value_compact<E>(desc.tables, desc.sources[desc.c0_ext[i].source_idx], gid);
+    c0 = E::fma(coeff_loader(), val, c0);
+  }
+
+  E c1 = E::ZERO();
+
+  for (unsigned i = 0; i < desc.num_c1_bf_bf; i++) {
+    const auto &t = desc.c1_bf_bf[i];
+    const bf a = flat_load_bf_delta_compact(desc.tables, desc.sources[t.source_a], gid, acc_size);
+    const bf b = flat_load_bf_delta_compact(desc.tables, desc.sources[t.source_b], gid, acc_size);
+    c1 = E::fma(coeff_loader(), bf::mul(a, b), c1);
+  }
+
+  for (unsigned i = 0; i < desc.num_c1_e4_e4; i++) {
+    const auto &t = desc.c1_e4_e4[i];
+    const E a = flat_load_ext_delta_compact<E>(desc.tables, desc.sources[t.source_a], gid, acc_size);
+    const E b = flat_load_ext_delta_compact<E>(desc.tables, desc.sources[t.source_b], gid, acc_size);
+    c1 = E::fma(coeff_loader(), E::mul(a, b), c1);
+  }
+
+  for (unsigned i = 0; i < desc.num_c1_bf_e4; i++) {
+    const auto &t = desc.c1_bf_e4[i];
+    const bf a = flat_load_bf_delta_compact(desc.tables, desc.sources[t.source_a], gid, acc_size);
+    const E b = flat_load_ext_delta_compact<E>(desc.tables, desc.sources[t.source_b], gid, acc_size);
+    c1 = E::fma(coeff_loader(), E::mul(b, a), c1);
+  }
+
+  for (unsigned i = 0; i < desc.num_c1_linear; i++) {
+    const bf d = flat_load_bf_delta_compact(desc.tables, desc.sources[desc.c1_linear[i].source_idx], gid, acc_size);
+    c1 = E::fma(coeff_loader(), d, c1);
+  }
+
+  c0_out = c0;
+  c1_out = c1;
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void flat_round0_compute_constant_compact_c0_c1(const flat_round0_static_desc_compact &desc, const unsigned acc_size, const unsigned gid,
+                                                                   E &c0_out, E &c1_out) {
+  coeff_loader_round0_constant loader{};
+  flat_round0_compute_compact_c0_c1<E, decltype(loader)>(desc, loader, acc_size, gid, c0_out, c1_out);
 }
 
 } // namespace airbender::prover::gkr

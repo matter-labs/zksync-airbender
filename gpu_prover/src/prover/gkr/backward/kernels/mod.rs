@@ -1,11 +1,13 @@
 mod dim_reducing;
 mod encoding;
+mod fused_tail;
 mod launchers;
 mod main_layer;
 mod shared;
 
 pub(crate) use dim_reducing::*;
 pub(crate) use encoding::*;
+pub(crate) use fused_tail::*;
 pub(crate) use launchers::*;
 pub(crate) use main_layer::*;
 pub(crate) use shared::*;
