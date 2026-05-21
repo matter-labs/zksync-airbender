@@ -1,17 +1,3 @@
-//! Per-family prove orchestration — companion to [`super::unified`].
-//!
-//! Provides helpers for the per-opcode-family decomposition: 4 non-mem
-//! families (add/sub/lui/auipc/mop, jump/branch/slt, shifts/binops,
-//! unsigned mul/div), 2 mem families (mem_word, mem_subword), and the
-//! standalone inits-and-teardowns circuit. Each helper replays the
-//! snapshotter into the matching destination holder, builds the right
-//! oracle, computes memory + full witness, optionally proves, returns
-//! `FamilyProveOutput { memory_trace, compiled_circuit, proof }`. The
-//! caller threads the memory trace into the cross-circuit state/memory
-//! permutation parsers and folds the proof's grand-product into the
-//! permutation argument accumulator (same pattern as the delegation
-//! orchestration in [`super::delegations`]).
-
 use super::common::{circuit_in_filter, ensure_memory_trace_consistency};
 use super::delegations::{deserialize_from_file, serialize_to_file};
 use crate::cs::gkr_compiler::GKRCircuitArtifact;

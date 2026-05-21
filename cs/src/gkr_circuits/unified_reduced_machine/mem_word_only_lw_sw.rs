@@ -1,17 +1,3 @@
-//! Family 4 (mem_word_only LW/SW) data-path constraints for the unified circuit.
-//!
-//! Companion to `mem_word_only.rs`. Responsibility split:
-//! - `mem_word_only.rs::apply_unified_mem_word_only_inner` owns the *shared*
-//!   register/RAM dispatch that fires for every family (binds `readaddr` to
-//!   `rs2_index` when `is_lw = 0`, `writeaddr` to `rd_index` when `is_sw = 0`).
-//!   Pure register-slot bookkeeping, independent of what Family 4 does.
-//! - This file owns everything that *only* fires when Family 4 is active:
-//!   the rs1+imm RAM address arithmetic, the ROM-vs-data dispatch, the
-//!   ROM-or-data value lookup, and the H1 SW alignment trap.
-//!
-//! `is_fam4 = is_lw + is_sw` (degree 1, ungated) is allocated in
-//! `mem_word_only.rs` and threaded in so we don't re-derive it.
-
 use super::*;
 use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
@@ -29,7 +15,7 @@ use field::PrimeField;
 /// 2. ROM-vs-data dispatch — `is_rom` boolean + range check on the residue,
 ///    plus `is_sw * is_rom = 0` (no SW into ROM).
 /// 3. ROM-or-data value lookup — gated via `gate_fam4_rom` / `gate_fam4_not_rom`.
-/// 4. SW alignment trap (H1) — `is_sw * (bit_0 + bit_1) = 0`.
+/// 4. SW alignment trap — `is_sw * (bit_0 + bit_1) = 0`.
 #[allow(non_snake_case)]
 pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
@@ -59,8 +45,6 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     let [readaddr_lo, readaddr_hi] = memread_addr.map(Term::from);
     let [writeaddr_lo, writeaddr_hi] = memwrite_addr.map(Term::from);
 
-    // ─── (1) rs1 + imm = mem-side address (Family 4 only) ────────────────────
-    //
     // For non-Family-4 cycles is_lw and is_sw are both 0 so the constraints
     // below collapse to 0 = 0.
     //
@@ -136,8 +120,6 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
                     - shift16_term * of_hi_term),
     );
 
-    // ─── (2) ROM-vs-data dispatch ────────────────────────────────────────────
-    //
     // The "cleanaddr" expression — the RAM address when Family 4 fires, 0
     // otherwise. Used purely for the ROM check witness + ROM-table lookup
     // index. is_lw / is_sw gating already collapses this to 0 for non-Family-4
@@ -180,8 +162,6 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         (is_rom, cleanaddr_lo + shift16_term * cleanaddr_hi)
     };
 
-    // ─── (3) ROM-or-data lookup ──────────────────────────────────────────────
-    //
     // For non-Family-4 cycles the tuple degenerates to (0, 0, 0) ∈ ZeroEntry —
     // gating is applied to both the table_id and the outputs via `is_fam4` and
     // the two helper booleans:
@@ -289,9 +269,7 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     }
 
     // When `is_sw = 1`, `writeaddr_lo` must be a multiple of 4 (RISC-V word
-    // aligned). Dev's `StoreOp<false>::spec_apply` emits this via the
-    // `MemoryOffsetGetBits` lookup; we don't carry that table in the GKR path,
-    // so we decompose `writeaddr_lo` into `4 * top_14 + 2 * bit_1 + bit_0` and
+    // aligned). We decompose `writeaddr_lo` into `4 * top_14 + 2 * bit_1 + bit_0` and
     // force `is_sw * (bit_0 + bit_1) = 0`. The decomposition itself is ungated
     // — it just splits whatever `writeaddr_lo` is for any row — and is enforced
     // for every cycle. Cost: 3 cols + 2 constraints.

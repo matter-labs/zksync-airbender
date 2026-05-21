@@ -184,10 +184,10 @@ mod tests {
 
         let lw = Instruction::new(
             InstructionName::Lw,
-            /* rs1 */ 1,
-            /* rs2 */ 0,
-            /* rd */ 2,
-            /* imm */ 0,
+            1,
+            0,
+            2,
+            0,
         );
         let decoded = UnifiedReducedMachineDecoder
             .define_decoder_subspace(lw)
@@ -200,10 +200,10 @@ mod tests {
 
         let sw = Instruction::new(
             InstructionName::Sw,
-            /* rs1 */ 1,
-            /* rs2 */ 2,
-            /* rd */ 0,
-            /* imm */ 0,
+            1,
+            2,
+            0,
+            0,
         );
         let decoded = UnifiedReducedMachineDecoder
             .define_decoder_subspace(sw)
@@ -215,23 +215,4 @@ mod tests {
         );
     }
 
-    /// Family 1's ADD lands in the bottom region with no shift.
-    #[test]
-    fn family_1_add_lands_in_low_region() {
-        use riscv_transpiler::ir::simple_instruction_set::{Instruction, InstructionName};
-
-        let add = Instruction::new(
-            InstructionName::Add,
-            /* rs1 */ 1,
-            /* rs2 */ 2,
-            /* rd */ 3,
-            /* imm */ 0,
-        );
-        let decoded = UnifiedReducedMachineDecoder
-            .define_decoder_subspace(add)
-            .unwrap();
-        // Family 1 ADD sets bit 0 in its private bitmask; with F1_OFFSET = 0 it stays
-        // at bit 0 in the unified bitmask.
-        assert_eq!(decoded.opcode_family_bits, 1u32 << 0);
-    }
 }

@@ -454,8 +454,7 @@ fn unified_register_all_tables<F: ::field::PrimeField, CS: Circuit<F>>(cs: &mut 
 
 /// Build the unified circuit artifact via the inline-i/t compile path.
 /// Single source of truth used by both the cs-side serialization tests below
-/// and by the verifier_generator integration test (via the
-/// `gkr_circuits!` macro entry in `verifier_common`).
+/// and by the verifier_generator integration test
 fn build_unified_artifact<F: ::field::PrimeField>(
     use_caches: bool,
 ) -> crate::gkr_compiler::GKRCircuitArtifact<F> {
@@ -541,8 +540,7 @@ mod test {
 
     /// SSA witness graph dump for the unified circuit. Needed by
     /// `witness_eval_generator::gen_for_gkr` to produce
-    /// `prover/compiled_circuits/unified_reduced_machine_generated_gkr.rs`, which
-    /// the prover-side G1 test imports via a `mod unified_reduced_machine`.
+    /// `prover/compiled_circuits/unified_reduced_machine_generated_gkr.rs`
     #[test]
     fn compile_unified_reduced_machine_gkr_witness_graph() {
         skip_if_ci!();

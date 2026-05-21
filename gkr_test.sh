@@ -54,7 +54,8 @@ Runs the GKR pipeline. Subcommand picks the circuit set + RISC-V program; steps
 execute in canonical pipeline order regardless of cmdline order.
 
 Subcommands:
-  per_family    Per-family circuits + delegations (program: hashed_fibonacci)
+  per_family    Per-family circuits + delegations (program: keccak_f1600 default,
+                hashed_fibonacci via GKR_PROGRAM env var)
   unified       Unified-reduced-machine + delegations (program: multi_family_smoke)
 
 Options:
@@ -336,19 +337,26 @@ step_witness_gen() {
       cargo test -p witness_eval_generator -- gen_for_gkr
 }
 
-# Each mode reads a different program: unified loads
-# examples/multi_family_smoke/app_blake2_*.bin (variant picked by GKR_BLAKE);
-# per_family loads examples/hashed_fibonacci/app_blake2_*.bin (variant
-# selected by USE_BLAKE_G_FUNCTION_IN_BINARY const). Both example dirs are
-# self-contained workspaces with their own riscv32 toolchain config.
+# Each mode reads a different program. Unified loads
+# examples/multi_family_smoke/app_blake2_*.bin (variant picked by GKR_BLAKE).
+# Per-family defaults to riscv_transpiler/examples/keccak_f1600/app.bin (a
+# pre-built artifact — no build step needed). To run per-family with the
+# hashed_fibonacci program instead, set GKR_PROGRAM=hashed_fibonacci_g_function
+# (or =hashed_fibonacci_compression), which both triggers the build below AND
+# propagates to the Rust-side program-selection match in family_circuits.rs.
 step_build_program() {
   case "$MODE" in
     unified)
       run_step "Build unified-mode program (multi_family_smoke)" \
         in_dir examples/multi_family_smoke bash dump_bin.sh ;;
     per_family)
-      run_step "Build per-family program (hashed_fibonacci)" \
-        in_dir examples/hashed_fibonacci bash build_all.sh ;;
+      case "${GKR_PROGRAM:-}" in
+        hashed_fibonacci_g_function|hashed_fibonacci_compression)
+          run_step "Build per-family program (hashed_fibonacci)" \
+            in_dir examples/hashed_fibonacci bash build_all.sh ;;
+        *)
+          echo "[build_program] per_family default is keccak_f1600 (pre-built); skipping build." ;;
+      esac ;;
   esac
 }
 

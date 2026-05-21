@@ -9,7 +9,7 @@ use crate::witness_placer::*;
 use field::PrimeField;
 
 /// Family 1 (add_sub/lui/auipc/mop) constraints for the unified circuit.
-/// Mirrors the audited standalone inner (`add_sub_family`), adapted to take
+/// Mirrors the standalone inner (`add_sub_family`), adapted to take
 /// pre-allocated rs1/rs2 U8 byte limbs from the unified body instead of
 /// requesting memory accesses internally. Non-Family-1 cycles have all
 /// `decoder.perform_*()` Booleans = 0 so every constraint here is multiplied
@@ -35,7 +35,7 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     let carry_shift = F::from_u32_with_reduction(1 << 16);
     let shift_term = Term::from_field(carry_shift);
 
-    // U16 views of rs1/rs2 reassembled from U8 bytes via free algebra.
+    // U16 views of rs1/rs2 reassembled from U8 bytes
     let byte_shift = F::from_u32_unchecked(1 << 8);
     let rs1_low_c: Constraint<F> =
         Constraint::from(rs1_limbs[0]) + Term::from((byte_shift, rs1_limbs[1]));

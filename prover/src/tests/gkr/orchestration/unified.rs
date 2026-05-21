@@ -1,11 +1,3 @@
-//! Unified-circuit prove orchestration.
-//!
-//! Proves a program with the single unified reduced-machine circuit
-//! (subsumes 4 of the per-opcode families — add_sub_lui_auipc_mop,
-//! jump_branch_slt, binary_shifts, mem_word_only — plus inline i/t) plus
-//! per-CSR delegations. mem_subword_only is NOT subsumed and runs as a
-//! separate circuit alongside. Used by the recursion layer.
-
 use super::common::*;
 use super::delegations::{
     deserialize_from_file as delegations_deserialize, prove_delegation_bigint,
@@ -165,8 +157,8 @@ where
 
     let _ = REDUCED_MACHINE_CIRCUIT_FAMILY_IDX; // touch import
 
-    // --- Prove delegations first so we can read their memory_traces into
-    //     the unified accumulator before computing its own contributions. ---
+    // Prove delegations first so we can read their memory_traces into
+    // the unified accumulator before computing its own contributions. ---
 
     let mut delegation_outputs: Vec<DelegationProveOutput> = Vec::new();
     if let Some(eval_fn) = delegation_eval_fns.blake {
@@ -179,7 +171,7 @@ where
             &external_challenges,
             level,
             prove_empty,
-            /* compute_only */ false,
+            false,
             &circuits_filter,
             proof_suffix,
             worker,
@@ -196,7 +188,7 @@ where
             &external_challenges,
             level,
             prove_empty,
-            /* compute_only */ false,
+            false,
             &circuits_filter,
             proof_suffix,
             worker,
@@ -213,7 +205,7 @@ where
             &external_challenges,
             level,
             prove_empty,
-            /* compute_only */ false,
+            false,
             &circuits_filter,
             proof_suffix,
             worker,
@@ -230,7 +222,7 @@ where
             &external_challenges,
             level,
             prove_empty,
-            /* compute_only */ false,
+            false,
             &circuits_filter,
             proof_suffix,
             worker,

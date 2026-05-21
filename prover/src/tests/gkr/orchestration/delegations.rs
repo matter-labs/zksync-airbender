@@ -1,18 +1,3 @@
-//! Delegation prove orchestration — shared between per-family and unified
-//! modes. Each function proves one delegation circuit (blake2 / bigint /
-//! keccak / blake2-g-function) against the captured VM snapshotter.
-//!
-//! Each call replays the snapshotter into the delegation-specific tracer,
-//! builds the oracle, computes memory + full witnesses, optionally proves
-//! the circuit, and returns the memory trace + an `Option<GKRProof>`. The
-//! caller uses the memory trace to populate the cross-circuit
-//! `memory_read_set` / `memory_write_set` / `delegation_read_set` via
-//! `parse_delegation_ram_accesses_from_full_trace`.
-//!
-//! Witness-eval functions are taken as `fn` parameters because their
-//! current home is in the test module (`prover/src/tests/gkr/mod.rs`); the
-//! orchestration stays decoupled from that.
-
 use super::common::*;
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::cs::tables::TableDriver;
@@ -531,9 +516,6 @@ where
     }
 }
 
-// Local helpers re-exported by the orchestration. We can't import from
-// `crate::tests::*` (private to test build), so the orchestration carries
-// its own copies of these tiny utilities.
 pub(super) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).unwrap();
     serde_json::from_reader(src).unwrap()

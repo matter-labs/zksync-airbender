@@ -1,13 +1,3 @@
-//! Unified-circuit prove test. Entry point that bundles a `ProgramConfig`
-//! (defaulting to `multi_family_smoke/blake2_g_function`), wires up the
-//! delegation witness-eval fns from the parent module, and dispatches to
-//! `super::orchestration::unified::prove_unified`.
-//!
-//! The Blake variant is selectable via `GKR_BLAKE=g_function|compression`
-//! to exercise both delegation CSRs (compression: `BLAKE2S_DELEGATION_CSR`,
-//! g_function: `BLAKE2S_G_FUNCTION_DELEGATION_CSR`). The other delegations
-//! (bigint, keccak) stay empty and are skipped unless `GKR_PROVE_EMPTY=1`.
-
 use crate::definitions::SecurityLevel;
 use super::orchestration::common::ProgramConfig;
 use super::orchestration::unified::{
@@ -36,9 +26,6 @@ fn run_unified_test(level: SecurityLevel) {
         _ => ProgramConfig::multi_family_smoke_blake_g_function(),
     };
 
-    // Witness-eval fns live in the parent module (`super::*`). The
-    // orchestration module would need to inhale generated witness code if
-    // it owned them; keeping them here is the path of least disruption.
     let delegation_eval_fns = DelegationEvalFns {
         blake: Some(super::blake2_with_extended_control::witness_eval_fn),
         bigint: Some(super::bigint_with_extended_control::witness_eval_fn),
@@ -46,9 +33,6 @@ fn run_unified_test(level: SecurityLevel) {
         blake_g_function: Some(super::blake2_g_function::witness_eval_fn),
     };
 
-    // Single VM run; extract per-delegation cycle counts from its counters
-    // before handing the captured output to `prove_unified`. Matches the
-    // per-family helper APIs which also take pre-captured VM components.
     let vm = super::orchestration::common::run_vm_and_capture::<
         DelegationsAndUnifiedCounters,
     >(&config, &worker);
@@ -69,8 +53,6 @@ fn run_unified_test(level: SecurityLevel) {
         &delegation_call_counts,
     );
 
-    // GP-close assert is skipped when a circuits filter is set (partial
-    // prove can't close).
     let circuits_filter = super::orchestration::common::parse_circuits_filter();
     if circuits_filter.is_none() {
         use field::baby_bear::ext4::BabyBearExt4;

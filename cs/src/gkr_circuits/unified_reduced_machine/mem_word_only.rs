@@ -37,7 +37,6 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     // LW: rd                          <- mem[addr] || rom[addr]  with +0 offset accepted
     // SW: mem[addr] || trap rom[addr] <- rs2                     with +0 offset accepted
     // NOTE: by preprocessing (decoder lookup) we have rd == 0 for loads not possible
-    // so we do NOT need to mask rd value
 
     let WordRepresentation::U8Limbs(memread_u8) = memread_access.read_value else {
         unreachable!("memread access must be allocated as U8Limbs")
@@ -51,8 +50,7 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     // memread_addr / memwrite_addr are U16 limbs of RAM addresses. The
     // RAM-permutation argument bounds them transitively, but pinning the RC
     // here makes the alignment-trap and ROM-dispatch algebra in the data path
-    // below clearly sound without a non-local dependency. (Also documented at
-    // the alignment-trap and ROM-dispatch sites in `mem_word_only_lw_sw.rs`.)
+    // below clearly sound without a non-local dependency.
     cs.require_invariant(memread_addr[0], Invariant::RangeChecked { width: 16 });
     cs.require_invariant(memread_addr[1], Invariant::RangeChecked { width: 16 });
     cs.require_invariant(memwrite_addr[0], Invariant::RangeChecked { width: 16 });

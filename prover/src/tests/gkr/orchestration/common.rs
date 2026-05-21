@@ -54,7 +54,11 @@ impl ProgramConfig {
             binary_path: "../examples/multi_family_smoke/app_blake2_g_function.bin".to_string(),
             text_section_path: "../examples/multi_family_smoke/app_blake2_g_function.text"
                 .to_string(),
-            non_determinism_reads: vec![0x9, 0xDEAD_BEEF],
+            // First word = inner-loop count `n` (~50 RISC-V cycles per iteration).
+            // n=50 → ~2.5K total cycles, in the same ballpark as keccak_f1600
+            // (2774 cycles). Exercises F1+F2+F3+F4 over enough rows that the
+            // padding-vs-execution ratio is sensible for negative tests.
+            non_determinism_reads: vec![50, 0xDEAD_BEEF],
             cycles_bound: 1 << 20,
             ram_bound_bytes: RAM_BOUND_BYTES,
         }
@@ -69,7 +73,7 @@ impl ProgramConfig {
                 .to_string(),
             text_section_path: "../examples/multi_family_smoke/app_blake2_with_compression.text"
                 .to_string(),
-            non_determinism_reads: vec![0x9, 0xDEAD_BEEF],
+            non_determinism_reads: vec![50, 0xDEAD_BEEF],
             cycles_bound: 1 << 20,
             ram_bound_bytes: RAM_BOUND_BYTES,
         }

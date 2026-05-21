@@ -55,7 +55,10 @@ fn step(seed: u32, idx: u32) -> u32 {
 
 unsafe fn workload() -> ! {
     // Read two non-deterministic inputs to prevent constant folding.
-    let n = csr_read_word() & 0xFu32;
+    // `n` is now the unbounded RISC-V cycle target (~50 cycles/iter, so
+    // n = 20_000 ≈ 1M cycles). The 16-element stack array is reused via
+    // modulo indexing so n can be arbitrary.
+    let n = csr_read_word();
     let seed = csr_read_word();
 
     // Stack-allocated array touched via volatile to force LW / SW.
@@ -67,12 +70,16 @@ unsafe fn workload() -> ! {
     let mut sltu_acc: u32 = 0;
     let mut i: u32 = 0;
     while i < n {
+        // Index modulo 16 — keeps the stack array bounded while letting
+        // `i` grow unbounded for cycle padding.
+        let idx16 = (i & 0xFu32) as usize;
+
         // Family 3 (step) + Family 4 (volatile write to stack RAM).
         let v = step(seed, i);
-        core::ptr::write_volatile(arr_ptr.add(i as usize), v);
+        core::ptr::write_volatile(arr_ptr.add(idx16), v);
 
         // Family 4 (volatile read).
-        let r = core::ptr::read_volatile(arr_ptr.add(i as usize));
+        let r = core::ptr::read_volatile(arr_ptr.add(idx16));
 
         // Family 2 SLT — signed less-than as a value (forces RISC-V SLT, not branch).
         let lt_signed = ((r as i32) < (seed as i32)) as u32;

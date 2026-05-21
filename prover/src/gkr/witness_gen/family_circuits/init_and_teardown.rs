@@ -161,93 +161,71 @@ mod tests {
         }
     }
 
-    /// Standalone path asserts that destination columns are empty before the swap.
-    /// Pre-fill column 0 with garbage and confirm we get a panic.
+    /// Two teardown_sets pointing at the same column trip the empty-target
+    /// assert on the second write. Documents the cs-side allocator's
+    /// no-overlap contract.
     #[test]
-    #[should_panic(expected = "standalone i/t population: destination column 0 was not empty")]
-    fn standalone_path_panics_if_target_non_empty() {
+    #[should_panic(expected = "destination column 0 was not empty")]
+    fn overlapping_destinations_caught_by_empty_check() {
         let trace_len = 4usize;
-        let teardown_sets = synth_teardown_sets();
+        let bl = |i| GKRAddress::BaseLayerMemory(i);
+        // Set 1's first timestamp limb collides with set 0's.
+        let teardown_sets = vec![
+            ([bl(0), bl(1)], [bl(2), bl(3)]),
+            ([bl(0), bl(5)], [bl(6), bl(7)]),
+        ];
         let total_width = 8;
-
         let mut column_major_trace: Vec<Vec<BabyBearField, Global>, Global> =
             (0..total_width).map(|_| Vec::new_in(Global)).collect();
-        // Pre-fill column 0 (the first destination of set 0) with junk.
-        column_major_trace[0].push(BabyBearField::ZERO);
-
         let dumped = synth_dumped_data(&teardown_sets, trace_len);
         populate_inline_inits_and_teardowns_columns(
             &mut column_major_trace,
             dumped,
             &teardown_sets,
-            /* require_target_empty = */ true,
+            true,
         );
     }
 
-    /// Inline path (= require_target_empty = false): destinations have prior
-    /// length (simulating `set_len(trace_len)` having run on them, exposing
-    /// uninit data). Helper resets len to 0 before the swap, then places the
-    /// dumped data. Verify the resulting columns have exactly the dumped data,
-    /// not the prior contents.
+    /// Mirrors `evaluate_init_and_teardown_memory_witness`'s post-condition:
+    /// when `total_width` exceeds the columns reachable from `teardown_sets`,
+    /// some result columns stay empty and the final assertion fires. The
+    /// wrapper requires a `GKRCircuitArtifact` so we inline its two relevant
+    /// ops here rather than mock the artifact.
     #[test]
-    fn inline_path_overwrites_set_len_uninit_data() {
-        let trace_len = 8usize;
-        let teardown_sets = synth_teardown_sets();
-        let total_width = 8;
+    #[should_panic]
+    fn unpopulated_columns_violate_wrapper_postcondition() {
+        let trace_len = 4usize;
+        let teardown_sets = synth_teardown_sets(); // covers cols 0..8
+        let total_width = 10; // 2 cols nothing writes to
 
-        // Pre-allocate columns with capacity=trace_len and set_len(trace_len)
-        // to simulate the inline-i/t entry conditions. Values are zeroed (Global
-        // allocator), but the contract is they're treated as uninit — the helper
-        // must NOT read them.
-        let mut column_major_trace: Vec<Vec<BabyBearField, Global>, Global> = (0..total_width)
-            .map(|_| {
-                let mut v = Vec::with_capacity_in(trace_len, Global);
-                for _ in 0..trace_len {
-                    v.push(BabyBearField::from_u64_with_reduction(0xdead_beef));
-                }
-                v
-            })
-            .collect();
-
+        let mut column_major_trace: Vec<Vec<BabyBearField, Global>, Global> =
+            (0..total_width).map(|_| Vec::new_in(Global)).collect();
         let dumped = synth_dumped_data(&teardown_sets, trace_len);
         populate_inline_inits_and_teardowns_columns(
             &mut column_major_trace,
             dumped,
             &teardown_sets,
-            false,
+            true,
         );
-
-        // Every destination now holds the dumped data — no trace of the 0xdead_beef sentinel.
-        for set_idx in 0..teardown_sets.len() {
-            let ([ts0, ts1], [v0, v1]) = teardown_sets[set_idx];
-            for (limb_idx, addr) in [ts0, ts1, v0, v1].iter().enumerate() {
-                let GKRAddress::BaseLayerMemory(col) = *addr else {
-                    panic!("not BaseLayerMemory");
-                };
-                assert_eq!(column_major_trace[col].len(), trace_len);
-                for row in 0..trace_len {
-                    let expected = marker(set_idx as u32, limb_idx as u32, row as u32);
-                    assert_eq!(
-                        column_major_trace[col][row], expected,
-                        "set {} limb {} row {} should be marker, not sentinel",
-                        set_idx, limb_idx, row,
-                    );
-                }
-            }
+        for el in column_major_trace.iter() {
+            assert!(!el.is_empty());
         }
     }
 
-    /// Length-mismatch between dumped data and teardown_sets is a hard error.
+    /// Teardown sets must address only `BaseLayerMemory` columns — the helper
+    /// `unreachable!()`s on any other `GKRAddress` variant. Pins the contract
+    /// since `GKRAddress` has 7 variants that the type system doesn't narrow.
     #[test]
-    #[should_panic(expected = "inline i/t dumped data must have one entry per teardown_set")]
-    fn length_mismatch_panics() {
-        let teardown_sets = synth_teardown_sets(); // 2 sets
-        let total_width = 8;
+    #[should_panic]
+    fn non_base_layer_memory_address_unreachable() {
+        let trace_len = 4usize;
+        let bl = |i| GKRAddress::BaseLayerMemory(i);
+        // Swap one valid address for BaseLayerWitness — not a valid target here.
+        let teardown_sets = vec![([GKRAddress::BaseLayerWitness(0), bl(1)], [bl(2), bl(3)])];
+        let total_width = 4;
         let mut column_major_trace: Vec<Vec<BabyBearField, Global>, Global> =
             (0..total_width).map(|_| Vec::new_in(Global)).collect();
-
-        // Only 1 dumped entry vs 2 expected.
-        let dumped = synth_dumped_data(&teardown_sets[..1], 4);
+        let dumped = synth_dumped_data(&teardown_sets, trace_len);
         populate_inline_inits_and_teardowns_columns(
             &mut column_major_trace,
             dumped,

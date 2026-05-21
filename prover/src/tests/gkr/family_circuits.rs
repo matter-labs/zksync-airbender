@@ -68,11 +68,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
 
-    // Program selection. Default is `keccak_f1600` — exercises sub-word
-    // mem (F5) + keccak delegation; matches the canonical per-family
-    // reference path. Set `GKR_PROGRAM=hashed_fibonacci_g_function` or
-    // `=hashed_fibonacci_compression` to switch to the Blake-exercising
-    // hashed_fibonacci variant (also uses M-extension MUL/DIV via F6).
     let program = std::env::var("GKR_PROGRAM").ok();
     let config = match program.as_deref() {
         Some("hashed_fibonacci_g_function") => {
@@ -86,11 +81,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
     let vm = super::orchestration::common::run_vm_and_capture::<CountersT>(&config, &worker);
 
-    // Per-family path needs the column-wise inits/teardowns breakdown that
-    // `run_vm_and_capture` doesn't pre-compute (the unified mode collects
-    // this inside `prove_unified`). The compile-time invariant below ties
-    // the chunk count to the RAM bound; both must match the cs-side
-    // compiled circuit.
     assert_eq!(
         (NUM_INIT_AND_TEARDOWN_SETS << TRACE_LEN_LOG2) << WORD_BITS,
         RAM_BOUND_BYTES
@@ -115,9 +105,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
         println!("x{} = {}", reg_idx, reg.current_value);
     }
 
-    // Bind the rest of the test's variables to the orchestration outputs,
-    // matching the pre-migration names so the existing per-family prove
-    // call sites continue to compile unchanged.
     let counters = vm.counters;
     let snapshotter = vm.snapshotter;
     let tape = vm.tape;
@@ -129,8 +116,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
     let cycles_bound = vm.cycles_bound;
     let text_section = vm.text_section;
     let binary = vm.binary;
-    // The post-prove memory-permutation diagnostics block (further down)
-    // reads this flat view of touched (addr, (ts, value)) tuples.
+    
     let flattened_inits_and_teardowns: Vec<_> = vm
         .shuffle_ram_touched_addresses
         .iter()

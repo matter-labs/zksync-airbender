@@ -8,7 +8,7 @@ use crate::witness_placer::*;
 use field::PrimeField;
 
 /// Family 2 (jump/branch/slt) constraints for the unified circuit. Mirrors the
-/// audited standalone inner with two unified-specific adaptations:
+/// standalone inner with two unified-specific adaptations:
 /// (1) the `JumpCleanupOffset` lookup is gated so non-Family-2 cycles route to
 /// `ZeroEntry`, and (2) the rd-write constraints are gated on per-opcode
 /// `is_X_writes_rd` Booleans so non-Family-2 cycles don't pin rd_write_limbs.

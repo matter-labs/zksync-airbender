@@ -1,4 +1,4 @@
-use super::*;
+use super::{check_lookups_in_range, *};
 use super::orchestration::common::{run_vm_and_capture, ProgramConfig};
 use crate::gkr::witness_gen::family_circuits::{
     build_unified_table_driver, evaluate_gkr_witness_for_executor_family,
@@ -91,10 +91,6 @@ fn build_satisfying_trace_with_mutation(
         )
     };
 
-    // VM run via orchestration::common — same code path as the unified
-    // prove. Either Blake variant works since these tests only mutate
-    // F1-F4 cells; pick the g_function variant to match the unified test's
-    // default selection.
     let config = ProgramConfig::multi_family_smoke_blake_g_function();
     let vm = run_vm_and_capture::<CountersT>(&config, &worker);
 
@@ -303,6 +299,53 @@ fn empty_family_mask_on_executing_row_rejected() {
     assert!(
         !check_satisfied(&circuit, &full_trace),
         "expected empty family mask on executing row to fail check_satisfied"
+    );
+}
+
+/// Range-check-16 violation that the existing arithmetic-only
+/// [`check_satisfied`] cannot see. Picks an RC-16 lookup expression that is a
+/// trivial single-input (`1 * single_addr + 0`), writes a 17-bit sentinel
+/// (`0x12345 = 74565`) into the referenced cell at row 0, and asserts the
+/// new [`check_lookups_in_range`] oracle rejects.
+///
+/// `check_satisfied` may or may not also catch the mutation — depends on
+/// whether the target cell appears in a degree-1/degree-2 arithmetic
+/// constraint as well as the RC-16 lookup. The test logs both verdicts but
+/// only the lookup-oracle assertion is load-bearing. The point is that the
+/// lookup oracle catches a class of attacks (range overflow) that the
+/// arithmetic oracle is documented to skip.
+#[test]
+fn range_check_16_violation_caught_by_lookup_oracle() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        // Find any RC-16 lookup whose input is a trivial `1 * single_addr + 0`.
+        // Those are the cleanest single-cell targets — corrupting the addr makes
+        // the lookup expression evaluate to exactly the new cell value.
+        let target_addr = circuit
+            .range_check_16_lookup_expressions
+            .iter()
+            .find_map(|l| {
+                if l.input.is_trivial_single_input() {
+                    Some(l.input.linear_terms[0].1)
+                } else {
+                    None
+                }
+            })
+            .expect("expected at least one trivial single-input RC-16 lookup");
+
+        // 0x12345 = 74565, the smallest 17-bit value. Field-element-valid
+        // (well under BabyBear's ~2^31 modulus); range-check-invalid.
+        write_cell(trace, target_addr, 0, BabyBearField::new(0x12345));
+    });
+
+    let arith_ok = check_satisfied(&circuit, &full_trace);
+    let lookup_ok = check_lookups_in_range(&circuit, &full_trace);
+    println!(
+        "range_check_16_violation: check_satisfied = {}, check_lookups_in_range = {}",
+        arith_ok, lookup_ok
+    );
+    assert!(
+        !lookup_ok,
+        "expected check_lookups_in_range to reject a 17-bit value in an RC-16 column"
     );
 }
 
