@@ -386,6 +386,7 @@ pub(crate) mod tests {
         ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
     };
     use prover::utils::extension_field_from_base_coeffs;
+    use rand::Rng;
     use serial_test::serial;
     use worker::Worker;
 
@@ -619,14 +620,14 @@ pub(crate) mod tests {
     }
 
     fn sample_monomial_coeffs(size: usize) -> Vec<E4> {
+        let mut rng = rand::rng();
         (0..size)
-            .map(|idx| {
-                let base = idx as u32 + 1;
+            .map(|_| {
                 E4::from_array_of_base([
-                    BF::new(base),
-                    BF::new(base + 11),
-                    BF::new(base + 29),
-                    BF::new(base + 47),
+                    BF::from_nonreduced_u32(rng.random()),
+                    BF::from_nonreduced_u32(rng.random()),
+                    BF::from_nonreduced_u32(rng.random()),
+                    BF::from_nonreduced_u32(rng.random()),
                 ])
             })
             .collect()

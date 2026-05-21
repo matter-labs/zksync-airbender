@@ -2186,7 +2186,7 @@ fn evaluate_multivariate_at_base_for_domain_hypercube<
     result
 }
 
-fn evals_to_multilinear_coeffs<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
+fn evals_to_multilinear_coeffs<F: PrimeField + TwoAdicField + Field, E: FieldExtension<F> + Field>(
     data: &mut [E],
     base_root_inv: &F,
     high_powers_offsets: &[F],
@@ -2243,7 +2243,11 @@ fn evals_to_multilinear_coeffs<F: PrimeField + TwoAdicField, E: FieldExtension<F
 
                 let mut c_odd = a;
                 c_odd.sub_assign(&b);
-                c_odd.mul_assign_by_base(&root);
+                if stage == 0 {
+                  c_odd.mul_assign_by_base(&root);
+                } else {
+                  c_odd.mul_assign_by_base(&F::from_u32_with_reduction(3));
+                }
                 c_odd.mul_assign_by_base(two_inv);
 
                 dst[out_base + set_idx] = c_even;

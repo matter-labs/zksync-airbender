@@ -110,7 +110,9 @@ __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(vectorized_e4_matrix_gett
     const e4 b = smem_thread[blockDim.x * (slot_in_leaf + exchg_stride)];
 
     const e4 c = e4::add(a, b);
-    const e4 d = e4::mul(x_inv, e4::sub(a, b));
+    // const e4 d = e4::mul(x_inv, e4::sub(a, b));
+    // const e4 d = e4::sub(a, b);
+    const e4 d = e4::mul(bf::NON_RES(), e4::sub(a, b));
     dst.set_at_col(slot_in_leaf, c);
     dst.set_at_col(slot_in_leaf + exchg_stride, d);
   }
