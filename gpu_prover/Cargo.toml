@@ -67,3 +67,8 @@ serde_json = "*"
 name = "field"
 harness = false
 required-features = ["bench"]
+
+[[bench]]
+name = "ntt"
+harness = false
+required-features = ["bench"]
