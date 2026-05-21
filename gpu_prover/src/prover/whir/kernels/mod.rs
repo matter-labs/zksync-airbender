@@ -256,7 +256,7 @@ pub(crate) fn pack_rows_for_whir_leaves(
 ) -> CudaResult<()> {
     assert!(log_lde_factor >= 1);
     assert!(log_values_per_leaf >= 1);
-    assert!(log_values_per_leaf <= 5); // Based on max block size. Can be relaxed if needed.
+    assert!(log_values_per_leaf <= 5); // Based on block size. Can be relaxed if needed.
     let src_rows = src.rows();
     let src_cols = src.cols();
     let dst_rows = dst.rows();
@@ -283,7 +283,11 @@ pub(crate) fn pack_rows_for_whir_leaves(
     assert_eq!(dst_rows_per_coset, dst_rows >> log_lde_factor);
     let grid_dim = 1 << (log_blocks_per_coset + log_lde_factor);
     let mut config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let smem_bytes = warps_per_block * WARP_SIZE as usize * size_of::<E4>();
+    let smem_bytes = if log_values_per_leaf > 1 {
+        2 * warps_per_block * WARP_SIZE as usize * size_of::<E4>()
+    } else {
+        0
+    };
     config.dynamic_smem_bytes = smem_bytes;
     let args = PackRowsForWhirLeavesArguments::new(
         src.as_ptr_and_stride(),
