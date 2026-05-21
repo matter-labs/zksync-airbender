@@ -6435,6 +6435,121 @@
         },
         "prevent_optimizations": false
       }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Constant": 65536
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 0
+                },
+                {
+                  "Constant": 1073741816
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Var": 13
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Sum": [
+                {
+                  "Product": [
+                    {
+                      "Constant": 65536
+                    },
+                    {
+                      "Sum": [
+                        {
+                          "Var": 0
+                        },
+                        {
+                          "Constant": 1073741816
+                        },
+                        {
+                          "Product": [
+                            {
+                              "Constant": 1744830467
+                            },
+                            {
+                              "Var": 13
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Constant": 65536
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 0
+                    },
+                    {
+                      "Constant": 1073741816
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 13
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 1
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 14
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
     }
   ],
   "generic_lookups": [
