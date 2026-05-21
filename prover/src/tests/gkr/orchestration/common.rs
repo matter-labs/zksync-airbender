@@ -1,12 +1,3 @@
-//! Shared orchestration helpers: program-config, VM execution capture,
-//! env-var filter parsing, hardcoded external-challenge constants.
-//!
-//! NOTE: challenges are **hardcoded** in this module, matching the legacy
-//! `family_circuits.rs` / `unified_basic_fibonacci.rs` behaviour. This is
-//! native-verifier-only (the FSV `assert_eq!(expected_challenges,
-//! draw_from_transcript_seed(...))` won't hold against hardcoded values).
-//! Switching to transcript-derived challenges is deferred — see
-//! `unified_orchestration_extraction.md` decision 3.
 
 use crate::cs::definitions::TimestampScalar;
 use crate::gkr::prover::GKRExternalChallenges;
@@ -204,8 +195,6 @@ where
         &mut non_determinism,
     );
     assert!(is_program_finished, "program did not reach looping state");
-
-    dbg!(state.counters);
 
     let exact_cycles_passed =
         (state.timestamp - INITIAL_TIMESTAMP) / common_constants::TIMESTAMP_STEP;

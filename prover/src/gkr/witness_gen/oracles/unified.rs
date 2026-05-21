@@ -7,7 +7,8 @@ use common_constants::{
 use cs::definitions::TimestampScalar;
 use cs::gkr_circuits::unified_reduced_machine::UnifiedReducedMachineDecoder;
 use cs::gkr_circuits::{
-    process_binary_into_separate_tables_ext, ExecutorFamilyDecoderData, OpcodeFamilyDecoder,
+    process_binary_into_separate_tables_ext, DecoderTable, ExecutorFamilyDecoderData,
+    OpcodeFamilyDecoder,
 };
 use cs::oracle::*;
 use field::PrimeField;
@@ -19,8 +20,7 @@ use std::alloc::Global;
 
 pub struct UnifiedRiscvCircuitOracle<'a> {
     pub(crate) inner: &'a [UnifiedOpcodeTracingDataWithTimestamp],
-    decoder_table_with_options: Vec<Option<ExecutorFamilyDecoderData>>,
-    decoder_table: Vec<ExecutorFamilyDecoderData>,
+    decoder_table: DecoderTable,
 }
 
 impl<'a> UnifiedRiscvCircuitOracle<'a> {
@@ -44,22 +44,17 @@ impl<'a> UnifiedRiscvCircuitOracle<'a> {
             true,
             Global,
         >(text_section, &decoders, bytecode_size_words, SUPPORTED_CSRS);
-        let decoder_table_with_options = preprocessing_data
+        let entries = preprocessing_data
             .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
             .expect("UnifiedReducedMachineDecoder must produce a family-128 entry");
-        let decoder_table = decoder_table_with_options
-            .iter()
-            .map(|el| el.unwrap_or_default())
-            .collect();
         Self {
             inner,
-            decoder_table_with_options,
-            decoder_table,
+            decoder_table: DecoderTable::from_preprocessing(entries),
         }
     }
 
     pub fn decoder_table_with_options(&self) -> &[Option<ExecutorFamilyDecoderData>] {
-        &self.decoder_table_with_options
+        self.decoder_table.entries()
     }
 }
 
@@ -308,14 +303,6 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
         let Some(cycle_data) = self.inner.get(trace_step) else {
             return Default::default();
         };
-        let pc = cycle_data.initial_pc();
-        let idx = (pc as usize) / 4;
-        assert!(
-            idx < self.decoder_table.len(),
-            "PC 0x{:08x} out of decoder table bounds (len={})",
-            pc,
-            self.decoder_table.len()
-        );
-        self.decoder_table[idx]
+        self.decoder_table.lookup_pc(cycle_data.initial_pc())
     }
 }

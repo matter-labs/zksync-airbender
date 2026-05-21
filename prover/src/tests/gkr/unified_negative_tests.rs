@@ -7,7 +7,9 @@ use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use ::field::baby_bear::base::BabyBearField;
 use ::field::Field;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
-use cs::gkr_circuits::unified_reduced_machine::{FAMILY_4_LW_BIT, FAMILY_4_SW_BIT};
+use cs::gkr_circuits::unified_reduced_machine::{
+    FAMILY_2_FLAG_OFFSET, FAMILY_4_LW_BIT, FAMILY_4_SW_BIT,
+};
 use riscv_transpiler::replayer::*;
 use riscv_transpiler::vm::*;
 use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp;
@@ -207,5 +209,127 @@ fn two_family_bits_on_one_row_rejected() {
     assert!(
         !check_satisfied(&circuit, &full_trace),
         "expected two-family-bits-on-one-row mutation to fail check_satisfied"
+    );
+}
+
+/// Pin `rd_write_limbs[1] = 0` when SLT writes rd. The Family-2 rd-write
+/// rewrite from standalone's `selected_rd_high = (is_jal+is_jalr)*saved_pc_high`
+/// to per-opcode `is_X_writes_rd` helpers lost the implicit
+/// `selected_rd_high = 0 for SLT` zeroing; the explicit constraint
+/// `is_slt_writes_rd * rd_write_limbs[1] = 0` at jump_branch_slt.rs:786 restores
+/// it. This test mutates `rd_write_limbs[1]` on an SLT row to a 16-bit non-zero
+/// value (so the top-level RC doesn't catch it) and asserts `check_satisfied`
+/// rejects — guards against accidental constraint drop in future refactors.
+#[test]
+fn slt_rd_write_high_limb_nonzero_rejected() {
+    // Family 2's SLT sub-opcode is bit 2 within Family 2's bitmask (per
+    // jump_branch_slt_family/decoder.rs:6 `const SLT_BIT: usize = 2`).
+    let slt_bit_index = FAMILY_2_FLAG_OFFSET + 2;
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let slt_addr =
+            find_base_layer_address(circuit, &format!("family_bit[{}]", slt_bit_index));
+        let rd_write_hi_addr =
+            find_base_layer_address(circuit, "rd/mem write write_value[1]");
+        let slt_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, slt_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one SLT");
+        // 16-bit non-zero so the implicit top-level RC doesn't catch it; only
+        // the explicit `is_slt_writes_rd * rd_write_limbs[1] = 0` constraint should.
+        write_cell(
+            trace,
+            rd_write_hi_addr,
+            slt_row,
+            BabyBearField::new(0x1234),
+        );
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected SLT rd_write_limbs[1] = 0x1234 mutation to fail check_satisfied"
+    );
+}
+
+/// SW-into-ROM trap: the constraint `is_rom * is_sw = 0` at
+/// mem_word_only_lw_sw.rs:179 forbids stores to ROM addresses. Mutating
+/// `is_rom = 1` on an SW row should make the product 1 ≠ 0; `check_satisfied`
+/// must reject.
+#[test]
+fn sw_into_rom_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let sw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
+        let is_rom_addr =
+            find_base_layer_address(circuit, "flag: are we in rom addr range?");
+        let sw_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, sw_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one SW");
+        write_cell(trace, is_rom_addr, sw_row, BabyBearField::ONE);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected is_rom=1 on SW row to fail check_satisfied (is_rom * is_sw = 0 trap)"
+    );
+}
+
+/// Empty family mask on an executing row: clear ALL family bits on a row that
+/// has `execute = 1`. The decoder lookup (gated by `execute`) will see the row
+/// claim a bitmask of all zeros, which doesn't match any committed decoder
+/// table entry. `check_satisfied` should reject via the decoder lookup
+/// mismatch (or the dispatch one-hot constraint, depending on which fires first
+/// in the evaluator).
+#[test]
+fn empty_family_mask_on_executing_row_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        // Find an executing row by looking for any row where at least one
+        // dispatch bit is set (LW or SW serve as anchors; multi_family_smoke
+        // executes both).
+        let lw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
+        let exec_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, lw_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one LW");
+        // Clear every family bit on this row (17 bits in the unified layout).
+        for bit in 0..cs::gkr_circuits::unified_reduced_machine::UNIFIED_REDUCED_MACHINE_NUM_FLAGS {
+            let addr = find_base_layer_address(circuit, &format!("family_bit[{}]", bit));
+            write_cell(trace, addr, exec_row, BabyBearField::ZERO);
+        }
+        // Also clear is_any_family_active so the dispatch one-hot setup
+        // (`is_any_family_active - execute * Σbits = 0`) is locally consistent
+        // — the rejection then comes from the decoder lookup mismatch (the
+        // committed table doesn't have an entry mapping this PC to all-zero
+        // family bits), not from a trivially-failing arithmetic constraint
+        // that's incidental to the actual attack.
+        let any_active_addr =
+            find_base_layer_address(circuit, "unified family-dispatch one-hot");
+        write_cell(trace, any_active_addr, exec_row, BabyBearField::ZERO);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected empty family mask on executing row to fail check_satisfied"
+    );
+}
+
+/// Unified-circuit address-carry flip: the `rs1 + imm = cleanaddr` addition
+/// in Family 4's data path uses a Boolean carry `of_lo` (overflow flag from
+/// low limb). Flipping it on an active LW/SW row breaks the decomposition
+/// `rs1_lo + imm_lo - cleanaddr_lo - 2^16 * of_lo = 0`, so `check_satisfied`
+/// rejects.
+#[test]
+fn unified_address_carry_lo_flip_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let lw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
+        let of_lo_addr = find_base_layer_address(circuit, "addr: ofL");
+        let lw_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, lw_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one LW");
+        // Flip the Boolean: if of_lo was 0 → set to 1, if 1 → set to 0.
+        let cur = read_cell(trace, of_lo_addr, lw_row);
+        let flipped = if cur == BabyBearField::ZERO {
+            BabyBearField::ONE
+        } else {
+            BabyBearField::ZERO
+        };
+        write_cell(trace, of_lo_addr, lw_row, flipped);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected of_lo flip on LW row to fail check_satisfied"
     );
 }

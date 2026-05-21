@@ -20,15 +20,6 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     rs2_limbs: [Variable; 4],
     rd_write_limbs: [Variable; 2],
 ) {
-    if let Some(circuit_family_extra_mask) =
-        cs.get_value(inputs.decoder_data.circuit_family_extra_mask)
-    {
-        println!(
-            "circuit_family_extra_mask = 0b{:08b}",
-            circuit_family_extra_mask.as_u32_reduced()
-        );
-    }
-
     // U16 views of rs1/rs2 reassembled from U8 bytes via free algebra.
     let byte_shift = F::from_u32_unchecked(1 << 8);
     let rs1_low_c: Constraint<F> =
@@ -104,19 +95,6 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
 
     // witness generation functions come first, so when constraints are added we can try to evaluate them
     // in debug cases
-
-    if is_branch.get_value(cs).unwrap_or(false) {
-        println!("BRANCH");
-    }
-    if is_slt.get_value(cs).unwrap_or(false) {
-        println!("SLT/SLTU");
-    }
-    if is_jal.get_value(cs).unwrap_or(false) {
-        println!("JAL");
-    }
-    if is_jalr.get_value(cs).unwrap_or(false) {
-        println!("JALR");
-    }
 
     let [add_rel_0_intermediate_of, add_rel_0_final_of, add_rel_1_intermediate_of, add_rel_1_final_of] =
         intermediate_bools;
@@ -256,8 +234,8 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
             Term::from(is_slt) * Term::from(comparison_rel_or_jump_saved_pc_low);
         // second addend
         // NOTE: for additions we blindly mix imm and rs2 as preprocessing ensures that if imm !=0 then rs2 = x0
-        add_like_low_constraint += Term::from(is_jal) * Term::from(4u32);
-        add_like_low_constraint += Term::from(is_jalr) * Term::from(4u32);
+        add_like_low_constraint += Term::from(is_jal) * Term::from(common_constants::PC_STEP as u32);
+        add_like_low_constraint += Term::from(is_jalr) * Term::from(common_constants::PC_STEP as u32);
         add_like_low_constraint += Term::from(is_branch) * rs2_low_c.clone();
         add_like_low_constraint += Term::from(is_slt) * rs2_low_c.clone();
         add_like_low_constraint += Term::from(is_slt) * Term::from(inputs.decoder_data.imm[0]);
@@ -536,10 +514,10 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         // second addend
         add_like_low_constraint += Term::from(is_jal) * Term::from(inputs.decoder_data.imm[0]);
         add_like_low_constraint += Term::from(is_jalr) * Term::from(inputs.decoder_data.imm[0]);
-        add_like_low_constraint += Term::from(is_branch) * Term::from(4u32);
+        add_like_low_constraint += Term::from(is_branch) * Term::from(common_constants::PC_STEP as u32);
         add_like_low_constraint += Term::from(should_jump_if_branch)
-            * (Term::from(inputs.decoder_data.imm[0]) - Term::from(4u32));
-        add_like_low_constraint += Term::from(is_slt) * Term::from(4u32);
+            * (Term::from(inputs.decoder_data.imm[0]) - Term::from(common_constants::PC_STEP as u32));
+        add_like_low_constraint += Term::from(is_slt) * Term::from(common_constants::PC_STEP as u32);
         // out-like var
         add_like_low_constraint -=
             Term::from(is_jal) * Term::from(pc_intermediate_addition_tmp_low);
@@ -598,7 +576,10 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         cs.add_constraint(add_like_high_constraint);
     }
 
-    // is_fam2 = is_jal + is_jalr + is_slt + is_branch (mutually exclusive ⇒ sum ∈ {0, 1}).
+    // is_fam2 = is_jal + is_jalr + is_slt + is_branch. Booleanity of is_fam2
+    // plus the linear-sum setup constraint below enforces mutual exclusivity of
+    // the sub-opcode bits — a row with two of them set would force is_fam2 = 2,
+    // failing Booleanity. The decoder lookup also binds the bitmask atomically.
     // Used to gate the JumpCleanupOffset lookup and the rd-write helpers below so
     // non-Family-2 cycles route the lookup to ZeroEntry and don't pin rd_write_limbs.
     let is_fam2 = cs.add_named_boolean_variable("is_fam2");
@@ -758,11 +739,13 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
                 * Term::from(rd_is_zero),
     );
 
-    assert!(
-        CS::ASSUME_MEMORY_VALUES_ASSIGNED,
-        "Family 2 rd-write witness path requires CS::ASSUME_MEMORY_VALUES_ASSIGNED = true; \
-         the no-ASSUME path is not implemented"
-    );
+    const {
+        assert!(
+            CS::ASSUME_MEMORY_VALUES_ASSIGNED,
+            "Family 2 rd-write witness path requires CS::ASSUME_MEMORY_VALUES_ASSIGNED = true; \
+             the no-ASSUME path is not implemented"
+        );
+    }
 
     // Per-opcode rd-write constraints. Low limb: jal/jalr → saved_pc_low; slt → slt_value.
     cs.add_constraint(
@@ -780,9 +763,14 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
             * (Constraint::from(comparison_rel_or_jump_saved_pc_high)
                 - Term::from(rd_write_limbs[1])),
     );
-    // Pin rd_write_limbs[1] = 0 when SLT writes rd (rd != 0). SLT's 0/1 result fits
-    // in the low limb only; without this constraint the high limb is only bounded
-    // by Family 1's range check at 2^16, leaving 16 bits attacker-controlled.
+    // Pin rd_write_limbs[1] = 0 when SLT writes rd (rd != 0). SLT's 0/1 result
+    // fits in the low limb. The Family-2 rd-write rewrite from standalone's
+    // `selected_rd_high = (is_jal+is_jalr)*saved_pc_high` pattern to per-opcode
+    // `is_X_writes_rd` helpers lost the implicit `selected_rd_high = 0 for SLT`
+    // zeroing; this explicit constraint restores it. Without it the high limb
+    // is only bounded by the top-level 16-bit RC on rd_write_limbs[1], leaving
+    // 16 bits attacker-controlled. The negative test
+    // `slt_rd_write_high_limb_nonzero_rejected` pins this.
     cs.add_constraint(Term::from(is_slt_writes_rd) * Term::from(rd_write_limbs[1]));
 
     // rd_is_zero case: Family 2 fires with rd=0 forces rd_write = 0.

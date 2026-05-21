@@ -288,8 +288,6 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         cs.enforce_lookup_tuple_for_variable_table(&tuple, layer_3_selected_table_id);
     }
 
-    // ─── (4) SW alignment trap (H1 soundness gate) ───────────────────────────
-    //
     // When `is_sw = 1`, `writeaddr_lo` must be a multiple of 4 (RISC-V word
     // aligned). Dev's `StoreOp<false>::spec_apply` emits this via the
     // `MemoryOffsetGetBits` lookup; we don't carry that table in the GKR path,
@@ -302,12 +300,16 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     // the alignment constraint trivially passes. For SW=1 rows `writeaddr_lo`
     // is the RAM write address; the constraint forces its low 2 bits to be 0.
     //
-    // Soundness precondition: `writeaddr_lo` MUST be 16-bit range-checked (it
-    // is, by virtue of being a U16 limb of the memory-subtree-allocated
-    // address). If that range check were ever weakened, the prover could pick
-    // `top_14 > 2^14` (still within 16 bits) to absorb non-zero `bit_0`/`bit_1`
-    // while satisfying the linear equation modulo p — defeating the alignment
-    // trap.
+    // Algebraic soundness: on SW rows, the trap `is_sw * (bit_0 + bit_1) = 0`
+    // combined with Booleanity of bit_0 / bit_1 (each in {0, 1}) forces the
+    // field sum bit_0 + bit_1 = 0, which means both = 0. Then the decomposition
+    // pins `writeaddr_lo = 4 * top_14`; with `top_14` range-checked to 16 bits,
+    // `writeaddr_lo ∈ [0, 2^18)` and is a multiple of 4.
+    //
+    // The trap is structurally sound regardless of `writeaddr_lo`'s range. Its
+    // 16-bit RC (added explicitly above and also transitively present via the
+    // RAM-permutation U16 limb structure) is required for memory-address
+    // validity, not for the alignment check itself.
     {
         let bit_0 = cs.add_named_boolean_variable("sw align bit_0");
         let bit_1 = cs.add_named_boolean_variable("sw align bit_1");

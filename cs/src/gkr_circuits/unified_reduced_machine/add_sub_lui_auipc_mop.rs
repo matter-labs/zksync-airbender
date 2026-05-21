@@ -27,15 +27,6 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     // we have rs1 = x0, rs2 = x0 and imm = 0, and it's preprocessed into plain addition,
     // so we do NOT need to mask rd value
 
-    if let Some(circuit_family_extra_mask) =
-        cs.get_value(inputs.decoder_data.circuit_family_extra_mask)
-    {
-        println!(
-            "circuit_family_extra_mask = 0b{:08b}",
-            circuit_family_extra_mask.as_u32_reduced()
-        );
-    }
-
     // we will also need to pay 2 more range checks
     let intermediate_tmp = Register::new_named(cs, "Modular ops intermediate comparison reg");
     let modulus_low = F::from_u32_unchecked((F::CHARACTERISTICS as u16) as u32);
@@ -60,12 +51,6 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     cs.require_invariant(out_low, Invariant::RangeChecked { width: 16 });
     cs.require_invariant(out_high, Invariant::RangeChecked { width: 16 });
 
-    if let Some(imm) =
-        Register::<F>(inputs.decoder_data.imm.map(|el| Num::Var(el))).get_value_unsigned(cs)
-    {
-        println!("IMM value = 0x{:08x}", imm);
-    }
-
     // IMPORTANT: we must NOT allocate any more registers
     let is_add = decoder.perform_add_addi_lui();
     let is_sub = decoder.perform_sub();
@@ -75,31 +60,6 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     let is_mulmod = decoder.perform_mulmod();
     let is_delegation_call = decoder.perform_delegation_call();
     let is_non_determinism_read = decoder.perform_non_determinism_read();
-
-    if is_add.get_value(cs).unwrap_or(false) {
-        println!("ADD/ADDI/LUI");
-    }
-    if is_sub.get_value(cs).unwrap_or(false) {
-        println!("SUB");
-    }
-    if is_auipc.get_value(cs).unwrap_or(false) {
-        println!("AUIPC");
-    }
-    if is_addmod.get_value(cs).unwrap_or(false) {
-        println!("MOP_ADD");
-    }
-    if is_submod.get_value(cs).unwrap_or(false) {
-        println!("MOP_SUB");
-    }
-    if is_mulmod.get_value(cs).unwrap_or(false) {
-        println!("MOP_MUL");
-    }
-    if is_delegation_call.get_value(cs).unwrap_or(false) {
-        println!("DELEGATION CALL");
-    }
-    if is_non_determinism_read.get_value(cs).unwrap_or(false) {
-        println!("NON-DETERMINISM READ");
-    }
 
     let intermediate_carry = cs.add_named_boolean_variable("intermediate carry for out");
     let carry = cs.add_named_boolean_variable("carry for out");
@@ -507,8 +467,4 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
 
     // Non-determinism - actually we do not have ANY constraint on RD value, other than range checks
     // done above for generic consistency
-
-    if let Some(rd_reg) = Register(rd_write_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
-        println!("RD value = 0x{:08x}", rd_reg);
-    }
 }

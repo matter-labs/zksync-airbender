@@ -60,8 +60,6 @@ pub(crate) fn populate_inline_inits_and_teardowns_columns<F: PrimeField, A, B>(
                     "standalone i/t population: destination column {} was not empty",
                     dest
                 );
-            } else {
-                unsafe { column_major_trace[dest].set_len(0) };
             }
             let _prev = core::mem::replace(&mut column_major_trace[dest], src);
         }

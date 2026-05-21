@@ -12,13 +12,13 @@ use crate::types::Boolean;
 use super::circuit::{
     FAMILY_1_FLAG_OFFSET as F1_OFFSET, FAMILY_2_FLAG_OFFSET as F2_OFFSET,
     FAMILY_3_FLAG_OFFSET as F3_OFFSET, FAMILY_4_FLAG_OFFSET as F4_OFFSET,
+    FAMILY_4_LW_BIT as F4_LW_BIT, FAMILY_4_SW_BIT as F4_SW_BIT,
     UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
 
-/// Family 4 in the unified bitmask is one-hot LW/SW (2 bits), not the standalone
-/// 1-bit `is_store` encoding. See `circuit.rs` doc comment for rationale.
-const F4_LW_BIT: usize = F4_OFFSET;
-const F4_SW_BIT: usize = F4_OFFSET + 1;
+// Family 4 in the unified bitmask is one-hot LW/SW (2 bits), not the standalone
+// 1-bit `is_store` encoding. The bit positions live in `circuit.rs` as the
+// canonical FAMILY_4_LW_BIT / FAMILY_4_SW_BIT (re-aliased above for brevity).
 
 /// The Family-4 standalone decoder produces `opcode_family_bits = 0` for LW and
 /// `= 1` for SW (bit 0 = is_store).
@@ -98,27 +98,28 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
         &self,
         preprocessed_opcode: Instruction,
     ) -> Result<ExecutorFamilyDecoderData, ()> {
+        let mut decoded: ExecutorFamilyDecoderData;
+
         // Try Family 1.
-        if let Ok(mut decoded) =
-            AddSubLuiAuipcMopDecoder.define_decoder_subspace(preprocessed_opcode)
-        {
+        if let Ok(d) = AddSubLuiAuipcMopDecoder.define_decoder_subspace(preprocessed_opcode) {
+            decoded = d;
             decoded.opcode_family_bits <<= F1_OFFSET;
-            return Ok(decoded);
         }
         // Try Family 2.
-        if let Ok(mut decoded) = JumpSltBranchDecoder.define_decoder_subspace(preprocessed_opcode) {
+        else if let Ok(d) = JumpSltBranchDecoder.define_decoder_subspace(preprocessed_opcode) {
+            decoded = d;
             decoded.opcode_family_bits <<= F2_OFFSET;
-            return Ok(decoded);
         }
         // Try Family 3.
-        if let Ok(mut decoded) = ShiftBinaryDecoder.define_decoder_subspace(preprocessed_opcode) {
+        else if let Ok(d) = ShiftBinaryDecoder.define_decoder_subspace(preprocessed_opcode) {
+            decoded = d;
             decoded.opcode_family_bits <<= F3_OFFSET;
-            return Ok(decoded);
         }
         // Try Family 4 — needs the 1-bit → 2-bit one-hot conversion.
-        if let Ok(mut decoded) =
+        else if let Ok(d) =
             WordOnlyMemoryFamilyDecoder.define_decoder_subspace(preprocessed_opcode)
         {
+            decoded = d;
             // Sanity-check the standalone encoding to catch upstream drift.
             assert!(
                 decoded.opcode_family_bits == 0 || decoded.opcode_family_bits == 1,
@@ -134,9 +135,17 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
             } else {
                 1u32 << F4_LW_BIT
             };
-            return Ok(decoded);
+        } else {
+            return Err(());
         }
-        Err(())
+
+        // Post-process: unified circuit's uniform funct3 column needs a defined
+        // value for every opcode. Families that don't use funct3 report None;
+        // lift to Some(0) here
+        if decoded.funct3.is_none() {
+            decoded.funct3 = Some(0);
+        }
+        Ok(decoded)
     }
 }
 

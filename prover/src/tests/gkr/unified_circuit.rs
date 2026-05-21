@@ -75,8 +75,6 @@ fn run_unified_test(level: SecurityLevel) {
     if circuits_filter.is_none() {
         use field::baby_bear::ext4::BabyBearExt4;
         use field::Field;
-        let _ = BabyBearExt4::ONE; // touch import
-        dbg!(output.permutation_argument_accumulator);
         assert_eq!(
             output.permutation_argument_accumulator,
             BabyBearExt4::ONE,

@@ -1,10 +1,10 @@
 //! Unified-circuit prove orchestration.
 //!
 //! Proves a program with the single unified reduced-machine circuit
-//! (subsumes the 6 per-family circuits + inline i/t) plus per-CSR
-//! delegations. Used by the recursion layer.
-//!
-//! See `unified_orchestration_extraction.md` for architectural decisions.
+//! (subsumes 4 of the per-opcode families — add_sub_lui_auipc_mop,
+//! jump_branch_slt, binary_shifts, mem_word_only — plus inline i/t) plus
+//! per-CSR delegations. mem_subword_only is NOT subsumed and runs as a
+//! separate circuit alongside. Used by the recursion layer.
 
 use super::common::*;
 use super::delegations::{

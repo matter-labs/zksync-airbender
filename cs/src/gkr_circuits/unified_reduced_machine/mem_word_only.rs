@@ -48,9 +48,23 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     let memread_addr = memread_access.address;
     let memwrite_addr = memwrite_access.address;
 
+    // memread_addr / memwrite_addr are U16 limbs of RAM addresses. The
+    // RAM-permutation argument bounds them transitively, but pinning the RC
+    // here makes the alignment-trap and ROM-dispatch algebra in the data path
+    // below clearly sound without a non-local dependency. (Also documented at
+    // the alignment-trap and ROM-dispatch sites in `mem_word_only_lw_sw.rs`.)
+    cs.require_invariant(memread_addr[0], Invariant::RangeChecked { width: 16 });
+    cs.require_invariant(memread_addr[1], Invariant::RangeChecked { width: 16 });
+    cs.require_invariant(memwrite_addr[0], Invariant::RangeChecked { width: 16 });
+    cs.require_invariant(memwrite_addr[1], Invariant::RangeChecked { width: 16 });
+
     let load = Constraint::from(is_lw);
     let store = Constraint::from(is_sw);
 
+    // is_fam4 = is_lw + is_sw. Booleanity of is_fam4 plus this linear sum
+    // enforces mutual exclusivity of LW/SW (a row with both bits set would
+    // force is_fam4 = 2, failing Booleanity). The decoder lookup also binds
+    // the bitmask atomically
     let is_fam4 = cs.add_named_boolean_variable("is_fam4");
     cs.add_constraint_allow_explicit_linear(
         Constraint::from(is_fam4) - load.clone() - store.clone(),

@@ -171,11 +171,7 @@ impl OpcodeFamilyDecoder for AddSubLuiAuipcMopDecoder {
             rs1_index,
             rs2_index,
             rd_index,
-            // Family 1's instructions don't use funct3 — but the unified circuit
-            // allocates a funct3 column unconditionally and the witness-eval
-            // path reads `funct3.expect(...)`. Emit `Some(0)` here; the decoder
-            // lookup binds the column to 0 when Family 1 fires.
-            funct3: Some(0),
+            funct3: None,
             funct7: None,
             opcode_family_bits: bitmask,
         };

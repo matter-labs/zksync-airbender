@@ -21,15 +21,6 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     // we have rs1 = x0, rs2 = x0 and imm = 0, and it's preprocessed into plain addition,
     // so we do NOT need to mask rd value
 
-    if let Some(circuit_family_extra_mask) =
-        cs.get_value(inputs.decoder_data.circuit_family_extra_mask)
-    {
-        println!(
-            "circuit_family_extra_mask = 0b{:08b}",
-            circuit_family_extra_mask.as_u32_reduced()
-        );
-    }
-
     // strategies:
     // - for binary ops we have funct3 that encodes table type, and the only thing we need to deal with is
     // immediate. Instead of preprocessing it as u32, we only sign-extend it into u16, and encode it as 2 lowest bytes.
@@ -287,8 +278,4 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     high_constraint -=
         (Constraint::from(is_binary_op) + Term::from(is_shift)) * Term::from(rd_write_limbs[1]);
     cs.add_constraint(high_constraint);
-
-    if let Some(rd_reg) = Register(rd_write_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
-        println!("RD value = 0x{:08x}", rd_reg);
-    }
 }

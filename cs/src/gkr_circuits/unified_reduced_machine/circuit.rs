@@ -287,11 +287,18 @@ fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
     }
 
     // Helper Boolean: gate = execute * (1 - sum(family_2 sub-opcode bits)).
-    // Only the 4 sub-opcode bits (JAL/JALR/SLT/BRANCH at family_2_bits[0..4]) are
-    // mutually exclusive — the 5th bit (RD_IS_ZERO_BIT) is set IN ADDITION to a
-    // sub-opcode bit when rd is x0, so it must not enter the sum.
-    // Wrapping in `execute` makes padding rows (execute=0) trivially satisfy the
-    // PC-bump constraints; keeping the helper as a single Boolean keeps the
+    // Mutual exclusion of family_2_bits[0..4] (JAL/JALR/SLT/BRANCH) is enforced
+    // by (a) the decoder lookup binding the bitmask atomically to a unique entry
+    // per opcode, and (b) the setup constraint below — if two sub-opcode bits
+    // were 1, the sum would be 2, forcing pc_bump_gate = -1, which fails the
+    // Booleanity check on pc_bump_gate.
+    // Bit 4 (RD_IS_ZERO_BIT) is set IN ADDITION to a sub-opcode bit by the
+    // decoder to indicate "no real rd write": for JAL/JALR this fires when
+    // rd == x0; for BRANCH it is unconditional (BRANCH has no rd field — those
+    // encoding bits hold funct3). So it must not enter the sub-opcode-mutual-
+    // exclusion sum.
+    // Wrapping in `execute` makes padding rows (execute=0) trivially satisfy
+    // the PC-bump constraints; keeping the helper as a single Boolean keeps the
     // top-level constraint at degree 2.
     let pc_bump_gate = cs.add_named_boolean_variable("unified pc-bump gate");
     {
@@ -399,6 +406,30 @@ fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
     setup = setup - Constraint::from(execute) * Constraint::from(is_lw);
     setup = setup - Constraint::from(execute) * Constraint::from(is_sw);
     cs.add_constraint(setup);
+
+    // Padding-row zeroing: on execute=0 rows, the decoder lookup is gated by
+    // `execute` and so doesn't bind the bitmask — without this constraint a
+    // malicious witness could set arbitrary family-bits on padding rows. Pin
+    // ALL family bits (including family_2_bits[4] = RD_IS_ZERO_BIT) to 0 when
+    // execute=0. Booleanity of each bit plus the constraint
+    //   (1 - execute) * (sum of all family bits) = 0
+    // forces the sum to 0 in the field, which forces each bit to 0 (since each
+    // is in {0,1}). One degree-2 constraint covers all 17 bits.
+    let mut padding_zero_sum = Constraint::empty();
+    for &b in family_1_bits.iter() {
+        padding_zero_sum = padding_zero_sum + Constraint::from(b);
+    }
+    for &b in family_2_bits.iter() {
+        padding_zero_sum = padding_zero_sum + Constraint::from(b);
+    }
+    for &b in family_3_bits.iter() {
+        padding_zero_sum = padding_zero_sum + Constraint::from(b);
+    }
+    padding_zero_sum = padding_zero_sum + Constraint::from(is_lw);
+    padding_zero_sum = padding_zero_sum + Constraint::from(is_sw);
+    cs.add_constraint(
+        (Term::from(1u32) - Term::from(execute)) * padding_zero_sum,
+    );
 }
 
 /// Register all tables the unified circuit body looks up against. Shared by both
