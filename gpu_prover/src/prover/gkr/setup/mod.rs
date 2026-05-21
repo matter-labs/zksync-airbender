@@ -11,6 +11,7 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::Digest;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, ProverContext};
+use era_cudart::slice::DeviceSlice;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
@@ -507,7 +508,10 @@ pub(super) fn precompute_partial_tree_cache(
     trace_holder.commit_all(context)?;
 
     let partial_trees = match &trace_holder.trees {
-        TreesHolder::Partial(trees) => copy_partial_trees_to_pinned_host(trees, context)?,
+        TreesHolder::Partial(backing) => {
+            let instances_count = 1usize << trace_holder.log_lde_factor;
+            copy_partial_trees_to_pinned_host(backing, instances_count, context)?
+        }
         _ => unreachable!("host setup precomputation always caches partial trees"),
     };
 
@@ -528,13 +532,17 @@ pub(super) fn precompute_partial_tree_cache(
 }
 
 fn copy_partial_trees_to_pinned_host(
-    trees: &[DeviceAllocation<Digest>],
+    backing: &DeviceSlice<Digest>,
+    instances_count: usize,
     context: &ProverContext,
 ) -> CudaResult<Vec<StaticPinnedBox<Digest>>> {
-    let mut result = Vec::with_capacity(trees.len());
-    for tree in trees.iter() {
-        let mut host_tree = alloc_static_pinned_box_uninit(tree.len())?;
-        memory_copy_async(&mut host_tree[..], tree, context.get_exec_stream())?;
+    assert_eq!(backing.len() % instances_count, 0);
+    let per_coset = backing.len() / instances_count;
+    let mut result = Vec::with_capacity(instances_count);
+    for coset_index in 0..instances_count {
+        let segment = &backing[coset_index * per_coset..(coset_index + 1) * per_coset];
+        let mut host_tree = alloc_static_pinned_box_uninit(per_coset)?;
+        memory_copy_async(&mut host_tree[..], segment, context.get_exec_stream())?;
         result.push(host_tree);
     }
     Ok(result)

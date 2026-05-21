@@ -5,7 +5,7 @@ namespace airbender::ntt {
 
 EXTERN __launch_bounds__(512, 2) __global__
     void ab_evals_to_monomials_nonfinal_8_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n,
-                                                        const int start_stage) {
+                                                        const int start_stage, const int num_cols_per_coset, const int log_cosets_in_tile) {
   using namespace pass_config::three_pass_phase_a;
 
   const int lane_in_tile = threadIdx.x & 31;
@@ -15,9 +15,25 @@ EXTERN __launch_bounds__(512, 2) __global__
   const int tile_gmem_stride = exchg_region_size >> LOG_DATA_TILES_PER_BLOCK;
   const int interleaved_gmem_stride = tile_gmem_stride * THREAD_TILES_PER_BLOCK;
 
-  // Reversed block indexing for the middle kernel, to help L2 hits
-  const int alternating_block_idx_x = (start_stage == 0) ? blockIdx.x : (gridDim.x - 1 - blockIdx.x);
-  const int alternating_block_idx_y = (start_stage == 0) ? blockIdx.y : (gridDim.y - 1 - blockIdx.y);
+  // Flat-blockIdx.x layout (2-D intra-NTT, inverse), with cosets folded in as
+  // an outer axis. `log_cosets_in_tile = 0` collapses cleanly: fi.coset == 0
+  // and the column offset reduces to fi.col.
+  //   log_blocks_x = log_n - start_stage - 13 (blocks per exchg region)
+  //   log_blocks_y = start_stage              (num exchg regions)
+  const unsigned log_blocks_x = static_cast<unsigned>(log_n - start_stage - 13);
+  const unsigned log_blocks_y = static_cast<unsigned>(start_stage);
+  const FlatBlockIndex fi = decompose_flat_2d(log_blocks_x, log_blocks_y, static_cast<unsigned>(log_cosets_in_tile));
+  const int col_offset = static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col);
+  gmem_in.add_col(col_offset);
+  gmem_out.add_col(col_offset);
+  const unsigned blocks_per_exchg_region = 1u << log_blocks_x;
+  const unsigned num_exchg_regions = 1u << log_blocks_y;
+
+  // Reversed block indexing for the middle kernel, to help L2 hits.
+  const int alternating_block_idx_x =
+      (start_stage == 0) ? static_cast<int>(fi.intra_x) : (static_cast<int>(blocks_per_exchg_region) - 1 - static_cast<int>(fi.intra_x));
+  const int alternating_block_idx_y =
+      (start_stage == 0) ? static_cast<int>(fi.intra_y) : (static_cast<int>(num_exchg_regions) - 1 - static_cast<int>(fi.intra_y));
   const int gmem_block_offset = alternating_block_idx_y * exchg_region_size + (alternating_block_idx_x << LOG_DATA_TILE_SIZE);
   gmem_in.add_row(gmem_block_offset);
   gmem_out.add_row(gmem_block_offset);
@@ -95,15 +111,25 @@ EXTERN __launch_bounds__(512, 2) __global__
 
 template <int STAGES>
 DEVICE_FORCEINLINE void evals_to_monomials_final_up_to_8_stages(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                                const bool transposed_monomials, const int log_n) {
+                                                                const bool transposed_monomials, const int log_n, const int num_cols_per_coset,
+                                                                const int log_cosets_in_tile) {
   using namespace pass_config::three_pass_phase_b;
   constexpr int INITIAL_EXCHG_REGIONS_PER_WARP = 1 << (10 - STAGES);
+
+  // Flat-blockIdx.x layout: gridDim.x packs blocks_per_ntt (= 1 << (log_n - 13))
+  // blocks per NTT, then cosets in tile, then columns. `log_cosets_in_tile = 0`
+  // collapses to single-coset.
+  const unsigned log_blocks_per_ntt = static_cast<unsigned>(log_n) - 13u;
+  const FlatBlockIndex fi = decompose_flat_1d(log_blocks_per_ntt, static_cast<unsigned>(log_cosets_in_tile));
+  const int col_offset = static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col);
+  gmem_in.add_col(col_offset);
+  gmem_out.add_col(col_offset);
 
   const int lane_id = threadIdx.x & 31;
   const int warp_id = threadIdx.x >> 5;
   const int pipeline_memcpy_start = 4 * threadIdx.x;
   const int pipeline_memcpy_stride = 4 * blockDim.x;
-  const int gmem_block_offset = blockIdx.x * VALS_PER_BLOCK;
+  const int gmem_block_offset = static_cast<int>(fi.intra_x) * VALS_PER_BLOCK;
   gmem_in.add_row(gmem_block_offset + warp_id * VALS_PER_WARP);
   gmem_out.add_row(gmem_block_offset + warp_id * VALS_PER_WARP);
 
@@ -128,7 +154,7 @@ DEVICE_FORCEINLINE void evals_to_monomials_final_up_to_8_stages(bf_matrix_getter
 
   // Use pure cmem for warp-uniform twiddles
   if (STAGES >= 5) {
-    int warp_exchg_region_offset = INITIAL_EXCHG_REGIONS_PER_WARP * (blockIdx.x * WARPS_PER_BLOCK + warp_id);
+    int warp_exchg_region_offset = INITIAL_EXCHG_REGIONS_PER_WARP * (static_cast<int>(fi.intra_x) * WARPS_PER_BLOCK + warp_id);
 #pragma unroll
     for (int i{0}; i < INITIAL_EXCHG_REGIONS_PER_WARP; i++) {
       int exchg_region_offset = warp_exchg_region_offset + i;
@@ -185,7 +211,7 @@ DEVICE_FORCEINLINE void evals_to_monomials_final_up_to_8_stages(bf_matrix_getter
       vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
   }
 
-  int thread_exchg_region_offset = threadIdx.x + blockIdx.x * blockDim.x;
+  int thread_exchg_region_offset = threadIdx.x + static_cast<int>(fi.intra_x) * blockDim.x;
   constexpr bf *cmem_twiddles = ab_inv_cmem_twiddles_finest_11;
   reg_exchg_cmem_smem_twiddles_inv<EightStages, 16, 32, 1, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
   thread_exchg_region_offset <<= 1;
@@ -231,28 +257,18 @@ DEVICE_FORCEINLINE void evals_to_monomials_final_up_to_8_stages(bf_matrix_getter
   }
 }
 
-EXTERN __launch_bounds__(256, 3) __global__
-    void ab_evals_to_monomials_final_8_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                     const bool transposed_monomials, const int log_n) {
-  evals_to_monomials_final_up_to_8_stages<8>(gmem_in, gmem_out, transposed_monomials, log_n);
-}
+#define DEFINE_FINAL_KERNEL(STAGES)                                                                                                                            \
+  EXTERN __launch_bounds__(256, 3) __global__ void ab_evals_to_monomials_final_##STAGES##_stages_kernel(                                                       \
+      bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const bool transposed_monomials, const int log_n,                 \
+      const int num_cols_per_coset, const int log_cosets_in_tile) {                                                                                            \
+    evals_to_monomials_final_up_to_8_stages<STAGES>(gmem_in, gmem_out, transposed_monomials, log_n, num_cols_per_coset, log_cosets_in_tile);                   \
+  }
 
-EXTERN __launch_bounds__(256, 3) __global__
-    void ab_evals_to_monomials_final_7_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                     const bool transposed_monomials, const int log_n) {
-  evals_to_monomials_final_up_to_8_stages<7>(gmem_in, gmem_out, transposed_monomials, log_n);
-}
+DEFINE_FINAL_KERNEL(5)
+DEFINE_FINAL_KERNEL(6)
+DEFINE_FINAL_KERNEL(7)
+DEFINE_FINAL_KERNEL(8)
 
-EXTERN __launch_bounds__(256, 3) __global__
-    void ab_evals_to_monomials_final_6_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                     const bool transposed_monomials, const int log_n) {
-  evals_to_monomials_final_up_to_8_stages<6>(gmem_in, gmem_out, transposed_monomials, log_n);
-}
-
-EXTERN __launch_bounds__(256, 3) __global__
-    void ab_evals_to_monomials_final_5_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                     const bool transposed_monomials, const int log_n) {
-  evals_to_monomials_final_up_to_8_stages<5>(gmem_in, gmem_out, transposed_monomials, log_n);
-}
+#undef DEFINE_FINAL_KERNEL
 
 } // namespace airbender::ntt

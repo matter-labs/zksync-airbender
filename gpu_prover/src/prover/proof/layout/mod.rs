@@ -175,9 +175,6 @@ pub(crate) struct WhirBaseLayerByteLayout {
     pub(crate) cap: Range<usize>,
     /// `evals` — `num_columns` `E4` values.
     pub(crate) evals: Range<usize>,
-    /// `queries[i].index` — `query_count` `u32` values (narrowed from `usize`;
-    /// index < 2^32 is safe for all realistic trace lengths).
-    pub(crate) query_indices: Range<usize>,
     /// `queries[i].leaf_values_concatenated` — `query_count * leaf_values_len`
     /// `BF` values, flat.
     pub(crate) query_leaves: Range<usize>,
@@ -203,6 +200,12 @@ pub(crate) struct WhirIntermediateByteLayout {
 
 #[derive(Debug, Clone)]
 pub(crate) struct WhirLayout {
+    /// Shared `query_indices` range used by all three base oracles. The three
+    /// base oracles (setup/memory/witness) sample tree-space indices from the
+    /// same verifier-derived list; the previous per-oracle copies were
+    /// redundant. Allocated once at the start of `lay_whir`, before any
+    /// `lay_base` call.
+    pub(crate) base_query_indices: Range<usize>,
     pub(crate) setup: WhirBaseLayerByteLayout,
     pub(crate) memory: WhirBaseLayerByteLayout,
     pub(crate) witness: WhirBaseLayerByteLayout,
@@ -384,7 +387,6 @@ impl ProofLayout {
         let lay_base = |cur: &mut usize, d: &WhirBaseLayerDims| -> WhirBaseLayerByteLayout {
             let cap = alloc(cur, d.cap_digest_count * DIGEST_U32_WORDS, size_of::<u32>());
             let evals = alloc(cur, d.num_columns, size_of::<E4>());
-            let query_indices = alloc(cur, d.query_count, size_of::<u32>());
             let query_leaves = alloc(cur, d.query_count * d.leaf_values_len, size_of::<BF>());
             let query_paths = alloc(
                 cur,
@@ -395,7 +397,6 @@ impl ProofLayout {
                 num_columns: d.num_columns,
                 cap,
                 evals,
-                query_indices,
                 query_leaves,
                 query_paths,
                 query_count: d.query_count,
@@ -425,6 +426,14 @@ impl ProofLayout {
                 }
             };
 
+        // Shared base-oracle query indices. The three base oracles
+        // (setup/memory/witness) sample the same verifier-supplied
+        // tree-space indices, so we allocate one range up front and have all
+        // three reference it via `WhirLayout::base_query_indices`. The three
+        // base dims must agree on `query_count` (verified by `debug_assert!`).
+        debug_assert_eq!(dims.setup.query_count, dims.memory.query_count);
+        debug_assert_eq!(dims.setup.query_count, dims.witness.query_count);
+        let base_query_indices = alloc(cur, dims.setup.query_count, size_of::<u32>());
         let setup = lay_base(cur, &dims.setup);
         let memory = lay_base(cur, &dims.memory);
         let witness = lay_base(cur, &dims.witness);
@@ -440,6 +449,7 @@ impl ProofLayout {
         let final_monomials = alloc(cur, dims.final_monomials_len, size_of::<E4>());
 
         WhirLayout {
+            base_query_indices,
             setup,
             memory,
             witness,

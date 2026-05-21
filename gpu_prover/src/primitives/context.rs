@@ -52,7 +52,7 @@ pub struct ProverContextConfig {
 impl Default for ProverContextConfig {
     fn default() -> Self {
         Self {
-            powers_of_w_coarse_log_count: 12,
+            powers_of_w_coarse_log_count: 13,
             allocator_block_log_size: 20,                // 1 MB blocks
             device_slack_static_bytes: 1 << 27,          // 128 MB static slack
             device_slack_per_thread_bytes: 1 << 11,      // 2 KB per thread slack

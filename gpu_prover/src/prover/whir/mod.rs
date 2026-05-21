@@ -13,10 +13,12 @@ use crate::primitives::callbacks::Callbacks;
 #[cfg(test)]
 use crate::primitives::context::HostAllocation;
 use crate::primitives::context::ProverContext;
-use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixImpl};
+use crate::primitives::device_structures::{
+    DeviceMatrix, DeviceMatrixChunk, DeviceMatrixChunkMut, DeviceMatrixImpl, DeviceMatrixMut,
+};
 use crate::primitives::field::{BF, E4};
 use crate::prover::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
-use crate::prover::whir::kernels::pack_rows_for_whir_leaves;
+use crate::prover::whir::kernels::pack_rows_for_whir_leaves_multi_coset;
 use crate::upstream::FieldExtension;
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
@@ -179,44 +181,52 @@ impl GpuWhirExtensionOracle {
             trees_cache_mode,
             context,
         )?;
-        let mut natural_coset_values =
-            context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
+        // Multi-coset NTT writes all lde_factor cosets into a single
+        // coset-major buffer in one launch; the multi-coset pack then writes
+        // each coset into its bit-reversed slot inside the WHIR leaves trace
+        // in a single launch (was a per-coset loop).
+        let mut natural_coset_values = context.alloc(
+            lde_factor * trace_len * EXT4_DEGREE,
+            AllocationPlacement::BestFit,
+        )?;
 
         let monomial_coeffs_slice = monomial_coeffs.slice();
         let monomial_coeffs_stride = monomial_coeffs.stride();
-        for coset_index in 0..lde_factor {
-            for base_column in 0..EXT4_DEGREE {
-                let src_column_start = base_column * monomial_coeffs_stride;
-                let dst_column_start = base_column * trace_len;
-                let src = &monomial_coeffs_slice[src_column_start..src_column_start + trace_len];
-                let dst = &mut natural_coset_values[dst_column_start..dst_column_start + trace_len];
-                crate::ops::ntt::bitreversed_coeffs_to_natural_coset(
-                    src,
-                    dst,
-                    trace_len_log2,
-                    log_lde_factor as usize,
-                    coset_index,
-                    stream,
-                )?;
-            }
-            let natural_matrix = DeviceMatrix::new(&natural_coset_values, trace_len);
-            let packed_trace = trace_holder.get_uninit_coset_evaluations_mut(0);
-            let stage1_coset_index = bitreverse_index(coset_index, log_lde_factor);
-            let mut packed_matrix = DeviceMatrixChunkMut::new(
-                packed_trace,                           // slice
-                packed_leaf_count << log_lde_factor,    // stride
-                stage1_coset_index * packed_leaf_count, // offset
-                packed_leaf_count,                      // rows
-            );
-            pack_rows_for_whir_leaves(
-                &natural_matrix,
-                &mut packed_matrix,
-                log_values_per_leaf,
-                1,
-                0,
-                stream,
-            )?;
-        }
+        let device_properties = context.get_device_properties();
+        let inputs_matrix =
+            DeviceMatrixChunk::new(monomial_coeffs_slice, monomial_coeffs_stride, 0, trace_len);
+        crate::ops::ntt::bitreversed_monomials_to_natural_evals_multi_coset(
+            &inputs_matrix,
+            &mut natural_coset_values,
+            trace_len_log2,
+            log_lde_factor as usize,
+            0,
+            lde_factor,
+            EXT4_DEGREE,
+            false,
+            stream,
+            device_properties,
+        )?;
+
+        // Source matrix covers all cosets in one slab: rows = trace_len, cols
+        // = lde_factor * EXT4_DEGREE (coset-major outer, matching the multi-
+        // coset NTT output layout). Destination is the full packed_trace; the
+        // kernel computes the bitreversed coset placement internally.
+        let natural_matrix = DeviceMatrix::new(&natural_coset_values[..], trace_len);
+        let packed_trace = trace_holder.get_uninit_coset_evaluations_mut(0);
+        let mut packed_matrix =
+            DeviceMatrixMut::new(packed_trace, packed_leaf_count << log_lde_factor);
+        pack_rows_for_whir_leaves_multi_coset(
+            &natural_matrix,
+            &mut packed_matrix,
+            log_values_per_leaf,
+            packed_leaf_count,
+            log_lde_factor as u32,
+            0,
+            lde_factor,
+            EXT4_DEGREE,
+            stream,
+        )?;
 
         trace_holder.mark_cosets_materialized();
         match cap_target {
@@ -275,11 +285,9 @@ impl GpuWhirExtensionOracle {
         // symmetry. The slab range is exclusively written here on
         // `exec_stream`, then read by the gather kernels below, so the
         // subsequent shared reborrow is sound.
-        crate::ops::blake2s::query_index_to_tree_index_multi_out(
+        crate::ops::blake2s::query_index_to_tree_index(
             device_query_indexes,
-            Some(slab_indices_dst),
-            None,
-            None,
+            slab_indices_dst,
             log_lde_factor,
             packed_leaf_count_log2,
             stream,
@@ -288,23 +296,19 @@ impl GpuWhirExtensionOracle {
         // (read-only) and run after the kernel above on the same stream, so
         // they observe the tree-indexes that were just written.
         let slab_indices_view: &era_cudart::slice::DeviceSlice<u32> = slab_indices_dst;
-        // The trace_holder is constructed with `log_lde_factor = 0`, so only
-        // coset 0 exists and the gather kernels' coset filter accepts every
-        // query (lde_mask == 0). Tree-indexes act as the raw leaf-row index
-        // into the single packed coset.
-        self.trace_holder.schedule_query_leafs_for_coset_into(
-            0,
+        // Recursive WHIR trace holders use `log_lde_factor = 0`, so only
+        // coset 0 exists; the consolidated gather kernels resolve every
+        // query into that single coset (lde_mask == 0).
+        self.trace_holder.schedule_query_leaves_into(
             slab_indices_view,
             slab_leaves_dst_bf,
             context,
         )?;
-        self.trace_holder
-            .schedule_query_merkle_paths_for_coset_into(
-                0,
-                slab_indices_view,
-                slab_paths_dst,
-                context,
-            )?;
+        self.trace_holder.schedule_query_merkle_paths_into(
+            slab_indices_view,
+            slab_paths_dst,
+            context,
+        )?;
         Ok(())
     }
 

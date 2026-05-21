@@ -112,6 +112,12 @@ fn layout_is_16_byte_aligned_and_nonoverlapping() {
             ));
         }
     }
+    // Shared base-oracle `query_indices` range (single copy across the three
+    // base oracles).
+    ranges.push((
+        "whir.base_query_indices".to_string(),
+        layout.whir.base_query_indices.clone(),
+    ));
     for (name, base) in [
         ("setup", &layout.whir.setup),
         ("memory", &layout.whir.memory),
@@ -119,7 +125,6 @@ fn layout_is_16_byte_aligned_and_nonoverlapping() {
     ] {
         ranges.push((format!("whir.{name}.cap"), base.cap.clone()));
         ranges.push((format!("whir.{name}.evals"), base.evals.clone()));
-        ranges.push((format!("whir.{name}.qi"), base.query_indices.clone()));
         ranges.push((format!("whir.{name}.ql"), base.query_leaves.clone()));
         ranges.push((format!("whir.{name}.qp"), base.query_paths.clone()));
     }
@@ -209,6 +214,21 @@ fn whir_range_sizes_match_inputs() {
     let inputs = sample_inputs();
     let layout = ProofLayout::new(&inputs);
 
+    // Shared base-oracle `query_indices` slab range — sized by the common
+    // `query_count` across setup/memory/witness.
+    assert_eq!(
+        inputs.whir.setup.query_count,
+        inputs.whir.memory.query_count
+    );
+    assert_eq!(
+        inputs.whir.setup.query_count,
+        inputs.whir.witness.query_count
+    );
+    assert_eq!(
+        layout.whir.base_query_indices.end - layout.whir.base_query_indices.start,
+        inputs.whir.setup.query_count * size_of::<u32>()
+    );
+
     let check_base = |dims: &WhirBaseLayerDims, laid: &WhirBaseLayerByteLayout| {
         assert_eq!(
             laid.cap.end - laid.cap.start,
@@ -217,10 +237,6 @@ fn whir_range_sizes_match_inputs() {
         assert_eq!(
             laid.evals.end - laid.evals.start,
             dims.num_columns * size_of::<E4>()
-        );
-        assert_eq!(
-            laid.query_indices.end - laid.query_indices.start,
-            dims.query_count * size_of::<u32>()
         );
         assert_eq!(
             laid.query_leaves.end - laid.query_leaves.start,

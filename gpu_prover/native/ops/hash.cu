@@ -38,12 +38,86 @@ EXTERN __global__ void ab_blake2s_leaves_kernel(const bf *values, u32 *results, 
     store_cs(&results[i], state[i]);
 }
 
+// Multi-coset leaves kernel: hashes `(1 << log_per_coset_count) *
+// cosets_in_tile` leaves in one launch. Each coset's leaf inputs and tree
+// outputs sit in per-coset slabs offset by `per_coset_values_stride_bf` and
+// `per_coset_results_stride_digests` respectively; cosets are independent so
+// the kernel just decomposes `gid_global` into `(coset, gid_in_coset)` and
+// advances the base pointers by the coset stride.
+EXTERN __global__ void ab_blake2s_leaves_multi_coset_kernel(const bf *values, u32 *results, const unsigned log_rows_count, const unsigned cols_count,
+                                                            const unsigned log_per_coset_count, const unsigned per_coset_values_stride_bf,
+                                                            const unsigned per_coset_results_stride_digests, const unsigned count) {
+  const unsigned gid_global = threadIdx.x + blockIdx.x * blockDim.x;
+  if (gid_global >= count)
+    return;
+  const unsigned per_coset_count = 1u << log_per_coset_count;
+  const unsigned coset = gid_global >> log_per_coset_count;
+  const unsigned gid = gid_global & (per_coset_count - 1u);
+  values += static_cast<size_t>(coset) * per_coset_values_stride_bf;
+  results += static_cast<size_t>(coset) * per_coset_results_stride_digests * STATE_SIZE + gid * STATE_SIZE;
+  const unsigned row_mask = (1u << log_rows_count) - 1;
+  const unsigned domain_size = per_coset_count << log_rows_count;
+  auto read = [=](const unsigned offset) {
+    const unsigned row_slot = offset & row_mask;
+    const unsigned col = offset >> log_rows_count;
+    const unsigned row = gid + bitreverse_low_bits(row_slot, log_rows_count) * per_coset_count;
+    return col < cols_count ? bf::into_raw_u32(load_cs(values + row + col * domain_size)) : 0;
+  };
+  u32 state[STATE_SIZE];
+  u32 block[BLOCK_SIZE];
+  initialize(state);
+  u32 t = 0;
+  const unsigned values_count = cols_count << log_rows_count;
+  unsigned offset = 0;
+  while (offset < values_count) {
+    const unsigned remaining = values_count - offset;
+    const bool is_final_block = remaining <= BLOCK_SIZE;
+#pragma unroll
+    for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++)
+      block[i] = read(offset);
+    if (is_final_block)
+      compress<true>(state, t, block, remaining);
+    else
+      compress<false>(state, t, block, BLOCK_SIZE);
+  }
+#pragma unroll
+  for (unsigned i = 0; i < STATE_SIZE; i++)
+    store_cs(&results[i], state[i]);
+}
+
 EXTERN __global__ void ab_blake2s_nodes_kernel(const u32 *values, u32 *results, const unsigned count) {
   const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
   if (gid >= count)
     return;
   values += gid * BLOCK_SIZE;
   results += gid * STATE_SIZE;
+  u32 state[STATE_SIZE];
+  u32 block[BLOCK_SIZE];
+  initialize(state);
+  u32 t = 0;
+#pragma unroll
+  for (unsigned i = 0; i < BLOCK_SIZE; i++, values++)
+    block[i] = load_cs(values);
+  compress<true>(state, t, block, BLOCK_SIZE);
+#pragma unroll
+  for (unsigned i = 0; i < STATE_SIZE; i++)
+    store_cs(&results[i], state[i]);
+}
+
+// Multi-coset nodes kernel: hashes `(1 << log_per_coset_count) *
+// cosets_in_tile` pairs of digests into the same number of output digests.
+// Each coset's layer-input and layer-output sit in independent slabs offset
+// by `per_coset_values_stride_digests` and `per_coset_results_stride_digests`.
+EXTERN __global__ void ab_blake2s_nodes_multi_coset_kernel(const u32 *values, u32 *results, const unsigned log_per_coset_count,
+                                                           const unsigned per_coset_values_stride_digests, const unsigned per_coset_results_stride_digests,
+                                                           const unsigned count) {
+  const unsigned gid_global = threadIdx.x + blockIdx.x * blockDim.x;
+  if (gid_global >= count)
+    return;
+  const unsigned coset = gid_global >> log_per_coset_count;
+  const unsigned gid = gid_global & ((1u << log_per_coset_count) - 1u);
+  values += static_cast<size_t>(coset) * per_coset_values_stride_digests * STATE_SIZE + gid * BLOCK_SIZE;
+  results += static_cast<size_t>(coset) * per_coset_results_stride_digests * STATE_SIZE + gid * STATE_SIZE;
   u32 state[STATE_SIZE];
   u32 block[BLOCK_SIZE];
   initialize(state);

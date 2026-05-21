@@ -5,12 +5,22 @@ namespace airbender::ntt {
 
 EXTERN __launch_bounds__(512, 1) __global__
     void ab_monomials_to_evals_last_10_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n,
-                                                     const int start_stage /*unused, for symmetry with three-pass*/) {
+                                                     const int start_stage /*unused, for symmetry with three-pass*/, const int num_cols_per_coset,
+                                                     const int log_cosets_in_tile) {
   using namespace pass_config::two_pass_phase_a;
+
+  // Flat-blockIdx.x: gridDim.x = blocks_per_ntt * cosets_per_launch *
+  // cols_per_launch (cosets fold cleanly via `log_cosets_in_tile = 0` for
+  // single-coset callers).
+  const unsigned log_blocks_per_ntt = static_cast<unsigned>(log_n) - 14u;
+  const FlatBlockIndex fi = decompose_flat_1d(log_blocks_per_ntt, static_cast<unsigned>(log_cosets_in_tile));
+  const int col_offset = static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col);
+  gmem_in.add_col(col_offset);
+  gmem_out.add_col(col_offset);
 
   const int lane_in_tile = threadIdx.x & 15;
   const int tile_id = threadIdx.x >> LOG_DATA_TILE_SIZE;
-  const int gmem_block_offset = blockIdx.x << LOG_DATA_TILE_SIZE;
+  const int gmem_block_offset = static_cast<int>(fi.intra_x) << LOG_DATA_TILE_SIZE;
   gmem_in.add_row(gmem_block_offset);
   gmem_out.add_row(gmem_block_offset);
 
@@ -62,13 +72,22 @@ EXTERN __launch_bounds__(512, 1) __global__
 
 EXTERN __launch_bounds__(512, 1) __global__
     void ab_monomials_to_evals_last_9_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n,
-                                                    const int start_stage /*unused, for symmetry with three-pass*/) {
+                                                    const int start_stage /*unused, for symmetry with three-pass*/, const int num_cols_per_coset,
+                                                    const int log_cosets_in_tile) {
   using namespace pass_config::two_pass_phase_b;
+
+  // Flat-blockIdx.x: gridDim.x = blocks_per_ntt * cosets_per_launch *
+  // cols_per_launch.
+  const unsigned log_blocks_per_ntt = static_cast<unsigned>(log_n) - 14u;
+  const FlatBlockIndex fi = decompose_flat_1d(log_blocks_per_ntt, static_cast<unsigned>(log_cosets_in_tile));
+  const int col_offset = static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col);
+  gmem_in.add_col(col_offset);
+  gmem_out.add_col(col_offset);
 
   const int lane_in_tile = threadIdx.x & 31;
   const int tile_id = threadIdx.x >> LOG_DATA_TILE_SIZE;
   const int tile_gmem_stride = 1 << (log_n - LOG_DATA_TILES_PER_BLOCK);
-  const int gmem_block_offset = blockIdx.x << LOG_DATA_TILE_SIZE;
+  const int gmem_block_offset = static_cast<int>(fi.intra_x) << LOG_DATA_TILE_SIZE;
   gmem_in.add_row(gmem_block_offset);
   gmem_out.add_row(gmem_block_offset);
 
@@ -122,10 +141,17 @@ EXTERN __launch_bounds__(512, 1) __global__
                                                       const bool transposed_monomials, const int log_n, const int coset_factor_power) {
   using namespace pass_config::two_pass_phase_c;
 
+  // Flat-blockIdx.x: gridDim.x = blocks_per_ntt * cols_per_launch where
+  // blocks_per_ntt = n / VALS_PER_BLOCK = 1 << (log_n - 14).
+  const unsigned log_blocks_per_ntt = static_cast<unsigned>(log_n) - 14u;
+  const FlatBlockIndex fi = decompose_flat_1d(log_blocks_per_ntt);
+  gmem_in.add_col(fi.col);
+  gmem_out.add_col(fi.col);
+
   const int lane_id = threadIdx.x & 31;
   const int warp_id = threadIdx.x >> 5;
   const int tile_stride = VALS_PER_BLOCK >> 4;
-  const int gmem_block_offset = blockIdx.x * VALS_PER_BLOCK;
+  const int gmem_block_offset = static_cast<int>(fi.intra_x) * VALS_PER_BLOCK;
   const int thread_start = 64 * warp_id + lane_id;
   const int pipeline_memcpy_start = 4 * threadIdx.x;
   const int pipeline_memcpy_stride = 4 * blockDim.x;
@@ -174,7 +200,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   __pipeline_wait_prior(0); // Unfortunately we use all the coarse twiddles in the first exchange, so we can't overlap this with compute.
   __syncthreads();
 
-  int thread_exchg_region_offset = (threadIdx.x + blockIdx.x * blockDim.x) << 4;
+  int thread_exchg_region_offset = (threadIdx.x + static_cast<int>(fi.intra_x) * blockDim.x) << 4;
   reg_exchg_cmem_smem_twiddles_fwd<TenStages, 1, 2, 16, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
   thread_exchg_region_offset >>= 1;
   reg_exchg_cmem_smem_twiddles_fwd<TenStages, 2, 4, 8, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
@@ -193,7 +219,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   for (int x = 0; x < 32; x++)
     vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
 
-  int warp_exchg_region_offset = (blockIdx.x * WARPS_PER_BLOCK + warp_id) << 4;
+  int warp_exchg_region_offset = (static_cast<int>(fi.intra_x) * WARPS_PER_BLOCK + warp_id) << 4;
   reg_exchg_cmem_twiddles_fwd<1, 2, 16>(vals, warp_exchg_region_offset);
   warp_exchg_region_offset >>= 1;
   reg_exchg_cmem_twiddles_fwd<2, 4, 8>(vals, warp_exchg_region_offset);
@@ -217,7 +243,7 @@ EXTERN __launch_bounds__(512, 1) __global__
     vals[i + 1] = smem_block[row + 32];
   }
 
-  int block_exchg_region_offset = blockIdx.x << 3;
+  int block_exchg_region_offset = static_cast<int>(fi.intra_x) << 3;
   reg_exchg_cmem_twiddles_fwd<2, 4, 8>(vals, block_exchg_region_offset);
   block_exchg_region_offset >>= 1;
   reg_exchg_cmem_twiddles_fwd<4, 8, 4>(vals, block_exchg_region_offset);

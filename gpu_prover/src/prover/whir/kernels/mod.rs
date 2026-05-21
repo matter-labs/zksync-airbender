@@ -7,6 +7,7 @@ use era_cudart::{
 };
 
 use crate::ops::simple::pow;
+use crate::primitives::context::ProverContext;
 use crate::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
@@ -14,6 +15,10 @@ use crate::primitives::field::{BF, E4};
 use crate::primitives::utils::{
     get_grid_block_dims_for_threads_count, get_grid_block_dims_for_warp_groups, GetChunksCount,
     WARP_SIZE,
+};
+use crate::prover::gkr::backward::{
+    eq_group_count, gkr_dim_reducing_launch_config, make_eq_sizes, GkrEqSizes, GKR_EQ_GROUP_TABLE_LEN,
+    GKR_EQ_HIGH_SLOTS,
 };
 use crate::upstream::FieldExtension;
 
@@ -223,63 +228,97 @@ pub(crate) fn whir_fold_split_half_in_place(
 }
 
 cuda_kernel_signature_arguments_and_function!(
-    PackRowsForWhirLeaves,
+    PackRowsForWhirLeavesMultiCoset,
     src: PtrAndStride<BF>,
     dst: MutPtrAndStride<BF>,
     log_values_per_leaf: u32,
     dst_rows_per_slot: u32,
-    row_stride: u32,
-    row_offset: u32,
-    src_cols: u32,
+    log_blocks_per_row_tile: u32,
+    log_lde_factor: u32,
+    coset_index_base: u32,
+    src_cols_per_coset: u32,
 );
 
 cuda_kernel_declaration!(
-    ab_pack_rows_for_whir_leaves_bf_kernel(
+    ab_pack_rows_for_whir_leaves_multi_coset_bf_kernel(
         src: PtrAndStride<BF>,
         dst: MutPtrAndStride<BF>,
         log_values_per_leaf: u32,
         dst_rows_per_slot: u32,
-        row_stride: u32,
-        row_offset: u32,
-        src_cols: u32,
+        log_blocks_per_row_tile: u32,
+        log_lde_factor: u32,
+        coset_index_base: u32,
+        src_cols_per_coset: u32,
     )
 );
 
-pub(crate) fn pack_rows_for_whir_leaves(
+/// Multi-coset pack: one launch handles `num_cosets_in_tile` independent
+/// cosets of an `EXT4_DEGREE`-column NTT output, writing into the bitreversed
+/// coset placement inside the WHIR-leaves packed trace.
+///
+/// Inputs:
+/// * `src` — multi-coset NTT output: rows = `dst_rows_per_slot <<
+///   log_values_per_leaf`, cols = `num_cosets_in_tile * src_cols_per_coset`
+///   with coset-major outer layout (coset `k`'s columns occupy `[k *
+///   src_cols_per_coset, (k + 1) * src_cols_per_coset)`).
+/// * `dst` — full packed trace slab: total rows `dst_rows_per_slot <<
+///   log_lde_factor`, cols `src_cols_per_coset << log_values_per_leaf`. The
+///   kernel writes coset `coset_index_base + k` at row offset
+///   `bitreverse(coset_index_base + k, log_lde_factor) * dst_rows_per_slot`.
+pub(crate) fn pack_rows_for_whir_leaves_multi_coset(
     src: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     dst: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_values_per_leaf: u32,
-    row_stride: u32,
-    row_offset: u32,
+    dst_rows_per_slot: usize,
+    log_lde_factor: u32,
+    coset_index_base: u32,
+    num_cosets_in_tile: usize,
+    src_cols_per_coset: usize,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let src_rows = src.rows();
     let src_cols = src.cols();
     let dst_rows = dst.rows();
     let dst_cols = dst.cols();
-    let dst_rows_per_slot = src_rows >> log_values_per_leaf;
-    assert_eq!(dst_rows_per_slot * row_stride as usize, dst_rows);
-    assert!(row_offset < row_stride);
-    assert_eq!(src_cols << log_values_per_leaf, dst_cols);
+    assert_eq!(src_rows, dst_rows_per_slot << log_values_per_leaf);
+    assert_eq!(src_cols, num_cosets_in_tile * src_cols_per_coset);
+    assert_eq!(dst_rows, dst_rows_per_slot << log_lde_factor);
+    assert_eq!(dst_cols, src_cols_per_coset << log_values_per_leaf);
+    assert!(num_cosets_in_tile.is_power_of_two());
+    assert!(coset_index_base as usize + num_cosets_in_tile <= 1usize << log_lde_factor);
     assert!(dst_rows_per_slot <= u32::MAX as usize);
-    assert!(src_cols <= u32::MAX as usize);
+    assert!(num_cosets_in_tile <= u32::MAX as usize);
+    assert!(src_cols_per_coset <= u32::MAX as usize);
     assert!(dst_cols <= u32::MAX as usize);
     let block_dim = (WARP_SIZE, 4);
-    let grid_dim = (
-        dst_rows_per_slot.get_chunks_count(WARP_SIZE as usize) as u32,
-        dst_cols.get_chunks_count(4) as u32,
+    // Flat blockIdx.x packs (row_block, coset_in_tile) so num_cosets_in_tile
+    // can scale to ~2^19 without hitting the gridDim.y/z 65535 cap. row_blocks
+    // is a power of two since both packed_leaf_count (= dst_rows_per_slot) and
+    // WARP_SIZE are; the kernel decomposes blockIdx.x with a shift+mask.
+    let row_blocks = dst_rows_per_slot.get_chunks_count(WARP_SIZE as usize);
+    assert!(row_blocks.is_power_of_two());
+    let log_blocks_per_row_tile = row_blocks.trailing_zeros();
+    let flat_blocks = row_blocks
+        .checked_mul(num_cosets_in_tile)
+        .expect("flat grid overflow");
+    assert!(
+        flat_blocks <= u32::MAX as usize,
+        "flat grid {flat_blocks} > u32::MAX"
     );
+    let grid_dim = (flat_blocks as u32, dst_cols.get_chunks_count(4) as u32);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = PackRowsForWhirLeavesArguments::new(
+    let args = PackRowsForWhirLeavesMultiCosetArguments::new(
         src.as_ptr_and_stride(),
         dst.as_mut_ptr_and_stride(),
         log_values_per_leaf,
         dst_rows_per_slot as u32,
-        row_stride,
-        row_offset,
-        src_cols as u32,
+        log_blocks_per_row_tile,
+        log_lde_factor,
+        coset_index_base,
+        src_cols_per_coset as u32,
     );
-    PackRowsForWhirLeavesFunction(ab_pack_rows_for_whir_leaves_bf_kernel).launch(&config, &args)
+    PackRowsForWhirLeavesMultiCosetFunction(ab_pack_rows_for_whir_leaves_multi_coset_bf_kernel)
+        .launch(&config, &args)
 }
 
 cuda_kernel!(
@@ -355,6 +394,237 @@ pub(crate) fn partially_evaluate_monomials_by_ref(
     PartiallyEvaluateMonomialFormByRefFunction(ab_partially_evaluate_monomial_form_by_ref_kernel)
         .launch(&config, &args)?;
     Ok(count / 32)
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    WhirFoldSplitHalfPair,
+    values_a: *mut E4,
+    values_b: *mut E4,
+    challenge: *const E4,
+    half_len: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_whir_fold_split_half_pair_e4_kernel(
+        values_a: *mut E4,
+        values_b: *mut E4,
+        challenge: *const E4,
+        half_len: u32,
+    )
+);
+
+pub(crate) fn whir_fold_split_half_in_place_pair(
+    values_a: &mut DeviceSlice<E4>,
+    values_b: &mut DeviceSlice<E4>,
+    challenge: &DeviceVariable<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(values_a.len(), values_b.len());
+    assert!(values_a.len().is_power_of_two());
+    assert!(values_a.len() >= 2);
+    let half_len = (values_a.len() / 2) as u32;
+    let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, half_len);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = WhirFoldSplitHalfPairArguments::new(
+        values_a.as_mut_ptr(),
+        values_b.as_mut_ptr(),
+        challenge.as_ptr(),
+        half_len,
+    );
+    WhirFoldSplitHalfPairFunction(ab_whir_fold_split_half_pair_e4_kernel).launch(&config, &args)
+}
+
+const WHIR_THREE_POINT_BLOCK_THREADS: u32 = 256;
+
+cuda_kernel_signature_arguments_and_function!(
+    WhirThreePointPartials,
+    eval: *const E4,
+    eq: *const E4,
+    partials: *mut E4,
+    half: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_whir_three_point_partials_e4_kernel(
+        eval: *const E4,
+        eq: *const E4,
+        partials: *mut E4,
+        half: u32,
+    )
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    WhirThreePointFinalize,
+    partials: *const E4,
+    num_blocks: u32,
+    reduce_out: *mut E4,
+);
+
+cuda_kernel_declaration!(
+    ab_whir_three_point_finalize_e4_kernel(
+        partials: *const E4,
+        num_blocks: u32,
+        reduce_out: *mut E4,
+    )
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    WhirThreePointCombined,
+    eval: *const E4,
+    eq: *const E4,
+    reduce_out: *mut E4,
+    half: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_whir_three_point_combined_e4_kernel(
+        eval: *const E4,
+        eq: *const E4,
+        reduce_out: *mut E4,
+        half: u32,
+    )
+);
+
+/// Computes the three sumcheck partials into `reduce_out[0..3]`. Picks the
+/// single-launch combined kernel when `half` fits in one block, otherwise
+/// stage-1 partials + stage-2 finalize. `partials` (typically `state.scratch0`)
+/// must hold at least `num_blocks * 3` E4 on the two-launch path.
+pub(crate) fn launch_whir_three_point_partials(
+    eval: &DeviceSlice<E4>,
+    eq: &DeviceSlice<E4>,
+    partials: &mut DeviceSlice<E4>,
+    reduce_out: &mut DeviceSlice<E4>,
+    half: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(eval.len() >= 2 * half);
+    assert!(eq.len() >= 2 * half);
+    assert!(reduce_out.len() >= 3);
+    assert!(half >= 1);
+    assert!(half <= u32::MAX as usize);
+
+    let block = WHIR_THREE_POINT_BLOCK_THREADS;
+    if half as u32 <= block {
+        let config = CudaLaunchConfig::basic(1, block, stream);
+        let args = WhirThreePointCombinedArguments::new(
+            eval.as_ptr(),
+            eq.as_ptr(),
+            reduce_out.as_mut_ptr(),
+            half as u32,
+        );
+        return WhirThreePointCombinedFunction(ab_whir_three_point_combined_e4_kernel)
+            .launch(&config, &args);
+    }
+
+    let num_blocks = half.div_ceil(block as usize) as u32;
+    assert!(partials.len() >= (num_blocks as usize) * 3);
+    let partials_ptr = partials.as_mut_ptr();
+    let stage1_config = CudaLaunchConfig::basic(num_blocks, block, stream);
+    let stage1_args =
+        WhirThreePointPartialsArguments::new(eval.as_ptr(), eq.as_ptr(), partials_ptr, half as u32);
+    WhirThreePointPartialsFunction(ab_whir_three_point_partials_e4_kernel)
+        .launch(&stage1_config, &stage1_args)?;
+
+    let stage2_config = CudaLaunchConfig::basic(1, block, stream);
+    let stage2_args =
+        WhirThreePointFinalizeArguments::new(partials_ptr, num_blocks, reduce_out.as_mut_ptr());
+    WhirThreePointFinalizeFunction(ab_whir_three_point_finalize_e4_kernel)
+        .launch(&stage2_config, &stage2_args)
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    WhirBuildEqFactorTablesBatched,
+    claim_points: *const E4,
+    challenge_count: u32,
+    eq_high_array: *mut E4,
+    eq_low_array: *mut E4,
+);
+
+cuda_kernel_declaration!(
+    ab_whir_build_eq_factor_tables_batched_e4_kernel(
+        claim_points: *const E4,
+        challenge_count: u32,
+        eq_high_array: *mut E4,
+        eq_low_array: *mut E4,
+    )
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    WhirAccumulateEqSamplesBatched,
+    eq_high_array: *const E4,
+    eq_low_array: *const E4,
+    sizes: GkrEqSizes,
+    challenges: *const E4,
+    eq_poly: *mut E4,
+    num_queries: u32,
+    acc_size: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_whir_accumulate_eq_samples_batched_e4_kernel(
+        eq_high_array: *const E4,
+        eq_low_array: *const E4,
+        sizes: GkrEqSizes,
+        challenges: *const E4,
+        eq_poly: *mut E4,
+        num_queries: u32,
+        acc_size: u32,
+    )
+);
+
+/// `(eq_high_array_len, eq_low_array_len)` in E4 for `num_queries` queries.
+pub(crate) fn batched_eq_factor_scratch_lens(num_queries: usize) -> (usize, usize) {
+    (
+        num_queries * GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN,
+        num_queries * GKR_EQ_GROUP_TABLE_LEN,
+    )
+}
+
+/// Builds per-query factored-eq slabs and folds
+/// `sum_q( eq(point_q, gid) * challenges[q] )` into `eq_poly[gid]` (RMW).
+/// Two launches regardless of `num_queries`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_batched_accumulate_eq_samples(
+    claim_points: *const E4,
+    challenges: *const E4,
+    num_queries: usize,
+    challenge_count: usize,
+    eq_high_array: *mut E4,
+    eq_low_array: *mut E4,
+    eq_poly: *mut E4,
+    acc_size: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(num_queries <= u32::MAX as usize);
+    assert!(challenge_count <= u32::MAX as usize);
+    assert!(acc_size <= u32::MAX as usize);
+    let blocks_x = eq_group_count(challenge_count).max(GKR_EQ_HIGH_SLOTS);
+    let build_config = CudaLaunchConfig::basic(
+        (blocks_x as u32, num_queries as u32, 1u32),
+        GKR_EQ_GROUP_TABLE_LEN as u32,
+        context.get_exec_stream(),
+    );
+    let build_args = WhirBuildEqFactorTablesBatchedArguments::new(
+        claim_points,
+        challenge_count as u32,
+        eq_high_array,
+        eq_low_array,
+    );
+    WhirBuildEqFactorTablesBatchedFunction(ab_whir_build_eq_factor_tables_batched_e4_kernel)
+        .launch(&build_config, &build_args)?;
+
+    let acc_config = gkr_dim_reducing_launch_config(acc_size as u32, context);
+    let acc_args = WhirAccumulateEqSamplesBatchedArguments::new(
+        eq_high_array,
+        eq_low_array,
+        make_eq_sizes(challenge_count),
+        challenges,
+        eq_poly,
+        num_queries as u32,
+        acc_size as u32,
+    );
+    WhirAccumulateEqSamplesBatchedFunction(ab_whir_accumulate_eq_samples_batched_e4_kernel)
+        .launch(&acc_config, &acc_args)
 }
 
 #[cfg(test)]

@@ -228,4 +228,39 @@ DEVICE_FORCEINLINE void prefetch_pipeline_group(bf *vals, const bf_matrix_getter
     vals[GROUP + i * PL_STRIDE] = gmem_in.get_at_row(row);
 }
 
+// Flat blockIdx.x layout for NTT dispatchers. Host packs (innermost to
+// outermost):
+//   gridDim.x = intra_ntt_blocks * cosets_per_launch * cols_per_launch  (1-D intra-NTT)
+//   gridDim.x = intra_x * intra_y * cosets_per_launch * cols_per_launch (2-D intra-NTT)
+// The kernel reconstructs its per-NTT block index, coset, and column with
+// `decompose_flat_2d` / `_1d`. The intra-NTT and coset extents are powers of 2
+// so their shifts compile to single ops; the column extent is the remaining
+// linear range and is not required to be a power of 2 (callers like the
+// witness LDE can pass odd column counts). `log_blocks_y = 0` for 1-D kernels
+// collapses cleanly: `intra_y` is always 0 and contributes nothing.
+struct FlatBlockIndex {
+  unsigned intra_x;
+  unsigned intra_y; // 0 for 1-D intra-NTT
+  unsigned coset;   // 0 for single-coset callers
+  unsigned col;
+};
+
+DEVICE_FORCEINLINE FlatBlockIndex decompose_flat_2d(const unsigned log_intra_blocks_x, const unsigned log_intra_blocks_y,
+                                                    const unsigned log_cosets_in_tile = 0u) {
+  unsigned linear = blockIdx.x;
+  FlatBlockIndex r;
+  r.intra_x = linear & ((1u << log_intra_blocks_x) - 1u);
+  linear >>= log_intra_blocks_x;
+  r.intra_y = linear & ((1u << log_intra_blocks_y) - 1u);
+  linear >>= log_intra_blocks_y;
+  r.coset = linear & ((1u << log_cosets_in_tile) - 1u);
+  linear >>= log_cosets_in_tile;
+  r.col = linear;
+  return r;
+}
+
+DEVICE_FORCEINLINE FlatBlockIndex decompose_flat_1d(const unsigned log_intra_blocks, const unsigned log_cosets_in_tile = 0u) {
+  return decompose_flat_2d(log_intra_blocks, 0u, log_cosets_in_tile);
+}
+
 } // namespace airbender::ntt

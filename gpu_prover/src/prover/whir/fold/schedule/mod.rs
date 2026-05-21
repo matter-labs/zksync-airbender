@@ -275,118 +275,171 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let lde_factor_base = 1usize << log_lde_factor_base;
         let coset_tree_size_log2 =
             (memory_trace_holder.log_domain_size - memory_trace_holder.log_rows_per_leaf) as u32;
-        // Build up to three slab destinations (Memory/Witness/Setup) and fan
-        // the tree-index kernel out into them directly — no temp buffer, no
-        // per-destination D2D. Each slab range is disjoint (different oracle
-        // types), so the three `&mut` views below do not alias.
-        // SAFETY: `whir_base_query_indices_device_mut` returns a live,
-        // non-overlapping mutable region for the named base oracle's
-        // `query_indices` slab range; the three regions are disjoint.
-        let (memory_idx_ptr, memory_idx_len) = unsafe {
-            proof_layout.whir_base_query_indices_device_mut(
-                proof_slab.as_ptr() as *mut u8,
-                crate::prover::proof::layout::WhirBaseLayerKind::Memory,
-            )
+        // The three base oracles (setup/memory/witness) sample the same
+        // tree-space indices, so the slab stores a single shared range.
+        // SAFETY: `whir_base_query_indices_device_mut` returns the live
+        // shared `base_query_indices` slab range; the `&mut DeviceSlice<u32>`
+        // view below is the sole writer for this region.
+        let (base_idx_ptr, base_idx_len) = unsafe {
+            proof_layout.whir_base_query_indices_device_mut(proof_slab.as_ptr() as *mut u8)
         };
-        let (witness_idx_ptr, witness_idx_len) = unsafe {
-            proof_layout.whir_base_query_indices_device_mut(
-                proof_slab.as_ptr() as *mut u8,
-                crate::prover::proof::layout::WhirBaseLayerKind::Witness,
-            )
+        assert_eq!(base_idx_len, num_queries);
+        let base_indices_dst = unsafe {
+            era_cudart::slice::DeviceSlice::from_raw_parts_mut(base_idx_ptr, base_idx_len)
         };
-        let (setup_idx_ptr, setup_idx_len) = unsafe {
-            proof_layout.whir_base_query_indices_device_mut(
-                proof_slab.as_ptr() as *mut u8,
-                crate::prover::proof::layout::WhirBaseLayerKind::Setup,
-            )
-        };
-        // SAFETY: each `idx_ptr` is 4-byte aligned u32 inside the live slab
-        // and the three slab subranges are pairwise disjoint, so the three
-        // `&mut DeviceSlice<u32>` views below are non-aliasing.
-        let memory_dst = if memory_idx_len == 0 {
-            None
-        } else {
-            assert_eq!(memory_idx_len, num_queries);
-            Some(unsafe {
-                era_cudart::slice::DeviceSlice::from_raw_parts_mut(memory_idx_ptr, memory_idx_len)
-            })
-        };
-        let witness_dst = if witness_idx_len == 0 {
-            None
-        } else {
-            assert_eq!(witness_idx_len, num_queries);
-            Some(unsafe {
-                era_cudart::slice::DeviceSlice::from_raw_parts_mut(witness_idx_ptr, witness_idx_len)
-            })
-        };
-        let setup_dst = if setup_idx_len == 0 {
-            None
-        } else {
-            assert_eq!(setup_idx_len, num_queries);
-            Some(unsafe {
-                era_cudart::slice::DeviceSlice::from_raw_parts_mut(setup_idx_ptr, setup_idx_len)
-            })
-        };
-        crate::ops::blake2s::query_index_to_tree_index_multi_out(
+        crate::ops::blake2s::query_index_to_tree_index(
             device_query_indexes_for_base,
-            memory_dst,
-            witness_dst,
-            setup_dst,
+            base_indices_dst,
             log_lde_factor_base,
             coset_tree_size_log2,
             stream,
         )?;
-        // Per (oracle, coset): gather leaves and paths into slab.
-        let gather_one_oracle = |trace_holder: &mut TraceHolder<BF>,
-                                 which: crate::prover::proof::layout::WhirBaseLayerKind|
-         -> CudaResult<()> {
-            if trace_holder.columns_count == 0 {
-                return Ok(());
-            }
-            // SAFETY: layout returns disjoint slab regions for leaves and paths.
-            let (leaves_ptr, leaves_len) = unsafe {
-                proof_layout
-                    .whir_base_query_leaves_device_mut(proof_slab.as_ptr() as *mut u8, which)
-            };
-            let (paths_ptr, paths_len) = unsafe {
-                proof_layout.whir_base_query_paths_device_mut(proof_slab.as_ptr() as *mut u8, which)
-            };
-            for coset_idx in 0..lde_factor_base {
-                // SAFETY: per-coset slab destination slices are stable across
-                // coset iterations; each pass writes only the queries whose
-                // coset matches `coset_idx`, so passes do not race each other.
-                let leaves_dst = unsafe {
-                    era_cudart::slice::DeviceSlice::from_raw_parts_mut(leaves_ptr, leaves_len)
+        // Single-launch multi-oracle base-round gather (Step 3 consolidation).
+        // Memory / Witness / Setup share `log_lde_factor`, `log_domain_size`,
+        // and `log_rows_per_leaf` (asserted above) and all run in
+        // `TreesCacheMode::CachePartial`. We descriptor-pack the three
+        // oracles and launch the consolidated leaf and partial-path kernels
+        // once each, replacing the legacy 3 × lde_factor per-coset filter
+        // pattern. Empty-`columns_count` oracles are skipped in-kernel.
+        memory_trace_holder.ensure_cosets_materialized(context)?;
+        witness_trace_holder.ensure_cosets_materialized(context)?;
+        setup_trace_holder.ensure_cosets_materialized(context)?;
+        let base_log_domain_size = memory_trace_holder.log_domain_size;
+        let base_log_rows_per_leaf = memory_trace_holder.log_rows_per_leaf;
+        debug_assert_eq!(witness_trace_holder.log_domain_size, base_log_domain_size);
+        debug_assert_eq!(setup_trace_holder.log_domain_size, base_log_domain_size);
+        debug_assert_eq!(
+            witness_trace_holder.log_rows_per_leaf,
+            base_log_rows_per_leaf
+        );
+        debug_assert_eq!(
+            setup_trace_holder.log_rows_per_leaf,
+            base_log_rows_per_leaf
+        );
+        let base_log_total_leaves_count = base_log_domain_size - base_log_rows_per_leaf;
+        let base_oracle_descs = |holders: [&TraceHolder<BF>; 3],
+                                 slab_ptrs: [u64; 6]|
+         -> (
+            [crate::ops::blake2s::OracleGatherDesc; 3],
+            [crate::ops::blake2s::OraclePartialPathDesc; 3],
+            u32,
+        ) {
+            let mut leaves = [crate::ops::blake2s::OracleGatherDesc::default(); 3];
+            let mut paths = [crate::ops::blake2s::OraclePartialPathDesc::default(); 3];
+            let mut common_stride: Option<u32> = None;
+            for (i, holder) in holders.iter().enumerate() {
+                if holder.columns_count == 0 {
+                    continue;
+                }
+                let cosets = holder.get_consolidated_cosets();
+                let tree = holder
+                    .get_consolidated_tree()
+                    .expect("base oracles run with TreesCacheMode::CachePartial");
+                let stride = (tree.len() / (1usize << holder.log_lde_factor)) as u32;
+                match common_stride {
+                    None => common_stride = Some(stride),
+                    Some(s) => debug_assert_eq!(s, stride),
+                }
+                leaves[i] = crate::ops::blake2s::OracleGatherDesc {
+                    cosets_ptr: cosets.as_ptr() as u64,
+                    columns_count: holder.columns_count as u32,
+                    _pad: 0,
+                    slab_dst_ptr: slab_ptrs[i * 2],
                 };
-                trace_holder.schedule_query_leafs_for_coset_into(
-                    coset_idx,
-                    device_query_indexes_for_base,
-                    leaves_dst,
-                    context,
-                )?;
-                let paths_dst = unsafe {
-                    era_cudart::slice::DeviceSlice::from_raw_parts_mut(paths_ptr, paths_len)
+                paths[i] = crate::ops::blake2s::OraclePartialPathDesc {
+                    cosets_ptr: cosets.as_ptr() as u64,
+                    partial_tree_ptr: tree.as_ptr() as u64,
+                    columns_count: holder.columns_count as u32,
+                    _pad: 0,
+                    slab_dst_ptr: slab_ptrs[i * 2 + 1],
                 };
-                trace_holder.schedule_query_merkle_paths_for_coset_into(
-                    coset_idx,
-                    device_query_indexes_for_base,
-                    paths_dst,
-                    context,
-                )?;
             }
-            Ok(())
+            (leaves, paths, common_stride.unwrap_or(0))
         };
-        gather_one_oracle(
-            memory_trace_holder,
-            crate::prover::proof::layout::WhirBaseLayerKind::Memory,
+        // SAFETY: layout returns disjoint slab regions for each oracle's
+        // leaves and paths; the six destinations are pairwise non-aliasing.
+        let memory_leaves_ptr = unsafe {
+            proof_layout.whir_base_query_leaves_device_mut(
+                proof_slab.as_ptr() as *mut u8,
+                crate::prover::proof::layout::WhirBaseLayerKind::Memory,
+            )
+        }
+        .0 as u64;
+        let memory_paths_ptr = unsafe {
+            proof_layout.whir_base_query_paths_device_mut(
+                proof_slab.as_ptr() as *mut u8,
+                crate::prover::proof::layout::WhirBaseLayerKind::Memory,
+            )
+        }
+        .0 as u64;
+        let witness_leaves_ptr = unsafe {
+            proof_layout.whir_base_query_leaves_device_mut(
+                proof_slab.as_ptr() as *mut u8,
+                crate::prover::proof::layout::WhirBaseLayerKind::Witness,
+            )
+        }
+        .0 as u64;
+        let witness_paths_ptr = unsafe {
+            proof_layout.whir_base_query_paths_device_mut(
+                proof_slab.as_ptr() as *mut u8,
+                crate::prover::proof::layout::WhirBaseLayerKind::Witness,
+            )
+        }
+        .0 as u64;
+        let setup_leaves_ptr = unsafe {
+            proof_layout.whir_base_query_leaves_device_mut(
+                proof_slab.as_ptr() as *mut u8,
+                crate::prover::proof::layout::WhirBaseLayerKind::Setup,
+            )
+        }
+        .0 as u64;
+        let setup_paths_ptr = unsafe {
+            proof_layout.whir_base_query_paths_device_mut(
+                proof_slab.as_ptr() as *mut u8,
+                crate::prover::proof::layout::WhirBaseLayerKind::Setup,
+            )
+        }
+        .0 as u64;
+        let slab_ptrs: [u64; 6] = [
+            memory_leaves_ptr,
+            memory_paths_ptr,
+            witness_leaves_ptr,
+            witness_paths_ptr,
+            setup_leaves_ptr,
+            setup_paths_ptr,
+        ];
+        let (leaves_descs, paths_descs, stride_per_coset_in_digests) = base_oracle_descs(
+            [
+                &*memory_trace_holder,
+                &*witness_trace_holder,
+                &*setup_trace_holder,
+            ],
+            slab_ptrs,
+        );
+        crate::ops::blake2s::gather_leaves_for_queries(
+            &leaves_descs,
+            3,
+            log_lde_factor_base,
+            base_log_domain_size,
+            base_log_rows_per_leaf,
+            device_query_indexes_for_base,
+            stream,
         )?;
-        gather_one_oracle(
-            witness_trace_holder,
-            crate::prover::proof::layout::WhirBaseLayerKind::Witness,
-        )?;
-        gather_one_oracle(
-            setup_trace_holder,
-            crate::prover::proof::layout::WhirBaseLayerKind::Setup,
+        // Mirrors `TraceHolder::query_merkle_path_layout`'s `layers_count`
+        // formula. All three base oracles share the inputs (asserted above).
+        let base_layers_count = memory_trace_holder.log_domain_size
+            - memory_trace_holder.log_rows_per_leaf
+            - (memory_trace_holder.log_tree_cap_size - memory_trace_holder.log_lde_factor);
+        crate::ops::blake2s::gather_merkle_paths_partial_for_queries(
+            &paths_descs,
+            3,
+            log_lde_factor_base,
+            base_log_rows_per_leaf,
+            base_log_total_leaves_count,
+            stride_per_coset_in_digests,
+            base_layers_count,
+            device_query_indexes_for_base,
+            stream,
         )?;
         // Phase C (WHIR-on-device): materialize all per-query squaring
         // sequences in a single kernel launch reading device-resident query
@@ -404,16 +457,14 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             count_per_query as u32,
             stream,
         )?;
-        for query_idx in 0..num_queries {
-            let slice =
-                &per_query_pows[query_idx * count_per_query..(query_idx + 1) * count_per_query];
-            schedule_accumulate_eq_sample_in_place_device_inner(
-                &mut state,
-                slice,
-                &delinearization_device[query_idx + 1..query_idx + 2],
-                context,
-            )?;
-        }
+        let (eq_high_scratch, eq_low_scratch) = schedule_accumulate_eq_samples_batched(
+            &mut state,
+            &per_query_pows[..],
+            &delinearization_device[1..1 + num_queries],
+            num_queries,
+            count_per_query,
+            context,
+        )?;
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
         // Retain the per-round callbacks so they outlive every scheduled
@@ -421,6 +472,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         query_index_callbacks.push(query_index_callbacks_for_round);
         delinearization_ephemerals.push(delinearization_device);
         delinearization_ephemerals.push(per_query_pows);
+        delinearization_ephemerals.push(eq_high_scratch);
+        delinearization_ephemerals.push(eq_low_scratch);
         round_range.end(stream)?;
         tracing_ranges.push(round_range);
     }
@@ -586,22 +639,22 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             count_per_query as u32,
             stream,
         )?;
-        for query_idx in 0..num_queries {
-            let slice =
-                &per_query_pows[query_idx * count_per_query..(query_idx + 1) * count_per_query];
-            schedule_accumulate_eq_sample_in_place_device_inner(
-                &mut state,
-                slice,
-                &delinearization_device[query_idx + 1..query_idx + 2],
-                context,
-            )?;
-        }
+        let (eq_high_scratch, eq_low_scratch) = schedule_accumulate_eq_samples_batched(
+            &mut state,
+            &per_query_pows[..],
+            &delinearization_device[1..1 + num_queries],
+            num_queries,
+            count_per_query,
+            context,
+        )?;
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
         recursive_caps_keepalive.push(oracle_to_query.into_host_keepalive());
         query_index_callbacks.push(query_index_callbacks_for_round);
         delinearization_ephemerals.push(delinearization_device);
         delinearization_ephemerals.push(per_query_pows);
+        delinearization_ephemerals.push(eq_high_scratch);
+        delinearization_ephemerals.push(eq_low_scratch);
         round_range.end(stream)?;
         tracing_ranges.push(round_range);
     }

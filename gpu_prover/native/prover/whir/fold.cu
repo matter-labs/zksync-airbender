@@ -45,6 +45,155 @@ EXTERN __global__ void ab_whir_fold_split_half_e4_kernel(e4 *values, const e4 *c
   store<e4, st_modifier::cs>(values, folded, gid);
 }
 
+// Paired (eval_form, eq_poly) split-half fold sharing a single challenge.
+EXTERN __global__ void ab_whir_fold_split_half_pair_e4_kernel(e4 *values_a, e4 *values_b, const e4 *challenge, const unsigned half_len) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= half_len)
+    return;
+
+  const e4 c = *challenge;
+  const e4 a_lo = load<e4, ld_modifier::cs>(values_a, gid);
+  const e4 a_hi = load<e4, ld_modifier::cs>(values_a, half_len + gid);
+  store<e4, st_modifier::cs>(values_a, e4::fma(c, e4::sub(a_hi, a_lo), a_lo), gid);
+  const e4 b_lo = load<e4, ld_modifier::cs>(values_b, gid);
+  const e4 b_hi = load<e4, ld_modifier::cs>(values_b, half_len + gid);
+  store<e4, st_modifier::cs>(values_b, e4::fma(c, e4::sub(b_hi, b_lo), b_lo), gid);
+}
+
+// WHIR sumcheck three-point partials. Each block stride-reduces its slice of
+// [0, half) into three block-local sums; the finalize kernel sums across blocks.
+//   p0 = sum_i eval[i] * eq[i]
+//   p1 = sum_i eval[half+i] * eq[half+i]
+//   p2 = sum_i (eval[i] + eval[half+i]) * (eq[i] + eq[half+i])
+constexpr unsigned WHIR_THREE_POINT_BLOCK_THREADS = 256;
+
+EXTERN __global__ void ab_whir_three_point_partials_e4_kernel(const e4 *__restrict__ eval, const e4 *__restrict__ eq, e4 *__restrict__ partials,
+                                                              const unsigned half) {
+  __shared__ e4 smem_p0[WHIR_THREE_POINT_BLOCK_THREADS];
+  __shared__ e4 smem_p1[WHIR_THREE_POINT_BLOCK_THREADS];
+  __shared__ e4 smem_p2[WHIR_THREE_POINT_BLOCK_THREADS];
+
+  const unsigned tid = threadIdx.x;
+  const unsigned stride = gridDim.x * blockDim.x;
+
+  e4 acc0 = e4::ZERO();
+  e4 acc1 = e4::ZERO();
+  e4 acc2 = e4::ZERO();
+
+  for (unsigned i = blockIdx.x * blockDim.x + tid; i < half; i += stride) {
+    const e4 ev_lo = load<e4, ld_modifier::cs>(eval, i);
+    const e4 ev_hi = load<e4, ld_modifier::cs>(eval, half + i);
+    const e4 eq_lo = load<e4, ld_modifier::cs>(eq, i);
+    const e4 eq_hi = load<e4, ld_modifier::cs>(eq, half + i);
+    acc0 = e4::add(acc0, e4::mul(ev_lo, eq_lo));
+    acc1 = e4::add(acc1, e4::mul(ev_hi, eq_hi));
+    acc2 = e4::add(acc2, e4::mul(e4::add(ev_lo, ev_hi), e4::add(eq_lo, eq_hi)));
+  }
+
+  smem_p0[tid] = acc0;
+  smem_p1[tid] = acc1;
+  smem_p2[tid] = acc2;
+  __syncthreads();
+
+#pragma unroll
+  for (unsigned offset = WHIR_THREE_POINT_BLOCK_THREADS / 2; offset > 0; offset >>= 1) {
+    if (tid < offset) {
+      smem_p0[tid] = e4::add(smem_p0[tid], smem_p0[tid + offset]);
+      smem_p1[tid] = e4::add(smem_p1[tid], smem_p1[tid + offset]);
+      smem_p2[tid] = e4::add(smem_p2[tid], smem_p2[tid + offset]);
+    }
+    __syncthreads();
+  }
+
+  if (tid == 0) {
+    partials[blockIdx.x * 3u + 0u] = smem_p0[0];
+    partials[blockIdx.x * 3u + 1u] = smem_p1[0];
+    partials[blockIdx.x * 3u + 2u] = smem_p2[0];
+  }
+}
+
+EXTERN __global__ void ab_whir_three_point_finalize_e4_kernel(const e4 *__restrict__ partials, const unsigned num_blocks, e4 *__restrict__ reduce_out) {
+  __shared__ e4 smem_p0[WHIR_THREE_POINT_BLOCK_THREADS];
+  __shared__ e4 smem_p1[WHIR_THREE_POINT_BLOCK_THREADS];
+  __shared__ e4 smem_p2[WHIR_THREE_POINT_BLOCK_THREADS];
+
+  const unsigned tid = threadIdx.x;
+
+  e4 acc0 = e4::ZERO();
+  e4 acc1 = e4::ZERO();
+  e4 acc2 = e4::ZERO();
+  for (unsigned b = tid; b < num_blocks; b += WHIR_THREE_POINT_BLOCK_THREADS) {
+    acc0 = e4::add(acc0, partials[b * 3u + 0u]);
+    acc1 = e4::add(acc1, partials[b * 3u + 1u]);
+    acc2 = e4::add(acc2, partials[b * 3u + 2u]);
+  }
+
+  smem_p0[tid] = acc0;
+  smem_p1[tid] = acc1;
+  smem_p2[tid] = acc2;
+  __syncthreads();
+
+#pragma unroll
+  for (unsigned offset = WHIR_THREE_POINT_BLOCK_THREADS / 2; offset > 0; offset >>= 1) {
+    if (tid < offset) {
+      smem_p0[tid] = e4::add(smem_p0[tid], smem_p0[tid + offset]);
+      smem_p1[tid] = e4::add(smem_p1[tid], smem_p1[tid + offset]);
+      smem_p2[tid] = e4::add(smem_p2[tid], smem_p2[tid + offset]);
+    }
+    __syncthreads();
+  }
+
+  if (tid == 0) {
+    reduce_out[0] = smem_p0[0];
+    reduce_out[1] = smem_p1[0];
+    reduce_out[2] = smem_p2[0];
+  }
+}
+
+// Single-launch path for tiny `half` (<= WHIR_THREE_POINT_BLOCK_THREADS):
+// fuses partials + finalize into one block, no partials buffer.
+EXTERN __global__ void ab_whir_three_point_combined_e4_kernel(const e4 *__restrict__ eval, const e4 *__restrict__ eq, e4 *__restrict__ reduce_out,
+                                                              const unsigned half) {
+  __shared__ e4 smem_p0[WHIR_THREE_POINT_BLOCK_THREADS];
+  __shared__ e4 smem_p1[WHIR_THREE_POINT_BLOCK_THREADS];
+  __shared__ e4 smem_p2[WHIR_THREE_POINT_BLOCK_THREADS];
+
+  const unsigned tid = threadIdx.x;
+
+  e4 acc0 = e4::ZERO();
+  e4 acc1 = e4::ZERO();
+  e4 acc2 = e4::ZERO();
+  if (tid < half) {
+    const e4 ev_lo = load<e4, ld_modifier::cs>(eval, tid);
+    const e4 ev_hi = load<e4, ld_modifier::cs>(eval, half + tid);
+    const e4 eq_lo = load<e4, ld_modifier::cs>(eq, tid);
+    const e4 eq_hi = load<e4, ld_modifier::cs>(eq, half + tid);
+    acc0 = e4::mul(ev_lo, eq_lo);
+    acc1 = e4::mul(ev_hi, eq_hi);
+    acc2 = e4::mul(e4::add(ev_lo, ev_hi), e4::add(eq_lo, eq_hi));
+  }
+  smem_p0[tid] = acc0;
+  smem_p1[tid] = acc1;
+  smem_p2[tid] = acc2;
+  __syncthreads();
+
+#pragma unroll
+  for (unsigned offset = WHIR_THREE_POINT_BLOCK_THREADS / 2; offset > 0; offset >>= 1) {
+    if (tid < offset) {
+      smem_p0[tid] = e4::add(smem_p0[tid], smem_p0[tid + offset]);
+      smem_p1[tid] = e4::add(smem_p1[tid], smem_p1[tid + offset]);
+      smem_p2[tid] = e4::add(smem_p2[tid], smem_p2[tid + offset]);
+    }
+    __syncthreads();
+  }
+
+  if (tid == 0) {
+    reduce_out[0] = smem_p0[0];
+    reduce_out[1] = smem_p1[0];
+    reduce_out[2] = smem_p2[0];
+  }
+}
+
 DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsigned num_bits) { return __brev(value) >> (32 - num_bits); }
 
 DEVICE_FORCEINLINE void partially_evaluate_monomial_form_small_impl(vectorized_e4_matrix_getter<ld_modifier::cg> src, e4 *dst, const e4 z,

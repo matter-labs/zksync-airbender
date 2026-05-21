@@ -94,12 +94,14 @@ impl ProofLayout {
         Self::device_typed::<E4>(slab_base, &self.whir_base(which).evals)
     }
 
+    /// Shared base-oracle `query_indices` range. The three base oracles
+    /// (setup/memory/witness) reuse a single slab range — see
+    /// `WhirLayout::base_query_indices`.
     pub(crate) unsafe fn whir_base_query_indices_device_mut(
         &self,
         slab_base: *mut u8,
-        which: WhirBaseLayerKind,
     ) -> (*mut u32, usize) {
-        Self::device_typed::<u32>(slab_base, &self.whir_base(which).query_indices)
+        Self::device_typed::<u32>(slab_base, &self.whir.base_query_indices)
     }
 
     pub(crate) unsafe fn whir_base_query_leaves_device_mut(
@@ -306,11 +308,13 @@ impl ProofLayout {
                 })
                 .collect()
         };
-        let base = |which: WhirBaseLayerKind| -> WhirBaseLayerCommitmentAndQueries<
-            BF,
-            E4,
-            DefaultTreeConstructor,
-        > {
+        // Shared across all three base oracles — the setup/memory/witness
+        // oracles sample the same tree-space indices, so the slab stores one
+        // copy. See `WhirLayout::base_query_indices`.
+        let base_indices = self.whir_base_query_indices_host(slab);
+        let base = |which: WhirBaseLayerKind,
+                    indices: &[u32]|
+         -> WhirBaseLayerCommitmentAndQueries<BF, E4, DefaultTreeConstructor> {
             let base_layout = self.whir_base(which);
             let cap_flat = self.whir_base_cap_host(slab, which);
             let cap = digest_bytes_of(cap_flat);
@@ -318,29 +322,27 @@ impl ProofLayout {
             let query_count = base_layout.query_count;
             let leaf_values_len = base_layout.leaf_values_len;
             let path_len = base_layout.path_len;
-            let queries: Vec<BaseFieldQuery<BF, DefaultTreeConstructor>> = if query_count == 0
-                || base_layout.num_columns == 0
-            {
-                Vec::new()
-            } else {
-                let indices = self.whir_base_query_indices_host(slab, which);
-                let leaves = self.whir_base_query_leaves_host(slab, which);
-                let paths_flat = self.whir_base_query_paths_host(slab, which);
-                (0..query_count)
-                    .map(|q| {
-                        let leaf_start = q * leaf_values_len;
-                        let leaf_end = leaf_start + leaf_values_len;
-                        let path_start_u32 = q * path_len * DIGEST_U32_WORDS;
-                        let path_end_u32 = path_start_u32 + path_len * DIGEST_U32_WORDS;
-                        BaseFieldQuery {
-                            index: indices[q] as usize,
-                            leaf_values_concatenated: leaves[leaf_start..leaf_end].to_vec(),
-                            path: digest_bytes_of(&paths_flat[path_start_u32..path_end_u32]),
-                            _marker: PhantomData,
-                        }
-                    })
-                    .collect()
-            };
+            let queries: Vec<BaseFieldQuery<BF, DefaultTreeConstructor>> =
+                if query_count == 0 || base_layout.num_columns == 0 {
+                    Vec::new()
+                } else {
+                    let leaves = self.whir_base_query_leaves_host(slab, which);
+                    let paths_flat = self.whir_base_query_paths_host(slab, which);
+                    (0..query_count)
+                        .map(|q| {
+                            let leaf_start = q * leaf_values_len;
+                            let leaf_end = leaf_start + leaf_values_len;
+                            let path_start_u32 = q * path_len * DIGEST_U32_WORDS;
+                            let path_end_u32 = path_start_u32 + path_len * DIGEST_U32_WORDS;
+                            BaseFieldQuery {
+                                index: indices[q] as usize,
+                                leaf_values_concatenated: leaves[leaf_start..leaf_end].to_vec(),
+                                path: digest_bytes_of(&paths_flat[path_start_u32..path_end_u32]),
+                                _marker: PhantomData,
+                            }
+                        })
+                        .collect()
+                };
             WhirBaseLayerCommitmentAndQueries {
                 commitment: WhirCommitment {
                     cap: MerkleTreeCapVarLength { cap },
@@ -351,9 +353,9 @@ impl ProofLayout {
                 queries,
             }
         };
-        let setup_commitment = base(WhirBaseLayerKind::Setup);
-        let memory_commitment = base(WhirBaseLayerKind::Memory);
-        let witness_commitment = base(WhirBaseLayerKind::Witness);
+        let setup_commitment = base(WhirBaseLayerKind::Setup, base_indices);
+        let memory_commitment = base(WhirBaseLayerKind::Memory, base_indices);
+        let witness_commitment = base(WhirBaseLayerKind::Witness, base_indices);
         let intermediate_whir_oracles: Vec<
             WhirIntermediateCommitmentAndQueries<BF, E4, DefaultTreeConstructor>,
         > = self
@@ -509,12 +511,11 @@ impl ProofLayout {
         Self::host_typed::<E4>(slab, &self.whir_base(which).evals)
     }
 
-    pub(crate) fn whir_base_query_indices_host<'a>(
-        &self,
-        slab: &'a [u8],
-        which: WhirBaseLayerKind,
-    ) -> &'a [u32] {
-        Self::host_typed::<u32>(slab, &self.whir_base(which).query_indices)
+    /// Shared base-oracle `query_indices` slice. The three base oracles
+    /// (setup/memory/witness) reuse a single slab range — see
+    /// `WhirLayout::base_query_indices`.
+    pub(crate) fn whir_base_query_indices_host<'a>(&self, slab: &'a [u8]) -> &'a [u32] {
+        Self::host_typed::<u32>(slab, &self.whir.base_query_indices)
     }
 
     pub(crate) fn whir_base_query_leaves_host<'a>(

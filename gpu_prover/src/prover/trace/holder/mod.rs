@@ -6,18 +6,20 @@ use era_cudart::stream::CudaStream;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::{
-    build_merkle_tree, build_merkle_tree_nodes, gather_tree_caps_inline, merkle_tree_cap, Digest,
+    build_merkle_tree, build_merkle_tree_multi_coset, build_merkle_tree_nodes,
+    build_merkle_tree_nodes_multi_coset, build_merkle_tree_nodes_multi_coset_from_external_src,
+    gather_tree_caps_inline, Digest,
 };
 #[cfg(test)]
 use crate::ops::blake2s::{
     gather_leaf_rows, gather_merkle_paths_device, gather_merkle_paths_from_rows,
 };
 use crate::ops::ntt::{
-    bitreversed_monomials_to_natural_evals, hypercube_x1_msb_evals_to_x1_msb_monomials,
+    bitreversed_monomials_to_natural_evals_multi_coset, hypercube_x1_msb_evals_to_x1_msb_monomials,
     log_size_supports_transposed_monomials,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
-use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunk, DeviceMatrixMut};
 use crate::primitives::field::BF;
 
 pub(crate) const PARTIAL_TREE_REDUCTION_LAYERS: u32 = crate::primitives::utils::LOG_WARP_SIZE;
@@ -30,13 +32,13 @@ pub(crate) enum TreesCacheMode {
 }
 
 pub(crate) enum CosetsHolder<T> {
-    Full(Vec<DeviceAllocation<T>>),
+    Full(DeviceAllocation<T>),
     None(std::marker::PhantomData<T>),
 }
 
 pub(crate) enum TreesHolder {
-    Full(Vec<DeviceAllocation<Digest>>),
-    Partial(Vec<DeviceAllocation<Digest>>),
+    Full(DeviceAllocation<Digest>),
+    Partial(DeviceAllocation<Digest>),
     None,
 }
 
@@ -196,7 +198,10 @@ impl<T> TraceHolder<T> {
             "coset evaluations must be materialized before access"
         );
         match &self.cosets {
-            CosetsHolder::Full(evaluations) => &evaluations[coset_index],
+            CosetsHolder::Full(backing) => {
+                let stride = self.columns_count << self.log_domain_size;
+                &backing[coset_index * stride..(coset_index + 1) * stride]
+            }
             CosetsHolder::None(_) => {
                 panic!("cosets not allocated — call ensure_cosets_materialized first")
             }
@@ -208,8 +213,11 @@ impl<T> TraceHolder<T> {
         coset_index: usize,
     ) -> &mut DeviceSlice<T> {
         assert!(coset_index < (1usize << self.log_lde_factor));
+        let stride = self.columns_count << self.log_domain_size;
         match &mut self.cosets {
-            CosetsHolder::Full(evaluations) => &mut evaluations[coset_index],
+            CosetsHolder::Full(backing) => {
+                &mut backing[coset_index * stride..(coset_index + 1) * stride]
+            }
             CosetsHolder::None(_) => {
                 panic!("cosets not allocated — call ensure_cosets_materialized first")
             }
@@ -220,14 +228,66 @@ impl<T> TraceHolder<T> {
         self.get_coset_evaluations(0)
     }
 
+    /// Returns the single consolidated cosets backing as one device slice in
+    /// coset-major order: `backing[coset_index * stride .. (coset_index + 1) * stride]`
+    /// is the slice for coset `coset_index`, where `stride = columns_count << log_domain_size`.
+    pub(crate) fn get_consolidated_cosets(&self) -> &DeviceSlice<T> {
+        match &self.cosets {
+            CosetsHolder::Full(backing) => backing,
+            CosetsHolder::None(_) => {
+                panic!("cosets not allocated — call ensure_cosets_materialized first")
+            }
+        }
+    }
+
+    /// Returns per-coset segment length in digests for the current trees variant.
+    /// `None` if no trees are allocated.
+    fn per_coset_tree_len(&self) -> Option<usize> {
+        match &self.trees {
+            TreesHolder::Full(_) => {
+                Some(1usize << (self.log_domain_size + 1 - self.log_rows_per_leaf))
+            }
+            TreesHolder::Partial(_) => {
+                let partial_log_domain = self.log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS;
+                Some(1usize << (partial_log_domain + 1 - self.log_rows_per_leaf))
+            }
+            TreesHolder::None => None,
+        }
+    }
+
     pub(crate) fn get_uninit_tree_mut(
         &mut self,
         coset_index: usize,
     ) -> Option<&mut DeviceSlice<Digest>> {
         assert!(coset_index < (1usize << self.log_lde_factor));
+        let per_coset = self.per_coset_tree_len()?;
         match &mut self.trees {
-            TreesHolder::Full(trees) => Some(&mut trees[coset_index]),
-            TreesHolder::Partial(trees) => Some(&mut trees[coset_index]),
+            TreesHolder::Full(backing) | TreesHolder::Partial(backing) => {
+                Some(&mut backing[coset_index * per_coset..(coset_index + 1) * per_coset])
+            }
+            TreesHolder::None => None,
+        }
+    }
+
+    /// Shared-borrow per-coset tree slice. Returns the subrange of the
+    /// consolidated tree backing belonging to `coset_index`, or `None` if
+    /// trees aren't allocated.
+    pub(crate) fn get_tree_slice(&self, coset_index: usize) -> Option<&DeviceSlice<Digest>> {
+        assert!(coset_index < (1usize << self.log_lde_factor));
+        let per_coset = self.per_coset_tree_len()?;
+        match &self.trees {
+            TreesHolder::Full(backing) | TreesHolder::Partial(backing) => {
+                Some(&backing[coset_index * per_coset..(coset_index + 1) * per_coset])
+            }
+            TreesHolder::None => None,
+        }
+    }
+
+    /// Returns the single consolidated tree backing as one device slice in
+    /// coset-major order. `None` if trees aren't allocated.
+    pub(crate) fn get_consolidated_tree(&self) -> Option<&DeviceSlice<Digest>> {
+        match &self.trees {
+            TreesHolder::Full(backing) | TreesHolder::Partial(backing) => Some(backing),
             TreesHolder::None => None,
         }
     }
@@ -245,6 +305,7 @@ impl TraceHolder<BF> {
         let stream = context.get_exec_stream();
         let use_transposed_monomials =
             log_size_supports_transposed_monomials(self.log_domain_size as usize);
+        let lde_factor = 1usize << self.log_lde_factor;
         for column in 0..self.columns_count {
             let offset = column * domain_size;
             let source_column = &source[offset..offset + domain_size];
@@ -258,23 +319,32 @@ impl TraceHolder<BF> {
             )?;
 
             match &mut self.cosets {
-                CosetsHolder::Full(cosets) => {
-                    for (coset_index, coset) in cosets.iter_mut().enumerate() {
-                        let dst_column = &mut coset[offset..offset + domain_size];
-                        // "&coeff_scratch" won't deref-coerce all the way to DeviceMatrixChunkImpl
-                        // expected by the API, so we insert a manual DeviceSlice coercion first
-                        let monomials = &coeff_scratch[0..domain_size];
-                        bitreversed_monomials_to_natural_evals(
-                            monomials,
-                            dst_column,
-                            self.log_domain_size as usize,
-                            self.log_lde_factor as usize,
-                            coset_index,
-                            use_transposed_monomials,
-                            stream,
-                            context.get_device_properties(),
-                        )?;
-                    }
+                CosetsHolder::Full(backing) => {
+                    // CosetsHolder::Full layout: [coset][col][trace_len], stride
+                    // between cosets = columns_count * domain_size. The
+                    // multi-coset NTT slices the backing at the current
+                    // column's position and uses num_cols_per_coset_stride =
+                    // columns_count to write each coset's slab in one launch,
+                    // replacing the per-coset NTT loop.
+                    let monomials = DeviceMatrixChunk::new(
+                        &coeff_scratch[0..domain_size],
+                        domain_size,
+                        0,
+                        domain_size,
+                    );
+                    let backing_from_col = &mut backing[offset..];
+                    bitreversed_monomials_to_natural_evals_multi_coset(
+                        &monomials,
+                        backing_from_col,
+                        self.log_domain_size as usize,
+                        self.log_lde_factor as usize,
+                        0,
+                        lde_factor,
+                        self.columns_count,
+                        use_transposed_monomials,
+                        stream,
+                        context.get_device_properties(),
+                    )?;
                 }
                 CosetsHolder::None(_) => {
                     panic!("cosets not allocated — call ensure_cosets_materialized first")
@@ -317,98 +387,6 @@ impl TraceHolder<BF> {
         self.materialize_cosets_from_owned_hypercube(context)
     }
 
-    /// Commits one coset's per-coset Merkle tree and returns the device pointer
-    /// (cast to `*const u32`) at this coset's cap region. The per-coset D2D
-    /// from cap region into `unified_device_cap` is no longer performed here —
-    /// `commit_all` aggregates every coset's cap region in one
-    /// `gather_tree_caps` kernel launch after every per-coset commit has been
-    /// scheduled.
-    ///
-    /// `none_mode_trees` collects the temporary `tree_top` allocations for
-    /// `TreesHolder::None`, which are otherwise dropped per-coset. Their cap
-    /// region pointers must remain valid until the gather kernel reads them,
-    /// so the caller (`commit_all`) keeps the Vec alive across all per-coset
-    /// commits and through the gather launch. For `Full` and `Partial` modes
-    /// the trees are moved back into `self.trees`, so their lifetimes already
-    /// extend past the gather.
-    fn commit_per_coset_capture_cap_ptr(
-        &mut self,
-        coset_index: usize,
-        none_mode_trees: &mut Vec<DeviceAllocation<Digest>>,
-        context: &ProverContext,
-    ) -> CudaResult<u64> {
-        let log_domain_size = self.log_domain_size;
-        let log_lde_factor = self.log_lde_factor;
-        let log_rows_per_leaf = self.log_rows_per_leaf;
-        let log_tree_cap_size = self.log_tree_cap_size;
-        let columns_count = self.columns_count;
-        let stream = context.get_exec_stream();
-        let (mut tree_top, mut tree_bottom) = match &mut self.trees {
-            TreesHolder::Full(trees) => (trees.remove(coset_index), None),
-            TreesHolder::Partial(trees) => (
-                allocate_tree(log_domain_size, log_rows_per_leaf, context)?,
-                Some(trees.remove(coset_index)),
-            ),
-            TreesHolder::None => (
-                allocate_tree(log_domain_size, log_rows_per_leaf, context)?,
-                None,
-            ),
-        };
-        let evaluations = self.get_coset_evaluations(coset_index);
-        if let Some(tree_bottom) = &mut tree_bottom {
-            commit_trace_with_partial_tree(
-                evaluations,
-                &mut tree_top,
-                tree_bottom,
-                log_domain_size,
-                log_lde_factor,
-                log_rows_per_leaf,
-                log_tree_cap_size,
-                columns_count,
-                stream,
-            )?;
-        } else {
-            commit_trace(
-                evaluations,
-                &mut tree_top,
-                log_domain_size,
-                log_lde_factor,
-                log_rows_per_leaf,
-                log_tree_cap_size,
-                columns_count,
-                stream,
-            )?;
-        }
-        let log_subtree_cap_size = log_tree_cap_size - log_lde_factor;
-        // For `Partial`, the cap is in `tree_bottom`; otherwise it's in `tree_top`.
-        let cap_slice: &DeviceSlice<Digest> = if let Some(tb) = tree_bottom.as_ref() {
-            merkle_tree_cap(tb, log_subtree_cap_size)
-        } else {
-            merkle_tree_cap(&tree_top, log_subtree_cap_size)
-        };
-        // SAFETY: `Digest` is `[u32; 8]`; reading the cap region as `u32` words
-        // is reinterpreting the same bytes the `gather_tree_caps` kernel will
-        // read. The pointer is captured as a numeric value here; lifetime of
-        // the underlying allocation is enforced by stashing `tree_top` (None
-        // mode) or by `self.trees` (Full / Partial), which outlive the kernel.
-        let cap_ptr = unsafe { cap_slice.transmute::<u32>() }.as_ptr() as u64;
-        match &mut self.trees {
-            TreesHolder::Full(trees) => trees.insert(coset_index, tree_top),
-            TreesHolder::Partial(trees) => {
-                trees.insert(coset_index, tree_bottom.unwrap());
-                // tree_top drops here — temp working buffer in Partial mode.
-            }
-            TreesHolder::None => {
-                // Stash the temp tree_top so its cap region pointer stays
-                // valid until the gather kernel reads it. Local-Vec lifetime
-                // ≤ caller `commit_all`'s frame, which schedules the gather
-                // before returning.
-                none_mode_trees.push(tree_top);
-            }
-        };
-        Ok(cap_ptr)
-    }
-
     /// Schedules the per-coset Merkle commits and the inline gather kernel,
     /// writing the unified Merkle cap (in canonical bit-reversed coset order)
     /// directly into a caller-supplied `dst_u32` device slice. No allocation
@@ -432,33 +410,159 @@ impl TraceHolder<BF> {
             "commit_all_into dst_u32 length must match cap_size * DIGEST_U32_WORDS",
         );
 
-        // Local owned tree allocations for `TreesHolder::None` commits, kept
-        // alive across all per-coset commits and through the gather launch.
-        // For `Full` and `Partial`, the trees are stored on `self.trees` and
-        // outlive the gather automatically.
-        let mut none_mode_trees: Vec<DeviceAllocation<Digest>> = Vec::new();
-        // Per-coset cap region device pointers, in canonical bit-reversed
-        // coset order — `src_ptrs_host[stage1_pos] = cap_ptr_for(coset_index)`
-        // where `stage1_pos = bitreverse_index(coset_index)`.
-        let mut src_ptrs_host: Vec<u64> = vec![0u64; lde_factor];
-        for coset_index in 0..lde_factor {
-            let cap_ptr =
-                self.commit_per_coset_capture_cap_ptr(coset_index, &mut none_mode_trees, context)?;
-            let stage1_pos = bitreverse_index(coset_index, self.log_lde_factor);
-            src_ptrs_host[stage1_pos] = cap_ptr;
+        let log_domain_size = self.log_domain_size;
+        let log_lde_factor = self.log_lde_factor;
+        let log_rows_per_leaf = self.log_rows_per_leaf;
+        let log_tree_cap_size = self.log_tree_cap_size;
+        let columns_count = self.columns_count;
+        let stream = context.get_exec_stream();
+
+        let per_coset_tree_full_len = 1usize << (log_domain_size + 1 - log_rows_per_leaf);
+        let per_coset_tree_partial_len =
+            self.per_coset_tree_len().unwrap_or(per_coset_tree_full_len);
+
+        // Snapshot the cosets backing as a raw pointer to dodge the
+        // simultaneous `&self.cosets` + `&mut self.trees` borrow inside the
+        // per-coset commit loop. SAFETY: cosets and trees backings are
+        // disjoint device allocations; evaluations are only read.
+        let evals_stride = columns_count << log_domain_size;
+        let evals_ptr = match &self.cosets {
+            CosetsHolder::Full(backing) => backing.as_ptr(),
+            CosetsHolder::None(_) => {
+                panic!("cosets not allocated — call ensure_cosets_materialized first")
+            }
+        };
+
+        // Multi-coset commit: every coset's Merkle tree is built layer-by-layer
+        // across all cosets in one launch per layer (was `lde_factor * layers`
+        // launches in a per-coset loop). For `Partial`/`None` modes we
+        // allocate one transient `tree_tops` slab covering all cosets;
+        // `lde_factor * tree_top_per_coset` is bounded by ~`2^(OMEGA_LOG_ORDER
+        // + 1) * sizeof(Digest)` ≈ 8 GB since `log_n + log_lde_factor <=
+        // OMEGA_LOG_ORDER` constrains the worst case across all schedules.
+        let evals_total_len = lde_factor * evals_stride;
+        // SAFETY: cosets backing remains alive for `&self`; evals range is
+        // disjoint from the trees backing.
+        let evals_backing: &DeviceSlice<BF> =
+            unsafe { DeviceSlice::from_raw_parts(evals_ptr, evals_total_len) };
+
+        // Holds a transient tree_tops slab for Partial/None modes through the
+        // cap gather. Full mode commits directly into the consolidated trees
+        // backing and leaves this `None`.
+        let mut transient_tree_tops: Option<DeviceAllocation<Digest>> = None;
+
+        match &mut self.trees {
+            TreesHolder::Full(backing) => {
+                commit_trace_multi_coset(
+                    evals_backing,
+                    backing,
+                    log_domain_size,
+                    log_lde_factor,
+                    log_rows_per_leaf,
+                    log_tree_cap_size,
+                    columns_count,
+                    lde_factor,
+                    stream,
+                )?;
+            }
+            TreesHolder::Partial(backing) => {
+                let mut tree_tops =
+                    allocate_trees(lde_factor, log_domain_size, log_rows_per_leaf, context)?;
+                commit_trace_with_partial_tree_multi_coset(
+                    evals_backing,
+                    &mut tree_tops,
+                    backing,
+                    log_domain_size,
+                    log_lde_factor,
+                    log_rows_per_leaf,
+                    log_tree_cap_size,
+                    columns_count,
+                    lde_factor,
+                    stream,
+                )?;
+                // tree_tops is dropped after the cap gather completes; the
+                // bottom (in `backing`) is what queries read.
+                let _ = tree_tops;
+            }
+            TreesHolder::None => {
+                let mut tree_tops =
+                    allocate_trees(lde_factor, log_domain_size, log_rows_per_leaf, context)?;
+                commit_trace_multi_coset(
+                    evals_backing,
+                    &mut tree_tops,
+                    log_domain_size,
+                    log_lde_factor,
+                    log_rows_per_leaf,
+                    log_tree_cap_size,
+                    columns_count,
+                    lde_factor,
+                    stream,
+                )?;
+                transient_tree_tops = Some(tree_tops);
+            }
         }
 
-        // Single inline-descriptor kernel launch replaces the per-coset cap
-        // D2Ds. The pointer table rides as `__grid_constant__` kernel-arg
-        // data (see `gather_tree_caps_inline`), so no pre-launch H2D is
-        // needed — `prove()`-time H2Ds would otherwise serialize against
-        // the parallel pre-prove H2Ds uploading the next proof's trace.
-        let stream = context.get_exec_stream();
-        gather_tree_caps_inline(&src_ptrs_host, dst_u32, cap_words_per_coset, stream)?;
+        // Single kernel launch over the consolidated tree backing: each
+        // block gathers one natural-coset cap region into the bit-reversed
+        // (stage1) destination slot.
+        match &self.trees {
+            TreesHolder::Full(backing) | TreesHolder::Partial(backing) => {
+                let per_coset_segment_len = match &self.trees {
+                    TreesHolder::Full(_) => per_coset_tree_full_len,
+                    TreesHolder::Partial(_) => per_coset_tree_partial_len,
+                    _ => unreachable!(),
+                };
+                // Cap region sits at the tail of each per-coset segment.
+                // Matches `merkle_tree_cap`'s offset computation at
+                // `ops/blake2s/mod.rs` (`len - 2 * cap_size`).
+                let cap_offset_in_digests =
+                    per_coset_segment_len - (1usize << (log_subtree_cap_size + 1));
+                let cap_offset_in_u32_words = cap_offset_in_digests * BLAKE2S_DIGEST_SIZE_U32_WORDS;
+                let stride_in_u32_words =
+                    (per_coset_segment_len * BLAKE2S_DIGEST_SIZE_U32_WORDS) as u32;
+                let base_u32 = backing.as_ptr() as *const u32;
+                // SAFETY: cap_offset_in_u32_words is within per_coset_segment_len.
+                let cap_base = unsafe { base_u32.add(cap_offset_in_u32_words) };
+                gather_tree_caps_inline(
+                    cap_base,
+                    lde_factor as u32,
+                    cap_words_per_coset,
+                    stride_in_u32_words,
+                    log_lde_factor,
+                    dst_u32,
+                    stream,
+                )?;
+            }
+            TreesHolder::None => {
+                // None mode now also uses one consolidated tree_tops slab
+                // (same layout as Full/Partial backing), so gather_tree_caps
+                // works directly across it.
+                let backing = transient_tree_tops
+                    .as_ref()
+                    .expect("None mode allocates transient_tree_tops above");
+                let cap_offset_in_digests =
+                    per_coset_tree_full_len - (1usize << (log_subtree_cap_size + 1));
+                let cap_offset_in_u32_words = cap_offset_in_digests * BLAKE2S_DIGEST_SIZE_U32_WORDS;
+                let stride_in_u32_words =
+                    (per_coset_tree_full_len * BLAKE2S_DIGEST_SIZE_U32_WORDS) as u32;
+                let base_u32 = backing.as_ptr() as *const u32;
+                // SAFETY: cap_offset_in_u32_words is within per_coset_tree_full_len.
+                let cap_base = unsafe { base_u32.add(cap_offset_in_u32_words) };
+                gather_tree_caps_inline(
+                    cap_base,
+                    lde_factor as u32,
+                    cap_words_per_coset,
+                    stride_in_u32_words,
+                    log_lde_factor,
+                    dst_u32,
+                    stream,
+                )?;
+            }
+        }
 
-        // `none_mode_trees` drops at end of scope — its pool free is
+        // `transient_tree_tops` drops at end of scope — its pool free is
         // exec-stream-ordered after the gather, so it is safe to drop here.
-        drop(none_mode_trees);
+        drop(transient_tree_tops);
         Ok(())
     }
 
@@ -501,30 +605,43 @@ impl TraceHolder<BF> {
         let columns_count = self.columns_count;
         let instances_count = 1usize << log_lde_factor;
         let stream = context.get_exec_stream();
-        for coset_index in 0..instances_count {
-            let mut tree_top = allocate_tree(log_domain_size, log_rows_per_leaf, context)?;
-            let mut tree_bottom = match &mut self.trees {
-                TreesHolder::Partial(trees) => trees.remove(coset_index),
-                _ => panic!("build_and_cache_partial_trees requires TreesHolder::Partial"),
-            };
-            let evaluations = self.get_coset_evaluations(coset_index);
-            commit_trace_with_partial_tree(
-                evaluations,
-                &mut tree_top,
-                &mut tree_bottom,
-                log_domain_size,
-                log_lde_factor,
-                log_rows_per_leaf,
-                log_tree_cap_size,
-                columns_count,
-                stream,
-            )?;
-            match &mut self.trees {
-                TreesHolder::Partial(trees) => trees.insert(coset_index, tree_bottom),
-                _ => unreachable!(),
-            };
-            // tree_top drops here — frees temporary full-tree allocation
-        }
+        let per_coset_partial_len = self
+            .per_coset_tree_len()
+            .expect("build_and_cache_partial_trees requires allocated trees");
+        // Snapshot cosets backing as raw pointer to dodge the simultaneous
+        // &self.cosets + &mut self.trees borrow inside the loop.
+        let evals_stride = columns_count << log_domain_size;
+        let evals_ptr = match &self.cosets {
+            CosetsHolder::Full(backing) => backing.as_ptr(),
+            CosetsHolder::None(_) => {
+                panic!("cosets not allocated — call ensure_cosets_materialized first")
+            }
+        };
+        // SAFETY: cosets backing remains alive for `&self`; evals range is
+        // disjoint from the trees backing.
+        let evals_total_len = instances_count * evals_stride;
+        let evals_backing: &DeviceSlice<BF> =
+            unsafe { DeviceSlice::from_raw_parts(evals_ptr, evals_total_len) };
+        let mut tree_tops =
+            allocate_trees(instances_count, log_domain_size, log_rows_per_leaf, context)?;
+        let trees_backing = match &mut self.trees {
+            TreesHolder::Partial(backing) => backing,
+            _ => panic!("build_and_cache_partial_trees requires TreesHolder::Partial"),
+        };
+        commit_trace_with_partial_tree_multi_coset(
+            evals_backing,
+            &mut tree_tops,
+            trees_backing,
+            log_domain_size,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            columns_count,
+            instances_count,
+            stream,
+        )?;
+        // tree_tops drops here — frees the transient full-tree allocation.
+        drop(tree_tops);
         Ok(())
     }
 
@@ -553,44 +670,56 @@ impl TraceHolder<BF> {
         (layers_count, digests_len)
     }
 
-    /// Phase 3 (WHIR-on-device): gather one coset's leaf rows for those
-    /// queries whose LDE coset matches `coset_index`. Other queries' slots in
-    /// `dst` are left untouched, so callers run this once per coset in
-    /// `0..lde_factor` to fill every query slot exactly once. `dst` must be
+    /// Phase 3 (WHIR-on-device, Step 3 consolidation): consolidated single-oracle
+    /// leaf gather. One launch covers every query across every LDE coset (the
+    /// kernel resolves `coset = q & lde_mask` internally). `dst` must be
     /// `query_indexes.len() * (1 << log_rows_per_leaf) * columns_count` BFs in
-    /// row-major-per-query layout — matching `BaseFieldQuery.leaf_values_concatenated`.
-    pub(crate) fn schedule_query_leafs_for_coset_into(
+    /// row-major-per-query layout.
+    pub(crate) fn schedule_query_leaves_into(
         &mut self,
-        coset_index: usize,
         query_indexes: &DeviceSlice<u32>,
         dst: &mut DeviceSlice<BF>,
         context: &ProverContext,
     ) -> CudaResult<()> {
         self.ensure_cosets_materialized(context)?;
-        let queries_count = query_indexes.len();
-        let (domain_size, _) = self.query_leafs_layout(queries_count);
-        let values = self.get_coset_evaluations(coset_index);
-        let values_matrix = DeviceMatrix::new(values, domain_size);
+        let cosets = self.get_consolidated_cosets();
         let stream = context.get_exec_stream();
-        crate::ops::blake2s::gather_leaf_rows_to_slab_for_coset(
-            query_indexes,
-            coset_index as u32,
+        let desc = crate::ops::blake2s::OracleGatherDesc {
+            cosets_ptr: cosets.as_ptr() as u64,
+            columns_count: self.columns_count as u32,
+            _pad: 0,
+            slab_dst_ptr: dst.as_mut_ptr() as u64,
+        };
+        let descs = [
+            desc,
+            crate::ops::blake2s::OracleGatherDesc::default(),
+            crate::ops::blake2s::OracleGatherDesc::default(),
+        ];
+        crate::ops::blake2s::gather_leaves_for_queries(
+            &descs,
+            1,
             self.log_lde_factor,
+            self.log_domain_size,
             self.log_rows_per_leaf,
-            &values_matrix,
-            dst,
+            query_indexes,
             stream,
         )
     }
 
-    /// Phase 3 (WHIR-on-device): gather one coset's merkle paths for those
-    /// queries whose LDE coset matches `coset_index`. Other queries' slots in
-    /// `dst` are left untouched. `dst` must be
-    /// `query_indexes.len() * layers_count * STATE_SIZE` u32 words in
-    /// query-major layout — matching `BaseFieldQuery.path`.
-    pub(crate) fn schedule_query_merkle_paths_for_coset_into(
+    /// Phase 3 (WHIR-on-device, Step 3 consolidation): consolidated single-oracle
+    /// merkle-paths gather. Dispatches by cache mode:
+    /// - `TreesHolder::Full`    → reads from the consolidated tree backing
+    ///   (one launch covers all cosets via internal `coset = q & lde_mask`).
+    /// - `TreesHolder::Partial` → hashes the bottom warp layers on the fly
+    ///   from the consolidated cosets backing, then walks the consolidated
+    ///   partial-tree backing (single launch).
+    /// - `TreesHolder::None`    → unsupported (panics); use `CachePartial` or
+    ///   `CacheFull` instead.
+    ///
+    /// `dst` must be `query_indexes.len() * layers_count * STATE_SIZE` u32 words
+    /// in query-major layout.
+    pub(crate) fn schedule_query_merkle_paths_into(
         &mut self,
-        coset_index: usize,
         query_indexes: &DeviceSlice<u32>,
         dst: &mut DeviceSlice<u32>,
         context: &ProverContext,
@@ -600,54 +729,59 @@ impl TraceHolder<BF> {
         let (layers_count, _) = self.query_merkle_path_layout(queries_count);
         let stream = context.get_exec_stream();
         match &self.trees {
-            TreesHolder::Full(trees) => {
-                let tree = &trees[coset_index];
-                crate::ops::blake2s::gather_merkle_paths_to_slab_for_coset(
+            TreesHolder::Full(_) => {
+                let consolidated_tree = self
+                    .get_consolidated_tree()
+                    .expect("Full mode has a tree backing");
+                let lde_factor = 1usize << self.log_lde_factor;
+                let stride_per_coset = consolidated_tree.len() / lde_factor;
+                crate::ops::blake2s::gather_merkle_paths_full_for_queries(
                     query_indexes,
-                    coset_index as u32,
                     self.log_lde_factor,
-                    tree,
+                    stride_per_coset as u32,
+                    consolidated_tree,
                     dst,
                     layers_count,
                     stream,
                 )
             }
-            TreesHolder::Partial(trees) => {
-                let tree_bottom = &trees[coset_index];
-                crate::ops::blake2s::gather_merkle_paths_from_rows_to_slab_for_coset(
-                    query_indexes,
-                    coset_index as u32,
+            TreesHolder::Partial(_) => {
+                let cosets = self.get_consolidated_cosets();
+                let consolidated_tree = self
+                    .get_consolidated_tree()
+                    .expect("Partial mode has a tree backing");
+                let lde_factor = 1usize << self.log_lde_factor;
+                let stride_per_coset = consolidated_tree.len() / lde_factor;
+                let log_total_leaves_count = self.log_domain_size - self.log_rows_per_leaf;
+                let desc = crate::ops::blake2s::OraclePartialPathDesc {
+                    cosets_ptr: cosets.as_ptr() as u64,
+                    partial_tree_ptr: consolidated_tree.as_ptr() as u64,
+                    columns_count: self.columns_count as u32,
+                    _pad: 0,
+                    slab_dst_ptr: dst.as_mut_ptr() as u64,
+                };
+                let descs = [
+                    desc,
+                    crate::ops::blake2s::OraclePartialPathDesc::default(),
+                    crate::ops::blake2s::OraclePartialPathDesc::default(),
+                ];
+                crate::ops::blake2s::gather_merkle_paths_partial_for_queries(
+                    &descs,
+                    1,
                     self.log_lde_factor,
-                    self.get_coset_evaluations(coset_index),
                     self.log_rows_per_leaf,
-                    self.columns_count,
-                    tree_bottom,
-                    dst,
+                    log_total_leaves_count,
+                    stride_per_coset as u32,
                     layers_count,
+                    query_indexes,
                     stream,
                 )
             }
             TreesHolder::None => {
-                let values = self.get_coset_evaluations(coset_index);
-                let mut tree =
-                    allocate_tree(self.log_domain_size, self.log_rows_per_leaf, context)?;
-                build_merkle_tree(
-                    values,
-                    &mut tree,
-                    self.log_rows_per_leaf,
-                    stream,
-                    layers_count,
-                    false,
-                )?;
-                crate::ops::blake2s::gather_merkle_paths_to_slab_for_coset(
-                    query_indexes,
-                    coset_index as u32,
-                    self.log_lde_factor,
-                    &tree,
-                    dst,
-                    layers_count,
-                    stream,
-                )
+                panic!(
+                    "schedule_query_merkle_paths_into: TreesCacheMode::CacheNone is not supported \
+                     (no consolidated tree backing). Use CachePartial or CacheFull."
+                );
             }
         }
     }
@@ -695,8 +829,10 @@ impl TraceHolder<BF> {
         let mut d_merkle_paths = context.alloc(digests_len, AllocationPlacement::BestFit)?;
         let (layers_count, _) = self.query_merkle_path_layout(queries_count);
         match &self.trees {
-            TreesHolder::Full(trees) => {
-                let tree = &trees[coset_index];
+            TreesHolder::Full(_) => {
+                let tree = self
+                    .get_tree_slice(coset_index)
+                    .expect("Full mode has a tree slot");
                 gather_merkle_paths_device(
                     indexes,
                     tree,
@@ -705,8 +841,10 @@ impl TraceHolder<BF> {
                     stream,
                 )?;
             }
-            TreesHolder::Partial(trees) => {
-                let tree_bottom = &trees[coset_index];
+            TreesHolder::Partial(_) => {
+                let tree_bottom = self
+                    .get_tree_slice(coset_index)
+                    .expect("Partial mode has a tree slot");
                 gather_merkle_paths_from_rows(
                     indexes,
                     false,
@@ -761,28 +899,15 @@ impl TraceHolder<BF> {
     }
 }
 
-pub(crate) fn allocate_coset<T>(
-    log_domain_size: u32,
-    columns_count: usize,
-    context: &ProverContext,
-) -> CudaResult<DeviceAllocation<T>> {
-    context.alloc(
-        columns_count << log_domain_size,
-        AllocationPlacement::Bottom,
-    )
-}
-
 fn allocate_cosets<T>(
     instances_count: usize,
     log_domain_size: u32,
     columns_count: usize,
     context: &ProverContext,
-) -> CudaResult<Vec<DeviceAllocation<T>>> {
-    let mut result = Vec::with_capacity(instances_count);
-    for _ in 0..instances_count {
-        result.push(allocate_coset(log_domain_size, columns_count, context)?);
-    }
-    Ok(result)
+) -> CudaResult<DeviceAllocation<T>> {
+    let per_coset_len = columns_count << log_domain_size;
+    let total = instances_count * per_coset_len;
+    context.alloc(total, AllocationPlacement::Bottom)
 }
 
 fn allocate_tree(
@@ -799,12 +924,10 @@ pub(crate) fn allocate_trees(
     log_domain_size: u32,
     log_rows_per_leaf: u32,
     context: &ProverContext,
-) -> CudaResult<Vec<DeviceAllocation<Digest>>> {
-    let mut result = Vec::with_capacity(instances_count);
-    for _ in 0..instances_count {
-        result.push(allocate_tree(log_domain_size, log_rows_per_leaf, context)?);
-    }
-    Ok(result)
+) -> CudaResult<DeviceAllocation<Digest>> {
+    let per_coset_len = 1usize << (log_domain_size + 1 - log_rows_per_leaf);
+    let total = instances_count * per_coset_len;
+    context.alloc(total, AllocationPlacement::Bottom)
 }
 
 pub(crate) fn commit_trace(
@@ -831,6 +954,46 @@ pub(crate) fn commit_trace(
         stream,
         layers_count,
         false,
+    )
+}
+
+/// Multi-coset variant of `commit_trace`: builds all `cosets_in_tile` per-
+/// coset Merkle trees in one launch per layer. `evals_backing` holds
+/// `[coset0_evals | coset1_evals | ...]` (each coset's evals span
+/// `columns_count << log_domain_size` BFs); `trees_backing` holds the same
+/// shape with `tree_len = 2 << (log_domain_size - log_rows_per_leaf)` digests
+/// per coset.
+pub(crate) fn commit_trace_multi_coset(
+    evals_backing: &DeviceSlice<BF>,
+    trees_backing: &mut DeviceSlice<Digest>,
+    log_domain_size: u32,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    log_tree_cap_size: u32,
+    columns_count: usize,
+    cosets_in_tile: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(log_tree_cap_size >= log_lde_factor);
+    let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
+    assert!(log_domain_size >= log_rows_per_leaf + log_coset_tree_cap_size);
+    let per_coset_evals_stride = columns_count << log_domain_size;
+    let per_coset_leaves_count = 1usize << (log_domain_size - log_rows_per_leaf);
+    let per_coset_tree_stride = per_coset_leaves_count << 1;
+    assert_eq!(evals_backing.len(), per_coset_evals_stride * cosets_in_tile);
+    assert_eq!(trees_backing.len(), per_coset_tree_stride * cosets_in_tile);
+    let layers_count = log_domain_size + 1 - log_rows_per_leaf - log_coset_tree_cap_size;
+    build_merkle_tree_multi_coset(
+        evals_backing,
+        trees_backing,
+        log_rows_per_leaf,
+        stream,
+        layers_count,
+        cosets_in_tile,
+        per_coset_leaves_count,
+        per_coset_evals_stride,
+        per_coset_tree_stride,
+        columns_count,
     )
 }
 
@@ -870,6 +1033,84 @@ pub(crate) fn commit_trace_with_partial_tree(
         - log_coset_tree_cap_size;
     let values = &tree_top[tree_top_len - 2 * tree_bottom_len..][..tree_bottom_len];
     build_merkle_tree_nodes(values, tree_bottom, bottom_layers_count, stream)
+}
+
+/// Multi-coset variant of `commit_trace_with_partial_tree`: takes one big
+/// `tree_tops_backing` slab sized for all cosets' tops, plus the existing
+/// shared `tree_bottoms_backing`. Builds top layers (leaves +
+/// PARTIAL_TREE_REDUCTION_LAYERS-1 layers of nodes) into every coset's top
+/// slab in one launch per layer, then runs the bottom layers across all
+/// cosets in one launch per layer.
+pub(crate) fn commit_trace_with_partial_tree_multi_coset(
+    evals_backing: &DeviceSlice<BF>,
+    tree_tops_backing: &mut DeviceSlice<Digest>,
+    tree_bottoms_backing: &mut DeviceSlice<Digest>,
+    log_domain_size: u32,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    log_tree_cap_size: u32,
+    columns_count: usize,
+    cosets_in_tile: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(log_tree_cap_size >= log_lde_factor);
+    let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
+    assert!(
+        log_domain_size
+            > log_rows_per_leaf + PARTIAL_TREE_REDUCTION_LAYERS + log_coset_tree_cap_size
+    );
+    let per_coset_evals_stride = columns_count << log_domain_size;
+    let per_coset_top_stride = 1usize << (log_domain_size + 1 - log_rows_per_leaf);
+    let per_coset_top_leaves_count = per_coset_top_stride >> 1;
+    let per_coset_bottom_stride = per_coset_top_stride >> PARTIAL_TREE_REDUCTION_LAYERS;
+    assert_eq!(evals_backing.len(), per_coset_evals_stride * cosets_in_tile);
+    assert_eq!(
+        tree_tops_backing.len(),
+        per_coset_top_stride * cosets_in_tile
+    );
+    assert_eq!(
+        tree_bottoms_backing.len(),
+        per_coset_bottom_stride * cosets_in_tile
+    );
+    // Top: leaves + (PARTIAL_TREE_REDUCTION_LAYERS - 1) node layers, all
+    // built inside each coset's tree_top slab.
+    build_merkle_tree_multi_coset(
+        evals_backing,
+        tree_tops_backing,
+        log_rows_per_leaf,
+        stream,
+        PARTIAL_TREE_REDUCTION_LAYERS,
+        cosets_in_tile,
+        per_coset_top_leaves_count,
+        per_coset_evals_stride,
+        per_coset_top_stride,
+        columns_count,
+    )?;
+    // Bottom: each coset's "top layer" within tree_tops has
+    // `per_coset_bottom_stride` digests sitting at offset
+    // `per_coset_top_stride - 2 * per_coset_bottom_stride` (mirroring
+    // `tree_top[tree_top_len - 2 * tree_bottom_len..][..tree_bottom_len]` in
+    // the single-coset path). The first bottom layer hashes pairs of those
+    // top-layer digests into tree_bottoms_backing[0..bottom_stride/2] across
+    // every coset; subsequent layers hash up in-place inside the bottoms
+    // slab. tree_bottoms is sized for OUTPUTS only, not for re-storing the
+    // input, so we never copy the top layer into the bottoms slab.
+    let top_layer_src_offset = per_coset_top_stride - 2 * per_coset_bottom_stride;
+    let bottom_layers_count = log_domain_size + 1
+        - log_rows_per_leaf
+        - PARTIAL_TREE_REDUCTION_LAYERS
+        - log_coset_tree_cap_size;
+    build_merkle_tree_nodes_multi_coset_from_external_src(
+        tree_tops_backing,
+        tree_bottoms_backing,
+        bottom_layers_count,
+        cosets_in_tile,
+        per_coset_top_stride,
+        per_coset_bottom_stride,
+        top_layer_src_offset,
+        per_coset_bottom_stride,
+        stream,
+    )
 }
 
 pub(crate) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
