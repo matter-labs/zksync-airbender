@@ -19,6 +19,9 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
     let add_acc0_term = MW::add_assign(quote! { *acc0 }, quote! { term });
     let add_acc1_term = MW::add_assign(quote! { *acc1 }, quote! { term });
 
+    let fma_into_acc_0 = MW::add_assign_product_with_base( quote! { *acc0 }, quote! { term }, quote! { base_val });
+    let fma_into_acc_1 = MW::add_assign_product_with_base( quote! { *acc1 }, quote! { term }, quote! { base_val });
+
     // whir sumcheck ops
     let add_p1_c1 = MW::add_assign(quote! { p1 }, quote! { c1 });
     let add_p1_c2 = MW::add_assign(quote! { p1 }, quote! { c2 });
@@ -277,15 +280,17 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
                 *hash_buf.get_unchecked_mut(idx) = raw;
                 let base_val = #from_raw;
                 let mut term = gamma;
-                #mul_term_base;
-                #add_acc0_term;
+                #fma_into_acc_0;
+                // #mul_term_base;
+                // #add_acc0_term;
 
                 let raw = read_reduced_field_el::<I>(nd_source);
                 *hash_buf.get_unchecked_mut(idx + 1) = raw;
                 let base_val = #from_raw;
                 let mut term = gamma;
-                #mul_term_base;
-                #add_acc1_term;
+                #fma_into_acc_1;
+                // #mul_term_base;
+                // #add_acc1_term;
 
                 col += 1;
             }

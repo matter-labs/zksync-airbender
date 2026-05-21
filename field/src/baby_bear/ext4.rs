@@ -655,6 +655,15 @@ impl FieldExtension<BabyBearExt2> for BabyBearExt4 {
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_product_with_base(&mut self, ext: &Self, base: &BabyBearExt2) -> &mut Self {
+        let mut t = *ext;
+        t.mul_assign_by_base(base);
+        self.add_assign(&t);
+
+        self
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base(elem: BabyBearExt2) -> Self {
         Self {
             c0: elem,
@@ -719,6 +728,16 @@ impl FieldExtension<BabyBearField> for BabyBearExt4 {
             c0,
             c1: BabyBearExt2::ZERO,
         }
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_product_with_base(&mut self, ext: &Self, base: &BabyBearField) -> &mut Self {
+        self.c0.c0.add_assign_product(&ext.c0.c0, base);
+        self.c0.c1.add_assign_product(&ext.c0.c1, base);
+        self.c1.c0.add_assign_product(&ext.c1.c0, base);
+        self.c1.c1.add_assign_product(&ext.c1.c1, base);
+
+        self
     }
 }
 
