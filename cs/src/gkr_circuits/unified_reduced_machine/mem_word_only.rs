@@ -12,7 +12,6 @@ use super::mem_word_only_lw_sw::apply_unified_mem_word_only_lw_sw_data_path;
 /// that fire for every family, gated on the per-family bits:
 ///   - `(NOT is_lw) * (readaddr  - rs2_index) = 0`,  `(NOT is_lw) * readaddr_hi  = 0`
 ///   - `(NOT is_sw) * (writeaddr - rd_index)  = 0`,  `(NOT is_sw) * writeaddr_hi = 0`
-///   - `is_fam4 = is_lw + is_sw` (deg 1, ungated)
 /// then hands off to [`apply_unified_mem_word_only_lw_sw_data_path`] for the
 /// Family-4-only data path (rs1+imm RAM address, ROM check, ROM-or-data
 /// lookup, SW alignment trap).
@@ -20,7 +19,11 @@ use super::mem_word_only_lw_sw::apply_unified_mem_word_only_lw_sw_data_path;
 /// Gating Booleans threaded out of this function:
 /// - `is_lw` = 1 iff Family 4 LW fires (memread = RAM, memwrite = rd register).
 /// - `is_sw` = 1 iff Family 4 SW fires (memread = rs2 register, memwrite = RAM).
-/// - `is_fam4` = `is_lw + is_sw`, a 1-bit summary used by Family-4-only blocks.
+///
+/// Note: `is_fam4 = is_lw + is_sw` is no longer committed as a base-layer
+/// Boolean; it is inlined as a degree-1 expression at each use site in the
+/// data-path body. Soundness rests on decoder-enforced LW/SW mutual exclusion
+/// plus the padding-zero constraint at circuit.rs:418.
 ///
 /// Caller (unified body) owns the `memread_addr` / `memwrite_addr` witness
 /// vars and passes them inside the access objects.
@@ -56,18 +59,6 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     cs.require_invariant(memwrite_addr[0], Invariant::RangeChecked { width: 16 });
     cs.require_invariant(memwrite_addr[1], Invariant::RangeChecked { width: 16 });
 
-    let load = Constraint::from(is_lw);
-    let store = Constraint::from(is_sw);
-
-    // is_fam4 = is_lw + is_sw. Booleanity of is_fam4 plus this linear sum
-    // enforces mutual exclusivity of LW/SW (a row with both bits set would
-    // force is_fam4 = 2, failing Booleanity). The decoder lookup also binds
-    // the bitmask atomically
-    let is_fam4 = cs.add_named_boolean_variable("is_fam4");
-    cs.add_constraint_allow_explicit_linear(
-        Constraint::from(is_fam4) - load.clone() - store.clone(),
-    );
-
     let [readaddr_lo, readaddr_hi] = memread_addr.map(Term::from);
     let [writeaddr_lo, writeaddr_hi] = memwrite_addr.map(Term::from);
 
@@ -90,7 +81,6 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
         &inputs,
         is_lw,
         is_sw,
-        is_fam4,
         rs1_limbs,
         memread_u8,
         memwrite_u16,

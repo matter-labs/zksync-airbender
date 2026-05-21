@@ -20,6 +20,7 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     rs2_limbs: [Variable; 4],
     rd_write_limbs: [Variable; 2],
 ) {
+    let intermediate_reg = Register::new_named(cs, "Intermediate reg for comparisons");
     // U16 views of rs1/rs2 reassembled from U8 bytes via free algebra.
     let byte_shift = F::from_u32_unchecked(1 << 8);
     let rs1_low_c: Constraint<F> =
@@ -53,7 +54,6 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // because for all jump-like opcodes we only need to cleanup the lowest word,
     // then we can target PC's high part as the output variable
 
-    let intermediate_reg = Register::new_named(cs, "Intermediate reg for comparisons");
     let carry_shift = F::from_u32_with_reduction(1 << 16);
 
     // we need range checks on high PC part
@@ -575,36 +575,7 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
             Term::from(is_slt) * Term::from((carry_shift, add_rel_1_final_of_var));
         cs.add_constraint(add_like_high_constraint);
     }
-
-    // is_fam2 = is_jal + is_jalr + is_slt + is_branch. Booleanity of is_fam2
-    // plus the linear-sum setup constraint below enforces mutual exclusivity of
-    // the sub-opcode bits — a row with two of them set would force is_fam2 = 2,
-    // failing Booleanity. The decoder lookup also binds the bitmask atomically.
-    // Used to gate the JumpCleanupOffset lookup and the rd-write helpers below so
-    // non-Family-2 cycles route the lookup to ZeroEntry and don't pin rd_write_limbs.
-    let is_fam2 = cs.add_named_boolean_variable("is_fam2");
-    {
-        let is_jal_var = is_jal.expect_variable();
-        let is_jalr_var = is_jalr.expect_variable();
-        let is_slt_var = is_slt.expect_variable();
-        let is_branch_var = is_branch.expect_variable();
-        let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            let any = placer
-                .get_boolean(is_jal_var)
-                .or(&placer.get_boolean(is_jalr_var))
-                .or(&placer.get_boolean(is_slt_var))
-                .or(&placer.get_boolean(is_branch_var));
-            placer.assign_mask(is_fam2.expect_variable(), &any);
-        };
-        cs.set_values(value_fn);
-    }
-    cs.add_constraint_allow_explicit_linear(
-        Constraint::from(is_fam2)
-            - Term::from(is_jal)
-            - Term::from(is_jalr)
-            - Term::from(is_slt)
-            - Term::from(is_branch),
-    );
+    
 
     // next_pc_bit_1 = bit 1 of pc_intermediate_addition_tmp_low. The JumpCleanupOffset
     // lookup tuple is (input, bit_1, pc_out_low) and is enforced against a gated
@@ -638,22 +609,31 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // Gated lookup tuple (is_fam2 * input, is_fam2 * bit_1, is_fam2 * pc_out_low)
     // against table_id = is_fam2 * JumpCleanupOffset.to_num(). Non-Family-2 cycles
     // produce (0, 0, 0) under table_id 0 (ZeroEntry).
+    //
+    // is_fam2 is inlined as (is_jal + is_jalr + is_slt + is_branch) — decoder
+    // mutual exclusion + padding-zero constraint keep this sum in {0, 1}.
     {
         let jump_cleanup_table_num = Term::from(TableType::JumpCleanupOffset.to_num());
+        let is_fam2_sum = || -> Constraint<F> {
+            Constraint::from(is_jal)
+                + Term::from(is_jalr)
+                + Term::from(is_slt)
+                + Term::from(is_branch)
+        };
         let gated_input = cs.add_intermediate_named_variable_from_constraint(
-            Constraint::from(is_fam2) * Term::from(pc_intermediate_addition_tmp_low),
+            is_fam2_sum() * Term::from(pc_intermediate_addition_tmp_low),
             "JumpCleanup gated input",
         );
         let gated_bit_1 = cs.add_intermediate_named_variable_from_constraint(
-            Constraint::from(is_fam2) * Term::from(next_pc_bit_1),
+            is_fam2_sum() * Term::from(next_pc_bit_1),
             "JumpCleanup gated bit_1",
         );
         let gated_pc_out_low = cs.add_intermediate_named_variable_from_constraint(
-            Constraint::from(is_fam2) * Term::from(inputs.cycle_end_state.pc[0]),
+            is_fam2_sum() * Term::from(inputs.cycle_end_state.pc[0]),
             "JumpCleanup gated pc_out_low",
         );
         let gated_table_id = cs.add_intermediate_named_variable_from_constraint(
-            Constraint::from(is_fam2) * jump_cleanup_table_num,
+            is_fam2_sum() * jump_cleanup_table_num,
             "JumpCleanup gated table_id",
         );
         let tuple = [
@@ -671,12 +651,17 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
             * Term::from(next_pc_bit_1),
     );
 
-    // Per-opcode rd-write helpers. is_X_writes_rd = is_X AND NOT rd_is_zero (X ∈
-    // {jal, jalr, slt}); gate_fam2_rd_zero = (any Family-2 sub-opcode) AND rd_is_zero.
-    // Non-Family-2 cycles: all four 0 ⇒ every rd-write constraint below trivially
+    // Per-opcode rd-write helpers. JAL and JALR are merged into a single helper
+    // (`is_jal_or_jalr_writes_rd`) because they always appear summed at the two
+    // rd-write use sites and produce the same value (saved_pc); decoder-enforced
+    // mutual exclusion keeps the sum Boolean. SLT and the rd=0 gate keep separate
+    // helpers because they enter different constraints.
+    //   is_jal_or_jalr_writes_rd = (is_jal + is_jalr) * (1 - rd_is_zero)
+    //   is_slt_writes_rd         = is_slt           * (1 - rd_is_zero)
+    //   gate_fam2_rd_zero        = (any F2 sub-op)  * rd_is_zero
+    // Non-Family-2 cycles: all three 0 ⇒ every rd-write constraint below trivially
     // holds, so other families own rd_write_limbs on their own cycles.
-    let is_jal_writes_rd = cs.add_named_boolean_variable("is_jal_writes_rd");
-    let is_jalr_writes_rd = cs.add_named_boolean_variable("is_jalr_writes_rd");
+    let is_jal_or_jalr_writes_rd = cs.add_named_boolean_variable("is_jal_or_jalr_writes_rd");
     let is_slt_writes_rd = cs.add_named_boolean_variable("is_slt_writes_rd");
     let gate_fam2_rd_zero = cs.add_named_boolean_variable("gate_fam2_rd_zero");
 
@@ -693,13 +678,10 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
             let is_branch_m = placer.get_boolean(is_branch_var);
             let rd_is_zero_m = placer.get_boolean(rd_is_zero_var);
             let not_rd_zero = rd_is_zero_m.negate();
+            let is_jal_or_jalr = is_jal_m.or(&is_jalr_m);
             placer.assign_mask(
-                is_jal_writes_rd.expect_variable(),
-                &is_jal_m.and(&not_rd_zero),
-            );
-            placer.assign_mask(
-                is_jalr_writes_rd.expect_variable(),
-                &is_jalr_m.and(&not_rd_zero),
+                is_jal_or_jalr_writes_rd.expect_variable(),
+                &is_jal_or_jalr.and(&not_rd_zero),
             );
             placer.assign_mask(
                 is_slt_writes_rd.expect_variable(),
@@ -715,14 +697,12 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     }
 
     // Helper-Boolean setup (deg 2 each).
-    // is_X_writes_rd = is_X * (1 - rd_is_zero)  for X ∈ {jal, jalr, slt}
-    // Rearranged: is_X_writes_rd + is_X * rd_is_zero - is_X = 0
+    // is_jal_or_jalr_writes_rd = (is_jal + is_jalr) * (1 - rd_is_zero)
+    // Rearranged: is_jal_or_jalr_writes_rd + (is_jal + is_jalr)*rd_is_zero - is_jal - is_jalr = 0
     cs.add_constraint(
-        Constraint::from(is_jal_writes_rd) + Term::from(is_jal) * Term::from(rd_is_zero)
-            - Term::from(is_jal),
-    );
-    cs.add_constraint(
-        Constraint::from(is_jalr_writes_rd) + Term::from(is_jalr) * Term::from(rd_is_zero)
+        Constraint::from(is_jal_or_jalr_writes_rd)
+            + (Constraint::from(is_jal) + Term::from(is_jalr)) * Term::from(rd_is_zero)
+            - Term::from(is_jal)
             - Term::from(is_jalr),
     );
     cs.add_constraint(
@@ -749,17 +729,14 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
 
     // Per-opcode rd-write constraints. Low limb: jal/jalr → saved_pc_low; slt → slt_value.
     cs.add_constraint(
-        Term::from(is_jal_writes_rd) * Term::from(comparison_rel_or_jump_saved_pc_low)
-            + Term::from(is_jalr_writes_rd) * Term::from(comparison_rel_or_jump_saved_pc_low)
+        Term::from(is_jal_or_jalr_writes_rd) * Term::from(comparison_rel_or_jump_saved_pc_low)
             + Term::from(is_slt_writes_rd) * Term::from(should_jump_or_slt_value)
-            - (Constraint::from(is_jal_writes_rd)
-                + Term::from(is_jalr_writes_rd)
-                + Term::from(is_slt_writes_rd))
+            - (Constraint::from(is_jal_or_jalr_writes_rd) + Term::from(is_slt_writes_rd))
                 * Term::from(rd_write_limbs[0]),
     );
     // High limb: jal/jalr write saved_pc_high.
     cs.add_constraint(
-        (Constraint::from(is_jal_writes_rd) + Term::from(is_jalr_writes_rd))
+        Constraint::from(is_jal_or_jalr_writes_rd)
             * (Constraint::from(comparison_rel_or_jump_saved_pc_high)
                 - Term::from(rd_write_limbs[1])),
     );

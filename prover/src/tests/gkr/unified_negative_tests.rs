@@ -1,5 +1,5 @@
-use super::{check_lookups_in_range, *};
 use super::orchestration::common::{run_vm_and_capture, ProgramConfig};
+use super::{check_lookups_in_range, *};
 use crate::gkr::witness_gen::family_circuits::{
     build_unified_table_driver, evaluate_gkr_witness_for_executor_family,
 };
@@ -8,7 +8,8 @@ use ::field::baby_bear::base::BabyBearField;
 use ::field::Field;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use cs::gkr_circuits::unified_reduced_machine::{
-    FAMILY_2_FLAG_OFFSET, FAMILY_4_LW_BIT, FAMILY_4_SW_BIT,
+    FAMILY_1_FLAG_OFFSET, FAMILY_2_FLAG_OFFSET, FAMILY_4_LW_BIT, FAMILY_4_SW_BIT,
+    UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
 use riscv_transpiler::replayer::*;
 use riscv_transpiler::vm::*;
@@ -22,10 +23,7 @@ const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
 const USE_GKR_WITH_CACHES: bool = cfg!(not(feature = "no_caches"));
 
-fn find_base_layer_address(
-    circuit: &GKRCircuitArtifact<BabyBearField>,
-    name: &str,
-) -> GKRAddress {
+fn find_base_layer_address(circuit: &GKRCircuitArtifact<BabyBearField>, name: &str) -> GKRAddress {
     for (var, var_name) in circuit.variable_names.iter() {
         if var_name == name {
             let addr = *circuit
@@ -108,12 +106,13 @@ fn build_satisfying_trace_with_mutation(
         let d = Vec::with_capacity(1 << TRACE_LEN_LOG2);
         inits_and_teardowns.push(([a, b], [c, d]));
     }
-    vm.ram.collect_inits_and_teardowns_into_columns::<BabyBearField, _>(
-        &worker,
-        TRACE_LEN_LOG2,
-        0,
-        &mut inits_and_teardowns,
-    );
+    vm.ram
+        .collect_inits_and_teardowns_into_columns::<BabyBearField, _>(
+            &worker,
+            TRACE_LEN_LOG2,
+            0,
+            &mut inits_and_teardowns,
+        );
 
     // Replay the snapshotter into the unified destination tracer.
     let mut state = vm.snapshotter.initial_snapshot.state;
@@ -222,21 +221,14 @@ fn slt_rd_write_high_limb_nonzero_rejected() {
     // jump_branch_slt_family/decoder.rs:6 `const SLT_BIT: usize = 2`).
     let slt_bit_index = FAMILY_2_FLAG_OFFSET + 2;
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
-        let slt_addr =
-            find_base_layer_address(circuit, &format!("family_bit[{}]", slt_bit_index));
-        let rd_write_hi_addr =
-            find_base_layer_address(circuit, "rd/mem write write_value[1]");
+        let slt_addr = find_base_layer_address(circuit, &format!("family_bit[{}]", slt_bit_index));
+        let rd_write_hi_addr = find_base_layer_address(circuit, "rd/mem write write_value[1]");
         let slt_row = (0..base_trace_len(trace))
             .find(|&r| read_cell(trace, slt_addr, r) == BabyBearField::ONE)
             .expect("multi_family_smoke must execute at least one SLT");
         // 16-bit non-zero so the implicit top-level RC doesn't catch it; only
         // the explicit `is_slt_writes_rd * rd_write_limbs[1] = 0` constraint should.
-        write_cell(
-            trace,
-            rd_write_hi_addr,
-            slt_row,
-            BabyBearField::new(0x1234),
-        );
+        write_cell(trace, rd_write_hi_addr, slt_row, BabyBearField::new(0x1234));
     });
     assert!(
         !check_satisfied(&circuit, &full_trace),
@@ -252,8 +244,7 @@ fn slt_rd_write_high_limb_nonzero_rejected() {
 fn sw_into_rom_rejected() {
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
         let sw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
-        let is_rom_addr =
-            find_base_layer_address(circuit, "flag: are we in rom addr range?");
+        let is_rom_addr = find_base_layer_address(circuit, "flag: are we in rom addr range?");
         let sw_row = (0..base_trace_len(trace))
             .find(|&r| read_cell(trace, sw_addr, r) == BabyBearField::ONE)
             .expect("multi_family_smoke must execute at least one SW");
@@ -292,8 +283,7 @@ fn empty_family_mask_on_executing_row_rejected() {
         // committed table doesn't have an entry mapping this PC to all-zero
         // family bits), not from a trivially-failing arithmetic constraint
         // that's incidental to the actual attack.
-        let any_active_addr =
-            find_base_layer_address(circuit, "unified family-dispatch one-hot");
+        let any_active_addr = find_base_layer_address(circuit, "unified family-dispatch one-hot");
         write_cell(trace, any_active_addr, exec_row, BabyBearField::ZERO);
     });
     assert!(
@@ -346,6 +336,71 @@ fn range_check_16_violation_caught_by_lookup_oracle() {
     assert!(
         !lookup_ok,
         "expected check_lookups_in_range to reject a 17-bit value in an RC-16 column"
+    );
+}
+
+/// Cross-family flag collision. Sets a bit from
+/// Family 1 (ADD, bit 0) AND a bit from Family 2 (JAL, bit 8) hot on the same
+/// executing row. The unified dispatch one-hot constraint at
+/// `circuit.rs:393-408` (`is_any_family_active - execute * Σ family-dispatch-bits = 0`,
+/// with `is_any_family_active` Boolean) forces the sum across families to be in
+/// {0, 1} on executing rows. Two cross-family bits set ⇒ sum ≥ 2 ⇒ the Boolean
+/// is_any_family_active can't satisfy. `check_satisfied` must reject.
+#[test]
+fn cross_family_flag_collision_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        // Anchor on an LW row (we know multi_family_smoke executes some).
+        // Pre-mutation that row has only `family_bit[FAMILY_4_LW_BIT]` hot.
+        let lw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
+        let f1_bit_addr =
+            find_base_layer_address(circuit, &format!("family_bit[{FAMILY_1_FLAG_OFFSET}]"));
+        let f2_bit_addr =
+            find_base_layer_address(circuit, &format!("family_bit[{FAMILY_2_FLAG_OFFSET}]"));
+        let lw_addr_clear = lw_addr;
+        let lw_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, lw_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one LW");
+        // Clear the LW bit and set bits in BOTH F1 and F2 dispatch ranges.
+        // The dispatch one-hot constraint sums across families, so this is the
+        // genuine cross-family collision (vs LW+SW which are both inside F4).
+        write_cell(trace, lw_addr_clear, lw_row, BabyBearField::ZERO);
+        write_cell(trace, f1_bit_addr, lw_row, BabyBearField::ONE);
+        write_cell(trace, f2_bit_addr, lw_row, BabyBearField::ONE);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected cross-family flag collision (F1+F2 bits set) to fail check_satisfied"
+    );
+}
+
+/// Padding-row family-bit leak: on a padding row (`execute = 0`), the decoder
+/// lookup is gated off, so the bitmask is NOT bound to a decoder table entry.
+/// The explicit padding-zero-sum constraint at `circuit.rs:418-432`
+/// (`(1 - execute) * Σ all 17 family-bits = 0`) is the only defence against a
+/// malicious prover setting a family bit on a padding row. This test mutates a
+/// padding row to set `family_bit[0] = 1` and asserts `check_satisfied`
+/// rejects. Without that constraint, the prover could claim "extra"
+/// instructions of any family on padding rows, breaking the
+/// "executed-cycle-count" invariant downstream.
+#[test]
+fn padding_row_family_bit_set_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        // Padding rows are those with `execute = 0`. Find one. `execute` is
+        // committed as a named variable — look it up by name.
+        let execute_addr = find_base_layer_address(circuit, "Execute flag for cycle");
+        let padding_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, execute_addr, r) == BabyBearField::ZERO)
+            .expect("trace must contain at least one padding row (execute = 0)");
+        // Set Family 1 bit 0 on this padding row. The constraint
+        // `(1 - execute) * Σbits = 0` evaluates to `1 * 1 = 1 ≠ 0` and the
+        // arithmetic checker rejects.
+        let f1_bit_addr =
+            find_base_layer_address(circuit, &format!("family_bit[{FAMILY_1_FLAG_OFFSET}]"));
+        write_cell(trace, f1_bit_addr, padding_row, BabyBearField::ONE);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected family_bit[0] = 1 on a padding row to fail check_satisfied"
     );
 }
 

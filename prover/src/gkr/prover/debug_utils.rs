@@ -131,8 +131,18 @@ pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F
         }
     }
 
+    // The loop above iterates over 5 OutputType variants, pushing exactly 2 evals per variant
+    // (either the two stored evaluations, or two ZERO placeholders for absent keys).
+    // Pin the count explicitly so a future addition/removal of an OutputType variant produces
+    // a clear assertion failure rather than a confusing destructure panic.
+    assert_eq!(
+        evals.len(),
+        10,
+        "expected 5 OutputType variants × 2 evals each = 10, got {}",
+        evals.len()
+    );
     let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden, claim_initset, claim_teardownset] =
-        evals.try_into().unwrap();
+        evals.try_into().expect("length checked above");
 
     (
         claim_readset,

@@ -34,15 +34,27 @@ impl Default for ExecutorFamilyDecoderData {
 
 pub struct DecoderTable {
     entries: Vec<Option<ExecutorFamilyDecoderData>>,
+    family_idx: u8,
 }
 
 impl DecoderTable {
     /// Construct from the per-family entries produced by
-    /// `process_binary_into_separate_tables_ext`. Caller-side discipline: pass
-    /// the entries for ONE specific family; mixing families breaks the
-    /// "this PC's opcode is in this family" invariant the lookup relies on.
-    pub fn from_preprocessing(entries: Vec<Option<ExecutorFamilyDecoderData>>) -> Self {
-        Self { entries }
+    /// `process_binary_into_separate_tables_ext` for `family_idx`. Caller-side
+    /// discipline: pass the entries from the map's `family_idx` slot; mixing
+    /// families breaks the lookup invariant.
+    pub fn from_preprocessing(
+        family_idx: u8,
+        entries: Vec<Option<ExecutorFamilyDecoderData>>,
+    ) -> Self {
+        Self {
+            entries,
+            family_idx,
+        }
+    }
+
+    /// The family index this table is tagged for. See struct docs.
+    pub fn family_idx(&self) -> u8 {
+        self.family_idx
     }
 
     /// Look up the decoder data for a PC. Panics loudly if the PC is out of
@@ -67,6 +79,10 @@ impl DecoderTable {
 
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 
     pub fn entries(&self) -> &[Option<ExecutorFamilyDecoderData>] {

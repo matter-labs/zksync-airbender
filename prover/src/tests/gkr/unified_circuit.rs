@@ -1,8 +1,6 @@
-use crate::definitions::SecurityLevel;
 use super::orchestration::common::ProgramConfig;
-use super::orchestration::unified::{
-    prove_unified, DelegationCallCounts, DelegationEvalFns,
-};
+use super::orchestration::unified::{prove_unified, DelegationCallCounts, DelegationEvalFns};
+use crate::definitions::SecurityLevel;
 use riscv_transpiler::vm::DelegationsAndUnifiedCounters;
 use worker::Worker;
 
@@ -33,9 +31,9 @@ fn run_unified_test(level: SecurityLevel) {
         blake_g_function: Some(super::blake2_g_function::witness_eval_fn),
     };
 
-    let vm = super::orchestration::common::run_vm_and_capture::<
-        DelegationsAndUnifiedCounters,
-    >(&config, &worker);
+    let vm = super::orchestration::common::run_vm_and_capture::<DelegationsAndUnifiedCounters>(
+        &config, &worker,
+    );
     let delegation_call_counts = DelegationCallCounts {
         blake: vm.counters.blake_calls,
         bigint: vm.counters.bigint_calls,

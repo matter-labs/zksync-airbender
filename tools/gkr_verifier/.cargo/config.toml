@@ -6,6 +6,12 @@ rustflags = [
   "-C", "link-arg=-Tlink.x",
   "-C", "link-arg=--save-temps",
   "-C", "force-frame-pointers",
+  # Suppress warnings: the bulk of code compiled in this target is auto-generated
+  # verifier code in `verifier/src/generated/` which is not linted manually. Setting this
+  # via config.toml (rather than `RUSTFLAGS=...`) is deliberate — `RUSTFLAGS` overrides
+  # (rather than merges with) the rustflags above, which would drop the +zimop target
+  # feature and break compilation. See `dump_bin.sh` and project memory
+  # `feedback_rustflags_overrides`.
   "-A", "warnings",
 ]
 

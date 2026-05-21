@@ -8,8 +8,7 @@ use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use crate::gkr::witness_gen::delegation_circuits::{
-    evaluate_gkr_memory_witness_for_delegation_circuit,
-    evaluate_gkr_witness_for_delegation_circuit,
+    evaluate_gkr_memory_witness_for_delegation_circuit, evaluate_gkr_witness_for_delegation_circuit,
 };
 use crate::gkr::witness_gen::family_circuits::GKRMemoryOnlyWitnessTrace;
 use crate::merkle_trees::DefaultTreeConstructor;
@@ -458,7 +457,9 @@ where
     let circuit: GKRCircuitArtifact<BabyBearField> =
         deserialize_from_file(&circuit_path("blake2_g_function"));
     let mut table_driver = TableDriver::<BabyBearField>::new();
-    cs::gkr_circuits::delegation::blake2_g_function::blake2_g_function_table_driver_fn(&mut table_driver);
+    cs::gkr_circuits::delegation::blake2_g_function::blake2_g_function_table_driver_fn(
+        &mut table_driver,
+    );
 
     let mut state = snapshotter.initial_snapshot.state;
     let mut ram_log_buffers = snapshotter

@@ -369,18 +369,17 @@ where
         );
 
     println!("Computing full trace (unified)");
-    let unified_full_trace =
-        evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
-            unified_circuit,
-            eval_fn,
-            NUM_CYCLES_PER_CHUNK,
-            &oracle,
-            &unified_table_driver,
-            worker,
-            Some(unified_inits_and_teardowns),
-            Global,
-            Global,
-        );
+    let unified_full_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
+        unified_circuit,
+        eval_fn,
+        NUM_CYCLES_PER_CHUNK,
+        &oracle,
+        &unified_table_driver,
+        worker,
+        Some(unified_inits_and_teardowns),
+        Global,
+        Global,
+    );
 
     super::common::ensure_memory_trace_consistency(&unified_memory_trace, &unified_full_trace);
 
@@ -413,9 +412,7 @@ where
         worker,
     );
 
-    let unified_top_bits: Vec<u32> = (0..num_unified_teardown_sets)
-        .map(|i| i as u32)
-        .collect();
+    let unified_top_bits: Vec<u32> = (0..num_unified_teardown_sets).map(|i| i as u32).collect();
 
     println!("Trying to prove (unified)");
     let now = std::time::Instant::now();

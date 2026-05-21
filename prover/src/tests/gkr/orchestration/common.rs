@@ -1,4 +1,3 @@
-
 use crate::cs::definitions::TimestampScalar;
 use crate::gkr::prover::GKRExternalChallenges;
 use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
@@ -8,9 +7,7 @@ use fft::materialize_powers_serial_starting_with_elem;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
-use riscv_transpiler::vm::{
-    Counters, RamWithRomRegion, SimpleSnapshotter, SimpleTape, State, VM,
-};
+use riscv_transpiler::vm::{Counters, RamWithRomRegion, SimpleSnapshotter, SimpleTape, State, VM};
 use std::alloc::Global;
 use worker::Worker;
 
@@ -139,8 +136,7 @@ pub struct VmRunOutput<C: Counters + Copy + Default> {
     pub final_pc: u32,
     pub final_timestamp: TimestampScalar,
     pub register_final_state: [RamShuffleMemStateRecord; 32],
-    pub shuffle_ram_touched_addresses:
-        Vec<Vec<(u32, (TimestampScalar, u32)), Global>, Global>,
+    pub shuffle_ram_touched_addresses: Vec<Vec<(u32, (TimestampScalar, u32)), Global>, Global>,
     pub total_unique_teardowns: usize,
     pub cycles_bound: usize,
     /// Echo of `ProgramConfig::ram_bound_bytes` so downstream consumers
@@ -184,10 +180,11 @@ where
     );
 
     let mut state = State::initial_with_counters(C::default());
-    let mut snapshotter = SimpleSnapshotter::<C, { common_constants::ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(
-        config.cycles_bound,
-        state,
-    );
+    let mut snapshotter =
+        SimpleSnapshotter::<C, { common_constants::ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(
+            config.cycles_bound,
+            state,
+        );
     let mut non_determinism = QuasiUARTSource::new_with_reads(config.non_determinism_reads.clone());
 
     let is_program_finished = VM::<C>::run_basic_unrolled::<_, _, _, BabyBearField>(

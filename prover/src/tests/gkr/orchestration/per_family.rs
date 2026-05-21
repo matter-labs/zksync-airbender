@@ -196,7 +196,8 @@ where
 {
     println!("Will try to prove family circuit '{circuit_stem}'");
 
-    let circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(&circuit_path(circuit_stem));
+    let circuit: GKRCircuitArtifact<BabyBearField> =
+        deserialize_from_file(&circuit_path(circuit_stem));
     let mut table_driver = TableDriver::<BabyBearField>::new();
     table_driver_setup(&mut table_driver);
 
@@ -288,7 +289,8 @@ where
 {
     println!("Will try to prove family circuit '{circuit_stem}'");
 
-    let circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(&circuit_path(circuit_stem));
+    let circuit: GKRCircuitArtifact<BabyBearField> =
+        deserialize_from_file(&circuit_path(circuit_stem));
     let mut table_driver = TableDriver::<BabyBearField>::new();
     table_driver_setup(&mut table_driver);
 

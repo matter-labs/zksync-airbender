@@ -1,8 +1,7 @@
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use common_constants::{
     BIGINT_OPS_WITH_CONTROL_CSR_REGISTER, BLAKE2S_DELEGATION_CSR_REGISTER,
-    BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER,
-    NON_DETERMINISM_CSR,
+    BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER, NON_DETERMINISM_CSR,
 };
 use cs::definitions::TimestampScalar;
 use cs::gkr_circuits::unified_reduced_machine::UnifiedReducedMachineDecoder;
@@ -38,18 +37,22 @@ impl<'a> UnifiedRiscvCircuitOracle<'a> {
             KECCAK_SPECIAL5_CSR_REGISTER as u16,
             BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
         ];
-        let mut preprocessing_data = process_binary_into_separate_tables_ext::<
-            F,
-            FullUnsignedMachineDecoderConfig,
-            true,
-            Global,
-        >(text_section, &decoders, bytecode_size_words, SUPPORTED_CSRS);
+        let mut preprocessing_data =
+            process_binary_into_separate_tables_ext::<
+                F,
+                FullUnsignedMachineDecoderConfig,
+                true,
+                Global,
+            >(text_section, &decoders, bytecode_size_words, SUPPORTED_CSRS);
         let entries = preprocessing_data
             .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
             .expect("UnifiedReducedMachineDecoder must produce a family-128 entry");
         Self {
             inner,
-            decoder_table: DecoderTable::from_preprocessing(entries),
+            decoder_table: DecoderTable::from_preprocessing(
+                REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
+                entries,
+            ),
         }
     }
 

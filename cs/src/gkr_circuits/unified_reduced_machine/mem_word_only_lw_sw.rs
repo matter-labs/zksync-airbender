@@ -6,23 +6,25 @@ use crate::witness_placer::*;
 use field::PrimeField;
 
 /// Per-cycle Family-4 LW/SW constraints (the data-path piece). Caller
-/// (`mem_word_only.rs`) has already done the register/RAM dispatch and
-/// produced `is_fam4`.
+/// (`mem_word_only.rs`) has already done the register/RAM dispatch.
 ///
 /// Constraints added here:
 /// 1. rs1+imm = mem-side address — combined LW/SW form, gated on `is_lw + is_sw`
 ///    (deg 2 with carry bits `of_lo`, `of_hi`).
 /// 2. ROM-vs-data dispatch — `is_rom` boolean + range check on the residue,
 ///    plus `is_sw * is_rom = 0` (no SW into ROM).
-/// 3. ROM-or-data value lookup — gated via `gate_fam4_rom` / `gate_fam4_not_rom`.
+/// 3. ROM-or-data value lookup — gated via `gate_fam4_rom` (and the inline
+///    expression `is_fam4 - gate_fam4_rom` for the not-rom case).
 /// 4. SW alignment trap — `is_sw * (bit_0 + bit_1) = 0`.
+///
+/// `is_fam4` is inlined as `(is_lw + is_sw)` everywhere it appears; no
+/// committed Boolean column.
 #[allow(non_snake_case)]
 pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: &OpcodeFamilyCircuitState<F>,
     is_lw: Boolean,
     is_sw: Boolean,
-    is_fam4: Boolean,
     rs1_limbs: [Variable; REGISTER_SIZE * 2],
     memread_u8: [Variable; REGISTER_SIZE * 2],
     memwrite_u16: [Variable; REGISTER_SIZE],
@@ -95,7 +97,6 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
                 <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(&is_active, &carry_hi, &off);
             placer.assign_mask(of_lo.expect_variable(), &of_lo_val);
             placer.assign_mask(of_hi.expect_variable(), &of_hi_val);
-            placer.assign_mask(is_fam4.expect_variable(), &is_active);
         };
         cs.set_values(value_fn);
     }
@@ -163,34 +164,41 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     };
 
     // For non-Family-4 cycles the tuple degenerates to (0, 0, 0) ∈ ZeroEntry —
-    // gating is applied to both the table_id and the outputs via `is_fam4` and
-    // the two helper booleans:
+    // gating is applied to both the table_id and the outputs via the inlined
+    // `is_fam4 = is_lw + is_sw` sum and the single committed helper:
     //
-    //   - `gate_fam4_rom     = is_fam4 AND is_rom`
-    //   - `gate_fam4_not_rom = is_fam4 AND NOT is_rom`
+    //   - `gate_fam4_rom     = (is_lw + is_sw) AND is_rom`
+    //   - `gate_fam4_not_rom = (is_lw + is_sw) - gate_fam4_rom` (inlined at use)
     //
-    // Constraints below pin them to the right algebra (deg-2 each).
+    // The "not_rom" gate is inlined at its use sites (output1 / output2 below)
+    // as the degree-1 expression `(is_lw + is_sw) - gate_fam4_rom`. Saves 1
+    // committed col vs the previous shape where both were base-layer Booleans.
+    let is_fam4_sum = || -> Constraint<F> {
+        Constraint::from(is_lw) + Constraint::from(is_sw)
+    };
     let gate_fam4_rom = cs.add_named_boolean_variable("gate_fam4_rom");
     cs.add_constraint(
         Constraint::from(gate_fam4_rom)
-            - Constraint::from(is_fam4) * Constraint::from(is_rom_base_layer),
-    );
-    let gate_fam4_not_rom = cs.add_named_boolean_variable("gate_fam4_not_rom");
-    // is_fam4 * (1 - is_rom) = is_fam4 - is_fam4 * is_rom; equivalent to
-    // gate_fam4_not_rom + is_fam4*is_rom - is_fam4 = 0  (deg 2).
-    cs.add_constraint(
-        Constraint::from(gate_fam4_not_rom)
-            + Constraint::from(is_fam4) * Constraint::from(is_rom_base_layer)
-            - Constraint::from(is_fam4),
+            - is_fam4_sum() * Constraint::from(is_rom_base_layer),
     );
     {
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            let is_fam4_val = placer.get_boolean(is_fam4.expect_variable());
+            let is_lw_raw = placer.get_boolean(is_lw_var);
+            let is_lw_val = if is_lw_neg {
+                is_lw_raw.negate()
+            } else {
+                is_lw_raw
+            };
+            let is_sw_raw = placer.get_boolean(is_sw_var);
+            let is_sw_val = if is_sw_neg {
+                is_sw_raw.negate()
+            } else {
+                is_sw_raw
+            };
+            let is_fam4_val = is_lw_val.or(&is_sw_val);
             let is_rom_val = placer.get_boolean(is_rom_base_layer.expect_variable());
             let gate_rom_val = is_fam4_val.and(&is_rom_val);
-            let gate_not_rom_val = is_fam4_val.and(&is_rom_val.negate());
             placer.assign_mask(gate_fam4_rom.expect_variable(), &gate_rom_val);
-            placer.assign_mask(gate_fam4_not_rom.expect_variable(), &gate_not_rom_val);
         };
         cs.set_values(value_fn);
     }
@@ -213,11 +221,14 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
             let input = layer_2_copied_is_rom * layer_2_copied_rom_addr;
             cs.add_intermediate_named_variable_from_constraint(input, "final lookup input (L3)")
         };
-        // output_k = is_fam4 * memwrite_k - gate_fam4_not_rom * memread_k.
-        // All factors are L0 vars / Constraints; output expression is deg 2 in L0.
+        // output_k = is_fam4 * memwrite_k - gate_fam4_not_rom * memread_k,
+        // where is_fam4 is inlined as (is_lw + is_sw) and gate_fam4_not_rom as
+        // (is_fam4 - gate_fam4_rom). All factors are L0 vars / Constraints;
+        // output expression is deg 2 in L0.
         let layer_3_selected_output1 = {
-            let output1 = Constraint::from(is_fam4) * Constraint::from(memwrite_lo_var)
-                - Constraint::from(gate_fam4_not_rom) * memread_low_c.clone();
+            let output1 = is_fam4_sum() * Constraint::from(memwrite_lo_var)
+                - (is_fam4_sum() - Constraint::from(gate_fam4_rom))
+                    * memread_low_c.clone();
             let L2_output1 = Constraint::from(cs.add_intermediate_named_variable_from_constraint(
                 output1,
                 "final lookup output1 (L2)",
@@ -228,8 +239,9 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
             )
         };
         let layer_3_selected_output2 = {
-            let output2 = Constraint::from(is_fam4) * Constraint::from(memwrite_hi_var)
-                - Constraint::from(gate_fam4_not_rom) * memread_high_c.clone();
+            let output2 = is_fam4_sum() * Constraint::from(memwrite_hi_var)
+                - (is_fam4_sum() - Constraint::from(gate_fam4_rom))
+                    * memread_high_c.clone();
             let layer_2_copied_output2 =
                 Constraint::from(cs.add_intermediate_named_variable_from_constraint(
                     output2,

@@ -93,12 +93,13 @@ pub fn gkr_run_basic_unrolled_test_impl(
         let d = Vec::with_capacity(1 << TRACE_LEN_LOG2);
         inits_and_teardowns.push(([a, b], [c, d]));
     }
-    vm.ram.collect_inits_and_teardowns_into_columns::<BabyBearField, _>(
-        &worker,
-        TRACE_LEN_LOG2,
-        0,
-        &mut inits_and_teardowns,
-    );
+    vm.ram
+        .collect_inits_and_teardowns_into_columns::<BabyBearField, _>(
+            &worker,
+            TRACE_LEN_LOG2,
+            0,
+            &mut inits_and_teardowns,
+        );
 
     println!("Finished at PC = 0x{:08x}", vm.final_pc);
     for (reg_idx, reg) in vm.register_final_state.iter().enumerate() {
@@ -116,7 +117,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
     let cycles_bound = vm.cycles_bound;
     let text_section = vm.text_section;
     let binary = vm.binary;
-    
+
     let flattened_inits_and_teardowns: Vec<_> = vm
         .shuffle_ram_touched_addresses
         .iter()
@@ -207,10 +208,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
     if PROVE_ADD_SUB {
         const CIRCUIT_TYPE: u8 = ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
-        let out = super::orchestration::per_family::prove_non_mem_family::<
-            CIRCUIT_TYPE,
-            CountersT,
-        >(
+        let out = super::orchestration::per_family::prove_non_mem_family::<CIRCUIT_TYPE, CountersT>(
             &snapshotter,
             &tape,
             &expected_final_state,
@@ -250,17 +248,16 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
     if PROVE_JUMP_BRANCH {
         const CIRCUIT_TYPE: u8 = JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX;
-        let out = super::orchestration::per_family::prove_non_mem_family::<
-            CIRCUIT_TYPE,
-            CountersT,
-        >(
+        let out = super::orchestration::per_family::prove_non_mem_family::<CIRCUIT_TYPE, CountersT>(
             &snapshotter,
             &tape,
             &expected_final_state,
             cycles_bound,
             counters.get_calls_to_circuit_family::<CIRCUIT_TYPE>(),
             &preprocessing_data[&CIRCUIT_TYPE],
-            cs::gkr_circuits::jump_branch_slt_family::jump_branch_slt_table_driver_fn::<BabyBearField>,
+            cs::gkr_circuits::jump_branch_slt_family::jump_branch_slt_table_driver_fn::<
+                BabyBearField,
+            >,
             trace_len,
             NUM_CYCLES_PER_CHUNK,
             &external_challenges,
@@ -293,10 +290,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
     if PROVE_SHIFTS_BINOPS {
         const CIRCUIT_TYPE: u8 = SHIFT_BINARY_CIRCUIT_FAMILY_IDX;
-        let out = super::orchestration::per_family::prove_non_mem_family::<
-            CIRCUIT_TYPE,
-            CountersT,
-        >(
+        let out = super::orchestration::per_family::prove_non_mem_family::<CIRCUIT_TYPE, CountersT>(
             &snapshotter,
             &tape,
             &expected_final_state,
@@ -336,10 +330,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
     if PROVE_MUL_DIV {
         const CIRCUIT_TYPE: u8 = MUL_DIV_CIRCUIT_FAMILY_IDX;
-        let out = super::orchestration::per_family::prove_non_mem_family::<
-            CIRCUIT_TYPE,
-            CountersT,
-        >(
+        let out = super::orchestration::per_family::prove_non_mem_family::<CIRCUIT_TYPE, CountersT>(
             &snapshotter,
             &tape,
             &expected_final_state,
@@ -379,10 +370,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
     if PROVE_MEM_WORD {
         const CIRCUIT_TYPE: u8 = LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX;
-        let out = super::orchestration::per_family::prove_mem_family::<
-            CIRCUIT_TYPE,
-            CountersT,
-        >(
+        let out = super::orchestration::per_family::prove_mem_family::<CIRCUIT_TYPE, CountersT>(
             &snapshotter,
             &tape,
             &expected_final_state,
@@ -432,10 +420,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
     if PROVE_MEM_SUBWORD {
         const CIRCUIT_TYPE: u8 = LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX;
-        let out = super::orchestration::per_family::prove_mem_family::<
-            CIRCUIT_TYPE,
-            CountersT,
-        >(
+        let out = super::orchestration::per_family::prove_mem_family::<CIRCUIT_TYPE, CountersT>(
             &snapshotter,
             &tape,
             &expected_final_state,
@@ -604,9 +589,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
     }
 
     if PROVE_BLAKE_G_FUNCTION {
-        let out = super::orchestration::delegations::prove_delegation_blake_g_function::<
-            CountersT,
-        >(
+        let out = super::orchestration::delegations::prove_delegation_blake_g_function::<CountersT>(
             &snapshotter,
             &tape,
             &expected_final_state,

@@ -1112,6 +1112,15 @@ impl<F: PrimeField> GKRCompiler<F> {
             num_inits_and_teardowns > 0,
             "use compile_family_circuit when there are no inline inits/teardowns"
         );
+        // The downstream `allocate_inline_inits_and_teardowns_sets` requires
+        // `num_inits_and_teardowns_pairs.is_power_of_two()` because the pairwise grand-product
+        // aggregation needs balanced halves. Validate at the public entry point so a bad caller
+        // gets a clear error here instead of an opaque assertion deep in compilation.
+        assert!(
+            num_inits_and_teardowns.is_power_of_two(),
+            "num_inits_and_teardowns must be a power of two; got {}",
+            num_inits_and_teardowns
+        );
         self.compile_family_circuit(
             circuit_output,
             max_bytecode_size_in_words,

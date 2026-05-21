@@ -2,7 +2,7 @@ use super::common::EXT_DEGREE;
 use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use verifier_common::{DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS};
 pub const GKR_ROUNDS: usize = 24usize;
-pub const GKR_ADDRS: usize = 151usize;
+pub const GKR_ADDRS: usize = 147usize;
 pub const GKR_EVALS: usize = 160usize;
 pub const INIT_AND_TEARDOWN_SETS: usize = 2usize;
 pub const EXTERNAL_CHALLENGES_FLATTENED_SIZE: usize = EXT_DEGREE * (6usize + 1);
@@ -26,8 +26,8 @@ pub const PADDING_WORDS: usize = {
     }
 };
 pub const GKR_EVAL_BUF: usize = {
-    let dim_reducing = 151usize * DIM_REDUCE_EVAL_POINTS * EXT_DEGREE;
-    let standard = 151usize * STANDARD_EVAL_POINTS * EXT_DEGREE;
+    let dim_reducing = 147usize * DIM_REDUCE_EVAL_POINTS * EXT_DEGREE;
+    let standard = 147usize * STANDARD_EVAL_POINTS * EXT_DEGREE;
     let evals = 160usize * EXT_DEGREE;
     let max_data = if dim_reducing > standard {
         dim_reducing
@@ -54,9 +54,9 @@ pub const WHIR_POW_BITS: [u32; 6usize] = [28u32, 20u32, 17u32, 10u32, 23u32, 23u
 pub const MAX_POW_ENTRIES: usize = 101usize;
 pub const FINAL_MONOMIALS_LEN: usize = 2usize;
 pub const NUM_ORACLES: usize = 3usize;
-pub const ORACLE_NUM_COLS: [usize; 3usize] = [42usize, 77usize, 10usize];
+pub const ORACLE_NUM_COLS: [usize; 3usize] = [42usize, 73usize, 10usize];
 pub const ORACLE_DEPTHS: [usize; 3usize] = [20usize, 20usize, 20usize];
-pub const TOTAL_ORACLE_COLS: usize = 129usize;
+pub const TOTAL_ORACLE_COLS: usize = 125usize;
 pub const WHIR_ORACLE_DEPTHS: [usize; 5usize] = [18usize, 18usize, 18usize, 19usize, 16usize];
 pub const WHIR_CAP_WORDS: usize = 128usize;
 use verifier_common::field::baby_bear::base::BabyBearField;
