@@ -84,12 +84,12 @@ pub(super) fn schedule_fold_round(
             next_len,
             stream,
         )?;
-        whir_fold_split_half_in_place(
+        whir_fold_split_half_in_place_pair(
             &mut state.sumchecked_poly_evaluation_form[..current_len],
+            &mut state.eq_poly[..current_len],
             &d_challenge[0],
             stream,
         )?;
-        whir_fold_split_half_in_place(&mut state.eq_poly[..current_len], &d_challenge[0], stream)?;
         state.current_len = next_len;
         *scheduled_sumcheck_poly_idx += 1;
     }

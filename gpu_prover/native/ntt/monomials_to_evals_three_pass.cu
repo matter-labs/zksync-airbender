@@ -5,7 +5,7 @@ namespace airbender::ntt {
 
 EXTERN __launch_bounds__(512, 2) __global__
     void ab_monomials_to_evals_noninitial_8_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                          const int log_n, const int start_stage) {
+                                                          const int log_n, const int start_stage, const int num_cols_per_coset, const int log_cosets_in_tile) {
   using namespace pass_config::three_pass_phase_a;
 
   const int lane_in_tile = threadIdx.x & 31;
@@ -15,9 +15,27 @@ EXTERN __launch_bounds__(512, 2) __global__
   const int tile_gmem_stride = exchg_region_size >> LOG_DATA_TILES_PER_BLOCK;
   const int interleaved_gmem_stride = tile_gmem_stride * THREAD_TILES_PER_BLOCK;
 
-  // Reversed block indexing for the middle kernel, to help L2 hits
-  const int alternating_block_idx_x = (start_stage == 0) ? blockIdx.x : (gridDim.x - 1 - blockIdx.x);
-  const int alternating_block_idx_y = (start_stage == 0) ? blockIdx.y : (gridDim.y - 1 - blockIdx.y);
+  // Flat-blockIdx.x layout (2-D intra-NTT), cosets as the outer axis. With
+  // `log_cosets_in_tile = 0` the coset bits vanish and the column offset
+  // reduces to fi.col, preserving the single-coset behavior.
+  //   log_blocks_x = (start_stage + 8) - 13 = start_stage - 5 (blocks per exchg region)
+  //   log_blocks_y = log_n - (start_stage + 8)                (num exchg regions)
+  // The alternating-block-index L2 hint applies to the decomposed intra-NTT
+  // axes -- reversing the raw flat blockIdx.x would scramble the column factor.
+  const unsigned log_blocks_x = static_cast<unsigned>(start_stage - 5);
+  const unsigned log_blocks_y = static_cast<unsigned>(log_n - start_stage - 8);
+  const FlatBlockIndex fi = decompose_flat_2d(log_blocks_x, log_blocks_y, static_cast<unsigned>(log_cosets_in_tile));
+  const int col_offset = static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col);
+  gmem_in.add_col(col_offset);
+  gmem_out.add_col(col_offset);
+  const unsigned blocks_per_exchg_region = 1u << log_blocks_x;
+  const unsigned num_exchg_regions = 1u << log_blocks_y;
+
+  // Reversed block indexing for the middle kernel, to help L2 hits.
+  const int alternating_block_idx_x =
+      (start_stage == 0) ? static_cast<int>(fi.intra_x) : (static_cast<int>(blocks_per_exchg_region) - 1 - static_cast<int>(fi.intra_x));
+  const int alternating_block_idx_y =
+      (start_stage == 0) ? static_cast<int>(fi.intra_y) : (static_cast<int>(num_exchg_regions) - 1 - static_cast<int>(fi.intra_y));
   const int gmem_block_offset = alternating_block_idx_y * exchg_region_size + (alternating_block_idx_x << LOG_DATA_TILE_SIZE);
   gmem_in.add_row(gmem_block_offset);
   gmem_out.add_row(gmem_block_offset);
@@ -89,15 +107,26 @@ EXTERN __launch_bounds__(512, 2) __global__
 
 template <int STAGES>
 DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                                  const bool transposed_monomials, const int log_n, const int coset_factor_power) {
+                                                                  const bool transposed_monomials, const int log_n, const int coset_index_base,
+                                                                  const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {
   using namespace pass_config::three_pass_phase_b;
   constexpr int OUTPUT_EXCHG_REGIONS_PER_WARP = 1 << (10 - STAGES);
+
+  // Flat-blockIdx.x layout: gridDim.x packs blocks_per_ntt (= n / VALS_PER_BLOCK
+  // = 1 << (log_n - 13)) blocks per NTT, then cosets in tile, then columns.
+  // Inputs are shared across cosets; outputs are coset-major with per-coset
+  // stride `num_cols_per_coset`. `log_cosets_in_tile = 0` collapses cleanly.
+  const unsigned log_blocks_per_ntt = static_cast<unsigned>(log_n) - 13u; // VALS_PER_BLOCK = 1 << 13
+  const FlatBlockIndex fi = decompose_flat_1d(log_blocks_per_ntt, static_cast<unsigned>(log_cosets_in_tile));
+  gmem_in.add_col(fi.col);
+  gmem_out.add_col(static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col));
+  const int coset_factor_power = (coset_index_base + static_cast<int>(fi.coset)) << coset_factor_shift;
 
   const int lane_id = threadIdx.x & 31;
   const int warp_id = threadIdx.x >> 5;
   const int pipeline_memcpy_start = 4 * threadIdx.x;
   const int pipeline_memcpy_stride = 4 * blockDim.x;
-  const int gmem_block_offset = blockIdx.x * VALS_PER_BLOCK;
+  const int gmem_block_offset = static_cast<int>(fi.intra_x) * VALS_PER_BLOCK;
   gmem_in.add_row(gmem_block_offset + warp_id * VALS_PER_WARP);
   gmem_out.add_row(gmem_block_offset + warp_id * VALS_PER_WARP);
 
@@ -157,7 +186,7 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
     }
   }
 
-  int thread_exchg_region_offset = (threadIdx.x + blockIdx.x * blockDim.x) << 4;
+  int thread_exchg_region_offset = (threadIdx.x + static_cast<int>(fi.intra_x) * blockDim.x) << 4;
   constexpr bf *cmem_twiddles = ab_fwd_cmem_twiddles_finest_11;
   reg_exchg_cmem_smem_twiddles_fwd<EightStages, 1, 2, 16, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
   thread_exchg_region_offset >>= 1;
@@ -182,7 +211,7 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
 
   // Use pure cmem for warp-uniform twiddles
   if (STAGES >= 5) {
-    int warp_exchg_region_offset = (blockIdx.x * WARPS_PER_BLOCK + warp_id) << 4;
+    int warp_exchg_region_offset = (static_cast<int>(fi.intra_x) * WARPS_PER_BLOCK + warp_id) << 4;
 #pragma unroll
     for (int i{0}; i < OUTPUT_EXCHG_REGIONS_PER_WARP; i++) {
       if (STAGES == 8) {
@@ -214,28 +243,19 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
     gmem_out.set_at_row(row, vals[i]);
 }
 
-EXTERN __launch_bounds__(256, 3) __global__
-    void ab_monomials_to_evals_initial_8_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                       const bool transposed_monomials, const int log_n, const int coset_factor_power) {
-  monomials_to_evals_initial_up_to_8_stages<8>(gmem_in, gmem_out, transposed_monomials, log_n, coset_factor_power);
-}
+#define DEFINE_INITIAL_KERNEL(STAGES)                                                                                                                          \
+  EXTERN __launch_bounds__(256, 3) __global__ void ab_monomials_to_evals_initial_##STAGES##_stages_kernel(                                                     \
+      bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const bool transposed_monomials, const int log_n,                 \
+      const int coset_index_base, const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {                                  \
+    monomials_to_evals_initial_up_to_8_stages<STAGES>(gmem_in, gmem_out, transposed_monomials, log_n, coset_index_base, coset_factor_shift,                    \
+                                                      num_cols_per_coset, log_cosets_in_tile);                                                                 \
+  }
 
-EXTERN __launch_bounds__(256, 3) __global__
-    void ab_monomials_to_evals_initial_7_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                       const bool transposed_monomials, const int log_n, const int coset_factor_power) {
-  monomials_to_evals_initial_up_to_8_stages<7>(gmem_in, gmem_out, transposed_monomials, log_n, coset_factor_power);
-}
+DEFINE_INITIAL_KERNEL(5)
+DEFINE_INITIAL_KERNEL(6)
+DEFINE_INITIAL_KERNEL(7)
+DEFINE_INITIAL_KERNEL(8)
 
-EXTERN __launch_bounds__(256, 3) __global__
-    void ab_monomials_to_evals_initial_6_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                       const bool transposed_monomials, const int log_n, const int coset_factor_power) {
-  monomials_to_evals_initial_up_to_8_stages<6>(gmem_in, gmem_out, transposed_monomials, log_n, coset_factor_power);
-}
-
-EXTERN __launch_bounds__(256, 3) __global__
-    void ab_monomials_to_evals_initial_5_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                       const bool transposed_monomials, const int log_n, const int coset_factor_power) {
-  monomials_to_evals_initial_up_to_8_stages<5>(gmem_in, gmem_out, transposed_monomials, log_n, coset_factor_power);
-}
+#undef DEFINE_INITIAL_KERNEL
 
 } // namespace airbender::ntt

@@ -37,14 +37,21 @@ pub(crate) fn ntt_pass_selection(
 mod tests;
 
 mod ntt;
+mod strategy;
 #[allow(dead_code)]
 pub(crate) use ntt::{
-    bitreversed_monomials_to_natural_evals, natural_evals_to_bitreversed_monomials,
+    bitreversed_monomials_to_natural_evals, bitreversed_monomials_to_natural_evals_multi_coset,
+    natural_evals_to_bitreversed_monomials,
 };
 #[cfg(test)]
 pub(crate) use ntt::{
     evals_to_monomials_2_pass, evals_to_monomials_3_pass, monomials_to_evals_2_pass,
     monomials_to_evals_3_pass,
+};
+#[allow(dead_code)]
+pub(crate) use strategy::{
+    select_ntt_strategy, NttDirection, NttKernelKind, NttPass, NttStrategy, NttStrategyError,
+    MIN_SUPPORTED_LOG_N,
 };
 
 mod hypercube;

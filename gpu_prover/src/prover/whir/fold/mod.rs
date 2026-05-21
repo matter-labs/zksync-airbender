@@ -17,7 +17,8 @@ use crate::ops::ntt::{
     hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_x1_msb_evals_to_x1_msb_monomials,
     natural_evals_to_bitreversed_monomials,
 };
-use crate::ops::simple::{add, add_into_y, mul, mul_into_x};
+#[cfg(test)]
+use crate::ops::simple::{add, mul, mul_into_x};
 use crate::ops::transpose::transpose;
 use crate::primitives::callbacks::Callbacks;
 #[cfg(test)]
@@ -33,9 +34,10 @@ use crate::prover::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndex
 use crate::prover::proof::layout::ProofLayout;
 use crate::prover::trace::holder::TraceHolder;
 use crate::prover::whir::kernels::{
-    accumulate_whir_base_columns, deserialize_whir_e4_columns, partially_evaluate_monomials_by_ref,
-    serialize_whir_e4_columns, whir_fold_split_half_in_place,
-    whir_fold_split_half_in_place_vectorized,
+    accumulate_whir_base_columns, batched_eq_factor_scratch_lens, deserialize_whir_e4_columns,
+    launch_batched_accumulate_eq_samples, launch_whir_three_point_partials,
+    partially_evaluate_monomials_by_ref, serialize_whir_e4_columns, whir_fold_split_half_in_place,
+    whir_fold_split_half_in_place_pair, whir_fold_split_half_in_place_vectorized,
 };
 use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::upstream::FieldExtension;
@@ -342,54 +344,17 @@ pub(super) fn schedule_special_three_point_eval_device_compute(
     context: &ProverContext,
 ) -> CudaResult<()> {
     let half = state.current_len / 2;
-    assert!(half <= state.scratch0.len());
     let stream = context.get_exec_stream();
-
-    {
-        let (eval_low, _) =
-            state.sumchecked_poly_evaluation_form[..state.current_len].split_at(half);
-        let (eq_low, _) = state.eq_poly[..state.current_len].split_at(half);
-        mul(eval_low, eq_low, &mut state.scratch0[..half], stream)?;
-    }
-    reduce(
-        ReduceOperation::Sum,
-        &mut state.reduce_temp,
-        &state.scratch0[..half],
-        &mut state.reduce_out[0],
+    let eval = &state.sumchecked_poly_evaluation_form[..state.current_len];
+    let eq = &state.eq_poly[..state.current_len];
+    launch_whir_three_point_partials(
+        eval,
+        eq,
+        &mut state.scratch0[..],
+        &mut state.reduce_out[..3],
+        half,
         stream,
-    )?;
-
-    {
-        let (_, eval_high) =
-            state.sumchecked_poly_evaluation_form[..state.current_len].split_at(half);
-        let (_, eq_high) = state.eq_poly[..state.current_len].split_at(half);
-        mul(eval_high, eq_high, &mut state.scratch0[..half], stream)?;
-    }
-    reduce(
-        ReduceOperation::Sum,
-        &mut state.reduce_temp,
-        &state.scratch0[..half],
-        &mut state.reduce_out[1],
-        stream,
-    )?;
-
-    {
-        let (eval_low, eval_high) =
-            state.sumchecked_poly_evaluation_form[..state.current_len].split_at(half);
-        let (eq_low, eq_high) = state.eq_poly[..state.current_len].split_at(half);
-        add(eval_low, eval_high, &mut state.scratch0[..half], stream)?;
-        add(eq_low, eq_high, &mut state.scratch1[..half], stream)?;
-    }
-    mul_into_x(&mut state.scratch0[..half], &state.scratch1[..half], stream)?;
-    reduce(
-        ReduceOperation::Sum,
-        &mut state.reduce_temp,
-        &state.scratch0[..half],
-        &mut state.reduce_out[2],
-        stream,
-    )?;
-
-    Ok(())
+    )
 }
 
 pub(super) fn schedule_monomial_eval_device_impl(
@@ -445,39 +410,33 @@ pub(super) fn schedule_monomial_eval_device(
     Ok(result)
 }
 
-/// Core device kernels for `accumulate_eq_sample_in_place`: launch
-/// `build_eq_values_from_point` against an existing device-resident
-/// `point_pows_device`, scale by `challenge[0]`, accumulate into
-/// `state.eq_poly`. Caller is responsible for keeping `point_pows_device`
-/// alive until the kernels complete.
-pub(super) fn schedule_accumulate_eq_sample_in_place_device_inner(
+/// Returned scratch allocations must outlive the launched kernels — push onto
+/// a per-round keepalive vec.
+pub(super) fn schedule_accumulate_eq_samples_batched(
     state: &mut GpuWhirState,
-    point_pows_device: &DeviceSlice<E4>,
-    challenge: &DeviceSlice<E4>,
+    claim_points: &DeviceSlice<E4>,
+    challenges: &DeviceSlice<E4>,
+    num_queries: usize,
+    challenge_count: usize,
     context: &ProverContext,
-) -> CudaResult<()> {
-    let log_n = state.current_len.trailing_zeros() as usize;
-    assert_eq!(point_pows_device.len(), log_n);
-    launch_build_eq_values_from_point(
-        point_pows_device.as_ptr(),
-        0,
-        log_n,
-        state.eq_group_tables.as_mut_ptr(),
-        state.scratch0.as_mut_ptr(),
+) -> CudaResult<(DeviceAllocation<E4>, DeviceAllocation<E4>)> {
+    assert_eq!(claim_points.len(), num_queries * challenge_count);
+    assert!(challenges.len() >= num_queries);
+    let (high_len, low_len) = batched_eq_factor_scratch_lens(num_queries);
+    let mut eq_high_scratch = context.alloc::<E4>(high_len, AllocationPlacement::BestFit)?;
+    let mut eq_low_scratch = context.alloc::<E4>(low_len, AllocationPlacement::BestFit)?;
+    launch_batched_accumulate_eq_samples(
+        claim_points.as_ptr(),
+        challenges.as_ptr(),
+        num_queries,
+        challenge_count,
+        eq_high_scratch.as_mut_ptr(),
+        eq_low_scratch.as_mut_ptr(),
+        state.eq_poly.as_mut_ptr(),
         state.current_len,
         context,
     )?;
-    mul_into_x(
-        &mut state.scratch0[..state.current_len],
-        &challenge[0],
-        context.get_exec_stream(),
-    )?;
-    add_into_y(
-        &state.scratch0[..state.current_len],
-        &mut state.eq_poly[..state.current_len],
-        context.get_exec_stream(),
-    )?;
-    Ok(())
+    Ok((eq_high_scratch, eq_low_scratch))
 }
 
 #[cfg(test)]
