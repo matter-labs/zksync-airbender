@@ -263,10 +263,12 @@ fn assert_trace_holder_materialization_and_caps_match_cpu(log_rows_per_leaf: u32
     assert!(trace_holder.are_cosets_materialized());
 
     match &trace_holder.cosets {
-        CosetsHolder::Full(cosets) => {
-            for (coset_idx, coset) in cosets.iter().enumerate() {
-                let mut gpu = vec![BF::ZERO; coset.len()];
-                memory_copy_async(&mut gpu, coset, context.get_exec_stream()).unwrap();
+        CosetsHolder::Full(backing) => {
+            let per_coset = backing.len() / (1usize << log_lde_factor);
+            for coset_idx in 0..(1usize << log_lde_factor) {
+                let segment = &backing[coset_idx * per_coset..(coset_idx + 1) * per_coset];
+                let mut gpu = vec![BF::ZERO; per_coset];
+                memory_copy_async(&mut gpu, segment, context.get_exec_stream()).unwrap();
                 context.get_exec_stream().synchronize().unwrap();
                 assert_eq!(gpu, cpu_cosets[coset_idx], "coset {}", coset_idx);
             }
@@ -336,16 +338,366 @@ fn trace_holder_lazy_coset_materialization_matches_cpu() {
     assert!(trace_holder.are_cosets_materialized());
 
     match &trace_holder.cosets {
-        CosetsHolder::Full(cosets) => {
-            for (coset_idx, coset) in cosets.iter().enumerate() {
-                let mut gpu = vec![BF::ZERO; coset.len()];
-                memory_copy_async(&mut gpu, coset, context.get_exec_stream()).unwrap();
+        CosetsHolder::Full(backing) => {
+            let per_coset = backing.len() / (1usize << log_lde_factor);
+            for coset_idx in 0..(1usize << log_lde_factor) {
+                let segment = &backing[coset_idx * per_coset..(coset_idx + 1) * per_coset];
+                let mut gpu = vec![BF::ZERO; per_coset];
+                memory_copy_async(&mut gpu, segment, context.get_exec_stream()).unwrap();
                 context.get_exec_stream().synchronize().unwrap();
                 assert_eq!(gpu, cpu_cosets[coset_idx], "coset {}", coset_idx);
             }
         }
         CosetsHolder::None(_) => panic!("expected Full cosets in test"),
     }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn trace_holder_cosets_view_is_contiguous_in_coset_major_order() {
+    let worker = Worker::new();
+    let context = make_test_context(256, 32);
+    let log_domain_size = PARTIAL_TREE_REDUCTION_LAYERS + 3;
+    let log_lde_factor = 2u32;
+    let columns_count = 3usize;
+    let lde_factor = 1usize << log_lde_factor;
+    let per_coset_len = columns_count * (1usize << log_domain_size);
+
+    let (source_host, cpu_cosets) =
+        make_source_host_and_cpu_cosets(log_domain_size, log_lde_factor, columns_count, &worker);
+
+    let mut source_device = context
+        .alloc(source_host.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut source_device, &source_host, context.get_exec_stream()).unwrap();
+
+    let mut trace_holder = TraceHolder::<BF>::new(
+        log_domain_size,
+        log_lde_factor,
+        0,
+        log_lde_factor + 1,
+        columns_count,
+        TreesCacheMode::CacheNone,
+        &context,
+    )
+    .unwrap();
+    trace_holder
+        .materialize_from_hypercube_evals(&source_device, &context)
+        .unwrap();
+
+    let mut concat = vec![BF::ZERO; lde_factor * per_coset_len];
+    for coset_index in 0..lde_factor {
+        let coset = trace_holder.get_coset_evaluations(coset_index);
+        let dst = &mut concat[coset_index * per_coset_len..(coset_index + 1) * per_coset_len];
+        memory_copy_async(dst, coset, context.get_exec_stream()).unwrap();
+    }
+    context.get_exec_stream().synchronize().unwrap();
+
+    for coset_index in 0..lde_factor {
+        let segment = &concat[coset_index * per_coset_len..(coset_index + 1) * per_coset_len];
+        assert_eq!(segment, &cpu_cosets[coset_index][..], "coset {coset_index}");
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn trace_holder_consolidated_cosets_matches_per_coset_views() {
+    let worker = Worker::new();
+    let context = make_test_context(256, 32);
+    let log_domain_size = PARTIAL_TREE_REDUCTION_LAYERS + 3;
+    let log_lde_factor = 2u32;
+    let columns_count = 3usize;
+    let lde_factor = 1usize << log_lde_factor;
+    let per_coset_len = columns_count * (1usize << log_domain_size);
+
+    let (source_host, _) =
+        make_source_host_and_cpu_cosets(log_domain_size, log_lde_factor, columns_count, &worker);
+
+    let mut source_device = context
+        .alloc(source_host.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut source_device, &source_host, context.get_exec_stream()).unwrap();
+
+    let mut trace_holder = TraceHolder::<BF>::new(
+        log_domain_size,
+        log_lde_factor,
+        0,
+        log_lde_factor + 1,
+        columns_count,
+        TreesCacheMode::CacheNone,
+        &context,
+    )
+    .unwrap();
+    trace_holder
+        .materialize_from_hypercube_evals(&source_device, &context)
+        .unwrap();
+
+    let consolidated = trace_holder.get_consolidated_cosets();
+    assert_eq!(consolidated.len(), lde_factor * per_coset_len);
+
+    let mut host_consolidated = vec![BF::ZERO; consolidated.len()];
+    memory_copy_async(&mut host_consolidated, consolidated, context.get_exec_stream()).unwrap();
+
+    let mut host_per_coset = vec![BF::ZERO; consolidated.len()];
+    for coset_index in 0..lde_factor {
+        let coset = trace_holder.get_coset_evaluations(coset_index);
+        let dst =
+            &mut host_per_coset[coset_index * per_coset_len..(coset_index + 1) * per_coset_len];
+        memory_copy_async(dst, coset, context.get_exec_stream()).unwrap();
+    }
+    context.get_exec_stream().synchronize().unwrap();
+    assert_eq!(host_consolidated, host_per_coset);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn trace_holder_full_tree_view_is_contiguous_in_coset_major_order() {
+    let worker = Worker::new();
+    let context = make_test_context(256, 32);
+    let log_domain_size = 9u32;
+    let log_lde_factor = 2u32;
+    let log_rows_per_leaf = 2u32;
+    let log_tree_cap_size = 3u32;
+    let columns_count = 3usize;
+    let lde_factor = 1usize << log_lde_factor;
+    let per_coset_tree_len = 1usize << (log_domain_size + 1 - log_rows_per_leaf);
+
+    let (source_host, _) =
+        make_source_host_and_cpu_cosets(log_domain_size, log_lde_factor, columns_count, &worker);
+    let mut source_device = context
+        .alloc(source_host.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut source_device, &source_host, context.get_exec_stream()).unwrap();
+
+    let mut holder = TraceHolder::<BF>::new(
+        log_domain_size,
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        columns_count,
+        TreesCacheMode::CacheFull,
+        &context,
+    )
+    .unwrap();
+    holder
+        .materialize_and_commit_from_hypercube_evals(&source_device, &context)
+        .unwrap();
+
+    let mut concat = vec![Digest::default(); lde_factor * per_coset_tree_len];
+    for coset_index in 0..lde_factor {
+        let segment_dst = &mut concat
+            [coset_index * per_coset_tree_len..(coset_index + 1) * per_coset_tree_len];
+        let segment_src: &DeviceSlice<Digest> = holder
+            .get_uninit_tree_mut(coset_index)
+            .expect("Full mode always has a tree slot");
+        memory_copy_async(segment_dst, segment_src, context.get_exec_stream()).unwrap();
+    }
+    context.get_exec_stream().synchronize().unwrap();
+    // Sanity: cosets produce distinct trees, so segment 0 != segment 1 at index 0.
+    assert_ne!(concat[0], concat[per_coset_tree_len]);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn trace_holder_partial_tree_view_is_contiguous_in_coset_major_order() {
+    let worker = Worker::new();
+    let context = make_test_context(256, 32);
+    let log_domain_size = 9u32;
+    let log_lde_factor = 2u32;
+    let log_rows_per_leaf = 2u32;
+    let log_tree_cap_size = 3u32;
+    let columns_count = 3usize;
+    let lde_factor = 1usize << log_lde_factor;
+    let partial_log_domain = log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS;
+    let per_coset_partial_len = 1usize << (partial_log_domain + 1 - log_rows_per_leaf);
+
+    let (source_host, _) =
+        make_source_host_and_cpu_cosets(log_domain_size, log_lde_factor, columns_count, &worker);
+    let mut source_device = context
+        .alloc(source_host.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut source_device, &source_host, context.get_exec_stream()).unwrap();
+
+    let mut holder = TraceHolder::<BF>::new(
+        log_domain_size,
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        columns_count,
+        TreesCacheMode::CachePartial,
+        &context,
+    )
+    .unwrap();
+    holder
+        .materialize_and_commit_from_hypercube_evals(&source_device, &context)
+        .unwrap();
+
+    let mut concat = vec![Digest::default(); lde_factor * per_coset_partial_len];
+    for coset_index in 0..lde_factor {
+        let segment_dst = &mut concat
+            [coset_index * per_coset_partial_len..(coset_index + 1) * per_coset_partial_len];
+        let segment_src: &DeviceSlice<Digest> = holder
+            .get_uninit_tree_mut(coset_index)
+            .expect("Partial mode always has a tree slot");
+        memory_copy_async(segment_dst, segment_src, context.get_exec_stream()).unwrap();
+    }
+    context.get_exec_stream().synchronize().unwrap();
+    assert_ne!(concat[0], concat[per_coset_partial_len]);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn trace_holder_consolidated_tree_matches_per_coset_views() {
+    let worker = Worker::new();
+    let context = make_test_context(256, 32);
+    let log_domain_size = 9u32;
+    let log_lde_factor = 2u32;
+    let log_rows_per_leaf = 2u32;
+    let log_tree_cap_size = 3u32;
+    let columns_count = 3usize;
+    let lde_factor = 1usize << log_lde_factor;
+    let per_coset_tree_len = 1usize << (log_domain_size + 1 - log_rows_per_leaf);
+
+    let (source_host, _) =
+        make_source_host_and_cpu_cosets(log_domain_size, log_lde_factor, columns_count, &worker);
+    let mut source_device = context
+        .alloc(source_host.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut source_device, &source_host, context.get_exec_stream()).unwrap();
+
+    let mut holder = TraceHolder::<BF>::new(
+        log_domain_size,
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        columns_count,
+        TreesCacheMode::CacheFull,
+        &context,
+    )
+    .unwrap();
+    holder
+        .materialize_and_commit_from_hypercube_evals(&source_device, &context)
+        .unwrap();
+
+    let consolidated = holder.get_consolidated_tree().expect("Full mode");
+    assert_eq!(consolidated.len(), lde_factor * per_coset_tree_len);
+
+    let mut host_consolidated = vec![Digest::default(); consolidated.len()];
+    memory_copy_async(&mut host_consolidated, consolidated, context.get_exec_stream()).unwrap();
+
+    let mut host_per_coset = vec![Digest::default(); consolidated.len()];
+    for coset_index in 0..lde_factor {
+        let segment_src: &DeviceSlice<Digest> =
+            holder.get_uninit_tree_mut(coset_index).unwrap();
+        let dst = &mut host_per_coset
+            [coset_index * per_coset_tree_len..(coset_index + 1) * per_coset_tree_len];
+        memory_copy_async(dst, segment_src, context.get_exec_stream()).unwrap();
+    }
+    context.get_exec_stream().synchronize().unwrap();
+    assert_eq!(host_consolidated, host_per_coset);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn trace_holder_get_evaluations_returns_coset_zero_subrange() {
+    let worker = Worker::new();
+    let context = make_test_context(256, 32);
+    let log_domain_size = PARTIAL_TREE_REDUCTION_LAYERS + 3;
+    let log_lde_factor = 2u32;
+    let columns_count = 3usize;
+    let per_coset_len = columns_count * (1usize << log_domain_size);
+
+    let (source_host, _) =
+        make_source_host_and_cpu_cosets(log_domain_size, log_lde_factor, columns_count, &worker);
+    let mut source_device = context
+        .alloc(source_host.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut source_device, &source_host, context.get_exec_stream()).unwrap();
+
+    let mut holder = TraceHolder::<BF>::new(
+        log_domain_size,
+        log_lde_factor,
+        0,
+        log_lde_factor + 1,
+        columns_count,
+        TreesCacheMode::CacheNone,
+        &context,
+    )
+    .unwrap();
+    holder
+        .materialize_from_hypercube_evals(&source_device, &context)
+        .unwrap();
+
+    let coset0 = holder.get_evaluations();
+    assert_eq!(coset0.len(), per_coset_len);
+    let consolidated = holder.get_consolidated_cosets();
+    let coset0_via_consolidated = &consolidated[0..per_coset_len];
+    let mut a = vec![BF::ZERO; per_coset_len];
+    let mut b = vec![BF::ZERO; per_coset_len];
+    memory_copy_async(&mut a, coset0, context.get_exec_stream()).unwrap();
+    memory_copy_async(&mut b, coset0_via_consolidated, context.get_exec_stream()).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    assert_eq!(a, b);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn trace_holder_consolidated_partial_tree_matches_per_coset_views() {
+    let worker = Worker::new();
+    let context = make_test_context(256, 32);
+    let log_domain_size = 9u32;
+    let log_lde_factor = 2u32;
+    let log_rows_per_leaf = 2u32;
+    let log_tree_cap_size = 3u32;
+    let columns_count = 3usize;
+    let lde_factor = 1usize << log_lde_factor;
+    let partial_log_domain = log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS;
+    let per_coset_partial_len = 1usize << (partial_log_domain + 1 - log_rows_per_leaf);
+
+    let (source_host, _) =
+        make_source_host_and_cpu_cosets(log_domain_size, log_lde_factor, columns_count, &worker);
+    let mut source_device = context
+        .alloc(source_host.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut source_device, &source_host, context.get_exec_stream()).unwrap();
+
+    let mut holder = TraceHolder::<BF>::new(
+        log_domain_size,
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        columns_count,
+        TreesCacheMode::CachePartial,
+        &context,
+    )
+    .unwrap();
+    holder
+        .materialize_and_commit_from_hypercube_evals(&source_device, &context)
+        .unwrap();
+
+    let consolidated = holder.get_consolidated_tree().expect("Partial mode");
+    assert_eq!(consolidated.len(), lde_factor * per_coset_partial_len);
+
+    let mut host_consolidated = vec![Digest::default(); consolidated.len()];
+    memory_copy_async(&mut host_consolidated, consolidated, context.get_exec_stream()).unwrap();
+
+    let mut host_per_coset = vec![Digest::default(); consolidated.len()];
+    for coset_index in 0..lde_factor {
+        let segment_src: &DeviceSlice<Digest> =
+            holder.get_uninit_tree_mut(coset_index).unwrap();
+        let dst = &mut host_per_coset
+            [coset_index * per_coset_partial_len..(coset_index + 1) * per_coset_partial_len];
+        memory_copy_async(dst, segment_src, context.get_exec_stream()).unwrap();
+    }
+    context.get_exec_stream().synchronize().unwrap();
+    assert_eq!(host_consolidated, host_per_coset);
 }
 
 #[test]
