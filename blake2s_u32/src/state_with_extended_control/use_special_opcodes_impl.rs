@@ -1,45 +1,35 @@
 use super::*;
-
-#[inline(always)]
-fn tri_add(a: u32, b: u32, mut c: u32) -> u32 {
-    unsafe {
-        core::arch::asm!(
-            "mop.rr.3 {rd}, {a}, {b}",
-            a = in(reg) a,
-            b = in(reg) b,
-            rd = inout(reg) c,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-
-    c
-}
-
-#[inline(always)]
-fn xor_rotate<const AMT: u32>(a: u32, mut b: u32) -> u32 {
-    unsafe {
-        core::arch::asm!(
-            "mop.r.{amt} {rd}, {rs1}",
-            rs1 = in(reg) a,
-            rd = inout(reg) b,
-            amt = const AMT,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-
-    b
-}
+use common_constants::mops::MOP_TRI_ADD;
 
 // #[inline(always)]
-// fn spec_g_function_raw(a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, x: u32, y: u32) {
-//     *a = tri_add(*a, *b, x);
-//     *d = xor_rotate::<16>(*a, *d);
-//     *c = (*c).wrapping_add(*d);
-//     *b = xor_rotate::<12>(*c, *b);
-//     *a = tri_add(*a, *b, y);
-//     *d = xor_rotate::<8>(*a, *d);
-//     *c = (*c).wrapping_add(*d);
-//     *b = xor_rotate::<7>(*c, *b);
+// fn tri_add(a: u32, b: u32, mut c: u32) -> u32 {
+//     unsafe {
+//         core::arch::asm!(
+//             "mop.rr.{idx} {c}, {a}, {b}",
+//             a = in(reg) a,
+//             b = in(reg) b,
+//             c = inout(reg) c,
+//             idx = const MOP_TRI_ADD,
+//             options(nomem, nostack, preserves_flags)
+//         );
+//     }
+
+//     c
+// }
+
+// #[inline(always)]
+// fn xor_rotate<const AMT: u32>(a: u32, mut b: u32) -> u32 {
+//     unsafe {
+//         core::arch::asm!(
+//             "mop.r.{amt} {rd}, {rs1}",
+//             rs1 = in(reg) a,
+//             rd = inout(reg) b,
+//             amt = const AMT,
+//             options(nomem, nostack, preserves_flags)
+//         );
+//     }
+
+//     b
 // }
 
 // #[inline(always)]
@@ -74,11 +64,11 @@ fn spec_g_function(
 ) -> (u32, u32, u32, u32) {
     unsafe {
         core::arch::asm!(
-            "mop.rr.3 {a}, {b}, {x}",
+            "mop.rr.{idx} {a}, {b}, {x}",
             "mop.r.16 {d}, {a}",
             "add {c}, {c}, {d}",
             "mop.r.12 {b}, {c}",
-            "mop.rr.3 {a}, {b}, {y}",
+            "mop.rr.{idx} {a}, {b}, {y}",
             "mop.r.8 {d}, {a}",
             "add {c}, {c}, {d}",
             "mop.r.7 {b}, {c}",
@@ -88,6 +78,7 @@ fn spec_g_function(
             d = inout(reg) d,
             x = in(reg) x,
             y = in(reg) y,
+            idx = const MOP_TRI_ADD,
             options(nomem, nostack, preserves_flags)
         );
     }

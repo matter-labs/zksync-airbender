@@ -31,6 +31,7 @@ dependencies = [
 name = "field"
 version = "0.1.0"
 dependencies = [
+ "common_constants",
  "rand",
  "seq-macro",
  "serde",
@@ -49,6 +50,9 @@ dependencies = [
 [[package]]
 name = "non_determinism_source"
 version = "0.1.0"
+dependencies = [
+ "common_constants",
+]
 
 [[package]]
 name = "proc-macro2"

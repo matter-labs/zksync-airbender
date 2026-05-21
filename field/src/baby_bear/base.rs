@@ -30,7 +30,8 @@ impl BabyBearField {
         let r2 = (r * r) % (Self::ORDER as u64);
         r2 as u32
     };
-    const NON_RES: Self = Self::new(11);
+    pub(crate) const NON_RES: Self = Self::new(11);
+    pub(crate) const NON_RES_DOUBLED: Self = Self::new(22);
     pub const HALF: Self = const { Self::new(2).inverse_impl().unwrap() };
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]

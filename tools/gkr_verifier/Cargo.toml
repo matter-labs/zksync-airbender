@@ -12,15 +12,17 @@ keywords = ["blockchain", "zksync", "zk"]
 categories = ["cryptography"]
 
 [dependencies]
-verifier_common = { path = "../../verifier_common", default-features = false, features = ["modular_ops"] }
+verifier_common = { path = "../../verifier_common", default-features = false, features = ["modular_ops", "modular_fma"] }
 non_determinism_source = { path = "../../non_determinism_source" }
 riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
-field = { path = "../../field", default-features = false, features = ["modular_ops"] }
+field = { path = "../../field", default-features = false, features = ["modular_ops", "modular_fma"] }
 
 [features]
 blake2_with_compression = ["verifier_common/blake2_with_compression"]
 blake2_g_function = ["verifier_common/blake2_g_function"]
 mop_extension = ["verifier_common/mop_extension"]
+modular_fma = ["verifier_common/modular_fma", "field/modular_fma"]
+special_opcodes_extension = ["verifier_common/special_opcodes_extension"]
 no_caches = ["verifier_common/no_caches"]
 default = ["blake2_with_compression"]
 

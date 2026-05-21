@@ -13,6 +13,7 @@ pub trait DecodingOptions: 'static + Sized {
     const SUPPORT_SIGNED_MUL_DIV: bool;
     const SUPPORT_MOP: bool;
     const SUPPORT_SPECIAL_ROTATION: bool;
+    const SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD: bool;
 }
 
 pub struct FullMachineDecoderConfig;
@@ -23,6 +24,7 @@ impl DecodingOptions for FullMachineDecoderConfig {
     const SUPPORT_SIGNED_MUL_DIV: bool = true;
     const SUPPORT_SUBWORD_MEM_ACCESS: bool = true;
     const SUPPORT_SPECIAL_ROTATION: bool = true;
+    const SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD: bool = false;
 }
 
 pub struct FullUnsignedMachineDecoderConfig;
@@ -33,6 +35,7 @@ impl DecodingOptions for FullUnsignedMachineDecoderConfig {
     const SUPPORT_SIGNED_MUL_DIV: bool = false;
     const SUPPORT_SUBWORD_MEM_ACCESS: bool = true;
     const SUPPORT_SPECIAL_ROTATION: bool = true;
+    const SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD: bool = false;
 }
 
 pub struct ReducedMachineDecoderConfig;
@@ -42,7 +45,9 @@ impl DecodingOptions for ReducedMachineDecoderConfig {
     const SUPPORT_MUL_DIV: bool = false;
     const SUPPORT_SIGNED_MUL_DIV: bool = false;
     const SUPPORT_SUBWORD_MEM_ACCESS: bool = false;
-    const SUPPORT_SPECIAL_ROTATION: bool = true;
+    const SUPPORT_SPECIAL_ROTATION: bool = false;
+    // const SUPPORT_SPECIAL_ROTATION: bool = true;
+    const SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD: bool = true;
 }
 
 // Special config to allow sending text over UART in recursive verifiers
@@ -54,4 +59,5 @@ impl DecodingOptions for DebugReducedMachineDecoderConfig {
     const SUPPORT_SIGNED_MUL_DIV: bool = false;
     const SUPPORT_SUBWORD_MEM_ACCESS: bool = true;
     const SUPPORT_SPECIAL_ROTATION: bool = true;
+    const SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD: bool = true;
 }

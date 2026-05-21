@@ -72,13 +72,15 @@ fn csr_read_word() -> u32 {
 #[inline(always)]
 #[cfg(target_arch = "riscv32")]
 fn csr_read_field_element(_modulus: u32) -> u32 {
+    use common_constants::mops::MOP_ADD_MOD;
     let mut output;
     unsafe {
         core::arch::asm!(
             "csrrw {tmp}, 0x7c0, x0",
-            "mop.rr.0 {rd}, {tmp}, x0",
+            "mop.rr.{idx} {rd}, {tmp}, x0",
             tmp = out(reg) _,
             rd = lateout(reg) output,
+            idx = const MOP_ADD_MOD,
             options(nomem, nostack, preserves_flags)
         );
     }

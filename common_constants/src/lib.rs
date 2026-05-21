@@ -2,6 +2,7 @@
 
 pub mod circuit_families;
 pub mod delegation_types;
+pub mod mops;
 pub mod rom;
 #[cfg(feature = "verifier_stats")]
 pub mod stats;
@@ -22,6 +23,7 @@ pub mod internal_features {
 
 pub use self::circuit_families::*;
 pub use self::delegation_types::*;
+pub use self::mops::*;
 pub use self::rom::*;
 pub use self::timestamps::*;
 

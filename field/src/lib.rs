@@ -20,6 +20,9 @@ pub mod quartic;
 
 pub mod baby_bear;
 
+// #[cfg(test)]
+mod tests;
+
 #[cfg(feature = "verifier_stats")]
 pub mod stats;
 

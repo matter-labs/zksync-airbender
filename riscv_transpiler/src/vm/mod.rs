@@ -387,6 +387,12 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
             InstructionName::ZimopMul => {
                 add_sub_family::mop::mop_mulmod::<C, S, R, F>(state, ram, snapshotter, instr)
             }
+            InstructionName::ZimopFMA => {
+                add_sub_family::mop::mop_fmamod::<C, S, R, F>(state, ram, snapshotter, instr)
+            }
+            InstructionName::ZimopTriAdd => {
+                add_sub_family::mop::mop_tri_add::<C, S, R, F>(state, ram, snapshotter, instr)
+            }
             InstructionName::ZicsrNonDeterminismRead => add_sub_family::non_determinism::nd_read::<
                 C,
                 S,
@@ -456,6 +462,15 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
             InstructionName::Sra => {
                 binary_shifts_family::shifts::sra::<C, S, R>(state, ram, snapshotter, instr)
             }
+            InstructionName::Rol => {
+                binary_shifts_family::shifts::rol::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::Ror => {
+                binary_shifts_family::shifts::ror::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::ZimopIXorRot => {
+                binary_shifts_family::mopi::mopi_xor_rot::<C, S, R>(state, ram, snapshotter, instr)
+            }
 
             InstructionName::Mul => mul_div::mul::<C, S, R>(state, ram, snapshotter, instr),
             InstructionName::Mulhu => mul_div::mulhu::<C, S, R>(state, ram, snapshotter, instr),
@@ -463,13 +478,6 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
             InstructionName::Remu => mul_div::remu::<C, S, R>(state, ram, snapshotter, instr),
 
             InstructionName::ZicsrMarkerCsr => marker::<C, S, R, E>(state, ram, snapshotter, instr),
-
-            InstructionName::Rol => {
-                binary_shifts_family::shifts::rol::<C, S, R>(state, ram, snapshotter, instr)
-            }
-            InstructionName::Ror => {
-                binary_shifts_family::shifts::ror::<C, S, R>(state, ram, snapshotter, instr)
-            }
 
             a @ _ => {
                 panic!("Unknown instruction {:?}", a);
