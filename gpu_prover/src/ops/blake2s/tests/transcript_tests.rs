@@ -10,7 +10,11 @@ use worker::Worker;
 
 use super::super::*;
 
-use super::{gather_tree_caps, transcript_commit_initial, BLOCK_SIZE, USE_REDUCED_BLAKE2_ROUNDS};
+use super::{
+    bitreverse_index, gather_tree_caps, transcript_commit_initial, BLOCK_SIZE,
+    USE_REDUCED_BLAKE2_ROUNDS,
+};
+use crate::primitives::device_structures::DeviceMatrix;
 use crate::upstream::{Field, Seed};
 
 #[test]
@@ -385,39 +389,106 @@ fn gather_tree_caps_parity() {
 #[serial]
 fn gather_tree_caps_inline_parity() {
     let stream = CudaStream::default();
-    // Mirrors `gather_tree_caps_parity` but exercises the inline-descriptor
-    // variant that production calls — the pointer table rides as
-    // kernel-arg data, no H2D for a runtime pointer buffer.
+    // Consolidated form: one contiguous backing of length `coset_count * stride`;
+    // the kernel walks `base + natural_idx * stride` and writes to the
+    // bit-reversed destination slot `dst[bitreverse(natural_idx, log_lde) * cap_words..]`.
+    // Tight pack (`stride == cap_words_per_coset`) for the parity case.
     for &(cap_words_per_coset, coset_count) in
         &[(8usize, 1usize), (16, 2), (32, 4), (64, 8), (256, 4)]
     {
-        let mut d_sources: Vec<DeviceAllocation<u32>> = (0..coset_count)
-            .map(|_| DeviceAllocation::alloc(cap_words_per_coset).unwrap())
-            .collect();
-        let mut h_sources: Vec<Vec<u32>> = Vec::with_capacity(coset_count);
-        for (i, d) in d_sources.iter_mut().enumerate() {
-            let pattern: Vec<u32> = (0..cap_words_per_coset)
-                .map(|j| ((i as u32) << 24) | (j as u32))
-                .collect();
-            memory_copy_async(d, &pattern[..], &stream).unwrap();
-            h_sources.push(pattern);
+        let stride = cap_words_per_coset;
+        let log_lde_factor = coset_count.trailing_zeros();
+        let mut d_source: DeviceAllocation<u32> =
+            DeviceAllocation::alloc(coset_count * stride).unwrap();
+        let mut h_source: Vec<u32> = Vec::with_capacity(coset_count * stride);
+        for i in 0..coset_count {
+            for j in 0..stride {
+                h_source.push(((i as u32) << 24) | (j as u32));
+            }
         }
-        let src_ptrs: Vec<u64> = d_sources.iter().map(|d| d.as_ptr() as u64).collect();
+        memory_copy_async(&mut d_source, &h_source[..], &stream).unwrap();
         let mut d_dst: DeviceAllocation<u32> =
             DeviceAllocation::alloc(coset_count * cap_words_per_coset).unwrap();
-        super::gather_tree_caps_inline(&src_ptrs, &mut d_dst, cap_words_per_coset as u32, &stream)
-            .unwrap();
+        super::gather_tree_caps_inline(
+            d_source.as_ptr(),
+            coset_count as u32,
+            cap_words_per_coset as u32,
+            stride as u32,
+            log_lde_factor,
+            &mut d_dst,
+            &stream,
+        )
+        .unwrap();
         let mut h_dst: Vec<u32> = vec![0u32; coset_count * cap_words_per_coset];
         memory_copy_async(&mut h_dst[..], &d_dst, &stream).unwrap();
         stream.synchronize().unwrap();
-        for (coset_idx, expected) in h_sources.iter().enumerate() {
+        for natural_idx in 0..coset_count {
+            let stage1_pos = bitreverse_index(natural_idx, log_lde_factor);
             let actual =
-                &h_dst[coset_idx * cap_words_per_coset..(coset_idx + 1) * cap_words_per_coset];
+                &h_dst[stage1_pos * cap_words_per_coset..(stage1_pos + 1) * cap_words_per_coset];
+            let expected =
+                &h_source[natural_idx * stride..natural_idx * stride + cap_words_per_coset];
             assert_eq!(
-                actual, &expected[..],
-                "inline gather mismatch for coset {coset_idx} (cap_words={cap_words_per_coset}, count={coset_count})"
+                actual, expected,
+                "gather mismatch for natural_idx {natural_idx} -> stage1_pos {stage1_pos} \
+                 (cap_words={cap_words_per_coset}, count={coset_count})"
             );
         }
+    }
+}
+
+#[test]
+#[serial]
+fn gather_tree_caps_inline_stride_greater_than_cap_words() {
+    let stream = CudaStream::default();
+    // Production case: the cap region sits at the tail of each per-coset
+    // tree segment, so the source pointer is `backing + (segment_len - 2 * cap_size)`
+    // and the stride equals `segment_len` (in u32 words).
+    let cap_words_per_coset = 8usize;
+    let stride = 32usize;
+    let coset_count = 4usize;
+    let log_lde_factor = coset_count.trailing_zeros();
+
+    let mut d_source: DeviceAllocation<u32> =
+        DeviceAllocation::alloc(coset_count * stride).unwrap();
+    let mut h_source = vec![0u32; coset_count * stride];
+    for i in 0..coset_count {
+        let tail = (i + 1) * stride - cap_words_per_coset;
+        for j in 0..cap_words_per_coset {
+            h_source[tail + j] = ((i as u32) << 24) | (j as u32) | 0x4000_0000;
+        }
+    }
+    memory_copy_async(&mut d_source, &h_source[..], &stream).unwrap();
+    let mut d_dst: DeviceAllocation<u32> =
+        DeviceAllocation::alloc(coset_count * cap_words_per_coset).unwrap();
+
+    // Pass `base = d_source + (stride - cap_words_per_coset)` so the kernel
+    // reads the cap-region tail of each per-coset segment.
+    let tail_offset = stride - cap_words_per_coset;
+    let base = unsafe { d_source.as_ptr().add(tail_offset) };
+    super::gather_tree_caps_inline(
+        base,
+        coset_count as u32,
+        cap_words_per_coset as u32,
+        stride as u32,
+        log_lde_factor,
+        &mut d_dst,
+        &stream,
+    )
+    .unwrap();
+    let mut h_dst = vec![0u32; coset_count * cap_words_per_coset];
+    memory_copy_async(&mut h_dst[..], &d_dst, &stream).unwrap();
+    stream.synchronize().unwrap();
+    for natural_idx in 0..coset_count {
+        let stage1_pos = bitreverse_index(natural_idx, log_lde_factor);
+        let actual =
+            &h_dst[stage1_pos * cap_words_per_coset..(stage1_pos + 1) * cap_words_per_coset];
+        let tail = (natural_idx + 1) * stride - cap_words_per_coset;
+        let expected = &h_source[tail..tail + cap_words_per_coset];
+        assert_eq!(
+            actual, expected,
+            "stride-aware gather mismatch for natural_idx {natural_idx} -> stage1_pos {stage1_pos}"
+        );
     }
 }
 
@@ -632,13 +703,3 @@ fn transcript_squeeze_e4_parity_randomized() {
         assert_eq!(d_seed, h_seed, "seed mismatch for count={count}");
     }
 }
-
-// -----------------------------------------------------------------------
-// Fused backward sumcheck round-update kernel parity test.
-//
-// Mirrors the host per-round callback in
-// backward.rs:schedule_execute_dimension_reducing_layer_from_workflow_state
-// (and its main-layer twin) and checks that the device kernel produces
-// bit-exact state updates: new seed, coefficients, challenge, claim,
-// eq_prefactor.
-// -----------------------------------------------------------------------

@@ -19,7 +19,9 @@ use super::super::{
     OMEGA_LOG_ORDER,
 };
 use super::{InOrOutOfPlace, TEST_COSET_INDEX, TEST_LOG_LDE_FACTOR};
-use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
+use crate::primitives::device_structures::{
+    DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut,
+};
 use crate::primitives::field::BF;
 use crate::primitives::ntt_twiddles::DeviceContext;
 use crate::upstream::{multivariate_hypercube_evals_into_coeffs, Field};
@@ -422,7 +424,15 @@ pub(super) fn wrap_evals_to_monomials_2_pass(
     transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    evals_to_monomials_2_pass(inputs, outputs, log_n, transposed_monomials, stream)
+    let columns_per_launch = outputs.cols();
+    evals_to_monomials_2_pass(
+        inputs,
+        outputs,
+        log_n,
+        columns_per_launch,
+        transposed_monomials,
+        stream,
+    )
 }
 
 #[cfg(not(no_cuda))]
@@ -433,7 +443,15 @@ pub(super) fn wrap_evals_to_monomials_3_pass(
     transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    evals_to_monomials_3_pass(inputs, outputs, log_n, transposed_monomials, stream)
+    let columns_per_launch = outputs.cols();
+    evals_to_monomials_3_pass(
+        inputs,
+        outputs,
+        log_n,
+        columns_per_launch,
+        transposed_monomials,
+        stream,
+    )
 }
 
 #[cfg(not(no_cuda))]
@@ -450,6 +468,7 @@ pub(super) fn wrap_monomials_to_evals_2_pass(
         outputs,
         log_n,
         coset_factor_power,
+        outputs.cols(),
         transposed_monomials,
         stream,
     )
@@ -464,11 +483,22 @@ pub(super) fn wrap_monomials_to_evals_3_pass(
     transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
+    // Adapter for the multi-coset signature: passing `coset_factor_power` as
+    // `coset_index_base` with shift = 0 makes the kernel compute
+    // `(coset_factor_power + 0) << 0 = coset_factor_power`, matching the
+    // previous single-coset behavior. num_cols_per_coset = outputs.cols() for
+    // the contiguous default.
+    let columns_per_launch = outputs.cols();
     monomials_to_evals_3_pass(
         inputs,
         outputs,
         log_n,
         coset_factor_power,
+        0,
+        1,
+        outputs.cols(),
+        1,
+        columns_per_launch,
         transposed_monomials,
         stream,
     )

@@ -202,13 +202,17 @@ pub(super) fn schedule_delinearization_running_powers_phase(
     let mut anchor_powers: DeviceAllocation<E4> =
         context.alloc(log_n, AllocationPlacement::BestFit)?;
     squaring_sequence_e4(&ood_point_device[0], &mut anchor_powers[..], stream)?;
-    schedule_accumulate_eq_sample_in_place_device_inner(
+    let (eq_high_scratch, eq_low_scratch) = schedule_accumulate_eq_samples_batched(
         state,
         &anchor_powers[..],
         &delinearization_device[0..1],
+        1,
+        log_n,
         context,
     )?;
     device_keepalives.push(delin_base);
     device_keepalives.push(anchor_powers);
+    device_keepalives.push(eq_high_scratch);
+    device_keepalives.push(eq_low_scratch);
     Ok(delinearization_device)
 }
