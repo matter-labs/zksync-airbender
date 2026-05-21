@@ -626,7 +626,7 @@ pub fn preprocess_bytecode<
                     const MOP_FUNCT7_TEST: u8 = 0b10_00_00_1;
 
                     if funct7 & MOP_FUNCT7_MASK == MOP_FUNCT7_TEST {
-                        let mop_number = ((funct7 & 0b110) >> 1) | ((funct7 & 0b100000) >> 5);
+                        let mop_number = ((funct7 & 0b11_0) >> 1) | ((funct7 & 0b1_00_00_0) >> 3);
                         let mop_number = mop_number as u32;
                         use common_constants::*;
                         match mop_number {

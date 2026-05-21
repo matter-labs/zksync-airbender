@@ -725,7 +725,7 @@ pub(crate) mod test {
         let mut source = QuasiUARTSource::new_with_reads(vec![]);
 
         let instructions: Vec<Instruction> =
-            preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
+            preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
         let mut ram =
             RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
@@ -764,7 +764,7 @@ pub(crate) mod test {
         );
 
         println!("PC = 0x{:08x}", state.pc);
-        dbg!(state.registers.map(|el| el.value));
+        dbg!(&state.registers.map(|el| el.value)[10..18]);
     }
 
     #[test]
