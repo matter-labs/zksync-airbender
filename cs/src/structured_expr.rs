@@ -1,5 +1,5 @@
 use crate::constraint::{Constraint, Term};
-use crate::definitions::Variable;
+use crate::definitions::{TableType, Variable};
 use crate::types::{Boolean, Num};
 use field::PrimeField;
 
@@ -297,6 +297,12 @@ impl<F: PrimeField> From<Boolean> for Expr<F> {
     }
 }
 
+impl<F: PrimeField> From<TableType> for Expr<F> {
+    fn from(value: TableType) -> Self {
+        Self::Constant(F::from_u32(value as u32).expect("must fit"))
+    }
+}
+
 impl<F: PrimeField> From<u32> for Expr<F> {
     fn from(value: u32) -> Self {
         Self::Constant(F::from_u32_with_reduction(value))
@@ -507,6 +513,10 @@ mod tests {
                 Expr::Var(a),
                 Expr::Product(vec![Expr::Constant(coeff), Expr::Var(b)]),
             ])
+        );
+        assert_eq!(
+            Expr::<F>::from(TableType::AlignedRomRead),
+            Expr::Constant(F::from_u32_unchecked(TableType::AlignedRomRead as u32))
         );
     }
 

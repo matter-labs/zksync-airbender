@@ -16,10 +16,6 @@ fn byte_pair_expr<F: PrimeField>(low: Variable, high: Variable) -> Expr<F> {
     Expr::var(low) + Expr::var(high) * F::from_u32_with_reduction(1 << 8)
 }
 
-fn table_id_expr<F: PrimeField>(table_type: TableType) -> Expr<F> {
-    Expr::constant(F::from_u32(table_type as u32).expect("must fit"))
-}
-
 pub fn shift_binop_tables() -> Vec<TableType> {
     vec![
         TableType::ZeroEntry, // we need it, as we use conditional lookup enforcements
@@ -261,9 +257,8 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
             "input 2 for binary sign ext/trucate shift",
         );
 
-        let table_id = table_id_expr::<F>(TableType::TruncateShiftAmountAndRangeCheck8)
-            .mask(is_shift)
-            + table_id_expr::<F>(TableType::GetSignExtensionByte).mask(is_binary_op);
+        let table_id = Expr::<F>::from(TableType::TruncateShiftAmountAndRangeCheck8).mask(is_shift)
+            + Expr::<F>::from(TableType::GetSignExtensionByte).mask(is_binary_op);
         let table_id = cs.add_intermediate_named_variable_from_expr(
             table_id,
             "table ID for binary sign ext/trucate shift",
@@ -327,7 +322,7 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
 
             let table_id = {
                 let shift_table_id = TableType::ShiftImplementationOverBytes;
-                let table_id = table_id_expr::<F>(shift_table_id).mask(is_shift)
+                let table_id = Expr::<F>::from(shift_table_id).mask(is_shift)
                     + Expr::var(inputs.decoder_data.funct3.expect("must be present"))
                         .mask(is_binary_op);
                 let table_id = cs.add_intermediate_named_variable_from_expr(

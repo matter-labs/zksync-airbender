@@ -9,10 +9,6 @@ use field::PrimeField;
 
 const TABLES_TOTAL_WIDTH: usize = 3;
 
-fn table_id_expr<F: PrimeField>(table_type: TableType) -> Expr<F> {
-    Expr::constant(F::from_u32(table_type as u32).expect("must fit"))
-}
-
 pub fn mem_word_only_tables() -> Vec<TableType> {
     vec![
         // all rom tables gotta be added in the prover code when bytecode data is available
@@ -303,7 +299,7 @@ fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
             // we patch this to zero table
             let table_id = Expr::var(layer_2_copied_execute)
                 * Expr::var(layer_2_copied_is_rom)
-                * table_id_expr::<F>(TableType::AlignedRomRead);
+                * Expr::<F>::from(TableType::AlignedRomRead);
             cs.add_intermediate_named_variable_from_expr(table_id, "final lookup table_id (L3)")
         };
         let tuple = [
