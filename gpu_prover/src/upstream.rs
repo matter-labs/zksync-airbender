@@ -110,6 +110,7 @@ pub(crate) use prover::gkr::prover::{
     forward_loop, prove_configured_with_gkr, sumcheck_loop, GKRProof,
     SumcheckIntermediateProofValues, WhirSchedule,
 };
+pub(crate) use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
 pub(crate) use prover::gkr::prover_config::ProverConfig;
 pub(crate) use prover::gkr::sumcheck::access_and_fold::{
     BaseFieldPoly, GKRLayerSource, GKRStorage,

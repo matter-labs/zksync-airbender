@@ -374,6 +374,47 @@ EXTERN __global__ void ab_gather_leaves_for_queries_kernel(const u32 num_oracles
   slab_dst[idx * (values_per_leaf * desc.columns_count) + v * desc.columns_count + col] = result;
 }
 
+// Sibling of `ab_gather_leaves_for_queries_kernel` for the WHIR oracle's
+// natural-multi-coset NTT cosets backing. The existing kernel reads `cosets[q
+// & lde_mask * stride + col * domain_size + src_row]`; with WHIR's old
+// TraceHolder shape (log_lde_factor = 0, log_rows_per_leaf = 0) this
+// collapsed to `cosets[col * total_leaf_count + q]` against the packed
+// cosets backing. The new kernel reverses pack's full transform — coset
+// bit-reverse, within-leaf value-slot bit-reverse, column reshape — so it
+// can read the natural-NTT cosets backing directly.
+//
+// `ntt_output` logical shape: rows = `1 << log_packed_leaf_count <<
+// log_values_per_leaf` (= `trace_len`), cols = `(1 << log_lde_factor) << log_src_cols_per_coset`,
+// coset-major outer. Address: `ntt_output[src_row + src_col * trace_len]`.
+//
+// `slab_dst` layout: query-major, `slab_dst[idx * dst_cols + col_in_leaf]`.
+//
+// Grid: x = ceil(indexes_count / blockDim.x), y = dst_cols. One thread per
+// (query, col_in_leaf).
+EXTERN __global__ void ab_gather_leaves_for_queries_from_ntt_kernel(const bf *ntt_output, bf *slab_dst, const u32 log_lde_factor,
+                                                                    const u32 log_packed_leaf_count, const u32 log_values_per_leaf,
+                                                                    const u32 log_src_cols_per_coset, const u32 trace_len, const u32 *query_indexes,
+                                                                    const u32 indexes_count) {
+  const unsigned idx = threadIdx.x + blockIdx.x * blockDim.x;
+  if (idx >= indexes_count)
+    return;
+  const unsigned col_in_leaf = blockIdx.y;
+  const unsigned dst_cols = (1u << log_src_cols_per_coset) << log_values_per_leaf;
+
+  const unsigned q = query_indexes[idx];
+  const unsigned input_row = q & ((1u << log_packed_leaf_count) - 1u);
+  const unsigned bitrev_coset_idx = q >> log_packed_leaf_count;
+  const unsigned natural_coset = bitreverse_low_bits(bitrev_coset_idx, log_lde_factor);
+
+  const unsigned value_slot = col_in_leaf >> log_src_cols_per_coset;
+  const unsigned coeff_col = col_in_leaf & ((1u << log_src_cols_per_coset) - 1u);
+
+  const unsigned src_row = input_row + bitreverse_low_bits(value_slot, log_values_per_leaf) * (1u << log_packed_leaf_count);
+  const unsigned src_col = (natural_coset << log_src_cols_per_coset) + coeff_col;
+
+  slab_dst[idx * dst_cols + col_in_leaf] = load_cs(ntt_output + src_row + static_cast<size_t>(src_col) * trace_len);
+}
+
 // Phase 3 (WHIR-on-device, Step 3 consolidation): consolidated single-oracle
 // Full-tree merkle-path gather. Each thread reads one digest word from the
 // consolidated tree backing, resolving the per-coset segment via
@@ -523,6 +564,116 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_kernel(const u
   unsigned digest_index = query_index >> LOG_WARP_SIZE;
   unsigned log_digests_count = log_total_leaves_count - LOG_WARP_SIZE;
   const u32 *tree_layer = tree_bottom + lane_idx;
+  u32 *merkle_paths_dst = merkle_paths + lane_idx;
+  for (unsigned layer = LOG_WARP_SIZE; layer < layers_count; layer++) {
+    const unsigned other_index = digest_index ^ 1;
+    *merkle_paths_dst = *(tree_layer + other_index * STATE_SIZE);
+    digest_index >>= 1;
+    tree_layer += (1u << log_digests_count) * STATE_SIZE;
+    log_digests_count--;
+    merkle_paths_dst += STATE_SIZE;
+  }
+}
+
+// Sibling of `ab_gather_merkle_paths_partial_for_queries_kernel` for the WHIR
+// oracle's natural-multi-coset NTT cosets backing. Hashes the bottom
+// `LOG_WARP_SIZE` layers per query via warp-shuffle, reading leaf BFs through
+// the same pack-inverse address translation as
+// `ab_gather_leaves_for_queries_from_ntt_kernel`; the upper layers come from
+// the partial-tree backing as in the packed-layout sibling.
+//
+// Single oracle, single TraceHolder coset (WHIR oracle uses TraceHolder
+// `log_lde_factor = 0`, `log_rows_per_leaf = 0`). Grid: gridDim.x =
+// indexes_count, blockDim.x = WARP_SIZE.
+EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_from_ntt_kernel(const bf *ntt_output, const u32 *partial_tree, u32 *slab_dst,
+                                                                                  const u32 natural_log_lde_factor, const u32 log_values_per_leaf,
+                                                                                  const u32 log_src_cols_per_coset, const u32 log_packed_leaf_count,
+                                                                                  const u32 trace_len, const u32 log_total_leaves_count, const u32 layers_count,
+                                                                                  const u32 *query_indexes, const u32 indexes_count) {
+  const unsigned lane_idx = threadIdx.x;
+  const unsigned idx = blockIdx.x;
+  if (idx >= indexes_count)
+    return;
+
+  const unsigned q = query_indexes[idx];
+  // TraceHolder log_lde_factor == 0 ⇒ query_index == q.
+  const unsigned query_index = q;
+
+  const unsigned index_lane = (query_index & ~WARP_MASK) | lane_idx;
+  const bool is_output_lane = query_index == index_lane;
+
+  // Translate index_lane (flat-tree leaf index) into natural-NTT coords.
+  const unsigned packed_leaf_count = 1u << log_packed_leaf_count;
+  const unsigned input_row = index_lane & (packed_leaf_count - 1u);
+  const unsigned bitrev_coset_idx = index_lane >> log_packed_leaf_count;
+  const unsigned natural_coset = bitreverse_low_bits(bitrev_coset_idx, natural_log_lde_factor);
+
+  const unsigned src_cols_per_coset = 1u << log_src_cols_per_coset;
+  const unsigned cols_count = src_cols_per_coset << log_values_per_leaf;
+  const unsigned col_mask = src_cols_per_coset - 1u;
+  const unsigned values_per_leaf = 1u << log_values_per_leaf;
+
+  u32 *merkle_paths = slab_dst + idx * layers_count * STATE_SIZE;
+
+  auto read = [=](const unsigned offset) -> u32 {
+    const unsigned coeff_col = offset & col_mask;
+    const unsigned value_slot = offset >> log_src_cols_per_coset;
+    if (value_slot >= values_per_leaf)
+      return 0;
+    const unsigned src_row = input_row + bitreverse_low_bits(value_slot, log_values_per_leaf) * packed_leaf_count;
+    const unsigned src_col = (natural_coset << log_src_cols_per_coset) + coeff_col;
+    return bf::into_raw_u32(load_cs(ntt_output + src_row + static_cast<size_t>(src_col) * trace_len));
+  };
+
+  u32 state[STATE_SIZE];
+  u32 block[BLOCK_SIZE];
+  initialize(state);
+  u32 t = 0;
+  unsigned offset = 0;
+  while (offset < cols_count) {
+    const unsigned remaining = cols_count - offset;
+    const bool is_final_block = remaining <= BLOCK_SIZE;
+#pragma unroll
+    for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++)
+      block[i] = read(offset);
+    if (is_final_block)
+      compress<true>(state, t, block, remaining);
+    else
+      compress<false>(state, t, block, BLOCK_SIZE);
+  }
+
+  // Warp-shuffle reduction of bottom LOG_WARP_SIZE layers (identical to the
+  // packed-layout sibling).
+#pragma unroll
+  for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
+    u32 other_state[STATE_SIZE];
+    const bool take_other_first = (lane_idx >> layer) & 1;
+#pragma unroll
+    for (unsigned i = 0; i < STATE_SIZE; i++) {
+      other_state[i] = __shfl_xor_sync(FULL_MASK, state[i], 1 << layer);
+      if (is_output_lane)
+        merkle_paths[i] = other_state[i];
+      if (take_other_first) {
+        block[i] = other_state[i];
+        block[i + STATE_SIZE] = state[i];
+      } else {
+        block[i] = state[i];
+        block[i + STATE_SIZE] = other_state[i];
+      }
+    }
+    initialize(state);
+    t = 0;
+    compress<true>(state, t, block, BLOCK_SIZE);
+    merkle_paths += STATE_SIZE;
+  }
+
+  // Walk upper layers from the partial tree backing. Single coset ⇒ no
+  // per-coset offset; partial_tree is the slab base directly.
+  if (lane_idx >= STATE_SIZE)
+    return;
+  unsigned digest_index = query_index >> LOG_WARP_SIZE;
+  unsigned log_digests_count = log_total_leaves_count - LOG_WARP_SIZE;
+  const u32 *tree_layer = partial_tree + lane_idx;
   u32 *merkle_paths_dst = merkle_paths + lane_idx;
   for (unsigned layer = LOG_WARP_SIZE; layer < layers_count; layer++) {
     const unsigned other_index = digest_index ^ 1;
