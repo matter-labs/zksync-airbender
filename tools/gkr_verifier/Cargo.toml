@@ -27,40 +27,40 @@ no_caches = ["verifier_common/no_caches"]
 default = ["blake2_with_compression"]
 
 [[bin]]
-name = "inits_and_teardowns"
-path = "src/bin/inits_and_teardowns.rs"
+name = "inits_and_teardowns_sec_80"
+path = "src/bin/inits_and_teardowns_sec_80.rs"
 
 [[bin]]
-name = "add_sub_lui_auipc_mop"
-path = "src/bin/add_sub_lui_auipc_mop.rs"
+name = "add_sub_lui_auipc_mop_sec_80"
+path = "src/bin/add_sub_lui_auipc_mop_sec_80.rs"
 
 [[bin]]
-name = "jump_branch_slt"
-path = "src/bin/jump_branch_slt.rs"
+name = "jump_branch_slt_sec_80"
+path = "src/bin/jump_branch_slt_sec_80.rs"
 
 [[bin]]
-name = "shift_binop"
-path = "src/bin/shift_binop.rs"
+name = "shift_binop_sec_80"
+path = "src/bin/shift_binop_sec_80.rs"
 
 [[bin]]
-name = "bigint_with_extended_control"
-path = "src/bin/bigint_with_extended_control.rs"
+name = "bigint_with_extended_control_sec_80"
+path = "src/bin/bigint_with_extended_control_sec_80.rs"
 
 [[bin]]
-name = "blake2_with_extended_control"
-path = "src/bin/blake2_with_extended_control.rs"
+name = "blake2_with_extended_control_sec_80"
+path = "src/bin/blake2_with_extended_control_sec_80.rs"
 
 [[bin]]
-name = "mem_word_only"
-path = "src/bin/mem_word_only.rs"
+name = "mem_word_only_sec_80"
+path = "src/bin/mem_word_only_sec_80.rs"
 
 [[bin]]
-name = "mem_subword_only"
-path = "src/bin/mem_subword_only.rs"
+name = "mem_subword_only_sec_80"
+path = "src/bin/mem_subword_only_sec_80.rs"
 
 [[bin]]
-name = "keccak_special5"
-path = "src/bin/keccak_special5.rs"
+name = "keccak_special5_sec_80"
+path = "src/bin/keccak_special5_sec_80.rs"
 
 [workspace]
 
