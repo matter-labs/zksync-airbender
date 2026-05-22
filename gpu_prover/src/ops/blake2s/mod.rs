@@ -139,6 +139,87 @@ pub(crate) fn launch_leaves_kernel_multi_coset(
     LeavesMultiCosetFunction::default().launch(&config, &args)
 }
 
+cuda_kernel!(
+    LeavesFromNttMultiCoset,
+    ab_blake2s_leaves_from_ntt_multi_coset_kernel(
+        ntt_output: *const BF,
+        results: *mut DG,
+        log_values_per_leaf: u32,
+        src_cols_per_coset: u32,
+        log_lde_factor: u32,
+        coset_index_base: u32,
+        per_coset_count: u32,
+        log_per_coset_count: u32,
+        trace_len: u32,
+        count: u32,
+    )
+);
+
+/// Hashes `cosets_in_tile * per_coset_leaves_count` WHIR leaves in one launch,
+/// reading the natural multi-coset NTT output and writing digests at the
+/// flat-tree leaf positions today's `pack_rows_for_whir_leaves_multi_coset` +
+/// `launch_leaves_kernel_multi_coset` pipeline produces. The output tree
+/// backing layout is unchanged: digest for natural coset `C`, leaf `i` lives
+/// at `results[(bitreverse(C, log_lde_factor) * per_coset_leaves_count + i) *
+/// STATE_SIZE]`.
+///
+/// `ntt_output` logical shape: rows = `trace_len`, cols =
+/// `cosets_in_tile * src_cols_per_coset`, coset-major outer (`col /
+/// src_cols_per_coset = coset_in_tile`), column-major within each coset. The
+/// total backing length must be at least `cosets_in_tile * trace_len *
+/// src_cols_per_coset` BFs.
+pub(crate) fn launch_leaves_kernel_from_ntt_multi_coset(
+    ntt_output: &DeviceSlice<BF>,
+    results: &mut DeviceSlice<DG>,
+    log_values_per_leaf: u32,
+    src_cols_per_coset: u32,
+    log_lde_factor: u32,
+    coset_index_base: u32,
+    cosets_in_tile: usize,
+    per_coset_leaves_count: usize,
+    trace_len: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(cosets_in_tile >= 1);
+    assert!(
+        per_coset_leaves_count.is_power_of_two(),
+        "per_coset_leaves_count must be a power of two (got {per_coset_leaves_count})"
+    );
+    assert!(src_cols_per_coset >= 1);
+    assert!(trace_len.is_power_of_two());
+    assert!(trace_len >= 1 << log_values_per_leaf);
+    let log_per_coset_count = per_coset_leaves_count.trailing_zeros();
+    assert_eq!(
+        1usize << log_per_coset_count,
+        trace_len as usize >> log_values_per_leaf,
+        "per_coset_leaves_count must equal trace_len / values_per_leaf"
+    );
+    let total_count = per_coset_leaves_count
+        .checked_mul(cosets_in_tile)
+        .expect("leaves total count overflow");
+    assert!(total_count <= u32::MAX as usize);
+    let required_ntt_bf = (trace_len as usize) * (src_cols_per_coset as usize) * cosets_in_tile;
+    assert!(ntt_output.len() >= required_ntt_bf);
+    assert!(results.len() >= total_count);
+    assert!(coset_index_base as usize + cosets_in_tile <= 1usize << log_lde_factor);
+    let (grid_dim, block_dim) =
+        get_grid_block_dims_for_threads_count(WARP_SIZE * 4, total_count as u32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = LeavesFromNttMultiCosetArguments::new(
+        ntt_output.as_ptr(),
+        results.as_mut_ptr(),
+        log_values_per_leaf,
+        src_cols_per_coset,
+        log_lde_factor,
+        coset_index_base,
+        per_coset_leaves_count as u32,
+        log_per_coset_count,
+        trace_len,
+        total_count as u32,
+    );
+    LeavesFromNttMultiCosetFunction::default().launch(&config, &args)
+}
+
 cuda_kernel!(Nodes, ab_blake2s_nodes_kernel(values: *const DG, results: *mut DG, count: u32,));
 
 pub(crate) fn launch_nodes_kernel(
@@ -805,6 +886,77 @@ pub(crate) fn gather_leaves_for_queries(
 }
 
 cuda_kernel!(
+    GatherLeavesForQueriesFromNtt,
+    ab_gather_leaves_for_queries_from_ntt_kernel(
+        ntt_output: *const BF,
+        slab_dst: *mut BF,
+        log_lde_factor: u32,
+        log_packed_leaf_count: u32,
+        log_values_per_leaf: u32,
+        log_src_cols_per_coset: u32,
+        trace_len: u32,
+        query_indexes: *const u32,
+        indexes_count: u32,
+    )
+);
+
+/// WHIR oracle query-leaves gather against the natural multi-coset NTT
+/// output. Single oracle, no multi-oracle descriptor indirection — the WHIR
+/// recursive oracle is always queried alone.
+///
+/// `dst_slab` is written query-major: `dst_slab[idx * dst_cols + col]` where
+/// `dst_cols = src_cols_per_coset << log_values_per_leaf = EXT4_DEGREE *
+/// values_per_leaf`.
+pub(crate) fn launch_gather_leaves_for_queries_from_ntt(
+    ntt_output: &DeviceSlice<BF>,
+    slab_dst: &mut DeviceSlice<BF>,
+    log_lde_factor: u32,
+    log_packed_leaf_count: u32,
+    log_values_per_leaf: u32,
+    log_src_cols_per_coset: u32,
+    trace_len: u32,
+    query_indexes: &DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(
+        log_lde_factor >= 1,
+        "WHIR oracle requires log_lde_factor >= 1"
+    );
+    assert!(log_packed_leaf_count + log_values_per_leaf <= trace_len.trailing_zeros());
+    assert_eq!(
+        trace_len,
+        1u32 << (log_packed_leaf_count + log_values_per_leaf),
+        "trace_len must equal packed_leaf_count * values_per_leaf"
+    );
+    let indexes_len = query_indexes.len();
+    assert!(indexes_len <= u32::MAX as usize);
+    let indexes_count = indexes_len as u32;
+    let dst_cols = (1u32 << log_src_cols_per_coset) << log_values_per_leaf;
+    assert!(slab_dst.len() >= indexes_len * (dst_cols as usize));
+    // One thread per (query, col_in_leaf). Block dim x is a warp-multiple so
+    // adjacent threads share the same col_in_leaf and read consecutive query
+    // indexes (coalesced over `query_indexes`); the loaded `ntt_output` rows
+    // depend on the q values so DRAM coalescing there is workload-dependent
+    // (see spec §3.1 coalescing note).
+    let (grid_dim_query, block_dim) =
+        get_grid_block_dims_for_threads_count(WARP_SIZE, indexes_count);
+    let grid_dim = (grid_dim_query.x, dst_cols, 1u32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = GatherLeavesForQueriesFromNttArguments::new(
+        ntt_output.as_ptr(),
+        slab_dst.as_mut_ptr(),
+        log_lde_factor,
+        log_packed_leaf_count,
+        log_values_per_leaf,
+        log_src_cols_per_coset,
+        trace_len,
+        query_indexes.as_ptr(),
+        indexes_count,
+    );
+    GatherLeavesForQueriesFromNttFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
     GatherMerklePathsFullForQueries,
     ab_gather_merkle_paths_full_for_queries_kernel(
         query_indexes: *const u32,
@@ -1007,6 +1159,81 @@ pub(crate) fn gather_merkle_paths_partial_for_queries(
         indexes_count,
     );
     GatherMerklePathsPartialForQueriesFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    GatherMerklePathsPartialForQueriesFromNtt,
+    ab_gather_merkle_paths_partial_for_queries_from_ntt_kernel(
+        ntt_output: *const BF,
+        partial_tree: *const u32,
+        slab_dst: *mut u32,
+        natural_log_lde_factor: u32,
+        log_values_per_leaf: u32,
+        log_src_cols_per_coset: u32,
+        log_packed_leaf_count: u32,
+        trace_len: u32,
+        log_total_leaves_count: u32,
+        layers_count: u32,
+        query_indexes: *const u32,
+        indexes_count: u32,
+    )
+);
+
+/// Single-oracle WHIR Partial-tree merkle-path gather against the natural
+/// multi-coset NTT cosets backing. The packed-layout sibling
+/// (`gather_merkle_paths_partial_for_queries`) is parameterized to support
+/// three GKR oracles and reads its cosets backing with packed-leaf addressing;
+/// this variant hard-codes single-oracle + single-TraceHolder-coset (WHIR
+/// oracle's `log_lde_factor = 0`, `log_rows_per_leaf = 0`) and reads via the
+/// pack-inverse used by `launch_gather_leaves_for_queries_from_ntt`.
+pub(crate) fn gather_merkle_paths_partial_for_queries_from_ntt(
+    ntt_output: &DeviceSlice<BF>,
+    partial_tree: &DeviceSlice<u32>,
+    slab_dst: &mut DeviceSlice<u32>,
+    natural_log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    log_src_cols_per_coset: u32,
+    log_packed_leaf_count: u32,
+    trace_len: u32,
+    log_total_leaves_count: u32,
+    layers_count: u32,
+    query_indexes: &DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(layers_count >= LOG_WARP_SIZE);
+    assert!(log_total_leaves_count >= LOG_WARP_SIZE);
+    assert_eq!(
+        log_total_leaves_count,
+        log_packed_leaf_count + natural_log_lde_factor,
+        "log_total_leaves_count must equal log_packed_leaf_count + natural_log_lde_factor"
+    );
+    assert_eq!(
+        trace_len,
+        1u32 << (log_packed_leaf_count + log_values_per_leaf),
+        "trace_len must equal packed_leaf_count * values_per_leaf"
+    );
+    let indexes_len = query_indexes.len();
+    assert!(indexes_len <= u32::MAX as usize);
+    let indexes_count = indexes_len as u32;
+    assert!(slab_dst.len() >= indexes_len * (layers_count as usize) * STATE_SIZE);
+    let grid_dim = (indexes_count, 1, 1);
+    let block_dim = WARP_SIZE;
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = GatherMerklePathsPartialForQueriesFromNttArguments::new(
+        ntt_output.as_ptr(),
+        partial_tree.as_ptr(),
+        slab_dst.as_mut_ptr(),
+        natural_log_lde_factor,
+        log_values_per_leaf,
+        log_src_cols_per_coset,
+        log_packed_leaf_count,
+        trace_len,
+        log_total_leaves_count,
+        layers_count,
+        query_indexes.as_ptr(),
+        indexes_count,
+    );
+    GatherMerklePathsPartialForQueriesFromNttFunction::default().launch(&config, &args)
 }
 
 pub(crate) fn merkle_tree_cap(

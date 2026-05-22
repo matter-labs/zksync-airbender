@@ -18,7 +18,6 @@ use crate::primitives::device_structures::{
 };
 use crate::primitives::field::{BF, E4};
 use crate::prover::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
-use crate::prover::whir::kernels::pack_rows_for_whir_leaves_multi_coset;
 use crate::upstream::FieldExtension;
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
@@ -181,57 +180,52 @@ impl GpuWhirExtensionOracle {
             trees_cache_mode,
             context,
         )?;
-        // Multi-coset NTT writes all lde_factor cosets into a single
-        // coset-major buffer in one launch; the multi-coset pack then writes
-        // each coset into its bit-reversed slot inside the WHIR leaves trace
-        // in a single launch (was a per-coset loop).
-        let mut natural_coset_values = context.alloc(
-            lde_factor * trace_len * EXT4_DEGREE,
-            AllocationPlacement::BestFit,
-        )?;
-
+        // Multi-coset NTT writes the natural multi-coset evaluations directly
+        // into the WHIR oracle's cosets backing. The previous pipeline used a
+        // separate `natural_coset_values` temp and then `pack_rows_for_whir_leaves`
+        // — both gone. The new blake-leaves-from-NTT kernel (invoked via
+        // `commit_all_into_from_ntt`) reads the natural layout in place.
         let monomial_coeffs_slice = monomial_coeffs.slice();
         let monomial_coeffs_stride = monomial_coeffs.stride();
         let device_properties = context.get_device_properties();
         let inputs_matrix =
             DeviceMatrixChunk::new(monomial_coeffs_slice, monomial_coeffs_stride, 0, trace_len);
-        crate::ops::ntt::bitreversed_monomials_to_natural_evals_multi_coset(
-            &inputs_matrix,
-            &mut natural_coset_values,
-            trace_len_log2,
-            log_lde_factor as usize,
-            0,
-            lde_factor,
-            EXT4_DEGREE,
-            false,
-            stream,
-            device_properties,
-        )?;
-
-        // Source matrix covers all cosets in one slab: rows = trace_len, cols
-        // = lde_factor * EXT4_DEGREE (coset-major outer, matching the multi-
-        // coset NTT output layout). Destination is the full packed_trace; the
-        // kernel computes the bitreversed coset placement internally.
-        let natural_matrix = DeviceMatrix::new(&natural_coset_values[..], trace_len);
-        let packed_trace = trace_holder.get_uninit_coset_evaluations_mut(0);
-        let mut packed_matrix =
-            DeviceMatrixMut::new(packed_trace, packed_leaf_count << log_lde_factor);
-        pack_rows_for_whir_leaves_multi_coset(
-            &natural_matrix,
-            &mut packed_matrix,
-            log_values_per_leaf,
-            packed_leaf_count,
-            log_lde_factor as u32,
-            0,
-            lde_factor,
-            EXT4_DEGREE,
-            stream,
-        )?;
-
+        {
+            let cosets_backing = trace_holder.get_uninit_consolidated_cosets_mut();
+            crate::ops::ntt::bitreversed_monomials_to_natural_evals_multi_coset(
+                &inputs_matrix,
+                cosets_backing,
+                trace_len_log2,
+                log_lde_factor as usize,
+                0,
+                lde_factor,
+                EXT4_DEGREE,
+                false,
+                stream,
+                device_properties,
+            )?;
+        }
         trace_holder.mark_cosets_materialized();
         match cap_target {
-            CapTarget::OwnAllocation => trace_holder.commit_all(context)?,
-            CapTarget::Slab(dst_u32) => trace_holder.commit_all_into(dst_u32, context)?,
+            CapTarget::OwnAllocation => {
+                trace_holder.commit_all_from_ntt(
+                    trace_len_log2 as u32,
+                    log_lde_factor,
+                    log_values_per_leaf,
+                    EXT4_DEGREE,
+                    context,
+                )?;
+            }
+            CapTarget::Slab(dst_u32) => {
+                trace_holder.commit_all_into_from_ntt(
+                    dst_u32,
+                    trace_len_log2 as u32,
+                    log_lde_factor,
+                    log_values_per_leaf,
+                    EXT4_DEGREE,
+                    context,
+                )?;
+            }
         }
 
         Ok(Self {
@@ -299,16 +293,28 @@ impl GpuWhirExtensionOracle {
         // Recursive WHIR trace holders use `log_lde_factor = 0`, so only
         // coset 0 exists; the consolidated gather kernels resolve every
         // query into that single coset (lde_mask == 0).
-        self.trace_holder.schedule_query_leaves_into(
+        let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
+        let natural_log_lde_factor = log_lde_factor;
+        const LOG_SRC_COLS_PER_COSET: u32 = 2; // log2(EXT4_DEGREE)
+        self.trace_holder.schedule_query_leaves_into_from_ntt(
             slab_indices_view,
             slab_leaves_dst_bf,
+            self.trace_len_log2 as u32,
+            natural_log_lde_factor,
+            log_values_per_leaf,
+            LOG_SRC_COLS_PER_COSET,
             context,
         )?;
-        self.trace_holder.schedule_query_merkle_paths_into(
-            slab_indices_view,
-            slab_paths_dst,
-            context,
-        )?;
+        self.trace_holder
+            .schedule_query_merkle_paths_into_from_ntt(
+                slab_indices_view,
+                slab_paths_dst,
+                self.trace_len_log2 as u32,
+                natural_log_lde_factor,
+                log_values_per_leaf,
+                LOG_SRC_COLS_PER_COSET,
+                context,
+            )?;
         Ok(())
     }
 
@@ -346,12 +352,39 @@ impl GpuWhirExtensionOracle {
             context.get_exec_stream(),
         )?;
         drop(tree_index_host);
-        let value_query = self
-            .trace_holder
-            .get_query_leafs(0, &device_tree_index, context)?;
-        let path_query =
-            self.trace_holder
-                .get_query_merkle_paths(0, &device_tree_index, context)?;
+        // Use the NTT-aware query path (same reason as `schedule_query_for_folded_index`).
+        let leaf_len = self.values_per_leaf * EXT4_DEGREE;
+        let mut d_leafs = context.alloc(leaf_len, AllocationPlacement::BestFit)?;
+        {
+            let natural_log_lde_factor = self.lde_factor.trailing_zeros();
+            let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
+            const LOG_SRC_COLS_PER_COSET: u32 = 2; // log2(EXT4_DEGREE)
+            self.trace_holder.schedule_query_leaves_into_from_ntt(
+                &device_tree_index,
+                &mut d_leafs[..],
+                self.trace_len_log2 as u32,
+                natural_log_lde_factor,
+                log_values_per_leaf,
+                LOG_SRC_COLS_PER_COSET,
+                context,
+            )?;
+        }
+        let stream_ref = context.get_exec_stream();
+        let mut value_query = unsafe { context.alloc_host_uninit_slice(leaf_len) };
+        memory_copy_async(&mut value_query, &d_leafs[..], stream_ref)?;
+        let path_query = {
+            let natural_log_lde_factor = self.lde_factor.trailing_zeros();
+            let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
+            const LOG_SRC_COLS_PER_COSET: u32 = 2;
+            self.trace_holder.get_query_merkle_paths_from_ntt(
+                &device_tree_index,
+                self.trace_len_log2 as u32,
+                natural_log_lde_factor,
+                log_values_per_leaf,
+                LOG_SRC_COLS_PER_COSET,
+                context,
+            )?
+        };
         Ok(GpuWhirScheduledExtensionQuery {
             index: 0,
             coset_index: 0,
@@ -517,12 +550,42 @@ pub(crate) mod tests {
                 context.get_exec_stream(),
             )?;
             drop(host_tree_index);
-            let value_query = self
-                .trace_holder
-                .get_query_leafs(0, &device_tree_index, context)?;
-            let path_query =
-                self.trace_holder
-                    .get_query_merkle_paths(0, &device_tree_index, context)?;
+            // Use the NTT-aware query path: the trace holder's cosets backing
+            // now holds the natural multi-coset NTT output, which `get_query_leafs`
+            // (packed-layout reader) would misinterpret. Switch to the new
+            // `schedule_query_leaves_into_from_ntt` path used by production.
+            let leaf_len = self.values_per_leaf * EXT4_DEGREE;
+            let mut d_leafs = context.alloc(leaf_len, AllocationPlacement::BestFit)?;
+            {
+                let natural_log_lde_factor = self.lde_factor.trailing_zeros();
+                let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
+                const LOG_SRC_COLS_PER_COSET: u32 = 2; // log2(EXT4_DEGREE)
+                self.trace_holder.schedule_query_leaves_into_from_ntt(
+                    &device_tree_index,
+                    &mut d_leafs[..],
+                    self.trace_len_log2 as u32,
+                    natural_log_lde_factor,
+                    log_values_per_leaf,
+                    LOG_SRC_COLS_PER_COSET,
+                    context,
+                )?;
+            }
+            let stream_ref = context.get_exec_stream();
+            let mut value_query = unsafe { context.alloc_host_uninit_slice(leaf_len) };
+            memory_copy_async(&mut value_query, &d_leafs[..], stream_ref)?;
+            let path_query = {
+                let natural_log_lde_factor = self.lde_factor.trailing_zeros();
+                let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
+                const LOG_SRC_COLS_PER_COSET: u32 = 2;
+                self.trace_holder.get_query_merkle_paths_from_ntt(
+                    &device_tree_index,
+                    self.trace_len_log2 as u32,
+                    natural_log_lde_factor,
+                    log_values_per_leaf,
+                    LOG_SRC_COLS_PER_COSET,
+                    context,
+                )?
+            };
             Ok(GpuWhirScheduledExtensionQuery {
                 index: tree_index,
                 coset_index,
@@ -557,24 +620,26 @@ pub(crate) mod tests {
         }
 
         fn copy_coset_values(&self, coset_index: usize, context: &ProverContext) -> Vec<E4> {
-            let total_leaf_count = self.packed_leaf_count * self.lde_factor;
-            let full_trace = self.trace_holder.get_coset_evaluations(0);
+            // The backing now holds the natural multi-coset NTT output.
+            // Layout: column-major matrix with `trace_len` rows and
+            // `lde_factor * EXT4_DEGREE` columns. Column
+            // `coset * EXT4_DEGREE + bf_comp` holds BF component `bf_comp`
+            // of coset `coset` — cosets in natural (non-bit-reversed) order.
+            let trace_len = self.packed_leaf_count * self.values_per_leaf;
+            let full_trace = self.trace_holder.get_consolidated_cosets();
             let mut host = vec![BF::ZERO; full_trace.len()];
             memory_copy_async(&mut host, full_trace, context.get_exec_stream()).unwrap();
             context.get_exec_stream().synchronize().unwrap();
-            let stage1_coset_index =
-                bitreverse_index(coset_index, self.lde_factor.trailing_zeros() as u32);
-            let row_offset = stage1_coset_index * self.packed_leaf_count;
-            let mut packed_coset =
-                vec![BF::ZERO; self.packed_leaf_count * self.values_per_leaf * EXT4_DEGREE];
-            for column in 0..(self.values_per_leaf * EXT4_DEGREE) {
-                let src_column = &host[column * total_leaf_count..(column + 1) * total_leaf_count];
-                let dst_column = &mut packed_coset
-                    [column * self.packed_leaf_count..(column + 1) * self.packed_leaf_count];
-                dst_column
-                    .copy_from_slice(&src_column[row_offset..row_offset + self.packed_leaf_count]);
-            }
-            decode_packed_coset_values(&packed_coset, self.packed_leaf_count, self.values_per_leaf)
+            (0..trace_len)
+                .map(|pos| {
+                    let mut coeffs = [BF::ZERO; EXT4_DEGREE];
+                    for bf_comp in 0..EXT4_DEGREE {
+                        coeffs[bf_comp] =
+                            host[(coset_index * EXT4_DEGREE + bf_comp) * trace_len + pos];
+                    }
+                    extension_field_from_base_coeffs::<BF, E4>(coeffs)
+                })
+                .collect()
         }
     }
 

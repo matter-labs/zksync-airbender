@@ -17,8 +17,8 @@ use crate::primitives::utils::{
     WARP_SIZE,
 };
 use crate::prover::gkr::backward::{
-    eq_group_count, gkr_dim_reducing_launch_config, make_eq_sizes, GkrEqSizes, GKR_EQ_GROUP_TABLE_LEN,
-    GKR_EQ_HIGH_SLOTS,
+    eq_group_count, gkr_dim_reducing_launch_config, make_eq_sizes, GkrEqSizes,
+    GKR_EQ_GROUP_TABLE_LEN, GKR_EQ_HIGH_SLOTS,
 };
 use crate::upstream::FieldExtension;
 
@@ -227,6 +227,7 @@ pub(crate) fn whir_fold_split_half_in_place(
     WhirFoldSplitHalfFunction(ab_whir_fold_split_half_e4_kernel).launch(&config, &args)
 }
 
+#[cfg(test)]
 cuda_kernel_signature_arguments_and_function!(
     PackRowsForWhirLeavesMultiCoset,
     src: PtrAndStride<BF>,
@@ -239,6 +240,7 @@ cuda_kernel_signature_arguments_and_function!(
     src_cols_per_coset: u32,
 );
 
+#[cfg(test)]
 cuda_kernel_declaration!(
     ab_pack_rows_for_whir_leaves_multi_coset_bf_kernel(
         src: PtrAndStride<BF>,
@@ -265,6 +267,7 @@ cuda_kernel_declaration!(
 ///   log_lde_factor`, cols `src_cols_per_coset << log_values_per_leaf`. The
 ///   kernel writes coset `coset_index_base + k` at row offset
 ///   `bitreverse(coset_index_base + k, log_lde_factor) * dst_rows_per_slot`.
+#[cfg(test)]
 pub(crate) fn pack_rows_for_whir_leaves_multi_coset(
     src: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     dst: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
