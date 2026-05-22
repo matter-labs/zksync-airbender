@@ -34,6 +34,9 @@ jobs:
       - name: Unit tests (CI)
         env:
           CI: "true"
+        # --test-threads 1 is required to keep peak RSS in bounds, and it is
+        # actually faster than parallel execution here: parallel runs thrash
+        # CPU caches badly enough that serial execution wins overall.
         run: cargo test --profile cli -- --nocapture --test-threads 1
 
   formatting:
