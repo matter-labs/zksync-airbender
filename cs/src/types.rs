@@ -1,4 +1,3 @@
-use crate::constraint::Constraint;
 use crate::constraint::Term;
 use crate::cs::circuit_trait::Circuit;
 use crate::definitions::*;
@@ -152,8 +151,6 @@ impl Boolean {
         assert!(N <= F::CHAR_BITS - 1);
 
         let type_bitmask: [Boolean; N] = std::array::from_fn(|_| Boolean::new(circuit));
-        let type_bitmask_terms: [Term<F>; N] = type_bitmask.map(|x| x.into());
-        let full_bitmask_as_int: Term<F> = full_bitmask.into();
 
         let input = full_bitmask.get_variable();
         let outputs = type_bitmask.map(|el| {
@@ -174,10 +171,14 @@ impl Boolean {
 
         circuit.set_values(value_fn);
 
-        let constraint = (0..N).fold(Constraint::empty(), |acc, x| {
-            acc + Term::from(type_bitmask_terms[x]) * Term::from(1 << x)
-        }) - full_bitmask_as_int;
-        circuit.add_constraint_allow_explicit_linear(constraint);
+        let constraint = Expr::sum(
+            type_bitmask
+                .iter()
+                .enumerate()
+                .map(|(idx, &bit)| Expr::from(bit) * Expr::from(1u32 << idx))
+                .collect(),
+        ) - Expr::from(full_bitmask);
+        circuit.add_constraint_allow_explicit_linear_expr(constraint);
 
         type_bitmask
     }

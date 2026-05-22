@@ -52531,6 +52531,98 @@
     {
       "AssertZero": {
         "expr": {
+          "Sum": [
+            {
+              "Var": 59
+            },
+            {
+              "Product": [
+                {
+                  "Var": 60
+                },
+                {
+                  "Constant": 536870908
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 61
+                },
+                {
+                  "Constant": 1073741816
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 62
+                },
+                {
+                  "Constant": 134217711
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 63
+                },
+                {
+                  "Constant": 268435422
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 64
+                },
+                {
+                  "Constant": 536870844
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 65
+                },
+                {
+                  "Constant": 1073741688
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 66
+                },
+                {
+                  "Constant": 134217455
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 55
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
           "Product": [
             {
               "Sum": [
@@ -88238,14 +88330,14 @@
     "56": "control read/write from x12 read[1]",
     "57": "control read/write from x12 write[0]",
     "58": "control read/write from x12 write[0]",
-    "59": "Variable at cs/src/types.rs::154",
-    "60": "Variable at cs/src/types.rs::154",
-    "61": "Variable at cs/src/types.rs::154",
-    "62": "Variable at cs/src/types.rs::154",
-    "63": "Variable at cs/src/types.rs::154",
-    "64": "Variable at cs/src/types.rs::154",
-    "65": "Variable at cs/src/types.rs::154",
-    "66": "Variable at cs/src/types.rs::154",
+    "59": "Variable at cs/src/types.rs::153",
+    "60": "Variable at cs/src/types.rs::153",
+    "61": "Variable at cs/src/types.rs::153",
+    "62": "Variable at cs/src/types.rs::153",
+    "63": "Variable at cs/src/types.rs::153",
+    "64": "Variable at cs/src/types.rs::153",
+    "65": "Variable at cs/src/types.rs::153",
+    "66": "Variable at cs/src/types.rs::153",
     "67": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
     "68": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
     "69": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
@@ -88394,8 +88486,8 @@
     "212": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::783",
     "213": "inv var for zero check copy",
     "214": "is zero var for zero check copy",
-    "215": "Variable at cs/src/types.rs::248",
-    "216": "Variable at cs/src/types.rs::248",
+    "215": "Variable at cs/src/types.rs::249",
+    "216": "Variable at cs/src/types.rs::249",
     "217": "ram or indirect query 0, register read_ts[0]",
     "218": "ram or indirect query 0, register read_ts[1]",
     "219": "indirect access query 0, register acccess interm ts borrow",

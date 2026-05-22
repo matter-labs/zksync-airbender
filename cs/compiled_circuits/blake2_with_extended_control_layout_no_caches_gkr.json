@@ -66937,6 +66937,148 @@
         "expr": {
           "Sum": [
             {
+              "Var": 139
+            },
+            {
+              "Product": [
+                {
+                  "Var": 140
+                },
+                {
+                  "Constant": 536870908
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 141
+                },
+                {
+                  "Constant": 1073741816
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 142
+                },
+                {
+                  "Constant": 134217711
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 143
+                },
+                {
+                  "Constant": 268435422
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 144
+                },
+                {
+                  "Constant": 536870844
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 145
+                },
+                {
+                  "Constant": 1073741688
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 146
+                },
+                {
+                  "Constant": 134217455
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 147
+                },
+                {
+                  "Constant": 268434910
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 148
+                },
+                {
+                  "Constant": 536869820
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 149
+                },
+                {
+                  "Constant": 1073739640
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 150
+                },
+                {
+                  "Constant": 134213359
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 151
+                },
+                {
+                  "Constant": 268426718
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 136
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
               "Product": [
                 {
                   "Var": 148
@@ -97165,21 +97307,21 @@
     "136": "control read/write from x12 read[1]",
     "137": "control read/write from x12 write[0]",
     "138": "control read/write from x12 write[0]",
-    "139": "Variable at cs/src/types.rs::154",
-    "140": "Variable at cs/src/types.rs::154",
-    "141": "Variable at cs/src/types.rs::154",
-    "142": "Variable at cs/src/types.rs::154",
-    "143": "Variable at cs/src/types.rs::154",
-    "144": "Variable at cs/src/types.rs::154",
-    "145": "Variable at cs/src/types.rs::154",
-    "146": "Variable at cs/src/types.rs::154",
-    "147": "Variable at cs/src/types.rs::154",
-    "148": "Variable at cs/src/types.rs::154",
-    "149": "Variable at cs/src/types.rs::154",
-    "150": "Variable at cs/src/types.rs::154",
-    "151": "Variable at cs/src/types.rs::154",
+    "139": "Variable at cs/src/types.rs::153",
+    "140": "Variable at cs/src/types.rs::153",
+    "141": "Variable at cs/src/types.rs::153",
+    "142": "Variable at cs/src/types.rs::153",
+    "143": "Variable at cs/src/types.rs::153",
+    "144": "Variable at cs/src/types.rs::153",
+    "145": "Variable at cs/src/types.rs::153",
+    "146": "Variable at cs/src/types.rs::153",
+    "147": "Variable at cs/src/types.rs::153",
+    "148": "Variable at cs/src/types.rs::153",
+    "149": "Variable at cs/src/types.rs::153",
+    "150": "Variable at cs/src/types.rs::153",
+    "151": "Variable at cs/src/types.rs::153",
     "152": "perform final xor flag",
-    "153": "Variable at cs/src/types.rs::248",
+    "153": "Variable at cs/src/types.rs::249",
     "154": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::324",
     "155": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::333",
     "156": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::324",
@@ -97228,8 +97370,8 @@
     "199": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::377",
     "200": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::377",
     "201": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::377",
-    "202": "Variable at cs/src/types.rs::248",
-    "203": "Variable at cs/src/types.rs::248",
+    "202": "Variable at cs/src/types.rs::249",
+    "203": "Variable at cs/src/types.rs::249",
     "204": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::437",
     "205": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::437",
     "206": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::437",
