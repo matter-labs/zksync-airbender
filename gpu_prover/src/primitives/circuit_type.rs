@@ -1,11 +1,12 @@
 use crate::execution::prover::UnsupportedGpuSecurityLevel;
 use crate::primitives::machine_type::MachineType;
 use crate::upstream::{
-    inits_and_teardowns, AddSubLuiAuipcMopCircuit, BabyBearField, BigIntDelegationCircuit,
+    config_for_security_level_under_pessimistic_conjecture, inits_and_teardowns,
+    AddSubLuiAuipcMopCircuit, BabyBearField, BigIntDelegationCircuit,
     Blake2sGFunctionDelegationCircuit, Blake2sWithCompressionDelegationCircuit,
     JumpBranchSltCircuit, KeccakSpecial5DelegationCircuit, LoadStoreSubwordOnlyCircuit,
     LoadStoreWordOnlyCircuit, ProverConfig, SecurityLevel, ShiftBinaryCircuit,
-    UnsignedMulDivCircuit, WhirSchedule,
+    UnsignedMulDivCircuit,
 };
 use circuit_common::{DelegationCircuit, RiscVCycleCircuit};
 use common_constants::circuit_families::{
@@ -60,10 +61,9 @@ impl CircuitType {
     }
 
     /// Canonical `ProverConfig` for this circuit at the requested security
-    /// level. Mirrors CPU's `config_for_security_level_under_pessimistic_conjecture`
-    /// for the schedule-independent fields, but uses the
-    /// `default_for_tests_80_bits_*` schedules that GPU stage1 and WHIR are
-    /// tuned for. Only `Sec80` is supported on GPU today.
+    /// level. Delegates to CPU's `config_for_security_level_under_pessimistic_conjecture`
+    /// so GPU and CPU agree on the production WHIR schedule. Only `Sec80` is
+    /// supported on GPU today.
     pub fn prover_config(
         &self,
         security_level: SecurityLevel,
@@ -75,24 +75,17 @@ impl CircuitType {
     }
 
     fn prover_config_sec80(&self) -> ProverConfig {
-        let domain_size_log_2 = self.get_domain_size().trailing_zeros();
-        let whir_schedule = match domain_size_log_2 {
-            20 => WhirSchedule::default_for_tests_80_bits_20(),
-            22 => WhirSchedule::default_for_tests_80_bits_22(),
-            23 | 24 => WhirSchedule::default_for_tests_80_bits_24(),
+        let domain_size_log_2 = self.get_domain_size().trailing_zeros() as usize;
+        // CPU's `example_configs` only defines schedules for {20, 22, 24};
+        // collapse 23 onto 24 to match the previous GPU mapping.
+        let schedule_log_2 = match domain_size_log_2 {
+            20 | 22 | 24 => domain_size_log_2,
+            23 => 24,
             other => {
                 panic!("no Sec80 ProverConfig for circuit {self:?} (domain_size_log_2 = {other})")
             }
         };
-        ProverConfig {
-            lde_factor: 2,
-            cap_size: 16,
-            base_oracles_values_per_leaf: 2,
-            lookup_challenges_pow_bits: 0,
-            sumcheck_explicit_output_size_log_2: 4,
-            batched_proximity_check_challenge_pow_bits: 0,
-            whir_schedule,
-        }
+        config_for_security_level_under_pessimistic_conjecture(schedule_log_2, SecurityLevel::Sec80)
     }
 
     #[inline(always)]
