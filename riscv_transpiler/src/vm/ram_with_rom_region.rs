@@ -1,8 +1,37 @@
 use common_constants::TimestampScalar;
 use field::PrimeField;
-use std::alloc::Allocator;
+use std::alloc::{self, Allocator, Layout};
 
 use crate::vm::{RamPeek, Register, RAM};
+
+/// Allocate a zeroed `Vec<Register>` without touching every backing page.
+///
+/// `RamWithRomRegion` can reserve a full 1 GiB VM address space. A `vec![...; N]`
+/// initialization writes every register eagerly, which forces the OS to commit
+/// the entire virtual allocation. `alloc_zeroed` lets the allocator/kernel serve
+/// zero pages lazily, so only pages actually written during execution consume
+/// physical memory.
+///
+/// # Safety
+///
+/// `Register` is a `Copy` plain-data value and the all-zero byte pattern is a
+/// valid representation of `Register { timestamp: 0, value: 0 }`.
+fn alloc_zeroed_registers(count: usize) -> Vec<Register> {
+    if count == 0 {
+        return Vec::new();
+    }
+
+    unsafe {
+        let layout =
+            Layout::array::<Register>(count).expect("register allocation layout should fit");
+        let ptr = alloc::alloc_zeroed(layout) as *mut Register;
+        if ptr.is_null() {
+            alloc::handle_alloc_error(layout);
+        }
+
+        Vec::from_raw_parts(ptr, count, count)
+    }
+}
 
 pub struct RamWithRomRegion<const ROM_BOUND_SECOND_WORD_BITS: usize> {
     pub(crate) backing: Vec<Register>,
@@ -22,18 +51,59 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
         assert!(content.len() <= num_rom_words);
         let ram_words = total_size_bytes / core::mem::size_of::<u32>();
 
-        let mut backing = vec![
-            Register {
-                value: 0,
-                timestamp: 0
-            };
-            ram_words
-        ];
+        let mut backing = alloc_zeroed_registers(ram_words);
         for (dst, src) in backing.iter_mut().zip(content.iter()) {
             dst.value = *src;
         }
 
         Self { backing }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vm::RAM;
+
+    #[test]
+    fn alloc_zeroed_registers_are_valid() {
+        let registers = alloc_zeroed_registers(64);
+
+        for register in registers.iter() {
+            assert_eq!(register.value, 0);
+            assert_eq!(register.timestamp, 0);
+        }
+    }
+
+    #[test]
+    fn alloc_zeroed_registers_empty() {
+        let registers = alloc_zeroed_registers(0);
+
+        assert!(registers.is_empty());
+    }
+
+    #[test]
+    fn from_rom_content_preserves_read_write_behavior() {
+        let total_size = 1 << 17;
+        let rom_words = (1 << 16) / core::mem::size_of::<u32>();
+        let content: Vec<u32> = (0..rom_words as u32).collect();
+
+        let mut ram = RamWithRomRegion::<0>::from_rom_content(&content, total_size);
+
+        for i in 0..rom_words {
+            assert_eq!(ram.peek_word(i as u32 * 4), i as u32);
+        }
+
+        let ram_addr = rom_words as u32 * 4;
+        assert_eq!(ram.peek_word(ram_addr), 0);
+
+        let (old_timestamp, old_value) = ram.write_word(ram_addr, 0xDEAD_BEEF, 4);
+        assert_eq!(old_timestamp, 0);
+        assert_eq!(old_value, 0);
+
+        let (read_timestamp, read_value) = ram.read_word(ram_addr, 8);
+        assert_eq!(read_timestamp, 4 | 2);
+        assert_eq!(read_value, 0xDEAD_BEEF);
     }
 }
 
