@@ -782,20 +782,35 @@ pub(crate) mod tests {
     fn recursive_oracle_lde_matches_cpu() {
         let worker = Worker::new();
         let context = make_test_context(256, 32);
-        let monomial_coeffs = sample_monomial_coeffs(1 << 6);
-        let twiddles = Twiddles::<BF, Global>::new(monomial_coeffs.len(), &worker);
-        let cpu =
-            cpu_extension_oracle_from_monomial_form(&monomial_coeffs, &twiddles, 4, 4, 4, &worker);
-        let gpu = GpuWhirExtensionOracle::from_monomial_coeffs(&monomial_coeffs, 4, 4, 4, &context)
-            .unwrap();
 
-        for coset_index in 0..4 {
-            assert_eq!(
-                gpu.copy_coset_values(coset_index, &context),
-                cpu.cosets[coset_index].values_normal_order.column.to_vec(),
-                "coset {} diverged",
-                coset_index
-            );
+        // Tests a range of parameters.
+        for &log_coeff_size in [6, 7, 8].iter() {
+            for &values_per_leaf in [2, 4, 8].iter() {
+                let monomial_coeffs = sample_monomial_coeffs(1 << log_coeff_size);
+                let twiddles = Twiddles::<BF, Global>::new(monomial_coeffs.len(), &worker);
+                let cpu =
+                    cpu_extension_oracle_from_monomial_form(&monomial_coeffs, &twiddles, 4, values_per_leaf, 4, &worker);
+                let gpu = GpuWhirExtensionOracle::from_monomial_coeffs(&monomial_coeffs, 4, values_per_leaf, 4, &context)
+                    .unwrap();
+
+                for coset_index in 0..4 {
+                    // let gpu_results = gpu.copy_coset_values(coset_index, &context);
+                    // let cpu_results = cpu.cosets[coset_index].values_normal_order.column.to_vec();
+                    // for (i, (gpu_val, cpu_val)) in gpu_results.iter().zip(cpu_results.iter()).enumerate() {
+                    //     if gpu_val == cpu_val {
+                    //         println!("EQUAL {:<3} {:<60} {:<60}", i, gpu_val, cpu_val);
+                    //     } else {
+                    //         println!("NOT   {:<3} {:<60} {:<60}", i, gpu_val, cpu_val);
+                    //     }
+                    // }
+                    assert_eq!(
+                        gpu.copy_coset_values(coset_index, &context),
+                        cpu.cosets[coset_index].values_normal_order.column.to_vec(),
+                        "coset {} diverged",
+                        coset_index
+                    );
+                }
+            }
         }
     }
 

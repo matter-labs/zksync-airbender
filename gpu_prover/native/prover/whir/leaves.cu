@@ -13,9 +13,6 @@ namespace airbender::prover::whir {
 
 DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsigned num_bits) { return __brev(value) >> (32 - num_bits); }
 
-constexpr unsigned MAX_WARPS_PER_BLOCK = 16;
-constexpr unsigned MAX_SECOND_STAGE_EXCHANGE_REGIONS = MAX_WARPS_PER_BLOCK >> 1;
-
 EXTERN __launch_bounds__(512, 2)
 __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(vectorized_e4_matrix_getter<ld_modifier::cs> src,
                                                        vectorized_e4_matrix_setter<st_modifier::cs> dst,
@@ -37,8 +34,7 @@ __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(vectorized_e4_matrix_gett
 
   dst.add_row(dst_row);
 
-  extern __shared__ e4 smem[];
-  __shared__ bf x_invs[MAX_SECOND_STAGE_EXCHANGE_REGIONS];
+  extern __shared__ uint8_t smem[];
 
   const unsigned slot_in_leaf = 2 * threadIdx.y;
   const unsigned src_row_a = dst_row + bitreverse_low_bits(slot_in_leaf, log_values_per_leaf) * dst_rows_per_coset;
@@ -60,7 +56,8 @@ __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(vectorized_e4_matrix_gett
     dst.set_at_col(slot_in_leaf, c);
     dst.set_at_col(slot_in_leaf + 1, d);
   } else {
-    e4* smem_thread = smem + threadIdx.x;
+    e4* smem_thread = reinterpret_cast<e4 *>(smem) + threadIdx.x;
+    bf* x_invs = reinterpret_cast<bf *>(smem + 2 * blockDim.x * blockDim.y * sizeof(e4)) + threadIdx.x;
 
     // We need to multiply by two_inv_power at some point. Might as well be here.
     smem_thread[blockDim.x * slot_in_leaf] = e4::mul(two_inv_power, e4::add(a, b));
@@ -76,7 +73,7 @@ __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(vectorized_e4_matrix_gett
       // Exchange region leaders publish squared x_invs
       if (exchg_lane == 0) {
         x_inv = bf::sqr(x_inv);
-        x_invs[exchg_region] = x_inv;
+        x_invs[blockDim.x * exchg_region] = x_inv;
       }
       // TODO: Evaluate performance impact of full syncthreads().
       // If it's bad, remap threads so exchanges happen within warps, with a swizzled access pattern to avoid bank conflicts.
@@ -84,7 +81,7 @@ __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(vectorized_e4_matrix_gett
       const e4 a = smem_thread[blockDim.x * slot_in_leaf];
       const e4 b = smem_thread[blockDim.x * (slot_in_leaf + exchg_stride)];
       if (exchg_lane != 0)
-        x_inv = x_invs[exchg_region];
+        x_inv = x_invs[blockDim.x * exchg_region];
       __syncthreads();
 
       const e4 c = e4::add(a, b);
@@ -109,10 +106,9 @@ __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(vectorized_e4_matrix_gett
     const e4 a = smem_thread[blockDim.x * slot_in_leaf];
     const e4 b = smem_thread[blockDim.x * (slot_in_leaf + exchg_stride)];
 
+
     const e4 c = e4::add(a, b);
-    // const e4 d = e4::mul(x_inv, e4::sub(a, b));
-    // const e4 d = e4::sub(a, b);
-    const e4 d = e4::mul(bf::NON_RES(), e4::sub(a, b));
+    const e4 d = e4::mul(x_inv, e4::sub(a, b));
     dst.set_at_col(slot_in_leaf, c);
     dst.set_at_col(slot_in_leaf + exchg_stride, d);
   }

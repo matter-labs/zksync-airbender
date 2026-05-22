@@ -271,7 +271,8 @@ pub(crate) fn pack_rows_for_whir_leaves(
     assert_eq!(src_cols << log_values_per_leaf, dst_cols);
     // Each thread reads and writes 2 ext4 values.
     let warps_per_block = dst_cols / 8;
-    let block_dim = (WARP_SIZE, warps_per_block as u32);
+    let block_dim_x = WARP_SIZE;
+    let block_dim = (block_dim_x, warps_per_block as u32);
     assert!(log_trace_len > log_values_per_leaf);
     let log_dst_rows_per_coset = log_trace_len - log_values_per_leaf;
     let log_blocks_per_coset = if log_dst_rows_per_coset > 5 {
@@ -284,7 +285,8 @@ pub(crate) fn pack_rows_for_whir_leaves(
     let grid_dim = 1 << (log_blocks_per_coset + log_lde_factor);
     let mut config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let smem_bytes = if log_values_per_leaf > 1 {
-        2 * warps_per_block * WARP_SIZE as usize * size_of::<E4>()
+        2 * warps_per_block * block_dim_x as usize * size_of::<E4>() +
+            (warps_per_block / 2) * block_dim_x as usize * size_of::<BF>()
     } else {
         0
     };
