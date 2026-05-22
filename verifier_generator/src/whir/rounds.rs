@@ -145,6 +145,8 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
 
     let mul_delin = MW::mul_assign(quote! { t }, quote! { current_delinearization_challenge });
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
+    let add_correction_by_challenge = MW::add_assign_product(quote! { claim_correction }, quote! { folded }, quote! { current_delinearization_challenge });
+
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
     let mul_ood_delin = MW::mul_assign(
         quote! { claim_correction },
@@ -348,6 +350,8 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                         current_delinearization_challenge,
                     );
 
+                    // #add_correction_by_challenge; // not beneficial
+
                     let mut t = folded;
                     #mul_delin;
                     #add_correction;
@@ -423,6 +427,8 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
     let mul_delin = MW::mul_assign(quote! { t }, quote! { current_delinearization_challenge });
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
+    let add_correction_by_challenge = MW::add_assign_product(quote! { claim_correction }, quote! { folded }, quote! { current_delinearization_challenge });
+
     let mul_ood_delin = MW::mul_assign(
         quote! { claim_correction },
         quote! { delinearization_challenge },
@@ -586,6 +592,8 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                         <#quartic_struct>::from_base(query_point_base),
                         current_delinearization_challenge,
                     );
+
+                    // #add_correction_by_challenge; // not beneficial
 
                     let mut t = folded;
                     #mul_delin;

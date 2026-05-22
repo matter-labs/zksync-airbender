@@ -20,6 +20,11 @@ pub fn mul_assign<'a, T: Field>(lhs: &'a mut T, rhs: &T) -> &'a mut T {
 }
 
 #[inline(never)]
+pub fn add_assign_product<'a, T: Field>(acc: &'a mut T, lhs: &T, rhs: &T) -> &'a mut T {
+    acc.add_assign_product(lhs, rhs)
+}
+
+#[inline(never)]
 pub fn negate<T: Field>(lhs: &mut T) -> &mut T {
     lhs.negate()
 }

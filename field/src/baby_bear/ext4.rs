@@ -586,6 +586,109 @@ impl Field for BabyBearExt4 {
 
         self
     }
+
+    // // special implementation for RISC-V overrides the default
+    // #[cfg(all(
+    //     target_arch = "riscv32",
+    //     all(feature = "modular_ops", feature = "modular_fma")
+    // ))]
+    // #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    // fn add_assign_product(&'_ mut self, a: &Self, b: &Self) -> &'_ mut Self {
+    //     let a0 = a.c0.c0;
+    //     let a1 = a.c0.c1;
+    //     let a2 = a.c1.c0;
+    //     let a3 = a.c1.c1;
+    //     let b0 = b.c0.c0;
+    //     let b1 = b.c0.c1;
+    //     let b2 = b.c1.c0;
+    //     let b3 = b.c1.c1;
+
+    //     let mut a1n = a1;
+    //     BabyBearField::mul_by_non_residue_impl(&mut a1n);
+    //     let mut a2n = a2;
+    //     BabyBearField::mul_by_non_residue_impl(&mut a2n);
+    //     let mut a3n = a3;
+    //     BabyBearField::mul_by_non_residue_impl(&mut a3n);
+
+    //     // out[0] += a0·b0 + a1n·b1 + a2n·b3 + a3n·b2
+    //     self.c0.c0.add_assign_product(&a0, &b0);
+    //     self.c0.c0.add_assign_product(&a1n, &b1);
+    //     self.c0.c0.add_assign_product(&a2n, &b3);
+    //     self.c0.c0.add_assign_product(&a3n, &b2);
+
+    //     // out[1] = a0·b1 + a1·b0 + a2·b2 + a3n·b3
+    //     self.c0.c1.add_assign_product(&a0, &b1);
+    //     self.c0.c1.add_assign_product(&a1, &b0);
+    //     self.c0.c1.add_assign_product(&a2, &b2);
+    //     self.c0.c1.add_assign_product(&a3n, &b3);
+
+    //     // out[2] = a0·b2 + a1n·b3 + a2·b0 + a3n·b1
+    //     self.c1.c0.add_assign_product(&a0, &b2);
+    //     self.c1.c0.add_assign_product(&a1n, &b3);
+    //     self.c1.c0.add_assign_product(&a2, &b0);
+    //     self.c1.c0.add_assign_product(&a3n, &b1);
+
+    //     // out[3] = a0·b3 + a1·b2 + a2·b1 + a3·b0
+    //     self.c1.c1.add_assign_product(&a0, &b3);
+    //     self.c1.c1.add_assign_product(&a1, &b2);
+    //     self.c1.c1.add_assign_product(&a2, &b1);
+    //     self.c1.c1.add_assign_product(&a3, &b0);
+
+    //     self
+    // }
+
+    // special implementation for RISC-V overrides the default
+    #[cfg(all(
+        target_arch = "riscv32",
+        all(feature = "modular_ops", feature = "modular_fma")
+    ))]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_product(&'_ mut self, a: &Self, b: &Self) -> &'_ mut Self {
+        let a0 = a.c0.c0;
+        let a1 = a.c0.c1;
+        let a2 = a.c1.c0;
+        let a3 = a.c1.c1;
+
+        // shuffle to keep less registers alive
+
+        // out[0] += a0·b0 + a1n·b1 + a2n·b3 + a3n·b2
+        // out[1] += a0·b1 + a1·b0 + a2·b2 + a3n·b3
+        // out[2] += a0·b2 + a1n·b3 + a2·b0 + a3n·b1
+        // out[3] += a0·b3 + a1·b2 + a2·b1 + a3·b0
+
+        let b0 = b.c0.c0;
+        self.c0.c0.add_assign_product(&a0, &b0);
+        self.c0.c1.add_assign_product(&a1, &b0);
+        self.c1.c0.add_assign_product(&a2, &b0);
+        self.c1.c1.add_assign_product(&a3, &b0);
+
+        let b1 = b.c0.c1;
+        let mut a1n = a1;
+        BabyBearField::mul_by_non_residue_impl(&mut a1n);
+        let mut a3n = a3;
+        BabyBearField::mul_by_non_residue_impl(&mut a3n);
+
+        self.c0.c0.add_assign_product(&a1n, &b1);
+        self.c0.c1.add_assign_product(&a0, &b1);
+        self.c1.c0.add_assign_product(&a3n, &b1);
+        self.c1.c1.add_assign_product(&a2, &b1);
+        
+        let b2 = b.c1.c0;
+        self.c0.c0.add_assign_product(&a3n, &b2);
+        self.c0.c1.add_assign_product(&a2, &b2);
+        self.c1.c0.add_assign_product(&a0, &b2);
+        self.c1.c1.add_assign_product(&a1, &b2);
+
+        let b3 = b.c1.c1;
+        let mut a2n = a2;
+        BabyBearField::mul_by_non_residue_impl(&mut a2n);
+        self.c0.c0.add_assign_product(&a2n, &b3);
+        self.c0.c1.add_assign_product(&a3n, &b3);
+        self.c1.c0.add_assign_product(&a1n, &b3);
+        self.c1.c1.add_assign_product(&a0, &b3);
+
+        self
+    }
 }
 
 impl core::fmt::Debug for BabyBearExt4 {
