@@ -197,45 +197,51 @@ impl BabyBearExt4 {
         let a1 = self.c0.c1;
         let a2 = self.c1.c0;
         let a3 = self.c1.c1;
+
         let b0 = other.c0.c0;
-        let b1 = other.c0.c1;
-        let b2 = other.c1.c0;
-        let b3 = other.c1.c1;
+        // out[0] = a0·b0 + a1n·b1 + a2n·b3 + a3n·b2
+        // out[1] = a0·b1 + a1·b0 + a2·b2 + a3n·b3
+        // out[2] = a0·b2 + a1n·b3 + a2·b0 + a3n·b1
+        // out[3] = a0·b3 + a1·b2 + a2·b1 + a3·b0
+
+        let mut o0 = a0;
+        o0.mul_assign(&b0);
+
+        let mut o1 = a1;
+        o1.mul_assign(&b0);
+
+        let mut o2 = a2;
+        o2.mul_assign(&b0);
+
+        let mut o3 = a3;
+        o3.mul_assign(&b0);
 
         let mut a1n = a1;
         BabyBearField::mul_by_non_residue_impl(&mut a1n);
-        let mut a2n = a2;
-        BabyBearField::mul_by_non_residue_impl(&mut a2n);
         let mut a3n = a3;
         BabyBearField::mul_by_non_residue_impl(&mut a3n);
 
-        // out[0] = a0·b0 + a1n·b1 + a2n·b3 + a3n·b2
-        let mut o0 = a0;
-        o0.mul_assign(&b0);
+        let b1 = other.c0.c1;
+
         o0.add_assign_product(&a1n, &b1);
-        o0.add_assign_product(&a2n, &b3);
-        o0.add_assign_product(&a3n, &b2);
-
-        // out[1] = a0·b1 + a1·b0 + a2·b2 + a3n·b3
-        let mut o1 = a0;
-        o1.mul_assign(&b1);
-        o1.add_assign_product(&a1, &b0);
-        o1.add_assign_product(&a2, &b2);
-        o1.add_assign_product(&a3n, &b3);
-
-        // out[2] = a0·b2 + a1n·b3 + a2·b0 + a3n·b1
-        let mut o2 = a0;
-        o2.mul_assign(&b2);
-        o2.add_assign_product(&a1n, &b3);
-        o2.add_assign_product(&a2, &b0);
+        o1.add_assign_product(&a0, &b1);
         o2.add_assign_product(&a3n, &b1);
-
-        // out[3] = a0·b3 + a1·b2 + a2·b1 + a3·b0
-        let mut o3 = a0;
-        o3.mul_assign(&b3);
-        o3.add_assign_product(&a1, &b2);
         o3.add_assign_product(&a2, &b1);
-        o3.add_assign_product(&a3, &b0);
+
+        let b2 = other.c1.c0;
+        o0.add_assign_product(&a3n, &b2);
+        o1.add_assign_product(&a2, &b2);
+        o2.add_assign_product(&a0, &b2);
+        o3.add_assign_product(&a1, &b2);
+
+        let b3 = other.c1.c1;
+        let mut a2n = a2;
+        BabyBearField::mul_by_non_residue_impl(&mut a2n);
+
+        o0.add_assign_product(&a2n, &b3);
+        o1.add_assign_product(&a3n, &b3);
+        o2.add_assign_product(&a1n, &b3);
+        o3.add_assign_product(&a0, &b3);
 
         self.c0 = BabyBearExt2 { c0: o0, c1: o1 };
         self.c1 = BabyBearExt2 { c0: o2, c1: o3 };
