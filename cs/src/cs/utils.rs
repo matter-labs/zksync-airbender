@@ -38,6 +38,22 @@ pub fn collapse_max_quadratic_constraint_into<F: PrimeField, C: Circuit<F>>(
     return collapse_max_quadratic_constraint_into_fixed(cs, constraint, result);
 }
 
+/// Assigns a preallocated result variable from an expression.
+///
+/// Delegation circuits often get output variables from register or memory
+/// access plumbing before the expression for that output is known. This helper
+/// keeps witness assignment on the expression path, while callers can record
+/// the structured definition separately with `define_variable_from_expr`.
+#[track_caller]
+pub fn collapse_max_quadratic_expr_into<F: PrimeField, C: Circuit<F>>(
+    cs: &mut C,
+    expr: Expr<F>,
+    result: Variable,
+) {
+    let constraint = expr.to_max_quadratic_constraint();
+    collapse_max_quadratic_constraint_into_fixed(cs, constraint, result);
+}
+
 pub fn mask_by_boolean_into_accumulator_constraint<F: PrimeField>(
     boolean: &Boolean,
     variable: &Num<F>,

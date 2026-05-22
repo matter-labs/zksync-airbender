@@ -1,8 +1,9 @@
 use super::*;
 use crate::cs::circuit::*;
-use crate::cs::utils::collapse_max_quadratic_constraint_into;
+use crate::cs::utils::collapse_max_quadratic_expr_into;
 use crate::gkr_circuits::LookupInput;
 use crate::gkr_circuits::Variable;
+use crate::structured_expr::Expr;
 use crate::types::Num;
 use crate::witness_placer::*;
 use common_constants::delegation_types::blake2s_g_function::*;
@@ -46,6 +47,17 @@ pub fn blake2_g_function_table_driver_fn<F: PrimeField>(table_driver: &mut Table
     }
 }
 
+fn chunks_expr<F: PrimeField>(chunks: impl IntoIterator<Item = (usize, Variable)>) -> Expr<F> {
+    let mut expr = Expr::<F>::zero();
+    let mut shift = 0;
+    for (width, var) in chunks {
+        expr = expr + Expr::var(var) * F::from_u32_unchecked(1u32 << shift);
+        shift += width;
+    }
+
+    expr
+}
+
 pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
 ) -> [[Variable; 2]; BLAKE2S_G_FUNCTION_X10_NUM_WRITES] {
@@ -87,10 +99,10 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
         placer.assign_u16(x12_write_vars[1], &zero);
     };
     cs.set_values(value_fn);
-    let constraint = Constraint::<F>::empty() + Term::from(x12_vars[1]);
-    cs.add_constraint_allow_explicit_linear_prevent_optimizations(constraint);
-    let constraint = Constraint::<F>::empty() + Term::from(x12_write_vars[1]);
-    cs.add_constraint_allow_explicit_linear_prevent_optimizations(constraint);
+    cs.add_constraint_allow_explicit_linear_prevent_optimizations_expr(Expr::var(x12_vars[1]));
+    cs.add_constraint_allow_explicit_linear_prevent_optimizations_expr(Expr::var(
+        x12_write_vars[1],
+    ));
 
     // we will validate the control register value, make a "next one",
     // and also produce indexes for
@@ -100,14 +112,11 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
         std::array::from_fn(|i| cs.add_named_variable(&format!("x11 offset {}", i)));
 
     // note: for simplicity - our logical input also includes execute flag, so we just degrade to 0 in padding
-    let input_constraint = Constraint::empty()
-        + Term::from(x12_vars[0])
-        + Term::from((
-            F::from_u32_unchecked(1 << BLAKE2S_G_FUNCTION_NUM_CONTROL_REGISTER_BITS),
-            execute,
-        ));
+    let input_expr = Expr::<F>::var(x12_vars[0])
+        + Expr::var(execute)
+            * F::from_u32_unchecked(1 << BLAKE2S_G_FUNCTION_NUM_CONTROL_REGISTER_BITS);
     if CS::ASSUME_MEMORY_VALUES_ASSIGNED {
-        let mut inputs = vec![LookupInput::from(input_constraint)];
+        let mut inputs = vec![LookupInput::from(input_expr.clone())];
         inputs.extend(
             [
                 x12_write_vars[0],
@@ -128,7 +137,7 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
         );
     } else {
         cs.set_variables_from_lookup_constrained(
-            &[LookupInput::from(input_constraint)],
+            &[LookupInput::from(input_expr)],
             &[
                 x12_write_vars[0],
                 x10_offset_0,
@@ -268,10 +277,7 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
     let mut a_row = a_row.map(|el| {
         el.map(|el| {
             assert_eq!(el.len(), 1);
-            let mut constraint = Constraint::<F>::empty();
-            constraint += Term::from(el[0].1);
-
-            constraint
+            Expr::<F>::var(el[0].1)
         })
     });
     let mut b_row: [_; 1] = [state[1].clone()];
@@ -279,10 +285,7 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
     let mut c_row = c_row.map(|el| {
         el.map(|el| {
             assert_eq!(el.len(), 1);
-            let mut constraint = Constraint::<F>::empty();
-            constraint += Term::from(el[0].1);
-
-            constraint
+            Expr::<F>::var(el[0].1)
         })
     });
     let mut d_row: [_; 1] = [state[3].clone()];
@@ -325,58 +328,36 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
         for src in a_row.into_iter() {
             let dst = it.next().unwrap();
             for (src, dst) in src.into_iter().zip(dst.iter_mut()) {
-                let mut constraint = src;
-                // set value
-                collapse_max_quadratic_constraint_into(cs, constraint.clone(), *dst);
-                // add constraint
-                constraint -= Term::from(*dst);
-                cs.add_constraint_allow_explicit_linear(constraint);
+                let expr = src;
+                collapse_max_quadratic_expr_into(cs, expr.clone(), *dst);
+                cs.define_variable_from_expr(*dst, expr);
             }
         }
 
         for src in b_row.iter().cloned() {
             let dst = it.next().unwrap();
             for (src, dst) in src.into_iter().zip(dst.iter_mut()) {
-                let mut constraint = Constraint::empty();
-                let mut shift = 0;
-                for (width, var) in src.into_iter() {
-                    constraint += Term::from((F::from_u32_unchecked(1u32 << shift), var));
-                    shift += width;
-                }
-                // set value
-                collapse_max_quadratic_constraint_into(cs, constraint.clone(), *dst);
-                // add constraint
-                constraint -= Term::from(*dst);
-                cs.add_constraint_allow_explicit_linear(constraint);
+                let expr = chunks_expr(src);
+                collapse_max_quadratic_expr_into(cs, expr.clone(), *dst);
+                cs.define_variable_from_expr(*dst, expr);
             }
         }
 
         for src in c_row.into_iter() {
             let dst = it.next().unwrap();
             for (src, dst) in src.into_iter().zip(dst.iter_mut()) {
-                let mut constraint = src;
-                // set value
-                collapse_max_quadratic_constraint_into(cs, constraint.clone(), *dst);
-                // add constraint
-                constraint -= Term::from(*dst);
-                cs.add_constraint_allow_explicit_linear(constraint);
+                let expr = src;
+                collapse_max_quadratic_expr_into(cs, expr.clone(), *dst);
+                cs.define_variable_from_expr(*dst, expr);
             }
         }
 
         for src in d_row.iter().cloned() {
             let dst = it.next().unwrap();
             for (src, dst) in src.into_iter().zip(dst.iter_mut()) {
-                let mut constraint = Constraint::empty();
-                let mut shift = 0;
-                for (width, var) in src.into_iter() {
-                    constraint += Term::from((F::from_u32_unchecked(1u32 << shift), var));
-                    shift += width;
-                }
-                // set value
-                collapse_max_quadratic_constraint_into(cs, constraint.clone(), *dst);
-                // add constraint
-                constraint -= Term::from(*dst);
-                cs.add_constraint_allow_explicit_linear(constraint);
+                let expr = chunks_expr(src);
+                collapse_max_quadratic_expr_into(cs, expr.clone(), *dst);
+                cs.define_variable_from_expr(*dst, expr);
             }
         }
         assert!(it.next().is_none());
@@ -399,10 +380,70 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
+    use crate::cs::circuit_impl::BasicAssembly;
     use crate::gkr_compiler::compile_delegation_circuit_into_gkr;
     use crate::gkr_compiler::compile_delegation_circuit_into_gkr_without_caches;
     use crate::gkr_compiler::dump_ssa_witness_eval_form;
+    use crate::structured_expr::StructuredStatement;
     use crate::utils::serialize_to_file;
+    use field::Field;
+
+    type F = ::field::Mersenne31Field;
+
+    fn is_scaled_variable(expr: &Expr<F>) -> bool {
+        let Expr::Product(factors) = expr else {
+            return false;
+        };
+
+        factors.iter().any(|factor| matches!(factor, Expr::Var(_)))
+            && factors
+                .iter()
+                .any(|factor| matches!(factor, Expr::Constant(value) if *value != F::ZERO && *value != F::ONE))
+    }
+
+    fn is_linear_chunk_composition(expr: &Expr<F>) -> bool {
+        let Expr::Sum(terms) = expr else {
+            return false;
+        };
+
+        terms.iter().any(|term| matches!(term, Expr::Var(_)))
+            && terms.iter().any(is_scaled_variable)
+    }
+
+    #[test]
+    fn blake2_g_function_records_structured_output_reassembly() {
+        let mut cs = BasicAssembly::<F>::new();
+        let _ = define_blake2_g_function_delegation_circuit(&mut cs);
+        let (output, _) = cs.finalize();
+
+        let high_zero_assertions = output
+            .structured_statements
+            .iter()
+            .filter(|statement| {
+                matches!(
+                    statement,
+                    StructuredStatement::AssertZero {
+                        expr: Expr::Var(_),
+                        prevent_optimizations: true,
+                    }
+                )
+            })
+            .count();
+
+        let reassembled_outputs = output
+            .structured_statements
+            .iter()
+            .filter(|statement| {
+                matches!(
+                    statement,
+                    StructuredStatement::Define { expr, .. } if is_linear_chunk_composition(expr)
+                )
+            })
+            .count();
+
+        assert!(high_zero_assertions >= 2);
+        assert!(reassembled_outputs >= 2);
+    }
 
     #[test]
     fn compile_blake2_g_function_into_gkr() {
