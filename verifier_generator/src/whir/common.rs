@@ -19,8 +19,10 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
     // let add_acc0_term = MW::add_assign(quote! { *acc0 }, quote! { term });
     // let add_acc1_term = MW::add_assign(quote! { *acc1 }, quote! { term });
 
-    let fma_into_acc_0 = MW::add_assign_product_with_base( quote! { *acc0 }, quote! { gamma }, quote! { base_val });
-    let fma_into_acc_1 = MW::add_assign_product_with_base( quote! { *acc1 }, quote! { gamma }, quote! { base_val });
+    let fma_into_acc_0 =
+        MW::add_assign_product_with_base(quote! { *acc0 }, quote! { gamma }, quote! { base_val });
+    let fma_into_acc_1 =
+        MW::add_assign_product_with_base(quote! { *acc1 }, quote! { gamma }, quote! { base_val });
 
     // whir sumcheck ops
     let add_p1_c1 = MW::add_assign(quote! { p1 }, quote! { c1 });
@@ -46,7 +48,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
     let double_two_alpha = MW::double(quote! { two_alpha });
     let mul_two_a_zi_zi = MW::mul_assign(quote! { two_a_zi }, quote! { zi });
     let add_eq_two_a_zi = MW::add_assign(quote! { eq }, quote! { two_a_zi });
-    let eq_add_two_a_zi = MW::add_assign_product(quote! { eq }, quote! { two_alpha }, quote! { zi });
+    let eq_add_two_a_zi =
+        MW::add_assign_product(quote! { eq }, quote! { two_alpha }, quote! { zi });
     let sub_eq_zi = MW::sub_assign(quote! { eq }, quote! { zi });
     let mul_prefactor_eq = MW::mul_assign(quote! { acc.z_initial_prefactor }, quote! { eq });
     let mul_two_a_s_s = MW::mul_assign(quote! { two_a_s }, quote! { s });

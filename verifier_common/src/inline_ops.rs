@@ -66,7 +66,11 @@ where
 }
 
 #[inline(always)]
-pub fn add_assign_product_with_base<'a, T, Base>(accumulator: &'a mut T, lhs: &T, rhs: &Base) -> &'a mut T
+pub fn add_assign_product_with_base<'a, T, Base>(
+    accumulator: &'a mut T,
+    lhs: &T,
+    rhs: &Base,
+) -> &'a mut T
 where
     Base: Field,
     T: FieldExtension<Base>,

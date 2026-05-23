@@ -678,7 +678,7 @@ impl Field for BabyBearExt4 {
         self.c0.c1.add_assign_product(&a0, &b1);
         self.c1.c0.add_assign_product(&a3n, &b1);
         self.c1.c1.add_assign_product(&a2, &b1);
-        
+
         let b2 = b.c1.c0;
         self.c0.c0.add_assign_product(&a3n, &b2);
         self.c0.c1.add_assign_product(&a2, &b2);

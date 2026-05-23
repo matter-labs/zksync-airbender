@@ -23,11 +23,15 @@ pub trait FieldWrapper {
     fn sub_assign(a: TokenStream, b: TokenStream) -> TokenStream;
     fn mul_assign(a: TokenStream, b: TokenStream) -> TokenStream;
     fn add_assign_product(acc: TokenStream, a: TokenStream, b: TokenStream) -> TokenStream;
-    
+
     fn add_assign_base(a: TokenStream, b: TokenStream) -> TokenStream;
     fn sub_assign_base(a: TokenStream, b: TokenStream) -> TokenStream;
     fn mul_assign_by_base(a: TokenStream, b: TokenStream) -> TokenStream;
-    fn add_assign_product_with_base(acc: TokenStream, ext: TokenStream, base: TokenStream) -> TokenStream;
+    fn add_assign_product_with_base(
+        acc: TokenStream,
+        ext: TokenStream,
+        base: TokenStream,
+    ) -> TokenStream;
 
     fn double(a: TokenStream) -> TokenStream;
     fn square(a: TokenStream) -> TokenStream;
