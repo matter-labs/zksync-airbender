@@ -91,11 +91,11 @@ pub(crate) struct ProverContext {
 impl ProverContext {
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
         // host_typed allocations rely on the host pool's block size being at
-        // least 16 bytes so any `T` whose alignment is ≤16 is satisfied by the
-        // block address. See `proof/layout/mod.rs` for the consumers.
+        // least 32 bytes so any `T` whose alignment is ≤32 is satisfied by the
+        // block address (matches FIELD_ALIGN; see `proof/layout/mod.rs`).
         assert!(
-            config.host_allocator_block_log_size >= 4,
-            "host_allocator_block_log_size must be >= 4 (16-byte blocks) for host_typed alignment"
+            config.host_allocator_block_log_size >= 5,
+            "host_allocator_block_log_size must be >= 5 (32-byte blocks) for host_typed alignment"
         );
         let device_id = get_device()?;
         let mpc = device_get_attribute(CudaDeviceAttr::MultiProcessorCount, device_id)? as usize;

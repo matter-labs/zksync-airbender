@@ -156,9 +156,9 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
             AllocationPlacement::Bottom,
         )?;
         debug_assert_eq!(
-            slab.as_ptr() as usize & 0xF,
+            slab.as_ptr() as usize & 0x1F,
             0,
-            "proof slab base pointer must be 16-byte aligned for ProofLayout typed casts",
+            "proof slab base pointer must be 32-byte aligned for ProofLayout typed casts",
         );
         Arc::new(slab)
     };

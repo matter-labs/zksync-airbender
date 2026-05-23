@@ -7,18 +7,21 @@
 //!
 //! ## Layout policy
 //!
-//! Each field range starts at an offset rounded up to `FIELD_ALIGN` (16). This
+//! Each field range starts at an offset rounded up to `FIELD_ALIGN` (32). This
 //! is a superset of the alignment of every proof element type we store (`E4`,
 //! `BF`, `u32`, `u64`, digest words), so casting the raw pointer + the field's
-//! `Range::start` as a typed `*mut T` is always well-aligned. The cost is a
-//! handful of padding bytes per field; the benefit is that the layout math is
-//! trivially correct and reviewable in one place.
+//! `Range::start` as a typed `*mut T` is always well-aligned. 32-byte alignment
+//! (vs 16) lets the device-side blake2s digest kernels use 256-bit
+//! `st.global.cs.v4.b64` / `ld.global.cs.v4.b64` stores into the proof slab's
+//! `query_paths` regions; smaller alignment would fault those ops at runtime.
+//! The cost is a handful of padding bytes per field; the benefit is that the
+//! layout math is trivially correct and reviewable in one place.
 //!
 //! ## Host alignment invariant
 //!
 //! The host-side proof slab is allocated from the stream-ordered host pool,
 //! whose block size is configured by `ProverContextConfig::host_allocator_block_log_size`.
-//! `ProverContext::new` asserts `host_allocator_block_log_size >= 4` (16-byte
+//! `ProverContext::new` asserts `host_allocator_block_log_size >= 5` (32-byte
 //! blocks) so block addresses meet the `FIELD_ALIGN` requirement above.
 
 use std::collections::BTreeMap;
@@ -37,7 +40,7 @@ use crate::upstream::{
 };
 
 /// Slab field-start alignment, in bytes. See module-level doc.
-pub(crate) const FIELD_ALIGN: usize = 16;
+pub(crate) const FIELD_ALIGN: usize = 32;
 
 /// Number of `u32` words per Merkle digest (Blake2s cap entry size).
 pub(crate) const DIGEST_U32_WORDS: usize = 8;

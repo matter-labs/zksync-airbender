@@ -8,6 +8,7 @@ using namespace ::airbender::primitives::memory;
 using ::airbender::ops::blake2s::bitreverse_low_bits;
 using ::airbender::ops::blake2s::BLOCK_SIZE;
 using ::airbender::ops::blake2s::compress;
+using ::airbender::ops::blake2s::digest;
 using ::airbender::ops::blake2s::initialize;
 using ::airbender::ops::blake2s::STATE_SIZE;
 
@@ -82,7 +83,7 @@ EXTERN __global__ void ab_blake2s_leaves_from_ntt_multi_coset_kernel(const bf *n
   const unsigned bitrev_coset = bitreverse_low_bits(coset_global, log_lde_factor);
 
   const unsigned dst_leaf_idx = leaf_in_coset + bitrev_coset * per_coset_count;
-  results += static_cast<size_t>(dst_leaf_idx) * STATE_SIZE;
+  digest *results_d = reinterpret_cast<digest *>(results) + dst_leaf_idx;
 
   const unsigned cols_count = src_cols_per_coset << log_values_per_leaf;
   const unsigned values_per_leaf = 1u << log_values_per_leaf;
@@ -99,9 +100,9 @@ EXTERN __global__ void ab_blake2s_leaves_from_ntt_multi_coset_kernel(const bf *n
     return bf::into_raw_u32(load_cs(ntt_output + src_row + static_cast<size_t>(src_col_global) * trace_len));
   };
 
-  u32 state[STATE_SIZE];
+  digest state;
   u32 block[BLOCK_SIZE];
-  initialize(state);
+  initialize(state.words);
   u32 t = 0;
   const unsigned values_count = cols_count;
   unsigned offset = 0;
@@ -112,13 +113,11 @@ EXTERN __global__ void ab_blake2s_leaves_from_ntt_multi_coset_kernel(const bf *n
     for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++)
       block[i] = read(offset);
     if (is_final_block)
-      compress<true>(state, t, block, remaining);
+      compress<true>(state.words, t, block, remaining);
     else
-      compress<false>(state, t, block, BLOCK_SIZE);
+      compress<false>(state.words, t, block, BLOCK_SIZE);
   }
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    store_cs(&results[i], state[i]);
+  store_cs(results_d, state);
 }
 
 } // namespace airbender::prover::whir
