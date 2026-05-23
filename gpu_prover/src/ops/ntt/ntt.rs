@@ -135,6 +135,26 @@ monomials_to_evals_compact!(ab_monomials_to_evals_subwarp_1_stages_ipb0_kernel);
 monomials_to_evals_compact!(ab_monomials_to_evals_subwarp_2_stages_ipb0_kernel);
 monomials_to_evals_compact!(ab_monomials_to_evals_subwarp_3_stages_ipb0_kernel);
 
+// Streaming multi-coset single-column NTT for log_n in [3, 8]. One block owns
+// a contiguous range of cosets, walks them with a register-resident running
+// shift update, and stores via 256-bit vec8. Caller loops over columns.
+cuda_kernel!(
+    MonomialsToEvalsStreaming,
+    monomials_to_evals_streaming,
+    monomials: *const BF,
+    out: *mut BF,
+    coset_index_base: i32,
+    coset_factor_shift: i32,
+    num_cosets: u32,
+    coset_stride_bf: u64,
+);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_3_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_4_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_5_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_6_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_7_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_8_stages_kernel);
+
 // 3-pass monomials to evals: initial kernels share the multi-coset
 // MonomialsToEvalsCompact signature so the 3-pass dispatcher can fold the
 // coset axis into gridDim.x.
@@ -923,6 +943,113 @@ pub(crate) fn monomials_to_evals_smem_packed(
     Ok(())
 }
 
+/// Streaming multi-coset single-column NTT for `log_n in [3, 8]`. One block
+/// owns a contiguous range of cosets and walks them sequentially with a
+/// register-resident running shift update `m' *= D` (where
+/// `D[r] = omega^(Delta * bitrev(r))` is loop-invariant). Stores via 32-byte
+/// aligned vec8 (STG.E.256 on sm_100+; two STG.E.128 on older arch).
+///
+/// Callers loop over columns externally — the kernel is one column per launch,
+/// the host advances `(monomials_ptr, out_ptr)` per column and uses
+/// `coset_stride_bf = num_cols_per_coset_stride * trace_len` to step between
+/// adjacent cosets in the output buffer.
+pub(crate) fn monomials_to_evals_streaming(
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    log_n: usize,
+    coset_index_base: usize,
+    coset_factor_shift: u32,
+    num_cosets: usize,
+    num_cols_per_coset: usize,
+    transposed_monomials: bool,
+    stream: &CudaStream,
+    device_props: &DeviceProperties,
+) -> CudaResult<()> {
+    assert!(
+        (3..=8).contains(&log_n),
+        "streaming NTT only supports log_n in [3, 8]"
+    );
+    assert!(
+        !transposed_monomials,
+        "streaming NTT does not support transposed monomials"
+    );
+    assert!(
+        num_cosets.is_power_of_two(),
+        "num_cosets must be a power of 2 (got {num_cosets})"
+    );
+    let n = 1usize << log_n;
+    assert_eq!(inputs_matrix.rows(), n);
+    assert_eq!(outputs_matrix.rows(), n);
+    let num_ntts = inputs_matrix.cols();
+    assert!(
+        num_cols_per_coset >= num_ntts,
+        "num_cols_per_coset ({num_cols_per_coset}) < num_ntts ({num_ntts})",
+    );
+    let max_col_offset_exclusive = (num_cosets - 1) * num_cols_per_coset + num_ntts;
+    assert!(
+        outputs_matrix.cols() >= max_col_offset_exclusive,
+        "outputs_matrix.cols() = {} < {} (num_cosets={}, stride={}, num_ntts={})",
+        outputs_matrix.cols(),
+        max_col_offset_exclusive,
+        num_cosets,
+        num_cols_per_coset,
+        num_ntts,
+    );
+    // TPC = 2^(log_n - 3); COSETS_PER_IT = BLK / TPC with BLK = 256.
+    let tpc = 1usize << (log_n - 3);
+    let cosets_per_it = 256 / tpc;
+    assert!(
+        num_cosets % cosets_per_it == 0,
+        "num_cosets ({num_cosets}) must be divisible by cosets_per_it ({cosets_per_it}) at log_n={log_n}",
+    );
+    let total_iters = num_cosets / cosets_per_it;
+    // Block budget: a single SM-batch (sm_count blocks) is enough for the
+    // streaming loop to amortize setup; in production num_cosets is large so
+    // each block runs many iterations regardless. Cap at total_iters to avoid
+    // empty trailing blocks.
+    let blocks_per_sm_target = 4usize;
+    let grid_blocks = (device_props.sm_count * blocks_per_sm_target).min(total_iters).max(1);
+    let function = match log_n {
+        3 => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_3_stages_kernel),
+        4 => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_4_stages_kernel),
+        5 => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_5_stages_kernel),
+        6 => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_6_stages_kernel),
+        7 => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_7_stages_kernel),
+        8 => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_8_stages_kernel),
+        _ => unreachable!("streaming kernels exist only for log_n in [3, 8]"),
+    };
+    let input_stride = inputs_matrix.stride();
+    let input_offset = inputs_matrix.offset();
+    let output_stride = outputs_matrix.stride();
+    let output_offset = outputs_matrix.offset();
+    // Inputs and outputs are column-major: column k starts at offset
+    // `k * stride + offset` in BFs. The kernel sees per-column slices; the
+    // output's adjacent cosets sit `num_cols_per_coset * output_stride` BFs
+    // apart (output_stride == trace_len for the typical caller).
+    let coset_stride_bf = (num_cols_per_coset as u64) * (output_stride as u64);
+    let inputs_slice = inputs_matrix.slice();
+    let outputs_slice_mut = outputs_matrix.slice_mut();
+    let grid_dim: Dim3 = (grid_blocks as u32).into();
+    let block_dim: Dim3 = 256u32.into();
+    for col in 0..num_ntts {
+        let mono_start = col * input_stride + input_offset;
+        let monomials_ptr = unsafe { inputs_slice.as_ptr().add(mono_start) };
+        let out_start = col * output_stride + output_offset;
+        let out_ptr = unsafe { outputs_slice_mut.as_mut_ptr().add(out_start) };
+        let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+        let args = MonomialsToEvalsStreamingArguments::new(
+            monomials_ptr,
+            out_ptr,
+            coset_index_base as i32,
+            coset_factor_shift as i32,
+            num_cosets as u32,
+            coset_stride_bf,
+        );
+        function.launch(&config, &args)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn monomials_to_evals_2_pass_compact_initial(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
@@ -1285,6 +1412,20 @@ pub(crate) fn bitreversed_monomials_to_natural_evals_multi_coset(
     if strategy.passes.len() == 1 {
         let mut outputs_matrix = DeviceMatrixMut::new(outputs, trace_len);
         return match strategy.passes[0].kernel {
+            super::NttKernelKind::MonomialsToEvalsStreaming { .. } => {
+                monomials_to_evals_streaming(
+                    inputs_matrix,
+                    &mut outputs_matrix,
+                    log_n,
+                    coset_index_base,
+                    coset_factor_shift,
+                    num_cosets,
+                    num_cols_per_coset_stride,
+                    transposed_monomials,
+                    stream,
+                    device_properties,
+                )
+            }
             super::NttKernelKind::MonomialsToEvalsSubwarp {
                 log_instances_per_block,
                 ..
@@ -1384,6 +1525,7 @@ pub(crate) fn bitreversed_monomials_to_natural_evals_multi_coset(
             transposed_monomials,
             stream,
             &strategy,
+            device_properties,
         )?;
     }
     Ok(())
@@ -1430,6 +1572,7 @@ pub(crate) fn bitreversed_monomials_to_natural_evals(
             transposed_monomials,
             stream,
             &strategy,
+            device_properties,
         ),
         Err(super::NttStrategyError::LogNBelowSupported {
             log_n: bad_log_n,
@@ -1453,6 +1596,7 @@ fn dispatch_strategy(
     transposed_monomials: bool,
     stream: &CudaStream,
     strategy: &super::NttStrategy,
+    device_properties: &DeviceProperties,
 ) -> CudaResult<()> {
     let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
     let coset_factor_power = coset_index << coset_factor_shift;
@@ -1467,6 +1611,20 @@ fn dispatch_strategy(
     );
     match strategy.passes.len() {
         1 => match strategy.passes[0].kernel {
+            super::NttKernelKind::MonomialsToEvalsStreaming { .. } => {
+                monomials_to_evals_streaming(
+                    inputs_matrix,
+                    outputs_matrix,
+                    log_n,
+                    coset_index,
+                    coset_factor_shift,
+                    1,
+                    num_cols_per_coset,
+                    transposed_monomials,
+                    stream,
+                    device_properties,
+                )
+            }
             super::NttKernelKind::MonomialsToEvalsSubwarp {
                 log_instances_per_block,
                 ..
