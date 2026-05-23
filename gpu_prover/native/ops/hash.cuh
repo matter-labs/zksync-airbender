@@ -24,6 +24,21 @@ constexpr unsigned REDUCED_ROUNDS = 7;
 constexpr unsigned ROUNDS = USE_REDUCED_ROUNDS ? REDUCED_ROUNDS : FULL_ROUNDS;
 constexpr unsigned STATE_SIZE = 8;
 constexpr unsigned BLOCK_SIZE = 16;
+
+// 32-byte aligned digest view. Used at every gmem digest boundary so the
+// `load`/`store` PTX dispatch picks the v8 (256-bit) path: one
+// `ld/st.global.X.v4.b64` on sm_100+ (PTX 8.8) or two `ld/st.global.X.v4.u32`
+// on older arch — replacing 8 separate scalar LDG.E/STG.E instructions.
+// `operator[]` keeps existing `state[i]` indexing working unchanged inside
+// `compress` and elsewhere.
+struct __align__(32) digest {
+  u32 words[STATE_SIZE];
+  DEVICE_FORCEINLINE u32 &operator[](unsigned i) { return words[i]; }
+  DEVICE_FORCEINLINE u32 operator[](unsigned i) const { return words[i]; }
+};
+static_assert(sizeof(digest) == 32 && alignof(digest) == 32, "digest must be 32 B / 32-aligned for the v8 PTX path");
+static_assert(std::is_same_v<typename ::airbender::primitives::memory::load_unit<digest>::type, ::airbender::primitives::ptx::u32x8>,
+              "load_unit<digest> must resolve to u32x8 to engage the v8 PTX path");
 constexpr u32 IV_0_TWIST = 0x01010000 ^ 32;
 #define IV_DEF constexpr u32 IV[STATE_SIZE] = {0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19}
 #define SIGMAS_DEF                                                                                                                                             \
