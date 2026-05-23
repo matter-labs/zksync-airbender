@@ -99,13 +99,11 @@ EXTERN __global__ void ab_gather_rows_and_merkle_paths_kernel(const unsigned *in
   }
 #pragma unroll
   for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
-    u32 other_state[STATE_SIZE];
+    digest other_state;
     const bool take_other_first = (lane_idx >> layer) & 1;
 #pragma unroll
     for (unsigned i = 0; i < STATE_SIZE; i++) {
       other_state[i] = __shfl_xor_sync(FULL_MASK, state[i], 1 << layer);
-      if (is_output_lane)
-        merkle_paths[i] = other_state[i];
       if (take_other_first) {
         block[i] = other_state[i];
         block[i + STATE_SIZE] = state[i];
@@ -114,6 +112,8 @@ EXTERN __global__ void ab_gather_rows_and_merkle_paths_kernel(const unsigned *in
         block[i + STATE_SIZE] = other_state[i];
       }
     }
+    if (is_output_lane)
+      store_cs(reinterpret_cast<digest *>(merkle_paths), other_state);
     initialize(state);
     t = 0;
     compress<true>(state, t, block, BLOCK_SIZE);
@@ -176,13 +176,11 @@ EXTERN __global__ void ab_gather_merkle_paths_from_rows_kernel(const unsigned *i
   }
 #pragma unroll
   for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
-    u32 other_state[STATE_SIZE];
+    digest other_state;
     const bool take_other_first = (lane_idx >> layer) & 1;
 #pragma unroll
     for (unsigned i = 0; i < STATE_SIZE; i++) {
       other_state[i] = __shfl_xor_sync(FULL_MASK, state[i], 1 << layer);
-      if (is_output_lane)
-        merkle_paths[i] = other_state[i];
       if (take_other_first) {
         block[i] = other_state[i];
         block[i + STATE_SIZE] = state[i];
@@ -191,6 +189,8 @@ EXTERN __global__ void ab_gather_merkle_paths_from_rows_kernel(const unsigned *i
         block[i + STATE_SIZE] = other_state[i];
       }
     }
+    if (is_output_lane)
+      store_cs(reinterpret_cast<digest *>(merkle_paths), other_state);
     initialize(state);
     t = 0;
     compress<true>(state, t, block, BLOCK_SIZE);
@@ -539,13 +539,11 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_kernel(const u
   }
 #pragma unroll
   for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
-    u32 other_state[STATE_SIZE];
+    digest other_state;
     const bool take_other_first = (lane_idx >> layer) & 1;
 #pragma unroll
     for (unsigned i = 0; i < STATE_SIZE; i++) {
       other_state[i] = __shfl_xor_sync(FULL_MASK, state[i], 1 << layer);
-      if (is_output_lane)
-        merkle_paths[i] = other_state[i];
       if (take_other_first) {
         block[i] = other_state[i];
         block[i + STATE_SIZE] = state[i];
@@ -554,6 +552,8 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_kernel(const u
         block[i + STATE_SIZE] = other_state[i];
       }
     }
+    if (is_output_lane)
+      store_cs(reinterpret_cast<digest *>(merkle_paths), other_state);
     initialize(state);
     t = 0;
     compress<true>(state, t, block, BLOCK_SIZE);
@@ -646,13 +646,11 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_from_ntt_kerne
   // packed-layout sibling).
 #pragma unroll
   for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
-    u32 other_state[STATE_SIZE];
+    digest other_state;
     const bool take_other_first = (lane_idx >> layer) & 1;
 #pragma unroll
     for (unsigned i = 0; i < STATE_SIZE; i++) {
       other_state[i] = __shfl_xor_sync(FULL_MASK, state[i], 1 << layer);
-      if (is_output_lane)
-        merkle_paths[i] = other_state[i];
       if (take_other_first) {
         block[i] = other_state[i];
         block[i + STATE_SIZE] = state[i];
@@ -661,6 +659,8 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_from_ntt_kerne
         block[i + STATE_SIZE] = other_state[i];
       }
     }
+    if (is_output_lane)
+      store_cs(reinterpret_cast<digest *>(merkle_paths), other_state);
     initialize(state);
     t = 0;
     compress<true>(state, t, block, BLOCK_SIZE);

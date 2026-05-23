@@ -23,9 +23,10 @@ pub(crate) enum WhirBaseLayerKind {
 //
 // Safety: the returned pointer is valid only as long as the underlying device
 // allocation is live, and the caller must not dereference it from host code.
-// The slab pointer is assumed to be 16-byte aligned; `ProofLayout::new`
-// guarantees every range's start is also 16-byte aligned so typed casts to any
-// proof element type are valid.
+// The slab pointer is assumed to be 32-byte aligned; `ProofLayout::new`
+// guarantees every range's start is also 32-byte aligned so typed casts to any
+// proof element type (including digest-typed regions consumed by 256-bit
+// st.global.cs.v4.b64 stores) are valid.
 
 impl ProofLayout {
     #[inline]
