@@ -39,6 +39,14 @@ pub(crate) enum NttKernelKind {
         stages: usize,
         log_instances_per_block: usize,
     },
+    /// Streaming multi-coset single-column 1-pass kernel for `log_n in [3, 8]`.
+    /// Each block walks a contiguous range of cosets with a register-resident
+    /// running shift update `m' *= D`; setup cost amortizes across many cosets
+    /// in flight. Caller loops over columns externally. Requires
+    /// `num_cosets >= cosets_per_iter(log_n) = 256 >> (log_n - 3)`.
+    MonomialsToEvalsStreaming {
+        stages: usize,
+    },
     /// Smem-packed multi-NTT-per-block 1-pass kernel for `log_n in [6, 8]`.
     /// Each block holds `1 << log_instances_per_block` independent NTT
     /// instances, each assigned `HALF_N = 1 << (stages - 1)` threads. Picked
@@ -138,6 +146,21 @@ pub(crate) fn select_ntt_strategy(
 /// already saturates the block at IPB=1, so the smem-packed variant offers
 /// no win there. The kernel's `gridDim.x = (num_cosets * num_columns) >>
 /// log_ipb` requires the workload to be a power-of-two multiple of IPB.
+/// Streaming multi-coset NTT applicability gate: requires `log_n in [3, 8]`
+/// and `num_cosets >= cosets_per_iter(log_n) = 256 >> (log_n - 3)` so the
+/// kernel has at least one full block iteration of work.
+fn streaming_is_applicable(log_n: usize, num_cosets: usize) -> Option<()> {
+    if !(3..=8).contains(&log_n) {
+        return None;
+    }
+    let cosets_per_iter = 256usize >> (log_n - 3);
+    if num_cosets >= cosets_per_iter && num_cosets.is_multiple_of(cosets_per_iter) {
+        Some(())
+    } else {
+        None
+    }
+}
+
 fn smem_packed_log_instances_per_block(
     log_n: usize,
     num_columns: usize,
@@ -313,6 +336,22 @@ fn select_forward_strategy(
         });
     }
     if (COMPACT_MIN_LOG_N..=COMPACT_MAX_LOG_N).contains(&log_n) {
+        // Streaming multi-coset kernel for log_n in [3, 8]: replaces subwarp and
+        // smem_packed at production scale where num_cosets is large enough to
+        // fill at least one block iteration. Wins both vs subwarp (log_n=4) and
+        // smem_packed (log_n=8) per the 2026-05-22 design spec; lower log_n with
+        // small num_cosets stays on the existing kernels.
+        if let Some(()) = streaming_is_applicable(log_n, num_cosets) {
+            return Ok(NttStrategy {
+                passes: vec![NttPass {
+                    start_stage: 0,
+                    stage_count: log_n,
+                    kernel: NttKernelKind::MonomialsToEvalsStreaming { stages: log_n },
+                }],
+                columns_per_launch: num_columns,
+                cosets_per_launch: num_cosets,
+            });
+        }
         // At log_n in {4, 5} the NTT fits within a warp; the sub-warp kernel
         // runs entirely in registers using `__shfl_xor_sync` for butterfly
         // partner exchange (no smem, no syncthreads), strictly cheaper than
@@ -733,6 +772,39 @@ mod tests {
         assert!(matches!(
             s.passes[0].kernel,
             NttKernelKind::MonomialsToEvalsInitial { stages: 7 }
+        ));
+    }
+
+    #[test]
+    fn streaming_picked_for_log_n_3_to_8_when_num_cosets_reaches_per_iter() {
+        // Streaming gate: num_cosets >= cosets_per_iter(log_n) and divisible.
+        // cosets_per_iter = 256 >> (log_n - 3): 256/128/64/32/16/8 for log_n=3..8.
+        let l4 = l4_like();
+        let cases = [(3usize, 256usize), (4, 128), (5, 64), (6, 32), (7, 16), (8, 8)];
+        for (log_n, num_cosets) in cases {
+            let s = select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, false, &l4)
+                .unwrap();
+            assert!(
+                matches!(
+                    s.passes[0].kernel,
+                    NttKernelKind::MonomialsToEvalsStreaming { stages } if stages == log_n
+                ),
+                "log_n={log_n}, num_cosets={num_cosets}: expected streaming, got {:?}",
+                s.passes[0].kernel,
+            );
+            assert_eq!(s.cosets_per_launch, num_cosets);
+            assert_eq!(s.columns_per_launch, 1);
+        }
+        // num_cosets just below the gate falls back to subwarp/smem-packed/compact.
+        let s = select_ntt_strategy(NttDirection::Forward, 8, 1, 4, false, &l4).unwrap();
+        assert!(!matches!(
+            s.passes[0].kernel,
+            NttKernelKind::MonomialsToEvalsStreaming { .. }
+        ));
+        let s = select_ntt_strategy(NttDirection::Forward, 4, 1, 64, false, &l4).unwrap();
+        assert!(!matches!(
+            s.passes[0].kernel,
+            NttKernelKind::MonomialsToEvalsStreaming { .. }
         ));
     }
 
