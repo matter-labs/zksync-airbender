@@ -1,60 +1,83 @@
 #pragma once
 
 #include "../common.cuh"
+#include "ptx.cuh"
 
 namespace airbender::primitives::memory {
 
 using namespace std;
+namespace ptx = ::airbender::primitives::ptx;
+
+using ptx::u32x8;
 
 enum class ld_modifier { none, g, cg, ca, cs, lu, cv };
 
-template <typename T, ld_modifier MODIFIER> static constexpr DEVICE_FORCEINLINE T ld_single(const T *ptr) {
-#if __CUDA_ARCH__ >= 320
-  switch (MODIFIER) {
-  case ld_modifier::g:
-    return __ldg(ptr);
-  case ld_modifier::cg:
-    return __ldcg(ptr);
-  case ld_modifier::ca:
-    return __ldca(ptr);
-  case ld_modifier::cs:
-    return __ldcs(ptr);
-  case ld_modifier::lu:
-    return __ldlu(ptr);
-  case ld_modifier::cv:
-    return __ldcv(ptr);
-  default:
+template <typename T, ld_modifier MODIFIER> static DEVICE_FORCEINLINE T ld_single(const T *ptr) {
+  if constexpr (MODIFIER == ld_modifier::none) {
     return *ptr;
+  } else {
+    auto ld = [&](auto *typed_ptr) {
+      using P = std::remove_pointer_t<std::remove_const_t<decltype(typed_ptr)>>;
+      if constexpr (MODIFIER == ld_modifier::g)
+        return ptx::ld_g(reinterpret_cast<const P *>(ptr));
+      else if constexpr (MODIFIER == ld_modifier::cg)
+        return ptx::ld_cg(reinterpret_cast<const P *>(ptr));
+      else if constexpr (MODIFIER == ld_modifier::ca)
+        return ptx::ld_ca(reinterpret_cast<const P *>(ptr));
+      else if constexpr (MODIFIER == ld_modifier::cs)
+        return ptx::ld_cs(reinterpret_cast<const P *>(ptr));
+      else if constexpr (MODIFIER == ld_modifier::lu)
+        return ptx::ld_lu(reinterpret_cast<const P *>(ptr));
+      else if constexpr (MODIFIER == ld_modifier::cv)
+        return ptx::ld_cv(reinterpret_cast<const P *>(ptr));
+    };
+    if constexpr (sizeof(T) == 4) {
+      const u32 r = ld(static_cast<const u32 *>(nullptr));
+      return *reinterpret_cast<const T *>(&r);
+    } else if constexpr (sizeof(T) == 8) {
+      const uint2 r = ld(static_cast<const uint2 *>(nullptr));
+      return *reinterpret_cast<const T *>(&r);
+    } else if constexpr (sizeof(T) == 16) {
+      const uint4 r = ld(static_cast<const uint4 *>(nullptr));
+      return *reinterpret_cast<const T *>(&r);
+    } else if constexpr (sizeof(T) == 32) {
+      const u32x8 r = ld(static_cast<const u32x8 *>(nullptr));
+      return *reinterpret_cast<const T *>(&r);
+    } else {
+      static_assert(sizeof(T) == 4 || sizeof(T) == 8 || sizeof(T) == 16 || sizeof(T) == 32, "ld_single only handles 4/8/16/32-byte T");
+    }
   }
-#else
-  return *ptr;
-#endif
 }
 
 enum class st_modifier { none, wb, cg, cs, wt };
 
-template <typename T, st_modifier MODIFIER> static constexpr DEVICE_FORCEINLINE void st_single(T *ptr, T value) {
-#if __CUDA_ARCH__ >= 320
-  switch (MODIFIER) {
-  case st_modifier::wb:
-    __stwb(ptr, value);
-    break;
-  case st_modifier::cg:
-    __stcg(ptr, value);
-    break;
-  case st_modifier::cs:
-    __stcs(ptr, value);
-    break;
-  case st_modifier::wt:
-    __stwt(ptr, value);
-    break;
-  default:
+template <typename T, st_modifier MODIFIER> static DEVICE_FORCEINLINE void st_single(T *ptr, T value) {
+  if constexpr (MODIFIER == st_modifier::none) {
     *ptr = value;
-    break;
+  } else {
+    auto st = [&](auto *typed_ptr, auto v) {
+      using P = std::remove_pointer_t<decltype(typed_ptr)>;
+      if constexpr (MODIFIER == st_modifier::wb)
+        ptx::st_wb(reinterpret_cast<P *>(ptr), v);
+      else if constexpr (MODIFIER == st_modifier::cg)
+        ptx::st_cg(reinterpret_cast<P *>(ptr), v);
+      else if constexpr (MODIFIER == st_modifier::cs)
+        ptx::st_cs(reinterpret_cast<P *>(ptr), v);
+      else if constexpr (MODIFIER == st_modifier::wt)
+        ptx::st_wt(reinterpret_cast<P *>(ptr), v);
+    };
+    if constexpr (sizeof(T) == 4) {
+      st(static_cast<u32 *>(nullptr), *reinterpret_cast<const u32 *>(&value));
+    } else if constexpr (sizeof(T) == 8) {
+      st(static_cast<uint2 *>(nullptr), *reinterpret_cast<const uint2 *>(&value));
+    } else if constexpr (sizeof(T) == 16) {
+      st(static_cast<uint4 *>(nullptr), *reinterpret_cast<const uint4 *>(&value));
+    } else if constexpr (sizeof(T) == 32) {
+      st(static_cast<u32x8 *>(nullptr), *reinterpret_cast<const u32x8 *>(&value));
+    } else {
+      static_assert(sizeof(T) == 4 || sizeof(T) == 8 || sizeof(T) == 16 || sizeof(T) == 32, "st_single only handles 4/8/16/32-byte T");
+    }
   }
-#else
-  *ptr = value;
-#endif
 }
 
 template <typename T> DEVICE_FORCEINLINE void swap(T &a, T &b) noexcept {
@@ -236,75 +259,34 @@ DEVICE_FORCEINLINE void st_warp(T *address, const unsigned offset, const T &valu
   }
 }
 
-template <class T, ld_modifier MODIFIER = ld_modifier::none, unsigned STRIDE = 1, typename U = enable_if_t<sizeof(T) % sizeof(uint4) == 0, uint4>>
-static constexpr DEVICE_FORCEINLINE T load(const T *address, const unsigned offset = 0, [[maybe_unused]] uint4 _dummy = {}) {
-  return ld<T, U, MODIFIER, STRIDE>(address, offset);
+template <class T> struct load_unit {
+  using type = std::conditional_t<sizeof(T) % 32 == 0 && alignof(T) % 32 == 0, u32x8,
+                                  std::conditional_t<sizeof(T) % 16 == 0, uint4, std::conditional_t<sizeof(T) % 8 == 0, uint2, unsigned>>>;
+};
+template <class T, unsigned LOG_WARP_SIZE> struct load_unit_warp {
+  static constexpr size_t WARP = 1u << LOG_WARP_SIZE;
+  using type = std::conditional_t<sizeof(T) % (32 * WARP) == 0 && alignof(T) % 32 == 0, u32x8,
+                                  std::conditional_t<sizeof(T) % (16 * WARP) == 0, uint4, std::conditional_t<sizeof(T) % (8 * WARP) == 0, uint2, unsigned>>>;
+};
+
+template <class T, ld_modifier MODIFIER = ld_modifier::none, unsigned STRIDE = 1>
+static constexpr DEVICE_FORCEINLINE T load(const T *address, const unsigned offset = 0) {
+  return ld<T, typename load_unit<T>::type, MODIFIER, STRIDE>(address, offset);
 }
 
-template <class T, unsigned LOG_WARP_SIZE, ld_modifier MODIFIER = ld_modifier::none, bool CHECK_INACTIVE = true,
-          typename U = enable_if_t<sizeof(T) % (sizeof(uint4) << LOG_WARP_SIZE) == 0, uint4>>
-static constexpr DEVICE_FORCEINLINE T load_warp(const T *address, const unsigned offset, const unsigned lane_id, [[maybe_unused]] uint4 _dummy = {}) {
-  return ld_warp<T, U, LOG_WARP_SIZE, MODIFIER, CHECK_INACTIVE>(address, offset, lane_id);
+template <class T, unsigned LOG_WARP_SIZE, ld_modifier MODIFIER = ld_modifier::none, bool CHECK_INACTIVE = true>
+static constexpr DEVICE_FORCEINLINE T load_warp(const T *address, const unsigned offset, const unsigned lane_id) {
+  return ld_warp<T, typename load_unit_warp<T, LOG_WARP_SIZE>::type, LOG_WARP_SIZE, MODIFIER, CHECK_INACTIVE>(address, offset, lane_id);
 }
 
-template <class T, ld_modifier MODIFIER = ld_modifier::none, unsigned STRIDE = 1,
-          typename U = enable_if_t<(sizeof(T) % sizeof(uint4) != 0) && (sizeof(T) % sizeof(uint2) == 0), uint2>>
-static constexpr DEVICE_FORCEINLINE T load(const T *address, const unsigned offset = 0, [[maybe_unused]] uint2 _dummy = {}) {
-  return ld<T, U, MODIFIER, STRIDE>(address, offset);
+template <class T, st_modifier MODIFIER = st_modifier::none, unsigned STRIDE = 1>
+static constexpr DEVICE_FORCEINLINE void store(T *address, const T &value, const unsigned offset = 0) {
+  st<T, typename load_unit<T>::type, MODIFIER, STRIDE>(address, value, offset);
 }
 
-template <class T, unsigned LOG_WARP_SIZE, ld_modifier MODIFIER = ld_modifier::none, bool CHECK_INACTIVE = true,
-          typename U = enable_if_t<sizeof(T) % (sizeof(uint4) << LOG_WARP_SIZE) != 0 && sizeof(T) % (sizeof(uint2) << LOG_WARP_SIZE) == 0, uint2>>
-static constexpr DEVICE_FORCEINLINE T load_warp(const T *address, const unsigned offset, const unsigned lane_id, [[maybe_unused]] uint2 _dummy = {}) {
-  return ld_warp<T, U, LOG_WARP_SIZE, MODIFIER, CHECK_INACTIVE>(address, offset, lane_id);
-}
-
-template <class T, ld_modifier MODIFIER = ld_modifier::none, unsigned STRIDE = 1, typename U = enable_if_t<sizeof(T) % sizeof(uint2) != 0, unsigned>>
-static constexpr DEVICE_FORCEINLINE T load(const T *address, const unsigned offset = 0, [[maybe_unused]] unsigned _dummy = {}) {
-  return ld<T, U, MODIFIER, STRIDE>(address, offset);
-}
-
-template <class T, unsigned LOG_WARP_SIZE, ld_modifier MODIFIER = ld_modifier::none, bool CHECK_INACTIVE = true,
-          typename U = enable_if_t<sizeof(T) % (sizeof(uint2) << LOG_WARP_SIZE) != 0, unsigned>>
-static constexpr DEVICE_FORCEINLINE T load_warp(const T *address, const unsigned offset, const unsigned lane_id, [[maybe_unused]] unsigned _dummy = {}) {
-  return ld_warp<T, U, LOG_WARP_SIZE, MODIFIER, CHECK_INACTIVE>(address, offset, lane_id);
-}
-
-template <class T, st_modifier MODIFIER = st_modifier::none, unsigned STRIDE = 1, typename U = enable_if_t<sizeof(T) % sizeof(uint4) == 0, uint4>>
-static constexpr DEVICE_FORCEINLINE void store(T *address, const T &value, const unsigned offset = 0, [[maybe_unused]] uint4 _dummy = {}) {
-  st<T, U, MODIFIER, STRIDE>(address, value, offset);
-}
-
-template <class T, unsigned LOG_WARP_SIZE, st_modifier MODIFIER = st_modifier::none, bool CHECK_INACTIVE = true,
-          typename U = enable_if_t<sizeof(T) % (sizeof(uint4) << LOG_WARP_SIZE) == 0, uint4>>
-static constexpr DEVICE_FORCEINLINE void store_warp(T *address, const unsigned offset, const T &value, const unsigned lane_id,
-                                                    [[maybe_unused]] uint4 _dummy = {}) {
-  st_warp<T, U, LOG_WARP_SIZE, MODIFIER, CHECK_INACTIVE>(address, offset, value, lane_id);
-}
-
-template <class T, st_modifier MODIFIER = st_modifier::none, unsigned STRIDE = 1,
-          typename U = enable_if_t<(sizeof(T) % sizeof(uint4) != 0) && (sizeof(T) % sizeof(uint2) == 0), uint2>>
-static constexpr DEVICE_FORCEINLINE void store(T *address, const T &value, const unsigned offset = 0, [[maybe_unused]] uint2 _dummy = {}) {
-  st<T, U, MODIFIER, STRIDE>(address, value, offset);
-}
-
-template <class T, unsigned LOG_WARP_SIZE, st_modifier MODIFIER = st_modifier::none, bool CHECK_INACTIVE = true,
-          typename U = enable_if_t<sizeof(T) % (sizeof(uint4) << LOG_WARP_SIZE) != 0 && sizeof(T) % (sizeof(uint2) << LOG_WARP_SIZE) == 0, uint2>>
-static constexpr DEVICE_FORCEINLINE void store_warp(T *address, const unsigned offset, const T &value, const unsigned lane_id,
-                                                    [[maybe_unused]] uint2 _dummy = {}) {
-  st_warp<T, U, LOG_WARP_SIZE, MODIFIER, CHECK_INACTIVE>(address, offset, value, lane_id);
-}
-
-template <class T, st_modifier MODIFIER = st_modifier::none, unsigned STRIDE = 1, typename U = enable_if_t<sizeof(T) % sizeof(uint2) != 0, unsigned>>
-static constexpr DEVICE_FORCEINLINE void store(T *address, const T &value, const unsigned offset = 0, [[maybe_unused]] unsigned _dummy = {}) {
-  st<T, U, MODIFIER, STRIDE>(address, value, offset);
-}
-
-template <class T, unsigned LOG_WARP_SIZE, st_modifier MODIFIER = st_modifier::none, bool CHECK_INACTIVE = true,
-          typename U = enable_if_t<sizeof(T) % (sizeof(uint2) << LOG_WARP_SIZE) != 0, unsigned>>
-static constexpr DEVICE_FORCEINLINE void store_warp(T *address, const unsigned offset, const T &value, const unsigned lane_id,
-                                                    [[maybe_unused]] unsigned _dummy = {}) {
-  st_warp<T, U, LOG_WARP_SIZE, MODIFIER, CHECK_INACTIVE>(address, offset, value, lane_id);
+template <class T, unsigned LOG_WARP_SIZE, st_modifier MODIFIER = st_modifier::none, bool CHECK_INACTIVE = true>
+static constexpr DEVICE_FORCEINLINE void store_warp(T *address, const unsigned offset, const T &value, const unsigned lane_id) {
+  st_warp<T, typename load_unit_warp<T, LOG_WARP_SIZE>::type, LOG_WARP_SIZE, MODIFIER, CHECK_INACTIVE>(address, offset, value, lane_id);
 }
 
 template <class T> static constexpr DEVICE_FORCEINLINE T load_g(const T *address) { return load<T, ld_modifier::g>(address); }
