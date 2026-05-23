@@ -831,6 +831,17 @@ macro_rules! multi_coset_parity_test {
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_4_cosets_4, 4, 4);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_7_cosets_8, 7, 8);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_32, 8, 32);
+// Streaming multi-coset kernel range (log_n in [3, 8]): each pair below has
+// num_cosets >= cosets_per_iter(log_n) = 256 >> (log_n - 3), so the strategy
+// routes through `monomials_to_evals_streaming`. Covers the boundary
+// (num_cosets == cosets_per_iter, one block-iter) and a multi-iter case.
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_3_cosets_256, 3, 256);
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_4_cosets_128, 4, 128);
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_4_cosets_256, 4, 256);
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_5_cosets_64, 5, 64);
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_6_cosets_32, 6, 32);
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_7_cosets_16, 7, 16);
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_8, 8, 8);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_11_cosets_16, 11, 16);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_12_cosets_4, 12, 4);
 // 2-pass-compact-initial range: kernels batch cosets per launch up to the
