@@ -7,7 +7,6 @@ EXTERN __global__ void ab_blake2s_leaves_kernel(const bf *values, u32 *results, 
   const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
   if (gid >= count)
     return;
-  results += gid * STATE_SIZE;
   const unsigned row_mask = (1u << log_rows_count) - 1;
   const unsigned domain_size = count << log_rows_count;
   auto read = [=](const unsigned offset) {
@@ -16,9 +15,9 @@ EXTERN __global__ void ab_blake2s_leaves_kernel(const bf *values, u32 *results, 
     const unsigned row = gid + bitreverse_low_bits(row_slot, log_rows_count) * count;
     return col < cols_count ? bf::into_raw_u32(load_cs(values + row + col * domain_size)) : 0;
   };
-  u32 state[STATE_SIZE];
+  digest state;
   u32 block[BLOCK_SIZE];
-  initialize(state);
+  initialize(state.words);
   u32 t = 0;
   const unsigned values_count = cols_count << log_rows_count;
   unsigned offset = 0;
@@ -29,13 +28,12 @@ EXTERN __global__ void ab_blake2s_leaves_kernel(const bf *values, u32 *results, 
     for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++)
       block[i] = read(offset);
     if (is_final_block)
-      compress<true>(state, t, block, remaining);
+      compress<true>(state.words, t, block, remaining);
     else
-      compress<false>(state, t, block, BLOCK_SIZE);
+      compress<false>(state.words, t, block, BLOCK_SIZE);
   }
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    store_cs(&results[i], state[i]);
+  // Single 256-bit aligned store: STG.E.ENL2.256 on sm_100+ / 2× STG.E.128 on older arch.
+  store_cs(reinterpret_cast<digest *>(results) + gid, state);
 }
 
 // Multi-coset leaves kernel: hashes `(1 << log_per_coset_count) *
@@ -54,7 +52,7 @@ EXTERN __global__ void ab_blake2s_leaves_multi_coset_kernel(const bf *values, u3
   const unsigned coset = gid_global >> log_per_coset_count;
   const unsigned gid = gid_global & (per_coset_count - 1u);
   values += static_cast<size_t>(coset) * per_coset_values_stride_bf;
-  results += static_cast<size_t>(coset) * per_coset_results_stride_digests * STATE_SIZE + gid * STATE_SIZE;
+  digest *results_d = reinterpret_cast<digest *>(results) + static_cast<size_t>(coset) * per_coset_results_stride_digests + gid;
   const unsigned row_mask = (1u << log_rows_count) - 1;
   const unsigned domain_size = per_coset_count << log_rows_count;
   auto read = [=](const unsigned offset) {
@@ -63,9 +61,9 @@ EXTERN __global__ void ab_blake2s_leaves_multi_coset_kernel(const bf *values, u3
     const unsigned row = gid + bitreverse_low_bits(row_slot, log_rows_count) * per_coset_count;
     return col < cols_count ? bf::into_raw_u32(load_cs(values + row + col * domain_size)) : 0;
   };
-  u32 state[STATE_SIZE];
+  digest state;
   u32 block[BLOCK_SIZE];
-  initialize(state);
+  initialize(state.words);
   u32 t = 0;
   const unsigned values_count = cols_count << log_rows_count;
   unsigned offset = 0;
@@ -76,32 +74,29 @@ EXTERN __global__ void ab_blake2s_leaves_multi_coset_kernel(const bf *values, u3
     for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++)
       block[i] = read(offset);
     if (is_final_block)
-      compress<true>(state, t, block, remaining);
+      compress<true>(state.words, t, block, remaining);
     else
-      compress<false>(state, t, block, BLOCK_SIZE);
+      compress<false>(state.words, t, block, BLOCK_SIZE);
   }
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    store_cs(&results[i], state[i]);
+  store_cs(results_d, state);
 }
 
 EXTERN __global__ void ab_blake2s_nodes_kernel(const u32 *values, u32 *results, const unsigned count) {
   const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
   if (gid >= count)
     return;
-  values += gid * BLOCK_SIZE;
-  results += gid * STATE_SIZE;
-  u32 state[STATE_SIZE];
-  u32 block[BLOCK_SIZE];
-  initialize(state);
+  // Input block = 64 B = 2 digests; address is 64-aligned, so load via two 256-bit ops
+  // (LDG.E.ENL2.256 on sm_100+ / 2× LDG.E.128 on older) instead of 16× LDG.E.
+  const digest *values_d = reinterpret_cast<const digest *>(values) + gid * 2;
+  digest *results_d = reinterpret_cast<digest *>(results) + gid;
+  digest state;
+  digest block[2];
+  block[0] = load_cs(values_d);
+  block[1] = load_cs(values_d + 1);
+  initialize(state.words);
   u32 t = 0;
-#pragma unroll
-  for (unsigned i = 0; i < BLOCK_SIZE; i++, values++)
-    block[i] = load_cs(values);
-  compress<true>(state, t, block, BLOCK_SIZE);
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    store_cs(&results[i], state[i]);
+  compress<true>(state.words, t, reinterpret_cast<const u32 *>(block), BLOCK_SIZE);
+  store_cs(results_d, state);
 }
 
 // Multi-coset nodes kernel: hashes `(1 << log_per_coset_count) *
@@ -116,19 +111,17 @@ EXTERN __global__ void ab_blake2s_nodes_multi_coset_kernel(const u32 *values, u3
     return;
   const unsigned coset = gid_global >> log_per_coset_count;
   const unsigned gid = gid_global & ((1u << log_per_coset_count) - 1u);
-  values += static_cast<size_t>(coset) * per_coset_values_stride_digests * STATE_SIZE + gid * BLOCK_SIZE;
-  results += static_cast<size_t>(coset) * per_coset_results_stride_digests * STATE_SIZE + gid * STATE_SIZE;
-  u32 state[STATE_SIZE];
-  u32 block[BLOCK_SIZE];
-  initialize(state);
+  // Each leaf pair is 2 adjacent digests (64 B), 64-aligned at every (coset, gid).
+  const digest *values_d = reinterpret_cast<const digest *>(values) + static_cast<size_t>(coset) * per_coset_values_stride_digests + gid * 2;
+  digest *results_d = reinterpret_cast<digest *>(results) + static_cast<size_t>(coset) * per_coset_results_stride_digests + gid;
+  digest state;
+  digest block[2];
+  block[0] = load_cs(values_d);
+  block[1] = load_cs(values_d + 1);
+  initialize(state.words);
   u32 t = 0;
-#pragma unroll
-  for (unsigned i = 0; i < BLOCK_SIZE; i++, values++)
-    block[i] = load_cs(values);
-  compress<true>(state, t, block, BLOCK_SIZE);
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    store_cs(&results[i], state[i]);
+  compress<true>(state.words, t, reinterpret_cast<const u32 *>(block), BLOCK_SIZE);
+  store_cs(results_d, state);
 }
 
 EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_count, const u64 max_nonce, volatile u64 *result) {
