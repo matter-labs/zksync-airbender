@@ -1,6 +1,6 @@
 #include "ntt.cuh"
 
-// Streaming multi-coset single-column NTT for log_n in [3, 8].
+// Streaming multi-coset single-column NTT for log_n in [2, 8].
 //
 // Each block owns a contiguous run of cosets and iterates over them with a
 // running shift update m'_{c+Delta}[r] = m'_c[r] * D[r], where
@@ -8,11 +8,25 @@
 // Setup (initial monomial load, coset shift, D[r] precompute) happens once per
 // block and amortizes across many iterations.
 //
-// Per-thread state: 8 cells of monomial-prime in registers, 8 cells of D[r] in
-// registers, 8 cells working scratch during butterflies. Cross-thread stages
-// use __shfl_xor_sync within a TPC-lane subwarp (TPC = 2^(log_n - 3)). Butterfly
-// twiddles live in smem with stage-major layout so each thread reads its own
-// bank cell every stage; cosets sharing a warp broadcast across lanes.
+// Two VPT variants are emitted:
+//   - VPT=4 (LOG_VPT=2, log_n in [2, 7]): 4 values/thread, 16 B aligned bf4
+//     store -> STG.E.128. Lower register pressure (32 regs/thread vs 64),
+//     higher occupancy (8 blocks/SM vs 4). This is the default for log_n
+//     <= 7 across all architectures: a 500-iter Blackwell sweep showed v4
+//     ≥ v8 across the range (tied at DRAM saturation for log_n in [2, 6],
+//     v4 ~4% faster at log_n=7), and on sm_<90 v8's STG.E.256 decomposes
+//     into two 128-bit transactions, wiping out coalescing.
+//   - VPT=8 (LOG_VPT=3, log_n=8): 8 values/thread, 32 B aligned bf8 store.
+//     Required for log_n=8 because VPT=4 would need TPC=64 threads/coset,
+//     exceeding a warp; the last cross-thread stage's __shfl_xor_sync
+//     can't reach across the warp boundary. On sm_100+ this fuses to
+//     STG.E.ENL2.256; on older arch it emits two STG.E.128.
+//
+// Per-thread state: VPT cells of monomial-prime in registers, VPT cells of
+// D[r] in registers, VPT cells working scratch during butterflies. Cross-thread
+// stages use __shfl_xor_sync within a TPC-lane subwarp (TPC = N / VPT).
+// Butterfly twiddles live in smem with stage-major layout so each thread reads
+// its own bank cell every stage; cosets sharing a warp broadcast across lanes.
 //
 // Output is contiguous coset-major: out[coset * coset_stride_bf + row] for
 // row in [0, N). The caller positions `out` at coset 0 of one column; multi-
@@ -20,44 +34,71 @@
 
 namespace airbender::ntt {
 
+struct __align__(16) bf4 {
+  bf values[4];
+};
+
 struct __align__(32) bf8 {
   bf values[8];
 };
 
-// On sm_90+ the launch bounds cap registers at 64 per thread (BLK * LB = 1024 =>
-// reg_cap = 65536 / 1024 = 64), which is enough for the kernel without spilling.
-// Older arches (sm_8x) need ~80 registers, so we let ptxas pick there.
+template <int VPT> struct bf_vec;
+template <> struct bf_vec<4> {
+  using type = bf4;
+};
+template <> struct bf_vec<8> {
+  using type = bf8;
+};
+
+// VPT=8 launch_bounds: gated on __CUDA_ARCH__ >= 900 because older archs need
+// ~80 regs/thread without the cap; the 64-reg cap implied by (1024+BLK-1)/BLK
+// would spill. The Rust dispatcher only routes log_n=8 here on sm_<90, so the
+// older-arch path runs that single size with ptxas's natural choice.
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
-#define NTT_STREAMING_LAUNCH_BOUNDS(BLK) __launch_bounds__(BLK, (1024 + (BLK) - 1) / (BLK))
+#define NTT_STREAMING_LAUNCH_BOUNDS_V8(BLK) __launch_bounds__(BLK, (1024 + (BLK) - 1) / (BLK))
 #else
-#define NTT_STREAMING_LAUNCH_BOUNDS(BLK)
+#define NTT_STREAMING_LAUNCH_BOUNDS_V8(BLK)
 #endif
 
-template <int LOG_N, int BLK>
+// VPT=4 launch_bounds: half the per-thread state of VPT=8 → target 8 blocks/SM
+// (cap ≈ 32 regs/thread on a 65 K-reg SM). Applied uniformly across archs.
+#define NTT_STREAMING_LAUNCH_BOUNDS_V4(BLK) __launch_bounds__(BLK, (2048 + (BLK) - 1) / (BLK))
+
+template <int LOG_N, int LOG_VPT, int BLK>
 DEVICE_FORCEINLINE void monomials_to_evals_streaming_impl(const bf *__restrict__ monomials, bf *__restrict__ out, const int coset_index_base,
                                                           const int coset_factor_shift, const unsigned num_cosets, const size_t coset_stride_bf) {
-  static_assert(LOG_N >= 3 && LOG_N <= 8, "streaming NTT supports log_n in [3, 8]");
-  constexpr int LOG_VPT = 3;
+  static_assert(LOG_N >= 2 && LOG_N <= 8, "streaming NTT supports log_n in [2, 8]");
+  static_assert(LOG_VPT == 2 || LOG_VPT == 3, "streaming NTT supports LOG_VPT in {2, 3} (VPT in {4, 8})");
+  static_assert(LOG_N >= LOG_VPT, "LOG_N must be >= LOG_VPT");
   constexpr int VPT = 1 << LOG_VPT;
   constexpr int N = 1 << LOG_N;
+  (void)N;
   constexpr int LOG_TPC = LOG_N - LOG_VPT;
   constexpr int TPC = 1 << LOG_TPC;
   constexpr int COSETS_PER_IT = BLK / TPC;
   constexpr unsigned BS = OMEGA_LOG_ORDER - LOG_N;
   static_assert(BLK % TPC == 0, "BLK must be a multiple of TPC");
+  // Cross-thread stages use __shfl_xor_sync, which is warp-scoped: TPC must
+  // fit in a single warp so the last cross stage's partner exchange stays
+  // within 32 lanes.
+  static_assert(TPC <= 32, "TPC > 32 would require cross-warp __shfl_xor_sync");
+
+  using bfvec = typename bf_vec<VPT>::type;
 
   // Smem twiddle layout: stage-major, thread-position bank-cell within each stage.
-  //   stage 0: 4 cells per thread (4 within-thread butterflies)
-  //   stage 1: 2 cells per thread
-  //   stage 2: 1 cell per thread (skipped at LOG_N=3 — last stage has no twiddle)
-  //   cross-thread stages 3..LOG_N-2 (non-last only): 1 cell per thread each
-  constexpr int CROSS_TW_STAGES = (LOG_N >= 5) ? (LOG_N - 4) : 0;
-  constexpr int STAGE2_TW = (LOG_N >= 4) ? 1 : 0;
-  constexpr int S0_OFF = 0;
-  constexpr int S1_OFF = S0_OFF + 4 * TPC;
-  constexpr int S2_OFF = S1_OFF + 2 * TPC;
-  constexpr int CROSS_OFF = S2_OFF + STAGE2_TW * TPC;
-  constexpr int TW_CELLS = CROSS_OFF + CROSS_TW_STAGES * TPC;
+  //   within-thread stage s in [0, LOG_VPT): (VPT >> (s+1)) cells per thread,
+  //     offset (in TPC units) = VPT - (VPT >> s).
+  //     The last within-thread stage (s = LOG_VPT-1) is the overall last stage
+  //     iff LOG_N == LOG_VPT — in that case its twiddle multiplication is
+  //     skipped and its smem slot is not allocated.
+  //   cross-thread non-last stages (cs in [0, CROSS_NON_LAST)): 1 cell per
+  //     thread per stage, after the within-thread block.
+  constexpr int CROSS_TOTAL = LOG_N - LOG_VPT;                              // includes the final stage
+  constexpr int CROSS_NON_LAST = (CROSS_TOTAL > 0) ? (CROSS_TOTAL - 1) : 0; // smem-backed cross stages
+  constexpr bool LAST_WITHIN_HAS_TW = (LOG_N > LOG_VPT);                    // last within-thread stage has a twiddle slot
+  constexpr int WITHIN_LAST_OFF_TPC = VPT - (VPT >> (LOG_VPT - 1));         // offset of stage LOG_VPT-1
+  constexpr int CROSS_OFF_TPC = WITHIN_LAST_OFF_TPC + (LAST_WITHIN_HAS_TW ? 1 : 0);
+  constexpr int TW_CELLS = (CROSS_OFF_TPC + CROSS_NON_LAST) * TPC;
   __shared__ bf smem_tw[TW_CELLS];
 
   const unsigned tid = threadIdx.x;
@@ -80,47 +121,54 @@ DEVICE_FORCEINLINE void monomials_to_evals_streaming_impl(const bf *__restrict__
   // so no __syncthreads is needed.
   {
     const unsigned tp = thread_pos;
-    smem_tw[S0_OFF + 0 * TPC + tp] = get_forward_twiddle_power(bitrev(tp * 4u + 0u, LOG_N - 1) << BS);
-    smem_tw[S0_OFF + 1 * TPC + tp] = get_forward_twiddle_power(bitrev(tp * 4u + 1u, LOG_N - 1) << BS);
-    smem_tw[S0_OFF + 2 * TPC + tp] = get_forward_twiddle_power(bitrev(tp * 4u + 2u, LOG_N - 1) << BS);
-    smem_tw[S0_OFF + 3 * TPC + tp] = get_forward_twiddle_power(bitrev(tp * 4u + 3u, LOG_N - 1) << BS);
-    smem_tw[S1_OFF + 0 * TPC + tp] = get_forward_twiddle_power(bitrev(tp * 2u + 0u, LOG_N - 1) << BS);
-    smem_tw[S1_OFF + 1 * TPC + tp] = get_forward_twiddle_power(bitrev(tp * 2u + 1u, LOG_N - 1) << BS);
-    if constexpr (LOG_N >= 4) {
-      smem_tw[S2_OFF + tp] = get_forward_twiddle_power(bitrev(tp, LOG_N - 1) << BS);
-    }
-    if constexpr (CROSS_TW_STAGES > 0) {
 #pragma unroll
-      for (int cs = 0; cs < CROSS_TW_STAGES; ++cs) {
-        const int s = 3 + cs;
+    for (int s = 0; s < LOG_VPT; ++s) {
+      const int stage_off = VPT - (VPT >> s);
+      const int n_twiddles = VPT >> (s + 1);
+      const bool stage_is_overall_last = (s == LOG_N - 1);
+      if (!stage_is_overall_last) {
+#pragma unroll
+        for (int k = 0; k < (VPT >> 1); ++k) {
+          if (k < n_twiddles) {
+            smem_tw[(stage_off + k) * TPC + tp] =
+                get_forward_twiddle_power(bitrev(tp * static_cast<unsigned>(n_twiddles) + static_cast<unsigned>(k), LOG_N - 1) << BS);
+          }
+        }
+      }
+    }
+    if constexpr (CROSS_NON_LAST > 0) {
+#pragma unroll
+      for (int cs = 0; cs < CROSS_NON_LAST; ++cs) {
+        const int s = LOG_VPT + cs;
         const unsigned mask_lanes = 1u << cs;
         const unsigned left_tp = tp & ~mask_lanes;
         const unsigned group = (left_tp * static_cast<unsigned>(VPT)) >> (s + 1);
-        smem_tw[CROSS_OFF + cs * TPC + tp] = get_forward_twiddle_power(bitrev(group, LOG_N - 1) << BS);
+        smem_tw[(CROSS_OFF_TPC + cs) * TPC + tp] = get_forward_twiddle_power(bitrev(group, LOG_N - 1) << BS);
       }
     }
   }
 
-  // bitrev_N(row) where row = (tp << LOG_VPT) | r.
-  // bitrev_3({0..7}) = {0,4,2,6,1,5,3,7}, then shifted by LOG_TPC; tp's bitrev
-  // contributes the low bits.
-  constexpr unsigned ROW_BREV3[8] = {0u, 4u, 2u, 6u, 1u, 5u, 3u, 7u};
+  // bitrev_N(row) where row = (tp << LOG_VPT) | r. bitrev(row, LOG_N) =
+  //   (bitrev(r, LOG_VPT) << LOG_TPC) | bitrev(tp, LOG_TPC).
+  // The per-r bitrev is computed via the device `bitrev(...)` helper —
+  // ptxas folds __brev() on the loop-constant `r` after #pragma unroll.
   const unsigned tp_brev = (LOG_TPC > 0) ? bitrev(thread_pos, LOG_TPC) : 0u;
-  unsigned bitrev_row[8];
+  unsigned bitrev_row[VPT];
 #pragma unroll
-  for (int r = 0; r < 8; ++r)
-    bitrev_row[r] = (ROW_BREV3[r] << LOG_TPC) | tp_brev;
+  for (int r = 0; r < VPT; ++r)
+    bitrev_row[r] = (bitrev(static_cast<unsigned>(r), LOG_VPT) << LOG_TPC) | tp_brev;
 
-  // Setup: load this thread's 8 monomials, fold in initial coset shift, and
-  // precompute the per-row delta twiddle D[r] = omega^(Delta * bitrev(r)) where
-  // Delta = COSETS_PER_IT << K_shift is the absolute step in coset-factor space.
+  // Setup: load this thread's VPT monomials, fold in the initial coset shift,
+  // and precompute the per-row delta twiddle D[r] = omega^(Delta * bitrev(r))
+  // where Delta = COSETS_PER_IT << K_shift is the absolute step in coset-
+  // factor space.
   const unsigned c_rel = block_base + coset_in_it;
   const unsigned c_abs = static_cast<unsigned>(coset_index_base) + c_rel;
   const unsigned cfp0 = c_abs << K_shift;
 
-  bf m_prime[8];
+  bf m_prime[VPT];
 #pragma unroll
-  for (int r = 0; r < 8; ++r) {
+  for (int r = 0; r < VPT; ++r) {
     const unsigned row = (thread_pos << LOG_VPT) | static_cast<unsigned>(r);
     bf m = load_ca(monomials + row);
     if (bitrev_row[r] != 0u) {
@@ -130,212 +178,138 @@ DEVICE_FORCEINLINE void monomials_to_evals_streaming_impl(const bf *__restrict__
   }
 
   const unsigned delta_cfp = static_cast<unsigned>(COSETS_PER_IT) << K_shift;
-  bf D[8];
+  bf D[VPT];
 #pragma unroll
-  for (int r = 0; r < 8; ++r) {
+  for (int r = 0; r < VPT; ++r) {
     D[r] = (bitrev_row[r] == 0u) ? bf::ONE() : get_forward_twiddle_power(bitrev_row[r] * delta_cfp);
   }
 
-  // shfl_xor mask: for log_n < 8 the cross-thread partners are within a
-  // TPC-lane subwarp; pass only those lanes in the active mask.
+  // shfl_xor mask: cross-thread partners are within a TPC-lane subwarp.
   const unsigned lane = tid & 31u;
   constexpr unsigned LANE_GROUP_MASK = (TPC >= 32) ? 0xFFFFFFFFu : ((1u << TPC) - 1u);
   const unsigned subwarp_mask = (TPC >= 32) ? 0xFFFFFFFFu : (LANE_GROUP_MASK << ((lane >> LOG_TPC) * TPC));
 
   for (unsigned it = 0; it < iters; ++it) {
-    bf w0 = m_prime[0], w1 = m_prime[1], w2 = m_prime[2], w3 = m_prime[3];
-    bf w4 = m_prime[4], w5 = m_prime[5], w6 = m_prime[6], w7 = m_prime[7];
+    bf w[VPT];
+#pragma unroll
+    for (int r = 0; r < VPT; ++r)
+      w[r] = m_prime[r];
 
-    // Stage 0: pair distance 1 (within-thread).
-    {
-      const bf t0 = smem_tw[S0_OFF + 0 * TPC + thread_pos];
-      const bf t1 = smem_tw[S0_OFF + 1 * TPC + thread_pos];
-      const bf t2 = smem_tw[S0_OFF + 2 * TPC + thread_pos];
-      const bf t3 = smem_tw[S0_OFF + 3 * TPC + thread_pos];
-      bf s, d;
-      s = bf::add(w0, w1);
-      d = bf::sub(w0, w1);
-      w0 = s;
-      w1 = bf::mul(d, t0);
-      s = bf::add(w2, w3);
-      d = bf::sub(w2, w3);
-      w2 = s;
-      w3 = bf::mul(d, t1);
-      s = bf::add(w4, w5);
-      d = bf::sub(w4, w5);
-      w4 = s;
-      w5 = bf::mul(d, t2);
-      s = bf::add(w6, w7);
-      d = bf::sub(w6, w7);
-      w6 = s;
-      w7 = bf::mul(d, t3);
-    }
-
-    // Stage 1: pair distance 2 (within-thread).
-    {
-      const bf t0 = smem_tw[S1_OFF + 0 * TPC + thread_pos];
-      const bf t1 = smem_tw[S1_OFF + 1 * TPC + thread_pos];
-      bf s, d;
-      s = bf::add(w0, w2);
-      d = bf::sub(w0, w2);
-      w0 = s;
-      w2 = bf::mul(d, t0);
-      s = bf::add(w1, w3);
-      d = bf::sub(w1, w3);
-      w1 = s;
-      w3 = bf::mul(d, t0);
-      s = bf::add(w4, w6);
-      d = bf::sub(w4, w6);
-      w4 = s;
-      w6 = bf::mul(d, t1);
-      s = bf::add(w5, w7);
-      d = bf::sub(w5, w7);
-      w5 = s;
-      w7 = bf::mul(d, t1);
-    }
-
-    // Stage 2: pair distance 4 (within-thread). For LOG_N=3 this is the last
-    // stage and skips the twiddle.
-    {
-      bf s, d;
-      if constexpr (LOG_N >= 4) {
-        const bf t = smem_tw[S2_OFF + thread_pos];
-        s = bf::add(w0, w4);
-        d = bf::sub(w0, w4);
-        w0 = s;
-        w4 = bf::mul(d, t);
-        s = bf::add(w1, w5);
-        d = bf::sub(w1, w5);
-        w1 = s;
-        w5 = bf::mul(d, t);
-        s = bf::add(w2, w6);
-        d = bf::sub(w2, w6);
-        w2 = s;
-        w6 = bf::mul(d, t);
-        s = bf::add(w3, w7);
-        d = bf::sub(w3, w7);
-        w3 = s;
-        w7 = bf::mul(d, t);
-      } else {
-        s = bf::add(w0, w4);
-        d = bf::sub(w0, w4);
-        w0 = s;
-        w4 = d;
-        s = bf::add(w1, w5);
-        d = bf::sub(w1, w5);
-        w1 = s;
-        w5 = d;
-        s = bf::add(w2, w6);
-        d = bf::sub(w2, w6);
-        w2 = s;
-        w6 = d;
-        s = bf::add(w3, w7);
-        d = bf::sub(w3, w7);
-        w3 = s;
-        w7 = d;
+    // Within-thread stages s in [0, LOG_VPT). Each stage halves the count of
+    // within-block butterflies' twiddles (stage 0 has VPT/2 twiddles, stage 1
+    // has VPT/4, ...). For LOG_N == LOG_VPT the last within-thread stage is
+    // overall last and skips its twiddle multiplication.
+#pragma unroll
+    for (int s = 0; s < LOG_VPT; ++s) {
+      const int dist = 1 << s;
+      const int n_twiddles = VPT >> (s + 1);
+      const int stage_off = VPT - (VPT >> s);
+      const bool stage_is_overall_last = (s == LOG_N - 1);
+      bf t[VPT >> 1];
+      if (!stage_is_overall_last) {
+#pragma unroll
+        for (int k = 0; k < (VPT >> 1); ++k) {
+          if (k < n_twiddles) {
+            t[k] = smem_tw[(stage_off + k) * TPC + thread_pos];
+          }
+        }
+      }
+#pragma unroll
+      for (int k = 0; k < (VPT >> 1); ++k) {
+        const int block_idx = k >> s;
+        const int intra = k & (dist - 1);
+        const int lo = (block_idx << (s + 1)) | intra;
+        const int hi = lo + dist;
+        const bf sm = bf::add(w[lo], w[hi]);
+        const bf df = bf::sub(w[lo], w[hi]);
+        w[lo] = sm;
+        if (stage_is_overall_last) {
+          w[hi] = df;
+        } else {
+          w[hi] = bf::mul(df, t[block_idx]);
+        }
       }
     }
 
-// Cross-thread stages s = 3..LOG_N-1 via shfl_xor with mask = 2^(s-3). The
-// final stage skips the twiddle multiplication.
-#define NTT_CROSS_STAGE(STAGE)                                                                                                                                 \
-  do {                                                                                                                                                         \
-    constexpr int s = (STAGE);                                                                                                                                 \
-    constexpr int cs = s - 3;                                                                                                                                  \
-    constexpr unsigned mask_lanes = 1u << cs;                                                                                                                  \
-    constexpr bool is_last = (s == LOG_N - 1);                                                                                                                 \
-    const bool is_lo = (thread_pos & mask_lanes) == 0u;                                                                                                        \
-    bf t;                                                                                                                                                      \
-    if constexpr (!is_last)                                                                                                                                    \
-      t = smem_tw[CROSS_OFF + cs * TPC + thread_pos];                                                                                                          \
-    const unsigned q0 = __shfl_xor_sync(subwarp_mask, bf::into_raw_u32(w0), mask_lanes);                                                                       \
-    const unsigned q1 = __shfl_xor_sync(subwarp_mask, bf::into_raw_u32(w1), mask_lanes);                                                                       \
-    const unsigned q2 = __shfl_xor_sync(subwarp_mask, bf::into_raw_u32(w2), mask_lanes);                                                                       \
-    const unsigned q3 = __shfl_xor_sync(subwarp_mask, bf::into_raw_u32(w3), mask_lanes);                                                                       \
-    const unsigned q4 = __shfl_xor_sync(subwarp_mask, bf::into_raw_u32(w4), mask_lanes);                                                                       \
-    const unsigned q5 = __shfl_xor_sync(subwarp_mask, bf::into_raw_u32(w5), mask_lanes);                                                                       \
-    const unsigned q6 = __shfl_xor_sync(subwarp_mask, bf::into_raw_u32(w6), mask_lanes);                                                                       \
-    const unsigned q7 = __shfl_xor_sync(subwarp_mask, bf::into_raw_u32(w7), mask_lanes);                                                                       \
-    auto apply = [&](bf &W, unsigned Q) {                                                                                                                      \
-      const bf pv = bf::from_reduced_raw_repr(Q);                                                                                                              \
-      const bf l = is_lo ? W : pv;                                                                                                                             \
-      const bf r = is_lo ? pv : W;                                                                                                                             \
-      if constexpr (is_last) {                                                                                                                                 \
-        W = is_lo ? bf::add(l, r) : bf::sub(l, r);                                                                                                             \
-      } else {                                                                                                                                                 \
-        W = is_lo ? bf::add(l, r) : bf::mul(bf::sub(l, r), t);                                                                                                 \
-      }                                                                                                                                                        \
-    };                                                                                                                                                         \
-    apply(w0, q0);                                                                                                                                             \
-    apply(w1, q1);                                                                                                                                             \
-    apply(w2, q2);                                                                                                                                             \
-    apply(w3, q3);                                                                                                                                             \
-    apply(w4, q4);                                                                                                                                             \
-    apply(w5, q5);                                                                                                                                             \
-    apply(w6, q6);                                                                                                                                             \
-    apply(w7, q7);                                                                                                                                             \
-  } while (0)
+    // Cross-thread stages s in [LOG_VPT, LOG_N) via shfl_xor. The final stage
+    // skips the twiddle multiplication.
+    if constexpr (CROSS_TOTAL > 0) {
+#pragma unroll
+      for (int cs = 0; cs < CROSS_TOTAL; ++cs) {
+        const int s = LOG_VPT + cs;
+        const unsigned mask_lanes = 1u << cs;
+        const bool stage_is_overall_last = (s == LOG_N - 1);
+        const bool is_lo = (thread_pos & mask_lanes) == 0u;
+        bf t;
+        if (!stage_is_overall_last) {
+          t = smem_tw[(CROSS_OFF_TPC + cs) * TPC + thread_pos];
+        }
+#pragma unroll
+        for (int r = 0; r < VPT; ++r) {
+          const unsigned qu = __shfl_xor_sync(subwarp_mask, bf::into_raw_u32(w[r]), mask_lanes);
+          const bf pv = bf::from_reduced_raw_repr(qu);
+          const bf l = is_lo ? w[r] : pv;
+          const bf rh = is_lo ? pv : w[r];
+          if (stage_is_overall_last) {
+            w[r] = is_lo ? bf::add(l, rh) : bf::sub(l, rh);
+          } else {
+            w[r] = is_lo ? bf::add(l, rh) : bf::mul(bf::sub(l, rh), t);
+          }
+        }
+      }
+    }
 
-    if constexpr (LOG_N >= 4) {
-      NTT_CROSS_STAGE(3);
-    }
-    if constexpr (LOG_N >= 5) {
-      NTT_CROSS_STAGE(4);
-    }
-    if constexpr (LOG_N >= 6) {
-      NTT_CROSS_STAGE(5);
-    }
-    if constexpr (LOG_N >= 7) {
-      NTT_CROSS_STAGE(6);
-    }
-    if constexpr (LOG_N >= 8) {
-      NTT_CROSS_STAGE(7);
-    }
-#undef NTT_CROSS_STAGE
-
-    // Vec8 (32 B aligned) store via load_unit<bf8>::type = u32x8 on sm_100+ →
-    // STG.E.ENL2.256; older arches fall back to two STG.E.128 ops in PTX.
+    // Vector store: 32 B aligned bf8 -> STG.E.ENL2.256 on sm_100+ (else two
+    // STG.E.128 in PTX); 16 B aligned bf4 -> STG.E.128.
     const unsigned coset_rel = block_base + it * static_cast<unsigned>(COSETS_PER_IT) + coset_in_it;
     bf *coset_ptr = out + static_cast<size_t>(coset_rel) * coset_stride_bf + (thread_pos << LOG_VPT);
-    bf8 packed;
-    packed.values[0] = w0;
-    packed.values[1] = w1;
-    packed.values[2] = w2;
-    packed.values[3] = w3;
-    packed.values[4] = w4;
-    packed.values[5] = w5;
-    packed.values[6] = w6;
-    packed.values[7] = w7;
-    store_cs(reinterpret_cast<bf8 *>(coset_ptr), packed);
+    bfvec packed;
+#pragma unroll
+    for (int r = 0; r < VPT; ++r)
+      packed.values[r] = w[r];
+    store_cs(reinterpret_cast<bfvec *>(coset_ptr), packed);
 
     // Running shift update m'[r] *= D[r] — advances to the next iter's coset.
-    m_prime[0] = bf::mul(m_prime[0], D[0]);
-    m_prime[1] = bf::mul(m_prime[1], D[1]);
-    m_prime[2] = bf::mul(m_prime[2], D[2]);
-    m_prime[3] = bf::mul(m_prime[3], D[3]);
-    m_prime[4] = bf::mul(m_prime[4], D[4]);
-    m_prime[5] = bf::mul(m_prime[5], D[5]);
-    m_prime[6] = bf::mul(m_prime[6], D[6]);
-    m_prime[7] = bf::mul(m_prime[7], D[7]);
+#pragma unroll
+    for (int r = 0; r < VPT; ++r) {
+      m_prime[r] = bf::mul(m_prime[r], D[r]);
+    }
   }
 }
 
-#define DEFINE_STREAMING_KERNEL(LOG_N, BLK)                                                                                                                    \
-  EXTERN NTT_STREAMING_LAUNCH_BOUNDS(BLK)                                                                                                                      \
-  __global__ void ab_monomials_to_evals_streaming_##LOG_N##_stages_kernel(const bf *__restrict__ monomials, bf *__restrict__ out, const int coset_index_base,  \
-                                                                          const int coset_factor_shift, const unsigned num_cosets,                             \
-                                                                          const unsigned long long coset_stride_bf) {                                          \
-    monomials_to_evals_streaming_impl<LOG_N, BLK>(monomials, out, coset_index_base, coset_factor_shift, num_cosets, static_cast<size_t>(coset_stride_bf));     \
+#define DEFINE_STREAMING_KERNEL_V8(LOG_N, BLK)                                                                                                                 \
+  EXTERN NTT_STREAMING_LAUNCH_BOUNDS_V8(BLK)                                                                                                                   \
+  __global__ void ab_monomials_to_evals_streaming_v8_##LOG_N##_stages_kernel(const bf *__restrict__ monomials, bf *__restrict__ out,                           \
+                                                                             const int coset_index_base, const int coset_factor_shift,                         \
+                                                                             const unsigned num_cosets, const unsigned long long coset_stride_bf) {            \
+    monomials_to_evals_streaming_impl<LOG_N, 3, BLK>(monomials, out, coset_index_base, coset_factor_shift, num_cosets, static_cast<size_t>(coset_stride_bf));  \
   }
 
-DEFINE_STREAMING_KERNEL(3, 256)
-DEFINE_STREAMING_KERNEL(4, 256)
-DEFINE_STREAMING_KERNEL(5, 256)
-DEFINE_STREAMING_KERNEL(6, 256)
-DEFINE_STREAMING_KERNEL(7, 256)
-DEFINE_STREAMING_KERNEL(8, 256)
+#define DEFINE_STREAMING_KERNEL_V4(LOG_N, BLK)                                                                                                                 \
+  EXTERN NTT_STREAMING_LAUNCH_BOUNDS_V4(BLK)                                                                                                                   \
+  __global__ void ab_monomials_to_evals_streaming_v4_##LOG_N##_stages_kernel(const bf *__restrict__ monomials, bf *__restrict__ out,                           \
+                                                                             const int coset_index_base, const int coset_factor_shift,                         \
+                                                                             const unsigned num_cosets, const unsigned long long coset_stride_bf) {            \
+    monomials_to_evals_streaming_impl<LOG_N, 2, BLK>(monomials, out, coset_index_base, coset_factor_shift, num_cosets, static_cast<size_t>(coset_stride_bf));  \
+  }
 
-#undef DEFINE_STREAMING_KERNEL
-#undef NTT_STREAMING_LAUNCH_BOUNDS
+DEFINE_STREAMING_KERNEL_V8(3, 256)
+DEFINE_STREAMING_KERNEL_V8(4, 256)
+DEFINE_STREAMING_KERNEL_V8(5, 256)
+DEFINE_STREAMING_KERNEL_V8(6, 256)
+DEFINE_STREAMING_KERNEL_V8(7, 256)
+DEFINE_STREAMING_KERNEL_V8(8, 256)
+
+DEFINE_STREAMING_KERNEL_V4(2, 256)
+DEFINE_STREAMING_KERNEL_V4(3, 256)
+DEFINE_STREAMING_KERNEL_V4(4, 256)
+DEFINE_STREAMING_KERNEL_V4(5, 256)
+DEFINE_STREAMING_KERNEL_V4(6, 256)
+DEFINE_STREAMING_KERNEL_V4(7, 256)
+
+#undef DEFINE_STREAMING_KERNEL_V8
+#undef DEFINE_STREAMING_KERNEL_V4
+#undef NTT_STREAMING_LAUNCH_BOUNDS_V8
+#undef NTT_STREAMING_LAUNCH_BOUNDS_V4
 
 } // namespace airbender::ntt
