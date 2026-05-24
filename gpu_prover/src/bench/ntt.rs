@@ -82,14 +82,18 @@ impl NttBenchHarness {
         let log_n = self.log_n;
         let log_lde_factor = self.log_lde_factor;
         let coset_index = self.coset_index;
-        // Copy the two scalar fields out of the immutable borrow so we can
-        // hold the mutable pool borrows below without conflict.
+        // Copy the scalar fields out of the immutable borrow so we can hold
+        // the mutable pool borrows below without conflict.
         let props_ref = self.context.get_device_properties();
         let l2_cache_size_bytes = props_ref.l2_cache_size_bytes;
         let sm_count = props_ref.sm_count;
+        let compute_capability_major = props_ref.compute_capability_major;
+        let compute_capability_minor = props_ref.compute_capability_minor;
         let device_props = crate::primitives::context::DeviceProperties {
             l2_cache_size_bytes,
             sm_count,
+            compute_capability_major,
+            compute_capability_minor,
         };
         let inputs_matrix =
             DeviceMatrixChunk::new(&self.inputs_pool[offset..offset + n], n, 0, n);

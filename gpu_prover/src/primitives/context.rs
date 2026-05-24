@@ -18,6 +18,8 @@ use log::error;
 pub(crate) struct DeviceProperties {
     pub l2_cache_size_bytes: usize,
     pub sm_count: usize,
+    pub compute_capability_major: usize,
+    pub compute_capability_minor: usize,
 }
 
 impl DeviceProperties {
@@ -27,9 +29,15 @@ impl DeviceProperties {
             device_get_attribute(CudaDeviceAttr::L2CacheSize, device_id)? as usize;
         let sm_count =
             device_get_attribute(CudaDeviceAttr::MultiProcessorCount, device_id)? as usize;
+        let compute_capability_major =
+            device_get_attribute(CudaDeviceAttr::ComputeCapabilityMajor, device_id)? as usize;
+        let compute_capability_minor =
+            device_get_attribute(CudaDeviceAttr::ComputeCapabilityMinor, device_id)? as usize;
         Ok(Self {
             l2_cache_size_bytes,
             sm_count,
+            compute_capability_major,
+            compute_capability_minor,
         })
     }
 }
