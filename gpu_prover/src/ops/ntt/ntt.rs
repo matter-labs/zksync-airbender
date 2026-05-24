@@ -137,7 +137,11 @@ monomials_to_evals_compact!(ab_monomials_to_evals_subwarp_3_stages_ipb0_kernel);
 
 // Streaming multi-coset single-column NTT for log_n in [3, 8]. One block owns
 // a contiguous range of cosets, walks them with a register-resident running
-// shift update, and stores via 256-bit vec8. Caller loops over columns.
+// shift update, and stores via a vector store. The v8 variant uses 32-byte
+// (vec8) stores (-> STG.E.256 on sm_100+, two STG.E.128 on older arch); the
+// v4 variant uses 16-byte (vec4) stores (-> STG.E.128) with half the
+// per-thread state and is picked by the dispatcher on sm_<90 where the v8
+// store would decompose. Caller loops over columns.
 cuda_kernel!(
     MonomialsToEvalsStreaming,
     monomials_to_evals_streaming,
@@ -148,12 +152,18 @@ cuda_kernel!(
     num_cosets: u32,
     coset_stride_bf: u64,
 );
-monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_3_stages_kernel);
-monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_4_stages_kernel);
-monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_5_stages_kernel);
-monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_6_stages_kernel);
-monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_7_stages_kernel);
-monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_8_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_v8_3_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_v8_4_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_v8_5_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_v8_6_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_v8_7_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_v8_8_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_v4_2_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_v4_3_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_v4_4_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_v4_5_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_v4_6_stages_kernel);
+monomials_to_evals_streaming!(ab_monomials_to_evals_streaming_v4_7_stages_kernel);
 
 // 3-pass monomials to evals: initial kernels share the multi-coset
 // MonomialsToEvalsCompact signature so the 3-pass dispatcher can fold the
@@ -943,11 +953,19 @@ pub(crate) fn monomials_to_evals_smem_packed(
     Ok(())
 }
 
-/// Streaming multi-coset single-column NTT for `log_n in [3, 8]`. One block
+/// Streaming multi-coset single-column NTT for `log_n in [2, 8]`. One block
 /// owns a contiguous range of cosets and walks them sequentially with a
 /// register-resident running shift update `m' *= D` (where
-/// `D[r] = omega^(Delta * bitrev(r))` is loop-invariant). Stores via 32-byte
-/// aligned vec8 (STG.E.256 on sm_100+; two STG.E.128 on older arch).
+/// `D[r] = omega^(Delta * bitrev(r))` is loop-invariant). VPT is picked from
+/// `log_n` alone:
+///   - `log_n in [2, 7]`: VPT=4, 16-byte vec4 store (STG.E.128). Lower
+///     register pressure (32 regs/thread, 8 blocks/SM), and on sm_<90 avoids
+///     the 256-bit decomposition that wipes out coalescing on Ampere/Ada.
+///     A 500-iter Blackwell sweep showed VPT=4 ≥ VPT=8 across this range
+///     (tied at DRAM saturation for log_n in [2, 6], ~4% faster at log_n=7).
+///   - `log_n == 8`: VPT=8, 32-byte vec8 store. Required because VPT=4 there
+///     would need TPC=64 > warp; the last cross-thread `__shfl_xor_sync` can't
+///     reach across the warp boundary.
 ///
 /// Callers loop over columns externally — the kernel is one column per launch,
 /// the host advances `(monomials_ptr, out_ptr)` per column and uses
@@ -965,10 +983,87 @@ pub(crate) fn monomials_to_evals_streaming(
     stream: &CudaStream,
     device_props: &DeviceProperties,
 ) -> CudaResult<()> {
+    monomials_to_evals_streaming_impl(
+        inputs_matrix,
+        outputs_matrix,
+        log_n,
+        streaming_log_vpt_for(log_n),
+        coset_index_base,
+        coset_factor_shift,
+        num_cosets,
+        num_cols_per_coset,
+        transposed_monomials,
+        stream,
+        device_props,
+    )
+}
+
+/// VPT choice for the streaming kernel given `log_n`. VPT=8 only for
+/// `log_n == 8` (cross-warp shuffle constraint); VPT=4 everywhere else.
+/// Mirrored by the strategy gate.
+pub(crate) fn streaming_log_vpt_for(log_n: usize) -> usize {
+    if log_n == 8 {
+        3
+    } else {
+        2
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn monomials_to_evals_streaming_with_log_vpt(
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    log_n: usize,
+    log_vpt: usize,
+    coset_index_base: usize,
+    coset_factor_shift: u32,
+    num_cosets: usize,
+    num_cols_per_coset: usize,
+    transposed_monomials: bool,
+    stream: &CudaStream,
+    device_props: &DeviceProperties,
+) -> CudaResult<()> {
+    monomials_to_evals_streaming_impl(
+        inputs_matrix,
+        outputs_matrix,
+        log_n,
+        log_vpt,
+        coset_index_base,
+        coset_factor_shift,
+        num_cosets,
+        num_cols_per_coset,
+        transposed_monomials,
+        stream,
+        device_props,
+    )
+}
+
+fn monomials_to_evals_streaming_impl(
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    log_n: usize,
+    log_vpt: usize,
+    coset_index_base: usize,
+    coset_factor_shift: u32,
+    num_cosets: usize,
+    num_cols_per_coset: usize,
+    transposed_monomials: bool,
+    stream: &CudaStream,
+    device_props: &DeviceProperties,
+) -> CudaResult<()> {
     assert!(
-        (3..=8).contains(&log_n),
-        "streaming NTT only supports log_n in [3, 8]"
+        (2..=8).contains(&log_n),
+        "streaming NTT only supports log_n in [2, 8]"
     );
+    assert!(
+        log_vpt == 2 || log_vpt == 3,
+        "log_vpt must be 2 (vec4) or 3 (vec8), got {log_vpt}"
+    );
+    assert!(
+        log_vpt == 3 || log_n <= 7,
+        "VPT=4 (log_vpt=2) requires log_n <= 7 (TPC must fit in a warp); got log_n={log_n}"
+    );
+    assert!(log_n >= log_vpt, "log_n ({log_n}) must be >= log_vpt ({log_vpt})");
     assert!(
         !transposed_monomials,
         "streaming NTT does not support transposed monomials"
@@ -995,12 +1090,12 @@ pub(crate) fn monomials_to_evals_streaming(
         num_cols_per_coset,
         num_ntts,
     );
-    // TPC = 2^(log_n - 3); COSETS_PER_IT = BLK / TPC with BLK = 256.
-    let tpc = 1usize << (log_n - 3);
+    // TPC = 2^(log_n - log_vpt); COSETS_PER_IT = BLK / TPC with BLK = 256.
+    let tpc = 1usize << (log_n - log_vpt);
     let cosets_per_it = 256 / tpc;
     assert!(
         num_cosets % cosets_per_it == 0,
-        "num_cosets ({num_cosets}) must be divisible by cosets_per_it ({cosets_per_it}) at log_n={log_n}",
+        "num_cosets ({num_cosets}) must be divisible by cosets_per_it ({cosets_per_it}) at log_n={log_n}, log_vpt={log_vpt}",
     );
     let total_iters = num_cosets / cosets_per_it;
     // Block budget: a single SM-batch (sm_count blocks) is enough for the
@@ -1009,14 +1104,20 @@ pub(crate) fn monomials_to_evals_streaming(
     // empty trailing blocks.
     let blocks_per_sm_target = 4usize;
     let grid_blocks = (device_props.sm_count * blocks_per_sm_target).min(total_iters).max(1);
-    let function = match log_n {
-        3 => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_3_stages_kernel),
-        4 => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_4_stages_kernel),
-        5 => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_5_stages_kernel),
-        6 => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_6_stages_kernel),
-        7 => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_7_stages_kernel),
-        8 => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_8_stages_kernel),
-        _ => unreachable!("streaming kernels exist only for log_n in [3, 8]"),
+    let function = match (log_vpt, log_n) {
+        (3, 3) => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_v8_3_stages_kernel),
+        (3, 4) => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_v8_4_stages_kernel),
+        (3, 5) => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_v8_5_stages_kernel),
+        (3, 6) => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_v8_6_stages_kernel),
+        (3, 7) => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_v8_7_stages_kernel),
+        (3, 8) => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_v8_8_stages_kernel),
+        (2, 2) => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_v4_2_stages_kernel),
+        (2, 3) => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_v4_3_stages_kernel),
+        (2, 4) => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_v4_4_stages_kernel),
+        (2, 5) => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_v4_5_stages_kernel),
+        (2, 6) => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_v4_6_stages_kernel),
+        (2, 7) => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_v4_7_stages_kernel),
+        _ => unreachable!("streaming kernels: log_vpt in {{2, 3}} and log_n in [2, 8] (VPT=4 excludes log_n=8, VPT=8 requires log_n >= 3); got log_vpt={log_vpt}, log_n={log_n}"),
     };
     let input_stride = inputs_matrix.stride();
     let input_offset = inputs_matrix.offset();
