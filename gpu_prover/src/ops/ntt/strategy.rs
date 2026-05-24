@@ -146,14 +146,23 @@ pub(crate) fn select_ntt_strategy(
 /// already saturates the block at IPB=1, so the smem-packed variant offers
 /// no win there. The kernel's `gridDim.x = (num_cosets * num_columns) >>
 /// log_ipb` requires the workload to be a power-of-two multiple of IPB.
-/// Streaming multi-coset NTT applicability gate: requires `log_n in [3, 8]`
-/// and `num_cosets >= cosets_per_iter(log_n) = 256 >> (log_n - 3)` so the
-/// kernel has at least one full block iteration of work.
+/// Streaming multi-coset NTT applicability gate: requires `log_n in [2, 8]`
+/// and `num_cosets >= cosets_per_iter` so the kernel has at least one full
+/// block iteration of work.
+///
+/// VPT is determined by `log_n` alone (mirroring [`streaming_log_vpt_for`]):
+///   - `log_n in [2, 7]`: VPT=4, cosets_per_iter = 256 >> (log_n - 2)
+///   - `log_n == 8`:      VPT=8, cosets_per_iter = 256 >> (log_n - 3) = 8
+/// VPT=4 wins on Blackwell (tied at DRAM saturation, ~4% faster at log_n=7
+/// per the 500-iter sweep) and avoids the 256-bit decomposition penalty on
+/// sub-Hopper; VPT=8 is mandatory only at log_n=8 where TPC=64 would exceed
+/// a warp under VPT=4.
 fn streaming_is_applicable(log_n: usize, num_cosets: usize) -> Option<()> {
-    if !(3..=8).contains(&log_n) {
+    if !(2..=8).contains(&log_n) {
         return None;
     }
-    let cosets_per_iter = 256usize >> (log_n - 3);
+    let log_vpt = if log_n == 8 { 3 } else { 2 };
+    let cosets_per_iter = 256usize >> (log_n - log_vpt);
     if num_cosets >= cosets_per_iter && num_cosets.is_multiple_of(cosets_per_iter) {
         Some(())
     } else {
@@ -557,20 +566,24 @@ mod tests {
     use super::*;
 
     fn l4_like() -> DeviceProperties {
-        // L4-class device: 48 MB L2, 58 SMs. Numbers documented inline so the
-        // snapshot tests stay valid even if `DeviceProperties::new()` reads a
-        // different device at test time.
+        // L4-class device: 48 MB L2, 58 SMs, sm_89 (Ada Lovelace). Numbers
+        // documented inline so the snapshot tests stay valid even if
+        // `DeviceProperties::new()` reads a different device at test time.
         DeviceProperties {
             l2_cache_size_bytes: 48 * 1024 * 1024,
             sm_count: 58,
+            compute_capability_major: 8,
+            compute_capability_minor: 9,
         }
     }
 
     fn rtx_5090_like() -> DeviceProperties {
-        // RTX 5090-class device: ~96 MB L2, 170 SMs.
+        // RTX 5090-class device: ~96 MB L2, 170 SMs, sm_120 (Blackwell).
         DeviceProperties {
             l2_cache_size_bytes: 96 * 1024 * 1024,
             sm_count: 170,
+            compute_capability_major: 12,
+            compute_capability_minor: 0,
         }
     }
 
@@ -776,13 +789,24 @@ mod tests {
     }
 
     #[test]
-    fn streaming_picked_for_log_n_3_to_8_when_num_cosets_reaches_per_iter() {
+    fn streaming_picked_for_log_n_2_to_8_when_num_cosets_reaches_per_iter() {
         // Streaming gate: num_cosets >= cosets_per_iter(log_n) and divisible.
-        // cosets_per_iter = 256 >> (log_n - 3): 256/128/64/32/16/8 for log_n=3..8.
-        let l4 = l4_like();
-        let cases = [(3usize, 256usize), (4, 128), (5, 64), (6, 32), (7, 16), (8, 8)];
+        // VPT is fixed by log_n alone (mirrors `streaming_log_vpt_for`):
+        //   - log_n in [2, 7]: VPT=4, cosets_per_iter = 256 >> (log_n - 2)
+        //       -> 256 / 128 / 64 / 32 / 16 / 8
+        //   - log_n == 8:      VPT=8, cosets_per_iter = 256 >> (log_n - 3) = 8
+        let dev = l4_like();
+        let cases = [
+            (2usize, 256usize),
+            (3, 128),
+            (4, 64),
+            (5, 32),
+            (6, 16),
+            (7, 8),
+            (8, 8),
+        ];
         for (log_n, num_cosets) in cases {
-            let s = select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, false, &l4)
+            let s = select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, false, &dev)
                 .unwrap();
             assert!(
                 matches!(
@@ -795,13 +819,31 @@ mod tests {
             assert_eq!(s.cosets_per_launch, num_cosets);
             assert_eq!(s.columns_per_launch, 1);
         }
-        // num_cosets just below the gate falls back to subwarp/smem-packed/compact.
-        let s = select_ntt_strategy(NttDirection::Forward, 8, 1, 4, false, &l4).unwrap();
+        // cc_major no longer feeds the gate — sm_90+ device picks the same kernels.
+        let h = rtx_5090_like();
+        for (log_n, num_cosets) in cases {
+            let s =
+                select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, false, &h).unwrap();
+            assert!(matches!(
+                s.passes[0].kernel,
+                NttKernelKind::MonomialsToEvalsStreaming { stages } if stages == log_n
+            ));
+        }
+        // Below the gate: streaming should not be picked.
+        // log_n=8: cosets_per_iter=8, 4 < 8 → fall back.
+        let s = select_ntt_strategy(NttDirection::Forward, 8, 1, 4, false, &dev).unwrap();
         assert!(!matches!(
             s.passes[0].kernel,
             NttKernelKind::MonomialsToEvalsStreaming { .. }
         ));
-        let s = select_ntt_strategy(NttDirection::Forward, 4, 1, 64, false, &l4).unwrap();
+        // log_n=4: cosets_per_iter=64, 32 falls back.
+        let s = select_ntt_strategy(NttDirection::Forward, 4, 1, 32, false, &dev).unwrap();
+        assert!(!matches!(
+            s.passes[0].kernel,
+            NttKernelKind::MonomialsToEvalsStreaming { .. }
+        ));
+        // log_n=2: cosets_per_iter=256, 128 falls back.
+        let s = select_ntt_strategy(NttDirection::Forward, 2, 1, 128, false, &dev).unwrap();
         assert!(!matches!(
             s.passes[0].kernel,
             NttKernelKind::MonomialsToEvalsStreaming { .. }

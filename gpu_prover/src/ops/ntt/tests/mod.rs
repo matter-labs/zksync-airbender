@@ -835,6 +835,7 @@ multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_32, 8, 32
 // num_cosets >= cosets_per_iter(log_n) = 256 >> (log_n - 3), so the strategy
 // routes through `monomials_to_evals_streaming`. Covers the boundary
 // (num_cosets == cosets_per_iter, one block-iter) and a multi-iter case.
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_2_cosets_256, 2, 256);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_3_cosets_256, 3, 256);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_4_cosets_128, 4, 128);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_4_cosets_256, 4, 256);
@@ -986,6 +987,140 @@ smem_packed_parity_test!(smem_packed_log_n_8_ipb_2_cosets_4_cols_4, 8, 1, 4, 4);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_6_cosets_8, 6, 8);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_6_cosets_16, 6, 16);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_2, 8, 2);
+
+// Direct parity test for the VPT=4 streaming variant. On sm_90+ machines the
+// strategy picks the VPT=8 variant by default, so this test forces VPT=4 via
+// `monomials_to_evals_streaming_with_log_vpt` to exercise the sub-Hopper path
+// on Hopper+/Blackwell CI hardware. Reference is the per-coset single-coset
+// path (`bitreversed_monomials_to_natural_evals`) — that path goes through the
+// strategy with num_cosets=1, so it never lands on streaming for these sizes
+// and we get an independent baseline.
+#[cfg(not(no_cuda))]
+#[allow(dead_code)]
+fn run_streaming_v4_vs_compact_parity(log_n: usize, num_cosets: usize, num_cols: usize) {
+    use super::{bitreversed_monomials_to_natural_evals, ntt::monomials_to_evals_streaming_with_log_vpt};
+    use crate::ops::ntt::OMEGA_LOG_ORDER;
+    use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
+
+    let log_lde_factor = num_cosets.trailing_zeros() as usize;
+    assert_eq!(1usize << log_lde_factor, num_cosets);
+    assert!((2..=7).contains(&log_n), "VPT=4 supports log_n in [2, 7]");
+    let context = make_context();
+    let stream = context.get_exec_stream();
+    let device_props = context.get_device_properties();
+    let n = 1usize << log_n;
+    let stride = n;
+    let cols_size = stride * num_cols;
+    let total_size = num_cosets * cols_size;
+
+    let mut inputs_host = vec![BF::ZERO; cols_size];
+    for (idx, value) in inputs_host.iter_mut().enumerate() {
+        *value = BF::new((97 + (idx as u32).wrapping_mul(53)) as u32);
+    }
+    let mut inputs_device = context
+        .alloc(cols_size, AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
+
+    let mut candidate_device = context
+        .alloc(total_size, AllocationPlacement::BestFit)
+        .unwrap();
+    let mut reference_device = context
+        .alloc(total_size, AllocationPlacement::BestFit)
+        .unwrap();
+
+    let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
+
+    {
+        let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], stride, 0, n);
+        let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut candidate_device[..], stride, 0, n);
+        monomials_to_evals_streaming_with_log_vpt(
+            &inputs_matrix,
+            &mut outputs_matrix,
+            log_n,
+            2, // log_vpt = 2 -> VPT=4 path
+            0,
+            coset_factor_shift,
+            num_cosets,
+            num_cols,
+            false,
+            stream,
+            device_props,
+        )
+        .unwrap();
+    }
+
+    {
+        let reference_slice = &mut reference_device[..];
+        for coset_index in 0..num_cosets {
+            let chunk_start = coset_index * cols_size;
+            let chunk_end = chunk_start + cols_size;
+            let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], stride, 0, n);
+            let mut ref_chunk = DeviceMatrixChunkMut::new(
+                &mut reference_slice[chunk_start..chunk_end],
+                stride,
+                0,
+                n,
+            );
+            bitreversed_monomials_to_natural_evals(
+                &inputs_matrix,
+                &mut ref_chunk,
+                log_n,
+                log_lde_factor,
+                coset_index,
+                false,
+                stream,
+                device_props,
+            )
+            .unwrap();
+        }
+    }
+
+    let mut candidate_host = vec![BF::ZERO; total_size];
+    let mut reference_host = vec![BF::ZERO; total_size];
+    memory_copy_async(&mut candidate_host, &candidate_device, stream).unwrap();
+    memory_copy_async(&mut reference_host, &reference_device, stream).unwrap();
+    stream.synchronize().unwrap();
+
+    for coset_index in 0..num_cosets {
+        for col in 0..num_cols {
+            let base = coset_index * cols_size + col * stride;
+            for k in 0..n {
+                assert_eq!(
+                    candidate_host[base + k],
+                    reference_host[base + k],
+                    "log_n={log_n}, num_cosets={num_cosets}, num_cols={num_cols}, coset={coset_index}, col={col}, k={k}"
+                );
+            }
+        }
+    }
+}
+
+macro_rules! streaming_v4_parity_test {
+    ($name:ident, $log_n:expr, $num_cosets:expr, $num_cols:expr) => {
+        #[test]
+        #[cfg(not(no_cuda))]
+        #[serial]
+        fn $name() {
+            run_streaming_v4_vs_compact_parity($log_n, $num_cosets, $num_cols);
+        }
+    };
+}
+
+// VPT=4 boundary cases (num_cosets == cosets_per_iter = 256 >> (log_n - 2)).
+streaming_v4_parity_test!(streaming_v4_log_n_2_cosets_256, 2, 256, 1);
+streaming_v4_parity_test!(streaming_v4_log_n_3_cosets_128, 3, 128, 1);
+streaming_v4_parity_test!(streaming_v4_log_n_4_cosets_64, 4, 64, 1);
+streaming_v4_parity_test!(streaming_v4_log_n_5_cosets_32, 5, 32, 1);
+streaming_v4_parity_test!(streaming_v4_log_n_6_cosets_16, 6, 16, 1);
+streaming_v4_parity_test!(streaming_v4_log_n_7_cosets_8, 7, 8, 1);
+// Multi-iter cases: num_cosets > cosets_per_iter exercises the running shift.
+streaming_v4_parity_test!(streaming_v4_log_n_2_cosets_512, 2, 512, 1);
+streaming_v4_parity_test!(streaming_v4_log_n_3_cosets_512, 3, 512, 1);
+streaming_v4_parity_test!(streaming_v4_log_n_4_cosets_256, 4, 256, 1);
+streaming_v4_parity_test!(streaming_v4_log_n_7_cosets_32, 7, 32, 1);
+// Multi-column: caller loops over columns externally.
+streaming_v4_parity_test!(streaming_v4_log_n_5_cosets_64_cols_4, 5, 64, 4);
 
 // Direct parity test for the sub-warp kernel vs the compact 1-pass kernel.
 // Same shape as `run_smem_packed_vs_compact_parity`: bypass the strategy and
