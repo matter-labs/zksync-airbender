@@ -7,8 +7,9 @@ const AUIPC_OP_BIT: usize = 2;
 const ADDMOD_BIT: usize = 3;
 const SUBMOD_BIT: usize = 4;
 const MULMOD_BIT: usize = 5;
-const DELEGATION_BIT: usize = 6;
-const NON_DETERMINISM_READ_BIT: usize = 7;
+const FMAMOD_BIT: usize = 6;
+const DELEGATION_BIT: usize = 7;
+const NON_DETERMINISM_READ_BIT: usize = 8;
 
 #[derive(Clone, Copy, Debug)]
 pub struct AddSubLuiAuipcMopDecoder;
@@ -46,6 +47,10 @@ impl AddSubLuiAuipcMopFamilyCircuitMask {
 
     pub fn perform_mulmod(&self) -> Boolean {
         self.inner[MULMOD_BIT]
+    }
+
+    pub fn perform_fmamod(&self) -> Boolean {
+        self.inner[FMAMOD_BIT]
     }
 
     pub fn perform_delegation_call(&self) -> Boolean {
@@ -133,6 +138,15 @@ impl OpcodeFamilyDecoder for AddSubLuiAuipcMopDecoder {
                 rs2_index = preprocessed_opcode.rs2 as u16;
                 rd_index = preprocessed_opcode.rd;
                 bitmask |= 1 << MULMOD_BIT;
+            }
+            InstructionName::ZimopFMA => {
+                assert_ne!(preprocessed_opcode.rd, 0);
+                assert_eq!(preprocessed_opcode.imm, 0);
+
+                rs1_index = preprocessed_opcode.rs1;
+                rs2_index = preprocessed_opcode.rs2 as u16;
+                rd_index = preprocessed_opcode.rd;
+                bitmask |= 1 << FMAMOD_BIT;
             }
             InstructionName::ZicsrDelegation => {
                 assert_eq!(preprocessed_opcode.rs1, 0);

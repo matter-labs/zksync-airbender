@@ -90,6 +90,9 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     let WordRepresentation::U16Limbs(rs2_limbs) = rs2_access.read_value else {
         unreachable!()
     };
+    let WordRepresentation::U16Limbs(rd_read_limbs) = rd_access.read_value else {
+        unreachable!()
+    };
     let WordRepresentation::U16Limbs(rd_write_limbs) = rd_access.write_value else {
         unreachable!()
     };
@@ -127,6 +130,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     let is_addmod = decoder.perform_addmod();
     let is_submod = decoder.perform_submod();
     let is_mulmod = decoder.perform_mulmod();
+    let is_fmamod = decoder.perform_fmamod();
     let is_delegation_call = decoder.perform_delegation_call();
     let is_non_determinism_read = decoder.perform_non_determinism_read();
 
@@ -147,6 +151,9 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     }
     if is_mulmod.get_value(cs).unwrap_or(false) {
         println!("MOP_MUL");
+    }
+    if is_fmamod.get_value(cs).unwrap_or(false) {
+        println!("MOP_FMA");
     }
     if is_delegation_call.get_value(cs).unwrap_or(false) {
         println!("DELEGATION CALL");
@@ -169,6 +176,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         let pc_vars = inputs.cycle_start_state.pc;
         let rs1_vars = rs1_limbs;
         let rs2_vars = rs2_limbs;
+        let rd_read_vars = rd_read_limbs;
 
         let is_add_var = is_add.get_variable().unwrap();
         let is_sub_var = is_sub.get_variable().unwrap();
@@ -176,6 +184,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         let is_addmod_var = is_addmod.get_variable().unwrap();
         let is_submod_var = is_submod.get_variable().unwrap();
         let is_mulmod_var = is_mulmod.get_variable().unwrap();
+        let is_fmamod_var = is_fmamod.get_variable().unwrap();
         let _is_delegation_call_var = is_delegation_call.get_variable().unwrap();
         let is_non_determinism_read_var = is_non_determinism_read.get_variable().unwrap();
 
@@ -194,6 +203,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             let rs1_u32 = placer.get_u32_from_u16_parts(rs1_vars);
             let rs2_low = placer.get_u16(rs2_vars[0]);
             let rs2_u32 = placer.get_u32_from_u16_parts(rs2_vars);
+            let rd_read_u32 = placer.get_u32_from_u16_parts(rd_read_vars);
             let pc_low = placer.get_u16(pc_vars[0]);
             let pc_u32 = placer.get_u32_from_u16_parts(pc_vars);
             let boolean_false = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
@@ -267,6 +277,10 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                 <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
                     rs2_u32,
                 );
+            let rd_f =
+                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
+                    rd_read_u32,
+                );
 
             // addmod
             {
@@ -331,34 +345,39 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                     None,
                 );
             }
-            // mulmod - both final and intermediate var (unconditional)
+            // mulmod - both final and intermediate var (unconditional), and fmamod via mixing addition term
             {
                 let is_mulmod = placer.get_boolean(is_mulmod_var);
-                let mulmod_field = {
+                let is_fmamod = placer.get_boolean(is_fmamod_var);
+                let is_mul_like = is_mulmod.or(&is_fmamod);
+                let mut mulmod_field = {
                     let mut mulmod_f = rs1_f.clone();
                     mulmod_f.mul_assign(&rs2_f);
                     mulmod_f
                 };
+                mulmod_field.add_assign_masked(&is_fmamod, &rd_f);
                 placer.assign_field(mulmod_intermediate_var, &mulmod_field);
                 let mulmod_result = mulmod_field.clone().as_integer();
                 let mul_mod_low = mulmod_result.truncate();
                 out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                    &is_mulmod,
+                    &is_mul_like,
                     &mulmod_result,
                     &out_value,
                 );
                 let (tmp, of) = mulmod_result.overflowing_sub(&modulus_constant);
                 intermediate_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                    &is_mulmod,
+                    &is_mul_like,
                     &tmp,
                     &intermediate_value,
                 );
                 of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                    &is_mulmod, &of, &of_value,
+                    &is_mul_like,
+                    &of,
+                    &of_value,
                 );
                 update_intermediate_carry_value::<F, CS::WitnessPlacer, true>(
                     &mut u16_intermedaite_carry_value,
-                    &is_mulmod,
+                    &is_mul_like,
                     &mul_mod_low,
                     &modulus_low,
                     None,
@@ -406,6 +425,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     {
         let rs1 = word_from_u16_limbs_expr(rs1_limbs, carry_shift);
         let rs2 = word_from_u16_limbs_expr(rs2_limbs, carry_shift);
+        let rd_read = word_from_u16_limbs_expr(rd_read_limbs, carry_shift);
         let out = word_from_u16_limbs_expr([out_low, out_high], carry_shift);
 
         // ADDMOD
@@ -418,13 +438,21 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         }
         // MULMOD
         {
-            // use intermediate variable
-            cs.add_constraint_expr(rs1.clone() * rs2.clone() - Expr::var(mulmod_intermediate_var));
+            // use intermediate variable, and mix-in the addition part
+            cs.add_constraint_expr(
+                rs1.clone() * rs2.clone() + rd_read * Expr::var(is_fmamod.get_variable().unwrap())
+                    - Expr::var(mulmod_intermediate_var),
+            );
         }
 
         // enforce field ops - all at once, as we know that flags are disjoint
         // TODO: maybe we want to restructure it, but it'll not make less multiplications anyway
-        cs.add_constraint_expr((out.clone() - (rs1.clone() + rs2.clone())).mask(is_addmod) + (out.clone() - (rs1.clone() - rs2)).mask(is_submod) + (out - Expr::var(mulmod_intermediate_var)).mask(is_mulmod));
+        let is_mul_like = Expr::<F>::Sum(vec![Expr::from(is_mulmod), Expr::from(is_fmamod)]);
+        cs.add_constraint_expr(
+            (out.clone() - (rs1.clone() + rs2.clone())).mask(is_addmod)
+                + (out.clone() - (rs1.clone() - rs2)).mask(is_submod)
+                + (out - Expr::var(mulmod_intermediate_var)) * is_mul_like,
+        );
 
         // check normalization
         cs.add_constraint_expr((Expr::<F>::one() - Expr::from(carry)) * is_modular.clone());
