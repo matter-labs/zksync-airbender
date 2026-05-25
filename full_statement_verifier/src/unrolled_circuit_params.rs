@@ -26,7 +26,7 @@ pub fn unrolled_circuit_verifiers_for_base_layer<I: NonDeterminismSource, E: Err
         ),
         (
             common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX as u32,
-            crate::imports::mem_subword_only_sec_80::verify::<I, E>,
+            crate::imports::unsigned_mul_div_sec_80::verify::<I, E>,
         ),
         (
             common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,

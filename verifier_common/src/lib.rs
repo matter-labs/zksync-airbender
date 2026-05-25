@@ -9,6 +9,7 @@ macro_rules! gkr_circuits {
             add_sub_lui_auipc_mop; 24 ; "_layout",
             jump_branch_slt; 24 ; "_layout",
             shift_binop; 24 ; "_layout",
+            unsigned_mul_div; 24 ; "_layout",
             mem_word_only; 24 ; "_layout",
             mem_subword_only; 24 ; "_layout",
             bigint_with_extended_control; 22 ; "_layout",

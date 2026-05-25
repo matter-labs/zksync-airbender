@@ -43,6 +43,10 @@ name = "shift_binop_sec_80"
 path = "src/bin/shift_binop_sec_80.rs"
 
 [[bin]]
+name = "unsigned_mul_div_sec_80"
+path = "src/bin/unsigned_mul_div_sec_80.rs"
+
+[[bin]]
 name = "bigint_with_extended_control_sec_80"
 path = "src/bin/bigint_with_extended_control_sec_80.rs"
 
