@@ -395,35 +395,39 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     // separate constraint for addmod/submod/mulmod. We use intermediate range-checked register to check
     // field element normalization
 
+    // it'll be useful later on. We have a guarantee that all opcode flags are disjoint, and so
+    // we can just use addition
+    let is_modular = Expr::<F>::Sum(vec![
+        Expr::from(is_addmod),
+        Expr::from(is_submod),
+        Expr::from(is_mulmod),
+    ]);
+
     {
+        let rs1 = word_from_u16_limbs_expr(rs1_limbs, carry_shift);
+        let rs2 = word_from_u16_limbs_expr(rs2_limbs, carry_shift);
+        let out = word_from_u16_limbs_expr([out_low, out_high], carry_shift);
+
         // ADDMOD
         {
-            let out = word_from_u16_limbs_expr([out_low, out_high], carry_shift);
-            let rs1 = word_from_u16_limbs_expr(rs1_limbs, carry_shift);
-            let rs2 = word_from_u16_limbs_expr(rs2_limbs, carry_shift);
-            cs.add_constraint_expr((out - (rs1 + rs2)).mask(is_addmod));
-            cs.add_constraint_expr((Expr::<F>::one() - Expr::from(carry)).mask(is_addmod));
-        };
-
+            // nothing extra
+        }
         // SUBMOD
         {
-            let out = word_from_u16_limbs_expr([out_low, out_high], carry_shift);
-            let rs1 = word_from_u16_limbs_expr(rs1_limbs, carry_shift);
-            let rs2 = word_from_u16_limbs_expr(rs2_limbs, carry_shift);
-            cs.add_constraint_expr((out - (rs1 - rs2)).mask(is_submod));
-            cs.add_constraint_expr((Expr::<F>::one() - Expr::from(carry)).mask(is_submod));
+            // nothing extra
         }
-
         // MULMOD
         {
-            let rs1 = word_from_u16_limbs_expr(rs1_limbs, carry_shift);
-            let rs2 = word_from_u16_limbs_expr(rs2_limbs, carry_shift);
-            cs.add_constraint_expr(rs1 * rs2 - Expr::var(mulmod_intermediate_var));
-
-            let out = word_from_u16_limbs_expr([out_low, out_high], carry_shift);
-            cs.add_constraint_expr((out - Expr::var(mulmod_intermediate_var)).mask(is_mulmod));
-            cs.add_constraint_expr((Expr::<F>::one() - Expr::from(carry)).mask(is_mulmod));
+            // use intermediate variable
+            cs.add_constraint_expr(rs1.clone() * rs2.clone() - Expr::var(mulmod_intermediate_var));
         }
+
+        // enforce field ops - all at once, as we know that flags are disjoint
+        // TODO: maybe we want to restructure it, but it'll not make less multiplications anyway
+        cs.add_constraint_expr((out.clone() - (rs1.clone() + rs2.clone())).mask(is_addmod) + (out.clone() - (rs1.clone() - rs2)).mask(is_submod) + (out - Expr::var(mulmod_intermediate_var)).mask(is_mulmod));
+
+        // check normalization
+        cs.add_constraint_expr((Expr::<F>::one() - Expr::from(carry)) * is_modular.clone());
 
         // out < modulus, so
         // 2^32*of + out - modulus = tmp
@@ -444,11 +448,6 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     {
         let intermediate_carry_var = intermediate_carry.get_variable().unwrap();
         let carry_var = carry.get_variable().unwrap();
-        let is_modular = Expr::<F>::Sum(vec![
-            Expr::from(is_addmod),
-            Expr::from(is_submod),
-            Expr::from(is_mulmod),
-        ]);
 
         // low limb
         // ADD/ADDI/LUI: rs1 + rs2 + imm - rd - 2^16 * intermediate_carry

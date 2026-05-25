@@ -1189,184 +1189,6 @@
                 "quadratic_terms": [
                   [
                     {
-                      "BaseLayerWitness": 5
-                    },
-                    [
-                      [
-                        2013265920,
-                        {
-                          "BaseLayerMemory": 2
-                        }
-                      ],
-                      [
-                        2013200385,
-                        {
-                          "BaseLayerMemory": 3
-                        }
-                      ],
-                      [
-                        2013265920,
-                        {
-                          "BaseLayerMemory": 7
-                        }
-                      ],
-                      [
-                        2013200385,
-                        {
-                          "BaseLayerMemory": 8
-                        }
-                      ],
-                      [
-                        1,
-                        {
-                          "BaseLayerMemory": 15
-                        }
-                      ],
-                      [
-                        65536,
-                        {
-                          "BaseLayerMemory": 16
-                        }
-                      ]
-                    ]
-                  ]
-                ],
-                "linear_terms": [],
-                "constant": 0
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "EnforceSingleMaxQuadraticConstraint": {
-              "input": {
-                "quadratic_terms": [
-                  [
-                    {
-                      "BaseLayerWitness": 5
-                    },
-                    [
-                      [
-                        2013265920,
-                        {
-                          "BaseLayerWitness": 13
-                        }
-                      ]
-                    ]
-                  ]
-                ],
-                "linear_terms": [
-                  [
-                    1,
-                    {
-                      "BaseLayerWitness": 5
-                    }
-                  ]
-                ],
-                "constant": 0
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "EnforceSingleMaxQuadraticConstraint": {
-              "input": {
-                "quadratic_terms": [
-                  [
-                    {
-                      "BaseLayerWitness": 6
-                    },
-                    [
-                      [
-                        2013265920,
-                        {
-                          "BaseLayerMemory": 2
-                        }
-                      ],
-                      [
-                        2013200385,
-                        {
-                          "BaseLayerMemory": 3
-                        }
-                      ],
-                      [
-                        1,
-                        {
-                          "BaseLayerMemory": 7
-                        }
-                      ],
-                      [
-                        65536,
-                        {
-                          "BaseLayerMemory": 8
-                        }
-                      ],
-                      [
-                        1,
-                        {
-                          "BaseLayerMemory": 15
-                        }
-                      ],
-                      [
-                        65536,
-                        {
-                          "BaseLayerMemory": 16
-                        }
-                      ]
-                    ]
-                  ]
-                ],
-                "linear_terms": [],
-                "constant": 0
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "EnforceSingleMaxQuadraticConstraint": {
-              "input": {
-                "quadratic_terms": [
-                  [
-                    {
-                      "BaseLayerWitness": 6
-                    },
-                    [
-                      [
-                        2013265920,
-                        {
-                          "BaseLayerWitness": 13
-                        }
-                      ]
-                    ]
-                  ]
-                ],
-                "linear_terms": [
-                  [
-                    1,
-                    {
-                      "BaseLayerWitness": 6
-                    }
-                  ]
-                ],
-                "constant": 0
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "EnforceSingleMaxQuadraticConstraint": {
-              "input": {
-                "quadratic_terms": [
-                  [
-                    {
                       "BaseLayerMemory": 2
                     },
                     [
@@ -1425,6 +1247,92 @@
                 "quadratic_terms": [
                   [
                     {
+                      "BaseLayerWitness": 5
+                    },
+                    [
+                      [
+                        2013265920,
+                        {
+                          "BaseLayerMemory": 2
+                        }
+                      ],
+                      [
+                        2013200385,
+                        {
+                          "BaseLayerMemory": 3
+                        }
+                      ],
+                      [
+                        2013265920,
+                        {
+                          "BaseLayerMemory": 7
+                        }
+                      ],
+                      [
+                        2013200385,
+                        {
+                          "BaseLayerMemory": 8
+                        }
+                      ],
+                      [
+                        1,
+                        {
+                          "BaseLayerMemory": 15
+                        }
+                      ],
+                      [
+                        65536,
+                        {
+                          "BaseLayerMemory": 16
+                        }
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 6
+                    },
+                    [
+                      [
+                        2013265920,
+                        {
+                          "BaseLayerMemory": 2
+                        }
+                      ],
+                      [
+                        2013200385,
+                        {
+                          "BaseLayerMemory": 3
+                        }
+                      ],
+                      [
+                        1,
+                        {
+                          "BaseLayerMemory": 7
+                        }
+                      ],
+                      [
+                        65536,
+                        {
+                          "BaseLayerMemory": 8
+                        }
+                      ],
+                      [
+                        1,
+                        {
+                          "BaseLayerMemory": 15
+                        }
+                      ],
+                      [
+                        65536,
+                        {
+                          "BaseLayerMemory": 16
+                        }
+                      ]
+                    ]
+                  ],
+                  [
+                    {
                       "BaseLayerWitness": 7
                     },
                     [
@@ -1463,6 +1371,32 @@
                 "quadratic_terms": [
                   [
                     {
+                      "BaseLayerWitness": 5
+                    },
+                    [
+                      [
+                        2013265920,
+                        {
+                          "BaseLayerWitness": 13
+                        }
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 6
+                    },
+                    [
+                      [
+                        2013265920,
+                        {
+                          "BaseLayerWitness": 13
+                        }
+                      ]
+                    ]
+                  ],
+                  [
+                    {
                       "BaseLayerWitness": 7
                     },
                     [
@@ -1476,6 +1410,18 @@
                   ]
                 ],
                 "linear_terms": [
+                  [
+                    1,
+                    {
+                      "BaseLayerWitness": 5
+                    }
+                  ],
+                  [
+                    1,
+                    {
+                      "BaseLayerWitness": 6
+                    }
+                  ],
                   [
                     1,
                     {
@@ -3869,110 +3815,6 @@
     {
       "quadratic_terms": [
         [
-          1744830467,
-          13,
-          24
-        ],
-        [
-          1744970275,
-          13,
-          25
-        ],
-        [
-          1744830467,
-          13,
-          28
-        ],
-        [
-          1744970275,
-          13,
-          29
-        ],
-        [
-          268435454,
-          13,
-          32
-        ],
-        [
-          268295646,
-          13,
-          33
-        ]
-      ],
-      "linear_terms": [],
-      "constant_term": 0
-    },
-    {
-      "quadratic_terms": [
-        [
-          1744830467,
-          13,
-          39
-        ]
-      ],
-      "linear_terms": [
-        [
-          268435454,
-          13
-        ]
-      ],
-      "constant_term": 0
-    },
-    {
-      "quadratic_terms": [
-        [
-          1744830467,
-          14,
-          24
-        ],
-        [
-          1744970275,
-          14,
-          25
-        ],
-        [
-          268435454,
-          14,
-          28
-        ],
-        [
-          268295646,
-          14,
-          29
-        ],
-        [
-          268435454,
-          14,
-          32
-        ],
-        [
-          268295646,
-          14,
-          33
-        ]
-      ],
-      "linear_terms": [],
-      "constant_term": 0
-    },
-    {
-      "quadratic_terms": [
-        [
-          1744830467,
-          14,
-          39
-        ]
-      ],
-      "linear_terms": [
-        [
-          268435454,
-          14
-        ]
-      ],
-      "constant_term": 0
-    },
-    {
-      "quadratic_terms": [
-        [
           268435454,
           24,
           28
@@ -4004,6 +3846,66 @@
     {
       "quadratic_terms": [
         [
+          1744830467,
+          13,
+          24
+        ],
+        [
+          1744970275,
+          13,
+          25
+        ],
+        [
+          1744830467,
+          13,
+          28
+        ],
+        [
+          1744970275,
+          13,
+          29
+        ],
+        [
+          268435454,
+          13,
+          32
+        ],
+        [
+          268295646,
+          13,
+          33
+        ],
+        [
+          1744830467,
+          14,
+          24
+        ],
+        [
+          1744970275,
+          14,
+          25
+        ],
+        [
+          268435454,
+          14,
+          28
+        ],
+        [
+          268295646,
+          14,
+          29
+        ],
+        [
+          268435454,
+          14,
+          32
+        ],
+        [
+          268295646,
+          14,
+          33
+        ],
+        [
           268435454,
           15,
           32
@@ -4026,11 +3928,29 @@
       "quadratic_terms": [
         [
           1744830467,
+          13,
+          39
+        ],
+        [
+          1744830467,
+          14,
+          39
+        ],
+        [
+          1744830467,
           15,
           39
         ]
       ],
       "linear_terms": [
+        [
+          268435454,
+          13
+        ],
+        [
+          268435454,
+          14
+        ],
         [
           268435454,
           15
@@ -4709,207 +4629,6 @@
     {
       "AssertZero": {
         "expr": {
-          "Product": [
-            {
-              "Sum": [
-                {
-                  "Var": 32
-                },
-                {
-                  "Product": [
-                    {
-                      "Constant": 268295646
-                    },
-                    {
-                      "Var": 33
-                    }
-                  ]
-                },
-                {
-                  "Product": [
-                    {
-                      "Constant": 1744830467
-                    },
-                    {
-                      "Sum": [
-                        {
-                          "Var": 24
-                        },
-                        {
-                          "Product": [
-                            {
-                              "Constant": 268295646
-                            },
-                            {
-                              "Var": 25
-                            }
-                          ]
-                        },
-                        {
-                          "Var": 28
-                        },
-                        {
-                          "Product": [
-                            {
-                              "Constant": 268295646
-                            },
-                            {
-                              "Var": 29
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "Var": 13
-            }
-          ]
-        },
-        "prevent_optimizations": false
-      }
-    },
-    {
-      "AssertZero": {
-        "expr": {
-          "Product": [
-            {
-              "Sum": [
-                {
-                  "Constant": 268435454
-                },
-                {
-                  "Product": [
-                    {
-                      "Constant": 1744830467
-                    },
-                    {
-                      "Var": 39
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "Var": 13
-            }
-          ]
-        },
-        "prevent_optimizations": false
-      }
-    },
-    {
-      "AssertZero": {
-        "expr": {
-          "Product": [
-            {
-              "Sum": [
-                {
-                  "Var": 32
-                },
-                {
-                  "Product": [
-                    {
-                      "Constant": 268295646
-                    },
-                    {
-                      "Var": 33
-                    }
-                  ]
-                },
-                {
-                  "Product": [
-                    {
-                      "Constant": 1744830467
-                    },
-                    {
-                      "Sum": [
-                        {
-                          "Var": 24
-                        },
-                        {
-                          "Product": [
-                            {
-                              "Constant": 268295646
-                            },
-                            {
-                              "Var": 25
-                            }
-                          ]
-                        },
-                        {
-                          "Product": [
-                            {
-                              "Constant": 1744830467
-                            },
-                            {
-                              "Sum": [
-                                {
-                                  "Var": 28
-                                },
-                                {
-                                  "Product": [
-                                    {
-                                      "Constant": 268295646
-                                    },
-                                    {
-                                      "Var": 29
-                                    }
-                                  ]
-                                }
-                              ]
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "Var": 14
-            }
-          ]
-        },
-        "prevent_optimizations": false
-      }
-    },
-    {
-      "AssertZero": {
-        "expr": {
-          "Product": [
-            {
-              "Sum": [
-                {
-                  "Constant": 268435454
-                },
-                {
-                  "Product": [
-                    {
-                      "Constant": 1744830467
-                    },
-                    {
-                      "Var": 39
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "Var": 14
-            }
-          ]
-        },
-        "prevent_optimizations": false
-      }
-    },
-    {
-      "AssertZero": {
-        "expr": {
           "Sum": [
             {
               "Product": [
@@ -4967,36 +4686,173 @@
     {
       "AssertZero": {
         "expr": {
-          "Product": [
+          "Sum": [
             {
-              "Sum": [
+              "Product": [
                 {
-                  "Var": 32
-                },
-                {
-                  "Product": [
+                  "Sum": [
                     {
-                      "Constant": 268295646
+                      "Var": 32
                     },
                     {
-                      "Var": 33
+                      "Product": [
+                        {
+                          "Constant": 268295646
+                        },
+                        {
+                          "Var": 33
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Sum": [
+                            {
+                              "Var": 24
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 268295646
+                                },
+                                {
+                                  "Var": 25
+                                }
+                              ]
+                            },
+                            {
+                              "Var": 28
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 268295646
+                                },
+                                {
+                                  "Var": 29
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
                     }
                   ]
                 },
                 {
-                  "Product": [
-                    {
-                      "Constant": 1744830467
-                    },
-                    {
-                      "Var": 40
-                    }
-                  ]
+                  "Var": 13
                 }
               ]
             },
             {
-              "Var": 15
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 32
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268295646
+                        },
+                        {
+                          "Var": 33
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Sum": [
+                            {
+                              "Var": 24
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 268295646
+                                },
+                                {
+                                  "Var": 25
+                                }
+                              ]
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 1744830467
+                                },
+                                {
+                                  "Sum": [
+                                    {
+                                      "Var": 28
+                                    },
+                                    {
+                                      "Product": [
+                                        {
+                                          "Constant": 268295646
+                                        },
+                                        {
+                                          "Var": 29
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Var": 14
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 32
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268295646
+                        },
+                        {
+                          "Var": 33
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 40
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Var": 15
+                }
+              ]
             }
           ]
         },
@@ -5025,7 +4881,17 @@
               ]
             },
             {
-              "Var": 15
+              "Sum": [
+                {
+                  "Var": 13
+                },
+                {
+                  "Var": 14
+                },
+                {
+                  "Var": 15
+                }
+              ]
             }
           ]
         },
