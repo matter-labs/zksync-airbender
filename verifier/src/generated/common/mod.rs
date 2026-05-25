@@ -640,15 +640,11 @@ pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
         let raw = read_reduced_field_el::<I>(nd_source);
         *hash_buf.get_unchecked_mut(idx) = raw;
         let base_val = BabyBearField::from_reduced_raw_repr(raw);
-        let mut term = gamma;
-        field_ops::mul_assign_by_base(&mut term, &base_val);
-        field_ops::add_assign(&mut *acc0, &term);
+        field_ops::add_assign_product_with_base(&mut *acc0, &gamma, &base_val);
         let raw = read_reduced_field_el::<I>(nd_source);
         *hash_buf.get_unchecked_mut(idx + 1) = raw;
         let base_val = BabyBearField::from_reduced_raw_repr(raw);
-        let mut term = gamma;
-        field_ops::mul_assign_by_base(&mut term, &base_val);
-        field_ops::add_assign(&mut *acc1, &term);
+        field_ops::add_assign_product_with_base(&mut *acc1, &gamma, &base_val);
         col += 1;
     }
 }

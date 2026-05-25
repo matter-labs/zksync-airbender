@@ -15,9 +15,14 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
 
     // read_and_batch_leaf ops
     let from_raw = MW::field_from_reduced_raw_repr(quote! { raw });
-    let mul_term_base = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
-    let add_acc0_term = MW::add_assign(quote! { *acc0 }, quote! { term });
-    let add_acc1_term = MW::add_assign(quote! { *acc1 }, quote! { term });
+    // let mul_term_base = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
+    // let add_acc0_term = MW::add_assign(quote! { *acc0 }, quote! { term });
+    // let add_acc1_term = MW::add_assign(quote! { *acc1 }, quote! { term });
+
+    let fma_into_acc_0 =
+        MW::add_assign_product_with_base(quote! { *acc0 }, quote! { gamma }, quote! { base_val });
+    let fma_into_acc_1 =
+        MW::add_assign_product_with_base(quote! { *acc1 }, quote! { gamma }, quote! { base_val });
 
     // whir sumcheck ops
     let add_p1_c1 = MW::add_assign(quote! { p1 }, quote! { c1 });
@@ -43,11 +48,14 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
     let double_two_alpha = MW::double(quote! { two_alpha });
     let mul_two_a_zi_zi = MW::mul_assign(quote! { two_a_zi }, quote! { zi });
     let add_eq_two_a_zi = MW::add_assign(quote! { eq }, quote! { two_a_zi });
+    let eq_add_two_a_zi =
+        MW::add_assign_product(quote! { eq }, quote! { two_alpha }, quote! { zi });
     let sub_eq_zi = MW::sub_assign(quote! { eq }, quote! { zi });
     let mul_prefactor_eq = MW::mul_assign(quote! { acc.z_initial_prefactor }, quote! { eq });
     let mul_two_a_s_s = MW::mul_assign(quote! { two_a_s }, quote! { s });
     let add_eq_two_a_s = MW::add_assign(quote! { eq }, quote! { two_a_s });
     let sub_eq_s = MW::sub_assign(quote! { eq }, quote! { s });
+    let eq_add_two_a_s = MW::add_assign_product(quote! { eq }, quote! { two_alpha }, quote! { s });
     let mul_entry_prefactor_eq = MW::mul_assign(quote! { entry.prefactor }, quote! { eq });
     let square_current_scalar = MW::square(quote! { entry.current_scalar });
 
@@ -276,16 +284,20 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
                 let raw = read_reduced_field_el::<I>(nd_source);
                 *hash_buf.get_unchecked_mut(idx) = raw;
                 let base_val = #from_raw;
-                let mut term = gamma;
-                #mul_term_base;
-                #add_acc0_term;
+                #fma_into_acc_0;
+
+                // let mut term = gamma;
+                // #mul_term_base;
+                // #add_acc0_term;
 
                 let raw = read_reduced_field_el::<I>(nd_source);
                 *hash_buf.get_unchecked_mut(idx + 1) = raw;
                 let base_val = #from_raw;
-                let mut term = gamma;
-                #mul_term_base;
-                #add_acc1_term;
+                #fma_into_acc_1;
+
+                // let mut term = gamma;
+                // #mul_term_base;
+                // #add_acc1_term;
 
                 col += 1;
             }
@@ -307,9 +319,15 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             unsafe {
                 let zi = *z_initial.get_unchecked(acc.z_initial_idx);
                 let mut eq = one_minus_alpha;
+                // eq += 2 * alpha * zi
+
+                // #eq_add_two_a_zi; // not beneficial
+
                 let mut two_a_zi = two_alpha;
                 #mul_two_a_zi_zi;
                 #add_eq_two_a_zi;
+
+                // eq -= zi
                 #sub_eq_zi;
                 #mul_prefactor_eq;
                 acc.z_initial_idx += 1;
@@ -322,9 +340,15 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
                     let entry = acc.pow_entries.get_unchecked_mut(i);
                     let s = entry.current_scalar;
                     let mut eq = one_minus_alpha;
+                    // eq += two_alpha * s
+
+                    // #eq_add_two_a_s; // not beneficial
+
                     let mut two_a_s = two_alpha;
                     #mul_two_a_s_s;
                     #add_eq_two_a_s;
+
+                    // eq -= s
                     #sub_eq_s;
                     #mul_entry_prefactor_eq;
                     #square_current_scalar;

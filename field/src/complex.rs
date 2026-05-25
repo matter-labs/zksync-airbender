@@ -516,6 +516,15 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Complex {
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_product_with_base(&mut self, ext: &Self, base: &Mersenne31Field) -> &mut Self {
+        let mut t = *ext;
+        t.mul_assign_by_base(base);
+        self.add_assign(&t);
+
+        self
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base(elem: Mersenne31Field) -> Self {
         Self {
             c0: elem,

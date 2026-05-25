@@ -28,6 +28,8 @@ pub enum InstructionName {
     ZimopAdd,
     ZimopSub,
     ZimopMul,
+    ZimopFMA,
+    ZimopTriAdd,
     // Comparison and branch-like
     Slt,
     Sltu,
@@ -43,6 +45,7 @@ pub enum InstructionName {
     Xor,
     Or,
     And,
+    ZimopIXorRot,
     // Multiplication and division
     Mul,
     Mulh,
@@ -623,9 +626,11 @@ pub fn preprocess_bytecode<
                     const MOP_FUNCT7_TEST: u8 = 0b10_00_00_1;
 
                     if funct7 & MOP_FUNCT7_MASK == MOP_FUNCT7_TEST {
-                        let mop_number = ((funct7 & 0b110) >> 1) | ((funct7 & 0b100000) >> 5);
+                        let mop_number = ((funct7 & 0b11_0) >> 1) | ((funct7 & 0b1_00_00_0) >> 3);
+                        let mop_number = mop_number as u32;
+                        use common_constants::*;
                         match mop_number {
-                            0 => {
+                            MOP_ADD_MOD => {
                                 if OPT::SUPPORT_MOP {
                                     Instruction::pure_from_imm(
                                         InstructionName::ZimopAdd,
@@ -638,7 +643,7 @@ pub fn preprocess_bytecode<
                                     illegal_instr
                                 }
                             }
-                            1 => {
+                            MOP_SUB_MOD => {
                                 if OPT::SUPPORT_MOP {
                                     Instruction::pure_from_imm(
                                         InstructionName::ZimopSub,
@@ -651,10 +656,36 @@ pub fn preprocess_bytecode<
                                     illegal_instr
                                 }
                             }
-                            2 => {
+                            MOP_MUL_MOD => {
                                 if OPT::SUPPORT_MOP {
                                     Instruction::pure_from_imm(
                                         InstructionName::ZimopMul,
+                                        formal_rs1,
+                                        formal_rs2,
+                                        rd,
+                                        0,
+                                    )
+                                } else {
+                                    illegal_instr
+                                }
+                            }
+                            MOP_FMA_MOD => {
+                                if OPT::SUPPORT_MOP {
+                                    Instruction::pure_from_imm(
+                                        InstructionName::ZimopFMA,
+                                        formal_rs1,
+                                        formal_rs2,
+                                        rd,
+                                        0,
+                                    )
+                                } else {
+                                    illegal_instr
+                                }
+                            }
+                            MOP_TRI_ADD => {
+                                if OPT::SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD {
+                                    Instruction::pure_from_imm(
+                                        InstructionName::ZimopTriAdd,
                                         formal_rs1,
                                         formal_rs2,
                                         rd,
@@ -677,9 +708,21 @@ pub fn preprocess_bytecode<
                                 | ((funct12 & 0b11000000) >> 4)
                                 | ((funct12 & 0b10000000000) >> 6);
                             assert!(mopi_number < 1 << 5);
+                            assert!(
+                                !(OPT::SUPPORT_SPECIAL_ROTATION
+                                    && OPT::SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD)
+                            );
                             if OPT::SUPPORT_SPECIAL_ROTATION {
                                 Instruction::pure_from_imm(
                                     InstructionName::Ror,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    mopi_number,
+                                )
+                            } else if OPT::SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD {
+                                Instruction::pure_from_imm(
+                                    InstructionName::ZimopIXorRot,
                                     formal_rs1,
                                     0,
                                     rd,

@@ -387,6 +387,12 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
             InstructionName::ZimopMul => {
                 add_sub_family::mop::mop_mulmod::<C, S, R, F>(state, ram, snapshotter, instr)
             }
+            InstructionName::ZimopFMA => {
+                add_sub_family::mop::mop_fmamod::<C, S, R, F>(state, ram, snapshotter, instr)
+            }
+            InstructionName::ZimopTriAdd => {
+                add_sub_family::mop::mop_tri_add::<C, S, R, F>(state, ram, snapshotter, instr)
+            }
             InstructionName::ZicsrNonDeterminismRead => add_sub_family::non_determinism::nd_read::<
                 C,
                 S,
@@ -456,6 +462,15 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
             InstructionName::Sra => {
                 binary_shifts_family::shifts::sra::<C, S, R>(state, ram, snapshotter, instr)
             }
+            InstructionName::Rol => {
+                binary_shifts_family::shifts::rol::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::Ror => {
+                binary_shifts_family::shifts::ror::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::ZimopIXorRot => {
+                binary_shifts_family::mopi::mopi_xor_rot::<C, S, R>(state, ram, snapshotter, instr)
+            }
 
             InstructionName::Mul => mul_div::mul::<C, S, R>(state, ram, snapshotter, instr),
             InstructionName::Mulhu => mul_div::mulhu::<C, S, R>(state, ram, snapshotter, instr),
@@ -463,13 +478,6 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
             InstructionName::Remu => mul_div::remu::<C, S, R>(state, ram, snapshotter, instr),
 
             InstructionName::ZicsrMarkerCsr => marker::<C, S, R, E>(state, ram, snapshotter, instr),
-
-            InstructionName::Rol => {
-                binary_shifts_family::shifts::rol::<C, S, R>(state, ram, snapshotter, instr)
-            }
-            InstructionName::Ror => {
-                binary_shifts_family::shifts::ror::<C, S, R>(state, ram, snapshotter, instr)
-            }
 
             a @ _ => {
                 panic!("Unknown instruction {:?}", a);
@@ -583,6 +591,18 @@ pub(crate) mod test {
         );
 
         dbg!(&state.registers[10..18]);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_pretty_show_assembly() {
+        // let (_, binary) = read_binary(&Path::new("examples/fibonacci/app.bin"));
+        let (_, text) = read_binary(&Path::new(
+            "../tools/gkr_verifier/add_sub_lui_auipc_mop_sec_80.text",
+        ));
+        for opcode in text.iter().take(16) {
+            println!("0x{:08x}", opcode);
+        }
     }
 
     #[test]
@@ -717,7 +737,7 @@ pub(crate) mod test {
         let mut source = QuasiUARTSource::new_with_reads(vec![]);
 
         let instructions: Vec<Instruction> =
-            preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
+            preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
         let mut ram =
             RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
@@ -756,7 +776,7 @@ pub(crate) mod test {
         );
 
         println!("PC = 0x{:08x}", state.pc);
-        dbg!(state.registers.map(|el| el.value));
+        dbg!(&state.registers.map(|el| el.value)[10..18]);
     }
 
     #[test]
