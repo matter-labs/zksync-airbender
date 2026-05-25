@@ -330,6 +330,15 @@ impl FieldExtension<Mersenne31Complex> for Mersenne31Quartic {
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_product_with_base(&mut self, ext: &Self, base: &Mersenne31Complex) -> &mut Self {
+        let mut t = *ext;
+        t.mul_assign_by_base(base);
+        self.add_assign(&t);
+
+        self
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base(elem: Mersenne31Complex) -> Self {
         Self {
             c0: elem,
@@ -392,6 +401,15 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Quartic {
     fn mul_assign_by_base(&mut self, elem: &Mersenne31Field) -> &mut Self {
         self.c0.mul_assign_by_base(elem);
         self.c1.mul_assign_by_base(elem);
+
+        self
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_product_with_base(&mut self, ext: &Self, base: &Mersenne31Field) -> &mut Self {
+        let mut t = *ext;
+        t.mul_assign_by_base(base);
+        self.add_assign(&t);
 
         self
     }

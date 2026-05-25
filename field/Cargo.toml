@@ -10,7 +10,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-serde.workspace = true
+common_constants = { workspace = true }
+serde = { workspace = true }
 rand = { workspace = true, default-features = false }
 seq-macro = "0.3"
 proc-macro2 = {version = "1", optional = true }
@@ -20,9 +21,9 @@ quote = {version = "1", optional = true }
 proptest = "1"
 
 [features]
-use_division = []
 proc_macro_ops = ["proc-macro2", "quote"]
 default = []
-modular_ops = ["use_division"]
+modular_ops = []
+modular_fma = ["modular_ops"]
 no_inline = []
 verifier_stats = []

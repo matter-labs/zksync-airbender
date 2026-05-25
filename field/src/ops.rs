@@ -1,35 +1,27 @@
 // Here we will define planform-specific implementation of basic ops for the base field.
 // Platform-specific implementation for extension (if any) will be in the separate files
 
-#[cfg(all(not(target_arch = "riscv32"), feature = "use_division"))]
+#[cfg(all(not(target_arch = "riscv32"), feature = "modular_ops"))]
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
 pub(crate) const fn reduce_with_division(value: u32) -> u32 {
     reduce_with_division_ct(value)
 }
 
-#[cfg(all(target_arch = "riscv32", feature = "use_division"))]
+#[cfg(all(target_arch = "riscv32", feature = "modular_ops"))]
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
 pub(crate) const fn reduce_with_division(value: u32) -> u32 {
-    core::intrinsics::const_eval_select(
-        (value,),
-        reduce_with_division_ct,
-        reduce_with_division_rt_riscv,
-    )
+    core::intrinsics::const_eval_select((value,), reduce_risc_v_ct, reduce_risc_v_rt)
 }
 
 #[cfg(target_arch = "riscv32")]
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
-const fn reduce_with_division_ct(value: u32) -> u32 {
+const fn reduce_risc_v_ct(value: u32) -> u32 {
     value % crate::Mersenne31Field::ORDER
 }
 
-#[cfg(all(
-    target_arch = "riscv32",
-    feature = "use_division",
-    feature = "modular_ops"
-))]
+#[cfg(all(target_arch = "riscv32", feature = "modular_ops",))]
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
-fn reduce_with_division_rt_riscv(value: u32) -> u32 {
+fn reduce_risc_v_rt(value: u32) -> u32 {
     // here we add with 0 to get reduction
     add_mod(value, 0)
 }
@@ -101,17 +93,7 @@ pub(crate) const fn add_mod(a: u32, b: u32) -> u32 {
 #[cfg(target_arch = "riscv32")]
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
 const fn add_mod_ct(a: u32, b: u32) -> u32 {
-    reduce_with_division_ct(a.wrapping_add(b))
-}
-
-#[cfg(all(
-    target_arch = "riscv32",
-    feature = "use_division",
-    not(feature = "modular_ops")
-))]
-#[cfg_attr(not(feature = "no_inline"), inline(always))]
-fn add_mod_rt_riscv(a: u32, b: u32) -> u32 {
-    reduce_with_division_rt_riscv(a.wrapping_add(b))
+    reduce_risc_v_ct(a.wrapping_add(b))
 }
 
 #[cfg(all(target_arch = "riscv32", feature = "modular_ops"))]
@@ -140,21 +122,7 @@ pub(crate) const fn sub_mod(a: u32, b: u32) -> u32 {
 #[cfg(target_arch = "riscv32")]
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
 const fn sub_mod_ct(a: u32, b: u32) -> u32 {
-    reduce_with_division_ct(
-        crate::Mersenne31Field::ORDER
-            .wrapping_add(a)
-            .wrapping_sub(b),
-    )
-}
-
-#[cfg(all(
-    target_arch = "riscv32",
-    feature = "use_division",
-    not(feature = "modular_ops")
-))]
-#[cfg_attr(not(feature = "no_inline"), inline(always))]
-fn sub_mod_rt_riscv(a: u32, b: u32) -> u32 {
-    reduce_with_division_rt_riscv(
+    reduce_risc_v_ct(
         crate::Mersenne31Field::ORDER
             .wrapping_add(a)
             .wrapping_sub(b),
@@ -190,20 +158,7 @@ const fn mul_mod_ct(a: u32, b: u32) -> u32 {
     let product = (a as u64) * (b as u64);
     let product_low = (product as u32) & ((1 << 31) - 1);
     let product_high = (product >> 31) as u32;
-    reduce_with_division_ct(product_low.wrapping_add(product_high))
-}
-
-#[cfg(all(
-    target_arch = "riscv32",
-    feature = "use_division",
-    not(feature = "modular_ops")
-))]
-#[cfg_attr(not(feature = "no_inline"), inline(always))]
-fn mul_mod_rt_riscv(a: u32, b: u32) -> u32 {
-    let product = (a as u64) * (b as u64);
-    let product_low = (product as u32) & ((1 << 31) - 1);
-    let product_high = (product >> 31) as u32;
-    reduce_with_division_rt_riscv(product_low.wrapping_add(product_high))
+    reduce_risc_v_ct(product_low.wrapping_add(product_high))
 }
 
 #[cfg(all(target_arch = "riscv32", feature = "modular_ops"))]

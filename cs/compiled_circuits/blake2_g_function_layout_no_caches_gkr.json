@@ -7486,6 +7486,428 @@
       "constant_term": 0
     }
   ],
+  "structured_statements": [
+    {
+      "AssertZero": {
+        "expr": {
+          "Var": 4
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Var": 6
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "Define": {
+        "dst": 17,
+        "expr": {
+          "Sum": [
+            {
+              "Var": 15
+            },
+            {
+              "Var": 19
+            },
+            {
+              "Var": 33
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744970275
+                },
+                {
+                  "Var": 37
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1476674629
+                },
+                {
+                  "Var": 38
+                }
+              ]
+            },
+            {
+              "Var": 59
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 268435422
+                },
+                {
+                  "Var": 62
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 134217455
+                },
+                {
+                  "Var": 63
+                }
+              ]
+            },
+            {
+              "Var": 35
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744970275
+                },
+                {
+                  "Var": 65
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1476674629
+                },
+                {
+                  "Var": 66
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 18,
+        "expr": {
+          "Sum": [
+            {
+              "Var": 16
+            },
+            {
+              "Var": 20
+            },
+            {
+              "Var": 34
+            },
+            {
+              "Var": 37
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 536870908
+                },
+                {
+                  "Var": 38
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744970275
+                },
+                {
+                  "Var": 39
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1476674629
+                },
+                {
+                  "Var": 40
+                }
+              ]
+            },
+            {
+              "Var": 64
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 268435422
+                },
+                {
+                  "Var": 57
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 134217455
+                },
+                {
+                  "Var": 58
+                }
+              ]
+            },
+            {
+              "Var": 36
+            },
+            {
+              "Var": 65
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 536870908
+                },
+                {
+                  "Var": 66
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744970275
+                },
+                {
+                  "Var": 67
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1476674629
+                },
+                {
+                  "Var": 68
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 21,
+        "expr": {
+          "Sum": [
+            {
+              "Var": 80
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 536869820
+                },
+                {
+                  "Var": 81
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 22,
+        "expr": {
+          "Sum": [
+            {
+              "Var": 82
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 536869820
+                },
+                {
+                  "Var": 79
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 25,
+        "expr": {
+          "Sum": [
+            {
+              "Var": 23
+            },
+            {
+              "Var": 47
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 268434910
+                },
+                {
+                  "Var": 48
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744970275
+                },
+                {
+                  "Var": 49
+                }
+              ]
+            },
+            {
+              "Var": 72
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 268434910
+                },
+                {
+                  "Var": 73
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744970275
+                },
+                {
+                  "Var": 75
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 26,
+        "expr": {
+          "Sum": [
+            {
+              "Var": 24
+            },
+            {
+              "Var": 44
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 268434910
+                },
+                {
+                  "Var": 45
+                }
+              ]
+            },
+            {
+              "Var": 49
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744970275
+                },
+                {
+                  "Var": 50
+                }
+              ]
+            },
+            {
+              "Var": 74
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 268434910
+                },
+                {
+                  "Var": 71
+                }
+              ]
+            },
+            {
+              "Var": 75
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744970275
+                },
+                {
+                  "Var": 76
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 29,
+        "expr": {
+          "Sum": [
+            {
+              "Var": 72
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 268434910
+                },
+                {
+                  "Var": 73
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "Define": {
+        "dst": 30,
+        "expr": {
+          "Sum": [
+            {
+              "Var": 74
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 268434910
+                },
+                {
+                  "Var": 71
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
   "generic_lookups": [
     {
       "columns": [
@@ -9682,52 +10104,52 @@
     "34": "input read from x11 indirect access 0 read[1]",
     "35": "input read from x11 indirect access 1 read[0]",
     "36": "input read from x11 indirect access 1 read[1]",
-    "37": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::32",
-    "38": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::32",
-    "39": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::34",
-    "40": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::34",
-    "41": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::37",
-    "42": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::37",
-    "43": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::116",
-    "44": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "45": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "46": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::116",
-    "47": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "48": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "49": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::205",
-    "50": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::207",
-    "51": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::214",
-    "52": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::214",
-    "53": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::214",
-    "54": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::214",
-    "55": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::302",
-    "56": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::303",
-    "57": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "58": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "59": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "60": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::302",
-    "61": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::303",
-    "62": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "63": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "64": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "65": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::444",
-    "66": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::444",
-    "67": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::446",
-    "68": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::446",
-    "69": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::451",
-    "70": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::451",
-    "71": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "72": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "73": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "74": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "75": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::562",
-    "76": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::564",
-    "77": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::571",
-    "78": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::571",
-    "79": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "80": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "81": "Variable at cs/src/cs/circuit_impl.rs::1163",
-    "82": "Variable at cs/src/cs/circuit_impl.rs::1163",
+    "37": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::33",
+    "38": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::33",
+    "39": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::35",
+    "40": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::35",
+    "41": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::38",
+    "42": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::38",
+    "43": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::117",
+    "44": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "45": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "46": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::117",
+    "47": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "48": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "49": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::204",
+    "50": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::206",
+    "51": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::213",
+    "52": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::213",
+    "53": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::213",
+    "54": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::213",
+    "55": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::301",
+    "56": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::302",
+    "57": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "58": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "59": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "60": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::301",
+    "61": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::302",
+    "62": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "63": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "64": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "65": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::434",
+    "66": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::434",
+    "67": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::436",
+    "68": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::436",
+    "69": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::441",
+    "70": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::441",
+    "71": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "72": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "73": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "74": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "75": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::552",
+    "76": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::554",
+    "77": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::561",
+    "78": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::561",
+    "79": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "80": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "81": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "82": "Variable at cs/src/cs/circuit_impl.rs::1259",
     "83": "ram or indirect query 0, register read_ts[0]",
     "84": "ram or indirect query 0, register read_ts[1]",
     "85": "indirect access query 0, register acccess interm ts borrow",

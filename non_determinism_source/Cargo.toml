@@ -10,6 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+common_constants = { workspace = true }
 
 [features]
 verifier_stats = []

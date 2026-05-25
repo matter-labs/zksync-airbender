@@ -185,6 +185,7 @@ fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
 
         pub fn verify<I: NonDeterminismSource, E: ErrorCreator>(
             external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
+            nd_source: &mut I,
         ) -> Result<constants::ConcreteVerifierOutput, E::Error> {
             ::verifier_common::verify_impl::<
             I,
@@ -201,7 +202,7 @@ fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
             { constants::GKR_ROUNDS },
             { constants::GKR_ADDRS },
             gkr::VerifierImplementation,
-        >(external_challenges)
+        >(external_challenges, nd_source)
         }
     };
     write_and_fmt(&format!("{}/mod.rs", dir), &mod_rs);

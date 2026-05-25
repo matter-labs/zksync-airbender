@@ -3,7 +3,7 @@ use super::*;
 #[inline(always)]
 pub(crate) fn jal<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {
@@ -38,7 +38,7 @@ pub(crate) fn jal<C: Counters, R: RAM>(
 #[inline(always)]
 pub(crate) fn jalr<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {

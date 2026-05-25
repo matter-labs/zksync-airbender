@@ -66243,52 +66243,30 @@
   ],
   [
     {
-      "Field": {
+      "Bool": {
         "Place": 98
       }
     },
     {
-      "Field": {
+      "Bool": {
         "Place": 212
       }
     },
     {
-      "Field": {
-        "Constant": 0
-      }
-    },
-    {
-      "Field": {
-        "Mul": {
-          "lhs": {
-            "SubExpression": 0
-          },
-          "rhs": {
-            "SubExpression": 1
-          }
+      "Bool": {
+        "Negate": {
+          "SubExpression": 0
         }
       }
     },
     {
-      "Field": {
-        "Sub": {
+      "Bool": {
+        "And": {
           "lhs": {
+            "SubExpression": 1
+          },
+          "rhs": {
             "SubExpression": 2
-          },
-          "rhs": {
-            "SubExpression": 3
-          }
-        }
-      }
-    },
-    {
-      "Field": {
-        "Add": {
-          "lhs": {
-            "SubExpression": 4
-          },
-          "rhs": {
-            "SubExpression": 1
           }
         }
       }
@@ -66297,8 +66275,8 @@
       "WriteVariable": {
         "into_variable": 215,
         "source_subexpr": {
-          "Field": {
-            "SubExpression": 5
+          "Bool": {
+            "SubExpression": 3
           }
         },
         "condition_subexpr_idx": null
@@ -66307,30 +66285,22 @@
   ],
   [
     {
-      "Field": {
+      "Bool": {
         "Place": 64
       }
     },
     {
-      "Field": {
+      "Bool": {
         "Place": 215
       }
     },
     {
-      "Field": {
-        "Constant": 0
-      }
-    },
-    {
-      "Field": {
-        "AddProduct": {
-          "additive_term": {
-            "SubExpression": 2
-          },
-          "mul_0": {
+      "Bool": {
+        "And": {
+          "lhs": {
             "SubExpression": 0
           },
-          "mul_1": {
+          "rhs": {
             "SubExpression": 1
           }
         }
@@ -66340,8 +66310,8 @@
       "WriteVariable": {
         "into_variable": 216,
         "source_subexpr": {
-          "Field": {
-            "SubExpression": 3
+          "Bool": {
+            "SubExpression": 2
           }
         },
         "condition_subexpr_idx": null
