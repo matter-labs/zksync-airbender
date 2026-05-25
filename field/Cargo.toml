@@ -21,10 +21,9 @@ quote = {version = "1", optional = true }
 proptest = "1"
 
 [features]
-use_division = []
 proc_macro_ops = ["proc-macro2", "quote"]
 default = []
-modular_ops = ["use_division"]
+modular_ops = []
 modular_fma = ["modular_ops"]
 no_inline = []
 verifier_stats = []

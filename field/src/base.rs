@@ -24,7 +24,7 @@ impl Mersenne31Field {
     pub const ORDER: u32 = (1 << 31) - 1;
     pub const MSBITMASK: u32 = 1 << 31;
 
-    #[cfg(not(feature = "use_division"))]
+    #[cfg(not(feature = "modular_ops"))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn new(value: u32) -> Self {
         debug_assert!((value >> 31) == 0);
@@ -32,7 +32,7 @@ impl Mersenne31Field {
         Self(value)
     }
 
-    #[cfg(feature = "use_division")]
+    #[cfg(feature = "modular_ops")]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn new(value: u32) -> Self {
         debug_assert!(value < Self::ORDER);
@@ -40,7 +40,7 @@ impl Mersenne31Field {
         Self(value)
     }
 
-    #[cfg(not(feature = "use_division"))]
+    #[cfg(not(feature = "modular_ops"))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn to_reduced_u32(&self) -> u32 {
         // our canonical representation is 0..=modulus (31 bits full range), but not larger
@@ -57,7 +57,7 @@ impl Mersenne31Field {
         // c
     }
 
-    #[cfg(feature = "use_division")]
+    #[cfg(feature = "modular_ops")]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn to_reduced_u32(&self) -> u32 {
         self.0
@@ -166,7 +166,7 @@ impl Debug for Mersenne31Field {
 }
 
 impl Mersenne31Field {
-    #[cfg(not(feature = "use_division"))]
+    #[cfg(not(feature = "modular_ops"))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn is_zero_impl(&self) -> bool {
         // two representations
@@ -175,7 +175,7 @@ impl Mersenne31Field {
         // self.to_reduced_u32() == 0
     }
 
-    #[cfg(feature = "use_division")]
+    #[cfg(feature = "modular_ops")]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn is_zero_impl(&self) -> bool {
         self.0 == 0
@@ -275,7 +275,7 @@ impl Mersenne31Field {
         self.mul_assign_impl(&t)
     }
 
-    #[cfg(not(feature = "use_division"))]
+    #[cfg(not(feature = "modular_ops"))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn negate_impl(&'_ mut self) -> &'_ mut Self {
         // we can just jump between implementations of 0
@@ -288,14 +288,6 @@ impl Mersenne31Field {
         // self
     }
 
-    #[cfg(all(feature = "use_division", not(feature = "modular_ops")))]
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    pub(crate) const fn negate_impl(&'_ mut self) -> &'_ mut Self {
-        *self = Self(ops::reduce_with_division(Self::ORDER.wrapping_sub(self.0)));
-
-        self
-    }
-
     #[cfg(feature = "modular_ops")]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn negate_impl(&'_ mut self) -> &'_ mut Self {
@@ -304,7 +296,7 @@ impl Mersenne31Field {
         self
     }
 
-    #[cfg(not(feature = "use_division"))]
+    #[cfg(not(feature = "modular_ops"))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn double_impl(&'_ mut self) -> &'_ mut Self {
         let mut sum = self.0 << 1;
@@ -317,7 +309,7 @@ impl Mersenne31Field {
         self
     }
 
-    #[cfg(feature = "use_division")]
+    #[cfg(feature = "modular_ops")]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn double_impl(&'_ mut self) -> &'_ mut Self {
         let t = *self;
