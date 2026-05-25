@@ -1563,6 +1563,7 @@
   "tables_ids_in_generic_lookups": false,
   "degree_2_constraints": [],
   "degree_1_constraints": [],
+  "structured_statements": [],
   "generic_lookups": [],
   "range_check_16_lookup_expressions": [],
   "timestamp_range_check_lookup_expressions": [],
