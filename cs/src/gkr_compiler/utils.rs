@@ -412,20 +412,6 @@ pub struct MemoryPermutationExpression {
     pub timestamp_offset: u32,
 }
 
-pub fn add_compiler_defined_variable_from_constraint<F: PrimeField>(
-    num_variables: &mut u64,
-    all_variables_to_place: &mut BTreeSet<Variable>,
-    variables_from_constraints: &mut HashMap<Variable, Constraint<F>>,
-    constraint: Constraint<F>,
-) -> Variable {
-    let var = Variable(*num_variables);
-    *num_variables += 1;
-    all_variables_to_place.insert(var);
-    variables_from_constraints.insert(var, constraint.clone());
-
-    var
-}
-
 pub(crate) fn reg_boolean_into_address_space(
     is_register: Boolean,
     raw_column: usize,
@@ -592,20 +578,6 @@ pub(crate) fn lookup_input_into_relation<F: PrimeField, const SINGLE_COLUMN: boo
         columns: dst.into_boxed_slice(),
         lookup_set_index,
     }
-}
-
-pub(crate) fn lookup_input_into_cached_expr<F: PrimeField, const SINGLE_COLUMN: bool>(
-    lookup: &LookupInputRelation<F>,
-    lookup_set_index: usize,
-    total_width: usize,
-    graph: &dyn GraphHolder,
-) -> NoFieldGKRCacheRelation {
-    NoFieldGKRCacheRelation::VectorizedLookup(lookup_input_into_relation::<F, SINGLE_COLUMN>(
-        lookup,
-        lookup_set_index,
-        total_width,
-        graph,
-    ))
 }
 
 impl NoFieldSpecialMemoryContributionRelation {

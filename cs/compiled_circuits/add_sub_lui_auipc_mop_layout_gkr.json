@@ -4705,6 +4705,884 @@
       "constant_term": 2013233153
     }
   ],
+  "structured_statements": [
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Var": 32
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 268295646
+                    },
+                    {
+                      "Var": 33
+                    }
+                  ]
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Sum": [
+                        {
+                          "Var": 24
+                        },
+                        {
+                          "Product": [
+                            {
+                              "Constant": 268295646
+                            },
+                            {
+                              "Var": 25
+                            }
+                          ]
+                        },
+                        {
+                          "Var": 28
+                        },
+                        {
+                          "Product": [
+                            {
+                              "Constant": 268295646
+                            },
+                            {
+                              "Var": 29
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 13
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Constant": 268435454
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Var": 39
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 13
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Var": 32
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 268295646
+                    },
+                    {
+                      "Var": 33
+                    }
+                  ]
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Sum": [
+                        {
+                          "Var": 24
+                        },
+                        {
+                          "Product": [
+                            {
+                              "Constant": 268295646
+                            },
+                            {
+                              "Var": 25
+                            }
+                          ]
+                        },
+                        {
+                          "Product": [
+                            {
+                              "Constant": 1744830467
+                            },
+                            {
+                              "Sum": [
+                                {
+                                  "Var": 28
+                                },
+                                {
+                                  "Product": [
+                                    {
+                                      "Constant": 268295646
+                                    },
+                                    {
+                                      "Var": 29
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 14
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Constant": 268435454
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Var": 39
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 14
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 24
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268295646
+                        },
+                        {
+                          "Var": 25
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 28
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 268295646
+                        },
+                        {
+                          "Var": 29
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 40
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Var": 32
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 268295646
+                    },
+                    {
+                      "Var": 33
+                    }
+                  ]
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Var": 40
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 15
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Constant": 268435454
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Var": 39
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 15
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 24
+                    },
+                    {
+                      "Var": 28
+                    },
+                    {
+                      "Var": 8
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 32
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744970275
+                        },
+                        {
+                          "Var": 38
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Var": 10
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 0
+                    },
+                    {
+                      "Var": 8
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 32
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744970275
+                        },
+                        {
+                          "Var": 38
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 32
+                    },
+                    {
+                      "Var": 28
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 24
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744970275
+                        },
+                        {
+                          "Var": 38
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 36
+                    },
+                    {
+                      "Constant": 268435454
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 32
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744970275
+                        },
+                        {
+                          "Var": 38
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 13
+                    },
+                    {
+                      "Var": 14
+                    },
+                    {
+                      "Var": 15
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 38
+                    },
+                    {
+                      "Var": 25
+                    },
+                    {
+                      "Var": 29
+                    },
+                    {
+                      "Var": 9
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 33
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744970275
+                        },
+                        {
+                          "Var": 39
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Var": 10
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 38
+                    },
+                    {
+                      "Var": 1
+                    },
+                    {
+                      "Var": 9
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 33
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744970275
+                        },
+                        {
+                          "Var": 39
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Var": 12
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 38
+                    },
+                    {
+                      "Var": 33
+                    },
+                    {
+                      "Var": 29
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 25
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744970275
+                        },
+                        {
+                          "Var": 39
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Var": 11
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 38
+                    },
+                    {
+                      "Var": 37
+                    },
+                    {
+                      "Constant": 2013200385
+                    },
+                    {
+                      "Var": 33
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744970275
+                        },
+                        {
+                          "Var": 39
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 13
+                    },
+                    {
+                      "Var": 14
+                    },
+                    {
+                      "Var": 15
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 28
+            },
+            {
+              "Var": 16
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 29
+            },
+            {
+              "Var": 16
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 26
+            },
+            {
+              "Var": 16
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 27
+            },
+            {
+              "Var": 16
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 32
+            },
+            {
+              "Var": 16
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 33
+            },
+            {
+              "Var": 16
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Constant": 65536
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 0
+                },
+                {
+                  "Constant": 1073741816
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 1744830467
+                    },
+                    {
+                      "Var": 18
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Sum": [
+                {
+                  "Product": [
+                    {
+                      "Constant": 65536
+                    },
+                    {
+                      "Sum": [
+                        {
+                          "Var": 0
+                        },
+                        {
+                          "Constant": 1073741816
+                        },
+                        {
+                          "Product": [
+                            {
+                              "Constant": 1744830467
+                            },
+                            {
+                              "Var": 18
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Constant": 65536
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 0
+                    },
+                    {
+                      "Constant": 1073741816
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 18
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 1
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 19
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    }
+  ],
   "generic_lookups": [],
   "range_check_16_lookup_expressions": [
     {

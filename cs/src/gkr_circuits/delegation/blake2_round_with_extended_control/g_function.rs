@@ -1,17 +1,18 @@
 use super::*;
+use crate::structured_expr::Expr;
 
 pub(crate) struct GFunctionIntermediateValues<F: PrimeField> {
-    pub(crate) a_var_chunks_and_constraint: [([(i32, Variable); 1], Constraint<F>); 2],
-    pub(crate) c_var_chunks_and_constraint: [([(i32, Variable); 1], Constraint<F>); 2],
+    pub(crate) a_var_chunks_and_constraint: [([(i32, Variable); 1], Expr<F>); 2],
+    pub(crate) c_var_chunks_and_constraint: [([(i32, Variable); 1], Expr<F>); 2],
 }
 
-// NOTE: a element is always special, and it'll live in the form of constraint, as we will drag it along
+// NOTE: a element is always special, and it'll live in the form of expression, as we will drag it along
 // from the previous stages
 pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
-    a: &mut [Constraint<F>; 2],
+    a: &mut [Expr<F>; 2],
     b: &mut [Vec<(usize, Variable)>; 2],
-    c: &mut [Constraint<F>; 2],
+    c: &mut [Expr<F>; 2],
     d: &mut [Vec<(usize, Variable)>; 2],
     message: [[Variable; 2]; 2],
 ) -> GFunctionIntermediateValues<F> {
@@ -35,8 +36,8 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
 
         for i in 0..2 {
             let addition_result_chunks: [Variable; 1] = std::array::from_fn(|_| cs.add_variable());
-            let a_constraint = a[i].clone();
-            assert_eq!(a_constraint.degree(), 1);
+            let a_expr = a[i].clone();
+            assert_eq!(a_expr.degree(), 1);
 
             // println!("v[a].wrapping_add(v[b]).wrapping_add(x) part {}", i);
 
@@ -45,18 +46,18 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
                 let output_chunks = [(8, addition_result_chunks[0])];
 
                 if i == 0 {
-                    witness_eval_addition_with_constraint(
+                    witness_eval_addition_with_expr(
                         cs,
-                        a_constraint.clone(),
+                        a_expr.clone(),
                         inputs,
                         [],
                         carries_low,
                         output_chunks,
                     );
                 } else {
-                    witness_eval_addition_with_constraint(
+                    witness_eval_addition_with_expr(
                         cs,
-                        a_constraint.clone(),
+                        a_expr.clone(),
                         inputs,
                         carries_low,
                         carries_high,
@@ -73,25 +74,25 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
             };
 
             // and now we should produce linear constraint for single chunk, that is linear constraint and will go into the table as-is
-            let mut constraint = a_constraint;
-            constraint = add_chunks_into_constraint(constraint, &b[i]);
-            constraint += Term::from(x[i]);
-            constraint = add_carries_into_constraint(constraint, &carries_in);
-            constraint = sub_carries_from_constraint(constraint, &carries_out);
+            let mut expr = a_expr;
+            expr = add_chunks_into_expr(expr, &b[i]);
+            expr = expr + Expr::var(x[i]);
+            expr = add_carries_into_expr(expr, carries_in);
+            expr = sub_carries_from_expr(expr, carries_out);
 
-            let new_a_constraint = constraint.clone();
+            let new_a_expr = expr.clone();
 
             // now we can subtract chunks for lookup relation
             // subtract chunks
             // MARIO: this is the 1 less chunk trick here, i.e. we split a u16 constraint into var+constraint u8 chunks. we do this optimisation everywhere
-            constraint -= Term::from(addition_result_chunks[0]);
+            expr = expr - Expr::var(addition_result_chunks[0]);
             // and scale
-            constraint.scale(F::from_u32_unchecked(1 << 8).inverse().unwrap());
+            expr = expr * F::from_u32_unchecked(1 << 8).inverse().unwrap();
 
-            a_chunks_and_constraints.push(([(8, addition_result_chunks[0])], constraint));
+            a_chunks_and_constraints.push(([(8, addition_result_chunks[0])], expr));
 
             // and overwrite
-            a[i] = new_a_constraint;
+            a[i] = new_a_expr;
         }
     }
 
@@ -123,10 +124,8 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
                 };
                 cs.set_values(value_fn);
 
-                let mut constraint = Constraint::<F>::empty();
-                constraint += Term::from(var);
-                constraint -= Term::from(low_chunk);
-                constraint.scale(F::from_u32_unchecked(1 << 8).inverse().unwrap());
+                let high_expr = (Expr::<F>::var(var) - Expr::var(low_chunk))
+                    * F::from_u32_unchecked(1 << 8).inverse().unwrap();
 
                 // and xor
                 let [low_xor_result] = cs.get_variables_from_lookup_constrained::<2, 1>(
@@ -138,7 +137,7 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
                 );
                 let [xor_result_high] = cs.get_variables_from_lookup_constrained::<2, 1>(
                     &[
-                        LookupInput::from(constraint),
+                        LookupInput::from(high_expr),
                         LookupInput::from(a_remaining_constraint),
                     ],
                     TableType::Xor,
@@ -212,8 +211,8 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
             assert_eq!(d[i].len(), 2);
 
             let addition_result_chunks: [Variable; 2] = std::array::from_fn(|_| cs.add_variable());
-            let c_constraint = c[i].clone();
-            assert_eq!(c_constraint.degree(), 1);
+            let c_expr = c[i].clone();
+            assert_eq!(c_expr.degree(), 1);
 
             {
                 let inputs: [&[(usize, Variable)]; 1] = [&d[i][..]];
@@ -223,18 +222,18 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
                 ];
 
                 if i == 0 {
-                    witness_eval_addition_with_constraint(
+                    witness_eval_addition_with_expr(
                         cs,
-                        c_constraint.clone(),
+                        c_expr.clone(),
                         inputs,
                         [],
                         carries_low,
                         output_chunks,
                     );
                 } else {
-                    witness_eval_addition_with_constraint(
+                    witness_eval_addition_with_expr(
                         cs,
-                        c_constraint.clone(),
+                        c_expr.clone(),
                         inputs,
                         carries_low,
                         carries_high,
@@ -251,30 +250,30 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
             };
 
             // and now we should produce linear constraint for single chunk, that is linear constraint and will go into the table as-is
-            let mut constraint = c_constraint;
-            constraint = add_chunks_into_constraint(constraint, &d[i]);
-            constraint = add_carries_into_constraint(constraint, &carries_in);
-            constraint = sub_carries_from_constraint(constraint, &carries_out);
+            let mut expr = c_expr;
+            expr = add_chunks_into_expr(expr, &d[i]);
+            expr = add_carries_into_expr(expr, carries_in);
+            expr = sub_carries_from_expr(expr, carries_out);
 
-            let new_c_constraint = constraint.clone();
+            let new_c_expr = expr.clone();
 
             // now we can subtract chunks for lookup relation
             // subtract chunks
-            constraint -= Term::from(addition_result_chunks[0]);
-            constraint -= Term::from((F::from_u32_unchecked(1 << 3), addition_result_chunks[1]));
+            expr = expr - Expr::var(addition_result_chunks[0]);
+            expr = expr - Expr::var(addition_result_chunks[1]) * F::from_u32_unchecked(1 << 3);
             // and scale
-            constraint.scale(F::from_u32_unchecked(1 << 12).inverse().unwrap());
+            expr = expr * F::from_u32_unchecked(1 << 12).inverse().unwrap();
 
             c_chunks_and_constraints.push((
                 [
                     (3, addition_result_chunks[0]),
                     (9, addition_result_chunks[1]),
                 ],
-                constraint,
+                expr,
             ));
 
             // and overwrite
-            c[i] = new_c_constraint;
+            c[i] = new_c_expr;
         }
     }
 
@@ -313,11 +312,10 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
                 };
                 cs.set_values(value_fn);
 
-                let mut constraint = Constraint::<F>::empty();
-                constraint += Term::from(var);
-                constraint -= Term::from(chunk_3);
-                constraint -= Term::from((F::from_u32_unchecked(1 << 3), chunk_9));
-                constraint.scale(F::from_u32_unchecked(1 << 12).inverse().unwrap());
+                let high_expr = (Expr::<F>::var(var)
+                    - Expr::var(chunk_3)
+                    - Expr::var(chunk_9) * F::from_u32_unchecked(1 << 3))
+                    * F::from_u32_unchecked(1 << 12).inverse().unwrap();
 
                 // and xor
                 let [xor_result_3] = cs.get_variables_from_lookup_constrained::<2, 1>(
@@ -336,7 +334,7 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
                 );
                 let [xor_result_4] = cs.get_variables_from_lookup_constrained::<2, 1>(
                     &[
-                        LookupInput::from(constraint),
+                        LookupInput::from(high_expr),
                         LookupInput::from(c_remaining_constraint),
                     ],
                     TableType::Xor4,
@@ -371,21 +369,13 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
                 let output_chunks = [(3, chunk_3), (9, chunk_9)];
 
                 // re-chunk b, as it's in the wrong order. Done by using 2 extra variables
-                witness_eval_addition_with_constraint(
-                    cs,
-                    Constraint::empty(),
-                    inputs,
-                    [],
-                    [],
-                    output_chunks,
-                );
+                witness_eval_addition_with_expr(cs, Expr::zero(), inputs, [], [], output_chunks);
 
-                let mut constraint = Constraint::<F>::empty();
-                constraint += Term::from(b_low_var);
-                constraint += Term::from((F::from_u32_unchecked(1 << 9), b_high_var));
-                constraint -= Term::from(chunk_3);
-                constraint -= Term::from((F::from_u32_unchecked(1 << 3), chunk_9));
-                constraint.scale(F::from_u32_unchecked(1 << 12).inverse().unwrap());
+                let high_expr = (Expr::<F>::var(b_low_var)
+                    + Expr::var(b_high_var) * F::from_u32_unchecked(1 << 9)
+                    - Expr::var(chunk_3)
+                    - Expr::var(chunk_9) * F::from_u32_unchecked(1 << 3))
+                    * F::from_u32_unchecked(1 << 12).inverse().unwrap();
 
                 // and xor
                 let [xor_result_3] = cs.get_variables_from_lookup_constrained::<2, 1>(
@@ -404,7 +394,7 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
                 );
                 let [xor_result_4] = cs.get_variables_from_lookup_constrained::<2, 1>(
                     &[
-                        LookupInput::from(constraint),
+                        LookupInput::from(high_expr),
                         LookupInput::from(c_remaining_constraint),
                     ],
                     TableType::Xor4,
@@ -449,26 +439,26 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
             // println!("v[a] = v[a].wrapping_add(v[b]).wrapping_add(y) part {}", i);
 
             let addition_result_chunks: [Variable; 1] = std::array::from_fn(|_| cs.add_variable());
-            let a_constraint = a[i].clone();
-            assert_eq!(a_constraint.degree(), 1);
+            let a_expr = a[i].clone();
+            assert_eq!(a_expr.degree(), 1);
 
             {
                 let inputs: [&[(usize, Variable)]; 2] = [&b[i][..], &[(16, y[i])][..]];
                 let output_chunks = [(8, addition_result_chunks[0])];
 
                 if i == 0 {
-                    witness_eval_addition_with_constraint(
+                    witness_eval_addition_with_expr(
                         cs,
-                        a_constraint.clone(),
+                        a_expr.clone(),
                         inputs,
                         [],
                         carries_low,
                         output_chunks,
                     );
                 } else {
-                    witness_eval_addition_with_constraint(
+                    witness_eval_addition_with_expr(
                         cs,
-                        a_constraint.clone(),
+                        a_expr.clone(),
                         inputs,
                         carries_low,
                         carries_high,
@@ -485,24 +475,24 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
             };
 
             // and now we should produce linear constraint for single chunk, that is linear constraint and will go into the table as-is
-            let mut constraint = a_constraint;
-            constraint = add_chunks_into_constraint(constraint, &b[i]);
-            constraint += Term::from(y[i]);
-            constraint = add_carries_into_constraint(constraint, &carries_in);
-            constraint = sub_carries_from_constraint(constraint, &carries_out);
+            let mut expr = a_expr;
+            expr = add_chunks_into_expr(expr, &b[i]);
+            expr = expr + Expr::var(y[i]);
+            expr = add_carries_into_expr(expr, carries_in);
+            expr = sub_carries_from_expr(expr, carries_out);
 
-            let new_a_constraint = constraint.clone();
+            let new_a_expr = expr.clone();
 
             // now we can subtract chunks for lookup relation
             // subtract chunks
-            constraint -= Term::from(addition_result_chunks[0]);
+            expr = expr - Expr::var(addition_result_chunks[0]);
             // and scale
-            constraint.scale(F::from_u32_unchecked(1 << 8).inverse().unwrap());
+            expr = expr * F::from_u32_unchecked(1 << 8).inverse().unwrap();
 
-            a_chunks_and_constraints.push(([(8, addition_result_chunks[0])], constraint));
+            a_chunks_and_constraints.push(([(8, addition_result_chunks[0])], expr));
 
             // and overwrite
-            a[i] = new_a_constraint;
+            a[i] = new_a_expr;
         }
     }
 
@@ -569,26 +559,26 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
             assert_eq!(d[i].len(), 2);
 
             let addition_result_chunks: [Variable; 1] = std::array::from_fn(|_| cs.add_variable());
-            let c_constraint = c[i].clone();
-            assert_eq!(c_constraint.degree(), 1);
+            let c_expr = c[i].clone();
+            assert_eq!(c_expr.degree(), 1);
 
             {
                 let inputs: [&[(usize, Variable)]; 1] = [&d[i][..]];
                 let output_chunks = [(7, addition_result_chunks[0])];
 
                 if i == 0 {
-                    witness_eval_addition_with_constraint(
+                    witness_eval_addition_with_expr(
                         cs,
-                        c_constraint.clone(),
+                        c_expr.clone(),
                         inputs,
                         [],
                         carries_low,
                         output_chunks,
                     );
                 } else {
-                    witness_eval_addition_with_constraint(
+                    witness_eval_addition_with_expr(
                         cs,
-                        c_constraint.clone(),
+                        c_expr.clone(),
                         inputs,
                         carries_low,
                         carries_high,
@@ -605,23 +595,23 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
             };
 
             // and now we should produce linear constraint for single chunk, that is linear constraint and will go into the table as-is
-            let mut constraint = c_constraint;
-            constraint = add_chunks_into_constraint(constraint, &d[i]);
-            constraint = add_carries_into_constraint(constraint, &carries_in);
-            constraint = sub_carries_from_constraint(constraint, &carries_out);
+            let mut expr = c_expr;
+            expr = add_chunks_into_expr(expr, &d[i]);
+            expr = add_carries_into_expr(expr, carries_in);
+            expr = sub_carries_from_expr(expr, carries_out);
 
-            let new_c_constraint = constraint.clone();
+            let new_c_expr = expr.clone();
 
             // now we can subtract chunks for lookup relation
             // subtract chunks
-            constraint -= Term::from(addition_result_chunks[0]);
+            expr = expr - Expr::var(addition_result_chunks[0]);
             // and scale
-            constraint.scale(F::from_u32_unchecked(1 << 7).inverse().unwrap());
+            expr = expr * F::from_u32_unchecked(1 << 7).inverse().unwrap();
 
-            c_chunks_and_constraints.push(([(7, addition_result_chunks[0])], constraint));
+            c_chunks_and_constraints.push(([(7, addition_result_chunks[0])], expr));
 
             // and overwrite
-            c[i] = new_c_constraint;
+            c[i] = new_c_expr;
         }
     }
 
@@ -648,13 +638,12 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
             assert_eq!(c_remaining_constraint.degree(), 1);
 
             // we just use linear expressions and XOR
-            let mut xor_7_constraint = Constraint::empty();
-            xor_7_constraint += Term::from(width_4_var);
-            xor_7_constraint += Term::from((F::from_u32_unchecked(1 << 4), width_3_var));
+            let xor_7_expr = Expr::<F>::var(width_4_var)
+                + Expr::var(width_3_var) * F::from_u32_unchecked(1 << 4);
 
             let [xor_result_7] = cs.get_variables_from_lookup_constrained::<2, 1>(
                 &[
-                    LookupInput::from(xor_7_constraint),
+                    LookupInput::from(xor_7_expr),
                     LookupInput::Variable(c_chunks[0].1),
                 ],
                 TableType::Xor7,
@@ -687,46 +676,40 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
     output
 }
 
-fn add_chunks_into_constraint<F: PrimeField>(
-    mut constraint: Constraint<F>,
-    chunks: &[(usize, Variable)],
-) -> Constraint<F> {
+/// Adds chunk variables as little-endian limbs, weighted by their bit offsets.
+fn add_chunks_into_expr<F: PrimeField>(mut expr: Expr<F>, chunks: &[(usize, Variable)]) -> Expr<F> {
     let mut shift = 0;
     for (width, var) in chunks.iter() {
-        constraint += Term::from((F::from_u32_unchecked(1u32 << shift), *var));
+        expr = expr + Expr::var(*var) * F::from_u32_unchecked(1u32 << shift);
         shift += *width;
     }
 
-    constraint
+    expr
 }
 
-fn add_carries_into_constraint<F: PrimeField>(
-    mut constraint: Constraint<F>,
-    carries: &[Variable],
-) -> Constraint<F> {
+/// Adds incoming carry bits at consecutive low bit positions.
+fn add_carries_into_expr<F: PrimeField>(mut expr: Expr<F>, carries: &[Variable]) -> Expr<F> {
     let mut shift = 0;
     for var in carries.iter() {
-        constraint += Term::from((F::from_u32_unchecked(1u32 << shift), *var));
+        expr = expr + Expr::var(*var) * F::from_u32_unchecked(1u32 << shift);
         shift += 1;
     }
 
-    constraint
+    expr
 }
 
-fn sub_carries_from_constraint<F: PrimeField>(
-    mut constraint: Constraint<F>,
-    carries: &[Variable],
-) -> Constraint<F> {
+/// Subtracts outgoing carry bits starting above the 16-bit limb.
+fn sub_carries_from_expr<F: PrimeField>(mut expr: Expr<F>, carries: &[Variable]) -> Expr<F> {
     let mut shift = 16;
     for var in carries.iter() {
-        constraint -= Term::from((F::from_u32_unchecked(1u32 << shift), *var));
+        expr = expr - Expr::var(*var) * F::from_u32_unchecked(1u32 << shift);
         shift += 1;
     }
 
-    constraint
+    expr
 }
 
-fn witness_eval_addition_with_constraint<
+fn witness_eval_addition_with_expr<
     F: PrimeField,
     CS: Circuit<F>,
     const NUM_INPUTS: usize,
@@ -735,7 +718,7 @@ fn witness_eval_addition_with_constraint<
     const OUTPUT_CHUNKS_TO_PRODUCE: usize,
 >(
     cs: &mut CS,
-    constraint: Constraint<F>,
+    expr: Expr<F>,
     inputs: [&[(usize, Variable)]; NUM_INPUTS],
     carries_in: [Variable; NUM_CARRIES_IN],
     carries_out: [Variable; NUM_CARRIES_OUT],
@@ -746,6 +729,7 @@ fn witness_eval_addition_with_constraint<
 
     // TODO: constraint is just bit shifts + concatenations, so we can specialize for it if needed
 
+    let constraint = expr.to_max_quadratic_constraint();
     let (quadratic, linear, constant_coeff) = constraint.split_max_quadratic();
     assert!(quadratic.is_empty());
     if linear.len() == 0 {

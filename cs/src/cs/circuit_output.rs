@@ -3,6 +3,7 @@ use crate::constraint::Constraint;
 use crate::cs::circuit::*;
 use crate::cs::circuit_trait::MemoryAccess;
 use crate::oracle::Placeholder;
+use crate::structured_expr::StructuredStatement;
 use crate::tables::TableDriver;
 use field::PrimeField;
 use std::collections::{BTreeMap, HashMap};
@@ -11,6 +12,7 @@ pub struct CircuitOutput<F: PrimeField> {
     pub table_driver: TableDriver<F>,
     pub num_of_variables: usize,
     pub constraints: Vec<(Constraint<F>, bool)>,
+    pub structured_statements: Vec<StructuredStatement<F>>,
     pub lookups: Vec<LookupQuery<F>>,
     pub memory_queries: Vec<MemoryAccess>,
     pub register_and_indirect_memory_accesses: Vec<RegisterAndIndirectAccesses>,

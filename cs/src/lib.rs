@@ -15,6 +15,8 @@ pub mod gkr_compiler;
 #[cfg(feature = "compiler")]
 pub mod oracle;
 #[cfg(feature = "compiler")]
+pub mod structured_expr;
+#[cfg(feature = "compiler")]
 pub mod tables;
 #[cfg(feature = "compiler")]
 pub mod types;
