@@ -75,6 +75,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             ts: &mut TranscriptState,
             claim: #quartic_struct,
             round: usize,
+            nd_source: &mut I,
         ) -> Result<(#quartic_struct, #quartic_struct), E::Error> {
             const WHIR_SC_DATA_WORDS: usize = 3 * EXT_DEGREE;
             const WHIR_SC_COMMIT_BUF: usize = {
@@ -88,7 +89,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             {
                 let mut i = 0;
                 while i < WHIR_SC_DATA_WORDS {
-                    buf.data_write(i, read_reduced_field_el::<I>());
+                    buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -265,20 +266,21 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             gamma_offset: usize,
             acc0: &mut #quartic_struct,
             acc1: &mut #quartic_struct,
+            nd_source: &mut I,
         ) {
             let mut col = 0;
             while col < num_columns {
                 let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
                 let idx = col * 2;
 
-                let raw = read_reduced_field_el::<I>();
+                let raw = read_reduced_field_el::<I>(nd_source);
                 *hash_buf.get_unchecked_mut(idx) = raw;
                 let base_val = #from_raw;
                 let mut term = gamma;
                 #mul_term_base;
                 #add_acc0_term;
 
-                let raw = read_reduced_field_el::<I>();
+                let raw = read_reduced_field_el::<I>(nd_source);
                 *hash_buf.get_unchecked_mut(idx + 1) = raw;
                 let base_val = #from_raw;
                 let mut term = gamma;
@@ -358,13 +360,14 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             acc0: &mut #quartic_struct,
             acc1: &mut #quartic_struct,
             query: usize,
+            nd_source: &mut I,
         ) -> Result<(), E::Error> {
             use ::verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 
             let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
             read_and_batch_leaf::<I>(
                 &mut buf[..LEAF_WORDS], num_columns,
-                gamma_powers, gamma_offset, acc0, acc1,
+                gamma_powers, gamma_offset, acc0, acc1, nd_source,
             );
 
             let block_end = LEAF_WORDS.next_multiple_of(
@@ -375,7 +378,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             }
             let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
             hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
-            if !verify_merkle_path::<I>(hasher, query_index, depth, cap) {
+            if !verify_merkle_path::<I>(hasher, query_index, depth, cap, nd_source) {
                 return Err(E::whir_merkle_path_failed(query));
             }
             Ok(())

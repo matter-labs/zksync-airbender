@@ -3,7 +3,6 @@ mod common;
 
 use common::SecurityLevel;
 use verifier_common::errors::DebugErrorCreator;
-use verifier_common::prover::nd_source_std::{set_iterator, ThreadLocalBasedSource};
 
 fn run_native(name: &str, level: SecurityLevel) {
     let (nds, external_challenges) = common::load_nds(name, level);
@@ -12,9 +11,10 @@ fn run_native(name: &str, level: SecurityLevel) {
             .name(format!("gkr verifier {} {:?}", name, level))
             .stack_size(common::VERIFIER_STACK_SIZE)
             .spawn_scoped(s, move || {
-                set_iterator(nds.into_iter());
+                let mut it = nds.into_iter();
+                // set_iterator(nds.into_iter());
                 with_circuit!(name, level, |m| {
-                    m::verify::<ThreadLocalBasedSource, DebugErrorCreator>(&external_challenges)
+                    m::verify::<_, DebugErrorCreator>(&external_challenges, &mut it)
                         .unwrap_or_else(|e| panic!("{} {:?} failed: {:?}", name, level, e));
                 });
                 #[cfg(feature = "verifier_stats")]

@@ -8,7 +8,7 @@ use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 
 pub fn unrolled_circuit_verifiers_for_base_layer<I: NonDeterminismSource, E: ErrorCreator>() -> [
-    (u32, fn(&GKRExternalChallenges<BabyBearField, BabyBearExt4>) -> Result<crate::imports::UnrolledCircuitOutput, E::Error>);
+    (u32, fn(&GKRExternalChallenges<BabyBearField, BabyBearExt4>, &mut I,) -> Result<crate::imports::UnrolledCircuitOutput, E::Error>);
     NUM_BASE_LAYER_CIRCUITS
 ]{
     [
@@ -44,6 +44,7 @@ pub fn unrolled_circuit_verifiers_for_recursion_layer<I: NonDeterminismSource, E
     u32,
     fn(
         &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+        &mut I,
     ) -> Result<crate::imports::UnrolledCircuitOutput, E::Error>,
 ); NUM_RECURSION_LAYER_CIRCUITS] {
     [
@@ -68,6 +69,7 @@ pub fn unrolled_circuit_verifiers_for_recursion_layer<I: NonDeterminismSource, E
 
 pub fn inits_and_teardowns_verifier<I: NonDeterminismSource, E: ErrorCreator>() -> fn(
     &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    &mut I,
 ) -> Result<
     crate::imports::InitsAndTeardownsCircuitOutput,
     E::Error,

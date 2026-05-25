@@ -38,6 +38,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     base_layer_claims: &[BabyBearExt4],
     z_initial: &[BabyBearExt4],
     accumulator: &mut ::verifier_common::whir::WhirAccumulator<BabyBearExt4, MAX_POW_ENTRIES>,
+    nd_source: &mut I,
 ) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), E::Error> {
     unsafe {
         let gamma_powers: [BabyBearExt4; TOTAL_ORACLE_COLS] =
@@ -56,7 +57,8 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         let mut folding_challenges: LazyVec<BabyBearExt4, { WHIR_FOLD_STEPS[0] }> = LazyVec::new();
         let mut round_idx = 0;
         while round_idx < WHIR_FOLD_STEPS[0] {
-            let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(ts, claim, round_idx)?;
+            let (new_claim, alpha) =
+                verify_whir_sumcheck_step::<I, E>(ts, claim, round_idx, nd_source)?;
             claim = new_claim;
             folding_challenges.push(alpha);
             fold_whir_accumulator(accumulator, alpha, z_initial);
@@ -68,7 +70,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 * BLAKE2S_BLOCK_SIZE_U32_WORDS
         };
         let intermediate_cap =
-            read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts);
+            read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts, nd_source);
         let ood_point = draw_single_field_el(ts);
         const OOD_DATA_WORDS: usize = super::common::EXT_DEGREE;
         const OOD_COMMIT_BUF: usize = {
@@ -80,13 +82,13 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         {
             let mut i = 0;
             while i < OOD_DATA_WORDS {
-                ood_buf.data_write(i, read_reduced_field_el::<I>());
+                ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                 i += 1;
             }
         }
         let ood_value: BabyBearExt4 = unsafe { *ood_buf.data_as::<BabyBearExt4>(1).as_ptr() };
         ts.commit(&mut ood_buf, OOD_DATA_WORDS);
-        read_and_verify_pow::<I>(ts, INITIAL_POW_BITS);
+        read_and_verify_pow::<I>(ts, INITIAL_POW_BITS, nd_source);
         let query_indices = draw_query_indices::<INITIAL_NUM_QUERIES, INITIAL_DRAW_WORDS>(
             ts,
             INITIAL_NUM_QUERIES,
@@ -131,6 +133,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 &mut acc0,
                 &mut acc1,
                 q,
+                nd_source,
             )?;
             process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 350usize>(
                 &mut ts.hasher,
@@ -144,6 +147,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 &mut acc0,
                 &mut acc1,
                 q,
+                nd_source,
             )?;
             process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 16usize>(
                 &mut ts.hasher,
@@ -157,6 +161,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 &mut acc0,
                 &mut acc1,
                 q,
+                nd_source,
             )?;
             let batched_evals = [acc0, acc1];
             let folded = fold_coset(
@@ -212,6 +217,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     round_idx: usize,
     z_initial: &[BabyBearExt4],
     accumulator: &mut ::verifier_common::whir::WhirAccumulator<BabyBearExt4, MAX_POW_ENTRIES>,
+    nd_source: &mut I,
 ) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), E::Error> {
     unsafe {
         let fold_steps = WHIR_FOLD_STEPS[round_idx];
@@ -223,7 +229,8 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         let mut folding_challenges: LazyVec<BabyBearExt4, MAX_INTERNAL_FOLD_STEPS> = LazyVec::new();
         let mut round = 0;
         while round < fold_steps {
-            let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(ts, claim, round)?;
+            let (new_claim, alpha) =
+                verify_whir_sumcheck_step::<I, E>(ts, claim, round, nd_source)?;
             claim = new_claim;
             folding_challenges.push(alpha);
             fold_whir_accumulator(accumulator, alpha, z_initial);
@@ -235,7 +242,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 * BLAKE2S_BLOCK_SIZE_U32_WORDS
         };
         let intermediate_cap =
-            read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts);
+            read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts, nd_source);
         let ood_point = draw_single_field_el(ts);
         const OOD_DATA_WORDS: usize = EXT_DEGREE;
         const OOD_COMMIT_BUF: usize = {
@@ -247,13 +254,13 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         {
             let mut i = 0;
             while i < OOD_DATA_WORDS {
-                ood_buf.data_write(i, read_reduced_field_el::<I>());
+                ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                 i += 1;
             }
         }
         let ood_value: BabyBearExt4 = unsafe { *ood_buf.data_as::<BabyBearExt4>(1).as_ptr() };
         ts.commit(&mut ood_buf, OOD_DATA_WORDS);
-        read_and_verify_pow::<I>(ts, WHIR_POW_BITS[round_idx]);
+        read_and_verify_pow::<I>(ts, WHIR_POW_BITS[round_idx], nd_source);
         let query_index_bits = INTERNAL_QUERY_INDEX_BITS[ir];
         let draw_words = INTERNAL_DRAW_WORDS[ir];
         let query_indices = draw_query_indices::<MAX_INTERNAL_NUM_QUERIES, MAX_INTERNAL_DRAW_WORDS>(
@@ -293,7 +300,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < leaf_ext_words {
-                    hash_buf.write(i, read_reduced_field_el::<I>());
+                    hash_buf.write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -301,7 +308,13 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             hash_buf.zero_range(leaf_ext_words, block_end);
             let init_buf = hash_buf.assume_init_subarray::<INTERNAL_HASH_BUF_SIZE>();
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, leaf_ext_words);
-            if !verify_merkle_path::<I>(&mut ts.hasher, tree_index, oracle_depth, prev_oracle_cap) {
+            if !verify_merkle_path::<I>(
+                &mut ts.hasher,
+                tree_index,
+                oracle_depth,
+                prev_oracle_cap,
+                nd_source,
+            ) {
                 return Err(E::whir_merkle_path_failed(q));
             }
             let mut evals: LazyVec<BabyBearExt4, { MAX_INTERNAL_VALUES_PER_LEAF }> = LazyVec::new();
@@ -359,13 +372,15 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
     z_initial: &[BabyBearExt4],
     accumulator: &mut ::verifier_common::whir::WhirAccumulator<BabyBearExt4, MAX_POW_ENTRIES>,
+    nd_source: &mut I,
 ) -> Result<(), E::Error> {
     unsafe {
         let mut claim = claim;
         let mut folding_challenges: LazyVec<BabyBearExt4, FINAL_FOLD_STEPS> = LazyVec::new();
         let mut round = 0;
         while round < FINAL_FOLD_STEPS {
-            let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(ts, claim, round)?;
+            let (new_claim, alpha) =
+                verify_whir_sumcheck_step::<I, E>(ts, claim, round, nd_source)?;
             claim = new_claim;
             folding_challenges.push(alpha);
             fold_whir_accumulator(accumulator, alpha, z_initial);
@@ -386,13 +401,13 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         {
             let mut i = 0;
             while i < FINAL_MONOMIALS_DATA_WORDS {
-                monomials_buf.data_write(i, read_reduced_field_el::<I>());
+                monomials_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                 i += 1;
             }
         }
         ts.commit(&mut monomials_buf, FINAL_MONOMIALS_DATA_WORDS);
         let monomials: &[BabyBearExt4] = monomials_buf.data_as::<BabyBearExt4>(FINAL_MONOMIALS_LEN);
-        read_and_verify_pow::<I>(ts, FINAL_POW_BITS);
+        read_and_verify_pow::<I>(ts, FINAL_POW_BITS, nd_source);
         let query_indices = draw_query_indices::<MAX_INTERNAL_NUM_QUERIES, MAX_INTERNAL_DRAW_WORDS>(
             ts,
             FINAL_NUM_QUERIES,
@@ -425,7 +440,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < FINAL_LEAF_EXT_WORDS {
-                    hash_buf.write(i, read_reduced_field_el::<I>());
+                    hash_buf.write(i, read_reduced_field_el::<I>(nd_source));
                     i += 1;
                 }
             }
@@ -433,7 +448,13 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             hash_buf.zero_range(FINAL_LEAF_EXT_WORDS, block_end);
             let init_buf = hash_buf.assume_init_subarray::<FINAL_HASH_BUF_SIZE>();
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, FINAL_LEAF_EXT_WORDS);
-            if !verify_merkle_path::<I>(&mut ts.hasher, tree_index, oracle_depth, prev_oracle_cap) {
+            if !verify_merkle_path::<I>(
+                &mut ts.hasher,
+                tree_index,
+                oracle_depth,
+                prev_oracle_cap,
+                nd_source,
+            ) {
                 return Err(E::whir_merkle_path_failed(q));
             }
             let mut evals: LazyVec<BabyBearExt4, { FINAL_VALUES_PER_LEAF }> = LazyVec::new();
@@ -575,6 +596,7 @@ pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
     batching_challenge: BabyBearExt4,
     base_layer_claims: &[BabyBearExt4],
     z_initial: &[BabyBearExt4],
+    nd_source: &mut I,
 ) -> Result<(), E::Error> {
     let mut hash_buf = AlignedArray64::<u32, WHIR_HASH_BUF_SIZE>::new_uninit();
     let mut accumulator =
@@ -589,6 +611,7 @@ pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
         base_layer_claims,
         z_initial,
         &mut accumulator,
+        nd_source,
     )?;
     #[cfg(feature = "verifier_stats")]
     verifier_common::stats::log("WHIR BATCHED ROUND 0");
@@ -602,6 +625,7 @@ pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
             round_idx,
             z_initial,
             &mut accumulator,
+            nd_source,
         )?;
         #[cfg(feature = "verifier_stats")]
         verifier_common::stats::log(
@@ -640,7 +664,15 @@ pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
         cap = new_cap;
         round_idx += 1;
     }
-    verify_final_whir_round::<I, E>(ts, &mut hash_buf, claim, &cap, z_initial, &mut accumulator)?;
+    verify_final_whir_round::<I, E>(
+        ts,
+        &mut hash_buf,
+        claim,
+        &cap,
+        z_initial,
+        &mut accumulator,
+        nd_source,
+    )?;
     #[cfg(feature = "verifier_stats")]
     verifier_common::stats::log(
         [

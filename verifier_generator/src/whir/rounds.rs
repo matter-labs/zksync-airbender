@@ -71,7 +71,7 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
         {
             let mut i = 0;
             while i < #leaf_ext_words_expr {
-                hash_buf.write(i, read_reduced_field_el::<I>());
+                hash_buf.write(i, read_reduced_field_el::<I>(nd_source));
                 i += 1;
             }
         }
@@ -81,7 +81,7 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
         let init_buf = hash_buf.assume_init_subarray::<#hash_buf_size_const>();
         hash_leaf_data_into_state(&mut ts.hasher, init_buf, #leaf_ext_words_expr);
         if !verify_merkle_path::<I>(
-            &mut ts.hasher, tree_index, #oracle_depth_expr, #oracle_cap_expr,
+            &mut ts.hasher, tree_index, #oracle_depth_expr, #oracle_cap_expr, nd_source,
         ) {
             return Err(E::whir_merkle_path_failed(q));
         }
@@ -176,6 +176,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                         initial_transcript. #oracle_type (),
                         &gamma_powers[..], #gamma_off,
                         &mut acc0, &mut acc1, q,
+                        nd_source,
                     )?;
                 });
             }
@@ -232,6 +233,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
                 #quartic_struct, MAX_POW_ENTRIES,
             >,
+            nd_source: &mut I,
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
             unsafe {
                 let gamma_powers: [#quartic_struct; TOTAL_ORACLE_COLS] =
@@ -253,7 +255,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 let mut round_idx = 0;
                 while round_idx < WHIR_FOLD_STEPS[0] {
                     let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
-                        ts, claim, round_idx,
+                        ts, claim, round_idx, nd_source,
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
@@ -268,7 +270,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                         * BLAKE2S_BLOCK_SIZE_U32_WORDS
                 };
                 let intermediate_cap =
-                    read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts);
+                    read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts, nd_source);
 
                 let ood_point = draw_single_field_el(ts);
 
@@ -283,7 +285,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 {
                     let mut i = 0;
                     while i < OOD_DATA_WORDS {
-                        ood_buf.data_write(i, read_reduced_field_el::<I>());
+                        ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                         i += 1;
                     }
                 }
@@ -292,7 +294,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 };
                 ts.commit(&mut ood_buf, OOD_DATA_WORDS);
 
-                read_and_verify_pow::<I>(ts, INITIAL_POW_BITS);
+                read_and_verify_pow::<I>(ts, INITIAL_POW_BITS, nd_source);
                 let query_indices = draw_query_indices::<INITIAL_NUM_QUERIES, INITIAL_DRAW_WORDS>(
                     ts, INITIAL_NUM_QUERIES, INITIAL_QUERY_INDEX_BITS,
                     INITIAL_DRAW_WORDS,
@@ -479,6 +481,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
                 #quartic_struct, MAX_POW_ENTRIES,
             >,
+            nd_source: &mut I,
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
             unsafe {
                 let fold_steps = WHIR_FOLD_STEPS[round_idx];
@@ -493,7 +496,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                 let mut round = 0;
                 while round < fold_steps {
                     let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
-                        ts, claim, round,
+                        ts, claim, round, nd_source,
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
@@ -508,7 +511,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                         * BLAKE2S_BLOCK_SIZE_U32_WORDS
                 };
                 let intermediate_cap =
-                    read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts);
+                    read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts, nd_source);
 
                 let ood_point = draw_single_field_el(ts);
 
@@ -523,7 +526,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                 {
                     let mut i = 0;
                     while i < OOD_DATA_WORDS {
-                        ood_buf.data_write(i, read_reduced_field_el::<I>());
+                        ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                         i += 1;
                     }
                 }
@@ -532,7 +535,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                 };
                 ts.commit(&mut ood_buf, OOD_DATA_WORDS);
 
-                read_and_verify_pow::<I>(ts, WHIR_POW_BITS[round_idx]);
+                read_and_verify_pow::<I>(ts, WHIR_POW_BITS[round_idx], nd_source);
                 let query_index_bits = INTERNAL_QUERY_INDEX_BITS[ir];
                 let draw_words = INTERNAL_DRAW_WORDS[ir];
                 let query_indices =
@@ -676,6 +679,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
                 #quartic_struct, MAX_POW_ENTRIES,
             >,
+            nd_source: &mut I,
         ) -> Result<(), E::Error> {
             unsafe {
                 let mut claim = claim;
@@ -684,7 +688,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                 let mut round = 0;
                 while round < FINAL_FOLD_STEPS {
                     let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
-                        ts, claim, round,
+                        ts, claim, round, nd_source,
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
@@ -709,14 +713,14 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                 {
                     let mut i = 0;
                     while i < FINAL_MONOMIALS_DATA_WORDS {
-                        monomials_buf.data_write(i, read_reduced_field_el::<I>());
+                        monomials_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                         i += 1;
                     }
                 }
                 ts.commit(&mut monomials_buf, FINAL_MONOMIALS_DATA_WORDS);
                 let monomials: &[#quartic_struct] = monomials_buf.data_as::<#quartic_struct>(FINAL_MONOMIALS_LEN);
 
-                read_and_verify_pow::<I>(ts, FINAL_POW_BITS);
+                read_and_verify_pow::<I>(ts, FINAL_POW_BITS, nd_source);
                 let query_indices =
                     draw_query_indices::<MAX_INTERNAL_NUM_QUERIES, MAX_INTERNAL_DRAW_WORDS>(
                         ts, FINAL_NUM_QUERIES, FINAL_QUERY_INDEX_BITS, FINAL_DRAW_WORDS,

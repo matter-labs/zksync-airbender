@@ -1853,7 +1853,7 @@ pub(crate) mod test {
         bincode_serialize_to_file(&setups, "tmp_setup.bin");
     }
 
-    // #[cfg(feature = "verifiers")]
+    #[cfg(feature = "verifiers")]
     #[test]
     #[ignore = "manual heavy proving test"]
     #[serial_test::serial(prover_examples_proof_artifacts)]
@@ -1881,15 +1881,15 @@ pub(crate) mod test {
                     .flatten()
                     .collect();
 
-                let it = families_setups.into_iter().chain(responses.into_iter());
-                prover::nd_source_std::set_iterator(it);
+                let mut it = families_setups.into_iter().chain(responses.into_iter());
+                // prover::nd_source_std::set_iterator(it);
 
                 let verification_result =
                     full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer::<
-                        verifier_common::DefaultNonDeterminismSource,
+                        _,
                         DebugErrorCreator,
                         true,
-                    >();
+                    >(&mut i);
                 dbg!(&verification_result);
                 assert!(verification_result.is_ok());
             })
@@ -1898,7 +1898,7 @@ pub(crate) mod test {
             .expect("must verify");
     }
 
-    // #[cfg(feature = "verifiers")]
+    #[cfg(feature = "verifiers")]
     #[test]
     #[ignore = "manual heavy proving test"]
     #[serial_test::serial(prover_examples_proof_artifacts)]
@@ -1922,16 +1922,16 @@ pub(crate) mod test {
             .name("verifier thread".to_string())
             .stack_size(1 << 27)
             .spawn(move || {
-                let it = responses.into_iter();
-                prover::nd_source_std::set_iterator(it);
+                let mut it = responses.into_iter();
+                // prover::nd_source_std::set_iterator(it);
 
                 let (family, verifier_fn) =
                     full_statement_verifier::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer::<
-                        verifier_common::DefaultNonDeterminismSource,
+                        _,
                         DebugErrorCreator,
                     >()[verifier_idx];
                 assert_eq!(family, circuit_family);
-                let verification_result = (verifier_fn)(&external_challenges);
+                let verification_result = (verifier_fn)(&external_challenges, &mut it);
                 // dbg!(&verification_result);
                 match &verification_result {
                     Ok(..) => {},

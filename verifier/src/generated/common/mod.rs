@@ -11,18 +11,18 @@ use verifier_common::structs::{CommitBuf, TranscriptState};
 pub use verifier_common::SUMCHECK_POLY_COEFFS;
 pub const EXT_DEGREE: usize = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
 #[inline(always)]
-pub fn read_reduced_field_el<I: NonDeterminismSource>() -> u32 {
-    I::read_reduced_field_element(BabyBearField::ORDER)
+pub fn read_reduced_field_el<I: NonDeterminismSource>(nd_source: &mut I) -> u32 {
+    nd_source.read_reduced_field_element(BabyBearField::ORDER)
 }
 #[inline(always)]
-pub fn read_field_el<I: NonDeterminismSource>() -> BabyBearExt4 {
-    ext_from_nds::<BabyBearField, BabyBearExt4, I>()
+pub fn read_field_el<I: NonDeterminismSource>(nd_source: &mut I) -> BabyBearExt4 {
+    ext_from_nds::<BabyBearField, BabyBearExt4, I>(nd_source)
 }
 #[inline(always)]
-pub fn read_field_els<I: NonDeterminismSource>(dst: &mut [BabyBearExt4]) {
+pub fn read_field_els<I: NonDeterminismSource>(dst: &mut [BabyBearExt4], nd_source: &mut I) {
     let mut i = 0;
     while i < dst.len() {
-        dst[i] = read_field_el::<I>();
+        dst[i] = read_field_el::<I>(nd_source);
         i += 1;
     }
 }
@@ -114,6 +114,7 @@ pub fn verify_sumcheck_rounds<
     initial_claim: BabyBearExt4,
     challenges: &mut [BabyBearExt4],
     layer_idx: usize,
+    nd_source: &mut I,
 ) -> Result<(BabyBearExt4, BabyBearExt4), E::Error> {
     let mut claim = initial_claim;
     let mut eq_prefactor = BabyBearExt4::ONE;
@@ -127,7 +128,7 @@ pub fn verify_sumcheck_rounds<
         {
             let mut i = 0;
             while i < coeff_data_words {
-                commit_buf.data_write(i, read_reduced_field_el::<I>());
+                commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                 i += 1;
             }
         }
@@ -465,6 +466,7 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource, E: ErrorCreator>(
     ts: &mut TranscriptState,
     claim: BabyBearExt4,
     round: usize,
+    nd_source: &mut I,
 ) -> Result<(BabyBearExt4, BabyBearExt4), E::Error> {
     const WHIR_SC_DATA_WORDS: usize = 3 * EXT_DEGREE;
     const WHIR_SC_COMMIT_BUF: usize = {
@@ -477,7 +479,7 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource, E: ErrorCreator>(
     {
         let mut i = 0;
         while i < WHIR_SC_DATA_WORDS {
-            buf.data_write(i, read_reduced_field_el::<I>());
+            buf.data_write(i, read_reduced_field_el::<I>(nd_source));
             i += 1;
         }
     }
@@ -629,18 +631,19 @@ pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
     gamma_offset: usize,
     acc0: &mut BabyBearExt4,
     acc1: &mut BabyBearExt4,
+    nd_source: &mut I,
 ) {
     let mut col = 0;
     while col < num_columns {
         let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
         let idx = col * 2;
-        let raw = read_reduced_field_el::<I>();
+        let raw = read_reduced_field_el::<I>(nd_source);
         *hash_buf.get_unchecked_mut(idx) = raw;
         let base_val = BabyBearField::from_reduced_raw_repr(raw);
         let mut term = gamma;
         field_ops::mul_assign_by_base(&mut term, &base_val);
         field_ops::add_assign(&mut *acc0, &term);
-        let raw = read_reduced_field_el::<I>();
+        let raw = read_reduced_field_el::<I>(nd_source);
         *hash_buf.get_unchecked_mut(idx + 1) = raw;
         let base_val = BabyBearField::from_reduced_raw_repr(raw);
         let mut term = gamma;
@@ -720,6 +723,7 @@ pub unsafe fn process_oracle_query<
     acc0: &mut BabyBearExt4,
     acc1: &mut BabyBearExt4,
     query: usize,
+    nd_source: &mut I,
 ) -> Result<(), E::Error> {
     use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
     let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
@@ -730,6 +734,7 @@ pub unsafe fn process_oracle_query<
         gamma_offset,
         acc0,
         acc1,
+        nd_source,
     );
     let block_end =
         LEAF_WORDS.next_multiple_of(::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS);
@@ -738,7 +743,7 @@ pub unsafe fn process_oracle_query<
     }
     let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
     hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
-    if !verify_merkle_path::<I>(hasher, query_index, depth, cap) {
+    if !verify_merkle_path::<I>(hasher, query_index, depth, cap, nd_source) {
         return Err(E::whir_merkle_path_failed(query));
     }
     Ok(())
