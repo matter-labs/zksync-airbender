@@ -42,7 +42,8 @@ pub(crate) fn mulhu<C: Counters, R: RAM>(
 ) {
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
     let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
-    let mut rd = rs1_value.widening_mul(rs2_value).1;
+    // let mut rd = rs1_value.widening_mul(rs2_value).1;
+    let mut rd = (rs1_value.widening_mul(rs2_value) >> 32) as u32;
     let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
 
     if tracer.needs_tracing_data_for_circuit_family::<MUL_DIV_CIRCUIT_FAMILY_IDX>() {

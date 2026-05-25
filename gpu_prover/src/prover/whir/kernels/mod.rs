@@ -12,7 +12,8 @@ use crate::primitives::device_structures::{
 };
 use crate::primitives::field::{BF, E4};
 use crate::primitives::utils::{
-    get_grid_block_dims_for_threads_count, get_grid_block_dims_for_warp_groups, WARP_SIZE,
+    GetChunksCount, get_grid_block_dims_for_threads_count, get_grid_block_dims_for_warp_groups,
+    WARP_SIZE,
 };
 use crate::upstream::FieldExtension;
 
@@ -229,9 +230,7 @@ cuda_kernel_signature_arguments_and_function!(
     dst: MutPtrAndStride<BF>,
     log_trace_len: u32,
     log_lde_factor: u32,
-    log_blocks_per_coset: u32,
     log_values_per_leaf: u32,
-    dst_rows_per_coset: u32,
 );
 
 cuda_kernel_declaration!(
@@ -240,9 +239,7 @@ cuda_kernel_declaration!(
         dst: MutPtrAndStride<BF>,
         log_trace_len: u32,
         log_lde_factor: u32,
-        log_blocks_per_coset: u32,
         log_values_per_leaf: u32,
-        dst_rows_per_coset: u32,
     )
 );
 
@@ -257,6 +254,7 @@ pub(crate) fn pack_rows_for_whir_leaves(
     assert!(log_lde_factor >= 1);
     assert!(log_values_per_leaf >= 1);
     assert!(log_values_per_leaf <= 5); // Based on block size. Can be relaxed if needed.
+    assert!(log_trace_len > log_values_per_leaf);
     let src_rows = src.rows();
     let src_cols = src.cols();
     let dst_rows = dst.rows();
@@ -265,28 +263,30 @@ pub(crate) fn pack_rows_for_whir_leaves(
     assert!(src_cols <= u32::MAX as usize);
     assert!(dst_rows <= u32::MAX as usize);
     assert!(dst_cols <= u32::MAX as usize);
+    // A warning to rework kernel for < 32B contiguous accesses if needed:
+    let dst_rows_per_coset = dst_rows >> log_lde_factor;
+    assert!(dst_rows_per_coset >= 8);
     assert_eq!(src_cols, 4);
     assert_eq!(src_rows, (1 << (log_trace_len + log_lde_factor)) as usize);
     assert_eq!(src_rows >> log_values_per_leaf, dst_rows);
     assert_eq!(src_cols << log_values_per_leaf, dst_cols);
     // Each thread reads and writes 2 ext4 values.
-    let warps_per_block = dst_cols / 8;
-    let block_dim_x = WARP_SIZE;
-    let block_dim = (block_dim_x, warps_per_block as u32);
-    assert!(log_trace_len > log_values_per_leaf);
-    let log_dst_rows_per_coset = log_trace_len - log_values_per_leaf;
-    let log_blocks_per_coset = if log_dst_rows_per_coset > 5 {
-        log_dst_rows_per_coset - 5
+    let block_dim_y = dst_cols / 8;
+    let block_dim_x = if block_dim_y > 1 {
+        WARP_SIZE as usize
     } else {
-        0
+        assert!(dst_rows >= WARP_SIZE as usize);
+        // yields low occupany for small total size corner cases,
+        // but such cases are negligible/typically testing-only
+        std::cmp::min(dst_rows, 4 * WARP_SIZE as usize)
     };
-    let dst_rows_per_coset = 1 << log_dst_rows_per_coset;
-    assert_eq!(dst_rows_per_coset, dst_rows >> log_lde_factor);
-    let grid_dim = 1 << (log_blocks_per_coset + log_lde_factor);
-    let mut config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    assert_eq!(dst_rows % block_dim_x, 0);
+    let block_dim = (block_dim_x as u32, block_dim_y as u32);
+    let grid_dim = dst_rows.get_chunks_count(block_dim_x);
+    let mut config = CudaLaunchConfig::basic(grid_dim as u32, block_dim, stream);
     let smem_bytes = if log_values_per_leaf > 1 {
-        2 * warps_per_block * block_dim_x as usize * size_of::<E4>() +
-            (warps_per_block / 2) * block_dim_x as usize * size_of::<BF>()
+        2 * block_dim_y * block_dim_x * size_of::<E4>() +
+            (block_dim_y / 2) * block_dim_x * size_of::<BF>()
     } else {
         0
     };
@@ -296,9 +296,7 @@ pub(crate) fn pack_rows_for_whir_leaves(
         dst.as_mut_ptr_and_stride(),
         log_trace_len,
         log_lde_factor,
-        log_blocks_per_coset,
         log_values_per_leaf,
-        dst_rows_per_coset as u32,
     );
     PackRowsForWhirLeavesFunction(ab_pack_rows_for_whir_leaves_bf_kernel).launch(&config, &args)
 }

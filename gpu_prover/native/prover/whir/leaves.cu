@@ -18,24 +18,19 @@ __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(vectorized_e4_matrix_gett
                                                        vectorized_e4_matrix_setter<st_modifier::cs> dst,
                                                        const unsigned log_trace_len,
                                                        const unsigned log_lde_factor,
-                                                       const unsigned log_blocks_per_coset,
-                                                       const unsigned log_values_per_leaf,
-                                                       const unsigned dst_rows_per_coset) {
-  const unsigned coset = blockIdx.x >> log_blocks_per_coset;
-  const unsigned block_in_coset_mask = (1 << log_blocks_per_coset) - 1;
-  const unsigned block_in_coset = blockIdx.x & block_in_coset_mask;
+                                                       const unsigned log_values_per_leaf) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  const unsigned log_dst_rows_per_coset = log_trace_len - log_values_per_leaf;
+  const unsigned coset = gid >> log_dst_rows_per_coset;
+  const unsigned lane_in_coset_mask = (1 << log_dst_rows_per_coset) - 1;
+  const unsigned dst_row = gid & lane_in_coset_mask;
 
   src.add_row(coset << log_trace_len);
-  dst.add_row(coset << (log_trace_len - log_values_per_leaf));
-
-  const unsigned dst_row = block_in_coset * blockDim.x + threadIdx.x;
-  if (dst_row >= dst_rows_per_coset)
-    return;
-
-  dst.add_row(dst_row);
+  dst.add_row(gid);
 
   extern __shared__ uint8_t smem[];
 
+  const unsigned dst_rows_per_coset = 1 << log_dst_rows_per_coset;
   const unsigned slot_in_leaf = 2 * threadIdx.y;
   const unsigned src_row_a = dst_row + bitreverse_low_bits(slot_in_leaf, log_values_per_leaf) * dst_rows_per_coset;
   const unsigned src_row_b = src_row_a + (dst_rows_per_coset << (log_values_per_leaf - 1));
