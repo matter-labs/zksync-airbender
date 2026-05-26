@@ -660,6 +660,54 @@ cuda_kernel_declaration!(
     )
 );
 
+// 2-chunk split-eq path: balanced high/low factored tables (high_bits + low_bits == log_n).
+// Replaces the 3-slot 8/8/7 layout used by the GKR-style builder when running
+// the WHIR query accumulator, dropping the inner loop from 3 E4 muls/query to 1.
+
+cuda_kernel_signature_arguments_and_function!(
+    WhirBuildSplitEqTable,
+    claim_points: *const E4,
+    scales: *const E4,
+    log_n: u32,
+    bits: u32,
+    claim_offset: u32,
+    out_array: *mut E4,
+);
+
+cuda_kernel_declaration!(
+    ab_whir_build_split_eq_table_e4_kernel(
+        claim_points: *const E4,
+        scales: *const E4,
+        log_n: u32,
+        bits: u32,
+        claim_offset: u32,
+        out_array: *mut E4,
+    )
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    WhirAccumulateEqSplit,
+    eq_high_array: *const E4,
+    eq_low_array: *const E4,
+    high_bits: u32,
+    low_bits: u32,
+    eq_poly: *mut E4,
+    num_queries: u32,
+    acc_size: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_whir_accumulate_eq_split_e4_kernel(
+        eq_high_array: *const E4,
+        eq_low_array: *const E4,
+        high_bits: u32,
+        low_bits: u32,
+        eq_poly: *mut E4,
+        num_queries: u32,
+        acc_size: u32,
+    )
+);
+
 /// `(eq_high_array_len, eq_low_array_len)` in E4 for `num_queries` queries.
 pub(crate) fn batched_eq_factor_scratch_lens(num_queries: usize) -> (usize, usize) {
     (
@@ -712,6 +760,118 @@ pub(crate) fn launch_batched_accumulate_eq_samples(
         acc_size as u32,
     );
     WhirAccumulateEqSamplesBatchedFunction(ab_whir_accumulate_eq_samples_batched_e4_kernel)
+        .launch(&acc_config, &acc_args)
+}
+
+/// `(high_bits, low_bits)` for the 2-chunk split-eq layout:
+/// `high_bits = ceil(log_n / 2)`, `low_bits = log_n - high_bits`.
+pub(crate) fn split_eq_bits(log_n: usize) -> (usize, usize) {
+    let high_bits = log_n.div_ceil(2);
+    let low_bits = log_n - high_bits;
+    (high_bits, low_bits)
+}
+
+/// `(eq_high_array_len, eq_low_array_len)` in E4 for `num_queries` queries
+/// using the 2-chunk split layout.
+pub(crate) fn split_eq_factor_scratch_lens(num_queries: usize, log_n: usize) -> (usize, usize) {
+    let (high_bits, low_bits) = split_eq_bits(log_n);
+    (
+        num_queries * (1usize << high_bits),
+        num_queries * (1usize << low_bits),
+    )
+}
+
+const SPLIT_BUILD_BLOCK_THREADS: u32 = 256;
+
+fn launch_build_split_eq_table(
+    claim_points: *const E4,
+    scales: *const E4,
+    log_n: usize,
+    bits: usize,
+    claim_offset: usize,
+    num_queries: usize,
+    out_array: *mut E4,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let table_size = 1u32 << bits;
+    let block = SPLIT_BUILD_BLOCK_THREADS.min(table_size);
+    let grid_x = table_size.div_ceil(block);
+    let config = CudaLaunchConfig::basic(
+        (grid_x, num_queries as u32, 1u32),
+        block,
+        context.get_exec_stream(),
+    );
+    let args = WhirBuildSplitEqTableArguments::new(
+        claim_points,
+        scales,
+        log_n as u32,
+        bits as u32,
+        claim_offset as u32,
+        out_array,
+    );
+    WhirBuildSplitEqTableFunction(ab_whir_build_split_eq_table_e4_kernel).launch(&config, &args)
+}
+
+/// 2-chunk variant of [`launch_batched_accumulate_eq_samples`]: builds
+/// per-query high (size `1 << high_bits`) and challenges-scaled low
+/// (size `1 << low_bits`) slabs, then accumulates
+/// `sum_q( eq(point_q, gid) * challenges[q] )` into `eq_poly[gid]` (RMW)
+/// using one E4 mul + one E4 add per query in the inner loop.
+/// Three launches total (one per slab build + accumulator), regardless of
+/// `num_queries`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_split_accumulate_eq_samples(
+    claim_points: *const E4,
+    challenges: *const E4,
+    num_queries: usize,
+    log_n: usize,
+    eq_high_array: *mut E4,
+    eq_low_array: *mut E4,
+    eq_poly: *mut E4,
+    acc_size: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(num_queries <= u32::MAX as usize);
+    assert!(log_n >= 2);
+    assert!(log_n <= 30);
+    assert!(acc_size <= u32::MAX as usize);
+    let (high_bits, low_bits) = split_eq_bits(log_n);
+
+    // High slab: no challenge scaling.
+    launch_build_split_eq_table(
+        claim_points,
+        std::ptr::null(),
+        log_n,
+        high_bits,
+        0,
+        num_queries,
+        eq_high_array,
+        context,
+    )?;
+    // Low slab: pre-scaled by challenges[q] so the accumulator inner loop
+    // collapses to one E4 mul + one E4 add per query.
+    launch_build_split_eq_table(
+        claim_points,
+        challenges,
+        log_n,
+        low_bits,
+        high_bits,
+        num_queries,
+        eq_low_array,
+        context,
+    )?;
+
+    let acc_config = gkr_dim_reducing_launch_config(acc_size as u32, context);
+    let acc_args = WhirAccumulateEqSplitArguments::new(
+        eq_high_array,
+        eq_low_array,
+        high_bits as u32,
+        low_bits as u32,
+        eq_poly,
+        num_queries as u32,
+        acc_size as u32,
+    );
+    WhirAccumulateEqSplitFunction(ab_whir_accumulate_eq_split_e4_kernel)
         .launch(&acc_config, &acc_args)
 }
 

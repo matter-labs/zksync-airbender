@@ -36,7 +36,8 @@ use crate::prover::trace::holder::TraceHolder;
 use crate::prover::whir::kernels::{
     accumulate_whir_base_columns_with_serialized_bf, batched_eq_factor_scratch_lens,
     deserialize_whir_e4_columns, launch_batched_accumulate_eq_samples,
-    launch_whir_three_point_partials, partially_evaluate_monomials_by_ref,
+    launch_split_accumulate_eq_samples, launch_whir_three_point_partials,
+    partially_evaluate_monomials_by_ref, split_eq_factor_scratch_lens,
     whir_fold_split_half_in_place, whir_fold_split_half_in_place_pair,
     whir_fold_split_half_in_place_vectorized,
 };
@@ -416,6 +417,12 @@ pub(super) fn schedule_monomial_eval_device(
     Ok(result)
 }
 
+/// Selects the WHIR query-eq accumulator backend. `true` uses the 2-chunk
+/// balanced-split layout (one E4 mul + add per query in the inner loop, ~1/3
+/// the compute of the legacy path); `false` uses the legacy 3-slot GKR-style
+/// 8/8/7 layout. Flip and rebuild to A/B with `ncu`.
+const USE_SPLIT_EQ_ACCUMULATOR: bool = true;
+
 /// Returned scratch allocations must outlive the launched kernels — push onto
 /// a per-round keepalive vec.
 pub(super) fn schedule_accumulate_eq_samples_batched(
@@ -428,21 +435,39 @@ pub(super) fn schedule_accumulate_eq_samples_batched(
 ) -> CudaResult<(DeviceAllocation<E4>, DeviceAllocation<E4>)> {
     assert_eq!(claim_points.len(), num_queries * challenge_count);
     assert!(challenges.len() >= num_queries);
-    let (high_len, low_len) = batched_eq_factor_scratch_lens(num_queries);
-    let mut eq_high_scratch = context.alloc::<E4>(high_len, AllocationPlacement::BestFit)?;
-    let mut eq_low_scratch = context.alloc::<E4>(low_len, AllocationPlacement::BestFit)?;
-    launch_batched_accumulate_eq_samples(
-        claim_points.as_ptr(),
-        challenges.as_ptr(),
-        num_queries,
-        challenge_count,
-        eq_high_scratch.as_mut_ptr(),
-        eq_low_scratch.as_mut_ptr(),
-        state.eq_poly.as_mut_ptr(),
-        state.current_len,
-        context,
-    )?;
-    Ok((eq_high_scratch, eq_low_scratch))
+    if USE_SPLIT_EQ_ACCUMULATOR && challenge_count >= 2 {
+        let (high_len, low_len) = split_eq_factor_scratch_lens(num_queries, challenge_count);
+        let mut eq_high_scratch = context.alloc::<E4>(high_len, AllocationPlacement::BestFit)?;
+        let mut eq_low_scratch = context.alloc::<E4>(low_len, AllocationPlacement::BestFit)?;
+        launch_split_accumulate_eq_samples(
+            claim_points.as_ptr(),
+            challenges.as_ptr(),
+            num_queries,
+            challenge_count,
+            eq_high_scratch.as_mut_ptr(),
+            eq_low_scratch.as_mut_ptr(),
+            state.eq_poly.as_mut_ptr(),
+            state.current_len,
+            context,
+        )?;
+        Ok((eq_high_scratch, eq_low_scratch))
+    } else {
+        let (high_len, low_len) = batched_eq_factor_scratch_lens(num_queries);
+        let mut eq_high_scratch = context.alloc::<E4>(high_len, AllocationPlacement::BestFit)?;
+        let mut eq_low_scratch = context.alloc::<E4>(low_len, AllocationPlacement::BestFit)?;
+        launch_batched_accumulate_eq_samples(
+            claim_points.as_ptr(),
+            challenges.as_ptr(),
+            num_queries,
+            challenge_count,
+            eq_high_scratch.as_mut_ptr(),
+            eq_low_scratch.as_mut_ptr(),
+            state.eq_poly.as_mut_ptr(),
+            state.current_len,
+            context,
+        )?;
+        Ok((eq_high_scratch, eq_low_scratch))
+    }
 }
 
 #[cfg(test)]

@@ -248,10 +248,19 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
         let delinearization_eq_range = Range::new("gkr.whir.base_round.0.delinearization_eq")?;
         delinearization_eq_range.start(stream)?;
+        // Fused OOD + batched-query eq accumulator: per_query_pows holds the
+        // OOD anchor in slot 0 and the N per-query squaring sequences in
+        // slots 1..N+1, so a single accumulate call covers both.
+        let count_per_query = state.current_len.trailing_zeros() as usize;
+        let mut per_query_pows: DeviceAllocation<E4> = context.alloc(
+            count_per_query * (num_queries + 1),
+            AllocationPlacement::BestFit,
+        )?;
         let delinearization_device = schedule_delinearization_running_powers_phase(
             &mut state,
             num_queries,
             &ood_point_devices[ood_point_device_idx][..],
+            &mut per_query_pows[..count_per_query],
             final_device_seed,
             &mut delinearization_ephemerals,
             context,
@@ -440,25 +449,23 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         )?;
         // Phase C (WHIR-on-device): materialize all per-query squaring
         // sequences in a single kernel launch reading device-resident query
-        // indices, then loop over the queries to dispatch the inner
-        // eq-sample accumulation against device-resident point_pows. No
-        // host callbacks, no D2H of query indices, no per-query H2D of
-        // point_pows.
-        let count_per_query = state.current_len.trailing_zeros() as usize;
-        let mut per_query_pows: DeviceAllocation<E4> =
-            context.alloc(count_per_query * num_queries, AllocationPlacement::BestFit)?;
+        // indices. The OOD anchor already lives in slot 0 of per_query_pows
+        // (written by `schedule_delinearization_running_powers_phase`), so
+        // the squaring kernel only fills the per-query tail at `[log_n..]`.
         crate::ops::squaring::query_squaring_sequences_bf_to_e4(
             query_domain_generator,
             device_query_indexes_for_base,
-            &mut per_query_pows[..],
+            &mut per_query_pows[count_per_query..],
             count_per_query as u32,
             stream,
         )?;
+        // Single fused accumulate: num_queries + 1 contributions (OOD at q=0,
+        // batched at q=1..N+1), challenges = delinearization_device[..N+1].
         let (eq_high_scratch, eq_low_scratch) = schedule_accumulate_eq_samples_batched(
             &mut state,
             &per_query_pows[..],
-            &delinearization_device[1..1 + num_queries],
-            num_queries,
+            &delinearization_device[0..1 + num_queries],
+            num_queries + 1,
             count_per_query,
             context,
         )?;
@@ -560,10 +567,19 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         pow_and_query_indexes_range.end(stream)?;
         tracing_ranges.push(pow_and_query_indexes_range);
 
+        // Fused OOD + batched-query eq accumulator: per_query_pows holds the
+        // OOD anchor in slot 0 and the N per-query squaring sequences in
+        // slots 1..N+1, so a single accumulate call covers both.
+        let count_per_query = state.current_len.trailing_zeros() as usize;
+        let mut per_query_pows: DeviceAllocation<E4> = context.alloc(
+            count_per_query * (num_queries + 1),
+            AllocationPlacement::BestFit,
+        )?;
         let delinearization_device = schedule_delinearization_running_powers_phase(
             &mut state,
             num_queries,
             &ood_point_devices[ood_point_device_idx][..],
+            &mut per_query_pows[..count_per_query],
             final_device_seed,
             &mut delinearization_ephemerals,
             context,
@@ -624,23 +640,24 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             )?;
         }
         // Phase C (WHIR-on-device): materialize all per-query squaring
-        // sequences in a single kernel launch and dispatch per-query
-        // accumulation against device-resident point_pows.
-        let count_per_query = state.current_len.trailing_zeros() as usize;
-        let mut per_query_pows: DeviceAllocation<E4> =
-            context.alloc(count_per_query * num_queries, AllocationPlacement::BestFit)?;
+        // sequences in a single kernel launch. The OOD anchor already lives
+        // in slot 0 of per_query_pows (written by
+        // `schedule_delinearization_running_powers_phase`), so the squaring
+        // kernel only fills the per-query tail at `[log_n..]`.
         crate::ops::squaring::query_squaring_sequences_bf_to_e4(
             query_domain_generator,
             device_query_indexes_for_round,
-            &mut per_query_pows[..],
+            &mut per_query_pows[count_per_query..],
             count_per_query as u32,
             stream,
         )?;
+        // Single fused accumulate: num_queries + 1 contributions (OOD at q=0,
+        // batched at q=1..N+1), challenges = delinearization_device[..N+1].
         let (eq_high_scratch, eq_low_scratch) = schedule_accumulate_eq_samples_batched(
             &mut state,
             &per_query_pows[..],
-            &delinearization_device[1..1 + num_queries],
-            num_queries,
+            &delinearization_device[0..1 + num_queries],
+            num_queries + 1,
             count_per_query,
             context,
         )?;

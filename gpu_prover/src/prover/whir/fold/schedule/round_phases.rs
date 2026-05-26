@@ -163,23 +163,28 @@ pub(super) fn schedule_pow_and_query_indexes_phase(
 }
 
 /// Schedules the running-powers buffer `[x, x^2, ..., x^(num_queries + 1)]`
-/// fully on device, and dispatches `accumulate_eq_sample_in_place` against the
-/// OOD anchor point using power index 0 (i.e. `x^1`). CPU weights the OOD
-/// contribution by `x` and the i-th query contribution by `x^(i + 2)` when
-/// accumulating `contributions_to_eq_poly`.
+/// fully on device and writes the OOD anchor squaring sequence
+/// `[ood, ood^2, ood^4, ..., ood^(2^(log_n - 1))]` into the caller-provided
+/// `anchor_out` slot.
 ///
-/// Returns `delinearization_device` so the caller can index into it for each
-/// query (and use it as a keepalive). Used by base and intermediate rounds;
-/// the final round has no delinearization step.
+/// The eq accumulation that consumes these is deferred to the caller so it
+/// can fuse the OOD contribution (challenge = power index 0, claim_point =
+/// anchor) with the batched per-query contributions (challenges = power
+/// indices 1..N+1, claim_points = per_query_pows) into a single
+/// `schedule_accumulate_eq_samples_batched` call. Used by base and
+/// intermediate rounds; the final round has no delinearization step.
 pub(super) fn schedule_delinearization_running_powers_phase(
     state: &mut GpuWhirState,
     num_queries: usize,
     ood_point_device: &DeviceSlice<E4>,
+    anchor_out: &mut DeviceSlice<E4>,
     device_seed: &mut DeviceSlice<u32>,
     device_keepalives: &mut Vec<DeviceAllocation<E4>>,
     context: &ProverContext,
 ) -> CudaResult<DeviceAllocation<E4>> {
     let stream = context.get_exec_stream();
+    let log_n = state.current_len.trailing_zeros() as usize;
+    assert_eq!(anchor_out.len(), log_n);
     // Draw the delinearization base challenge on device.
     let mut delin_base: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::BestFit)?;
     transcript_squeeze_e4(device_seed, &mut delin_base, stream)?;
@@ -194,25 +199,9 @@ pub(super) fn schedule_delinearization_running_powers_phase(
         &mut delinearization_device[..],
         stream,
     )?;
-    // Phase C (WHIR-on-device): materialize the OOD anchor squaring sequence
-    // `[x, x^2, x^4, ..., x^(2^(log_n - 1))]` directly on device with
-    // `ab_squaring_sequence_e4_kernel`. No D2H of the OOD point, no host
-    // callback, no H2D of point_pows.
-    let log_n = state.current_len.trailing_zeros() as usize;
-    let mut anchor_powers: DeviceAllocation<E4> =
-        context.alloc(log_n, AllocationPlacement::BestFit)?;
-    squaring_sequence_e4(&ood_point_device[0], &mut anchor_powers[..], stream)?;
-    let (eq_high_scratch, eq_low_scratch) = schedule_accumulate_eq_samples_batched(
-        state,
-        &anchor_powers[..],
-        &delinearization_device[0..1],
-        1,
-        log_n,
-        context,
-    )?;
+    // Materialize the OOD anchor squaring sequence directly into the caller's
+    // slot (slot 0 of the fused claim_points buffer).
+    squaring_sequence_e4(&ood_point_device[0], anchor_out, stream)?;
     device_keepalives.push(delin_base);
-    device_keepalives.push(anchor_powers);
-    device_keepalives.push(eq_high_scratch);
-    device_keepalives.push(eq_low_scratch);
     Ok(delinearization_device)
 }
