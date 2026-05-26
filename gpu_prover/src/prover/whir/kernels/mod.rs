@@ -101,6 +101,19 @@ cuda_kernel_declaration!(
     ab_accumulate_whir_base_columns_e4_kernel(metadata: BaseColumnsBatchingMetadata)
 );
 
+cuda_kernel_signature_arguments_and_function!(
+    AccumulateWhirBaseColumnsWithSerializedBf,
+    metadata: BaseColumnsBatchingMetadata,
+    serialized_bf: *mut BF,
+);
+
+cuda_kernel_declaration!(
+    ab_accumulate_whir_base_columns_with_serialized_bf_e4_kernel(
+        metadata: BaseColumnsBatchingMetadata,
+        serialized_bf: *mut BF,
+    )
+);
+
 pub(crate) fn accumulate_whir_base_columns(
     memory_values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     witness_values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -158,6 +171,78 @@ pub(crate) fn accumulate_whir_base_columns(
     let args = AccumulateWhirBaseColumnsArguments::new(metadata);
     AccumulateWhirBaseColumnsFunction(ab_accumulate_whir_base_columns_e4_kernel)
         .launch(&config, &args)
+}
+
+/// Fused `accumulate_whir_base_columns` + `serialize_whir_e4_columns`: writes
+/// the E4 result into `result` and the column-major BF vectorization (4
+/// columns of `rows` BFs each) into `serialized_bf` in a single pass.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn accumulate_whir_base_columns_with_serialized_bf(
+    memory_values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    witness_values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    setup_values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    memory_weights: &DeviceSlice<E4>,
+    witness_weights: &DeviceSlice<E4>,
+    setup_weights: &DeviceSlice<E4>,
+    result: &mut DeviceSlice<E4>,
+    serialized_bf: &mut DeviceSlice<BF>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(memory_values.cols(), memory_weights.len());
+    assert_eq!(memory_values.rows(), result.len());
+    assert!(memory_values.rows() <= u32::MAX as usize);
+    assert!(memory_values.cols() <= u32::MAX as usize);
+    assert_eq!(witness_values.cols(), witness_weights.len());
+    assert_eq!(witness_values.rows(), result.len());
+    assert!(witness_values.rows() <= u32::MAX as usize);
+    assert!(witness_values.cols() <= u32::MAX as usize);
+    assert_eq!(setup_values.cols(), setup_weights.len());
+    assert_eq!(setup_values.rows(), result.len());
+    assert!(setup_values.rows() <= u32::MAX as usize);
+    assert!(setup_values.cols() <= u32::MAX as usize);
+    assert_eq!(
+        serialized_bf.len(),
+        result.len() * <E4 as FieldExtension<BF>>::DEGREE
+    );
+    let values = [
+        memory_values.as_ptr(),
+        witness_values.as_ptr(),
+        setup_values.as_ptr(),
+    ];
+    let weights = [
+        memory_weights.as_ptr(),
+        witness_weights.as_ptr(),
+        setup_weights.as_ptr(),
+    ];
+    let cols = [
+        memory_values.cols() as u32,
+        witness_values.cols() as u32,
+        setup_values.cols() as u32,
+    ];
+    let strides = [
+        memory_values.stride() as u32,
+        witness_values.stride() as u32,
+        setup_values.stride() as u32,
+    ];
+    let rows = memory_values.rows() as u32;
+    let metadata = BaseColumnsBatchingMetadata {
+        values,
+        weights,
+        cols,
+        strides,
+        result: result.as_mut_ptr(),
+        rows,
+    };
+    let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, rows);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = AccumulateWhirBaseColumnsWithSerializedBfArguments::new(
+        metadata,
+        serialized_bf.as_mut_ptr(),
+    );
+    AccumulateWhirBaseColumnsWithSerializedBfFunction(
+        ab_accumulate_whir_base_columns_with_serialized_bf_e4_kernel,
+    )
+    .launch(&config, &args)
 }
 
 cuda_kernel_signature_arguments_and_function!(
