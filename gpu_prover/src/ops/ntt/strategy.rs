@@ -822,8 +822,8 @@ mod tests {
         // cc_major no longer feeds the gate — sm_90+ device picks the same kernels.
         let h = rtx_5090_like();
         for (log_n, num_cosets) in cases {
-            let s =
-                select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, false, &h).unwrap();
+            let s = select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, false, &h)
+                .unwrap();
             assert!(matches!(
                 s.passes[0].kernel,
                 NttKernelKind::MonomialsToEvalsStreaming { stages } if stages == log_n
@@ -1034,11 +1034,9 @@ mod tests {
         //                             Fallback (1, 1) -- single coset overflows.
         // log_n=24 (col_bytes=64 MB): same overflow -> (1, 1).
         let l4 = l4_like();
-        let cases: &[(usize, usize, usize)] =
-            &[(21, 2, 2), (22, 1, 2), (23, 1, 1), (24, 1, 1)];
+        let cases: &[(usize, usize, usize)] = &[(21, 2, 2), (22, 1, 2), (23, 1, 1), (24, 1, 1)];
         for &(log_n, expected_cols, expected_cosets) in cases {
-            let s =
-                select_ntt_strategy(NttDirection::Forward, log_n, 4, 64, false, &l4).unwrap();
+            let s = select_ntt_strategy(NttDirection::Forward, log_n, 4, 64, false, &l4).unwrap();
             assert_eq!(
                 s.columns_per_launch, expected_cols,
                 "log_n={log_n} (num_cosets=64): cols mismatch",

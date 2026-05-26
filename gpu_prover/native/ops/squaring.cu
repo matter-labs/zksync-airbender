@@ -29,11 +29,8 @@ EXTERN __global__ void ab_squaring_sequence_e4_kernel(const e4 *base, e4 *result
 //   ...
 //   result[i*count_per_query + count_per_query - 1] = point ** 2^(count_per_query - 1)
 // One thread (block) per query. `count_per_query` is small (<= log_n, ~25).
-EXTERN __global__ void ab_query_squaring_sequences_bf_to_e4_kernel(const bf domain_generator,
-                                                                   const unsigned *query_indexes,
-                                                                   e4 *result,
-                                                                   const unsigned count_per_query,
-                                                                   const unsigned num_queries) {
+EXTERN __global__ void ab_query_squaring_sequences_bf_to_e4_kernel(const bf domain_generator, const unsigned *query_indexes, e4 *result,
+                                                                   const unsigned count_per_query, const unsigned num_queries) {
   const unsigned q = blockIdx.x * blockDim.x + threadIdx.x;
   if (q >= num_queries)
     return;
