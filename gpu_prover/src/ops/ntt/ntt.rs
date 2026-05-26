@@ -1063,7 +1063,10 @@ fn monomials_to_evals_streaming_impl(
         log_vpt == 3 || log_n <= 7,
         "VPT=4 (log_vpt=2) requires log_n <= 7 (TPC must fit in a warp); got log_n={log_n}"
     );
-    assert!(log_n >= log_vpt, "log_n ({log_n}) must be >= log_vpt ({log_vpt})");
+    assert!(
+        log_n >= log_vpt,
+        "log_n ({log_n}) must be >= log_vpt ({log_vpt})"
+    );
     assert!(
         !transposed_monomials,
         "streaming NTT does not support transposed monomials"
@@ -1103,7 +1106,9 @@ fn monomials_to_evals_streaming_impl(
     // each block runs many iterations regardless. Cap at total_iters to avoid
     // empty trailing blocks.
     let blocks_per_sm_target = 4usize;
-    let grid_blocks = (device_props.sm_count * blocks_per_sm_target).min(total_iters).max(1);
+    let grid_blocks = (device_props.sm_count * blocks_per_sm_target)
+        .min(total_iters)
+        .max(1);
     let function = match (log_vpt, log_n) {
         (3, 3) => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_v8_3_stages_kernel),
         (3, 4) => MonomialsToEvalsStreamingFunction(ab_monomials_to_evals_streaming_v8_4_stages_kernel),
@@ -1513,20 +1518,18 @@ pub(crate) fn bitreversed_monomials_to_natural_evals_multi_coset(
     if strategy.passes.len() == 1 {
         let mut outputs_matrix = DeviceMatrixMut::new(outputs, trace_len);
         return match strategy.passes[0].kernel {
-            super::NttKernelKind::MonomialsToEvalsStreaming { .. } => {
-                monomials_to_evals_streaming(
-                    inputs_matrix,
-                    &mut outputs_matrix,
-                    log_n,
-                    coset_index_base,
-                    coset_factor_shift,
-                    num_cosets,
-                    num_cols_per_coset_stride,
-                    transposed_monomials,
-                    stream,
-                    device_properties,
-                )
-            }
+            super::NttKernelKind::MonomialsToEvalsStreaming { .. } => monomials_to_evals_streaming(
+                inputs_matrix,
+                &mut outputs_matrix,
+                log_n,
+                coset_index_base,
+                coset_factor_shift,
+                num_cosets,
+                num_cols_per_coset_stride,
+                transposed_monomials,
+                stream,
+                device_properties,
+            ),
             super::NttKernelKind::MonomialsToEvalsSubwarp {
                 log_instances_per_block,
                 ..
@@ -1712,20 +1715,18 @@ fn dispatch_strategy(
     );
     match strategy.passes.len() {
         1 => match strategy.passes[0].kernel {
-            super::NttKernelKind::MonomialsToEvalsStreaming { .. } => {
-                monomials_to_evals_streaming(
-                    inputs_matrix,
-                    outputs_matrix,
-                    log_n,
-                    coset_index,
-                    coset_factor_shift,
-                    1,
-                    num_cols_per_coset,
-                    transposed_monomials,
-                    stream,
-                    device_properties,
-                )
-            }
+            super::NttKernelKind::MonomialsToEvalsStreaming { .. } => monomials_to_evals_streaming(
+                inputs_matrix,
+                outputs_matrix,
+                log_n,
+                coset_index,
+                coset_factor_shift,
+                1,
+                num_cols_per_coset,
+                transposed_monomials,
+                stream,
+                device_properties,
+            ),
             super::NttKernelKind::MonomialsToEvalsSubwarp {
                 log_instances_per_block,
                 ..
