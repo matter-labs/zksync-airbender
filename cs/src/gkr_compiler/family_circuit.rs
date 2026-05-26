@@ -15,6 +15,7 @@ use crate::definitions::Variable;
 use crate::gkr_compiler::graph::GKRGraph;
 use crate::gkr_compiler::graph::GraphHolder;
 use crate::gkr_compiler::layout::LookupOutput;
+use crate::structured_expr::Expr;
 use crate::types::Boolean;
 
 impl<F: PrimeField> GKRCompiler<F> {
@@ -32,7 +33,6 @@ impl<F: PrimeField> GKRCompiler<F> {
         let CircuitOutput {
             table_driver,
             num_of_variables,
-            constraints,
             structured_statements,
             lookups,
             memory_queries,
@@ -68,7 +68,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             total_tables_size.div_ceil(lookup_table_encoding_capacity);
         assert!(num_required_tuples_for_lookup_setup <= 1);
 
-        let mut constraints = constraints;
+        let mut structured_statements = structured_statements;
         let mut variables_from_constraints = variables_from_constraints;
         let mut layers_mapping = layers_mapping;
 
@@ -460,26 +460,38 @@ impl<F: PrimeField> GKRCompiler<F> {
             // carry over top limb, as we want to have upper bound anyway
 
             // we need to ensure that constraint the describes a carry is boolean
-            let mut t = Constraint::from(executor_machine_state.cycle_start_state.timestamp[0])
-                + Term::from(TIMESTAMP_STEP as u32)
-                - Term::from(executor_machine_state.cycle_end_state.timestamp[0]);
-            t.scale(
-                F::from_u64_with_reduction(1 << TIMESTAMP_COLUMNS_NUM_BITS)
-                    .inverse()
-                    .unwrap(),
-            );
+            let t = Expr::product(vec![
+                Expr::<F>::constant(
+                    F::from_u64_with_reduction(1 << TIMESTAMP_COLUMNS_NUM_BITS)
+                        .inverse()
+                        .unwrap(),
+                ),
+                (Expr::<F>::from(executor_machine_state.cycle_start_state.timestamp[0])
+                    + Expr::from(TIMESTAMP_STEP as u32)
+                    - Expr::from(executor_machine_state.cycle_end_state.timestamp[0])),
+            ]);
 
             // low
-            let constraint = t.clone() * t.clone() - t.clone();
-            constraints.push((constraint, true));
+            let low_expr = t.clone() * t.clone() - t.clone();
+            low_expr.validate_degree_at_most(2);
+            let compiled_constraint = low_expr.to_max_quadratic_constraint();
+            structured_statements.push(StructuredStatement::AssertZero {
+                expr: low_expr,
+                compiled_constraint,
+                prevent_optimizations: true,
+            });
 
             // high - carryless
-            constraints.push((
-                Constraint::from(executor_machine_state.cycle_end_state.timestamp[1])
-                    - Term::from(executor_machine_state.cycle_start_state.timestamp[1])
-                    - t,
-                true,
-            ));
+            let high_expr = Expr::<F>::from(executor_machine_state.cycle_end_state.timestamp[1])
+                - Expr::from(executor_machine_state.cycle_start_state.timestamp[1])
+                - t;
+            high_expr.validate_degree_at_most(1);
+            let compiled_constraint = high_expr.to_max_quadratic_constraint();
+            structured_statements.push(StructuredStatement::AssertZero {
+                expr: high_expr,
+                compiled_constraint,
+                prevent_optimizations: true,
+            });
         };
 
         let machine_state = layout_machine_state_for_preprocessed_bytecode(
@@ -530,14 +542,14 @@ impl<F: PrimeField> GKRCompiler<F> {
         // for all boolean vars we add booleanity constraint here
 
         for boolean in boolean_vars.iter() {
-            let t = Term::<F>::from(*boolean);
-            let c = t.clone() * t.clone() - t;
-            constraints.push((c, false));
-        }
-
-        // normalize constraint for next steps
-        for c in constraints.iter_mut() {
-            c.0.normalize();
+            let expr = Expr::<F>::from(*boolean) * (Expr::from(*boolean) - Expr::from(1));
+            expr.validate_degree_at_most(2);
+            let compiled_constraint = expr.to_max_quadratic_constraint();
+            structured_statements.push(StructuredStatement::AssertZero {
+                expr: expr,
+                compiled_constraint,
+                prevent_optimizations: true,
+            });
         }
 
         // and now we can finally layout all the variables. We do want to push all of them into intermediate layers
@@ -546,29 +558,6 @@ impl<F: PrimeField> GKRCompiler<F> {
         // - grand product accumulations
         // - lookup accumulations
         // - constraints
-
-        // And we can transform them into (potentially intersecting) sub-GKRs
-
-        // filter constraints that define variables
-        let len_before = constraints.len();
-        for (_, c) in variables_from_constraints.iter_mut() {
-            c.normalize();
-            let mut to_remove = None;
-            for (idx, (cc, _)) in constraints.iter().enumerate() {
-                if cc == &*c {
-                    assert!(to_remove.is_none());
-                    to_remove = Some(idx);
-                }
-            }
-            if let Some(to_remove) = to_remove {
-                constraints.remove(to_remove);
-            }
-        }
-        let len_after = constraints.len();
-        println!(
-            "{} constraints removed as they define variables, will be used separately",
-            len_before - len_after
-        );
 
         // Above we only placed in the graph variables that have strict constraint on being at the base (input) layer of the proof.
         // Now we should try to move from the base layer and place the rest.
@@ -585,23 +574,13 @@ impl<F: PrimeField> GKRCompiler<F> {
             }
         }
 
-        // first define if any of the constraints depends on the variables defined via other constraints
-        let mut variables_via_constraints_are_disjoint = true;
-        let mut all_variables_in_constraints = HashSet::new();
-        for (c, _) in constraints.iter() {
-            for (var, _) in variables_from_constraints.iter() {
-                if c.contains_var(var) {
-                    variables_via_constraints_are_disjoint = false;
-                }
-            }
-            c.dump_variables(&mut all_variables_in_constraints);
-        }
+        // variables defined (logically) via constraints can be placed by the author at either base
+        // or intermediate layer, and we identify it by peeking into the corresponding
+        // structured expression.
 
-        println!(
-            "Variables defined via constraints are disjoint = {}",
-            variables_via_constraints_are_disjoint
-        );
+        // NOTE: `variables_from_constraints` only contain variables to place into intermediate layer
 
+        let mut used_definitions = BTreeSet::new();
         if variables_from_constraints.len() > 0 {
             assert!(all_variables_to_place.len() > 0);
 
@@ -625,20 +604,32 @@ impl<F: PrimeField> GKRCompiler<F> {
             let mut intermediate_layer = 1;
             loop {
                 let initial_len = variables_from_constraints.len();
-                for (var, constraint) in variables_from_constraints.clone().into_iter() {
-                    let all_vars = constraint.stable_variable_set();
+                for (var, expression_idx) in variables_from_constraints.clone().into_iter() {
+                    let StructuredStatement::Define {
+                        dst,
+                        compiled_constraint,
+                        expr,
+                        output_layer,
+                    } = &structured_statements[expression_idx]
+                    else {
+                        unreachable!()
+                    };
+                    let all_vars = compiled_constraint.stable_variable_set();
                     let expected_layer = *layers_mapping.get(&var).expect("must be known");
+                    assert_eq!(expected_layer, *output_layer);
                     let inputs_layer = get_input_layer_ensure_same(&all_vars, &layers_mapping);
                     assert_eq!(expected_layer, inputs_layer + 1);
                     if intermediate_layer != inputs_layer + 1 {
                         continue;
                     }
-                    let _ = graph.place_intermediate_variable_from_constraint_at_layer(
+                    assert!(used_definitions.insert(expression_idx));
+                    let _ = graph.place_intermediate_variable_from_expression_at_layer(
                         intermediate_layer,
                         var,
                         &mut all_variables_to_place,
                         &layers_mapping,
-                        constraint,
+                        expr.clone(),
+                        compiled_constraint.clone(),
                     );
                     variables_from_constraints.remove(&var);
                 }
@@ -666,6 +657,17 @@ impl<F: PrimeField> GKRCompiler<F> {
                 );
             }
             assert!(all_variables_to_place.is_empty());
+        }
+
+        for (idx, expr) in structured_statements.iter().enumerate() {
+            match expr {
+                StructuredStatement::AssertZero { .. } => {
+                    assert!(used_definitions.contains(&idx) == false);
+                }
+                StructuredStatement::Define { .. } => {
+                    assert!(used_definitions.contains(&idx));
+                }
+            }
         }
 
         // Accumulate grand product - pairwise as much as we can
@@ -754,8 +756,11 @@ impl<F: PrimeField> GKRCompiler<F> {
         }
 
         // Place a gate for constraints batch eval
-        let (degree_2_constraints, degree_1_constraints) =
-            layout_constraints_at_layers::<F, false>(&mut graph, constraints, &layers_mapping);
+        let (degree_2_constraints, degree_1_constraints) = layout_constraints_at_layers::<F, false>(
+            &mut graph,
+            &structured_statements,
+            &layers_mapping,
+        );
 
         // work out the outputs
         let lookup_outputs = BTreeMap::from_iter(

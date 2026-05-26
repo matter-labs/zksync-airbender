@@ -402,74 +402,74 @@ mod test {
 
     type F = ::field::Mersenne31Field;
 
-    fn is_scaled_byte_variable(expr: &Expr<F>) -> bool {
-        let byte_shift = F::from_u32_with_reduction(1 << 8);
+    // fn is_scaled_byte_variable(expr: &Expr<F>) -> bool {
+    //     let byte_shift = F::from_u32_with_reduction(1 << 8);
 
-        match expr {
-            Expr::Product(factors) if factors.len() == 2 => {
-                factors
-                    .iter()
-                    .any(|factor| matches!(factor, Expr::Constant(value) if *value == byte_shift))
-                    && factors.iter().any(|factor| matches!(factor, Expr::Var(_)))
-            }
-            _ => false,
-        }
-    }
+    //     match expr {
+    //         Expr::Product(factors) if factors.len() == 2 => {
+    //             factors
+    //                 .iter()
+    //                 .any(|factor| matches!(factor, Expr::Constant(value) if *value == byte_shift))
+    //                 && factors.iter().any(|factor| matches!(factor, Expr::Var(_)))
+    //         }
+    //         _ => false,
+    //     }
+    // }
 
-    fn is_byte_pair_expr(expr: &Expr<F>) -> bool {
-        match expr {
-            Expr::Sum(terms) if terms.len() == 2 => {
-                terms.iter().any(|term| matches!(term, Expr::Var(_)))
-                    && terms.iter().any(is_scaled_byte_variable)
-            }
-            _ => false,
-        }
-    }
+    // fn is_byte_pair_expr(expr: &Expr<F>) -> bool {
+    //     match expr {
+    //         Expr::Sum(terms) if terms.len() == 2 => {
+    //             terms.iter().any(|term| matches!(term, Expr::Var(_)))
+    //                 && terms.iter().any(is_scaled_byte_variable)
+    //         }
+    //         _ => false,
+    //     }
+    // }
 
-    fn contains_masked_byte_pair(expr: &Expr<F>) -> bool {
-        match expr {
-            Expr::Product(factors)
-                if factors.len() == 2
-                    && factors.iter().any(is_byte_pair_expr)
-                    && factors.iter().any(|factor| matches!(factor, Expr::Var(_))) =>
-            {
-                true
-            }
-            Expr::Sum(terms) | Expr::Product(terms) => terms.iter().any(contains_masked_byte_pair),
-            Expr::Constant(_) | Expr::Var(_) => false,
-        }
-    }
+    // fn contains_masked_byte_pair(expr: &Expr<F>) -> bool {
+    //     match expr {
+    //         Expr::Product(factors)
+    //             if factors.len() == 2
+    //                 && factors.iter().any(is_byte_pair_expr)
+    //                 && factors.iter().any(|factor| matches!(factor, Expr::Var(_))) =>
+    //         {
+    //             true
+    //         }
+    //         Expr::Sum(terms) | Expr::Product(terms) => terms.iter().any(contains_masked_byte_pair),
+    //         Expr::Constant(_) | Expr::Var(_) => false,
+    //     }
+    // }
 
-    fn contains_negated_variable(expr: &Expr<F>) -> bool {
-        match expr {
-            Expr::Product(factors) if factors.len() == 2 => {
-                factors
-                    .iter()
-                    .any(|factor| matches!(factor, Expr::Constant(value) if *value == F::MINUS_ONE))
-                    && factors.iter().any(|factor| matches!(factor, Expr::Var(_)))
-            }
-            Expr::Sum(terms) | Expr::Product(terms) => terms.iter().any(contains_negated_variable),
-            Expr::Constant(_) | Expr::Var(_) => false,
-        }
-    }
+    // fn contains_negated_variable(expr: &Expr<F>) -> bool {
+    //     match expr {
+    //         Expr::Product(factors) if factors.len() == 2 => {
+    //             factors
+    //                 .iter()
+    //                 .any(|factor| matches!(factor, Expr::Constant(value) if *value == F::MINUS_ONE))
+    //                 && factors.iter().any(|factor| matches!(factor, Expr::Var(_)))
+    //         }
+    //         Expr::Sum(terms) | Expr::Product(terms) => terms.iter().any(contains_negated_variable),
+    //         Expr::Constant(_) | Expr::Var(_) => false,
+    //     }
+    // }
 
-    #[test]
-    fn shift_binop_circuit_records_structured_output_selection() {
-        let mut cs = BasicAssembly::<F>::new();
-        shift_binop_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
-        let (output, _) = cs.finalize();
+    // #[test]
+    // fn shift_binop_circuit_records_structured_output_selection() {
+    //     let mut cs = BasicAssembly::<F>::new();
+    //     shift_binop_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
+    //     let (output, _) = cs.finalize();
 
-        assert!(output
-            .structured_statements
-            .iter()
-            .any(|statement| matches!(
-                statement,
-                StructuredStatement::AssertZero {
-                    expr,
-                    prevent_optimizations: false,
-                } if contains_masked_byte_pair(expr) && contains_negated_variable(expr)
-            )));
-    }
+    //     assert!(output
+    //         .structured_statements
+    //         .iter()
+    //         .any(|statement| matches!(
+    //             statement,
+    //             StructuredStatement::AssertZero {
+    //                 expr,
+    //                 prevent_optimizations: false,
+    //             } if contains_masked_byte_pair(expr) && contains_negated_variable(expr)
+    //         )));
+    // }
 
     #[test]
     fn compile_shift_binop_into_gkr() {

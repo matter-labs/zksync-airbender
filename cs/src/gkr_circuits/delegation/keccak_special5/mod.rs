@@ -360,8 +360,8 @@ pub fn define_keccak_special5_delegation_circuit<
         };
         cs.set_values(value_fn);
 
-        cs.add_constraint_allow_explicit_linear_expr(Expr::var(control_reg[1])); // we expect high 16 bits to be empty
-        cs.add_constraint_allow_explicit_linear_expr(Expr::var(control_reg_next[1])); // we expect high 16 bits to be empty
+        cs.add_constraint_expr_allow_explicit_linear(Expr::var(control_reg[1])); // we expect high 16 bits to be empty
+        cs.add_constraint_expr_allow_explicit_linear(Expr::var(control_reg_next[1])); // we expect high 16 bits to be empty
         (control_reg[0], control_reg_next[0]) // only the low 11 bits contain control info
     };
 
@@ -603,7 +603,7 @@ pub fn define_keccak_special5_delegation_circuit<
         cs.set_values(value_fn);
 
         // compose, to give meaning to (almost) all the bits
-        cs.add_constraint_allow_explicit_linear_expr(
+        cs.add_constraint_expr_allow_explicit_linear(
             precompile.clone()
                 + Expr::from(1u32 << 3) * iter.clone()
                 + Expr::from(1u32 << 6) * round.clone()
@@ -1506,7 +1506,7 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>, const N: usize, const DEBUG: boo
                 .map(|&flag| Expr::from(flag))
                 .collect(),
         );
-        cs.add_constraint_allow_explicit_linear_prevent_optimizations_expr(is_rot - is_rot_);
+        cs.add_constraint_expr_allow_explicit_linear_prevent_optimizations_expr(is_rot - is_rot_);
         assert!(
             N >= input_output_candidates
                 .iter()

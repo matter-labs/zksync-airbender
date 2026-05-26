@@ -2,6 +2,7 @@ use crate::{
     constraint::Constraint,
     definitions::{GKRAddress, Variable},
     gkr_compiler::graph::{GKRGraph, GraphHolder},
+    structured_expr::Expr,
 };
 
 use super::*;
@@ -107,16 +108,34 @@ impl<F: PrimeField> GKRGate for OneStepConstraintsEvaluationNode<F> {
 
 pub(crate) fn layout_constraints_at_layers<F: PrimeField, const USE_BATCHING: bool>(
     graph: &mut GKRGraph,
-    constraints: Vec<(Constraint<F>, bool)>,
+    expressions: &Vec<StructuredStatement<F>>,
     layers_mapping: &HashMap<Variable, usize>,
 ) -> (Vec<Degree2Constraint<F>>, Vec<Degree1Constraint<F>>) {
+    assert!(USE_BATCHING == false);
+
     // sort constraints by layers
     let mut layers = BTreeMap::new();
     let mut compiled_quadratic = vec![];
     let mut compiled_linear = vec![];
 
-    for (c, _) in constraints.into_iter() {
-        let all_vars = c.stable_variable_set();
+    for statement in expressions.into_iter() {
+        // let mut expected_output_layer = None;
+        let constraint = match statement {
+            StructuredStatement::AssertZero {
+                compiled_constraint,
+                ..
+            } => compiled_constraint,
+            StructuredStatement::Define {
+                compiled_constraint,
+                output_layer,
+                ..
+            } => {
+                continue;
+                // expected_output_layer = Some(*output_layer);
+                // compiled_constraint
+            }
+        };
+        let all_vars = constraint.stable_variable_set();
         let mut layer = None;
         for var in all_vars.into_iter() {
             let var_layer = *layers_mapping.get(&var).expect("must be known");
@@ -127,79 +146,51 @@ pub(crate) fn layout_constraints_at_layers<F: PrimeField, const USE_BATCHING: bo
             }
         }
         let layer = layer.expect("placement layer");
-        layers.entry(layer).or_insert(vec![]).push(c);
+        // if let Some(expected_output_layer) = expected_output_layer {
+        //     assert_eq!(layer + 1, expected_output_layer);
+        // }
+        layers
+            .entry(layer)
+            .or_insert(vec![])
+            .push(statement.clone());
     }
 
-    if USE_BATCHING {
-        for (input_layer, constraints) in layers.into_iter() {
-            let mut quadratic_parts = vec![];
-            let mut linear_parts = vec![];
-            let mut constant_parts = vec![];
+    for (input_layer, expressions) in layers.into_iter() {
+        for expr in expressions.into_iter() {
+            let StructuredStatement::AssertZero {
+                expr,
+                compiled_constraint,
+                ..
+            } = expr
+            else {
+                unreachable!()
+            };
+            let (q, l, c) = compiled_constraint.split_max_quadratic();
 
-            for c in constraints.into_iter() {
-                let (q, l, c) = c.split_max_quadratic();
-
-                if q.is_empty() {
-                    assert!(l.is_empty() == false);
-                    let compiled = Degree1Constraint {
-                        linear_terms: l.clone().into_boxed_slice(),
-                        constant_term: c,
-                    };
-                    compiled_linear.push(compiled);
-                } else {
-                    let compiled = Degree2Constraint {
-                        quadratic_terms: q.clone().into_boxed_slice(),
-                        linear_terms: l.clone().into_boxed_slice(),
-                        constant_term: c,
-                    };
-                    compiled_quadratic.push(compiled);
-                }
-
-                quadratic_parts.push(q);
-                linear_parts.push(l);
-                constant_parts.push(c);
+            if q.is_empty() {
+                assert!(l.is_empty() == false);
+                let compiled = Degree1Constraint {
+                    linear_terms: l.clone().into_boxed_slice(),
+                    constant_term: c,
+                };
+                compiled_linear.push(compiled);
+            } else {
+                let compiled = Degree2Constraint {
+                    quadratic_terms: q.clone().into_boxed_slice(),
+                    linear_terms: l.clone().into_boxed_slice(),
+                    constant_term: c,
+                };
+                compiled_quadratic.push(compiled);
             }
 
-            assert_eq!(quadratic_parts.len(), linear_parts.len());
-            assert_eq!(quadratic_parts.len(), constant_parts.len());
-
-            let node = OneStepConstraintsEvaluationNode {
-                quadratic_parts,
-                linear_parts,
-                constant_parts,
+            let node = SingleConstraintEvaluationNode {
+                quadratic_part: q,
+                linear_part: l,
+                constant_part: c,
+                structured_expression: expr,
             };
 
             node.add_at_layer(graph, input_layer + 1);
-        }
-    } else {
-        for (input_layer, constraints) in layers.into_iter() {
-            for c in constraints.into_iter() {
-                let (q, l, c) = c.split_max_quadratic();
-
-                if q.is_empty() {
-                    assert!(l.is_empty() == false);
-                    let compiled = Degree1Constraint {
-                        linear_terms: l.clone().into_boxed_slice(),
-                        constant_term: c,
-                    };
-                    compiled_linear.push(compiled);
-                } else {
-                    let compiled = Degree2Constraint {
-                        quadratic_terms: q.clone().into_boxed_slice(),
-                        linear_terms: l.clone().into_boxed_slice(),
-                        constant_term: c,
-                    };
-                    compiled_quadratic.push(compiled);
-                }
-
-                let node = SingleConstraintEvaluationNode {
-                    quadratic_part: q,
-                    linear_part: l,
-                    constant_part: c,
-                };
-
-                node.add_at_layer(graph, input_layer + 1);
-            }
         }
     }
 
@@ -211,6 +202,7 @@ pub struct SingleConstraintEvaluationNode<F: PrimeField> {
     pub quadratic_part: Vec<(F, Variable, Variable)>,
     pub linear_part: Vec<(F, Variable)>,
     pub constant_part: F,
+    pub structured_expression: Expr<F>,
 }
 
 impl<F: PrimeField> GKRGate for SingleConstraintEvaluationNode<F> {
@@ -278,10 +270,44 @@ impl<F: PrimeField> GKRGate for SingleConstraintEvaluationNode<F> {
             linear_terms,
             constant: self.constant_part.as_u32_reduced(),
         };
-
-        let node = NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input };
+        let expression = expression_into_no_field_expression(&self.structured_expression, &*graph);
+        let node = NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, expression };
         graph.add_enforced_relation(node.clone(), output_layer);
 
         ((), node)
+    }
+}
+
+pub(crate) fn expression_into_no_field_expression<F: PrimeField>(
+    expr: &Expr<F>,
+    graph: &impl GraphHolder,
+) -> NoFieldStructuredExpression {
+    match expr {
+        Expr::Constant(c) => {
+            let value = c.as_u32_reduced();
+            NoFieldStructuredExpression::Constant(value)
+        }
+        Expr::Var(var) => {
+            let place = graph.get_address_for_variable(*var);
+            NoFieldStructuredExpression::Place(place)
+        }
+        Expr::Sum(sum) => {
+            let mut els: Vec<_> = sum
+                .iter()
+                .map(|el| expression_into_no_field_expression(el, graph))
+                .collect();
+            els.sort();
+
+            NoFieldStructuredExpression::Sum(els)
+        }
+        Expr::Product(sum) => {
+            let mut els: Vec<_> = sum
+                .iter()
+                .map(|el| expression_into_no_field_expression(el, graph))
+                .collect();
+            els.sort();
+
+            NoFieldStructuredExpression::Product(els)
+        }
     }
 }

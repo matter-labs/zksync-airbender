@@ -53,7 +53,7 @@ pub fn calculate_pc_next_no_overflows_with_range_checks<F: PrimeField, CS: Circu
     };
     circuit.set_values(value_fn);
 
-    circuit.add_constraint_allow_explicit_linear_prevent_optimizations_expr(pc_high);
+    circuit.add_constraint_expr_allow_explicit_linear_prevent_optimizations_expr(pc_high);
 }
 
 pub(crate) fn update_intermediate_carry_value<

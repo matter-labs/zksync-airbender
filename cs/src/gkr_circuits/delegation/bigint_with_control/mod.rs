@@ -850,7 +850,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     };
     cs.set_values(value_fn);
 
-    cs.add_constraint_allow_explicit_linear_prevent_optimizations_expr(Expr::var(
+    cs.add_constraint_expr_allow_explicit_linear_prevent_optimizations_expr(Expr::var(
         x12_write_vars[1],
     ));
 

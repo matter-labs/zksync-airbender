@@ -178,7 +178,7 @@ impl Boolean {
                 .map(|(idx, &bit)| Expr::from(bit) * Expr::from(1u32 << idx))
                 .collect(),
         ) - Expr::from(full_bitmask);
-        circuit.add_constraint_allow_explicit_linear_expr(constraint);
+        circuit.add_constraint_expr_allow_explicit_linear(constraint);
 
         type_bitmask
     }

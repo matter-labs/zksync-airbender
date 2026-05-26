@@ -1,6 +1,7 @@
 use crate::constraint::Constraint;
 use crate::definitions::{GKRAddress, Variable, VirtualSetupPoly};
 use crate::gkr_compiler::{GKRGate, LookupType, NoFieldGKRCacheRelation, NoFieldGKRRelation};
+use crate::structured_expr::Expr;
 use field::PrimeField;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -207,13 +208,52 @@ impl GKRGraph {
         columns
     }
 
+    // #[track_caller]
+    // pub(crate) fn place_intermediate_variable_from_constraint_at_layer<F: PrimeField>(
+    //     &mut self,
+    //     intermediate_layer: usize,
+    //     variable: Variable,
+    //     all_variables_to_place: &mut BTreeSet<Variable>,
+    //     layers_mapping: &HashMap<Variable, usize>,
+    //     defining_constraint: Constraint<F>,
+    // ) -> GKRAddress {
+    //     assert_eq!(
+    //         *layers_mapping.get(&variable).expect("is known"),
+    //         intermediate_layer
+    //     );
+    //     let offset = self
+    //         .intermediate_layers_offsets
+    //         .entry(intermediate_layer)
+    //         .or_insert(0);
+    //     let place = GKRAddress::InnerLayer {
+    //         layer: intermediate_layer,
+    //         offset: *offset,
+    //     };
+    //     *offset += 1;
+    //     self.intermediate_layers.insert(variable, place);
+    //     self.intermediate_layers_rev.insert(place, variable);
+    //     assert!(
+    //         all_variables_to_place.remove(&variable),
+    //         "variable {:?} was already placed",
+    //         variable
+    //     );
+    //     // add gate
+    //     use crate::gkr_compiler::no_field_gkr_max_quadratic_from_expr_and_constraint;
+    //     let relation =
+    //         no_field_gkr_max_quadratic_from_expr_and_constraint(&*self, defi defining_constraint, place);
+    //     self.add_enforced_relation(relation, intermediate_layer);
+
+    //     place
+    // }
+
     #[track_caller]
-    pub(crate) fn place_intermediate_variable_from_constraint_at_layer<F: PrimeField>(
+    pub(crate) fn place_intermediate_variable_from_expression_at_layer<F: PrimeField>(
         &mut self,
         intermediate_layer: usize,
         variable: Variable,
         all_variables_to_place: &mut BTreeSet<Variable>,
         layers_mapping: &HashMap<Variable, usize>,
+        defining_expression: Expr<F>,
         defining_constraint: Constraint<F>,
     ) -> GKRAddress {
         assert_eq!(
@@ -237,9 +277,13 @@ impl GKRGraph {
             variable
         );
         // add gate
-        use crate::gkr_compiler::no_field_gkr_max_quadratic_from_constraint;
-        let relation =
-            no_field_gkr_max_quadratic_from_constraint(&*self, defining_constraint, place);
+        use crate::gkr_compiler::no_field_gkr_max_quadratic_from_expr_and_constraint;
+        let relation = no_field_gkr_max_quadratic_from_expr_and_constraint(
+            &*self,
+            defining_expression,
+            defining_constraint,
+            place,
+        );
         self.add_enforced_relation(relation, intermediate_layer);
 
         place

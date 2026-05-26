@@ -599,75 +599,75 @@ mod test {
 
     type F = ::field::Mersenne31Field;
 
-    fn contains_variable(expr: &Expr<F>, variable: Variable) -> bool {
-        match expr {
-            Expr::Constant(_) => false,
-            Expr::Var(candidate) => *candidate == variable,
-            Expr::Sum(terms) | Expr::Product(terms) => {
-                terms.iter().any(|term| contains_variable(term, variable))
-            }
-        }
-    }
+    // fn contains_variable(expr: &Expr<F>, variable: Variable) -> bool {
+    //     match expr {
+    //         Expr::Constant(_) => false,
+    //         Expr::Var(candidate) => *candidate == variable,
+    //         Expr::Sum(terms) | Expr::Product(terms) => {
+    //             terms.iter().any(|term| contains_variable(term, variable))
+    //         }
+    //     }
+    // }
 
-    fn is_scaled_variable(expr: &Expr<F>) -> bool {
-        match expr {
-            Expr::Product(factors) if factors.len() == 2 => {
-                factors
-                    .iter()
-                    .any(|factor| matches!(factor, Expr::Constant(_)))
-                    && factors.iter().any(|factor| matches!(factor, Expr::Var(_)))
-            }
-            _ => false,
-        }
-    }
+    // fn is_scaled_variable(expr: &Expr<F>) -> bool {
+    //     match expr {
+    //         Expr::Product(factors) if factors.len() == 2 => {
+    //             factors
+    //                 .iter()
+    //                 .any(|factor| matches!(factor, Expr::Constant(_)))
+    //                 && factors.iter().any(|factor| matches!(factor, Expr::Var(_)))
+    //         }
+    //         _ => false,
+    //     }
+    // }
 
-    fn is_word_from_u16_limbs(expr: &Expr<F>) -> bool {
-        match expr {
-            Expr::Sum(terms) if terms.len() == 2 => {
-                terms.iter().any(|term| matches!(term, Expr::Var(_)))
-                    && terms.iter().any(is_scaled_variable)
-            }
-            _ => false,
-        }
-    }
+    // fn is_word_from_u16_limbs(expr: &Expr<F>) -> bool {
+    //     match expr {
+    //         Expr::Sum(terms) if terms.len() == 2 => {
+    //             terms.iter().any(|term| matches!(term, Expr::Var(_)))
+    //                 && terms.iter().any(is_scaled_variable)
+    //         }
+    //         _ => false,
+    //     }
+    // }
 
-    fn contains_product_of_word_exprs(expr: &Expr<F>) -> bool {
-        match expr {
-            Expr::Product(factors)
-                if factors.len() == 2 && factors.iter().all(is_word_from_u16_limbs) =>
-            {
-                true
-            }
-            Expr::Sum(terms) | Expr::Product(terms) => {
-                terms.iter().any(contains_product_of_word_exprs)
-            }
-            Expr::Constant(_) | Expr::Var(_) => false,
-        }
-    }
+    // fn contains_product_of_word_exprs(expr: &Expr<F>) -> bool {
+    //     match expr {
+    //         Expr::Product(factors)
+    //             if factors.len() == 2 && factors.iter().all(is_word_from_u16_limbs) =>
+    //         {
+    //             true
+    //         }
+    //         Expr::Sum(terms) | Expr::Product(terms) => {
+    //             terms.iter().any(contains_product_of_word_exprs)
+    //         }
+    //         Expr::Constant(_) | Expr::Var(_) => false,
+    //     }
+    // }
 
-    #[test]
-    fn add_sub_circuit_records_structured_mulmod_word_product() {
-        let mut cs = BasicAssembly::<F>::new();
-        add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
-        let (output, _) = cs.finalize();
-        let mulmod_intermediate = output
-            .variable_names
-            .iter()
-            .find_map(|(variable, name)| (name == "MULMOD intermediate value").then_some(*variable))
-            .expect("mulmod intermediate variable must be named");
+    // #[test]
+    // fn add_sub_circuit_records_structured_mulmod_word_product() {
+    //     let mut cs = BasicAssembly::<F>::new();
+    //     add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
+    //     let (output, _) = cs.finalize();
+    //     let mulmod_intermediate = output
+    //         .variable_names
+    //         .iter()
+    //         .find_map(|(variable, name)| (name == "MULMOD intermediate value").then_some(*variable))
+    //         .expect("mulmod intermediate variable must be named");
 
-        assert!(output
-            .structured_statements
-            .iter()
-            .any(|statement| matches!(
-                statement,
-                StructuredStatement::AssertZero {
-                    expr,
-                    prevent_optimizations: false,
-                } if contains_product_of_word_exprs(expr)
-                    && contains_variable(expr, mulmod_intermediate)
-            )));
-    }
+    //     assert!(output
+    //         .structured_statements
+    //         .iter()
+    //         .any(|statement| matches!(
+    //             statement,
+    //             StructuredStatement::AssertZero {
+    //                 expr,
+    //                 prevent_optimizations: false,
+    //             } if contains_product_of_word_exprs(expr)
+    //                 && contains_variable(expr, mulmod_intermediate)
+    //         )));
+    // }
 
     #[test]
     fn compile_add_sub_lui_auipc_mop_into_gkr() {

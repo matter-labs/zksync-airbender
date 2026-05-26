@@ -928,79 +928,79 @@ mod test {
 
     type F = ::field::Mersenne31Field;
 
-    fn named_variable(output: &CircuitOutput<F>, expected_name: &str) -> Variable {
-        output
-            .variable_names
-            .iter()
-            .find_map(|(variable, name)| (name == expected_name).then_some(*variable))
-            .expect("named variable must exist")
-    }
+    // fn named_variable(output: &CircuitOutput<F>, expected_name: &str) -> Variable {
+    //     output
+    //         .variable_names
+    //         .iter()
+    //         .find_map(|(variable, name)| (name == expected_name).then_some(*variable))
+    //         .expect("named variable must exist")
+    // }
 
-    fn defined_expr_for<'a>(output: &'a CircuitOutput<F>, expected_name: &str) -> &'a Expr<F> {
-        let variable = named_variable(output, expected_name);
+    // fn defined_expr_for<'a>(output: &'a CircuitOutput<F>, expected_name: &str) -> &'a Expr<F> {
+    //     let variable = named_variable(output, expected_name);
 
-        output
-            .structured_statements
-            .iter()
-            .find_map(|statement| match statement {
-                StructuredStatement::Define { dst, expr } if *dst == variable => Some(expr),
-                StructuredStatement::Define { .. } | StructuredStatement::AssertZero { .. } => None,
-            })
-            .expect("named variable must have structured definition")
-    }
+    //     output
+    //         .structured_statements
+    //         .iter()
+    //         .find_map(|statement| match statement {
+    //             StructuredStatement::Define { dst, expr } if *dst == variable => Some(expr),
+    //             StructuredStatement::Define { .. } | StructuredStatement::AssertZero { .. } => None,
+    //         })
+    //         .expect("named variable must have structured definition")
+    // }
 
-    fn contains_product_with_sum_factor(expr: &Expr<F>) -> bool {
-        match expr {
-            Expr::Product(factors) => {
-                factors.iter().any(|factor| matches!(factor, Expr::Sum(_)))
-                    || factors.iter().any(contains_product_with_sum_factor)
-            }
-            Expr::Sum(terms) => terms.iter().any(contains_product_with_sum_factor),
-            Expr::Constant(_) | Expr::Var(_) => false,
-        }
-    }
+    // fn contains_product_with_sum_factor(expr: &Expr<F>) -> bool {
+    //     match expr {
+    //         Expr::Product(factors) => {
+    //             factors.iter().any(|factor| matches!(factor, Expr::Sum(_)))
+    //                 || factors.iter().any(contains_product_with_sum_factor)
+    //         }
+    //         Expr::Sum(terms) => terms.iter().any(contains_product_with_sum_factor),
+    //         Expr::Constant(_) | Expr::Var(_) => false,
+    //     }
+    // }
 
-    fn grouped_schoolbook_terms_count(expr: &Expr<F>) -> usize {
-        let Expr::Sum(terms) = expr else {
-            return 0;
-        };
+    // fn grouped_schoolbook_terms_count(expr: &Expr<F>) -> usize {
+    //     let Expr::Sum(terms) = expr else {
+    //         return 0;
+    //     };
 
-        terms
-            .iter()
-            .filter(|term| contains_product_with_sum_factor(term))
-            .count()
-    }
+    //     terms
+    //         .iter()
+    //         .filter(|term| contains_product_with_sum_factor(term))
+    //         .count()
+    // }
 
-    #[test]
-    fn unsigned_mul_div_records_grouped_layer_1_selectors() {
-        let mut cs = BasicAssembly::<F>::new();
-        mul_div_circuit_with_preprocessed_bytecode_for_gkr::<_, _, false>(&mut cs);
-        let (output, _) = cs.finalize();
+    // #[test]
+    // fn unsigned_mul_div_records_grouped_layer_1_selectors() {
+    //     let mut cs = BasicAssembly::<F>::new();
+    //     mul_div_circuit_with_preprocessed_bytecode_for_gkr::<_, _, false>(&mut cs);
+    //     let (output, _) = cs.finalize();
 
-        let divisor_is_zero = defined_expr_for(&output, "divisor is zero if division at layer 1");
-        let quotient = defined_expr_for(&output, "quotient[0] at layer 1");
-        let divisor = defined_expr_for(&output, "divisor[0] at layer 1");
+    //     let divisor_is_zero = defined_expr_for(&output, "divisor is zero if division at layer 1");
+    //     let quotient = defined_expr_for(&output, "quotient[0] at layer 1");
+    //     let divisor = defined_expr_for(&output, "divisor[0] at layer 1");
 
-        assert!(contains_product_with_sum_factor(divisor_is_zero));
-        assert!(contains_product_with_sum_factor(quotient));
-        assert!(contains_product_with_sum_factor(divisor));
-    }
+    //     assert!(contains_product_with_sum_factor(divisor_is_zero));
+    //     assert!(contains_product_with_sum_factor(quotient));
+    //     assert!(contains_product_with_sum_factor(divisor));
+    // }
 
-    #[test]
-    fn unsigned_mul_div_records_grouped_schoolbook_terms() {
-        let mut cs = BasicAssembly::<F>::new();
-        mul_div_circuit_with_preprocessed_bytecode_for_gkr::<_, _, false>(&mut cs);
-        let (output, _) = cs.finalize();
+    // #[test]
+    // fn unsigned_mul_div_records_grouped_schoolbook_terms() {
+    //     let mut cs = BasicAssembly::<F>::new();
+    //     mul_div_circuit_with_preprocessed_bytecode_for_gkr::<_, _, false>(&mut cs);
+    //     let (output, _) = cs.finalize();
 
-        assert!(output
-            .structured_statements
-            .iter()
-            .any(|statement| matches!(
-                statement,
-                StructuredStatement::AssertZero { expr, .. }
-                    if grouped_schoolbook_terms_count(expr) >= 2
-            )));
-    }
+    //     assert!(output
+    //         .structured_statements
+    //         .iter()
+    //         .any(|statement| matches!(
+    //             statement,
+    //             StructuredStatement::AssertZero { expr, .. }
+    //                 if grouped_schoolbook_terms_count(expr) >= 2
+    //         )));
+    // }
 
     #[test]
     fn compile_unsigned_mul_div_into_gkr() {

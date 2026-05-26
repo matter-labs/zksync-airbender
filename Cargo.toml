@@ -50,7 +50,7 @@ members = [
     "circuit_defs/unrolled_circuits/shift_binary",
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
 
-    "riscv_transpiler",
+    "riscv_transpiler", "sumcheck_common",
 ]
 
 default-members = [

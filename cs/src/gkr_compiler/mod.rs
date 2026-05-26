@@ -141,6 +141,39 @@ pub struct NoFieldMaxQuadraticGKRRelation {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum NoFieldStructuredExpression {
+    Constant(u32),
+    Place(GKRAddress),
+    Sum(Vec<NoFieldStructuredExpression>),
+    Product(Vec<NoFieldStructuredExpression>),
+}
+
+impl PartialOrd for NoFieldStructuredExpression {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(Ord::cmp(self, other))
+    }
+}
+
+impl Ord for NoFieldStructuredExpression {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (Self::Constant(..), Self::Constant(..)) => {
+                unreachable!("unnormalized")
+            }
+            (Self::Constant(..), _) => std::cmp::Ordering::Less,
+            (_, Self::Constant(..)) => std::cmp::Ordering::Greater,
+            (Self::Place(a), Self::Place(b)) => a.cmp(b),
+            (Self::Place(..), _) => std::cmp::Ordering::Less,
+            (_, Self::Place(..)) => std::cmp::Ordering::Greater,
+            (Self::Product(..), _) => std::cmp::Ordering::Less,
+            (_, Self::Product(..)) => std::cmp::Ordering::Greater,
+            (Self::Sum(..), _) => std::cmp::Ordering::Greater,
+            (_, Self::Sum(..)) => std::cmp::Ordering::Less,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoFieldSpecialConstraintCollapseGKRRelation {
     pub predicate: GKRAddress,
     pub remainder_from_quadratic: GKRAddress,
@@ -317,11 +350,13 @@ pub enum NoFieldGKRRelation {
     },
     MaxQuadratic {
         input: NoFieldMaxQuadraticGKRRelation,
+        expression: NoFieldStructuredExpression,
         output: GKRAddress,
     },
 
     EnforceSingleMaxQuadraticConstraint {
         input: NoFieldMaxQuadraticGKRRelation,
+        expression: NoFieldStructuredExpression,
     },
 
     // Enforces a randomized set of constraints in a form of c1 + alpha * c2 + ...
@@ -515,7 +550,7 @@ impl NoFieldGKRRelation {
         match self {
             // Self::FormalBaseLayerInput(..) => vec![],
             Self::LinearBaseFieldRelation { .. } => vec![],
-            Self::MaxQuadratic { input, output } => vec![],
+            Self::MaxQuadratic { input, output, .. } => vec![],
             Self::EnforceConstraintsMaxQuadratic { input } => vec![],
             Self::CopyInBaseField { input, output } => {
                 assert!(output.is_cache() == false);
@@ -721,7 +756,7 @@ impl NoFieldGKRRelation {
                     result.insert(*el);
                 }
             }
-            Self::MaxQuadratic { input, output } => {
+            Self::MaxQuadratic { input, output, .. } => {
                 for (a, other) in input.quadratic_terms.iter() {
                     result.insert(*a);
                     for (_, b) in other.iter() {
@@ -866,11 +901,7 @@ impl NoFieldGKRRelation {
                 result.insert(input[0]);
                 result.insert(input[1]);
             }
-            Self::LookupFromMaterializedVectorInputWithSetup {
-                input,
-                setup,
-                ..
-            } => {
+            Self::LookupFromMaterializedVectorInputWithSetup { input, setup, .. } => {
                 result.insert(*input);
                 result.insert(setup[0]);
                 result.insert(setup[1]);
@@ -881,11 +912,7 @@ impl NoFieldGKRRelation {
                 result.insert(input[1][0]);
                 result.insert(input[1][1]);
             }
-            Self::LookupWithDensAndSetupExpressions {
-                input,
-                setup,
-                ..
-            } => {
+            Self::LookupWithDensAndSetupExpressions { input, setup, .. } => {
                 result.insert(input.0);
                 for el in input.1.columns.iter() {
                     for (_, el) in el.linear_terms.iter() {
@@ -899,7 +926,7 @@ impl NoFieldGKRRelation {
                 //     result.insert(*el);
                 // }
             }
-            Self::EnforceSingleMaxQuadraticConstraint { input } => {
+            Self::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                 for (a, other) in input.quadratic_terms.iter() {
                     result.insert(*a);
                     for (_, b) in other.iter() {
@@ -923,7 +950,7 @@ impl NoFieldGKRRelation {
             Self::LinearBaseFieldRelation { input, output } => {
                 result.insert(*output);
             }
-            Self::MaxQuadratic { input, output } => {
+            Self::MaxQuadratic { input, output, .. } => {
                 result.insert(*output);
             }
             Self::EnforceConstraintsMaxQuadratic { input } => {

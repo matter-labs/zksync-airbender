@@ -1,5 +1,4 @@
 use super::*;
-use crate::constraint::Constraint;
 use crate::cs::circuit::*;
 use crate::cs::circuit_trait::MemoryAccess;
 use crate::oracle::Placeholder;
@@ -11,7 +10,6 @@ use std::collections::{BTreeMap, HashMap};
 pub struct CircuitOutput<F: PrimeField> {
     pub table_driver: TableDriver<F>,
     pub num_of_variables: usize,
-    pub constraints: Vec<(Constraint<F>, bool)>,
     pub structured_statements: Vec<StructuredStatement<F>>,
     pub lookups: Vec<LookupQuery<F>>,
     pub memory_queries: Vec<MemoryAccess>,
@@ -22,7 +20,7 @@ pub struct CircuitOutput<F: PrimeField> {
     pub boolean_vars: Vec<Variable>,
     pub substitutions: HashMap<(Placeholder, usize), Variable>,
     pub variable_names: HashMap<Variable, String>,
-    pub variables_from_constraints: BTreeMap<Variable, Constraint<F>>,
+    pub variables_from_constraints: BTreeMap<Variable, usize>,
     pub layers_mapping: HashMap<Variable, usize>,
     pub circuit_family_bitmask: Vec<Variable>,
 }

@@ -1,0 +1,18 @@
+[package]
+name = "sumcheck_common"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+field = { workspace = true, default-features = false }
+cs = { workspace = true }
+serde = { workspace = true }
+proc-macro2 = { version = "1" }
+quote = { version = "1" }
+serde_json = { version = "*" }

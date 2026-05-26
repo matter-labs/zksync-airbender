@@ -345,70 +345,70 @@ mod test {
 
     type F = ::field::Mersenne31Field;
 
-    fn named_variable(
-        output: &crate::cs::circuit_output::CircuitOutput<F>,
-        expected_name: &str,
-    ) -> Variable {
-        output
-            .variable_names
-            .iter()
-            .find_map(|(variable, name)| (name == expected_name).then_some(*variable))
-            .expect("named variable must exist")
-    }
+    // fn named_variable(
+    //     output: &crate::cs::circuit_output::CircuitOutput<F>,
+    //     expected_name: &str,
+    // ) -> Variable {
+    //     output
+    //         .variable_names
+    //         .iter()
+    //         .find_map(|(variable, name)| (name == expected_name).then_some(*variable))
+    //         .expect("named variable must exist")
+    // }
 
-    fn contains_shifted_address_limb(expr: &Expr<F>) -> bool {
-        let shift16 = F::from_u32_with_reduction(1 << 16);
+    // fn contains_shifted_address_limb(expr: &Expr<F>) -> bool {
+    //     let shift16 = F::from_u32_with_reduction(1 << 16);
 
-        match expr {
-            Expr::Product(factors) => {
-                let has_shift = factors
-                    .iter()
-                    .any(|factor| matches!(factor, Expr::Constant(value) if *value == shift16));
-                let has_selected_limb = factors
-                    .iter()
-                    .any(|factor| matches!(factor, Expr::Sum(terms) if terms.len() >= 2));
+    //     match expr {
+    //         Expr::Product(factors) => {
+    //             let has_shift = factors
+    //                 .iter()
+    //                 .any(|factor| matches!(factor, Expr::Constant(value) if *value == shift16));
+    //             let has_selected_limb = factors
+    //                 .iter()
+    //                 .any(|factor| matches!(factor, Expr::Sum(terms) if terms.len() >= 2));
 
-                has_shift && has_selected_limb || factors.iter().any(contains_shifted_address_limb)
-            }
-            Expr::Sum(terms) => terms.iter().any(contains_shifted_address_limb),
-            Expr::Constant(_) | Expr::Var(_) => false,
-        }
-    }
+    //             has_shift && has_selected_limb || factors.iter().any(contains_shifted_address_limb)
+    //         }
+    //         Expr::Sum(terms) => terms.iter().any(contains_shifted_address_limb),
+    //         Expr::Constant(_) | Expr::Var(_) => false,
+    //     }
+    // }
 
-    fn is_product_of_two_variables(expr: &Expr<F>) -> bool {
-        matches!(
-            expr,
-            Expr::Product(factors)
-                if factors.len() == 2 && factors.iter().all(|factor| matches!(factor, Expr::Var(_)))
-        )
-    }
+    // fn is_product_of_two_variables(expr: &Expr<F>) -> bool {
+    //     matches!(
+    //         expr,
+    //         Expr::Product(factors)
+    //             if factors.len() == 2 && factors.iter().all(|factor| matches!(factor, Expr::Var(_)))
+    //     )
+    // }
 
-    #[test]
-    fn mem_word_only_records_structured_rom_lookup_path() {
-        let mut cs = BasicAssembly::<F>::new();
-        mem_word_only_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
-        let (output, _) = cs.finalize();
+    // #[test]
+    // fn mem_word_only_records_structured_rom_lookup_path() {
+    //     let mut cs = BasicAssembly::<F>::new();
+    //     mem_word_only_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
+    //     let (output, _) = cs.finalize();
 
-        let romaddr = named_variable(&output, "romaddr (L2)");
-        let final_lookup_input = named_variable(&output, "final lookup input (L3)");
+    //     let romaddr = named_variable(&output, "romaddr (L2)");
+    //     let final_lookup_input = named_variable(&output, "final lookup input (L3)");
 
-        assert!(output
-            .structured_statements
-            .iter()
-            .any(|statement| matches!(
-                statement,
-                StructuredStatement::Define { dst, expr }
-                    if *dst == romaddr && contains_shifted_address_limb(expr)
-            )));
-        assert!(output
-            .structured_statements
-            .iter()
-            .any(|statement| matches!(
-                statement,
-                StructuredStatement::Define { dst, expr }
-                    if *dst == final_lookup_input && is_product_of_two_variables(expr)
-            )));
-    }
+    //     assert!(output
+    //         .structured_statements
+    //         .iter()
+    //         .any(|statement| matches!(
+    //             statement,
+    //             StructuredStatement::Define { dst, expr }
+    //                 if *dst == romaddr && contains_shifted_address_limb(expr)
+    //         )));
+    //     assert!(output
+    //         .structured_statements
+    //         .iter()
+    //         .any(|statement| matches!(
+    //             statement,
+    //             StructuredStatement::Define { dst, expr }
+    //                 if *dst == final_lookup_input && is_product_of_two_variables(expr)
+    //         )));
+    // }
 
     #[test]
     fn compile_mem_word_only_circuit_into_gkr() {

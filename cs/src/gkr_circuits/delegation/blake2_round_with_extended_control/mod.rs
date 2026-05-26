@@ -607,7 +607,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         placer.assign_u16(x12_write_vars[0], &zero);
     };
     cs.set_values(value_fn);
-    cs.add_constraint_allow_explicit_linear_prevent_optimizations_expr(Expr::var(
+    cs.add_constraint_expr_allow_explicit_linear_prevent_optimizations_expr(Expr::var(
         x12_write_vars[0],
     ));
 
@@ -920,7 +920,7 @@ pub(crate) fn split_top_bit<F: PrimeField, CS: Circuit<F>, const LOW_CHUNK_BITS:
     let expr = Expr::var(input)
         - Expr::var(low_chunk)
         - Expr::from(bit) * F::from_u32_unchecked(1 << LOW_CHUNK_BITS);
-    cs.add_constraint_allow_explicit_linear_expr(expr);
+    cs.add_constraint_expr_allow_explicit_linear(expr);
 
     (low_chunk, bit)
 }

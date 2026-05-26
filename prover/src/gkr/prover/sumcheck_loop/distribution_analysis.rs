@@ -1,7 +1,10 @@
 use std::{cmp::Ordering, collections::BTreeSet, ops::Range};
 
 use super::*;
-use cs::{definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES, gkr_compiler::GKRCircuitArtifact};
+use cs::{
+    definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES,
+    gkr_compiler::GKRCircuitArtifact,
+};
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(crate) fn analyze_terms(&self) {
@@ -103,10 +106,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     }
 }
 
-pub fn liveness_analysis<F: PrimeField>(
-    circuit: &GKRCircuitArtifact<F>,
-    layer_idx: usize,
-) {
+pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_idx: usize) {
     let layer = &circuit.layers[layer_idx];
     if layer.gates_with_external_connections.len() > 0 {
         panic!("Last layer is usually not interesting");
@@ -119,7 +119,10 @@ pub fn liveness_analysis<F: PrimeField>(
         let mut set = BTreeSet::new();
         gate.enforced_relation.dump_inputs(&mut set);
         for el in set.iter() {
-            inv_occurance_matrix.entry(*el).or_insert(BTreeSet::new()).insert(idx);
+            inv_occurance_matrix
+                .entry(*el)
+                .or_insert(BTreeSet::new())
+                .insert(idx);
         }
 
         occurance_matrix.insert(idx, set);
@@ -177,10 +180,10 @@ pub fn liveness_analysis<F: PrimeField>(
 
     println!("Starting points are {:?}", &starting_points);
 
-    for gate_idx in starting_points.into_iter().skip(10) {
+    for gate_idx in starting_points.into_iter().skip(0) {
         println!("Starting from {}", gate_idx);
 
-            let mut remaining_gates = all_gates.clone();
+        let mut remaining_gates = all_gates.clone();
         remaining_gates.remove(&gate_idx);
 
         let mut alive_set = BTreeMap::new();
@@ -191,7 +194,9 @@ pub fn liveness_analysis<F: PrimeField>(
         }
 
         alive_set.retain(|k, _| {
-            let occurance_in_gates = inv_occurance_matrix.get(k).expect("exists in occurance matrix");
+            let occurance_in_gates = inv_occurance_matrix
+                .get(k)
+                .expect("exists in occurance matrix");
             let mut still_alive = false;
             for gate_idx in remaining_gates.iter() {
                 if occurance_in_gates.contains(gate_idx) {
@@ -242,12 +247,13 @@ fn search_step<const MAX_CANDIDATES: usize>(
         let num_alive = all_live_variables.len();
         let final_report = std::cmp::max(num_alive, max_cache_size);
         if final_report < worst_case {
-            println!("Inserting chain {:?} with {} max live variables", &chain, final_report);
+            println!(
+                "Inserting chain {:?} with {} max live variables",
+                &chain, final_report
+            );
             reports.insert(chain, final_report);
             if reports.len() > 10 {
-                reports.retain(|_, v| {
-                    *v < worst_case
-                });
+                reports.retain(|_, v| *v < worst_case);
             }
         }
 
@@ -279,7 +285,9 @@ fn search_step<const MAX_CANDIDATES: usize>(
     for &gate_idx in remaining_gates.iter() {
         let mut num_reuses = 0;
         let mut set = BTreeSet::new();
-        layer.gates[gate_idx].enforced_relation.dump_inputs(&mut set);
+        layer.gates[gate_idx]
+            .enforced_relation
+            .dump_inputs(&mut set);
         for var in set.into_iter() {
             if all_live_variables.contains_key(&var) {
                 num_reuses += 1usize;
@@ -289,7 +297,11 @@ fn search_step<const MAX_CANDIDATES: usize>(
             reuse_stats.insert(gate_idx, num_reuses);
         }
     }
-    assert!(reuse_stats.is_empty() == false, "disjoint set if we do {:?} chain", &chain); // we do not consider disjoint sequences yet
+    assert!(
+        reuse_stats.is_empty() == false,
+        "disjoint set if we do {:?} chain",
+        &chain
+    ); // we do not consider disjoint sequences yet
 
     let mut candidates_via_reuse: Vec<_> = reuse_stats.into_iter().collect();
     candidates_via_reuse.sort_by(|(a_gate, a_reuses), (b_gate, b_reuses)| {
@@ -305,7 +317,12 @@ fn search_step<const MAX_CANDIDATES: usize>(
     // we also consider some gates that immediately reduce the number of alive variables in the most aggressive manner
     let mut elimination_stats = BTreeMap::new();
     for &gate_idx in remaining_gates.iter() {
-        assert!(remaining_gates.contains(&gate_idx), "gates set is {:?}, but gate {} is missing", &remaining_gates, gate_idx);
+        assert!(
+            remaining_gates.contains(&gate_idx),
+            "gates set is {:?}, but gate {} is missing",
+            &remaining_gates,
+            gate_idx
+        );
 
         let mut alive_set = all_live_variables.clone();
         let mut t = BTreeSet::new();
@@ -315,7 +332,9 @@ fn search_step<const MAX_CANDIDATES: usize>(
         }
         // maybe some variables die after we do this gate
         alive_set.retain(|k, _| {
-            let occurance_in_gates = inv_occurance_matrix.get(k).expect("exists in occurance matrix");
+            let occurance_in_gates = inv_occurance_matrix
+                .get(k)
+                .expect("exists in occurance matrix");
             let mut still_alive = false;
             for other_gate_idx in remaining_gates.iter() {
                 if gate_idx == *other_gate_idx {
@@ -352,7 +371,12 @@ fn search_step<const MAX_CANDIDATES: usize>(
 
     // now we descend
     for gate_idx in all_candidates.into_iter() {
-        assert!(remaining_gates.contains(&gate_idx), "gates set is {:?}, but gate {} is missing", &remaining_gates, gate_idx);
+        assert!(
+            remaining_gates.contains(&gate_idx),
+            "gates set is {:?}, but gate {} is missing",
+            &remaining_gates,
+            gate_idx
+        );
 
         let mut new_chain = chain.clone();
         new_chain.push(gate_idx);
@@ -369,7 +393,9 @@ fn search_step<const MAX_CANDIDATES: usize>(
         }
         // maybe some variables die after we do this gate
         alive_set.retain(|k, _| {
-            let occurance_in_gates = inv_occurance_matrix.get(k).expect("exists in occurance matrix");
+            let occurance_in_gates = inv_occurance_matrix
+                .get(k)
+                .expect("exists in occurance matrix");
             let mut still_alive = false;
             for gate_idx in new_remaining_gates.iter() {
                 if occurance_in_gates.contains(gate_idx) {
@@ -413,19 +439,16 @@ mod test {
     #[test]
     fn analyze_terms_in_circuit() {
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file(
-                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json",
-            )
+            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
         } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
             )
         };
 
-        let circuit: GKRCircuitArtifact<BabyBearField> = 
-            deserialize_from_file(
-                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
-            );
+        let circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
+            "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
+        );
 
         let layer_idx = 0;
         let layer = &circuit.layers[layer_idx];
