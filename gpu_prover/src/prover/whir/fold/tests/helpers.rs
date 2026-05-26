@@ -10,6 +10,7 @@ use crate::primitives::static_host::{
 use fft::batch_inverse_inplace;
 
 use super::GpuScheduledBaseFieldQuery;
+use crate::prover::whir::kernels::{accumulate_whir_base_columns, serialize_whir_e4_columns};
 use crate::upstream::PrimeField;
 
 pub(super) fn copy_small_to_device<T: Copy>(
@@ -333,9 +334,22 @@ pub(super) fn initialize_batched_forms_impl(
         context,
     )?;
 
+    // Production uses the fused accumulate-and-serialize kernel; the test
+    // path here keeps the legacy E4-only accumulate above, so populate the
+    // BF scratch via the standalone serialize before invoking the shared
+    // `initialize_batched_monomial_form` (which now expects a pre-populated
+    // buffer).
+    let mut vectorized_scratch =
+        context.alloc::<BF>(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
+    serialize_whir_e4_columns(
+        &state.sumchecked_poly_evaluation_form[..trace_len],
+        &mut vectorized_scratch[..],
+        context.get_exec_stream(),
+    )?;
     initialize_batched_monomial_form(
         memory_trace_holder.log_domain_size as usize,
         use_hypercube_evals_for_batching,
+        &mut vectorized_scratch[..],
         state,
         context,
     )?;
