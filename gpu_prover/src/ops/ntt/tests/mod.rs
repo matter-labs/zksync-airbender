@@ -998,7 +998,9 @@ multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_2, 8, 2);
 #[cfg(not(no_cuda))]
 #[allow(dead_code)]
 fn run_streaming_v4_vs_compact_parity(log_n: usize, num_cosets: usize, num_cols: usize) {
-    use super::{bitreversed_monomials_to_natural_evals, ntt::monomials_to_evals_streaming_with_log_vpt};
+    use super::{
+        bitreversed_monomials_to_natural_evals, ntt::monomials_to_evals_streaming_with_log_vpt,
+    };
     use crate::ops::ntt::OMEGA_LOG_ORDER;
     use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
 

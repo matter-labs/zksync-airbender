@@ -10,8 +10,8 @@ namespace airbender::prover::whir {
 // Launch with gridDim.x = max(eq_group_count(challenge_count), GKR_EQ_HIGH_SLOTS):
 // blocks past `groups_count` exist only to write the E::ONE() sentinel into
 // degenerate high slots so inline-eq returns identity for them.
-EXTERN __global__ void ab_whir_build_eq_factor_tables_batched_e4_kernel(const e4 *claim_points, const unsigned challenge_count,
-                                                                        e4 *eq_high_array, e4 *eq_low_array) {
+EXTERN __global__ void ab_whir_build_eq_factor_tables_batched_e4_kernel(const e4 *claim_points, const unsigned challenge_count, e4 *eq_high_array,
+                                                                        e4 *eq_low_array) {
   const unsigned query_idx = blockIdx.y;
   e4 *high_slab_q = eq_high_array + static_cast<size_t>(query_idx) * GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN;
   e4 *low_buffer_q = eq_low_array + static_cast<size_t>(query_idx) * GKR_EQ_GROUP_TABLE_LEN;
@@ -30,9 +30,8 @@ EXTERN __global__ void ab_whir_build_eq_factor_tables_batched_e4_kernel(const e4
   gkr_build_eq_group_tables_from_point<e4>(claim_point_q, 0, challenge_count, dst);
 }
 
-EXTERN __global__ void ab_whir_accumulate_eq_samples_batched_e4_kernel(const e4 *eq_high_array, const e4 *eq_low_array,
-                                                                       const gkr_eq_sizes sizes, const e4 *challenges, e4 *eq_poly,
-                                                                       const unsigned num_queries, const unsigned acc_size) {
+EXTERN __global__ void ab_whir_accumulate_eq_samples_batched_e4_kernel(const e4 *eq_high_array, const e4 *eq_low_array, const gkr_eq_sizes sizes,
+                                                                       const e4 *challenges, e4 *eq_poly, const unsigned num_queries, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
