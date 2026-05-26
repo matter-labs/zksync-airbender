@@ -17,7 +17,9 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::ntt::{bitreversed_coeffs_to_natural_coset, bitreversed_monomials_to_natural_evals};
+use crate::ops::ntt::{
+    bitreversed_coeffs_to_natural_coset, bitreversed_monomials_to_natural_evals,
+};
 use crate::primitives::context::{DeviceAllocation, ProverContext, ProverContextConfig};
 use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
 use crate::primitives::field::BF;
@@ -95,8 +97,7 @@ impl NttBenchHarness {
             compute_capability_major,
             compute_capability_minor,
         };
-        let inputs_matrix =
-            DeviceMatrixChunk::new(&self.inputs_pool[offset..offset + n], n, 0, n);
+        let inputs_matrix = DeviceMatrixChunk::new(&self.inputs_pool[offset..offset + n], n, 0, n);
         let mut outputs_matrix =
             DeviceMatrixChunkMut::new(&mut self.outputs_pool[offset..offset + n], n, 0, n);
         bitreversed_monomials_to_natural_evals(

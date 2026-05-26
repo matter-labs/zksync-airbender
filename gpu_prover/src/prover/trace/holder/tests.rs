@@ -438,7 +438,12 @@ fn trace_holder_consolidated_cosets_matches_per_coset_views() {
     assert_eq!(consolidated.len(), lde_factor * per_coset_len);
 
     let mut host_consolidated = vec![BF::ZERO; consolidated.len()];
-    memory_copy_async(&mut host_consolidated, consolidated, context.get_exec_stream()).unwrap();
+    memory_copy_async(
+        &mut host_consolidated,
+        consolidated,
+        context.get_exec_stream(),
+    )
+    .unwrap();
 
     let mut host_per_coset = vec![BF::ZERO; consolidated.len()];
     for coset_index in 0..lde_factor {
@@ -488,8 +493,8 @@ fn trace_holder_full_tree_view_is_contiguous_in_coset_major_order() {
 
     let mut concat = vec![Digest::default(); lde_factor * per_coset_tree_len];
     for coset_index in 0..lde_factor {
-        let segment_dst = &mut concat
-            [coset_index * per_coset_tree_len..(coset_index + 1) * per_coset_tree_len];
+        let segment_dst =
+            &mut concat[coset_index * per_coset_tree_len..(coset_index + 1) * per_coset_tree_len];
         let segment_src: &DeviceSlice<Digest> = holder
             .get_uninit_tree_mut(coset_index)
             .expect("Full mode always has a tree slot");
@@ -588,12 +593,16 @@ fn trace_holder_consolidated_tree_matches_per_coset_views() {
     assert_eq!(consolidated.len(), lde_factor * per_coset_tree_len);
 
     let mut host_consolidated = vec![Digest::default(); consolidated.len()];
-    memory_copy_async(&mut host_consolidated, consolidated, context.get_exec_stream()).unwrap();
+    memory_copy_async(
+        &mut host_consolidated,
+        consolidated,
+        context.get_exec_stream(),
+    )
+    .unwrap();
 
     let mut host_per_coset = vec![Digest::default(); consolidated.len()];
     for coset_index in 0..lde_factor {
-        let segment_src: &DeviceSlice<Digest> =
-            holder.get_uninit_tree_mut(coset_index).unwrap();
+        let segment_src: &DeviceSlice<Digest> = holder.get_uninit_tree_mut(coset_index).unwrap();
         let dst = &mut host_per_coset
             [coset_index * per_coset_tree_len..(coset_index + 1) * per_coset_tree_len];
         memory_copy_async(dst, segment_src, context.get_exec_stream()).unwrap();
@@ -686,12 +695,16 @@ fn trace_holder_consolidated_partial_tree_matches_per_coset_views() {
     assert_eq!(consolidated.len(), lde_factor * per_coset_partial_len);
 
     let mut host_consolidated = vec![Digest::default(); consolidated.len()];
-    memory_copy_async(&mut host_consolidated, consolidated, context.get_exec_stream()).unwrap();
+    memory_copy_async(
+        &mut host_consolidated,
+        consolidated,
+        context.get_exec_stream(),
+    )
+    .unwrap();
 
     let mut host_per_coset = vec![Digest::default(); consolidated.len()];
     for coset_index in 0..lde_factor {
-        let segment_src: &DeviceSlice<Digest> =
-            holder.get_uninit_tree_mut(coset_index).unwrap();
+        let segment_src: &DeviceSlice<Digest> = holder.get_uninit_tree_mut(coset_index).unwrap();
         let dst = &mut host_per_coset
             [coset_index * per_coset_partial_len..(coset_index + 1) * per_coset_partial_len];
         memory_copy_async(dst, segment_src, context.get_exec_stream()).unwrap();

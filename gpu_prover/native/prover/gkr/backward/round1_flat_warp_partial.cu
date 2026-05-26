@@ -9,9 +9,11 @@
 
 namespace airbender::prover::gkr::backward {
 
-EXTERN __launch_bounds__(128, 8) __global__ void ab_gkr_main_round1_flat_constant_compact_unified_compact_warp_partial_e4_kernel(
-    const __grid_constant__ flat_round1_unified_desc_compact desc, const unsigned fold_stride, const unsigned next_layer_size, const e4 *eq_low,
-    const __grid_constant__ gkr_eq_sizes eq_sizes, e4 *partials, const unsigned acc_size) {
+EXTERN __launch_bounds__(128, 8) __global__
+    void ab_gkr_main_round1_flat_constant_compact_unified_compact_warp_partial_e4_kernel(const __grid_constant__ flat_round1_unified_desc_compact desc,
+                                                                                         const unsigned fold_stride, const unsigned next_layer_size,
+                                                                                         const e4 *eq_low, const __grid_constant__ gkr_eq_sizes eq_sizes,
+                                                                                         e4 *partials, const unsigned acc_size) {
   constexpr unsigned NUM_WARPS = 4;
   const unsigned lane = threadIdx.x % 32;
   const unsigned warp_id = threadIdx.x / 32;

@@ -18,11 +18,14 @@ fn new_path(c: &mut Criterion<CudaMeasurement>) {
     let mut group = c.benchmark_group("ntt_new");
     for &log_n in LOG_NS {
         let mut harness = NttBenchHarness::new(log_n, LOG_LDE_FACTOR, COSET_INDEX).unwrap();
-        group.bench_function(format!("log_n_{log_n:02}"), |b: &mut Bencher<CudaMeasurement>| {
-            b.iter(|| {
-                harness.run_new_path(&stream).unwrap();
-            })
-        });
+        group.bench_function(
+            format!("log_n_{log_n:02}"),
+            |b: &mut Bencher<CudaMeasurement>| {
+                b.iter(|| {
+                    harness.run_new_path(&stream).unwrap();
+                })
+            },
+        );
     }
     group.finish();
 }
@@ -32,11 +35,14 @@ fn old_path(c: &mut Criterion<CudaMeasurement>) {
     let mut group = c.benchmark_group("ntt_old_single_stage");
     for &log_n in LOG_NS {
         let mut harness = NttBenchHarness::new(log_n, LOG_LDE_FACTOR, COSET_INDEX).unwrap();
-        group.bench_function(format!("log_n_{log_n:02}"), |b: &mut Bencher<CudaMeasurement>| {
-            b.iter(|| {
-                harness.run_old_path(&stream).unwrap();
-            })
-        });
+        group.bench_function(
+            format!("log_n_{log_n:02}"),
+            |b: &mut Bencher<CudaMeasurement>| {
+                b.iter(|| {
+                    harness.run_old_path(&stream).unwrap();
+                })
+            },
+        );
     }
     group.finish();
 }

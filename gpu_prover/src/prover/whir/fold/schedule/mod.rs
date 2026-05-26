@@ -312,10 +312,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             witness_trace_holder.log_rows_per_leaf,
             base_log_rows_per_leaf
         );
-        debug_assert_eq!(
-            setup_trace_holder.log_rows_per_leaf,
-            base_log_rows_per_leaf
-        );
+        debug_assert_eq!(setup_trace_holder.log_rows_per_leaf, base_log_rows_per_leaf);
         let base_log_total_leaves_count = base_log_domain_size - base_log_rows_per_leaf;
         let base_oracle_descs = |holders: [&TraceHolder<BF>; 3],
                                  slab_ptrs: [u64; 6]|

@@ -1,8 +1,7 @@
 #pragma once
 #include "descriptors.cuh"
 
-EXTERN __device__ __constant__ e4
-    ab_gkr_eq_high[airbender::prover::gkr::GKR_EQ_HIGH_SLOTS][airbender::prover::gkr::GKR_EQ_GROUP_TABLE_LEN];
+EXTERN __device__ __constant__ e4 ab_gkr_eq_high[airbender::prover::gkr::GKR_EQ_HIGH_SLOTS][airbender::prover::gkr::GKR_EQ_GROUP_TABLE_LEN];
 
 namespace airbender::prover::gkr {
 
@@ -13,8 +12,7 @@ namespace airbender::prover::gkr {
 //
 // `acc` is initialized from the first load rather than from `E::ONE()` to
 // save one full E::mul per row.
-template <typename E>
-DEVICE_FORCEINLINE E gkr_compute_eq_inline(const E *__restrict__ eq_low, const gkr_eq_sizes &sizes, const unsigned gid) {
+template <typename E> DEVICE_FORCEINLINE E gkr_compute_eq_inline(const E *__restrict__ eq_low, const gkr_eq_sizes &sizes, const unsigned gid) {
   const unsigned shift1 = sizes.low;
   const unsigned shift0 = sizes.low + sizes.high[1];
   const unsigned hi0 = (gid >> shift0) & ((1u << sizes.high[0]) - 1u);
@@ -31,8 +29,8 @@ DEVICE_FORCEINLINE E gkr_compute_eq_inline(const E *__restrict__ eq_low, const g
 // global pointers rather than the single `ab_gkr_eq_high` constant. Used by
 // WHIR's batched accumulator where every query needs its own factored-eq state.
 template <typename E>
-DEVICE_FORCEINLINE E gkr_compute_eq_inline_global(const E *__restrict__ eq_high_0, const E *__restrict__ eq_high_1,
-                                                  const E *__restrict__ eq_low, const gkr_eq_sizes &sizes, const unsigned gid) {
+DEVICE_FORCEINLINE E gkr_compute_eq_inline_global(const E *__restrict__ eq_high_0, const E *__restrict__ eq_high_1, const E *__restrict__ eq_low,
+                                                  const gkr_eq_sizes &sizes, const unsigned gid) {
   const unsigned shift1 = sizes.low;
   const unsigned shift0 = sizes.low + sizes.high[1];
   const unsigned hi0 = (gid >> shift0) & ((1u << sizes.high[0]) - 1u);

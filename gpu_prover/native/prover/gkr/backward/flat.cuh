@@ -273,9 +273,9 @@ DEVICE_FORCEINLINE void flat_round0_compute_constant(const flat_round0_static_de
 // of directly dereferencing a raw pointer.
 
 template <typename E, typename CoeffLoader>
-DEVICE_FORCEINLINE void flat_round0_compute_compact_impl(const flat_round0_static_desc_compact &desc, CoeffLoader coeff_loader,
-                                                         const E *__restrict__ eq_low, const gkr_eq_sizes &eq_sizes, E *__restrict__ contributions,
-                                                         const unsigned acc_size, const unsigned gid) {
+DEVICE_FORCEINLINE void flat_round0_compute_compact_impl(const flat_round0_static_desc_compact &desc, CoeffLoader coeff_loader, const E *__restrict__ eq_low,
+                                                         const gkr_eq_sizes &eq_sizes, E *__restrict__ contributions, const unsigned acc_size,
+                                                         const unsigned gid) {
   E c0 = E::ZERO();
 
   for (unsigned i = 0; i < desc.num_c0_bf; i++) {
