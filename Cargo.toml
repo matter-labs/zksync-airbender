@@ -59,6 +59,7 @@ members = [
 
     "riscv_common",
     "riscv_transpiler",
+    "sumcheck_common",
 ]
 
 exclude = [

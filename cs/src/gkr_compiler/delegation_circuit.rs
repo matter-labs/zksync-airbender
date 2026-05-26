@@ -22,7 +22,6 @@ impl<F: PrimeField> GKRCompiler<F> {
         let CircuitOutput {
             table_driver,
             num_of_variables,
-            constraints,
             structured_statements,
             lookups,
             memory_queries,

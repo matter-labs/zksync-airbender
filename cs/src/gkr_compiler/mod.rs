@@ -277,11 +277,13 @@ pub enum NoFieldGKRRelation<F: PrimeField> {
     },
     MaxQuadratic {
         input: NoFieldMaxQuadraticGKRRelation<F>,
+        expression: NoFieldStructuredExpression,
         output: GKRAddress,
     },
 
     EnforceSingleMaxQuadraticConstraint {
         input: NoFieldMaxQuadraticGKRRelation<F>,
+        expression: NoFieldStructuredExpression,
     },
 
     // Enforces a randomized set of constraints in a form of c1 + alpha * c2 + ...
@@ -475,7 +477,7 @@ impl<F: PrimeField> NoFieldGKRRelation<F> {
         match self {
             // Self::FormalBaseLayerInput(..) => vec![],
             Self::LinearBaseFieldRelation { .. } => vec![],
-            Self::MaxQuadratic { input, output } => vec![],
+            Self::MaxQuadratic { input, output, .. } => vec![],
             Self::EnforceConstraintsMaxQuadratic { input } => vec![],
             Self::CopyInBaseField { input, output } => {
                 assert!(output.is_cache() == false);
@@ -681,7 +683,7 @@ impl<F: PrimeField> NoFieldGKRRelation<F> {
                     result.insert(*el);
                 }
             }
-            Self::MaxQuadratic { input, output } => {
+            Self::MaxQuadratic { input, output, .. } => {
                 for (a, other) in input.quadratic_terms.iter() {
                     result.insert(*a);
                     for (_, b) in other.iter() {
@@ -826,11 +828,7 @@ impl<F: PrimeField> NoFieldGKRRelation<F> {
                 result.insert(input[0]);
                 result.insert(input[1]);
             }
-            Self::LookupFromMaterializedVectorInputWithSetup {
-                input,
-                setup,
-                output,
-            } => {
+            Self::LookupFromMaterializedVectorInputWithSetup { input, setup, .. } => {
                 result.insert(*input);
                 result.insert(setup[0]);
                 result.insert(setup[1]);
@@ -854,7 +852,7 @@ impl<F: PrimeField> NoFieldGKRRelation<F> {
             Self::LinearBaseFieldRelation { input, output } => {
                 result.insert(*output);
             }
-            Self::MaxQuadratic { input, output } => {
+            Self::MaxQuadratic { input, output, .. } => {
                 result.insert(*output);
             }
             Self::EnforceConstraintsMaxQuadratic { input } => {

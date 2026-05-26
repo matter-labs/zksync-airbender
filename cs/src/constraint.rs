@@ -9,7 +9,7 @@ use field::PrimeField;
 
 pub const TERM_INNER_CAPACITY: usize = 4;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Term<F: PrimeField> {
     Constant(F),
     Expression {
@@ -330,7 +330,7 @@ impl<F: PrimeField> Term<F> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Constraint<F: PrimeField> {
     pub terms: Vec<Term<F>>,
 }
