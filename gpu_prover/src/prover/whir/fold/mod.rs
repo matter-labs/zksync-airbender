@@ -34,10 +34,11 @@ use crate::prover::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndex
 use crate::prover::proof::layout::ProofLayout;
 use crate::prover::trace::holder::TraceHolder;
 use crate::prover::whir::kernels::{
-    accumulate_whir_base_columns, batched_eq_factor_scratch_lens, deserialize_whir_e4_columns,
-    launch_batched_accumulate_eq_samples, launch_whir_three_point_partials,
-    partially_evaluate_monomials_by_ref, serialize_whir_e4_columns, whir_fold_split_half_in_place,
-    whir_fold_split_half_in_place_pair, whir_fold_split_half_in_place_vectorized,
+    accumulate_whir_base_columns_with_serialized_bf, batched_eq_factor_scratch_lens,
+    deserialize_whir_e4_columns, launch_batched_accumulate_eq_samples,
+    launch_whir_three_point_partials, partially_evaluate_monomials_by_ref,
+    whir_fold_split_half_in_place, whir_fold_split_half_in_place_pair,
+    whir_fold_split_half_in_place_vectorized,
 };
 use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::upstream::FieldExtension;
@@ -199,19 +200,17 @@ pub(super) fn get_base_columns<'a>(
 pub(super) fn initialize_batched_monomial_form(
     log_domain_size: usize,
     use_hypercube_evals_for_batching: bool,
+    vectorized_scratch: &mut DeviceSlice<BF>,
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let trace_len = 1 << log_domain_size;
-    let mut vectorized_scratch =
-        context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
+    assert_eq!(vectorized_scratch.len(), trace_len * EXT4_DEGREE);
     let stream = context.get_exec_stream();
-    serialize_whir_e4_columns(
-        &state.sumchecked_poly_evaluation_form[..trace_len],
-        &mut vectorized_scratch,
-        stream,
-    )?;
-    let vectorized_batched_evals_matrix = DeviceMatrix::new(&vectorized_scratch, trace_len);
+    // The fused `accumulate_whir_base_columns_with_serialized_bf` upstream
+    // already populated `vectorized_scratch` with the column-major BF view of
+    // `state.sumchecked_poly_evaluation_form`, so no separate serialize pass.
+    let vectorized_batched_evals_matrix = DeviceMatrix::new(&*vectorized_scratch, trace_len);
 
     if use_hypercube_evals_for_batching {
         hypercube_x1_msb_evals_to_x1_msb_monomials(
@@ -242,7 +241,7 @@ pub(super) fn initialize_batched_monomial_form(
             hypercube_coeffs_bitrev_to_bitrev_evals(src, dst, log_domain_size, stream)?;
         }
         deserialize_whir_e4_columns(
-            &vectorized_scratch,
+            &*vectorized_scratch,
             &mut state.sumchecked_poly_evaluation_form[..trace_len],
             stream,
         )?;
@@ -310,7 +309,12 @@ pub(super) fn schedule_initialize_batched_forms(
         get_base_columns(witness_trace_holder, rows, use_hypercube_evals_for_batching);
     let setup_values = get_base_columns(setup_trace_holder, rows, use_hypercube_evals_for_batching);
 
-    accumulate_whir_base_columns(
+    // Pre-allocate the BF column-major scratch the NTT expects, so the fused
+    // accumulate kernel can write the serialized form directly and skip the
+    // separate serialize pass.
+    let mut vectorized_scratch =
+        context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
+    accumulate_whir_base_columns_with_serialized_bf(
         &memory_values,
         &witness_values,
         &setup_values,
@@ -318,12 +322,14 @@ pub(super) fn schedule_initialize_batched_forms(
         &device_witness_weights,
         &device_setup_weights,
         &mut state.sumchecked_poly_evaluation_form,
+        &mut vectorized_scratch[..],
         stream,
     )?;
 
     initialize_batched_monomial_form(
         memory_trace_holder.log_domain_size as usize,
         use_hypercube_evals_for_batching,
+        &mut vectorized_scratch[..],
         state,
         context,
     )?;

@@ -66,4 +66,35 @@ EXTERN __global__ void ab_accumulate_whir_base_columns_e4_kernel(const BaseColum
   store<e4, st_modifier::cs>(metadata.result, acc, gid);
 }
 
+// Fused variant of `ab_accumulate_whir_base_columns_e4_kernel` followed by
+// `ab_serialize_whir_e4_columns_kernel`: writes both the E4 result (for
+// downstream three-point / fold-split consumers) and the column-major BF
+// vectorization (consumed by the immediately-following NTT) in a single pass,
+// eliminating the E4 round-trip through HBM.
+EXTERN __global__ void ab_accumulate_whir_base_columns_with_serialized_bf_e4_kernel(const BaseColumnsBatchingMetadata metadata, bf *serialized_bf) {
+  const unsigned rows = metadata.rows;
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= rows)
+    return;
+
+  e4 acc{e4::ZERO()};
+  for (unsigned i = 0; i < TRACE_CHUNKS; i++) {
+    const bf *values = metadata.values[i];
+    const e4 *weights = metadata.weights[i];
+    const unsigned cols = metadata.cols[i];
+    const unsigned stride = metadata.strides[i];
+    for (unsigned col = 0; col < cols; ++col) {
+      const bf value = load<bf, ld_modifier::cs>(values, col * stride + gid);
+      const e4 weight = load<e4, ld_modifier::cs>(weights, col);
+      acc = e4::fma(weight, value, acc);
+    }
+  }
+
+  store<e4, st_modifier::cs>(metadata.result, acc, gid);
+  store<bf, st_modifier::cs>(serialized_bf, acc.base_coefficient_from_flat_idx(0), gid);
+  store<bf, st_modifier::cs>(serialized_bf, acc.base_coefficient_from_flat_idx(1), rows + gid);
+  store<bf, st_modifier::cs>(serialized_bf, acc.base_coefficient_from_flat_idx(2), 2 * rows + gid);
+  store<bf, st_modifier::cs>(serialized_bf, acc.base_coefficient_from_flat_idx(3), 3 * rows + gid);
+}
+
 } // namespace airbender::prover::whir
