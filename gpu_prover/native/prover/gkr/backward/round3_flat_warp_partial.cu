@@ -17,7 +17,8 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_gkr_main_round3_flat_constan
 
   e4 c0 = e4::ZERO();
   e4 c1 = e4::ZERO();
-  flat_cont_accumulate_unified_compact<e4, /*EXPLICIT_FORM=*/false, NUM_WARPS>(desc, fold_stride, next_layer_size, folding_challenge_slot, gid, warp_id, c0, c1);
+  flat_cont_accumulate_unified_compact<e4, /*EXPLICIT_FORM=*/false, NUM_WARPS>(desc, fold_stride, next_layer_size, folding_challenge_slot, gid, warp_id, c0,
+                                                                               c1);
 
   __shared__ e4 smem[NUM_WARPS - 1][32];
   flat_store_unified_partials_warp_reduce<e4, NUM_WARPS>(smem, eq_low, eq_sizes, partials, gid, lane, warp_id, c0, c1);

@@ -11,9 +11,10 @@
 
 namespace airbender::prover::gkr::backward {
 
-EXTERN __launch_bounds__(128, 8) __global__ void ab_gkr_main_round0_flat_constant_compact_warp_partial_e4_kernel(
-    const __grid_constant__ flat_round0_static_desc_compact desc, const e4 *eq_low, const __grid_constant__ gkr_eq_sizes eq_sizes, e4 *__restrict__ partials,
-    const unsigned acc_size) {
+EXTERN __launch_bounds__(128, 8) __global__
+    void ab_gkr_main_round0_flat_constant_compact_warp_partial_e4_kernel(const __grid_constant__ flat_round0_static_desc_compact desc, const e4 *eq_low,
+                                                                         const __grid_constant__ gkr_eq_sizes eq_sizes, e4 *__restrict__ partials,
+                                                                         const unsigned acc_size) {
   const unsigned tid = threadIdx.x;
   const unsigned lane = tid & 31u;
   const unsigned warp_in_block = tid >> 5;
