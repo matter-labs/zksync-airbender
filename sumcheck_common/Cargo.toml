@@ -11,7 +11,7 @@ categories.workspace = true
 
 [dependencies]
 field = { workspace = true, default-features = false }
-cs = { workspace = true }
+cs = { workspace = true, features = ["compiler"]}
 serde = { workspace = true }
 proc-macro2 = { version = "1" }
 quote = { version = "1" }

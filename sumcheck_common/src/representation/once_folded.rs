@@ -36,6 +36,13 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionBase<F,
     type CTX = (E, E);
 
     #[inline(always)]
+    fn zero() -> Self {
+        Self {
+            c0: F::ZERO,
+            c1: F::ZERO,
+        }
+    }
+    #[inline(always)]
     fn into_ext(self, ctx: &Self::CTX) -> E {
         let mut result = ctx.0;
         result.mul_assign_by_base(&self.c1);
@@ -71,7 +78,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionBase<F,
         Self { c0, c1 }
     }
     #[inline(always)]
-    fn mul_by_ext_and_into_ext(self, other: &E, ctx: &Self::CTX) -> E {
+    fn mul_by_ext(self, other: &E, ctx: &Self::CTX) -> E {
         let mut result = self.into_ext(ctx);
         result.mul_assign(other);
         result
@@ -84,6 +91,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionExt<F, 
     type Base = BaseFieldFoldedOnceRepresentation<F>;
     type CTX = (E, E);
 
+    #[inline(always)]
+    fn zero() -> Self {
+        Self {
+            c0: F::ZERO,
+            c1: F::ZERO,
+            c2: F::ZERO,
+        }
+    }
     #[inline(always)]
     fn into_ext(self, ctx: &Self::CTX) -> E {
         let (mut r, r2) = *ctx;
@@ -157,13 +172,13 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionExt<F, 
         Self { c0, c1, c2 }
     }
     #[inline(always)]
-    fn add_with_ext_and_into_ext(self, other: &E, ctx: &Self::CTX) -> E {
+    fn add_with_ext(self, other: &E, ctx: &Self::CTX) -> E {
         let mut result = self.into_ext(ctx);
         result.add_assign(other);
         result
     }
     #[inline(always)]
-    fn mul_by_ext_and_into_ext(self, other: &E, ctx: &Self::CTX) -> E {
+    fn mul_by_ext(self, other: &E, ctx: &Self::CTX) -> E {
         let mut result = self.into_ext(ctx);
         result.mul_assign(other);
         result
