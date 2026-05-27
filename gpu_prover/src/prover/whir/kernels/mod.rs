@@ -5,6 +5,7 @@ use era_cudart::stream::CudaStream;
 use era_cudart::{
     cuda_kernel, cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function,
 };
+use fft::domain_generator_for_size;
 
 use crate::ops::simple::pow;
 use crate::primitives::device_structures::{
@@ -299,6 +300,74 @@ pub(crate) fn pack_rows_for_whir_leaves(
         log_values_per_leaf,
     );
     PackRowsForWhirLeavesFunction(ab_pack_rows_for_whir_leaves_bf_kernel).launch(&config, &args)
+}
+
+cuda_kernel!(
+    PackRowsForWhirLeavesOneRowPerThread,
+    pack_rows_for_whir_leaves_one_row_per_thread,
+    src: PtrAndStride<BF>,
+    dst: MutPtrAndStride<BF>,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+);
+
+pack_rows_for_whir_leaves_one_row_per_thread!(ab_pack_rows_for_whir_leaves_1);
+pack_rows_for_whir_leaves_one_row_per_thread!(ab_pack_rows_for_whir_leaves_2);
+pack_rows_for_whir_leaves_one_row_per_thread!(ab_pack_rows_for_whir_leaves_3);
+pack_rows_for_whir_leaves_one_row_per_thread!(ab_pack_rows_for_whir_leaves_4);
+pack_rows_for_whir_leaves_one_row_per_thread!(ab_pack_rows_for_whir_leaves_5);
+
+pub(crate) fn pack_rows_for_whir_leaves_one_row_per_thread(
+    src: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    dst: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(log_lde_factor >= 1);
+    assert!(log_values_per_leaf >= 1);
+    assert!(log_values_per_leaf <= 5); // Based on block size. Can be relaxed if needed.
+    assert!(log_trace_len > log_values_per_leaf);
+    let src_rows = src.rows();
+    let src_cols = src.cols();
+    let dst_rows = dst.rows();
+    let dst_cols = dst.cols();
+    assert!(src_rows <= u32::MAX as usize);
+    assert!(src_cols <= u32::MAX as usize);
+    assert!(dst_rows <= u32::MAX as usize);
+    assert!(dst_cols <= u32::MAX as usize);
+    // A warning to rework kernel for < 32B contiguous accesses if needed:
+    let dst_rows_per_coset = dst_rows >> log_lde_factor;
+    assert!(dst_rows_per_coset >= 8);
+    assert_eq!(src_cols, 4);
+    assert_eq!(src_rows, (1 << (log_trace_len + log_lde_factor)) as usize);
+    assert_eq!(src_rows >> log_values_per_leaf, dst_rows);
+    assert_eq!(src_cols << log_values_per_leaf, dst_cols);
+    // yields low occupany for small total size corner cases,
+    // but such cases are negligible/typically testing-only
+    let block_dim_x = std::cmp::min(dst_rows, 4 * WARP_SIZE as usize);
+    assert_eq!(dst_rows % block_dim_x, 0);
+    let grid_dim = dst_rows.get_chunks_count(block_dim_x);
+    let mut config = CudaLaunchConfig::basic(grid_dim as u32, block_dim_x as u32, stream);
+    let smem_bytes = (1 << log_values_per_leaf) * block_dim_x * size_of::<BF>();
+    config.dynamic_smem_bytes = smem_bytes;
+    let args = PackRowsForWhirLeavesOneRowPerThreadArguments::new(
+        src.as_ptr_and_stride(),
+        dst.as_mut_ptr_and_stride(),
+        log_trace_len,
+        log_lde_factor,
+    );
+    coset_offsets = [
+    let kernel = match log_values_per_leaf {
+        1 => ab_pack_rows_for_whir_leaves_1,
+        2 => ab_pack_rows_for_whir_leaves_2,
+        3 => ab_pack_rows_for_whir_leaves_3,
+        4 => ab_pack_rows_for_whir_leaves_4,
+        5 => ab_pack_rows_for_whir_leaves_5,
+        _ => unimplemented!(),
+    };
+    PackRowsForWhirLeavesOneRowPerThreadFunction(kernel).launch(&config, &args)
 }
 
 cuda_kernel!(

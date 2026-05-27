@@ -16,7 +16,7 @@ use crate::primitives::context::ProverContext;
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixImpl, DeviceMatrixMut};
 use crate::primitives::field::{BF, E4};
 use crate::prover::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
-use crate::prover::whir::kernels::pack_rows_for_whir_leaves;
+use crate::prover::whir::kernels::{pack_rows_for_whir_leaves, pack_rows_for_whir_leaves_one_row_per_thread};
 use crate::upstream::FieldExtension;
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
@@ -212,7 +212,8 @@ impl GpuWhirExtensionOracle {
         let packed_alloc = trace_holder.get_uninit_coset_evaluations_mut(0);
         let packed_stride = packed_leaf_count * lde_factor;
         let mut packed_matrix = DeviceMatrixMut::new(packed_alloc, packed_stride);
-        pack_rows_for_whir_leaves(
+        // pack_rows_for_whir_leaves(
+        pack_rows_for_whir_leaves_one_row_per_thread(
             &vectorized_coset_evaluations_matrix,
             &mut packed_matrix,
             trace_len_log2 as u32,
