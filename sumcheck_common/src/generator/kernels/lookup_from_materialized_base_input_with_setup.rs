@@ -128,7 +128,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
             let mut c0 = all_ext_outputs[#num_output_to_read].get_f0_only::<false>(row_index).mul_by_ext(&sumcheck_challenges[#num_term_challenge], ext_repr_ctx);
             c0.add_assign(&all_ext_outputs[#den_output_to_read].get_f0_only::<false>(row_index).mul_by_ext(&sumcheck_challenges[#den_term_challenge], ext_repr_ctx));
 
-            let mut c1 = unsafe {
+            let c1 = unsafe {
                 let base_field_scratch = core::mem::transmute::<_, &[[S::BaseFieldInput; 1]; #base_field_scratch_space_size]>(base_field_scratch);
                 #quadratic_only_fn_id::<F, E, S, _>(
                     base_field_scratch,

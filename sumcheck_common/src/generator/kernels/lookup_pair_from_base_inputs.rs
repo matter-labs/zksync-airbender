@@ -80,7 +80,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
         if rel.input.constant != 0 {
             let c = rel.input.constant;
             quote! {
-                acc.add_assign(&F::from_u32_unchecked(#c));
+                acc.add_base(&F::from_u32_unchecked(#c));
             }
         } else {
             quote! {}

@@ -173,6 +173,39 @@ impl Ord for NoFieldStructuredExpression {
     }
 }
 
+impl NoFieldStructuredExpression {
+    pub fn degree(&self) -> usize {
+        match self {
+            Self::Constant(_) => 0,
+            Self::Place(_) => 1,
+            Self::Sum(terms) => terms.iter().map(Self::degree).max().unwrap_or(0),
+            Self::Product(factors) => factors.iter().map(Self::degree).sum(),
+        }
+    }
+
+    pub fn assert_well_formed(&self) {
+        match self {
+            Self::Constant(_) => {}
+            Self::Place(_) => {}
+            Self::Sum(terms) => {
+                assert!(self.degree() > 0, "constants must be collapsed");
+            }
+            Self::Product(factors) => {
+                let mut constant_found = false;
+                for el in factors.iter() {
+                    if let Self::Constant(..) = el {
+                        if constant_found == false {
+                            constant_found = true;
+                        } else {
+                            panic!("constants must be collapsed");
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoFieldSpecialConstraintCollapseGKRRelation {
     pub predicate: GKRAddress,
