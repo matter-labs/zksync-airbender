@@ -6,6 +6,7 @@ use era_cudart::{
     cuda_kernel, cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function,
 };
 use fft::domain_generator_for_size;
+use field::Field;
 
 use crate::ops::simple::pow;
 use crate::primitives::device_structures::{
@@ -307,6 +308,7 @@ cuda_kernel!(
     pack_rows_for_whir_leaves_one_row_per_thread,
     src: PtrAndStride<BF>,
     dst: MutPtrAndStride<BF>,
+    high_power_offset: BF,
     log_trace_len: u32,
     log_lde_factor: u32,
 );
@@ -344,6 +346,9 @@ pub(crate) fn pack_rows_for_whir_leaves_one_row_per_thread(
     assert_eq!(src_rows, (1 << (log_trace_len + log_lde_factor)) as usize);
     assert_eq!(src_rows >> log_values_per_leaf, dst_rows);
     assert_eq!(src_cols << log_values_per_leaf, dst_cols);
+    let high_power_offset = domain_generator_for_size::<BF>(1 << log_values_per_leaf)
+        .inverse()
+        .expect("must exist");
     // yields low occupany for small total size corner cases,
     // but such cases are negligible/typically testing-only
     let block_dim_x = std::cmp::min(dst_rows, 4 * WARP_SIZE as usize);
@@ -355,10 +360,10 @@ pub(crate) fn pack_rows_for_whir_leaves_one_row_per_thread(
     let args = PackRowsForWhirLeavesOneRowPerThreadArguments::new(
         src.as_ptr_and_stride(),
         dst.as_mut_ptr_and_stride(),
+        high_power_offset,
         log_trace_len,
         log_lde_factor,
     );
-    coset_offsets = [
     let kernel = match log_values_per_leaf {
         1 => ab_pack_rows_for_whir_leaves_1,
         2 => ab_pack_rows_for_whir_leaves_2,

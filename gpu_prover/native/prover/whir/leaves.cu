@@ -113,6 +113,7 @@ static constexpr unsigned MAX_VALS_PER_LEAF = 32;
 template <unsigned LOG_VALUES_PER_LEAF>
 DEVICE_FORCEINLINE void pack_rows_for_whir_leaves_impl(bf_matrix_getter<ld_modifier::cs> src,
                                                        bf_matrix_setter<st_modifier::cs> dst,
+                                                       const bf high_power_offset,
                                                        const unsigned log_trace_len,
                                                        const unsigned log_lde_factor) {
   constexpr unsigned VALUES_PER_LEAF = 1 << LOG_VALUES_PER_LEAF;
@@ -129,15 +130,15 @@ DEVICE_FORCEINLINE void pack_rows_for_whir_leaves_impl(bf_matrix_getter<ld_modif
   extern __shared__ bf x_invs_block[];
   bf *x_invs = x_invs_block + threadIdx.x;
 
-  const unsigned dst_rows_per_coset = 1 << log_dst_rows_per_coset;
+  // Populate twiddles (x_invs) for reuse
   const unsigned coset_offset = bitreverse_low_bits(coset, log_lde_factor) << (OMEGA_LOG_ORDER - log_trace_len - log_lde_factor);
-
-  // Populate twiddles for reuse
+  bf x_inv =  get_inverse_twiddle_power((dst_row << (OMEGA_LOG_ORDER - log_trace_len)) + coset_offset);
+  x_invs[0] = x_inv;
 #pragma unroll
-  for (unsigned slot_in_leaf = 0; slot_in_leaf < VALUES_PER_LEAF; slot_in_leaf += 2) {
-    const unsigned src_row_a = dst_row + bitreverse_low_bits(slot_in_leaf, LOG_VALUES_PER_LEAF) * dst_rows_per_coset;
-    // TODO: use high powers offsets across the leaf so each thread only needs to call get_inverse_twiddles_power once
-    x_invs[blockDim.x * (slot_in_leaf >> 1)] = get_inverse_twiddle_power((src_row_a << (OMEGA_LOG_ORDER - log_trace_len)) + coset_offset);
+  for (unsigned src_slot_in_leaf = 1; src_slot_in_leaf < (VALUES_PER_LEAF >> 1); src_slot_in_leaf++) {
+    const unsigned slot_in_leaf = bitreverse_low_bits(src_slot_in_leaf, LOG_VALUES_PER_LEAF - 1);
+    x_inv = bf::mul(high_power_offset, x_inv);
+    x_invs[blockDim.x * slot_in_leaf] = x_inv;
   }
   bf *x_invs_prev = x_invs;
 #pragma unroll
@@ -152,6 +153,7 @@ DEVICE_FORCEINLINE void pack_rows_for_whir_leaves_impl(bf_matrix_getter<ld_modif
 
   bf vals[MAX_VALS_PER_LEAF];
 
+  const unsigned dst_rows_per_coset = 1 << log_dst_rows_per_coset;
 #pragma unroll 1
   for (unsigned c = 0; c < 4; c++) {
 #pragma unroll
@@ -172,7 +174,7 @@ DEVICE_FORCEINLINE void pack_rows_for_whir_leaves_impl(bf_matrix_getter<ld_modif
     for (unsigned stage = 0; stage < LOG_VALUES_PER_LEAF; stage++) {
       const unsigned exchg_stride = 1 << stage;
       const unsigned num_exchg_regions = VALUES_PER_LEAF >> (stage + 1);
-      for (unsigned i = 0; i < num_exchg_regions; i++) { 
+      for (unsigned i = 0; i < num_exchg_regions; i++) {
         const bf x_inv = x_invs_current[blockDim.x * i];
         const unsigned region_start = 2 * i * exchg_stride;
         for (unsigned j = 0; j < exchg_stride; j++) {
@@ -195,41 +197,46 @@ DEVICE_FORCEINLINE void pack_rows_for_whir_leaves_impl(bf_matrix_getter<ld_modif
 EXTERN __launch_bounds__(128, 6)
 __global__ void ab_pack_rows_for_whir_leaves_1(bf_matrix_getter<ld_modifier::cs> src,
                                                bf_matrix_setter<st_modifier::cs> dst,
+                                               const bf high_power_offset,
                                                const unsigned log_trace_len,
                                                const unsigned log_lde_factor) {
-  pack_rows_for_whir_leaves_impl<1>(src, dst, log_trace_len, log_lde_factor);
+  pack_rows_for_whir_leaves_impl<1>(src, dst, high_power_offset, log_trace_len, log_lde_factor);
 }
 
 EXTERN __launch_bounds__(128, 6)
 __global__ void ab_pack_rows_for_whir_leaves_2(bf_matrix_getter<ld_modifier::cs> src,
                                                bf_matrix_setter<st_modifier::cs> dst,
+                                               const bf high_power_offset,
                                                const unsigned log_trace_len,
                                                const unsigned log_lde_factor) {
-  pack_rows_for_whir_leaves_impl<2>(src, dst, log_trace_len, log_lde_factor);
+  pack_rows_for_whir_leaves_impl<2>(src, dst, high_power_offset, log_trace_len, log_lde_factor);
 }
 
 EXTERN __launch_bounds__(128, 6)
 __global__ void ab_pack_rows_for_whir_leaves_3(bf_matrix_getter<ld_modifier::cs> src,
                                                bf_matrix_setter<st_modifier::cs> dst,
+                                               const bf high_power_offset,
                                                const unsigned log_trace_len,
                                                const unsigned log_lde_factor) {
-  pack_rows_for_whir_leaves_impl<3>(src, dst, log_trace_len, log_lde_factor);
+  pack_rows_for_whir_leaves_impl<3>(src, dst, high_power_offset, log_trace_len, log_lde_factor);
 }
 
 EXTERN __launch_bounds__(128, 6)
 __global__ void ab_pack_rows_for_whir_leaves_4(bf_matrix_getter<ld_modifier::cs> src,
                                                bf_matrix_setter<st_modifier::cs> dst,
+                                               const bf high_power_offset,
                                                const unsigned log_trace_len,
                                                const unsigned log_lde_factor) {
-  pack_rows_for_whir_leaves_impl<4>(src, dst, log_trace_len, log_lde_factor);
+  pack_rows_for_whir_leaves_impl<4>(src, dst, high_power_offset, log_trace_len, log_lde_factor);
 }
 
 EXTERN __launch_bounds__(128, 6)
 __global__ void ab_pack_rows_for_whir_leaves_5(bf_matrix_getter<ld_modifier::cs> src,
                                                bf_matrix_setter<st_modifier::cs> dst,
+                                               const bf high_power_offset,
                                                const unsigned log_trace_len,
                                                const unsigned log_lde_factor) {
-  pack_rows_for_whir_leaves_impl<5>(src, dst, log_trace_len, log_lde_factor);
+  pack_rows_for_whir_leaves_impl<5>(src, dst, high_power_offset, log_trace_len, log_lde_factor);
 }
 
 } // namespace airbender::prover::whir
