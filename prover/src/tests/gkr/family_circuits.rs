@@ -474,19 +474,24 @@ pub fn gkr_run_basic_unrolled_test_impl(
             println!("Trying to prove");
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &circuit,
-                    &external_challenges,
-                    full_trace,
-                    &setup,
-                    &setup_commitment,
-                    &twiddles,
-                    &prover_config,
-                    Vec::new(),
-                    trace_len,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                _,
+            >(
+                &circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                Vec::new(),
+                trace_len,
+                Option::<()>::None,
+                &worker,
+            );
             println!("Proving time is {:?}", now.elapsed());
 
             println!(
@@ -681,19 +686,24 @@ pub fn gkr_run_basic_unrolled_test_impl(
             println!("Trying to prove");
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &circuit,
-                    &external_challenges,
-                    full_trace,
-                    &setup,
-                    &setup_commitment,
-                    &twiddles,
-                    &prover_config,
-                    Vec::new(),
-                    trace_len,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                _,
+            >(
+                &circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                Vec::new(),
+                trace_len,
+                Option::<()>::None,
+                &worker,
+            );
             println!("Proving time is {:?}", now.elapsed());
 
             println!(
@@ -881,19 +891,24 @@ pub fn gkr_run_basic_unrolled_test_impl(
             println!("Trying to prove");
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &circuit,
-                    &external_challenges,
-                    full_trace,
-                    &setup,
-                    &setup_commitment,
-                    &twiddles,
-                    &prover_config,
-                    Vec::new(),
-                    trace_len,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                _,
+            >(
+                &circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                Vec::new(),
+                trace_len,
+                Option::<()>::None,
+                &worker,
+            );
             println!("Proving time is {:?}", now.elapsed());
 
             println!(
@@ -1075,19 +1090,24 @@ pub fn gkr_run_basic_unrolled_test_impl(
             println!("Trying to prove");
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &circuit,
-                    &external_challenges,
-                    full_trace,
-                    &setup,
-                    &setup_commitment,
-                    &twiddles,
-                    &prover_config,
-                    Vec::new(),
-                    trace_len,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                _,
+            >(
+                &circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                Vec::new(),
+                trace_len,
+                Option::<()>::None,
+                &worker,
+            );
             println!("Proving time is {:?}", now.elapsed());
 
             println!(
@@ -1285,19 +1305,24 @@ pub fn gkr_run_basic_unrolled_test_impl(
             println!("Trying to prove");
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &circuit,
-                    &external_challenges,
-                    full_trace,
-                    &setup,
-                    &setup_commitment,
-                    &twiddles,
-                    &prover_config,
-                    Vec::new(),
-                    trace_len,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                _,
+            >(
+                &circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                Vec::new(),
+                trace_len,
+                Option::<()>::None,
+                &worker,
+            );
             println!("Proving time is {:?}", now.elapsed());
             println!(
                 "Estimated proof size without compression is {} bytes",
@@ -1487,19 +1512,24 @@ pub fn gkr_run_basic_unrolled_test_impl(
             println!("Trying to prove");
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &circuit,
-                    &external_challenges,
-                    full_trace,
-                    &setup,
-                    &setup_commitment,
-                    &twiddles,
-                    &prover_config,
-                    Vec::new(),
-                    trace_len,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                _,
+            >(
+                &circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                Vec::new(),
+                trace_len,
+                Option::<()>::None,
+                &worker,
+            );
             println!("Proving time is {:?}", now.elapsed());
             println!(
                 "Estimated proof size without compression is {} bytes",
@@ -1633,19 +1663,24 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     .collect();
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &circuit,
-                    &external_challenges,
-                    full_trace,
-                    &setup,
-                    &setup_commitment,
-                    &twiddles,
-                    &prover_config,
-                    inits_and_teardowns_top_bits,
-                    trace_len,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                _,
+            >(
+                &circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                inits_and_teardowns_top_bits,
+                trace_len,
+                Option::<()>::None,
+                &worker,
+            );
             println!("Proving time is {:?}", now.elapsed());
 
             println!(
@@ -1828,19 +1863,24 @@ pub fn gkr_run_basic_unrolled_test_impl(
             println!("Trying to prove");
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &circuit,
-                    &external_challenges,
-                    full_trace,
-                    &setup,
-                    &setup_commitment,
-                    &twiddles,
-                    &prover_config,
-                    Vec::new(),
-                    BLAKE_NUM_DELEGATION_CYCLES,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                _,
+            >(
+                &circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                Vec::new(),
+                BLAKE_NUM_DELEGATION_CYCLES,
+                Option::<()>::None,
+                &worker,
+            );
             println!("Proving time is {:?}", now.elapsed());
 
             println!(
@@ -1999,19 +2039,24 @@ pub fn gkr_run_basic_unrolled_test_impl(
             println!("Trying to prove");
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &circuit,
-                    &external_challenges,
-                    full_trace,
-                    &setup,
-                    &setup_commitment,
-                    &twiddles,
-                    &prover_config,
-                    Vec::new(),
-                    BIGINT_NUM_DELEGATION_CYCLES,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                _,
+            >(
+                &circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                Vec::new(),
+                BIGINT_NUM_DELEGATION_CYCLES,
+                Option::<()>::None,
+                &worker,
+            );
             println!("Proving time is {:?}", now.elapsed());
 
             println!(
@@ -2169,19 +2214,24 @@ pub fn gkr_run_basic_unrolled_test_impl(
             println!("Trying to prove");
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &circuit,
-                    &external_challenges,
-                    full_trace,
-                    &setup,
-                    &setup_commitment,
-                    &twiddles,
-                    &prover_config,
-                    Vec::new(),
-                    KECCAK_NUM_DELEGATION_CYCLES,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                _,
+            >(
+                &circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                Vec::new(),
+                KECCAK_NUM_DELEGATION_CYCLES,
+                Option::<()>::None,
+                &worker,
+            );
             println!("Proving time is {:?}", now.elapsed());
 
             println!(
@@ -2347,19 +2397,24 @@ pub fn gkr_run_basic_unrolled_test_impl(
             println!("Trying to prove");
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &circuit,
-                    &external_challenges,
-                    full_trace,
-                    &setup,
-                    &setup_commitment,
-                    &twiddles,
-                    &prover_config,
-                    Vec::new(),
-                    BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                _,
+            >(
+                &circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                Vec::new(),
+                BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES,
+                Option::<()>::None,
+                &worker,
+            );
             println!("Proving time is {:?}", now.elapsed());
 
             println!(

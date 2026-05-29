@@ -238,7 +238,7 @@ fn generate_proof(
 
     println!("Proving with corrupted witness");
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, _>(
         &circuit,
         &external_challenges,
         full_trace,
@@ -248,6 +248,7 @@ fn generate_proof(
         &prover_config,
         Vec::new(),
         trace_len,
+        Option::<()>::None,
         &worker,
     );
     println!("Malicious proving time: {:?}", now.elapsed());

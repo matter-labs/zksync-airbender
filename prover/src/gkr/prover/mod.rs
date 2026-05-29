@@ -291,6 +291,7 @@ pub fn prove_configured_with_gkr<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
+    EVAL: crate::gkr::sumcheck::SumcheckEvaluator<F, E>,
 >(
     compiled_circuit: &GKRCircuitArtifact<F>,
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -301,6 +302,7 @@ pub fn prove_configured_with_gkr<
     prover_config: &ProverConfig,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
+    evaluator: Option<EVAL>,
     worker: &Worker,
 ) -> GKRProof<F, E, T>
 where
