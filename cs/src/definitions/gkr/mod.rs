@@ -76,3 +76,14 @@ pub struct GKRWitnessLayout {
     pub multiplicities_columns_for_generic_lookup: core::ops::Range<usize>,
     pub total_width: usize,
 }
+
+pub trait GKRExternalChallengesProvider<
+    F: ::field::PrimeField,
+    E: ::field::FieldExtension<F> + ::field::Field,
+>: 'static + Send + Sync + Clone + Copy
+{
+    fn linearization_challenges(
+        &self,
+    ) -> &[E; crate::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES];
+    fn additive_part(&self) -> &E;
+}

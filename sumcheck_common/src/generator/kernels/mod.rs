@@ -6,6 +6,7 @@ mod initial_grand_product_no_caches;
 mod lookup_from_materialized_base_input_with_setup;
 mod lookup_pair_from_base_inputs;
 mod materialize_single_lookup_input;
+mod vector_lookup_mask_by_expression_minus_multi_by_cached_setup;
 
 pub(crate) fn compute_fn_ids(gate_idx: usize, layer_idx: usize) -> (Ident, Ident) {
     let compute_fn_initial_round_id = Ident::new(
@@ -118,13 +119,25 @@ pub(crate) fn generate_compute_fns_for_relation<F: PrimeField, E: FieldExtension
             pos_state,
             challenges,
         ),
-        NoFieldGKRRelation::LookupWithDensAndSetupExpressions {
+        NoFieldGKRRelation::LookupWithDensAndCachedSetup {
             input,
             setup,
             output,
         } => {
-            // should change to use caching of setups, as it's always beneficial
-            return (quote! {}, quote! {});
+            vector_lookup_mask_by_expression_minus_multi_by_cached_setup::generate_compute_fns::<F, E>(
+                input,
+                *setup,
+                *output,
+                gate_idx,
+                layer_idx,
+                num_challenges,
+                base_field_scratch_space_size,
+                ext_field_scratch_space_size,
+                all_base_outputs,
+                all_ext_outputs,
+                pos_state,
+                challenges,
+            )
         }
         NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, expression } => {
             expression.assert_well_formed();

@@ -56,7 +56,44 @@
     {
       "layer": 0,
       "gates_with_external_connections": [],
-      "cached_relations": [],
+      "cached_relations": [
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 0
+            }
+          },
+          {
+            "VectorizedLookupSetup": [
+              {
+                "Setup": 0
+              },
+              {
+                "Setup": 1
+              },
+              {
+                "Setup": 2
+              },
+              {
+                "Setup": 3
+              },
+              {
+                "Setup": 4
+              },
+              {
+                "Setup": 5
+              },
+              {
+                "Setup": 6
+              },
+              {
+                "Setup": 7
+              }
+            ]
+          }
+        ]
+      ],
       "gates": [
         {
           "output_layer": 1,
@@ -745,7 +782,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "LookupWithDensAndSetupExpressions": {
+            "LookupWithDensAndCachedSetup": {
               "input": [
                 {
                   "BaseLayerMemory": 17
@@ -896,32 +933,12 @@
                 {
                   "BaseLayerWitness": 21
                 },
-                [
-                  {
-                    "Setup": 0
-                  },
-                  {
-                    "Setup": 1
-                  },
-                  {
-                    "Setup": 2
-                  },
-                  {
-                    "Setup": 3
-                  },
-                  {
-                    "Setup": 4
-                  },
-                  {
-                    "Setup": 5
-                  },
-                  {
-                    "Setup": 6
-                  },
-                  {
-                    "Setup": 7
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 0
                   }
-                ]
+                }
               ],
               "output": [
                 {

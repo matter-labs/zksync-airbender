@@ -36,7 +36,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
         };
 
         let mut explicit_fn = quote! {
-            let mut acc = external_challenges.permutation_argument_additive_part;
+            let mut acc = *external_challenges.additive_part();
         };
 
         use cs::definitions::gkr::AddressSpaceType;
@@ -88,7 +88,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
         match &rel.address {
             &CompiledAddressStrict::ConstantU16(c) => {
                 explicit_fn.extend(quote! {
-                    let mut t = external_challenges.permutation_argument_linearization_challenges
+                    let mut t = external_challenges.linearization_challenges()
                         [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                     t.mul_assign_by_base(&F::from_u32_unchecked(#c as u32));
                     acc.add_assign(&t);
@@ -97,7 +97,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
             &CompiledAddressStrict::Constant(c) => {
                 assert!(c < (1u32 << 16));
                 explicit_fn.extend(quote! {
-                    let mut t = external_challenges.permutation_argument_linearization_challenges
+                    let mut t = external_challenges.linearization_challenges()
                         [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                     t.mul_assign_by_base(&F::from_u32_unchecked(#c));
                     acc.add_assign(&t);
@@ -108,7 +108,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                 let input_scratch_to_use = pos_state.get(&address).expect("pos").cache_pos;
                 explicit_fn.extend(
                     quote! {
-                        let t = external_challenges.permutation_argument_linearization_challenges
+                        let t = external_challenges.linearization_challenges()
                             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         let t = base_field_scratch[#input_scratch_to_use][subindex].mul_by_ext(&t, base_repr_ctx);
                         acc.add_assign(&t);
@@ -116,7 +116,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                 );
                 quadratic_fn.extend(
                     quote! {
-                        let t = external_challenges.permutation_argument_linearization_challenges
+                        let t = external_challenges.linearization_challenges()
                             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         let t = base_field_scratch[#input_scratch_to_use][subindex].mul_by_ext(&t, base_repr_ctx);
                         acc.add_assign(&t);
@@ -138,7 +138,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                     let input_scratch_to_use = pos_state.get(&address).expect("pos").cache_pos;
                     explicit_fn.extend(
                         quote! {
-                            let t = external_challenges.permutation_argument_linearization_challenges
+                            let t = external_challenges.linearization_challenges()
                                 [#idx];
                             let t = base_field_scratch[#input_scratch_to_use][subindex].mul_by_ext(&t, base_repr_ctx);
                             acc.add_assign(&t);
@@ -146,7 +146,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                     );
                     quadratic_fn.extend(
                         quote! {
-                            let t = external_challenges.permutation_argument_linearization_challenges
+                            let t = external_challenges.linearization_challenges()
                                 [#idx];
                             let t = base_field_scratch[#input_scratch_to_use][subindex].mul_by_ext(&t, base_repr_ctx);
                             acc.add_assign(&t);
@@ -197,7 +197,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                     let input_scratch_to_use = pos_state.get(&address).expect("pos").cache_pos;
                     let timestamp_offset = rel.timestamp_offset;
                     explicit_fn.extend(quote! {
-                        let t = external_challenges.permutation_argument_linearization_challenges
+                        let t = external_challenges.linearization_challenges()
                             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         let val = base_field_scratch[#input_scratch_to_use][subindex];
                         let val = val.add_base(&F::from_u32_unchecked(#timestamp_offset));
@@ -206,7 +206,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                     });
                     quadratic_fn.extend(
                         quote! {
-                            let t = external_challenges.permutation_argument_linearization_challenges
+                            let t = external_challenges.linearization_challenges()
                                 [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                             let t = base_field_scratch[#input_scratch_to_use][subindex].mul_by_ext(&t, base_repr_ctx);
                             acc.add_assign(&t);
@@ -218,7 +218,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                     let input_scratch_to_use = pos_state.get(&address).expect("pos").cache_pos;
                     explicit_fn.extend(
                         quote! {
-                            let t = external_challenges.permutation_argument_linearization_challenges
+                            let t = external_challenges.linearization_challenges()
                                 [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                             let t = base_field_scratch[#input_scratch_to_use][subindex].mul_by_ext(&t, base_repr_ctx);
                             acc.add_assign(&t);
@@ -226,7 +226,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                     );
                     quadratic_fn.extend(
                         quote! {
-                            let t = external_challenges.permutation_argument_linearization_challenges
+                            let t = external_challenges.linearization_challenges()
                                 [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                             let t = base_field_scratch[#input_scratch_to_use][subindex].mul_by_ext(&t, base_repr_ctx);
                             acc.add_assign(&t);
@@ -257,7 +257,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                     let input_scratch_to_use = pos_state.get(&address).expect("pos").cache_pos;
                     explicit_fn.extend(
                         quote! {
-                            let t = external_challenges.permutation_argument_linearization_challenges
+                            let t = external_challenges.linearization_challenges()
                                 [#idx];
                             let t = base_field_scratch[#input_scratch_to_use][subindex].mul_by_ext(&t, base_repr_ctx);
                             acc.add_assign(&t);
@@ -265,7 +265,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                     );
                     quadratic_fn.extend(
                         quote! {
-                            let t = external_challenges.permutation_argument_linearization_challenges
+                            let t = external_challenges.linearization_challenges()
                                 [#idx];
                             let t = base_field_scratch[#input_scratch_to_use][1].mul_by_ext(&t, base_repr_ctx);
                             acc.add_assign(&t);
@@ -301,7 +301,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                         pos_state.get(&address_high).expect("pos").cache_pos;
                     explicit_fn.extend(
                         quote! {
-                            let t = external_challenges.permutation_argument_linearization_challenges
+                            let t = external_challenges.linearization_challenges()
                                 [#idx];
                             let val = base_field_scratch[#input_scratch_to_use_low][subindex].mul_by_ext(&t, base_repr_ctx);
                             let high = base_field_scratch[#input_scratch_to_use_high][subindex].mul_by_ext(&t, base_repr_ctx);
@@ -313,7 +313,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                     );
                     quadratic_fn.extend(
                         quote! {
-                            let t = external_challenges.permutation_argument_linearization_challenges
+                            let t = external_challenges.linearization_challenges()
                                 [#idx];
                             let val = base_field_scratch[#input_scratch_to_use_low][1].mul_by_ext(&t, base_repr_ctx);
                             let high = base_field_scratch[#input_scratch_to_use_high][1].mul_by_ext(&t, base_repr_ctx);
@@ -381,7 +381,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
         #[inline(always)]
         fn #quadratic_only_fn_id<F: PrimeField, E: FieldExtension<F> + Field, S: SumcheckRoundSource<F, E>, const N: usize>(
             base_field_scratch: &[[S::BaseFieldInput; N]; #base_field_scratch_space_size],
-            external_challenges: &GKRExternalChallenges<F, E>,
+            external_challenges: &impl GKRExternalChallengesProvider<F, E>,
             base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
             subindex: usize
         ) -> E {
@@ -397,7 +397,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
         #[inline(always)]
         fn #explicit_fn_id<F: PrimeField, E: FieldExtension<F> + Field, S: SumcheckRoundSource<F, E>>(
             base_field_scratch: &[[S::BaseFieldInput; 2]; #base_field_scratch_space_size],
-            external_challenges: &GKRExternalChallenges<F, E>,
+            external_challenges: &impl GKRExternalChallengesProvider<F, E>,
             base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
             subindex: usize
         ) -> E {
@@ -420,7 +420,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
             all_base_outputs: &[S::BaseInputAccessor; #num_base_field_outputs],
             all_ext_outputs: &[S::ExtInputAccessor; #num_ext_field_outputs],
             sumcheck_challenges: &[E; #num_challenges],
-            external_challenges: &GKRExternalChallenges<F, E>,
+            external_challenges: &impl GKRExternalChallengesProvider<F, E>,
             lookup_alpha_powers: &[E],
             lookup_gamma: &E,
             base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -450,7 +450,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
             base_field_scratch: &[[S::BaseFieldInput; 2]; #base_field_scratch_space_size],
             ext_field_scratch: &[[S::ExtFieldInput; 2]; #ext_field_scratch_space_size],
             sumcheck_challenges: &[E; #num_challenges],
-            external_challenges: &GKRExternalChallenges<F, E>,
+            external_challenges: &impl GKRExternalChallengesProvider<F, E>,
             lookup_alpha_powers: &[E],
             lookup_gamma: &E,
             base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,

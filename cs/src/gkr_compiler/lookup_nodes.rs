@@ -153,15 +153,32 @@ impl GKRGate for LookupMaskedWitnessMinusSetupInputNode {
 
             (output, relation)
         } else {
+            // NOTE: we unconditonally cache the setup, as it only happens in the batched form and doesn't participate
+            // in any other relations
+
             let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
-            let relation = NoFieldGKRRelation::LookupWithDensAndSetupExpressions {
+            let cached_setup = NoFieldGKRCacheRelation::VectorizedLookupSetup(self.setup.clone());
+            assert!(output_layer > 0);
+            let layer_for_caches = output_layer - 1;
+            let cached_setup = graph.add_cached_relation(cached_setup, layer_for_caches);
+            let relation = NoFieldGKRRelation::LookupWithDensAndCachedSetup {
                 input: (self.mask, self.input.clone()),
-                setup: (self.multiplicity, self.setup.clone()),
+                setup: (self.multiplicity, cached_setup),
                 output,
             };
             graph.add_enforced_relation(relation.clone(), output_layer);
 
             (output, relation)
+
+            // let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
+            // let relation = NoFieldGKRRelation::LookupWithDensAndSetupExpressions {
+            //     input: (self.mask, self.input.clone()),
+            //     setup: (self.multiplicity, self.setup.clone()),
+            //     output,
+            // };
+            // graph.add_enforced_relation(relation.clone(), output_layer);
+
+            // (output, relation)
         }
     }
 }

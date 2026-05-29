@@ -41,28 +41,33 @@ pub struct SumcheckAddressState {
 pub fn generate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_idx: usize,
     layer: &GKRLayerDescription,
-) -> (TokenStream, TokenStream) {
+) -> TokenStream {
     let mut all_vars_at_layer = BTreeSet::new();
     let mut base_inputs = BTreeSet::new();
     let mut extension_inputs = BTreeSet::new();
     let mut base_outputs = BTreeSet::new();
     let mut extension_outputs = BTreeSet::new();
     let mut num_challenges = 0usize;
-    for (pos, rel) in layer.cached_relations.iter() {
-        all_vars_at_layer.insert(*pos);
-        rel.dump_base_field_inputs(&mut base_inputs);
-    }
+
+    // we do not dump from cached relations, as we will only use outputs
     for gate in layer
         .gates
         .iter()
         .chain(layer.gates_with_external_connections.iter())
     {
+        let t = all_vars_at_layer.len();
         gate.enforced_relation.dump_inputs(&mut all_vars_at_layer);
+        let diff_total = all_vars_at_layer.len() - t;
         num_challenges += gate.enforced_relation.num_challenges();
+        let t = base_inputs.len();
         gate.enforced_relation
             .dump_base_field_inputs(&mut base_inputs);
+        let diff_base_field = base_inputs.len() - t;
+        let t = extension_inputs.len();
         gate.enforced_relation
             .dump_ext_field_inputs(&mut extension_inputs);
+        let diff_ext_field = extension_inputs.len() - t;
+        assert_eq!(diff_total, diff_base_field + diff_ext_field, "total number of inputs diverged for {:?}: {} total diff, {} base field inputs, {} ext field inputs", gate, diff_total, diff_base_field, diff_ext_field);
         gate.enforced_relation
             .dump_base_field_outputs(&mut base_outputs);
         gate.enforced_relation
@@ -182,58 +187,79 @@ pub fn generate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         &format!("layer_{}_initial_round", layer_idx),
         Span::call_site(),
     );
-    let initial_round = quote! {
+    let round_id = Ident::new(&format!("layer_{}", layer_idx), Span::call_site());
+
+    quote! {
         #initial_round_seq
 
-        pub fn #initial_round_id<F: PrimeField, E: FieldExtension<F> + Field, S: SumcheckRoundSource<F, E>>(
+        #round_seq
+
+        pub fn #initial_round_id<F: PrimeField, E: FieldExtension<F> + Field, S: SumcheckRoundSource<F, E>, C: GKRExternalChallengesProvider<F, E>>(
             all_base_inputs: &[S::BaseInputAccessor; #num_base_field_inputs],
             all_ext_inputs: &[S::ExtInputAccessor; #num_ext_field_inputs],
             all_base_outputs: &[S::BaseInputAccessor; #num_base_field_outputs],
             all_ext_outputs: &[S::ExtInputAccessor; #num_ext_field_outputs],
             sumcheck_challenges: &[E; #num_challenges],
-            external_challenges: &GKRExternalChallenges<F, E>,
+            external_challenges: &C,
             lookup_alpha_powers: &[E],
             lookup_gamma: &E,
             base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
             ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+            eq_poly_precomputed: &[E],
+            row_range: core::ops::Range<usize>,
             row_index: usize,
         ) -> [E; 2] {
             let mut base_field_scratch: [_; #base_field_scratch_space_size] = std::array::from_fn(|_| S::BaseFieldInput::zero());
             let mut ext_field_scratch: [_; #ext_field_scratch_space_size] = std::array::from_fn(|_| S::ExtFieldInput::zero());
-            let mut result = [E::ZERO; 2];
 
-            #initial_round_calls
+            let mut accumulated = [E::ZERO; 2];
 
-            result
+            for row_index in row_range {
+                let mut result = [E::ZERO; 2];
+                #initial_round_calls
+
+                let eq = eq_poly_precomputed[row_index];
+                result[0].mul_assign(&eq);
+                result[1].mul_assign(&eq);
+
+                accumulated[0].add_assign(&result[0]);
+                accumulated[1].add_assign(&result[1]);
+            }
+
+            accumulated
         }
-    };
 
-    let round_id = Ident::new(&format!("layer_{}", layer_idx), Span::call_site());
-    let round = quote! {
-        #round_seq
-
-        pub fn #round_id<F: PrimeField, E: FieldExtension<F> + Field, S: SumcheckRoundSource<F, E>, const EXPLICIT_FORM: bool>(
+        pub fn #round_id<F: PrimeField, E: FieldExtension<F> + Field, S: SumcheckRoundSource<F, E>, C: GKRExternalChallengesProvider<F, E>, const EXPLICIT_FORM: bool>(
             all_base_inputs: &[S::BaseInputAccessor; #num_base_field_inputs],
             all_ext_inputs: &[S::ExtInputAccessor; #num_ext_field_inputs],
             sumcheck_challenges: &[E; #num_challenges],
-            external_challenges: &GKRExternalChallenges<F, E>,
+            external_challenges: &C,
             lookup_alpha_powers: &[E],
             lookup_gamma: &E,
             base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
             ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
-            row_index: usize,
+            eq_poly_precomputed: &[E],
+            row_range: core::ops::Range<usize>,
         ) -> [E; 2] {
             let mut base_field_scratch: [_; #base_field_scratch_space_size] = std::array::from_fn(|_| [S::BaseFieldInput::zero(); 2]);
             let mut ext_field_scratch: [_; #ext_field_scratch_space_size] = std::array::from_fn(|_| [S::ExtFieldInput::zero(); 2]);
-            let mut result = [E::ZERO; 2];
+            let mut accumulated = [E::ZERO; 2];
 
-            #round_calls
+            for row_index in row_range {
+                let mut result = [E::ZERO; 2];
+                #round_calls
 
-            result
+                let eq = eq_poly_precomputed[row_index];
+                result[0].mul_assign(&eq);
+                result[1].mul_assign(&eq);
+
+                accumulated[0].add_assign(&result[0]);
+                accumulated[1].add_assign(&result[1]);
+            }
+
+            accumulated
         }
-    };
-
-    (initial_round, round)
+    }
 }
 
 fn generate_gate<F: PrimeField, E: FieldExtension<F> + Field>(
@@ -318,12 +344,12 @@ fn generate_gate<F: PrimeField, E: FieldExtension<F> + Field>(
         if assume_folded == false {
             fetch_seq_initial_round.extend(
                 quote! {
-                    ext_field_scratch_field_scratch[#cache_pos] = all_ext_inputs[#all_inputs_idx].get_f1_minus_f0_only::<#assume_folded>(row_index);
+                    ext_field_scratch[#cache_pos] = all_ext_inputs[#all_inputs_idx].get_f1_minus_f0_only::<#assume_folded>(row_index);
                 }
             );
             fetch_seq.extend(
                 quote! {
-                    ext_field_scratch_field_scratch[#cache_pos] = all_ext_inputs[#all_inputs_idx].get_two_points::<#assume_folded, EXPLICIT_FORM>(row_index);
+                    ext_field_scratch[#cache_pos] = all_ext_inputs[#all_inputs_idx].get_two_points::<#assume_folded, EXPLICIT_FORM>(row_index);
                 }
             );
         }
@@ -394,7 +420,6 @@ fn test_generation() {
 
     let layer_idx = 0;
     let layer = &circuit.layers[layer_idx];
-    let (initial_round, round) = generate_layer::<BabyBearField, BabyBearExt4>(layer_idx, layer);
-    write_and_fmt("initial_round.rs", &initial_round);
-    write_and_fmt("round.rs", &round);
+    let generated = generate_layer::<BabyBearField, BabyBearExt4>(layer_idx, layer);
+    write_and_fmt("generated.rs", &generated);
 }

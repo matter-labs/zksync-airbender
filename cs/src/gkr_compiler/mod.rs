@@ -464,10 +464,16 @@ pub enum NoFieldGKRRelation {
         setup: [GKRAddress; 2],
         output: [GKRAddress; 2],
     },
-    // Expects denominators to be cached, and computes a/b - c/d -> (num, den)
+    // Expects denominators to be not cached, and computes a/b - c/d -> (num, den)
     LookupWithDensAndSetupExpressions {
         input: (GKRAddress, NoFieldVectorLookupRelation),
         setup: (GKRAddress, Box<[GKRAddress]>),
+        output: [GKRAddress; 2],
+    },
+    // Expects input denominators to be not cached, but setup - cached, and computes a/b - c/d -> (num, den)
+    LookupWithDensAndCachedSetup {
+        input: (GKRAddress, NoFieldVectorLookupRelation),
+        setup: (GKRAddress, GKRAddress),
         output: [GKRAddress; 2],
     },
 
@@ -774,6 +780,9 @@ impl NoFieldGKRRelation {
             Self::InitsOrTeardownsInitialPair { .. } => {
                 vec![]
             }
+            Self::LookupWithDensAndCachedSetup { setup, .. } => {
+                vec![setup.1]
+            }
             a @ _ => {
                 panic!("{:?} is not yet supported", a);
             }
@@ -953,11 +962,9 @@ impl NoFieldGKRRelation {
                     }
                 }
                 result.insert(setup.0);
-
-                // // NOTE: temporary disabled for liveness analysis
-                // for el in setup.1.iter() {
-                //     result.insert(*el);
-                // }
+                for el in setup.1.iter() {
+                    result.insert(*el);
+                }
             }
             Self::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                 for (a, other) in input.quadratic_terms.iter() {
@@ -969,6 +976,16 @@ impl NoFieldGKRRelation {
                 for (_, el) in input.linear_terms.iter() {
                     result.insert(*el);
                 }
+            }
+            Self::LookupWithDensAndCachedSetup { input, setup, .. } => {
+                result.insert(input.0);
+                for el in input.1.columns.iter() {
+                    for (_, el) in el.linear_terms.iter() {
+                        result.insert(*el);
+                    }
+                }
+                result.insert(setup.0);
+                result.insert(setup.1);
             }
             a @ _ => {
                 panic!("Not yet implemented for relation {:?}", a);
@@ -1103,6 +1120,10 @@ impl NoFieldGKRRelation {
                 result.insert(output[0]);
                 result.insert(output[1]);
             }
+            Self::LookupWithDensAndCachedSetup { output, .. } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
             a @ _ => {
                 panic!("Not yet implemented for relation {:?}", a);
             }
@@ -1224,11 +1245,9 @@ impl NoFieldGKRRelation {
                     }
                 }
                 result.insert(setup.0);
-
-                // // NOTE: temporary disabled for liveness analysis
-                // for el in setup.1.iter() {
-                //     result.insert(*el);
-                // }
+                for el in setup.1.iter() {
+                    result.insert(*el);
+                }
             }
             Self::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                 for (a, other) in input.quadratic_terms.iter() {
@@ -1240,6 +1259,15 @@ impl NoFieldGKRRelation {
                 for (_, el) in input.linear_terms.iter() {
                     result.insert(*el);
                 }
+            }
+            Self::LookupWithDensAndCachedSetup { input, setup, .. } => {
+                result.insert(input.0);
+                for el in input.1.columns.iter() {
+                    for (_, el) in el.linear_terms.iter() {
+                        result.insert(*el);
+                    }
+                }
+                result.insert(setup.0);
             }
             a @ _ => {
                 panic!("Not yet implemented for relation {:?}", a);
@@ -1322,14 +1350,10 @@ impl NoFieldGKRRelation {
                 result.insert(setup[1]);
             }
             Self::AggregateLookupRationalPair { input, output } => {}
-            Self::LookupWithDensAndSetupExpressions { input, setup, .. } => {
-
-                // // NOTE: temporary disabled for liveness analysis
-                // for el in setup.1.iter() {
-                //     result.insert(*el);
-                // }
+            Self::LookupWithDensAndSetupExpressions { input, setup, .. } => {}
+            Self::LookupWithDensAndCachedSetup { input, setup, .. } => {
+                result.insert(setup.1);
             }
-            Self::EnforceSingleMaxQuadraticConstraint { input, .. } => {}
             a @ _ => {
                 panic!("Not yet implemented for relation {:?}", a);
             }
@@ -1402,6 +1426,7 @@ impl NoFieldGKRRelation {
                 setup,
                 output,
             } => {}
+            Self::LookupWithDensAndCachedSetup { output, .. } => {}
             a @ _ => {
                 panic!("Not yet implemented for relation {:?}", a);
             }
@@ -1513,6 +1538,10 @@ impl NoFieldGKRRelation {
                 result.insert(output[0]);
                 result.insert(output[1]);
             }
+            Self::LookupWithDensAndCachedSetup { output, .. } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
             a @ _ => {
                 panic!("Not yet implemented for relation {:?}", a);
             }
@@ -1566,6 +1595,7 @@ impl NoFieldGKRRelation {
             Self::AggregateLookupRationalPair { input, output } => 2,
             Self::LookupWithDensAndSetupExpressions { input, setup, .. } => 2,
             Self::EnforceSingleMaxQuadraticConstraint { input, .. } => 1,
+            Self::LookupWithDensAndCachedSetup { .. } => 2,
             a @ _ => {
                 panic!("Not yet implemented for relation {:?}", a);
             }

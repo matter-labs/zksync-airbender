@@ -5,9 +5,9 @@ pub fn fetch_layer_0_gate_0_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[39usize] = all_base_inputs[39usize].get_f1_minus_f0_only::<false>(row_index);
@@ -19,11 +19,11 @@ pub fn compute_layer_0_gate_0_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -42,9 +42,9 @@ pub fn fetch_layer_0_gate_1_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[22usize] = all_base_inputs[22usize].get_f1_minus_f0_only::<false>(row_index);
@@ -65,7 +65,7 @@ fn compute_layer_0_gate_1_explicit<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
     subindex: usize,
 ) -> E {
@@ -73,54 +73,54 @@ fn compute_layer_0_gate_1_explicit<
         core::hint::assert_unchecked(subindex < 2);
     }
     let mut acc = {
-        let mut acc = external_challenges.permutation_argument_additive_part;
+        let mut acc = *external_challenges.additive_part();
         acc.add_assign_base(&F::from_u32_unchecked(0u32));
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         let t = base_field_scratch[26usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let val = base_field_scratch[22usize][subindex];
         let val = val.add_base(&F::from_u32_unchecked(0u32));
         let t = val.mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[23usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[24usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[25usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
         acc
     };
     let mut acc_1 = {
-        let mut acc = external_challenges.permutation_argument_additive_part;
+        let mut acc = *external_challenges.additive_part();
         acc.add_assign_base(&F::from_u32_unchecked(0u32));
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         let t = base_field_scratch[31usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let val = base_field_scratch[27usize][subindex];
         let val = val.add_base(&F::from_u32_unchecked(0u32));
         let t = val.mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[28usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[29usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[30usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
@@ -137,7 +137,7 @@ fn compute_layer_0_gate_1_quadratic_part_only<
     const N: usize,
 >(
     base_field_scratch: &[[S::BaseFieldInput; N]; 50usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
     subindex: usize,
 ) -> E {
@@ -147,23 +147,23 @@ fn compute_layer_0_gate_1_quadratic_part_only<
     }
     let mut acc = {
         let mut acc = E::ZERO;
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         let t = base_field_scratch[26usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let t = base_field_scratch[22usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[23usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[24usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[25usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
@@ -171,23 +171,23 @@ fn compute_layer_0_gate_1_quadratic_part_only<
     };
     let mut acc_1 = {
         let mut acc = E::ZERO;
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         let t = base_field_scratch[31usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let t = base_field_scratch[27usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[28usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[29usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[30usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
@@ -203,11 +203,11 @@ pub fn compute_layer_0_gate_1_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -237,9 +237,9 @@ pub fn fetch_layer_0_gate_2_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[42usize] = all_base_inputs[42usize].get_f1_minus_f0_only::<false>(row_index);
@@ -252,7 +252,7 @@ fn compute_layer_0_gate_2_explicit<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
     subindex: usize,
 ) -> E {
@@ -260,54 +260,54 @@ fn compute_layer_0_gate_2_explicit<
         core::hint::assert_unchecked(subindex < 2);
     }
     let mut acc = {
-        let mut acc = external_challenges.permutation_argument_additive_part;
+        let mut acc = *external_challenges.additive_part();
         acc.add_assign_base(&F::from_u32_unchecked(0u32));
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         let t = base_field_scratch[26usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let val = base_field_scratch[42usize][subindex];
         let val = val.add_base(&F::from_u32_unchecked(0u32));
         let t = val.mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[43usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[24usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[25usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
         acc
     };
     let mut acc_1 = {
-        let mut acc = external_challenges.permutation_argument_additive_part;
+        let mut acc = *external_challenges.additive_part();
         acc.add_assign_base(&F::from_u32_unchecked(0u32));
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         let t = base_field_scratch[31usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let val = base_field_scratch[42usize][subindex];
         let val = val.add_base(&F::from_u32_unchecked(1u32));
         let t = val.mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[43usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[29usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[30usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
@@ -324,7 +324,7 @@ fn compute_layer_0_gate_2_quadratic_part_only<
     const N: usize,
 >(
     base_field_scratch: &[[S::BaseFieldInput; N]; 50usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
     subindex: usize,
 ) -> E {
@@ -334,23 +334,23 @@ fn compute_layer_0_gate_2_quadratic_part_only<
     }
     let mut acc = {
         let mut acc = E::ZERO;
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         let t = base_field_scratch[26usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let t = base_field_scratch[42usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[43usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[24usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[25usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
@@ -358,23 +358,23 @@ fn compute_layer_0_gate_2_quadratic_part_only<
     };
     let mut acc_1 = {
         let mut acc = E::ZERO;
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         let t = base_field_scratch[31usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let t = base_field_scratch[42usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[43usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[29usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[30usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
@@ -390,11 +390,11 @@ pub fn compute_layer_0_gate_2_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -424,9 +424,9 @@ pub fn fetch_layer_0_gate_3_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[32usize] = all_base_inputs[32usize].get_f1_minus_f0_only::<false>(row_index);
@@ -444,7 +444,7 @@ fn compute_layer_0_gate_3_explicit<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
     subindex: usize,
 ) -> E {
@@ -452,54 +452,54 @@ fn compute_layer_0_gate_3_explicit<
         core::hint::assert_unchecked(subindex < 2);
     }
     let mut acc = {
-        let mut acc = external_challenges.permutation_argument_additive_part;
+        let mut acc = *external_challenges.additive_part();
         acc.add_assign_base(&F::from_u32_unchecked(0u32));
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         let t = base_field_scratch[36usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let val = base_field_scratch[32usize][subindex];
         let val = val.add_base(&F::from_u32_unchecked(0u32));
         let t = val.mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[33usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[34usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[35usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
         acc
     };
     let mut acc_1 = {
-        let mut acc = external_challenges.permutation_argument_additive_part;
+        let mut acc = *external_challenges.additive_part();
         acc.add_assign_base(&F::from_u32_unchecked(2u32));
-        let mut t = external_challenges.permutation_argument_linearization_challenges
+        let mut t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         t.mul_assign_by_base(&F::from_u32_unchecked(0u32));
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let val = base_field_scratch[42usize][subindex];
         let val = val.add_base(&F::from_u32_unchecked(0u32));
         let t = val.mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[43usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[40usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[41usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
@@ -516,7 +516,7 @@ fn compute_layer_0_gate_3_quadratic_part_only<
     const N: usize,
 >(
     base_field_scratch: &[[S::BaseFieldInput; N]; 50usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
     subindex: usize,
 ) -> E {
@@ -526,23 +526,23 @@ fn compute_layer_0_gate_3_quadratic_part_only<
     }
     let mut acc = {
         let mut acc = E::ZERO;
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         let t = base_field_scratch[36usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let t = base_field_scratch[32usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[33usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[34usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[35usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
@@ -550,19 +550,19 @@ fn compute_layer_0_gate_3_quadratic_part_only<
     };
     let mut acc_1 = {
         let mut acc = E::ZERO;
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let t = base_field_scratch[42usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[43usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[40usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[41usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
@@ -578,11 +578,11 @@ pub fn compute_layer_0_gate_3_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -612,9 +612,9 @@ pub fn fetch_layer_0_gate_4_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[37usize] = all_base_inputs[37usize].get_f1_minus_f0_only::<false>(row_index);
@@ -631,7 +631,7 @@ fn compute_layer_0_gate_4_explicit<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
     subindex: usize,
 ) -> E {
@@ -639,54 +639,54 @@ fn compute_layer_0_gate_4_explicit<
         core::hint::assert_unchecked(subindex < 2);
     }
     let mut acc = {
-        let mut acc = external_challenges.permutation_argument_additive_part;
+        let mut acc = *external_challenges.additive_part();
         acc.add_assign_base(&F::from_u32_unchecked(0u32));
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         let t = base_field_scratch[36usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let val = base_field_scratch[42usize][subindex];
         let val = val.add_base(&F::from_u32_unchecked(2u32));
         let t = val.mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[43usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[37usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[38usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
         acc
     };
     let mut acc_1 = {
-        let mut acc = external_challenges.permutation_argument_additive_part;
+        let mut acc = *external_challenges.additive_part();
         acc.add_assign_base(&F::from_u32_unchecked(2u32));
-        let mut t = external_challenges.permutation_argument_linearization_challenges
+        let mut t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         t.mul_assign_by_base(&F::from_u32_unchecked(0u32));
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let val = base_field_scratch[46usize][subindex];
         let val = val.add_base(&F::from_u32_unchecked(0u32));
         let t = val.mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[47usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[44usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[45usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
@@ -703,7 +703,7 @@ fn compute_layer_0_gate_4_quadratic_part_only<
     const N: usize,
 >(
     base_field_scratch: &[[S::BaseFieldInput; N]; 50usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
     subindex: usize,
 ) -> E {
@@ -713,23 +713,23 @@ fn compute_layer_0_gate_4_quadratic_part_only<
     }
     let mut acc = {
         let mut acc = E::ZERO;
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         let t = base_field_scratch[36usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let t = base_field_scratch[42usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[43usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[37usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[38usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
@@ -737,19 +737,19 @@ fn compute_layer_0_gate_4_quadratic_part_only<
     };
     let mut acc_1 = {
         let mut acc = E::ZERO;
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         let t = base_field_scratch[46usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         let t = base_field_scratch[47usize][subindex].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         let t = base_field_scratch[44usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
-        let t = external_challenges.permutation_argument_linearization_challenges
+        let t = external_challenges.linearization_challenges()
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         let t = base_field_scratch[45usize][1].mul_by_ext(&t, base_repr_ctx);
         acc.add_assign(&t);
@@ -765,11 +765,11 @@ pub fn compute_layer_0_gate_4_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -799,9 +799,9 @@ pub fn fetch_layer_0_gate_5_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[11usize] = all_base_inputs[11usize].get_f1_minus_f0_only::<false>(row_index);
@@ -873,11 +873,11 @@ pub fn compute_layer_0_gate_5_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -912,9 +912,9 @@ pub fn fetch_layer_0_gate_6_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[12usize] = all_base_inputs[12usize].get_f1_minus_f0_only::<false>(row_index);
@@ -990,11 +990,11 @@ pub fn compute_layer_0_gate_6_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -1029,9 +1029,9 @@ pub fn fetch_layer_0_gate_7_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -1106,11 +1106,11 @@ pub fn compute_layer_0_gate_7_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -1145,9 +1145,9 @@ pub fn fetch_layer_0_gate_8_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -1158,11 +1158,11 @@ pub fn compute_layer_0_gate_8_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -1181,9 +1181,9 @@ pub fn fetch_layer_0_gate_9_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[20usize] = all_base_inputs[20usize].get_f1_minus_f0_only::<false>(row_index);
@@ -1254,11 +1254,11 @@ pub fn compute_layer_0_gate_9_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -1293,9 +1293,9 @@ pub fn fetch_layer_0_gate_10_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[16usize] = all_base_inputs[16usize].get_f1_minus_f0_only::<false>(row_index);
@@ -1381,11 +1381,11 @@ pub fn compute_layer_0_gate_10_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -1420,9 +1420,9 @@ pub fn fetch_layer_0_gate_11_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[17usize] = all_base_inputs[17usize].get_f1_minus_f0_only::<false>(row_index);
@@ -1516,11 +1516,11 @@ pub fn compute_layer_0_gate_11_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -1555,9 +1555,9 @@ pub fn fetch_layer_0_gate_12_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[18usize] = all_base_inputs[18usize].get_f1_minus_f0_only::<false>(row_index);
@@ -1651,11 +1651,11 @@ pub fn compute_layer_0_gate_12_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -1690,9 +1690,9 @@ pub fn fetch_layer_0_gate_13_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -1727,11 +1727,11 @@ pub fn compute_layer_0_gate_13_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -1750,9 +1750,9 @@ pub fn fetch_layer_0_gate_14_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[0usize] = all_base_inputs[0usize].get_f1_minus_f0_only::<false>(row_index);
@@ -1767,6 +1767,222 @@ pub fn fetch_layer_0_gate_14_initial_round<
     base_field_scratch[9usize] = all_base_inputs[9usize].get_f1_minus_f0_only::<false>(row_index);
     base_field_scratch[10usize] = all_base_inputs[10usize].get_f1_minus_f0_only::<false>(row_index);
     base_field_scratch[21usize] = all_base_inputs[21usize].get_f1_minus_f0_only::<false>(row_index);
+    ext_field_scratch[0usize] = all_ext_inputs[0usize].get_f1_minus_f0_only::<false>(row_index);
+}
+#[inline(always)]
+fn compute_layer_0_gate_14_explicit<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    subindex: usize,
+) -> E {
+    unsafe {
+        core::hint::assert_unchecked(subindex < 2);
+    }
+    let input: E = {
+        let mut acc = E::ZERO;
+        let mut t = base_field_scratch[40usize][subindex];
+        acc = t.add_with_ext(&acc, base_repr_ctx);
+        let mut t = base_field_scratch[41usize][subindex];
+        let t = t.mul_by_ext(&lookup_alpha_powers[0usize], base_repr_ctx);
+        acc.add_assign(&t);
+        let mut t = base_field_scratch[26usize][subindex];
+        let t = t.mul_by_ext(&lookup_alpha_powers[1usize], base_repr_ctx);
+        acc.add_assign(&t);
+        let mut t = base_field_scratch[31usize][subindex];
+        let t = t.mul_by_ext(&lookup_alpha_powers[2usize], base_repr_ctx);
+        acc.add_assign(&t);
+        let mut t = base_field_scratch[36usize][subindex];
+        let t = t.mul_by_ext(&lookup_alpha_powers[3usize], base_repr_ctx);
+        acc.add_assign(&t);
+        let mut t = base_field_scratch[0usize][subindex];
+        let t = t.mul_by_ext(&lookup_alpha_powers[4usize], base_repr_ctx);
+        acc.add_assign(&t);
+        let mut t = base_field_scratch[1usize][subindex];
+        let t = t.mul_by_ext(&lookup_alpha_powers[5usize], base_repr_ctx);
+        acc.add_assign(&t);
+        let mut t = base_field_scratch[2usize][subindex];
+        t = t.add_other(
+            &base_field_scratch[3usize][subindex].mul_by_base(&F::from_u32_unchecked(2u32)),
+        );
+        t = t.add_other(
+            &base_field_scratch[4usize][subindex].mul_by_base(&F::from_u32_unchecked(4u32)),
+        );
+        t = t.add_other(
+            &base_field_scratch[5usize][subindex].mul_by_base(&F::from_u32_unchecked(8u32)),
+        );
+        t = t.add_other(
+            &base_field_scratch[6usize][subindex].mul_by_base(&F::from_u32_unchecked(16u32)),
+        );
+        t = t.add_other(
+            &base_field_scratch[7usize][subindex].mul_by_base(&F::from_u32_unchecked(32u32)),
+        );
+        t = t.add_other(
+            &base_field_scratch[8usize][subindex].mul_by_base(&F::from_u32_unchecked(64u32)),
+        );
+        t = t.add_other(
+            &base_field_scratch[9usize][subindex].mul_by_base(&F::from_u32_unchecked(128u32)),
+        );
+        t = t.add_other(
+            &base_field_scratch[10usize][subindex].mul_by_base(&F::from_u32_unchecked(256u32)),
+        );
+        let t = t.mul_by_ext(&lookup_alpha_powers[6usize], base_repr_ctx);
+        acc.add_assign(&t);
+        acc
+    };
+    let mask = base_field_scratch[39usize][subindex];
+    let multiplicity = base_field_scratch[21usize][subindex];
+    let cached_setup = ext_field_scratch[0usize][subindex];
+    let mut input_plus_gamma = input;
+    input_plus_gamma.add_assign(lookup_gamma);
+    let cached_setup_plus_gamma = cached_setup.add_with_ext(lookup_gamma, ext_repr_ctx);
+    let mut num = mask.mul_by_ext(&cached_setup_plus_gamma, base_repr_ctx);
+    let t = multiplicity.mul_by_ext(&input_plus_gamma, base_repr_ctx);
+    num.sub_assign(&t);
+    num.mul_assign(&sumcheck_challenges[21usize]);
+    let mut den = input_plus_gamma;
+    den.mul_assign(&cached_setup_plus_gamma);
+    den.mul_assign(&sumcheck_challenges[22usize]);
+    let mut result = num;
+    result.add_assign(&den);
+    result
+}
+#[inline(always)]
+fn compute_layer_0_gate_14_quadratic_part_only<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const N: usize,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; N]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; N]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    subindex: usize,
+) -> E {
+    unsafe {
+        core::hint::assert_unchecked(N > 0);
+        core::hint::assert_unchecked(subindex < N);
+    }
+    let input: E = {
+        let mut acc = E::ZERO;
+        let mut t = base_field_scratch[40usize][subindex];
+        acc = t.add_with_ext(&acc, base_repr_ctx);
+        let mut t = base_field_scratch[41usize][subindex];
+        let t = t.mul_by_ext(&lookup_alpha_powers[0usize], base_repr_ctx);
+        acc.add_assign(&t);
+        let mut t = base_field_scratch[26usize][subindex];
+        let t = t.mul_by_ext(&lookup_alpha_powers[1usize], base_repr_ctx);
+        acc.add_assign(&t);
+        let mut t = base_field_scratch[31usize][subindex];
+        let t = t.mul_by_ext(&lookup_alpha_powers[2usize], base_repr_ctx);
+        acc.add_assign(&t);
+        let mut t = base_field_scratch[36usize][subindex];
+        let t = t.mul_by_ext(&lookup_alpha_powers[3usize], base_repr_ctx);
+        acc.add_assign(&t);
+        let mut t = base_field_scratch[0usize][subindex];
+        let t = t.mul_by_ext(&lookup_alpha_powers[4usize], base_repr_ctx);
+        acc.add_assign(&t);
+        let mut t = base_field_scratch[1usize][subindex];
+        let t = t.mul_by_ext(&lookup_alpha_powers[5usize], base_repr_ctx);
+        acc.add_assign(&t);
+        let mut t = base_field_scratch[2usize][subindex];
+        t = t.add_other(
+            &base_field_scratch[3usize][subindex].mul_by_base(&F::from_u32_unchecked(2u32)),
+        );
+        t = t.add_other(
+            &base_field_scratch[4usize][subindex].mul_by_base(&F::from_u32_unchecked(4u32)),
+        );
+        t = t.add_other(
+            &base_field_scratch[5usize][subindex].mul_by_base(&F::from_u32_unchecked(8u32)),
+        );
+        t = t.add_other(
+            &base_field_scratch[6usize][subindex].mul_by_base(&F::from_u32_unchecked(16u32)),
+        );
+        t = t.add_other(
+            &base_field_scratch[7usize][subindex].mul_by_base(&F::from_u32_unchecked(32u32)),
+        );
+        t = t.add_other(
+            &base_field_scratch[8usize][subindex].mul_by_base(&F::from_u32_unchecked(64u32)),
+        );
+        t = t.add_other(
+            &base_field_scratch[9usize][subindex].mul_by_base(&F::from_u32_unchecked(128u32)),
+        );
+        t = t.add_other(
+            &base_field_scratch[10usize][subindex].mul_by_base(&F::from_u32_unchecked(256u32)),
+        );
+        let t = t.mul_by_ext(&lookup_alpha_powers[6usize], base_repr_ctx);
+        acc.add_assign(&t);
+        acc
+    };
+    let mask = base_field_scratch[39usize][subindex];
+    let multiplicity = base_field_scratch[21usize][subindex];
+    let cached_setup = ext_field_scratch[0usize][subindex];
+    let mut num = cached_setup.mul_by_ext(&sumcheck_challenges[21usize], ext_repr_ctx);
+    num = mask.mul_by_ext(&num, base_repr_ctx);
+    let mut t = multiplicity.mul_by_ext(&input, base_repr_ctx);
+    t.mul_assign(&sumcheck_challenges[21usize]);
+    num.sub_assign(&t);
+    let mut den = cached_setup.mul_by_ext(&sumcheck_challenges[22usize], ext_repr_ctx);
+    den = mask.mul_by_ext(&den, base_repr_ctx);
+    let mut result = num;
+    result.add_assign(&den);
+    result
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_14_initial_round<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+>(
+    base_field_scratch: &[S::BaseFieldInput; 50usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
+    all_base_outputs: &[S::BaseInputAccessor; 3usize],
+    all_ext_outputs: &[S::ExtInputAccessor; 20usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    row_index: usize,
+) -> [E; 2] {
+    let mut c0 = all_ext_outputs[18usize]
+        .get_f0_only::<false>(row_index)
+        .mul_by_ext(&sumcheck_challenges[21usize], ext_repr_ctx);
+    c0.add_assign(
+        &all_ext_outputs[19usize]
+            .get_f0_only::<false>(row_index)
+            .mul_by_ext(&sumcheck_challenges[22usize], ext_repr_ctx),
+    );
+    let mut c1 = unsafe {
+        let base_field_scratch =
+            core::mem::transmute::<_, &[[S::BaseFieldInput; 1]; 50usize]>(base_field_scratch);
+        let ext_field_scratch =
+            core::mem::transmute::<_, &[[S::ExtFieldInput; 1]; 1usize]>(ext_field_scratch);
+        compute_layer_0_gate_14_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            ext_field_scratch,
+            sumcheck_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            0,
+        )
+    };
+    [c0, c1]
 }
 #[inline(always)]
 pub fn fetch_layer_0_gate_15_initial_round<
@@ -1775,9 +1991,9 @@ pub fn fetch_layer_0_gate_15_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -1843,11 +2059,11 @@ pub fn compute_layer_0_gate_15_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -1873,9 +2089,9 @@ pub fn fetch_layer_0_gate_16_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[15usize] = all_base_inputs[15usize].get_f1_minus_f0_only::<false>(row_index);
@@ -2015,11 +2231,11 @@ pub fn compute_layer_0_gate_16_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -2045,9 +2261,9 @@ pub fn fetch_layer_0_gate_17_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -2324,11 +2540,11 @@ pub fn compute_layer_0_gate_17_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -2354,9 +2570,9 @@ pub fn fetch_layer_0_gate_18_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[14usize] = all_base_inputs[14usize].get_f1_minus_f0_only::<false>(row_index);
@@ -2445,11 +2661,11 @@ pub fn compute_layer_0_gate_18_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -2475,9 +2691,9 @@ pub fn fetch_layer_0_gate_19_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
     base_field_scratch[13usize] = all_base_inputs[13usize].get_f1_minus_f0_only::<false>(row_index);
@@ -2736,11 +2952,11 @@ pub fn compute_layer_0_gate_19_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -2766,9 +2982,9 @@ pub fn fetch_layer_0_gate_20_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -3034,11 +3250,11 @@ pub fn compute_layer_0_gate_20_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -3064,9 +3280,9 @@ pub fn fetch_layer_0_gate_21_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -3125,11 +3341,11 @@ pub fn compute_layer_0_gate_21_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -3155,9 +3371,9 @@ pub fn fetch_layer_0_gate_22_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -3216,11 +3432,11 @@ pub fn compute_layer_0_gate_22_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -3246,9 +3462,9 @@ pub fn fetch_layer_0_gate_23_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -3307,11 +3523,11 @@ pub fn compute_layer_0_gate_23_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -3337,9 +3553,9 @@ pub fn fetch_layer_0_gate_24_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -3398,11 +3614,11 @@ pub fn compute_layer_0_gate_24_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -3428,9 +3644,9 @@ pub fn fetch_layer_0_gate_25_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -3489,11 +3705,11 @@ pub fn compute_layer_0_gate_25_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -3519,9 +3735,9 @@ pub fn fetch_layer_0_gate_26_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -3580,11 +3796,11 @@ pub fn compute_layer_0_gate_26_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -3610,9 +3826,9 @@ pub fn fetch_layer_0_gate_27_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -3726,11 +3942,11 @@ pub fn compute_layer_0_gate_27_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -3756,9 +3972,9 @@ pub fn fetch_layer_0_gate_28_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -3812,11 +4028,11 @@ pub fn compute_layer_0_gate_28_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -3832,9 +4048,9 @@ pub fn fetch_layer_0_gate_29_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -3955,11 +4171,11 @@ pub fn compute_layer_0_gate_29_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -3985,9 +4201,9 @@ pub fn fetch_layer_0_gate_30_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -4041,11 +4257,11 @@ pub fn compute_layer_0_gate_30_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -4061,9 +4277,9 @@ pub fn fetch_layer_0_gate_31_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -4129,11 +4345,11 @@ pub fn compute_layer_0_gate_31_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -4159,9 +4375,9 @@ pub fn fetch_layer_0_gate_32_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -4227,11 +4443,11 @@ pub fn compute_layer_0_gate_32_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -4257,9 +4473,9 @@ pub fn fetch_layer_0_gate_33_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -4325,11 +4541,11 @@ pub fn compute_layer_0_gate_33_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -4355,9 +4571,9 @@ pub fn fetch_layer_0_gate_34_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -4423,11 +4639,11 @@ pub fn compute_layer_0_gate_34_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -4453,9 +4669,9 @@ pub fn fetch_layer_0_gate_35_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -4521,11 +4737,11 @@ pub fn compute_layer_0_gate_35_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -4551,9 +4767,9 @@ pub fn fetch_layer_0_gate_36_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -4619,11 +4835,11 @@ pub fn compute_layer_0_gate_36_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -4649,9 +4865,9 @@ pub fn fetch_layer_0_gate_37_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -4717,11 +4933,11 @@ pub fn compute_layer_0_gate_37_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -4747,9 +4963,9 @@ pub fn fetch_layer_0_gate_38_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -4815,11 +5031,11 @@ pub fn compute_layer_0_gate_38_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -4845,9 +5061,9 @@ pub fn fetch_layer_0_gate_39_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -4913,11 +5129,11 @@ pub fn compute_layer_0_gate_39_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -4943,9 +5159,9 @@ pub fn fetch_layer_0_gate_40_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -5011,11 +5227,11 @@ pub fn compute_layer_0_gate_40_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -5041,9 +5257,9 @@ pub fn fetch_layer_0_gate_41_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -5109,11 +5325,11 @@ pub fn compute_layer_0_gate_41_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -5139,9 +5355,9 @@ pub fn fetch_layer_0_gate_42_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -5207,11 +5423,11 @@ pub fn compute_layer_0_gate_42_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -5237,9 +5453,9 @@ pub fn fetch_layer_0_gate_43_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -5305,11 +5521,11 @@ pub fn compute_layer_0_gate_43_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -5335,9 +5551,9 @@ pub fn fetch_layer_0_gate_44_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &mut [S::BaseFieldInput; 50usize],
-    ext_field_scratch: &mut [S::ExtFieldInput; 0usize],
+    ext_field_scratch: &mut [S::ExtFieldInput; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
     row_index: usize,
 ) {
 }
@@ -5403,11 +5619,11 @@ pub fn compute_layer_0_gate_44_initial_round<
     S: SumcheckRoundSource<F, E>,
 >(
     base_field_scratch: &[S::BaseFieldInput; 50usize],
-    ext_field_scratch: &[S::ExtFieldInput; 0usize],
+    ext_field_scratch: &[S::ExtFieldInput; 1usize],
     all_base_outputs: &[S::BaseInputAccessor; 3usize],
     all_ext_outputs: &[S::ExtInputAccessor; 20usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
@@ -5426,1015 +5642,4404 @@ pub fn compute_layer_0_gate_44_initial_round<
     };
     [E::ZERO, c1]
 }
-pub fn layer_0_initial_round<
+#[inline(always)]
+pub fn fetch_layer_0_gate_0<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
 >(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
     all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 0usize],
-    all_base_outputs: &[S::BaseInputAccessor; 3usize],
-    all_ext_outputs: &[S::ExtInputAccessor; 20usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[39usize] =
+        all_base_inputs[39usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_0<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
     sumcheck_challenges: &[E; 53usize],
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
     base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
     ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    if EXPLICIT_FORM {
+        let c0 =
+            base_field_scratch[39usize][0].mul_by_ext(&sumcheck_challenges[0usize], base_repr_ctx);
+        let c1 =
+            base_field_scratch[39usize][1].mul_by_ext(&sumcheck_challenges[0usize], base_repr_ctx);
+        [c0, c1]
+    } else {
+        let c0 =
+            base_field_scratch[39usize][0].mul_by_ext(&sumcheck_challenges[0usize], base_repr_ctx);
+        [c0, E::ZERO]
+    }
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_1<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[22usize] =
+        all_base_inputs[22usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[23usize] =
+        all_base_inputs[23usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[24usize] =
+        all_base_inputs[24usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[25usize] =
+        all_base_inputs[25usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[26usize] =
+        all_base_inputs[26usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[27usize] =
+        all_base_inputs[27usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[28usize] =
+        all_base_inputs[28usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[29usize] =
+        all_base_inputs[29usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[30usize] =
+        all_base_inputs[30usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[31usize] =
+        all_base_inputs[31usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_1<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let mut c0 = compute_layer_0_gate_1_explicit::<F, E, S>(
+        base_field_scratch,
+        external_challenges,
+        base_repr_ctx,
+        0,
+    );
+    c0.mul_assign(&sumcheck_challenges[1usize]);
+    let mut c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_1_explicit::<F, E, S>(
+            base_field_scratch,
+            external_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_1_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            external_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    c1.mul_assign(&sumcheck_challenges[1usize]);
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_2<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[42usize] =
+        all_base_inputs[42usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[43usize] =
+        all_base_inputs[43usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_2<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let mut c0 = compute_layer_0_gate_2_explicit::<F, E, S>(
+        base_field_scratch,
+        external_challenges,
+        base_repr_ctx,
+        0,
+    );
+    c0.mul_assign(&sumcheck_challenges[2usize]);
+    let mut c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_2_explicit::<F, E, S>(
+            base_field_scratch,
+            external_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_2_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            external_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    c1.mul_assign(&sumcheck_challenges[2usize]);
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_3<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[32usize] =
+        all_base_inputs[32usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[33usize] =
+        all_base_inputs[33usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[34usize] =
+        all_base_inputs[34usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[35usize] =
+        all_base_inputs[35usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[36usize] =
+        all_base_inputs[36usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[40usize] =
+        all_base_inputs[40usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[41usize] =
+        all_base_inputs[41usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_3<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let mut c0 = compute_layer_0_gate_3_explicit::<F, E, S>(
+        base_field_scratch,
+        external_challenges,
+        base_repr_ctx,
+        0,
+    );
+    c0.mul_assign(&sumcheck_challenges[3usize]);
+    let mut c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_3_explicit::<F, E, S>(
+            base_field_scratch,
+            external_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_3_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            external_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    c1.mul_assign(&sumcheck_challenges[3usize]);
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_4<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[37usize] =
+        all_base_inputs[37usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[38usize] =
+        all_base_inputs[38usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[44usize] =
+        all_base_inputs[44usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[45usize] =
+        all_base_inputs[45usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[46usize] =
+        all_base_inputs[46usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[47usize] =
+        all_base_inputs[47usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_4<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let mut c0 = compute_layer_0_gate_4_explicit::<F, E, S>(
+        base_field_scratch,
+        external_challenges,
+        base_repr_ctx,
+        0,
+    );
+    c0.mul_assign(&sumcheck_challenges[4usize]);
+    let mut c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_4_explicit::<F, E, S>(
+            base_field_scratch,
+            external_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_4_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            external_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    c1.mul_assign(&sumcheck_challenges[4usize]);
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_5<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[11usize] =
+        all_base_inputs[11usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[19usize] =
+        all_base_inputs[19usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[48usize] =
+        all_base_inputs[48usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_5<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_5_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        lookup_gamma,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_5_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            lookup_gamma,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_5_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            lookup_gamma,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_6<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[12usize] =
+        all_base_inputs[12usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_6<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_6_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        lookup_gamma,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_6_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            lookup_gamma,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_6_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            lookup_gamma,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_7<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_7<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_7_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        lookup_gamma,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_7_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            lookup_gamma,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_7_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            lookup_gamma,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_8<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_8<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    if EXPLICIT_FORM {
+        let c0 =
+            base_field_scratch[45usize][0].mul_by_ext(&sumcheck_challenges[11usize], base_repr_ctx);
+        let c1 =
+            base_field_scratch[45usize][1].mul_by_ext(&sumcheck_challenges[11usize], base_repr_ctx);
+        [c0, c1]
+    } else {
+        let c0 =
+            base_field_scratch[45usize][0].mul_by_ext(&sumcheck_challenges[11usize], base_repr_ctx);
+        [c0, E::ZERO]
+    }
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_9<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[20usize] =
+        all_base_inputs[20usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[49usize] =
+        all_base_inputs[49usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_9<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_9_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        lookup_gamma,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_9_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            lookup_gamma,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_9_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            lookup_gamma,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_10<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[16usize] =
+        all_base_inputs[16usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_10<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_10_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        lookup_gamma,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_10_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            lookup_gamma,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_10_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            lookup_gamma,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_11<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[17usize] =
+        all_base_inputs[17usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_11<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_11_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        lookup_gamma,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_11_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            lookup_gamma,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_11_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            lookup_gamma,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_12<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[18usize] =
+        all_base_inputs[18usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_12<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_12_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        lookup_gamma,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_12_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            lookup_gamma,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_12_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            lookup_gamma,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_13<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_13<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_13_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_13_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        E::ZERO
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_14<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[0usize] =
+        all_base_inputs[0usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[1usize] =
+        all_base_inputs[1usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[2usize] =
+        all_base_inputs[2usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[3usize] =
+        all_base_inputs[3usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[4usize] =
+        all_base_inputs[4usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[5usize] =
+        all_base_inputs[5usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[6usize] =
+        all_base_inputs[6usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[7usize] =
+        all_base_inputs[7usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[8usize] =
+        all_base_inputs[8usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[9usize] =
+        all_base_inputs[9usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[10usize] =
+        all_base_inputs[10usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    base_field_scratch[21usize] =
+        all_base_inputs[21usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+    ext_field_scratch[0usize] =
+        all_ext_inputs[0usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_14<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_14_explicit::<F, E, S>(
+        base_field_scratch,
+        ext_field_scratch,
+        sumcheck_challenges,
+        lookup_alpha_powers,
+        lookup_gamma,
+        base_repr_ctx,
+        ext_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_14_explicit::<F, E, S>(
+            base_field_scratch,
+            ext_field_scratch,
+            sumcheck_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_14_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            ext_field_scratch,
+            sumcheck_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_15<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_15<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_15_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_15_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_15_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_16<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[15usize] =
+        all_base_inputs[15usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_16<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_16_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_16_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_16_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_17<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_17<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_17_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_17_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_17_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_18<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[14usize] =
+        all_base_inputs[14usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_18<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_18_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_18_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_18_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_19<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+    base_field_scratch[13usize] =
+        all_base_inputs[13usize].get_two_points::<false, EXPLICIT_FORM>(row_index);
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_19<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_19_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_19_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_19_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_20<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_20<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_20_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_20_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_20_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_21<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_21<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_21_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_21_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_21_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_22<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_22<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_22_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_22_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_22_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_23<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_23<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_23_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_23_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_23_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_24<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_24<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_24_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_24_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_24_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_25<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_25<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_25_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_25_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_25_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_26<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_26<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_26_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_26_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_26_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_27<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_27<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_27_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_27_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_27_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_28<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_28<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_28_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_28_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        E::ZERO
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_29<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_29<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_29_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_29_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_29_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_30<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_30<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_30_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_30_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        E::ZERO
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_31<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_31<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_31_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_31_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_31_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_32<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_32<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_32_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_32_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_32_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_33<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_33<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_33_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_33_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_33_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_34<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_34<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_34_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_34_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_34_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_35<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_35<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_35_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_35_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_35_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_36<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_36<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_36_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_36_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_36_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_37<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_37<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_37_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_37_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_37_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_38<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_38<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_38_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_38_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_38_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_39<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_39<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_39_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_39_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_39_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_40<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_40<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_40_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_40_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_40_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_41<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_41<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_41_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_41_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_41_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_42<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_42<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_42_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_42_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_42_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_43<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_43<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_43_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_43_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_43_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+#[inline(always)]
+pub fn fetch_layer_0_gate_44<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &mut [[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &mut [[S::ExtFieldInput; 2]; 1usize],
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    row_index: usize,
+) {
+}
+#[inline(always)]
+pub fn compute_layer_0_gate_44<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    base_field_scratch: &[[S::BaseFieldInput; 2]; 50usize],
+    ext_field_scratch: &[[S::ExtFieldInput; 2]; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &impl GKRExternalChallengesProvider<F, E>,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+) -> [E; 2] {
+    let c0 = compute_layer_0_gate_44_explicit::<F, E, S>(
+        base_field_scratch,
+        sumcheck_challenges,
+        base_repr_ctx,
+        0,
+    );
+    let c1 = if EXPLICIT_FORM {
+        compute_layer_0_gate_44_explicit::<F, E, S>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    } else {
+        compute_layer_0_gate_44_quadratic_part_only::<F, E, S, _>(
+            base_field_scratch,
+            sumcheck_challenges,
+            base_repr_ctx,
+            1,
+        )
+    };
+    [c0, c1]
+}
+pub fn layer_0_initial_round<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    C: GKRExternalChallengesProvider<F, E>,
+>(
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    all_base_outputs: &[S::BaseInputAccessor; 3usize],
+    all_ext_outputs: &[S::ExtInputAccessor; 20usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &C,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    eq_poly_precomputed: &[E],
+    row_range: core::ops::Range<usize>,
     row_index: usize,
 ) -> [E; 2] {
     let mut base_field_scratch: [_; 50usize] = std::array::from_fn(|_| S::BaseFieldInput::zero());
-    let mut ext_field_scratch: [_; 0usize] = std::array::from_fn(|_| S::ExtFieldInput::zero());
-    let mut result = [E::ZERO; 2];
-    fetch_layer_0_gate_0_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_0_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_1_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_1_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_2_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_2_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_3_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_3_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_4_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_4_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_5_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_5_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_6_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_6_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_7_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_7_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_8_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_8_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_9_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_9_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_10_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_10_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_11_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_11_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_12_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_12_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_13_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_13_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_14_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_14_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_15_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_15_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_16_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_16_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_17_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_17_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_18_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_18_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_19_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_19_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_20_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_20_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_21_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_21_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_22_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_22_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_23_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_23_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_24_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_24_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_25_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_25_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_26_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_26_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_27_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_27_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_28_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_28_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_29_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_29_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_30_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_30_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_31_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_31_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_32_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_32_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_33_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_33_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_34_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_34_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_35_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_35_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_36_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_36_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_37_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_37_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_38_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_38_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_39_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_39_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_40_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_40_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_41_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_41_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_42_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_42_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_43_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_43_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    fetch_layer_0_gate_44_initial_round::<F, E, S>(
-        &mut base_field_scratch,
-        &mut ext_field_scratch,
-        all_base_inputs,
-        all_ext_inputs,
-        row_index,
-    );
-    let [e0, e1] = compute_layer_0_gate_44_initial_round::<F, E, S>(
-        &base_field_scratch,
-        &ext_field_scratch,
-        all_base_outputs,
-        all_ext_outputs,
-        sumcheck_challenges,
-        external_challenges,
-        lookup_alpha_powers,
-        lookup_gamma,
-        base_repr_ctx,
-        ext_repr_ctx,
-        row_index,
-    );
-    result[0].add_assign(&e0);
-    result[1].add_assign(&e1);
-    result
+    let mut ext_field_scratch: [_; 1usize] = std::array::from_fn(|_| S::ExtFieldInput::zero());
+    let mut accumulated = [E::ZERO; 2];
+    for row_index in row_range {
+        let mut result = [E::ZERO; 2];
+        fetch_layer_0_gate_0_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_0_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_1_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_1_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_2_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_2_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_3_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_3_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_4_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_4_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_5_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_5_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_6_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_6_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_7_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_7_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_8_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_8_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_9_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_9_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_10_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_10_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_11_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_11_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_12_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_12_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_13_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_13_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_14_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_14_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_15_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_15_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_16_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_16_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_17_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_17_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_18_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_18_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_19_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_19_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_20_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_20_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_21_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_21_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_22_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_22_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_23_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_23_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_24_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_24_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_25_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_25_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_26_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_26_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_27_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_27_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_28_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_28_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_29_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_29_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_30_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_30_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_31_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_31_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_32_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_32_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_33_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_33_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_34_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_34_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_35_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_35_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_36_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_36_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_37_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_37_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_38_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_38_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_39_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_39_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_40_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_40_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_41_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_41_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_42_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_42_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_43_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_43_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_44_initial_round::<F, E, S>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_44_initial_round::<F, E, S>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            all_base_outputs,
+            all_ext_outputs,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+            row_index,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        let eq = eq_poly_precomputed[row_index];
+        result[0].mul_assign(&eq);
+        result[1].mul_assign(&eq);
+        accumulated[0].add_assign(&result[0]);
+        accumulated[1].add_assign(&result[1]);
+    }
+    accumulated
+}
+pub fn layer_0<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    S: SumcheckRoundSource<F, E>,
+    C: GKRExternalChallengesProvider<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
+    all_base_inputs: &[S::BaseInputAccessor; 50usize],
+    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
+    sumcheck_challenges: &[E; 53usize],
+    external_challenges: &C,
+    lookup_alpha_powers: &[E],
+    lookup_gamma: &E,
+    base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
+    eq_poly_precomputed: &[E],
+    row_range: core::ops::Range<usize>,
+) -> [E; 2] {
+    let mut base_field_scratch: [_; 50usize] =
+        std::array::from_fn(|_| [S::BaseFieldInput::zero(); 2]);
+    let mut ext_field_scratch: [_; 1usize] = std::array::from_fn(|_| [S::ExtFieldInput::zero(); 2]);
+    let mut accumulated = [E::ZERO; 2];
+    for row_index in row_range {
+        let mut result = [E::ZERO; 2];
+        fetch_layer_0_gate_0::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_0::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_1::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_1::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_2::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_2::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_3::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_3::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_4::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_4::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_5::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_5::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_6::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_6::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_7::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_7::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_8::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_8::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_9::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_9::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_10::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_10::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_11::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_11::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_12::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_12::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_13::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_13::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_14::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_14::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_15::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_15::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_16::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_16::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_17::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_17::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_18::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_18::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_19::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_19::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_20::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_20::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_21::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_21::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_22::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_22::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_23::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_23::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_24::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_24::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_25::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_25::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_26::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_26::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_27::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_27::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_28::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_28::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_29::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_29::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_30::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_30::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_31::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_31::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_32::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_32::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_33::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_33::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_34::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_34::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_35::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_35::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_36::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_36::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_37::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_37::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_38::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_38::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_39::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_39::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_40::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_40::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_41::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_41::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_42::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_42::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_43::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_43::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        fetch_layer_0_gate_44::<F, E, S, EXPLICIT_FORM>(
+            &mut base_field_scratch,
+            &mut ext_field_scratch,
+            all_base_inputs,
+            all_ext_inputs,
+            row_index,
+        );
+        let [e0, e1] = compute_layer_0_gate_44::<F, E, S, EXPLICIT_FORM>(
+            &base_field_scratch,
+            &ext_field_scratch,
+            sumcheck_challenges,
+            external_challenges,
+            lookup_alpha_powers,
+            lookup_gamma,
+            base_repr_ctx,
+            ext_repr_ctx,
+        );
+        result[0].add_assign(&e0);
+        result[1].add_assign(&e1);
+        let eq = eq_poly_precomputed[row_index];
+        result[0].mul_assign(&eq);
+        result[1].mul_assign(&eq);
+        accumulated[0].add_assign(&result[0]);
+        accumulated[1].add_assign(&result[1]);
+    }
+    accumulated
 }

@@ -375,9 +375,9 @@ impl GraphHolder for GKRGraph {
         relation: NoFieldGKRCacheRelation,
         output_layer: usize,
     ) -> GKRAddress {
-        if self.caching_is_allowed == false {
-            panic!("Current graph doesn't allow cache relations");
-        }
+        // if self.caching_is_allowed == false {
+        //     panic!("Current graph doesn't allow cache relations");
+        // }
 
         if let Some(idx) = self.search_cached_relation(&relation, output_layer) {
             GKRAddress::Cached {
