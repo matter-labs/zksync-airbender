@@ -3,8 +3,7 @@ use super::*;
 #[derive(Clone, Copy, Debug)]
 pub struct BaseFieldRepresentation<F: PrimeField>(pub(crate) F);
 
-impl<F: PrimeField> BaseFieldRepresentation<F>
-{
+impl<F: PrimeField> BaseFieldRepresentation<F> {
     #[inline(always)]
     pub fn new(value: F) -> Self {
         Self(value)
