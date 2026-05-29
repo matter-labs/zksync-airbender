@@ -8139,11 +8139,11 @@ pub fn layer_0_initial_round<
     S: SumcheckRoundSource<F, E>,
     C: GKRExternalChallengesProvider<F, E>,
 >(
-    all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
-    all_base_outputs: &[S::BaseInputAccessor; 3usize],
-    all_ext_outputs: &[S::ExtInputAccessor; 20usize],
-    sumcheck_challenges: &[E; 53usize],
+    all_base_inputs: &[S::BaseInputAccessor],
+    all_ext_inputs: &[S::ExtInputAccessor],
+    all_base_outputs: &[S::BaseInputAccessor],
+    all_ext_outputs: &[S::ExtInputAccessor],
+    sumcheck_challenges: &[E],
     external_challenges: &C,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
@@ -8151,8 +8151,22 @@ pub fn layer_0_initial_round<
     ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
     eq_poly_precomputed: &[E],
     row_range: core::ops::Range<usize>,
-    row_index: usize,
 ) -> [E; 2] {
+    let all_base_inputs = all_base_inputs
+        .as_array::<50usize>()
+        .expect("must have proper length");
+    let all_ext_inputs = all_ext_inputs
+        .as_array::<1usize>()
+        .expect("must have proper length");
+    let all_base_outputs = all_base_outputs
+        .as_array::<3usize>()
+        .expect("must have proper length");
+    let all_ext_outputs = all_ext_outputs
+        .as_array::<20usize>()
+        .expect("must have proper length");
+    let sumcheck_challenges = sumcheck_challenges
+        .as_array::<53usize>()
+        .expect("must have proper length");
     let mut base_field_scratch: [_; 50usize] = std::array::from_fn(|_| S::BaseFieldInput::zero());
     let mut ext_field_scratch: [_; 1usize] = std::array::from_fn(|_| S::ExtFieldInput::zero());
     let mut accumulated = [E::ZERO; 2];
@@ -9163,9 +9177,9 @@ pub fn layer_0<
     C: GKRExternalChallengesProvider<F, E>,
     const EXPLICIT_FORM: bool,
 >(
-    all_base_inputs: &[S::BaseInputAccessor; 50usize],
-    all_ext_inputs: &[S::ExtInputAccessor; 1usize],
-    sumcheck_challenges: &[E; 53usize],
+    all_base_inputs: &[S::BaseInputAccessor],
+    all_ext_inputs: &[S::ExtInputAccessor],
+    sumcheck_challenges: &[E],
     external_challenges: &C,
     lookup_alpha_powers: &[E],
     lookup_gamma: &E,
@@ -9174,6 +9188,15 @@ pub fn layer_0<
     eq_poly_precomputed: &[E],
     row_range: core::ops::Range<usize>,
 ) -> [E; 2] {
+    let all_base_inputs = all_base_inputs
+        .as_array::<50usize>()
+        .expect("must have proper length");
+    let all_ext_inputs = all_ext_inputs
+        .as_array::<1usize>()
+        .expect("must have proper length");
+    let sumcheck_challenges = sumcheck_challenges
+        .as_array::<53usize>()
+        .expect("must have proper length");
     let mut base_field_scratch: [_; 50usize] =
         std::array::from_fn(|_| [S::BaseFieldInput::zero(); 2]);
     let mut ext_field_scratch: [_; 1usize] = std::array::from_fn(|_| [S::ExtFieldInput::zero(); 2]);

@@ -13,6 +13,7 @@ use field::{Field, FieldExtension, PrimeField};
 pub mod input_in_base;
 pub mod input_in_extension;
 mod layer_sources;
+mod sumcheck_common_source;
 
 pub use self::input_in_base::*;
 pub use self::input_in_extension::*;

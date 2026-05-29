@@ -69,6 +69,15 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionBase<F,
         Self { c0, c1 }
     }
     #[inline(always)]
+    fn add_base(self, other: &F) -> Self {
+        // only c0 coefficient
+        let mut c0 = self.c0;
+        let c1 = self.c1;
+        c0.add_assign(other);
+
+        Self { c0, c1 }
+    }
+    #[inline(always)]
     fn mul_by_base(self, other: &F) -> Self {
         let mut c0 = self.c0;
         let mut c1 = self.c1;
@@ -78,10 +87,39 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionBase<F,
         Self { c0, c1 }
     }
     #[inline(always)]
+    fn add_with_ext(self, other: &E, ctx: &Self::CTX) -> E {
+        let mut result = self.into_ext(ctx);
+        result.add_assign(other);
+        result
+    }
+    #[inline(always)]
+    fn sub_from_ext(self, other: &E, ctx: &Self::CTX) -> E {
+        let mut result = self.into_ext(ctx);
+        result.sub_assign(other);
+        result
+    }
+    #[inline(always)]
     fn mul_by_ext(self, other: &E, ctx: &Self::CTX) -> E {
         let mut result = self.into_ext(ctx);
         result.mul_assign(other);
         result
+    }
+    #[inline(always)]
+    fn mul_with_other(self, other: &Self) -> Self::Product {
+        // schoolbook (c0 + r * c1) * (c0 + r * c1)
+        let mut c0 = self.c0;
+        c0.mul_assign(&other.c0);
+
+        let mut c1 = self.c1;
+        c1.mul_assign(&other.c0);
+        let mut t = self.c0;
+        t.mul_assign(&other.c1);
+        c1.add_assign(&t);
+
+        let mut c2 = self.c1;
+        c2.mul_assign(&other.c1);
+
+        BaseFieldFoldedOnceRepresentationProduct { c0, c1, c2 }
     }
 }
 
@@ -159,6 +197,16 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionExt<F, 
             c1,
             c2: self.c2,
         }
+    }
+    #[inline(always)]
+    fn add_base(self, other: &F) -> Self {
+        // only c0 coefficient
+        let mut c0 = self.c0;
+        let c1 = self.c1;
+        let c2 = self.c2;
+        c0.add_assign(other);
+
+        Self { c0, c1, c2 }
     }
     #[inline(always)]
     fn mul_by_base(self, other: &F) -> Self {

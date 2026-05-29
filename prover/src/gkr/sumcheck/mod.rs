@@ -130,3 +130,71 @@ pub fn evaluate_multivariate_eq_poly<F: PrimeField, E: FieldExtension<F> + Field
     }
     result
 }
+
+pub trait SumcheckEvaluator<F: PrimeField, E: FieldExtension<F> + Field>:
+    'static + Send + Sync
+{
+    fn get_layer_evaluator_for_initial_round<S: sumcheck_common::representation::SumcheckRoundSource<F, E>, C: cs::definitions::gkr::GKRExternalChallengesProvider<F, E>>() -> fn(
+        &[S::BaseInputAccessor],
+        &[S::ExtInputAccessor],
+        &[S::BaseInputAccessor],
+        &[S::ExtInputAccessor],
+        &[E],
+        &C,
+        &[E],
+        &E,
+        &<S::BaseFieldInput as sumcheck_common::representation::EvaluationRepresentaionBase<F, E>>::CTX,
+        &<S::ExtFieldInput as sumcheck_common::representation::EvaluationRepresentaionBase<F, E>>::CTX,
+        &[E],
+        core::ops::Range<usize>,
+    );
+
+    fn get_layer_evaluator<S: sumcheck_common::representation::SumcheckRoundSource<F, E>, C: cs::definitions::gkr::GKRExternalChallengesProvider<F, E>>() -> fn(
+        &[S::BaseInputAccessor],
+        &[S::ExtInputAccessor],
+        &[E],
+        &C,
+        &[E],
+        &E,
+        &<S::BaseFieldInput as sumcheck_common::representation::EvaluationRepresentaionBase<F, E>>::CTX,
+        &<S::ExtFieldInput as sumcheck_common::representation::EvaluationRepresentaionBase<F, E>>::CTX,
+        &[E],
+        core::ops::Range<usize>,
+    );
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckEvaluator<F, E> for () {
+    fn get_layer_evaluator<S: sumcheck_common::representation::SumcheckRoundSource<F, E>, C: cs::definitions::gkr::GKRExternalChallengesProvider<F, E>>() -> fn(
+        &[S::BaseInputAccessor],
+        &[S::ExtInputAccessor],
+        &[E],
+        &C,
+        &[E],
+        &E,
+        &<S::BaseFieldInput as sumcheck_common::representation::EvaluationRepresentaionBase<F, E>>::CTX,
+        &<S::ExtFieldInput as sumcheck_common::representation::EvaluationRepresentaionBase<F, E>>::CTX,
+        &[E],
+        core::ops::Range<usize>,
+    )
+    {
+        unreachable!("dummy marker");
+    }
+
+    fn get_layer_evaluator_for_initial_round<S: sumcheck_common::representation::SumcheckRoundSource<F, E>, C: cs::definitions::gkr::GKRExternalChallengesProvider<F, E>>() -> fn(
+        &[S::BaseInputAccessor],
+        &[S::ExtInputAccessor],
+        &[S::BaseInputAccessor],
+        &[S::ExtInputAccessor],
+        &[E],
+        &C,
+        &[E],
+        &E,
+        &<S::BaseFieldInput as sumcheck_common::representation::EvaluationRepresentaionBase<F, E>>::CTX,
+        &<S::ExtFieldInput as sumcheck_common::representation::EvaluationRepresentaionBase<F, E>>::CTX,
+        &[E],
+        core::ops::Range<usize>,
+    )
+    {
+        unreachable!("dummy marker");
+    }
+}

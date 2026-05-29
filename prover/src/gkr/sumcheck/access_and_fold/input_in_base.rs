@@ -36,8 +36,8 @@ impl<F: PrimeField> BaseFieldPoly<F> {
 
 #[derive(Debug)]
 pub struct BaseFieldPolySource<F: PrimeField> {
-    start: *const F,
-    next_layer_size: usize,
+    pub(crate) start: *const F,
+    pub(crate) next_layer_size: usize,
 }
 
 impl<F: PrimeField> BaseFieldPolySource<F> {

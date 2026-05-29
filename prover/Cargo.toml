@@ -18,6 +18,7 @@ seq-macro = { workspace = true, optional = true }
 fft = { workspace = true, optional = true }
 cs = { workspace = true, default-features = false }
 blake2s_u32 = { workspace = true, default-features = false }
+sumcheck_common = { workspace = true, optional = true }
 serde = { workspace = true }
 serde-big-array = "*"
 transcript = { workspace = true }
@@ -44,7 +45,7 @@ name = "pow_bench"
 harness = false
 
 [features]
-prover = ["worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "riscv_transpiler", "proc-macro2", "quote", "serde_json", "serde_with", "itertools"]
+prover = ["worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "riscv_transpiler", "proc-macro2", "quote", "serde_json", "serde_with", "itertools", "sumcheck_common"]
 deterministic_pow = ["transcript/deterministic_pow"]
 # Print logs related to timings only.
 timing_logs = []

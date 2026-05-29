@@ -63,6 +63,21 @@ pub struct GKRExternalChallenges<F: PrimeField, E: FieldExtension<F> + Field> {
     pub _marker: core::marker::PhantomData<F>,
 }
 
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    cs::definitions::gkr::GKRExternalChallengesProvider<F, E> for GKRExternalChallenges<F, E>
+{
+    #[inline(always)]
+    fn linearization_challenges(
+        &self,
+    ) -> &[E; cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES] {
+        &self.permutation_argument_linearization_challenges
+    }
+    #[inline(always)]
+    fn additive_part(&self) -> &E {
+        &self.permutation_argument_additive_part
+    }
+}
+
 impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
     #[cfg(feature = "prover")]
     pub fn flatten_into_buffer(&self, dst: &mut Vec<u32>)

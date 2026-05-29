@@ -117,7 +117,7 @@ cs = { path = "./cs", default-features = false }
 transcript = { path = "./transcript", default-features = false }
 verifier_generator = { path = "./verifier_generator" }
 verifier_common = { path = "./verifier_common", default-features = false }
-
+sumcheck_common = { path = "./sumcheck_common" }
 circuit_common = { path = "./circuit_defs/circuit_common" }
 
 blake2_g_function = { path = "./circuit_defs/blake2_g_function" }

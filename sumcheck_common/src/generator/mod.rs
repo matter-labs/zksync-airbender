@@ -195,11 +195,11 @@ pub fn generate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         #round_seq
 
         pub fn #initial_round_id<F: PrimeField, E: FieldExtension<F> + Field, S: SumcheckRoundSource<F, E>, C: GKRExternalChallengesProvider<F, E>>(
-            all_base_inputs: &[S::BaseInputAccessor; #num_base_field_inputs],
-            all_ext_inputs: &[S::ExtInputAccessor; #num_ext_field_inputs],
-            all_base_outputs: &[S::BaseInputAccessor; #num_base_field_outputs],
-            all_ext_outputs: &[S::ExtInputAccessor; #num_ext_field_outputs],
-            sumcheck_challenges: &[E; #num_challenges],
+            all_base_inputs: &[S::BaseInputAccessor],
+            all_ext_inputs: &[S::ExtInputAccessor],
+            all_base_outputs: &[S::BaseInputAccessor],
+            all_ext_outputs: &[S::ExtInputAccessor],
+            sumcheck_challenges: &[E],
             external_challenges: &C,
             lookup_alpha_powers: &[E],
             lookup_gamma: &E,
@@ -207,8 +207,13 @@ pub fn generate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
             ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
             eq_poly_precomputed: &[E],
             row_range: core::ops::Range<usize>,
-            row_index: usize,
         ) -> [E; 2] {
+            let all_base_inputs = all_base_inputs.as_array::<#num_base_field_inputs>().expect("must have proper length");
+            let all_ext_inputs = all_ext_inputs.as_array::<#num_ext_field_inputs>().expect("must have proper length");
+            let all_base_outputs = all_base_outputs.as_array::<#num_base_field_outputs>().expect("must have proper length");
+            let all_ext_outputs = all_ext_outputs.as_array::<#num_ext_field_outputs>().expect("must have proper length");
+            let sumcheck_challenges = sumcheck_challenges.as_array::<#num_challenges>().expect("must have proper length");
+
             let mut base_field_scratch: [_; #base_field_scratch_space_size] = std::array::from_fn(|_| S::BaseFieldInput::zero());
             let mut ext_field_scratch: [_; #ext_field_scratch_space_size] = std::array::from_fn(|_| S::ExtFieldInput::zero());
 
@@ -230,9 +235,9 @@ pub fn generate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         }
 
         pub fn #round_id<F: PrimeField, E: FieldExtension<F> + Field, S: SumcheckRoundSource<F, E>, C: GKRExternalChallengesProvider<F, E>, const EXPLICIT_FORM: bool>(
-            all_base_inputs: &[S::BaseInputAccessor; #num_base_field_inputs],
-            all_ext_inputs: &[S::ExtInputAccessor; #num_ext_field_inputs],
-            sumcheck_challenges: &[E; #num_challenges],
+            all_base_inputs: &[S::BaseInputAccessor],
+            all_ext_inputs: &[S::ExtInputAccessor],
+            sumcheck_challenges: &[E],
             external_challenges: &C,
             lookup_alpha_powers: &[E],
             lookup_gamma: &E,
@@ -241,6 +246,10 @@ pub fn generate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
             eq_poly_precomputed: &[E],
             row_range: core::ops::Range<usize>,
         ) -> [E; 2] {
+            let all_base_inputs = all_base_inputs.as_array::<#num_base_field_inputs>().expect("must have proper length");
+            let all_ext_inputs = all_ext_inputs.as_array::<#num_ext_field_inputs>().expect("must have proper length");
+            let sumcheck_challenges = sumcheck_challenges.as_array::<#num_challenges>().expect("must have proper length");
+
             let mut base_field_scratch: [_; #base_field_scratch_space_size] = std::array::from_fn(|_| [S::BaseFieldInput::zero(); 2]);
             let mut ext_field_scratch: [_; #ext_field_scratch_space_size] = std::array::from_fn(|_| [S::ExtFieldInput::zero(); 2]);
             let mut accumulated = [E::ZERO; 2];
