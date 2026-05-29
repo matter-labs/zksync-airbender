@@ -212,8 +212,8 @@ impl GpuWhirExtensionOracle {
         let packed_alloc = trace_holder.get_uninit_coset_evaluations_mut(0);
         let packed_stride = packed_leaf_count * lde_factor;
         let mut packed_matrix = DeviceMatrixMut::new(packed_alloc, packed_stride);
-        // pack_rows_for_whir_leaves(
-        pack_rows_for_whir_leaves_one_row_per_thread(
+        // pack_rows_for_whir_leaves_one_row_per_thread(
+        pack_rows_for_whir_leaves(
             &vectorized_coset_evaluations_matrix,
             &mut packed_matrix,
             trace_len_log2 as u32,
@@ -778,15 +778,16 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
-    #[serial]
-    fn recursive_oracle_lde_matches_cpu() {
+    fn recursive_oracle_lde_matches_cpu_impl(
+        log_coeff_sizes: &[usize],
+        values_per_leafs: &[usize],
+    ) {
         let worker = Worker::new();
         let context = make_test_context(256, 32);
 
         // Tests a range of parameters.
-        for &log_coeff_size in [6, 7, 8].iter() {
-            for &values_per_leaf in [2, 4, 8].iter() {
+        for &log_coeff_size in log_coeff_sizes.iter() {
+            for &values_per_leaf in values_per_leafs.iter() {
                 let monomial_coeffs = sample_monomial_coeffs(1 << log_coeff_size);
                 let twiddles = Twiddles::<BF, Global>::new(monomial_coeffs.len(), &worker);
                 let cpu =
@@ -813,6 +814,19 @@ pub(crate) mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    #[serial]
+    fn recursive_oracle_lde_matches_cpu_small_sweep() {
+        recursive_oracle_lde_matches_cpu_impl(&[6, 7, 8], &[2, 4, 8]);
+    }
+
+    #[test]
+    #[serial]
+    #[ignore]
+    fn recursive_oracle_lde_matches_cpu_large() {
+        recursive_oracle_lde_matches_cpu_impl(&[20], &[32]);
     }
 
     #[test]
