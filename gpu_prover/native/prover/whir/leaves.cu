@@ -77,12 +77,17 @@ __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(vectorized_e4_matrix_gett
       const e4 b = smem_thread[blockDim.x * (slot_in_leaf + exchg_stride)];
       if (exchg_lane != 0)
         x_inv = x_invs[blockDim.x * exchg_region];
-      __syncthreads();
+      // not needed because
+      //  - in each stage, each thread acts on its touched smem in place,
+      //  - we use fresh smem to share x_invs each iteration
+      // __syncthreads();
 
       const e4 c = e4::add(a, b);
       const e4 d = e4::mul(x_inv, e4::sub(a, b));
       smem_thread[blockDim.x * slot_in_leaf] = c;
       smem_thread[blockDim.x * (slot_in_leaf + exchg_stride)] = d;
+
+      x_invs += blockDim.x * (blockDim.y >> stage);
     }
 
     // Last stage (special cased to elide a bit of work)
@@ -174,9 +179,11 @@ DEVICE_FORCEINLINE void pack_rows_for_whir_leaves_impl(bf_matrix_getter<ld_modif
     for (unsigned stage = 0; stage < LOG_VALUES_PER_LEAF; stage++) {
       const unsigned exchg_stride = 1 << stage;
       const unsigned num_exchg_regions = VALUES_PER_LEAF >> (stage + 1);
+#pragma unroll
       for (unsigned i = 0; i < num_exchg_regions; i++) {
         const bf x_inv = x_invs_current[blockDim.x * i];
         const unsigned region_start = 2 * i * exchg_stride;
+#pragma unroll
         for (unsigned j = 0; j < exchg_stride; j++) {
           const bf a = vals[region_start + j];
           const bf b = vals[region_start + j + exchg_stride];

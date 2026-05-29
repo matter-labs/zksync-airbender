@@ -781,9 +781,14 @@ pub(crate) mod tests {
     fn recursive_oracle_lde_matches_cpu_impl(
         log_coeff_sizes: &[usize],
         values_per_leafs: &[usize],
+        is_small: bool,
     ) {
         let worker = Worker::new();
-        let context = make_test_context(256, 32);
+        let context = if is_small {
+            make_test_context(256, 32)
+        } else {
+            make_test_context(1024, 64)
+        };
 
         // Tests a range of parameters.
         for &log_coeff_size in log_coeff_sizes.iter() {
@@ -819,14 +824,14 @@ pub(crate) mod tests {
     #[test]
     #[serial]
     fn recursive_oracle_lde_matches_cpu_small_sweep() {
-        recursive_oracle_lde_matches_cpu_impl(&[6, 7, 8], &[2, 4, 8]);
+        recursive_oracle_lde_matches_cpu_impl(&[6, 7, 8], &[2, 4, 8], true);
     }
 
     #[test]
     #[serial]
     #[ignore]
     fn recursive_oracle_lde_matches_cpu_large() {
-        recursive_oracle_lde_matches_cpu_impl(&[20], &[32]);
+        recursive_oracle_lde_matches_cpu_impl(&[23], &[32], false);
     }
 
     #[test]

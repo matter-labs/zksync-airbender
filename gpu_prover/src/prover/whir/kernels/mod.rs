@@ -288,7 +288,7 @@ pub(crate) fn pack_rows_for_whir_leaves(
     let mut config = CudaLaunchConfig::basic(grid_dim as u32, block_dim, stream);
     let smem_bytes = if log_values_per_leaf > 1 {
         2 * block_dim_y * block_dim_x * size_of::<E4>() +
-            (block_dim_y / 2) * block_dim_x * size_of::<BF>()
+            block_dim_y * block_dim_x * size_of::<BF>()
     } else {
         0
     };
