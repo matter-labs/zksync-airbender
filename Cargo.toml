@@ -26,8 +26,15 @@ members = [
 
     "execution_utils",
 
-    "gpu_prover",
-    "gpu_prover_test",
+    "gpu/core",
+    "gpu/cub",
+    "gpu/hash",
+    "gpu/ntt",
+    "gpu/ops",
+    "gpu/circuit_prover",
+    "gpu/execution_prover",
+    "gpu/prover_gkr_model",
+    "execution_tests",
 
     "reduced_keccak",
 
@@ -73,7 +80,7 @@ default-members = [
     "fft",
     "field",
     # "full_statement_verifier",
-    # gpu_prover is not a default member because it needs CUDA installation to compile
+    # circuit_prover is not a default member because it needs CUDA installation to compile
     "non_determinism_source",
     "prover",
     "reduced_keccak",
@@ -150,7 +157,14 @@ riscv_transpiler = { path = "./riscv_transpiler", default-features = false }
 execution_utils = { path = "./execution_utils", default-features = false }
 witness_eval_generator = { path = "./witness_eval_generator", default-features = false }
 gpu_witness_eval_generator = { path = "./gpu_witness_eval_generator", default-features = false }
-gpu_prover = { path = "./gpu_prover", default-features = false }
+gpu_core = { path = "./gpu/core" }
+gpu_cub = { path = "./gpu/cub" }
+gpu_hash = { path = "./gpu/hash" }
+gpu_ntt = { path = "./gpu/ntt" }
+gpu_ops = { path = "./gpu/ops" }
+circuit_prover = { path = "./gpu/circuit_prover", default-features = false }
+execution_prover = { path = "./gpu/execution_prover", default-features = false }
+gpu_prover_gkr_model = { path = "./gpu/prover_gkr_model" }
 
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 clap = { version = "4.5.21", features = ["derive"] }

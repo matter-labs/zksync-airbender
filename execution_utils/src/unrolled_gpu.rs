@@ -3,7 +3,7 @@ use crate::unrolled::{
     compute_setup_for_machine_configuration, flatten_proof_into_responses_for_unrolled_recursion,
     UnrolledProgramProof, UnrolledProgramSetup,
 };
-use gpu_prover::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType};
+use execution_prover::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType};
 use setups::{
     binary_u8_to_u32, get_unified_circuit_artifact_for_machine_type,
     get_unrolled_circuits_artifacts_for_machine_type, pad_bytecode_bytes_for_proving,
@@ -14,7 +14,7 @@ use crate::unified_circuit::{
     compute_unified_setup_for_machine_configuration,
     flatten_proof_into_responses_for_unified_recursion,
 };
-use gpu_prover::ProveResult;
+use execution_prover::ProveResult;
 use log::info;
 use riscv_transpiler::common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use riscv_transpiler::{

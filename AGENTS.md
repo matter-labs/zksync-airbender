@@ -8,10 +8,10 @@
 
 ## Nested Instructions
 
-- `gpu_prover/` has crate-specific rules for CUDA build behavior, upstream-import policy, validation, formatting, and the GPU scheduling contract.
-- `gpu_prover/native/` has additional native-only rules for `clang-format`, Rust↔CUDA interface stability, and upstream-constant drift guards.
-- `gpu_prover/src/prover/` is a pointer scope that exists specifically to force a read of the full GPU scheduling contract before editing prover scheduling code.
-- `gpu_prover_test/` and `gpu_witness_eval_generator/` each have their own `AGENTS.md`; read them when touching those crates.
+- `gpu/circuit_prover/` has crate-specific rules for CUDA build behavior, upstream-import policy, validation, formatting, and the GPU scheduling contract.
+- `gpu/circuit_prover/native/` has additional native-only rules for `clang-format`, Rust↔CUDA interface stability, and upstream-constant drift guards.
+- `gpu/circuit_prover/src/prover/` is a pointer scope that exists specifically to force a read of the full GPU scheduling contract before editing prover scheduling code.
+- `execution_tests/` and `gpu_witness_eval_generator/` each have their own `AGENTS.md`; read them when touching those crates.
 
 ## Agent Artifact Locations
 
@@ -31,7 +31,7 @@ These paths override any plugin or skill default (e.g. Superpowers' `docs/superp
 
 ## Commits And PRs
 
-- Use Conventional Commits for commit messages and PR titles, for example `fix(gpu_prover): shorten lock scope`.
+- Use Conventional Commits for commit messages and PR titles, for example `fix(circuit_prover): shorten lock scope`.
 - Keep the scope meaningful and specific to the area changed.
 - Use `.github/pull_request_template.md` when preparing PR descriptions.
 - Make sure the PR title matches the actual change, since PR titles feed changelog generation.
