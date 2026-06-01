@@ -1,11 +1,16 @@
 use crate::abstractions::non_determinism::QuasiUARTSource;
 
 use super::*;
+use crate::ir::{
+    simple_instruction_set::{preprocess_bytecode, Instruction},
+    FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
+};
 use crate::{
     jit::minimal_tracer::{ChunkPostSnapshot, PreallocatedSnapshots},
     replayer::ReplayerVM,
     vm::test::*,
 };
+use field::Mersenne31Field;
 use std::{alloc::Global, io::Read, path::Path};
 
 #[cfg(test)]
@@ -128,8 +133,6 @@ fn test_jit_recursive_verifier() {
 #[test]
 #[serial_test::serial]
 fn test_ensure_proof_correctness() {
-    use crate::ir::*;
-
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
@@ -151,7 +154,8 @@ fn test_ensure_proof_correctness() {
         .collect();
     let mut source = QuasiUARTSource::new_with_reads(responses);
 
-    let instructions: Vec<Instruction> = preprocess_bytecode::<ReducedMachineDecoderConfig>(&text);
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text);
     let tape = SimpleTape::new(&instructions);
     let mut ram =
         RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
@@ -163,8 +167,8 @@ fn test_ensure_proof_correctness() {
 
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
 
-    let now = std::time::Instant::now();
-    VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _>(
+    let _now = std::time::Instant::now();
+    VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
         &mut state,
         &mut ram,
         &mut (),
@@ -246,10 +250,8 @@ fn run_reference_for_num_cycles(
     State<DelegationsAndFamiliesCounters>,
     RamWithRomRegion<{ common_constants::rom::ROM_SECOND_WORD_BITS }>,
 ) {
-    use crate::ir::*;
-
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(text);
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(text);
     let tape = SimpleTape::new(&instructions);
     let mut ram =
         RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
@@ -259,7 +261,7 @@ fn run_reference_for_num_cycles(
 
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
 
-    VM::<DelegationsAndFamiliesCounters>::run_by_timestamp_bound::<_, _, _>(
+    VM::<DelegationsAndFamiliesCounters>::run_by_timestamp_bound::<_, _, _, Mersenne31Field>(
         &mut state,
         &mut ram,
         &mut (),
@@ -285,12 +287,10 @@ fn run_reference_for_num_cycles_with_snapshots(
         { common_constants::rom::ROM_SECOND_WORD_BITS },
     >,
 ) {
-    use crate::ir::*;
-
     let instructions = if reduced_isa {
-        preprocess_bytecode::<ReducedMachineDecoderConfig>(text)
+        preprocess_bytecode::<ReducedMachineDecoderConfig, true>(text)
     } else {
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(text)
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(text)
     };
     let tape = SimpleTape::new(&instructions);
     let mut ram =
@@ -302,7 +302,7 @@ fn run_reference_for_num_cycles_with_snapshots(
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
     let mut snapshotter = SimpleSnapshotter::<_, {common_constants::rom::ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(1 << 31, state);
 
-    VM::<DelegationsAndFamiliesCounters>::run_by_timestamp_bound::<_, _, _>(
+    VM::<DelegationsAndFamiliesCounters>::run_by_timestamp_bound::<_, _, _, Mersenne31Field>(
         &mut state,
         &mut ram,
         &mut snapshotter,
@@ -318,8 +318,6 @@ fn run_reference_for_num_cycles_with_snapshots(
 #[test]
 #[serial_test::serial]
 fn test_reference_block_exec() {
-    use crate::ir::*;
-
     let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
     let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
 
@@ -334,7 +332,7 @@ fn test_reference_block_exec() {
     let mut source = QuasiUARTSource::new_with_reads(witness);
 
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text);
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
     let tape = SimpleTape::new(&instructions);
     let mut ram =
         RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
@@ -348,7 +346,7 @@ fn test_reference_block_exec() {
     let mut snapshotter = SimpleSnapshotter::<_, { common_constants::rom::ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(cycles_bound, state);
 
     let now = std::time::Instant::now();
-    VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _>(
+    VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
         &mut state,
         &mut ram,
         &mut snapshotter,
@@ -833,7 +831,6 @@ fn test_perf_with_trace_keeping() {
 #[test]
 #[serial_test::serial]
 fn test_replayer_over_jit() {
-    use crate::ir::*;
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
@@ -862,7 +859,7 @@ fn test_replayer_over_jit() {
     };
 
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text);
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
     let tape = SimpleTape::new(&instructions);
 
     println!("Running");
@@ -886,7 +883,7 @@ fn test_replayer_over_jit() {
         let mut state = jit_state.as_replayer_state();
         let final_timestamp = state_with_counters.timestamp;
 
-        let _ = ReplayerVM::replay_by_timestamp_bound(
+        let _ = ReplayerVM::replay_by_timestamp_bound::<_, _, Mersenne31Field>(
             &mut state,
             &mut replaying_ram,
             &tape,
