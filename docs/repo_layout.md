@@ -11,7 +11,7 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - fft/ - native and verifier fft implementations in multiple layout formats to mirror various gpu layouts
 - field/ - native optimised cpu prover and verifier Mersenne31 basic and extension field implementations
 - full_statement_verifier/ - full stark verifier logic, with support for chunking
-- gpu_prover/ - main Rust->CUDA gpu prover implementation
+- gpu/circuit_prover/ - main Rust->CUDA gpu prover implementation
 - gpu_witness_eval_generator/ - Rust->CUDA gpu prover's witness generator
 - non_determinism_source/ - NonDeterminism storage reader trait, implemented in `prover` crate
 - prover/ - main cpu prover implementation with its 5 stages
@@ -41,7 +41,7 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
         - tracers/ - helper code for supporting witness gen of memory argument
         - witness_evaluator/ - code to help evaluate our special witness generation closures
 - gpu: 
-    - gpu_prover/ - rather comprehensive mix of cuda and rust glue code, to mirror our cpu prover
+    - gpu/circuit_prover/ - rather comprehensive mix of cuda and rust glue code, to mirror our cpu prover
     - gpu_witness_eval_generator/ - code to help evaluate our special witness generation closures
 
 ## AIR Circuits

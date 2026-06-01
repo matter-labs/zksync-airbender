@@ -1,0 +1,24 @@
+[package]
+name = "gpu_core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+build = "build.rs"
+links = "gpu_core_native"
+
+[dependencies]
+cs = { workspace = true, features = ["compiler"] }
+field = { workspace = true }
+fft = { workspace = true }
+era_cudart = "=0.156.0"
+era_cudart_sys = "=0.156.0"
+itertools = { workspace = true }
+log = "0.4"
+
+[build-dependencies]
+cc = "1"

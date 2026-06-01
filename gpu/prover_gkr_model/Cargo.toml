@@ -1,0 +1,18 @@
+[package]
+name = "gpu_prover_gkr_model"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+cs = { workspace = true, features = ["compiler"] }
+field = { workspace = true }
+
+[dev-dependencies]
+serde_json = "1"
+serial_test = "3"
