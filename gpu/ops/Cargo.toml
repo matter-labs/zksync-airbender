@@ -1,0 +1,35 @@
+[package]
+name = "gpu_ops"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+build = "build.rs"
+links = "gpu_ops"
+
+[dependencies]
+gpu_core = { workspace = true }
+field = { workspace = true }
+era_cudart = "=0.156.0"
+era_cudart_sys = "=0.156.0"
+
+[features]
+# Off by default; turn on to compile the unused unary ops (dbl, inv, neg, sqr
+# and their `_in_place` variants) plus their tests. Kept available for future
+# use without re-creating the scaffolding by hand.
+scaffolding_ops = []
+
+[dev-dependencies]
+gpu_core = { workspace = true }
+fft = { workspace = true }
+itertools = "0.14"
+rand = "0.9"
+serial_test = "3"
+
+[build-dependencies]
+cmake = "0.1"
+era_cudart_sys = "=0.156.0"

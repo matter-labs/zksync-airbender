@@ -272,11 +272,11 @@ mod test {
         ));
 
         let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
-            &File::open("../gpu_prover_test/setup_recursion_over_base.json").unwrap(),
+            &File::open("../execution_tests/setup_recursion_over_base.json").unwrap(),
         )
         .unwrap();
         let proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(
-            &File::open("../gpu_prover_test/gpu_proof_recursion_over_base.json").unwrap(),
+            &File::open("../execution_tests/gpu_proof_recursion_over_base.json").unwrap(),
         )
         .unwrap();
 
@@ -312,11 +312,11 @@ mod test {
         ));
 
         let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
-            &File::open("../gpu_prover_test/setup_recursion_over_recursion.json").unwrap(),
+            &File::open("../execution_tests/setup_recursion_over_recursion.json").unwrap(),
         )
         .unwrap();
         let proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(
-            &File::open("../gpu_prover_test/gpu_proof_recursion_over_recursion.json").unwrap(),
+            &File::open("../execution_tests/gpu_proof_recursion_over_recursion.json").unwrap(),
         )
         .unwrap();
 
@@ -351,11 +351,11 @@ mod test {
         ));
 
         let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
-            &File::open("../gpu_prover_test/setup_final_recursion.json").unwrap(),
+            &File::open("../execution_tests/setup_final_recursion.json").unwrap(),
         )
         .unwrap();
         let proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(
-            &File::open("../gpu_prover_test/gpu_proof_final_recursion.json").unwrap(),
+            &File::open("../execution_tests/gpu_proof_final_recursion.json").unwrap(),
         )
         .unwrap();
 
@@ -395,11 +395,11 @@ mod test {
         ));
 
         let input_setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
-            &File::open("../gpu_prover_test/setup_recursion_over_base.json").unwrap(),
+            &File::open("../execution_tests/setup_recursion_over_base.json").unwrap(),
         )
         .unwrap();
         let input_proof: crate::unrolled::UnrolledProgramProof = serde_json::from_reader(
-            &File::open("../gpu_prover_test/gpu_proof_recursion_over_base.json").unwrap(),
+            &File::open("../execution_tests/gpu_proof_recursion_over_base.json").unwrap(),
         )
         .unwrap();
         let input_cicuit_set = crate::unrolled::get_unrolled_circuits_artifacts_for_machine_type::<
