@@ -39,7 +39,7 @@ full_statement_verifier = { path = "../../full_statement_verifier", default-feat
 reqwest = { version = "0.12.12", features = ["blocking", "json"] }
 sha3 = { package = "sha3", version = "*" }
 
-gpu_prover = { workspace = true, optional = true, default-features = false }
+execution_prover = { workspace = true, optional = true, default-features = false }
 
 env_logger = "0.11"
 base64 = "0.21.7"
@@ -60,7 +60,7 @@ security_80 = [
     "verifier_common/replace_csr",
     "verifier_common/proof_utils",
     "field/no_inline",
-    "gpu_prover?/security_80",
+    "execution_prover?/security_80",
     "full_statement_verifier?/security_80",
     "blake2_with_compression_verifier?/security_80",
 ]
@@ -76,11 +76,11 @@ security_100 = [
     "verifier_common/replace_csr",
     "verifier_common/proof_utils",
     "field/no_inline",
-    "gpu_prover?/security_100",
+    "execution_prover?/security_100",
     "full_statement_verifier?/security_100",
     "blake2_with_compression_verifier?/security_100",
 ]
 
 debug_logs = ["prover/debug_logs", "prover_examples/debug_logs"]
 # if enabled - allow GPU for proving.
-gpu = ["prover_examples/gpu", "gpu_prover", "execution_utils/gpu_prover"]
+gpu = ["prover_examples/gpu", "execution_prover", "execution_utils/gpu_prover"]
