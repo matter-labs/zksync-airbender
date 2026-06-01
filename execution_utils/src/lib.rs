@@ -19,7 +19,7 @@ pub use prover_examples;
 pub use setups;
 
 #[cfg(feature = "gpu_prover")]
-pub use gpu_prover;
+pub use execution_prover;
 
 mod constants;
 mod proofs;

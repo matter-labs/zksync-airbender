@@ -24,7 +24,7 @@ verifier_common = { workspace = true, default-features = false }
 full_statement_verifier = { workspace = true, default-features = false, features = ["proof_utils", "replace_csr"]}
 
 # dependencies for gpu
-gpu_prover = { workspace = true, optional = true }
+circuit_prover = { workspace = true, optional = true }
 nvtx = { version = "1", optional = true }
 cs = { workspace = true, optional = true }
 
@@ -49,4 +49,4 @@ timing_logs = []
 
 default = ["timing_logs", "security_80", "verifier_common/proof_utils"]
 
-gpu = ["gpu_prover", "nvtx", "cs"]
+gpu = ["circuit_prover", "nvtx", "cs"]

@@ -268,7 +268,7 @@ impl ProgramProver {
                 {
                     let path_without_bin = source.gpu_path_without_bin()?;
                     let mut prover_configuration =
-                        gpu_prover::ExecutionProverConfiguration::default();
+                        execution_prover::ExecutionProverConfiguration::default();
                     prover_configuration.replay_worker_threads_count =
                         config.gpu.replay_worker_threads_count;
 
