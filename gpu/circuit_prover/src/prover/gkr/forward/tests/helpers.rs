@@ -117,7 +117,7 @@ pub(super) fn attach_test_ext_output_layout(
 
 /// Install a storage layout that covers the input layer (`initial_layer_idx`)
 /// plus every dim-reducing tower output layer. Mirrors
-/// `gpu_prover_gkr_model::storage_layout::append_tower_layers` so `schedule_dimension_reduction_forward`
+/// `gpu_gkr_model::storage_layout::append_tower_layers` so `schedule_dimension_reduction_forward`
 /// can `allocate_ext_view` into each tower round.
 pub(super) fn attach_test_dim_reducing_tower_layout(
     storage: &mut GpuGKRStorage<BF, E4>,

@@ -1,6 +1,8 @@
 #include "gkr_ops_helpers.cuh"
 
-namespace airbender::ops::blake2s {
+namespace airbender::ops::gkr_ops {
+
+using namespace ::airbender::hash;
 
 // ---------------------------------------------------------------------------
 // Backward sumcheck per-round state update (device-side).
@@ -260,4 +262,4 @@ EXTERN __global__ void ab_assemble_query_indexes_kernel(const u32 *raw_bits, u32
   indexes_out[idx] = result;
 }
 
-} // namespace airbender::ops::blake2s
+} // namespace airbender::ops::gkr_ops

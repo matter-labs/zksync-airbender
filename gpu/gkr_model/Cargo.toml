@@ -1,5 +1,5 @@
 [package]
-name = "gpu_prover_gkr_model"
+name = "gpu_gkr_model"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
