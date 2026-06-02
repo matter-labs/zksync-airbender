@@ -27,13 +27,14 @@ members = [
     "execution_utils",
 
     "gpu/core",
+    "gpu/native_build",
     "gpu/cub",
     "gpu/hash",
     "gpu/ntt",
     "gpu/ops",
     "gpu/circuit_prover",
     "gpu/execution_prover",
-    "gpu/prover_gkr_model",
+    "gpu/gkr_model",
     "execution_tests",
 
     "reduced_keccak",
@@ -93,6 +94,8 @@ default-members = [
     "worker",
     "witness_eval_generator",
     "gpu_witness_eval_generator",
+    # The one GPU-cluster crate with no CUDA dep (pure CPU model); safe as a default member.
+    "gpu/gkr_model",
     "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
     "circuit_defs/unrolled_circuits/jump_branch_slt",
     "circuit_defs/unrolled_circuits/mul_div_unsigned",
@@ -158,13 +161,14 @@ execution_utils = { path = "./execution_utils", default-features = false }
 witness_eval_generator = { path = "./witness_eval_generator", default-features = false }
 gpu_witness_eval_generator = { path = "./gpu_witness_eval_generator", default-features = false }
 gpu_core = { path = "./gpu/core" }
+gpu_native_build = { path = "./gpu/native_build" }
 gpu_cub = { path = "./gpu/cub" }
 gpu_hash = { path = "./gpu/hash" }
 gpu_ntt = { path = "./gpu/ntt" }
 gpu_ops = { path = "./gpu/ops" }
 circuit_prover = { path = "./gpu/circuit_prover", default-features = false }
 execution_prover = { path = "./gpu/execution_prover", default-features = false }
-gpu_prover_gkr_model = { path = "./gpu/prover_gkr_model" }
+gpu_gkr_model = { path = "./gpu/gkr_model" }
 
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 clap = { version = "4.5.21", features = ["derive"] }

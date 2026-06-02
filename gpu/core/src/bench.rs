@@ -1,3 +1,11 @@
+//! Field-arithmetic micro-benchmark helpers.
+//!
+//! Each `bench_*` launches a compute-bound kernel (defined in
+//! `native/bench/field.cu`) that hammers one field op (`add`/`mul` over
+//! `bf`/`e2`/`e4`/`e6`) so the Criterion entry in `benches/field.rs` can
+//! measure raw arithmetic throughput. Gated behind the `bench` feature; uses a
+//! plain `era_cudart` stream and the `gpu_core_bench_native` archive.
+
 use crate::primitives::field::BF;
 use era_cudart::cuda_kernel;
 use era_cudart::device::{device_get_attribute, get_device};

@@ -13,3 +13,6 @@ mod upstream;
 
 pub mod ntt;
 pub mod ntt_twiddles;
+
+#[cfg(feature = "bench")]
+pub mod bench;

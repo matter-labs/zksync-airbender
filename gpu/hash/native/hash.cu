@@ -1,6 +1,6 @@
 #include "hash.cuh"
 
-namespace airbender::ops::blake2s {
+namespace airbender::hash {
 
 EXTERN __global__ void ab_blake2s_leaves_kernel(const bf *values, u32 *results, const unsigned log_rows_count, const unsigned cols_count,
                                                 const unsigned count) {
@@ -408,4 +408,4 @@ EXTERN __global__ void ab_transcript_squeeze_e4_kernel(u32 *seed_io, e4 *output_
   }
 }
 
-} // namespace airbender::ops::blake2s
+} // namespace airbender::hash

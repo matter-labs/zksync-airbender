@@ -10,7 +10,9 @@
 
 #include "hash.cuh"
 
-namespace airbender::ops::blake2s {
+namespace airbender::ops::gkr_ops {
+
+using namespace ::airbender::hash;
 
 DEVICE_FORCEINLINE e4 e4_from_raw_u32x4(const u32 *words) {
   return e4(e2(bf::from_raw_repr_with_reduction(words[0]), bf::from_raw_repr_with_reduction(words[1])),
@@ -125,4 +127,4 @@ DEVICE_FORCEINLINE void run_round_update_single_thread(const e4 e_partial, const
   *eq_prefactor_io = eq_poly(challenge, prev_coord);
 }
 
-} // namespace airbender::ops::blake2s
+} // namespace airbender::ops::gkr_ops

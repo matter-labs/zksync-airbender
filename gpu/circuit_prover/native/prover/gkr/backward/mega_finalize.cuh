@@ -32,7 +32,7 @@
 
 namespace airbender::prover::gkr {
 
-using ::airbender::ops::blake2s::run_round_update_single_thread;
+using ::airbender::ops::gkr_ops::run_round_update_single_thread;
 
 // Maximum threads-per-block for the mega-finalize launch. Matches the
 // 256-thread default used by the existing CUB-driven tail. Folding the eq

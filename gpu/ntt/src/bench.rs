@@ -5,6 +5,10 @@
 //! _natural_coset` fallback. Gated behind the `bench` feature and exposed only
 //! to the `benches/ntt.rs` Criterion entry.
 //!
+//! Self-contained (no `ProverContext`): like gpu_ntt's tests it uses a raw
+//! `DeviceContext` (to initialize the twiddle `__constant__` tables), plain
+//! `era_cudart` `DeviceAllocation`s, and a queried `DeviceProperties`.
+//!
 //! L2-bypass: a single iteration of either kernel touches `2^log_n` BF
 //! elements per buffer; on Blackwell-class L2 (~96 MB) a small `log_n` re-run
 //! over the same allocation reads entirely from L2 and reports an unreliable
@@ -12,30 +16,36 @@
 //! output) and round-robins through "slots" sized `2^log_n` so the working
 //! set sweeps past L2 capacity at every per-log_n bench.
 
+use std::mem::size_of;
+
+use era_cudart::memory::DeviceAllocation;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
-use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::ntt::{
-    bitreversed_coeffs_to_natural_coset, bitreversed_monomials_to_natural_evals,
-};
-use crate::primitives::context::DeviceAllocation;
-use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
-use crate::primitives::field::BF;
-use crate::prover::{ProverContext, ProverContextConfig};
-use std::mem::size_of;
+use crate::ntt::{bitreversed_coeffs_to_natural_coset, bitreversed_monomials_to_natural_evals};
+use crate::ntt_twiddles::DeviceContext;
+use gpu_core::primitives::context::DeviceProperties;
+use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
+use gpu_core::primitives::field::BF;
 
 /// 256 MB per side. Targets ~2.5x the L2 of an RTX PRO 6000 Blackwell so
 /// round-robined iterations evict cleanly before reuse. For log_n=20 (16 MB
 /// per slot) the pool fits 16 slots; for log_n=4 it fits millions.
 const POOL_BYTES_PER_SIDE: usize = 256 * 1024 * 1024;
 
+/// `powers_of_w_coarse_log_count` for the twiddle context. Matches the
+/// `GMEM_COARSE_LOG_COUNT` default used by the prover (and gpu_ntt's tests).
+const TWIDDLE_LOG_COUNT: u32 = 13;
+
 pub struct NttBenchHarness {
-    pub context: ProverContext,
+    /// Keeps the NTT twiddle `__constant__` tables alive for the harness'
+    /// lifetime (the launchers read them).
+    _device_context: DeviceContext,
     pub log_n: usize,
     pub log_lde_factor: usize,
     pub coset_index: usize,
+    props: DeviceProperties,
     inputs_pool: DeviceAllocation<BF>,
     outputs_pool: DeviceAllocation<BF>,
     slot_count: usize,
@@ -45,26 +55,22 @@ pub struct NttBenchHarness {
 
 impl NttBenchHarness {
     pub fn new(log_n: usize, log_lde_factor: usize, coset_index: usize) -> CudaResult<Self> {
-        let mut config = ProverContextConfig::default();
-        // 1 GB device arena: 512 MB for input+output pools plus headroom for
-        // the prover-context bookkeeping.
-        config.max_device_allocation_blocks_count = Some(1024);
-        let host_block_size = 1usize << config.host_allocator_block_log_size;
-        config.host_allocator_blocks_count = (32 * 1024 * 1024) / host_block_size;
-        let context = ProverContext::new(&config)?;
+        let _device_context = DeviceContext::create(TWIDDLE_LOG_COUNT)?;
+        let props = DeviceProperties::new()?;
         let slot_size = 1usize << log_n;
         let pool_elems = POOL_BYTES_PER_SIDE / size_of::<BF>();
         // At least 4 slots even at huge log_n; ensures round-robin actually
         // rotates between iterations.
         let slot_count = (pool_elems / slot_size).max(4);
         let pool_total = slot_count * slot_size;
-        let inputs_pool = context.alloc(pool_total, AllocationPlacement::BestFit)?;
-        let outputs_pool = context.alloc(pool_total, AllocationPlacement::BestFit)?;
+        let inputs_pool = DeviceAllocation::<BF>::alloc(pool_total)?;
+        let outputs_pool = DeviceAllocation::<BF>::alloc(pool_total)?;
         Ok(Self {
-            context,
+            _device_context,
             log_n,
             log_lde_factor,
             coset_index,
+            props,
             inputs_pool,
             outputs_pool,
             slot_count,
@@ -85,19 +91,6 @@ impl NttBenchHarness {
         let log_n = self.log_n;
         let log_lde_factor = self.log_lde_factor;
         let coset_index = self.coset_index;
-        // Copy the scalar fields out of the immutable borrow so we can hold
-        // the mutable pool borrows below without conflict.
-        let props_ref = self.context.get_device_properties();
-        let l2_cache_size_bytes = props_ref.l2_cache_size_bytes;
-        let sm_count = props_ref.sm_count;
-        let compute_capability_major = props_ref.compute_capability_major;
-        let compute_capability_minor = props_ref.compute_capability_minor;
-        let device_props = crate::primitives::context::DeviceProperties {
-            l2_cache_size_bytes,
-            sm_count,
-            compute_capability_major,
-            compute_capability_minor,
-        };
         let inputs_matrix = DeviceMatrixChunk::new(&self.inputs_pool[offset..offset + n], n, 0, n);
         let mut outputs_matrix =
             DeviceMatrixChunkMut::new(&mut self.outputs_pool[offset..offset + n], n, 0, n);
@@ -109,7 +102,7 @@ impl NttBenchHarness {
             coset_index,
             false,
             stream,
-            &device_props,
+            &self.props,
         )
     }
 

@@ -90,13 +90,18 @@ template <unsigned K, unsigned V> struct TableDriver {
   DEVICE_FORCEINLINE u32 get_absolute_index(const TableType table_type, const u32 index) const { return offsets[table_type] + index; }
 
   DEVICE_FORCEINLINE void set_values_from_tables(const u32 absolute_index, bf *values) const {
-    const unsigned col_offset = absolute_index / (stride - 1) * (1 + K + V) + K;
-    const unsigned row = absolute_index % (stride - 1);
+    // `V == 0` (tables with no value columns) makes `i < V` a pointless
+    // unsigned-vs-zero comparison; `if constexpr` elides the instantiation
+    // (also keeping `col_offset`/`row` from going unused).
+    if constexpr (V > 0) {
+      const unsigned col_offset = absolute_index / (stride - 1) * (1 + K + V) + K;
+      const unsigned row = absolute_index % (stride - 1);
 #pragma unroll
-    for (unsigned i = 0; i < V; i++) {
-      const unsigned col = i + col_offset;
-      const unsigned idx = col * stride + row;
-      values[i] = tables[idx];
+      for (unsigned i = 0; i < V; i++) {
+        const unsigned col = i + col_offset;
+        const unsigned idx = col * stride + row;
+        values[i] = tables[idx];
+      }
     }
   }
 

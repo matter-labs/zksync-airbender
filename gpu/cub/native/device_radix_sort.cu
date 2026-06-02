@@ -3,7 +3,7 @@
 
 using namespace ::cub;
 
-namespace airbender::ops::cub::device_radix_sort {
+namespace airbender::cub::device_radix_sort {
 
 #define SORT_KEYS(dir, arg_t, method)                                                                                                                          \
   EXTERN cudaError_t ab_sort_keys_##dir##_##arg_t(void *d_temp_storage, size_t &temp_storage_bytes, const arg_t *d_keys_in, arg_t *d_keys_out,                 \
@@ -14,4 +14,4 @@ namespace airbender::ops::cub::device_radix_sort {
 SORT_KEYS(a, u32, SortKeys);
 SORT_KEYS(d, u32, SortKeysDescending);
 
-} // namespace airbender::ops::cub::device_radix_sort
+} // namespace airbender::cub::device_radix_sort

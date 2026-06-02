@@ -1,6 +1,17 @@
-# `circuit_prover` Profiling with `ncu`
+# Profiling GPU kernels with `ncu`
 
-Start from [`profiling.md`](./profiling.md) for the shared profiling test details and the `TEST_BINARY` setup.
+Generic Nsight Compute methodology for any `gpu/` crate. Start from
+[`profiling.md`](./profiling.md) for the parameter conventions; supply
+`$TEST_BINARY`, `$NVTX_RANGE`, and `$SOURCE_FOLDERS` (plus the crate's
+`GPU_<X>_ENABLE_LINEINFO` for source correlation) from your crate's profiling
+doc. Invoke `$TEST_BINARY` with whatever libtest args select + run the
+kernel-exercising test (e.g. `--exact <test> --ignored --nocapture`).
+
+> Concrete example (the prover): see
+> [`../circuit_prover/docs/profiling.md`](../circuit_prover/docs/profiling.md) —
+> `$NVTX_RANGE = test.gpu.prove.profiled_call@circuit_prover.tests`,
+> `$SOURCE_FOLDERS = gpu/circuit_prover/native`, lineinfo env
+> `GPU_PROVER_ENABLE_LINEINFO`.
 
 ## Quick Kernel Mode
 
@@ -9,25 +20,23 @@ Use the default/basic set for fast turnaround and filter to the kernel of intere
 ```bash
 .agents/bin/with_gpu_lock.sh ncu \
   --nvtx \
-  --nvtx-include 'test.gpu.prove.profiled_call@circuit_prover.tests' \
+  --nvtx-include "$NVTX_RANGE" \
   --set basic \
   --kernel-name-base demangled \
   --kernel-name 'regex:<kernel_regex>' \
   --launch-skip <matching_launches_to_skip> \
   --launch-count <matching_launches_to_collect> \
-  -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_gpu_prover_kernel" \
-  "$TEST_BINARY" \
-  --exact prover::tests::smoke::run_basic_unrolled_proof_job_profile_test \
-  --ignored \
-  --nocapture
+  -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_kernel" \
+  "$TEST_BINARY" --exact <test> --nocapture
 ```
 
 ## Full Picture And Source Correlation
 
-When you need the broader picture, rebuild with line info enabled:
+When you need the broader picture, rebuild with line info enabled (the crate's
+`GPU_<X>_ENABLE_LINEINFO`), then re-capture `$TEST_BINARY`:
 
 ```bash
-GPU_PROVER_ENABLE_LINEINFO=1 cargo test -p circuit_prover run_basic_unrolled_proof_job_profile_test --release --no-run --message-format=json \
+GPU_<X>_ENABLE_LINEINFO=1 cargo test -p <crate> <filter> --release --no-run --message-format=json \
   | python3 .agents/bin/cargo_test_executables.py
 ```
 
@@ -36,9 +45,9 @@ Then profile with source import enabled and the explicit full-section list:
 ```bash
 .agents/bin/with_gpu_lock.sh ncu \
   --nvtx \
-  --nvtx-include 'test.gpu.prove.profiled_call@circuit_prover.tests' \
+  --nvtx-include "$NVTX_RANGE" \
   --import-source yes \
-  --source-folders gpu/circuit_prover/native \
+  --source-folders "$SOURCE_FOLDERS" \
   --section ComputeWorkloadAnalysis \
   --section InstructionStats \
   --section LaunchStats \
@@ -56,21 +65,20 @@ Then profile with source import enabled and the explicit full-section list:
   --section SpeedOfLight_RooflineChart \
   --section WarpStateStats \
   --section WorkloadDistribution \
-  -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_gpu_prover_full" \
-  "$TEST_BINARY" \
-  --exact prover::tests::smoke::run_basic_unrolled_proof_job_profile_test \
-  --ignored \
-  --nocapture
+  -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_full" \
+  "$TEST_BINARY" --exact <test> --nocapture
 ```
 
 ## Dependency-Sensitive Sessions
 
-If the existing ranges are too coarse and cache or inter-kernel dependencies matter, add a temporary raw registered NVTX range near the host-side launch site of the dependent kernel group you want to study. Reuse the `circuit_prover.tests` domain and give the message a session-specific name.
-
-Use the same raw range helper as the profiling test in [`src/prover/tests/smoke.rs`](../src/prover/tests/smoke.rs):
+If the existing ranges are too coarse and cache or inter-kernel dependencies
+matter, add a temporary raw registered NVTX range near the host-side launch site
+of the dependent kernel group you want to study. Give the message a
+session-specific name; `start_registered_range` is `gpu_core`'s
+`primitives::nvtx` helper (re-exported in-crate where used):
 
 ```rust
-let ncu_capture_domain = std::ffi::CStr::from_bytes_with_nul(b"circuit_prover.tests\0").unwrap();
+let ncu_capture_domain = std::ffi::CStr::from_bytes_with_nul(b"<your.domain>\0").unwrap();
 let ncu_capture_message =
     std::ffi::CStr::from_bytes_with_nul(b"profile.tmp.<kernel_group>\0").unwrap();
 let _range = start_registered_range(ncu_capture_domain, ncu_capture_message);
@@ -78,23 +86,18 @@ let _range = start_registered_range(ncu_capture_domain, ncu_capture_message);
 // enqueue the dependent kernel group here
 ```
 
-For this mode, use the same lineinfo-enabled rebuild as the full-picture flow so the range report also includes correlated CUDA source:
-
-```bash
-GPU_PROVER_ENABLE_LINEINFO=1 cargo test -p circuit_prover run_basic_unrolled_proof_job_profile_test --release --no-run --message-format=json \
-  | python3 .agents/bin/cargo_test_executables.py
-```
-
-Then profile that temporary range with range replay, cache flushing disabled, source import enabled, and the explicit full-section list:
+Rebuild with the same lineinfo env as the full-picture flow so the range report
+also includes correlated CUDA source, then profile that temporary range with
+range replay, cache flushing disabled, and the same full-section list:
 
 ```bash
 .agents/bin/with_gpu_lock.sh ncu \
   --nvtx \
-  --nvtx-include 'profile.tmp.<kernel_group>@circuit_prover.tests' \
+  --nvtx-include 'profile.tmp.<kernel_group>@<your.domain>' \
   --replay-mode range \
   --cache-control none \
   --import-source yes \
-  --source-folders gpu/circuit_prover/native \
+  --source-folders "$SOURCE_FOLDERS" \
   --section ComputeWorkloadAnalysis \
   --section InstructionStats \
   --section LaunchStats \
@@ -112,11 +115,8 @@ Then profile that temporary range with range replay, cache flushing disabled, so
   --section SpeedOfLight_RooflineChart \
   --section WarpStateStats \
   --section WorkloadDistribution \
-  -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_gpu_prover_range" \
-  "$TEST_BINARY" \
-  --exact prover::tests::smoke::run_basic_unrolled_proof_job_profile_test \
-  --ignored \
-  --nocapture
+  -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_range" \
+  "$TEST_BINARY" --exact <test> --nocapture
 ```
 
 Remove the temporary raw NVTX instrumentation once the profiling session is complete.

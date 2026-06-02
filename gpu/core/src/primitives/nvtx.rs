@@ -15,23 +15,23 @@ struct NvtxStringRegistration {
 type NvtxDomainHandle = *mut NvtxDomainRegistration;
 type NvtxStringHandle = *mut NvtxStringRegistration;
 
-#[link(name = "gpu_prover_nvtx")]
+#[link(name = "gpu_core_nvtx")]
 unsafe extern "C" {
-    fn gpu_prover_nvtx_domain_create(name: *const c_char) -> NvtxDomainHandle;
-    fn gpu_prover_nvtx_register_string(
+    fn gpu_core_nvtx_domain_create(name: *const c_char) -> NvtxDomainHandle;
+    fn gpu_core_nvtx_register_string(
         domain: NvtxDomainHandle,
         string: *const c_char,
     ) -> NvtxStringHandle;
-    fn gpu_prover_nvtx_domain_ascii_range_start(
+    fn gpu_core_nvtx_domain_ascii_range_start(
         domain: NvtxDomainHandle,
         message: *const c_char,
     ) -> u64;
-    fn gpu_prover_nvtx_registered_range_start(
+    fn gpu_core_nvtx_registered_range_start(
         domain: NvtxDomainHandle,
         string: NvtxStringHandle,
     ) -> u64;
-    fn gpu_prover_nvtx_ascii_range_start(message: *const c_char) -> u64;
-    fn gpu_prover_nvtx_range_end(id: u64);
+    fn gpu_core_nvtx_ascii_range_start(message: *const c_char) -> u64;
+    fn gpu_core_nvtx_range_end(id: u64);
 }
 
 #[derive(Clone, Copy)]
@@ -73,7 +73,7 @@ fn get_or_create_domain(name: &str) -> NvtxDomainHandle {
     }
     let cstring = CString::new(name).expect("NVTX domain name must not contain NUL");
     // SAFETY: `cstring` is a valid NUL-terminated C string for the call duration.
-    let handle = unsafe { gpu_prover_nvtx_domain_create(cstring.as_ptr()) };
+    let handle = unsafe { gpu_core_nvtx_domain_create(cstring.as_ptr()) };
     domains.push(DomainEntry {
         name: name.to_owned(),
         handle,
@@ -104,7 +104,7 @@ fn get_or_create_registration(domain: Option<&str>, message: &str) -> *const Reg
         ptr::null_mut()
     } else {
         // SAFETY: `domain_handle` was produced by NVTX and `message_cstring` is NUL-terminated.
-        unsafe { gpu_prover_nvtx_register_string(domain_handle, message_cstring.as_ptr()) }
+        unsafe { gpu_core_nvtx_register_string(domain_handle, message_cstring.as_ptr()) }
     };
     let entry = Box::new(Registration {
         domain_name: domain.map(str::to_owned),
@@ -125,13 +125,13 @@ pub fn start_range(domain: Option<&str>, message: &str) -> RangeId {
     let reg = unsafe { &*registration };
     let id = if !reg.registered.is_null() {
         // SAFETY: `registered` is a valid NVTX registered-string handle in `domain`.
-        unsafe { gpu_prover_nvtx_registered_range_start(reg.domain, reg.registered) }
+        unsafe { gpu_core_nvtx_registered_range_start(reg.domain, reg.registered) }
     } else if !reg.domain.is_null() {
         // SAFETY: `domain` is valid; `message` is NUL-terminated and lives for 'static.
-        unsafe { gpu_prover_nvtx_domain_ascii_range_start(reg.domain, reg.message.as_ptr()) }
+        unsafe { gpu_core_nvtx_domain_ascii_range_start(reg.domain, reg.message.as_ptr()) }
     } else {
         // SAFETY: `message` is NUL-terminated and lives for 'static.
-        unsafe { gpu_prover_nvtx_ascii_range_start(reg.message.as_ptr()) }
+        unsafe { gpu_core_nvtx_ascii_range_start(reg.message.as_ptr()) }
     };
     RangeId(id)
 }
@@ -139,7 +139,7 @@ pub fn start_range(domain: Option<&str>, message: &str) -> RangeId {
 pub fn end_range(id: RangeId) {
     // SAFETY: `id` was returned by a matching `start_range` call.
     unsafe {
-        gpu_prover_nvtx_range_end(id.0);
+        gpu_core_nvtx_range_end(id.0);
     }
 }
 

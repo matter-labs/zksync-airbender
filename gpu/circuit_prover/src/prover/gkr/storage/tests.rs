@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use cs::definitions::GKRAddress;
 use field::{Mersenne31Field as BF, Mersenne31Quartic as E4};
-use gpu_prover_gkr_model::storage_layout::handcrafted_layout;
+use gpu_gkr_model::storage_layout::handcrafted_layout;
 
 use crate::prover::gkr::GpuGKRStorage;
 use crate::prover::test_utils::make_test_context;

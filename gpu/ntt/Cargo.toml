@@ -9,7 +9,7 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 build = "build.rs"
-links = "gpu_ntt"
+links = "gpu_ntt_native"
 
 [dependencies]
 gpu_core = { workspace = true }
@@ -18,12 +18,22 @@ fft = { workspace = true }
 era_cudart = "=0.156.0"
 era_cudart_sys = "=0.156.0"
 
+[features]
+# Builds the NTT Criterion bench (`benches/ntt.rs`) + its harness (`src/bench.rs`).
+bench = []
+
 [dev-dependencies]
 gpu_core = { workspace = true }
 worker = { workspace = true }
 rand = "0.9"
 serial_test = "3"
+criterion = "0.5"
+era_criterion_cuda = "0.2"
 
 [build-dependencies]
-cmake = "0.1"
-era_cudart_sys = "=0.156.0"
+gpu_native_build = { workspace = true }
+
+[[bench]]
+name = "ntt"
+harness = false
+required-features = ["bench"]

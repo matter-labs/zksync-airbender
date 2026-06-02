@@ -1,6 +1,6 @@
 #include "hash.cuh"
 
-namespace airbender::ops::blake2s {
+namespace airbender::hash {
 
 EXTERN __global__ void ab_gather_rows_kernel(const unsigned *indexes, const unsigned indexes_count, const bool bit_reverse_indexes,
                                              const unsigned log_rows_count, const matrix_getter<bf, ld_modifier::cs> values,
@@ -234,7 +234,7 @@ EXTERN __global__ void ab_gather_tree_caps_kernel(const unsigned long long *src_
 // kernel gather all per-coset cap regions from one contiguous tree backing.
 // The kernel folds the natural→bit-reversed coset reindex inline so the
 // unified-cap destination layout matches the legacy stage1 ordering.
-constexpr unsigned GKR_GATHER_TREE_CAPS_MAX_COSETS = 32;
+[[maybe_unused]] constexpr unsigned GKR_GATHER_TREE_CAPS_MAX_COSETS = 32;
 
 struct gpu_gather_tree_caps_desc {
   u32 coset_count;
@@ -685,4 +685,4 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_from_ntt_kerne
   }
 }
 
-} // namespace airbender::ops::blake2s
+} // namespace airbender::hash

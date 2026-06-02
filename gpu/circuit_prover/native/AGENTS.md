@@ -2,21 +2,11 @@
 
 This tree contains the native CUDA/C++ side of `circuit_prover`.
 
-The parent [`../AGENTS.md`](../AGENTS.md) still applies. This file adds
-native-specific rules for `native/`.
-
-## Formatting
-
-- Format touched native files with [`native/.clang-format`](.clang-format).
-- `cargo fmt` does not format this tree; native changes need `clang-format`.
-
-## Rust / CUDA Interface Stability
-
-- Keep exported kernel symbol names, Rust launcher expectations, and other
-  Rust↔CUDA interface contracts stable unless the task explicitly requires a
-  coordinated change on both sides.
-- If a native change requires a coordinated Rust-side interface update, make
-  that dependency explicit and keep the two sides consistent in the same task.
+The **cluster-wide** native rules — `clang-format` (against
+[`../../.clang-format`](../../.clang-format)) and Rust↔CUDA interface stability —
+live in [`../../AGENTS.md`](../../AGENTS.md); the parent
+[`../AGENTS.md`](../AGENTS.md) also applies. This file adds only what is specific
+to `circuit_prover`'s native code.
 
 ## Upstream Constant Drift
 

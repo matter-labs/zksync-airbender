@@ -1,21 +1,36 @@
 # `circuit_prover` Profiling
 
-Apply the generic GPU workflow from [`../../.agents/gpu_work.md`](../../.agents/gpu_work.md) first.
+The generic kernel-profiling methodology lives at the cluster level:
 
-Tool-specific guides:
+- [`../../docs/profiling.md`](../../docs/profiling.md) — overview + parameters
+- [`../../docs/profiling_ncu.md`](../../docs/profiling_ncu.md) — `ncu` per-kernel profiling
+- [`../../docs/profiling_nsys.md`](../../docs/profiling_nsys.md) — `nsys` timeline / NVTX capture
 
-- [`profiling_nsys.md`](./profiling_nsys.md): `nsys` capture around the existing top-level NVTX range.
-- [`profiling_ncu.md`](./profiling_ncu.md): `ncu` quick kernel profiling, full-picture/source-correlated profiling, and dependency-sensitive range replay.
+This doc supplies the prover-specific values to plug into those guides. Apply the
+generic GPU workflow from [`../../../.agents/gpu_work.md`](../../../.agents/gpu_work.md) first.
+
+## Parameters for the generic guides
+
+| Parameter | Prover value |
+|---|---|
+| `$TEST_BINARY` | the `run_basic_unrolled_proof_job_profile_test` binary (built below) |
+| `$NVTX_RANGE` | `test.gpu.prove.profiled_call@circuit_prover.tests` |
+| `$SOURCE_FOLDERS` | `gpu/circuit_prover/native` |
+| lineinfo env | `GPU_PROVER_ENABLE_LINEINFO` |
+| test-selection args | `--exact prover::tests::smoke::run_basic_unrolled_proof_job_profile_test --ignored --nocapture` |
 
 ## Profiling Test
 
 - Exact libtest name: `prover::tests::smoke::run_basic_unrolled_proof_job_profile_test`
 - The test is `#[ignore]`; pass `--ignored` when running it.
 - When using `--exact`, do not pass a suffix such as `run_basic_unrolled_proof_job_profile_test` or `tests::run_basic_unrolled_proof_job_profile_test`. Use the full libtest name above.
-- The current top-level registered NVTX capture range in [`src/prover/tests/smoke.rs`](../src/prover/tests/smoke.rs) uses:
+- The current top-level registered NVTX capture range in [`../src/prover/tests/smoke.rs`](../src/prover/tests/smoke.rs) uses:
   - domain `circuit_prover.tests`
   - message `test.gpu.prove.profiled_call`
 - That range is intended to capture only the profiled `prove()` call after warmup.
+- `prove()` is enqueue-only, so a CPU NVTX range measures enqueue time — use
+  `nsys stats --report nvtx_gpu_proj_sum` for GPU-projected phase cost (see the
+  generic `nsys` guide).
 
 ## Build The Test Binary
 

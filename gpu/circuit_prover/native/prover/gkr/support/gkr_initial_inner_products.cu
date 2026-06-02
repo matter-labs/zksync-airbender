@@ -2,7 +2,7 @@
 
 using namespace ::airbender::primitives::field;
 
-namespace airbender::ops {
+namespace airbender::prover::gkr {
 
 // One block per inner product. The polys are laid out contiguously starting at
 // `polys_base` with stride `poly_len`: block `b` consumes
@@ -34,4 +34,4 @@ EXTERN __global__ void ab_initial_inner_product_e4_kernel(const e4 *polys_base, 
   }
 }
 
-} // namespace airbender::ops
+} // namespace airbender::prover::gkr
