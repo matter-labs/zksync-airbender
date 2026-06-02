@@ -29,7 +29,7 @@ gpu_cub = { workspace = true }
 gpu_hash = { workspace = true }
 gpu_ntt = { workspace = true }
 gpu_ops = { workspace = true }
-gpu_prover_gkr_model = { workspace = true }
+gpu_gkr_model = { workspace = true }
 
 era_cudart = "=0.156.0"
 era_cudart_sys = "=0.156.0"
@@ -47,7 +47,6 @@ type-map = "0.5"
 
 [features]
 default = ["security_80", "deterministic_pow"]
-bench = []
 deterministic_pow = ["prover/deterministic_pow", "gpu_hash/deterministic_pow"]
 log_gpu_mem_usage = []
 security_80 = ["verifier_common/security_80"]
@@ -55,27 +54,13 @@ security_100 = ["verifier_common/security_100"]
 test_no_inline = ["field/no_inline"]
 
 [build-dependencies]
-cc = "1"
-cmake = "0.1"
-era_cudart_sys = "=0.156.0"
+gpu_native_build = { workspace = true }
 
 [dev-dependencies]
 env_logger = "0.11"
-era_criterion_cuda = "0.2"
-criterion = "0.5"
 itertools = "0.14"
 rand = "0.9"
 serial_test = "3"
 blake2s_u32 = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
-
-[[bench]]
-name = "field"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "ntt"
-harness = false
-required-features = ["bench"]

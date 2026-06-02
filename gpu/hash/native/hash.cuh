@@ -2,7 +2,7 @@
 
 #include "primitives/field.cuh"
 
-namespace airbender::ops::blake2s {
+namespace airbender::hash {
 
 using namespace ::airbender::primitives::field;
 
@@ -95,4 +95,4 @@ constexpr unsigned LOG_WARP_SIZE = 5;
 constexpr unsigned WARP_MASK = WARP_SIZE - 1;
 constexpr u32 FULL_MASK = 0xffffffff;
 
-} // namespace airbender::ops::blake2s
+} // namespace airbender::hash

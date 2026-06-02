@@ -4,7 +4,7 @@
 use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 use era_criterion_cuda::CudaMeasurement;
 use era_cudart::stream::CudaStream;
-use circuit_prover::bench::ntt::NttBenchHarness;
+use gpu_ntt::bench::NttBenchHarness;
 
 // log_n values to sweep. Covers the strategy's full supported range so both
 // the compact-1-pass and 2-pass-compact-initial paths get measured, plus the

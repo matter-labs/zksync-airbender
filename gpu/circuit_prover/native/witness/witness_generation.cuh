@@ -264,13 +264,13 @@ template <class R> struct WitnessProxy {
 };
 
 #define VAR(N) var_##N
-#define CONSTANT(T, N, VALUE) constexpr wrapped_##T VAR(N) = wrapped_##T::new_const(VALUE);
-#define GET_MEMORY_PLACE(T, N, IDX) const wrapped_##T VAR(N) = p.template get_memory_place<wrapped_##T>(IDX);
-#define GET_WITNESS_PLACE(T, N, IDX) const wrapped_##T VAR(N) = p.template get_witness_place<wrapped_##T>(IDX);
-#define GET_SCRATCH_PLACE(T, N, IDX) const wrapped_##T VAR(N) = p.template get_scratch_place<wrapped_##T>(IDX);
-#define GET_ORACLE_VALUE(T, N, P) const wrapped_##T VAR(N) = p.get_oracle_value_##T(P);
+#define CONSTANT(T, N, VALUE) [[maybe_unused]] constexpr wrapped_##T VAR(N) = wrapped_##T::new_const(VALUE);
+#define GET_MEMORY_PLACE(T, N, IDX) [[maybe_unused]] const wrapped_##T VAR(N) = p.template get_memory_place<wrapped_##T>(IDX);
+#define GET_WITNESS_PLACE(T, N, IDX) [[maybe_unused]] const wrapped_##T VAR(N) = p.template get_witness_place<wrapped_##T>(IDX);
+#define GET_SCRATCH_PLACE(T, N, IDX) [[maybe_unused]] const wrapped_##T VAR(N) = p.template get_scratch_place<wrapped_##T>(IDX);
+#define GET_ORACLE_VALUE(T, N, P) [[maybe_unused]] const wrapped_##T VAR(N) = p.get_oracle_value_##T(P);
 #define LOOKUP_TABLE_OFFSETS(...) static constexpr __device__ u32 lookup_table_offsets[] = {__VA_ARGS__};
-#define LOOKUP_OUTPUTS(N, NO) wrapped_f VAR(N)[NO] = {};
+#define LOOKUP_OUTPUTS(N, NO) [[maybe_unused]] wrapped_f VAR(N)[NO] = {};
 #define LOOKUP(N, NI, NO, TID, LMI, ...)                                                                                                                       \
   LOOKUP_OUTPUTS(N, NO) {                                                                                                                                      \
     wrapped_f inputs[] = {__VA_ARGS__};                                                                                                                        \
@@ -286,37 +286,37 @@ template <class R> struct WitnessProxy {
     wrapped_f inputs[] = {__VA_ARGS__};                                                                                                                        \
     p.template maybe_lookup<NI, NO>(inputs, VAR(TID), VAR(M), VAR(N), lookup_table_offsets);                                                                   \
   }
-#define ACCESS_LOOKUP(N, O, IDX) const wrapped_f VAR(N) = VAR(O)[IDX];
-#define FROM(T, N, I) const wrapped_##T VAR(N) = wrapped_##T::from(VAR(I));
-#define B_FROM_INTEGER_EQUALITY(N, LHS, RHS) const wrapped_b VAR(N) = wrapped_b::from_integer_equality(VAR(LHS), VAR(RHS));
-#define B_FROM_INTEGER_CARRY(N, LHS, RHS) const wrapped_b VAR(N) = wrapped_b::from_integer_carry(VAR(LHS), VAR(RHS));
-#define B_FROM_INTEGER_BORROW(N, LHS, RHS) const wrapped_b VAR(N) = wrapped_b::from_integer_borrow(VAR(LHS), VAR(RHS));
-#define B_FROM_FIELD_EQUALITY(N, LHS, RHS) const wrapped_b VAR(N) = wrapped_b::from_field_equality(VAR(LHS), VAR(RHS));
-#define AND(N, LHS, RHS) const wrapped_b VAR(N) = wrapped_b::and_(VAR(LHS), VAR(RHS));
-#define OR(N, LHS, RHS) const wrapped_b VAR(N) = wrapped_b::or_(VAR(LHS), VAR(RHS));
-#define SELECT(T, N, S, TRUE, FALSE) const wrapped_##T VAR(N) = wrapped_b::select(VAR(S), VAR(TRUE), VAR(FALSE));
+#define ACCESS_LOOKUP(N, O, IDX) [[maybe_unused]] const wrapped_f VAR(N) = VAR(O)[IDX];
+#define FROM(T, N, I) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::from(VAR(I));
+#define B_FROM_INTEGER_EQUALITY(N, LHS, RHS) [[maybe_unused]] const wrapped_b VAR(N) = wrapped_b::from_integer_equality(VAR(LHS), VAR(RHS));
+#define B_FROM_INTEGER_CARRY(N, LHS, RHS) [[maybe_unused]] const wrapped_b VAR(N) = wrapped_b::from_integer_carry(VAR(LHS), VAR(RHS));
+#define B_FROM_INTEGER_BORROW(N, LHS, RHS) [[maybe_unused]] const wrapped_b VAR(N) = wrapped_b::from_integer_borrow(VAR(LHS), VAR(RHS));
+#define B_FROM_FIELD_EQUALITY(N, LHS, RHS) [[maybe_unused]] const wrapped_b VAR(N) = wrapped_b::from_field_equality(VAR(LHS), VAR(RHS));
+#define AND(N, LHS, RHS) [[maybe_unused]] const wrapped_b VAR(N) = wrapped_b::and_(VAR(LHS), VAR(RHS));
+#define OR(N, LHS, RHS) [[maybe_unused]] const wrapped_b VAR(N) = wrapped_b::or_(VAR(LHS), VAR(RHS));
+#define SELECT(T, N, S, TRUE, FALSE) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_b::select(VAR(S), VAR(TRUE), VAR(FALSE));
 #define SELECT_VAR(S, TRUE, FALSE) wrapped_b::select(VAR(S), VAR(TRUE), VAR(FALSE))
-#define NEGATE(N, I) const wrapped_b VAR(N) = wrapped_b::negate(VAR(I));
-#define ADD(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::add(VAR(LHS), VAR(RHS));
-#define SUB(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::sub(VAR(LHS), VAR(RHS));
-#define MUL(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::mul(VAR(LHS), VAR(RHS));
-#define MUL_ADD(T, N, M0, M1, A) const wrapped_##T VAR(N) = wrapped_##T::mul_add(VAR(M0), VAR(M1), VAR(A));
-#define INV(T, N, I) const wrapped_##T VAR(N) = wrapped_##T::inv(VAR(I));
-#define SHL(T, N, I, M) const wrapped_##T VAR(N) = wrapped_##T::shl(VAR(I), M);
-#define SHR(T, N, I, M) const wrapped_##T VAR(N) = wrapped_##T::shr(VAR(I), M);
-#define INOT(T, N, I) const wrapped_##T VAR(N) = wrapped_##T::inot(VAR(I));
-#define LOWEST_BITS(T, N, I, M) const wrapped_##T VAR(N) = wrapped_##T::lowest_bits(VAR(I), M);
-#define MUL_LOW(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::mul_low(VAR(LHS), VAR(RHS));
-#define MUL_HIGH(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::mul_high(VAR(LHS), VAR(RHS));
-#define DIV(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::div(VAR(LHS), VAR(RHS));
-#define REM(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::rem(VAR(LHS), VAR(RHS));
-#define SIGNED_MUL_LOW(N, LHS, RHS) const wrapped_u32 VAR(N) = wrapped_i32::signed_mul_low<wrapped_u32>(VAR(LHS), VAR(RHS));
-#define SIGNED_MUL_HIGH(N, LHS, RHS) const wrapped_u32 VAR(N) = wrapped_i32::signed_mul_high<wrapped_u32>(VAR(LHS), VAR(RHS));
-#define MIXED_MUL_LOW(N, LHS, RHS) const wrapped_u32 VAR(N) = wrapped_i32::mixed_mul_low<wrapped_u32>(VAR(LHS), VAR(RHS));
-#define MIXED_MUL_HIGH(N, LHS, RHS) const wrapped_u32 VAR(N) = wrapped_i32::mixed_mul_high<wrapped_u32>(VAR(LHS), VAR(RHS));
-#define IAND(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::iand(VAR(LHS), VAR(RHS));
-#define IOR(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::ior(VAR(LHS), VAR(RHS));
-#define IXOR(T, N, LHS, RHS) const wrapped_##T VAR(N) = wrapped_##T::ixor(VAR(LHS), VAR(RHS));
+#define NEGATE(N, I) [[maybe_unused]] const wrapped_b VAR(N) = wrapped_b::negate(VAR(I));
+#define ADD(T, N, LHS, RHS) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::add(VAR(LHS), VAR(RHS));
+#define SUB(T, N, LHS, RHS) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::sub(VAR(LHS), VAR(RHS));
+#define MUL(T, N, LHS, RHS) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::mul(VAR(LHS), VAR(RHS));
+#define MUL_ADD(T, N, M0, M1, A) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::mul_add(VAR(M0), VAR(M1), VAR(A));
+#define INV(T, N, I) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::inv(VAR(I));
+#define SHL(T, N, I, M) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::shl(VAR(I), M);
+#define SHR(T, N, I, M) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::shr(VAR(I), M);
+#define INOT(T, N, I) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::inot(VAR(I));
+#define LOWEST_BITS(T, N, I, M) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::lowest_bits(VAR(I), M);
+#define MUL_LOW(T, N, LHS, RHS) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::mul_low(VAR(LHS), VAR(RHS));
+#define MUL_HIGH(T, N, LHS, RHS) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::mul_high(VAR(LHS), VAR(RHS));
+#define DIV(T, N, LHS, RHS) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::div(VAR(LHS), VAR(RHS));
+#define REM(T, N, LHS, RHS) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::rem(VAR(LHS), VAR(RHS));
+#define SIGNED_MUL_LOW(N, LHS, RHS) [[maybe_unused]] const wrapped_u32 VAR(N) = wrapped_i32::signed_mul_low<wrapped_u32>(VAR(LHS), VAR(RHS));
+#define SIGNED_MUL_HIGH(N, LHS, RHS) [[maybe_unused]] const wrapped_u32 VAR(N) = wrapped_i32::signed_mul_high<wrapped_u32>(VAR(LHS), VAR(RHS));
+#define MIXED_MUL_LOW(N, LHS, RHS) [[maybe_unused]] const wrapped_u32 VAR(N) = wrapped_i32::mixed_mul_low<wrapped_u32>(VAR(LHS), VAR(RHS));
+#define MIXED_MUL_HIGH(N, LHS, RHS) [[maybe_unused]] const wrapped_u32 VAR(N) = wrapped_i32::mixed_mul_high<wrapped_u32>(VAR(LHS), VAR(RHS));
+#define IAND(T, N, LHS, RHS) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::iand(VAR(LHS), VAR(RHS));
+#define IOR(T, N, LHS, RHS) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::ior(VAR(LHS), VAR(RHS));
+#define IXOR(T, N, LHS, RHS) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::ixor(VAR(LHS), VAR(RHS));
 #define IF(S, T)                                                                                                                                               \
   if (VAR(S).inner) {                                                                                                                                          \
     T                                                                                                                                                          \

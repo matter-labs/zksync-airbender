@@ -4,7 +4,7 @@
 
 using namespace ::cub;
 
-namespace airbender::ops::cub::device_reduce {
+namespace airbender::cub::device_reduce {
 
 struct offset_iterator {
 #if CUB_VERSION >= 200300
@@ -37,4 +37,4 @@ SEGMENTED_REDUCE(add, e4);
 SEGMENTED_REDUCE(mul, bf);
 SEGMENTED_REDUCE(mul, e4);
 
-} // namespace airbender::ops::cub::device_reduce
+} // namespace airbender::cub::device_reduce
