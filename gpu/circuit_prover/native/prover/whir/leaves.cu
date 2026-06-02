@@ -5,12 +5,12 @@
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
-using ::airbender::ops::blake2s::bitreverse_low_bits;
-using ::airbender::ops::blake2s::BLOCK_SIZE;
-using ::airbender::ops::blake2s::compress;
-using ::airbender::ops::blake2s::digest;
-using ::airbender::ops::blake2s::initialize;
-using ::airbender::ops::blake2s::STATE_SIZE;
+using ::airbender::hash::bitreverse_low_bits;
+using ::airbender::hash::BLOCK_SIZE;
+using ::airbender::hash::compress;
+using ::airbender::hash::digest;
+using ::airbender::hash::initialize;
+using ::airbender::hash::STATE_SIZE;
 
 namespace airbender::prover::whir {
 

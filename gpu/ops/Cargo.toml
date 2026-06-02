@@ -9,7 +9,7 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 build = "build.rs"
-links = "gpu_ops"
+links = "gpu_ops_native"
 
 [dependencies]
 gpu_core = { workspace = true }
@@ -31,5 +31,4 @@ rand = "0.9"
 serial_test = "3"
 
 [build-dependencies]
-cmake = "0.1"
-era_cudart_sys = "=0.156.0"
+gpu_native_build = { workspace = true }

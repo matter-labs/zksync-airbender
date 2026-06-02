@@ -16,3 +16,6 @@ mod upstream;
 
 pub mod allocator;
 pub mod primitives;
+
+#[cfg(feature = "bench")]
+pub mod bench;

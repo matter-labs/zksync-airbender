@@ -6,7 +6,7 @@
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
 
-namespace airbender::ops::cub {
+namespace airbender::cub {
 
 #define BINARY_OP(op, init_fn)                                                                                                                                 \
   template <typename T> struct op {                                                                                                                            \
@@ -27,4 +27,4 @@ template <> struct mul<u32> {
   static HOST_DEVICE_FORCEINLINE u32 init() { return 1; }
 };
 
-} // namespace airbender::ops::cub
+} // namespace airbender::cub

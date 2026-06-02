@@ -54,12 +54,17 @@ summary — the contract document is the source of truth.
 
 ## Constraints
 
-- Do not modify CMake/CUDA flags.
-- Do not change build configuration behavior unless explicitly requested.
+- The CUDA build is centralized in the shared `gpu_native_build` helper
+  (`gpu/native_build/`); `build/main.rs` is a thin wrapper that names the
+  archive and enables `deterministic_pow`. Behavioral build changes are fine
+  when the task calls for them: change the shared helper for cross-crate build
+  behavior, `build/main.rs` only for circuit_prover-specific wiring.
+- Keep CUDA compile flags (arch, `CUDA_STANDARD`, `--expt-relaxed-constexpr`,
+  …) aligned with the other kernel crates unless a divergence is intended.
 
 ## Key Files and Structure
 
-- `build/main.rs`: build script that wires cmake/CUDA integration.
+- `build/main.rs`: thin build script delegating to the shared `gpu_native_build` helper.
 - `native/`: native CUDA/C++ sources and build artifacts managed by the build script.
 - `src/`: crate modules.
 - `src/upstream.rs`: single-file manifest re-exporting every item the crate
@@ -100,70 +105,12 @@ check) — keep it true by review.
 
 Top level: `allocator < primitives < ops < witness < prover < execution`.
 
-The lower layers are being extracted into standalone crates (the GPU-crate
-re-architecture):
-- **`gpu_core`** = `allocator` + `primitives` (pure GPU substrate: static
-  allocators, device_structures/DeviceMatrix, accessors, field, callbacks, nvtx,
-  machine_type, utils). It also OWNS the base CUDA headers (`native_headers/`:
-  field/memory/ptx/vectorized/common `.cuh`) and exports their include dir via
-  `links = "gpu_core_native"` → kernel crates read `DEP_GPU_CORE_NATIVE_INCLUDE`.
-  Its `build.rs` is C-only (compiles `native/nvtx.c`); it owns no CUDA kernels.
-  To keep it lean, `circuit_type` was relocated → `witness` (it pulled `setups`).
-- **`gpu_ntt`** = the NTT subsystem (`ntt` launchers + `ntt_twiddles` + `native/ntt`
-  CUDA), with its OWN `CMakeLists.txt` + `build.rs` producing a device-linked
-  `gpu_ntt_archive`; `circuit_prover` drops `gpu_prover_ntt` and links gpu_ntt's
-  archive via build-script propagation. Co-locating the `cuda_struct_and_stub!`
-  twiddle stubs with their `native/ntt __constant__` defs fixes the NTT
-  cross-wall pitfall. Its tests are self-contained (raw era_cudart allocations +
-  `DeviceContext::create`, no `ProverContext`).
-
-- **`gpu_ops`** = the generic math/transform kernels (`simple`, `powers`,
-  `squaring`, `transpose`, `bit_reverse`, `batch_inv`) with its own
-  `gpu_ops_archive`. `bit_reverse` is **size-generic**: `bit_reverse_in_place<T>`
-  takes any `T` and dispatches on `size_of::<T>()` (4/16/32 bytes), reinterpreting
-  the element onto an internal per-size kernel binding — so it carries no blake2s
-  vocabulary and callers (incl. blake2s's `Digest = [u32; 8]`) need no per-type
-  impl. The reinterpret **asserts** the runtime device pointer is aligned to the
-  payload size (native `e4`/`dg` are `__align__(16)`/`__align__(32)`). Test-only
-  helpers consumed by `circuit_prover`'s tests (`batch_inv`, `set_by_ref`,
-  `get_powers_by_val`) are `#[doc(hidden)] pub`, not `#[cfg(test)]` — a
-  dependency's `cfg(test)` items are invisible to consumers.
-
-- **`gpu_hash`** = blake2s hashing + Merkle (`blake2s/mod.rs`) + `gather` +
-  `transcript` (Fiat-Shamir commit/squeeze/PoW), with its own `gpu_hash_archive`
-  (`native/hash.cu`, `gather.cu`). It **exports `hash.cuh`'s include dir** via
-  `links = "gpu_hash_native"` → `circuit_prover` reads `DEP_GPU_HASH_NATIVE_INCLUDE`
-  so the blake2s-dependent kernels that stayed here (`gkr_ops.cu`, `leaves.cu`)
-  resolve `#include "hash.cuh"`. Deps: `gpu_core` + `gpu_ops`. The GKR/WHIR
-  **protocol** kernels lifted OUT of `ops/blake2s/` to **`ops::gkr_ops`** (stays
-  in `circuit_prover`, Track 3); the 6 fns re-pointed in 12
-  consumers from `ops::blake2s::` to `ops::gkr_ops::`. PoW determinism is
-  feature-propagated: `gpu_hash` has a `deterministic_pow` feature →
-  `AB_DETERMINISTIC_POW` in its CMake, enabled by `circuit_prover/deterministic_pow`
-  (without it the moved `ab_blake2s_pow_kernel` runs a non-deterministic search
-  → silent proof-parity divergence that passes compile + breadth). Test helpers
-  consumed by `circuit_prover`'s tests (`gather_leaf_rows`, `gather_merkle_paths_*`)
-  are `#[doc(hidden)] pub`. The transcript parity test verifies against the host
-  `prover::transcript::Blake2sTranscript`, so `prover` is a **dev-only** dep of
-  `gpu_hash` (production + downstream stay `gpu_core`/`gpu_ops`-only).
-
-- **`gpu_cub`** = the CUB-library wrappers (`device_reduce`/segmented,
-  `device_radix_sort`, `device_run_length_encode` + `CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2`)
-  with its own `gpu_cub_archive` (`native/`: the 4 `.cu` + cub-local `common.cuh`,
-  which include `<cub/device/…>` from the CUDA toolkit + gpu_core base headers).
-  The compile-heavy CCCL/CUB template instantiations are now isolated to this
-  crate (a build-speed win). Fully **self-contained** — it launches only its own
-  archive's kernels, so no header export / `DEP_*` is needed (unlike gpu_hash).
-  Dep: `gpu_core`.
-
-`circuit_prover` consumes these via facade re-exports (`crate::{allocator, primitives}`,
-`crate::ops::{ntt, ntt_twiddles}`, `crate::ops::{simple, powers, squaring,
-transpose, bit_reverse, batch_inv}`, `crate::ops::blake2s`, `crate::ops::cub`),
-so existing in-crate paths are unchanged. **The kernel-crate layer is now fully
-extracted** (`gpu_core` < {`gpu_ntt`, `gpu_ops`, `gpu_hash`, `gpu_cub`}); the
-only `native/` left in `circuit_prover` is the GKR/WHIR protocol + witness CUDA.
-Next: Track 3 = execution/circuit top-split (moves `ops::gkr_ops` + orchestration
-into a new `circuit_prover` crate).
+The crate stack itself — which modules became `gpu_core` / `gpu_ntt` /
+`gpu_ops` / `gpu_hash` / `gpu_cub` / `execution_prover`, the build +
+`_native`-naming + C++-namespace + bench conventions, and the native-code
+(clang-format / Rust↔CUDA interface-stability) rules — is documented once for
+the whole cluster in [`../AGENTS.md`](../AGENTS.md). The rest of this section
+covers only `circuit_prover`'s own internal module layering.
 
 Within `prover`: `{proof_layout, config} < {gkr, whir, trace} < proof` (with
 `proof/orchestration` at the top of `proof`).
@@ -177,7 +124,7 @@ Within `prover`: `{proof_layout, config} < {gkr, whir, trace} < proof` (with
 - `gkr`, `whir`, `trace` may depend on `proof_layout`/`config` and on
   `primitives`/`ops`/`witness`, but MUST NOT depend on `proof`.
 - The GPU-free CPU model of the GKR layout (address audit, storage layout,
-  circuit transform) lives in the standalone `gpu_prover_gkr_model` crate
+  circuit transform) lives in the standalone `gpu_gkr_model` crate
   (deps: `cs` + `field`; no CUDA). `gkr` consumes it via the
   `gkr::{gkr_address_audit, storage_layout, transform}` facade re-exports.
 - `proof` (incl. `proof/orchestration`) is the top of `prover`: it depends down
@@ -210,19 +157,20 @@ protocol kernels in its `gkr_ops`/`transcript`/`gather` submodules).
 ## Formatting
 
 - Rust: `cargo fmt`.
-- Native CUDA/C++ under `native/`: `clang-format` against [`native/.clang-format`](native/.clang-format). `cargo fmt` does not cover this; CI does not enforce it.
+- Native CUDA/C++ under `native/`: `clang-format` against the cluster-wide [`../.clang-format`](../.clang-format) (see [`../AGENTS.md`](../AGENTS.md)). `cargo fmt` does not cover this; CI does not enforce it.
 - A change that touches both languages needs both.
 
 ## Build Script
 
-- Unless explicitly requested, changes in `build/main.rs` must be non-behavioral.
+- `build/main.rs` is a thin wrapper over `gpu_native_build::CudaArchive`. The
+  shared CUDA build logic (CMake config, link directives, `DEP_*_INCLUDE`
+  forwarding, `no_cuda` handling) lives in `gpu/native_build/`; edit it there
+  when a change should apply to all kernel crates.
 
 ## Design Documents
 
 - `docs/gpu_scheduling_contract.md`: Async scheduling contract for GPU stream-ordered prover work (GKR, WHIR) — see the "GPU Scheduling Contract" section above for the summary; this is the full source of truth.
-- `docs/profiling.md`: Shared `circuit_prover` profiling setup, including the profiling test, NVTX identifiers, and test-binary workflow.
-- `docs/profiling_nsys.md`: `circuit_prover` `nsys` workflow around the existing top-level NVTX capture range.
-- `docs/profiling_ncu.md`: `circuit_prover` `ncu` workflow for quick kernel profiling, full-picture/source-correlated profiling, and dependency-sensitive range replay.
+- `docs/profiling.md`: prover-specific profiling parameters + the profiling test / NVTX range / test-binary build. The generic per-kernel `ncu`/`nsys` methodology is cluster-level in [`../docs/`](../docs/) (`gpu/docs/profiling{,_ncu,_nsys}.md`).
 
 ## Code Notes
 
