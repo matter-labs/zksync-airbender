@@ -23,8 +23,8 @@ use crate::upstream::{
 use era_cudart::slice::DeviceSlice;
 
 pub(crate) mod kernels;
-pub(crate) use kernels::*;
 pub use kernels::GpuGKRSetupHost;
+pub(crate) use kernels::*;
 
 pub struct GpuGKRSetupTransfer<'a> {
     pub(crate) host: Arc<GpuGKRSetupHost>,
