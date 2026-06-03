@@ -5,7 +5,8 @@ Generic Nsight Compute methodology for any `gpu/` crate. Start from
 `$TEST_BINARY`, `$NVTX_RANGE`, and `$SOURCE_FOLDERS` (plus the crate's
 `GPU_<X>_ENABLE_LINEINFO` for source correlation) from your crate's profiling
 doc. Invoke `$TEST_BINARY` with whatever libtest args select + run the
-kernel-exercising test (e.g. `--exact <test> --ignored --nocapture`).
+kernel-exercising test (e.g. `--exact <test> --nocapture`, adding `--ignored`
+only if that test is marked `#[ignore]`).
 
 > Concrete example (the prover): see
 > [`../circuit_prover/docs/profiling.md`](../circuit_prover/docs/profiling.md) —
