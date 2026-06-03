@@ -4,12 +4,15 @@ use crate::messages::{
 };
 use crate::precomputations::CircuitPrecomputations;
 use crate::A;
-use gpu_core::primitives::field::{BF, E4};
 use circuit_prover::prover::gkr::setup::GpuGKRSetupTransfer;
-use circuit_prover::prover::proof::{canonical_inits_and_teardowns_top_bits, prove, GpuGKRProofJob};
+use circuit_prover::prover::proof::{
+    canonical_inits_and_teardowns_top_bits, prove, GpuGKRProofJob,
+};
 use circuit_prover::prover::trace::decoder::DecoderTableTransfer;
 use circuit_prover::prover::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
-use circuit_prover::prover::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
+use circuit_prover::prover::trace::memory_transfer::{
+    GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost,
+};
 use circuit_prover::prover::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use circuit_prover::prover::{ProverContext, ProverContextConfig};
 use circuit_prover::witness::circuit_type::CircuitType;
@@ -17,6 +20,7 @@ use circuit_prover::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
+use gpu_core::primitives::field::{BF, E4};
 use log::{debug, error, info, trace};
 
 use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel};
@@ -85,7 +89,9 @@ struct PhaseOne<'a> {
 /// `Transfer`. Variant matches the eventual phase-2 job type.
 enum PhaseOneInputs<'a> {
     Proof(circuit_prover::prover::proof::inputs::GpuGKRProofTransfer<'a, A>),
-    MemoryCommitment(circuit_prover::prover::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>),
+    MemoryCommitment(
+        circuit_prover::prover::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>,
+    ),
 }
 
 /// Phase-2 state: GPU job enqueued, awaiting `finish()`.
@@ -260,9 +266,10 @@ fn schedule_phase_one<'a>(
         // `prover_config` the commit phase actually used, so use the
         // prover_config geometry directly here.
         let prover_config =
-            circuit_prover::prover::config::prover_config(circuit_type, state.security_level).expect(
-                "ExecutionProverConfiguration validated GPU security level before GPU work",
-            );
+            circuit_prover::prover::config::prover_config(circuit_type, state.security_level)
+                .expect(
+                    "ExecutionProverConfiguration validated GPU security level before GPU work",
+                );
         let log_lde_factor = prover_config.lde_factor.trailing_zeros();
         let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
         let memory_caps = state
@@ -323,8 +330,9 @@ fn enqueue_phase_two<'a>(
     let batch_id = state.batch_id;
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
-    let prover_config = circuit_prover::prover::config::prover_config(circuit_type, state.security_level)
-        .expect("ExecutionProverConfiguration validated GPU security level before GPU work");
+    let prover_config =
+        circuit_prover::prover::config::prover_config(circuit_type, state.security_level)
+            .expect("ExecutionProverConfiguration validated GPU security level before GPU work");
     let final_trace_size_log_2 = 4usize;
     let compiled_circuit_arc = state.precomputations.compiled_circuit.clone();
 

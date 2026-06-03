@@ -33,16 +33,15 @@ use crate::prover::gkr::backward::{eq_group_tables_len, launch_build_eq_values_f
 use crate::prover::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
 use crate::prover::proof_layout::ProofLayout;
 use crate::prover::trace::holder::TraceHolder;
+#[cfg(test)]
+use crate::prover::whir::kernels::whir_fold_split_half_in_place;
 use crate::prover::whir::kernels::{
     accumulate_whir_base_columns_with_serialized_bf, batched_eq_factor_scratch_lens,
     deserialize_whir_e4_columns, launch_batched_accumulate_eq_samples,
     launch_split_accumulate_eq_samples, launch_whir_three_point_partials,
     partially_evaluate_monomials_by_ref, split_eq_factor_scratch_lens,
-    whir_fold_split_half_in_place_pair,
-    whir_fold_split_half_in_place_vectorized,
+    whir_fold_split_half_in_place_pair, whir_fold_split_half_in_place_vectorized,
 };
-#[cfg(test)]
-use crate::prover::whir::kernels::whir_fold_split_half_in_place;
 use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::prover::ProverContext;
 use crate::upstream::FieldExtension;

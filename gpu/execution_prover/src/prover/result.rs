@@ -3,10 +3,10 @@ use std::collections::BTreeMap;
 use common_constants::TimestampScalar;
 
 use super::BinaryHandle;
-use gpu_core::primitives::field::{BF, E4};
 use crate::upstream::{
     DefaultTreeConstructor, FinalRegisterValue, GKRProof, MerkleTreeCapVarLength,
 };
+use gpu_core::primitives::field::{BF, E4};
 
 pub struct CommitMemoryResult {
     pub final_register_values: [FinalRegisterValue; 32],

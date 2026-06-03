@@ -11,11 +11,11 @@ use crate::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
 use crate::primitives::field::{BF, E4};
+#[cfg(test)]
+use crate::primitives::utils::GetChunksCount;
 use crate::primitives::utils::{
     get_grid_block_dims_for_threads_count, get_grid_block_dims_for_warp_groups, WARP_SIZE,
 };
-#[cfg(test)]
-use crate::primitives::utils::GetChunksCount;
 use crate::prover::gkr::backward::{
     eq_group_count, gkr_dim_reducing_launch_config, make_eq_sizes, GkrEqSizes,
     GKR_EQ_GROUP_TABLE_LEN, GKR_EQ_HIGH_SLOTS,

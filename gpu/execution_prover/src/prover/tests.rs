@@ -1,6 +1,6 @@
 use super::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration};
-use gpu_core::primitives::machine_type::MachineType;
 use crate::upstream::{read_binary, SecurityLevel};
+use gpu_core::primitives::machine_type::MachineType;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use serial_test::serial;
 

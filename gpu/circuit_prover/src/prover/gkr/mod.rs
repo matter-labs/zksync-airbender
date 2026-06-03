@@ -15,11 +15,11 @@ pub(crate) mod support;
 
 pub(crate) use backward::kernels::BackwardKernels;
 pub(crate) use forward::kernels::ForwardKernels;
-#[cfg(test)]
-pub(crate) use gpu_kernels::GpuKernels;
 pub(crate) use gpu_gkr_model::address_audit as gkr_address_audit;
 pub(crate) use gpu_gkr_model::storage_layout;
 pub(crate) use gpu_gkr_model::transform;
+#[cfg(test)]
+pub(crate) use gpu_kernels::GpuKernels;
 pub(crate) use setup::kernels::SetupKernels;
 pub(crate) use storage_types::*;
 pub(crate) use support::eval_recipes;
