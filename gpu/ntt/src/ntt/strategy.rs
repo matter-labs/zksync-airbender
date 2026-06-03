@@ -39,13 +39,16 @@ pub enum NttKernelKind {
         stages: usize,
         log_instances_per_block: usize,
     },
-    /// Streaming multi-coset single-column 1-pass kernel for `log_n in [3, 8]`.
-    /// Each block walks a contiguous range of cosets with a register-resident
-    /// running shift update `m' *= D`; setup cost amortizes across many cosets
-    /// in flight. Caller loops over columns externally. Requires
-    /// `num_cosets >= cosets_per_iter(log_n) = 256 >> (log_n - 3)`.
-    MonomialsToEvalsStreaming {
+    /// Unified DIT (decimation-in-time) multi-coset NTT engine for `log_n in
+    /// [2, 13]`. Single-pass (`log_n <= log_vpt + 5`) or two-pass (`log_n >
+    /// log_vpt + 5`) is determined by `(log_n, log_vpt)`; `log_vpt` is 2 (vec4)
+    /// or 3 (vec8), chosen by the [`DitChoice`] selector from device arch +
+    /// dynamic-smem budget. Replaces the streaming kernel family at production
+    /// scale. The launcher borrows precomputed CLEAN/COUPLED triangles from the
+    /// `DeviceContext`, so dispatch threads `&DeviceContext` to it.
+    MonomialsToEvalsDit {
         stages: usize,
+        log_vpt: usize,
     },
     /// Smem-packed multi-NTT-per-block 1-pass kernel for `log_n in [6, 8]`.
     /// Each block holds `1 << log_instances_per_block` independent NTT
@@ -136,37 +139,148 @@ pub fn select_ntt_strategy(
     }
 }
 
-/// Pick the smem-packed multi-NTT-per-block kernel's `log_instances_per_block`
-/// when it beats the compact 1-pass kernel; `None` means fall back to compact.
+/// Which variant of the unified DIT NTT engine to launch over the streaming
+/// `log_n in [2, 13]` range. `V8*` uses vec8 (256-bit loads, `log_vpt = 3`),
+/// `V4*` uses vec4 (`log_vpt = 2`); `*Single` / `*TwoPass` is the kernel pass
+/// structure (`log_n <= log_vpt + 5` is single-pass). `CompactFallback` means
+/// the DIT engine declines (only `log_n = 13` on non-v8 hardware) and the
+/// strategy falls through to the two-pass-compact arm.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DitChoice {
+    V4Single,
+    V8Single,
+    V4TwoPass,
+    V8TwoPass,
+    CompactFallback,
+}
+
+impl DitChoice {
+    /// VPT exponent: vec4 variants use `log_vpt = 2`, vec8 use `log_vpt = 3`.
+    /// `CompactFallback` has no VPT; calling this on it is a logic error.
+    fn log_vpt(self) -> usize {
+        match self {
+            DitChoice::V4Single | DitChoice::V4TwoPass => 2,
+            DitChoice::V8Single | DitChoice::V8TwoPass => 3,
+            DitChoice::CompactFallback => {
+                unreachable!("CompactFallback has no log_vpt")
+            }
+        }
+    }
+
+    /// Test-only: production routing recomputes single-vs-two-pass by matching
+    /// variants inside `dit_is_applicable`, so this is exercised only by the
+    /// selector unit tests.
+    #[cfg(test)]
+    fn is_two_pass(self) -> bool {
+        matches!(self, DitChoice::V4TwoPass | DitChoice::V8TwoPass)
+    }
+}
+
+/// Dynamic-smem footprint (bytes) the v8 (`log_vpt = 3`) DIT engine needs at
+/// `log_n`. Two-pass (`log_n in [9, 13]`) reuses the launcher's
+/// `ntt_two_pass_smem_bytes`; single-pass (`log_n in [3, 8]`) holds one clean
+/// butterfly triangle (`(N - 1)` cells of `BF`).
+fn v8_smem_bytes(log_n: usize) -> usize {
+    const LOG_VPT: usize = 3;
+    if log_n > LOG_VPT + 5 {
+        crate::ntt::dit::ntt_two_pass_smem_bytes(log_n as u32, LOG_VPT as u32)
+    } else {
+        ((1usize << log_n) - 1) * size_of::<BF>()
+    }
+}
+
+/// v8 (vec8 / 256-bit loads) is preferred but requires CC >= 10 (Blackwell+)
+/// AND its dynamic smem must fit either the default 48 KiB or the device's
+/// opt-in cap.
+fn v8_viable(log_n: usize, cc_major: u32, optin_limit: usize) -> bool {
+    let smem = v8_smem_bytes(log_n);
+    ((smem <= 49152) || (smem <= optin_limit)) && cc_major >= 10
+}
+
+/// Pure DIT-variant selector (Decision D4). Extracted from device-property
+/// reads so the truth table is unit-testable without a GPU.
 ///
-/// The kernel uses `HALF_N << log_ipb = (1 << (log_n - 1 + log_ipb))` threads
-/// per block. We size IPB so block_threads = 256 (the compact kernel's thread
-/// count) for log_n in [6, 8] -- this restores full SM utilization at the
-/// log_n range where compact leaves >= 50% of the block idle. log_n >= 9
-/// already saturates the block at IPB=1, so the smem-packed variant offers
-/// no win there. The kernel's `gridDim.x = (num_cosets * num_columns) >>
-/// log_ipb` requires the workload to be a power-of-two multiple of IPB.
-/// Streaming multi-coset NTT applicability gate: requires `log_n in [2, 8]`
-/// and `num_cosets >= cosets_per_iter` so the kernel has at least one full
-/// block iteration of work.
+/// - `log_n == 2`: v8 needs `log_n >= 3`, so always `V4Single`.
+/// - `log_n == 13`: `V8TwoPass` when v8 is viable, else `CompactFallback`
+///   (v4 can't run log_n=13 single-pass and the v4 two-pass would need
+///   BLK=2048 — out of range).
+/// - `3 <= log_n <= 12`: pick v8 when viable; `log_vpt` then fixes
+///   single-vs-two-pass via `log_n > log_vpt + 5`.
+fn dit_select_impl(log_n: usize, cc_major: u32, optin_limit: usize) -> DitChoice {
+    if log_n == 2 {
+        return DitChoice::V4Single;
+    }
+    if log_n == 13 {
+        return if v8_viable(13, cc_major, optin_limit) {
+            DitChoice::V8TwoPass
+        } else {
+            DitChoice::CompactFallback
+        };
+    }
+    let use_v8 = v8_viable(log_n, cc_major, optin_limit);
+    let log_vpt = if use_v8 { 3 } else { 2 };
+    let two_pass = log_n > log_vpt + 5;
+    match (use_v8, two_pass) {
+        (true, false) => DitChoice::V8Single,
+        (true, true) => DitChoice::V8TwoPass,
+        (false, false) => DitChoice::V4Single,
+        (false, true) => DitChoice::V4TwoPass,
+    }
+}
+
+/// Device-property wrapper around [`dit_select_impl`]: reads
+/// `compute_capability_major` and `max_dynamic_smem_per_block_optin`.
+fn dit_select(log_n: usize, props: &DeviceProperties) -> DitChoice {
+    dit_select_impl(
+        log_n,
+        props.compute_capability_major as u32,
+        props.max_dynamic_smem_per_block_optin,
+    )
+}
+
+/// DIT NTT engine applicability gate over the streaming `log_n in [2, 13]`
+/// range. Returns the chosen [`DitChoice`] when the engine can run this
+/// `(log_n, num_cosets)` on `props`, else `None` (caller falls through to the
+/// compact / two-pass-compact arms).
 ///
-/// VPT is determined by `log_n` alone (mirroring [`streaming_log_vpt_for`]):
-///   - `log_n in [2, 7]`: VPT=4, cosets_per_iter = 256 >> (log_n - 2)
-///   - `log_n == 8`:      VPT=8, cosets_per_iter = 256 >> (log_n - 3) = 8
-/// VPT=4 wins on Blackwell (tied at DRAM saturation, ~4% faster at log_n=7
-/// per the 500-iter sweep) and avoids the 256-bit decomposition penalty on
-/// sub-Hopper; VPT=8 is mandatory only at log_n=8 where TPC=64 would exceed
-/// a warp under VPT=4.
-fn streaming_is_applicable(log_n: usize, num_cosets: usize) -> Option<()> {
-    if !(2..=8).contains(&log_n) {
+/// Single-pass kernels process a compile-time-fixed `1024 / LANES` cosets per
+/// block (`LANES = 1 << (log_n - log_vpt)`), so they require `num_cosets`
+/// divisible by that count. Two-pass kernels grid-walk a power-of-two number of
+/// cosets (the launcher launches one wave (sm_count × occupancy) and grid-strides
+/// a guarded loop over num_cosets), so any power-of-two `num_cosets` works subject
+/// to the dynamic-smem opt-in cap.
+/// (Single-pass smem is `(N - 1) * 4 < 48 KiB` for `log_n <= 13` — no opt-in,
+/// no check.)
+fn dit_is_applicable(
+    log_n: usize,
+    num_cosets: usize,
+    props: &DeviceProperties,
+) -> Option<DitChoice> {
+    if !(2..=13).contains(&log_n) {
         return None;
     }
-    let log_vpt = if log_n == 8 { 3 } else { 2 };
-    let cosets_per_iter = 256usize >> (log_n - log_vpt);
-    if num_cosets >= cosets_per_iter && num_cosets.is_multiple_of(cosets_per_iter) {
-        Some(())
-    } else {
-        None
+    match dit_select(log_n, props) {
+        // log_n=13 non-v8: fall through to the two-pass-compact arm.
+        DitChoice::CompactFallback => None,
+        c @ (DitChoice::V4Single | DitChoice::V8Single) => {
+            let log_vpt = c.log_vpt();
+            // cosets_per_block = 1024 / LANES, LANES = 1 << (log_n - log_vpt).
+            let cosets_per_block = 1usize << (10 - (log_n - log_vpt));
+            if num_cosets >= cosets_per_block && num_cosets % cosets_per_block == 0 {
+                Some(c)
+            } else {
+                None
+            }
+        }
+        c @ (DitChoice::V4TwoPass | DitChoice::V8TwoPass) => {
+            let log_vpt = c.log_vpt();
+            let smem = crate::ntt::dit::ntt_two_pass_smem_bytes(log_n as u32, log_vpt as u32);
+            if smem <= props.max_dynamic_smem_per_block_optin {
+                Some(c)
+            } else {
+                None
+            }
+        }
     }
 }
 
@@ -344,23 +458,28 @@ fn select_forward_strategy(
             min_supported: COMPACT_MIN_LOG_N,
         });
     }
+    // Unified DIT NTT engine for log_n in [2, 13]: the production replacement
+    // for the streaming kernel family. Wins vs subwarp (low log_n) and
+    // smem_packed/compact (mid log_n) per the DIT design spec. When the gate
+    // declines (single-pass num_cosets divisibility miss, log_n=13 on non-v8
+    // hardware -> CompactFallback, or two-pass dynamic smem over the device's
+    // opt-in cap) execution falls through to the COMPACT arm (log_n in [1, 12])
+    // or the TWO_PASS_COMPACT arm (log_n=13), preserving every non-DIT path.
+    if let Some(choice) = dit_is_applicable(log_n, num_cosets, device_props) {
+        return Ok(NttStrategy {
+            passes: vec![NttPass {
+                start_stage: 0,
+                stage_count: log_n,
+                kernel: NttKernelKind::MonomialsToEvalsDit {
+                    stages: log_n,
+                    log_vpt: choice.log_vpt(),
+                },
+            }],
+            columns_per_launch: num_columns,
+            cosets_per_launch: num_cosets,
+        });
+    }
     if (COMPACT_MIN_LOG_N..=COMPACT_MAX_LOG_N).contains(&log_n) {
-        // Streaming multi-coset kernel for log_n in [3, 8]: replaces subwarp and
-        // smem_packed at production scale where num_cosets is large enough to
-        // fill at least one block iteration. Wins both vs subwarp (log_n=4) and
-        // smem_packed (log_n=8) per the 2026-05-22 design spec; lower log_n with
-        // small num_cosets stays on the existing kernels.
-        if let Some(()) = streaming_is_applicable(log_n, num_cosets) {
-            return Ok(NttStrategy {
-                passes: vec![NttPass {
-                    start_stage: 0,
-                    stage_count: log_n,
-                    kernel: NttKernelKind::MonomialsToEvalsStreaming { stages: log_n },
-                }],
-                columns_per_launch: num_columns,
-                cosets_per_launch: num_cosets,
-            });
-        }
         // At log_n in {4, 5} the NTT fits within a warp; the sub-warp kernel
         // runs entirely in registers using `__shfl_xor_sync` for butterfly
         // partner exchange (no smem, no syncthreads), strictly cheaper than
@@ -574,6 +693,7 @@ mod tests {
             sm_count: 58,
             compute_capability_major: 8,
             compute_capability_minor: 9,
+            max_dynamic_smem_per_block_optin: 99 * 1024,
         }
     }
 
@@ -584,6 +704,7 @@ mod tests {
             sm_count: 170,
             compute_capability_major: 12,
             compute_capability_minor: 0,
+            max_dynamic_smem_per_block_optin: 99 * 1024,
         }
     }
 
@@ -706,14 +827,20 @@ mod tests {
             let pass = &s.passes[0];
             assert_eq!(pass.start_stage, 0, "log_n={log_n}");
             assert_eq!(pass.stage_count, log_n, "log_n={log_n}");
-            // log_n in [1, 3] picks subwarp with IPB=1 (the small-workload
-            // fallback for log_n that has no compact 1-pass kernel registered);
-            // log_n in [4, 5] falls through to the compact 1-pass kernel at
-            // workload=1; log_n in [6, 12] uses compact 1-pass directly.
+            // num_cosets=1 on the L4-like device (cc_major=8 -> v4 DIT only):
+            // log_n in [1, 3] picks subwarp IPB=1 (no compact 1-pass below
+            // log_n=4); log_n in [4, 7] falls to the compact 1-pass kernel
+            // (DIT V4Single needs num_cosets divisible by cosets_per_block >=
+            // 32 > 1, so its gate declines); log_n in [8, 12] is two-pass DIT
+            // (V4TwoPass takes any num_cosets >= 1 and the v4 two-pass smem
+            // fits L4's 99 KiB opt-in cap), routed with log_vpt=2.
             let expected_kind = match log_n {
                 1 | 2 | 3 => format!(
                     "MonomialsToEvalsSubwarp {{ stages: {log_n}, log_instances_per_block: 0 }}"
                 ),
+                8 | 9 | 10 | 11 | 12 => {
+                    format!("MonomialsToEvalsDit {{ stages: {log_n}, log_vpt: 2 }}")
+                }
                 _ => format!("MonomialsToEvalsInitial {{ stages: {log_n} }}"),
             };
             assert_eq!(format!("{:?}", pass.kernel), expected_kind, "log_n={log_n}",);
@@ -723,13 +850,16 @@ mod tests {
     }
 
     #[test]
-    fn smem_packed_picked_for_log_n_6_7_8_when_workload_supports_it() {
-        // For log_n in [6, 8] the smem-packed kernel kicks in once
+    fn smem_packed_picked_for_log_n_6_7_when_workload_supports_it() {
+        // For log_n in [6, 7] the smem-packed kernel kicks in once
         // `num_cosets * num_columns` is a power of two >= the per-log_n IPB
-        // max (8 / 4 / 2). The fallback (compact 1-pass) covers the boundary
-        // cases (single-coset single-column, or non-power-of-two workloads).
+        // max (8 / 4). The DIT gate declines here: V4Single needs num_cosets
+        // divisible by cosets_per_block (64 / 32 respectively), and 4 is too
+        // small. (log_n=8 is now intercepted by DIT V4TwoPass before the
+        // smem-packed arm -- see `dit_two_pass_intercepts_log_n_8_to_12`.)
         let l4 = l4_like();
-        // log_n=6, IPB_max=8.
+        // log_n=6, IPB_max=8. cosets=4 < DIT cosets_per_block=64 -> falls to
+        // smem-packed.
         let s = select_ntt_strategy(NttDirection::Forward, 6, 4, 4, false, &l4).unwrap();
         assert_eq!(s.passes.len(), 1);
         assert!(matches!(
@@ -741,7 +871,7 @@ mod tests {
         ));
         assert_eq!(s.cosets_per_launch, 4);
         assert_eq!(s.columns_per_launch, 4);
-        // log_n=7, IPB_max=4.
+        // log_n=7, IPB_max=4. cosets=4 < DIT cosets_per_block=32 -> smem-packed.
         let s = select_ntt_strategy(NttDirection::Forward, 7, 4, 4, false, &l4).unwrap();
         assert!(matches!(
             s.passes[0].kernel,
@@ -749,21 +879,6 @@ mod tests {
                 stages: 7,
                 log_instances_per_block: 2
             }
-        ));
-        // log_n=8, IPB_max=2.
-        let s = select_ntt_strategy(NttDirection::Forward, 8, 4, 4, false, &l4).unwrap();
-        assert!(matches!(
-            s.passes[0].kernel,
-            NttKernelKind::MonomialsToEvalsSmemPacked {
-                stages: 8,
-                log_instances_per_block: 1
-            }
-        ));
-        // log_n=9: no smem-packed (HALF_N=256 already saturates the block).
-        let s = select_ntt_strategy(NttDirection::Forward, 9, 4, 4, false, &l4).unwrap();
-        assert!(matches!(
-            s.passes[0].kernel,
-            NttKernelKind::MonomialsToEvalsInitial { stages: 9 }
         ));
         // workload=1 (single coset, single column): fallback to compact 1-pass.
         let s = select_ntt_strategy(NttDirection::Forward, 7, 1, 1, false, &l4).unwrap();
@@ -789,21 +904,19 @@ mod tests {
     }
 
     #[test]
-    fn streaming_picked_for_log_n_2_to_8_when_num_cosets_reaches_per_iter() {
-        // Streaming gate: num_cosets >= cosets_per_iter(log_n) and divisible.
-        // VPT is fixed by log_n alone (mirrors `streaming_log_vpt_for`):
-        //   - log_n in [2, 7]: VPT=4, cosets_per_iter = 256 >> (log_n - 2)
-        //       -> 256 / 128 / 64 / 32 / 16 / 8
-        //   - log_n == 8:      VPT=8, cosets_per_iter = 256 >> (log_n - 3) = 8
+    fn dit_single_pass_picked_for_log_n_2_to_7_when_cosets_divisible() {
+        // DIT V4Single gate on the L4-like device (cc_major=8 -> v4 only,
+        // log_vpt=2): cosets_per_block = 1024 >> (log_n - 2). At num_cosets =
+        // exactly cosets_per_block the gate accepts (divisible) and routes to
+        // the single-pass DIT engine with log_vpt=2.
         let dev = l4_like();
         let cases = [
-            (2usize, 256usize),
-            (3, 128),
-            (4, 64),
-            (5, 32),
-            (6, 16),
-            (7, 8),
-            (8, 8),
+            (2usize, 1024usize),
+            (3, 512),
+            (4, 256),
+            (5, 128),
+            (6, 64),
+            (7, 32),
         ];
         for (log_n, num_cosets) in cases {
             let s = select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, false, &dev)
@@ -811,43 +924,134 @@ mod tests {
             assert!(
                 matches!(
                     s.passes[0].kernel,
-                    NttKernelKind::MonomialsToEvalsStreaming { stages } if stages == log_n
+                    NttKernelKind::MonomialsToEvalsDit { stages, log_vpt: 2 } if stages == log_n
                 ),
-                "log_n={log_n}, num_cosets={num_cosets}: expected streaming, got {:?}",
+                "log_n={log_n}, num_cosets={num_cosets}: expected DIT single-pass, got {:?}",
                 s.passes[0].kernel,
             );
             assert_eq!(s.cosets_per_launch, num_cosets);
             assert_eq!(s.columns_per_launch, 1);
         }
-        // cc_major no longer feeds the gate — sm_90+ device picks the same kernels.
-        let h = rtx_5090_like();
-        for (log_n, num_cosets) in cases {
-            let s = select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, false, &h)
-                .unwrap();
-            assert!(matches!(
-                s.passes[0].kernel,
-                NttKernelKind::MonomialsToEvalsStreaming { stages } if stages == log_n
-            ));
-        }
-        // Below the gate: streaming should not be picked.
-        // log_n=8: cosets_per_iter=8, 4 < 8 → fall back.
-        let s = select_ntt_strategy(NttDirection::Forward, 8, 1, 4, false, &dev).unwrap();
-        assert!(!matches!(
+        // A multiple of cosets_per_block also passes the divisibility gate.
+        let s = select_ntt_strategy(NttDirection::Forward, 4, 1, 512, false, &dev).unwrap();
+        assert!(matches!(
             s.passes[0].kernel,
-            NttKernelKind::MonomialsToEvalsStreaming { .. }
+            NttKernelKind::MonomialsToEvalsDit {
+                stages: 4,
+                log_vpt: 2
+            }
         ));
-        // log_n=4: cosets_per_iter=64, 32 falls back.
+        // Below the divisibility gate: DIT single-pass should not be picked.
+        // log_n=4: cosets_per_block=256, 32 falls back.
         let s = select_ntt_strategy(NttDirection::Forward, 4, 1, 32, false, &dev).unwrap();
         assert!(!matches!(
             s.passes[0].kernel,
-            NttKernelKind::MonomialsToEvalsStreaming { .. }
+            NttKernelKind::MonomialsToEvalsDit { .. }
         ));
-        // log_n=2: cosets_per_iter=256, 128 falls back.
+        // log_n=2: cosets_per_block=1024, 128 falls back.
         let s = select_ntt_strategy(NttDirection::Forward, 2, 1, 128, false, &dev).unwrap();
         assert!(!matches!(
             s.passes[0].kernel,
-            NttKernelKind::MonomialsToEvalsStreaming { .. }
+            NttKernelKind::MonomialsToEvalsDit { .. }
         ));
+    }
+
+    #[test]
+    fn dit_two_pass_intercepts_log_n_8_to_12_for_any_num_cosets() {
+        // DIT V4TwoPass on the L4-like device (cc_major=8, log_vpt=2,
+        // two-pass when log_n > 7) accepts any num_cosets >= 1 subject to the
+        // dynamic-smem cap; on L4 (99 KiB opt-in) the v4 two-pass smem fits
+        // for log_n in [8, 12], so DIT intercepts the whole range before the
+        // smem-packed / compact arms.
+        let dev = l4_like();
+        for log_n in 8..=COMPACT_MAX_LOG_N {
+            for num_cosets in [1usize, 4, 1 << 11] {
+                let s =
+                    select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, false, &dev)
+                        .unwrap();
+                assert!(
+                    matches!(
+                        s.passes[0].kernel,
+                        NttKernelKind::MonomialsToEvalsDit { stages, log_vpt: 2 } if stages == log_n
+                    ),
+                    "log_n={log_n}, num_cosets={num_cosets}: expected DIT two-pass, got {:?}",
+                    s.passes[0].kernel,
+                );
+                assert_eq!(s.cosets_per_launch, num_cosets);
+                assert_eq!(s.columns_per_launch, 1);
+            }
+        }
+    }
+
+    #[test]
+    fn dit_v8_picked_on_cc10_plus_with_ample_smem() {
+        // CC >= 10 with a large opt-in cap takes the preferred v8 (log_vpt=3)
+        // variant: single-pass for log_n in [3, 8], two-pass for [9, 12].
+        let device_props = DeviceProperties {
+            l2_cache_size_bytes: 100 * 1024 * 1024,
+            sm_count: 128,
+            compute_capability_major: 10,
+            compute_capability_minor: 0,
+            max_dynamic_smem_per_block_optin: 228 * 1024,
+        };
+        // Single-pass v8: cosets_per_block = 1024 >> (log_n - 3).
+        let single_cases = [(3usize, 1024usize), (5, 256), (8, 32)];
+        for (log_n, num_cosets) in single_cases {
+            let s = select_ntt_strategy(
+                NttDirection::Forward,
+                log_n,
+                1,
+                num_cosets,
+                false,
+                &device_props,
+            )
+            .unwrap();
+            assert!(
+                matches!(
+                    s.passes[0].kernel,
+                    NttKernelKind::MonomialsToEvalsDit { stages, log_vpt: 3 } if stages == log_n
+                ),
+                "log_n={log_n}, num_cosets={num_cosets}: expected v8 DIT, got {:?}",
+                s.passes[0].kernel,
+            );
+        }
+        // Two-pass v8 (log_n in [9, 12]): any num_cosets >= 1.
+        for log_n in 9..=COMPACT_MAX_LOG_N {
+            let s = select_ntt_strategy(NttDirection::Forward, log_n, 1, 1, false, &device_props)
+                .unwrap();
+            assert!(
+                matches!(
+                    s.passes[0].kernel,
+                    NttKernelKind::MonomialsToEvalsDit { stages, log_vpt: 3 } if stages == log_n
+                ),
+                "log_n={log_n}: expected v8 two-pass DIT, got {:?}",
+                s.passes[0].kernel,
+            );
+        }
+    }
+
+    #[test]
+    fn dit_two_pass_gate_rejects_when_smem_cap_too_small() {
+        // Two-pass DIT needs a non-trivial dynamic-smem allocation; a device
+        // with an insufficient opt-in cap fails the gate even when num_cosets
+        // is fine. v4 log_n=12 two-pass needs 49152 bytes; a cap of 32 KiB
+        // blocks it, so the strategy falls through to the compact arm.
+        let small_smem = DeviceProperties {
+            l2_cache_size_bytes: 48 * 1024 * 1024,
+            sm_count: 58,
+            compute_capability_major: 8,
+            compute_capability_minor: 9,
+            max_dynamic_smem_per_block_optin: 32 * 1024,
+        };
+        let s = select_ntt_strategy(NttDirection::Forward, 12, 1, 1, false, &small_smem).unwrap();
+        assert!(
+            !matches!(
+                s.passes[0].kernel,
+                NttKernelKind::MonomialsToEvalsDit { .. }
+            ),
+            "log_n=12 with tight smem cap should not pick DIT; got {:?}",
+            s.passes[0].kernel,
+        );
     }
 
     #[test]
@@ -1139,5 +1343,163 @@ mod tests {
                 "inverse columns_per_launch mismatch at log_n={log_n}",
             );
         }
+    }
+
+    // ---- Decision D4: pure DIT selector / applicability truth table --------
+    // These exercise `dit_select_impl` and `dit_is_applicable` directly (no
+    // GPU). `dit_select_impl` takes raw fields so the v8/v4 x single/two-pass
+    // map is verified without a device; `DeviceProperties` is a plain pub-field
+    // struct so `dit_is_applicable` is testable in-process too.
+
+    /// Large enough to never trip the v8 smem branch at any log_n in [3, 13].
+    const HUGE_OPTIN: usize = 1 << 20;
+
+    #[test]
+    fn dit_select_impl_no_v8_below_cc10() {
+        // cc_major < 10: v8 never viable -> always v4. log_vpt=2, two-pass when
+        // log_n > 7.
+        for cc in [0u32, 8, 9] {
+            assert_eq!(dit_select_impl(2, cc, HUGE_OPTIN), DitChoice::V4Single);
+            for log_n in 3..=7 {
+                assert_eq!(
+                    dit_select_impl(log_n, cc, HUGE_OPTIN),
+                    DitChoice::V4Single,
+                    "cc={cc}, log_n={log_n}",
+                );
+            }
+            for log_n in 8..=12 {
+                assert_eq!(
+                    dit_select_impl(log_n, cc, HUGE_OPTIN),
+                    DitChoice::V4TwoPass,
+                    "cc={cc}, log_n={log_n}",
+                );
+            }
+            // log_n=13 has no v4 variant -> CompactFallback.
+            assert_eq!(
+                dit_select_impl(13, cc, HUGE_OPTIN),
+                DitChoice::CompactFallback,
+                "cc={cc}",
+            );
+        }
+    }
+
+    #[test]
+    fn dit_select_impl_v8_on_cc10_plus_with_ample_smem() {
+        // cc_major >= 10, large optin: v8 preferred. log_vpt=3, single-pass for
+        // log_n in [3, 8], two-pass for [9, 13]. log_n=2 stays V4Single.
+        for cc in [10u32, 12] {
+            assert_eq!(dit_select_impl(2, cc, HUGE_OPTIN), DitChoice::V4Single);
+            for log_n in 3..=8 {
+                assert_eq!(
+                    dit_select_impl(log_n, cc, HUGE_OPTIN),
+                    DitChoice::V8Single,
+                    "cc={cc}, log_n={log_n}",
+                );
+            }
+            for log_n in 9..=13 {
+                assert_eq!(
+                    dit_select_impl(log_n, cc, HUGE_OPTIN),
+                    DitChoice::V8TwoPass,
+                    "cc={cc}, log_n={log_n}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn dit_select_impl_v8_smem_fallback() {
+        // cc_major >= 10 but a tiny opt-in cap. v8_viable = (smem <= 49152) ||
+        // (smem <= optin). With a tiny optin, only the default-48 KiB branch
+        // can carry v8. v8 two-pass smem is 6144/12288/24576/49152 for log_n
+        // 9..12 -- all <= 49152 -- so those STAY v8 regardless of optin. Only
+        // log_n=13 (98304 bytes) exceeds 48 KiB; with a tiny optin it is not
+        // v8-viable, and since there is no v4 log_n=13 variant it becomes
+        // CompactFallback. (At every two-pass log_n the v4 and v8 dynamic-smem
+        // footprints are equal, so a tiny optin can never "demote" v8->v4 for
+        // two-pass; the demotion path only manifests as CompactFallback at
+        // log_n=13.)
+        let tiny = 1usize;
+        assert_eq!(
+            dit_select_impl(13, 10, tiny),
+            DitChoice::CompactFallback,
+            "tiny optin at log_n=13",
+        );
+        // log_n 9..12 stay v8 two-pass (carried by the 48 KiB branch).
+        for log_n in 9..=12 {
+            assert_eq!(
+                dit_select_impl(log_n, 10, tiny),
+                DitChoice::V8TwoPass,
+                "log_n={log_n} should stay v8 (<=48 KiB)",
+            );
+        }
+        // A generous optin admits log_n=13 v8 two-pass (98304 <= optin).
+        assert_eq!(
+            dit_select_impl(13, 10, 228 * 1024),
+            DitChoice::V8TwoPass,
+            "ample optin at log_n=13",
+        );
+        // log_n=5 single-pass: tiny clean smem always fits the 48 KiB default.
+        assert_eq!(dit_select_impl(5, 10, tiny), DitChoice::V8Single);
+    }
+
+    #[test]
+    fn dit_choice_log_vpt_and_two_pass() {
+        assert_eq!(DitChoice::V4Single.log_vpt(), 2);
+        assert_eq!(DitChoice::V4TwoPass.log_vpt(), 2);
+        assert_eq!(DitChoice::V8Single.log_vpt(), 3);
+        assert_eq!(DitChoice::V8TwoPass.log_vpt(), 3);
+        assert!(!DitChoice::V4Single.is_two_pass());
+        assert!(!DitChoice::V8Single.is_two_pass());
+        assert!(DitChoice::V4TwoPass.is_two_pass());
+        assert!(DitChoice::V8TwoPass.is_two_pass());
+    }
+
+    #[test]
+    fn dit_is_applicable_out_of_range_is_none() {
+        let l4 = l4_like();
+        assert_eq!(dit_is_applicable(1, 1024, &l4), None);
+        assert_eq!(dit_is_applicable(14, 1, &l4), None);
+        // log_n=13 on a non-v8 device -> CompactFallback -> None (fall-through).
+        assert_eq!(dit_is_applicable(13, 1, &l4), None);
+    }
+
+    #[test]
+    fn dit_is_applicable_single_pass_divisibility() {
+        // L4 (cc_major=8 -> v4, log_vpt=2). log_n=4 V4Single:
+        // cosets_per_block = 1024 >> (4 - 2) = 256.
+        let l4 = l4_like();
+        // num_cosets too small -> None.
+        assert_eq!(dit_is_applicable(4, 128, &l4), None);
+        // num_cosets not a multiple of 256 -> None.
+        assert_eq!(dit_is_applicable(4, 384, &l4), None);
+        // num_cosets == cosets_per_block -> Some(V4Single).
+        assert_eq!(dit_is_applicable(4, 256, &l4), Some(DitChoice::V4Single));
+        // a larger power-of-two multiple -> Some.
+        assert_eq!(dit_is_applicable(4, 2048, &l4), Some(DitChoice::V4Single));
+        // Production WHIR scale (num_cosets = 2^log_lde_factor >= 2^11) is a
+        // multiple of every single-pass cosets_per_block (<= 1024).
+        assert_eq!(
+            dit_is_applicable(7, 1 << 11, &l4),
+            Some(DitChoice::V4Single)
+        );
+    }
+
+    #[test]
+    fn dit_is_applicable_two_pass_takes_any_num_cosets_subject_to_smem() {
+        // L4 (v4, log_vpt=2). log_n=10 is two-pass; v4 two-pass smem (12288)
+        // fits L4's 99 KiB opt-in cap for any num_cosets >= 1.
+        let l4 = l4_like();
+        assert_eq!(dit_is_applicable(10, 1, &l4), Some(DitChoice::V4TwoPass));
+        assert_eq!(dit_is_applicable(10, 7, &l4), Some(DitChoice::V4TwoPass));
+        // Tight opt-in cap: v4 log_n=12 two-pass needs 49152 bytes; a 32 KiB
+        // cap blocks the gate.
+        let small_smem = DeviceProperties {
+            l2_cache_size_bytes: 48 * 1024 * 1024,
+            sm_count: 58,
+            compute_capability_major: 8,
+            compute_capability_minor: 9,
+            max_dynamic_smem_per_block_optin: 32 * 1024,
+        };
+        assert_eq!(dit_is_applicable(12, 1, &small_smem), None);
     }
 }

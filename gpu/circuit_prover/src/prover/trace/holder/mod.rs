@@ -6,12 +6,12 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
 use crate::allocator::tracker::AllocationPlacement;
+#[cfg(test)]
+use crate::ops::blake2s::build_merkle_tree;
 use crate::ops::blake2s::{
     build_merkle_tree_multi_coset, build_merkle_tree_nodes_multi_coset_from_external_src,
     gather_tree_caps_inline, Digest,
 };
-#[cfg(test)]
-use crate::ops::blake2s::build_merkle_tree;
 #[cfg(test)]
 use crate::ops::blake2s::{
     gather_leaf_rows, gather_merkle_paths_device, gather_merkle_paths_from_rows,
@@ -313,9 +313,22 @@ impl TraceHolder<BF> {
 
         let mut coeff_scratch = context.alloc(domain_size, AllocationPlacement::BestFit)?;
         let stream = context.get_exec_stream();
+        let ntt_ctx = context.ntt_device_context();
+        // The base-trace LDE log_domain_size is typically > 13 (→ compact /
+        // two-pass-compact, NO DIT, scratch unused), but allocate a pooled
+        // d-table scratch (len >= N) for the in-range case to keep the DIT path
+        // enqueue-only per the GPU scheduling contract. Avoid a multi-MB unused
+        // buffer for the large-log_n compact path by allocating only when in
+        // range; the handle outlives all per-column launches below.
+        let mut d_scratch;
+        let mut scratch_opt = if (self.log_domain_size as usize) <= 13 {
+            d_scratch = context.alloc::<BF>(domain_size, AllocationPlacement::BestFit)?;
+            Some(&mut d_scratch[..])
+        } else {
+            None
+        };
         let use_transposed_monomials =
             log_size_supports_transposed_monomials(self.log_domain_size as usize);
-        let lde_factor = 1usize << self.log_lde_factor;
         for column in 0..self.columns_count {
             let offset = column * domain_size;
             let source_column = &source[offset..offset + domain_size];
@@ -348,10 +361,10 @@ impl TraceHolder<BF> {
                         backing_from_col,
                         self.log_domain_size as usize,
                         self.log_lde_factor as usize,
-                        0,
-                        lde_factor,
                         self.columns_count,
                         use_transposed_monomials,
+                        ntt_ctx,
+                        scratch_opt.as_deref_mut(),
                         stream,
                         context.get_device_properties(),
                     )?;

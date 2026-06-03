@@ -5,7 +5,6 @@ pub(crate) mod kernels;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 
-#[cfg(test)]
 use crate::allocator::tracker::AllocationPlacement;
 #[cfg(test)]
 use crate::ops::blake2s::Digest;
@@ -13,9 +12,9 @@ use crate::ops::blake2s::Digest;
 use crate::primitives::callbacks::Callbacks;
 #[cfg(test)]
 use crate::primitives::context::HostAllocation;
-use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixImpl};
 #[cfg(test)]
 use crate::primitives::device_structures::DeviceMatrix;
+use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixImpl};
 use crate::primitives::field::{BF, E4};
 use crate::prover::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
 use crate::prover::ProverContext;
@@ -191,6 +190,19 @@ impl GpuWhirExtensionOracle {
         let device_properties = context.get_device_properties();
         let inputs_matrix =
             DeviceMatrixChunk::new(monomial_coeffs_slice, monomial_coeffs_stride, 0, trace_len);
+        let ntt_ctx = context.ntt_device_context();
+        // Recursive WHIR folds to a small trace (trace_len_log2 <= 13), the DIT
+        // forward-NTT range, which needs a pooled d-table scratch (len >= N).
+        // Allocate from the stream-ordered pool so this stays enqueue-only per
+        // the GPU scheduling contract; the handle outlives the launches below.
+        // Outside the DIT range the compact path ignores the scratch, so the
+        // allocation is skipped entirely.
+        let mut d_scratch = if trace_len_log2 <= 13 {
+            Some(context.alloc::<BF>(trace_len, AllocationPlacement::BestFit)?)
+        } else {
+            None
+        };
+        let scratch_opt = d_scratch.as_mut().map(|s| &mut s[..]);
         {
             let cosets_backing = trace_holder.get_uninit_consolidated_cosets_mut();
             crate::ops::ntt::bitreversed_monomials_to_natural_evals_multi_coset(
@@ -198,10 +210,10 @@ impl GpuWhirExtensionOracle {
                 cosets_backing,
                 trace_len_log2,
                 log_lde_factor as usize,
-                0,
-                lde_factor,
                 EXT4_DEGREE,
                 false,
+                ntt_ctx,
+                scratch_opt,
                 stream,
                 device_properties,
             )?;
