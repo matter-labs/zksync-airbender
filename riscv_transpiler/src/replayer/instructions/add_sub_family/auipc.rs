@@ -3,15 +3,15 @@ use super::*;
 #[inline(always)]
 pub(crate) fn auipc<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {
     debug_assert_eq!(instr.rs1, 0);
     debug_assert_eq!(instr.rs2, 0);
 
-    let (rs1_ts) = touch_x0_with_ts::<C, 0>(state);
-    let (rs2_ts) = touch_x0_with_ts::<C, 1>(state);
+    let rs1_ts = touch_x0_with_ts::<C, 0>(state);
+    let rs2_ts = touch_x0_with_ts::<C, 1>(state);
     let rd = state.pc.wrapping_add(instr.imm);
     let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
 

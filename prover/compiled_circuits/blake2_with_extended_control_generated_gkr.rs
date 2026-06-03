@@ -109,16 +109,11 @@ fn eval_fn_19<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place(2usize);
-    let v_1 = witness_proxy.get_witness_place(3usize);
-    let v_2 = W::Field::constant(BabyBearField(0u32));
-    let mut v_3 = v_0;
-    W::Field::mul_assign(&mut v_3, &v_1);
-    let mut v_4 = v_2;
-    W::Field::sub_assign(&mut v_4, &v_3);
-    let mut v_5 = v_4;
-    W::Field::add_assign(&mut v_5, &v_1);
-    witness_proxy.set_witness_place(14usize, v_5);
+    let v_0 = witness_proxy.get_witness_place_boolean(2usize);
+    let v_1 = witness_proxy.get_witness_place_boolean(3usize);
+    let v_2 = W::Mask::negate(&v_0);
+    let v_3 = W::Mask::and(&v_1, &v_2);
+    witness_proxy.set_witness_place_boolean(14usize, v_3);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -1393,12 +1388,10 @@ fn eval_fn_68<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place(1usize);
-    let v_1 = witness_proxy.get_witness_place(2usize);
-    let v_2 = W::Field::constant(BabyBearField(0u32));
-    let mut v_3 = v_2;
-    W::Field::add_assign_product(&mut v_3, &v_0, &v_1);
-    witness_proxy.set_witness_place(63usize, v_3);
+    let v_0 = witness_proxy.get_witness_place_boolean(1usize);
+    let v_1 = witness_proxy.get_witness_place_boolean(2usize);
+    let v_2 = W::Mask::and(&v_1, &v_0);
+    witness_proxy.set_witness_place_boolean(63usize, v_2);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -1417,16 +1410,11 @@ fn eval_fn_69<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place(1usize);
-    let v_1 = witness_proxy.get_witness_place(2usize);
-    let v_2 = W::Field::constant(BabyBearField(0u32));
-    let mut v_3 = v_0;
-    W::Field::mul_assign(&mut v_3, &v_1);
-    let mut v_4 = v_2;
-    W::Field::sub_assign(&mut v_4, &v_3);
-    let mut v_5 = v_4;
-    W::Field::add_assign(&mut v_5, &v_1);
-    witness_proxy.set_witness_place(64usize, v_5);
+    let v_0 = witness_proxy.get_witness_place_boolean(1usize);
+    let v_1 = witness_proxy.get_witness_place_boolean(2usize);
+    let v_2 = W::Mask::negate(&v_0);
+    let v_3 = W::Mask::and(&v_1, &v_2);
+    witness_proxy.set_witness_place_boolean(64usize, v_3);
 }
 #[allow(unused_variables)]
 #[inline(always)]

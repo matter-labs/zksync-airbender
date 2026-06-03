@@ -243,6 +243,7 @@ pub trait FieldExtension<BaseField: Field>: 'static + Clone + Copy + Send + Sync
     fn add_assign_base(&mut self, elem: &BaseField) -> &mut Self;
     fn sub_assign_base(&mut self, elem: &BaseField) -> &mut Self;
     fn mul_assign_by_base(&mut self, elem: &BaseField) -> &mut Self;
+    fn add_assign_product_with_base(&mut self, ext: &Self, base: &BaseField) -> &mut Self;
 }
 
 impl<F: Field> FieldExtension<F> for F {
@@ -283,6 +284,11 @@ impl<F: Field> FieldExtension<F> for F {
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_assign_by_base(&mut self, elem: &F) -> &mut Self {
         self.mul_assign(elem)
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_product_with_base(&mut self, ext: &Self, base: &F) -> &mut Self {
+        self.add_assign_product(ext, base)
     }
 }
 

@@ -92,7 +92,7 @@ fn rejects_malicious_memory_value() {
             e,
             VerificationError::GkrSumcheckRoundFailed { .. }
                 | VerificationError::GkrFinalStepCheckFailed { .. }
-                | VerificationError::GkrCacheRelationFailed { .. }
+                | VerificationError::GkrPermutationCacheRelationFailed { .. }
         )
     });
 }

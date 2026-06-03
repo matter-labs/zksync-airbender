@@ -39,7 +39,8 @@ impl<const N: usize> MerkleTreeCap<N> {
         }
     }
 
-    pub fn new<I: NonDeterminismSource>() -> Self {
+    #[inline(always)]
+    pub fn new<I: NonDeterminismSource>(nd_source: &mut I) -> Self {
         unsafe {
             let mut new = Self {
                 cap: [MaybeUninit::uninit(); N].map(|el| el.assume_init()),
@@ -47,7 +48,7 @@ impl<const N: usize> MerkleTreeCap<N> {
 
             for dst in new.cap.iter_mut() {
                 for dst in dst.iter_mut() {
-                    *dst = I::read_word();
+                    *dst = nd_source.read_word();
                 }
             }
 
@@ -55,11 +56,15 @@ impl<const N: usize> MerkleTreeCap<N> {
         }
     }
 
-    pub unsafe fn read_caps_into<I: NonDeterminismSource, const M: usize>(dst: *mut [Self; M]) {
+    #[inline(always)]
+    pub unsafe fn read_caps_into<I: NonDeterminismSource, const M: usize>(
+        dst: *mut [Self; M],
+        nd_source: &mut I,
+    ) {
         let mut ptr: *mut u32 = dst.cast();
         let end = ptr.add(DIGEST_SIZE_U32_WORDS * N * M);
         while ptr < end {
-            ptr.write(I::read_word());
+            ptr.write(nd_source.read_word());
             ptr = ptr.add(1);
         }
     }

@@ -12,11 +12,11 @@ pub struct ThreadLocalBasedSource;
 
 impl NonDeterminismSource for ThreadLocalBasedSource {
     #[inline(always)]
-    fn read_word() -> u32 {
+    fn read_word(&mut self) -> u32 {
         read_word()
     }
     #[inline(always)]
-    fn read_reduced_field_element(modulus: u32) -> u32 {
+    fn read_reduced_field_element(&mut self, modulus: u32) -> u32 {
         read_field_element(modulus)
     }
 }

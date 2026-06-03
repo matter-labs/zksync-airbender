@@ -20,6 +20,11 @@ pub fn mul_assign<'a, T: Field>(lhs: &'a mut T, rhs: &T) -> &'a mut T {
 }
 
 #[inline(never)]
+pub fn add_assign_product<'a, T: Field>(acc: &'a mut T, lhs: &T, rhs: &T) -> &'a mut T {
+    acc.add_assign_product(lhs, rhs)
+}
+
+#[inline(never)]
 pub fn negate<T: Field>(lhs: &mut T) -> &mut T {
     lhs.negate()
 }
@@ -59,4 +64,17 @@ where
     T: FieldExtension<Base>,
 {
     lhs.mul_assign_by_base(rhs)
+}
+
+#[inline(never)]
+pub fn add_assign_product_with_base<'a, T, Base>(
+    accumulator: &'a mut T,
+    lhs: &T,
+    rhs: &Base,
+) -> &'a mut T
+where
+    Base: Field,
+    T: FieldExtension<Base>,
+{
+    accumulator.add_assign_product_with_base(lhs, rhs)
 }

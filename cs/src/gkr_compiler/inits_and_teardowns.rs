@@ -158,6 +158,7 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
         tables_ids_in_generic_lookups: false,
         degree_2_constraints: Vec::new(),
         degree_1_constraints: Vec::new(),
+        structured_statements: Vec::new(),
         generic_lookups: Vec::new(),
         range_check_16_lookup_expressions: Vec::new(),
         timestamp_range_check_lookup_expressions: Vec::new(),

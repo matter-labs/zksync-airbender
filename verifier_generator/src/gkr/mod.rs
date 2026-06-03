@@ -112,6 +112,7 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
             initial_claim: #quartic_struct,
             challenges: &mut [#quartic_struct],
             layer_idx: usize,
+            nd_source: &mut I,
         ) -> Result<(#quartic_struct, #quartic_struct), E::Error> {
             let mut claim = initial_claim;
             let mut eq_prefactor = #quartic_one;
@@ -126,7 +127,7 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
                 {
                     let mut i = 0;
                     while i < coeff_data_words {
-                        commit_buf.data_write(i, read_reduced_field_el::<I>());
+                        commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                         i += 1;
                     }
                 }
@@ -1008,7 +1009,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         {
             let mut i = 0;
             while i < evals_data_words {
-                evals_commit_buf.data_write(i, read_reduced_field_el::<I>());
+                evals_commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                 i += 1;
             }
         }
@@ -1067,13 +1068,13 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 let initial_claim = dim_reducing_compute_claim(state.prev_claims.as_array::<#total_output_polys>(), state.batching_challenge);
                 let (final_claim, final_eq_prefactor) =
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
-                        ts, initial_claim, &mut state.prev_point, #config_idx)?;
+                        ts, initial_claim, &mut state.prev_point, #config_idx, nd_source)?;
                 let mut fc_len = #num_regular_rounds;
                 let data_words = #num_input_addrs * 4 * EXT_DEGREE;
                 {
                     let mut i = 0;
                     while i < data_words {
-                        eval_buf.data_write(i, read_reduced_field_el::<I>());
+                        eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                         i += 1;
                     }
                 }
@@ -1289,7 +1290,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     {
                         let mut i = 0;
                         while i < extra_data_words {
-                            extra_buf.data_write(i, read_reduced_field_el::<I>());
+                            extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                             i += 1;
                         }
                     }
@@ -1366,7 +1367,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     {
                         let mut i = 0;
                         while i < extra_data_words {
-                            extra_buf.data_write(i, read_reduced_field_el::<I>());
+                            extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                             i += 1;
                         }
                     }
@@ -1425,13 +1426,13 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 let initial_claim = #compute_claim_fn(state.prev_claims.as_array::<#num_output_addrs>(), state.batching_challenge);
                 let (final_claim, final_eq_prefactor) =
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
-                        ts, initial_claim, &mut state.prev_point, #config_idx)?;
+                        ts, initial_claim, &mut state.prev_point, #config_idx, nd_source)?;
                 let mut fc_len = #num_regular_rounds;
                 let data_words = #num_dedup_addrs * 2 * EXT_DEGREE;
                 {
                     let mut i = 0;
                     while i < data_words {
-                        eval_buf.data_write(i, read_reduced_field_el::<I>());
+                        eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                         i += 1;
                     }
                 }
@@ -1789,6 +1790,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
             initial_transcript: &ConcreteInitialTranscript,
             ts: &mut ::verifier_common::structs::TranscriptState,
+            nd_source: &mut I,
         ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
             unsafe { #main_body }
         }
@@ -1813,11 +1815,13 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
                 initial_transcript: &ConcreteInitialTranscript,
                 transcript_state: &mut ::verifier_common::structs::TranscriptState,
+                nd_source: &mut I,
             ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
                 verify_gkr::<I, E>(
                     external_challenges,
                     initial_transcript,
                     transcript_state,
+                    nd_source,
                 )
             }
             #[inline(always)]
@@ -1827,6 +1831,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 whir_batching_challenge: #quartic_struct,
                 base_layer_claims: &[#quartic_struct],
                 initial_claim_point: &[#quartic_struct],
+                nd_source: &mut I,
             ) -> Result<(), E::Error> {
                 super::whir::verify_whir::<I, E>(
                     initial_transcript,
@@ -1834,6 +1839,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     whir_batching_challenge,
                     base_layer_claims,
                     initial_claim_point,
+                    nd_source,
                 )
             }
         }

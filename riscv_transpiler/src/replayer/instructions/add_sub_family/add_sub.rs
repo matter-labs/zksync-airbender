@@ -3,7 +3,7 @@ use super::*;
 #[inline(always)]
 pub(crate) fn add_op<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {
@@ -38,7 +38,7 @@ pub(crate) fn add_op<C: Counters, R: RAM>(
 #[inline(always)]
 pub(crate) fn sub_op<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {
@@ -46,8 +46,7 @@ pub(crate) fn sub_op<C: Counters, R: RAM>(
 
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
     let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
-    let rs2_value_to_use = rs2_value;
-    let mut rd = rs1_value.wrapping_sub(rs2_value);
+    let rd = rs1_value.wrapping_sub(rs2_value);
     let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
 
     if tracer.needs_tracing_data_for_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>() {

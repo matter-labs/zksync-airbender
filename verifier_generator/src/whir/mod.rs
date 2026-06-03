@@ -39,6 +39,7 @@ pub fn generate_whir_verify<MW: FieldWrapper>(whir_hash_buf_size: usize) -> Toke
             batching_challenge: #quartic_struct,
             base_layer_claims: &[#quartic_struct],
             z_initial: &[#quartic_struct],
+            nd_source: &mut I,
         ) -> Result<(), E::Error> {
             let mut hash_buf = AlignedArray64::<u32, WHIR_HASH_BUF_SIZE>::new_uninit();
             let mut accumulator = ::verifier_common::whir::WhirAccumulator::<
@@ -48,6 +49,7 @@ pub fn generate_whir_verify<MW: FieldWrapper>(whir_hash_buf_size: usize) -> Toke
                 initial_transcript,
                 ts, &mut hash_buf, batching_challenge, base_layer_claims,
                 z_initial, &mut accumulator,
+                nd_source,
             )?;
             #[cfg(feature = "verifier_stats")]
                 verifier_common::stats::log("WHIR BATCHED ROUND 0");
@@ -56,7 +58,7 @@ pub fn generate_whir_verify<MW: FieldWrapper>(whir_hash_buf_size: usize) -> Toke
             while round_idx <= NUM_INTERNAL_ROUNDS {
                 let (new_claim, new_cap) = verify_internal_whir_round::<I, E>(
                     ts, &mut hash_buf, claim, &cap, round_idx,
-                    z_initial, &mut accumulator,
+                    z_initial, &mut accumulator, nd_source,
                 )?;
                 #[cfg(feature = "verifier_stats")]
                     verifier_common::stats::log(#labels[round_idx]);
@@ -65,7 +67,7 @@ pub fn generate_whir_verify<MW: FieldWrapper>(whir_hash_buf_size: usize) -> Toke
                 round_idx += 1;
             }
             verify_final_whir_round::<I, E>(
-                ts, &mut hash_buf, claim, &cap, z_initial, &mut accumulator,
+                ts, &mut hash_buf, claim, &cap, z_initial, &mut accumulator, nd_source,
             )?;
             #[cfg(feature = "verifier_stats")]
                     verifier_common::stats::log(#labels[NUM_INTERNAL_ROUNDS+1]);

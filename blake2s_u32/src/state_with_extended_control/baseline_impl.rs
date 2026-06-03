@@ -18,9 +18,6 @@ impl Blake2RoundFunctionEvaluator {
     pub fn new() -> Self {
         Self {
             state: CONFIGURED_IV,
-            #[cfg(feature = "blake2_g_function")]
-            _aligner: crate::aligned_array::A64,
-            extended_state: EXTENDED_CONFIGURED_IV,
             input_buffer: AlignedArray64::from_value(0u32),
             t: 0,
         }
@@ -66,7 +63,7 @@ impl Blake2RoundFunctionEvaluator {
         self.t += input_size_bytes as u32;
 
         {
-            self.extended_state = [
+            let mut extended_state = [
                 self.state[0],
                 self.state[1],
                 self.state[2],
@@ -86,14 +83,14 @@ impl Blake2RoundFunctionEvaluator {
             ];
 
             if REDUCED_ROUNDS {
-                round_function_reduced_rounds(&mut self.extended_state, input_buffer);
+                round_function_reduced_rounds(&mut extended_state, input_buffer);
             } else {
-                round_function_full_rounds(&mut self.extended_state, input_buffer);
+                round_function_full_rounds(&mut extended_state, input_buffer);
             }
 
             for i in 0..8 {
-                self.state[i] ^= self.extended_state[i];
-                self.state[i] ^= self.extended_state[i + 8];
+                self.state[i] ^= extended_state[i];
+                self.state[i] ^= extended_state[i + 8];
             }
         }
     }
@@ -120,7 +117,7 @@ impl Blake2RoundFunctionEvaluator {
         self.t += input_size_bytes as u32;
 
         {
-            self.extended_state = [
+            let mut extended_state = [
                 self.state[0],
                 self.state[1],
                 self.state[2],
@@ -140,14 +137,14 @@ impl Blake2RoundFunctionEvaluator {
             ];
 
             if REDUCED_ROUNDS {
-                round_function_reduced_rounds(&mut self.extended_state, &self.input_buffer);
+                round_function_reduced_rounds(&mut extended_state, &self.input_buffer);
             } else {
-                round_function_full_rounds(&mut self.extended_state, &self.input_buffer);
+                round_function_full_rounds(&mut extended_state, &self.input_buffer);
             }
 
             for i in 0..8 {
-                self.state[i] ^= self.extended_state[i];
-                self.state[i] ^= self.extended_state[i + 8];
+                self.state[i] ^= extended_state[i];
+                self.state[i] ^= extended_state[i + 8];
             }
         }
     }
@@ -165,7 +162,7 @@ impl Blake2RoundFunctionEvaluator {
     #[unroll::unroll_for_loops]
     pub fn compress_node<const REDUCED_ROUNDS: bool>(&mut self, is_right: bool) {
         {
-            self.extended_state = [
+            let mut extended_state = [
                 CONFIGURED_IV[0],
                 CONFIGURED_IV[1],
                 CONFIGURED_IV[2],
@@ -184,26 +181,22 @@ impl Blake2RoundFunctionEvaluator {
                 IV[7],
             ];
 
-            let mut input =
-                [const { core::mem::MaybeUninit::uninit() }; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+            // Caller has written path witness into get_merkle_path_proof_buffer(is_right).
+            // We copy self.state into the other half.
             if is_right {
-                input[..8].write_copy_of_slice(&self.input_buffer[..8]);
-                input[8..16].write_copy_of_slice(&self.state);
+                self.input_buffer[8..16].copy_from_slice(&self.state);
             } else {
-                input[..8].write_copy_of_slice(&self.state);
-                input[8..16].write_copy_of_slice(&self.input_buffer[..8]);
+                self.input_buffer[0..8].copy_from_slice(&self.state);
             }
-            let input = unsafe { input.map(|el| el.assume_init()) };
 
             if REDUCED_ROUNDS {
-                round_function_reduced_rounds(&mut self.extended_state, &input);
+                round_function_reduced_rounds(&mut extended_state, &self.input_buffer);
             } else {
-                round_function_full_rounds(&mut self.extended_state, &input);
+                round_function_full_rounds(&mut extended_state, &self.input_buffer);
             }
 
             for i in 0..8 {
-                self.state[i] =
-                    CONFIGURED_IV[i] ^ self.extended_state[i] ^ self.extended_state[i + 8];
+                self.state[i] = CONFIGURED_IV[i] ^ extended_state[i] ^ extended_state[i + 8];
             }
         }
     }
@@ -212,17 +205,18 @@ impl Blake2RoundFunctionEvaluator {
     #[inline(always)]
     pub fn get_merkle_path_proof_buffer(
         &mut self,
-        _is_right: bool,
+        is_right: bool,
     ) -> &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] {
-        // we use first "half" of the internal input buffer, without optimizations
+        // we use proper "half" of the internal input buffer and only copy over the state to the "other one"
         unsafe {
-            self.input_buffer
-                .deref_mut_impl()
-                .as_chunks_mut()
-                .0
-                .iter_mut()
-                .next()
-                .unwrap_unchecked()
+            let (l, r) = self.input_buffer.split_at_mut_unchecked(8);
+            let l: &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] = l.as_mut_array().unwrap_unchecked();
+            let r: &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] = r.as_mut_array().unwrap_unchecked();
+            if is_right {
+                l
+            } else {
+                r
+            }
         }
     }
 }

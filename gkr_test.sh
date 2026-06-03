@@ -8,6 +8,7 @@ PER_FAMILY_CIRCUITS=(
   add_sub_lui_auipc_mop
   jump_branch_slt
   shift_binop
+  unsigned_mul_div
   mem_word_only
   mem_subword_only
   inits_and_teardowns
@@ -59,7 +60,7 @@ Subcommands:
   unified       Unified-reduced-machine + delegations (program: multi_family_smoke)
 
 Options:
-  --blake V             blake2_with_compression (default) | blake2_g_function
+  --blake V             blake2_with_compression (default) | blake2_g_function | special_opcodes_extension
                         Propagated to prover-side program selection via GKR_BLAKE.
   --variant V           caches (default) | no_caches
   --security-level L    80 (default) | 100 | both
@@ -151,8 +152,8 @@ done
 # Validate
 # ============================================================================
 case "$BLAKE" in
-  blake2_with_compression|blake2_g_function) ;;
-  *) die "--blake must be blake2_with_compression or blake2_g_function. Got: $BLAKE" ;;
+  blake2_with_compression|blake2_g_function|special_opcodes_extension) ;;
+  *) die "--blake must be blake2_with_compression, blake2_g_function, or special_opcodes_extension. Got: $BLAKE" ;;
 esac
 
 case "$VARIANT" in

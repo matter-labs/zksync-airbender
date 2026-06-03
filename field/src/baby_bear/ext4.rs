@@ -190,6 +190,63 @@ impl BabyBearExt4 {
         self.c1 = BabyBearExt2 { c0: o2, c1: o3 };
     }
 
+    #[cfg(all(target_arch = "riscv32", feature = "modular_fma"))]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    pub(crate) fn mul_assign_flat_impl_fma(&mut self, other: &Self) {
+        let a0 = self.c0.c0;
+        let a1 = self.c0.c1;
+        let a2 = self.c1.c0;
+        let a3 = self.c1.c1;
+
+        let b0 = other.c0.c0;
+        // out[0] = a0·b0 + a1n·b1 + a2n·b3 + a3n·b2
+        // out[1] = a0·b1 + a1·b0 + a2·b2 + a3n·b3
+        // out[2] = a0·b2 + a1n·b3 + a2·b0 + a3n·b1
+        // out[3] = a0·b3 + a1·b2 + a2·b1 + a3·b0
+
+        let mut o0 = a0;
+        o0.mul_assign(&b0);
+
+        let mut o1 = a1;
+        o1.mul_assign(&b0);
+
+        let mut o2 = a2;
+        o2.mul_assign(&b0);
+
+        let mut o3 = a3;
+        o3.mul_assign(&b0);
+
+        let mut a1n = a1;
+        BabyBearField::mul_by_non_residue_impl(&mut a1n);
+        let mut a3n = a3;
+        BabyBearField::mul_by_non_residue_impl(&mut a3n);
+
+        let b1 = other.c0.c1;
+
+        o0.add_assign_product(&a1n, &b1);
+        o1.add_assign_product(&a0, &b1);
+        o2.add_assign_product(&a3n, &b1);
+        o3.add_assign_product(&a2, &b1);
+
+        let b2 = other.c1.c0;
+        o0.add_assign_product(&a3n, &b2);
+        o1.add_assign_product(&a2, &b2);
+        o2.add_assign_product(&a0, &b2);
+        o3.add_assign_product(&a1, &b2);
+
+        let b3 = other.c1.c1;
+        let mut a2n = a2;
+        BabyBearField::mul_by_non_residue_impl(&mut a2n);
+
+        o0.add_assign_product(&a2n, &b3);
+        o1.add_assign_product(&a3n, &b3);
+        o2.add_assign_product(&a1n, &b3);
+        o3.add_assign_product(&a0, &b3);
+
+        self.c0 = BabyBearExt2 { c0: o0, c1: o1 };
+        self.c1 = BabyBearExt2 { c0: o2, c1: o3 };
+    }
+
     // Tower squaring derived from the Chung-Hasan complex-squaring trick over E2.
     // Companion to `mul_assign_tower_impl`.
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
@@ -261,11 +318,10 @@ impl BabyBearExt4 {
         // out[2] = 2·a0·a2 + 2·(11·a1·a3)
         let mut o2 = a0;
         o2.mul_assign(&a2);
-        o2.double();
         let mut t = a1n;
         t.mul_assign(&a3);
-        t.double();
         o2.add_assign(&t);
+        o2.double();
 
         // out[3] = 2·(a0·a3 + a1·a2)
         let mut o3 = a0;
@@ -273,6 +329,52 @@ impl BabyBearExt4 {
         let mut t = a1;
         t.mul_assign(&a2);
         o3.add_assign(&t);
+        o3.double();
+
+        self.c0 = BabyBearExt2 { c0: o0, c1: o1 };
+        self.c1 = BabyBearExt2 { c0: o2, c1: o3 };
+    }
+
+    #[cfg(all(target_arch = "riscv32", feature = "modular_fma"))]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    pub(crate) fn square_flat_impl_fma(&mut self) {
+        let a0 = self.c0.c0;
+        let a1 = self.c0.c1;
+        let a2 = self.c1.c0;
+        let a3 = self.c1.c1;
+
+        let mut a1n = a1;
+        BabyBearField::mul_by_non_residue_impl(&mut a1n);
+        let mut a3n = a3;
+        BabyBearField::mul_by_non_residue_impl(&mut a3n);
+
+        // a2·a3 is shared between out[0] (scaled by 22) and out[3] (doubled).
+        let mut a2a3 = a2;
+        a2a3.mul_assign(&a3);
+
+        // out[0] = a0² + a1n·a1 + 2·(11·a2·a3)
+        let mut o0 = a0;
+        o0.square();
+        o0.add_assign_product(&a1n, &a1);
+        o0.add_assign_product(&BabyBearField::NON_RES_DOUBLED, &a2a3);
+
+        // out[1] = 2·a0·a1 + a2² + a3n·a3
+        let mut o1 = a0;
+        o1.mul_assign(&a1);
+        o1.double();
+        o1.add_assign_product(&a2, &a2);
+        o1.add_assign_product(&a3n, &a3);
+
+        // out[2] = 2·a0·a2 + 2·(11·a1·a3) = 2·(a0·a2 + a1n·a3)
+        let mut o2 = a0;
+        o2.mul_assign(&a2);
+        o2.add_assign_product(&a1n, &a3);
+        o2.double();
+
+        // out[3] = 2·(a0·a3 + a1·a2)
+        let mut o3 = a0;
+        o3.mul_assign(&a3);
+        o3.add_assign_product(&a1, &a2);
         o3.double();
 
         self.c0 = BabyBearExt2 { c0: o0, c1: o1 };
@@ -366,11 +468,24 @@ impl Field for BabyBearExt4 {
         #[cfg(feature = "verifier_stats")]
         crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fext_muls += 1);
 
-        #[cfg(all(target_arch = "riscv32", feature = "modular_ops"))]
+        #[cfg(all(
+            target_arch = "riscv32",
+            all(feature = "modular_ops", not(feature = "modular_fma"))
+        ))]
         {
             self.mul_assign_flat_impl(other);
         }
-        #[cfg(not(all(target_arch = "riscv32", feature = "modular_ops")))]
+        #[cfg(all(
+            target_arch = "riscv32",
+            all(feature = "modular_ops", feature = "modular_fma")
+        ))]
+        {
+            self.mul_assign_flat_impl_fma(other);
+        }
+        #[cfg(not(all(
+            target_arch = "riscv32",
+            any(feature = "modular_ops", feature = "modular_fma")
+        )))]
         {
             self.mul_assign_tower_impl(other);
         }
@@ -382,11 +497,24 @@ impl Field for BabyBearExt4 {
         #[cfg(feature = "verifier_stats")]
         crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fext_muls += 1);
 
-        #[cfg(all(target_arch = "riscv32", feature = "modular_ops"))]
+        #[cfg(all(
+            target_arch = "riscv32",
+            all(feature = "modular_ops", not(feature = "modular_fma"))
+        ))]
         {
             self.square_flat_impl();
         }
-        #[cfg(not(all(target_arch = "riscv32", feature = "modular_ops")))]
+        #[cfg(all(
+            target_arch = "riscv32",
+            all(feature = "modular_ops", feature = "modular_fma")
+        ))]
+        {
+            self.square_flat_impl_fma();
+        }
+        #[cfg(not(all(
+            target_arch = "riscv32",
+            any(feature = "modular_ops", feature = "modular_fma")
+        )))]
         {
             self.square_tower_impl();
         }
@@ -464,6 +592,109 @@ impl Field for BabyBearExt4 {
 
         self
     }
+
+    // // special implementation for RISC-V overrides the default
+    // #[cfg(all(
+    //     target_arch = "riscv32",
+    //     all(feature = "modular_ops", feature = "modular_fma")
+    // ))]
+    // #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    // fn add_assign_product(&'_ mut self, a: &Self, b: &Self) -> &'_ mut Self {
+    //     let a0 = a.c0.c0;
+    //     let a1 = a.c0.c1;
+    //     let a2 = a.c1.c0;
+    //     let a3 = a.c1.c1;
+    //     let b0 = b.c0.c0;
+    //     let b1 = b.c0.c1;
+    //     let b2 = b.c1.c0;
+    //     let b3 = b.c1.c1;
+
+    //     let mut a1n = a1;
+    //     BabyBearField::mul_by_non_residue_impl(&mut a1n);
+    //     let mut a2n = a2;
+    //     BabyBearField::mul_by_non_residue_impl(&mut a2n);
+    //     let mut a3n = a3;
+    //     BabyBearField::mul_by_non_residue_impl(&mut a3n);
+
+    //     // out[0] += a0·b0 + a1n·b1 + a2n·b3 + a3n·b2
+    //     self.c0.c0.add_assign_product(&a0, &b0);
+    //     self.c0.c0.add_assign_product(&a1n, &b1);
+    //     self.c0.c0.add_assign_product(&a2n, &b3);
+    //     self.c0.c0.add_assign_product(&a3n, &b2);
+
+    //     // out[1] = a0·b1 + a1·b0 + a2·b2 + a3n·b3
+    //     self.c0.c1.add_assign_product(&a0, &b1);
+    //     self.c0.c1.add_assign_product(&a1, &b0);
+    //     self.c0.c1.add_assign_product(&a2, &b2);
+    //     self.c0.c1.add_assign_product(&a3n, &b3);
+
+    //     // out[2] = a0·b2 + a1n·b3 + a2·b0 + a3n·b1
+    //     self.c1.c0.add_assign_product(&a0, &b2);
+    //     self.c1.c0.add_assign_product(&a1n, &b3);
+    //     self.c1.c0.add_assign_product(&a2, &b0);
+    //     self.c1.c0.add_assign_product(&a3n, &b1);
+
+    //     // out[3] = a0·b3 + a1·b2 + a2·b1 + a3·b0
+    //     self.c1.c1.add_assign_product(&a0, &b3);
+    //     self.c1.c1.add_assign_product(&a1, &b2);
+    //     self.c1.c1.add_assign_product(&a2, &b1);
+    //     self.c1.c1.add_assign_product(&a3, &b0);
+
+    //     self
+    // }
+
+    // special implementation for RISC-V overrides the default
+    #[cfg(all(
+        target_arch = "riscv32",
+        all(feature = "modular_ops", feature = "modular_fma")
+    ))]
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_product(&'_ mut self, a: &Self, b: &Self) -> &'_ mut Self {
+        let a0 = a.c0.c0;
+        let a1 = a.c0.c1;
+        let a2 = a.c1.c0;
+        let a3 = a.c1.c1;
+
+        // shuffle to keep less registers alive
+
+        // out[0] += a0·b0 + a1n·b1 + a2n·b3 + a3n·b2
+        // out[1] += a0·b1 + a1·b0 + a2·b2 + a3n·b3
+        // out[2] += a0·b2 + a1n·b3 + a2·b0 + a3n·b1
+        // out[3] += a0·b3 + a1·b2 + a2·b1 + a3·b0
+
+        let b0 = b.c0.c0;
+        self.c0.c0.add_assign_product(&a0, &b0);
+        self.c0.c1.add_assign_product(&a1, &b0);
+        self.c1.c0.add_assign_product(&a2, &b0);
+        self.c1.c1.add_assign_product(&a3, &b0);
+
+        let b1 = b.c0.c1;
+        let mut a1n = a1;
+        BabyBearField::mul_by_non_residue_impl(&mut a1n);
+        let mut a3n = a3;
+        BabyBearField::mul_by_non_residue_impl(&mut a3n);
+
+        self.c0.c0.add_assign_product(&a1n, &b1);
+        self.c0.c1.add_assign_product(&a0, &b1);
+        self.c1.c0.add_assign_product(&a3n, &b1);
+        self.c1.c1.add_assign_product(&a2, &b1);
+
+        let b2 = b.c1.c0;
+        self.c0.c0.add_assign_product(&a3n, &b2);
+        self.c0.c1.add_assign_product(&a2, &b2);
+        self.c1.c0.add_assign_product(&a0, &b2);
+        self.c1.c1.add_assign_product(&a1, &b2);
+
+        let b3 = b.c1.c1;
+        let mut a2n = a2;
+        BabyBearField::mul_by_non_residue_impl(&mut a2n);
+        self.c0.c0.add_assign_product(&a2n, &b3);
+        self.c0.c1.add_assign_product(&a3n, &b3);
+        self.c1.c0.add_assign_product(&a1n, &b3);
+        self.c1.c1.add_assign_product(&a0, &b3);
+
+        self
+    }
 }
 
 impl core::fmt::Debug for BabyBearExt4 {
@@ -533,6 +764,15 @@ impl FieldExtension<BabyBearExt2> for BabyBearExt4 {
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_product_with_base(&mut self, ext: &Self, base: &BabyBearExt2) -> &mut Self {
+        let mut t = *ext;
+        t.mul_assign_by_base(base);
+        self.add_assign(&t);
+
+        self
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base(elem: BabyBearExt2) -> Self {
         Self {
             c0: elem,
@@ -597,6 +837,16 @@ impl FieldExtension<BabyBearField> for BabyBearExt4 {
             c0,
             c1: BabyBearExt2::ZERO,
         }
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_product_with_base(&mut self, ext: &Self, base: &BabyBearField) -> &mut Self {
+        self.c0.c0.add_assign_product(&ext.c0.c0, base);
+        self.c0.c1.add_assign_product(&ext.c0.c1, base);
+        self.c1.c0.add_assign_product(&ext.c1.c0, base);
+        self.c1.c1.add_assign_product(&ext.c1.c1, base);
+
+        self
     }
 }
 

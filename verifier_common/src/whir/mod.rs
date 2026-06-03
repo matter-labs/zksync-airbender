@@ -38,11 +38,12 @@ pub fn read_commit_return_merkle_cap<
     const BUF: usize,
 >(
     ts: &mut TranscriptState,
+    nd_source: &mut I,
 ) -> [u32; CAP_WORDS] {
     let mut buf = CommitBuf::<BUF>::new();
     let mut i = 0;
     while i < CAP_WORDS {
-        buf.data_write(i, I::read_word());
+        buf.data_write(i, nd_source.read_word());
         i += 1;
     }
     let cap: [u32; CAP_WORDS] = unsafe { buf.read_one() };
@@ -51,9 +52,13 @@ pub fn read_commit_return_merkle_cap<
 }
 
 #[inline(always)]
-pub fn read_and_verify_pow<I: NonDeterminismSource>(ts: &mut TranscriptState, pow_bits: u32) {
-    let lo = I::read_word();
-    let hi = I::read_word();
+pub fn read_and_verify_pow<I: NonDeterminismSource>(
+    ts: &mut TranscriptState,
+    pow_bits: u32,
+    nd_source: &mut I,
+) {
+    let lo = nd_source.read_word();
+    let hi = nd_source.read_word();
     let nonce = (lo as u64) | ((hi as u64) << 32);
     Blake2sTranscript::<{ ::prover::definitions::USE_REDUCED_BLAKE2_ROUNDS }>::verify_pow_using_hasher(
         &mut ts.hasher,
@@ -95,6 +100,7 @@ pub fn verify_merkle_path<I: NonDeterminismSource>(
     mut leaf_index: usize,
     depth: usize,
     cap: &[u32],
+    nd_source: &mut I,
 ) -> bool {
     let mut level = 0;
     while level < depth {
@@ -103,7 +109,7 @@ pub fn verify_merkle_path<I: NonDeterminismSource>(
             let proof_buf = hasher.get_merkle_path_proof_buffer(is_right);
             let mut i = 0;
             while i < BLAKE2S_DIGEST_SIZE_U32_WORDS {
-                proof_buf[i] = I::read_word();
+                proof_buf[i] = nd_source.read_word();
                 i += 1;
             }
             hasher.compress_node::<true>(is_right);

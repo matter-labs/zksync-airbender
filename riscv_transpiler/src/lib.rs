@@ -1,7 +1,6 @@
 #![allow(internal_features)]
 #![feature(vec_push_within_capacity)]
 #![feature(allocator_api)]
-#![feature(widening_mul)]
 #![feature(likely_unlikely)]
 #![feature(pointer_is_aligned_to)]
 #![feature(const_cmp)]
