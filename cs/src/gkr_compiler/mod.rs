@@ -1548,6 +1548,118 @@ impl NoFieldGKRRelation {
         }
     }
 
+    pub fn ordered_outputs_for_batching(&self) -> Vec<GKRAddress> {
+        match self {
+            Self::LinearBaseFieldRelation { input, output } => {
+                vec![*output]
+            }
+            Self::MaxQuadratic { input, output, .. } => {
+                vec![*output]
+            }
+            Self::EnforceSingleMaxQuadraticConstraint { input, .. } => {
+                vec![]
+            }
+            Self::EnforceConstraintsMaxQuadratic { input } => {
+                vec![]
+            }
+            Self::CopyInBaseField { output, .. } => {
+                vec![*output]
+            }
+            Self::CopyInExtensionField { output, .. } => {
+                vec![*output]
+            }
+            Self::InitialGrandProductFromCaches { input, output } => {
+                vec![*output]
+            }
+            Self::InitialGrandProductWithoutCaches { input, output } => {
+                vec![*output]
+            }
+            Self::UnbalancedGrandProductWithCache {
+                scalar,
+                input,
+                output,
+            } => {
+                vec![*output]
+            }
+            Self::TrivialProduct { input, output } => {
+                vec![*output]
+            }
+            Self::MaskIntoIdentityProduct {
+                input,
+                mask,
+                output,
+            } => {
+                vec![*output]
+            }
+            Self::MaterializeSingleLookupInput { input, output, .. } => {
+                vec![*output]
+            }
+            Self::MaterializedVectorLookupInput { input, output } => {
+                vec![*output]
+            }
+            Self::LookupWithCachedDensAndSetup {
+                input,
+                setup,
+                output,
+            } => {
+                output.to_vec()
+            }
+            
+            Self::LookupPairFromBaseInputs { input, output, .. } => {
+                output.to_vec()
+            }
+            Self::LookupPairFromMaterializedBaseInputs { input, output } => {
+                output.to_vec()
+            }
+            Self::LookupUnbalancedPairWithMaterializedBaseInputs {
+                input,
+                remainder,
+                output,
+            } => {
+                output.to_vec()
+            }
+            Self::LookupFromMaterializedBaseInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                output.to_vec()
+            }
+            Self::LookupPairFromVectorInputs { input, output } => {
+                output.to_vec()
+            }
+            Self::LookupPairFromMaterializedVectorInputs { input, output } => {
+                output.to_vec()
+            }
+            Self::LookupPairFromCachedVectorInputs { input, output } => {
+                output.to_vec()
+            }
+            Self::LookupFromMaterializedVectorInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                output.to_vec()
+            }
+            Self::AggregateLookupRationalPair { input, output } => {
+                output.to_vec()
+            }
+            Self::LookupWithDensAndSetupExpressions {
+                input,
+                setup,
+                output,
+            } => {
+                output.to_vec()
+            }
+            Self::LookupWithDensAndCachedSetup { output, .. } => {
+                output.to_vec()
+            }
+            a @ _ => {
+                panic!("Not yet implemented for relation {:?}", a);
+            }
+        }
+    }
+
     /// Dump inputs for data flow. Sumcheck will make new claims evaluations of these
     /// inputs at random point
     pub fn num_challenges(&self) -> usize {

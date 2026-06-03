@@ -42,14 +42,20 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
             let (c, address) = rel.input.linear_terms[0];
             let input_scratch_to_use = pos_state.get(&address).expect("pos").cache_pos;
             assert!(c != 0);
+            let cc = F::from_u32_unchecked(c);
 
-            if c != 1 {
+            if cc == F::ONE {
                 acc_fn.extend(quote! {
-                    let mut acc = base_field_scratch[#input_scratch_to_use][subindex].mul_by_base(&F::from_u32_unchecked(#c));
+                    let mut acc = base_field_scratch[#input_scratch_to_use][subindex];
+                });
+            } else if cc == F::MINUS_ONE {
+                acc_fn.extend(quote! {
+                    let mut acc = base_field_scratch[#input_scratch_to_use][subindex];
+                    acc = acc.negate();
                 });
             } else {
                 acc_fn.extend(quote! {
-                    let mut acc = base_field_scratch[#input_scratch_to_use][subindex];
+                    let mut acc = base_field_scratch[#input_scratch_to_use][subindex].mul_by_base(&F::from_u32_unchecked(#c));
                 });
             }
         }
@@ -80,7 +86,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
         if rel.input.constant != 0 {
             let c = rel.input.constant;
             quote! {
-                acc.add_base(&F::from_u32_unchecked(#c));
+                acc = acc.add_base(&F::from_u32_unchecked(#c));
             }
         } else {
             quote! {}

@@ -159,12 +159,14 @@ pub fn forward_evaluate_lookup_base_inputs_pair_timestamp_range_check<
     let mut den_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
 
     let [lhs, rhs] = inputs;
+    let lhs_lookup_set_index = lhs.lookup_set_index;
     let lhs_source = std::mem::replace(
-        &mut witness_trace.timestamp_range_check_lookup_mapping[lhs.lookup_set_index],
+        &mut witness_trace.timestamp_range_check_lookup_mapping[lhs_lookup_set_index],
         vec![],
     );
+    let rhs_lookup_set_index = rhs.lookup_set_index;
     let rhs_source = std::mem::replace(
-        &mut witness_trace.timestamp_range_check_lookup_mapping[rhs.lookup_set_index],
+        &mut witness_trace.timestamp_range_check_lookup_mapping[rhs_lookup_set_index],
         vec![],
     );
     let lhs_source_ref = &lhs_source;

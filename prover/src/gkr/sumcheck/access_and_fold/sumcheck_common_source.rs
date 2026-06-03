@@ -4,7 +4,7 @@ use sumcheck_common::representation::EvaluationRepresentaionBase;
 // sumcheck round 0
 
 pub struct SumcheckRound0Source<'a, F: PrimeField, E: FieldExtension<F> + Field> {
-    storage: &'a mut GKRStorage<F, E>,
+    pub(crate) storage: &'a mut GKRStorage<F, E>,
 }
 
 #[derive(Debug)]
@@ -19,13 +19,6 @@ unsafe impl<F: PrimeField> Sync for BaseFieldPolyAccessor<F> {}
 impl<F: PrimeField> BaseFieldPolyAccessor<F> {
     pub(crate) fn current_values(&'_ self) -> &'_ [F] {
         unsafe { core::slice::from_raw_parts(self.start, self.next_layer_size * 2) }
-    }
-
-    pub(crate) fn empty() -> Self {
-        Self {
-            start: null_mut(),
-            next_layer_size: 0,
-        }
     }
 }
 
@@ -139,6 +132,7 @@ impl<'a, F: PrimeField, E: FieldExtension<F> + Field>
     }
     fn get_source_for_base_poly(&mut self, address: GKRAddress) -> Self::BaseInputAccessor {
         let base_field_poly = self.storage.get_base_field_initial_source(&address);
+        assert!(base_field_poly.next_layer_size > 0);
         BaseFieldPolyAccessor {
             start: base_field_poly.start,
             next_layer_size: base_field_poly.next_layer_size,
@@ -146,6 +140,7 @@ impl<'a, F: PrimeField, E: FieldExtension<F> + Field>
     }
     fn get_source_for_ext_poly(&mut self, address: GKRAddress) -> Self::ExtInputAccessor {
         let ext_field_poly = self.storage.get_extension_field_initial_source(&address);
+        assert!(ext_field_poly.next_layer_size > 0);
         ExtensionFieldPolyInitialAccessor {
             start: ext_field_poly.start,
             next_layer_size: ext_field_poly.next_layer_size,
@@ -157,9 +152,21 @@ impl<'a, F: PrimeField, E: FieldExtension<F> + Field>
 // sumcheck round 1
 
 pub struct SumcheckRound1Source<'a, F: PrimeField, E: FieldExtension<F> + Field> {
-    storage: &'a mut GKRStorage<F, E>,
-    folding_challenges: Vec<E>,
-    first_folding_challenge_and_squared: (E, E),
+    pub(crate) storage: &'a mut GKRStorage<F, E>,
+    pub(crate) first_folding_challenge_and_squared: (E, E),
+}
+
+impl<'a, F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound1Source<'a, F, E> {
+    pub(crate) fn new(storage: &'a mut GKRStorage<F, E>, folding_challenges: &[E]) -> Self {
+        assert_eq!(folding_challenges.len(), 1);
+        let mut first_folding_squared = folding_challenges[0];
+        first_folding_squared.square();
+
+        Self {
+            storage,
+            first_folding_challenge_and_squared: (folding_challenges[0], first_folding_squared),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -364,8 +371,7 @@ impl<'a, F: PrimeField, E: FieldExtension<F> + Field>
         ()
     }
     fn get_source_for_base_poly(&mut self, address: GKRAddress) -> Self::BaseInputAccessor {
-        debug_assert_eq!(self.folding_challenges.len(), 1);
-        let challenges = [self.folding_challenges[0]];
+        let challenges = [self.first_folding_challenge_and_squared.0];
         let base_field_poly = self
             .storage
             .make_base_source_for_round_1(address, &challenges);
@@ -376,8 +382,7 @@ impl<'a, F: PrimeField, E: FieldExtension<F> + Field>
         }
     }
     fn get_source_for_ext_poly(&mut self, address: GKRAddress) -> Self::ExtInputAccessor {
-        debug_assert_eq!(self.folding_challenges.len(), 1);
-        let challenges = [self.folding_challenges[0]];
+        let challenges = [self.first_folding_challenge_and_squared.0];
         let ext_field_poly = self
             .storage
             .make_ext_source_for_rounds_1_and_beyond(address, &challenges);
@@ -396,7 +401,16 @@ impl<'a, F: PrimeField, E: FieldExtension<F> + Field>
 
 pub struct SumcheckRound2Source<'a, F: PrimeField, E: FieldExtension<F> + Field> {
     storage: &'a mut GKRStorage<F, E>,
-    folding_challenges: Vec<E>,
+    folding_challenges: [E; 2],
+}
+
+impl<'a, F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound2Source<'a, F, E> {
+    pub(crate) fn new(storage: &'a mut GKRStorage<F, E>, folding_challenges: &[E]) -> Self {
+        Self {
+            storage,
+            folding_challenges: *folding_challenges.as_array::<2>().expect("fits"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -562,8 +576,7 @@ impl<'a, F: PrimeField, E: FieldExtension<F> + Field>
         ()
     }
     fn get_source_for_base_poly(&mut self, address: GKRAddress) -> Self::BaseInputAccessor {
-        debug_assert_eq!(self.folding_challenges.len(), 2);
-        let challenges = [self.folding_challenges[0], self.folding_challenges[1]];
+        let challenges = self.folding_challenges;
         let base_field_poly = self
             .storage
             .make_base_source_for_round_2(address, &challenges);
@@ -579,8 +592,7 @@ impl<'a, F: PrimeField, E: FieldExtension<F> + Field>
         }
     }
     fn get_source_for_ext_poly(&mut self, address: GKRAddress) -> Self::ExtInputAccessor {
-        debug_assert_eq!(self.folding_challenges.len(), 2);
-        let challenges = [self.folding_challenges[0], self.folding_challenges[1]];
+        let challenges = self.folding_challenges;
         let ext_field_poly = self
             .storage
             .make_ext_source_for_rounds_1_and_beyond(address, &challenges);
@@ -599,7 +611,18 @@ impl<'a, F: PrimeField, E: FieldExtension<F> + Field>
 
 pub struct SumcheckRound3AndBeyondSource<'a, F: PrimeField, E: FieldExtension<F> + Field> {
     storage: &'a mut GKRStorage<F, E>,
-    folding_challenges: Vec<E>,
+    folding_challenges: &'a [E],
+}
+
+impl<'a, F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound3AndBeyondSource<'a, F, E> {
+    pub(crate) fn new(storage: &'a mut GKRStorage<F, E>, folding_challenges: &'a [E]) -> Self {
+        assert!(folding_challenges.len() >= 3);
+
+        Self {
+            storage,
+            folding_challenges,
+        }
+    }
 }
 
 impl<'a, F: PrimeField, E: FieldExtension<F> + Field>
@@ -624,7 +647,7 @@ impl<'a, F: PrimeField, E: FieldExtension<F> + Field>
     }
     fn get_source_for_base_poly(&mut self, address: GKRAddress) -> Self::BaseInputAccessor {
         debug_assert!(self.folding_challenges.len() >= 3);
-        let challenges = self.folding_challenges.clone();
+        let challenges = self.folding_challenges;
         let base_field_poly = self
             .storage
             .make_base_source_for_rounds_3_and_beyond(address, &challenges);
@@ -639,7 +662,7 @@ impl<'a, F: PrimeField, E: FieldExtension<F> + Field>
     }
     fn get_source_for_ext_poly(&mut self, address: GKRAddress) -> Self::ExtInputAccessor {
         debug_assert!(self.folding_challenges.len() >= 3);
-        let challenges = self.folding_challenges.clone();
+        let challenges = self.folding_challenges;
         let ext_field_poly = self
             .storage
             .make_ext_source_for_rounds_1_and_beyond(address, &challenges);

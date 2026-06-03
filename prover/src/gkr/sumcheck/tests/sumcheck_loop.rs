@@ -79,7 +79,7 @@ fn test_sumcheck_loop_product() {
     let mut batching_challenge = E::from_base(F::from_u64_with_reduction(0xff));
     let mut seed = Seed::default();
 
-    evaluate_sumcheck_for_layer::<F, E>(
+    evaluate_sumcheck_for_layer::<F, E, ()>(
         0,
         &layer,
         &mut claim_points,
@@ -93,6 +93,7 @@ fn test_sumcheck_loop_product() {
         &[],
         0,
         &GKRExternalChallenges::default(),
+        None,
         &mut seed,
         &worker,
     );
@@ -235,7 +236,7 @@ fn test_sumcheck_loop_multiple_gates() {
     let mut batching_challenge = E::from_base(F::from_u64_with_reduction(0xff));
     let mut seed = Seed::default();
 
-    evaluate_sumcheck_for_layer::<F, E>(
+    evaluate_sumcheck_for_layer::<F, E, ()>(
         0,
         &layer,
         &mut claim_points,
@@ -249,6 +250,7 @@ fn test_sumcheck_loop_multiple_gates() {
         &[],
         0,
         &GKRExternalChallenges::default(),
+        None,
         &mut seed,
         &worker,
     );

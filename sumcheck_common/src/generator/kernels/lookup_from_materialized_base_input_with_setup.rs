@@ -64,13 +64,17 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                 core::hint::assert_unchecked(N > 0);
                 core::hint::assert_unchecked(subindex < N);
             }
-            // 1/(a + gamma) + b/(c + gamma) -> (a * b), (a * c)
+            // 1/(a + gamma) - b/(c + gamma) -> (- a * b), (a * c)
             let a = base_field_scratch[#a][subindex];
             let b = base_field_scratch[#b][subindex];
             let c = base_field_scratch[#c][subindex];
-            let mut result = a.mul_with_other(&b).mul_by_ext(&sumcheck_challenges[#num_term_challenge], base_repr_ctx);
-            let t = a.mul_with_other(&c).mul_by_ext(&sumcheck_challenges[#den_term_challenge], base_repr_ctx);
-            result.add_assign(&t);
+            // num
+            let num = a.mul_with_other(&b).mul_by_ext(&sumcheck_challenges[#num_term_challenge], base_repr_ctx);
+            // den
+            let den = a.mul_with_other(&c).mul_by_ext(&sumcheck_challenges[#den_term_challenge], base_repr_ctx);
+            // account for -1 in the numerator
+            let mut result = den;
+            result.sub_assign(&num);
 
             result
         }
@@ -88,18 +92,21 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
             unsafe {
                 core::hint::assert_unchecked(subindex < 2);
             }
-            // 1/(a + gamma) + b/(c + gamma) -> (c + gamma + (a + gamma) * b, ((a + gamma) * (c + gamma))
+            // 1/(a + gamma) - b/(c + gamma) -> (c + gamma - (a + gamma) * b, ((a + gamma) * (c + gamma))
             let a = base_field_scratch[#a][subindex];
             let b = base_field_scratch[#b][subindex];
             let c = base_field_scratch[#c][subindex];
             let a_plus_gamma = a.add_with_ext(lookup_gamma, base_repr_ctx);
             let c_plus_gamma = c.add_with_ext(lookup_gamma, base_repr_ctx);
-            let mut result = b.mul_by_ext(&a_plus_gamma, base_repr_ctx);
-            result.add_assign(&c_plus_gamma);
+            // num
+            let mut result = c_plus_gamma;
+            result.sub_assign(&b.mul_by_ext(&a_plus_gamma, base_repr_ctx));
             result.mul_assign(&sumcheck_challenges[#num_term_challenge]);
+            // den
             let mut den = a_plus_gamma;
             den.mul_assign(&c_plus_gamma);
             den.mul_assign(&sumcheck_challenges[#den_term_challenge]);
+
             result.add_assign(&den);
 
             result

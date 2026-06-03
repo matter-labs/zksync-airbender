@@ -19,6 +19,8 @@ pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &s
     serde_json::from_reader(src).unwrap()
 }
 
+pub(crate) mod evaluators;
+
 mod family_circuits;
 mod malicious_proofs;
 

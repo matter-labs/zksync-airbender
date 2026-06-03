@@ -169,6 +169,20 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRTermDescription<F, E
         self.add_linear_with_ext(a, b_constant);
     }
 
+    pub fn add_linear_base_scaled_by_ext(&mut self, b: (BTreeMap<GKRAddress, E>, E), coeff: E) {
+        let (b_terms, b_constant) = b;
+
+        for (b, c_b) in b_terms.into_iter() {
+            let mut c = c_b;
+            c.mul_assign(&coeff);
+            self.add_linear_with_base(b, c);
+        }
+
+        let mut c = b_constant;
+        c.mul_assign(&coeff);
+        self.add_constant(c);
+    }
+
     pub fn add_linear_base_terms(&mut self, a: (BTreeMap<GKRAddress, E>, E)) {
         let (a_terms, a_constant) = a;
 

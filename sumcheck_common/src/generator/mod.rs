@@ -95,7 +95,7 @@ pub fn generate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         .gates
         .iter()
         .chain(layer.gates_with_external_connections.iter())
-        .enumerate()
+        .enumerate().take(15)
     {
         let fetch_fn_initial_round_id = Ident::new(
             &format!("fetch_layer_{}_gate_{}_initial_round", layer_idx, gate_idx),
@@ -291,9 +291,6 @@ fn generate_gate<F: PrimeField, E: FieldExtension<F> + Field>(
     let mut extension_inputs = BTreeSet::new();
     relation.dump_base_field_inputs(&mut base_inputs);
     relation.dump_ext_field_inputs(&mut extension_inputs);
-
-    let base_field_mapping_size = base_inputs.len();
-    let ext_field_mapping_size = extension_inputs.len();
 
     let num_required_challenges = relation.num_challenges();
     let mut challenges = vec![];

@@ -69,7 +69,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
     let constant_quote = if input.input.constant != 0 {
         let c = input.input.constant;
         quote! {
-            acc.add_base(&F::from_u32_unchecked(#c));
+            acc = acc.add_base(&F::from_u32_unchecked(#c));
         }
     } else {
         quote! {}

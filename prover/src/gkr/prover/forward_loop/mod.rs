@@ -680,6 +680,29 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     ExtensionFieldPoly::new(destination),
                 );
             }
+            NoFieldGKRRelation::LookupWithDensAndCachedSetup {
+                input,
+                setup,
+                output,
+            } => {
+                assert_eq!(input.0, decoder_predicate_address);
+                vector_lookup::materialize_decoder_lookup_minus_setup(
+                    input.0,
+                    &input.1,
+                    setup.0,
+                    *output,
+                    gkr_storage,
+                    witness_trace,
+                    trace_len,
+                    preprocessed_generic_lookup,
+                    lookup_challenges_multiplicative_part,
+                    lookup_challenges_additive_part,
+                    decoder_lookup_fill_value,
+                    compiled_circuit.offset_for_decoder_table as u32,
+                    worker,
+                );
+            }
+
             rel @ _ => {
                 panic!("Should evaluate {:?}", rel);
             }

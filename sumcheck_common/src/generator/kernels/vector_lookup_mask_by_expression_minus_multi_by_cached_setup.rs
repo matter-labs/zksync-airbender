@@ -100,13 +100,20 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
             let (c, address) = column.linear_terms[0];
             let input_scratch_to_use = pos_state.get(&address).expect("pos").cache_pos;
             assert!(c != 0);
-            if c != 1 {
+            let cc = F::from_u32_unchecked(c);
+
+            if cc == F::ONE {
                 acc_fn.extend(quote! {
-                    let mut t = base_field_scratch[#input_scratch_to_use][subindex].mul_by_base(&F::from_u32_unchecked(#c));
+                    let mut t = base_field_scratch[#input_scratch_to_use][subindex];
+                });
+            } else if cc == F::MINUS_ONE {
+                acc_fn.extend(quote! {
+                    let mut t = base_field_scratch[#input_scratch_to_use][subindex];
+                    t = t.negate();
                 });
             } else {
                 acc_fn.extend(quote! {
-                    let mut t = base_field_scratch[#input_scratch_to_use][subindex];
+                    let mut t = base_field_scratch[#input_scratch_to_use][subindex].mul_by_base(&F::from_u32_unchecked(#c));
                 });
             }
 
@@ -189,7 +196,6 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
             ext_field_scratch: &[[S::ExtFieldInput; N]; #ext_field_scratch_space_size],
             sumcheck_challenges: &[E; #num_challenges],
             lookup_alpha_powers: &[E],
-            lookup_gamma: &E,
             base_repr_ctx: &<S::BaseFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
             ext_repr_ctx: &<S::ExtFieldInput as EvaluationRepresentaionBase<F, E>>::CTX,
             subindex: usize
@@ -198,7 +204,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                 core::hint::assert_unchecked(N > 0);
                 core::hint::assert_unchecked(subindex < N);
             }
-            // mask/(input + gamma) - multiplicity/(cached_setup + gamma) -> (mask * cached_input - multiplicity * input), (input * cached_setup)
+            // mask/(input + gamma) - multiplicity/(cached_setup + gamma) -> (mask * cached_setup - multiplicity * input), (input * cached_setup)
             let input: E = {
                 #quadratic_acc_fn
 
@@ -216,7 +222,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
             num.sub_assign(&t);
 
             let mut den = cached_setup.mul_by_ext(&sumcheck_challenges[#den_term_challenge], ext_repr_ctx);
-            den = mask.mul_by_ext(&den, base_repr_ctx);
+            den.mul_assign(&input);
 
             let mut result = num;
             result.add_assign(&den);
@@ -300,7 +306,6 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                     ext_field_scratch,
                     sumcheck_challenges,
                     lookup_alpha_powers,
-                    lookup_gamma,
                     base_repr_ctx,
                     ext_repr_ctx,
                     0
@@ -351,7 +356,6 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                     ext_field_scratch,
                     sumcheck_challenges,
                     lookup_alpha_powers,
-                    lookup_gamma,
                     base_repr_ctx,
                     ext_repr_ctx,
                     1,

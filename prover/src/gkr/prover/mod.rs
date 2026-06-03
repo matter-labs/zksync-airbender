@@ -287,6 +287,29 @@ pub(crate) fn apply_row_wise<'a, A: 'static + Send + Sync, B: 'static + Send + S
     });
 }
 
+pub(crate) fn apply_reduce<'a, R: 'static + Send + Sync + Copy + Default>(
+    trace_len: usize,
+    worker: &Worker,
+    func: impl Fn(&mut R, usize, usize) + Sync,
+) -> Vec<R> {
+    let geometry = worker.get_geometry(trace_len);
+    let mut result = vec![R::default(); geometry.len()];
+    worker.scope(trace_len, |scope, geometry| {
+        assert_eq!(result.len(), geometry.len());
+        for (thread_idx, dst) in result.iter_mut().enumerate() {
+            let func_ref = &func;
+            let chunk_size = geometry.get_chunk_size(thread_idx);
+            let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                (func_ref)(dst, chunk_start, chunk_size);
+            });
+        }
+    });
+
+    result
+}
+
 pub fn prove_configured_with_gkr<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -376,6 +399,9 @@ where
     // now we need to draw prove-local challenges, and in our case it's just a challenge for lookups, and challenge to batch all constraints
     let challenges: Vec<E> = draw_random_field_els(&mut seed, 2);
     let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
+    let lookup_additive_part = E::ONE;
+
+    dbg!(lookup_alpha);
 
     let mut gkr_storage = GKRStorage::<F, E>::default();
 
@@ -607,6 +633,7 @@ where
             &inits_and_teardowns_top_bits[..],
             address_high_bits_shift,
             external_challenges,
+            evaluator.as_ref(),
             &mut seed,
             worker,
         );

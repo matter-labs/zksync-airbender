@@ -47,9 +47,11 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
             CompiledAddressSpaceRelationStrict::Constant(c) => {
                 assert!(c < (1u32 << 16));
                 // doesn't contribute to quadratic part
-                explicit_fn.extend(quote! {
-                    acc.add_assign_base(&F::from_u32_unchecked(#c));
-                });
+                if c != 0 {
+                    explicit_fn.extend(quote! {
+                        acc.add_assign_base(&F::from_u32_unchecked(#c));
+                    });
+                }
             }
             CompiledAddressSpaceRelationStrict::IsRam(offset) => {
                 // if "true", then we should have address space == RAM (1)
@@ -87,21 +89,26 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
         }
         match &rel.address {
             &CompiledAddressStrict::ConstantU16(c) => {
-                explicit_fn.extend(quote! {
-                    let mut t = external_challenges.linearization_challenges()
-                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                    t.mul_assign_by_base(&F::from_u32_unchecked(#c as u32));
-                    acc.add_assign(&t);
-                });
+                if c != 0 {
+                    explicit_fn.extend(quote! {
+                        let mut t = external_challenges.linearization_challenges()
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                        t.mul_assign_by_base(&F::from_u32_unchecked(#c as u32));
+                        acc.add_assign(&t);
+                    });
+                }
+
             }
             &CompiledAddressStrict::Constant(c) => {
                 assert!(c < (1u32 << 16));
-                explicit_fn.extend(quote! {
-                    let mut t = external_challenges.linearization_challenges()
-                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                    t.mul_assign_by_base(&F::from_u32_unchecked(#c));
-                    acc.add_assign(&t);
-                });
+                if c != 0 {
+                    explicit_fn.extend(quote! {
+                        let mut t = external_challenges.linearization_challenges()
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                        t.mul_assign_by_base(&F::from_u32_unchecked(#c));
+                        acc.add_assign(&t);
+                    });
+                }
             }
             &CompiledAddressStrict::U16Space(offset) => {
                 let address = GKRAddress::BaseLayerMemory(offset);
@@ -200,10 +207,17 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                         let t = external_challenges.linearization_challenges()
                             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         let val = base_field_scratch[#input_scratch_to_use][subindex];
-                        let val = val.add_base(&F::from_u32_unchecked(#timestamp_offset));
+                    });
+                    if timestamp_offset != 0 {
+                        explicit_fn.extend(quote! {
+                            let val = val.add_base(&F::from_u32_unchecked(#timestamp_offset));
+                        });
+                    }
+                    explicit_fn.extend(quote! {
                         let t = val.mul_by_ext(&t, base_repr_ctx);
                         acc.add_assign(&t);
                     });
+                    
                     quadratic_fn.extend(
                         quote! {
                             let t = external_challenges.linearization_challenges()
@@ -267,7 +281,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                         quote! {
                             let t = external_challenges.linearization_challenges()
                                 [#idx];
-                            let t = base_field_scratch[#input_scratch_to_use][1].mul_by_ext(&t, base_repr_ctx);
+                            let t = base_field_scratch[#input_scratch_to_use][subindex].mul_by_ext(&t, base_repr_ctx);
                             acc.add_assign(&t);
                         }
                     );
@@ -315,8 +329,8 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                         quote! {
                             let t = external_challenges.linearization_challenges()
                                 [#idx];
-                            let val = base_field_scratch[#input_scratch_to_use_low][1].mul_by_ext(&t, base_repr_ctx);
-                            let high = base_field_scratch[#input_scratch_to_use_high][1].mul_by_ext(&t, base_repr_ctx);
+                            let val = base_field_scratch[#input_scratch_to_use_low][subindex].mul_by_ext(&t, base_repr_ctx);
+                            let high = base_field_scratch[#input_scratch_to_use_high][subindex].mul_by_ext(&t, base_repr_ctx);
                             let high = high.mul_by_base(&byte_shift);
                             let val = val.add_other(&high);
                             let t = val.mul_by_ext(&t, base_repr_ctx);
@@ -338,7 +352,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
             acc
         };
 
-        let mut acc_1 = {
+        let acc_1 = {
             #expl_1
 
             acc
@@ -355,7 +369,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
             acc
         };
 
-        let mut acc_1 = {
+        let acc_1 = {
             #quad_1
 
             acc

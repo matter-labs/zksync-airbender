@@ -1,5 +1,6 @@
 use crate::gkr::prover::SumcheckIntermediateProofValues;
-use std::collections::BTreeMap;
+use std::alloc::Global;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::gkr::prover::GKRExternalChallenges;
 use crate::gkr::sumcheck::evaluation_kernels::*;
@@ -16,7 +17,9 @@ use crate::gkr::{
     },
 };
 use crate::worker::Worker;
+use fft::materialize_powers_serial_starting_with_one;
 use field::{Field, FieldExtension, PrimeField};
+use sumcheck_common::representation::SumcheckRoundSource;
 
 use crate::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
 use cs::gkr_compiler::GKRLayerDescription;
@@ -26,6 +29,7 @@ use transcript::Seed;
 
 mod batch_evaluation;
 mod distribution_analysis;
+mod evaluator_sumcheck_loop;
 mod kernel_collector;
 
 /// # Panics
@@ -167,7 +171,11 @@ where
 
 /// # Panics
 /// Panics if claims or challenge points for the output layer are missing from storage.
-pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
+pub fn evaluate_sumcheck_for_layer<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    EVAL: crate::gkr::sumcheck::SumcheckEvaluator<F, E>,
+>(
     layer_idx: usize,
     layer: &GKRLayerDescription,
     claim_points: &mut BTreeMap<usize, Vec<E>>,
@@ -181,6 +189,7 @@ pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     inits_and_teardowns_top_bits: &[u32],
     address_high_bits_shift: u32,
     external_challenges: &GKRExternalChallenges<F, E>,
+    evaluator: Option<&EVAL>,
     seed: &mut Seed,
     worker: &Worker,
 ) -> SumcheckIntermediateProofValues<F, E>
@@ -205,50 +214,93 @@ where
     let eq_polys = make_eq_poly_in_full::<E>(prev_challenges, worker);
 
     let batch_challenge_base = *batching_challenge;
+    let batch_challenge_base = E::ONE;
 
-    let collector = KernelCollector::from_layer(
-        layer,
-        layer_idx,
-        batch_challenge_base,
-        lookup_challenges_multiplicative_part,
-        lookup_challenges_additive_part,
-        inits_and_teardowns_top_bits,
-        address_high_bits_shift,
-    );
-
-    debug_assert!(!collector.is_empty());
-
-    let claim = collector.compute_combined_claim(output_claims);
-
-    let challenge_constants = BatchedGKRTermDescriptionConstants::<F, E> {
-        external_challenges: *external_challenges,
-        lookup_challenges_multiplicative_part: lookup_challenges_multiplicative_part,
-        lookup_challenges_additive_part: lookup_challenges_additive_part,
-        _marker: core::marker::PhantomData,
-    };
-
-    let (mut folding_challenges, internal_round_coefficients, last_evaluations, final_accumulator) =
-        run_sumcheck_loop::<F, E, 2, true>(
-            &collector,
-            claim,
-            prev_challenges,
-            &eq_polys,
-            gkr_storage,
-            &challenge_constants,
-            folding_steps,
-            worker,
-            seed,
-        );
-
-    #[cfg(feature = "gkr_self_checks")]
+    let (mut folding_challenges, internal_round_coefficients, last_evaluations) = if evaluator
+        .is_some()
+        && layer_idx == 0
     {
-        let recomputed = collector
-            .compute_last_step_accumulator_from_evals(&challenge_constants, &last_evaluations);
-        assert_eq!(
-            recomputed, final_accumulator,
-            "last_evaluations inconsistent with final accumulator"
+        let evaluator = evaluator.unwrap();
+        let challenge_constants = BatchedGKRTermDescriptionConstants::<F, E> {
+            external_challenges: *external_challenges,
+            lookup_challenges_multiplicative_part: lookup_challenges_multiplicative_part,
+            lookup_challenges_additive_part: lookup_challenges_additive_part,
+            _marker: core::marker::PhantomData,
+        };
+
+        let (folding_challenges, internal_round_coefficients, last_evaluations, _final_accumulator) =
+            evaluator_sumcheck_loop::run_sumcheck_loop_with_external_evaluator::<F, E, EVAL>(
+                evaluator,
+                layer_idx,
+                layer,
+                output_claims,
+                prev_challenges,
+                &eq_polys,
+                gkr_storage,
+                _compiled_circuit,
+                &challenge_constants,
+                batch_challenge_base,
+                folding_steps,
+                worker,
+                seed,
+            );
+
+        (
+            folding_challenges,
+            internal_round_coefficients,
+            last_evaluations,
+        )
+    } else {
+        let collector = KernelCollector::from_layer(
+            layer,
+            layer_idx,
+            batch_challenge_base,
+            lookup_challenges_multiplicative_part,
+            lookup_challenges_additive_part,
+            inits_and_teardowns_top_bits,
+            address_high_bits_shift,
         );
-    }
+
+        debug_assert!(!collector.is_empty());
+
+        let claim = collector.compute_combined_claim(output_claims);
+
+        let challenge_constants = BatchedGKRTermDescriptionConstants::<F, E> {
+            external_challenges: *external_challenges,
+            lookup_challenges_multiplicative_part: lookup_challenges_multiplicative_part,
+            lookup_challenges_additive_part: lookup_challenges_additive_part,
+            _marker: core::marker::PhantomData,
+        };
+
+        let (folding_challenges, internal_round_coefficients, last_evaluations, final_accumulator) =
+            run_sumcheck_loop::<F, E, 2, true>(
+                &collector,
+                claim,
+                prev_challenges,
+                &eq_polys,
+                gkr_storage,
+                &challenge_constants,
+                folding_steps,
+                worker,
+                seed,
+            );
+
+        #[cfg(feature = "gkr_self_checks")]
+        {
+            let recomputed = collector
+                .compute_last_step_accumulator_from_evals(&challenge_constants, &last_evaluations);
+            assert_eq!(
+                recomputed, final_accumulator,
+                "last_evaluations inconsistent with final accumulator"
+            );
+        }
+
+        (
+            folding_challenges,
+            internal_round_coefficients,
+            last_evaluations,
+        )
+    };
 
     // After sumcheck completes, extract claims for the input layer
     let transcript_inputs: Vec<E> = last_evaluations
@@ -465,6 +517,10 @@ where
     };
 
     for step in 0..folding_steps - 1 {
+        dbg!(claim);
+        dbg!(eq_prefactor);
+        dbg!(&folding_challenges);
+
         let acc_size = 1 << (folding_steps - step - 1);
         let accumulator = &mut accumulator_buffer[..acc_size];
         if step > 0 {
@@ -504,6 +560,8 @@ where
             eq,
             worker,
         );
+
+        dbg!((c0, c2));
 
         let mut normalized_claim = claim;
         normalized_claim.mul_assign(&eq_prefactor.inverse().expect("eq prefactor non-zero"));

@@ -242,6 +242,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
         BabyBearField::new(8000),
     ]);
 
+    let memory_argument_alpha = BabyBearExt4::ONE;
+    let permutation_argument_additive_part = BabyBearExt4::ZERO;
+
     let permutation_argument_linearization_challenges: [BabyBearExt4;
         NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
         materialize_powers_serial_starting_with_elem::<_, Global>(
@@ -473,6 +476,10 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             println!("Trying to prove");
 
+            let evaluator =
+                Some(super::evaluators::add_sub_lui_auipc_mop::AddSubLuiAuipcMopEvaluator);
+            // let evaluator = Option::<()>::None;
+
             let now = std::time::Instant::now();
             let proof = prove_configured_with_gkr::<
                 BabyBearField,
@@ -489,7 +496,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 &prover_config,
                 Vec::new(),
                 trace_len,
-                Option::<()>::None,
+                evaluator,
                 &worker,
             );
             println!("Proving time is {:?}", now.elapsed());

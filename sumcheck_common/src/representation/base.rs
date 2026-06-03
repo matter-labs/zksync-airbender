@@ -25,6 +25,12 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionBase<F,
         E::from_base(self.0)
     }
     #[inline(always)]
+    fn negate(self) -> Self {
+        let mut t = self.0;
+        t.negate();
+        Self(t)
+    }
+    #[inline(always)]
     fn add_other(self, other: &Self) -> Self {
         let mut t = self.0;
         t.add_assign(&other.0);
@@ -87,6 +93,12 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionExt<F, 
     #[inline(always)]
     fn into_ext(self, _ctx: &Self::CTX) -> E {
         E::from_base(self.0)
+    }
+    #[inline(always)]
+    fn negate(self) -> Self {
+        let mut t = self.0;
+        t.negate();
+        Self(t)
     }
     #[inline(always)]
     fn add_other(self, other: &Self) -> Self {

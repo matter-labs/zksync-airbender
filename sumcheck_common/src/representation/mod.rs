@@ -13,6 +13,7 @@ pub trait EvaluationRepresentaionBase<F: PrimeField, E: FieldExtension<F> + Fiel
 
     fn zero() -> Self;
     fn into_ext(self, ctx: &Self::CTX) -> E;
+    fn negate(self) -> Self;
 
     fn add_other(self, other: &Self) -> Self;
     fn sub_other(self, other: &Self) -> Self;
@@ -34,6 +35,7 @@ pub trait EvaluationRepresentaionExt<F: PrimeField, E: FieldExtension<F> + Field
 
     fn zero() -> Self;
     fn into_ext(self, ctx: &Self::CTX) -> E;
+    fn negate(self) -> Self;
 
     fn add_other(self, other: &Self) -> Self;
     fn sub_other(self, other: &Self) -> Self;
@@ -89,8 +91,8 @@ pub trait PolyAccessor<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync
         &self,
         index: usize,
     ) -> [Self::Representation; 2] {
-        let [f0, f1_minus_f0] = self.get_f0_and_f1::<ASSUME_PREFOLDED>(index);
-        f1_minus_f0.sub_other(&f0);
+        let [f0, f1] = self.get_f0_and_f1::<ASSUME_PREFOLDED>(index);
+        let f1_minus_f0 = f1.sub_other(&f0);
 
         [f0, f1_minus_f0]
     }
