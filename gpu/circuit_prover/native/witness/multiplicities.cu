@@ -1,6 +1,6 @@
-#include "primitives/memory.cuh"
 #include "common.cuh"
 #include "memory.cuh"
+#include "primitives/memory.cuh"
 
 using namespace ::airbender::primitives::memory;
 using namespace ::airbender::witness::memory;

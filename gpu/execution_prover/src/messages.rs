@@ -1,12 +1,12 @@
 use crate::precomputations::CircuitPrecomputations;
 use crate::A;
-use gpu_core::primitives::field::{BF, E4};
 use circuit_prover::prover::trace::tracing_data::TracingDataHost;
 use circuit_prover::witness::circuit_type::CircuitType;
 use circuit_prover::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use common_constants::TimestampScalar;
 use crossbeam_channel::{Receiver, Sender};
 use fft::GoodAllocator;
+use gpu_core::primitives::field::{BF, E4};
 
 use crate::upstream::{
     DefaultTreeConstructor, FinalRegisterValue, GKRExternalChallenges, GKRProof,

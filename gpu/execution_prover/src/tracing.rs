@@ -1,6 +1,5 @@
 use crate::messages::{TracingData, WorkerResult};
 use crate::A;
-use gpu_core::primitives::machine_type::MachineType;
 use circuit_prover::prover::trace::tracing_data::{
     DelegationTracingDataHostSource, TracingDataHost, UnrolledTracingDataHost,
 };
@@ -10,6 +9,7 @@ use circuit_prover::witness::circuit_type::{
 };
 use circuit_prover::witness::trace::ChunkedTraceHolder;
 use crossbeam_channel::{Receiver, Sender};
+use gpu_core::primitives::machine_type::MachineType;
 use itertools::Itertools;
 use riscv_transpiler::jit::{CounterType, MAX_NUM_COUNTERS};
 use riscv_transpiler::vm::{

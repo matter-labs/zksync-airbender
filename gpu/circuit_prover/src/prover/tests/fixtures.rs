@@ -278,7 +278,9 @@ pub(super) mod blake2_with_extended_control_mod {
     use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
     use prover::tracers::oracles::transpiler_oracles::delegation::Blake2sDelegationOracle;
 
-    include!("../../../../../prover/compiled_circuits/blake2_with_extended_control_generated_gkr.rs");
+    include!(
+        "../../../../../prover/compiled_circuits/blake2_with_extended_control_generated_gkr.rs"
+    );
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, Blake2sDelegationOracle<'b>, BF>,
@@ -307,7 +309,9 @@ pub(super) mod bigint_with_extended_control_mod {
     use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
     use prover::tracers::oracles::transpiler_oracles::delegation::BigintDelegationOracle;
 
-    include!("../../../../../prover/compiled_circuits/bigint_with_extended_control_generated_gkr.rs");
+    include!(
+        "../../../../../prover/compiled_circuits/bigint_with_extended_control_generated_gkr.rs"
+    );
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, BigintDelegationOracle<'b>, BF>,

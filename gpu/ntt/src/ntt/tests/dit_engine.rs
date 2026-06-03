@@ -1718,7 +1718,7 @@ mod bench_variants {
     fn single_stream_8_3_parity() {
         run_single_stream_parity(8, 3, 1, 32); // grid*spb=4, 32/4=8 cpb; 8+5=13 <= 27
         run_single_stream_parity(8, 3, 2, 64); // grid*spb=8, 64/8=8 cpb; 8+6=14 <= 27
-        // ragged: grid*spb=12 does NOT divide 32 — exercises the guard.
+                                               // ragged: grid*spb=12 does NOT divide 32 — exercises the guard.
         run_single_stream_parity(8, 3, 3, 32);
     }
 

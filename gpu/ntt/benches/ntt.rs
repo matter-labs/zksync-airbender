@@ -65,7 +65,13 @@ fn two_pass_stream(c: &mut Criterion<CudaMeasurement>) {
         // principled launch the production launcher uses. Not a pow2, so NOT
         // covered by the sweep above.
         let ow = harness.one_wave_grid_two_pass().unwrap();
-        for (mult, tag) in [(1u32, "ow01"), (2, "ow02"), (4, "ow04"), (8, "ow08"), (16, "ow16")] {
+        for (mult, tag) in [
+            (1u32, "ow01"),
+            (2, "ow02"),
+            (4, "ow04"),
+            (8, "ow08"),
+            (16, "ow16"),
+        ] {
             let grid = ow.saturating_mul(mult).min(num_cosets).max(1);
             let cfg = LaunchCfg::TwoPassStream { grid };
             eprintln!("{} [{tag}=one_wave*{mult}]", harness.describe(&cfg));
@@ -152,7 +158,13 @@ fn single_stream(c: &mut Criterion<CudaMeasurement>) {
             );
         }
         let ow = harness.one_wave_grid_single().unwrap();
-        for (mult, tag) in [(1u32, "ow01"), (2, "ow02"), (4, "ow04"), (8, "ow08"), (16, "ow16")] {
+        for (mult, tag) in [
+            (1u32, "ow01"),
+            (2, "ow02"),
+            (4, "ow04"),
+            (8, "ow08"),
+            (16, "ow16"),
+        ] {
             let grid = ow.saturating_mul(mult).min(num_cosets).max(1);
             let cfg = LaunchCfg::SinglePassStream { grid };
             eprintln!("{} [{tag}=one_wave*{mult}]", harness.describe(&cfg));

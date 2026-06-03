@@ -87,10 +87,7 @@ pub struct GpuGKRMemoryTransfer<'a> {
 }
 
 impl<'a> GpuGKRMemoryTransfer<'a> {
-    pub fn new(
-        host: Arc<GpuGKRMemoryTransferHost>,
-        context: &ProverContext,
-    ) -> CudaResult<Self> {
+    pub fn new(host: Arc<GpuGKRMemoryTransferHost>, context: &ProverContext) -> CudaResult<Self> {
         let cap_size = 1usize << host.log_tree_cap_size;
         let unified_device_cap = context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
         Ok(Self {
