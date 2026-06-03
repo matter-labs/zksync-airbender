@@ -1,7 +1,3 @@
-use gpu_core::allocator::host::ConcurrentStaticHostAllocator;
-use gpu_core::primitives::field::BF;
-use gpu_core::primitives::machine_type::MachineType;
-use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use circuit_prover::prover::gkr::setup::GpuGKRSetupHost;
 use circuit_prover::prover::ProverContext;
 use circuit_prover::witness::circuit_type::CircuitType;
@@ -11,6 +7,10 @@ use circuit_prover::witness::circuit_type::{
     UnrolledNonMemoryCircuitType,
 };
 use circuit_prover::witness::trace_unrolled::ExecutorFamilyDecoderData;
+use gpu_core::allocator::host::ConcurrentStaticHostAllocator;
+use gpu_core::primitives::field::BF;
+use gpu_core::primitives::machine_type::MachineType;
+use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 
 use era_cudart::result::CudaResult;
 

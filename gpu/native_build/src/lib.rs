@@ -87,8 +87,8 @@ impl CudaArchive {
         if self.export_include {
             // Runtime `CARGO_MANIFEST_DIR` (the calling crate's dir), not the
             // compile-time `env!` of this helper crate.
-            let manifest = env::var("CARGO_MANIFEST_DIR")
-                .expect("CARGO_MANIFEST_DIR not set in build script");
+            let manifest =
+                env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set in build script");
             let native = Path::new(&manifest).join("native");
             println!("cargo:include={}", native.display());
         }
@@ -124,10 +124,7 @@ impl CudaArchive {
                 }
             }
         }
-        config.define(
-            &lineinfo_var,
-            if enable_lineinfo { "ON" } else { "OFF" },
-        );
+        config.define(&lineinfo_var, if enable_lineinfo { "ON" } else { "OFF" });
         if self.deterministic_pow && env::var_os("CARGO_FEATURE_DETERMINISTIC_POW").is_some() {
             config.define("AB_DETERMINISTIC_POW", "ON");
         }

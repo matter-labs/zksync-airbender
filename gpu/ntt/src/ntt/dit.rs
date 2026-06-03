@@ -607,8 +607,11 @@ pub(crate) fn monomials_to_evals_dit(
         let tw_clean_ptr = ctx.clean_triangle(log_n as u32, log_vpt as u32).as_ptr();
 
         let func = single_stream_func(log_n, log_vpt);
-        let occ =
-            era_cudart::occupancy::max_active_blocks_per_multiprocessor(&func, block_dim as i32, smem)?;
+        let occ = era_cudart::occupancy::max_active_blocks_per_multiprocessor(
+            &func,
+            block_dim as i32,
+            smem,
+        )?;
         let one_wave = device_props.sm_count * (occ.max(1) as usize);
         let wave_mult = (1024usize / block_dim as usize).max(1);
         let grid = (one_wave * wave_mult).min(num_cosets).max(1);

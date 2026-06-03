@@ -1,16 +1,16 @@
 use crate::messages::{InitsAndTeardownsData, SimulationResult, WorkerResult};
 use crate::tracing::{Tracer, TracingType};
+use crate::upstream::FinalRegisterValue;
 use crate::workers::simulation_runner::{
     LockedBoxedMemoryHolder, LockedBoxedTraceChunk, SimulationRunner, Snapshot,
 };
 use crate::A;
-use gpu_core::primitives::machine_type::MachineType;
-use crate::upstream::FinalRegisterValue;
 use circuit_prover::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 use circuit_prover::witness::trace::ChunkedTraceHolder;
 use circuit_prover::witness::trace_unrolled::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use crossbeam_channel::{Receiver, Sender};
+use gpu_core::primitives::machine_type::MachineType;
 use itertools::Itertools;
 use log::{debug, trace};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;

@@ -1,5 +1,5 @@
-#include "primitives/memory.cuh"
 #include "batch_inv.cuh"
+#include "primitives/memory.cuh"
 
 using namespace ::airbender::primitives::memory;
 

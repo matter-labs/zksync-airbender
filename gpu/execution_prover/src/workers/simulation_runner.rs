@@ -1,12 +1,12 @@
 use crate::messages::WorkerResult;
 use crate::tracing::{DataTraceRanges, TracingDataProducers, TracingType};
 use crate::A;
-use gpu_core::primitives::machine_type::MachineType;
 use common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use crossbeam_channel::{Receiver, Sender};
 use era_cudart::memory::{CudaHostAllocFlags, CudaHostRegisterFlags, HostAllocation};
 use era_cudart::result::CudaResultWrap;
 use era_cudart_sys::{cudaHostRegister, cudaHostUnregister};
+use gpu_core::primitives::machine_type::MachineType;
 use itertools::Itertools;
 use log::{debug, trace};
 use riscv_transpiler::common_constants::ROM_WORD_SIZE;

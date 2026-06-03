@@ -20,9 +20,9 @@ pub(crate) type A = ConcurrentStaticHostAllocator;
 
 // Public API: the proving entry point + its handle/config/result types,
 // plus the security-level surface re-exported from circuit_prover.
+pub use circuit_prover::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS};
+pub use gpu_core::primitives::machine_type::MachineType;
 pub use prover::{
     BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, ExecutionProverConfiguration,
     ProveResult,
 };
-pub use circuit_prover::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS};
-pub use gpu_core::primitives::machine_type::MachineType;
