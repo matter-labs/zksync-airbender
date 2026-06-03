@@ -242,8 +242,8 @@ pub fn gkr_run_basic_unrolled_test_impl(
         BabyBearField::new(8000),
     ]);
 
-    let memory_argument_alpha = BabyBearExt4::ONE;
-    let permutation_argument_additive_part = BabyBearExt4::ZERO;
+    // let memory_argument_alpha = BabyBearExt4::ONE;
+    // let permutation_argument_additive_part = BabyBearExt4::ZERO;
 
     let permutation_argument_linearization_challenges: [BabyBearExt4;
         NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
@@ -478,7 +478,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             let evaluator =
                 Some(super::evaluators::add_sub_lui_auipc_mop::AddSubLuiAuipcMopEvaluator);
-            // let evaluator = Option::<()>::None;
+            let evaluator = Option::<()>::None;
 
             let now = std::time::Instant::now();
             let proof = prove_configured_with_gkr::<

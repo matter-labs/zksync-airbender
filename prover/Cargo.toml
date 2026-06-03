@@ -62,6 +62,7 @@ cs_debug = ["cs/debug_evaluate_witness"]
 debug_logs = ["timing_logs", "cs/debug_logs"]
 profiling = ["debug_logs"]
 default = ["prover", "cs_debug", "bincode", "gkr_self_checks"]
+# default = ["prover", "cs_debug", "bincode"]
 
 # Include test code for test in dependent crates
 test = []

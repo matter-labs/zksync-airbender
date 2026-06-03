@@ -1,5 +1,4 @@
 use fft::materialize_powers_serial_starting_with_elem;
-use sumcheck_common::representation::PolyAccessor;
 
 use super::*;
 use crate::gkr::prover::*;
@@ -15,7 +14,7 @@ fn compute_combined_claim<F: PrimeField, E: FieldExtension<F> + Field>(
         .gates
         .iter()
         .chain(layer.gates_with_external_connections.iter())
-        .take(15)
+        .take(45)
     {
         let num_challenges = gate.enforced_relation.num_challenges();
         let outputs = gate.enforced_relation.ordered_outputs_for_batching();
@@ -112,10 +111,6 @@ where
 
     // round 0
     {
-        dbg!(claim);
-        dbg!(eq_prefactor);
-        dbg!(&folding_challenges);
-
         let step = 0;
         let mut source = SumcheckRound0Source {
             storage: gkr_storage,
@@ -478,7 +473,7 @@ fn interpolate_and_commit_values<F: PrimeField, E: FieldExtension<F> + Field>(
         c2.add_assign(b);
     }
 
-    dbg!((c0, c2));
+    // dbg!((c0, c2));
 
     let mut normalized_claim = *claim;
     normalized_claim.mul_assign(&eq_prefactor.inverse().expect("eq prefactor non-zero"));

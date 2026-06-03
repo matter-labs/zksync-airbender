@@ -572,7 +572,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(super) fn register(&mut self, kernel: KernelVariant<F, E>) {
         // Kernels can have a bug in them, place to debug
         if self.layer == 0 {
-            if self.kernels.len() < 15 {
+            if self.kernels.len() < 45 {
                 self.kernels.push(kernel)
             } else {
             }

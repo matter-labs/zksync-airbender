@@ -214,7 +214,7 @@ where
     let eq_polys = make_eq_poly_in_full::<E>(prev_challenges, worker);
 
     let batch_challenge_base = *batching_challenge;
-    let batch_challenge_base = E::ONE;
+    // let batch_challenge_base = E::ONE;
 
     let (mut folding_challenges, internal_round_coefficients, last_evaluations) = if evaluator
         .is_some()
@@ -517,10 +517,6 @@ where
     };
 
     for step in 0..folding_steps - 1 {
-        dbg!(claim);
-        dbg!(eq_prefactor);
-        dbg!(&folding_challenges);
-
         let acc_size = 1 << (folding_steps - step - 1);
         let accumulator = &mut accumulator_buffer[..acc_size];
         if step > 0 {
@@ -561,7 +557,7 @@ where
             worker,
         );
 
-        dbg!((c0, c2));
+        // dbg!((c0, c2));
 
         let mut normalized_claim = claim;
         normalized_claim.mul_assign(&eq_prefactor.inverse().expect("eq prefactor non-zero"));
