@@ -97,7 +97,6 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                         acc.add_assign(&t);
                     });
                 }
-
             }
             &CompiledAddressStrict::Constant(c) => {
                 assert!(c < (1u32 << 16));
@@ -217,7 +216,7 @@ pub(crate) fn generate_compute_fns<F: PrimeField, E: FieldExtension<F> + Field>(
                         let t = val.mul_by_ext(&t, base_repr_ctx);
                         acc.add_assign(&t);
                     });
-                    
+
                     quadratic_fn.extend(
                         quote! {
                             let t = external_challenges.linearization_challenges()

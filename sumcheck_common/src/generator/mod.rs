@@ -95,7 +95,8 @@ pub fn generate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         .gates
         .iter()
         .chain(layer.gates_with_external_connections.iter())
-        .enumerate().take(45)
+        .enumerate()
+        .take(45)
     {
         let fetch_fn_initial_round_id = Ident::new(
             &format!("fetch_layer_{}_gate_{}_initial_round", layer_idx, gate_idx),

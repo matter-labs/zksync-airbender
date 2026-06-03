@@ -1601,59 +1601,35 @@ impl NoFieldGKRRelation {
                 input,
                 setup,
                 output,
-            } => {
-                output.to_vec()
-            }
-            
-            Self::LookupPairFromBaseInputs { input, output, .. } => {
-                output.to_vec()
-            }
-            Self::LookupPairFromMaterializedBaseInputs { input, output } => {
-                output.to_vec()
-            }
+            } => output.to_vec(),
+
+            Self::LookupPairFromBaseInputs { input, output, .. } => output.to_vec(),
+            Self::LookupPairFromMaterializedBaseInputs { input, output } => output.to_vec(),
             Self::LookupUnbalancedPairWithMaterializedBaseInputs {
                 input,
                 remainder,
                 output,
-            } => {
-                output.to_vec()
-            }
+            } => output.to_vec(),
             Self::LookupFromMaterializedBaseInputWithSetup {
                 input,
                 setup,
                 output,
-            } => {
-                output.to_vec()
-            }
-            Self::LookupPairFromVectorInputs { input, output } => {
-                output.to_vec()
-            }
-            Self::LookupPairFromMaterializedVectorInputs { input, output } => {
-                output.to_vec()
-            }
-            Self::LookupPairFromCachedVectorInputs { input, output } => {
-                output.to_vec()
-            }
+            } => output.to_vec(),
+            Self::LookupPairFromVectorInputs { input, output } => output.to_vec(),
+            Self::LookupPairFromMaterializedVectorInputs { input, output } => output.to_vec(),
+            Self::LookupPairFromCachedVectorInputs { input, output } => output.to_vec(),
             Self::LookupFromMaterializedVectorInputWithSetup {
                 input,
                 setup,
                 output,
-            } => {
-                output.to_vec()
-            }
-            Self::AggregateLookupRationalPair { input, output } => {
-                output.to_vec()
-            }
+            } => output.to_vec(),
+            Self::AggregateLookupRationalPair { input, output } => output.to_vec(),
             Self::LookupWithDensAndSetupExpressions {
                 input,
                 setup,
                 output,
-            } => {
-                output.to_vec()
-            }
-            Self::LookupWithDensAndCachedSetup { output, .. } => {
-                output.to_vec()
-            }
+            } => output.to_vec(),
+            Self::LookupWithDensAndCachedSetup { output, .. } => output.to_vec(),
             a @ _ => {
                 panic!("Not yet implemented for relation {:?}", a);
             }
