@@ -169,6 +169,13 @@ impl ProverContext {
         &self.exec_stream
     }
 
+    /// The NTT twiddle/triangle `DeviceContext` owned for the prover's lifetime.
+    /// The forward-NTT launchers (DIT engine + compact) read its precomputed
+    /// CLEAN/COUPLED triangles and `__constant__` twiddle tables.
+    pub fn ntt_device_context(&self) -> &DeviceContext {
+        &self._device_context
+    }
+
     pub fn get_h2d_stream(&self) -> &CudaStream {
         &self.h2d_stream
     }

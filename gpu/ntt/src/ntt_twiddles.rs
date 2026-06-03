@@ -1,7 +1,10 @@
 use era_cudart::memory::{memory_copy, DeviceAllocation};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
+use era_cudart::stream::CudaStream;
 use era_cudart_sys::cuda_struct_and_stub;
+
+use crate::ntt::dit::DitTriangles;
 use fft::bitreverse_enumeration_inplace;
 use fft::field_utils::{distribute_powers_serial, domain_generator_for_size};
 
@@ -181,6 +184,9 @@ pub struct DeviceContext {
     _powers_of_w_inv_coarse_for_ntt: DeviceAllocation<BF>,
     _fwd_gmem_twiddles_coarse: DeviceAllocation<BF>,
     _inv_gmem_twiddles_coarse: DeviceAllocation<BF>,
+    /// The fixed, indexed set of DIT butterfly-triangle buffers, precomputed
+    /// on-device at `create` and read-only afterward.
+    dit_triangles: DitTriangles,
 }
 
 impl DeviceContext {
@@ -310,6 +316,15 @@ impl DeviceContext {
             )?;
         }
 
+        // The ω table (`ab_ntt_forward_powers`) is now live on-device, so the
+        // DIT fill kernels (`get_forward_twiddle_power`) can build the fixed
+        // triangle set. Use a temporary stream for the fill launches: `create`
+        // otherwise launches no kernels, so there is no stream in scope. One
+        // `synchronize` after all launches; the stream then drops.
+        let stream = CudaStream::create()?;
+        let dit_triangles = DitTriangles::build(&stream)?;
+        stream.synchronize()?;
+
         Ok(Self {
             _powers_of_w_fine_for_ntt: powers_of_w_fine_for_ntt,
             _powers_of_w_coarse_for_ntt: powers_of_w_coarse_for_ntt,
@@ -317,6 +332,19 @@ impl DeviceContext {
             _powers_of_w_inv_coarse_for_ntt: powers_of_w_inv_coarse_for_ntt,
             _fwd_gmem_twiddles_coarse: fwd_gmem_twiddles_coarse,
             _inv_gmem_twiddles_coarse: inv_gmem_twiddles_coarse,
+            dit_triangles,
         })
+    }
+
+    /// The precomputed CLEAN butterfly triangle for `(log_m, log_vpt)`.
+    /// Panics if the config is not in the fixed set built at `create`.
+    pub fn clean_triangle(&self, log_m: u32, log_vpt: u32) -> &DeviceSlice<BF> {
+        self.dit_triangles.clean(log_m, log_vpt)
+    }
+
+    /// The precomputed COUPLED pass-1 triangle for `(log_n, log_vpt)`.
+    /// Panics if the config is not in the fixed set built at `create`.
+    pub fn coupled_triangle(&self, log_n: u32, log_vpt: u32) -> &DeviceSlice<BF> {
+        self.dit_triangles.coupled(log_n, log_vpt)
     }
 }
