@@ -33,6 +33,7 @@ pub fn ntt_pass_selection(log_n: usize, device_properties: &DeviceProperties) ->
 #[cfg(test)]
 mod tests;
 
+pub(crate) mod dit;
 mod ntt;
 mod strategy;
 #[allow(dead_code)]

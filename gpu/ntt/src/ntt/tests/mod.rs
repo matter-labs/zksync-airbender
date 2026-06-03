@@ -50,6 +50,10 @@ impl NttTestContext {
         &self.props
     }
 
+    pub(crate) fn device_context(&self) -> &crate::ntt_twiddles::DeviceContext {
+        &self._device_context
+    }
+
     /// Allocate `len` elements directly on the device (no pooled allocator).
     fn alloc<T>(&self, len: usize) -> CudaResult<DeviceAllocation<T>> {
         DeviceAllocation::<T>::alloc(len)
@@ -640,14 +644,24 @@ fn run_compact_bitreversed_monomials_to_natural_evals_parity(log_n: usize) {
     let mut inputs_device = context.alloc(memory_size).unwrap();
     let mut candidate_device = context.alloc(memory_size).unwrap();
     let mut reference_device = context.alloc(memory_size).unwrap();
+    // DIT-range (log_n in [2, 13]) needs a d-table scratch (len >= N). The
+    // reference path below (`bitreversed_coeffs_to_natural_coset`, single-stage
+    // radix-2) is independent of the strategy, so this stays a valid baseline.
+    let mut d_scratch = context.alloc(n).unwrap();
     memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
 
     for coset_index in 0..(1usize << TEST_LOG_LDE_FACTOR) {
-        // Candidate: route through the strategy/dispatch path (new compact kernels).
+        // Candidate: route through the strategy/dispatch path (DIT for log_n in
+        // [2, 13], compact for larger log_n).
         {
             let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], stride, 0, n);
             let mut candidate_matrix =
                 DeviceMatrixChunkMut::new(&mut candidate_device[..], stride, 0, n);
+            let scratch_opt = if (2..=13).contains(&log_n) {
+                Some(&mut d_scratch[..])
+            } else {
+                None
+            };
             bitreversed_monomials_to_natural_evals(
                 &inputs_matrix,
                 &mut candidate_matrix,
@@ -655,6 +669,8 @@ fn run_compact_bitreversed_monomials_to_natural_evals_parity(log_n: usize) {
                 TEST_LOG_LDE_FACTOR,
                 coset_index,
                 false,
+                context.device_context(),
+                scratch_opt,
                 stream,
                 device_props,
             )
@@ -745,9 +761,13 @@ compact_parity_test!(compact_monomials_to_evals_log_n_20, 20);
 #[cfg(not(no_cuda))]
 #[allow(dead_code)]
 fn run_multi_coset_monomials_to_evals_parity(log_n: usize, num_cosets: usize) {
+    use super::ntt::{
+        monomials_to_evals_2_pass_compact_initial, monomials_to_evals_compact_1_pass,
+    };
     use super::{
         bitreversed_monomials_to_natural_evals, bitreversed_monomials_to_natural_evals_multi_coset,
     };
+    use crate::ntt_twiddles::OMEGA_LOG_ORDER;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
 
     let log_lde_factor = num_cosets.trailing_zeros() as usize;
@@ -773,17 +793,26 @@ fn run_multi_coset_monomials_to_evals_parity(log_n: usize, num_cosets: usize) {
     let mut candidate_device = context.alloc(total_size).unwrap();
     let mut reference_device = context.alloc(total_size).unwrap();
 
+    // DIT-range (log_n in [2, 13]) needs a d-table scratch (len >= N); outside
+    // that range the strategy ignores it. A plain cudaMalloc is fine in tests.
+    let mut d_scratch = context.alloc(n).unwrap();
+
     {
         let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], stride, 0, n);
+        let scratch_opt = if (2..=13).contains(&log_n) {
+            Some(&mut d_scratch[..])
+        } else {
+            None
+        };
         bitreversed_monomials_to_natural_evals_multi_coset(
             &inputs_matrix,
             &mut candidate_device[..],
             log_n,
             log_lde_factor,
-            0,
-            num_cosets,
             NUM_COLS,
             false,
+            context.device_context(),
+            scratch_opt,
             stream,
             device_props,
         )
@@ -791,6 +820,14 @@ fn run_multi_coset_monomials_to_evals_parity(log_n: usize, num_cosets: usize) {
     }
 
     {
+        // ORACLE: an INDEPENDENT baseline. For the DIT range (log_n in [2, 13])
+        // the subject's multi-coset entry routes to the DIT engine, so we must
+        // NOT use `bitreversed_monomials_to_natural_evals` there (it now routes
+        // to DIT too — circular). Instead call the compact kernels DIRECTLY:
+        // log_n <= 12 -> 1-pass compact; log_n == 13 -> 2-pass-compact-initial.
+        // Both read twiddles from `__constant__` tables (NOT DitTriangles). For
+        // log_n > 13 (no DIT) the existing single-coset entry stays independent.
+        let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
         let reference_slice = &mut reference_device[..];
         for coset_index in 0..num_cosets {
             let chunk_start = coset_index * cols_size;
@@ -802,17 +839,50 @@ fn run_multi_coset_monomials_to_evals_parity(log_n: usize, num_cosets: usize) {
                 0,
                 n,
             );
-            bitreversed_monomials_to_natural_evals(
-                &inputs_matrix,
-                &mut ref_chunk,
-                log_n,
-                log_lde_factor,
-                coset_index,
-                false,
-                stream,
-                device_props,
-            )
-            .unwrap();
+            if (8..=12).contains(&log_n) {
+                monomials_to_evals_compact_1_pass(
+                    &inputs_matrix,
+                    &mut ref_chunk,
+                    log_n,
+                    coset_index,
+                    coset_factor_shift,
+                    1,
+                    NUM_COLS,
+                    NUM_COLS,
+                    false,
+                    stream,
+                )
+                .unwrap();
+            } else if log_n == 13 {
+                monomials_to_evals_2_pass_compact_initial(
+                    &inputs_matrix,
+                    &mut ref_chunk,
+                    log_n,
+                    coset_index,
+                    coset_factor_shift,
+                    1,
+                    NUM_COLS,
+                    1,
+                    NUM_COLS,
+                    false,
+                    stream,
+                )
+                .unwrap();
+            } else {
+                bitreversed_monomials_to_natural_evals(
+                    &inputs_matrix,
+                    &mut ref_chunk,
+                    log_n,
+                    log_lde_factor,
+                    coset_index,
+                    false,
+                    context.device_context(),
+                    None,
+                    stream,
+                    device_props,
+                )
+                .unwrap();
+            }
         }
     }
 
@@ -851,10 +921,9 @@ macro_rules! multi_coset_parity_test {
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_4_cosets_4, 4, 4);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_7_cosets_8, 7, 8);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_32, 8, 32);
-// Streaming multi-coset kernel range (log_n in [3, 8]): each pair below has
-// num_cosets >= cosets_per_iter(log_n) = 256 >> (log_n - 3), so the strategy
-// routes through `monomials_to_evals_streaming`. Covers the boundary
-// (num_cosets == cosets_per_iter, one block-iter) and a multi-iter case.
+// Multi-coset parity over the small-`log_n` range (2..8): the candidate runs
+// through the production multi-coset entry (DIT where applicable, else
+// subwarp/compact) and is checked against the independent compact baseline.
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_2_cosets_256, 2, 256);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_3_cosets_256, 3, 256);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_4_cosets_128, 4, 128);
@@ -865,6 +934,16 @@ multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_7_cosets_16, 7, 16
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_8, 8, 8);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_11_cosets_16, 11, 16);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_12_cosets_4, 12, 4);
+// Strategy-driven parity tests for the two-pass streaming kernel (log_n 9..12)
+// and a regression check for the two-pass-compact kernel at log_n=13. The
+// `select_forward_strategy` dispatcher routes log_n in [9, 12] through the new
+// streaming kernel; log_n=13 falls into `TWO_PASS_COMPACT` and routes to
+// `MonomialsToEvalsFirstCompact + NonInitial` (pre-existing).
+multi_coset_parity_test!(streaming_log_n_9, 9, 256);
+multi_coset_parity_test!(streaming_log_n_10, 10, 128);
+multi_coset_parity_test!(streaming_log_n_11, 11, 64);
+multi_coset_parity_test!(streaming_log_n_12, 12, 32);
+multi_coset_parity_test!(streaming_log_n_13, 13, 16);
 // 2-pass-compact-initial range: kernels batch cosets per launch up to the
 // L2-pressure cap from the strategy.
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_13_cosets_8, 13, 8);
@@ -1002,25 +1081,48 @@ multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_6_cosets_8, 6, 8);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_6_cosets_16, 6, 16);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_2, 8, 2);
 
-// Direct parity test for the VPT=4 streaming variant. On sm_90+ machines the
-// strategy picks the VPT=8 variant by default, so this test forces VPT=4 via
-// `monomials_to_evals_streaming_with_log_vpt` to exercise the sub-Hopper path
-// on Hopper+/Blackwell CI hardware. Reference is the per-coset single-coset
-// path (`bitreversed_monomials_to_natural_evals`) — that path goes through the
-// strategy with num_cosets=1, so it never lands on streaming for these sizes
-// and we get an independent baseline.
+// Parity test for the production forward-NTT path on the DIT range (log_n in
+// [2, 13]). CANDIDATE = the public multi-coset entry
+// `bitreversed_monomials_to_natural_evals_multi_coset`, which routes the DIT
+// range through `select_forward_strategy` (DIT where applicable; otherwise the
+// non-DIT 1-pass kernel the strategy selects). ORACLE = the compact kernels
+// called DIRECTLY (independent baseline: they read `__constant__` twiddle
+// tables, NOT DitTriangles): log_n <= 12 -> 1-pass compact; log_n == 13 ->
+// 2-pass-compact-initial. The previous candidate used
+// `monomials_to_evals_streaming_with_log_vpt` (removed in Task 6) and the
+// previous oracle routed through the single-coset entry (now DIT — circular).
+// `log_vpt` is retained for the test matrix shape; routing now chooses the VPT
+// variant internally. `num_cols` columns are written back-to-back per coset.
 #[cfg(not(no_cuda))]
 #[allow(dead_code)]
-fn run_streaming_v4_vs_compact_parity(log_n: usize, num_cosets: usize, num_cols: usize) {
+fn run_streaming_vs_compact_parity(
+    log_n: usize,
+    log_vpt: usize,
+    num_cosets: usize,
+    num_cols: usize,
+) {
+    use super::ntt::{
+        monomials_to_evals_2_pass_compact_initial, monomials_to_evals_compact_1_pass,
+    };
     use super::{
-        bitreversed_monomials_to_natural_evals, ntt::monomials_to_evals_streaming_with_log_vpt,
+        bitreversed_monomials_to_natural_evals, bitreversed_monomials_to_natural_evals_multi_coset,
     };
     use crate::ntt_twiddles::OMEGA_LOG_ORDER;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
+    let _ = log_vpt;
 
     let log_lde_factor = num_cosets.trailing_zeros() as usize;
     assert_eq!(1usize << log_lde_factor, num_cosets);
-    assert!((2..=7).contains(&log_n), "VPT=4 supports log_n in [2, 7]");
+    assert!(
+        (2..=13).contains(&log_n),
+        "streaming supports log_n in [2, 13]"
+    );
+    assert!(
+        log_vpt == 2 || log_vpt == 3,
+        "log_vpt must be 2 (VPT=4) or 3 (VPT=8)"
+    );
+    assert!(log_n >= log_vpt, "log_n must be >= log_vpt");
+    assert!(log_vpt == 3 || log_n <= 12, "VPT=4 requires log_n <= 12");
     let context = make_context();
     let stream = context.get_exec_stream();
     let device_props = context.get_device_properties();
@@ -1041,19 +1143,25 @@ fn run_streaming_v4_vs_compact_parity(log_n: usize, num_cosets: usize, num_cols:
 
     let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
 
+    // CANDIDATE: the public multi-coset entry, which routes the DIT range
+    // (log_n in [2, 13]) through `select_forward_strategy` to the DIT engine.
+    let mut d_scratch = context.alloc(n).unwrap();
     {
         let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], stride, 0, n);
-        let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut candidate_device[..], stride, 0, n);
-        monomials_to_evals_streaming_with_log_vpt(
+        let scratch_opt = if (2..=13).contains(&log_n) {
+            Some(&mut d_scratch[..])
+        } else {
+            None
+        };
+        bitreversed_monomials_to_natural_evals_multi_coset(
             &inputs_matrix,
-            &mut outputs_matrix,
+            &mut candidate_device[..],
             log_n,
-            2, // log_vpt = 2 -> VPT=4 path
-            0,
-            coset_factor_shift,
-            num_cosets,
+            log_lde_factor,
             num_cols,
             false,
+            context.device_context(),
+            scratch_opt,
             stream,
             device_props,
         )
@@ -1061,6 +1169,11 @@ fn run_streaming_v4_vs_compact_parity(log_n: usize, num_cosets: usize, num_cols:
     }
 
     {
+        // ORACLE: an INDEPENDENT baseline — the compact kernels called DIRECTLY
+        // (they read `__constant__` twiddle tables, NOT DitTriangles), bypassing
+        // `select_ntt_strategy` (which now routes the DIT range to the engine
+        // under test — calling it here would be circular): log_n <= 12 -> 1-pass
+        // compact; log_n == 13 -> 2-pass-compact-initial.
         let reference_slice = &mut reference_device[..];
         for coset_index in 0..num_cosets {
             let chunk_start = coset_index * cols_size;
@@ -1072,17 +1185,53 @@ fn run_streaming_v4_vs_compact_parity(log_n: usize, num_cosets: usize, num_cols:
                 0,
                 n,
             );
-            bitreversed_monomials_to_natural_evals(
-                &inputs_matrix,
-                &mut ref_chunk,
-                log_n,
-                log_lde_factor,
-                coset_index,
-                false,
-                stream,
-                device_props,
-            )
-            .unwrap();
+            if (8..=12).contains(&log_n) {
+                monomials_to_evals_compact_1_pass(
+                    &inputs_matrix,
+                    &mut ref_chunk,
+                    log_n,
+                    coset_index,
+                    coset_factor_shift,
+                    1,
+                    num_cols,
+                    num_cols,
+                    false,
+                    stream,
+                )
+                .unwrap();
+            } else if log_n == 13 {
+                monomials_to_evals_2_pass_compact_initial(
+                    &inputs_matrix,
+                    &mut ref_chunk,
+                    log_n,
+                    coset_index,
+                    coset_factor_shift,
+                    1,
+                    num_cols,
+                    1,
+                    num_cols,
+                    false,
+                    stream,
+                )
+                .unwrap();
+            } else {
+                // log_n <= 7: single-coset never routes to DIT (no two-pass below
+                // log_n 8; single-pass needs num_cosets >> 1), so the strategy
+                // entry is an independent (subwarp/compact) baseline.
+                bitreversed_monomials_to_natural_evals(
+                    &inputs_matrix,
+                    &mut ref_chunk,
+                    log_n,
+                    log_lde_factor,
+                    coset_index,
+                    false,
+                    context.device_context(),
+                    None,
+                    stream,
+                    device_props,
+                )
+                .unwrap();
+            }
         }
     }
 
@@ -1112,7 +1261,18 @@ macro_rules! streaming_v4_parity_test {
         #[cfg(not(no_cuda))]
         #[serial]
         fn $name() {
-            run_streaming_v4_vs_compact_parity($log_n, $num_cosets, $num_cols);
+            run_streaming_vs_compact_parity($log_n, 2, $num_cosets, $num_cols);
+        }
+    };
+}
+
+macro_rules! streaming_v8_parity_test {
+    ($name:ident, $log_n:expr, $num_cosets:expr, $num_cols:expr) => {
+        #[test]
+        #[cfg(not(no_cuda))]
+        #[serial]
+        fn $name() {
+            run_streaming_vs_compact_parity($log_n, 3, $num_cosets, $num_cols);
         }
     };
 }
@@ -1131,6 +1291,23 @@ streaming_v4_parity_test!(streaming_v4_log_n_4_cosets_256, 4, 256, 1);
 streaming_v4_parity_test!(streaming_v4_log_n_7_cosets_32, 7, 32, 1);
 // Multi-column: caller loops over columns externally.
 streaming_v4_parity_test!(streaming_v4_log_n_5_cosets_64_cols_4, 5, 64, 4);
+
+// v8 sanity case — single-pass should already cover log_n=8
+streaming_v8_parity_test!(streaming_v8_parity_log_n_8_cosets_8, 8, 8, 4);
+
+// Two-pass-transpose target sizes — fail until Tasks 3-8 land (kernel doesn't
+// exist for these sizes yet; the launcher assertion in ntt.rs panics at runtime).
+streaming_v8_parity_test!(streaming_v8_parity_log_n_9_cosets_4, 9, 4, 4);
+streaming_v8_parity_test!(streaming_v8_parity_log_n_10_cosets_2, 10, 2, 4);
+streaming_v8_parity_test!(streaming_v8_parity_log_n_11_cosets_1, 11, 1, 4);
+streaming_v8_parity_test!(streaming_v8_parity_log_n_12_cosets_1, 12, 1, 4);
+streaming_v8_parity_test!(streaming_v8_parity_log_n_13_cosets_1, 13, 1, 4);
+
+streaming_v4_parity_test!(streaming_v4_parity_log_n_8_cosets_4, 8, 4, 4);
+streaming_v4_parity_test!(streaming_v4_parity_log_n_9_cosets_2, 9, 2, 4);
+streaming_v4_parity_test!(streaming_v4_parity_log_n_10_cosets_1, 10, 1, 4);
+streaming_v4_parity_test!(streaming_v4_parity_log_n_11_cosets_1, 11, 1, 4);
+streaming_v4_parity_test!(streaming_v4_parity_log_n_12_cosets_1, 12, 1, 4);
 
 // Direct parity test for the sub-warp kernel vs the compact 1-pass kernel.
 // Same shape as `run_smem_packed_vs_compact_parity`: bypass the strategy and
@@ -1386,6 +1563,7 @@ multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_1_cosets_32, 1, 32
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_2_cosets_16, 2, 16);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_3_cosets_8, 3, 8);
 
+mod dit_engine;
 mod helpers;
 use crate::upstream::{Field, PrimeField};
 #[allow(unused_imports)]

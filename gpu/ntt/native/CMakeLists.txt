@@ -7,6 +7,8 @@ option(GPU_NTT_ENABLE_LINEINFO "Enable lineinfo for CUDA profiling builds" OFF)
 add_library(gpu_ntt_native STATIC
         context.cuh
         context.cu
+        dit_kernels_extern.cu
+        dit_twiddle_fill.cu
         evals_to_monomials_three_pass.cu
         evals_to_monomials_two_pass.cu
         hypercube.cu
@@ -14,13 +16,16 @@ add_library(gpu_ntt_native STATIC
         hypercube_evals_to_monomials_two_pass.cu
         monomials_to_evals_compact.cu
         monomials_to_evals_smem_packed.cu
-        monomials_to_evals_streaming.cu
         monomials_to_evals_subwarp.cu
         monomials_to_evals_three_pass.cu
         monomials_to_evals_two_pass.cu
         ntt.cu
         ntt.cuh
 )
+option(GPU_NTT_BUILD_BENCH "Compile bench-only DIT kernel variants into the archive" OFF)
+if (GPU_NTT_BUILD_BENCH)
+    target_sources(gpu_ntt_native PRIVATE bench/dit_bench_kernels.cu)
+endif ()
 target_include_directories(gpu_ntt_native PRIVATE ${GPU_CORE_NATIVE_INCLUDE})
 set_target_properties(gpu_ntt_native PROPERTIES CUDA_STANDARD 20)
 set_target_properties(gpu_ntt_native PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

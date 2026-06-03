@@ -17,6 +17,10 @@ pub struct DeviceProperties {
     pub sm_count: usize,
     pub compute_capability_major: usize,
     pub compute_capability_minor: usize,
+    /// Maximum bytes of dynamic shared memory that a kernel can request via
+    /// `cudaFuncSetAttribute(MaxDynamicSharedMemorySize)`. CC 8.6/8.9/12.0
+    /// = ~99 KiB; CC 8.0 = ~163 KiB; CC 9.0/10.0 = ~228 KiB.
+    pub max_dynamic_smem_per_block_optin: usize,
 }
 
 impl DeviceProperties {
@@ -30,11 +34,14 @@ impl DeviceProperties {
             device_get_attribute(CudaDeviceAttr::ComputeCapabilityMajor, device_id)? as usize;
         let compute_capability_minor =
             device_get_attribute(CudaDeviceAttr::ComputeCapabilityMinor, device_id)? as usize;
+        let max_dynamic_smem_per_block_optin =
+            device_get_attribute(CudaDeviceAttr::MaxSharedMemoryPerBlockOptin, device_id)? as usize;
         Ok(Self {
             l2_cache_size_bytes,
             sm_count,
             compute_capability_major,
             compute_capability_minor,
+            max_dynamic_smem_per_block_optin,
         })
     }
 }
