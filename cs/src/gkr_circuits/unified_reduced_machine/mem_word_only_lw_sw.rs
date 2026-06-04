@@ -4,6 +4,7 @@ use crate::cs::circuit_trait::*;
 use crate::types::*;
 use crate::witness_placer::*;
 use field::PrimeField;
+use super::circuit::LookupRequest;
 
 /// Per-cycle Family-4 LW/SW constraints (the data-path piece). Caller
 /// (`mem_word_only.rs`) has already done the register/RAM dispatch.
@@ -20,7 +21,11 @@ use field::PrimeField;
 /// `is_fam4` is inlined as `(is_lw + is_sw)` everywhere it appears; no
 /// committed Boolean column.
 #[allow(non_snake_case)]
-pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Circuit<F>>(
+pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<
+    F: PrimeField,
+    CS: Circuit<F>,
+    const N: usize,
+>(
     cs: &mut CS,
     inputs: &OpcodeFamilyCircuitState<F>,
     is_lw: Boolean,
@@ -30,7 +35,8 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     memwrite_u16: [Variable; REGISTER_SIZE],
     memread_addr: [Variable; REGISTER_SIZE],
     memwrite_addr: [Variable; REGISTER_SIZE],
-) {
+    of_slots: [Boolean; N],
+) -> Vec<LookupRequest<F>> {
     let byte_shift = F::from_u32_unchecked(1 << 8);
     let rs1_low_c: Constraint<F> =
         Constraint::from(rs1_limbs[0]) + Term::from((byte_shift, rs1_limbs[1]));
@@ -60,12 +66,15 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     let imm_lo: Term<F> = imm_var_lo.into();
     let imm_hi: Term<F> = imm_var_hi.into();
     let shift16_term: Term<F> = Term::from(1 << 16);
-    let of_lo = cs.add_named_boolean_variable("addr: ofL");
-    let of_hi = cs.add_named_boolean_variable("addr: ofH");
+    let of_lo = of_slots[0];
+    let of_hi = of_slots[1];
+    let of_lo_slot_var = of_lo.expect_variable();
+    let of_hi_slot_var = of_hi.expect_variable();
 
     // Witness for of_lo / of_hi: actual carry bits of (rs1 + imm) when Family 4
-    // fires, 0 otherwise. The constraints below are gated so the value is unused
-    // for non-Family-4 cycles; we still need booleanity.
+    // fires. We conditionally assign only on active rows; the shared pool's
+    // default-0 covers non-Family-4 rows. The constraints below are gated so the
+    // value is unused for non-Family-4 cycles.
     let (is_lw_var, is_lw_neg) = is_lw.variable_and_negation_constant();
     let (is_sw_var, is_sw_neg) = is_sw.variable_and_negation_constant();
     {
@@ -90,13 +99,8 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
                 is_sw_raw
             };
             let is_active = is_lw_val.or(&is_sw_val);
-            let off = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
-            let of_lo_val =
-                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(&is_active, &carry_lo, &off);
-            let of_hi_val =
-                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(&is_active, &carry_hi, &off);
-            placer.assign_mask(of_lo.expect_variable(), &of_lo_val);
-            placer.assign_mask(of_hi.expect_variable(), &of_hi_val);
+            placer.conditionally_assign_mask(of_lo_slot_var, &is_active, &carry_lo);
+            placer.conditionally_assign_mask(of_hi_slot_var, &is_active, &carry_hi);
         };
         cs.set_values(value_fn);
     }
@@ -121,26 +125,39 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
                     - shift16_term * of_hi_term),
     );
 
-    // The "cleanaddr" expression — the RAM address when Family 4 fires, 0
-    // otherwise. Used purely for the ROM check witness + ROM-table lookup
-    // index. is_lw / is_sw gating already collapses this to 0 for non-Family-4
-    // cycles.
-    let cleanaddr_lo: Constraint<F> = load.clone() * readaddr_lo + store.clone() * writeaddr_lo;
-    let cleanaddr_hi: Constraint<F> = load.clone() * readaddr_hi + store.clone() * writeaddr_hi;
+    let cleanaddr_lo_expr: Constraint<F> =
+        load.clone() * readaddr_lo + store.clone() * writeaddr_lo;
+    let cleanaddr_hi_expr: Constraint<F> =
+        load.clone() * readaddr_hi + store.clone() * writeaddr_hi;
+
+    let ram_addr: [Variable; REGISTER_SIZE] =
+        core::array::from_fn(|i| cs.add_named_variable(&format!("ram_addr[{i}]")));
+    {
+        let cleanaddr_lo_expr = cleanaddr_lo_expr.clone();
+        let cleanaddr_hi_expr = cleanaddr_hi_expr.clone();
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let lo = cleanaddr_lo_expr.evaluate_with_placer(placer);
+            let hi = cleanaddr_hi_expr.evaluate_with_placer(placer);
+            placer.assign_field(ram_addr[0], &lo);
+            placer.assign_field(ram_addr[1], &hi);
+        };
+        cs.set_values(value_fn);
+    }
+    cs.add_constraint(Constraint::from(ram_addr[0]) - cleanaddr_lo_expr.clone());
+    cs.add_constraint(Constraint::from(ram_addr[1]) - cleanaddr_hi_expr.clone());
 
     let (is_rom_base_layer, rom_addr_constraint) = {
         let is_rom = cs.add_named_boolean_variable("flag: are we in rom addr range?");
         let rom_term = Term::from(is_rom);
-        // whether it's a ROM access or not is decided by comparing high part
-        // of the address with 2^ROM_SECOND_WORD_BITS constant via subtraction
-        // with carry. For non-Family-4 cycles cleanaddr_hi = 0 < rom_bound_high,
-        // so witness gen sets is_rom = 1 and the residue is 2^16 - rom_bound_high
-        // (still a 16-bit value). The ROM lookup itself is gated below via
-        // `gate_fam4_rom`.
+        // ROM-vs-data is decided by comparing the address high limb with
+        // 2^ROM_SECOND_WORD_BITS via subtraction with carry. For non-Family-4
+        // cycles ram_addr_hi = 0 < rom_bound_high, so witness gen sets is_rom = 1
+        // and the residue is 2^16 - rom_bound_high (still a 16-bit value). The ROM
+        // lookup itself is gated below via `gate_fam4_rom`.
         {
-            let cleanaddr_hi = cleanaddr_hi.clone();
+            let cleanaddr_hi_expr = cleanaddr_hi_expr.clone();
             let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                let cleanaddr_hi = cleanaddr_hi.evaluate_with_placer(placer);
+                let cleanaddr_hi = cleanaddr_hi_expr.evaluate_with_placer(placer);
                 let extrabits = cleanaddr_hi
                     .as_integer()
                     .shr(common_constants::ROM_SECOND_WORD_BITS as u32);
@@ -150,17 +167,24 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
             cs.set_values(value_fn);
         }
         let rom_bound_high = Term::from(1 << common_constants::ROM_SECOND_WORD_BITS);
-        let residue = shift16_term * rom_term + cleanaddr_hi.clone() - rom_bound_high;
-        assert_eq!(residue.degree(), 2);
-        let layer_2_copied_residue =
-            cs.add_intermediate_named_variable_from_constraint(residue, "residue (L2)");
+        // residue is now degree-1 (ram_addr_hi is a committed base var). The
+        // range-check compiler requires a single Variable input, so commit it to
+        // a variable; both inputs (is_rom, ram_addr_hi) are base layer so this
+        // lands one layer up — same as the baseline residue placement.
+        let residue: Constraint<F> =
+            shift16_term * rom_term + Term::from(ram_addr[1]) - rom_bound_high;
+        assert_eq!(residue.degree(), 1);
+        let residue_var = cs.add_intermediate_named_variable_from_constraint(residue, "rom residue");
         cs.require_invariant_from_lookup_input(
-            LookupInput::from(layer_2_copied_residue),
+            LookupInput::from(residue_var),
             Invariant::RangeChecked { width: 16 },
         );
         // trap store*rom — only fires when is_sw = 1 (Family 4 SW) and is_rom = 1.
         cs.add_constraint(Constraint::from(is_rom) * Constraint::from(is_sw));
-        (is_rom, cleanaddr_lo + shift16_term * cleanaddr_hi)
+        // rom_addr = ram_addr_lo + 2^16 * ram_addr_hi — degree-1 over base vars.
+        let rom_addr: Constraint<F> =
+            Constraint::from(ram_addr[0]) + shift16_term * Term::from(ram_addr[1]);
+        (is_rom, rom_addr)
     };
 
     // For non-Family-4 cycles the tuple degenerates to (0, 0, 0) ∈ ZeroEntry —
@@ -203,82 +227,27 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         cs.set_values(value_fn);
     }
 
-    {
+    let rom_request = {
         let [memwrite_lo_var, memwrite_hi_var] = memwrite_u16;
-
-        let layer_3_selected_input = {
-            assert_eq!(rom_addr_constraint.degree(), 2);
-            let layer_2_copied_rom_addr =
-                Term::from(cs.add_intermediate_named_variable_from_constraint(
-                    rom_addr_constraint,
-                    "romaddr (L2)",
-                ));
-            let layer_2_copied_is_rom =
-                Term::from(cs.add_intermediate_named_variable_from_constraint(
-                    Constraint::from(is_rom_base_layer),
-                    "ROM (L2)",
-                ));
-            let input = layer_2_copied_is_rom * layer_2_copied_rom_addr;
-            cs.add_intermediate_named_variable_from_constraint(input, "final lookup input (L3)")
-        };
-        // output_k = is_fam4 * memwrite_k - gate_fam4_not_rom * memread_k,
-        // where is_fam4 is inlined as (is_lw + is_sw) and gate_fam4_not_rom as
-        // (is_fam4 - gate_fam4_rom). All factors are L0 vars / Constraints;
-        // output expression is deg 2 in L0.
-        let layer_3_selected_output1 = {
-            let output1 = is_fam4_sum() * Constraint::from(memwrite_lo_var)
-                - (is_fam4_sum() - Constraint::from(gate_fam4_rom))
-                    * memread_low_c.clone();
-            let L2_output1 = Constraint::from(cs.add_intermediate_named_variable_from_constraint(
-                output1,
-                "final lookup output1 (L2)",
-            ));
-            cs.add_intermediate_named_variable_from_constraint(
-                L2_output1,
-                "final lookup output1 (L3)",
-            )
-        };
-        let layer_3_selected_output2 = {
-            let output2 = is_fam4_sum() * Constraint::from(memwrite_hi_var)
-                - (is_fam4_sum() - Constraint::from(gate_fam4_rom))
-                    * memread_high_c.clone();
-            let layer_2_copied_output2 =
-                Constraint::from(cs.add_intermediate_named_variable_from_constraint(
-                    output2,
-                    "final lookup output2 (L2)",
-                ));
-            cs.add_intermediate_named_variable_from_constraint(
-                layer_2_copied_output2,
-                "final lookup output2 (L3)",
-            )
-        };
-        let layer_3_selected_table_id = {
-            let romread_table = Term::from(TableType::AlignedRomRead.to_num());
-            let layer_2_copied_execute =
-                Constraint::from(cs.add_intermediate_named_variable_from_constraint(
-                    Constraint::from(inputs.execute),
-                    "execute (L2)",
-                ));
-            let layer_2_gate_fam4_rom =
-                Term::from(cs.add_intermediate_named_variable_from_constraint(
-                    Constraint::from(gate_fam4_rom),
-                    "gate_fam4_rom (L2)",
-                ));
-            // Multiplying by gate_fam4_rom collapses table_id to 0 (ZeroEntry) for
-            // cycles where another family fires or for padding.
-            let table_id = layer_2_copied_execute * layer_2_gate_fam4_rom * romread_table;
-            cs.add_intermediate_named_variable_from_constraint(
-                table_id,
-                "final lookup table_id (L3)",
-            )
-        };
-        let tuple = [
-            LookupInput::from(layer_3_selected_input),
-            LookupInput::from(layer_3_selected_output1),
-            LookupInput::from(layer_3_selected_output2),
-        ];
-        cs.enforce_lookup_tuple_for_variable_table(&tuple, layer_3_selected_table_id);
-    }
+        assert_eq!(rom_addr_constraint.degree(), 1);
+        // input = is_rom * rom_addr
+        let input = Constraint::from(is_rom_base_layer) * rom_addr_constraint;
+        // output_k = is_fam4 * memwrite_k - gate_fam4_not_rom * memread_k, with
+        // is_fam4 = (is_lw + is_sw) and gate_fam4_not_rom = (is_fam4 - gate_fam4_rom).
+        let output1 = is_fam4_sum() * Constraint::from(memwrite_lo_var)
+            - (is_fam4_sum() - Constraint::from(gate_fam4_rom)) * memread_low_c.clone();
+        let output2 = is_fam4_sum() * Constraint::from(memwrite_hi_var)
+            - (is_fam4_sum() - Constraint::from(gate_fam4_rom)) * memread_high_c.clone();
+        let romread_table = Term::from(TableType::AlignedRomRead.to_num());
+        // table_id = execute * gate_fam4_rom * romread_table — collapses to 0
+        // (ZeroEntry) when another family fires or on padding.
+        let table_id =
+            Constraint::from(inputs.execute) * Term::from(gate_fam4_rom) * romread_table;
+        LookupRequest {
+            table_id,
+            inputs: vec![input, output1, output2],
+        }
+    };
 
     // When `is_sw = 1`, `writeaddr_lo` must be a multiple of 4 (RISC-V word
     // aligned). We decompose `writeaddr_lo` into `4 * top_14 + 2 * bit_1 + bit_0` and
@@ -339,4 +308,6 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
             Constraint::from(is_sw) * (Constraint::from(bit_0) + Constraint::from(bit_1)),
         );
     }
+
+    vec![rom_request]
 }

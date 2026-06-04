@@ -1,11 +1,14 @@
 use super::*;
 use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
+use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables_from_constraints;
 use crate::gkr_circuits::jump_branch_slt_family::JumpSltBranchFamilyCircuitMask;
 use crate::gkr_circuits::utils::update_intermediate_carry_value;
 use crate::types::*;
 use crate::witness_placer::*;
 use field::PrimeField;
+
+use super::circuit::LookupRequest;
 
 /// Family 2 (jump/branch/slt) constraints for the unified circuit. Mirrors the
 /// standalone inner with two unified-specific adaptations:
@@ -19,8 +22,8 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     rs1_limbs: [Variable; 4],
     rs2_limbs: [Variable; 4],
     rd_write_limbs: [Variable; 2],
-) {
-    let intermediate_reg = Register::new_named(cs, "Intermediate reg for comparisons");
+    intermediate_reg: Register<F>,
+) -> Vec<LookupRequest<F>> {
     // U16 views of rs1/rs2 reassembled from U8 bytes via free algebra.
     let byte_shift = F::from_u32_unchecked(1 << 8);
     let rs1_low_c: Constraint<F> =
@@ -79,6 +82,13 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     let is_jal = decoder.perform_jal();
     let is_jalr = decoder.perform_jalr();
     let rd_is_zero = decoder.rd_is_zero();
+
+    // is_fam2 = is_jal + is_jalr + is_slt + is_branch; the decoder one-hot +
+    // dispatch constraint keep this sum in {0, 1}. Used to gate F2's lookups so
+    // they fold into the shared pool (ZeroEntry / 0-tuple on non-F2 rows).
+    let is_fam2_sum = || -> Constraint<F> {
+        Constraint::from(is_jal) + Term::from(is_jalr) + Term::from(is_slt) + Term::from(is_branch)
+    };
 
     // NOTE: as usual, for SLT/SLTI if we have immediate variant, then we have x0 as rs2,
     // so we can avoid selections
@@ -207,11 +217,22 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
                 );
             }
 
-            placer.assign_u32_from_u16_parts(
+            // Conditional-only write (shared Register with F1's intermediate_tmp):
+            // gate on F2-active so non-F2 rows leave the slot to F1 / the chain
+            // default (0). out_value is already 0 when no F2 op fires.
+            let is_fam2 = {
+                let mut m = placer.get_boolean(is_branch_var);
+                m = m.or(&placer.get_boolean(is_slt_var));
+                m = m.or(&placer.get_boolean(is_jal_var));
+                m = m.or(&placer.get_boolean(is_jalr_var));
+                m
+            };
+            placer.conditionally_assign_u32(
                 [
                     comparison_rel_or_jump_saved_pc_low,
                     comparison_rel_or_jump_saved_pc_high,
                 ],
+                &is_fam2,
                 &out_value,
             );
             placer.assign_mask(add_rel_0_intermediate_of_var, &intermedaite_of_value);
@@ -302,52 +323,69 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // then resolve jump/slt condition
 
     let comparison_result_is_zero = cs.add_named_variable("Comparison result is zero out var");
-    cs.set_variables_from_lookup_constrained(
-        &[LookupInput::from(
-            Constraint::empty()
-                + Term::from(comparison_rel_or_jump_saved_pc_low)
-                + Term::from(comparison_rel_or_jump_saved_pc_high),
-        )],
+    let regiszero_input: Constraint<F> = Constraint::empty()
+        + Term::from(comparison_rel_or_jump_saved_pc_low)
+        + Term::from(comparison_rel_or_jump_saved_pc_high);
+    peek_lookup_values_unconstrained_into_variables_from_constraints(
+        cs,
+        &[is_fam2_sum() * regiszero_input.clone()],
         &[comparison_result_is_zero],
-        cs::circuit::LookupQueryTableType::Constant(TableType::RegIsZero),
+        is_fam2_sum() * Term::from(TableType::RegIsZero.to_num()),
     );
+    let regiszero_request = LookupRequest {
+        table_id: is_fam2_sum() * Term::from(TableType::RegIsZero.to_num()),
+        inputs: vec![
+            is_fam2_sum() * regiszero_input,
+            is_fam2_sum() * Term::from(comparison_result_is_zero),
+        ],
+    };
 
-    // we also need a sign of rs1 to resolve jumps. The sign of rs1's high U16 limb
-    // is queried; we reassemble the U16 from the high two bytes via a degree-1
-    // expression — U16GetSign accepts the full 16-bit value as a single lookup input.
+    // sign of rs1's high U16 limb (reassembled from the high two bytes — that's
+    // exactly `rs1_high_c`). U16GetSign maps the full 16-bit value to its sign.
     let rs1_sign = cs.add_named_variable("rs1 sign boolean");
-    cs.set_variables_from_lookup_constrained(
-        &[LookupInput::Expression {
-            linear_terms: vec![
-                (F::from_u32_unchecked(1), rs1_limbs[2]),
-                (byte_shift, rs1_limbs[3]),
-            ],
-            constant_coeff: F::ZERO,
-        }],
+    peek_lookup_values_unconstrained_into_variables_from_constraints(
+        cs,
+        &[is_fam2_sum() * rs1_high_c.clone()],
         &[rs1_sign],
-        cs::circuit::LookupQueryTableType::Constant(TableType::U16GetSign),
+        is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
     );
+    let u16getsign_request = LookupRequest {
+        table_id: is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
+        inputs: vec![
+            is_fam2_sum() * rs1_high_c.clone(),
+            is_fam2_sum() * Term::from(rs1_sign),
+        ],
+    };
 
     // and now we can resolve jump. Note that SLT/SLTU use the same formal(!) funct3 as BLT/BLTU,
     // and for JAL/JALR we formally set funct3 to be such that jump resolution will be always
     // false, so in computing next PC below we can avoid thinking about overlapping
-    // boolean conditions
+    // boolean conditions. The packed input references rs1_sign +
+    // comparison_result_is_zero (peeked above); the witness resolver orders the
+    // peeks by data dependency.
     let should_jump_or_slt_value = cs.add_named_variable("jump resolution variable");
-    cs.set_variables_from_lookup_constrained(
-        &[LookupInput::from(
-            Constraint::empty()
-                + rs2_high_c.clone()
-                + Term::from((F::from_u32(1 << 16).unwrap(), rs1_sign))
-                + Term::from((F::from_u32(1 << 17).unwrap(), add_rel_0_final_of_var))
-                + Term::from((F::from_u32(1 << 18).unwrap(), comparison_result_is_zero))
-                + Term::from((
-                    F::from_u32(1 << 19).unwrap(),
-                    inputs.decoder_data.funct3.expect("must have funct3"),
-                )),
-        )],
+    let cond_jmp_input: Constraint<F> = Constraint::empty()
+        + rs2_high_c.clone()
+        + Term::from((F::from_u32(1 << 16).unwrap(), rs1_sign))
+        + Term::from((F::from_u32(1 << 17).unwrap(), add_rel_0_final_of_var))
+        + Term::from((F::from_u32(1 << 18).unwrap(), comparison_result_is_zero))
+        + Term::from((
+            F::from_u32(1 << 19).unwrap(),
+            inputs.decoder_data.funct3.expect("must have funct3"),
+        ));
+    peek_lookup_values_unconstrained_into_variables_from_constraints(
+        cs,
+        &[is_fam2_sum() * cond_jmp_input.clone()],
         &[should_jump_or_slt_value],
-        cs::circuit::LookupQueryTableType::Constant(TableType::ConditionalJmpBranchSlt),
+        is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSlt.to_num()),
     );
+    let cond_jmp_request = LookupRequest {
+        table_id: is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSlt.to_num()),
+        inputs: vec![
+            is_fam2_sum() * cond_jmp_input,
+            is_fam2_sum() * Term::from(should_jump_or_slt_value),
+        ],
+    };
     let should_jump_if_branch = cs.add_named_variable("should jump if BRANCH opcode");
 
     // now we can compute next PC, as well as PC that will be placed into RD for JAL/JALR
@@ -606,43 +644,17 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         cs.set_values(value_fn);
     }
 
-    // Gated lookup tuple (is_fam2 * input, is_fam2 * bit_1, is_fam2 * pc_out_low)
-    // against table_id = is_fam2 * JumpCleanupOffset.to_num(). Non-Family-2 cycles
-    // produce (0, 0, 0) under table_id 0 (ZeroEntry).
-    //
-    // is_fam2 is inlined as (is_jal + is_jalr + is_slt + is_branch) — decoder
-    // mutual exclusion + padding-zero constraint keep this sum in {0, 1}.
-    {
-        let jump_cleanup_table_num = Term::from(TableType::JumpCleanupOffset.to_num());
-        let is_fam2_sum = || -> Constraint<F> {
-            Constraint::from(is_jal)
-                + Term::from(is_jalr)
-                + Term::from(is_slt)
-                + Term::from(is_branch)
-        };
-        let gated_input = cs.add_intermediate_named_variable_from_constraint(
+    // JumpCleanupOffset request for the shared pool: tuple
+    // (is_fam2*input, is_fam2*bit_1, is_fam2*pc_out_low) under
+    // table_id = is_fam2 * JumpCleanupOffset; (0,0,0)/ZeroEntry on non-F2 rows.
+    let jump_cleanup_request = LookupRequest {
+        table_id: is_fam2_sum() * Term::from(TableType::JumpCleanupOffset.to_num()),
+        inputs: vec![
             is_fam2_sum() * Term::from(pc_intermediate_addition_tmp_low),
-            "JumpCleanup gated input",
-        );
-        let gated_bit_1 = cs.add_intermediate_named_variable_from_constraint(
             is_fam2_sum() * Term::from(next_pc_bit_1),
-            "JumpCleanup gated bit_1",
-        );
-        let gated_pc_out_low = cs.add_intermediate_named_variable_from_constraint(
             is_fam2_sum() * Term::from(inputs.cycle_end_state.pc[0]),
-            "JumpCleanup gated pc_out_low",
-        );
-        let gated_table_id = cs.add_intermediate_named_variable_from_constraint(
-            is_fam2_sum() * jump_cleanup_table_num,
-            "JumpCleanup gated table_id",
-        );
-        let tuple = [
-            LookupInput::from(gated_input),
-            LookupInput::from(gated_bit_1),
-            LookupInput::from(gated_pc_out_low),
-        ];
-        cs.enforce_lookup_tuple_for_variable_table(&tuple, gated_table_id);
-    }
+        ],
+    };
 
     // unaligned jump is unprovable, and we only need to check bit number 1, as jump offset is always 0 mod 2,
     // and PC is 0 mod 4
@@ -753,4 +765,11 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // rd_is_zero case: Family 2 fires with rd=0 forces rd_write = 0.
     cs.add_constraint(Term::from(gate_fam2_rd_zero) * Term::from(rd_write_limbs[0]));
     cs.add_constraint(Term::from(gate_fam2_rd_zero) * Term::from(rd_write_limbs[1]));
+
+    vec![
+        regiszero_request,
+        u16getsign_request,
+        cond_jmp_request,
+        jump_cleanup_request,
+    ]
 }

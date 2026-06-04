@@ -33,17 +33,6 @@ const RAM_BOUND_WORDS: usize = RAM_BOUND_BYTES / core::mem::size_of::<u32>();
 const CHECK_MEMORY_PERMUTATION_ONLY: bool = false;
 const PROVE_EMPTY: bool = true;
 
-const PROVE_ADD_SUB: bool = true;
-const PROVE_JUMP_BRANCH: bool = true;
-const PROVE_SHIFTS_BINOPS: bool = true;
-const PROVE_MUL_DIV: bool = true;
-const PROVE_MEM_WORD: bool = true;
-const PROVE_MEM_SUBWORD: bool = true;
-const PROVE_BLAKE: bool = true;
-const PROVE_BIGINT: bool = true;
-const PROVE_KECCAK: bool = true;
-const PROVE_BLAKE_G_FUNCTION: bool = true;
-const PROVE_INITS_AND_TEARDOWNS: bool = true;
 
 pub use crate::definitions::SecurityLevel;
 
@@ -67,6 +56,8 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
+
+    let circuits_filter = super::orchestration::common::parse_circuits_filter();
 
     let program = std::env::var("GKR_PROGRAM").ok();
     let config = match program.as_deref() {
@@ -206,7 +197,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             < NUM_CYCLES_PER_CHUNK
     );
 
-    if PROVE_ADD_SUB {
+    {
         const CIRCUIT_TYPE: u8 = ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
         let out = super::orchestration::per_family::prove_non_mem_family::<CIRCUIT_TYPE, CountersT>(
             &snapshotter,
@@ -222,7 +213,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             level,
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
-            &None,
+            &circuits_filter,
             "add_sub_lui_auipc_mop",
             &proof_suffix,
             &worker,
@@ -246,7 +237,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    if PROVE_JUMP_BRANCH {
+    {
         const CIRCUIT_TYPE: u8 = JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX;
         let out = super::orchestration::per_family::prove_non_mem_family::<CIRCUIT_TYPE, CountersT>(
             &snapshotter,
@@ -264,7 +255,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             level,
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
-            &None,
+            &circuits_filter,
             "jump_branch_slt",
             &proof_suffix,
             &worker,
@@ -288,7 +279,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    if PROVE_SHIFTS_BINOPS {
+    {
         const CIRCUIT_TYPE: u8 = SHIFT_BINARY_CIRCUIT_FAMILY_IDX;
         let out = super::orchestration::per_family::prove_non_mem_family::<CIRCUIT_TYPE, CountersT>(
             &snapshotter,
@@ -304,7 +295,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             level,
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
-            &None,
+            &circuits_filter,
             "shift_binop",
             &proof_suffix,
             &worker,
@@ -328,7 +319,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    if PROVE_MUL_DIV {
+    {
         const CIRCUIT_TYPE: u8 = MUL_DIV_CIRCUIT_FAMILY_IDX;
         let out = super::orchestration::per_family::prove_non_mem_family::<CIRCUIT_TYPE, CountersT>(
             &snapshotter,
@@ -344,7 +335,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             level,
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
-            &None,
+            &circuits_filter,
             "unsigned_mul_div",
             &proof_suffix,
             &worker,
@@ -368,7 +359,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    if PROVE_MEM_WORD {
+    {
         const CIRCUIT_TYPE: u8 = LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX;
         let out = super::orchestration::per_family::prove_mem_family::<CIRCUIT_TYPE, CountersT>(
             &snapshotter,
@@ -394,7 +385,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             level,
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
-            &None,
+            &circuits_filter,
             "mem_word_only",
             &proof_suffix,
             &worker,
@@ -418,7 +409,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    if PROVE_MEM_SUBWORD {
+    {
         const CIRCUIT_TYPE: u8 = LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX;
         let out = super::orchestration::per_family::prove_mem_family::<CIRCUIT_TYPE, CountersT>(
             &snapshotter,
@@ -444,7 +435,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             level,
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
-            &None,
+            &circuits_filter,
             "mem_subword_only",
             &proof_suffix,
             &worker,
@@ -469,7 +460,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
     }
 
     // Machine state permutation ended
-    if PROVE_ADD_SUB && PROVE_JUMP_BRANCH && PROVE_SHIFTS_BINOPS {
+    {
         for (pc, ts) in write_set.iter().copied() {
             if read_set.contains(&(pc, ts)) == false {
                 panic!("read set doesn't contain a pair {:?}", (pc, ts));
@@ -483,7 +474,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    if PROVE_INITS_AND_TEARDOWNS {
+    {
         let out = super::orchestration::per_family::prove_inits_and_teardowns(
             inits_and_teardowns,
             total_unique_teardowns,
@@ -491,7 +482,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &external_challenges,
             level,
             CHECK_MEMORY_PERMUTATION_ONLY,
-            &None,
+            &circuits_filter,
             &proof_suffix,
             &worker,
         );
@@ -501,7 +492,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
     }
 
     // now prove delegation circuits
-    if PROVE_BLAKE {
+    {
         let out = super::orchestration::delegations::prove_delegation_blake::<CountersT>(
             &snapshotter,
             &tape,
@@ -512,7 +503,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             level,
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
-            &None,
+            &circuits_filter,
             &proof_suffix,
             &worker,
             super::blake2_with_extended_control::witness_eval_fn,
@@ -530,7 +521,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    if PROVE_BIGINT {
+    {
         let out = super::orchestration::delegations::prove_delegation_bigint::<CountersT>(
             &snapshotter,
             &tape,
@@ -541,7 +532,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             level,
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
-            &None,
+            &circuits_filter,
             &proof_suffix,
             &worker,
             super::bigint_with_extended_control::witness_eval_fn,
@@ -559,7 +550,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    if PROVE_KECCAK {
+    {
         let out = super::orchestration::delegations::prove_delegation_keccak::<CountersT>(
             &snapshotter,
             &tape,
@@ -570,7 +561,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             level,
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
-            &None,
+            &circuits_filter,
             &proof_suffix,
             &worker,
             super::keccak_special5::witness_eval_fn,
@@ -588,7 +579,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    if PROVE_BLAKE_G_FUNCTION {
+    {
         let out = super::orchestration::delegations::prove_delegation_blake_g_function::<CountersT>(
             &snapshotter,
             &tape,
@@ -599,7 +590,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             level,
             PROVE_EMPTY,
             CHECK_MEMORY_PERMUTATION_ONLY,
-            &None,
+            &circuits_filter,
             &proof_suffix,
             &worker,
             super::blake2_g_function::witness_eval_fn,
@@ -740,7 +731,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         assert_eq!(total_unique_teardowns, expected_teardown_set.len());
     }
 
-    if CHECK_MEMORY_PERMUTATION_ONLY == false {
+    if CHECK_MEMORY_PERMUTATION_ONLY == false && circuits_filter.is_none() {
         dbg!(permutation_argument_accumulator);
         assert_eq!(permutation_argument_accumulator, BabyBearExt4::ONE);
     }

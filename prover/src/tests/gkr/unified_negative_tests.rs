@@ -404,16 +404,20 @@ fn padding_row_family_bit_set_rejected() {
     );
 }
 
-/// Unified-circuit address-carry flip: the `rs1 + imm = cleanaddr` addition
+/// Unified-circuit address-carry flip: the `rs1 + imm = ram_addr` addition
 /// in Family 4's data path uses a Boolean carry `of_lo` (overflow flag from
 /// low limb). Flipping it on an active LW/SW row breaks the decomposition
-/// `rs1_lo + imm_lo - cleanaddr_lo - 2^16 * of_lo = 0`, so `check_satisfied`
+/// `rs1_lo + imm_lo - ram_addr_lo - 2^16 * of_lo = 0`, so `check_satisfied`
 /// rejects.
+///
+/// `of_lo` is a branch-local scratch Boolean that aliases into the shared
+/// scratch-Boolean pool (slot 0), so its committed column is named
+/// `"shared scratch bool[0]"` — on an LW row that slot holds `of_lo`.
 #[test]
 fn unified_address_carry_lo_flip_rejected() {
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
         let lw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
-        let of_lo_addr = find_base_layer_address(circuit, "addr: ofL");
+        let of_lo_addr = find_base_layer_address(circuit, "shared scratch bool[0]");
         let lw_row = (0..base_trace_len(trace))
             .find(|&r| read_cell(trace, lw_addr, r) == BabyBearField::ONE)
             .expect("multi_family_smoke must execute at least one LW");

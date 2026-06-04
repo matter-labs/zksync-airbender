@@ -5,6 +5,7 @@ use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables;
 use crate::gkr_circuits::binary_shifts_family::ShiftBinaryFamilyCircuitMask;
 use crate::types::*;
 use field::PrimeField;
+use super::circuit::LookupRequest;
 
 /// Family 3 (binary ops / shifts) constraints for the unified circuit. Mirrors the
 /// standalone inner; rd-write constraints are gated on `is_binary_op + is_shift`
@@ -16,7 +17,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     rs1_limbs: [Variable; 4],
     rs2_limbs: [Variable; 4],
     rd_write_limbs: [Variable; 2],
-) {
+) -> Vec<LookupRequest<F>> {
     // NOTE: by preprocessing if we have rd == 0 in any of the opcodes below, then
     // we have rs1 = x0, rs2 = x0 and imm = 0, and it's preprocessed into plain addition,
     // so we do NOT need to mask rd value
@@ -136,30 +137,17 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     // and to enforce lookups we will perform selections (via constraints that push to the next layer),
     // where they will be used as lookups. Most of selections are quadratic anyway.
 
-    // constraint for shift amount or immediate sign extension
-    {
+    let combined_request = {
         let mut input_0 = Constraint::empty();
         input_0 += Term::from(is_binary_op) * Term::from(inputs.decoder_data.imm[1]);
         input_0 += Term::from(is_shift) * Term::from(rs2_limbs[0]);
-        let input_0 = cs.add_intermediate_named_variable_from_constraint(
-            input_0,
-            "input 0 for binary sign ext/trucate shift",
-        );
 
         let mut input_1 = Constraint::empty();
         input_1 += Term::from(is_binary_op) * Term::from(binary_ops_imm_sign_ext);
         input_1 += Term::from(is_shift) * Term::from(rs2_limbs[1]);
-        let input_1 = cs.add_intermediate_named_variable_from_constraint(
-            input_1,
-            "input 1 for binary sign ext/trucate shift",
-        );
 
         let mut input_2 = Constraint::empty();
         input_2 += Term::from(is_shift) * Term::from(truncated_shift_amount);
-        let input_2 = cs.add_intermediate_named_variable_from_constraint(
-            input_2,
-            "input 2 for binary sign ext/trucate shift",
-        );
 
         let mut table_id = Constraint::empty();
         table_id += Term::from(is_shift)
@@ -170,89 +158,62 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
             * Term::from_field(
                 F::from_u32(TableType::GetSignExtensionByte as u32).expect("must fit"),
             );
-        let table_id = cs.add_intermediate_named_variable_from_constraint(
+
+        LookupRequest {
             table_id,
-            "table ID for binary sign ext/trucate shift",
-        );
-
-        cs.enforce_lookup_tuple_for_variable_table(
-            &[
-                LookupInput::from(input_0),
-                LookupInput::from(input_1),
-                LookupInput::from(input_2),
-            ],
-            table_id,
-        );
-    }
-    // and value-related lookups
-    {
-        for i in 0..4 {
-            let mut constraints: [Constraint<F>; 8] = std::array::from_fn(|_| Constraint::empty());
-
-            let byte_index = i;
-
-            // rs1 byte for the binary op, or byte index for shift
-            constraints[0] += Term::from(is_binary_op) * Term::from(rs1_limbs[i]);
-            constraints[0] += Term::from(is_shift) * Term::from(byte_index as u32);
-
-            let binary_op_imm = if i >= 2 {
-                binary_ops_imm_sign_ext
-            } else {
-                inputs.decoder_data.imm[i]
-            };
-
-            // rs2 byte or imm extension for binary op, or rs1 byte for shift
-            constraints[1] += Term::from(is_binary_op) * Term::from(rs2_limbs[i]);
-            constraints[1] += Term::from(is_binary_op) * Term::from(binary_op_imm);
-            constraints[1] += Term::from(is_shift) * Term::from(rs1_limbs[i]);
-
-            // output for the binary op, or shift amount for shift
-            constraints[2] += Term::from(is_binary_op) * Term::from(binary_ops_outputs[i]);
-            constraints[2] += shift_amount_constraint.clone() * Term::from(is_shift);
-
-            // only shift is used for inputs below. funct3 here
-            constraints[3] +=
-                Term::from(is_shift) * Term::from(inputs.decoder_data.funct3.expect("is present"));
-
-            let shift_outputs = shift_output_chunks[i];
-
-            for j in 0..4 {
-                // and outputs of shifts here
-                constraints[4 + j] += Term::from(is_shift) * Term::from(shift_outputs[j]);
-            }
-
-            let input_vars: [Variable; 8] = constraints
-                .into_iter()
-                .enumerate()
-                .map(|(idx, el)| {
-                    cs.add_intermediate_named_variable_from_constraint(
-                        el,
-                        &format!("lookup input {} for main part of ops for byte {}", idx, i),
-                    )
-                })
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
-
-            let lookup_inputs = input_vars.map(|el| LookupInput::from(el));
-
-            let table_id = {
-                let shift_table_id = TableType::ShiftImplementationOverBytes;
-                let mut table_id = Constraint::empty();
-                table_id += Term::from(is_shift)
-                    * Term::from_field(F::from_u32(shift_table_id as u32).expect("must fit"));
-                table_id += Term::from(is_binary_op)
-                    * Term::from(inputs.decoder_data.funct3.expect("must be present"));
-                let table_id = cs.add_intermediate_named_variable_from_constraint(
-                    table_id,
-                    "table ID for binary/shift main ops",
-                );
-
-                table_id
-            };
-
-            cs.enforce_lookup_tuple_for_variable_table(&lookup_inputs, table_id);
+            inputs: vec![input_0, input_1, input_2],
         }
+    };
+
+    // per-byte main lookups (4): binary-op output bytes / shift output chunks
+    let mut per_byte_requests: Vec<LookupRequest<F>> = Vec::with_capacity(4);
+    for i in 0..4 {
+        let mut constraints: [Constraint<F>; 8] = std::array::from_fn(|_| Constraint::empty());
+
+        let byte_index = i;
+
+        // rs1 byte for the binary op, or byte index for shift
+        constraints[0] += Term::from(is_binary_op) * Term::from(rs1_limbs[i]);
+        constraints[0] += Term::from(is_shift) * Term::from(byte_index as u32);
+
+        let binary_op_imm = if i >= 2 {
+            binary_ops_imm_sign_ext
+        } else {
+            inputs.decoder_data.imm[i]
+        };
+
+        // rs2 byte or imm extension for binary op, or rs1 byte for shift
+        constraints[1] += Term::from(is_binary_op) * Term::from(rs2_limbs[i]);
+        constraints[1] += Term::from(is_binary_op) * Term::from(binary_op_imm);
+        constraints[1] += Term::from(is_shift) * Term::from(rs1_limbs[i]);
+
+        // output for the binary op, or shift amount for shift
+        constraints[2] += Term::from(is_binary_op) * Term::from(binary_ops_outputs[i]);
+        constraints[2] += shift_amount_constraint.clone() * Term::from(is_shift);
+
+        // only shift is used for inputs below. funct3 here
+        constraints[3] +=
+            Term::from(is_shift) * Term::from(inputs.decoder_data.funct3.expect("is present"));
+
+        let shift_outputs = shift_output_chunks[i];
+
+        for j in 0..4 {
+            // and outputs of shifts here
+            constraints[4 + j] += Term::from(is_shift) * Term::from(shift_outputs[j]);
+        }
+
+        let mut table_id = Constraint::empty();
+        table_id += Term::from(is_shift)
+            * Term::from_field(
+                F::from_u32(TableType::ShiftImplementationOverBytes as u32).expect("must fit"),
+            );
+        table_id += Term::from(is_binary_op)
+            * Term::from(inputs.decoder_data.funct3.expect("must be present"));
+
+        per_byte_requests.push(LookupRequest {
+            table_id,
+            inputs: constraints.to_vec(),
+        });
     }
 
     // rd-write constraint, gated on Family 3 firing so non-Family-3 cycles in the
@@ -283,4 +244,8 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     high_constraint -=
         (Constraint::from(is_binary_op) + Term::from(is_shift)) * Term::from(rd_write_limbs[1]);
     cs.add_constraint(high_constraint);
+
+    let mut lookups = vec![combined_request];
+    lookups.extend(per_byte_requests);
+    lookups
 }

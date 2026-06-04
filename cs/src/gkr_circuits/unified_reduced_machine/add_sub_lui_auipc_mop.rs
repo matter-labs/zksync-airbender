@@ -14,7 +14,7 @@ use field::PrimeField;
 /// requesting memory accesses internally. Non-Family-1 cycles have all
 /// `decoder.perform_*()` Booleans = 0 so every constraint here is multiplied
 /// by 0 and is trivially satisfied.
-pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
+pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>, const N: usize>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     decoder: AddSubLuiAuipcMopFamilyCircuitMask,
@@ -22,13 +22,15 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     rs2_limbs: [Variable; 4],
     rd_write_limbs: [Variable; 2],
     rs2_read_timestamp: [Variable; common_constants::NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+    // Shared 16-bit-RC scratch Register for the modular-ops intermediate
+    intermediate_tmp: Register<F>,
+    // Shared scratch-Boolean slots for carry / intermediate_carry 
+    of_slots: [Boolean; N],
 ) {
     // NOTE: by preprocessing if we have rd == 0 in any of the opcodes below, then
     // we have rs1 = x0, rs2 = x0 and imm = 0, and it's preprocessed into plain addition,
     // so we do NOT need to mask rd value
 
-    // we will also need to pay 2 more range checks
-    let intermediate_tmp = Register::new_named(cs, "Modular ops intermediate comparison reg");
     let modulus_low = F::from_u32_unchecked((F::CHARACTERISTICS as u16) as u32);
     let modulus_high = F::from_u32_unchecked(((F::CHARACTERISTICS >> 16) as u16) as u32);
 
@@ -61,8 +63,8 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     let is_delegation_call = decoder.perform_delegation_call();
     let is_non_determinism_read = decoder.perform_non_determinism_read();
 
-    let intermediate_carry = cs.add_named_boolean_variable("intermediate carry for out");
-    let carry = cs.add_named_boolean_variable("carry for out");
+    let carry = of_slots[0];
+    let intermediate_carry = of_slots[1];
     let mulmod_intermediate_var = cs.add_named_variable("MULMOD intermediate value");
 
     // Witness function - added before any constraints, so we can use debug machinery
@@ -290,9 +292,22 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                 placer.assign_u32_from_u16_parts(out_vars, &out_value);
             }
 
-            placer.assign_u32_from_u16_parts(intermediate_vars, &intermediate_value);
-            placer.assign_mask(of_var, &of_value);
-            placer.assign_mask(intermediate_of_var, &u16_intermedaite_carry_value);
+            let is_f1_active = {
+                let mut m = placer.get_boolean(is_add_var);
+                m = m.or(&placer.get_boolean(is_sub_var));
+                m = m.or(&placer.get_boolean(is_auipc_var));
+                m = m.or(&placer.get_boolean(is_addmod_var));
+                m = m.or(&placer.get_boolean(is_submod_var));
+                m = m.or(&placer.get_boolean(is_mulmod_var));
+                m
+            };
+            placer.conditionally_assign_u32(intermediate_vars, &is_f1_active, &intermediate_value);
+            placer.conditionally_assign_mask(of_var, &is_f1_active, &of_value);
+            placer.conditionally_assign_mask(
+                intermediate_of_var,
+                &is_f1_active,
+                &u16_intermedaite_carry_value,
+            );
         };
         cs.set_values(value_fn);
     }

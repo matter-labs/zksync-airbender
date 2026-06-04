@@ -4,6 +4,7 @@ use crate::cs::circuit_trait::*;
 use crate::types::*;
 use field::PrimeField;
 
+use super::circuit::LookupRequest;
 use super::mem_word_only_lw_sw::apply_unified_mem_word_only_lw_sw_data_path;
 
 /// Memory-access constraints for the unified circuit.
@@ -28,7 +29,7 @@ use super::mem_word_only_lw_sw::apply_unified_mem_word_only_lw_sw_data_path;
 /// Caller (unified body) owns the `memread_addr` / `memwrite_addr` witness
 /// vars and passes them inside the access objects.
 #[allow(non_snake_case)]
-pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
+pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>, const N: usize>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     is_lw: Boolean,
@@ -36,7 +37,8 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     rs1_limbs: [Variable; REGISTER_SIZE * 2],
     memread_access: RegisterOrRamAccess,
     memwrite_access: RegisterOrRamAccess,
-) {
+    of_slots: [Boolean; N],
+) -> Vec<LookupRequest<F>> {
     // LW: rd                          <- mem[addr] || rom[addr]  with +0 offset accepted
     // SW: mem[addr] || trap rom[addr] <- rs2                     with +0 offset accepted
     // NOTE: by preprocessing (decoder lookup) we have rd == 0 for loads not possible
@@ -86,5 +88,6 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
         memwrite_u16,
         memread_addr,
         memwrite_addr,
-    );
+        of_slots,
+    )
 }

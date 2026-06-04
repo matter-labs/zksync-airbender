@@ -19,7 +19,7 @@ use crate::gkr_circuits::mem_word_only::{
 };
 use crate::oracle::Placeholder;
 use crate::tables::TableDriver;
-use crate::types::{Boolean, LIMB_WIDTH};
+use crate::types::{Boolean, Register, LIMB_WIDTH};
 use crate::witness_placer::*;
 use field::PrimeField;
 
@@ -59,6 +59,74 @@ pub const UNIFIED_REDUCED_MACHINE_NUM_FLAGS: usize = ADD_SUB_LUI_AUIPC_MOP_FAMIL
     + JUMP_SLT_BRANCH_FAMILY_NUM_BITS
     + SHIFT_BINARY_FAMILY_NUM_FLAGS
     + UNIFIED_FAMILY_4_NUM_FLAGS;
+
+/// Per-family count of *branch-local* scratch Booleans — committed Booleans used
+/// only inside that family's flag-gated constraints, hence unconstrained (free)
+/// on rows where the family is idle. Because at most one family fires per row,
+/// these slots can be ALIASED across families into one shared pool.
+const F1_SCRATCH_BOOLS: usize = 2; // carry, intermediate_carry (alias F4's of_lo/of_hi slots)
+const F2_SCRATCH_BOOLS: usize = 0; // TODO: 4 carries, next_pc_bit_1, 2x is_X_writes_rd, gate_fam2_rd_zero
+const F3_SCRATCH_BOOLS: usize = 0;
+const F4_SCRATCH_BOOLS: usize = 2; // of_lo, of_hi
+
+/// Shared base-layer scratch-Boolean pool size = max across families (one pool,
+/// reused per row by whichever family fires)
+const UNIFIED_SCRATCH_BOOL_COUNT: usize = {
+    let mut m = F1_SCRATCH_BOOLS;
+    if F2_SCRATCH_BOOLS > m {
+        m = F2_SCRATCH_BOOLS;
+    }
+    if F3_SCRATCH_BOOLS > m {
+        m = F3_SCRATCH_BOOLS;
+    }
+    if F4_SCRATCH_BOOLS > m {
+        m = F4_SCRATCH_BOOLS;
+    }
+    m
+};
+
+pub(super) const UNIFIED_LOOKUP_WIDTH: usize = 8;
+
+pub(super) struct LookupRequest<F: PrimeField> {
+    pub table_id: Constraint<F>,
+    pub inputs: Vec<Constraint<F>>,
+}
+
+fn flush_unified_lookup_pool<F: PrimeField, CS: Circuit<F>>(
+    cs: &mut CS,
+    per_family: &[Vec<LookupRequest<F>>],
+) {
+    let num_slots = per_family.iter().map(Vec::len).max().unwrap_or(0);
+    for k in 0..num_slots {
+        let mut table_id = Constraint::<F>::empty();
+        let mut inputs: [Constraint<F>; UNIFIED_LOOKUP_WIDTH] =
+            core::array::from_fn(|_| Constraint::empty());
+        for family in per_family {
+            let Some(req) = family.get(k) else { continue };
+            assert!(req.inputs.len() <= UNIFIED_LOOKUP_WIDTH);
+            table_id = table_id + req.table_id.clone();
+            for (j, inp) in req.inputs.iter().enumerate() {
+                inputs[j] = inputs[j].clone() + inp.clone();
+            }
+        }
+        let table_id_var = cs.add_intermediate_named_variable_from_constraint(
+            table_id,
+            &format!("pooled lookup table_id (slot {k})"),
+        );
+        let tuple: [LookupInput<F>; UNIFIED_LOOKUP_WIDTH] = core::array::from_fn(|j| {
+            // Positions no family populates fold in as the constant 0 (no column).
+            if inputs[j].is_empty() {
+                LookupInput::from(F::ZERO)
+            } else {
+                LookupInput::from(cs.add_intermediate_named_variable_from_constraint(
+                    inputs[j].clone(),
+                    &format!("pooled lookup input (slot {k}, pos {j})"),
+                ))
+            }
+        });
+        cs.enforce_lookup_tuple_for_variable_table::<UNIFIED_LOOKUP_WIDTH>(&tuple, table_id_var);
+    }
+}
 
 pub fn unified_reduced_machine_table_addition_fn<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
     add_sub_lui_auipc_mop_table_addition_fn(cs);
@@ -191,6 +259,10 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         unreachable!()
     };
     let rs2_read_timestamp = rs2_access.read_timestamp;
+    let scratch_bools: [Boolean; UNIFIED_SCRATCH_BOOL_COUNT] = core::array::from_fn(|i| {
+        cs.add_named_boolean_variable(&format!("shared scratch bool[{i}]"))
+    });
+    let shared_intermediate_reg = Register::new_named(cs, "shared F1/F2 intermediate reg");
 
     // Each family body adds constraints gated by its own flag bits. Family-internal
     // flags within each family are mutually exclusive (decoder lookup binds to family
@@ -206,16 +278,19 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         rs2_limbs,
         rd_write_limbs,
         rs2_read_timestamp,
+        shared_intermediate_reg,
+        core::array::from_fn::<_, F1_SCRATCH_BOOLS, _>(|i| scratch_bools[i]),
     );
-    apply_unified_jump_branch_slt_inner(
+    let f2_lookups = apply_unified_jump_branch_slt_inner(
         cs,
         inputs.clone(),
         unified_mask.jump_branch_slt(),
         rs1_limbs,
         rs2_limbs,
         rd_write_limbs,
+        shared_intermediate_reg,
     );
-    apply_unified_binary_shifts_inner(
+    let f3_lookups = apply_unified_binary_shifts_inner(
         cs,
         inputs.clone(),
         unified_mask.binary_shifts(),
@@ -226,7 +301,19 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     let pc_in = inputs.cycle_start_state.pc;
     let pc_out = inputs.cycle_end_state.pc;
     let execute = inputs.execute;
-    apply_unified_mem_word_only_inner(cs, inputs, is_lw, is_sw, rs1_limbs, rs2_access, rd_access);
+    let f4_lookups = apply_unified_mem_word_only_inner(
+        cs,
+        inputs,
+        is_lw,
+        is_sw,
+        rs1_limbs,
+        rs2_access,
+        rd_access,
+        core::array::from_fn::<_, F4_SCRATCH_BOOLS, _>(|i| scratch_bools[i]),
+    );
+
+    flush_unified_lookup_pool(cs, &[f2_lookups, f3_lookups, f4_lookups]);
+
 
     // Unified PC bump (gated). Families 1, 3, 4 leave PC handling to the caller;
     // Family 2 (jump_branch_slt) owns its own gated PC logic for jal/jalr/branch/slt.
