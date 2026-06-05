@@ -20,6 +20,7 @@ add_library(gpu_ntt_archive STATIC
         monomials_to_evals_two_pass.cu
         ntt.cu
         ntt.cuh
+        whir_leaves.cu
 )
 target_include_directories(gpu_ntt_archive PRIVATE ${GPU_CORE_NATIVE_INCLUDE})
 set_target_properties(gpu_ntt_archive PROPERTIES CUDA_STANDARD 20)

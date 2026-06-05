@@ -24,7 +24,8 @@ pub(crate) fn mulhu<C: Counters, S: Snapshotter<C>, R: RAM>(
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
     let rs2_value = read_register::<C, 1>(state, instr.rs2);
-    let rd = rs1_value.widening_mul(rs2_value).1;
+    // let rd = rs1_value.widening_mul(rs2_value).1;
+    let rd = (rs1_value.widening_mul(rs2_value) >> 32) as u32;
     write_register_for_pure_opcode::<C, 2>(state, instr.rd, rd);
     default_increase_pc::<C>(state);
     increment_family_counter::<C, MUL_DIV_CIRCUIT_FAMILY_IDX>(state);

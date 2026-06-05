@@ -18,14 +18,14 @@ use crate::ops::blake2s::{
 };
 use crate::ops::ntt::{
     bitreversed_monomials_to_natural_evals_multi_coset, hypercube_x1_msb_evals_to_x1_msb_monomials,
-    log_size_supports_transposed_monomials,
+    log_size_supports_transposed_monomials, transform_whir_leaves_from_ntt_in_place_multi_coset,
 };
 use crate::primitives::context::DeviceAllocation;
 #[cfg(test)]
 use crate::primitives::context::HostAllocation;
-use crate::primitives::device_structures::DeviceMatrixChunk;
+use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixImpl, DeviceMatrixMut};
 #[cfg(test)]
-use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+use crate::primitives::device_structures::DeviceMatrix;
 use crate::primitives::field::BF;
 use crate::prover::ProverContext;
 
@@ -615,6 +615,7 @@ impl TraceHolder<BF> {
         natural_log_lde_factor: u32,
         log_values_per_leaf: u32,
         src_cols_per_coset: usize,
+        transform_leaves_to_multilinear_coeffs: bool,
         context: &ProverContext,
     ) -> CudaResult<()> {
         assert_eq!(
@@ -639,8 +640,8 @@ impl TraceHolder<BF> {
 
         // Snapshot the cosets backing as a raw const slice so we can borrow
         // `self.cosets` shared and `self.trees` mutable in the same scope.
-        let evals_ptr = match &self.cosets {
-            CosetsHolder::Full(backing) => backing.as_ptr(),
+        let evals_ptr = match &mut self.cosets {
+            CosetsHolder::Full(backing) => backing.as_mut_ptr(),
             CosetsHolder::None(_) => {
                 panic!("cosets not allocated — call ensure_cosets_materialized first")
             }
@@ -650,8 +651,8 @@ impl TraceHolder<BF> {
         let evals_total_len = lde_factor * trace_len * src_cols_per_coset;
         // SAFETY: cosets backing remains alive for `&self`; evals range is
         // disjoint from the trees backing.
-        let ntt_output: &DeviceSlice<BF> =
-            unsafe { DeviceSlice::from_raw_parts(evals_ptr, evals_total_len) };
+        let ntt_output: &mut DeviceSlice<BF> =
+            unsafe { DeviceSlice::from_raw_parts_mut(evals_ptr, evals_total_len) };
 
         let total_leaf_count_log2 = (log_trace_len - log_values_per_leaf) + natural_log_lde_factor;
         let total_leaf_count = 1usize << total_leaf_count_log2;
@@ -671,8 +672,8 @@ impl TraceHolder<BF> {
                     log_values_per_leaf,
                     self.log_tree_cap_size,
                     src_cols_per_coset,
-                    /*coset_index_base=*/ 0,
-                    stream,
+                    transform_leaves_to_multilinear_coeffs,
+                    context,
                 )?;
             }
             TreesHolder::Partial(backing) => {
@@ -697,8 +698,8 @@ impl TraceHolder<BF> {
                     log_values_per_leaf,
                     top_log_cap,
                     src_cols_per_coset,
-                    /*coset_index_base=*/ 0,
-                    stream,
+                    transform_leaves_to_multilinear_coeffs,
+                    context,
                 )?;
                 // Bottom: read the "top layer" digests out of `tree_top` and
                 // continue the merkle tree into `backing` for the remaining
@@ -785,6 +786,7 @@ impl TraceHolder<BF> {
         natural_log_lde_factor: u32,
         log_values_per_leaf: u32,
         src_cols_per_coset: usize,
+        transform_leaves_to_multilinear_coeffs: bool,
         context: &ProverContext,
     ) -> CudaResult<()> {
         let cap_size = 1usize << self.log_tree_cap_size;
@@ -806,6 +808,7 @@ impl TraceHolder<BF> {
             natural_log_lde_factor,
             log_values_per_leaf,
             src_cols_per_coset,
+            transform_leaves_to_multilinear_coeffs,
             context,
         )
     }
@@ -1254,40 +1257,84 @@ pub(crate) fn commit_trace_multi_coset(
 /// (typically `whir_steps_lde_factors[i].trailing_zeros()`), NOT the
 /// `TraceHolder`'s `log_lde_factor`.
 pub(crate) fn commit_trace_from_ntt_single_tree(
-    ntt_output: &DeviceSlice<BF>,
+    ntt_output: &mut DeviceSlice<BF>,
     trees_backing: &mut DeviceSlice<Digest>,
     log_trace_len: u32,
     natural_log_lde_factor: u32,
     log_values_per_leaf: u32,
     log_tree_cap_size: u32,
     src_cols_per_coset: usize,
-    coset_index_base: u32,
-    stream: &CudaStream,
+    transform_leaves_to_multilinear_coeffs: bool,
+    context: &ProverContext,
 ) -> CudaResult<()> {
     assert!(natural_log_lde_factor >= 1);
     assert!(log_trace_len >= log_values_per_leaf);
     let packed_leaf_count = 1usize << (log_trace_len - log_values_per_leaf);
-    let cosets_in_tile = 1usize << natural_log_lde_factor;
     let total_leaf_count = packed_leaf_count
-        .checked_mul(cosets_in_tile)
+        .checked_mul(1 << natural_log_lde_factor)
         .expect("total_leaf_count overflow");
     assert_eq!(trees_backing.len(), total_leaf_count << 1);
     let total_leaf_count_log2 = (log_trace_len - log_values_per_leaf) + natural_log_lde_factor;
     assert!(log_tree_cap_size <= total_leaf_count_log2);
     let layers_count = total_leaf_count_log2 + 1 - log_tree_cap_size;
     let (leaves, nodes) = trees_backing.split_at_mut(total_leaf_count);
-    crate::ops::blake2s::launch_leaves_kernel_from_ntt_multi_coset(
-        ntt_output,
-        leaves,
-        log_values_per_leaf,
-        src_cols_per_coset as u32,
-        natural_log_lde_factor,
-        coset_index_base,
-        cosets_in_tile,
-        packed_leaf_count,
-        1u32 << log_trace_len,
-        stream,
-    )?;
+    let stream = context.get_exec_stream();
+    // TODO: Accept cosets_in_tile and coset_index_base as arguments for coset-based
+    // L2 chunking of the full NTT->transform->commit rows->commit nodes sequence.
+    if transform_leaves_to_multilinear_coeffs {
+        // let l2_bytes = context.get_device_properties().l2_cache_size_bytes;
+        // let single_coset_bytes = 1usize << log_trace_len * std::mem::size_of::BF>();
+        // let cosets_in_tile = if l2_bytes >= single_coset_bytes {
+        //     l2_bytes / single_coset_bytes
+        // } else {
+        //     1
+        // };
+        // let tmp_leaves_buffer = context.alloc(
+        //     (1 << natural_log_lde_factor) * (1 << log_trace_len) * src_cols_per_coset,
+        //     AllocationPlacement::BestFit,
+        // );
+        let mut ntt_output_matrix = DeviceMatrixMut::new(ntt_output, 1 << log_trace_len);
+        let cosets_in_tile = 1 << natural_log_lde_factor;
+        for coset_index_base in (0..(1 << natural_log_lde_factor)).step_by(cosets_in_tile) {
+            transform_whir_leaves_from_ntt_in_place_multi_coset(
+                &mut ntt_output_matrix,
+                log_trace_len,
+                natural_log_lde_factor,
+                log_values_per_leaf,
+                coset_index_base as u32,
+                cosets_in_tile as u32,
+                src_cols_per_coset as u32,
+                stream,
+            )?;
+            crate::ops::blake2s::launch_leaves_kernel_from_ntt_multi_coset(
+                ntt_output_matrix.slice(),
+                leaves,
+                log_values_per_leaf,
+                src_cols_per_coset as u32,
+                natural_log_lde_factor,
+                coset_index_base,
+                cosets_in_tile,
+                packed_leaf_count,
+                1u32 << log_trace_len,
+                stream,
+            )?;
+        }
+    } else {
+        let cosets_in_tile = 1usize << natural_log_lde_factor;
+        let coset_index_base = 0;
+        crate::ops::blake2s::launch_leaves_kernel_from_ntt_multi_coset(
+            ntt_output,
+            leaves,
+            log_values_per_leaf,
+            src_cols_per_coset as u32,
+            natural_log_lde_factor,
+            coset_index_base,
+            cosets_in_tile,
+            packed_leaf_count,
+            1u32 << log_trace_len,
+            stream,
+        )?;
+    }
     // Single-tree node layers: build_merkle_tree_nodes operates on a flat
     // `[leaves | nodes]` slab. `layers_count - 1` because the leaf layer is
     // already written; the function builds the remaining `layers_count - 1`
