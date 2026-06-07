@@ -399,9 +399,11 @@ fn lower_relation(
             expression,
             output,
         } => {
-            let flat = lower_max_quad_flat(b, input);
-            let expr = b.lower_expr(expression, Domain::Base);
-            let node = b.add_gate_output(producer, 0, Domain::Base, *output);
+            let domain = relation_metadata(rel).out_domain;
+            debug_assert!(matches!(domain, Domain::Base), "MaxQuadratic is always base-field");
+            let flat = lower_max_quad_flat(b, input, domain);
+            let expr = b.lower_expr(expression, domain);
+            let node = b.add_gate_output(producer, 0, domain, *output);
             (
                 GateKind::MaxQuadratic { flat, expr },
                 vec![OutputSlot {
@@ -412,27 +414,31 @@ fn lower_relation(
             )
         }
         R::EnforceSingleMaxQuadraticConstraint { input, expression } => {
-            let flat = lower_max_quad_flat(b, input);
-            let expr = b.lower_expr(expression, Domain::Base);
+            let domain = relation_metadata(rel).out_domain;
+            debug_assert!(matches!(domain, Domain::Base), "EnforceSingleMaxQuadraticConstraint is always base-field");
+            let flat = lower_max_quad_flat(b, input, domain);
+            let expr = b.lower_expr(expression, domain);
             (
                 GateKind::EnforceSingleMaxQuadraticConstraint { flat, expr },
                 vec![],
             )
         }
         R::EnforceConstraintsMaxQuadratic { input } => {
+            let domain = relation_metadata(rel).out_domain;
+            debug_assert!(matches!(domain, Domain::Base), "EnforceConstraintsMaxQuadratic is always base-field");
             let quadratic = input
                 .quadratic_terms
                 .iter()
                 .map(|((a, c), powers)| {
-                    let an = b.resolve(*a, Domain::Base);
-                    let cn = b.resolve(*c, Domain::Base);
+                    let an = b.resolve(*a, domain);
+                    let cn = b.resolve(*c, domain);
                     ((an, cn), powers.to_vec())
                 })
                 .collect();
             let linear = input
                 .linear_terms
                 .iter()
-                .map(|(a, powers)| (b.resolve(*a, Domain::Base), powers.to_vec()))
+                .map(|(a, powers)| (b.resolve(*a, domain), powers.to_vec()))
                 .collect();
             let constants = input.constants.to_vec();
             (
@@ -445,8 +451,9 @@ fn lower_relation(
             )
         }
         R::CopyInBaseField { input, output } => {
-            let inode = b.resolve(*input, Domain::Base);
-            let node = b.add_gate_output(producer, 0, Domain::Base, *output);
+            let domain = relation_metadata(rel).out_domain;
+            let inode = b.resolve(*input, domain);
+            let node = b.add_gate_output(producer, 0, domain, *output);
             (
                 GateKind::CopyInBaseField { input: inode },
                 vec![OutputSlot {
@@ -457,8 +464,9 @@ fn lower_relation(
             )
         }
         R::CopyInExtensionField { input, output } => {
-            let inode = b.resolve(*input, Domain::Ext);
-            let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
+            let domain = relation_metadata(rel).out_domain;
+            let inode = b.resolve(*input, domain);
+            let node = b.add_gate_output(producer, 0, domain, *output);
             (
                 GateKind::CopyInExtensionField { input: inode },
                 vec![OutputSlot {
@@ -504,15 +512,17 @@ fn lower_relation(
 fn lower_max_quad_flat(
     b: &mut ArenaBuilder,
     input: &super::NoFieldMaxQuadraticGKRRelation,
+    domain: Domain,
 ) -> MaxQuadFlat {
+    debug_assert!(matches!(domain, Domain::Base), "lower_max_quad_flat operands are always base-field");
     let quadratic = input
         .quadratic_terms
         .iter()
         .map(|(a, terms)| {
-            let an = b.resolve(*a, Domain::Base);
+            let an = b.resolve(*a, domain);
             let lowered = terms
                 .iter()
-                .map(|(c, bb)| (*c, b.resolve(*bb, Domain::Base)))
+                .map(|(c, bb)| (*c, b.resolve(*bb, domain)))
                 .collect();
             (an, lowered)
         })
@@ -520,7 +530,7 @@ fn lower_max_quad_flat(
     let linear = input
         .linear_terms
         .iter()
-        .map(|(c, a)| (*c, b.resolve(*a, Domain::Base)))
+        .map(|(c, a)| (*c, b.resolve(*a, domain)))
         .collect();
     MaxQuadFlat {
         quadratic,
@@ -1221,5 +1231,58 @@ mod tests {
                 );
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 3: domain-threading guard tests
+    // -----------------------------------------------------------------------
+
+    /// A layer with a single CopyInExtensionField gate.
+    fn ext_copy_layer() -> GKRLayerDescription {
+        GKRLayerDescription {
+            layer: 0,
+            gates_with_external_connections: vec![],
+            cached_relations: BTreeMap::new(),
+            gates: vec![GateArtifacts {
+                output_layer: 1,
+                enforced_relation: NoFieldGKRRelation::CopyInExtensionField {
+                    input: inner(0, 5),
+                    output: inner(1, 0),
+                },
+            }],
+            intermediate_layer_width: Some(1),
+        }
+    }
+
+    /// The input Place node for a CopyInExtensionField gate must carry Domain::Ext.
+    #[test]
+    fn ext_copy_places_are_ext_domain() {
+        let layer = ext_copy_layer();
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        // The input address (inner(0,5)) has no intra-layer producer, so it becomes a
+        // Place leaf.  That leaf must be Domain::Ext because the copy is extension-field.
+        let has_ext_place = cg.arena.nodes.iter().any(|n| {
+            matches!(n, ExprNode::Place { domain: Domain::Ext, .. })
+        });
+        assert!(has_ext_place, "ext copy input must be an Ext-domain Place");
+        // Symmetry: no Base Place should exist in a pure ext-copy layer.
+        let has_base_place = cg.arena.nodes.iter().any(|n| {
+            matches!(n, ExprNode::Place { domain: Domain::Base, .. })
+        });
+        assert!(!has_base_place, "ext copy layer must not produce Base-domain Place nodes");
+        cg.verify().expect("verify");
+    }
+
+    /// All Place nodes produced for a pure max-quadratic layer must be Domain::Base.
+    #[test]
+    fn max_quad_operand_places_are_base_domain() {
+        // sample_layer() contains a MaxQuadratic gate (plus a CopyInBaseField gate);
+        // every operand address is a base-layer witness, so all Place nodes must be Base.
+        let cg = lower_layer(&sample_layer(), &BTreeMap::new());
+        let has_ext_place = cg.arena.nodes.iter().any(|n| {
+            matches!(n, ExprNode::Place { domain: Domain::Ext, .. })
+        });
+        assert!(!has_ext_place, "max-quad operands must all be Base-domain Place nodes");
+        cg.verify().expect("verify");
     }
 }
