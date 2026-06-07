@@ -643,6 +643,67 @@ fn union_children(
 }
 
 // ===========================================================================
+// Per-variant metadata table (Task 2)
+// ===========================================================================
+
+/// Per-variant static metadata: how many outputs, how many challenges, and
+/// what domain the result lives in. `out_domain` is the RESULT domain only —
+/// per-operand domains are mixed (e.g. `MaskIntoIdentityProduct.mask` is Base
+/// even though `out_domain = Ext`) and are resolved from each kernel's
+/// `GKRInputs` during lowering (Tasks 4-6). Single in-`cs` source of truth,
+/// cross-validated against `NoFieldGKRRelation::num_challenges()`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RelationMeta {
+    pub outputs: u8,
+    pub num_challenges: u8,
+    pub out_domain: Domain,
+}
+
+/// Return static metadata for any `NoFieldGKRRelation` variant.
+/// The match is exhaustive with NO `_` arm so a future variant breaks the build.
+pub fn relation_metadata(rel: &NoFieldGKRRelation) -> RelationMeta {
+    use NoFieldGKRRelation as R;
+    let (outputs, num_challenges, out_domain) = match rel {
+        // -- single-output base-field family --
+        R::LinearBaseFieldRelation { .. } => (1, 1, Domain::Base),
+        R::MaxQuadratic { .. } => (1, 1, Domain::Base),
+        R::EnforceSingleMaxQuadraticConstraint { .. } => (0, 1, Domain::Base),
+        R::EnforceConstraintsMaxQuadratic { .. } => (0, 1, Domain::Base),
+        R::CopyInBaseField { .. } => (1, 1, Domain::Base),
+        // -- single-output extension-field family --
+        R::CopyInExtensionField { .. } => (1, 1, Domain::Ext),
+        R::InitialGrandProductFromCaches { .. } => (1, 1, Domain::Ext),
+        R::InitialGrandProductWithoutCaches { .. } => (1, 1, Domain::Ext),
+        R::UnbalancedGrandProductWithCache { .. } => (1, 1, Domain::Ext),
+        R::MaterializeGrandProductTermExpression { .. } => (1, 1, Domain::Ext),
+        R::TrivialProduct { .. } => (1, 1, Domain::Ext),
+        R::MaskIntoIdentityProduct { .. } => (1, 1, Domain::Ext),
+        // -- single-output lookup materialization --
+        R::MaterializeSingleLookupInput { .. } => (1, 1, Domain::Base),
+        R::MaterializedVectorLookupInput { .. } => (1, 1, Domain::Ext),
+        // -- two-output (num, den) lookup family --
+        R::LookupWithCachedDensAndSetup { .. } => (2, 2, Domain::Ext),
+        R::LookupWithDensAndSetupExpressions { .. } => (2, 2, Domain::Ext),
+        R::LookupWithDensAndCachedSetup { .. } => (2, 2, Domain::Ext),
+        R::LookupPairFromBaseInputs { .. } => (2, 2, Domain::Ext),
+        R::LookupPairFromMaterializedBaseInputs { .. } => (2, 2, Domain::Ext),
+        R::LookupFromMaterializedBaseInputWithSetup { .. } => (2, 2, Domain::Ext),
+        R::LookupUnbalancedPairWithMaterializedBaseInputs { .. } => (2, 2, Domain::Ext),
+        R::LookupPairFromVectorInputs { .. } => (2, 2, Domain::Ext),
+        R::LookupPairFromMaterializedVectorInputs { .. } => (2, 2, Domain::Ext),
+        R::LookupFromVectorInputWithSetup { .. } => (2, 2, Domain::Ext),
+        R::LookupFromMaterializedVectorInputWithSetup { .. } => (2, 2, Domain::Ext),
+        R::LookupPairFromCachedVectorInputs { .. } => (2, 2, Domain::Ext),
+        R::LookupUnbalancedPairWithVectorInputs { .. } => (2, 2, Domain::Ext),
+        R::LookupUnbalancedPairWithMaterializedVectorInputs { .. } => (2, 2, Domain::Ext),
+        R::AggregateLookupRationalPair { .. } => (2, 2, Domain::Ext),
+        // -- inits/teardowns --
+        R::InitsOrTeardownsInitialPair { .. } => (1, 1, Domain::Ext),
+    };
+    RelationMeta { outputs, num_challenges, out_domain }
+}
+
+// ===========================================================================
 // Validation
 // ===========================================================================
 
@@ -989,5 +1050,176 @@ mod tests {
         let external = b.resolve(blw(9), Domain::Base);
         assert_ne!(external, produced);
         assert!(matches!(b.nodes[external.0 as usize], ExprNode::Place { .. }));
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 2: metadata_fixtures + metadata tests
+    // -----------------------------------------------------------------------
+
+    /// Build one `NoFieldGKRRelation` per variant (all 30), grouped by
+    /// (outputs, num_challenges, out_domain) class, panicking variants included.
+    /// Cross-checked against `relation_metadata` and `num_challenges()`.
+    fn metadata_fixtures() -> Vec<(NoFieldGKRRelation, RelationMeta)> {
+        use super::super::{
+            CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
+            InitsOrTeardownsTimestampAndValue, NoFieldGKRRelation as R,
+            NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldMaxQuadraticGKRRelation,
+            NoFieldSpecialMemoryContributionRelation, NoFieldStructuredExpression as E,
+        };
+        use crate::definitions::gkr::{
+            NoFieldLinearRelation, NoFieldSingleColumnLookupRelation, NoFieldVectorLookupRelation,
+            RamWordRepresentation,
+        };
+
+        let a0 = blw(0);
+        let a1 = blw(1);
+        let out0 = inner(1, 0);
+        let out1 = inner(1, 1);
+
+        let lin = NoFieldLinearRelation {
+            linear_terms: vec![(1u32, a0)].into_boxed_slice(),
+            constant: 0,
+        };
+        let mq = NoFieldMaxQuadraticGKRRelation {
+            quadratic_terms: vec![].into_boxed_slice(),
+            linear_terms: vec![(1u32, a0)].into_boxed_slice(),
+            constant: 0,
+        };
+        let mem_desc = NoFieldSpecialMemoryContributionRelation {
+            address_space: CompiledAddressSpaceRelationStrict::Constant(0),
+            address: CompiledAddressStrict::Constant(0),
+            timestamp: CompiledMemoryTimestamp::Zero,
+            value: RamWordRepresentation::Zero,
+            timestamp_offset: 0,
+        };
+        let scl = NoFieldSingleColumnLookupRelation {
+            input: lin.clone(),
+            lookup_set_index: 0,
+        };
+        let vl = NoFieldVectorLookupRelation {
+            columns: vec![lin.clone()].into_boxed_slice(),
+            lookup_set_index: 0,
+        };
+
+        let m_base_1_1 = RelationMeta { outputs: 1, num_challenges: 1, out_domain: Domain::Base };
+        let m_base_0_1 = RelationMeta { outputs: 0, num_challenges: 1, out_domain: Domain::Base };
+        let m_ext_1_1  = RelationMeta { outputs: 1, num_challenges: 1, out_domain: Domain::Ext };
+        let m_ext_2_2  = RelationMeta { outputs: 2, num_challenges: 2, out_domain: Domain::Ext };
+
+        vec![
+            // --- class (1, 1, Base) ---
+            (R::LinearBaseFieldRelation { input: lin.clone(), output: out0 }, m_base_1_1),
+            (R::MaxQuadratic { input: mq.clone(), expression: E::Constant(0), output: out0 }, m_base_1_1),
+            (R::CopyInBaseField { input: a0, output: out0 }, m_base_1_1),
+            (R::MaterializeSingleLookupInput { input: scl.clone(), output: out0, range_check_width: 16 }, m_base_1_1),
+            // --- class (0, 1, Base) ---
+            (R::EnforceSingleMaxQuadraticConstraint {
+                input: mq.clone(),
+                expression: E::Constant(0),
+            }, m_base_0_1),
+            (R::EnforceConstraintsMaxQuadratic {
+                input: NoFieldMaxQuadraticConstraintsGKRRelation {
+                    quadratic_terms: vec![].into_boxed_slice(),
+                    linear_terms: vec![].into_boxed_slice(),
+                    constants: vec![].into_boxed_slice(),
+                },
+            }, m_base_0_1),
+            // --- class (1, 1, Ext) ---
+            (R::CopyInExtensionField { input: a0, output: out0 }, m_ext_1_1),
+            (R::InitialGrandProductFromCaches { input: [a0, a1], output: out0 }, m_ext_1_1),
+            (R::InitialGrandProductWithoutCaches {
+                input: [mem_desc.clone(), mem_desc.clone()],
+                output: out0,
+            }, m_ext_1_1),
+            (R::UnbalancedGrandProductWithCache { scalar: a0, input: a1, output: out0 }, m_ext_1_1),
+            // MaterializeGrandProductTermExpression: panicking variant — still covered by metadata
+            (R::MaterializeGrandProductTermExpression { input: mem_desc.clone(), output: out0 }, m_ext_1_1),
+            (R::TrivialProduct { input: [a0, a1], output: out0 }, m_ext_1_1),
+            (R::MaskIntoIdentityProduct { input: a0, mask: a1, output: out0 }, m_ext_1_1),
+            (R::MaterializedVectorLookupInput { input: vl.clone(), output: out0 }, m_ext_1_1),
+            (R::InitsOrTeardownsInitialPair {
+                timestamp_and_value: InitsOrTeardownsTimestampAndValue::Init,
+                setup: [a0, a1],
+                output: out0,
+                set_idxes: [0, 1],
+            }, m_ext_1_1),
+            // --- class (2, 2, Ext) ---
+            (R::LookupWithCachedDensAndSetup { input: [a0, a1], setup: [a0, a1], output: [out0, out1] }, m_ext_2_2),
+            (R::LookupWithDensAndSetupExpressions {
+                input: (a0, vl.clone()),
+                setup: (a0, vec![a1].into_boxed_slice()),
+                output: [out0, out1],
+            }, m_ext_2_2),
+            (R::LookupWithDensAndCachedSetup {
+                input: (a0, vl.clone()),
+                setup: (a0, a1),
+                output: [out0, out1],
+            }, m_ext_2_2),
+            (R::LookupPairFromBaseInputs { input: [scl.clone(), scl.clone()], output: [out0, out1], range_check_width: 16 }, m_ext_2_2),
+            (R::LookupPairFromMaterializedBaseInputs { input: [a0, a1], output: [out0, out1] }, m_ext_2_2),
+            (R::LookupFromMaterializedBaseInputWithSetup { input: a0, setup: [a0, a1], output: [out0, out1] }, m_ext_2_2),
+            (R::LookupUnbalancedPairWithMaterializedBaseInputs { input: [a0, a1], remainder: a0, output: [out0, out1] }, m_ext_2_2),
+            (R::LookupPairFromVectorInputs { input: [vl.clone(), vl.clone()], output: [out0, out1] }, m_ext_2_2),
+            (R::LookupPairFromMaterializedVectorInputs { input: [a0, a1], output: [out0, out1] }, m_ext_2_2),
+            // LookupFromVectorInputWithSetup: panicking variant — still covered by metadata
+            (R::LookupFromVectorInputWithSetup {
+                input: vl.clone(),
+                setup: (a0, vec![a1].into_boxed_slice()),
+                output: [out0, out1],
+            }, m_ext_2_2),
+            (R::LookupFromMaterializedVectorInputWithSetup { input: a0, setup: [a0, a1], output: [out0, out1] }, m_ext_2_2),
+            (R::LookupPairFromCachedVectorInputs { input: [a0, a1], output: [out0, out1] }, m_ext_2_2),
+            // LookupUnbalancedPairWithVectorInputs: panicking variant — still covered by metadata
+            (R::LookupUnbalancedPairWithVectorInputs { input: [a0, a1], remainder: vl.clone(), output: [out0, out1] }, m_ext_2_2),
+            // LookupUnbalancedPairWithMaterializedVectorInputs: panicking variant — still covered by metadata
+            (R::LookupUnbalancedPairWithMaterializedVectorInputs { input: [a0, a1], remainder: a0, output: [out0, out1] }, m_ext_2_2),
+            (R::AggregateLookupRationalPair { input: [[a0, a1], [a0, a1]], output: [out0, out1] }, m_ext_2_2),
+        ]
+    }
+
+    #[test]
+    fn metadata_table_is_total_and_consistent() {
+        for (rel, meta) in metadata_fixtures() {
+            let m = relation_metadata(&rel);
+            assert_eq!(m.outputs, meta.outputs, "{:?}", rel);
+            assert_eq!(m.num_challenges, meta.num_challenges, "{:?}", rel);
+            assert_eq!(m.out_domain, meta.out_domain, "{:?}", rel);
+        }
+    }
+
+    /// Returns true for variants whose `num_challenges()` is implemented (does NOT panic).
+    /// Panicking variants (mod.rs:1688 catch-all `a @ _`):
+    ///   - MaterializeGrandProductTermExpression (line 1688 catch-all)
+    ///   - LookupFromVectorInputWithSetup         (line 1688 catch-all)
+    ///   - LookupUnbalancedPairWithVectorInputs   (line 1688 catch-all)
+    ///   - LookupUnbalancedPairWithMaterializedVectorInputs (line 1688 catch-all)
+    ///   - InitsOrTeardownsInitialPair            (line 1688 catch-all)
+    ///
+    /// When a panicking arm is implemented in `mod.rs`, remove that variant from
+    /// this list; the prover-side cross-val (Task 13) then covers it in the full check.
+    fn cs_num_challenges_covered(rel: &NoFieldGKRRelation) -> bool {
+        use NoFieldGKRRelation as R;
+        !matches!(
+            rel,
+            R::MaterializeGrandProductTermExpression { .. }
+                | R::LookupFromVectorInputWithSetup { .. }
+                | R::LookupUnbalancedPairWithVectorInputs { .. }
+                | R::LookupUnbalancedPairWithMaterializedVectorInputs { .. }
+                | R::InitsOrTeardownsInitialPair { .. }
+        )
+    }
+
+    #[test]
+    fn metadata_num_challenges_matches_cs_oracle() {
+        for (rel, _) in metadata_fixtures() {
+            if cs_num_challenges_covered(&rel) {
+                assert_eq!(
+                    relation_metadata(&rel).num_challenges as usize,
+                    rel.num_challenges(),
+                    "metadata disagrees with cs::num_challenges() for {:?}",
+                    rel
+                );
+            }
+        }
     }
 }
