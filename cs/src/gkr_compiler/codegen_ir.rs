@@ -5,10 +5,8 @@
 //! and exercise the core mechanics (NoFieldStructuredExpression -> arena + CSE,
 //! MaxQuadFlat mirroring, forward_source/scratch, serde round-trip, verify()).
 //!
-//! Currently lowers the copy and max-quadratic families; remaining
-//! `NoFieldGKRRelation` variants have temporary `todo!()` stubs (Tasks 2–N).
-//! All 30 `GateKind` variants are frozen as the serializable contract — there is
-//! no `Unhandled` catch-all.
+//! Lowers all 30 `NoFieldGKRRelation` variants into the frozen `GateKind`
+//! contract (no `Unhandled` catch-all and no `todo!()` stubs in `lower_relation`).
 //!
 //! Lowers from an already-compiled artifact (`GKRCircuitArtifact`/
 //! `GKRLayerDescription`) — no compiler/prover changes. This confirms the spec's
@@ -528,22 +526,110 @@ fn lower_relation(
                 one_out(node, *output, scratch, false),
             )
         }
-        R::LookupWithCachedDensAndSetup { .. } => todo!("Task 3: LookupWithCachedDensAndSetup lowering"),
-        R::LookupWithDensAndSetupExpressions { .. } => todo!("Task 3: LookupWithDensAndSetupExpressions lowering"),
-        R::LookupWithDensAndCachedSetup { .. } => todo!("Task 3: LookupWithDensAndCachedSetup lowering"),
-        R::LookupPairFromBaseInputs { .. } => todo!("Task 3: LookupPairFromBaseInputs lowering"),
-        R::LookupPairFromMaterializedBaseInputs { .. } => todo!("Task 3: LookupPairFromMaterializedBaseInputs lowering"),
-        R::LookupFromMaterializedBaseInputWithSetup { .. } => todo!("Task 3: LookupFromMaterializedBaseInputWithSetup lowering"),
-        R::LookupUnbalancedPairWithMaterializedBaseInputs { .. } => todo!("Task 3: LookupUnbalancedPairWithMaterializedBaseInputs lowering"),
-        R::LookupPairFromVectorInputs { .. } => todo!("Task 3: LookupPairFromVectorInputs lowering"),
-        R::LookupPairFromMaterializedVectorInputs { .. } => todo!("Task 3: LookupPairFromMaterializedVectorInputs lowering"),
-        R::LookupFromVectorInputWithSetup { .. } => todo!("Task 3: LookupFromVectorInputWithSetup lowering"),
-        R::LookupFromMaterializedVectorInputWithSetup { .. } => todo!("Task 3: LookupFromMaterializedVectorInputWithSetup lowering"),
-        R::LookupPairFromCachedVectorInputs { .. } => todo!("Task 3: LookupPairFromCachedVectorInputs lowering"),
-        R::LookupUnbalancedPairWithVectorInputs { .. } => todo!("Task 3: LookupUnbalancedPairWithVectorInputs lowering"),
-        R::LookupUnbalancedPairWithMaterializedVectorInputs { .. } => todo!("Task 3: LookupUnbalancedPairWithMaterializedVectorInputs lowering"),
-        R::AggregateLookupRationalPair { .. } => todo!("Task 3: AggregateLookupRationalPair lowering"),
-        R::InitsOrTeardownsInitialPair { .. } => todo!("Task 4: InitsOrTeardownsInitialPair lowering"),
+        R::LookupWithCachedDensAndSetup { input, setup, output } => {
+            let i = [b.resolve(input[0], Domain::Base), b.resolve(input[1], Domain::Ext)];
+            let s = [b.resolve(setup[0], Domain::Base), b.resolve(setup[1], Domain::Ext)];
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::LookupWithCachedDensAndSetup { input: i, setup: s }, dst)
+        }
+        R::LookupWithDensAndSetupExpressions { input, setup, output } => {
+            let input_addr = b.resolve(input.0, Domain::Ext);
+            let input_vec = lower_vector(b, &input.1, Domain::Base);
+            let setup_addr = b.resolve(setup.0, Domain::Ext);
+            let setup_extra = setup.1.iter().map(|a| b.resolve(*a, Domain::Ext)).collect();
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::LookupWithDensAndSetupExpressions { input_addr, input_vec, setup_addr, setup_extra }, dst)
+        }
+        R::LookupWithDensAndCachedSetup { input, setup, output } => {
+            let input_addr = b.resolve(input.0, Domain::Ext);
+            let input_vec = lower_vector(b, &input.1, Domain::Base);
+            let s = [b.resolve(setup.0, Domain::Ext), b.resolve(setup.1, Domain::Ext)];
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::LookupWithDensAndCachedSetup { input_addr, input_vec, setup: s }, dst)
+        }
+        R::LookupPairFromBaseInputs { input, output, range_check_width } => {
+            let i = [lower_single_col(b, &input[0], Domain::Base), lower_single_col(b, &input[1], Domain::Base)];
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::LookupPairFromBaseInputs { input: i, range_check_width: *range_check_width }, dst)
+        }
+        R::LookupPairFromMaterializedBaseInputs { input, output } => {
+            let i = [b.resolve(input[0], Domain::Base), b.resolve(input[1], Domain::Base)];
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::LookupPairFromMaterializedBaseInputs { input: i }, dst)
+        }
+        R::LookupFromMaterializedBaseInputWithSetup { input, setup, output } => {
+            let i = b.resolve(*input, Domain::Base);
+            let s = [b.resolve(setup[0], Domain::Base), b.resolve(setup[1], Domain::Base)];
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::LookupFromMaterializedBaseInputWithSetup { input: i, setup: s }, dst)
+        }
+        R::LookupUnbalancedPairWithMaterializedBaseInputs { input, remainder, output } => {
+            let i = [b.resolve(input[0], Domain::Ext), b.resolve(input[1], Domain::Ext)];
+            let r = b.resolve(*remainder, Domain::Base);
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::LookupUnbalancedPairWithMaterializedBaseInputs { input: i, remainder: r }, dst)
+        }
+        R::LookupPairFromVectorInputs { input, output } => {
+            let i = [lower_vector(b, &input[0], Domain::Base), lower_vector(b, &input[1], Domain::Base)];
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::LookupPairFromVectorInputs { input: i }, dst)
+        }
+        R::LookupPairFromMaterializedVectorInputs { input, output } => {
+            let i = [b.resolve(input[0], Domain::Ext), b.resolve(input[1], Domain::Ext)];
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::LookupPairFromMaterializedVectorInputs { input: i }, dst)
+        }
+        R::LookupFromVectorInputWithSetup { input, setup, output } => {
+            let v = lower_vector(b, input, Domain::Base);
+            let setup_addr = b.resolve(setup.0, Domain::Ext);
+            let setup_extra = setup.1.iter().map(|a| b.resolve(*a, Domain::Ext)).collect();
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::LookupFromVectorInputWithSetup { input: v, setup_addr, setup_extra }, dst)
+        }
+        R::LookupFromMaterializedVectorInputWithSetup { input, setup, output } => {
+            let i = b.resolve(*input, Domain::Ext);
+            let s = [b.resolve(setup[0], Domain::Base), b.resolve(setup[1], Domain::Ext)];
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::LookupFromMaterializedVectorInputWithSetup { input: i, setup: s }, dst)
+        }
+        R::LookupPairFromCachedVectorInputs { input, output } => {
+            let i = [b.resolve(input[0], Domain::Ext), b.resolve(input[1], Domain::Ext)];
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::LookupPairFromCachedVectorInputs { input: i }, dst)
+        }
+        R::LookupUnbalancedPairWithVectorInputs { input, remainder, output } => {
+            let i = [b.resolve(input[0], Domain::Ext), b.resolve(input[1], Domain::Ext)];
+            let r = lower_vector(b, remainder, Domain::Base);
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::LookupUnbalancedPairWithVectorInputs { input: i, remainder: r }, dst)
+        }
+        R::LookupUnbalancedPairWithMaterializedVectorInputs { input, remainder, output } => {
+            let i = [b.resolve(input[0], Domain::Ext), b.resolve(input[1], Domain::Ext)];
+            let r = b.resolve(*remainder, Domain::Ext);
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::LookupUnbalancedPairWithMaterializedVectorInputs { input: i, remainder: r }, dst)
+        }
+        R::AggregateLookupRationalPair { input, output } => {
+            let i = [
+                [b.resolve(input[0][0], Domain::Ext), b.resolve(input[0][1], Domain::Ext)],
+                [b.resolve(input[1][0], Domain::Ext), b.resolve(input[1][1], Domain::Ext)],
+            ];
+            let dst = two_out(b, producer, output, Domain::Ext, scratch);
+            (GateKind::AggregateLookupRationalPair { input: i }, dst)
+        }
+        R::InitsOrTeardownsInitialPair { timestamp_and_value, setup, output, set_idxes } => {
+            // setup BASE, result Ext.
+            let s = [b.resolve(setup[0], Domain::Base), b.resolve(setup[1], Domain::Base)];
+            let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
+            (
+                GateKind::InitsOrTeardownsInitialPair {
+                    timestamp_and_value: timestamp_and_value.clone(),
+                    setup: s,
+                    set_idxes: *set_idxes,
+                },
+                one_out(node, *output, scratch, false),
+            )
+        }
     };
     CodegenGate {
         kind,
@@ -568,6 +654,22 @@ fn one_out(
         addr,
         forward_source: forward_source_for(&addr, is_max_quad, scratch),
     }]
+}
+
+/// Build a two-slot `dst` vec for a gate with two outputs (the (num, den) lookup pair).
+fn two_out(
+    b: &mut ArenaBuilder,
+    producer: ProducerId,
+    out: &[GKRAddress; 2],
+    d: Domain,
+    scratch: &BTreeMap<GKRAddress, usize>,
+) -> Vec<OutputSlot> {
+    let n0 = b.add_gate_output(producer, 0, d, out[0]);
+    let n1 = b.add_gate_output(producer, 1, d, out[1]);
+    vec![
+        OutputSlot { node: n0, addr: out[0], forward_source: forward_source_for(&out[0], false, scratch) },
+        OutputSlot { node: n1, addr: out[1], forward_source: forward_source_for(&out[1], false, scratch) },
+    ]
 }
 
 /// Lower a `NoFieldSpecialMemoryContributionRelation` by resolving each of its
@@ -1549,5 +1651,52 @@ mod tests {
         });
         assert!(!has_ext_place, "max-quad operands must all be Base-domain Place nodes");
         cg.verify().expect("verify");
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 6: two-output lookup family tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn lowers_lookup_pair_from_materialized_base_inputs() {
+        let layer = single_gate_layer(NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs {
+            input: [inner(0, 0), inner(0, 1)],
+            output: [inner(1, 0), inner(1, 1)],
+        });
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        let g = &cg.gates[0];
+        let GateKind::LookupPairFromMaterializedBaseInputs { input } = &g.kind else {
+            panic!("wrong gate kind");
+        };
+        assert_eq!(cg.arena.nodes[input[0].0 as usize].domain(), Domain::Base, "input[0] must be Base");
+        assert_eq!(cg.arena.nodes[input[1].0 as usize].domain(), Domain::Base, "input[1] must be Base");
+        assert_eq!(g.dst.len(), 2);
+        assert_ne!(
+            g.dst[0].node.0, g.dst[1].node.0,
+            "the two outputs must be distinct GateOutput nodes"
+        );
+        cg.verify().unwrap();
+    }
+
+    #[test]
+    fn lowers_lookup_with_cached_dens_and_setup_mixed_domains() {
+        // Verified against the prover kernel: input[0]/setup[0] are Base,
+        // input[1]/setup[1] are Ext (nums in inputs_in_base, dens in inputs_in_extension).
+        let layer = single_gate_layer(NoFieldGKRRelation::LookupWithCachedDensAndSetup {
+            input: [blw(0), blw(1)],
+            setup: [blw(2), blw(3)],
+            output: [inner(1, 0), inner(1, 1)],
+        });
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        let g = &cg.gates[0];
+        let GateKind::LookupWithCachedDensAndSetup { input, setup } = &g.kind else {
+            panic!("wrong gate kind");
+        };
+        assert_eq!(cg.arena.nodes[input[0].0 as usize].domain(), Domain::Base, "input[0] must be Base");
+        assert_eq!(cg.arena.nodes[input[1].0 as usize].domain(), Domain::Ext, "input[1] must be Ext");
+        assert_eq!(cg.arena.nodes[setup[0].0 as usize].domain(), Domain::Base, "setup[0] must be Base");
+        assert_eq!(cg.arena.nodes[setup[1].0 as usize].domain(), Domain::Ext, "setup[1] must be Ext");
+        assert_eq!(g.dst.len(), 2);
+        cg.verify().unwrap();
     }
 }
