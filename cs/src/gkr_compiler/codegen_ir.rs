@@ -706,6 +706,35 @@ fn lower_vector(b: &mut ArenaBuilder, r: &NoFieldVectorLookupRelation, d: Domain
     }
 }
 
+fn lower_cache(
+    b: &mut ArenaBuilder,
+    addr: GKRAddress,
+    rel: &super::NoFieldGKRCacheRelation,
+    idx: u32,
+) -> CodegenCache {
+    use super::NoFieldGKRCacheRelation as C;
+    let inputs: Vec<NodeId> = rel
+        .dependencies()
+        .into_iter()
+        .map(|a| b.resolve(a, Domain::Base))
+        .collect();
+    let kind = match rel {
+        C::SingleColumnLookup { relation, range_check_width } => CacheKind::SingleColumnLookup {
+            column: b.lower_linear(&relation.input, Domain::Base),
+            lookup_set_index: relation.lookup_set_index,
+            range_check_width: *range_check_width,
+        },
+        C::VectorizedLookup(v) => CacheKind::VectorizedLookup {
+            columns: v.columns.iter().map(|c| b.lower_linear(c, Domain::Base)).collect(),
+            lookup_set_index: v.lookup_set_index,
+        },
+        C::MemoryTuple(m) => CacheKind::MemoryTuple { descriptor: lower_mem_tuple(b, m) },
+        C::VectorizedLookupSetup(_) => CacheKind::VectorizedLookupSetup,
+    };
+    let out_node = b.add_gate_output(ProducerId::Cache(idx), 0, Domain::Ext, addr);
+    CodegenCache { kind, inputs, out: (out_node, addr) }
+}
+
 fn lower_max_quad_flat(
     b: &mut ArenaBuilder,
     input: &super::NoFieldMaxQuadraticGKRRelation,
@@ -798,6 +827,13 @@ pub fn lower_layer(
     let mut power = 0u32;
     assign_batch_powers(&mut gates, &mut gates_external, &mut power);
 
+    let caches: Vec<CodegenCache> = layer
+        .cached_relations
+        .iter()
+        .enumerate()
+        .map(|(idx, (addr, rel))| lower_cache(&mut b, *addr, rel, idx as u32))
+        .collect();
+
     let hints = compute_hints(&b.nodes);
     CodegenLayer {
         arena: ExprArena {
@@ -806,7 +842,7 @@ pub fn lower_layer(
         },
         gates_external,
         gates,
-        caches: vec![], // cache lowering is Task 5+
+        caches,
         intermediate_layer_width: layer.intermediate_layer_width,
     }
 }
@@ -1697,6 +1733,148 @@ mod tests {
         assert_eq!(cg.arena.nodes[setup[0].0 as usize].domain(), Domain::Base, "setup[0] must be Base");
         assert_eq!(cg.arena.nodes[setup[1].0 as usize].domain(), Domain::Ext, "setup[1] must be Ext");
         assert_eq!(g.dst.len(), 2);
+        cg.verify().unwrap();
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 7: cached_relations lowering
+    // -----------------------------------------------------------------------
+
+    fn cached(layer: usize, offset: usize) -> GKRAddress {
+        GKRAddress::Cached { layer, offset }
+    }
+
+    /// Build a layer with a single cache entry (+ no gates) for testing.
+    fn cached_layer(
+        addr: GKRAddress,
+        rel: super::super::NoFieldGKRCacheRelation,
+    ) -> GKRLayerDescription {
+        let mut cached_relations = BTreeMap::new();
+        cached_relations.insert(addr, rel);
+        GKRLayerDescription {
+            layer: 1,
+            gates_with_external_connections: vec![],
+            gates: vec![],
+            cached_relations,
+            intermediate_layer_width: None,
+        }
+    }
+
+    /// VectorizedLookupSetup with two dependency addresses — verify inputs are lowered.
+    #[test]
+    fn lowers_cache_vectorized_lookup_setup() {
+        let dep0 = blw(10);
+        let dep1 = blw(11);
+        let out_addr = cached(1, 0);
+        let rel = super::super::NoFieldGKRCacheRelation::VectorizedLookupSetup(
+            vec![dep0, dep1].into_boxed_slice(),
+        );
+        let layer = cached_layer(out_addr, rel);
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        assert_eq!(cg.caches.len(), 1);
+        assert!(
+            matches!(cg.caches[0].kind, CacheKind::VectorizedLookupSetup),
+            "expected VectorizedLookupSetup kind"
+        );
+        // dependencies() returns [dep0, dep1] -> 2 input nodes
+        assert_eq!(cg.caches[0].inputs.len(), 2, "expected 2 dependency inputs");
+        assert_eq!(cg.caches[0].out.1, out_addr, "output address must match");
+        cg.verify().unwrap();
+    }
+
+    /// SingleColumnLookup cache — verify kind, range_check_width, and 1 input.
+    #[test]
+    fn lowers_cache_single_column_lookup() {
+        use crate::definitions::gkr::NoFieldLinearRelation;
+        let dep = blw(5);
+        let out_addr = cached(2, 0);
+        let relation = super::NoFieldSingleColumnLookupRelation {
+            input: NoFieldLinearRelation {
+                linear_terms: vec![(1u32, dep)].into_boxed_slice(),
+                constant: 0,
+            },
+            lookup_set_index: 3,
+        };
+        let rel = super::super::NoFieldGKRCacheRelation::SingleColumnLookup {
+            relation,
+            range_check_width: 8,
+        };
+        let layer = cached_layer(out_addr, rel);
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        assert_eq!(cg.caches.len(), 1);
+        let CacheKind::SingleColumnLookup { lookup_set_index, range_check_width, .. } =
+            &cg.caches[0].kind
+        else {
+            panic!("expected SingleColumnLookup kind");
+        };
+        assert_eq!(*lookup_set_index, 3);
+        assert_eq!(*range_check_width, 8);
+        assert_eq!(cg.caches[0].inputs.len(), 1);
+        assert_eq!(cg.caches[0].out.1, out_addr);
+        cg.verify().unwrap();
+    }
+
+    /// VectorizedLookup cache — verify columns count.
+    #[test]
+    fn lowers_cache_vectorized_lookup() {
+        use crate::definitions::gkr::{NoFieldLinearRelation, NoFieldVectorLookupRelation};
+        let dep0 = blw(20);
+        let dep1 = blw(21);
+        let out_addr = cached(3, 0);
+        let col0 = NoFieldLinearRelation {
+            linear_terms: vec![(1u32, dep0)].into_boxed_slice(),
+            constant: 0,
+        };
+        let col1 = NoFieldLinearRelation {
+            linear_terms: vec![(1u32, dep1)].into_boxed_slice(),
+            constant: 0,
+        };
+        let v = NoFieldVectorLookupRelation {
+            columns: vec![col0, col1].into_boxed_slice(),
+            lookup_set_index: 7,
+        };
+        let rel = super::super::NoFieldGKRCacheRelation::VectorizedLookup(v);
+        let layer = cached_layer(out_addr, rel);
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        assert_eq!(cg.caches.len(), 1);
+        let CacheKind::VectorizedLookup { columns, lookup_set_index } = &cg.caches[0].kind else {
+            panic!("expected VectorizedLookup kind");
+        };
+        assert_eq!(columns.len(), 2);
+        assert_eq!(*lookup_set_index, 7);
+        // 2 unique dep addresses -> 2 input nodes
+        assert_eq!(cg.caches[0].inputs.len(), 2);
+        assert_eq!(cg.caches[0].out.1, out_addr);
+        cg.verify().unwrap();
+    }
+
+    /// MemoryTuple cache — constant-field descriptor so 0 deps.
+    #[test]
+    fn lowers_cache_memory_tuple() {
+        use super::super::{
+            CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
+            NoFieldSpecialMemoryContributionRelation,
+        };
+        use crate::definitions::gkr::RamWordRepresentation;
+        let out_addr = cached(4, 0);
+        let mem_desc = NoFieldSpecialMemoryContributionRelation {
+            address_space: CompiledAddressSpaceRelationStrict::Constant(0),
+            address: CompiledAddressStrict::Constant(0),
+            timestamp: CompiledMemoryTimestamp::Zero,
+            value: RamWordRepresentation::Zero,
+            timestamp_offset: 0,
+        };
+        let rel = super::super::NoFieldGKRCacheRelation::MemoryTuple(mem_desc);
+        let layer = cached_layer(out_addr, rel);
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        assert_eq!(cg.caches.len(), 1);
+        assert!(
+            matches!(cg.caches[0].kind, CacheKind::MemoryTuple { .. }),
+            "expected MemoryTuple kind"
+        );
+        // Constant mem_desc has 0 dependencies
+        assert_eq!(cg.caches[0].inputs.len(), 0);
+        assert_eq!(cg.caches[0].out.1, out_addr);
         cg.verify().unwrap();
     }
 }
