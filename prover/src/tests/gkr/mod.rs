@@ -19,6 +19,7 @@ pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &s
     serde_json::from_reader(src).unwrap()
 }
 
+pub(crate) mod codegen_ir_crossval;
 pub(crate) mod evaluators;
 
 mod family_circuits;
