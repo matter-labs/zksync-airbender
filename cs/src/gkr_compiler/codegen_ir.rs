@@ -95,6 +95,15 @@ pub struct OutputSlot {
     pub forward_source: ForwardSource,
 }
 
+/// One batch-power term in the batched-sum polynomial.
+///
+/// `value` is the representative `NodeId`: for output-bearing gates it is the
+/// first output node (shared by both terms for 2-output gates — the GateKind
+/// stores all outputs). For no-output constraint gates it is the expression
+/// node used as the batch anchor. For `EnforceConstraintsMaxQuadratic`, `value`
+/// anchors the first sparse operand; the full folded constraint lives in the
+/// `GateKind`'s sparse terms, so `uses`/footprint still see all operands via
+/// the gate-input enumeration.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BatchTerm {
     pub power: u32,
@@ -283,6 +292,14 @@ struct ArenaBuilder {
     /// NodeId. A same-layer consumer resolves through this BEFORE a Place fallback,
     /// so producer->consumer is an explicit arena edge (spec Round-10 / finding 6).
     produced: HashMap<GKRAddress, NodeId>,
+    /// Maps each GateOutput NodeId -> the complete set of its gate's operand NodeIds.
+    /// Populated AT lowering time (before `add_gate_output` so all operands exist).
+    /// For multi-output gates, every GateOutput NodeId maps to the SAME operand set.
+    /// Used by `compute_hints` to union operand footprints into the GateOutput footprint.
+    gate_inputs: HashMap<NodeId, Vec<NodeId>>,
+    /// Maps each GateOutput NodeId -> (addr, forward_source) recorded from the
+    /// OutputSlot so `compute_hints` can distinguish ScratchPrefill from Computed.
+    gate_output_slots: HashMap<NodeId, (GKRAddress, ForwardSource)>,
 }
 
 impl ArenaBuilder {
@@ -316,6 +333,21 @@ impl ArenaBuilder {
             self.produced.insert(addr, id);
         }
         id
+    }
+
+    /// Record the complete operand NodeId set for a GateOutput and its slot metadata.
+    /// Must be called AFTER all operand nodes are created, BEFORE or just after
+    /// `add_gate_output`. For multi-output gates, call once per output NodeId with
+    /// the SAME `inputs` vector.
+    fn record_output(
+        &mut self,
+        node: NodeId,
+        addr: GKRAddress,
+        forward_source: ForwardSource,
+        inputs: Vec<NodeId>,
+    ) {
+        self.gate_inputs.insert(node, inputs);
+        self.gate_output_slots.insert(node, (addr, forward_source));
     }
 
     fn place(&mut self, addr: GKRAddress, domain: Domain) -> NodeId {
@@ -772,6 +804,158 @@ fn lower_max_quad_flat(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Exhaustive operand-NodeId extraction from a lowered GateKind.
+//
+// NO `_` arm — a future variant MUST add its extraction rule here.
+// ---------------------------------------------------------------------------
+
+/// Extract every operand `NodeId` stored in a `LinearComb`.
+fn linear_comb_nodes(lc: &LinearComb) -> impl Iterator<Item = NodeId> + '_ {
+    lc.terms.iter().map(|(_, n)| *n)
+}
+
+/// Extract every operand `NodeId` stored in a `SingleColumnLookup`.
+fn single_col_nodes(scl: &SingleColumnLookup) -> impl Iterator<Item = NodeId> + '_ {
+    linear_comb_nodes(&scl.column)
+}
+
+/// Extract every operand `NodeId` stored in a `VectorLookup`.
+fn vector_lookup_nodes(vl: &VectorLookup) -> Vec<NodeId> {
+    vl.columns.iter().flat_map(linear_comb_nodes).collect()
+}
+
+/// Extract every operand `NodeId` stored in a `MemTupleDescriptor`.
+fn mem_tuple_nodes(mt: &MemTupleDescriptor) -> impl Iterator<Item = NodeId> + '_ {
+    mt.operands.iter().copied()
+}
+
+/// Exhaustively extract ALL operand `NodeId`s from a lowered `GateKind`.
+/// Deliberately has no `_` arm so a new variant causes a compile error.
+fn gate_kind_input_nodes(kind: &GateKind) -> Vec<NodeId> {
+    match kind {
+        GateKind::LinearBaseField { input } => {
+            linear_comb_nodes(input).collect()
+        }
+        GateKind::MaxQuadratic { flat, expr } => {
+            let mut v = max_quad_flat_nodes(flat);
+            v.push(*expr);
+            v
+        }
+        GateKind::EnforceSingleMaxQuadraticConstraint { flat, expr } => {
+            let mut v = max_quad_flat_nodes(flat);
+            v.push(*expr);
+            v
+        }
+        GateKind::EnforceConstraintsMaxQuadratic { quadratic, linear, constants: _ } => {
+            let mut v: Vec<NodeId> = Vec::new();
+            for ((a, c), _powers) in quadratic {
+                v.push(*a);
+                v.push(*c);
+            }
+            for (a, _powers) in linear {
+                v.push(*a);
+            }
+            v
+        }
+        GateKind::CopyInBaseField { input } => vec![*input],
+        GateKind::CopyInExtensionField { input } => vec![*input],
+        GateKind::InitialGrandProductFromCaches { input } => input.to_vec(),
+        GateKind::InitialGrandProductWithoutCaches { input } => {
+            input.iter().flat_map(mem_tuple_nodes).collect()
+        }
+        GateKind::UnbalancedGrandProductWithCache { scalar, input } => vec![*scalar, *input],
+        GateKind::MaterializeGrandProductTermExpression { input } => {
+            mem_tuple_nodes(input).collect()
+        }
+        GateKind::TrivialProduct { input } => input.to_vec(),
+        GateKind::MaskIntoIdentityProduct { input, mask } => vec![*input, *mask],
+        GateKind::MaterializeSingleLookupInput { input, range_check_width: _ } => {
+            single_col_nodes(input).collect()
+        }
+        GateKind::MaterializedVectorLookupInput { input } => vector_lookup_nodes(input),
+        GateKind::LookupWithCachedDensAndSetup { input, setup } => {
+            let mut v = input.to_vec();
+            v.extend_from_slice(setup);
+            v
+        }
+        GateKind::LookupWithDensAndSetupExpressions { input_addr, input_vec, setup_addr, setup_extra } => {
+            let mut v = vec![*input_addr];
+            v.extend(vector_lookup_nodes(input_vec));
+            v.push(*setup_addr);
+            v.extend_from_slice(setup_extra);
+            v
+        }
+        GateKind::LookupWithDensAndCachedSetup { input_addr, input_vec, setup } => {
+            let mut v = vec![*input_addr];
+            v.extend(vector_lookup_nodes(input_vec));
+            v.extend_from_slice(setup);
+            v
+        }
+        GateKind::LookupPairFromBaseInputs { input, range_check_width: _ } => {
+            input.iter().flat_map(single_col_nodes).collect()
+        }
+        GateKind::LookupPairFromMaterializedBaseInputs { input } => input.to_vec(),
+        GateKind::LookupFromMaterializedBaseInputWithSetup { input, setup } => {
+            let mut v = vec![*input];
+            v.extend_from_slice(setup);
+            v
+        }
+        GateKind::LookupUnbalancedPairWithMaterializedBaseInputs { input, remainder } => {
+            let mut v = input.to_vec();
+            v.push(*remainder);
+            v
+        }
+        GateKind::LookupPairFromVectorInputs { input } => {
+            input.iter().flat_map(vector_lookup_nodes).collect()
+        }
+        GateKind::LookupPairFromMaterializedVectorInputs { input } => input.to_vec(),
+        GateKind::LookupFromVectorInputWithSetup { input, setup_addr, setup_extra } => {
+            let mut v = vector_lookup_nodes(input);
+            v.push(*setup_addr);
+            v.extend_from_slice(setup_extra);
+            v
+        }
+        GateKind::LookupFromMaterializedVectorInputWithSetup { input, setup } => {
+            let mut v = vec![*input];
+            v.extend_from_slice(setup);
+            v
+        }
+        GateKind::LookupPairFromCachedVectorInputs { input } => input.to_vec(),
+        GateKind::LookupUnbalancedPairWithVectorInputs { input, remainder } => {
+            let mut v = input.to_vec();
+            v.extend(vector_lookup_nodes(remainder));
+            v
+        }
+        GateKind::LookupUnbalancedPairWithMaterializedVectorInputs { input, remainder } => {
+            let mut v = input.to_vec();
+            v.push(*remainder);
+            v
+        }
+        GateKind::AggregateLookupRationalPair { input } => {
+            input.iter().flat_map(|pair| pair.iter().copied()).collect()
+        }
+        GateKind::InitsOrTeardownsInitialPair { timestamp_and_value: _, setup, set_idxes: _ } => {
+            setup.to_vec()
+        }
+    }
+}
+
+/// Extract all operand NodeIds from a `MaxQuadFlat`.
+fn max_quad_flat_nodes(flat: &MaxQuadFlat) -> Vec<NodeId> {
+    let mut v: Vec<NodeId> = Vec::new();
+    for (a, terms) in &flat.quadratic {
+        v.push(*a);
+        for (_, b) in terms {
+            v.push(*b);
+        }
+    }
+    for (_, a) in &flat.linear {
+        v.push(*a);
+    }
+    v
+}
+
 /// Assign absolute batch powers over `gates` chained with `gates_external` (caches
 /// excluded), one per consumed challenge. `num_challenges` is sourced from
 /// `relation_metadata` (stored on `CodegenGate`), NOT from `dst.len()`, so
@@ -858,7 +1042,22 @@ pub fn lower_layer(
         .map(|(idx, (addr, rel))| lower_cache(&mut b, *addr, rel, idx as u32))
         .collect();
 
-    let hints = compute_hints(&b.nodes);
+    // Record each producer's complete operand set + slot metadata so compute_hints
+    // can compute GateOutput footprints (Computed = union of gate-input footprints;
+    // ScratchPrefill = {addr}). Producers were lowered inputs-first, so all operand
+    // node indices are < the GateOutput index.
+    for gate in gates.iter().chain(gates_external.iter()) {
+        let inputs = gate_kind_input_nodes(&gate.kind);
+        for slot in &gate.dst {
+            b.record_output(slot.node, slot.addr, slot.forward_source, inputs.clone());
+        }
+    }
+    for cache in &caches {
+        let (node, addr) = cache.out;
+        b.record_output(node, addr, ForwardSource::Computed, cache.inputs.clone());
+    }
+
+    let hints = compute_hints(&b.nodes, &b.gate_inputs, &b.gate_output_slots);
     CodegenLayer {
         arena: ExprArena {
             nodes: b.nodes,
@@ -871,17 +1070,34 @@ pub fn lower_layer(
     }
 }
 
-/// One forward pass over arena order. ScratchPrefill GateOutputs are not produced by
-/// the spike's families with forward in-edges, so GateOutput footprint = {} here
-/// (full Computed-case union over producer inputs is plan work — see spec).
-fn compute_hints(nodes: &[ExprNode]) -> Vec<NodeHints> {
+/// One forward pass over arena order. A Computed `GateOutput`'s footprint is the
+/// sorted-dedup union of its producing gate's input-node footprints; a
+/// `ScratchPrefill` `GateOutput`'s footprint is just `{addr}` (it has no forward
+/// in-edges — it is loaded from scratch). Producers are lowered inputs-first /
+/// `add_gate_output` last, so every operand index `<` the GateOutput index and a
+/// single forward pass suffices.
+fn compute_hints(
+    nodes: &[ExprNode],
+    gate_inputs: &HashMap<NodeId, Vec<NodeId>>,
+    gate_output_slots: &HashMap<NodeId, (GKRAddress, ForwardSource)>,
+) -> Vec<NodeHints> {
     let mut footprints: Vec<Vec<GKRAddress>> = Vec::with_capacity(nodes.len());
     let mut uses = vec![0u32; nodes.len()];
-    for node in nodes.iter() {
+    for (i, node) in nodes.iter().enumerate() {
         let fp: Vec<GKRAddress> = match node {
             ExprNode::Constant(_) => vec![],
             ExprNode::Place { addr, .. } => vec![*addr],
-            ExprNode::GateOutput { .. } => vec![],
+            ExprNode::GateOutput { .. } => {
+                let nid = NodeId(i as u32);
+                match gate_output_slots.get(&nid) {
+                    Some((addr, ForwardSource::ScratchPrefill)) => vec![*addr],
+                    _ => {
+                        let empty: Vec<NodeId> = Vec::new();
+                        let inputs = gate_inputs.get(&nid).unwrap_or(&empty);
+                        union_children(&footprints, inputs, &mut uses)
+                    }
+                }
+            }
             ExprNode::Sum { terms, .. } => union_children(&footprints, terms, &mut uses),
             ExprNode::Product { factors, .. } => union_children(&footprints, factors, &mut uses),
         };
@@ -1972,5 +2188,75 @@ mod tests {
         assert_eq!(cg.caches[0].inputs.len(), 0);
         assert_eq!(cg.caches[0].out.1, out_addr);
         cg.verify().unwrap();
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 9: footprint / uses hints with gate context
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn computed_gate_output_footprint_is_input_union() {
+        let layer = single_gate_layer(NoFieldGKRRelation::CopyInBaseField {
+            input: GKRAddress::BaseLayerWitness(7),
+            output: GKRAddress::InnerLayer { layer: 1, offset: 0 },
+        });
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        let (i, _) = cg
+            .arena
+            .nodes
+            .iter()
+            .enumerate()
+            .find(|(_, n)| matches!(n, ExprNode::GateOutput { .. }))
+            .unwrap();
+        assert!(
+            cg.arena.hints[i]
+                .footprint
+                .contains(&GKRAddress::BaseLayerWitness(7)),
+            "Computed GateOutput footprint must contain its input address"
+        );
+    }
+
+    #[test]
+    fn computed_footprint_unions_all_operands() {
+        let layer = single_gate_layer(NoFieldGKRRelation::TrivialProduct {
+            input: [
+                GKRAddress::BaseLayerWitness(3),
+                GKRAddress::BaseLayerWitness(8),
+            ],
+            output: GKRAddress::InnerLayer { layer: 1, offset: 0 },
+        });
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        let (i, _) = cg
+            .arena
+            .nodes
+            .iter()
+            .enumerate()
+            .find(|(_, n)| matches!(n, ExprNode::GateOutput { .. }))
+            .unwrap();
+        let fp = &cg.arena.hints[i].footprint;
+        assert!(fp.contains(&GKRAddress::BaseLayerWitness(3)), "footprint must union operand 0");
+        assert!(fp.contains(&GKRAddress::BaseLayerWitness(8)), "footprint must union operand 1");
+    }
+
+    #[test]
+    fn scratch_prefill_gate_output_footprint_is_addr_only() {
+        // A scratch-backed MaxQuadratic output is ScratchPrefill -> footprint = {addr} only.
+        let layer = sample_layer();
+        let mut scratch = BTreeMap::new();
+        scratch.insert(inner(1, 1), 0usize); // MaxQuadratic output is scratch-backed
+        let cg = lower_layer(&layer, &scratch);
+        let mq = cg
+            .gates
+            .iter()
+            .find(|g| matches!(g.kind, GateKind::MaxQuadratic { .. }))
+            .unwrap();
+        let slot = &mq.dst[0];
+        assert!(matches!(slot.forward_source, ForwardSource::ScratchPrefill));
+        let fp = &cg.arena.hints[slot.node.0 as usize].footprint;
+        assert_eq!(
+            fp.as_slice(),
+            &[inner(1, 1)],
+            "ScratchPrefill footprint must be exactly {{addr}}"
+        );
     }
 }
