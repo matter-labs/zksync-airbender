@@ -1888,6 +1888,16 @@ impl CodegenCircuit {
 /// - Lowers each layer via `lower_layer` (infallible).
 /// - Applies the field-modular flat==expand(expr) check (invariant 13) to each layer.
 /// - Verifies the complete circuit (all 15 invariants via `CodegenCircuit::verify()`).
+/// Serialize a `CodegenCircuit` to a pretty-printed JSON string.
+///
+/// Pretty printing is chosen over compact because this writer is intended for
+/// debug inspection and downstream tooling (e.g. CUDA kernel generators) that
+/// benefit from human-readable output.  For machine-to-machine transport, callers
+/// can invoke `serde_json::to_string` directly.
+pub fn to_json_string(c: &CodegenCircuit) -> Result<String, String> {
+    serde_json::to_string_pretty(c).map_err(|e| e.to_string())
+}
+
 pub fn lower<F: PrimeField + PartialEq>(
     artifact: &super::GKRCircuitArtifact<F>,
 ) -> Result<CodegenCircuit, String> {
@@ -3451,6 +3461,45 @@ mod tests {
         assert_eq!(circuit.layers.len(), artifact.layers.len());
         let json = serde_json::to_string(&circuit).unwrap();
         let back: CodegenCircuit = serde_json::from_str(&json).unwrap();
+        back.verify().unwrap();
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 14: public reachability + JSON writer.
+    //
+    // Confirms that `lower` and `CodegenCircuit` are reachable through the
+    // intended public path (crate::gkr_compiler::{lower, CodegenCircuit,
+    // to_json_string}) and that `to_json_string` produces valid, re-parseable
+    // pretty JSON.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn lower_and_circuit_are_public_and_json_works() {
+        // Use the same artifact helper from Task 12 so we get a real CodegenCircuit.
+        let artifact = build_add_sub_artifact();
+
+        // Exercise the items via the re-exported public path.
+        // These `use` paths will cause a compile error if the items are not
+        // accessible through crate::gkr_compiler.
+        use crate::gkr_compiler::lower as crate_lower;
+        use crate::gkr_compiler::to_json_string as crate_to_json_string;
+        use crate::gkr_compiler::CodegenCircuit as CrateCodegenCircuit;
+
+        let circuit: CrateCodegenCircuit =
+            crate_lower::<ConcreteField>(&artifact).expect("lower must succeed");
+
+        let s = crate_to_json_string(&circuit).expect("to_json_string must succeed");
+
+        // Pretty JSON starts with '{'.
+        assert!(
+            s.starts_with('{'),
+            "expected pretty JSON object, got: {}",
+            &s[..s.len().min(40)]
+        );
+
+        // Must round-trip cleanly.
+        let back: CrateCodegenCircuit =
+            serde_json::from_str(&s).expect("JSON must round-trip");
         back.verify().unwrap();
     }
 }

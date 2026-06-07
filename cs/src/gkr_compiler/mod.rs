@@ -29,6 +29,7 @@ pub(crate) struct ShuffleRamTimestampComparisonPartialData {
 }
 
 pub mod codegen_ir;
+pub use codegen_ir::{lower, to_json_string, CodegenCircuit};
 mod compiled_constraint;
 mod delegation_circuit;
 pub(crate) mod delegation_mem_accesses;
