@@ -248,6 +248,11 @@ pub struct CodegenGate {
     pub kind: GateKind,
     pub dst: Vec<OutputSlot>,
     pub batch_terms: Vec<BatchTerm>,
+    /// Number of batch challenges this gate consumes, sourced from
+    /// `relation_metadata(rel).num_challenges`. Equals `dst.len()` for
+    /// output-bearing gates; may be 1 even when `dst.is_empty()` for
+    /// no-output constraint gates (e.g. `EnforceSingleMaxQuadraticConstraint`).
+    pub num_challenges: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -381,6 +386,7 @@ fn lower_relation(
     scratch: &BTreeMap<GKRAddress, usize>,
 ) -> CodegenGate {
     use NoFieldGKRRelation as R;
+    let num_challenges = relation_metadata(rel).num_challenges;
     let (kind, dst): (GateKind, Vec<OutputSlot>) = match rel {
         R::LinearBaseFieldRelation { input, output } => {
             let lc = b.lower_linear(input, Domain::Base);
@@ -635,6 +641,7 @@ fn lower_relation(
         kind,
         dst,
         batch_terms: vec![],
+        num_challenges,
     }
 }
 
@@ -766,19 +773,19 @@ fn lower_max_quad_flat(
 }
 
 /// Assign absolute batch powers over `gates` chained with `gates_external` (caches
-/// excluded), one per consumed challenge. The spike uses #challenges = 1 + extra for
-/// each emitted output slot beyond the first (a stand-in for the kernel's
-/// `num_challenges()`); the real count is validated against the prover in the plan.
+/// excluded), one per consumed challenge. `num_challenges` is sourced from
+/// `relation_metadata` (stored on `CodegenGate`), NOT from `dst.len()`, so
+/// no-output constraint gates (outputs=0, num_challenges=1) get exactly one term.
 fn assign_batch_powers(gates: &mut [CodegenGate], gates_external: &mut [CodegenGate], start: &mut u32) {
     for gate in gates.iter_mut().chain(gates_external.iter_mut()) {
-        let n_challenges = num_challenges_stub(gate);
+        let n_challenges = gate.num_challenges as u32;
         let mut terms = Vec::with_capacity(n_challenges as usize);
-        // value weighted: each output's node, or (no-output) any constant proxy.
-        let value = gate
-            .dst
-            .first()
-            .map(|o| o.node)
-            .unwrap_or(NodeId(0));
+        // Value for the batch term: the first output node for output-bearing gates;
+        // for no-output constraint gates, extract the constraint expression node
+        // that is already stored inside the GateKind.
+        let value = gate.dst.first().map(|o| o.node).unwrap_or_else(|| {
+            batch_value_for_constraint_gate(&gate.kind)
+        });
         for _ in 0..n_challenges {
             terms.push(BatchTerm {
                 power: *start,
@@ -790,12 +797,29 @@ fn assign_batch_powers(gates: &mut [CodegenGate], gates_external: &mut [CodegenG
     }
 }
 
-fn num_challenges_stub(gate: &CodegenGate) -> u32 {
-    // Stand-in: 2 for two-output gates, else 1. Real value = kernel num_challenges().
-    if gate.dst.len() == 2 {
-        2
-    } else {
-        1
+/// Extract a representative value `NodeId` for a no-output constraint gate
+/// (one that has `num_challenges > 0` but `dst.is_empty()`).
+///
+/// - `EnforceSingleMaxQuadraticConstraint { expr }` — the already-lowered
+///   constraint expression node is the canonical value.
+/// - `EnforceConstraintsMaxQuadratic { .. }` — no single expression node is
+///   emitted during lowering; pick the first NodeId from the quadratic terms if
+///   any exist, then linear, falling back to `NodeId(0)` (a Constant leaf that
+///   is always present at arena position 0 when any node has been interned).
+fn batch_value_for_constraint_gate(kind: &GateKind) -> NodeId {
+    match kind {
+        GateKind::EnforceSingleMaxQuadraticConstraint { expr, .. } => *expr,
+        GateKind::EnforceConstraintsMaxQuadratic { quadratic, linear, .. } => {
+            if let Some(((a, _), _)) = quadratic.first() {
+                *a
+            } else if let Some((a, _)) = linear.first() {
+                *a
+            } else {
+                NodeId(0)
+            }
+        }
+        // Output-bearing gates should never reach here; fall back safely.
+        _ => NodeId(0),
     }
 }
 
@@ -1482,6 +1506,78 @@ mod tests {
             }],
             intermediate_layer_width: Some(1),
         }
+    }
+
+    /// Build a `GKRLayerDescription` with two gates in `gates` (no external connections).
+    fn two_gate_layer(rel_a: NoFieldGKRRelation, rel_b: NoFieldGKRRelation) -> GKRLayerDescription {
+        GKRLayerDescription {
+            layer: 0,
+            gates_with_external_connections: vec![],
+            cached_relations: BTreeMap::new(),
+            gates: vec![
+                GateArtifacts { output_layer: 1, enforced_relation: rel_a },
+                GateArtifacts { output_layer: 1, enforced_relation: rel_b },
+            ],
+            intermediate_layer_width: Some(2),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 8: metadata-driven batch-power tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn batch_powers_cover_range_no_gaps() {
+        // 1-challenge gate (CopyInBaseField) + 2-challenge (two-output) gate =>
+        // powers {0, 1, 2} with no gaps.
+        let layer = two_gate_layer(
+            NoFieldGKRRelation::CopyInBaseField { input: blw(0), output: inner(1, 0) },
+            NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs {
+                input: [blw(1), blw(2)],
+                output: [inner(1, 1), inner(1, 2)],
+            },
+        );
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        let mut powers: Vec<u32> = cg
+            .gates
+            .iter()
+            .flat_map(|g| g.batch_terms.iter().map(|t| t.power))
+            .collect();
+        powers.sort();
+        assert_eq!(powers, vec![0, 1, 2]);
+        cg.verify().unwrap();
+    }
+
+    #[test]
+    fn batch_powers_count_no_output_constraint_gate() {
+        use super::super::{
+            NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E,
+        };
+        // EnforceSingleMaxQuadraticConstraint: outputs=0, num_challenges=1.
+        // Must produce exactly 1 batch_term (power 0) even though dst is empty.
+        let mq = NoFieldMaxQuadraticGKRRelation {
+            quadratic_terms: vec![].into_boxed_slice(),
+            linear_terms: vec![(1u32, blw(0))].into_boxed_slice(),
+            constant: 0,
+        };
+        let layer = single_gate_layer(NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint {
+            input: mq,
+            expression: E::Place(blw(0)),
+        });
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        let g = &cg.gates[0];
+        assert!(g.dst.is_empty(), "EnforceSingleMaxQuadraticConstraint has no output slots");
+        assert_eq!(
+            g.batch_terms.len(), 1,
+            "no-output constraint gate must have exactly 1 batch_term (from num_challenges=1)"
+        );
+        assert_eq!(g.batch_terms[0].power, 0);
+        // value must be a valid node (not a dangling reference)
+        assert!(
+            (g.batch_terms[0].value.0 as usize) < cg.arena.nodes.len(),
+            "batch_term value must be a valid arena node"
+        );
+        cg.verify().unwrap();
     }
 
     #[test]
