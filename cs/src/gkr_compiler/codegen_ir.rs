@@ -12,7 +12,7 @@
 //! `GKRLayerDescription`) — no compiler/prover changes. This confirms the spec's
 //! "given a valid compiled GKR artifact, emit a faithful IR" contract is buildable.
 
-use super::{GateArtifacts, GKRLayerDescription, NoFieldGKRRelation, NoFieldStructuredExpression};
+use super::{GKRLayerDescription, GateArtifacts, NoFieldGKRRelation, NoFieldStructuredExpression};
 use crate::definitions::gkr::{
     NoFieldLinearRelation, NoFieldSingleColumnLookupRelation, NoFieldVectorLookupRelation,
 };
@@ -52,10 +52,23 @@ pub enum Domain {
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExprNode {
     Constant(u32),
-    Place { addr: GKRAddress, domain: Domain },
-    GateOutput { producer: ProducerId, out: u32, domain: Domain },
-    Sum { terms: Vec<NodeId>, domain: Domain },
-    Product { factors: Vec<NodeId>, domain: Domain },
+    Place {
+        addr: GKRAddress,
+        domain: Domain,
+    },
+    GateOutput {
+        producer: ProducerId,
+        out: u32,
+        domain: Domain,
+    },
+    Sum {
+        terms: Vec<NodeId>,
+        domain: Domain,
+    },
+    Product {
+        factors: Vec<NodeId>,
+        domain: Domain,
+    },
 }
 
 impl ExprNode {
@@ -155,25 +168,59 @@ pub struct MemTupleDescriptor {
 /// Complete GateKind variant contract — all 30 variants, no Unhandled catch-all.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum GateKind {
-    LinearBaseField { input: LinearComb },
-    MaxQuadratic { flat: MaxQuadFlat, expr: NodeId },
-    EnforceSingleMaxQuadraticConstraint { flat: MaxQuadFlat, expr: NodeId },
+    LinearBaseField {
+        input: LinearComb,
+    },
+    MaxQuadratic {
+        flat: MaxQuadFlat,
+        expr: NodeId,
+    },
+    EnforceSingleMaxQuadraticConstraint {
+        flat: MaxQuadFlat,
+        expr: NodeId,
+    },
     EnforceConstraintsMaxQuadratic {
         quadratic: Vec<((NodeId, NodeId), Vec<(u32, usize)>)>,
         linear: Vec<(NodeId, Vec<(u32, usize)>)>,
         constants: Vec<(u32, usize)>,
     },
-    CopyInBaseField { input: NodeId },
-    CopyInExtensionField { input: NodeId },
-    InitialGrandProductFromCaches { input: [NodeId; 2] },
-    InitialGrandProductWithoutCaches { input: [MemTupleDescriptor; 2] },
-    UnbalancedGrandProductWithCache { scalar: NodeId, input: NodeId },
-    MaterializeGrandProductTermExpression { input: MemTupleDescriptor },
-    TrivialProduct { input: [NodeId; 2] },
-    MaskIntoIdentityProduct { input: NodeId, mask: NodeId },
-    MaterializeSingleLookupInput { input: SingleColumnLookup, range_check_width: u32 },
-    MaterializedVectorLookupInput { input: VectorLookup },
-    LookupWithCachedDensAndSetup { input: [NodeId; 2], setup: [NodeId; 2] },
+    CopyInBaseField {
+        input: NodeId,
+    },
+    CopyInExtensionField {
+        input: NodeId,
+    },
+    InitialGrandProductFromCaches {
+        input: [NodeId; 2],
+    },
+    InitialGrandProductWithoutCaches {
+        input: [MemTupleDescriptor; 2],
+    },
+    UnbalancedGrandProductWithCache {
+        scalar: NodeId,
+        input: NodeId,
+    },
+    MaterializeGrandProductTermExpression {
+        input: MemTupleDescriptor,
+    },
+    TrivialProduct {
+        input: [NodeId; 2],
+    },
+    MaskIntoIdentityProduct {
+        input: NodeId,
+        mask: NodeId,
+    },
+    MaterializeSingleLookupInput {
+        input: SingleColumnLookup,
+        range_check_width: u32,
+    },
+    MaterializedVectorLookupInput {
+        input: VectorLookup,
+    },
+    LookupWithCachedDensAndSetup {
+        input: [NodeId; 2],
+        setup: [NodeId; 2],
+    },
     LookupWithDensAndSetupExpressions {
         input_addr: NodeId,
         input_vec: VectorLookup,
@@ -185,18 +232,50 @@ pub enum GateKind {
         input_vec: VectorLookup,
         setup: [NodeId; 2],
     },
-    LookupPairFromBaseInputs { input: [SingleColumnLookup; 2], range_check_width: u32 },
-    LookupPairFromMaterializedBaseInputs { input: [NodeId; 2] },
-    LookupFromMaterializedBaseInputWithSetup { input: NodeId, setup: [NodeId; 2] },
-    LookupUnbalancedPairWithMaterializedBaseInputs { input: [NodeId; 2], remainder: NodeId },
-    LookupPairFromVectorInputs { input: [VectorLookup; 2] },
-    LookupPairFromMaterializedVectorInputs { input: [NodeId; 2] },
-    LookupFromVectorInputWithSetup { input: VectorLookup, setup_addr: NodeId, setup_extra: Vec<NodeId> },
-    LookupFromMaterializedVectorInputWithSetup { input: NodeId, setup: [NodeId; 2] },
-    LookupPairFromCachedVectorInputs { input: [NodeId; 2] },
-    LookupUnbalancedPairWithVectorInputs { input: [NodeId; 2], remainder: VectorLookup },
-    LookupUnbalancedPairWithMaterializedVectorInputs { input: [NodeId; 2], remainder: NodeId },
-    AggregateLookupRationalPair { input: [[NodeId; 2]; 2] },
+    LookupPairFromBaseInputs {
+        input: [SingleColumnLookup; 2],
+        range_check_width: u32,
+    },
+    LookupPairFromMaterializedBaseInputs {
+        input: [NodeId; 2],
+    },
+    LookupFromMaterializedBaseInputWithSetup {
+        input: NodeId,
+        setup: [NodeId; 2],
+    },
+    LookupUnbalancedPairWithMaterializedBaseInputs {
+        input: [NodeId; 2],
+        remainder: NodeId,
+    },
+    LookupPairFromVectorInputs {
+        input: [VectorLookup; 2],
+    },
+    LookupPairFromMaterializedVectorInputs {
+        input: [NodeId; 2],
+    },
+    LookupFromVectorInputWithSetup {
+        input: VectorLookup,
+        setup_addr: NodeId,
+        setup_extra: Vec<NodeId>,
+    },
+    LookupFromMaterializedVectorInputWithSetup {
+        input: NodeId,
+        setup: [NodeId; 2],
+    },
+    LookupPairFromCachedVectorInputs {
+        input: [NodeId; 2],
+    },
+    LookupUnbalancedPairWithVectorInputs {
+        input: [NodeId; 2],
+        remainder: VectorLookup,
+    },
+    LookupUnbalancedPairWithMaterializedVectorInputs {
+        input: [NodeId; 2],
+        remainder: NodeId,
+    },
+    AggregateLookupRationalPair {
+        input: [[NodeId; 2]; 2],
+    },
     InitsOrTeardownsInitialPair {
         timestamp_and_value: super::InitsOrTeardownsTimestampAndValue,
         setup: [NodeId; 2],
@@ -211,9 +290,18 @@ pub enum GateKind {
 /// One cache entry in the per-layer IR.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum CacheKind {
-    SingleColumnLookup { column: LinearComb, lookup_set_index: usize, range_check_width: usize },
-    VectorizedLookup { columns: Vec<LinearComb>, lookup_set_index: usize },
-    MemoryTuple { descriptor: MemTupleDescriptor },
+    SingleColumnLookup {
+        column: LinearComb,
+        lookup_set_index: usize,
+        range_check_width: usize,
+    },
+    VectorizedLookup {
+        columns: Vec<LinearComb>,
+        lookup_set_index: usize,
+    },
+    MemoryTuple {
+        descriptor: MemTupleDescriptor,
+    },
     VectorizedLookupSetup,
 }
 
@@ -329,7 +417,10 @@ impl ArenaBuilder {
             out,
             domain,
         });
-        if matches!(addr, GKRAddress::InnerLayer { .. } | GKRAddress::Cached { .. }) {
+        if matches!(
+            addr,
+            GKRAddress::InnerLayer { .. } | GKRAddress::Cached { .. }
+        ) {
             self.produced.insert(addr, id);
         }
         id
@@ -370,14 +461,18 @@ impl ArenaBuilder {
             NoFieldStructuredExpression::Constant(c) => self.intern(ExprNode::Constant(*c)),
             NoFieldStructuredExpression::Place(addr) => self.resolve(*addr, domain),
             NoFieldStructuredExpression::Sum(children) => {
-                let mut terms: Vec<NodeId> =
-                    children.iter().map(|c| self.lower_expr(c, domain)).collect();
+                let mut terms: Vec<NodeId> = children
+                    .iter()
+                    .map(|c| self.lower_expr(c, domain))
+                    .collect();
                 terms.sort_by_key(|n| n.0);
                 self.intern(ExprNode::Sum { terms, domain })
             }
             NoFieldStructuredExpression::Product(children) => {
-                let mut factors: Vec<NodeId> =
-                    children.iter().map(|c| self.lower_expr(c, domain)).collect();
+                let mut factors: Vec<NodeId> = children
+                    .iter()
+                    .map(|c| self.lower_expr(c, domain))
+                    .collect();
                 factors.sort_by_key(|n| n.0);
                 self.intern(ExprNode::Product { factors, domain })
             }
@@ -438,7 +533,10 @@ fn lower_relation(
             output,
         } => {
             let domain = relation_metadata(rel).out_domain;
-            debug_assert!(matches!(domain, Domain::Base), "MaxQuadratic is always base-field");
+            debug_assert!(
+                matches!(domain, Domain::Base),
+                "MaxQuadratic is always base-field"
+            );
             let flat = lower_max_quad_flat(b, input, domain);
             let expr = b.lower_expr(expression, domain);
             let node = b.add_gate_output(producer, 0, domain, *output);
@@ -453,7 +551,10 @@ fn lower_relation(
         }
         R::EnforceSingleMaxQuadraticConstraint { input, expression } => {
             let domain = relation_metadata(rel).out_domain;
-            debug_assert!(matches!(domain, Domain::Base), "EnforceSingleMaxQuadraticConstraint is always base-field");
+            debug_assert!(
+                matches!(domain, Domain::Base),
+                "EnforceSingleMaxQuadraticConstraint is always base-field"
+            );
             let flat = lower_max_quad_flat(b, input, domain);
             let expr = b.lower_expr(expression, domain);
             (
@@ -463,7 +564,10 @@ fn lower_relation(
         }
         R::EnforceConstraintsMaxQuadratic { input } => {
             let domain = relation_metadata(rel).out_domain;
-            debug_assert!(matches!(domain, Domain::Base), "EnforceConstraintsMaxQuadratic is always base-field");
+            debug_assert!(
+                matches!(domain, Domain::Base),
+                "EnforceConstraintsMaxQuadratic is always base-field"
+            );
             let quadratic = input
                 .quadratic_terms
                 .iter()
@@ -516,43 +620,85 @@ fn lower_relation(
         }
         // --- grand-product / product family (Task 4) ---
         R::InitialGrandProductFromCaches { input, output } => {
-            let i = [b.resolve(input[0], Domain::Ext), b.resolve(input[1], Domain::Ext)];
+            let i = [
+                b.resolve(input[0], Domain::Ext),
+                b.resolve(input[1], Domain::Ext),
+            ];
             let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
-            (GateKind::InitialGrandProductFromCaches { input: i }, one_out(node, *output, scratch, false))
+            (
+                GateKind::InitialGrandProductFromCaches { input: i },
+                one_out(node, *output, scratch, false),
+            )
         }
         R::InitialGrandProductWithoutCaches { input, output } => {
             let d = [lower_mem_tuple(b, &input[0]), lower_mem_tuple(b, &input[1])];
             let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
-            (GateKind::InitialGrandProductWithoutCaches { input: d }, one_out(node, *output, scratch, false))
+            (
+                GateKind::InitialGrandProductWithoutCaches { input: d },
+                one_out(node, *output, scratch, false),
+            )
         }
-        R::UnbalancedGrandProductWithCache { scalar, input, output } => {
+        R::UnbalancedGrandProductWithCache {
+            scalar,
+            input,
+            output,
+        } => {
             let s = b.resolve(*scalar, Domain::Ext);
             let i = b.resolve(*input, Domain::Ext);
             let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
-            (GateKind::UnbalancedGrandProductWithCache { scalar: s, input: i }, one_out(node, *output, scratch, false))
+            (
+                GateKind::UnbalancedGrandProductWithCache {
+                    scalar: s,
+                    input: i,
+                },
+                one_out(node, *output, scratch, false),
+            )
         }
         R::MaterializeGrandProductTermExpression { input, output } => {
             let d = lower_mem_tuple(b, input);
             let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
-            (GateKind::MaterializeGrandProductTermExpression { input: d }, one_out(node, *output, scratch, false))
+            (
+                GateKind::MaterializeGrandProductTermExpression { input: d },
+                one_out(node, *output, scratch, false),
+            )
         }
         R::TrivialProduct { input, output } => {
-            let i = [b.resolve(input[0], Domain::Ext), b.resolve(input[1], Domain::Ext)];
+            let i = [
+                b.resolve(input[0], Domain::Ext),
+                b.resolve(input[1], Domain::Ext),
+            ];
             let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
-            (GateKind::TrivialProduct { input: i }, one_out(node, *output, scratch, false))
+            (
+                GateKind::TrivialProduct { input: i },
+                one_out(node, *output, scratch, false),
+            )
         }
-        R::MaskIntoIdentityProduct { input, mask, output } => {
+        R::MaskIntoIdentityProduct {
+            input,
+            mask,
+            output,
+        } => {
             // MIXED: mask is Base-field, input is extension-field (mask_into_identity add_base_by_ext).
             let m = b.resolve(*mask, Domain::Base);
             let i = b.resolve(*input, Domain::Ext);
             let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
-            (GateKind::MaskIntoIdentityProduct { input: i, mask: m }, one_out(node, *output, scratch, false))
+            (
+                GateKind::MaskIntoIdentityProduct { input: i, mask: m },
+                one_out(node, *output, scratch, false),
+            )
         }
-        R::MaterializeSingleLookupInput { input, output, range_check_width } => {
+        R::MaterializeSingleLookupInput {
+            input,
+            output,
+            range_check_width,
+        } => {
             let s = lower_single_col(b, input, Domain::Base);
             let node = b.add_gate_output(producer, 0, Domain::Base, *output);
             (
-                GateKind::MaterializeSingleLookupInput { input: s, range_check_width: *range_check_width },
+                GateKind::MaterializeSingleLookupInput {
+                    input: s,
+                    range_check_width: *range_check_width,
+                },
                 one_out(node, *output, scratch, false),
             )
         }
@@ -564,100 +710,254 @@ fn lower_relation(
                 one_out(node, *output, scratch, false),
             )
         }
-        R::LookupWithCachedDensAndSetup { input, setup, output } => {
-            let i = [b.resolve(input[0], Domain::Base), b.resolve(input[1], Domain::Ext)];
-            let s = [b.resolve(setup[0], Domain::Base), b.resolve(setup[1], Domain::Ext)];
+        R::LookupWithCachedDensAndSetup {
+            input,
+            setup,
+            output,
+        } => {
+            let i = [
+                b.resolve(input[0], Domain::Base),
+                b.resolve(input[1], Domain::Ext),
+            ];
+            let s = [
+                b.resolve(setup[0], Domain::Base),
+                b.resolve(setup[1], Domain::Ext),
+            ];
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
-            (GateKind::LookupWithCachedDensAndSetup { input: i, setup: s }, dst)
+            (
+                GateKind::LookupWithCachedDensAndSetup { input: i, setup: s },
+                dst,
+            )
         }
-        R::LookupWithDensAndSetupExpressions { input, setup, output } => {
+        R::LookupWithDensAndSetupExpressions {
+            input,
+            setup,
+            output,
+        } => {
             let input_addr = b.resolve(input.0, Domain::Ext);
             let input_vec = lower_vector(b, &input.1, Domain::Base);
             let setup_addr = b.resolve(setup.0, Domain::Ext);
             let setup_extra = setup.1.iter().map(|a| b.resolve(*a, Domain::Ext)).collect();
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
-            (GateKind::LookupWithDensAndSetupExpressions { input_addr, input_vec, setup_addr, setup_extra }, dst)
+            (
+                GateKind::LookupWithDensAndSetupExpressions {
+                    input_addr,
+                    input_vec,
+                    setup_addr,
+                    setup_extra,
+                },
+                dst,
+            )
         }
-        R::LookupWithDensAndCachedSetup { input, setup, output } => {
+        R::LookupWithDensAndCachedSetup {
+            input,
+            setup,
+            output,
+        } => {
             let input_addr = b.resolve(input.0, Domain::Ext);
             let input_vec = lower_vector(b, &input.1, Domain::Base);
-            let s = [b.resolve(setup.0, Domain::Ext), b.resolve(setup.1, Domain::Ext)];
+            let s = [
+                b.resolve(setup.0, Domain::Ext),
+                b.resolve(setup.1, Domain::Ext),
+            ];
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
-            (GateKind::LookupWithDensAndCachedSetup { input_addr, input_vec, setup: s }, dst)
+            (
+                GateKind::LookupWithDensAndCachedSetup {
+                    input_addr,
+                    input_vec,
+                    setup: s,
+                },
+                dst,
+            )
         }
-        R::LookupPairFromBaseInputs { input, output, range_check_width } => {
-            let i = [lower_single_col(b, &input[0], Domain::Base), lower_single_col(b, &input[1], Domain::Base)];
+        R::LookupPairFromBaseInputs {
+            input,
+            output,
+            range_check_width,
+        } => {
+            let i = [
+                lower_single_col(b, &input[0], Domain::Base),
+                lower_single_col(b, &input[1], Domain::Base),
+            ];
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
-            (GateKind::LookupPairFromBaseInputs { input: i, range_check_width: *range_check_width }, dst)
+            (
+                GateKind::LookupPairFromBaseInputs {
+                    input: i,
+                    range_check_width: *range_check_width,
+                },
+                dst,
+            )
         }
         R::LookupPairFromMaterializedBaseInputs { input, output } => {
-            let i = [b.resolve(input[0], Domain::Base), b.resolve(input[1], Domain::Base)];
+            let i = [
+                b.resolve(input[0], Domain::Base),
+                b.resolve(input[1], Domain::Base),
+            ];
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
-            (GateKind::LookupPairFromMaterializedBaseInputs { input: i }, dst)
+            (
+                GateKind::LookupPairFromMaterializedBaseInputs { input: i },
+                dst,
+            )
         }
-        R::LookupFromMaterializedBaseInputWithSetup { input, setup, output } => {
+        R::LookupFromMaterializedBaseInputWithSetup {
+            input,
+            setup,
+            output,
+        } => {
             let i = b.resolve(*input, Domain::Base);
-            let s = [b.resolve(setup[0], Domain::Base), b.resolve(setup[1], Domain::Base)];
+            let s = [
+                b.resolve(setup[0], Domain::Base),
+                b.resolve(setup[1], Domain::Base),
+            ];
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
-            (GateKind::LookupFromMaterializedBaseInputWithSetup { input: i, setup: s }, dst)
+            (
+                GateKind::LookupFromMaterializedBaseInputWithSetup { input: i, setup: s },
+                dst,
+            )
         }
-        R::LookupUnbalancedPairWithMaterializedBaseInputs { input, remainder, output } => {
-            let i = [b.resolve(input[0], Domain::Ext), b.resolve(input[1], Domain::Ext)];
+        R::LookupUnbalancedPairWithMaterializedBaseInputs {
+            input,
+            remainder,
+            output,
+        } => {
+            let i = [
+                b.resolve(input[0], Domain::Ext),
+                b.resolve(input[1], Domain::Ext),
+            ];
             let r = b.resolve(*remainder, Domain::Base);
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
-            (GateKind::LookupUnbalancedPairWithMaterializedBaseInputs { input: i, remainder: r }, dst)
+            (
+                GateKind::LookupUnbalancedPairWithMaterializedBaseInputs {
+                    input: i,
+                    remainder: r,
+                },
+                dst,
+            )
         }
         R::LookupPairFromVectorInputs { input, output } => {
-            let i = [lower_vector(b, &input[0], Domain::Base), lower_vector(b, &input[1], Domain::Base)];
+            let i = [
+                lower_vector(b, &input[0], Domain::Base),
+                lower_vector(b, &input[1], Domain::Base),
+            ];
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
             (GateKind::LookupPairFromVectorInputs { input: i }, dst)
         }
         R::LookupPairFromMaterializedVectorInputs { input, output } => {
-            let i = [b.resolve(input[0], Domain::Ext), b.resolve(input[1], Domain::Ext)];
+            let i = [
+                b.resolve(input[0], Domain::Ext),
+                b.resolve(input[1], Domain::Ext),
+            ];
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
-            (GateKind::LookupPairFromMaterializedVectorInputs { input: i }, dst)
+            (
+                GateKind::LookupPairFromMaterializedVectorInputs { input: i },
+                dst,
+            )
         }
-        R::LookupFromVectorInputWithSetup { input, setup, output } => {
+        R::LookupFromVectorInputWithSetup {
+            input,
+            setup,
+            output,
+        } => {
             let v = lower_vector(b, input, Domain::Base);
             let setup_addr = b.resolve(setup.0, Domain::Ext);
             let setup_extra = setup.1.iter().map(|a| b.resolve(*a, Domain::Ext)).collect();
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
-            (GateKind::LookupFromVectorInputWithSetup { input: v, setup_addr, setup_extra }, dst)
+            (
+                GateKind::LookupFromVectorInputWithSetup {
+                    input: v,
+                    setup_addr,
+                    setup_extra,
+                },
+                dst,
+            )
         }
-        R::LookupFromMaterializedVectorInputWithSetup { input, setup, output } => {
+        R::LookupFromMaterializedVectorInputWithSetup {
+            input,
+            setup,
+            output,
+        } => {
             let i = b.resolve(*input, Domain::Ext);
-            let s = [b.resolve(setup[0], Domain::Base), b.resolve(setup[1], Domain::Ext)];
+            let s = [
+                b.resolve(setup[0], Domain::Base),
+                b.resolve(setup[1], Domain::Ext),
+            ];
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
-            (GateKind::LookupFromMaterializedVectorInputWithSetup { input: i, setup: s }, dst)
+            (
+                GateKind::LookupFromMaterializedVectorInputWithSetup { input: i, setup: s },
+                dst,
+            )
         }
         R::LookupPairFromCachedVectorInputs { input, output } => {
-            let i = [b.resolve(input[0], Domain::Ext), b.resolve(input[1], Domain::Ext)];
+            let i = [
+                b.resolve(input[0], Domain::Ext),
+                b.resolve(input[1], Domain::Ext),
+            ];
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
             (GateKind::LookupPairFromCachedVectorInputs { input: i }, dst)
         }
-        R::LookupUnbalancedPairWithVectorInputs { input, remainder, output } => {
-            let i = [b.resolve(input[0], Domain::Ext), b.resolve(input[1], Domain::Ext)];
+        R::LookupUnbalancedPairWithVectorInputs {
+            input,
+            remainder,
+            output,
+        } => {
+            let i = [
+                b.resolve(input[0], Domain::Ext),
+                b.resolve(input[1], Domain::Ext),
+            ];
             let r = lower_vector(b, remainder, Domain::Base);
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
-            (GateKind::LookupUnbalancedPairWithVectorInputs { input: i, remainder: r }, dst)
+            (
+                GateKind::LookupUnbalancedPairWithVectorInputs {
+                    input: i,
+                    remainder: r,
+                },
+                dst,
+            )
         }
-        R::LookupUnbalancedPairWithMaterializedVectorInputs { input, remainder, output } => {
-            let i = [b.resolve(input[0], Domain::Ext), b.resolve(input[1], Domain::Ext)];
+        R::LookupUnbalancedPairWithMaterializedVectorInputs {
+            input,
+            remainder,
+            output,
+        } => {
+            let i = [
+                b.resolve(input[0], Domain::Ext),
+                b.resolve(input[1], Domain::Ext),
+            ];
             let r = b.resolve(*remainder, Domain::Ext);
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
-            (GateKind::LookupUnbalancedPairWithMaterializedVectorInputs { input: i, remainder: r }, dst)
+            (
+                GateKind::LookupUnbalancedPairWithMaterializedVectorInputs {
+                    input: i,
+                    remainder: r,
+                },
+                dst,
+            )
         }
         R::AggregateLookupRationalPair { input, output } => {
             let i = [
-                [b.resolve(input[0][0], Domain::Ext), b.resolve(input[0][1], Domain::Ext)],
-                [b.resolve(input[1][0], Domain::Ext), b.resolve(input[1][1], Domain::Ext)],
+                [
+                    b.resolve(input[0][0], Domain::Ext),
+                    b.resolve(input[0][1], Domain::Ext),
+                ],
+                [
+                    b.resolve(input[1][0], Domain::Ext),
+                    b.resolve(input[1][1], Domain::Ext),
+                ],
             ];
             let dst = two_out(b, producer, output, Domain::Ext, scratch);
             (GateKind::AggregateLookupRationalPair { input: i }, dst)
         }
-        R::InitsOrTeardownsInitialPair { timestamp_and_value, setup, output, set_idxes } => {
+        R::InitsOrTeardownsInitialPair {
+            timestamp_and_value,
+            setup,
+            output,
+            set_idxes,
+        } => {
             // setup BASE, result Ext.
-            let s = [b.resolve(setup[0], Domain::Base), b.resolve(setup[1], Domain::Base)];
+            let s = [
+                b.resolve(setup[0], Domain::Base),
+                b.resolve(setup[1], Domain::Base),
+            ];
             let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
             (
                 GateKind::InitsOrTeardownsInitialPair {
@@ -706,8 +1006,16 @@ fn two_out(
     let n0 = b.add_gate_output(producer, 0, d, out[0]);
     let n1 = b.add_gate_output(producer, 1, d, out[1]);
     vec![
-        OutputSlot { node: n0, addr: out[0], forward_source: forward_source_for(&out[0], false, scratch) },
-        OutputSlot { node: n1, addr: out[1], forward_source: forward_source_for(&out[1], false, scratch) },
+        OutputSlot {
+            node: n0,
+            addr: out[0],
+            forward_source: forward_source_for(&out[0], false, scratch),
+        },
+        OutputSlot {
+            node: n1,
+            addr: out[1],
+            forward_source: forward_source_for(&out[1], false, scratch),
+        },
     ]
 }
 
@@ -717,7 +1025,11 @@ fn lower_mem_tuple(
     b: &mut ArenaBuilder,
     m: &super::NoFieldSpecialMemoryContributionRelation,
 ) -> MemTupleDescriptor {
-    let operands = m.dependencies().into_iter().map(|a| b.resolve(a, Domain::Base)).collect();
+    let operands = m
+        .dependencies()
+        .into_iter()
+        .map(|a| b.resolve(a, Domain::Base))
+        .collect();
     MemTupleDescriptor {
         descriptor: m.clone(),
         operands,
@@ -758,20 +1070,33 @@ fn lower_cache(
         .map(|a| b.resolve(a, Domain::Base))
         .collect();
     let kind = match rel {
-        C::SingleColumnLookup { relation, range_check_width } => CacheKind::SingleColumnLookup {
+        C::SingleColumnLookup {
+            relation,
+            range_check_width,
+        } => CacheKind::SingleColumnLookup {
             column: b.lower_linear(&relation.input, Domain::Base),
             lookup_set_index: relation.lookup_set_index,
             range_check_width: *range_check_width,
         },
         C::VectorizedLookup(v) => CacheKind::VectorizedLookup {
-            columns: v.columns.iter().map(|c| b.lower_linear(c, Domain::Base)).collect(),
+            columns: v
+                .columns
+                .iter()
+                .map(|c| b.lower_linear(c, Domain::Base))
+                .collect(),
             lookup_set_index: v.lookup_set_index,
         },
-        C::MemoryTuple(m) => CacheKind::MemoryTuple { descriptor: lower_mem_tuple(b, m) },
+        C::MemoryTuple(m) => CacheKind::MemoryTuple {
+            descriptor: lower_mem_tuple(b, m),
+        },
         C::VectorizedLookupSetup(_) => CacheKind::VectorizedLookupSetup,
     };
     let out_node = b.add_gate_output(ProducerId::Cache(idx), 0, Domain::Ext, addr);
-    CodegenCache { kind, inputs, out: (out_node, addr) }
+    CodegenCache {
+        kind,
+        inputs,
+        out: (out_node, addr),
+    }
 }
 
 fn lower_max_quad_flat(
@@ -779,7 +1104,10 @@ fn lower_max_quad_flat(
     input: &super::NoFieldMaxQuadraticGKRRelation,
     domain: Domain,
 ) -> MaxQuadFlat {
-    debug_assert!(matches!(domain, Domain::Base), "lower_max_quad_flat operands are always base-field");
+    debug_assert!(
+        matches!(domain, Domain::Base),
+        "lower_max_quad_flat operands are always base-field"
+    );
     let quadratic = input
         .quadratic_terms
         .iter()
@@ -834,9 +1162,7 @@ fn mem_tuple_nodes(mt: &MemTupleDescriptor) -> impl Iterator<Item = NodeId> + '_
 /// Deliberately has no `_` arm so a new variant causes a compile error.
 fn gate_kind_input_nodes(kind: &GateKind) -> Vec<NodeId> {
     match kind {
-        GateKind::LinearBaseField { input } => {
-            linear_comb_nodes(input).collect()
-        }
+        GateKind::LinearBaseField { input } => linear_comb_nodes(input).collect(),
         GateKind::MaxQuadratic { flat, expr } => {
             let mut v = max_quad_flat_nodes(flat);
             v.push(*expr);
@@ -847,7 +1173,11 @@ fn gate_kind_input_nodes(kind: &GateKind) -> Vec<NodeId> {
             v.push(*expr);
             v
         }
-        GateKind::EnforceConstraintsMaxQuadratic { quadratic, linear, constants: _ } => {
+        GateKind::EnforceConstraintsMaxQuadratic {
+            quadratic,
+            linear,
+            constants: _,
+        } => {
             let mut v: Vec<NodeId> = Vec::new();
             for ((a, c), _powers) in quadratic {
                 v.push(*a);
@@ -870,31 +1200,42 @@ fn gate_kind_input_nodes(kind: &GateKind) -> Vec<NodeId> {
         }
         GateKind::TrivialProduct { input } => input.to_vec(),
         GateKind::MaskIntoIdentityProduct { input, mask } => vec![*input, *mask],
-        GateKind::MaterializeSingleLookupInput { input, range_check_width: _ } => {
-            single_col_nodes(input).collect()
-        }
+        GateKind::MaterializeSingleLookupInput {
+            input,
+            range_check_width: _,
+        } => single_col_nodes(input).collect(),
         GateKind::MaterializedVectorLookupInput { input } => vector_lookup_nodes(input),
         GateKind::LookupWithCachedDensAndSetup { input, setup } => {
             let mut v = input.to_vec();
             v.extend_from_slice(setup);
             v
         }
-        GateKind::LookupWithDensAndSetupExpressions { input_addr, input_vec, setup_addr, setup_extra } => {
+        GateKind::LookupWithDensAndSetupExpressions {
+            input_addr,
+            input_vec,
+            setup_addr,
+            setup_extra,
+        } => {
             let mut v = vec![*input_addr];
             v.extend(vector_lookup_nodes(input_vec));
             v.push(*setup_addr);
             v.extend_from_slice(setup_extra);
             v
         }
-        GateKind::LookupWithDensAndCachedSetup { input_addr, input_vec, setup } => {
+        GateKind::LookupWithDensAndCachedSetup {
+            input_addr,
+            input_vec,
+            setup,
+        } => {
             let mut v = vec![*input_addr];
             v.extend(vector_lookup_nodes(input_vec));
             v.extend_from_slice(setup);
             v
         }
-        GateKind::LookupPairFromBaseInputs { input, range_check_width: _ } => {
-            input.iter().flat_map(single_col_nodes).collect()
-        }
+        GateKind::LookupPairFromBaseInputs {
+            input,
+            range_check_width: _,
+        } => input.iter().flat_map(single_col_nodes).collect(),
         GateKind::LookupPairFromMaterializedBaseInputs { input } => input.to_vec(),
         GateKind::LookupFromMaterializedBaseInputWithSetup { input, setup } => {
             let mut v = vec![*input];
@@ -910,7 +1251,11 @@ fn gate_kind_input_nodes(kind: &GateKind) -> Vec<NodeId> {
             input.iter().flat_map(vector_lookup_nodes).collect()
         }
         GateKind::LookupPairFromMaterializedVectorInputs { input } => input.to_vec(),
-        GateKind::LookupFromVectorInputWithSetup { input, setup_addr, setup_extra } => {
+        GateKind::LookupFromVectorInputWithSetup {
+            input,
+            setup_addr,
+            setup_extra,
+        } => {
             let mut v = vector_lookup_nodes(input);
             v.push(*setup_addr);
             v.extend_from_slice(setup_extra);
@@ -935,9 +1280,11 @@ fn gate_kind_input_nodes(kind: &GateKind) -> Vec<NodeId> {
         GateKind::AggregateLookupRationalPair { input } => {
             input.iter().flat_map(|pair| pair.iter().copied()).collect()
         }
-        GateKind::InitsOrTeardownsInitialPair { timestamp_and_value: _, setup, set_idxes: _ } => {
-            setup.to_vec()
-        }
+        GateKind::InitsOrTeardownsInitialPair {
+            timestamp_and_value: _,
+            setup,
+            set_idxes: _,
+        } => setup.to_vec(),
     }
 }
 
@@ -960,16 +1307,22 @@ fn max_quad_flat_nodes(flat: &MaxQuadFlat) -> Vec<NodeId> {
 /// excluded), one per consumed challenge. `num_challenges` is sourced from
 /// `relation_metadata` (stored on `CodegenGate`), NOT from `dst.len()`, so
 /// no-output constraint gates (outputs=0, num_challenges=1) get exactly one term.
-fn assign_batch_powers(gates: &mut [CodegenGate], gates_external: &mut [CodegenGate], start: &mut u32) {
+fn assign_batch_powers(
+    gates: &mut [CodegenGate],
+    gates_external: &mut [CodegenGate],
+    start: &mut u32,
+) {
     for gate in gates.iter_mut().chain(gates_external.iter_mut()) {
         let n_challenges = gate.num_challenges as u32;
         let mut terms = Vec::with_capacity(n_challenges as usize);
         // Value for the batch term: the first output node for output-bearing gates;
         // for no-output constraint gates, extract the constraint expression node
         // that is already stored inside the GateKind.
-        let value = gate.dst.first().map(|o| o.node).unwrap_or_else(|| {
-            batch_value_for_constraint_gate(&gate.kind)
-        });
+        let value = gate
+            .dst
+            .first()
+            .map(|o| o.node)
+            .unwrap_or_else(|| batch_value_for_constraint_gate(&gate.kind));
         for _ in 0..n_challenges {
             terms.push(BatchTerm {
                 power: *start,
@@ -993,7 +1346,9 @@ fn assign_batch_powers(gates: &mut [CodegenGate], gates_external: &mut [CodegenG
 fn batch_value_for_constraint_gate(kind: &GateKind) -> NodeId {
     match kind {
         GateKind::EnforceSingleMaxQuadraticConstraint { expr, .. } => *expr,
-        GateKind::EnforceConstraintsMaxQuadratic { quadratic, linear, .. } => {
+        GateKind::EnforceConstraintsMaxQuadratic {
+            quadratic, linear, ..
+        } => {
             if let Some(((a, _), _)) = quadratic.first() {
                 *a
             } else if let Some((a, _)) = linear.first() {
@@ -1003,7 +1358,13 @@ fn batch_value_for_constraint_gate(kind: &GateKind) -> NodeId {
             }
         }
         // Output-bearing gates should never reach here; fall back safely.
-        _ => NodeId(0),
+        _ => {
+            debug_assert!(
+                false,
+                "batch_value_for_constraint_gate called with an output-bearing gate kind"
+            );
+            NodeId(0)
+        }
     }
 }
 
@@ -1183,7 +1544,11 @@ pub fn relation_metadata(rel: &NoFieldGKRRelation) -> RelationMeta {
         // -- inits/teardowns --
         R::InitsOrTeardownsInitialPair { .. } => (1, 1, Domain::Ext),
     };
-    RelationMeta { outputs, num_challenges, out_domain }
+    RelationMeta {
+        outputs,
+        num_challenges,
+        out_domain,
+    }
 }
 
 // ===========================================================================
@@ -1370,8 +1735,20 @@ fn multiply_normalized<F: PrimeField>(
 ) -> Result<NormalizedQuadratic<F>, String> {
     // degree(a) = 2 if !quadratic.is_empty(), 1 if !linear.is_empty(), else 0
     // degree(b) similarly
-    let deg_a = if !a.quadratic.is_empty() { 2 } else if !a.linear.is_empty() { 1 } else { 0 };
-    let deg_b = if !b.quadratic.is_empty() { 2 } else if !b.linear.is_empty() { 1 } else { 0 };
+    let deg_a = if !a.quadratic.is_empty() {
+        2
+    } else if !a.linear.is_empty() {
+        1
+    } else {
+        0
+    };
+    let deg_b = if !b.quadratic.is_empty() {
+        2
+    } else if !b.linear.is_empty() {
+        1
+    } else {
+        0
+    };
     if deg_a + deg_b > 2 {
         return Err(format!(
             "normalize_expr: Product would produce degree {} > 2",
@@ -1437,9 +1814,7 @@ fn multiply_normalized<F: PrimeField>(
 ///
 /// Returns `Err` containing the gate index (into the combined gates + gates_external
 /// sequence) and a description if any mismatch is found.
-pub fn verify_flat_expr<F: PrimeField + PartialEq>(
-    layer: &CodegenLayer,
-) -> Result<(), String> {
+pub fn verify_flat_expr<F: PrimeField + PartialEq>(layer: &CodegenLayer) -> Result<(), String> {
     for (gate_idx, gate) in layer
         .gates
         .iter()
@@ -1450,9 +1825,8 @@ pub fn verify_flat_expr<F: PrimeField + PartialEq>(
             GateKind::MaxQuadratic { flat, expr }
             | GateKind::EnforceSingleMaxQuadraticConstraint { flat, expr } => {
                 let nf = normalize_flat::<F>(flat);
-                let ne = normalize_expr::<F>(&layer.arena, *expr).map_err(|e| {
-                    format!("gate {}: normalize_expr error: {}", gate_idx, e)
-                })?;
+                let ne = normalize_expr::<F>(&layer.arena, *expr)
+                    .map_err(|e| format!("gate {}: normalize_expr error: {}", gate_idx, e))?;
                 if nf != ne {
                     return Err(format!(
                         "gate {}: flat polynomial disagrees with expand(expr) polynomial",
@@ -1475,7 +1849,11 @@ impl CodegenLayer {
     pub fn verify(&self) -> Result<(), String> {
         let n = self.arena.nodes.len();
         if self.arena.hints.len() != n {
-            return Err(format!("hints len {} != nodes len {}", self.arena.hints.len(), n));
+            return Err(format!(
+                "hints len {} != nodes len {}",
+                self.arena.hints.len(),
+                n
+            ));
         }
         // Strictly forward-referencing arena (topological): node i references only j < i.
         for (i, node) in self.arena.nodes.iter().enumerate() {
@@ -1498,7 +1876,10 @@ impl CodegenLayer {
                     for f in factors {
                         check(f)?;
                         if self.arena.nodes[f.0 as usize].domain() != *domain {
-                            return Err(format!("Product node {} domain disagrees with operand", i));
+                            return Err(format!(
+                                "Product node {} domain disagrees with operand",
+                                i
+                            ));
                         }
                     }
                 }
@@ -1542,13 +1923,17 @@ impl CodegenLayer {
         if powers.len() != expected_total {
             return Err(format!(
                 "batch coverage: total batch_terms count {} != expected {} (sum of num_challenges)",
-                powers.len(), expected_total
+                powers.len(),
+                expected_total
             ));
         }
         powers.sort_unstable();
         for (expected, got) in powers.iter().enumerate() {
             if *got != expected as u32 {
-                return Err(format!("batch power gap/collision: expected {}, got {}", expected, got));
+                return Err(format!(
+                    "batch power gap/collision: expected {}, got {}",
+                    expected, got
+                ));
             }
         }
 
@@ -1557,7 +1942,8 @@ impl CodegenLayer {
             return Err(format!(
                 "both `gates` ({}) and `gates_external` ({}) are non-empty \
                  (gate-group XOR violated, invariant 7)",
-                self.gates.len(), self.gates_external.len()
+                self.gates.len(),
+                self.gates_external.len()
             ));
         }
 
@@ -1567,7 +1953,9 @@ impl CodegenLayer {
                 return Err(format!(
                     "cache {}: output node {} out of range (arena len {}), \
                      invariant 9 (every cache must be claim-bearing with a valid output)",
-                    ci, (cache.out.0).0, n
+                    ci,
+                    (cache.out.0).0,
+                    n
                 ));
             }
             // Also check cache input nodes are in range.
@@ -1582,7 +1970,12 @@ impl CodegenLayer {
         }
 
         // --- Invariant 14: MaxQuadratic family operands + outputs are Domain::Base ---
-        for (gi, gate) in self.gates.iter().chain(self.gates_external.iter()).enumerate() {
+        for (gi, gate) in self
+            .gates
+            .iter()
+            .chain(self.gates_external.iter())
+            .enumerate()
+        {
             match &gate.kind {
                 GateKind::MaxQuadratic { flat, expr: _ }
                 | GateKind::EnforceSingleMaxQuadraticConstraint { flat, expr: _ } => {
@@ -1613,7 +2006,11 @@ impl CodegenLayer {
                         }
                     }
                 }
-                GateKind::EnforceConstraintsMaxQuadratic { quadratic, linear, constants: _ } => {
+                GateKind::EnforceConstraintsMaxQuadratic {
+                    quadratic,
+                    linear,
+                    constants: _,
+                } => {
                     for ((a, c), _) in quadratic {
                         for &nid in &[*a, *c] {
                             if (nid.0 as usize) >= n {
@@ -1709,13 +2106,21 @@ impl CodegenCircuit {
                     return Err(format!(
                         "layer {}: cache {}: output node {} out of range (arena len {}), \
                          invariant 9 (every cache must be claim-bearing with a valid output)",
-                        li, ci, (cache.out.0).0, n
+                        li,
+                        ci,
+                        (cache.out.0).0,
+                        n
                     ));
                 }
             }
 
             // --- Invariant 10: EnforceConstraintsMaxQuadratic batch fidelity ---
-            for (gi, gate) in layer.gates.iter().chain(layer.gates_external.iter()).enumerate() {
+            for (gi, gate) in layer
+                .gates
+                .iter()
+                .chain(layer.gates_external.iter())
+                .enumerate()
+            {
                 if matches!(gate.kind, GateKind::EnforceConstraintsMaxQuadratic { .. }) {
                     // Must have exactly num_challenges (== 1) batch terms.
                     if gate.batch_terms.len() != gate.num_challenges as usize {
@@ -1738,7 +2143,12 @@ impl CodegenCircuit {
             }
 
             // --- Invariant 12 (extended): ScratchPrefill address must be in the scratch map ---
-            for (gi, gate) in layer.gates.iter().chain(layer.gates_external.iter()).enumerate() {
+            for (gi, gate) in layer
+                .gates
+                .iter()
+                .chain(layer.gates_external.iter())
+                .enumerate()
+            {
                 for slot in &gate.dst {
                     if matches!(slot.forward_source, ForwardSource::ScratchPrefill) {
                         if !self.globals.scratch_space_mapping.contains_key(&slot.addr) {
@@ -1753,9 +2163,15 @@ impl CodegenCircuit {
             }
 
             // --- Invariant 14: MaxQuadratic family operands and outputs are Domain::Base ---
-            for (gi, gate) in layer.gates.iter().chain(layer.gates_external.iter()).enumerate() {
+            for (gi, gate) in layer
+                .gates
+                .iter()
+                .chain(layer.gates_external.iter())
+                .enumerate()
+            {
                 match &gate.kind {
-                    GateKind::MaxQuadratic { flat, expr: _ } | GateKind::EnforceSingleMaxQuadraticConstraint { flat, expr: _ } => {
+                    GateKind::MaxQuadratic { flat, expr: _ }
+                    | GateKind::EnforceSingleMaxQuadraticConstraint { flat, expr: _ } => {
                         // All operand NodeIds in flat must resolve to Domain::Base nodes.
                         for nid in max_quad_flat_nodes(flat) {
                             let dom = layer.arena.nodes[nid.0 as usize].domain();
@@ -1779,7 +2195,11 @@ impl CodegenCircuit {
                             }
                         }
                     }
-                    GateKind::EnforceConstraintsMaxQuadratic { quadratic, linear, constants: _ } => {
+                    GateKind::EnforceConstraintsMaxQuadratic {
+                        quadratic,
+                        linear,
+                        constants: _,
+                    } => {
                         // All sparse operand NodeIds must be Domain::Base.
                         let ln = layer.arena.nodes.len();
                         for ((a, c), _) in quadratic {
@@ -1882,12 +2302,6 @@ impl CodegenCircuit {
 // Top-level entry point: lower::<F>(artifact) -> Result<CodegenCircuit, String>
 // ===========================================================================
 
-/// Lower a full `GKRCircuitArtifact<F>` into a `CodegenCircuit`.
-///
-/// - Extracts globals from the artifact (no field-typed data; all structural fields).
-/// - Lowers each layer via `lower_layer` (infallible).
-/// - Applies the field-modular flat==expand(expr) check (invariant 13) to each layer.
-/// - Verifies the complete circuit (all 15 invariants via `CodegenCircuit::verify()`).
 /// Serialize a `CodegenCircuit` to a pretty-printed JSON string.
 ///
 /// Pretty printing is chosen over compact because this writer is intended for
@@ -1898,6 +2312,12 @@ pub fn to_json_string(c: &CodegenCircuit) -> Result<String, String> {
     serde_json::to_string_pretty(c).map_err(|e| e.to_string())
 }
 
+/// Lower a full `GKRCircuitArtifact<F>` into a `CodegenCircuit`.
+///
+/// - Extracts globals from the artifact (no field-typed data; all structural fields).
+/// - Lowers each layer via `lower_layer` (infallible).
+/// - Applies the field-modular flat==expand(expr) check (invariant 13) to each layer.
+/// - Verifies the complete circuit (all 15 invariants via `CodegenCircuit::verify()`).
 pub fn lower<F: PrimeField + PartialEq>(
     artifact: &super::GKRCircuitArtifact<F>,
 ) -> Result<CodegenCircuit, String> {
@@ -1953,8 +2373,15 @@ mod tests {
         use crate::definitions::gkr::RamWordRepresentation;
 
         let n = NodeId(0);
-        let lc = LinearComb { terms: vec![], constant: 0 };
-        let mq_flat = MaxQuadFlat { quadratic: vec![], linear: vec![], constant: 0 };
+        let lc = LinearComb {
+            terms: vec![],
+            constant: 0,
+        };
+        let mq_flat = MaxQuadFlat {
+            quadratic: vec![],
+            linear: vec![],
+            constant: 0,
+        };
 
         // A minimal NoFieldSpecialMemoryContributionRelation with all-constant fields
         // so it never touches any BaseLayerMemory addresses.
@@ -1965,17 +2392,32 @@ mod tests {
             value: RamWordRepresentation::Zero,
             timestamp_offset: 0,
         };
-        let mem_tuple = MemTupleDescriptor { descriptor: mem_desc, operands: vec![] };
-        let scl = SingleColumnLookup { column: lc.clone(), lookup_set_index: 0 };
-        let vl = VectorLookup { columns: vec![], lookup_set_index: 0 };
+        let mem_tuple = MemTupleDescriptor {
+            descriptor: mem_desc,
+            operands: vec![],
+        };
+        let scl = SingleColumnLookup {
+            column: lc.clone(),
+            lookup_set_index: 0,
+        };
+        let vl = VectorLookup {
+            columns: vec![],
+            lookup_set_index: 0,
+        };
 
         vec![
             // 1
             GateKind::LinearBaseField { input: lc.clone() },
             // 2
-            GateKind::MaxQuadratic { flat: mq_flat.clone(), expr: n },
+            GateKind::MaxQuadratic {
+                flat: mq_flat.clone(),
+                expr: n,
+            },
             // 3
-            GateKind::EnforceSingleMaxQuadraticConstraint { flat: mq_flat.clone(), expr: n },
+            GateKind::EnforceSingleMaxQuadraticConstraint {
+                flat: mq_flat.clone(),
+                expr: n,
+            },
             // 4
             GateKind::EnforceConstraintsMaxQuadratic {
                 quadratic: vec![],
@@ -1993,9 +2435,14 @@ mod tests {
                 input: [mem_tuple.clone(), mem_tuple.clone()],
             },
             // 9
-            GateKind::UnbalancedGrandProductWithCache { scalar: n, input: n },
+            GateKind::UnbalancedGrandProductWithCache {
+                scalar: n,
+                input: n,
+            },
             // 10
-            GateKind::MaterializeGrandProductTermExpression { input: mem_tuple.clone() },
+            GateKind::MaterializeGrandProductTermExpression {
+                input: mem_tuple.clone(),
+            },
             // 11
             GateKind::TrivialProduct { input: [n; 2] },
             // 12
@@ -2008,7 +2455,10 @@ mod tests {
             // 14
             GateKind::MaterializedVectorLookupInput { input: vl.clone() },
             // 15
-            GateKind::LookupWithCachedDensAndSetup { input: [n; 2], setup: [n; 2] },
+            GateKind::LookupWithCachedDensAndSetup {
+                input: [n; 2],
+                setup: [n; 2],
+            },
             // 16
             GateKind::LookupWithDensAndSetupExpressions {
                 input_addr: n,
@@ -2030,14 +2480,19 @@ mod tests {
             // 19
             GateKind::LookupPairFromMaterializedBaseInputs { input: [n; 2] },
             // 20
-            GateKind::LookupFromMaterializedBaseInputWithSetup { input: n, setup: [n; 2] },
+            GateKind::LookupFromMaterializedBaseInputWithSetup {
+                input: n,
+                setup: [n; 2],
+            },
             // 21
             GateKind::LookupUnbalancedPairWithMaterializedBaseInputs {
                 input: [n; 2],
                 remainder: n,
             },
             // 22
-            GateKind::LookupPairFromVectorInputs { input: [vl.clone(), vl.clone()] },
+            GateKind::LookupPairFromVectorInputs {
+                input: [vl.clone(), vl.clone()],
+            },
             // 23
             GateKind::LookupPairFromMaterializedVectorInputs { input: [n; 2] },
             // 24
@@ -2047,7 +2502,10 @@ mod tests {
                 setup_extra: vec![],
             },
             // 25
-            GateKind::LookupFromMaterializedVectorInputWithSetup { input: n, setup: [n; 2] },
+            GateKind::LookupFromMaterializedVectorInputWithSetup {
+                input: n,
+                setup: [n; 2],
+            },
             // 26
             GateKind::LookupPairFromCachedVectorInputs { input: [n; 2] },
             // 27
@@ -2161,7 +2619,10 @@ mod tests {
             .iter()
             .find(|g| matches!(g.kind, GateKind::CopyInBaseField { .. }))
             .unwrap();
-        assert!(matches!(copy_gate.dst[0].forward_source, ForwardSource::Computed));
+        assert!(matches!(
+            copy_gate.dst[0].forward_source,
+            ForwardSource::Computed
+        ));
         cg.verify().expect("verify");
     }
 
@@ -2186,7 +2647,10 @@ mod tests {
             .iter()
             .filter(|n| matches!(n, ExprNode::Place { addr, .. } if *addr == blw(0)))
             .count();
-        assert_eq!(blw0_places, 1, "blw(0) read by two gates must be a single Place node");
+        assert_eq!(
+            blw0_places, 1,
+            "blw(0) read by two gates must be a single Place node"
+        );
     }
 
     #[test]
@@ -2195,16 +2659,28 @@ mod tests {
         // (finding 6): a same-layer produced address resolves to its GateOutput, not a
         // fresh Place; an external address resolves to a Place.
         let mut b = ArenaBuilder::default();
-        let cache_addr = GKRAddress::Cached { layer: 0, offset: 0 };
+        let cache_addr = GKRAddress::Cached {
+            layer: 0,
+            offset: 0,
+        };
         let produced = b.add_gate_output(ProducerId::Cache(0), 0, Domain::Ext, cache_addr);
         // a consumer reading the cache address must get the SAME node (the producer).
         let consumed = b.resolve(cache_addr, Domain::Ext);
-        assert_eq!(consumed, produced, "intra-layer address must resolve to its producer");
-        assert!(matches!(b.nodes[consumed.0 as usize], ExprNode::GateOutput { .. }));
+        assert_eq!(
+            consumed, produced,
+            "intra-layer address must resolve to its producer"
+        );
+        assert!(matches!(
+            b.nodes[consumed.0 as usize],
+            ExprNode::GateOutput { .. }
+        ));
         // an external address has no producer -> a Place leaf, a distinct node.
         let external = b.resolve(blw(9), Domain::Base);
         assert_ne!(external, produced);
-        assert!(matches!(b.nodes[external.0 as usize], ExprNode::Place { .. }));
+        assert!(matches!(
+            b.nodes[external.0 as usize],
+            ExprNode::Place { .. }
+        ));
     }
 
     // -----------------------------------------------------------------------
@@ -2256,79 +2732,265 @@ mod tests {
             lookup_set_index: 0,
         };
 
-        let m_base_1_1 = RelationMeta { outputs: 1, num_challenges: 1, out_domain: Domain::Base };
-        let m_base_0_1 = RelationMeta { outputs: 0, num_challenges: 1, out_domain: Domain::Base };
-        let m_ext_1_1  = RelationMeta { outputs: 1, num_challenges: 1, out_domain: Domain::Ext };
-        let m_ext_2_2  = RelationMeta { outputs: 2, num_challenges: 2, out_domain: Domain::Ext };
+        let m_base_1_1 = RelationMeta {
+            outputs: 1,
+            num_challenges: 1,
+            out_domain: Domain::Base,
+        };
+        let m_base_0_1 = RelationMeta {
+            outputs: 0,
+            num_challenges: 1,
+            out_domain: Domain::Base,
+        };
+        let m_ext_1_1 = RelationMeta {
+            outputs: 1,
+            num_challenges: 1,
+            out_domain: Domain::Ext,
+        };
+        let m_ext_2_2 = RelationMeta {
+            outputs: 2,
+            num_challenges: 2,
+            out_domain: Domain::Ext,
+        };
 
         vec![
             // --- class (1, 1, Base) ---
-            (R::LinearBaseFieldRelation { input: lin.clone(), output: out0 }, m_base_1_1),
-            (R::MaxQuadratic { input: mq.clone(), expression: E::Constant(0), output: out0 }, m_base_1_1),
-            (R::CopyInBaseField { input: a0, output: out0 }, m_base_1_1),
-            (R::MaterializeSingleLookupInput { input: scl.clone(), output: out0, range_check_width: 16 }, m_base_1_1),
-            // --- class (0, 1, Base) ---
-            (R::EnforceSingleMaxQuadraticConstraint {
-                input: mq.clone(),
-                expression: E::Constant(0),
-            }, m_base_0_1),
-            (R::EnforceConstraintsMaxQuadratic {
-                input: NoFieldMaxQuadraticConstraintsGKRRelation {
-                    quadratic_terms: vec![].into_boxed_slice(),
-                    linear_terms: vec![].into_boxed_slice(),
-                    constants: vec![].into_boxed_slice(),
+            (
+                R::LinearBaseFieldRelation {
+                    input: lin.clone(),
+                    output: out0,
                 },
-            }, m_base_0_1),
+                m_base_1_1,
+            ),
+            (
+                R::MaxQuadratic {
+                    input: mq.clone(),
+                    expression: E::Constant(0),
+                    output: out0,
+                },
+                m_base_1_1,
+            ),
+            (
+                R::CopyInBaseField {
+                    input: a0,
+                    output: out0,
+                },
+                m_base_1_1,
+            ),
+            (
+                R::MaterializeSingleLookupInput {
+                    input: scl.clone(),
+                    output: out0,
+                    range_check_width: 16,
+                },
+                m_base_1_1,
+            ),
+            // --- class (0, 1, Base) ---
+            (
+                R::EnforceSingleMaxQuadraticConstraint {
+                    input: mq.clone(),
+                    expression: E::Constant(0),
+                },
+                m_base_0_1,
+            ),
+            (
+                R::EnforceConstraintsMaxQuadratic {
+                    input: NoFieldMaxQuadraticConstraintsGKRRelation {
+                        quadratic_terms: vec![].into_boxed_slice(),
+                        linear_terms: vec![].into_boxed_slice(),
+                        constants: vec![].into_boxed_slice(),
+                    },
+                },
+                m_base_0_1,
+            ),
             // --- class (1, 1, Ext) ---
-            (R::CopyInExtensionField { input: a0, output: out0 }, m_ext_1_1),
-            (R::InitialGrandProductFromCaches { input: [a0, a1], output: out0 }, m_ext_1_1),
-            (R::InitialGrandProductWithoutCaches {
-                input: [mem_desc.clone(), mem_desc.clone()],
-                output: out0,
-            }, m_ext_1_1),
-            (R::UnbalancedGrandProductWithCache { scalar: a0, input: a1, output: out0 }, m_ext_1_1),
+            (
+                R::CopyInExtensionField {
+                    input: a0,
+                    output: out0,
+                },
+                m_ext_1_1,
+            ),
+            (
+                R::InitialGrandProductFromCaches {
+                    input: [a0, a1],
+                    output: out0,
+                },
+                m_ext_1_1,
+            ),
+            (
+                R::InitialGrandProductWithoutCaches {
+                    input: [mem_desc.clone(), mem_desc.clone()],
+                    output: out0,
+                },
+                m_ext_1_1,
+            ),
+            (
+                R::UnbalancedGrandProductWithCache {
+                    scalar: a0,
+                    input: a1,
+                    output: out0,
+                },
+                m_ext_1_1,
+            ),
             // MaterializeGrandProductTermExpression: panicking variant — still covered by metadata
-            (R::MaterializeGrandProductTermExpression { input: mem_desc.clone(), output: out0 }, m_ext_1_1),
-            (R::TrivialProduct { input: [a0, a1], output: out0 }, m_ext_1_1),
-            (R::MaskIntoIdentityProduct { input: a0, mask: a1, output: out0 }, m_ext_1_1),
-            (R::MaterializedVectorLookupInput { input: vl.clone(), output: out0 }, m_ext_1_1),
-            (R::InitsOrTeardownsInitialPair {
-                timestamp_and_value: InitsOrTeardownsTimestampAndValue::Init,
-                setup: [a0, a1],
-                output: out0,
-                set_idxes: [0, 1],
-            }, m_ext_1_1),
+            (
+                R::MaterializeGrandProductTermExpression {
+                    input: mem_desc.clone(),
+                    output: out0,
+                },
+                m_ext_1_1,
+            ),
+            (
+                R::TrivialProduct {
+                    input: [a0, a1],
+                    output: out0,
+                },
+                m_ext_1_1,
+            ),
+            (
+                R::MaskIntoIdentityProduct {
+                    input: a0,
+                    mask: a1,
+                    output: out0,
+                },
+                m_ext_1_1,
+            ),
+            (
+                R::MaterializedVectorLookupInput {
+                    input: vl.clone(),
+                    output: out0,
+                },
+                m_ext_1_1,
+            ),
+            (
+                R::InitsOrTeardownsInitialPair {
+                    timestamp_and_value: InitsOrTeardownsTimestampAndValue::Init,
+                    setup: [a0, a1],
+                    output: out0,
+                    set_idxes: [0, 1],
+                },
+                m_ext_1_1,
+            ),
             // --- class (2, 2, Ext) ---
-            (R::LookupWithCachedDensAndSetup { input: [a0, a1], setup: [a0, a1], output: [out0, out1] }, m_ext_2_2),
-            (R::LookupWithDensAndSetupExpressions {
-                input: (a0, vl.clone()),
-                setup: (a0, vec![a1].into_boxed_slice()),
-                output: [out0, out1],
-            }, m_ext_2_2),
-            (R::LookupWithDensAndCachedSetup {
-                input: (a0, vl.clone()),
-                setup: (a0, a1),
-                output: [out0, out1],
-            }, m_ext_2_2),
-            (R::LookupPairFromBaseInputs { input: [scl.clone(), scl.clone()], output: [out0, out1], range_check_width: 16 }, m_ext_2_2),
-            (R::LookupPairFromMaterializedBaseInputs { input: [a0, a1], output: [out0, out1] }, m_ext_2_2),
-            (R::LookupFromMaterializedBaseInputWithSetup { input: a0, setup: [a0, a1], output: [out0, out1] }, m_ext_2_2),
-            (R::LookupUnbalancedPairWithMaterializedBaseInputs { input: [a0, a1], remainder: a0, output: [out0, out1] }, m_ext_2_2),
-            (R::LookupPairFromVectorInputs { input: [vl.clone(), vl.clone()], output: [out0, out1] }, m_ext_2_2),
-            (R::LookupPairFromMaterializedVectorInputs { input: [a0, a1], output: [out0, out1] }, m_ext_2_2),
+            (
+                R::LookupWithCachedDensAndSetup {
+                    input: [a0, a1],
+                    setup: [a0, a1],
+                    output: [out0, out1],
+                },
+                m_ext_2_2,
+            ),
+            (
+                R::LookupWithDensAndSetupExpressions {
+                    input: (a0, vl.clone()),
+                    setup: (a0, vec![a1].into_boxed_slice()),
+                    output: [out0, out1],
+                },
+                m_ext_2_2,
+            ),
+            (
+                R::LookupWithDensAndCachedSetup {
+                    input: (a0, vl.clone()),
+                    setup: (a0, a1),
+                    output: [out0, out1],
+                },
+                m_ext_2_2,
+            ),
+            (
+                R::LookupPairFromBaseInputs {
+                    input: [scl.clone(), scl.clone()],
+                    output: [out0, out1],
+                    range_check_width: 16,
+                },
+                m_ext_2_2,
+            ),
+            (
+                R::LookupPairFromMaterializedBaseInputs {
+                    input: [a0, a1],
+                    output: [out0, out1],
+                },
+                m_ext_2_2,
+            ),
+            (
+                R::LookupFromMaterializedBaseInputWithSetup {
+                    input: a0,
+                    setup: [a0, a1],
+                    output: [out0, out1],
+                },
+                m_ext_2_2,
+            ),
+            (
+                R::LookupUnbalancedPairWithMaterializedBaseInputs {
+                    input: [a0, a1],
+                    remainder: a0,
+                    output: [out0, out1],
+                },
+                m_ext_2_2,
+            ),
+            (
+                R::LookupPairFromVectorInputs {
+                    input: [vl.clone(), vl.clone()],
+                    output: [out0, out1],
+                },
+                m_ext_2_2,
+            ),
+            (
+                R::LookupPairFromMaterializedVectorInputs {
+                    input: [a0, a1],
+                    output: [out0, out1],
+                },
+                m_ext_2_2,
+            ),
             // LookupFromVectorInputWithSetup: panicking variant — still covered by metadata
-            (R::LookupFromVectorInputWithSetup {
-                input: vl.clone(),
-                setup: (a0, vec![a1].into_boxed_slice()),
-                output: [out0, out1],
-            }, m_ext_2_2),
-            (R::LookupFromMaterializedVectorInputWithSetup { input: a0, setup: [a0, a1], output: [out0, out1] }, m_ext_2_2),
-            (R::LookupPairFromCachedVectorInputs { input: [a0, a1], output: [out0, out1] }, m_ext_2_2),
+            (
+                R::LookupFromVectorInputWithSetup {
+                    input: vl.clone(),
+                    setup: (a0, vec![a1].into_boxed_slice()),
+                    output: [out0, out1],
+                },
+                m_ext_2_2,
+            ),
+            (
+                R::LookupFromMaterializedVectorInputWithSetup {
+                    input: a0,
+                    setup: [a0, a1],
+                    output: [out0, out1],
+                },
+                m_ext_2_2,
+            ),
+            (
+                R::LookupPairFromCachedVectorInputs {
+                    input: [a0, a1],
+                    output: [out0, out1],
+                },
+                m_ext_2_2,
+            ),
             // LookupUnbalancedPairWithVectorInputs: panicking variant — still covered by metadata
-            (R::LookupUnbalancedPairWithVectorInputs { input: [a0, a1], remainder: vl.clone(), output: [out0, out1] }, m_ext_2_2),
+            (
+                R::LookupUnbalancedPairWithVectorInputs {
+                    input: [a0, a1],
+                    remainder: vl.clone(),
+                    output: [out0, out1],
+                },
+                m_ext_2_2,
+            ),
             // LookupUnbalancedPairWithMaterializedVectorInputs: panicking variant — still covered by metadata
-            (R::LookupUnbalancedPairWithMaterializedVectorInputs { input: [a0, a1], remainder: a0, output: [out0, out1] }, m_ext_2_2),
-            (R::AggregateLookupRationalPair { input: [[a0, a1], [a0, a1]], output: [out0, out1] }, m_ext_2_2),
+            (
+                R::LookupUnbalancedPairWithMaterializedVectorInputs {
+                    input: [a0, a1],
+                    remainder: a0,
+                    output: [out0, out1],
+                },
+                m_ext_2_2,
+            ),
+            (
+                R::AggregateLookupRationalPair {
+                    input: [[a0, a1], [a0, a1]],
+                    output: [out0, out1],
+                },
+                m_ext_2_2,
+            ),
         ]
     }
 
@@ -2403,8 +3065,14 @@ mod tests {
             gates_with_external_connections: vec![],
             cached_relations: BTreeMap::new(),
             gates: vec![
-                GateArtifacts { output_layer: 1, enforced_relation: rel_a },
-                GateArtifacts { output_layer: 1, enforced_relation: rel_b },
+                GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: rel_a,
+                },
+                GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: rel_b,
+                },
             ],
             intermediate_layer_width: Some(2),
         }
@@ -2419,7 +3087,10 @@ mod tests {
         // 1-challenge gate (CopyInBaseField) + 2-challenge (two-output) gate =>
         // powers {0, 1, 2} with no gaps.
         let layer = two_gate_layer(
-            NoFieldGKRRelation::CopyInBaseField { input: blw(0), output: inner(1, 0) },
+            NoFieldGKRRelation::CopyInBaseField {
+                input: blw(0),
+                output: inner(1, 0),
+            },
             NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs {
                 input: [blw(1), blw(2)],
                 output: [inner(1, 1), inner(1, 2)],
@@ -2438,9 +3109,7 @@ mod tests {
 
     #[test]
     fn batch_powers_count_no_output_constraint_gate() {
-        use super::super::{
-            NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E,
-        };
+        use super::super::{NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E};
         // EnforceSingleMaxQuadraticConstraint: outputs=0, num_challenges=1.
         // Must produce exactly 1 batch_term (power 0) even though dst is empty.
         let mq = NoFieldMaxQuadraticGKRRelation {
@@ -2454,9 +3123,13 @@ mod tests {
         });
         let cg = lower_layer(&layer, &BTreeMap::new());
         let g = &cg.gates[0];
-        assert!(g.dst.is_empty(), "EnforceSingleMaxQuadraticConstraint has no output slots");
+        assert!(
+            g.dst.is_empty(),
+            "EnforceSingleMaxQuadraticConstraint has no output slots"
+        );
         assert_eq!(
-            g.batch_terms.len(), 1,
+            g.batch_terms.len(),
+            1,
             "no-output constraint gate must have exactly 1 batch_term (from num_challenges=1)"
         );
         assert_eq!(g.batch_terms[0].power, 0);
@@ -2472,10 +3145,19 @@ mod tests {
     fn lowers_trivial_product_two_inputs() {
         let layer = single_gate_layer(NoFieldGKRRelation::TrivialProduct {
             input: [
-                GKRAddress::InnerLayer { layer: 0, offset: 0 },
-                GKRAddress::InnerLayer { layer: 0, offset: 1 },
+                GKRAddress::InnerLayer {
+                    layer: 0,
+                    offset: 0,
+                },
+                GKRAddress::InnerLayer {
+                    layer: 0,
+                    offset: 1,
+                },
             ],
-            output: GKRAddress::InnerLayer { layer: 1, offset: 0 },
+            output: GKRAddress::InnerLayer {
+                layer: 1,
+                offset: 0,
+            },
         });
         let cg = lower_layer(&layer, &BTreeMap::new());
         let g = &cg.gates[0];
@@ -2492,7 +3174,10 @@ mod tests {
         });
         let cg = lower_layer(&layer, &BTreeMap::new());
         let g = &cg.gates[0];
-        assert!(matches!(g.kind, GateKind::InitialGrandProductFromCaches { .. }));
+        assert!(matches!(
+            g.kind,
+            GateKind::InitialGrandProductFromCaches { .. }
+        ));
         assert_eq!(g.dst.len(), 1);
         cg.verify().unwrap();
     }
@@ -2506,7 +3191,10 @@ mod tests {
         });
         let cg = lower_layer(&layer, &BTreeMap::new());
         let g = &cg.gates[0];
-        assert!(matches!(g.kind, GateKind::UnbalancedGrandProductWithCache { .. }));
+        assert!(matches!(
+            g.kind,
+            GateKind::UnbalancedGrandProductWithCache { .. }
+        ));
         assert_eq!(g.dst.len(), 1);
         cg.verify().unwrap();
     }
@@ -2530,12 +3218,12 @@ mod tests {
         assert!(matches!(g.kind, GateKind::MaskIntoIdentityProduct { .. }));
         assert_eq!(g.dst.len(), 1);
         // blw(0) is the input -> Ext; blw(1) is the mask -> Base.
-        let has_ext_place = cg.arena.nodes.iter().any(|n| {
-            matches!(n, ExprNode::Place { addr, domain: Domain::Ext, .. } if *addr == blw(0))
-        });
-        let has_base_place = cg.arena.nodes.iter().any(|n| {
-            matches!(n, ExprNode::Place { addr, domain: Domain::Base, .. } if *addr == blw(1))
-        });
+        let has_ext_place = cg.arena.nodes.iter().any(
+            |n| matches!(n, ExprNode::Place { addr, domain: Domain::Ext, .. } if *addr == blw(0)),
+        );
+        let has_base_place = cg.arena.nodes.iter().any(
+            |n| matches!(n, ExprNode::Place { addr, domain: Domain::Base, .. } if *addr == blw(1)),
+        );
         assert!(has_ext_place, "input (blw(0)) must be Ext-domain Place");
         assert!(has_base_place, "mask (blw(1)) must be Base-domain Place");
         cg.verify().unwrap();
@@ -2547,7 +3235,7 @@ mod tests {
 
     #[test]
     fn lowers_materialize_single_lookup_input() {
-        use super::super::{NoFieldGKRRelation as R};
+        use super::super::NoFieldGKRRelation as R;
         use crate::definitions::gkr::{NoFieldLinearRelation, NoFieldSingleColumnLookupRelation};
 
         // Build a 2-term linear relation: 1*blw(0) + 2*blw(1) + 0
@@ -2555,7 +3243,10 @@ mod tests {
             linear_terms: vec![(1u32, blw(0)), (2u32, blw(1))].into_boxed_slice(),
             constant: 0,
         };
-        let scl = NoFieldSingleColumnLookupRelation { input: lin, lookup_set_index: 7 };
+        let scl = NoFieldSingleColumnLookupRelation {
+            input: lin,
+            lookup_set_index: 7,
+        };
         let output = inner(1, 0);
         let layer = single_gate_layer(R::MaterializeSingleLookupInput {
             input: scl,
@@ -2565,13 +3256,22 @@ mod tests {
         let cg = lower_layer(&layer, &BTreeMap::new());
         let g = &cg.gates[0];
         assert!(
-            matches!(g.kind, GateKind::MaterializeSingleLookupInput { range_check_width: 16, .. }),
+            matches!(
+                g.kind,
+                GateKind::MaterializeSingleLookupInput {
+                    range_check_width: 16,
+                    ..
+                }
+            ),
             "expected MaterializeSingleLookupInput with range_check_width=16, got {:?}",
             g.kind
         );
         assert_eq!(g.dst.len(), 1);
         // lookup_set_index must be preserved
-        if let GateKind::MaterializeSingleLookupInput { input: ref scl_ir, .. } = g.kind {
+        if let GateKind::MaterializeSingleLookupInput {
+            input: ref scl_ir, ..
+        } = g.kind
+        {
             assert_eq!(scl_ir.lookup_set_index, 7);
             assert_eq!(scl_ir.column.terms.len(), 2);
         }
@@ -2586,7 +3286,7 @@ mod tests {
 
     #[test]
     fn lowers_materialized_vector_lookup_input() {
-        use super::super::{NoFieldGKRRelation as R};
+        use super::super::NoFieldGKRRelation as R;
         use crate::definitions::gkr::{NoFieldLinearRelation, NoFieldVectorLookupRelation};
 
         // Build a one-column vector lookup: 1*blw(0) + 0
@@ -2599,10 +3299,7 @@ mod tests {
             lookup_set_index: 3,
         };
         let output = inner(1, 0);
-        let layer = single_gate_layer(R::MaterializedVectorLookupInput {
-            input: vl,
-            output,
-        });
+        let layer = single_gate_layer(R::MaterializedVectorLookupInput { input: vl, output });
         let cg = lower_layer(&layer, &BTreeMap::new());
         let g = &cg.gates[0];
         assert!(
@@ -2649,14 +3346,29 @@ mod tests {
         // The input address (inner(0,5)) has no intra-layer producer, so it becomes a
         // Place leaf.  That leaf must be Domain::Ext because the copy is extension-field.
         let has_ext_place = cg.arena.nodes.iter().any(|n| {
-            matches!(n, ExprNode::Place { domain: Domain::Ext, .. })
+            matches!(
+                n,
+                ExprNode::Place {
+                    domain: Domain::Ext,
+                    ..
+                }
+            )
         });
         assert!(has_ext_place, "ext copy input must be an Ext-domain Place");
         // Symmetry: no Base Place should exist in a pure ext-copy layer.
         let has_base_place = cg.arena.nodes.iter().any(|n| {
-            matches!(n, ExprNode::Place { domain: Domain::Base, .. })
+            matches!(
+                n,
+                ExprNode::Place {
+                    domain: Domain::Base,
+                    ..
+                }
+            )
         });
-        assert!(!has_base_place, "ext copy layer must not produce Base-domain Place nodes");
+        assert!(
+            !has_base_place,
+            "ext copy layer must not produce Base-domain Place nodes"
+        );
         cg.verify().expect("verify");
     }
 
@@ -2667,9 +3379,18 @@ mod tests {
         // every operand address is a base-layer witness, so all Place nodes must be Base.
         let cg = lower_layer(&sample_layer(), &BTreeMap::new());
         let has_ext_place = cg.arena.nodes.iter().any(|n| {
-            matches!(n, ExprNode::Place { domain: Domain::Ext, .. })
+            matches!(
+                n,
+                ExprNode::Place {
+                    domain: Domain::Ext,
+                    ..
+                }
+            )
         });
-        assert!(!has_ext_place, "max-quad operands must all be Base-domain Place nodes");
+        assert!(
+            !has_ext_place,
+            "max-quad operands must all be Base-domain Place nodes"
+        );
         cg.verify().expect("verify");
     }
 
@@ -2688,8 +3409,16 @@ mod tests {
         let GateKind::LookupPairFromMaterializedBaseInputs { input } = &g.kind else {
             panic!("wrong gate kind");
         };
-        assert_eq!(cg.arena.nodes[input[0].0 as usize].domain(), Domain::Base, "input[0] must be Base");
-        assert_eq!(cg.arena.nodes[input[1].0 as usize].domain(), Domain::Base, "input[1] must be Base");
+        assert_eq!(
+            cg.arena.nodes[input[0].0 as usize].domain(),
+            Domain::Base,
+            "input[0] must be Base"
+        );
+        assert_eq!(
+            cg.arena.nodes[input[1].0 as usize].domain(),
+            Domain::Base,
+            "input[1] must be Base"
+        );
         assert_eq!(g.dst.len(), 2);
         assert_ne!(
             g.dst[0].node.0, g.dst[1].node.0,
@@ -2712,10 +3441,26 @@ mod tests {
         let GateKind::LookupWithCachedDensAndSetup { input, setup } = &g.kind else {
             panic!("wrong gate kind");
         };
-        assert_eq!(cg.arena.nodes[input[0].0 as usize].domain(), Domain::Base, "input[0] must be Base");
-        assert_eq!(cg.arena.nodes[input[1].0 as usize].domain(), Domain::Ext, "input[1] must be Ext");
-        assert_eq!(cg.arena.nodes[setup[0].0 as usize].domain(), Domain::Base, "setup[0] must be Base");
-        assert_eq!(cg.arena.nodes[setup[1].0 as usize].domain(), Domain::Ext, "setup[1] must be Ext");
+        assert_eq!(
+            cg.arena.nodes[input[0].0 as usize].domain(),
+            Domain::Base,
+            "input[0] must be Base"
+        );
+        assert_eq!(
+            cg.arena.nodes[input[1].0 as usize].domain(),
+            Domain::Ext,
+            "input[1] must be Ext"
+        );
+        assert_eq!(
+            cg.arena.nodes[setup[0].0 as usize].domain(),
+            Domain::Base,
+            "setup[0] must be Base"
+        );
+        assert_eq!(
+            cg.arena.nodes[setup[1].0 as usize].domain(),
+            Domain::Ext,
+            "setup[1] must be Ext"
+        );
         assert_eq!(g.dst.len(), 2);
         cg.verify().unwrap();
     }
@@ -2786,8 +3531,11 @@ mod tests {
         let layer = cached_layer(out_addr, rel);
         let cg = lower_layer(&layer, &BTreeMap::new());
         assert_eq!(cg.caches.len(), 1);
-        let CacheKind::SingleColumnLookup { lookup_set_index, range_check_width, .. } =
-            &cg.caches[0].kind
+        let CacheKind::SingleColumnLookup {
+            lookup_set_index,
+            range_check_width,
+            ..
+        } = &cg.caches[0].kind
         else {
             panic!("expected SingleColumnLookup kind");
         };
@@ -2821,7 +3569,11 @@ mod tests {
         let layer = cached_layer(out_addr, rel);
         let cg = lower_layer(&layer, &BTreeMap::new());
         assert_eq!(cg.caches.len(), 1);
-        let CacheKind::VectorizedLookup { columns, lookup_set_index } = &cg.caches[0].kind else {
+        let CacheKind::VectorizedLookup {
+            columns,
+            lookup_set_index,
+        } = &cg.caches[0].kind
+        else {
             panic!("expected VectorizedLookup kind");
         };
         assert_eq!(columns.len(), 2);
@@ -2870,7 +3622,10 @@ mod tests {
     fn computed_gate_output_footprint_is_input_union() {
         let layer = single_gate_layer(NoFieldGKRRelation::CopyInBaseField {
             input: GKRAddress::BaseLayerWitness(7),
-            output: GKRAddress::InnerLayer { layer: 1, offset: 0 },
+            output: GKRAddress::InnerLayer {
+                layer: 1,
+                offset: 0,
+            },
         });
         let cg = lower_layer(&layer, &BTreeMap::new());
         let (i, _) = cg
@@ -2895,7 +3650,10 @@ mod tests {
                 GKRAddress::BaseLayerWitness(3),
                 GKRAddress::BaseLayerWitness(8),
             ],
-            output: GKRAddress::InnerLayer { layer: 1, offset: 0 },
+            output: GKRAddress::InnerLayer {
+                layer: 1,
+                offset: 0,
+            },
         });
         let cg = lower_layer(&layer, &BTreeMap::new());
         let (i, _) = cg
@@ -2906,8 +3664,14 @@ mod tests {
             .find(|(_, n)| matches!(n, ExprNode::GateOutput { .. }))
             .unwrap();
         let fp = &cg.arena.hints[i].footprint;
-        assert!(fp.contains(&GKRAddress::BaseLayerWitness(3)), "footprint must union operand 0");
-        assert!(fp.contains(&GKRAddress::BaseLayerWitness(8)), "footprint must union operand 1");
+        assert!(
+            fp.contains(&GKRAddress::BaseLayerWitness(3)),
+            "footprint must union operand 0"
+        );
+        assert!(
+            fp.contains(&GKRAddress::BaseLayerWitness(8)),
+            "footprint must union operand 1"
+        );
     }
 
     #[test]
@@ -2947,14 +3711,10 @@ mod tests {
     ///              constant  = 3
     /// expression:  Product(Place(blw(0)), Place(blw(1))) + Constant(3)
     fn matching_max_quadratic() -> NoFieldGKRRelation {
-        use super::super::{
-            NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E,
-        };
+        use super::super::{NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E};
         let mq = NoFieldMaxQuadraticGKRRelation {
-            quadratic_terms: vec![
-                (blw(0), vec![(1u32, blw(1))].into_boxed_slice()),
-            ]
-            .into_boxed_slice(),
+            quadratic_terms: vec![(blw(0), vec![(1u32, blw(1))].into_boxed_slice())]
+                .into_boxed_slice(),
             linear_terms: vec![].into_boxed_slice(),
             constant: 3,
         };
@@ -2972,15 +3732,11 @@ mod tests {
     /// Build a `MaxQuadratic` relation whose `flat` and `expression` DISAGREE:
     /// flat says coefficient 1 on x0*x1, but expression uses coefficient 2.
     fn mismatched_max_quadratic() -> NoFieldGKRRelation {
-        use super::super::{
-            NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E,
-        };
+        use super::super::{NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E};
         // flat: 1 * x0 * x1 + 3
         let mq = NoFieldMaxQuadraticGKRRelation {
-            quadratic_terms: vec![
-                (blw(0), vec![(1u32, blw(1))].into_boxed_slice()),
-            ]
-            .into_boxed_slice(),
+            quadratic_terms: vec![(blw(0), vec![(1u32, blw(1))].into_boxed_slice())]
+                .into_boxed_slice(),
             linear_terms: vec![].into_boxed_slice(),
             constant: 3,
         };
@@ -3043,9 +3799,7 @@ mod tests {
     /// and the expr is a negated-ish product. This verifies no raw-u32 multiply occurs.
     #[test]
     fn field_modular_large_coefficients_do_not_falsely_reject() {
-        use super::super::{
-            NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E,
-        };
+        use super::super::{NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E};
         // ORDER - 1 as a coefficient: this is -1 mod p in BabyBear.
         // Use it as a linear coefficient in both flat and expression.
         // Expression: Sum of one Place scaled by (ORDER-1) is not directly expressible
@@ -3181,7 +3935,9 @@ mod tests {
     #[test]
     fn inv7_gate_group_xor_valid_layer_passes() {
         let layer = valid_copy_layer();
-        layer.verify().expect("valid single-group layer must pass inv 7");
+        layer
+            .verify()
+            .expect("valid single-group layer must pass inv 7");
     }
 
     // -- Invariant 9: every cache is claim-bearing (has a valid output node) --
@@ -3193,7 +3949,13 @@ mod tests {
         layer.caches.push(CodegenCache {
             kind: CacheKind::VectorizedLookupSetup,
             inputs: vec![],
-            out: (NodeId(9999), GKRAddress::Cached { layer: 0, offset: 0 }),
+            out: (
+                NodeId(9999),
+                GKRAddress::Cached {
+                    layer: 0,
+                    offset: 0,
+                },
+            ),
         });
         assert!(
             layer.verify().is_err(),
@@ -3205,7 +3967,10 @@ mod tests {
     fn inv9_cache_valid_passes() {
         use crate::definitions::gkr::NoFieldLinearRelation;
         let dep = blw(5);
-        let out_addr = GKRAddress::Cached { layer: 2, offset: 0 };
+        let out_addr = GKRAddress::Cached {
+            layer: 2,
+            offset: 0,
+        };
         let relation = NoFieldSingleColumnLookupRelation {
             input: NoFieldLinearRelation {
                 linear_terms: vec![(1u32, dep)].into_boxed_slice(),
@@ -3231,7 +3996,8 @@ mod tests {
         let rel = NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
             input: NoFieldMaxQuadraticConstraintsGKRRelation {
                 quadratic_terms: vec![].into_boxed_slice(),
-                linear_terms: vec![(blw(0), vec![(1u32, 0usize)].into_boxed_slice())].into_boxed_slice(),
+                linear_terms: vec![(blw(0), vec![(1u32, 0usize)].into_boxed_slice())]
+                    .into_boxed_slice(),
                 constants: vec![].into_boxed_slice(),
             },
         };
@@ -3251,12 +4017,15 @@ mod tests {
         let rel = NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
             input: NoFieldMaxQuadraticConstraintsGKRRelation {
                 quadratic_terms: vec![].into_boxed_slice(),
-                linear_terms: vec![(blw(0), vec![(1u32, 0usize)].into_boxed_slice())].into_boxed_slice(),
+                linear_terms: vec![(blw(0), vec![(1u32, 0usize)].into_boxed_slice())]
+                    .into_boxed_slice(),
                 constants: vec![].into_boxed_slice(),
             },
         };
         let layer = lower_layer(&single_gate_layer(rel), &BTreeMap::new());
-        layer.verify().expect("valid EnforceConstraintsMaxQuadratic layer must pass");
+        layer
+            .verify()
+            .expect("valid EnforceConstraintsMaxQuadratic layer must pass");
     }
 
     // -- Invariant 11: globals sufficiency (scratch maps are consistent inverses) --
@@ -3281,7 +4050,9 @@ mod tests {
         let addr = blw(42);
         circuit.globals.scratch_space_mapping.insert(addr, 7);
         circuit.globals.scratch_space_mapping_rev.insert(7, addr);
-        circuit.verify().expect("consistent scratch maps must pass inv 11");
+        circuit
+            .verify()
+            .expect("consistent scratch maps must pass inv 11");
     }
 
     // -- Invariant 12: ScratchPrefill output has no forward in-edges / only MaxQuadratic --
@@ -3302,7 +4073,9 @@ mod tests {
         let mut scratch = BTreeMap::new();
         scratch.insert(inner(1, 1), 0usize);
         let layer = lower_layer(&sample_layer(), &scratch);
-        layer.verify().expect("ScratchPrefill on MaxQuadratic must pass inv 12");
+        layer
+            .verify()
+            .expect("ScratchPrefill on MaxQuadratic must pass inv 12");
     }
 
     // -- Invariant 14: MaxQuadratic operands are Domain::Base --
@@ -3310,9 +4083,7 @@ mod tests {
     #[test]
     fn inv14_maxquad_output_wrong_domain_detected() {
         // Build a MaxQuadratic layer and mutate the GateOutput node's domain to Ext.
-        use super::super::{
-            NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E,
-        };
+        use super::super::{NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E};
         let mq = NoFieldMaxQuadraticGKRRelation {
             quadratic_terms: vec![].into_boxed_slice(),
             linear_terms: vec![(1u32, blw(0))].into_boxed_slice(),
@@ -3342,9 +4113,7 @@ mod tests {
 
     #[test]
     fn inv14_maxquad_base_domain_passes() {
-        use super::super::{
-            NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E,
-        };
+        use super::super::{NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E};
         let mq = NoFieldMaxQuadraticGKRRelation {
             quadratic_terms: vec![].into_boxed_slice(),
             linear_terms: vec![(1u32, blw(0))].into_boxed_slice(),
@@ -3357,15 +4126,15 @@ mod tests {
             output: inner(1, 0),
         };
         let layer = lower_layer(&single_gate_layer(rel), &BTreeMap::new());
-        layer.verify().expect("MaxQuadratic with Base domain must pass inv 14");
+        layer
+            .verify()
+            .expect("MaxQuadratic with Base domain must pass inv 14");
     }
 
     /// Verify that EnforceSingleMaxQuadraticConstraint gates are also checked.
     #[test]
     fn enforce_single_max_quadratic_constraint_checked() {
-        use super::super::{
-            NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E,
-        };
+        use super::super::{NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E};
         // matching: flat = x0 + 5, expr = Place(blw(0)) + Constant(5)
         let mq = NoFieldMaxQuadraticGKRRelation {
             quadratic_terms: vec![].into_boxed_slice(),
@@ -3405,15 +4174,20 @@ mod tests {
         let rel = NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
             input: NoFieldMaxQuadraticConstraintsGKRRelation {
                 quadratic_terms: vec![].into_boxed_slice(),
-                linear_terms: vec![(blw(0), vec![(1u32, 0usize)].into_boxed_slice())].into_boxed_slice(),
+                linear_terms: vec![(blw(0), vec![(1u32, 0usize)].into_boxed_slice())]
+                    .into_boxed_slice(),
                 constants: vec![].into_boxed_slice(),
             },
         };
         let mut layer = lower_layer(&single_gate_layer(rel), &BTreeMap::new());
         // Sanity: the valid layer must pass before we mutate it.
-        assert!(layer.verify().is_ok(), "valid EnforceConstraintsMaxQuadratic layer must pass before mutation");
+        assert!(
+            layer.verify().is_ok(),
+            "valid EnforceConstraintsMaxQuadratic layer must pass before mutation"
+        );
         // Mutate the linear operand NodeId to an out-of-range value.
-        if let GateKind::EnforceConstraintsMaxQuadratic { ref mut linear, .. } = layer.gates[0].kind {
+        if let GateKind::EnforceConstraintsMaxQuadratic { ref mut linear, .. } = layer.gates[0].kind
+        {
             linear[0].0 = NodeId(9999);
         }
         // verify() must return Err — NOT panic, NOT Ok.
@@ -3457,7 +4231,10 @@ mod tests {
     fn lowers_a_real_compiled_artifact() {
         let artifact = build_add_sub_artifact();
         let circuit = lower::<ConcreteField>(&artifact).expect("lower real artifact");
-        assert!(circuit.layers.len() > 0, "real artifact must produce at least one layer");
+        assert!(
+            circuit.layers.len() > 0,
+            "real artifact must produce at least one layer"
+        );
         assert_eq!(circuit.layers.len(), artifact.layers.len());
         let json = serde_json::to_string(&circuit).unwrap();
         let back: CodegenCircuit = serde_json::from_str(&json).unwrap();
@@ -3498,8 +4275,7 @@ mod tests {
         );
 
         // Must round-trip cleanly.
-        let back: CrateCodegenCircuit =
-            serde_json::from_str(&s).expect("JSON must round-trip");
+        let back: CrateCodegenCircuit = serde_json::from_str(&s).expect("JSON must round-trip");
         back.verify().unwrap();
     }
 }
