@@ -1524,20 +1524,402 @@ impl CodegenLayer {
             }
         }
         // Batch coverage: powers over gates + gates_external are exactly 0..total.
+        // Also verify that the total batch_terms count matches the sum of num_challenges
+        // (a gate with num_challenges=1 and no batch_terms would otherwise silently pass
+        // the range check since an empty powers vec trivially satisfies 0..0 == {}).
+        let expected_total: usize = self
+            .gates
+            .iter()
+            .chain(self.gates_external.iter())
+            .map(|g| g.num_challenges as usize)
+            .sum();
         let mut powers: Vec<u32> = self
             .gates
             .iter()
             .chain(self.gates_external.iter())
             .flat_map(|g| g.batch_terms.iter().map(|t| t.power))
             .collect();
+        if powers.len() != expected_total {
+            return Err(format!(
+                "batch coverage: total batch_terms count {} != expected {} (sum of num_challenges)",
+                powers.len(), expected_total
+            ));
+        }
         powers.sort_unstable();
         for (expected, got) in powers.iter().enumerate() {
             if *got != expected as u32 {
                 return Err(format!("batch power gap/collision: expected {}, got {}", expected, got));
             }
         }
+
+        // --- Invariant 7 (gate-group XOR): at most one of gates/gates_external non-empty ---
+        if !self.gates.is_empty() && !self.gates_external.is_empty() {
+            return Err(format!(
+                "both `gates` ({}) and `gates_external` ({}) are non-empty \
+                 (gate-group XOR violated, invariant 7)",
+                self.gates.len(), self.gates_external.len()
+            ));
+        }
+
+        // --- Invariant 9: every cache has a valid (in-range) output node ---
+        for (ci, cache) in self.caches.iter().enumerate() {
+            if (cache.out.0).0 as usize >= n {
+                return Err(format!(
+                    "cache {}: output node {} out of range (arena len {}), \
+                     invariant 9 (every cache must be claim-bearing with a valid output)",
+                    ci, (cache.out.0).0, n
+                ));
+            }
+            // Also check cache input nodes are in range.
+            for (ii, inp) in cache.inputs.iter().enumerate() {
+                if (inp.0 as usize) >= n {
+                    return Err(format!(
+                        "cache {}: input[{}] node {} out of range (arena len {}), invariant 9",
+                        ci, ii, inp.0, n
+                    ));
+                }
+            }
+        }
+
+        // --- Invariant 14: MaxQuadratic family operands + outputs are Domain::Base ---
+        for (gi, gate) in self.gates.iter().chain(self.gates_external.iter()).enumerate() {
+            match &gate.kind {
+                GateKind::MaxQuadratic { flat, expr: _ }
+                | GateKind::EnforceSingleMaxQuadraticConstraint { flat, expr: _ } => {
+                    for nid in max_quad_flat_nodes(flat) {
+                        if (nid.0 as usize) >= n {
+                            return Err(format!(
+                                "gate {}: MaxQuadratic flat operand node {} out of range (inv 14)",
+                                gi, nid.0
+                            ));
+                        }
+                        let dom = self.arena.nodes[nid.0 as usize].domain();
+                        if !matches!(dom, Domain::Base) {
+                            return Err(format!(
+                                "gate {}: MaxQuadratic/EnforceSingle flat operand node {} \
+                                 has domain {:?}, expected Base (invariant 14)",
+                                gi, nid.0, dom
+                            ));
+                        }
+                    }
+                    for slot in &gate.dst {
+                        let dom = self.arena.nodes[slot.node.0 as usize].domain();
+                        if !matches!(dom, Domain::Base) {
+                            return Err(format!(
+                                "gate {}: MaxQuadratic output node {} has domain {:?}, \
+                                 expected Base (invariant 14)",
+                                gi, slot.node.0, dom
+                            ));
+                        }
+                    }
+                }
+                GateKind::EnforceConstraintsMaxQuadratic { quadratic, linear, constants: _ } => {
+                    for ((a, c), _) in quadratic {
+                        for &nid in &[*a, *c] {
+                            if (nid.0 as usize) >= n {
+                                return Err(format!(
+                                    "gate {}: EnforceConstraintsMaxQuadratic operand node {} out of range (invariant 14)",
+                                    gi, nid.0
+                                ));
+                            }
+                            let dom = self.arena.nodes[nid.0 as usize].domain();
+                            if !matches!(dom, Domain::Base) {
+                                return Err(format!(
+                                    "gate {}: EnforceConstraintsMaxQuadratic quadratic operand \
+                                     node {} has domain {:?}, expected Base (invariant 14)",
+                                    gi, nid.0, dom
+                                ));
+                            }
+                        }
+                    }
+                    for (a, _) in linear {
+                        if (a.0 as usize) >= n {
+                            return Err(format!(
+                                "gate {}: EnforceConstraintsMaxQuadratic operand node {} out of range (invariant 14)",
+                                gi, a.0
+                            ));
+                        }
+                        let dom = self.arena.nodes[a.0 as usize].domain();
+                        if !matches!(dom, Domain::Base) {
+                            return Err(format!(
+                                "gate {}: EnforceConstraintsMaxQuadratic linear operand \
+                                 node {} has domain {:?}, expected Base (invariant 14)",
+                                gi, a.0, dom
+                            ));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
         Ok(())
     }
+}
+
+// ===========================================================================
+// CodegenCircuit::verify() — circuit-global invariants (Task 11)
+// ===========================================================================
+
+impl CodegenCircuit {
+    /// Verify all invariants across the whole circuit.
+    ///
+    /// Calls `layer.verify()` for every layer (which covers per-layer invariants
+    /// 1-6, 8, and partial 12), then adds the circuit-global checks:
+    ///
+    /// - **Invariant 7 (gate-group XOR):** per layer, at most one of `gates` /
+    ///   `gates_external` is non-empty.
+    /// - **Invariant 9 (cache claim-bearing):** every `CodegenCache` has a valid
+    ///   output node (its `out.0` is in-range).
+    /// - **Invariant 10 (constraint-batch fidelity):** `EnforceConstraintsMaxQuadratic`
+    ///   gates have `batch_terms.len() == num_challenges (== 1)` and that term's
+    ///   value NodeId is in range. This is a specialization of the batch-coverage
+    ///   check inside `layer.verify()`.
+    /// - **Invariant 11 (globals sufficiency):** `scratch_space_mapping` and
+    ///   `scratch_space_mapping_rev` are consistent inverses:
+    ///   `rev[slot] == addr ⟺ mapping[addr] == slot`.
+    /// - **Invariant 12 (scratch + forward-source):** `ScratchPrefill` only on
+    ///   `MaxQuadratic` outputs (already in layer.verify()); extended here to also
+    ///   check each `ScratchPrefill` output's address is in `scratch_space_mapping`.
+    /// - **Invariant 14 (max-quad base domain):** `MaxQuadratic` output nodes and
+    ///   all operand `Place`/`GateOutput` nodes referenced by the max-quadratic
+    ///   family's `flat` and `EnforceConstraintsMaxQuadratic`'s sparse terms must
+    ///   be `Domain::Base`.
+    pub fn verify(&self) -> Result<(), String> {
+        // Per-layer checks (invariants 1-6, 8, partial 12).
+        for (li, layer) in self.layers.iter().enumerate() {
+            layer.verify().map_err(|e| format!("layer {}: {}", li, e))?;
+
+            // --- Invariant 7: gate-group XOR ---
+            if !layer.gates.is_empty() && !layer.gates_external.is_empty() {
+                return Err(format!(
+                    "layer {}: both `gates` ({}) and `gates_external` ({}) are non-empty \
+                     (gate-group XOR violated, invariant 7)",
+                    li,
+                    layer.gates.len(),
+                    layer.gates_external.len()
+                ));
+            }
+
+            let n = layer.arena.nodes.len();
+
+            // --- Invariant 9: every cache has a valid output node ---
+            for (ci, cache) in layer.caches.iter().enumerate() {
+                if (cache.out.0).0 as usize >= n {
+                    return Err(format!(
+                        "layer {}: cache {}: output node {} out of range (arena len {}), \
+                         invariant 9 (every cache must be claim-bearing with a valid output)",
+                        li, ci, (cache.out.0).0, n
+                    ));
+                }
+            }
+
+            // --- Invariant 10: EnforceConstraintsMaxQuadratic batch fidelity ---
+            for (gi, gate) in layer.gates.iter().chain(layer.gates_external.iter()).enumerate() {
+                if matches!(gate.kind, GateKind::EnforceConstraintsMaxQuadratic { .. }) {
+                    // Must have exactly num_challenges (== 1) batch terms.
+                    if gate.batch_terms.len() != gate.num_challenges as usize {
+                        return Err(format!(
+                            "layer {}: gate {}: EnforceConstraintsMaxQuadratic has {} batch_terms, \
+                             expected {} (num_challenges), invariant 10",
+                            li, gi, gate.batch_terms.len(), gate.num_challenges
+                        ));
+                    }
+                    for bt in &gate.batch_terms {
+                        if (bt.value.0 as usize) >= n {
+                            return Err(format!(
+                                "layer {}: gate {}: EnforceConstraintsMaxQuadratic batch_term \
+                                 value {} out of range, invariant 10",
+                                li, gi, bt.value.0
+                            ));
+                        }
+                    }
+                }
+            }
+
+            // --- Invariant 12 (extended): ScratchPrefill address must be in the scratch map ---
+            for (gi, gate) in layer.gates.iter().chain(layer.gates_external.iter()).enumerate() {
+                for slot in &gate.dst {
+                    if matches!(slot.forward_source, ForwardSource::ScratchPrefill) {
+                        if !self.globals.scratch_space_mapping.contains_key(&slot.addr) {
+                            return Err(format!(
+                                "layer {}: gate {}: ScratchPrefill output addr {:?} is not in \
+                                 scratch_space_mapping, invariant 12",
+                                li, gi, slot.addr
+                            ));
+                        }
+                    }
+                }
+            }
+
+            // --- Invariant 14: MaxQuadratic family operands and outputs are Domain::Base ---
+            for (gi, gate) in layer.gates.iter().chain(layer.gates_external.iter()).enumerate() {
+                match &gate.kind {
+                    GateKind::MaxQuadratic { flat, expr: _ } | GateKind::EnforceSingleMaxQuadraticConstraint { flat, expr: _ } => {
+                        // All operand NodeIds in flat must resolve to Domain::Base nodes.
+                        for nid in max_quad_flat_nodes(flat) {
+                            let dom = layer.arena.nodes[nid.0 as usize].domain();
+                            if !matches!(dom, Domain::Base) {
+                                return Err(format!(
+                                    "layer {}: gate {}: MaxQuadratic/EnforceSingle flat operand node {} \
+                                     has domain {:?}, expected Base (invariant 14)",
+                                    li, gi, nid.0, dom
+                                ));
+                            }
+                        }
+                        // For MaxQuadratic: its output node must also be Domain::Base.
+                        for slot in &gate.dst {
+                            let dom = layer.arena.nodes[slot.node.0 as usize].domain();
+                            if !matches!(dom, Domain::Base) {
+                                return Err(format!(
+                                    "layer {}: gate {}: MaxQuadratic output node {} has domain {:?}, \
+                                     expected Base (invariant 14)",
+                                    li, gi, slot.node.0, dom
+                                ));
+                            }
+                        }
+                    }
+                    GateKind::EnforceConstraintsMaxQuadratic { quadratic, linear, constants: _ } => {
+                        // All sparse operand NodeIds must be Domain::Base.
+                        let ln = layer.arena.nodes.len();
+                        for ((a, c), _) in quadratic {
+                            for &nid in &[*a, *c] {
+                                if (nid.0 as usize) >= ln {
+                                    return Err(format!(
+                                        "layer {}: gate {}: EnforceConstraintsMaxQuadratic operand \
+                                         node {} out of range (invariant 14)",
+                                        li, gi, nid.0
+                                    ));
+                                }
+                                let dom = layer.arena.nodes[nid.0 as usize].domain();
+                                if !matches!(dom, Domain::Base) {
+                                    return Err(format!(
+                                        "layer {}: gate {}: EnforceConstraintsMaxQuadratic quadratic \
+                                         operand node {} has domain {:?}, expected Base (invariant 14)",
+                                        li, gi, nid.0, dom
+                                    ));
+                                }
+                            }
+                        }
+                        for (a, _) in linear {
+                            if (a.0 as usize) >= ln {
+                                return Err(format!(
+                                    "layer {}: gate {}: EnforceConstraintsMaxQuadratic operand \
+                                     node {} out of range (invariant 14)",
+                                    li, gi, a.0
+                                ));
+                            }
+                            let dom = layer.arena.nodes[a.0 as usize].domain();
+                            if !matches!(dom, Domain::Base) {
+                                return Err(format!(
+                                    "layer {}: gate {}: EnforceConstraintsMaxQuadratic linear \
+                                     operand node {} has domain {:?}, expected Base (invariant 14)",
+                                    li, gi, a.0, dom
+                                ));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // --- Invariant 11: scratch_space_mapping and scratch_space_mapping_rev are inverses ---
+        let mapping = &self.globals.scratch_space_mapping;
+        let rev = &self.globals.scratch_space_mapping_rev;
+        if mapping.len() != rev.len() {
+            return Err(format!(
+                "globals: scratch_space_mapping.len() ({}) != scratch_space_mapping_rev.len() ({}), \
+                 not consistent inverses (invariant 11)",
+                mapping.len(), rev.len()
+            ));
+        }
+        for (addr, &slot) in mapping {
+            match rev.get(&slot) {
+                Some(rev_addr) if rev_addr == addr => {}
+                Some(rev_addr) => {
+                    return Err(format!(
+                        "globals: scratch_space_mapping[{:?}] = {} but scratch_space_mapping_rev[{}] = {:?} \
+                         (not a consistent inverse, invariant 11)",
+                        addr, slot, slot, rev_addr
+                    ));
+                }
+                None => {
+                    return Err(format!(
+                        "globals: scratch_space_mapping[{:?}] = {} but scratch_space_mapping_rev \
+                         has no entry for slot {} (not a consistent inverse, invariant 11)",
+                        addr, slot, slot
+                    ));
+                }
+            }
+        }
+        // Also check the reverse direction: every rev entry must have a forward entry.
+        for (slot, addr) in rev {
+            match mapping.get(addr) {
+                Some(&fwd_slot) if fwd_slot == *slot => {}
+                Some(&fwd_slot) => {
+                    return Err(format!(
+                        "globals: scratch_space_mapping_rev[{}] = {:?} but scratch_space_mapping[{:?}] = {} \
+                         (not a consistent inverse, invariant 11)",
+                        slot, addr, addr, fwd_slot
+                    ));
+                }
+                None => {
+                    return Err(format!(
+                        "globals: scratch_space_mapping_rev[{}] = {:?} but scratch_space_mapping \
+                         has no entry for that address (not a consistent inverse, invariant 11)",
+                        slot, addr
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+// ===========================================================================
+// Top-level entry point: lower::<F>(artifact) -> Result<CodegenCircuit, String>
+// ===========================================================================
+
+/// Lower a full `GKRCircuitArtifact<F>` into a `CodegenCircuit`.
+///
+/// - Extracts globals from the artifact (no field-typed data; all structural fields).
+/// - Lowers each layer via `lower_layer` (infallible).
+/// - Applies the field-modular flat==expand(expr) check (invariant 13) to each layer.
+/// - Verifies the complete circuit (all 15 invariants via `CodegenCircuit::verify()`).
+pub fn lower<F: PrimeField + PartialEq>(
+    artifact: &super::GKRCircuitArtifact<F>,
+) -> Result<CodegenCircuit, String> {
+    let globals = CodegenGlobals {
+        trace_len: artifact.trace_len,
+        offset_for_decoder_table: artifact.offset_for_decoder_table,
+        has_decoder_lookup: artifact.has_decoder_lookup,
+        generic_lookup_tables_width: artifact.generic_lookup_tables_width,
+        tables_ids_in_generic_lookups: artifact.tables_ids_in_generic_lookups,
+        num_generic_lookups: artifact.num_generic_lookups,
+        decode_table_columns_mask: artifact.decode_table_columns_mask.clone(),
+        table_offsets: artifact.table_offsets.clone(),
+        total_tables_size: artifact.total_tables_size,
+        scratch_space_size: artifact.scratch_space_size,
+        scratch_space_mapping: artifact.scratch_space_mapping.clone(),
+        scratch_space_mapping_rev: artifact.scratch_space_mapping_rev.clone(),
+        global_output_map: artifact.global_output_map.clone(),
+        memory_layout: artifact.memory_layout.clone(),
+        witness_layout: artifact.witness_layout.clone(),
+    };
+
+    let mut layers = Vec::with_capacity(artifact.layers.len());
+    for (li, layer) in artifact.layers.iter().enumerate() {
+        let cg_layer = lower_layer(layer, &artifact.scratch_space_mapping); // infallible
+        verify_flat_expr::<F>(&cg_layer)
+            .map_err(|e| format!("layer {}: flat==expand(expr) check failed: {}", li, e))?; // invariant 13
+        layers.push(cg_layer);
+    }
+
+    let circuit = CodegenCircuit { layers, globals };
+    circuit.verify()?;
+    Ok(circuit)
 }
 
 #[cfg(test)]
@@ -2713,6 +3095,261 @@ mod tests {
         );
     }
 
+    // -----------------------------------------------------------------------
+    // Task 11: invariant-violation tests (written before implementation, TDD).
+    // Each constructs a CodegenLayer/CodegenCircuit that violates EXACTLY one
+    // invariant and asserts verify() returns Err; plus a valid baseline.
+    // -----------------------------------------------------------------------
+
+    /// Build a valid single-gate CodegenLayer using CopyInBaseField for use as a
+    /// baseline that all violation tests can mutate.
+    fn valid_copy_layer() -> CodegenLayer {
+        lower_layer(
+            &single_gate_layer(NoFieldGKRRelation::CopyInBaseField {
+                input: blw(0),
+                output: inner(1, 0),
+            }),
+            &BTreeMap::new(),
+        )
+    }
+
+    /// Build a minimal valid CodegenCircuit (one layer, no-op globals).
+    fn valid_circuit_one_layer() -> CodegenCircuit {
+        use crate::definitions::gkr::{GKRMemoryLayout, GKRWitnessLayout};
+        CodegenCircuit {
+            layers: vec![valid_copy_layer()],
+            globals: CodegenGlobals {
+                trace_len: 1,
+                offset_for_decoder_table: 0,
+                has_decoder_lookup: false,
+                generic_lookup_tables_width: 1,
+                tables_ids_in_generic_lookups: false,
+                num_generic_lookups: 0,
+                decode_table_columns_mask: vec![],
+                table_offsets: vec![],
+                total_tables_size: 0,
+                scratch_space_size: 0,
+                scratch_space_mapping: BTreeMap::new(),
+                scratch_space_mapping_rev: BTreeMap::new(),
+                global_output_map: BTreeMap::new(),
+                memory_layout: GKRMemoryLayout {
+                    ram_access_sets: vec![],
+                    machine_state: None,
+                    delegation_state: None,
+                    decoder_input: None,
+                    indirect_access_variable_offsets: vec![],
+                    teardown_sets: vec![],
+                    total_width: 0,
+                    inits_and_teardowns_word_bits: None,
+                },
+                witness_layout: GKRWitnessLayout {
+                    multiplicities_columns_for_range_check_16: 0..0,
+                    multiplicities_columns_for_timestamp_range_check: 0..0,
+                    multiplicities_columns_for_generic_lookup: 0..0,
+                    total_width: 0,
+                },
+            },
+        }
+    }
+
+    // -- Invariant 7: gate-group XOR (at most one of gates/gates_external non-empty) --
+
+    #[test]
+    fn inv7_gate_group_xor_violation_detected() {
+        let mut layer = valid_copy_layer();
+        // Clone the single gate into gates_external too — both are now non-empty.
+        layer.gates_external = layer.gates.clone();
+        // Reassign correct batch powers so power check passes; the XOR check must fire first.
+        let mut p = 0u32;
+        assign_batch_powers(&mut layer.gates, &mut layer.gates_external, &mut p);
+        assert!(
+            layer.verify().is_err(),
+            "both gates and gates_external non-empty must be rejected (inv 7)"
+        );
+    }
+
+    #[test]
+    fn inv7_gate_group_xor_valid_layer_passes() {
+        let layer = valid_copy_layer();
+        layer.verify().expect("valid single-group layer must pass inv 7");
+    }
+
+    // -- Invariant 9: every cache is claim-bearing (has a valid output node) --
+
+    #[test]
+    fn inv9_cache_out_node_out_of_range_detected() {
+        let mut layer = valid_copy_layer();
+        // Add a cache with an out node that is out-of-range.
+        layer.caches.push(CodegenCache {
+            kind: CacheKind::VectorizedLookupSetup,
+            inputs: vec![],
+            out: (NodeId(9999), GKRAddress::Cached { layer: 0, offset: 0 }),
+        });
+        assert!(
+            layer.verify().is_err(),
+            "cache with out-of-range output node must be rejected (inv 9)"
+        );
+    }
+
+    #[test]
+    fn inv9_cache_valid_passes() {
+        use crate::definitions::gkr::NoFieldLinearRelation;
+        let dep = blw(5);
+        let out_addr = GKRAddress::Cached { layer: 2, offset: 0 };
+        let relation = NoFieldSingleColumnLookupRelation {
+            input: NoFieldLinearRelation {
+                linear_terms: vec![(1u32, dep)].into_boxed_slice(),
+                constant: 0,
+            },
+            lookup_set_index: 3,
+        };
+        let rel = super::super::NoFieldGKRCacheRelation::SingleColumnLookup {
+            relation,
+            range_check_width: 8,
+        };
+        let layer_desc = cached_layer(out_addr, rel);
+        let cg = lower_layer(&layer_desc, &BTreeMap::new());
+        cg.verify().expect("valid cache layer must pass inv 9");
+    }
+
+    // -- Invariant 10: EnforceConstraintsMaxQuadratic has exactly num_challenges batch terms --
+
+    #[test]
+    fn inv10_enforce_constraints_max_quad_missing_batch_term_detected() {
+        use super::super::NoFieldMaxQuadraticConstraintsGKRRelation;
+        // Build a valid EnforceConstraintsMaxQuadratic gate then strip its batch_terms.
+        let rel = NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
+            input: NoFieldMaxQuadraticConstraintsGKRRelation {
+                quadratic_terms: vec![].into_boxed_slice(),
+                linear_terms: vec![(blw(0), vec![(1u32, 0usize)].into_boxed_slice())].into_boxed_slice(),
+                constants: vec![].into_boxed_slice(),
+            },
+        };
+        let mut layer = lower_layer(&single_gate_layer(rel), &BTreeMap::new());
+        // Simulate a missing batch term by clearing.
+        layer.gates[0].batch_terms.clear();
+        // The batch-coverage check must detect the gap (power 0 missing).
+        assert!(
+            layer.verify().is_err(),
+            "EnforceConstraintsMaxQuadratic with no batch terms must fail (inv 10 / batch coverage)"
+        );
+    }
+
+    #[test]
+    fn inv10_enforce_constraints_max_quad_valid_passes() {
+        use super::super::NoFieldMaxQuadraticConstraintsGKRRelation;
+        let rel = NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
+            input: NoFieldMaxQuadraticConstraintsGKRRelation {
+                quadratic_terms: vec![].into_boxed_slice(),
+                linear_terms: vec![(blw(0), vec![(1u32, 0usize)].into_boxed_slice())].into_boxed_slice(),
+                constants: vec![].into_boxed_slice(),
+            },
+        };
+        let layer = lower_layer(&single_gate_layer(rel), &BTreeMap::new());
+        layer.verify().expect("valid EnforceConstraintsMaxQuadratic layer must pass");
+    }
+
+    // -- Invariant 11: globals sufficiency (scratch maps are consistent inverses) --
+
+    #[test]
+    fn inv11_scratch_map_inconsistent_detected() {
+        let mut circuit = valid_circuit_one_layer();
+        // Add an entry to scratch_space_mapping but NOT to scratch_space_mapping_rev
+        // -> the maps are inconsistent (not inverse to each other).
+        let addr = blw(99);
+        circuit.globals.scratch_space_mapping.insert(addr, 42);
+        // scratch_space_mapping_rev does NOT have 42 -> addr
+        assert!(
+            circuit.verify().is_err(),
+            "scratch maps not inverse to each other must be rejected (inv 11)"
+        );
+    }
+
+    #[test]
+    fn inv11_scratch_maps_consistent_passes() {
+        let mut circuit = valid_circuit_one_layer();
+        let addr = blw(42);
+        circuit.globals.scratch_space_mapping.insert(addr, 7);
+        circuit.globals.scratch_space_mapping_rev.insert(7, addr);
+        circuit.verify().expect("consistent scratch maps must pass inv 11");
+    }
+
+    // -- Invariant 12: ScratchPrefill output has no forward in-edges / only MaxQuadratic --
+
+    #[test]
+    fn inv12_scratch_prefill_on_non_maxquad_detected() {
+        // A CopyInBaseField gate with ScratchPrefill forward_source is illegal.
+        let mut layer = valid_copy_layer();
+        layer.gates[0].dst[0].forward_source = ForwardSource::ScratchPrefill;
+        assert!(
+            layer.verify().is_err(),
+            "ScratchPrefill on CopyInBaseField must be rejected (inv 12)"
+        );
+    }
+
+    #[test]
+    fn inv12_scratch_prefill_on_maxquad_passes() {
+        let mut scratch = BTreeMap::new();
+        scratch.insert(inner(1, 1), 0usize);
+        let layer = lower_layer(&sample_layer(), &scratch);
+        layer.verify().expect("ScratchPrefill on MaxQuadratic must pass inv 12");
+    }
+
+    // -- Invariant 14: MaxQuadratic operands are Domain::Base --
+
+    #[test]
+    fn inv14_maxquad_output_wrong_domain_detected() {
+        // Build a MaxQuadratic layer and mutate the GateOutput node's domain to Ext.
+        use super::super::{
+            NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E,
+        };
+        let mq = NoFieldMaxQuadraticGKRRelation {
+            quadratic_terms: vec![].into_boxed_slice(),
+            linear_terms: vec![(1u32, blw(0))].into_boxed_slice(),
+            constant: 0,
+        };
+        let expr = E::Place(blw(0));
+        let rel = NoFieldGKRRelation::MaxQuadratic {
+            input: mq,
+            expression: expr,
+            output: inner(1, 0),
+        };
+        let mut layer = lower_layer(&single_gate_layer(rel), &BTreeMap::new());
+        // Find the GateOutput node and replace it with an Ext-domain variant.
+        let out_node_idx = layer.gates[0].dst[0].node.0 as usize;
+        if let ExprNode::GateOutput { producer, out, .. } = &layer.arena.nodes[out_node_idx] {
+            layer.arena.nodes[out_node_idx] = ExprNode::GateOutput {
+                producer: *producer,
+                out: *out,
+                domain: Domain::Ext, // violate: MaxQuadratic output must be Base
+            };
+        }
+        assert!(
+            layer.verify().is_err(),
+            "MaxQuadratic output with Ext domain must be rejected (inv 14)"
+        );
+    }
+
+    #[test]
+    fn inv14_maxquad_base_domain_passes() {
+        use super::super::{
+            NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression as E,
+        };
+        let mq = NoFieldMaxQuadraticGKRRelation {
+            quadratic_terms: vec![].into_boxed_slice(),
+            linear_terms: vec![(1u32, blw(0))].into_boxed_slice(),
+            constant: 0,
+        };
+        let expr = E::Place(blw(0));
+        let rel = NoFieldGKRRelation::MaxQuadratic {
+            input: mq,
+            expression: expr,
+            output: inner(1, 0),
+        };
+        let layer = lower_layer(&single_gate_layer(rel), &BTreeMap::new());
+        layer.verify().expect("MaxQuadratic with Base domain must pass inv 14");
+    }
+
     /// Verify that EnforceSingleMaxQuadraticConstraint gates are also checked.
     #[test]
     fn enforce_single_max_quadratic_constraint_checked() {
@@ -2746,6 +3383,33 @@ mod tests {
         assert!(
             verify_flat_expr::<ConcreteField>(&cg_bad).is_err(),
             "mismatched EnforceSingleMaxQuadraticConstraint must be rejected"
+        );
+    }
+
+    // -- Invariant 14: EnforceConstraintsMaxQuadratic out-of-range operand rejected --
+
+    #[test]
+    fn inv14_enforce_constraints_out_of_range_operand_rejected() {
+        use super::super::NoFieldMaxQuadraticConstraintsGKRRelation;
+        // Build a valid EnforceConstraintsMaxQuadratic layer (mirrors inv10 tests).
+        let rel = NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
+            input: NoFieldMaxQuadraticConstraintsGKRRelation {
+                quadratic_terms: vec![].into_boxed_slice(),
+                linear_terms: vec![(blw(0), vec![(1u32, 0usize)].into_boxed_slice())].into_boxed_slice(),
+                constants: vec![].into_boxed_slice(),
+            },
+        };
+        let mut layer = lower_layer(&single_gate_layer(rel), &BTreeMap::new());
+        // Sanity: the valid layer must pass before we mutate it.
+        assert!(layer.verify().is_ok(), "valid EnforceConstraintsMaxQuadratic layer must pass before mutation");
+        // Mutate the linear operand NodeId to an out-of-range value.
+        if let GateKind::EnforceConstraintsMaxQuadratic { ref mut linear, .. } = layer.gates[0].kind {
+            linear[0].0 = NodeId(9999);
+        }
+        // verify() must return Err — NOT panic, NOT Ok.
+        assert!(
+            layer.verify().is_err(),
+            "EnforceConstraintsMaxQuadratic with out-of-range operand must be rejected (invariant 14)"
         );
     }
 }
