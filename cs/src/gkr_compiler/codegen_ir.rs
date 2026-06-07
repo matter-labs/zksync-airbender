@@ -3412,4 +3412,45 @@ mod tests {
             "EnforceConstraintsMaxQuadratic with out-of-range operand must be rejected (invariant 14)"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Task 12: end-to-end faithfulness test against a real compiled artifact.
+    //
+    // Uses the add_sub_lui_auipc_mop circuit from
+    // crate::gkr_circuits::add_sub_family, which is the smallest family
+    // circuit that compiles successfully with
+    // compile_unrolled_circuit_state_transition_into_gkr. The binary_shifts
+    // circuit panics at a todo!() in no_field_gkr_max_quadratic_from_expr_and_constraint
+    // so it is not usable here.
+    //
+    // We strip skip_if_ci!() because the compile step is purely symbolic
+    // (no polynomial evaluation) and takes ~0.1 s in debug mode.
+    // -----------------------------------------------------------------------
+
+    fn build_add_sub_artifact() -> super::super::GKRCircuitArtifact<ConcreteField> {
+        use crate::gkr_circuits::add_sub_family::{
+            add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr,
+            add_sub_lui_auipc_mop_table_addition_fn,
+        };
+        use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_gkr;
+        use common_constants::ROM_WORD_SIZE;
+
+        compile_unrolled_circuit_state_transition_into_gkr::<ConcreteField>(
+            &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
+            &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
+            ROM_WORD_SIZE,
+            24,
+        )
+    }
+
+    #[test]
+    fn lowers_a_real_compiled_artifact() {
+        let artifact = build_add_sub_artifact();
+        let circuit = lower::<ConcreteField>(&artifact).expect("lower real artifact");
+        assert!(circuit.layers.len() > 0, "real artifact must produce at least one layer");
+        assert_eq!(circuit.layers.len(), artifact.layers.len());
+        let json = serde_json::to_string(&circuit).unwrap();
+        let back: CodegenCircuit = serde_json::from_str(&json).unwrap();
+        back.verify().unwrap();
+    }
 }
