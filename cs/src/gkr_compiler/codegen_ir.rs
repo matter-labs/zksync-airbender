@@ -15,7 +15,9 @@
 //! "given a valid compiled GKR artifact, emit a faithful IR" contract is buildable.
 
 use super::{GateArtifacts, GKRLayerDescription, NoFieldGKRRelation, NoFieldStructuredExpression};
-use crate::definitions::gkr::NoFieldLinearRelation;
+use crate::definitions::gkr::{
+    NoFieldLinearRelation, NoFieldSingleColumnLookupRelation, NoFieldVectorLookupRelation,
+};
 use crate::definitions::GKRAddress;
 use std::collections::{BTreeMap, HashMap};
 
@@ -510,8 +512,22 @@ fn lower_relation(
             let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
             (GateKind::MaskIntoIdentityProduct { input: i, mask: m }, one_out(node, *output, scratch, false))
         }
-        R::MaterializeSingleLookupInput { .. } => todo!("Task 3: MaterializeSingleLookupInput lowering"),
-        R::MaterializedVectorLookupInput { .. } => todo!("Task 3: MaterializedVectorLookupInput lowering"),
+        R::MaterializeSingleLookupInput { input, output, range_check_width } => {
+            let s = lower_single_col(b, input, Domain::Base);
+            let node = b.add_gate_output(producer, 0, Domain::Base, *output);
+            (
+                GateKind::MaterializeSingleLookupInput { input: s, range_check_width: *range_check_width },
+                one_out(node, *output, scratch, false),
+            )
+        }
+        R::MaterializedVectorLookupInput { input, output } => {
+            let v = lower_vector(b, input, Domain::Base); // base-field columns, ext-field result
+            let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
+            (
+                GateKind::MaterializedVectorLookupInput { input: v },
+                one_out(node, *output, scratch, false),
+            )
+        }
         R::LookupWithCachedDensAndSetup { .. } => todo!("Task 3: LookupWithCachedDensAndSetup lowering"),
         R::LookupWithDensAndSetupExpressions { .. } => todo!("Task 3: LookupWithDensAndSetupExpressions lowering"),
         R::LookupWithDensAndCachedSetup { .. } => todo!("Task 3: LookupWithDensAndCachedSetup lowering"),
@@ -564,6 +580,27 @@ fn lower_mem_tuple(
     MemTupleDescriptor {
         descriptor: m.clone(),
         operands,
+    }
+}
+
+/// Lower a `NoFieldSingleColumnLookupRelation` into the arena.
+fn lower_single_col(
+    b: &mut ArenaBuilder,
+    r: &NoFieldSingleColumnLookupRelation,
+    d: Domain,
+) -> SingleColumnLookup {
+    SingleColumnLookup {
+        column: b.lower_linear(&r.input, d),
+        lookup_set_index: r.lookup_set_index,
+    }
+}
+
+/// Lower a `NoFieldVectorLookupRelation` into the arena.
+/// `columns` is `Box<[NoFieldLinearRelation]>` in the source type.
+fn lower_vector(b: &mut ArenaBuilder, r: &NoFieldVectorLookupRelation, d: Domain) -> VectorLookup {
+    VectorLookup {
+        columns: r.columns.iter().map(|c| b.lower_linear(c, d)).collect(),
+        lookup_set_index: r.lookup_set_index,
     }
 }
 
@@ -1379,6 +1416,85 @@ mod tests {
         });
         assert!(has_ext_place, "input (blw(0)) must be Ext-domain Place");
         assert!(has_base_place, "mask (blw(1)) must be Base-domain Place");
+        cg.verify().unwrap();
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 5: lookup materialization lowering tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn lowers_materialize_single_lookup_input() {
+        use super::super::{NoFieldGKRRelation as R};
+        use crate::definitions::gkr::{NoFieldLinearRelation, NoFieldSingleColumnLookupRelation};
+
+        // Build a 2-term linear relation: 1*blw(0) + 2*blw(1) + 0
+        let lin = NoFieldLinearRelation {
+            linear_terms: vec![(1u32, blw(0)), (2u32, blw(1))].into_boxed_slice(),
+            constant: 0,
+        };
+        let scl = NoFieldSingleColumnLookupRelation { input: lin, lookup_set_index: 7 };
+        let output = inner(1, 0);
+        let layer = single_gate_layer(R::MaterializeSingleLookupInput {
+            input: scl,
+            output,
+            range_check_width: 16,
+        });
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        let g = &cg.gates[0];
+        assert!(
+            matches!(g.kind, GateKind::MaterializeSingleLookupInput { range_check_width: 16, .. }),
+            "expected MaterializeSingleLookupInput with range_check_width=16, got {:?}",
+            g.kind
+        );
+        assert_eq!(g.dst.len(), 1);
+        // lookup_set_index must be preserved
+        if let GateKind::MaterializeSingleLookupInput { input: ref scl_ir, .. } = g.kind {
+            assert_eq!(scl_ir.lookup_set_index, 7);
+            assert_eq!(scl_ir.column.terms.len(), 2);
+        }
+        // Fix 1: output node must be Base-domain (materialized single lookup -> base-field result).
+        assert_eq!(
+            cg.arena.nodes[g.dst[0].node.0 as usize].domain(),
+            Domain::Base,
+            "single-lookup output node must be Base"
+        );
+        cg.verify().unwrap();
+    }
+
+    #[test]
+    fn lowers_materialized_vector_lookup_input() {
+        use super::super::{NoFieldGKRRelation as R};
+        use crate::definitions::gkr::{NoFieldLinearRelation, NoFieldVectorLookupRelation};
+
+        // Build a one-column vector lookup: 1*blw(0) + 0
+        let lin = NoFieldLinearRelation {
+            linear_terms: vec![(1u32, blw(0))].into_boxed_slice(),
+            constant: 0,
+        };
+        let vl = NoFieldVectorLookupRelation {
+            columns: vec![lin].into_boxed_slice(),
+            lookup_set_index: 3,
+        };
+        let output = inner(1, 0);
+        let layer = single_gate_layer(R::MaterializedVectorLookupInput {
+            input: vl,
+            output,
+        });
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        let g = &cg.gates[0];
+        assert!(
+            matches!(g.kind, GateKind::MaterializedVectorLookupInput { .. }),
+            "expected MaterializedVectorLookupInput, got {:?}",
+            g.kind
+        );
+        assert_eq!(g.dst.len(), 1);
+        // Fix 2: output node must be Ext-domain (materialized vector lookup -> extension-field result).
+        assert_eq!(
+            cg.arena.nodes[g.dst[0].node.0 as usize].domain(),
+            Domain::Ext,
+            "vector-lookup output node must be Ext"
+        );
         cg.verify().unwrap();
     }
 
