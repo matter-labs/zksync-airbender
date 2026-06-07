@@ -476,13 +476,40 @@ fn lower_relation(
                 }],
             )
         }
-        // --- variants not yet lowered (Tasks 2-N will fill these in) ---
-        R::InitialGrandProductFromCaches { .. } => todo!("Task 2: InitialGrandProductFromCaches lowering"),
-        R::InitialGrandProductWithoutCaches { .. } => todo!("Task 2: InitialGrandProductWithoutCaches lowering"),
-        R::UnbalancedGrandProductWithCache { .. } => todo!("Task 2: UnbalancedGrandProductWithCache lowering"),
-        R::MaterializeGrandProductTermExpression { .. } => todo!("Task 2: MaterializeGrandProductTermExpression lowering"),
-        R::TrivialProduct { .. } => todo!("Task 2: TrivialProduct lowering"),
-        R::MaskIntoIdentityProduct { .. } => todo!("Task 2: MaskIntoIdentityProduct lowering"),
+        // --- grand-product / product family (Task 4) ---
+        R::InitialGrandProductFromCaches { input, output } => {
+            let i = [b.resolve(input[0], Domain::Ext), b.resolve(input[1], Domain::Ext)];
+            let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
+            (GateKind::InitialGrandProductFromCaches { input: i }, one_out(node, *output, scratch, false))
+        }
+        R::InitialGrandProductWithoutCaches { input, output } => {
+            let d = [lower_mem_tuple(b, &input[0]), lower_mem_tuple(b, &input[1])];
+            let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
+            (GateKind::InitialGrandProductWithoutCaches { input: d }, one_out(node, *output, scratch, false))
+        }
+        R::UnbalancedGrandProductWithCache { scalar, input, output } => {
+            let s = b.resolve(*scalar, Domain::Ext);
+            let i = b.resolve(*input, Domain::Ext);
+            let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
+            (GateKind::UnbalancedGrandProductWithCache { scalar: s, input: i }, one_out(node, *output, scratch, false))
+        }
+        R::MaterializeGrandProductTermExpression { input, output } => {
+            let d = lower_mem_tuple(b, input);
+            let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
+            (GateKind::MaterializeGrandProductTermExpression { input: d }, one_out(node, *output, scratch, false))
+        }
+        R::TrivialProduct { input, output } => {
+            let i = [b.resolve(input[0], Domain::Ext), b.resolve(input[1], Domain::Ext)];
+            let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
+            (GateKind::TrivialProduct { input: i }, one_out(node, *output, scratch, false))
+        }
+        R::MaskIntoIdentityProduct { input, mask, output } => {
+            // MIXED: mask is Base-field, input is extension-field (mask_into_identity add_base_by_ext).
+            let m = b.resolve(*mask, Domain::Base);
+            let i = b.resolve(*input, Domain::Ext);
+            let node = b.add_gate_output(producer, 0, Domain::Ext, *output);
+            (GateKind::MaskIntoIdentityProduct { input: i, mask: m }, one_out(node, *output, scratch, false))
+        }
         R::MaterializeSingleLookupInput { .. } => todo!("Task 3: MaterializeSingleLookupInput lowering"),
         R::MaterializedVectorLookupInput { .. } => todo!("Task 3: MaterializedVectorLookupInput lowering"),
         R::LookupWithCachedDensAndSetup { .. } => todo!("Task 3: LookupWithCachedDensAndSetup lowering"),
@@ -506,6 +533,37 @@ fn lower_relation(
         kind,
         dst,
         batch_terms: vec![],
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Task 4 helpers
+// ---------------------------------------------------------------------------
+
+/// Build a single-slot `dst` vec for a gate with one output.
+fn one_out(
+    node: NodeId,
+    addr: GKRAddress,
+    scratch: &BTreeMap<GKRAddress, usize>,
+    is_max_quad: bool,
+) -> Vec<OutputSlot> {
+    vec![OutputSlot {
+        node,
+        addr,
+        forward_source: forward_source_for(&addr, is_max_quad, scratch),
+    }]
+}
+
+/// Lower a `NoFieldSpecialMemoryContributionRelation` by resolving each of its
+/// `dependencies()` (all `BaseLayerMemory` reads) as Base-domain Place nodes.
+fn lower_mem_tuple(
+    b: &mut ArenaBuilder,
+    m: &super::NoFieldSpecialMemoryContributionRelation,
+) -> MemTupleDescriptor {
+    let operands = m.dependencies().into_iter().map(|a| b.resolve(a, Domain::Base)).collect();
+    MemTupleDescriptor {
+        descriptor: m.clone(),
+        operands,
     }
 }
 
@@ -1231,6 +1289,97 @@ mod tests {
                 );
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 4: grand-product / product family lowering tests
+    // -----------------------------------------------------------------------
+
+    /// Build a `GKRLayerDescription` with a single gate (no external connections).
+    fn single_gate_layer(rel: NoFieldGKRRelation) -> GKRLayerDescription {
+        GKRLayerDescription {
+            layer: 0,
+            gates_with_external_connections: vec![],
+            cached_relations: BTreeMap::new(),
+            gates: vec![GateArtifacts {
+                output_layer: 1,
+                enforced_relation: rel,
+            }],
+            intermediate_layer_width: Some(1),
+        }
+    }
+
+    #[test]
+    fn lowers_trivial_product_two_inputs() {
+        let layer = single_gate_layer(NoFieldGKRRelation::TrivialProduct {
+            input: [
+                GKRAddress::InnerLayer { layer: 0, offset: 0 },
+                GKRAddress::InnerLayer { layer: 0, offset: 1 },
+            ],
+            output: GKRAddress::InnerLayer { layer: 1, offset: 0 },
+        });
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        let g = &cg.gates[0];
+        assert!(matches!(g.kind, GateKind::TrivialProduct { .. }));
+        assert_eq!(g.dst.len(), 1);
+        cg.verify().unwrap();
+    }
+
+    #[test]
+    fn lowers_initial_grand_product_from_caches() {
+        let layer = single_gate_layer(NoFieldGKRRelation::InitialGrandProductFromCaches {
+            input: [blw(0), blw(1)],
+            output: inner(1, 0),
+        });
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        let g = &cg.gates[0];
+        assert!(matches!(g.kind, GateKind::InitialGrandProductFromCaches { .. }));
+        assert_eq!(g.dst.len(), 1);
+        cg.verify().unwrap();
+    }
+
+    #[test]
+    fn lowers_unbalanced_grand_product_with_cache() {
+        let layer = single_gate_layer(NoFieldGKRRelation::UnbalancedGrandProductWithCache {
+            scalar: blw(0),
+            input: blw(1),
+            output: inner(1, 0),
+        });
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        let g = &cg.gates[0];
+        assert!(matches!(g.kind, GateKind::UnbalancedGrandProductWithCache { .. }));
+        assert_eq!(g.dst.len(), 1);
+        cg.verify().unwrap();
+    }
+
+    #[test]
+    fn lowers_mask_into_identity_product_mixed_domains() {
+        use super::super::{
+            CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
+            NoFieldSpecialMemoryContributionRelation,
+        };
+        use crate::definitions::gkr::RamWordRepresentation;
+
+        // mask=Base, input=Ext — verify both Place nodes have the right domain.
+        let layer = single_gate_layer(NoFieldGKRRelation::MaskIntoIdentityProduct {
+            input: blw(0),
+            mask: blw(1),
+            output: inner(1, 0),
+        });
+        let cg = lower_layer(&layer, &BTreeMap::new());
+        let g = &cg.gates[0];
+        assert!(matches!(g.kind, GateKind::MaskIntoIdentityProduct { .. }));
+        assert_eq!(g.dst.len(), 1);
+        // blw(0) is the input -> Ext; blw(1) is the mask -> Base.
+        let has_ext_place = cg.arena.nodes.iter().any(|n| {
+            matches!(n, ExprNode::Place { addr, domain: Domain::Ext, .. } if *addr == blw(0))
+        });
+        let has_base_place = cg.arena.nodes.iter().any(|n| {
+            matches!(n, ExprNode::Place { addr, domain: Domain::Base, .. } if *addr == blw(1))
+        });
+        assert!(has_ext_place, "input (blw(0)) must be Ext-domain Place");
+        assert!(has_base_place, "mask (blw(1)) must be Base-domain Place");
+        cg.verify().unwrap();
     }
 
     // -----------------------------------------------------------------------
