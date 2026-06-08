@@ -239,8 +239,8 @@ fn test_simple_product() {
             );
             let eq = &eq_reduced_precomputed[eq_reduced_len - 1 - step];
 
-            dbg!(&accumulator);
-            dbg!(&eq);
+            // dbg!(&accumulator);
+            // dbg!(&eq);
 
             let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
                 &accumulator,
@@ -248,7 +248,7 @@ fn test_simple_product() {
                 &worker,
             );
 
-            dbg!([c0, c2]);
+            // dbg!([c0, c2]);
 
             let mut normalized_claim = claim;
             normalized_claim.mul_assign(
@@ -267,7 +267,9 @@ fn test_simple_product() {
             // this will give us a sumcheck claim for the next round
             {
                 let s0 = evaluate_small_univariate_poly::<F, E, 4>(&coeffs, &E::ZERO);
+                dbg!(s0);
                 let s1 = evaluate_small_univariate_poly::<F, E, 4>(&coeffs, &E::ONE);
+                dbg!(s1);
                 let mut v = s0;
                 v.add_assign(&s1);
                 v.mul_assign(&last_eq_poly_prefactor_contribution);
@@ -356,4 +358,580 @@ fn test_simple_product() {
             }
         }
     }
+}
+
+#[test]
+fn test_windowed_product() {
+    type F = Mersenne31Field;
+    type E = Mersenne31Quartic;
+
+    fn var_repr(x: usize) -> &'static str {
+        match x {
+            0 => "0",
+            1 => "1",
+            2 => "inf",
+            _ => unreachable!(),
+        }
+    }
+
+    const FOLDING_STEPS: usize = 4;
+    const POLY_SIZE: usize = 1 << FOLDING_STEPS;
+    let worker = Worker::new_with_num_threads(8);
+
+    let a: Vec<E> = (0..POLY_SIZE)
+        .map(|el| E::from_base(F::from_u64_with_reduction(el as u64)))
+        .collect();
+
+    let b: Vec<E> = (0..POLY_SIZE)
+        .map(|el| E::from_base(F::from_u64_with_reduction(el as u64)))
+        .collect();
+
+    let output: Vec<E> = a
+        .iter()
+        .zip(b.iter())
+        .map(|(a, b)| {
+            let mut t = *a;
+            t.mul_assign(b);
+
+            t
+        })
+        .collect();
+
+    let mut storage = GKRStorage::<F, E>::default();
+    let mut layer_0 = GKRLayerSource::default();
+    layer_0.layer_idx = 0;
+    layer_0.extension_field_inputs.insert(
+        GKRAddress::InnerLayer {
+            layer: 0,
+            offset: 0,
+        },
+        ExtensionFieldPoly::new(a.into_boxed_slice()),
+    );
+    layer_0.extension_field_inputs.insert(
+        GKRAddress::InnerLayer {
+            layer: 0,
+            offset: 1,
+        },
+        ExtensionFieldPoly::new(b.into_boxed_slice()),
+    );
+
+    storage.layers.push(layer_0);
+    let mut layer_1 = GKRLayerSource::default();
+    layer_1.layer_idx = 1;
+    layer_1.extension_field_inputs.insert(
+        GKRAddress::InnerLayer {
+            layer: 1,
+            offset: 0,
+        },
+        ExtensionFieldPoly::new(output.into_boxed_slice()),
+    );
+
+    storage.layers.push(layer_1);
+
+    let previous_round_challenges: Vec<E> = (0..FOLDING_STEPS)
+        .map(|el| E::from_base(F::from_u64_with_reduction(1u64 << (el + 1))))
+        .collect();
+    // dbg!(&previous_round_challenges);
+    let eq_precomputed = make_eq_poly_in_full::<E>(&previous_round_challenges, &worker);
+    let eq_prefix_precomputed =
+        make_eq_poly_in_full::<E>(&previous_round_challenges[..(FOLDING_STEPS - 1)], &worker);
+    // dbg!(&eq_precomputed);
+
+    // dbg!(make_eq_poly_in_full::<E>(&previous_round_challenges[..(FOLDING_STEPS-1)], &worker));
+
+    let mut claim = evaluate_with_precomputed_eq_ext::<E>(
+        &storage.layers[1]
+            .extension_field_inputs
+            .get(&GKRAddress::InnerLayer {
+                layer: 1,
+                offset: 0,
+            })
+            .unwrap()
+            .values[..],
+        &eq_precomputed.last().unwrap()[..],
+    );
+    dbg!(claim);
+
+    {
+        let a = &storage.layers[0]
+            .extension_field_inputs
+            .get(&GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 0,
+            })
+            .unwrap()
+            .values[..];
+
+        let b = &storage.layers[0]
+            .extension_field_inputs
+            .get(&GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 1,
+            })
+            .unwrap()
+            .values[..];
+
+        let prev_eq_precomputed = make_eq_poly_in_full::<E>(&previous_round_challenges, &worker);
+        let eq = prev_eq_precomputed.last().unwrap();
+        let mut recomptued_claim = E::ZERO;
+        for j in 0..POLY_SIZE / 2 {
+            let i = j * 2;
+            let eq_prefix = eq_prefix_precomputed.last().unwrap()[j];
+            let eq_suffix = &eq_precomputed[1];
+
+            let mut t_0 = a[i];
+            t_0.mul_assign(&b[i]);
+            let mut acc_0 = eq_prefix;
+            acc_0.mul_assign(&eq_suffix[0]);
+            let acc_0_copy = acc_0;
+            assert_eq!(acc_0, eq[i]);
+            acc_0.mul_assign(&t_0);
+
+            let mut t_1 = a[i + 1];
+            t_1.mul_assign(&b[i + 1]);
+            let mut acc_1 = eq_prefix;
+            acc_1.mul_assign(&eq_suffix[1]);
+            let acc_1_copy = acc_1;
+            assert_eq!(acc_1, eq[i + 1]);
+            acc_1.mul_assign(&t_1);
+
+            recomptued_claim.add_assign(&acc_0);
+            recomptued_claim.add_assign(&acc_1);
+
+            let x2 = (i / 2) % 2;
+            let x1 = (i / 4) % 2;
+            let x0 = (i / 8) % 2;
+            // println!("{} : {} : {} = {} * ({} * {} + {} * {})", var_repr(x0), var_repr(x1), var_repr(x2), eq_prefix, eq_suffix[0], t_0, eq_suffix[1], t_1);
+        }
+        assert_eq!(recomptued_claim, claim);
+    }
+
+    let folding_challenges: Vec<E> = (0..FOLDING_STEPS)
+        .map(|el| E::from_base(F::from_u64_with_reduction(2 * (el as u64) + 1)))
+        .collect();
+
+    let mut expected_random_evals = BTreeMap::new();
+    {
+        let eq_precomputed = make_eq_poly_in_full::<E>(&folding_challenges, &worker);
+        let a = &storage.layers[0]
+            .extension_field_inputs
+            .get(&GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 0,
+            })
+            .unwrap()
+            .values[..];
+        let a_expected =
+            evaluate_with_precomputed_eq_ext::<E>(a, &eq_precomputed.last().unwrap()[..]);
+        expected_random_evals.insert(
+            GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 0,
+            },
+            a_expected,
+        );
+        let b = &storage.layers[0]
+            .extension_field_inputs
+            .get(&GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 1,
+            })
+            .unwrap()
+            .values[..];
+        let b_expected =
+            evaluate_with_precomputed_eq_ext::<E>(b, &eq_precomputed.last().unwrap()[..]);
+        expected_random_evals.insert(
+            GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 1,
+            },
+            b_expected,
+        );
+    }
+
+    // merged window of 3 variables at once
+
+    let srcs = [
+        storage
+            .try_get_ext_poly(GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 0,
+            })
+            .unwrap(),
+        storage
+            .try_get_ext_poly(GKRAddress::InnerLayer {
+                layer: 0,
+                offset: 0,
+            })
+            .unwrap(),
+    ];
+    let work_size = 1 << (FOLDING_STEPS - 3);
+    let precomputed_eq = &eq_precomputed[FOLDING_STEPS - 3];
+    // dbg!(&precomputed_eq);
+    assert_eq!(work_size, precomputed_eq.len());
+
+    fn interpolate_at_inf<F: Field>(a: F, b: F) -> F {
+        let mut result = b;
+        result.sub_assign(&a);
+        result
+    }
+
+    // make prefactors table
+    let mut eq_prefactors = [E::ZERO; 27]; // not important - we can multiply by it at the very end
+    {
+        // 1 - r at 0, r at 1
+
+        let mut x0_factors = [E::ZERO; 2];
+        x0_factors[0] = E::ONE;
+        x0_factors[0].sub_assign(&previous_round_challenges[0]);
+        x0_factors[1] = previous_round_challenges[0];
+
+        let mut x1_factors = [E::ZERO; 2];
+        x1_factors[0] = E::ONE;
+        x1_factors[0].sub_assign(&previous_round_challenges[1]);
+        x1_factors[1] = previous_round_challenges[1];
+
+        let mut x2_factors = [E::ZERO; 2];
+        x2_factors[0] = E::ONE;
+        x2_factors[0].sub_assign(&previous_round_challenges[2]);
+        x2_factors[1] = previous_round_challenges[2];
+
+        // dbg!(x0_factors);
+        // dbg!(x1_factors);
+        // dbg!(x2_factors);
+
+        for x0 in 0..2 {
+            let x0_challenge = x0_factors[x0];
+            let dst_offset = 9 * x0;
+            for x1 in 0..2 {
+                let x1_challenge = x1_factors[x1];
+                let dst_offset = dst_offset + 3 * x1;
+                let mut common_challenge = x1_challenge;
+                common_challenge.mul_assign(&x0_challenge);
+                {
+                    eq_prefactors[dst_offset] = common_challenge;
+                    eq_prefactors[dst_offset].mul_assign(&x2_factors[0]);
+                    eq_prefactors[dst_offset + 1] = common_challenge;
+                    eq_prefactors[dst_offset + 1].mul_assign(&x2_factors[1]);
+                    eq_prefactors[dst_offset + 2] = interpolate_at_inf(
+                        eq_prefactors[dst_offset],
+                        eq_prefactors[dst_offset + 1],
+                    );
+                }
+                // here we filled all options of (x0, x1, 0/1/inf)
+            }
+
+            // now extrapolate over x1
+            for x2 in 0..3 {
+                let src_0_idx = dst_offset + x2;
+                let src_1_idx = dst_offset + 3 + x2;
+                eq_prefactors[dst_offset + 3 * 2 + x2] =
+                    interpolate_at_inf(eq_prefactors[src_0_idx], eq_prefactors[src_1_idx]);
+            }
+        }
+
+        // and interpolate over x0
+        for x1 in 0..3 {
+            let dst_offset = 3 * x1;
+            for x2 in 0..3 {
+                let src_0_idx = 0 + dst_offset + x2;
+                let src_1_idx = 9 + dst_offset + x2;
+                eq_prefactors[18 + dst_offset + x2] =
+                    interpolate_at_inf(eq_prefactors[src_0_idx], eq_prefactors[src_1_idx]);
+            }
+        }
+
+        // for i in 0..27 {
+        //     let x2 = i % 3;
+        //     let x1 = (i / 3) % 3;
+        //     let x0 = (i / 9) % 3;
+        //     println!("Eq {} : {} : {} = {}", var_repr(x0), var_repr(x1), var_repr(x2), eq_prefactors[i]);
+        // }
+    }
+
+    let mut accumulator = [E::ZERO; 27];
+
+    {
+        let mut a_values = [E::ZERO; 27];
+        let mut b_values = [E::ZERO; 27];
+        let x0_stride = 1 << (FOLDING_STEPS - 1);
+        let x1_stride = x0_stride / 2;
+        let x2_stride = x1_stride / 2;
+
+        for row in 0..work_size {
+            let absolute_row_idx = row;
+            let eq_prefactor = &precomputed_eq[absolute_row_idx];
+
+            for (dst, src) in [(&mut a_values, srcs[0]), (&mut b_values, srcs[1])] {
+                // we need to extrapolate
+
+                for x0 in 0..2 {
+                    let stride = x0_stride * x0;
+                    let dst_offset = 9 * x0;
+                    for x1 in 0..2 {
+                        let stride = stride + x1 * x1_stride;
+                        let dst_offset = dst_offset + 3 * x1;
+                        {
+                            let src_0_idx = stride + absolute_row_idx;
+                            let src_1_idx = src_0_idx + x2_stride;
+
+                            dst[dst_offset] = src[src_0_idx];
+                            dst[dst_offset + 1] = src[src_1_idx];
+                            dst[dst_offset + 2] =
+                                interpolate_at_inf(dst[dst_offset], dst[dst_offset + 1]);
+                        }
+                        // here we filled all options of (x0, x1, 0/1/inf)
+                    }
+
+                    // now extrapolate over x1
+                    for x2 in 0..3 {
+                        let src_0_idx = dst_offset + x2;
+                        let src_1_idx = dst_offset + 3 + x2;
+                        dst[dst_offset + 3 * 2 + x2] =
+                            interpolate_at_inf(dst[src_0_idx], dst[src_1_idx]);
+                    }
+                }
+
+                // and extrapolate over x0
+                for x1 in 0..3 {
+                    let dst_offset = 3 * x1;
+                    for x2 in 0..3 {
+                        let src_0_idx = 0 + dst_offset + x2;
+                        let src_1_idx = 9 + dst_offset + x2;
+                        dst[18 + dst_offset + x2] =
+                            interpolate_at_inf(dst[src_0_idx], dst[src_1_idx]);
+                    }
+                }
+            }
+
+            // for x0 in 0..3 {
+            //     let dst_offset = 9 * x0;
+            //     for x1 in 0..3 {
+            //         let dst_offset = dst_offset + 3 * x1;
+            //         for x2 in 0..3 {
+            //             let dst_offset = dst_offset + x2;
+            //             let value = a_values[dst_offset];
+            //             println!("{} : {} : {} = {}", var_repr(x0), var_repr(x1), var_repr(x2), value);
+            //         }
+            //     }
+            // }
+
+            // SIMD-y
+            for i in 0..27 {
+                let mut t = a_values[i];
+                t.mul_assign(&b_values[i]);
+                let mut acc = *eq_prefactor;
+                let x2 = i % 3;
+                let x1 = (i / 3) % 3;
+                let x0 = (i / 9) % 3;
+                // println!("Acc {} : {} : {} += {} * {}", var_repr(x0), var_repr(x1), var_repr(x2), acc, t);
+                acc.mul_assign_by_base(&t);
+                accumulator[i].add_assign(&acc);
+
+                // let mut tt = *eq_prefactor;
+                // tt.mul_assign(&eq_prefactors[i]);
+                // println!("Eq {} : {} : {} = {}", var_repr(x0), var_repr(x1), var_repr(x2), tt);
+            }
+        }
+    }
+
+    // for i in 0..27 {
+    //     let x2 = i % 3;
+    //     let x1 = (i / 3) % 3;
+    //     let x0 = (i / 9) % 3;
+    //     println!("Acc {} : {} : {} = {} * {}", var_repr(x0), var_repr(x1), var_repr(x2), accumulator[i], eq_prefactors[i]);
+
+    //     accumulator[i].mul_assign(&eq_prefactors[i]);
+    // }
+
+    // for the first round we need to sum over x1 and x2
+
+    let x1_and_x2_eq = make_eq_poly_in_full::<E>(&previous_round_challenges[1..][..2], &worker)
+        .pop()
+        .unwrap();
+    assert_eq!(x1_and_x2_eq.len(), 4);
+
+    let mut evals = [E::ZERO; 3];
+    for x0 in 0..3 {
+        let dst_offset = 9 * x0;
+        for x1 in 0..2 {
+            let eq_offset = x1 * 2;
+            let dst_offset = dst_offset + 3 * x1;
+            for x2 in 0..2 {
+                let dst_offset = dst_offset + x2;
+                let eq_offset = eq_offset + x2;
+                let mut value = accumulator[dst_offset];
+                value.mul_assign(&x1_and_x2_eq[eq_offset]);
+                evals[x0].add_assign(&value);
+            }
+        }
+    }
+
+    let mut x0_eq_at_0 = E::ONE;
+    x0_eq_at_0.sub_assign(&previous_round_challenges[0]);
+    let mut eval_at_0 = evals[0];
+    eval_at_0.mul_assign(&x0_eq_at_0);
+
+    let x0_eq_at_1 = previous_round_challenges[0];
+    let mut eval_at_1 = evals[1];
+    eval_at_1.mul_assign(&x0_eq_at_1);
+
+    let mut reconstructed_claim = eval_at_0;
+    reconstructed_claim.add_assign(&eval_at_1);
+    assert_eq!(reconstructed_claim, claim);
+
+    // now we kind-of take challenge and re-evaluate
+    let x0_eq_at_random =
+        evaluate_eq_poly::<F, E>(&previous_round_challenges[0], &folding_challenges[0]);
+    let mut c2 = evals[2];
+    c2.mul_assign(&folding_challenges[0]);
+    c2.mul_assign(&folding_challenges[0]);
+
+    let mut c1 = evals[1];
+    c1.sub_assign(&evals[2]);
+    c1.sub_assign(&evals[0]);
+    c1.mul_assign(&folding_challenges[0]);
+
+    let c0 = evals[0];
+    let mut new_claim = c0;
+    new_claim.add_assign(&c1);
+    new_claim.add_assign(&c2);
+    new_claim.mul_assign(&x0_eq_at_random);
+
+    dbg!(new_claim);
+
+    claim = new_claim;
+    let mut eq_prefactor = x0_eq_at_random;
+
+    // now we bind and send again
+
+    fn bind_univariate<F: Field>(c0: F, c1: F, c2: F, challenge: F) -> F {
+        // The univariate is given by its values at {0, 1, inf}: c0 = P(0), c1 = P(1),
+        // c2 = leading coefficient. So P(X) = c0 + (c1 - c2 - c0) * X + c2 * X^2.
+        // The linear coefficient must use the ORIGINAL leading coefficient c2, so it has
+        // to be computed before c2 is overwritten with c2 * challenge^2.
+        let mut c1 = c1;
+        c1.sub_assign(&c2);
+        c1.sub_assign(&c0);
+        c1.mul_assign(&challenge);
+
+        let mut c2 = c2;
+        c2.mul_assign(&challenge);
+        c2.mul_assign(&challenge);
+
+        let mut binded = c0;
+        binded.add_assign(&c1);
+        binded.add_assign(&c2);
+
+        binded
+    }
+
+    let mut next_accumulator = [E::ZERO; 9];
+    for x1 in 0..3 {
+        let src_offset = 3 * x1;
+        let dst_offset = 3 * x1;
+        for x2 in 0..3 {
+            let src_offset = src_offset + x2;
+            let dst_offset = dst_offset + x2;
+            {
+                let binded = bind_univariate(
+                    accumulator[0 + src_offset],
+                    accumulator[9 + src_offset],
+                    accumulator[18 + src_offset],
+                    folding_challenges[0],
+                );
+                next_accumulator[dst_offset] = binded;
+            }
+        }
+    }
+
+    let x2_eq = make_eq_poly_in_full::<E>(&previous_round_challenges[2..][..1], &worker)
+        .pop()
+        .unwrap();
+    assert_eq!(x2_eq.len(), 2);
+    let mut evals = [E::ZERO; 3];
+    for x1 in 0..3 {
+        let dst_offset = 3 * x1;
+        for x2 in 0..2 {
+            let dst_offset = dst_offset + x2;
+            let eq_offset = x2;
+            let mut value = next_accumulator[dst_offset];
+            value.mul_assign(&x2_eq[eq_offset]);
+            evals[x1].add_assign(&value);
+        }
+    }
+
+    let mut x1_eq_at_0 = E::ONE;
+    x1_eq_at_0.sub_assign(&previous_round_challenges[1]);
+    let mut eval_at_0 = evals[0];
+    eval_at_0.mul_assign(&x1_eq_at_0);
+
+    let x1_eq_at_1 = previous_round_challenges[1];
+    let mut eval_at_1 = evals[1];
+    eval_at_1.mul_assign(&x1_eq_at_1);
+
+    let mut reconstructed_claim = eval_at_0;
+    reconstructed_claim.add_assign(&eval_at_1);
+    reconstructed_claim.mul_assign(&eq_prefactor);
+    assert_eq!(reconstructed_claim, claim);
+
+    let x1_eq_at_random =
+        evaluate_eq_poly::<F, E>(&previous_round_challenges[1], &folding_challenges[1]);
+    let mut c2 = evals[2];
+    c2.mul_assign(&folding_challenges[1]);
+    c2.mul_assign(&folding_challenges[1]);
+
+    let mut c1 = evals[1];
+    c1.sub_assign(&evals[2]);
+    c1.sub_assign(&evals[0]);
+    c1.mul_assign(&folding_challenges[1]);
+
+    let c0 = evals[0];
+    let mut new_claim = c0;
+    new_claim.add_assign(&c1);
+    new_claim.add_assign(&c2);
+    new_claim.mul_assign(&x1_eq_at_random);
+    // `evals` carry no eq over the already-folded variables, so the claim must be scaled
+    // by the eq prefactor accumulated over all prior rounds (here eq(c0, r0)), not only by
+    // this round's factor x1_eq_at_random
+    new_claim.mul_assign(&eq_prefactor);
+
+    dbg!(new_claim);
+
+    claim = new_claim;
+    eq_prefactor.mul_assign(&x1_eq_at_random);
+
+    // and the final one
+    let accumulator = next_accumulator;
+    let mut next_accumulator = [E::ZERO; 3];
+    for x2 in 0..3 {
+        let src_offset = x2;
+        let dst_offset = x2;
+        {
+            let binded = bind_univariate(
+                accumulator[0 + src_offset],
+                accumulator[3 + src_offset],
+                accumulator[6 + src_offset],
+                folding_challenges[1],
+            );
+            next_accumulator[dst_offset] = binded;
+        }
+    }
+    let evals = next_accumulator;
+
+    let mut x2_eq_at_0 = E::ONE;
+    x2_eq_at_0.sub_assign(&previous_round_challenges[2]);
+    let mut eval_at_0 = evals[0];
+    eval_at_0.mul_assign(&x2_eq_at_0);
+    dbg!(eval_at_0);
+
+    let x2_eq_at_1 = previous_round_challenges[2];
+    let mut eval_at_1 = evals[1];
+    eval_at_1.mul_assign(&x2_eq_at_1);
+    dbg!(eval_at_1);
+
+    let mut reconstructed_claim = eval_at_0;
+    reconstructed_claim.add_assign(&eval_at_1);
+    reconstructed_claim.mul_assign(&eq_prefactor);
+    assert_eq!(reconstructed_claim, claim);
 }
