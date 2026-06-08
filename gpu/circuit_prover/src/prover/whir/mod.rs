@@ -226,6 +226,7 @@ impl GpuWhirExtensionOracle {
                     log_lde_factor,
                     log_values_per_leaf,
                     EXT4_DEGREE,
+                    false, // transform_leaves_to_multilinear_coeffs,
                     context,
                 )?;
             }
@@ -236,6 +237,7 @@ impl GpuWhirExtensionOracle {
                     log_lde_factor,
                     log_values_per_leaf,
                     EXT4_DEGREE,
+                    false, // transform_leaves_to_multilinear_coeffs,
                     context,
                 )?;
             }
@@ -426,7 +428,10 @@ pub(crate) mod tests {
     use fft::{bitreverse_enumeration_inplace, domain_generator_for_size, Twiddles};
     use field::Field;
     use prover::gkr::prover::stages::stage1::ColumnMajorCosetBoundTracePart;
-    use prover::gkr::whir::{ColumnMajorExtensionOracleForCoset, ColumnMajorExtensionOracleForLDE};
+    use prover::gkr::whir::{
+        ColumnMajorExtensionOracleForCoset, ColumnMajorExtensionOracleForLDE,
+        commit_single_ext_poly, commit_single_ext_poly_yoav_style_for_test,
+    };
     use prover::merkle_trees::{
         ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
     };
@@ -672,14 +677,14 @@ pub(crate) mod tests {
     }
 
     fn sample_monomial_coeffs(size: usize) -> Vec<E4> {
+        let mut rng = rand::rng();
         (0..size)
-            .map(|idx| {
-                let base = idx as u32 + 1;
+            .map(|_| {
                 E4::from_array_of_base([
-                    BF::new(base),
-                    BF::new(base + 11),
-                    BF::new(base + 29),
-                    BF::new(base + 47),
+                    BF::from_nonreduced_u32(rng.random()),
+                    BF::from_nonreduced_u32(rng.random()),
+                    BF::from_nonreduced_u32(rng.random()),
+                    BF::from_nonreduced_u32(rng.random()),
                 ])
             })
             .collect()
@@ -728,41 +733,45 @@ pub(crate) mod tests {
             twiddles,
             lde_factor,
         );
-        let trace_len_log2 = monomial_coeffs.len().trailing_zeros() as usize;
-        let mut wrapped_cosets = Vec::with_capacity(cosets.len());
-        for (column, offset) in cosets.iter() {
-            wrapped_cosets.push(ColumnMajorExtensionOracleForCoset {
-                values_normal_order: ColumnMajorCosetBoundTracePart {
-                    column: column.clone().into(),
-                    offset: *offset,
-                },
-            });
-        }
-        let source: Vec<_> = wrapped_cosets
-            .iter()
-            .map(|coset| vec![&coset.values_normal_order.column[..]])
-            .collect();
-        let source_ref: Vec<_> = source.iter().map(|entry| &entry[..]).collect();
-        let tree =
-            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::construct_from_cosets::<
-                E4,
-                Global,
-            >(
-                &source_ref,
-                values_per_leaf,
-                tree_cap_size,
-                true,
-                true,
-                false,
-                worker,
-            );
 
-        ColumnMajorExtensionOracleForLDE {
-            cosets: wrapped_cosets,
-            tree,
-            values_per_leaf,
-            trace_len_log2,
-        }
+        // commit_single_ext_poly(cosets, values_per_leaf, tree_cap_size, worker)
+        commit_single_ext_poly_yoav_style_for_test(cosets, values_per_leaf, tree_cap_size, worker)
+
+        // let trace_len_log2 = monomial_coeffs.len().trailing_zeros() as usize;
+        // let mut wrapped_cosets = Vec::with_capacity(cosets.len());
+        // for (column, offset) in cosets.iter() {
+        //     wrapped_cosets.push(ColumnMajorExtensionOracleForCoset {
+        //         values_normal_order: ColumnMajorCosetBoundTracePart {
+        //             column: column.clone().into(),
+        //             offset: *offset,
+        //         },
+        //     });
+        // }
+        // let source: Vec<_> = wrapped_cosets
+        //     .iter()
+        //     .map(|coset| vec![&coset.values_normal_order.column[..]])
+        //     .collect();
+        // let source_ref: Vec<_> = source.iter().map(|entry| &entry[..]).collect();
+        // let tree =
+        //     <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::construct_from_cosets::<
+        //         E4,
+        //         Global,
+        //     >(
+        //         &source_ref,
+        //         values_per_leaf,
+        //         tree_cap_size,
+        //         true,
+        //         true,
+        //         false,
+        //         worker,
+        //     );
+
+        // ColumnMajorExtensionOracleForLDE {
+        //     cosets: wrapped_cosets,
+        //     tree,
+        //     values_per_leaf,
+        //     trace_len_log2,
+        // }
     }
 
     fn assert_recursive_oracle_caps_and_queries_match_cpu(
@@ -826,26 +835,60 @@ pub(crate) mod tests {
         }
     }
 
+    fn recursive_oracle_lde_matches_cpu_impl(
+        log_coeff_sizes: &[usize],
+        values_per_leafs: &[usize],
+        is_small: bool,
+    ) {
+        let worker = Worker::new();
+        let context = if is_small {
+            make_test_context(256, 32)
+        } else {
+            make_test_context(2048, 64)
+        };
+
+        // Tests a range of parameters.
+        for &log_coeff_size in log_coeff_sizes.iter() {
+            for &values_per_leaf in values_per_leafs.iter() {
+                let monomial_coeffs = sample_monomial_coeffs(1 << log_coeff_size);
+                let twiddles = Twiddles::<BF, Global>::new(monomial_coeffs.len(), &worker);
+                let cpu =
+                    cpu_extension_oracle_from_monomial_form(&monomial_coeffs, &twiddles, 4, values_per_leaf, 4, &worker);
+                let gpu = GpuWhirExtensionOracle::from_monomial_coeffs(&monomial_coeffs, 4, values_per_leaf, 4, &context)
+                    .unwrap();
+
+                for coset_index in 0..4 {
+                    // let gpu_results = gpu.copy_coset_values(coset_index, &context);
+                    // let cpu_results = cpu.cosets[coset_index].values_normal_order.column.to_vec();
+                    // for (i, (gpu_val, cpu_val)) in gpu_results.iter().zip(cpu_results.iter()).enumerate() {
+                    //     if gpu_val == cpu_val {
+                    //         println!("EQUAL {:<3} {:<60} {:<60}", i, gpu_val, cpu_val);
+                    //     } else {
+                    //         println!("NOT   {:<3} {:<60} {:<60}", i, gpu_val, cpu_val);
+                    //     }
+                    // }
+                    assert_eq!(
+                        gpu.copy_coset_values(coset_index, &context),
+                        cpu.cosets[coset_index].values_normal_order.column.to_vec(),
+                        "coset {} diverged",
+                        coset_index
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     #[serial]
-    fn recursive_oracle_lde_matches_cpu() {
-        let worker = Worker::new();
-        let context = make_test_context(256, 32);
-        let monomial_coeffs = sample_monomial_coeffs(1 << 6);
-        let twiddles = Twiddles::<BF, Global>::new(monomial_coeffs.len(), &worker);
-        let cpu =
-            cpu_extension_oracle_from_monomial_form(&monomial_coeffs, &twiddles, 4, 4, 4, &worker);
-        let gpu = GpuWhirExtensionOracle::from_monomial_coeffs(&monomial_coeffs, 4, 4, 4, &context)
-            .unwrap();
+    fn recursive_oracle_lde_matches_cpu_small_sweep() {
+        recursive_oracle_lde_matches_cpu_impl(&[6, 7, 8], &[2, 4, 8], true);
+    }
 
-        for coset_index in 0..4 {
-            assert_eq!(
-                gpu.copy_coset_values(coset_index, &context),
-                cpu.cosets[coset_index].values_normal_order.column.to_vec(),
-                "coset {} diverged",
-                coset_index
-            );
-        }
+    #[test]
+    #[serial]
+    #[ignore]
+    fn recursive_oracle_lde_matches_cpu_large() {
+        recursive_oracle_lde_matches_cpu_impl(&[23], &[32], false);
     }
 
     #[test]
