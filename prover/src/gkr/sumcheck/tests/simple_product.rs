@@ -932,4 +932,90 @@ fn test_windowed_product() {
     reconstructed_claim.add_assign(&eval_at_1);
     reconstructed_claim.mul_assign(&eq_prefactor);
     assert_eq!(reconstructed_claim, claim);
+
+    // get next claim for explicit round
+    let x2_eq_at_random =
+        evaluate_eq_poly::<F, E>(&previous_round_challenges[2], &folding_challenges[2]);
+    let mut c2 = evals[2];
+    c2.mul_assign(&folding_challenges[2]);
+    c2.mul_assign(&folding_challenges[2]);
+
+    let mut c1 = evals[1];
+    c1.sub_assign(&evals[2]);
+    c1.sub_assign(&evals[0]);
+    c1.mul_assign(&folding_challenges[2]);
+
+    let c0 = evals[0];
+    let mut new_claim = c0;
+    new_claim.add_assign(&c1);
+    new_claim.add_assign(&c2);
+    new_claim.mul_assign(&x2_eq_at_random);
+    new_claim.mul_assign(&eq_prefactor);
+
+    dbg!(new_claim);
+
+    claim = new_claim;
+    eq_prefactor.mul_assign(&x2_eq_at_random);
+
+    // and now we should fold/bind over the window
+
+    let mut folded_polys = vec![];
+    let binding_prefactor = make_eq_poly_in_full::<E>(&folding_challenges[..3], &worker)
+        .pop()
+        .unwrap();
+    assert_eq!(binding_prefactor.len(), 8);
+    // let mut values_scratch = [E::ZERO; 8];
+    let x0_stride = 1 << (FOLDING_STEPS - 1);
+    let x1_stride = x0_stride / 2;
+    let x2_stride = x1_stride / 2;
+
+    for poly in srcs.into_iter() {
+        let mut result = Vec::with_capacity(2);
+        // let dst = &mut values_scratch;
+
+        for row in 0..work_size {
+            let absolute_row_idx = row;
+            let mut folded = E::ZERO;
+            for x0 in 0..2 {
+                let prefactor_idx = x0 * 4;
+                let stride = x0_stride * x0;
+                for x1 in 0..2 {
+                    let prefactor_idx = prefactor_idx + x1 * 2;
+                    let stride = stride + x1 * x1_stride;
+                    for x2 in 0..2 {
+                        let prefactor_idx = prefactor_idx + x2;
+                        let stride = stride + x2 * x2_stride;
+                        let src_idx = stride + absolute_row_idx;
+
+                        let mut t = binding_prefactor[prefactor_idx];
+                        t.mul_assign_by_base(&poly[src_idx]);
+                        folded.add_assign(&t);
+                    }
+                    // here we filled all options of (x0, x1, 0/1/inf)
+                }
+            }
+
+            result.push(folded);
+        }
+        assert_eq!(result.len(), work_size);
+
+        folded_polys.push(result);
+    }
+
+    // and now we have explicit sumcheck
+    let mut x3_eq_at_0 = E::ONE;
+    x3_eq_at_0.sub_assign(&previous_round_challenges[3]);
+    let mut eval_at_0 = folded_polys[0][0];
+    eval_at_0.mul_assign(&folded_polys[1][0]);
+    eval_at_0.mul_assign(&x3_eq_at_0);
+
+    let x3_eq_at_1 = &previous_round_challenges[3];
+    let mut eval_at_1 = folded_polys[0][1];
+    eval_at_1.mul_assign(&folded_polys[1][1]);
+    eval_at_1.mul_assign(&x3_eq_at_1);
+
+    let mut reconstructed_claim = eval_at_0;
+    reconstructed_claim.add_assign(&eval_at_1);
+    reconstructed_claim.mul_assign(&eq_prefactor);
+    assert_eq!(reconstructed_claim, claim);
 }
