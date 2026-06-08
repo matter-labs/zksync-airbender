@@ -236,15 +236,15 @@ fn slt_rd_write_high_limb_nonzero_rejected() {
     );
 }
 
-/// SW-into-ROM trap: the constraint `is_rom * is_sw = 0` at
-/// mem_word_only_lw_sw.rs:179 forbids stores to ROM addresses. Mutating
-/// `is_rom = 1` on an SW row should make the product 1 ≠ 0; `check_satisfied`
-/// must reject.
+/// SW-into-ROM trap: the constraint `is_rom * is_sw = 0` forbids stores to ROM
+/// addresses. Mutating `is_rom = 1` on an SW row should make the product 1 ≠ 0;
+/// `check_satisfied` must reject. `is_rom` is aliased into the shared scratch-Boolean
+/// pool (slot 2) — on an SW row that slot holds `is_rom`.
 #[test]
 fn sw_into_rom_rejected() {
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
         let sw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
-        let is_rom_addr = find_base_layer_address(circuit, "flag: are we in rom addr range?");
+        let is_rom_addr = find_base_layer_address(circuit, "shared scratch bool[2]");
         let sw_row = (0..base_trace_len(trace))
             .find(|&r| read_cell(trace, sw_addr, r) == BabyBearField::ONE)
             .expect("multi_family_smoke must execute at least one SW");
@@ -253,6 +253,58 @@ fn sw_into_rom_rejected() {
     assert!(
         !check_satisfied(&circuit, &full_trace),
         "expected is_rom=1 on SW row to fail check_satisfied (is_rom * is_sw = 0 trap)"
+    );
+}
+
+/// Family-4 `ram_addr` select-trick binding. `ram_addr` is aliased into the shared
+/// scratch-Variable pool (slots 0,1) and bound by `is_lw*(ram_addr-readaddr)=0` +
+/// `is_sw*(ram_addr-writeaddr)=0`. On an LW row `ram_addr[0]` must equal the read
+/// address low limb; corrupting the pooled slot breaks the gated constraint, so
+/// `check_satisfied` must reject — proving the select-trick rewrite still binds
+/// ram_addr on Family-4 rows.
+#[test]
+fn unified_ram_addr_corruption_on_lw_row_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let lw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
+        // ram_addr[0] aliases shared scratch var[0].
+        let ram_addr_lo = find_base_layer_address(circuit, "shared scratch var[0]");
+        let lw_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, lw_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one LW");
+        let cur = read_cell(trace, ram_addr_lo, lw_row);
+        write_cell(trace, ram_addr_lo, lw_row, cur + BabyBearField::ONE);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected ram_addr[0] corruption on LW row to fail check_satisfied (select-trick binding)"
+    );
+}
+
+/// Family-4 SW-alignment pooled-bool binding. `bit_0` is aliased into the shared
+/// scratch-Boolean pool (slot 3). On an SW row the address is word-aligned so
+/// `bit_0 = 0`; the is_sw-gated trap `is_sw*(bit_0+bit_1)=0` (and the gated
+/// decomposition) pin it. Flipping it to 1 must make `check_satisfied` reject —
+/// proving the is_sw-gated decomposition still binds bit_0 on SW rows.
+#[test]
+fn unified_sw_align_bit0_flip_on_sw_row_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let sw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
+        // sw-align bit_0 aliases shared scratch bool[3].
+        let bit_0_addr = find_base_layer_address(circuit, "shared scratch bool[3]");
+        let sw_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, sw_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one SW");
+        let cur = read_cell(trace, bit_0_addr, sw_row);
+        let flipped = if cur == BabyBearField::ZERO {
+            BabyBearField::ONE
+        } else {
+            BabyBearField::ZERO
+        };
+        write_cell(trace, bit_0_addr, sw_row, flipped);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected sw-align bit_0 flip on SW row to fail check_satisfied (gated alignment trap)"
     );
 }
 
@@ -433,5 +485,87 @@ fn unified_address_carry_lo_flip_rejected() {
     assert!(
         !check_satisfied(&circuit, &full_trace),
         "expected of_lo flip on LW row to fail check_satisfied"
+    );
+}
+
+/// Family-2 pooled-Boolean binding. `add_rel_1_intermediate_of` (the next-PC
+/// addition's intermediate carry) is a branch-local scratch Boolean aliased into
+/// the shared scratch-Boolean pool at slot [2] (`"shared scratch bool[2]"`). On a
+/// Family-2 row that slot holds the F2 carry; the second add-like constraint
+/// (`... - is_slt * 2^16 * add_rel_1_intermediate_of = 0`) ties it to the PC
+/// computation. Flipping it on an SLT row breaks that constraint, so
+/// `check_satisfied` must reject — proving the pool aliasing did not un-bind the
+/// F2 carry on its own family's rows.
+#[test]
+fn unified_f2_pooled_bool_binds_on_slt_row_rejected() {
+    let slt_bit_index = FAMILY_2_FLAG_OFFSET + 2;
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let slt_addr = find_base_layer_address(circuit, &format!("family_bit[{}]", slt_bit_index));
+        let bool_addr = find_base_layer_address(circuit, "shared scratch bool[2]");
+        let slt_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, slt_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one SLT");
+        let cur = read_cell(trace, bool_addr, slt_row);
+        let flipped = if cur == BabyBearField::ZERO {
+            BabyBearField::ONE
+        } else {
+            BabyBearField::ZERO
+        };
+        write_cell(trace, bool_addr, slt_row, flipped);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected pooled F2 carry bool flip on SLT row to fail check_satisfied"
+    );
+}
+
+/// Family-2 pooled-Variable binding. `should_jump_or_slt_value` (the SLT result /
+/// branch decision, a gated lookup output) is aliased into the shared
+/// scratch-Variable pool at slot [2] (`"shared scratch var[2]"`). On an SLT row
+/// with `rd != 0` the rd-write low constraint pins
+/// `is_slt_writes_rd * should_jump_or_slt_value = ... * rd_write_limbs[0]`, so
+/// corrupting the slot breaks it (the same first-SLT-row anchor the
+/// `slt_rd_write_high_limb_nonzero_rejected` test relies on guarantees
+/// `rd != 0`). `check_satisfied` must reject — proving the Variable-pool aliasing
+/// did not un-bind the F2 lookup output on its own family's rows.
+#[test]
+fn unified_f2_pooled_var_binds_on_slt_row_rejected() {
+    let slt_bit_index = FAMILY_2_FLAG_OFFSET + 2;
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let slt_addr = find_base_layer_address(circuit, &format!("family_bit[{}]", slt_bit_index));
+        let var_addr = find_base_layer_address(circuit, "shared scratch var[2]");
+        let slt_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, slt_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one SLT");
+        let cur = read_cell(trace, var_addr, slt_row);
+        write_cell(trace, var_addr, slt_row, cur + BabyBearField::ONE);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected pooled F2 should_jump_or_slt_value corruption on SLT row to fail check_satisfied"
+    );
+}
+
+/// F4's `top_14` (SW-align `writeaddr_lo >> 2`) borrows limb 0 of the
+/// shared F1/F2/F4 RC-16 Register on F4 rows. On an SW row that slot holds
+/// `top_14`, pinned by the is_sw-gated decomposition `4*top_14 + 2*bit_1 + bit_0
+/// = writeaddr_lo`. Corrupting the pooled slot on an SW row breaks the
+/// decomposition, so `check_satisfied` must reject — proving the RC-16-Register
+/// aliasing did not un-bind `top_14` on F4's own rows.
+#[test]
+fn unified_top14_pooled_corruption_on_sw_row_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let sw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
+        // top_14 aliases limb 0 of the shared F1/F2/F4 intermediate Register.
+        let top14_addr = find_base_layer_address(circuit, "shared F1/F2 intermediate reg[0]");
+        let sw_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, sw_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one SW");
+        let cur = read_cell(trace, top14_addr, sw_row);
+        write_cell(trace, top14_addr, sw_row, cur + BabyBearField::ONE);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected pooled top_14 corruption on SW row to fail check_satisfied (gated decomposition)"
     );
 }

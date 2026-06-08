@@ -25,7 +25,7 @@ const INITIAL_NUM_QUERIES: usize = 63usize;
 const INITIAL_POW_BITS: u32 = 28u32;
 const INITIAL_DRAW_WORDS: usize = 56usize;
 const INITIAL_RS_DOMAIN_LOG2: usize = 25usize;
-const HASH_BUF_SIZE: usize = 144usize;
+const HASH_BUF_SIZE: usize = 128usize;
 const FOLD_BUF_HALF: usize = 1usize;
 const NUM_COSETS: usize = 2usize;
 const NUM_COSETS_LOG2: usize = 1usize;
@@ -135,10 +135,10 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 q,
                 nd_source,
             )?;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 144usize>(
+            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 122usize>(
                 &mut ts.hasher,
                 hash_buf,
-                72usize,
+                61usize,
                 tree_index,
                 20usize,
                 initial_transcript.witness_caps_slice(),
@@ -157,7 +157,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 20usize,
                 initial_transcript.setup_caps_slice(),
                 &gamma_powers[..],
-                114usize,
+                103usize,
                 &mut acc0,
                 &mut acc1,
                 q,
@@ -592,7 +592,7 @@ const _: () = assert!(
         .len(),
     "WHIR stats labels array is too small for NUM_INTERNAL_ROUNDS"
 );
-pub const WHIR_HASH_BUF_SIZE: usize = 144usize;
+pub const WHIR_HASH_BUF_SIZE: usize = 128usize;
 pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
     initial_transcript: &ConcreteInitialTranscript,
     ts: &mut TranscriptState,

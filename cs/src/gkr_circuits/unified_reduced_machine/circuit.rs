@@ -44,10 +44,8 @@ use field::PrimeField;
 pub const FAMILY_1_FLAG_OFFSET: usize = 0;
 pub const FAMILY_2_FLAG_OFFSET: usize =
     FAMILY_1_FLAG_OFFSET + ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS;
-pub const FAMILY_3_FLAG_OFFSET: usize =
-    FAMILY_2_FLAG_OFFSET + JUMP_SLT_BRANCH_FAMILY_NUM_BITS;
-pub const FAMILY_4_FLAG_OFFSET: usize =
-    FAMILY_3_FLAG_OFFSET + SHIFT_BINARY_FAMILY_NUM_FLAGS;
+pub const FAMILY_3_FLAG_OFFSET: usize = FAMILY_2_FLAG_OFFSET + JUMP_SLT_BRANCH_FAMILY_NUM_BITS;
+pub const FAMILY_4_FLAG_OFFSET: usize = FAMILY_3_FLAG_OFFSET + SHIFT_BINARY_FAMILY_NUM_FLAGS;
 
 /// Family 4 occupies 2 unified flags (one-hot LW/SW), independent of the standalone
 /// `WORD_ONLY_MEMORY_FAMILY_NUM_FLAGS = 1` encoding.
@@ -64,10 +62,10 @@ pub const UNIFIED_REDUCED_MACHINE_NUM_FLAGS: usize = ADD_SUB_LUI_AUIPC_MOP_FAMIL
 /// only inside that family's flag-gated constraints, hence unconstrained (free)
 /// on rows where the family is idle. Because at most one family fires per row,
 /// these slots can be ALIASED across families into one shared pool.
-const F1_SCRATCH_BOOLS: usize = 2; // carry, intermediate_carry (alias F4's of_lo/of_hi slots)
-const F2_SCRATCH_BOOLS: usize = 0; // TODO: 4 carries, next_pc_bit_1, 2x is_X_writes_rd, gate_fam2_rd_zero
-const F3_SCRATCH_BOOLS: usize = 0;
-const F4_SCRATCH_BOOLS: usize = 2; // of_lo, of_hi
+pub(super) const F1_SCRATCH_BOOLS: usize = 2; // carry, intermediate_carry (alias F4's of_lo/of_hi slots)
+pub(super) const F2_SCRATCH_BOOLS: usize = 5; // add_rel_{0,1}_{intermediate,final}_of (4) + next_pc_bit_1
+pub(super) const F3_SCRATCH_BOOLS: usize = 0;
+pub(super) const F4_SCRATCH_BOOLS: usize = 5; // of_lo, of_hi, is_rom, sw-align bit_0, bit_1
 
 /// Shared base-layer scratch-Boolean pool size = max across families (one pool,
 /// reused per row by whichever family fires)
@@ -81,6 +79,26 @@ const UNIFIED_SCRATCH_BOOL_COUNT: usize = {
     }
     if F4_SCRATCH_BOOLS > m {
         m = F4_SCRATCH_BOOLS;
+    }
+    m
+};
+
+pub(super) const F1_SCRATCH_VARS: usize = 0;
+pub(super) const F2_SCRATCH_VARS: usize = 3; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value
+pub(super) const F3_SCRATCH_VARS: usize = 17; // shift/binop scratch_space
+pub(super) const F4_SCRATCH_VARS: usize = 2; // ram_addr[0], ram_addr[1]
+
+/// Shared base-layer scratch-Variable pool size = max across families.
+const UNIFIED_SCRATCH_VAR_COUNT: usize = {
+    let mut m = F1_SCRATCH_VARS;
+    if F2_SCRATCH_VARS > m {
+        m = F2_SCRATCH_VARS;
+    }
+    if F3_SCRATCH_VARS > m {
+        m = F3_SCRATCH_VARS;
+    }
+    if F4_SCRATCH_VARS > m {
+        m = F4_SCRATCH_VARS;
     }
     m
 };
@@ -262,6 +280,8 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     let scratch_bools: [Boolean; UNIFIED_SCRATCH_BOOL_COUNT] = core::array::from_fn(|i| {
         cs.add_named_boolean_variable(&format!("shared scratch bool[{i}]"))
     });
+    let scratch_vars: [Variable; UNIFIED_SCRATCH_VAR_COUNT] =
+        core::array::from_fn(|i| cs.add_named_variable(&format!("shared scratch var[{i}]")));
     let shared_intermediate_reg = Register::new_named(cs, "shared F1/F2 intermediate reg");
 
     // Each family body adds constraints gated by its own flag bits. Family-internal
@@ -289,6 +309,8 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         rs2_limbs,
         rd_write_limbs,
         shared_intermediate_reg,
+        core::array::from_fn::<_, F2_SCRATCH_BOOLS, _>(|i| scratch_bools[i]),
+        core::array::from_fn::<_, F2_SCRATCH_VARS, _>(|i| scratch_vars[i]),
     );
     let f3_lookups = apply_unified_binary_shifts_inner(
         cs,
@@ -297,6 +319,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         rs1_limbs,
         rs2_limbs,
         rd_write_limbs,
+        core::array::from_fn::<_, F3_SCRATCH_VARS, _>(|i| scratch_vars[i]),
     );
     let pc_in = inputs.cycle_start_state.pc;
     let pc_out = inputs.cycle_end_state.pc;
@@ -310,16 +333,23 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         rs2_access,
         rd_access,
         core::array::from_fn::<_, F4_SCRATCH_BOOLS, _>(|i| scratch_bools[i]),
+        core::array::from_fn::<_, F4_SCRATCH_VARS, _>(|i| scratch_vars[i]),
+        shared_intermediate_reg.0[0].get_variable(),
     );
 
     flush_unified_lookup_pool(cs, &[f2_lookups, f3_lookups, f4_lookups]);
-
 
     // Unified PC bump (gated). Families 1, 3, 4 leave PC handling to the caller;
     // Family 2 (jump_branch_slt) owns its own gated PC logic for jal/jalr/branch/slt.
     // We add `pc_next = pc + 4` constraints that fire only when (cycle executes) AND
     // (no Family-2 sub-opcode is active). Padding rows have execute=0 → trivially satisfied.
-    apply_unified_pc_bump(cs, pc_in, pc_out, execute, unified_mask.jump_branch_slt_bits());
+    apply_unified_pc_bump(
+        cs,
+        pc_in,
+        pc_out,
+        execute,
+        unified_mask.jump_branch_slt_bits(),
+    );
 
     apply_unified_family_dispatch_one_hot(cs, execute, &unified_mask);
 }
@@ -453,8 +483,7 @@ fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
     {
         let f1_vars: [Variable; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS] =
             std::array::from_fn(|i| family_1_bits[i].expect_variable());
-        let f2_vars: [Variable; 4] =
-            std::array::from_fn(|i| family_2_bits[i].expect_variable());
+        let f2_vars: [Variable; 4] = std::array::from_fn(|i| family_2_bits[i].expect_variable());
         let f3_vars: [Variable; SHIFT_BINARY_FAMILY_NUM_FLAGS] =
             std::array::from_fn(|i| family_3_bits[i].expect_variable());
         let is_lw_var = is_lw.expect_variable();
@@ -514,9 +543,7 @@ fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
     }
     padding_zero_sum = padding_zero_sum + Constraint::from(is_lw);
     padding_zero_sum = padding_zero_sum + Constraint::from(is_sw);
-    cs.add_constraint(
-        (Term::from(1u32) - Term::from(execute)) * padding_zero_sum,
-    );
+    cs.add_constraint((Term::from(1u32) - Term::from(execute)) * padding_zero_sum);
 }
 
 /// Register all tables the unified circuit body looks up against. Shared by both

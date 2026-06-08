@@ -4,7 +4,7 @@ use crate::cs::circuit_trait::*;
 use crate::types::*;
 use field::PrimeField;
 
-use super::circuit::LookupRequest;
+use super::circuit::{LookupRequest, F4_SCRATCH_BOOLS, F4_SCRATCH_VARS};
 use super::mem_word_only_lw_sw::apply_unified_mem_word_only_lw_sw_data_path;
 
 /// Memory-access constraints for the unified circuit.
@@ -29,7 +29,7 @@ use super::mem_word_only_lw_sw::apply_unified_mem_word_only_lw_sw_data_path;
 /// Caller (unified body) owns the `memread_addr` / `memwrite_addr` witness
 /// vars and passes them inside the access objects.
 #[allow(non_snake_case)]
-pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>, const N: usize>(
+pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     is_lw: Boolean,
@@ -37,7 +37,10 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>, const N:
     rs1_limbs: [Variable; REGISTER_SIZE * 2],
     memread_access: RegisterOrRamAccess,
     memwrite_access: RegisterOrRamAccess,
-    of_slots: [Boolean; N],
+    of_slots: [Boolean; F4_SCRATCH_BOOLS],
+    scratch_vars: [Variable; F4_SCRATCH_VARS],
+    // Shared RC-16 slot (limb 0 of the F1/F2/F4 Register) for the SW-align `top_14`.
+    top_14_slot: Variable,
 ) -> Vec<LookupRequest<F>> {
     // LW: rd                          <- mem[addr] || rom[addr]  with +0 offset accepted
     // SW: mem[addr] || trap rom[addr] <- rs2                     with +0 offset accepted
@@ -89,5 +92,7 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>, const N:
         memread_addr,
         memwrite_addr,
         of_slots,
+        scratch_vars,
+        top_14_slot,
     )
 }

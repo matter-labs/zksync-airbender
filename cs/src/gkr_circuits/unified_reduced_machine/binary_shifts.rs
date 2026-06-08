@@ -1,3 +1,4 @@
+use super::circuit::{LookupRequest, F3_SCRATCH_VARS};
 use super::*;
 use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
@@ -5,7 +6,6 @@ use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables;
 use crate::gkr_circuits::binary_shifts_family::ShiftBinaryFamilyCircuitMask;
 use crate::types::*;
 use field::PrimeField;
-use super::circuit::LookupRequest;
 
 /// Family 3 (binary ops / shifts) constraints for the unified circuit. Mirrors the
 /// standalone inner; rd-write constraints are gated on `is_binary_op + is_shift`
@@ -17,6 +17,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     rs1_limbs: [Variable; 4],
     rs2_limbs: [Variable; 4],
     rd_write_limbs: [Variable; 2],
+    scratch_space: [Variable; F3_SCRATCH_VARS],
 ) -> Vec<LookupRequest<F>> {
     // NOTE: by preprocessing if we have rd == 0 in any of the opcodes below, then
     // we have rs1 = x0, rs2 = x0 and imm = 0, and it's preprocessed into plain addition,
@@ -34,9 +35,6 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     // scratch space
     // - for binary ops we need just 5: one for sign-extension of the immediate, and 4 for outputs
     // - for shift we need 17: 4x4 for output contributions, and one for truncated shift amount
-
-    let scratch_space: [Variable; 17] =
-        std::array::from_fn(|i| cs.add_named_variable(&format!("scratch space {}", i)));
 
     let [binary_ops_imm_sign_ext, binop_output_0, binop_output_1, binop_output_2, binop_output_3, ..] =
         scratch_space;

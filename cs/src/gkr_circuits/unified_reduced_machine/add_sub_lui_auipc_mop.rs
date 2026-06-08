@@ -8,13 +8,15 @@ use crate::types::*;
 use crate::witness_placer::*;
 use field::PrimeField;
 
+use super::circuit::F1_SCRATCH_BOOLS;
+
 /// Family 1 (add_sub/lui/auipc/mop) constraints for the unified circuit.
 /// Mirrors the standalone inner (`add_sub_family`), adapted to take
 /// pre-allocated rs1/rs2 U8 byte limbs from the unified body instead of
 /// requesting memory accesses internally. Non-Family-1 cycles have all
 /// `decoder.perform_*()` Booleans = 0 so every constraint here is multiplied
 /// by 0 and is trivially satisfied.
-pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>, const N: usize>(
+pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     decoder: AddSubLuiAuipcMopFamilyCircuitMask,
@@ -24,8 +26,8 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>, 
     rs2_read_timestamp: [Variable; common_constants::NUM_TIMESTAMP_COLUMNS_FOR_RAM],
     // Shared 16-bit-RC scratch Register for the modular-ops intermediate
     intermediate_tmp: Register<F>,
-    // Shared scratch-Boolean slots for carry / intermediate_carry 
-    of_slots: [Boolean; N],
+    // Shared scratch-Boolean pool slots [0],[1] = carry / intermediate_carry.
+    of_slots: [Boolean; F1_SCRATCH_BOOLS],
 ) {
     // NOTE: by preprocessing if we have rd == 0 in any of the opcodes below, then
     // we have rs1 = x0, rs2 = x0 and imm = 0, and it's preprocessed into plain addition,

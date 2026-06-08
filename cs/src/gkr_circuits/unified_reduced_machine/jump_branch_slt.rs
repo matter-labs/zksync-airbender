@@ -1,14 +1,14 @@
 use super::*;
 use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
-use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables_from_constraints;
+use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables_from_constraints_conditional;
 use crate::gkr_circuits::jump_branch_slt_family::JumpSltBranchFamilyCircuitMask;
 use crate::gkr_circuits::utils::update_intermediate_carry_value;
 use crate::types::*;
 use crate::witness_placer::*;
 use field::PrimeField;
 
-use super::circuit::LookupRequest;
+use super::circuit::{LookupRequest, F2_SCRATCH_BOOLS, F2_SCRATCH_VARS};
 
 /// Family 2 (jump/branch/slt) constraints for the unified circuit. Mirrors the
 /// standalone inner with two unified-specific adaptations:
@@ -23,6 +23,8 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     rs2_limbs: [Variable; 4],
     rd_write_limbs: [Variable; 2],
     intermediate_reg: Register<F>,
+    scratch_bools: [Boolean; F2_SCRATCH_BOOLS],
+    scratch_vars: [Variable; F2_SCRATCH_VARS],
 ) -> Vec<LookupRequest<F>> {
     // U16 views of rs1/rs2 reassembled from U8 bytes via free algebra.
     let byte_shift = F::from_u32_unchecked(1 << 8);
@@ -72,10 +74,10 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         Invariant::RangeChecked { width: 16 },
     );
 
-    // and we need 4 intermediate booleans
-    let intermediate_bools = std::array::from_fn(|i| {
-        cs.add_named_boolean_variable(&format!("Intermedaite boolean {}", i))
-    });
+    // and we need 4 intermediate booleans — aliased into the shared scratch-Boolean
+    // pool slots [0..4] (branch-local: consumed only inside is_jal/is_jalr/is_branch/is_slt
+    // gated add-like constraints, so free on non-Family-2 rows).
+    let intermediate_bools: [Boolean; 4] = core::array::from_fn(|i| scratch_bools[i]);
 
     let is_branch = decoder.perform_branch();
     let is_slt = decoder.perform_slt();
@@ -89,6 +91,15 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     let is_fam2_sum = || -> Constraint<F> {
         Constraint::from(is_jal) + Term::from(is_jalr) + Term::from(is_slt) + Term::from(is_branch)
     };
+    // Family-2 sub-opcode flag variables, OR-ed in-witness to form the is_fam2 mask
+    // that gates the conditional pool-slot peeks (lookup outputs share the scratch
+    // Variable pool with Family 3, so their witness writes must be conditional).
+    let f2_flag_vars = [
+        is_jal.expect_variable(),
+        is_jalr.expect_variable(),
+        is_slt.expect_variable(),
+        is_branch.expect_variable(),
+    ];
 
     // NOTE: as usual, for SLT/SLTI if we have immediate variant, then we have x0 as rs2,
     // so we can avoid selections
@@ -235,8 +246,14 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
                 &is_fam2,
                 &out_value,
             );
-            placer.assign_mask(add_rel_0_intermediate_of_var, &intermedaite_of_value);
-            placer.assign_mask(add_rel_0_final_of_var, &of_value);
+            // Conditional on is_fam2: these carry bools alias shared bool-pool slots,
+            // so non-Family-2 rows must leave them to the pool default / sibling families.
+            placer.conditionally_assign_mask(
+                add_rel_0_intermediate_of_var,
+                &is_fam2,
+                &intermedaite_of_value,
+            );
+            placer.conditionally_assign_mask(add_rel_0_final_of_var, &is_fam2, &of_value);
         };
         cs.set_values(value_fn);
     }
@@ -255,8 +272,10 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
             Term::from(is_slt) * Term::from(comparison_rel_or_jump_saved_pc_low);
         // second addend
         // NOTE: for additions we blindly mix imm and rs2 as preprocessing ensures that if imm !=0 then rs2 = x0
-        add_like_low_constraint += Term::from(is_jal) * Term::from(common_constants::PC_STEP as u32);
-        add_like_low_constraint += Term::from(is_jalr) * Term::from(common_constants::PC_STEP as u32);
+        add_like_low_constraint +=
+            Term::from(is_jal) * Term::from(common_constants::PC_STEP as u32);
+        add_like_low_constraint +=
+            Term::from(is_jalr) * Term::from(common_constants::PC_STEP as u32);
         add_like_low_constraint += Term::from(is_branch) * rs2_low_c.clone();
         add_like_low_constraint += Term::from(is_slt) * rs2_low_c.clone();
         add_like_low_constraint += Term::from(is_slt) * Term::from(inputs.decoder_data.imm[0]);
@@ -322,15 +341,16 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // now we should compare the output result to 0,
     // then resolve jump/slt condition
 
-    let comparison_result_is_zero = cs.add_named_variable("Comparison result is zero out var");
+    let comparison_result_is_zero = scratch_vars[0];
     let regiszero_input: Constraint<F> = Constraint::empty()
         + Term::from(comparison_rel_or_jump_saved_pc_low)
         + Term::from(comparison_rel_or_jump_saved_pc_high);
-    peek_lookup_values_unconstrained_into_variables_from_constraints(
+    peek_lookup_values_unconstrained_into_variables_from_constraints_conditional(
         cs,
         &[is_fam2_sum() * regiszero_input.clone()],
         &[comparison_result_is_zero],
         is_fam2_sum() * Term::from(TableType::RegIsZero.to_num()),
+        &f2_flag_vars,
     );
     let regiszero_request = LookupRequest {
         table_id: is_fam2_sum() * Term::from(TableType::RegIsZero.to_num()),
@@ -342,12 +362,13 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
 
     // sign of rs1's high U16 limb (reassembled from the high two bytes — that's
     // exactly `rs1_high_c`). U16GetSign maps the full 16-bit value to its sign.
-    let rs1_sign = cs.add_named_variable("rs1 sign boolean");
-    peek_lookup_values_unconstrained_into_variables_from_constraints(
+    let rs1_sign = scratch_vars[1];
+    peek_lookup_values_unconstrained_into_variables_from_constraints_conditional(
         cs,
         &[is_fam2_sum() * rs1_high_c.clone()],
         &[rs1_sign],
         is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
+        &f2_flag_vars,
     );
     let u16getsign_request = LookupRequest {
         table_id: is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
@@ -363,7 +384,7 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // boolean conditions. The packed input references rs1_sign +
     // comparison_result_is_zero (peeked above); the witness resolver orders the
     // peeks by data dependency.
-    let should_jump_or_slt_value = cs.add_named_variable("jump resolution variable");
+    let should_jump_or_slt_value = scratch_vars[2];
     let cond_jmp_input: Constraint<F> = Constraint::empty()
         + rs2_high_c.clone()
         + Term::from((F::from_u32(1 << 16).unwrap(), rs1_sign))
@@ -373,11 +394,12 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
             F::from_u32(1 << 19).unwrap(),
             inputs.decoder_data.funct3.expect("must have funct3"),
         ));
-    peek_lookup_values_unconstrained_into_variables_from_constraints(
+    peek_lookup_values_unconstrained_into_variables_from_constraints_conditional(
         cs,
         &[is_fam2_sum() * cond_jmp_input.clone()],
         &[should_jump_or_slt_value],
         is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSlt.to_num()),
+        &f2_flag_vars,
     );
     let cond_jmp_request = LookupRequest {
         table_id: is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSlt.to_num()),
@@ -525,8 +547,20 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
             }
 
             placer.assign_u32_from_u16_parts(pc_out_vars, &out_value);
-            placer.assign_mask(add_rel_1_intermediate_of_var, &intermedaite_of_value);
-            placer.assign_mask(add_rel_1_final_of_var, &of_value);
+            // Conditional on is_fam2: add_rel_1 carry bools alias shared bool-pool slots.
+            let is_fam2 = {
+                let mut m = placer.get_boolean(is_branch_var);
+                m = m.or(&placer.get_boolean(is_slt_var));
+                m = m.or(&placer.get_boolean(is_jal_var));
+                m = m.or(&placer.get_boolean(is_jalr_var));
+                m
+            };
+            placer.conditionally_assign_mask(
+                add_rel_1_intermediate_of_var,
+                &is_fam2,
+                &intermedaite_of_value,
+            );
+            placer.conditionally_assign_mask(add_rel_1_final_of_var, &is_fam2, &of_value);
         };
         cs.set_values(value_fn);
     }
@@ -552,10 +586,13 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         // second addend
         add_like_low_constraint += Term::from(is_jal) * Term::from(inputs.decoder_data.imm[0]);
         add_like_low_constraint += Term::from(is_jalr) * Term::from(inputs.decoder_data.imm[0]);
-        add_like_low_constraint += Term::from(is_branch) * Term::from(common_constants::PC_STEP as u32);
+        add_like_low_constraint +=
+            Term::from(is_branch) * Term::from(common_constants::PC_STEP as u32);
         add_like_low_constraint += Term::from(should_jump_if_branch)
-            * (Term::from(inputs.decoder_data.imm[0]) - Term::from(common_constants::PC_STEP as u32));
-        add_like_low_constraint += Term::from(is_slt) * Term::from(common_constants::PC_STEP as u32);
+            * (Term::from(inputs.decoder_data.imm[0])
+                - Term::from(common_constants::PC_STEP as u32));
+        add_like_low_constraint +=
+            Term::from(is_slt) * Term::from(common_constants::PC_STEP as u32);
         // out-like var
         add_like_low_constraint -=
             Term::from(is_jal) * Term::from(pc_intermediate_addition_tmp_low);
@@ -613,17 +650,29 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
             Term::from(is_slt) * Term::from((carry_shift, add_rel_1_final_of_var));
         cs.add_constraint(add_like_high_constraint);
     }
-    
 
     // next_pc_bit_1 = bit 1 of pc_intermediate_addition_tmp_low. The JumpCleanupOffset
     // lookup tuple is (input, bit_1, pc_out_low) and is enforced against a gated
     // table_id so non-Family-2 cycles match (0, 0, 0) under the ZeroEntry table.
-    let next_pc_bit_1 = cs.add_named_boolean_variable("bit 1 for computed next PC");
+    // Shared bool-pool slot [4] (Family-2-exclusive); witnessed conditionally on is_fam2
+    // so non-Family-2 rows leave it at the pool default (0).
+    let next_pc_bit_1 = scratch_bools[4];
     {
+        let is_branch_var = is_branch.expect_variable();
+        let is_slt_var = is_slt.expect_variable();
+        let is_jal_var = is_jal.expect_variable();
+        let is_jalr_var = is_jalr.expect_variable();
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let tmp_low = placer.get_u16(pc_intermediate_addition_tmp_low);
             let bit_1 = tmp_low.shr(1).get_lowest_bits(1).is_one();
-            placer.assign_mask(next_pc_bit_1.expect_variable(), &bit_1);
+            let is_fam2 = {
+                let mut m = placer.get_boolean(is_branch_var);
+                m = m.or(&placer.get_boolean(is_slt_var));
+                m = m.or(&placer.get_boolean(is_jal_var));
+                m = m.or(&placer.get_boolean(is_jalr_var));
+                m
+            };
+            placer.conditionally_assign_mask(next_pc_bit_1.expect_variable(), &is_fam2, &bit_1);
         };
         cs.set_values(value_fn);
     }
