@@ -808,8 +808,6 @@ fn test_windowed_product() {
     fn bind_univariate<F: Field>(c0: F, c1: F, c2: F, challenge: F) -> F {
         // The univariate is given by its values at {0, 1, inf}: c0 = P(0), c1 = P(1),
         // c2 = leading coefficient. So P(X) = c0 + (c1 - c2 - c0) * X + c2 * X^2.
-        // The linear coefficient must use the ORIGINAL leading coefficient c2, so it has
-        // to be computed before c2 is overwritten with c2 * challenge^2.
         let mut c1 = c1;
         c1.sub_assign(&c2);
         c1.sub_assign(&c0);
