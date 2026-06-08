@@ -387,24 +387,27 @@ pub fn transform_whir_leaves_from_ntt_multi_coset(
     assert!(dst.rows() <= u32::MAX as usize);
     assert!(dst.cols() <= u32::MAX as usize);
     // A warning to rework kernel for < 32B contiguous accesses if needed:
-    assert_eq!(cols, 4);
-    assert_eq!(rows, (1 << (log_trace_len + log_lde_factor)) as usize);
+    assert_eq!(cols, 4 << log_lde_factor);
+    assert_eq!(rows, 1 << log_trace_len);
     assert_eq!(rows, dst.rows());
     assert_eq!(cols, dst.cols());
     // Each thread reads and writes 2 ext4 values.
     let values_per_leaf = 1 << log_values_per_leaf;
     let block_dim_y = values_per_leaf / 2;
+    let log_leaves_per_coset = log_trace_len - log_values_per_leaf;
+    let total_leaf_count = 1 << (log_lde_factor + log_leaves_per_coset);
     let block_dim_x = if block_dim_y > 1 {
         WARP_SIZE as usize
     } else {
-        assert!(rows >= WARP_SIZE as usize);
+        assert!(total_leaf_count >= WARP_SIZE as usize);
         // yields low occupany for small total size corner cases,
         // but such cases are negligible/typically testing-only
-        std::cmp::min(rows, 4 * WARP_SIZE as usize)
+        std::cmp::min(total_leaf_count, 4 * WARP_SIZE as usize)
     };
-    assert_eq!(rows % block_dim_x, 0);
+    assert_eq!(total_leaf_count % block_dim_x, 0);
     let block_dim = (block_dim_x as u32, block_dim_y as u32);
-    let grid_dim = rows.get_chunks_count(block_dim_x);
+    let grid_dim = total_leaf_count.get_chunks_count(block_dim_x);
+    println!("block_dim {:?} grid_dim {}", block_dim, grid_dim);
     let mut config = CudaLaunchConfig::basic(grid_dim as u32, block_dim, stream);
     let smem_bytes = if log_values_per_leaf > 1 {
         2 * block_dim_y * block_dim_x * size_of::<E4>() +
@@ -441,7 +444,7 @@ pub fn transform_whir_leaves_from_ntt_in_place_multi_coset(
     assert_eq!(dst_slice.len(), (src_cols_per_coset << (log_trace_len + log_lde_factor)) as usize);
     let dst_ptr = dst_slice.as_ptr();
     let dst_slice = unsafe { DeviceSlice::from_raw_parts(dst_ptr, dst_slice.len()) };
-    let src = DeviceMatrix::new(&dst_slice, 1 << log_trace_len);
+    let src = DeviceMatrix::new(&dst_slice, dst.stride());
     transform_whir_leaves_from_ntt_multi_coset(
         &src,
         dst,

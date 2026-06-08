@@ -33,10 +33,12 @@ __global__ void ab_transform_whir_leaves_from_ntt_multi_coset_kernel(vectorized_
   const unsigned coset = gid_x >> log_leaves_per_coset;
   const unsigned lane_in_coset_mask = (1 << log_leaves_per_coset) - 1;
   const unsigned base_lane_in_coset = gid_x & lane_in_coset_mask;
-  const unsigned base_row = base_lane_in_coset + (coset << log_trace_len);
 
-  src.add_row(base_row);
-  dst.add_row(base_row);
+  src.add_col(coset);
+  dst.add_col(coset);
+
+  src.add_row(base_lane_in_coset);
+  dst.add_row(base_lane_in_coset);
 
   extern __shared__ uint8_t smem[];
 
@@ -50,7 +52,7 @@ __global__ void ab_transform_whir_leaves_from_ntt_multi_coset_kernel(vectorized_
   const e4 b = src.get_at_row(src_row_b);
 
   const unsigned coset_offset = coset << (OMEGA_LOG_ORDER - log_trace_len - log_lde_factor);
-  bf x_inv = get_inverse_twiddle_power((src_row_a << (OMEGA_LOG_ORDER - log_trace_len)) + coset_offset);
+  bf x_inv = get_inverse_twiddle_power(((base_lane_in_coset + src_row_a) << (OMEGA_LOG_ORDER - log_trace_len)) + coset_offset);
 
   const bf two_inv_power = ab_inv_sizes[log_values_per_leaf];
 
@@ -59,8 +61,8 @@ __global__ void ab_transform_whir_leaves_from_ntt_multi_coset_kernel(vectorized_
     const e4 c = e4::mul(two_inv_power, e4::add(a, b));
     const e4 d = e4::mul(bf::mul(x_inv, two_inv_power), e4::sub(a, b));
 
-    dst.set_at_col(slot_in_leaf, c);
-    dst.set_at_col(slot_in_leaf + 1, d);
+    dst.set(c);
+    dst.set_at_row(leaves_per_coset, d);
   } else {
     e4* smem_thread = reinterpret_cast<e4 *>(smem) + threadIdx.x;
     bf* x_invs = reinterpret_cast<bf *>(smem + 2 * blockDim.x * blockDim.y * sizeof(e4)) + threadIdx.x;

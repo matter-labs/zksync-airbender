@@ -1306,7 +1306,8 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
         //     (1 << natural_log_lde_factor) * (1 << log_trace_len) * src_cols_per_coset,
         //     AllocationPlacement::BestFit,
         // );
-        let mut ntt_output_matrix = DeviceMatrixMut::new(ntt_output, 1 << log_trace_len);
+        let mut ntt_output_matrix =
+            DeviceMatrixMut::new(ntt_output, 1 << log_trace_len);
         let cosets_in_tile = 1 << natural_log_lde_factor;
         for coset_index_base in (0..(1 << natural_log_lde_factor)).step_by(cosets_in_tile) {
             transform_whir_leaves_from_ntt_in_place_multi_coset(

@@ -1476,7 +1476,7 @@ where
     }
 }
 
-pub fn commit_single_ext_poly_yoav_style_for_test<
+pub fn commit_single_ext_poly_with_transform_for_test<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
