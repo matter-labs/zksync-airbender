@@ -17,7 +17,8 @@ unsafe extern "C" fn start_rust() -> ! {
 #[inline(never)]
 fn main() -> ! {
     let a = BabyBearField::from_nonreduced_u32(core::hint::black_box(0xDEAD_BEEFu32));
-    let b = BabyBearField::from_nonreduced_u32(core::hint::black_box(0x0000_0032u32)); // 50
+    let b = BabyBearField::from_nonreduced_u32(core::hint::black_box(0x0000_0032u32));
+    let c = BabyBearField::from_nonreduced_u32(core::hint::black_box(0x1234_5678u32));
 
     let mut prod = a;
     Field::mul_assign(&mut prod, &b);
@@ -25,15 +26,21 @@ fn main() -> ! {
     let mut acc = prod;
     Field::add_assign_product(&mut acc, &a, &b);
 
+    let mut sum = a;
+    Field::add_assign(&mut sum, &c);
+
+    let mut diff = a;
+    Field::sub_assign(&mut diff, &c);
+
     let out = [
-        a.as_u32_raw_repr_reduced(),
-        b.as_u32_raw_repr_reduced(),
         prod.as_u32_raw_repr_reduced(),
         acc.as_u32_raw_repr_reduced(),
-        0,
-        0,
+        sum.as_u32_raw_repr_reduced(),
+        diff.as_u32_raw_repr_reduced(),
+        a.as_u32_raw_repr_reduced(),
+        b.as_u32_raw_repr_reduced(),
+        c.as_u32_raw_repr_reduced(),
         0xC0FF_EE00,
-        0,
     ];
     zksync_os_finish_success(&out)
 }

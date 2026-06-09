@@ -2513,7 +2513,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
 }
 
 #[test]
-fn add_sub_mop_real_program_check_satisfied_fails() {
+fn add_sub_mop_real_program_check_satisfied() {
     use riscv_transpiler::ir::*;
     use riscv_transpiler::vm::*;
 
@@ -2557,7 +2557,7 @@ fn add_sub_mop_real_program_check_satisfied_fails() {
         cycles_bound,
         &mut non_determinism,
     );
-   
+
     assert!(is_program_finished);
 
     let counters = snapshotter.snapshots.last().unwrap().state.counters;
@@ -2684,17 +2684,17 @@ fn add_sub_mop_real_program_check_satisfied_fails() {
     );
 
     let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-            &circuit,
-            &external_challenges,
-            full_trace,
-            &setup,
-            &setup_commitment,
-            &twiddles,
-            &prover_config,
-            Vec::new(),
-            trace_len,
-            &worker,
-        );
+        &circuit,
+        &external_challenges,
+        full_trace,
+        &setup,
+        &setup_commitment,
+        &twiddles,
+        &prover_config,
+        Vec::new(),
+        trace_len,
+        &worker,
+    );
 
     serialize_to_file(&proof, "test_proofs/mop_add_sub_gkr_proof.json");
 }
