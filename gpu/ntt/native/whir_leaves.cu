@@ -27,10 +27,11 @@ __global__ void ab_transform_whir_leaves_from_ntt_multi_coset_kernel(vectorized_
                                                                      vectorized_e4_matrix_setter<st_modifier::cs> dst,
                                                                      const unsigned log_trace_len,
                                                                      const unsigned log_lde_factor,
-                                                                     const unsigned log_values_per_leaf) {
+                                                                     const unsigned log_values_per_leaf,
+                                                                     const unsigned coset_index_base) {
   const unsigned gid_x = blockIdx.x * blockDim.x + threadIdx.x;
   const unsigned log_leaves_per_coset = log_trace_len - log_values_per_leaf;
-  const unsigned coset = gid_x >> log_leaves_per_coset;
+  const unsigned coset = coset_index_base + (gid_x >> log_leaves_per_coset);
   const unsigned lane_in_coset_mask = (1 << log_leaves_per_coset) - 1;
   const unsigned base_lane_in_coset = gid_x & lane_in_coset_mask;
 

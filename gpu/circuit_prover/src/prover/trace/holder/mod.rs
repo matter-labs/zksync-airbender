@@ -1295,21 +1295,20 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
     // TODO: Accept cosets_in_tile and coset_index_base as arguments for coset-based
     // L2 chunking of the full NTT->transform->commit rows->commit nodes sequence.
     if transform_leaves_to_multilinear_coeffs {
-        // let l2_bytes = context.get_device_properties().l2_cache_size_bytes;
-        // let single_coset_bytes = 1usize << log_trace_len * std::mem::size_of::BF>();
-        // let cosets_in_tile = if l2_bytes >= single_coset_bytes {
-        //     l2_bytes / single_coset_bytes
-        // } else {
-        //     1
-        // };
-        // let tmp_leaves_buffer = context.alloc(
-        //     (1 << natural_log_lde_factor) * (1 << log_trace_len) * src_cols_per_coset,
-        //     AllocationPlacement::BestFit,
-        // );
+        let l2_bytes = context.get_device_properties().l2_cache_size_bytes;
+        let single_bf_col_bytes = std::mem::size_of::<BF>() << log_trace_len;
+        let single_coset_bytes = src_cols_per_coset * single_bf_col_bytes;
+        let cosets_in_tile_chunk = if l2_bytes >= single_coset_bytes {
+            l2_bytes / single_coset_bytes
+        } else {
+            1
+        };
         let mut ntt_output_matrix =
             DeviceMatrixMut::new(ntt_output, 1 << log_trace_len);
-        let cosets_in_tile = 1 << natural_log_lde_factor;
-        for coset_index_base in (0..(1 << natural_log_lde_factor)).step_by(cosets_in_tile) {
+        let total_cosets = 1 << natural_log_lde_factor;
+        for coset_index_base in (0..total_cosets).step_by(cosets_in_tile_chunk) {
+            let cosets_in_tile =
+                std::cmp::min(cosets_in_tile_chunk, total_cosets - coset_index_base);
             transform_whir_leaves_from_ntt_in_place_multi_coset(
                 &mut ntt_output_matrix,
                 log_trace_len,
@@ -1326,7 +1325,7 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
                 log_values_per_leaf,
                 src_cols_per_coset as u32,
                 natural_log_lde_factor,
-                coset_index_base,
+                coset_index_base as u32,
                 cosets_in_tile,
                 packed_leaf_count,
                 1u32 << log_trace_len,

@@ -356,6 +356,7 @@ cuda_kernel_signature_arguments_and_function!(
     log_trace_len: u32,
     log_lde_factor: u32,
     log_values_per_leaf: u32,
+    coset_index_base: u32,
 );
 
 cuda_kernel_declaration!(
@@ -365,6 +366,7 @@ cuda_kernel_declaration!(
         log_trace_len: u32,
         log_lde_factor: u32,
         log_values_per_leaf: u32,
+        coset_index_base: u32,
     )
 );
 
@@ -374,12 +376,17 @@ pub fn transform_whir_leaves_from_ntt_multi_coset(
     log_trace_len: u32,
     log_lde_factor: u32,
     log_values_per_leaf: u32,
+    coset_index_base: u32,
+    cosets_in_tile: u32,
+    src_cols_per_coset: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
+    assert_eq!(src_cols_per_coset, 4); // Reminder to relax this if/when we use ext6
     assert!(log_lde_factor >= 1);
     assert!(log_values_per_leaf >= 1);
     assert!(log_values_per_leaf <= 5); // Based on block size. Can be relaxed if needed.
     assert!(log_trace_len > log_values_per_leaf);
+    assert!(coset_index_base + cosets_in_tile <= (1 << log_lde_factor as usize));
     let rows = src.rows();
     let cols = src.cols();
     assert!(rows <= u32::MAX as usize);
@@ -395,33 +402,33 @@ pub fn transform_whir_leaves_from_ntt_multi_coset(
     let values_per_leaf = 1 << log_values_per_leaf;
     let block_dim_y = values_per_leaf / 2;
     let log_leaves_per_coset = log_trace_len - log_values_per_leaf;
-    let total_leaf_count = 1 << (log_lde_factor + log_leaves_per_coset);
+    let leaf_count_this_launch = cosets_in_tile << log_leaves_per_coset;
+    assert!(leaf_count_this_launch >= WARP_SIZE);
     let block_dim_x = if block_dim_y > 1 {
-        WARP_SIZE as usize
+        WARP_SIZE
     } else {
-        assert!(total_leaf_count >= WARP_SIZE as usize);
         // yields low occupany for small total size corner cases,
         // but such cases are negligible/typically testing-only
-        std::cmp::min(total_leaf_count, 4 * WARP_SIZE as usize)
+        std::cmp::min(leaf_count_this_launch, 4 * WARP_SIZE)
     };
-    assert_eq!(total_leaf_count % block_dim_x, 0);
-    let block_dim = (block_dim_x as u32, block_dim_y as u32);
-    let grid_dim = total_leaf_count.get_chunks_count(block_dim_x);
-    println!("block_dim {:?} grid_dim {}", block_dim, grid_dim);
-    let mut config = CudaLaunchConfig::basic(grid_dim as u32, block_dim, stream);
+    assert_eq!(leaf_count_this_launch % block_dim_x, 0);
+    let block_dim = (block_dim_x, block_dim_y);
+    let grid_dim = leaf_count_this_launch.get_chunks_count(block_dim_x);
+    let mut config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let smem_bytes = if log_values_per_leaf > 1 {
-        2 * block_dim_y * block_dim_x * size_of::<E4>() +
-            block_dim_y * block_dim_x * size_of::<BF>()
+        2 * block_dim_y * block_dim_x * size_of::<E4>() as u32 +
+            block_dim_y * block_dim_x * size_of::<BF>() as u32
     } else {
         0
     };
-    config.dynamic_smem_bytes = smem_bytes;
+    config.dynamic_smem_bytes = smem_bytes as usize;
     let args = TransformWhirLeavesFromNttMultiCosetArguments::new(
         src.as_ptr_and_stride(),
         dst.as_mut_ptr_and_stride(),
         log_trace_len,
         log_lde_factor,
         log_values_per_leaf,
+        coset_index_base,
     );
     TransformWhirLeavesFromNttMultiCosetFunction(
         ab_transform_whir_leaves_from_ntt_multi_coset_kernel,
@@ -451,6 +458,9 @@ pub fn transform_whir_leaves_from_ntt_in_place_multi_coset(
         log_trace_len,
         log_lde_factor,
         log_values_per_leaf,
+        coset_index_base,
+        cosets_in_tile,
+        src_cols_per_coset,
         stream,
     )
 }

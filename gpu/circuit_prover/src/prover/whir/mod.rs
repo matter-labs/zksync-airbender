@@ -950,15 +950,15 @@ pub(crate) mod tests {
 
     #[test]
     #[serial]
-    fn recursive_oracle_large_partial_cache_matches_cpu() {
-        let monomial_coeffs = sample_monomial_coeffs(1 << 8);
+    fn recursive_oracle_with_transform_caps_and_queries_match_cpu() {
+        let monomial_coeffs = sample_monomial_coeffs(1 << 5);
         assert_recursive_oracle_caps_and_queries_match_cpu(&monomial_coeffs, 2, false, true);
     }
 
     #[test]
     #[serial]
-    fn recursive_oracle_with_transform_caps_and_queries_match_cpu() {
-        let monomial_coeffs = sample_monomial_coeffs(1 << 5);
+    fn recursive_oracle_large_partial_cache_matches_cpu() {
+        let monomial_coeffs = sample_monomial_coeffs(1 << 8);
         assert_recursive_oracle_caps_and_queries_match_cpu(&monomial_coeffs, 2, true, false);
     }
 
