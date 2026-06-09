@@ -944,6 +944,31 @@ fn run_basic_unrolled_stagewise_parity_test() {
         .trace_holder
         .ensure_cosets_materialized(&context)
         .unwrap();
+    // Stage1 leaves the memory holder in `CacheNone`; production commits its
+    // Partial trees just-in-time before WHIR (see
+    // `proof/orchestration/whir.rs` `pre_whir_memory_commit`). The single-launch
+    // base-round gather needs a consolidated tree, so replicate that upgrade
+    // here — the `commit_all` above only builds caps from a transient tree slab
+    // and leaves `trees = None`.
+    {
+        use crate::prover::trace::holder::{
+            allocate_trees, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
+        };
+        let instances_count = 1usize << stage1_output.memory_trace_holder.log_lde_factor;
+        stage1_output.memory_trace_holder.trees = TreesHolder::Partial(
+            allocate_trees(
+                instances_count,
+                stage1_output.memory_trace_holder.log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS,
+                stage1_output.memory_trace_holder.log_rows_per_leaf,
+                &context,
+            )
+            .unwrap(),
+        );
+        stage1_output
+            .memory_trace_holder
+            .build_and_cache_partial_trees(&context)
+            .unwrap();
+    }
     // The per-round WHIR check takes tree caps from the trace holders, so we
     // capture the full GPU WHIR proof from this call rather than running a
     // second gpu_whir_fold_supported_path (which would try to take the
