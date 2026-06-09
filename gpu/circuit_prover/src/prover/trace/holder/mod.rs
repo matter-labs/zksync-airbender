@@ -23,9 +23,9 @@ use crate::ops::ntt::{
 use crate::primitives::context::DeviceAllocation;
 #[cfg(test)]
 use crate::primitives::context::HostAllocation;
-use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixImpl, DeviceMatrixMut};
 #[cfg(test)]
 use crate::primitives::device_structures::DeviceMatrix;
+use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixImpl, DeviceMatrixMut};
 use crate::primitives::field::BF;
 use crate::prover::ProverContext;
 
@@ -1303,8 +1303,7 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
         } else {
             1
         };
-        let mut ntt_output_matrix =
-            DeviceMatrixMut::new(ntt_output, 1 << log_trace_len);
+        let mut ntt_output_matrix = DeviceMatrixMut::new(ntt_output, 1 << log_trace_len);
         let total_cosets = 1 << natural_log_lde_factor;
         for coset_index_base in (0..total_cosets).step_by(cosets_in_tile_chunk) {
             let cosets_in_tile =
@@ -1333,8 +1332,8 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
             )?;
         }
     } else {
-        let cosets_in_tile = 1usize << natural_log_lde_factor;
         let coset_index_base = 0;
+        let cosets_in_tile = 1usize << natural_log_lde_factor;
         crate::ops::blake2s::launch_leaves_kernel_from_ntt_multi_coset(
             ntt_output,
             leaves,

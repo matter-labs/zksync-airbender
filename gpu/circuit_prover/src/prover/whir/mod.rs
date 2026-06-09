@@ -433,8 +433,8 @@ pub(crate) mod tests {
     use fft::{bitreverse_enumeration_inplace, domain_generator_for_size, Twiddles};
     use field::Field;
     use prover::gkr::whir::{
-        ColumnMajorExtensionOracleForLDE, commit_single_ext_poly,
-        commit_single_ext_poly_with_transform_for_test,
+        commit_single_ext_poly, commit_single_ext_poly_with_transform_for_test,
+        ColumnMajorExtensionOracleForLDE,
     };
     use prover::merkle_trees::{
         ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
@@ -756,42 +756,6 @@ pub(crate) mod tests {
         };
 
         result
-
-        // let trace_len_log2 = monomial_coeffs.len().trailing_zeros() as usize;
-        // let mut wrapped_cosets = Vec::with_capacity(cosets.len());
-        // for (column, offset) in cosets.iter() {
-        //     wrapped_cosets.push(ColumnMajorExtensionOracleForCoset {
-        //         values_normal_order: ColumnMajorCosetBoundTracePart {
-        //             column: column.clone().into(),
-        //             offset: *offset,
-        //         },
-        //     });
-        // }
-        // let source: Vec<_> = wrapped_cosets
-        //     .iter()
-        //     .map(|coset| vec![&coset.values_normal_order.column[..]])
-        //     .collect();
-        // let source_ref: Vec<_> = source.iter().map(|entry| &entry[..]).collect();
-        // let tree =
-        //     <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::construct_from_cosets::<
-        //         E4,
-        //         Global,
-        //     >(
-        //         &source_ref,
-        //         values_per_leaf,
-        //         tree_cap_size,
-        //         true,
-        //         true,
-        //         false,
-        //         worker,
-        //     );
-
-        // ColumnMajorExtensionOracleForLDE {
-        //     cosets: wrapped_cosets,
-        //     tree,
-        //     values_per_leaf,
-        //     trace_len_log2,
-        // }
     }
 
     fn assert_recursive_oracle_caps_and_queries_match_cpu(
@@ -892,9 +856,11 @@ pub(crate) mod tests {
                     4,
                     transform_leaves_to_multilinear_coeffs,
                     &context,
-                ).unwrap();
+                )
+                .unwrap();
 
                 for coset_index in 0..4 {
+                    // helpful for debugging
                     // let gpu_results = gpu.copy_coset_values(coset_index, &context);
                     // let cpu_results = cpu.cosets[coset_index].values_normal_order.column.to_vec();
                     // for (i, (gpu_val, cpu_val)) in gpu_results.iter().zip(cpu_results.iter()).enumerate() {
@@ -1091,7 +1057,8 @@ pub(crate) mod tests {
             4,
             transform_leaves_to_multilinear_coeffs,
             &context,
-        ).unwrap();
+        )
+        .unwrap();
         let large_oracle = GpuWhirExtensionOracle::from_monomial_coeffs(
             &large,
             4,
@@ -1099,7 +1066,8 @@ pub(crate) mod tests {
             4,
             transform_leaves_to_multilinear_coeffs,
             &context,
-        ).unwrap();
+        )
+        .unwrap();
 
         assert!(matches!(
             small_oracle.trace_holder.trees,
@@ -1135,7 +1103,8 @@ pub(crate) mod tests {
             4,
             false, // transform_leaves_to_multilinear_coeffs
             &context,
-        ).unwrap();
+        )
+        .unwrap();
 
         for query_index in [0usize, 1, 17, 63, 127, 255] {
             let coset_index = query_index & (oracle.lde_factor - 1);

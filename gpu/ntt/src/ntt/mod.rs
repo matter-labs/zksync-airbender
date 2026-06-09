@@ -1,11 +1,11 @@
-use era_cudart::{
-    cuda_kernel, cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function,
-};
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
+use era_cudart::{
+    cuda_kernel, cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function,
+};
 use fft::field_utils::domain_generator_for_size;
 
 pub use crate::ntt_twiddles::OMEGA_LOG_ORDER;
@@ -16,7 +16,7 @@ use gpu_core::primitives::device_structures::{
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::utils::{
-    GetChunksCount, get_grid_block_dims_for_threads_count, WARP_SIZE,
+    get_grid_block_dims_for_threads_count, GetChunksCount, WARP_SIZE,
 };
 
 /// Number of passes for the multi-stage NTT kernels at a given `log_n`.
@@ -416,8 +416,8 @@ pub fn transform_whir_leaves_from_ntt_multi_coset(
     let grid_dim = leaf_count_this_launch.get_chunks_count(block_dim_x);
     let mut config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let smem_bytes = if log_values_per_leaf > 1 {
-        2 * block_dim_y * block_dim_x * size_of::<E4>() as u32 +
-            block_dim_y * block_dim_x * size_of::<BF>() as u32
+        2 * block_dim_y * block_dim_x * size_of::<E4>() as u32
+            + block_dim_y * block_dim_x * size_of::<BF>() as u32
     } else {
         0
     };
@@ -432,7 +432,8 @@ pub fn transform_whir_leaves_from_ntt_multi_coset(
     );
     TransformWhirLeavesFromNttMultiCosetFunction(
         ab_transform_whir_leaves_from_ntt_multi_coset_kernel,
-    ).launch(&config, &args)
+    )
+    .launch(&config, &args)
 }
 
 pub fn transform_whir_leaves_from_ntt_in_place_multi_coset(
@@ -448,7 +449,10 @@ pub fn transform_whir_leaves_from_ntt_in_place_multi_coset(
     assert_eq!(src_cols_per_coset, 4);
     // Creates src as alias of dst
     let dst_slice = dst.slice();
-    assert_eq!(dst_slice.len(), (src_cols_per_coset << (log_trace_len + log_lde_factor)) as usize);
+    assert_eq!(
+        dst_slice.len(),
+        (src_cols_per_coset << (log_trace_len + log_lde_factor)) as usize
+    );
     let dst_ptr = dst_slice.as_ptr();
     let dst_slice = unsafe { DeviceSlice::from_raw_parts(dst_ptr, dst_slice.len()) };
     let src = DeviceMatrix::new(&dst_slice, dst.stride());

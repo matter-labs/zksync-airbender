@@ -11,9 +11,7 @@ using namespace ::airbender::primitives::vectorized;
 
 namespace airbender::ntt {
 
-DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsigned num_bits) {
-  return __brev(value) >> (32 - num_bits);
-}
+DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsigned num_bits) { return __brev(value) >> (32 - num_bits); }
 
 // Implements "Improving running time via alternate domain evaluation" from page 15 of
 // https://eprint.iacr.org/2024/1586.pdf.
@@ -22,13 +20,11 @@ DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsi
 //  - Transformed output can be passed directly to ab_blake2s_leaves_from_ntt_multi_coset_kernel.
 //  - Transformed leaves can still be gathered by schedule_query_merkle_paths_into_from_ntt.
 // In-place safe (src and dst may alias).
-EXTERN __launch_bounds__(512, 2)
-__global__ void ab_transform_whir_leaves_from_ntt_multi_coset_kernel(vectorized_e4_matrix_getter<ld_modifier::cs> src,
-                                                                     vectorized_e4_matrix_setter<st_modifier::cs> dst,
-                                                                     const unsigned log_trace_len,
-                                                                     const unsigned log_lde_factor,
-                                                                     const unsigned log_values_per_leaf,
-                                                                     const unsigned coset_index_base) {
+EXTERN __launch_bounds__(512, 2) __global__
+    void ab_transform_whir_leaves_from_ntt_multi_coset_kernel(vectorized_e4_matrix_getter<ld_modifier::cs> src,
+                                                              vectorized_e4_matrix_setter<st_modifier::cs> dst, const unsigned log_trace_len,
+                                                              const unsigned log_lde_factor, const unsigned log_values_per_leaf,
+                                                              const unsigned coset_index_base) {
   const unsigned gid_x = blockIdx.x * blockDim.x + threadIdx.x;
   const unsigned log_leaves_per_coset = log_trace_len - log_values_per_leaf;
   const unsigned coset = coset_index_base + (gid_x >> log_leaves_per_coset);
@@ -65,8 +61,8 @@ __global__ void ab_transform_whir_leaves_from_ntt_multi_coset_kernel(vectorized_
     dst.set(c);
     dst.set_at_row(leaves_per_coset, d);
   } else {
-    e4* smem_thread = reinterpret_cast<e4 *>(smem) + threadIdx.x;
-    bf* x_invs = reinterpret_cast<bf *>(smem + 2 * blockDim.x * blockDim.y * sizeof(e4)) + threadIdx.x;
+    e4 *smem_thread = reinterpret_cast<e4 *>(smem) + threadIdx.x;
+    bf *x_invs = reinterpret_cast<bf *>(smem + 2 * blockDim.x * blockDim.y * sizeof(e4)) + threadIdx.x;
 
     // We need to multiply by two_inv_power at some point. Might as well be here.
     smem_thread[blockDim.x * slot_in_leaf] = e4::mul(two_inv_power, e4::add(a, b));
