@@ -215,7 +215,7 @@ pub fn create_store_byte_existing_contribution_table<F: PrimeField>(id: u32) -> 
 }
 
 pub fn create_memory_offset_mask_with_trap_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    const TABLE_MAX_WIDTH: usize = 16 + 3 + 1 + 1; // offset low || funct3 || is_store || rd_is_zero
+    const TABLE_MAX_WIDTH: usize = 16 + 3 + 1 + 1; // offset low || funct3 || is_load || rd_is_zero
     let keys = key_for_continuous_log2_range(TABLE_MAX_WIDTH);
     const TABLE_NAME: &'static str = "Memory offset and special bitmask with Trap table";
     const NUM_INPUTS: usize = 1;
@@ -229,8 +229,8 @@ pub fn create_memory_offset_mask_with_trap_table<F: PrimeField>(id: u32) -> Look
 
             let mem_address_low = input & 0xffff;
             let funct3 = (input >> 16) & 0b111;
-            let is_store = (input >> 17) & 0b1 != 0;
-            let rd_is_x0 = (input >> 18) & 0b1 != 0;
+            let is_load = (input >> 19) & 0b1 != 0;
+            let rd_is_x0 = (input >> 20) & 0b1 != 0;
 
             // offset is always 2 lowest bits of the address
             let offset = mem_address_low & 0b11;
@@ -266,7 +266,7 @@ pub fn create_memory_offset_mask_with_trap_table<F: PrimeField>(id: u32) -> Look
                 _ => false,
             };
 
-            if valid_funct3_for_load && is_store == false && rd_is_x0 {
+            if valid_funct3_for_load && is_load && rd_is_x0 {
                 is_trap = false;
             }
 
