@@ -1,0 +1,26 @@
+[package]
+name = "mop_smoke"
+version = "0.1.0"
+edition = "2021"
+authors = ["The Matter Labs Team <hello@matterlabs.dev>"]
+license = "MIT OR Apache-2.0"
+
+# Minimal RISC-V program that exercises the BabyBear modular-op opcodes `mop.rr.2` (MULMOD) and
+# `mop.rr.3` (FMAMOD) — a small stand-in for the real recursion verifier binaries (100k+ mops). The
+# mops are emitted through the real `field` crate codegen path (`modular_fma` -> `modular_ops`), i.e.
+# exactly how the verifier gets them, rather than hand-written asm. Used by the prover test
+# `add_sub_mop_real_program_check_satisfied_fails`.
+
+[dependencies]
+common_constants = { path = "../../common_constants" }
+riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
+field = { path = "../../field", default-features = false, features = ["modular_fma"] }
+
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = true
