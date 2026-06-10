@@ -50,6 +50,8 @@ pub struct OutputSlotInfo {
     pub node: NodeIdx,
     pub addr: GKRAddress,
     pub prefill: bool,
+    /// True for cache-materialization outputs (no sumcheck claim / no c0 term).
+    pub from_cache: bool,
 }
 
 pub struct AnalysisGraph {
@@ -129,6 +131,7 @@ impl AnalysisGraph {
                     node: slot.node.0 as NodeIdx,
                     addr: slot.addr,
                     prefill: matches!(slot.forward_source, ForwardSource::ScratchPrefill),
+                    from_cache: false,
                 });
             }
         }
@@ -137,6 +140,7 @@ impl AnalysisGraph {
                 node: cache.out.0.0 as NodeIdx,
                 addr: cache.out.1,
                 prefill: false,
+                from_cache: true,
             });
         }
 

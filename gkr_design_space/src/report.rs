@@ -1,6 +1,7 @@
 //! Aggregated per-circuit report: serde for JSON, compact markdown rendering.
 
 use crate::analysis::affinity::{ColumnAffinity, column_affinity};
+use crate::analysis::backward::{BackwardCost, BackwardParams, backward_cost};
 use crate::analysis::depth::{DepthStats, depth_stats};
 use crate::analysis::partition::{PartitionPoint, partition_curve};
 use crate::analysis::reuse::{CircuitReuse, circuit_reuse};
@@ -43,6 +44,7 @@ pub struct CircuitReport {
     pub trace_len: usize,
     pub layers: Vec<LayerReport>,
     pub reuse: CircuitReuse,
+    pub backward: BackwardCost,
 }
 
 pub fn build_report(path: &str, c: &LoadedCircuit, full: bool) -> CircuitReport {
@@ -84,6 +86,7 @@ pub fn build_report(path: &str, c: &LoadedCircuit, full: bool) -> CircuitReport 
         trace_len: c.circuit.globals.trace_len,
         layers,
         reuse: circuit_reuse(c),
+        backward: backward_cost(c, BackwardParams::default()),
     }
 }
 
@@ -195,6 +198,77 @@ pub fn to_markdown(r: &CircuitReport) -> String {
             fanout_summary
         )
         .unwrap();
+    }
+    {
+        let b = &r.backward;
+        let fwd_total: u64 = r
+            .layers
+            .iter()
+            .map(|l| {
+                (l.working_set.bytes_per_row_in + l.working_set.bytes_per_row_out)
+                    * r.trace_len as u64
+            })
+            .sum();
+        let main_total: u64 = b
+            .main_layers
+            .iter()
+            .map(|l| l.total_read_bytes + l.total_write_bytes)
+            .sum();
+        let tower_total: u64 = b
+            .tower_layers
+            .iter()
+            .map(|l| l.total_read_bytes + l.total_write_bytes)
+            .sum();
+        writeln!(
+            s,
+            "\n### backward cost model (final_trace_log2 {}; bytes absolute at trace_len {})\n",
+            b.params.final_trace_log2, r.trace_len
+        )
+        .unwrap();
+        writeln!(
+            s,
+            "forward total (in+out, all layers): {:.1} MB | backward main: {:.1} MB | tower: {:.1} MB | bwd/fwd ratio: {:.2}\n",
+            fwd_total as f64 / 1e6,
+            main_total as f64 / 1e6,
+            tower_total as f64 / 1e6,
+            (main_total + tower_total) as f64 / fwd_total as f64,
+        )
+        .unwrap();
+        writeln!(s, "| layer | kind | fs | bf cols | e4 cols | virt | lin-only bf | c0 bf/e4 | R0 MB | R1 MB | R2 MB | tail MB | total MB | fold backing MB |").unwrap();
+        writeln!(
+            s,
+            "|--:|--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|"
+        )
+        .unwrap();
+        for l in b.main_layers.iter().chain(&b.tower_layers) {
+            let rb = |i: usize| {
+                l.rounds
+                    .get(i)
+                    .map(|x| x.read_bytes + x.write_bytes + x.partials_bytes)
+                    .unwrap_or(0)
+            };
+            let tail: u64 = (3..l.rounds.len()).map(rb).sum();
+            writeln!(
+                s,
+                "| {} | {} | {} | {} | {} | {} | {} | {}/{} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} |",
+                l.layer,
+                l.kind,
+                l.folding_steps,
+                l.bf_cols,
+                l.e4_cols,
+                l.virtual_cols,
+                l.linear_only_bf_cols,
+                l.c0_cols_bf,
+                l.c0_cols_e4,
+                rb(0) as f64 / 1e6,
+                rb(1) as f64 / 1e6,
+                rb(2) as f64 / 1e6,
+                tail as f64 / 1e6,
+                (l.total_read_bytes + l.total_write_bytes) as f64 / 1e6,
+                l.fold_backing_bytes as f64 / 1e6,
+            )
+            .unwrap();
+        }
     }
     writeln!(s, "\n### caches ({})\n", r.reuse.caches.len()).unwrap();
     writeln!(
