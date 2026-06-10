@@ -465,6 +465,23 @@ pub trait WitnessComputationalField<F: PrimeField>: 'static + Sized + Clone + De
     fn inverse_or_zero(&self) -> Self;
     fn as_integer(self) -> Self::IntegerRepresentation;
     fn from_integer(value: Self::IntegerRepresentation) -> Self;
+
+    #[inline(always)]
+    fn from_raw_repr(value: Self::IntegerRepresentation) -> Self {
+        let mut x = Self::from_integer(value);
+        x.mul_assign(&Self::constant(F::from_reduced_raw_repr(1)));
+        x
+    }
+    
+    #[inline(always)]
+    fn as_raw_repr(self) -> Self::IntegerRepresentation {
+        let r = F::from_reduced_raw_repr(1)
+            .inverse()
+            .unwrap();
+        let mut x = self;
+        x.mul_assign(&Self::constant(r));
+        x.as_integer()
+    }
 }
 
 pub trait WitnessComputationalInteger<T: 'static + Sized>: WitnessComputationCore {

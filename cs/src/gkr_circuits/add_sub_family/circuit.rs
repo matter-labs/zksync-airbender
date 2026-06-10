@@ -1,9 +1,7 @@
 use super::decoder::AddSubLuiAuipcMopDecoder;
 use super::*;
 use crate::cs::circuit_trait::*;
-use crate::gkr_circuits::utils::{
-    montgomery_product, montgomery_product_expr, update_intermediate_carry_value,
-};
+use crate::gkr_circuits::utils::{montgomery_product_expr, update_intermediate_carry_value};
 use crate::oracle::Placeholder;
 use crate::structured_expr::Expr;
 use crate::tables::TableDriver;
@@ -273,15 +271,11 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
 
             let rs1_f =
                 <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
-                    rs1_u32,
+                    rs1_u32.clone(),
                 );
             let rs2_f =
                 <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
-                    rs2_u32,
-                );
-            let rd_f =
-                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
-                    rd_read_u32,
+                    rs2_u32.clone(),
                 );
 
             // addmod
@@ -352,11 +346,28 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                 let is_mulmod = placer.get_boolean(is_mulmod_var);
                 let is_fmamod = placer.get_boolean(is_fmamod_var);
                 let is_mul_like = is_mulmod.or(&is_fmamod);
-                let mut mulmod_field =
-                    montgomery_product::<F, <CS as Circuit<F>>::WitnessPlacer>(&rs1_f, &rs2_f);
-                mulmod_field.add_assign_masked(&is_fmamod, &rd_f);
-                placer.assign_field(mulmod_intermediate_var, &mulmod_field);
-                let mulmod_result = mulmod_field.clone().as_integer();
+                let op1 =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr(
+                        rs1_u32,
+                    );
+                let op2 =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr(
+                        rs2_u32,
+                    );
+                let rd_raw =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr(
+                        rd_read_u32,
+                    );
+                let mut mulmod_field = op1;
+                mulmod_field.mul_assign(&op2);
+                mulmod_field.add_assign_masked(&is_fmamod, &rd_raw);
+                let mulmod_result = mulmod_field.as_raw_repr();
+                placer.assign_field(
+                    mulmod_intermediate_var,
+                    &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
+                        mulmod_result.clone(),
+                    ),
+                );
                 let mul_mod_low = mulmod_result.truncate();
                 out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
                     &is_mul_like,

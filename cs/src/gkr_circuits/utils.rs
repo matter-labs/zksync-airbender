@@ -55,19 +55,12 @@ pub fn calculate_pc_next_no_overflows_with_range_checks<F: PrimeField, CS: Circu
 
     circuit.add_constraint_allow_explicit_linear_prevent_optimizations_expr(pc_high);
 }
-
-pub(crate) fn montgomery_product<F: PrimeField, W: WitnessTypeSet<F>>(
-    a: &W::Field,
-    b: &W::Field,
-) -> W::Field {
-    let mut product = a.clone();
-    product.mul_assign(b);
-    product.mul_assign(&W::Field::constant(F::from_reduced_raw_repr(1)));
-    product
-}
-
 pub(crate) fn montgomery_product_expr<F: PrimeField>(a: Expr<F>, b: Expr<F>) -> Expr<F> {
-    a * b * Expr::<F>::constant(F::from_reduced_raw_repr(1))
+    if F::IS_MONT_REPR {
+        a * b * Expr::<F>::constant(F::from_reduced_raw_repr(1))
+    } else {
+        a * b
+    }
 }
 
 pub(crate) fn update_intermediate_carry_value<
