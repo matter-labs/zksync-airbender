@@ -1160,7 +1160,8 @@ fn mem_tuple_nodes(mt: &MemTupleDescriptor) -> impl Iterator<Item = NodeId> + '_
 
 /// Exhaustively extract ALL operand `NodeId`s from a lowered `GateKind`.
 /// Deliberately has no `_` arm so a new variant causes a compile error.
-fn gate_kind_input_nodes(kind: &GateKind) -> Vec<NodeId> {
+/// Public for downstream analysis tooling (`gkr_design_space`).
+pub fn gate_kind_input_nodes(kind: &GateKind) -> Vec<NodeId> {
     match kind {
         GateKind::LinearBaseField { input } => linear_comb_nodes(input).collect(),
         GateKind::MaxQuadratic { flat, expr } => {
@@ -4225,6 +4226,60 @@ mod tests {
             ROM_WORD_SIZE,
             24,
         )
+    }
+
+    fn build_add_sub_artifact_no_caches() -> super::super::GKRCircuitArtifact<ConcreteField> {
+        use crate::gkr_circuits::add_sub_family::{
+            add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr,
+            add_sub_lui_auipc_mop_table_addition_fn,
+        };
+        use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
+        use common_constants::ROM_WORD_SIZE;
+
+        compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<ConcreteField>(
+            &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
+            &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
+            ROM_WORD_SIZE,
+            24,
+        )
+    }
+
+    /// Fixture generator (run explicitly): emit the lowered codegen-IR JSON for
+    /// the add_sub_lui_auipc_mop circuit in both the caching and no-caching
+    /// variants. Run with:
+    ///
+    ///   cargo test -p cs codegen_ir::tests::generate_add_sub_codegen_ir_json -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn generate_add_sub_codegen_ir_json() {
+        use crate::gkr_compiler::{lower, to_json_string};
+
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("compiled_circuits");
+
+        let variants: [(super::super::GKRCircuitArtifact<ConcreteField>, &str); 2] = [
+            (
+                build_add_sub_artifact(),
+                "add_sub_lui_auipc_mop_codegen_ir_gkr.json",
+            ),
+            (
+                build_add_sub_artifact_no_caches(),
+                "add_sub_lui_auipc_mop_codegen_ir_no_caches_gkr.json",
+            ),
+        ];
+
+        for (artifact, name) in variants {
+            let circuit = lower::<ConcreteField>(&artifact).expect("lower must succeed");
+            circuit.verify().expect("lowered circuit must verify");
+            let json = to_json_string(&circuit).expect("to_json_string must succeed");
+            let path = dir.join(name);
+            std::fs::write(&path, &json).expect("write json");
+            println!(
+                "wrote {} ({} layers, {} bytes)",
+                path.display(),
+                circuit.layers.len(),
+                json.len()
+            );
+        }
     }
 
     #[test]
