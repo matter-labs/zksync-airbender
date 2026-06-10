@@ -1,3 +1,4 @@
+pub mod affinity;
 pub mod depth;
 pub mod partition;
 pub mod reuse;

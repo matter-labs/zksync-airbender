@@ -1,5 +1,6 @@
 //! Aggregated per-circuit report: serde for JSON, compact markdown rendering.
 
+use crate::analysis::affinity::{ColumnAffinity, column_affinity};
 use crate::analysis::depth::{DepthStats, depth_stats};
 use crate::analysis::partition::{PartitionPoint, partition_curve};
 use crate::analysis::reuse::{CircuitReuse, circuit_reuse};
@@ -12,6 +13,9 @@ use serde::Serialize;
 /// terms: 128 B = 32 regs ... 2048 B = 512 regs (beyond the 255-reg ceiling,
 /// as an asymptote check).
 pub const PARTITION_BUDGETS: [u64; 7] = [128, 192, 256, 384, 512, 1024, 2048];
+
+/// Distinct-columns-per-cluster budgets for the affinity clustering probe.
+pub const AFFINITY_COL_BUDGETS: [usize; 4] = [32, 64, 128, 256];
 
 #[derive(Serialize)]
 pub struct LayerReport {
@@ -26,6 +30,9 @@ pub struct LayerReport {
     pub live_scheduled: LiveStats,
     /// Cut-cost curve; empty for layers already under the smallest budget.
     pub partition: Vec<PartitionPoint>,
+    /// Column-sharing structure; computed for the same layers as `partition`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub affinity: Option<ColumnAffinity>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub depth_full: Option<DepthStats>, // JSON-only detail
 }
@@ -48,10 +55,13 @@ pub fn build_report(path: &str, c: &LoadedCircuit, full: bool) -> CircuitReport 
         .map(|(i, (layer, g))| {
             let d = depth_stats(g);
             let live_scheduled = simulate(g, Order::PressureAware);
-            let partition = if live_scheduled.max_live_bytes > PARTITION_BUDGETS[0] {
-                partition_curve(g, &PARTITION_BUDGETS)
+            let (partition, affinity) = if live_scheduled.max_live_bytes > PARTITION_BUDGETS[0] {
+                (
+                    partition_curve(g, &PARTITION_BUDGETS),
+                    Some(column_affinity(g, &AFFINITY_COL_BUDGETS)),
+                )
             } else {
-                vec![]
+                (vec![], None)
             };
             LayerReport {
                 layer: i,
@@ -64,6 +74,7 @@ pub fn build_report(path: &str, c: &LoadedCircuit, full: bool) -> CircuitReport 
                 live_arena: simulate(g, Order::Arena),
                 live_scheduled,
                 partition,
+                affinity,
                 depth_full: full.then_some(d),
             }
         })
@@ -144,6 +155,46 @@ pub fn to_markdown(r: &CircuitReport) -> String {
             )
             .unwrap();
         }
+    }
+    for l in &r.layers {
+        let Some(a) = &l.affinity else { continue };
+        writeln!(
+            s,
+            "\n### column affinity — layer {} ({} outputs x {} cols, mean closure {:.1} cols, jaccard p10/p50/p90 {:.3}/{:.3}/{:.3})\n",
+            l.layer,
+            a.outputs,
+            a.distinct_cols,
+            a.mean_closure_cols,
+            a.jaccard_p10,
+            a.jaccard_p50,
+            a.jaccard_p90,
+        )
+        .unwrap();
+        writeln!(
+            s,
+            "| col budget | clusters | dup col loads | dup B/row (approx) |"
+        )
+        .unwrap();
+        writeln!(s, "|--:|--:|--:|--:|").unwrap();
+        for p in &a.probes {
+            writeln!(
+                s,
+                "| {} | {} | {} | {} |",
+                p.max_cols_per_cluster, p.clusters, p.dup_col_loads, p.dup_col_load_bytes_per_row,
+            )
+            .unwrap();
+        }
+        let fanout_summary: Vec<(u32, u32)> = a
+            .col_fanout_histogram
+            .iter()
+            .map(|(&k, &v)| (k, v))
+            .collect();
+        writeln!(
+            s,
+            "\ncolumn output-fanout histogram: {:?}\n",
+            fanout_summary
+        )
+        .unwrap();
     }
     writeln!(s, "\n### caches ({})\n", r.reuse.caches.len()).unwrap();
     writeln!(
