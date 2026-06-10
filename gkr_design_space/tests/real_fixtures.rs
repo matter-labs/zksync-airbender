@@ -53,3 +53,32 @@ fn blake2_layer0_known_sizes() {
     assert_eq!(c.circuit.layers[0].gates.len(), 547);
     assert_eq!(c.circuit.layers[0].caches.len(), 382);
 }
+
+/// Diagnostic: identify the hub columns (highest output-fanout) of blake2
+/// cached layer 0 — cached columns vs raw inputs. Run with --ignored --nocapture.
+#[test]
+#[ignore]
+fn print_blake2_hub_columns() {
+    use gkr_design_space::analysis::working_set::closure_load_nodes;
+    let c = load_circuit(&fixture(FIXTURES[2])).unwrap();
+    let g = &c.graphs[0];
+    let mut fanout = vec![0u32; g.nodes.len()];
+    for o in &g.outputs {
+        for l in closure_load_nodes(g, o.node) {
+            fanout[l] += 1;
+        }
+    }
+    let mut v: Vec<(usize, u32)> = fanout
+        .iter()
+        .enumerate()
+        .filter(|&(_, &f)| f > 8)
+        .map(|(i, &f)| (i, f))
+        .collect();
+    v.sort_by_key(|&(_, f)| std::cmp::Reverse(f));
+    for (i, f) in v {
+        println!(
+            "{f:4} outputs  node {i:4}  {:?}  {:?}",
+            g.nodes[i].domain, g.nodes[i].origin
+        );
+    }
+}
