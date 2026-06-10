@@ -21,6 +21,7 @@ add_library(gpu_ntt_native STATIC
         monomials_to_evals_two_pass.cu
         ntt.cu
         ntt.cuh
+        whir_leaves.cu
 )
 option(GPU_NTT_BUILD_BENCH "Compile bench-only DIT kernel variants into the archive" OFF)
 if (GPU_NTT_BUILD_BENCH)

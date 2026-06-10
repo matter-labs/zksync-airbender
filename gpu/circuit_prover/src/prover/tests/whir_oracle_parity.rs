@@ -322,6 +322,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         first_lde_factor,
         1 << next_folding_steps,
         whir_schedule.cap_size,
+        false, // transform_leaves_to_multilinear_coeffs
         context,
     )
     .unwrap();
@@ -386,6 +387,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         first_lde_factor,
         1 << next_folding_steps,
         whir_schedule.cap_size,
+        false, // transform_leaves_to_multilinear_coeffs
         context,
     )
     .unwrap();
@@ -536,6 +538,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             lde_factor,
             1 << next_folding_steps,
             whir_schedule.cap_size,
+            false, // transform_leaves_to_multilinear_coeffs
             context,
         )
         .unwrap();
