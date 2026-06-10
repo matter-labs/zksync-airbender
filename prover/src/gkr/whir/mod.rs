@@ -1426,7 +1426,7 @@ where
     proof
 }
 
-fn commit_single_ext_poly<
+pub fn commit_single_ext_poly<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -1443,6 +1443,129 @@ where
     let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
     for (column, offset) in cosets.into_iter() {
         assert!(column.len() > 0);
+        let el = ColumnMajorExtensionOracleForCoset {
+            values_normal_order: ColumnMajorCosetBoundTracePart {
+                column: Arc::new(column),
+                offset,
+            },
+        };
+        t.push(el);
+    }
+
+    let source: Vec<_> = t
+        .iter()
+        .map(|el| vec![&el.values_normal_order.column[..]])
+        .collect();
+    let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
+
+    let tree = T::construct_from_cosets::<E, Global>(
+        &source_ref[..],
+        values_per_leaf,
+        tree_cap_size,
+        true,
+        true,
+        false,
+        worker,
+    );
+
+    ColumnMajorExtensionOracleForLDE {
+        cosets: t,
+        tree,
+        values_per_leaf,
+        trace_len_log2,
+    }
+}
+
+pub fn commit_single_ext_poly_with_transform_for_test<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+>(
+    cosets: Vec<(Box<[E]>, F)>,
+    values_per_leaf: usize,
+    tree_cap_size: usize,
+    worker: &Worker,
+) -> ColumnMajorExtensionOracleForLDE<F, E, T>
+where
+    [(); E::DEGREE]: Sized,
+{
+    let num_folding_rounds = values_per_leaf.trailing_zeros() as usize;
+    let mut t = Vec::with_capacity(cosets.len());
+    let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
+    let trace_len = 1usize << trace_len_log2;
+    let num_cosets = cosets.len();
+
+    let two_inv = F::from_u32_unchecked(2).inverse().unwrap();
+    let set_generator = domain_generator_for_size::<F>(values_per_leaf as u64);
+    let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<F, Global>(
+        set_generator.inverse().unwrap(),
+        values_per_leaf / 2,
+    );
+    bitreverse_enumeration_inplace(&mut high_powers_offsets);
+
+    let offsets = offsets_vec_for_leaf_construction(trace_len, values_per_leaf);
+    let num_leaves = trace_len / values_per_leaf;
+
+    let extended_generator = domain_generator_for_size::<F>((trace_len * num_cosets) as u64);
+    let coset_generator = extended_generator.pow(num_cosets as u32);
+    let coset_generator_inv = coset_generator.inverse().unwrap();
+
+    for (mut column, offset) in cosets.into_iter() {
+        assert!(column.len() > 0);
+
+        if num_folding_rounds > 0 {
+            let offset_inv = offset.inverse().unwrap();
+            let base_root_invs = {
+                let mut v = materialize_powers_serial_starting_with_one::<F, Global>(
+                    coset_generator_inv,
+                    num_leaves,
+                );
+                for r in v.iter_mut() {
+                    r.mul_assign(&offset_inv);
+                }
+                v
+            };
+
+            // SAFETY: each thread writes to disjoint leaf indices; offsets stride
+            // across the column so no two threads touch the same element.
+            let base_ptr = column.as_mut_ptr() as usize;
+            worker.scope(num_leaves, |scope, geometry| {
+                for chunk_idx in 0..geometry.len() {
+                    let chunk_start = geometry.get_chunk_start_pos(chunk_idx);
+                    let chunk_size = geometry.get_chunk_size(chunk_idx);
+                    let base_ptr = base_ptr;
+                    let offsets = &offsets;
+                    let base_root_invs = &base_root_invs;
+                    let high_powers_offsets = &high_powers_offsets;
+                    let is_last = chunk_idx == geometry.len() - 1;
+
+                    Worker::smart_spawn(scope, is_last, move |_| {
+                        let ptr = base_ptr as *mut E;
+                        let mut leaf_buf = vec![E::ZERO; values_per_leaf];
+                        let mut scratch_a = vec![E::ZERO; values_per_leaf];
+                        let mut scratch_b = vec![E::ZERO; values_per_leaf];
+                        for leaf_idx in chunk_start..(chunk_start + chunk_size) {
+                            for (k, &off) in offsets.iter().enumerate() {
+                                leaf_buf[k] = unsafe { *ptr.add(off + leaf_idx) };
+                            }
+                            evals_to_multilinear_coeffs(
+                                &mut leaf_buf,
+                                &base_root_invs[leaf_idx],
+                                high_powers_offsets,
+                                &two_inv,
+                                num_folding_rounds,
+                                &mut scratch_a,
+                                &mut scratch_b,
+                            );
+                            for (k, &off) in offsets.iter().enumerate() {
+                                unsafe { *ptr.add(off + leaf_idx) = leaf_buf[k] };
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
         let el = ColumnMajorExtensionOracleForCoset {
             values_normal_order: ColumnMajorCosetBoundTracePart {
                 column: Arc::new(column),
@@ -2061,6 +2184,82 @@ fn evaluate_multivariate_at_base_for_domain_hypercube<
         result.add_assign(&t);
     }
     result
+}
+
+fn evals_to_multilinear_coeffs<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
+    data: &mut [E],
+    base_root_inv: &F,
+    high_powers_offsets: &[F],
+    two_inv: &F,
+    num_folding_rounds: usize,
+    buf_a: &mut [E],
+    buf_b: &mut [E],
+) {
+    let n = 1usize << num_folding_rounds;
+    assert_eq!(data.len(), n);
+    if num_folding_rounds == 0 {
+        return;
+    }
+    assert!(buf_a.len() >= n);
+    assert!(buf_b.len() >= n);
+
+    let mut root_inv = *base_root_inv;
+
+    // stage reads from `src` and writes `dst`. At stage 0 we read
+    // from `data`; afterwards we alternate between buf_a and buf_b.
+    for stage in 0..num_folding_rounds {
+        let src: &[E] = if stage == 0 {
+            &*data
+        } else if stage % 2 == 1 {
+            unsafe { core::slice::from_raw_parts(buf_a.as_ptr(), n) }
+        } else {
+            unsafe { core::slice::from_raw_parts(buf_b.as_ptr(), n) }
+        };
+        let dst: &mut [E] = if stage % 2 == 0 {
+            unsafe { core::slice::from_raw_parts_mut(buf_a.as_mut_ptr(), n) }
+        } else {
+            unsafe { core::slice::from_raw_parts_mut(buf_b.as_mut_ptr(), n) }
+        };
+
+        let num_existing = 1usize << stage;
+        let bit = 1usize << stage;
+        let block_len = n >> stage;
+        let half = block_len / 2;
+
+        for idx in 0..num_existing {
+            let base = idx * block_len;
+            let out_base = idx * half;
+            let linear_base = (idx | bit) * half;
+            for set_idx in 0..half {
+                let a = src[base + 2 * set_idx];
+                let b = src[base + 2 * set_idx + 1];
+
+                let mut root = root_inv;
+                root.mul_assign(&high_powers_offsets[set_idx]);
+
+                let mut c_even = a;
+                c_even.add_assign(&b);
+                c_even.mul_assign_by_base(two_inv);
+
+                let mut c_odd = a;
+                c_odd.sub_assign(&b);
+                c_odd.mul_assign_by_base(&root);
+                c_odd.mul_assign_by_base(two_inv);
+
+                dst[out_base + set_idx] = c_even;
+                dst[linear_base + set_idx] = c_odd;
+            }
+        }
+
+        root_inv.square();
+    }
+
+    let final_buf: &[E] = if num_folding_rounds % 2 == 1 {
+        unsafe { core::slice::from_raw_parts(buf_a.as_ptr(), n) }
+    } else {
+        unsafe { core::slice::from_raw_parts(buf_b.as_ptr(), n) }
+    };
+    data.copy_from_slice(&final_buf[..n]);
 }
 
 fn fold_coset<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
