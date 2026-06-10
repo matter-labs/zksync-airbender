@@ -122,8 +122,6 @@ pub fn no_field_gkr_max_quadratic_from_expr_and_constraint<F: PrimeField>(
     mut constraint: Constraint<F>,
     output: GKRAddress,
 ) -> NoFieldGKRRelation {
-    todo!();
-
     constraint.normalize();
     let (quadratic_part, linear_part, constant) = constraint.clone().split_max_quadratic();
 
@@ -180,6 +178,18 @@ pub fn no_field_gkr_max_quadratic_from_expr_and_constraint<F: PrimeField>(
         .into_boxed_slice();
 
     let expression = expression_into_no_field_expression(&expression, graph);
+
+    // `input` (flat quadratic form) and `expression` (structured CSE) are two encodings
+    // of the SAME constraint: codegen-IR trusts `expression`, while the CPU prover,
+    // verifier generator and gpu_gkr_model reconstruct from `input`. Both derive from
+    // `constraint` here, so they agree by construction. Guard the shared precondition
+    // they both depend on — this is the *max-quadratic* builder, so a higher-degree
+    // constraint reaching here would silently misrepresent in both encodings.
+    debug_assert!(
+        constraint.degree() <= 2,
+        "MaxQuadratic builder requires a degree-<=2 constraint, got degree {}",
+        constraint.degree()
+    );
 
     let input = NoFieldMaxQuadraticGKRRelation {
         quadratic_terms,

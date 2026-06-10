@@ -989,4 +989,66 @@ mod test {
             "compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json",
         );
     }
+
+    /// Fixture generator (run explicitly): compile the (heavier, high-fan-in)
+    /// blake2 delegation circuit, lower it to the codegen IR, verify the lowered
+    /// circuit, and emit the JSON. Run with:
+    ///
+    ///   cargo test -p cs lower_blake2_with_extended_control_codegen_ir -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn lower_blake2_with_extended_control_codegen_ir() {
+        use crate::gkr_compiler::{lower, to_json_string};
+        use ::field::baby_bear::base::BabyBearField;
+
+        let artifact = compile_delegation_circuit_into_gkr::<BabyBearField>(
+            &|cs| blake2_with_extended_control_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_blake2_with_extended_control_delegation_circuit(cs);
+            },
+            20,
+        );
+
+        let circuit = lower::<BabyBearField>(&artifact).expect("lower must succeed");
+        circuit.verify().expect("lowered circuit must verify");
+        let json = to_json_string(&circuit).expect("to_json_string must succeed");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("compiled_circuits/blake2_with_extended_control_codegen_ir_gkr.json");
+        std::fs::write(&path, &json).expect("write json");
+        println!(
+            "wrote {} ({} layers, {} bytes)",
+            path.display(),
+            circuit.layers.len(),
+            json.len()
+        );
+    }
+
+    /// No-caches twin of [`lower_blake2_with_extended_control_codegen_ir`].
+    #[test]
+    #[ignore]
+    fn lower_blake2_with_extended_control_codegen_ir_no_caches() {
+        use crate::gkr_compiler::{lower, to_json_string};
+        use ::field::baby_bear::base::BabyBearField;
+
+        let artifact = compile_delegation_circuit_into_gkr_without_caches::<BabyBearField>(
+            &|cs| blake2_with_extended_control_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_blake2_with_extended_control_delegation_circuit(cs);
+            },
+            20,
+        );
+
+        let circuit = lower::<BabyBearField>(&artifact).expect("lower must succeed");
+        circuit.verify().expect("lowered circuit must verify");
+        let json = to_json_string(&circuit).expect("to_json_string must succeed");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("compiled_circuits/blake2_with_extended_control_codegen_ir_no_caches_gkr.json");
+        std::fs::write(&path, &json).expect("write json");
+        println!(
+            "wrote {} ({} layers, {} bytes)",
+            path.display(),
+            circuit.layers.len(),
+            json.len()
+        );
+    }
 }
