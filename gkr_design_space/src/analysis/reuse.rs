@@ -57,11 +57,30 @@ pub struct CacheIngredients {
     pub bwd_remat_marginal_bytes_per_row: Option<u64>,
 }
 
+/// Joint scenario: rematerialize ALL linear caches at once. Shared fan-in
+/// columns are counted once (the per-cache marginals over-count them).
+#[derive(Debug, Serialize)]
+pub struct JointLinearRemat {
+    pub remat_caches: usize,
+    /// Fold chains added: union of linear-cache fan-in columns not in the
+    /// baseline backward fold set of their layer.
+    pub added_fold_bytes_per_row: u64,
+    /// Fold chains avoided: the remat'd cache columns themselves.
+    pub avoided_fold_bytes_per_row: u64,
+    /// Forward materialization stores avoided.
+    pub avoided_store_bytes_per_row: u64,
+}
+
 #[derive(Debug, Serialize)]
 pub struct CircuitReuse {
     /// Fan-out histogram over computed nodes, all layers pooled: fanout -> count.
     pub fanout_histogram: BTreeMap<u32, u32>,
     pub caches: Vec<CacheIngredients>,
+    pub joint_linear_remat: JointLinearRemat,
+}
+
+fn is_virtual_addr(a: &GKRAddress) -> bool {
+    matches!(a, GKRAddress::VirtualSetup(_))
 }
 
 /// Backward fold-chain bytes/row for one materialized column (per-original-row
@@ -153,6 +172,17 @@ pub fn circuit_reuse(c: &LoadedCircuit) -> CircuitReuse {
         })
         .collect();
 
+    // Exact backward fold-address set per layer (for remat marginal overlap —
+    // a remat'd cache's fan-in column is free iff that layer's backward pass
+    // already folds it for other terms).
+    let layer_folds: Vec<HashSet<GKRAddress>> = c
+        .circuit
+        .layers
+        .iter()
+        .zip(&c.graphs)
+        .map(|(layer, g)| crate::analysis::backward::backward_fold_addrs(g, layer))
+        .collect();
+
     // Cached-addr consumers: addr -> [(layer, uses)].
     let mut consumers: HashMap<GKRAddress, Vec<(usize, u32)>> = HashMap::new();
     for (li, g) in c.graphs.iter().enumerate() {
@@ -208,7 +238,7 @@ pub fn circuit_reuse(c: &LoadedCircuit) -> CircuitReuse {
                     .map(|&(cl, _)| {
                         fanin_addrs
                             .iter()
-                            .filter(|(a, _)| !layer_loads[cl].contains(a))
+                            .filter(|(a, _)| !layer_folds[cl].contains(a))
                             .map(|&(_, w)| fold_chain_bytes_per_row(w as u32))
                             .sum::<u64>()
                     })
@@ -233,9 +263,48 @@ pub fn circuit_reuse(c: &LoadedCircuit) -> CircuitReuse {
         }
     }
 
+    // Joint linear-remat scenario: union fan-in columns across all linear
+    // caches per producing layer, count each added fold chain once.
+    let mut joint = JointLinearRemat {
+        remat_caches: 0,
+        added_fold_bytes_per_row: 0,
+        avoided_fold_bytes_per_row: 0,
+        avoided_store_bytes_per_row: 0,
+    };
+    let mut added: HashMap<usize, HashSet<GKRAddress>> = HashMap::new();
+    let mut added_widths: HashMap<GKRAddress, u64> = HashMap::new();
+    for (li, (layer, g)) in c.circuit.layers.iter().zip(&c.graphs).enumerate() {
+        for cache in &layer.caches {
+            if matches!(cache.kind, CacheKind::MemoryTuple { .. }) {
+                continue;
+            }
+            joint.remat_caches += 1;
+            let out_node = cache.out.0.0 as usize;
+            let width = g.nodes[out_node].width_bytes();
+            joint.avoided_fold_bytes_per_row += fold_chain_bytes_per_row(width);
+            joint.avoided_store_bytes_per_row += width as u64;
+            for &i in &closure_load_nodes(g, out_node) {
+                if let Origin::InputColumn(a) | Origin::CachedColumn(a) | Origin::Scratch(a) =
+                    g.nodes[i].origin
+                {
+                    if !is_virtual_addr(&a) && !layer_folds[li].contains(&a) {
+                        added.entry(li).or_default().insert(a);
+                        added_widths.insert(a, g.nodes[i].width_bytes() as u64);
+                    }
+                }
+            }
+        }
+    }
+    for set in added.values() {
+        for a in set {
+            joint.added_fold_bytes_per_row += fold_chain_bytes_per_row(added_widths[a] as u32);
+        }
+    }
+
     CircuitReuse {
         fanout_histogram,
         caches,
+        joint_linear_remat: joint,
     }
 }
 

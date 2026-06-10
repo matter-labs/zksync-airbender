@@ -121,10 +121,27 @@ fn column_units(g: &AnalysisGraph, root: NodeIdx, out: &mut Vec<NodeIdx>) {
     }
 }
 
+/// Distinct real operand-column addresses of a layer's backward fold set —
+/// the columns the backward pass folds (quadratic AND linear referenced).
+/// Used by the cache remat analysis for exact marginal-fold overlap.
+pub fn backward_fold_addrs(
+    g: &AnalysisGraph,
+    layer: &cs::gkr_compiler::codegen_ir::CodegenLayer,
+) -> std::collections::HashSet<GKRAddress> {
+    layer_sources_inner(g, layer).1
+}
+
 fn layer_sources(
     g: &AnalysisGraph,
     layer: &cs::gkr_compiler::codegen_ir::CodegenLayer,
 ) -> LayerSources {
+    layer_sources_inner(g, layer).0
+}
+
+fn layer_sources_inner(
+    g: &AnalysisGraph,
+    layer: &cs::gkr_compiler::codegen_ir::CodegenLayer,
+) -> (LayerSources, std::collections::HashSet<GKRAddress>) {
     use cs::gkr_compiler::codegen_ir::{GateKind, gate_kind_input_nodes};
 
     let mut quad = vec![false; g.nodes.len()];
@@ -180,18 +197,22 @@ fn layer_sources(
     // already counted as a CachedColumn load if any gate consumes it).
 
     let (mut bf, mut e4, mut virt, mut linear_only_bf) = (0, 0, 0, 0);
+    let mut fold_addrs = std::collections::HashSet::new();
     for i in 0..g.nodes.len() {
         if !quad[i] && !lin[i] {
             continue;
         }
         let n = &g.nodes[i];
-        let virtual_col = match n.origin {
-            Origin::InputColumn(a) | Origin::CachedColumn(a) | Origin::Scratch(a) => is_virtual(&a),
-            _ => false,
+        let addr = match n.origin {
+            Origin::InputColumn(a) | Origin::CachedColumn(a) | Origin::Scratch(a) => Some(a),
+            _ => None,
         };
-        if virtual_col {
+        if addr.is_some_and(|a| is_virtual(&a)) {
             virt += 1;
             continue;
+        }
+        if let Some(a) = addr {
+            fold_addrs.insert(a);
         }
         match n.domain {
             Domain::Base => {
@@ -215,14 +236,17 @@ fn layer_sources(
         }
     }
 
-    LayerSources {
-        bf,
-        e4,
-        virt,
-        linear_only_bf,
-        c0_bf,
-        c0_e4,
-    }
+    (
+        LayerSources {
+            bf,
+            e4,
+            virt,
+            linear_only_bf,
+            c0_bf,
+            c0_e4,
+        },
+        fold_addrs,
+    )
 }
 
 /// Per-round byte model for one layer with N = 2^fs rows.

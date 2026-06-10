@@ -305,6 +305,18 @@ pub fn to_markdown(r: &CircuitReport) -> String {
         )
         .unwrap();
     }
+    let j = &r.reuse.joint_linear_remat;
+    writeln!(
+        s,
+        "\njoint linear-remat scenario: {} caches | bwd chains avoided {} B/row, added {} B/row | fwd stores avoided {} B/row | net {} B/row\n",
+        j.remat_caches,
+        j.avoided_fold_bytes_per_row,
+        j.added_fold_bytes_per_row,
+        j.avoided_store_bytes_per_row,
+        (j.avoided_fold_bytes_per_row + j.avoided_store_bytes_per_row) as i64
+            - j.added_fold_bytes_per_row as i64,
+    )
+    .unwrap();
     writeln!(
         s,
         "\nfan-out histogram (computed nodes): {:?}\n",
