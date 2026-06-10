@@ -97,6 +97,7 @@ mod commit_memory;
 mod delegation_asserts;
 mod expected_specs;
 mod fixtures;
+mod generated_forward_layer0_real_witness;
 mod inits_and_teardowns;
 mod memory_workflow;
 mod poly_helpers;
@@ -437,6 +438,10 @@ where
         external_challenges,
         final_trace_size_log_2,
         None,
+        // These direct-call tests always exercise the normal forward path; the
+        // generated layer-0 A/B switch is validated end-to-end through `prove()`
+        // (the multi_schedule smoke test), so it stays off here.
+        false,
         context,
     )
 }

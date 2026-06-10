@@ -595,7 +595,7 @@ pub(crate) fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtensio
                     "batched max-quadratic constraints not supported on GPU; cs/ must emit EnforceSingleMaxQuadraticConstraint (USE_BATCHING=false)"
                 );
             }
-            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
+            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                 let (inputs, constraint_metadata) =
                     build_single_max_quadratic_constraint_inputs_and_metadata::<E>(input);
                 let (batch_challenge_offset, batch_challenge_count) =
@@ -731,7 +731,7 @@ pub(crate) fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtensio
                     ),
                 });
             }
-            NoFieldGKRRelation::MaxQuadratic { input, output } => {
+            NoFieldGKRRelation::MaxQuadratic { input, output, .. } => {
                 let (inputs, constraint_metadata) =
                     build_max_quadratic_relation_inputs_and_metadata::<E>(input, *output);
                 let (batch_challenge_offset, batch_challenge_count) =
@@ -750,7 +750,10 @@ pub(crate) fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtensio
                     ),
                 });
             }
-            NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. } => {
+            NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. }
+            // No-cache-only variant (produced when !can_use_caching()); circuit_prover
+            // proves cached layouts, so this is never reached on the cached path.
+            | NoFieldGKRRelation::LookupWithDensAndCachedSetup { .. } => {
                 unimplemented!(
                     "unsupported GPU main-layer relation: {:?}",
                     gate.enforced_relation

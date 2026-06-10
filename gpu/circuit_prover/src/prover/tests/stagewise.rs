@@ -654,6 +654,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
                 &[],
                 0,
                 &external_challenges,
+                Option::<&()>::None,
                 &mut seed,
                 &worker,
             );
@@ -936,6 +937,29 @@ fn run_basic_unrolled_stagewise_parity_test() {
         .memory_trace_holder
         .ensure_cosets_materialized(&context)
         .unwrap();
+    // Stage1 creates the memory holder in `TreesCacheMode::CacheNone` (production
+    // does not commit memory traces during stage1). The WHIR base-oracle fold
+    // needs a consolidated tree for all three base oracles, so build the memory
+    // partial trees here exactly as production's `materialize_pre_whir_trace_inputs`
+    // does before the WHIR phase.
+    {
+        let instances_count = 1usize << stage1_output.memory_trace_holder.log_lde_factor;
+        stage1_output.memory_trace_holder.trees =
+            crate::prover::trace::holder::TreesHolder::Partial(
+                crate::prover::trace::holder::allocate_trees(
+                    instances_count,
+                    stage1_output.memory_trace_holder.log_domain_size
+                        - crate::prover::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                    stage1_output.memory_trace_holder.log_rows_per_leaf,
+                    &context,
+                )
+                .unwrap(),
+            );
+        stage1_output
+            .memory_trace_holder
+            .build_and_cache_partial_trees(&context)
+            .unwrap();
+    }
     stage1_output
         .witness_trace_holder
         .ensure_cosets_materialized(&context)

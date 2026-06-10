@@ -88,6 +88,7 @@ fn variant_name(rel: &NoFieldGKRRelation) -> &'static str {
         MaterializeSingleLookupInput { .. } => "MaterializeSingleLookupInput",
         MaterializedVectorLookupInput { .. } => "MaterializedVectorLookupInput",
         LookupWithCachedDensAndSetup { .. } => "LookupWithCachedDensAndSetup",
+        LookupWithDensAndCachedSetup { .. } => "LookupWithDensAndCachedSetup",
         LookupWithDensAndSetupExpressions { .. } => "LookupWithDensAndSetupExpressions",
         LookupPairFromBaseInputs { .. } => "LookupPairFromBaseInputs",
         LookupPairFromMaterializedBaseInputs { .. } => "LookupPairFromMaterializedBaseInputs",

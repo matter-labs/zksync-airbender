@@ -128,6 +128,14 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
                 }
             },
         );
+    let is_add_sub = matches!(
+        circuit_type,
+        CircuitType::Unrolled(
+            crate::witness::circuit_type::UnrolledCircuitType::NonMemory(
+                crate::witness::circuit_type::UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop
+            )
+        )
+    );
     let forward_output = schedule_forward_pass(
         setup.as_ref().map(|setup| &setup.trace_holder),
         synthetic_setup_trace_holder.as_ref(),
@@ -137,6 +145,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         &external_challenges.value,
         final_trace_size_log_2,
         output_evaluations_slab,
+        is_add_sub,
         context,
     )?;
     let ForwardToBackwardHandoff {

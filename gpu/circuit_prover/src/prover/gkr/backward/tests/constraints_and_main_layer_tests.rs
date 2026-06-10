@@ -48,6 +48,7 @@ fn single_max_quadratic_constraint_uses_direct_metadata_and_no_outputs() {
             output_layer: 1,
             enforced_relation: NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint {
                 input: constraint_input.clone(),
+                expression: cs::gkr_compiler::NoFieldStructuredExpression::Constant(0),
             },
         }],
     };
@@ -133,6 +134,7 @@ fn max_quadratic_relation_dispatches_with_base_output() {
             enforced_relation: NoFieldGKRRelation::MaxQuadratic {
                 input: constraint_input.clone(),
                 output: output_address,
+                expression: cs::gkr_compiler::NoFieldStructuredExpression::Constant(0),
             },
         }],
     };

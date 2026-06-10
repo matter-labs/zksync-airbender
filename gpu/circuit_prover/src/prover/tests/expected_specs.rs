@@ -453,7 +453,7 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                     "batched max-quadratic constraints not supported on GPU; cs/ must emit EnforceSingleMaxQuadraticConstraint (USE_BATCHING=false)"
                 );
             }
-            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
+            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                 let (inputs, constraint_metadata) =
                     expected_single_max_quadratic_constraint_inputs_and_metadata::<E>(input);
                 specs.push(ExpectedMainLayerKernelSpec {
@@ -582,6 +582,7 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                 });
             }
             NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. }
+            | NoFieldGKRRelation::LookupWithDensAndCachedSetup { .. }
             | NoFieldGKRRelation::MaterializedVectorLookupInput { .. }
             | NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs { .. }
             | NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs { .. }

@@ -695,7 +695,10 @@ where
                 computed_extension_outputs.push((*output, dst_view));
             }
             NoFieldGKRRelation::MaxQuadratic { .. }
-            | NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. } => {
+            | NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. }
+            // No-cache-only variant (produced when !can_use_caching()); circuit_prover
+            // proves cached layouts, so this is never reached on the cached path.
+            | NoFieldGKRRelation::LookupWithDensAndCachedSetup { .. } => {
                 unimplemented!(
                     "unsupported GPU forward relation: {:?}",
                     gate.enforced_relation

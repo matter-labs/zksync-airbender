@@ -382,6 +382,7 @@ pub(crate) fn gkr_forward_launch_config(
 }
 
 mod flat;
+pub(crate) mod generated;
 
 pub(crate) use flat::GpuFlatForwardStaticDesc;
 pub(in crate::prover::gkr) use flat::*;

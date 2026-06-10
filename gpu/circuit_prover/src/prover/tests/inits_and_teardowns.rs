@@ -221,7 +221,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         trace_len.trailing_zeros() as usize,
         &worker,
     );
-    let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
+    let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, _>(
         &compiled_circuit,
         &external_challenges,
         cpu_full_trace_for_proof,
@@ -231,6 +231,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         &prover_config,
         canonical_top_bits.clone(),
         trace_len,
+        Option::<()>::None,
         &worker,
     );
     let (mem_oracle, _wit_oracle) = stage1::stage1::<BF, DefaultTreeConstructor>(
@@ -446,6 +447,8 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             &external_challenges,
             FINAL_TRACE_SIZE_LOG_2,
             None,
+            // inits_and_teardowns circuit: not add_sub, normal forward path.
+            false,
             &context,
         )
         .unwrap();

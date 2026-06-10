@@ -200,6 +200,7 @@ pub(super) use kernels::*;
 mod cache_relation;
 mod dimension_reducing;
 mod flat_plan;
+pub(crate) mod generated_layer0;
 mod materialize_helpers;
 
 use cache_relation::{lower_cache_relation, LoweredCacheRelationOutput};
@@ -232,6 +233,7 @@ use flat_plan::{
     commit_flat_forward_plan, release_forward_lookup_resources_after_layer,
 };
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn schedule_forward_pass<E>(
     setup_trace_holder: Option<&crate::prover::trace::holder::TraceHolder<BF>>,
     synthetic_setup_trace_holder: Option<&crate::prover::trace::holder::TraceHolder<BF>>,
@@ -241,6 +243,7 @@ pub(crate) fn schedule_forward_pass<E>(
     external_challenges: &GKRExternalChallenges<BF, E>,
     final_trace_size_log_2: usize,
     output_evaluations_slab: Option<ForwardOutputSlabTarget<E>>,
+    is_add_sub: bool,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardOutput<BF, E>>
 where
@@ -310,6 +313,24 @@ where
         context,
     )?;
 
+    // Resolve the layer-0 A/B switch once. The generated fused kernel is
+    // specific to the add_sub_lui_auipc_mop circuit with a cached layout; if the
+    // env is set for any other circuit we must panic loudly rather than emit a
+    // wrong proof.
+    let use_generated_layer0 = generated_layer0::generated_layer0_enabled();
+    let is_add_sub_cached =
+        generated_layer0::is_add_sub_cached_layout(is_add_sub, &compiled_circuit);
+    if use_generated_layer0 && !is_add_sub_cached {
+        panic!(
+            "{} is enabled but the circuit is not add_sub_lui_auipc_mop with a cached layout \
+             (is_add_sub={is_add_sub}, has_decoder_lookup={}); the generated layer-0 kernel is \
+             add_sub-cached-specific",
+            generated_layer0::AB_GKR_FWD_GENERATED_LAYER0_ENV,
+            compiled_circuit.has_decoder_lookup,
+        );
+    }
+    let generated_layer0_active = use_generated_layer0 && is_add_sub_cached;
+
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
         let layer_range = Range::new(format!("gkr.forward.layer.{layer_idx}"))?;
         layer_range.start(stream)?;
@@ -325,6 +346,7 @@ where
             external_challenges,
             decoder_predicate_address,
             trace_len,
+            generated_layer0_active,
             context,
         )?;
         layer_range.end(stream)?;
@@ -382,6 +404,7 @@ pub(super) fn schedule_ext_poly_readback<B, E: Copy>(
     Ok(host)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn schedule_layer<E>(
     layer_idx: usize,
     total_layers: usize,
@@ -394,6 +417,7 @@ fn schedule_layer<E>(
     external_challenges: &GKRExternalChallenges<BF, E>,
     decoder_predicate_address: Option<GKRAddress>,
     trace_len: usize,
+    generated_layer0_active: bool,
     context: &ProverContext,
 ) -> CudaResult<()>
 where
@@ -410,6 +434,28 @@ where
 {
     let stream = context.get_exec_stream();
     hydrate_scratch_space_layer(layer_idx, compiled_circuit, stage1, storage);
+
+    // A/B switch: for layer 0 of the add_sub-cached circuit, the pre-generated
+    // fused kernel produces the COMPLETE layer-0 output (all caches + all inner
+    // gate outputs) in one launch, replacing the normal cache-relation /
+    // materialized-lookup-input / flat-forward-plan scheduling below.
+    if generated_layer0_active && layer_idx == 0 {
+        let generated_range = Range::new("gkr.forward.layer.0.generated")?;
+        generated_range.start(stream)?;
+        assert_forward_layer_invariants(layer_idx, total_layers, layer);
+        generated_layer0::schedule_generated_layer0(
+            layer,
+            storage,
+            forward_setup,
+            external_challenges,
+            trace_len,
+            context,
+        )?;
+        generated_range.end(stream)?;
+        tracing_ranges.push(generated_range);
+        return Ok(());
+    }
+
     let cached_relations_ref = &layer.cached_relations;
     if cached_relations_ref.is_empty() {
         schedule_cache_relations(
