@@ -1,11 +1,17 @@
 //! Aggregated per-circuit report: serde for JSON, compact markdown rendering.
 
 use crate::analysis::depth::{DepthStats, depth_stats};
+use crate::analysis::partition::{PartitionPoint, partition_curve};
 use crate::analysis::reuse::{CircuitReuse, circuit_reuse};
 use crate::analysis::schedule::{LiveStats, Order, simulate};
 use crate::analysis::working_set::{LayerWorkingSet, layer_working_set};
 use crate::import::LoadedCircuit;
 use serde::Serialize;
+
+/// Per-thread live-byte budgets swept by the partition pass. In register
+/// terms: 128 B = 32 regs ... 2048 B = 512 regs (beyond the 255-reg ceiling,
+/// as an asymptote check).
+pub const PARTITION_BUDGETS: [u64; 7] = [128, 192, 256, 384, 512, 1024, 2048];
 
 #[derive(Serialize)]
 pub struct LayerReport {
@@ -18,6 +24,8 @@ pub struct LayerReport {
     pub frac_span_le_1: f64,
     pub live_arena: LiveStats,
     pub live_scheduled: LiveStats,
+    /// Cut-cost curve; empty for layers already under the smallest budget.
+    pub partition: Vec<PartitionPoint>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub depth_full: Option<DepthStats>, // JSON-only detail
 }
@@ -39,6 +47,12 @@ pub fn build_report(path: &str, c: &LoadedCircuit, full: bool) -> CircuitReport 
         .enumerate()
         .map(|(i, (layer, g))| {
             let d = depth_stats(g);
+            let live_scheduled = simulate(g, Order::PressureAware);
+            let partition = if live_scheduled.max_live_bytes > PARTITION_BUDGETS[0] {
+                partition_curve(g, &PARTITION_BUDGETS)
+            } else {
+                vec![]
+            };
             LayerReport {
                 layer: i,
                 nodes: g.nodes.len(),
@@ -48,7 +62,8 @@ pub fn build_report(path: &str, c: &LoadedCircuit, full: bool) -> CircuitReport 
                 max_depth: d.max_depth,
                 frac_span_le_1: d.frac_span_le_1,
                 live_arena: simulate(g, Order::Arena),
-                live_scheduled: simulate(g, Order::PressureAware),
+                live_scheduled,
+                partition,
                 depth_full: full.then_some(d),
             }
         })
@@ -94,6 +109,41 @@ pub fn to_markdown(r: &CircuitReport) -> String {
             l.live_scheduled.max_live_bytes,
         )
         .unwrap();
+    }
+    for l in &r.layers {
+        if l.partition.is_empty() {
+            continue;
+        }
+        let base = l.working_set.bytes_per_row_in + l.working_set.bytes_per_row_out;
+        writeln!(
+            s,
+            "\n### partition curve — layer {} (baseline {} B/row in+out)\n",
+            l.layer, base
+        )
+        .unwrap();
+        writeln!(
+            s,
+            "| budget B | chunks | cut vals | store B | load B | dup col B | extra B/row | extra % | max chunk live | max chunk in-cols |"
+        )
+        .unwrap();
+        writeln!(s, "|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|").unwrap();
+        for p in &l.partition {
+            writeln!(
+                s,
+                "| {} | {} | {} | {} | {} | {} | {} | {:.1} | {} | {} |",
+                p.budget_bytes,
+                p.chunks,
+                p.cut_values,
+                p.cut_store_bytes_per_row,
+                p.cut_load_bytes_per_row,
+                p.dup_col_load_bytes_per_row,
+                p.extra_bytes_per_row,
+                100.0 * p.extra_bytes_per_row as f64 / base as f64,
+                p.max_chunk_live_bytes,
+                p.max_chunk_input_cols,
+            )
+            .unwrap();
+        }
     }
     writeln!(s, "\n### caches ({})\n", r.reuse.caches.len()).unwrap();
     writeln!(

@@ -40,6 +40,18 @@ pub fn simulate(g: &AnalysisGraph, order: Order) -> LiveStats {
     }
 }
 
+/// The portfolio-winning sequence (greedy vs arena by max-live bytes) — the
+/// order the partition pass chunks over.
+pub fn best_order(g: &AnalysisGraph) -> Vec<NodeIdx> {
+    let arena: Vec<NodeIdx> = (0..g.nodes.len()).collect();
+    let greedy = pressure_order(g);
+    if measure(g, &greedy).max_live_bytes <= measure(g, &arena).max_live_bytes {
+        greedy
+    } else {
+        arena
+    }
+}
+
 /// `remaining[i]` = consumers not yet scheduled; a value dies at 0.
 fn measure(g: &AnalysisGraph, seq: &[NodeIdx]) -> LiveStats {
     let mut remaining = vec![0u32; g.nodes.len()];
