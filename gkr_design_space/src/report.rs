@@ -273,10 +273,10 @@ pub fn to_markdown(r: &CircuitReport) -> String {
     writeln!(s, "\n### caches ({})\n", r.reuse.caches.len()).unwrap();
     writeln!(
         s,
-        "| layer | store B/row | uses | fan-in cols | fan-in B/row | max marginal B/row |"
+        "| layer | store B/row | uses | fan-in cols | fan-in B/row | max marginal B/row | linear | ops (bf/mix/e4 = wtd) | bwd mat B/row | bwd remat B/row |"
     )
     .unwrap();
-    writeln!(s, "|--:|--:|--:|--:|--:|--:|").unwrap();
+    writeln!(s, "|--:|--:|--:|--:|--:|--:|--|--:|--:|--:|").unwrap();
     for ci in &r.reuse.caches {
         let max_marginal = ci
             .marginal_bytes_per_row
@@ -286,13 +286,22 @@ pub fn to_markdown(r: &CircuitReport) -> String {
             .unwrap_or(0);
         writeln!(
             s,
-            "| {} | {} | {} | {} | {} | {} |",
+            "| {} | {} | {} | {} | {} | {} | {} | {}/{}/{} = {} | {} | {} |",
             ci.producing_layer,
             ci.store_bytes_per_row,
             ci.total_uses,
             ci.fanin_cols,
             ci.fanin_bytes_per_row,
             max_marginal,
+            if ci.linear { "yes" } else { "NO" },
+            ci.recompute_ops.bf,
+            ci.recompute_ops.mixed,
+            ci.recompute_ops.e4,
+            ci.recompute_ops.weighted,
+            ci.bwd_materialize_bytes_per_row,
+            ci.bwd_remat_marginal_bytes_per_row
+                .map(|b| b.to_string())
+                .unwrap_or_else(|| "n/a".into()),
         )
         .unwrap();
     }
