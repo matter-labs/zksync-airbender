@@ -1,16 +1,23 @@
-use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
+use era_cudart::{
+    cuda_kernel, cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function,
+};
 use fft::field_utils::domain_generator_for_size;
 
 pub use crate::ntt_twiddles::OMEGA_LOG_ORDER;
 use crate::upstream::Field;
 use gpu_core::primitives::context::DeviceProperties;
-use gpu_core::primitives::field::BF;
-use gpu_core::primitives::utils::get_grid_block_dims_for_threads_count;
+use gpu_core::primitives::device_structures::{
+    DeviceMatrix, DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
+};
+use gpu_core::primitives::field::{BF, E4};
+use gpu_core::primitives::utils::{
+    get_grid_block_dims_for_threads_count, GetChunksCount, WARP_SIZE,
+};
 
 /// Number of passes for the multi-stage NTT kernels at a given `log_n`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -340,4 +347,124 @@ pub const MIN_LOG_N_FOR_MULTISTAGE_KERNELS: usize = 21;
 
 pub fn log_size_supports_transposed_monomials(log_n: usize) -> bool {
     log_n >= MIN_LOG_N_FOR_MULTISTAGE_KERNELS
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    TransformWhirLeavesFromNttMultiCoset,
+    src: PtrAndStride<BF>,
+    dst: MutPtrAndStride<BF>,
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    coset_index_base: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_transform_whir_leaves_from_ntt_multi_coset_kernel(
+        src: PtrAndStride<BF>,
+        dst: MutPtrAndStride<BF>,
+        log_trace_len: u32,
+        log_lde_factor: u32,
+        log_values_per_leaf: u32,
+        coset_index_base: u32,
+    )
+);
+
+pub fn transform_whir_leaves_from_ntt_multi_coset(
+    src: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    dst: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    coset_index_base: u32,
+    cosets_in_tile: u32,
+    src_cols_per_coset: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(src_cols_per_coset, 4); // Reminder to relax this if/when we use ext6
+    assert!(log_lde_factor >= 1);
+    assert!(log_values_per_leaf >= 1);
+    assert!(log_values_per_leaf <= 5); // Based on block size. Can be relaxed if needed.
+    assert!(log_trace_len > log_values_per_leaf);
+    assert!(coset_index_base + cosets_in_tile <= (1 << log_lde_factor as usize));
+    let rows = src.rows();
+    let cols = src.cols();
+    assert!(rows <= u32::MAX as usize);
+    assert!(cols <= u32::MAX as usize);
+    assert!(dst.rows() <= u32::MAX as usize);
+    assert!(dst.cols() <= u32::MAX as usize);
+    // A warning to rework kernel for < 32B contiguous accesses if needed:
+    assert_eq!(cols, 4 << log_lde_factor);
+    assert_eq!(rows, 1 << log_trace_len);
+    assert_eq!(rows, dst.rows());
+    assert_eq!(cols, dst.cols());
+    // Each thread reads and writes 2 ext4 values.
+    let values_per_leaf = 1 << log_values_per_leaf;
+    let block_dim_y = values_per_leaf / 2;
+    let log_leaves_per_coset = log_trace_len - log_values_per_leaf;
+    let leaf_count_this_launch = cosets_in_tile << log_leaves_per_coset;
+    assert!(leaf_count_this_launch >= WARP_SIZE);
+    let block_dim_x = if block_dim_y > 1 {
+        WARP_SIZE
+    } else {
+        // yields low occupany for small total size corner cases,
+        // but such cases are negligible/typically testing-only
+        std::cmp::min(leaf_count_this_launch, 4 * WARP_SIZE)
+    };
+    assert_eq!(leaf_count_this_launch % block_dim_x, 0);
+    let block_dim = (block_dim_x, block_dim_y);
+    let grid_dim = leaf_count_this_launch.get_chunks_count(block_dim_x);
+    let mut config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let smem_bytes = if log_values_per_leaf > 1 {
+        2 * block_dim_y * block_dim_x * size_of::<E4>() as u32
+            + block_dim_y * block_dim_x * size_of::<BF>() as u32
+    } else {
+        0
+    };
+    config.dynamic_smem_bytes = smem_bytes as usize;
+    let args = TransformWhirLeavesFromNttMultiCosetArguments::new(
+        src.as_ptr_and_stride(),
+        dst.as_mut_ptr_and_stride(),
+        log_trace_len,
+        log_lde_factor,
+        log_values_per_leaf,
+        coset_index_base,
+    );
+    TransformWhirLeavesFromNttMultiCosetFunction(
+        ab_transform_whir_leaves_from_ntt_multi_coset_kernel,
+    )
+    .launch(&config, &args)
+}
+
+pub fn transform_whir_leaves_from_ntt_in_place_multi_coset(
+    dst: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    log_trace_len: u32,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+    coset_index_base: u32,
+    cosets_in_tile: u32,
+    src_cols_per_coset: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(src_cols_per_coset, 4);
+    // Creates src as alias of dst
+    let dst_slice = dst.slice();
+    assert_eq!(
+        dst_slice.len(),
+        (src_cols_per_coset << (log_trace_len + log_lde_factor)) as usize
+    );
+    let dst_ptr = dst_slice.as_ptr();
+    let dst_slice = unsafe { DeviceSlice::from_raw_parts(dst_ptr, dst_slice.len()) };
+    let src = DeviceMatrix::new(&dst_slice, dst.stride());
+    transform_whir_leaves_from_ntt_multi_coset(
+        &src,
+        dst,
+        log_trace_len,
+        log_lde_factor,
+        log_values_per_leaf,
+        coset_index_base,
+        cosets_in_tile,
+        src_cols_per_coset,
+        stream,
+    )
 }
