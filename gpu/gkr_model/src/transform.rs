@@ -75,11 +75,11 @@ fn rewrite_relation_scratch_addresses(
 ) {
     use NoFieldGKRRelation::*;
     match rel {
-        MaxQuadratic { input, output } => {
+        MaxQuadratic { input, output, .. } => {
             rewrite_max_quadratic(input, mapping);
             rewrite_addr(output, mapping);
         }
-        EnforceSingleMaxQuadraticConstraint { input } => {
+        EnforceSingleMaxQuadraticConstraint { input, .. } => {
             rewrite_max_quadratic(input, mapping);
         }
         EnforceConstraintsMaxQuadratic { input } => {

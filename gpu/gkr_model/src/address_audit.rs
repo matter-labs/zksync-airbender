@@ -220,11 +220,11 @@ pub fn collect_addresses_from_relation(
             push_linear(input, reads);
             writes.push(*output);
         }
-        MaxQuadratic { input, output } => {
+        MaxQuadratic { input, output, .. } => {
             push_max_quadratic(input, reads);
             writes.push(*output);
         }
-        EnforceSingleMaxQuadraticConstraint { input } => {
+        EnforceSingleMaxQuadraticConstraint { input, .. } => {
             push_max_quadratic(input, reads);
         }
         EnforceConstraintsMaxQuadratic { input } => {
@@ -285,6 +285,17 @@ pub fn collect_addresses_from_relation(
         } => {
             reads.extend_from_slice(input);
             reads.extend_from_slice(setup);
+            writes.extend_from_slice(output);
+        }
+        LookupWithDensAndCachedSetup {
+            input,
+            setup,
+            output,
+        } => {
+            reads.push(input.0);
+            push_vector(&input.1, reads);
+            reads.push(setup.0);
+            reads.push(setup.1);
             writes.extend_from_slice(output);
         }
         LookupWithDensAndSetupExpressions {

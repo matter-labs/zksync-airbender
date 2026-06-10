@@ -598,6 +598,7 @@ fn relation_outputs(rel: &NoFieldGKRRelation) -> Vec<(GKRAddress, FieldType)> {
             out.push((*output, FieldType::Ext));
         }
         LookupWithCachedDensAndSetup { output, .. }
+        | LookupWithDensAndCachedSetup { output, .. }
         | LookupWithDensAndSetupExpressions { output, .. }
         | LookupPairFromBaseInputs { output, .. }
         | LookupPairFromMaterializedBaseInputs { output, .. }
