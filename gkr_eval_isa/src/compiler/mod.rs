@@ -77,6 +77,12 @@ pub(crate) fn is_leaf(n: &ExprNode) -> bool {
     matches!(n, ExprNode::Place { .. } | ExprNode::GateOutput { .. })
 }
 
+/// True when the node is a GateOutput leaf — these output slots are "native"
+/// (stored by gate logic, not the program), so the program must not write them.
+pub fn is_native_output(n: &ExprNode) -> bool {
+    matches!(n, ExprNode::GateOutput { .. })
+}
+
 /// Computed nodes are what the program emits instructions for.
 pub(crate) fn is_computed(n: &ExprNode) -> bool {
     matches!(n, ExprNode::Sum { .. } | ExprNode::Product { .. })
