@@ -18,6 +18,7 @@ members = [
     "gpu_witness_eval_generator",
     "gpu_gkr_fwd_generator",
     "gkr_design_space",
+    "gkr_eval_isa",
     "verifier",
     "full_statement_verifier",
 
@@ -98,6 +99,7 @@ default-members = [
     "gpu_witness_eval_generator",
     "gpu_gkr_fwd_generator",
     "gkr_design_space",
+    "gkr_eval_isa",
     # The one GPU-cluster crate with no CUDA dep (pure CPU model); safe as a default member.
     "gpu/gkr_model",
     "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
