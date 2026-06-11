@@ -157,6 +157,49 @@ fn tiny_budget_actually_spills() {
 }
 
 #[test]
+fn oracle_min_feasible_budget() {
+    // The budget-sweep report marks tight cells infeasible via catch_unwind;
+    // this verifies the TIGHTEST feasible cell of the sweep grid is not just
+    // compilable but CORRECT (max spill/remat stress per circuit).
+    use gkr_eval_isa::report::SLOT_GRID;
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../cs/compiled_circuits");
+    let mut paths: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| {
+            let p = e.unwrap().path();
+            p.file_name().unwrap().to_str().unwrap().contains("codegen_ir").then_some(p)
+        })
+        .collect();
+    paths.sort();
+    assert_eq!(paths.len(), 22, "expected 22 IR fixtures");
+    for p in &paths {
+        let c = load_circuit(p).unwrap_or_else(|e| panic!("{e}"));
+        let min = SLOT_GRID
+            .iter()
+            .copied()
+            .find(|&slots| {
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    compile_layer(
+                        &c.circuit.layers[0],
+                        &c.graphs[0],
+                        CompileParams { slot_budget_cells: slots, ..Default::default() },
+                    )
+                }))
+                .is_ok()
+            })
+            .unwrap_or_else(|| panic!("{}: no feasible budget in grid", p.display()));
+        for fixed in [0, 16] {
+            let params = CompileParams {
+                slot_budget_cells: min,
+                fixed_reg_cells: fixed,
+                ..Default::default()
+            };
+            check_circuit(p, params, 0x51EE + fixed as u64);
+        }
+    }
+}
+
+#[test]
 fn oracle_pressure_order() {
     // The report compiles Pressure-order programs for the order-validation
     // comparison; this checks they are also CORRECT (final-review gap).

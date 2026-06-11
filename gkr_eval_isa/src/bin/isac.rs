@@ -14,13 +14,15 @@ fn main() {
         eprintln!("usage: isac <codegen_ir.json>... [--json <out.json>]");
         std::process::exit(2);
     }
-    let costs: Vec<_> = args
+    let loaded: Vec<_> = args
         .iter()
-        .map(|p| {
-            let c = load_circuit(std::path::Path::new(p)).unwrap_or_else(|e| panic!("{e}"));
-            circuit_cost(p, &c)
-        })
+        .map(|p| (p, load_circuit(std::path::Path::new(p)).unwrap_or_else(|e| panic!("{e}"))))
         .collect();
+    // Infeasible grid cells panic inside circuit_cost (caught there); keep
+    // their backtrace spam off stderr during the sweep.
+    std::panic::set_hook(Box::new(|_| {}));
+    let costs: Vec<_> = loaded.iter().map(|(p, c)| circuit_cost(p, c)).collect();
+    let _ = std::panic::take_hook();
     println!("{}", to_markdown(&costs));
     if let Some(out) = json_out {
         std::fs::write(&out, serde_json::to_string_pretty(&costs).unwrap()).unwrap();
