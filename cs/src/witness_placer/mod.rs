@@ -466,22 +466,13 @@ pub trait WitnessComputationalField<F: PrimeField>: 'static + Sized + Clone + De
     fn as_integer(self) -> Self::IntegerRepresentation;
     fn from_integer(value: Self::IntegerRepresentation) -> Self;
 
-    #[inline(always)]
-    fn from_raw_repr(value: Self::IntegerRepresentation) -> Self {
-        let mut x = Self::from_integer(value);
-        x.mul_assign(&Self::constant(F::from_reduced_raw_repr(1)));
-        x
-    }
-    
-    #[inline(always)]
-    fn as_raw_repr(self) -> Self::IntegerRepresentation {
-        let r = F::from_reduced_raw_repr(1)
-            .inverse()
-            .unwrap();
-        let mut x = self;
-        x.mul_assign(&Self::constant(r));
-        x.as_integer()
-    }
+    /// Decode an integer that holds the field's *raw* representation into a field element.
+    /// For a Montgomery field (`F::IS_MONT_REPR`) this is the raw Montgomery repr; for a
+    /// non-Montgomery field it is the identity. Inverse of [`Self::into_raw_repr_reduced`].
+    fn from_raw_repr_with_reduction(value: Self::IntegerRepresentation) -> Self;
+
+    /// Encode a field element into the integer holding its *raw* representation. Inverse of [`Self::from_raw_repr`]
+    fn into_raw_repr_reduced(self) -> Self::IntegerRepresentation;
 }
 
 pub trait WitnessComputationalInteger<T: 'static + Sized>: WitnessComputationCore {
@@ -690,6 +681,16 @@ impl<F: PrimeField> WitnessComputationalField<F> for F {
     #[inline(always)]
     fn from_integer(value: Self::IntegerRepresentation) -> Self {
         Self::from_u64_with_reduction(value as u64)
+    }
+
+    #[inline(always)]
+    fn from_raw_repr_with_reduction(value: Self::IntegerRepresentation) -> Self {
+        F::from_raw_repr_with_reduction(value)
+    }
+
+    #[inline(always)]
+    fn into_raw_repr_reduced(self) -> Self::IntegerRepresentation {
+        self.as_u32_raw_repr_reduced()
     }
 }
 

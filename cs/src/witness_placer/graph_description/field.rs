@@ -3,7 +3,7 @@ use super::{boolean::BoolNodeExpression, integer::FixedWidthIntegerNodeExpressio
 use crate::definitions::Variable;
 use crate::oracle::Placeholder;
 use crate::witness_placer::*;
-use ::field::PrimeField;
+use ::field::{Field, PrimeField};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum FieldNodeExpression<F: PrimeField> {
@@ -238,5 +238,16 @@ impl<F: PrimeField> WitnessComputationalField<F> for FieldNodeExpression<F> {
     }
     fn from_integer(value: Self::IntegerRepresentation) -> Self {
         Self::FromInteger(Box::new(value))
+    }
+    fn from_raw_repr_with_reduction(value: Self::IntegerRepresentation) -> Self {
+        let mut x = Self::from_integer(value);
+        x.mul_assign(&Self::constant(F::from_reduced_raw_repr(1)));
+        x
+    }
+    fn into_raw_repr_reduced(self) -> Self::IntegerRepresentation {
+        let r = F::from_reduced_raw_repr(1).inverse().unwrap();
+        let mut x = self;
+        x.mul_assign(&Self::constant(r));
+        x.as_integer()
     }
 }

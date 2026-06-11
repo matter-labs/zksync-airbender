@@ -347,21 +347,21 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                 let is_fmamod = placer.get_boolean(is_fmamod_var);
                 let is_mul_like = is_mulmod.or(&is_fmamod);
                 let op1 =
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr(
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
                         rs1_u32,
                     );
                 let op2 =
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr(
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
                         rs2_u32,
                     );
                 let rd_raw =
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr(
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
                         rd_read_u32,
                     );
                 let mut mulmod_field = op1;
                 mulmod_field.mul_assign(&op2);
                 mulmod_field.add_assign_masked(&is_fmamod, &rd_raw);
-                let mulmod_result = mulmod_field.as_raw_repr();
+                let mulmod_result = mulmod_field.into_raw_repr_reduced();
                 placer.assign_field(
                     mulmod_intermediate_var,
                     &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
