@@ -75,3 +75,26 @@ fn oracle_add_sub_both_layouts() {
         check_circuit(&fixture(f), CompileParams::default(), 0xA5A5);
     }
 }
+
+// Blake2 L0 has max_live_cells=3 (all BF), so budget=2 forces spills.
+// add_sub L0 has max_live_cells=7, but the minimum feasible spilling budget
+// exceeds max_live for that circuit due to remat protect-list constraints;
+// blake2 is the correct circuit for verifying the spill/remat path.
+#[test]
+fn oracle_blake2_tiny_slot_budget_with_spills() {
+    let p = CompileParams { slot_budget_cells: 2, fixed_reg_cells: 0, ..Default::default() };
+    check_circuit(&fixture("blake2_g_function_codegen_ir_gkr.json"), p, 0xBEEF);
+}
+
+#[test]
+fn tiny_budget_actually_spills() {
+    let c = load_circuit(&fixture("blake2_g_function_codegen_ir_gkr.json")).unwrap();
+    // Layer 0 is the only layer with instructions; budget=2 < max_live=3 forces spills.
+    let cl = compile_layer(
+        &c.circuit.layers[0],
+        &c.graphs[0],
+        CompileParams { slot_budget_cells: 2, fixed_reg_cells: 0, ..Default::default() },
+    );
+    assert!(cl.stats.spill_evictions > 0, "expected spill_evictions > 0 at budget=2, got 0");
+    assert!(cl.stats.remat_instrs > 0, "expected remat_instrs > 0 at budget=2, got 0");
+}
