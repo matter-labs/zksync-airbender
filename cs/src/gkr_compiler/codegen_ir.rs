@@ -317,6 +317,28 @@ pub struct CodegenCache {
 // Circuit-level globals
 // ===========================================================================
 
+/// serde adapter for `BTreeMap<GKRAddress, usize>`: serialized as a sequence
+/// of `(GKRAddress, usize)` pairs because JSON map keys must be strings.
+mod addr_key_map {
+    use super::*;
+    use serde::{Deserialize as _, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(
+        m: &BTreeMap<GKRAddress, usize>,
+        s: S,
+    ) -> Result<S::Ok, S::Error> {
+        s.collect_seq(m.iter())
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<BTreeMap<GKRAddress, usize>, D::Error> {
+        Ok(Vec::<(GKRAddress, usize)>::deserialize(d)?
+            .into_iter()
+            .collect())
+    }
+}
+
 /// All circuit-wide constants from `GKRCircuitArtifact` that the CUDA kernel
 /// generator needs but are not per-layer. Mirrors the artifact's scalar fields;
 /// field-generic and compiler-internal fields (degree-N constraints, placement_data,
@@ -333,6 +355,9 @@ pub struct CodegenGlobals {
     pub table_offsets: Vec<u32>,
     pub total_tables_size: usize,
     pub scratch_space_size: usize,
+    /// JSON object keys must be strings, but `GKRAddress` has struct variants,
+    /// so this map round-trips as a sequence of `[addr, slot]` pairs.
+    #[serde(with = "addr_key_map")]
     pub scratch_space_mapping: BTreeMap<GKRAddress, usize>,
     pub scratch_space_mapping_rev: BTreeMap<usize, GKRAddress>,
     pub global_output_map: BTreeMap<super::OutputType, Vec<GKRAddress>>,
