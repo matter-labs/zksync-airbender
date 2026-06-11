@@ -132,10 +132,12 @@ fn oracle_all_fixtures() {
     assert_eq!(paths.len(), 22, "expected 22 IR fixtures");
     for p in &paths {
         check_circuit(p, CompileParams::default(), 7);
-        // And once with realistic GPU-ish budgets.
+        // And once with realistic GPU-ish budgets (64 cells measured feasible
+        // across all 22 fixtures during Task 7 review; fixed regs only lower
+        // slot pressure further).
         check_circuit(
             p,
-            CompileParams { slot_budget_cells: 96, fixed_reg_cells: 16, ..Default::default() },
+            CompileParams { slot_budget_cells: 64, fixed_reg_cells: 16, ..Default::default() },
             7 + 1,
         );
     }
