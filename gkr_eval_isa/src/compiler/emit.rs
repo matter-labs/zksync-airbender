@@ -90,6 +90,27 @@ impl<'a> EmitCtx<'a> {
         }
     }
 
+    /// Returns the per-instruction operand counts that `emit_with_split` would
+    /// produce for a list of `total_operands` operands with the given `unit`.
+    /// Used by tests to verify the split stays within MAX_ARITY.
+    #[cfg(test)]
+    pub(crate) fn split_chunks(total_operands: usize, unit: usize) -> Vec<usize> {
+        let max_per_instr = MAX_ARITY * unit;
+        if total_operands <= max_per_instr {
+            return vec![total_operands];
+        }
+        let mut counts = vec![max_per_instr]; // first chunk
+        let mut remaining = total_operands - max_per_instr;
+        let cont_chunk_size = max_per_instr - unit;
+        while remaining > 0 {
+            let chunk = remaining.min(cont_chunk_size);
+            // Continuation instruction: chunk payload + unit prepend
+            counts.push(chunk + unit);
+            remaining -= chunk;
+        }
+        counts
+    }
+
     /// Emit one or more instructions for `op` with `operands` to `dst`.
     /// If operands exceed MAX_ARITY (or MAX_ARITY pairs for DotK), split into
     /// a chain. `unit` = 1 for SumK/ProdK, 2 for DotK (pairs).
@@ -112,18 +133,22 @@ impl<'a> EmitCtx<'a> {
                 matches!(dst, Dst::Slot(_) | Dst::FixedReg(_)),
                 "wide node must use slot dst"
             );
-            let mut chunks = operands.chunks(max_per_instr);
-            // First chunk writes to dst.
-            let first_chunk = chunks.next().unwrap().to_vec();
+            // First chunk may fill MAX_ARITY fully.
+            let first_chunk = operands[..max_per_instr].to_vec();
+            let remainder = &operands[max_per_instr..];
             self.record_instr(op, e4_result, dst, first_chunk);
 
-            // Subsequent chunks prepend dst as continuation operand and write back to dst.
+            // Subsequent chunks prepend dst as continuation operand (1 operand for
+            // SumK/ProdK, 2 for DotK = exactly `unit`), so each continuation
+            // instruction uses at most max_per_instr operands total.
+            // Cap per-chunk at max_per_instr - unit to leave room for the prepend.
+            let cont_chunk_size = max_per_instr - unit;
             let dst_operand = match dst {
                 Dst::Slot(cell) => Operand::Slot { cell, e4: e4_result },
                 Dst::FixedReg(cell) => Operand::FixedReg { cell, e4: e4_result },
                 _ => unreachable!("wide node must have slot/fixed-reg dst"),
             };
-            for chunk in chunks {
+            for chunk in remainder.chunks(cont_chunk_size) {
                 let mut cont_ops = Vec::with_capacity(chunk.len() + unit);
                 if op == Op::DotK {
                     // Continuation pair: (dst, One)
@@ -418,10 +443,51 @@ pub(crate) fn emit_layer(
 
 #[cfg(test)]
 mod tests {
+    use super::EmitCtx;
     use crate::compiler::{CompileParams, compile_layer};
     use crate::eval_ref::tests::fixture;
-    use crate::isa::Dst;
+    use crate::isa::{Dst, MAX_ARITY};
     use gkr_design_space::import::load_circuit;
+
+    /// Regression test: continuation chunks must not exceed MAX_ARITY after
+    /// prepending the accumulator operand.
+    #[test]
+    fn split_chunks_stay_within_max_arity() {
+        // SumK/ProdK: unit = 1.  70 operands -> first=31, cont=1+30=31. All ≤ 31.
+        let counts = EmitCtx::split_chunks(70, 1);
+        for &c in &counts {
+            assert!(
+                c <= MAX_ARITY,
+                "SumK chunk size {c} exceeds MAX_ARITY={MAX_ARITY} (counts={counts:?})"
+            );
+        }
+        // Sum of counts must equal total (first chunk) + continuation payloads + prepends.
+        // Simpler: the first count is the first chunk payload; continuations include
+        // the prepend. Total payload = first + sum(cont - unit).
+        let payload: usize = counts[0] + counts[1..].iter().map(|&c| c - 1).sum::<usize>();
+        assert_eq!(payload, 70, "SumK: payload mismatch {payload}");
+
+        // DotK: unit = 2.  70 pairs (140 operands) -> first=62, cont=2+60=62. All ≤ 62 = 31*2.
+        let counts = EmitCtx::split_chunks(140, 2);
+        for &c in &counts {
+            assert!(
+                c <= MAX_ARITY * 2,
+                "DotK chunk size {c} exceeds MAX_ARITY*2={} (counts={counts:?})",
+                MAX_ARITY * 2
+            );
+        }
+        let payload: usize = counts[0] + counts[1..].iter().map(|&c| c - 2).sum::<usize>();
+        assert_eq!(payload, 140, "DotK: payload mismatch {payload}");
+
+        // Edge: exactly MAX_ARITY operands -> single instruction, no split.
+        let counts = EmitCtx::split_chunks(MAX_ARITY, 1);
+        assert_eq!(counts, vec![MAX_ARITY]);
+
+        // Edge: MAX_ARITY + 1 -> two instructions; continuation has 1 payload + 1 prepend = 2.
+        let counts = EmitCtx::split_chunks(MAX_ARITY + 1, 1);
+        assert_eq!(counts.len(), 2);
+        assert!(counts.iter().all(|&c| c <= MAX_ARITY));
+    }
 
     #[test]
     fn emits_add_sub_l0() {
