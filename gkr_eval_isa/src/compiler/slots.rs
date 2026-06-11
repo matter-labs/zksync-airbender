@@ -1,13 +1,6 @@
 //! Slot-file allocator. Task 5: first-fit free list, panics when over budget.
 //! Task 7 replaces the panic with Belady eviction + rematerialization.
 
-/// A live placement eviction candidate.
-pub struct LiveReg {
-    pub node: usize,
-    pub cell: u16,
-    pub width: usize,
-}
-
 pub struct SlotAlloc {
     free: Vec<bool>, // free[cell]
     /// Max cell address ever allocated + width (exact buffer size needed).
@@ -37,6 +30,11 @@ impl SlotAlloc {
         None
     }
 
+    /// Total slot capacity (cells), as passed to `new`.
+    pub fn budget(&self) -> usize {
+        self.free.len()
+    }
+
     pub fn release(&mut self, cell: u16, width_cells: usize) {
         let c = cell as usize;
         debug_assert!(c + width_cells <= self.free.len());
@@ -44,15 +42,4 @@ impl SlotAlloc {
         self.free[c..c + width_cells].iter_mut().for_each(|f| *f = true);
     }
 
-    /// Evict the best victim from `victims` (furthest next use, then widest).
-    /// Frees the victim's cells and returns its node id.
-    /// `next_use(node)` returns the next-use position (usize::MAX = no future use).
-    pub fn evict(&mut self, victims: &[LiveReg], next_use: impl Fn(usize) -> usize) -> usize {
-        let v = victims
-            .iter()
-            .max_by_key(|r| (next_use(r.node), r.width))
-            .expect("eviction requested with no live values");
-        self.release(v.cell, v.width);
-        v.node
-    }
 }

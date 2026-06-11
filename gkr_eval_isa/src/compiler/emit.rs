@@ -1,12 +1,19 @@
 //! Arena-order instruction emission over the ProgramView DAG (forward pass).
 
-use super::slots::{LiveReg, SlotAlloc};
+use super::slots::SlotAlloc;
 use super::view::{self, ProgramView};
 use super::{CompileParams, CompileStats, CompiledLayer, OrderKind, SourceMap, build_const_table, enumerate_sources, is_computed, node_domain};
 use crate::isa::{Dst, Instr, MAX_ARITY, Op, Operand, Program, encode};
 use cs::gkr_compiler::codegen_ir::{CodegenLayer, Domain, ExprNode};
 use gkr_design_space::graph::AnalysisGraph;
 use std::collections::HashMap;
+
+/// A live placement eviction candidate, used by Belady victim selection.
+struct LiveReg {
+    node: usize,
+    cell: u16,
+    width: usize,
+}
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Placement {
@@ -86,15 +93,21 @@ impl<'a> EmitCtx<'a> {
                 return cell;
             }
             // Evict the victim with the furthest next use (Belady optimal).
-            // We must not hold a borrow on self when calling slot_alloc.evict,
+            // We must not hold a borrow on self when calling slot_alloc.release,
             // so we find the victim node first (immutable phase), then mutate.
             let pos = self.pos;
             let victims = self.build_victims(protect);
             // Pick the victim with the furthest next use, tie-break by width.
+            let budget = self.slot_alloc.budget();
+            let protected = protect.len();
             let victim = victims
                 .iter()
                 .max_by_key(|r| (self.next_use(r.node, pos), r.width))
-                .expect("eviction requested with no live values");
+                .unwrap_or_else(|| panic!(
+                    "slot budget infeasible for instruction footprint: \
+                     need {width} more cells, budget {budget}, \
+                     {protected} cells protected by the current instruction"
+                ));
             let evicted_node = victim.node;
             let evicted_cell = victim.cell;
             let evicted_width = victim.width;
@@ -102,6 +115,9 @@ impl<'a> EmitCtx<'a> {
             // have been dead and released by release_if_dead. If remaining_uses > 0
             // then use_positions must be non-empty (they were populated from the
             // same consumer edges).
+            // Safe ONLY because root-use copies are emitted in the producer's own
+            // iteration: a root-use-only placement never survives into an eviction
+            // window. If root copies are ever deferred, this assert will fire spuriously.
             debug_assert!(
                 self.next_use(evicted_node, pos) != usize::MAX || self.remaining_uses[evicted_node] == 0,
                 "evicted node {evicted_node} has remaining_uses={} but no future use position \
@@ -247,6 +263,9 @@ impl<'a> EmitCtx<'a> {
             Kind::Source { id, e4 } => Operand::Source { id, e4 },
             Kind::Computed => {
                 // If the placement was evicted, rematerialize it now.
+                // Empty protect is sound today: build_operands pre-remats operands
+                // before operand_for sees them, and root copies trigger no interleaved
+                // allocation. Pass real protect if that changes.
                 if !self.placements.contains_key(&node) {
                     self.remat(node, 0, &[]);
                 }

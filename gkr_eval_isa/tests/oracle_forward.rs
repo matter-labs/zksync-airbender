@@ -87,6 +87,13 @@ fn oracle_blake2_tiny_slot_budget_with_spills() {
 }
 
 #[test]
+fn oracle_bigint_mid_pressure_budget64() {
+    // ~99 evictions + ~99 remats on L0 — the strongest spill-path validation.
+    let p = CompileParams { slot_budget_cells: 64, fixed_reg_cells: 0, ..Default::default() };
+    check_circuit(&fixture("bigint_with_extended_control_codegen_ir_gkr.json"), p, 0xB161);
+}
+
+#[test]
 fn tiny_budget_actually_spills() {
     let c = load_circuit(&fixture("blake2_g_function_codegen_ir_gkr.json")).unwrap();
     // Layer 0 is the only layer with instructions; budget=2 < max_live=3 forces spills.
