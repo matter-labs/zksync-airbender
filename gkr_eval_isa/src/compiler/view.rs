@@ -38,15 +38,19 @@ pub fn build(layer: &CodegenLayer, g: &AnalysisGraph) -> ProgramView {
     let mut uses = vec![0u32; arena.len()];
 
     // 1. Consumer edges from computed nodes only.
-    for n in arena {
+    for (i, n) in arena.iter().enumerate() {
         match n {
             ExprNode::Sum { terms, .. } => {
                 for t in terms {
+                    // arena ids are append-only CSE: children strictly precede parents
+                    debug_assert!((t.0 as usize) < i);
                     uses[t.0 as usize] += 1;
                 }
             }
             ExprNode::Product { factors, .. } => {
                 for f in factors {
+                    // arena ids are append-only CSE: children strictly precede parents
+                    debug_assert!((f.0 as usize) < i);
                     uses[f.0 as usize] += 1;
                 }
             }

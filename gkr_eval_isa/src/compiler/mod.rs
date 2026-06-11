@@ -54,7 +54,7 @@ pub struct CompileStats {
     pub bytes: usize,
     /// [SumK, ProdK, DotK]
     pub op_hist: [usize; 3],
-    /// Indexed by operand-kind code 0..7.
+    /// Indexed by operand-kind code 0..=6.
     pub operand_kind_hist: [usize; 7],
     pub gate_in_roots: usize,
     pub max_live_cells: usize,

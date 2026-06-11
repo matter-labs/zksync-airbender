@@ -45,8 +45,8 @@ fn write_cells(cells: &mut [Bf], cell: u16, e4: bool, v: Ext) {
 }
 
 pub fn execute(p: &Program, src: &StagedSources) -> ExecResult {
-    let mut slots = vec![Bf::ZERO; p.n_slot_cells as usize + 4];
-    let mut fixed = vec![Bf::ZERO; p.n_fixed_cells as usize + 4];
+    let mut slots = vec![Bf::ZERO; p.n_slot_cells as usize];
+    let mut fixed = vec![Bf::ZERO; p.n_fixed_cells as usize];
     let mut outputs: Vec<Option<Ext>> = vec![None; p.n_outputs as usize];
     let mut gate_ins: Vec<Option<Ext>> = vec![None; p.n_gate_ins as usize];
 

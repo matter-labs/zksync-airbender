@@ -16,7 +16,6 @@ pub(crate) enum Placement {
 
 struct EmitCtx<'a> {
     arena: &'a [ExprNode],
-    pv: &'a ProgramView,
     /// node -> (source id per-domain, e4 flag)
     source_id: HashMap<usize, (u16, bool)>,
     /// raw u32 value -> index in const table
@@ -226,7 +225,6 @@ pub(crate) fn emit_layer(
 
     let mut ctx = EmitCtx {
         arena,
-        pv: &pv,
         source_id,
         const_id,
         placements: HashMap::new(),

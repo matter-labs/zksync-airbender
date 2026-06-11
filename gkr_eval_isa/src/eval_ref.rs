@@ -51,6 +51,8 @@ pub fn eval_all(arena: &[ExprNode], row: &RowAssignment) -> Vec<Ext> {
             ExprNode::Sum { terms, .. } => {
                 let mut acc = Ext::ZERO;
                 for t in terms {
+                    // arena ids are append-only CSE: children strictly precede parents
+                    debug_assert!((t.0 as usize) < i);
                     acc.add_assign(&vals[t.0 as usize]);
                 }
                 acc
@@ -58,6 +60,8 @@ pub fn eval_all(arena: &[ExprNode], row: &RowAssignment) -> Vec<Ext> {
             ExprNode::Product { factors, .. } => {
                 let mut acc = Ext::ONE;
                 for f in factors {
+                    // arena ids are append-only CSE: children strictly precede parents
+                    debug_assert!((f.0 as usize) < i);
                     acc.mul_assign(&vals[f.0 as usize]);
                 }
                 acc
