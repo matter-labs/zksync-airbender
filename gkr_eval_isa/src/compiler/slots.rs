@@ -35,6 +35,16 @@ impl SlotAlloc {
         self.free.len()
     }
 
+    /// Permanently reserve cells [0, cells) for the pinned prefix. Must be
+    /// called before any alloc. Pinned cells are addressed directly by the
+    /// caller and never released.
+    pub fn reserve_prefix(&mut self, cells: usize) {
+        assert!(cells <= self.free.len(), "pinned prefix {cells} exceeds budget {}", self.free.len());
+        debug_assert!(self.high_water_cells == 0, "reserve_prefix after alloc");
+        self.free[..cells].iter_mut().for_each(|f| *f = false);
+        self.high_water_cells = cells;
+    }
+
     pub fn release(&mut self, cell: u16, width_cells: usize) {
         let c = cell as usize;
         debug_assert!(c + width_cells <= self.free.len());

@@ -157,6 +157,40 @@ fn tiny_budget_actually_spills() {
 }
 
 #[test]
+fn oracle_bigint_tight_budget_after_footprint_split() {
+    // The arity-only splitter made bigint infeasible below 56 cells (one wide
+    // instruction protected ~50 slot-resident operands). Footprint-aware
+    // chunking must make 16 cells both feasible and correct.
+    let p = CompileParams { slot_budget_cells: 16, ..Default::default() };
+    check_circuit(&fixture("bigint_with_extended_control_codegen_ir_gkr.json"), p, 0xB162);
+}
+
+#[test]
+fn oracle_pinned_slots() {
+    // Pinned hub prefix: preloaded, never evicted, read as ordinary slots.
+    let p = CompileParams { slot_budget_cells: 32, pinned_slot_cells: 16, ..Default::default() };
+    check_circuit(&fixture("blake2_with_extended_control_codegen_ir_gkr.json"), p, 0xF1A5);
+
+    let c = load_circuit(&fixture("blake2_with_extended_control_codegen_ir_gkr.json")).unwrap();
+    let cl = compile_layer(&c.circuit.layers[0], &c.graphs[0], p);
+    assert!(cl.stats.pinned_cells > 0, "pin assignment empty");
+    // Hub fanout is 34-89; 16 pinned cells must absorb >100 reads (same bar
+    // as the fixed-reg test — the two banks share the scoring).
+    assert!(cl.stats.pinned_hits > 100, "got {}", cl.stats.pinned_hits);
+
+    // Pinned + fixed compose: fixed takes the top hubs, pin the next tier.
+    let p2 = CompileParams {
+        slot_budget_cells: 32,
+        fixed_reg_cells: 8,
+        pinned_slot_cells: 16,
+        ..Default::default()
+    };
+    check_circuit(&fixture("blake2_with_extended_control_codegen_ir_gkr.json"), p2, 0xF1A6);
+    let cl2 = compile_layer(&c.circuit.layers[0], &c.graphs[0], p2);
+    assert!(cl2.stats.fixed_reg_hits > 0 && cl2.stats.pinned_hits > 0);
+}
+
+#[test]
 fn oracle_min_feasible_budget() {
     // The budget-sweep report marks tight cells infeasible via catch_unwind;
     // this verifies the TIGHTEST feasible cell of the sweep grid is not just

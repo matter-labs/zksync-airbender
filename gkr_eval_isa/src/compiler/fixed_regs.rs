@@ -1,14 +1,17 @@
-//! Fixed-register file assignment: greedy by reuse savings over ProgramView.
+//! Fixed-register / pinned-slot bank assignment: greedy by reuse savings over
+//! ProgramView. The same scoring serves both banks; `exclude` lets the pinned
+//! bank pick up where the fixed-register winners left off.
 
 use super::view::ProgramView;
 use cs::gkr_compiler::codegen_ir::{Domain, ExprNode};
 use std::collections::HashMap;
 
-/// node -> fixed-file bf-cell index.
+/// node -> bank-relative bf-cell index.
 pub(crate) fn assign(
     arena: &[ExprNode],
     pv: &ProgramView,
     budget_cells: usize,
+    exclude: &HashMap<usize, u16>,
 ) -> HashMap<usize, u16> {
     if budget_cells == 0 {
         return HashMap::new();
@@ -16,7 +19,9 @@ pub(crate) fn assign(
     let mut candidates: Vec<(usize, u32, usize)> = arena
         .iter()
         .enumerate()
-        .filter(|(i, n)| pv.uses[*i] >= 2 && !matches!(n, ExprNode::Constant(_)))
+        .filter(|(i, n)| {
+            pv.uses[*i] >= 2 && !matches!(n, ExprNode::Constant(_)) && !exclude.contains_key(i)
+        })
         .map(|(i, n)| {
             let width = match super::node_domain(n) {
                 Domain::Base => 1usize,

@@ -26,6 +26,11 @@ pub struct CompileParams {
     pub slot_budget_cells: usize,
     /// bf cells in the decode-selected fixed-register file (0 = disabled).
     pub fixed_reg_cells: usize,
+    /// bf cells carved out of the slot budget for PINNED values: hub
+    /// leaves/intermediates preloaded (or kept) in a never-evicted slot-file
+    /// prefix — guaranteed smem residency instead of hoping for L1 hits, and
+    /// indexable unlike the fixed-register file. 0 = disabled.
+    pub pinned_slot_cells: usize,
     pub order: OrderKind,
 }
 
@@ -35,6 +40,7 @@ impl Default for CompileParams {
         CompileParams {
             slot_budget_cells: 4096,
             fixed_reg_cells: 0,
+            pinned_slot_cells: 0,
             order: OrderKind::Arena,
         }
     }
@@ -62,6 +68,10 @@ pub struct CompileStats {
     pub remat_instrs: usize,
     /// Operand references served by the fixed-register file.
     pub fixed_reg_hits: usize,
+    /// Operand references served by the pinned slot-file prefix.
+    pub pinned_hits: usize,
+    /// Cells actually reserved for the pinned prefix (<= params.pinned_slot_cells).
+    pub pinned_cells: usize,
 }
 
 pub struct CompiledLayer {

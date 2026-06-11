@@ -20,6 +20,9 @@ struct LiveReg {
 pub(crate) enum Placement {
     Slot { cell: u16, e4: bool },
     FixedReg { cell: u16, e4: bool },
+    /// A cell in the pinned slot-file prefix: written once (leaf preload or
+    /// first computation), never evicted, never released.
+    PinnedSlot { cell: u16, e4: bool },
 }
 
 struct EmitCtx<'a> {
@@ -46,7 +49,25 @@ struct EmitCtx<'a> {
     /// params.fixed_reg_cells == 0. Nodes in this map always write to
     /// Dst::FixedReg and are never allocated slots.
     fixed: HashMap<usize, u16>,
+    /// Pinned slot-file prefix assignment: node -> absolute slot cell. Leaves
+    /// are preloaded into their cell; computed nodes write it at emission and
+    /// stay resident for the whole program.
+    pinned: HashMap<usize, u16>,
 }
+
+/// One logical operand group of an instruction: `unit` operand lanes that must
+/// stay in the same chunk (a DotK pair, or a single SumK/ProdK operand), plus
+/// the refcount decrements owed once the chunk containing it has been emitted.
+struct OperandGroup {
+    /// `None` lanes become `Operand::One` (DotK plain-term filler).
+    nodes: Vec<Option<usize>>,
+    release: Vec<usize>,
+}
+
+/// Transient slot headroom kept free per chunk so rematerialization of an
+/// evicted operand has somewhere to land (one e4 value). Heuristic — the
+/// infeasible-budget panic in alloc_with_eviction remains the backstop.
+const REMAT_SLACK: usize = 4;
 
 impl<'a> EmitCtx<'a> {
     /// Return the next use position of `node` at or after walk position `after`.
@@ -75,7 +96,8 @@ impl<'a> EmitCtx<'a> {
                         cell,
                         width: if e4 { 4 } else { 1 },
                     }),
-                    Placement::FixedReg { .. } => None, // FixedReg never evicted
+                    // FixedReg and PinnedSlot are never evicted.
+                    Placement::FixedReg { .. } | Placement::PinnedSlot { .. } => None,
                 }
             })
             .collect()
@@ -129,18 +151,13 @@ impl<'a> EmitCtx<'a> {
     }
 
     /// Rematerialize `node` (which has been evicted) by re-emitting its
-    /// computation. `depth` is a recursion guard (DAG depth is shallow, ~10).
-    /// Returns the new Placement.
+    /// computation through the same footprint-aware chunked path as the main
+    /// walk (plain SumK/ProdK — never re-fuse DotK in remat). `depth` is a
+    /// recursion guard (DAG depth is shallow, ~10). Returns the new Placement.
     ///
     /// IMPORTANT: remat-emitted instructions do NOT decrement remaining_uses
-    /// of their operands. The original refcounts already account for the original
-    /// edges; remat is extra reads beyond those. Calling release_if_dead here
-    /// would over-decrement and prematurely free live values.
-    ///
-    /// A remat'd child that has a placement will be read directly. A remat'd
-    /// child WITHOUT a placement is itself rematerialized recursively. Leaf
-    /// children (Place, GateOutput, Constant) are direct operands — they never
-    /// have placements.
+    /// of their operands (release-less groups). The original refcounts already
+    /// account for the original edges; remat is extra reads beyond those.
     ///
     /// Safety of the "victim has a future use" debug_assert during remat:
     /// when remat reads a child that has a placement, that child must have
@@ -152,10 +169,6 @@ impl<'a> EmitCtx<'a> {
         debug_assert!(depth < 32, "remat recursion depth {depth} too deep (cycle?)");
 
         let e4 = node_domain(&self.arena[node]) == Domain::Ext;
-        let w = if e4 { 4 } else { 1 };
-
-        // Determine the op and child nodes — must NOT borrow self.arena beyond
-        // this block (we need &mut self for alloc/remat below).
         let (op, children): (Op, Vec<usize>) = match &self.arena[node] {
             ExprNode::Sum { terms, .. } => {
                 (Op::SumK, terms.iter().map(|t| t.0 as usize).collect())
@@ -165,84 +178,160 @@ impl<'a> EmitCtx<'a> {
             }
             _ => panic!("remat called on non-computed node {node}"),
         };
-
-        // Gather child operands. For each child:
-        //   - leaf/constant: direct operand (no placement)
-        //   - computed with placement: use placement directly
-        //   - computed without placement: recurse into remat
-        // Build a protect list for the dst allocation: all children whose slots
-        // we need readable must not be evicted when we allocate the dst.
-        // We collect child nodes that have slot placements first, then allocate dst.
-        let mut child_operands: Vec<Operand> = Vec::with_capacity(children.len());
-        let mut protect_for_dst: Vec<usize> = protect.to_vec();
-
-        for &c in &children {
-            let is_computed_child = is_computed(&self.arena[c]);
-            if is_computed_child {
-                if self.placements.contains_key(&c) {
-                    protect_for_dst.push(c);
-                } else {
-                    // Recurse: remat the child first, then protect its new placement.
-                    // No borrow on self.arena during this call.
-                    self.remat(c, depth + 1, &protect_for_dst);
-                    protect_for_dst.push(c);
-                }
-            }
-            // leaf / constant: no slot to protect
-        }
-
-        // Now resolve operands (all computed children should have placements by now).
-        for &c in &children {
-            child_operands.push(self.operand_for_no_remat(c));
-        }
-
-        // Allocate dst, protecting all child slots.
-        let cell = self.alloc_with_eviction(node, w, &protect_for_dst);
-        let p = Placement::Slot { cell, e4 };
-        self.placements.insert(node, p);
-
-        // Emit the instruction (plain SumK/ProdK — never re-fuse DotK in remat).
-        let dst = Dst::Slot(cell);
-        self.emit_with_split(op, e4, dst, child_operands);
+        let groups: Vec<OperandGroup> = children
+            .into_iter()
+            .map(|c| OperandGroup { nodes: vec![Some(c)], release: Vec::new() })
+            .collect();
+        let p = self.emit_grouped_slotted(node, op, e4, &groups, protect, depth + 1, false);
         self.stats.remat_instrs += 1;
-
         p
     }
 
-    /// Like `operand_for` but panics if a computed node is missing its placement
-    /// instead of rematerializing. Used inside `remat` after ensuring all children
-    /// have been placed.
-    fn operand_for_no_remat(&self, node: usize) -> Operand {
-        use crate::isa::NEG_ONE_U32;
-        match &self.arena[node] {
-            ExprNode::Constant(c) => match *c {
-                0 => Operand::Zero,
-                1 => Operand::One,
-                v if v == NEG_ONE_U32 => Operand::NegOne,
-                v => Operand::Const { idx: *self.const_id.get(&v).expect("constant not in table") },
-            },
-            ExprNode::Place { .. } | ExprNode::GateOutput { .. } => {
-                // A leaf pinned to the fixed-register file is read from there.
-                if let Some(Placement::FixedReg { cell, e4 }) = self.placements.get(&node).copied() {
-                    return Operand::FixedReg { cell, e4 };
-                }
-                let (id, e4) = *self.source_id.get(&node).expect("source not mapped");
-                Operand::Source { id, e4 }
+    /// Slot cells this operand's protection will occupy: 0 when it is (or will
+    /// be) served outside the evictable slot file, its width otherwise (a
+    /// missing placement means an upcoming remat into a fresh slot).
+    fn protect_footprint(&self, node: usize) -> usize {
+        match self.placements.get(&node) {
+            Some(Placement::FixedReg { .. }) | Some(Placement::PinnedSlot { .. }) => 0,
+            Some(Placement::Slot { e4, .. }) => {
+                if *e4 { 4 } else { 1 }
             }
-            ExprNode::Sum { .. } | ExprNode::Product { .. } => {
-                match *self.placements.get(&node).expect("computed node has no placement (operand_for_no_remat)") {
-                    Placement::Slot { cell, e4 } => Operand::Slot { cell, e4 },
-                    Placement::FixedReg { cell, e4 } => Operand::FixedReg { cell, e4 },
+            None => {
+                if node_domain(&self.arena[node]) == Domain::Ext { 4 } else { 1 }
+            }
+        }
+    }
+
+    /// Resolve one operand group into `ops`, rematerializing evicted computed
+    /// operands (protected by the growing `protect` list) and tracking the
+    /// protected slot footprint in `protect_cells`.
+    fn resolve_group(
+        &mut self,
+        g: &OperandGroup,
+        depth: usize,
+        protect: &mut Vec<usize>,
+        protect_cells: &mut usize,
+        ops: &mut Vec<Operand>,
+    ) {
+        for node_opt in &g.nodes {
+            match *node_opt {
+                None => ops.push(Operand::One),
+                Some(c) => {
+                    let computed = is_computed(&self.arena[c]);
+                    if computed && !self.placements.contains_key(&c) {
+                        self.remat(c, depth, protect);
+                    }
+                    let o = self.operand_for(c);
+                    if computed && !protect.contains(&c) {
+                        *protect_cells += self.protect_footprint(c);
+                        protect.push(c);
+                    }
+                    ops.push(o);
                 }
             }
         }
+    }
+
+    /// Emit `op` over `groups` into a re-readable destination for `n`,
+    /// splitting into continuation chunks whenever the lane cap (MAX_ARITY)
+    /// or the protected-slot footprint cap would be exceeded. The footprint
+    /// cap is what keeps a single wide instruction from demanding more
+    /// simultaneously-protected cells than the budget holds.
+    ///
+    /// `base_protect` carries the caller's protect list (remat nesting).
+    /// `do_release` applies each group's refcount decrements as soon as its
+    /// chunk is emitted (false during remat).
+    fn emit_grouped_slotted(
+        &mut self,
+        n: usize,
+        op: Op,
+        e4_result: bool,
+        groups: &[OperandGroup],
+        base_protect: &[usize],
+        depth: usize,
+        do_release: bool,
+    ) -> Placement {
+        debug_assert!(!groups.is_empty());
+        let unit = if op == Op::DotK { 2 } else { 1 };
+        let dst_w = if e4_result { 4 } else { 1 };
+        let budget = self.slot_alloc.budget();
+        let dst_in_slots = !self.fixed.contains_key(&n) && !self.pinned.contains_key(&n);
+
+        let mut placement: Option<Placement> = None;
+        let mut gi = 0usize;
+        while gi < groups.len() {
+            let first = placement.is_none();
+            let mut protect: Vec<usize> = base_protect.to_vec();
+            let mut protect_cells: usize = base_protect
+                .iter()
+                .map(|&c| match self.placements.get(&c) {
+                    Some(Placement::Slot { e4, .. }) => {
+                        if *e4 { 4 } else { 1 }
+                    }
+                    _ => 0,
+                })
+                .sum();
+            let mut ops: Vec<Operand> = Vec::new();
+            let max_groups = if first {
+                MAX_ARITY
+            } else {
+                // The accumulator prepend takes one group's lanes.
+                protect.push(n);
+                if dst_in_slots {
+                    protect_cells += dst_w;
+                }
+                let acc = self.operand_for(n);
+                ops.push(acc);
+                if unit == 2 {
+                    ops.push(Operand::One);
+                }
+                MAX_ARITY - 1
+            };
+            // Keep headroom for the dst (first chunk only — afterwards it is
+            // counted via the protect list) and for remat transients.
+            let cap = budget
+                .saturating_sub(REMAT_SLACK + if first && dst_in_slots { dst_w } else { 0 });
+
+            let mut chunk_release: Vec<usize> = Vec::new();
+            let mut taken = 0usize;
+            while gi < groups.len() && taken < max_groups {
+                let g = &groups[gi];
+                let mut add = 0usize;
+                for c in g.nodes.iter().flatten() {
+                    if is_computed(&self.arena[*c]) && !protect.contains(c) {
+                        add += self.protect_footprint(*c);
+                    }
+                }
+                // Close the chunk rather than exceed the footprint cap; every
+                // chunk takes at least one group (the alloc panic backstops a
+                // group that alone cannot fit).
+                if taken > 0 && protect_cells + add > cap {
+                    break;
+                }
+                self.resolve_group(g, depth, &mut protect, &mut protect_cells, &mut ops);
+                if do_release {
+                    chunk_release.extend_from_slice(&g.release);
+                }
+                taken += 1;
+                gi += 1;
+            }
+
+            if first {
+                placement = Some(self.place_result(n, e4_result, &protect));
+            }
+            self.record_instr(op, e4_result, Self::dst_from_placement(placement.unwrap()), ops);
+            for c in chunk_release {
+                self.release_if_dead(c);
+            }
+        }
+        placement.unwrap()
     }
 
     fn operand_for(&mut self, node: usize) -> Operand {
         use crate::isa::NEG_ONE_U32;
         // Classify the node kind without keeping a borrow on self.arena, so that
         // we can call self.remat() (which needs &mut self) in the computed branch.
-        enum Kind { Zero, One, NegOne, Const(u8), Source { id: u16, e4: bool }, FixedRegLeaf { cell: u16, e4: bool }, Computed }
+        enum Kind { Zero, One, NegOne, Const(u8), Source { id: u16, e4: bool }, Placed(Placement), Computed }
         let kind = match &self.arena[node] {
             ExprNode::Constant(c) => match *c {
                 0 => Kind::Zero,
@@ -251,16 +340,16 @@ impl<'a> EmitCtx<'a> {
                 v => Kind::Const(*self.const_id.get(&v).expect("constant not in table")),
             },
             ExprNode::Place { .. } | ExprNode::GateOutput { .. } => {
-                // A leaf pinned to the fixed-register file is read from there.
-                // Check placement FIRST — preloads write the value to a fixed cell.
-                if let Some(Placement::FixedReg { cell, e4 }) = self.placements.get(&node).copied() {
-                    // Count as a fixed_reg_hit in record_instr when the operand is used.
-                    // Return a sentinel that lets the match arm below emit the right operand.
-                    let _ = (cell, e4); // captured below via FixedRegLeaf
-                    Kind::FixedRegLeaf { cell, e4 }
-                } else {
-                    let (id, e4) = *self.source_id.get(&node).expect("source not mapped");
-                    Kind::Source { id, e4 }
+                // A leaf preloaded into the fixed-register file or the pinned
+                // slot prefix is read from there. Check placement FIRST.
+                match self.placements.get(&node).copied() {
+                    Some(p @ (Placement::FixedReg { .. } | Placement::PinnedSlot { .. })) => {
+                        Kind::Placed(p)
+                    }
+                    _ => {
+                        let (id, e4) = *self.source_id.get(&node).expect("source not mapped");
+                        Kind::Source { id, e4 }
+                    }
                 }
             }
             ExprNode::Sum { .. } | ExprNode::Product { .. } => Kind::Computed,
@@ -271,22 +360,32 @@ impl<'a> EmitCtx<'a> {
             Kind::NegOne => Operand::NegOne,
             Kind::Const(idx) => Operand::Const { idx },
             Kind::Source { id, e4 } => Operand::Source { id, e4 },
-            Kind::FixedRegLeaf { cell, e4 } => Operand::FixedReg { cell, e4 },
+            Kind::Placed(p) => self.placement_operand(p),
             Kind::Computed => {
                 // If the placement was evicted, rematerialize it now.
-                // Empty protect is sound today: build_operands pre-remats operands
+                // Empty protect is sound today: resolve_group pre-remats operands
                 // before operand_for sees them, and root copies trigger no interleaved
                 // allocation. Pass real protect if that changes.
                 if !self.placements.contains_key(&node) {
                     self.remat(node, 0, &[]);
                 }
-                match *self.placements.get(&node).expect("computed node has no placement after remat") {
-                    Placement::Slot { cell, e4 } => Operand::Slot { cell, e4 },
-                    Placement::FixedReg { cell, e4 } => {
-                        Operand::FixedReg { cell, e4 }
-                        // Note: fixed_reg_hits counted at emit time
-                    }
-                }
+                let p = *self.placements.get(&node).expect("computed node has no placement after remat");
+                self.placement_operand(p)
+            }
+        }
+    }
+
+    /// Operand for an existing placement; attributes pinned-prefix reads.
+    /// (fixed_reg_hits are counted at record_instr time by operand kind;
+    /// pinned reads are indistinguishable from ordinary Slot operands there,
+    /// so they are attributed here.)
+    fn placement_operand(&mut self, p: Placement) -> Operand {
+        match p {
+            Placement::Slot { cell, e4 } => Operand::Slot { cell, e4 },
+            Placement::FixedReg { cell, e4 } => Operand::FixedReg { cell, e4 },
+            Placement::PinnedSlot { cell, e4 } => {
+                self.stats.pinned_hits += 1;
+                Operand::Slot { cell, e4 }
             }
         }
     }
@@ -307,10 +406,11 @@ impl<'a> EmitCtx<'a> {
                     self.placements.remove(&node);
                     self.slot_alloc.release(c, w);
                 }
-                Some(Placement::FixedReg { .. }) => {
-                    // FixedReg cells are pinned for the whole program — do NOT
-                    // remove the placement entry; future operand_for calls must
-                    // still resolve to FixedReg even after remaining_uses hits 0.
+                Some(Placement::FixedReg { .. }) | Some(Placement::PinnedSlot { .. }) => {
+                    // FixedReg / pinned cells stay resident for the whole
+                    // program — do NOT remove the placement entry; future
+                    // operand_for calls must still resolve to it even after
+                    // remaining_uses hits 0.
                 }
                 None => {}
             }
@@ -331,6 +431,13 @@ impl<'a> EmitCtx<'a> {
             self.placements.insert(node, p);
             return p;
         }
+        // Pinned computed candidates write their reserved prefix cell and stay
+        // resident for the whole program (no allocation, no eviction).
+        if let Some(&cell) = self.pinned.get(&node) {
+            let p = Placement::PinnedSlot { cell, e4 };
+            self.placements.insert(node, p);
+            return p;
+        }
         let w = if e4 { 4 } else { 1 };
         let cell = self.alloc_with_eviction(node, w, protect);
         let p = Placement::Slot { cell, e4 };
@@ -340,81 +447,8 @@ impl<'a> EmitCtx<'a> {
 
     fn dst_from_placement(p: Placement) -> Dst {
         match p {
-            Placement::Slot { cell, .. } => Dst::Slot(cell),
+            Placement::Slot { cell, .. } | Placement::PinnedSlot { cell, .. } => Dst::Slot(cell),
             Placement::FixedReg { cell, .. } => Dst::FixedReg(cell),
-        }
-    }
-
-    /// Returns the per-instruction operand counts that `emit_with_split` would
-    /// produce for a list of `total_operands` operands with the given `unit`.
-    /// Used by tests to verify the split stays within MAX_ARITY.
-    #[cfg(test)]
-    pub(crate) fn split_chunks(total_operands: usize, unit: usize) -> Vec<usize> {
-        let max_per_instr = MAX_ARITY * unit;
-        if total_operands <= max_per_instr {
-            return vec![total_operands];
-        }
-        let mut counts = vec![max_per_instr]; // first chunk
-        let mut remaining = total_operands - max_per_instr;
-        let cont_chunk_size = max_per_instr - unit;
-        while remaining > 0 {
-            let chunk = remaining.min(cont_chunk_size);
-            // Continuation instruction: chunk payload + unit prepend
-            counts.push(chunk + unit);
-            remaining -= chunk;
-        }
-        counts
-    }
-
-    /// Emit one or more instructions for `op` with `operands` to `dst`.
-    /// If operands exceed MAX_ARITY (or MAX_ARITY pairs for DotK), split into
-    /// a chain. `unit` = 1 for SumK/ProdK, 2 for DotK (pairs).
-    /// `e4_result` is the domain of the result.
-    fn emit_with_split(
-        &mut self,
-        op: Op,
-        e4_result: bool,
-        dst: Dst,
-        operands: Vec<Operand>,
-    ) {
-        let unit = if op == Op::DotK { 2 } else { 1 };
-        let max_per_instr = MAX_ARITY * unit;
-
-        if operands.len() <= max_per_instr {
-            self.record_instr(op, e4_result, dst, operands);
-        } else {
-            // Must have a re-readable dst (Slot or FixedReg).
-            debug_assert!(
-                matches!(dst, Dst::Slot(_) | Dst::FixedReg(_)),
-                "wide node must use slot dst"
-            );
-            // First chunk may fill MAX_ARITY fully.
-            let first_chunk = operands[..max_per_instr].to_vec();
-            let remainder = &operands[max_per_instr..];
-            self.record_instr(op, e4_result, dst, first_chunk);
-
-            // Subsequent chunks prepend dst as continuation operand (1 operand for
-            // SumK/ProdK, 2 for DotK = exactly `unit`), so each continuation
-            // instruction uses at most max_per_instr operands total.
-            // Cap per-chunk at max_per_instr - unit to leave room for the prepend.
-            let cont_chunk_size = max_per_instr - unit;
-            let dst_operand = match dst {
-                Dst::Slot(cell) => Operand::Slot { cell, e4: e4_result },
-                Dst::FixedReg(cell) => Operand::FixedReg { cell, e4: e4_result },
-                _ => unreachable!("wide node must have slot/fixed-reg dst"),
-            };
-            for chunk in remainder.chunks(cont_chunk_size) {
-                let mut cont_ops = Vec::with_capacity(chunk.len() + unit);
-                if op == Op::DotK {
-                    // Continuation pair: (dst, One)
-                    cont_ops.push(dst_operand);
-                    cont_ops.push(Operand::One);
-                } else {
-                    cont_ops.push(dst_operand);
-                }
-                cont_ops.extend_from_slice(chunk);
-                self.record_instr(op, e4_result, dst, cont_ops);
-            }
         }
     }
 
@@ -440,123 +474,63 @@ impl<'a> EmitCtx<'a> {
     }
 }
 
-/// Given a resolved operand list, collect the node ids of Slot-placed nodes
-/// (those whose cell addresses are encoded in the operand list and must remain
-/// valid until the instruction executes). These are determined by cross-referencing
-/// Slot operands with the placements map.
-fn collect_protect_from_operands(
-    operands: &[Operand],
-    placements: &HashMap<usize, Placement>,
-) -> Vec<usize> {
-    // Build a cell->node reverse map from current Slot placements, then look up
-    // each Slot operand's cell to find which node owns it.
-    let mut cell_to_node: HashMap<u16, usize> = HashMap::new();
-    for (&n, &p) in placements {
-        if let Placement::Slot { cell, .. } = p {
-            cell_to_node.insert(cell, n);
-        }
-    }
-    let mut protect = Vec::new();
-    for op in operands {
-        if let Operand::Slot { cell, .. } = op {
-            if let Some(&n) = cell_to_node.get(cell) {
-                if !protect.contains(&n) {
-                    protect.push(n);
-                }
-            }
-        }
-    }
-    protect
-}
-
-/// Build the operand list for node `n` with the given `op`, using the current
-/// ctx state (which may trigger rematerialization for evicted nodes).
-/// This mirrors the operand structure used in use_positions computation — the
-/// two must stay in sync.
-///
-/// `initial_protect` lists node ids whose slots must not be evicted during
-/// operand resolution (e.g., the just-allocated dst slot for `n`, or other
-/// previously-resolved operands from the same instruction).
-///
-/// As each computed operand is resolved, its node is added to the running
-/// protect list so that subsequent remat operations cannot evict it.
-fn build_operands(
-    ctx: &mut EmitCtx<'_>,
-    n: usize,
-    op: Op,
-    fused: &[bool],
-    arena: &[ExprNode],
-    initial_protect: &[usize],
-) -> Vec<Operand> {
-    // Collect the node ids to resolve, in operand order.
-    // For DotK: interleaved (f0, f1) pairs or (c, sentinel) for plain terms.
-    // Sentinels are represented as usize::MAX (One).
-    let node_seq: Vec<Option<usize>> = match op {
+/// Build the logical operand groups for node `n` with the given `op`. One
+/// group = the operand lanes that must share a chunk (a DotK pair or a single
+/// SumK/ProdK operand) plus the refcount decrements owed for it. This mirrors
+/// the operand structure used in use_positions computation — the two must
+/// stay in sync.
+fn build_groups(arena: &[ExprNode], n: usize, op: Op, fused: &[bool]) -> Vec<OperandGroup> {
+    match op {
         Op::DotK => {
             let terms = match &arena[n] {
-                ExprNode::Sum { terms, .. } => terms.clone(),
+                ExprNode::Sum { terms, .. } => terms,
                 _ => unreachable!("DotK must come from Sum"),
             };
-            let mut seq = Vec::new();
-            for t in &terms {
-                let c = t.0 as usize;
-                if fused[c] {
-                    let factors = match &arena[c] {
-                        ExprNode::Product { factors, .. } => factors.clone(),
-                        _ => unreachable!(),
-                    };
-                    seq.push(Some(factors[0].0 as usize));
-                    seq.push(Some(factors[1].0 as usize));
-                } else {
-                    seq.push(Some(c));
-                    seq.push(None); // will become Operand::One
-                }
-            }
-            seq
+            terms
+                .iter()
+                .map(|t| {
+                    let c = t.0 as usize;
+                    if fused[c] {
+                        let factors = match &arena[c] {
+                            ExprNode::Product { factors, .. } => factors,
+                            _ => unreachable!(),
+                        };
+                        let (f0, f1) = (factors[0].0 as usize, factors[1].0 as usize);
+                        // The fused product node itself is also consumed here.
+                        OperandGroup { nodes: vec![Some(f0), Some(f1)], release: vec![f0, f1, c] }
+                    } else {
+                        OperandGroup { nodes: vec![Some(c), None], release: vec![c] }
+                    }
+                })
+                .collect()
         }
         Op::SumK => {
             let terms = match &arena[n] {
-                ExprNode::Sum { terms, .. } => terms.clone(),
+                ExprNode::Sum { terms, .. } => terms,
                 _ => unreachable!("SumK must come from Sum"),
             };
-            terms.iter().map(|t| Some(t.0 as usize)).collect()
+            terms
+                .iter()
+                .map(|t| {
+                    let c = t.0 as usize;
+                    OperandGroup { nodes: vec![Some(c)], release: vec![c] }
+                })
+                .collect()
         }
         Op::ProdK => {
             let factors = match &arena[n] {
-                ExprNode::Product { factors, .. } => factors.clone(),
+                ExprNode::Product { factors, .. } => factors,
                 _ => unreachable!("ProdK must come from Product"),
             };
-            factors.iter().map(|f| Some(f.0 as usize)).collect()
-        }
-    };
-
-    // Resolve operands sequentially, growing the protect list so that
-    // rematerialization of one operand cannot evict another.
-    let mut protect: Vec<usize> = initial_protect.to_vec();
-    let mut operands = Vec::with_capacity(node_seq.len());
-
-    for node_opt in node_seq {
-        match node_opt {
-            None => operands.push(Operand::One),
-            Some(c) => {
-                // Ensure the node has a placement (remat if needed), protecting
-                // everything we've already resolved.
-                if is_computed(&arena[c]) && !ctx.placements.contains_key(&c) {
-                    ctx.remat(c, 0, &protect);
-                }
-                let op = ctx.operand_for(c);
-                // Track computed nodes with slots in the protect list.
-                if is_computed(&arena[c]) {
-                    if !protect.contains(&c) {
-                        protect.push(c);
-                    }
-                }
-                operands.push(op);
-            }
+            factors
+                .iter()
+                .map(|f| {
+                    let c = f.0 as usize;
+                    OperandGroup { nodes: vec![Some(c)], release: vec![c] }
+                })
+                .collect()
         }
     }
-
-    operands
 }
 
 pub(crate) fn emit_layer(
@@ -568,7 +542,21 @@ pub(crate) fn emit_layer(
     let pv = view::build(layer, g);
 
     // Assign fixed-register file. Empty map when budget == 0 (disabled).
-    let fixed = fixed_regs::assign(arena, &pv, params.fixed_reg_cells);
+    let fixed = fixed_regs::assign(arena, &pv, params.fixed_reg_cells, &HashMap::new());
+
+    // Assign the pinned slot prefix from the remaining hub candidates. The
+    // bank-relative cells double as absolute slot addresses (prefix at 0).
+    let pinned = fixed_regs::assign(
+        arena,
+        &pv,
+        params.pinned_slot_cells.min(params.slot_budget_cells),
+        &fixed,
+    );
+    let pinned_prefix = pinned
+        .iter()
+        .map(|(&n, &c)| c as usize + if node_domain(&arena[n]) == Domain::Ext { 4 } else { 1 })
+        .max()
+        .unwrap_or(0);
 
     // Build source map and source_id lookup.
     let source_map = enumerate_sources(arena);
@@ -599,7 +587,8 @@ pub(crate) fn emit_layer(
         output_idx.entry(node).or_default().push(j);
     }
 
-    let slot_alloc = SlotAlloc::new(params.slot_budget_cells);
+    let mut slot_alloc = SlotAlloc::new(params.slot_budget_cells);
+    slot_alloc.reserve_prefix(pinned_prefix);
 
     // Determine emission order.
     let order: Vec<usize> = match params.order {
@@ -703,7 +692,9 @@ pub(crate) fn emit_layer(
         pos: 0,
         use_positions,
         fixed: fixed.clone(),
+        pinned: pinned.clone(),
     };
+    ctx.stats.pinned_cells = pinned_prefix;
 
     // Preload leaf (Place/GateOutput) candidates assigned to the fixed-register
     // file. These nodes appear in the `fixed` map but are not computed (they are
@@ -728,6 +719,24 @@ pub(crate) fn emit_layer(
         }
     }
 
+    // Same preload for leaves assigned to the pinned slot prefix; computed
+    // pinned nodes get their PinnedSlot placement at emission (place_result).
+    if pinned_prefix > 0 {
+        let mut leaf_pinned: Vec<(usize, u16)> = pinned
+            .iter()
+            .filter(|&(&node, _)| !is_computed(&arena[node]))
+            .map(|(&node, &cell)| (node, cell))
+            .collect();
+        leaf_pinned.sort_by_key(|&(node, _)| node);
+        for (node, cell) in leaf_pinned {
+            let e4 = node_domain(&arena[node]) == Domain::Ext;
+            let (id, _) = *ctx.source_id.get(&node).expect("leaf pinned node not in source_id");
+            let src_op = Operand::Source { id, e4 };
+            ctx.placements.insert(node, Placement::PinnedSlot { cell, e4 });
+            ctx.record_instr(Op::SumK, e4, Dst::Slot(cell), vec![src_op]);
+        }
+    }
+
     // Main emission walk.
     for (walk_idx, &n) in order.iter().enumerate() {
         if fused[n] || pv.uses[n] == 0 {
@@ -739,67 +748,37 @@ pub(crate) fn emit_layer(
 
         let e4_result = node_domain(&arena[n]) == Domain::Ext;
 
-        // Step 1: Determine which nodes are consumed and which op is used.
-        // We need the consumed-node list BEFORE resolving operands so we can
-        // pass it as `protect` to place_result (preventing Belady from evicting
-        // a node whose slot we're about to read).
-        let (op, consumed): (Op, Vec<usize>) = match &arena[n] {
+        let op = match &arena[n] {
             ExprNode::Sum { terms, .. } => {
                 let fuse_count = terms.iter().filter(|t| fused[t.0 as usize]).count();
-                if fuse_count >= 2 {
-                    // DotK: expand fused products.
-                    let mut consumed_nodes: Vec<usize> = Vec::new();
-                    for t in terms {
-                        let c = t.0 as usize;
-                        if fused[c] {
-                            if let ExprNode::Product { factors, .. } = &arena[c] {
-                                consumed_nodes.push(factors[0].0 as usize);
-                                consumed_nodes.push(factors[1].0 as usize);
-                            }
-                            consumed_nodes.push(c);
-                        } else {
-                            consumed_nodes.push(c);
-                        }
-                    }
-                    (Op::DotK, consumed_nodes)
-                } else {
-                    (Op::SumK, terms.iter().map(|t| t.0 as usize).collect())
-                }
+                if fuse_count >= 2 { Op::DotK } else { Op::SumK }
             }
-            ExprNode::Product { factors, .. } => {
-                (Op::ProdK, factors.iter().map(|f| f.0 as usize).collect())
-            }
+            ExprNode::Product { .. } => Op::ProdK,
             _ => continue,
         };
+        let groups = build_groups(arena, n, op, &fused);
 
-        // Determine if we need to split (need to know operand count first).
-        // For DotK the operand count = consumed.len() (pairs, but we count
-        // elements not pairs here since unit handles it below).
-        let unit = if op == Op::DotK { 2 } else { 1 };
-        // For DotK consumed list: fused child contributes 2 (factors) + 1 (product node) = 3 entries,
-        // but only 2 operands in the pairs (the product node entry is for refcount purposes).
-        // We need the actual operand count for the split check.
-        // Compute it directly from op structure.
-        let operand_count = match &arena[n] {
-            ExprNode::Sum { terms, .. } => {
-                let fuse_count = terms.iter().filter(|t| fused[t.0 as usize]).count();
-                if fuse_count >= 2 {
-                    terms.len() * 2 // each term (fused or plain) produces exactly 2 operand slots
-                } else {
-                    terms.len()
-                }
+        // A single chunk works only when BOTH caps hold: the lane cap, and the
+        // protected-slot footprint cap (distinct computed operands' cells +
+        // remat headroom must fit the budget). Wide-footprint nodes go through
+        // the chunked slotted path even when single-use.
+        let mut est_cells = 0usize;
+        let mut est_seen: Vec<usize> = Vec::new();
+        for c in groups.iter().flat_map(|g| g.nodes.iter().flatten()) {
+            if is_computed(&arena[*c]) && !est_seen.contains(c) {
+                est_seen.push(*c);
+                est_cells += ctx.protect_footprint(*c);
             }
-            ExprNode::Product { factors, .. } => factors.len(),
-            _ => 0,
-        };
-        let needs_split = operand_count > MAX_ARITY * unit;
+        }
+        let single_chunk_ok = groups.len() <= MAX_ARITY
+            && est_cells + REMAT_SLACK <= ctx.slot_alloc.budget();
 
         let gi = gate_in_idx.get(&n).copied();
         let outs = output_idx.get(&n).cloned().unwrap_or_default();
         let total_uses = pv.uses[n];
         let root_uses = gi.is_some() as u32 + outs.len() as u32;
 
-        if total_uses == 1 && root_uses == 1 && !needs_split {
+        if total_uses == 1 && root_uses == 1 && single_chunk_ok {
             // Emit directly to the root destination (no slot needed).
             // No place_result needed, so no eviction risk here.
             let dst = if let Some(idx) = gi {
@@ -807,37 +786,23 @@ pub(crate) fn emit_layer(
             } else {
                 Dst::Output(outs[0])
             };
-            // Resolve operands (may trigger remat for evicted nodes).
-            // No dst slot to protect; initial_protect is empty.
-            let operands = build_operands(&mut ctx, n, op, &fused, arena, &[]);
-            ctx.emit_with_split(op, e4_result, dst, operands);
-            // Release consumed operands.
-            for c in consumed {
-                ctx.release_if_dead(c);
+            let mut protect: Vec<usize> = Vec::new();
+            let mut protect_cells = 0usize;
+            let mut operands: Vec<Operand> = Vec::new();
+            for g in &groups {
+                ctx.resolve_group(g, 0, &mut protect, &mut protect_cells, &mut operands);
+            }
+            ctx.record_instr(op, e4_result, dst, operands);
+            for g in &groups {
+                for &c in &g.release {
+                    ctx.release_if_dead(c);
+                }
             }
             // No placement for n; it was written directly.
         } else {
-            // Need a slot placement.
-            // Step A: Resolve all operands FIRST (with growing protect list).
-            //   This ensures each computed operand has a valid placement, and we
-            //   accumulate the set of node ids whose cells are encoded in the
-            //   operand list.
-            // Step B: Allocate dst slot, protecting the encoded operand cells so
-            //   eviction cannot steal a cell that an operand is pointing to.
-            // Step C: Push instruction.
-            //
-            // This order (operands then dst) avoids the deadlock of allocating dst
-            // first and then having to protect it PLUS all operands simultaneously.
-            let operands = build_operands(&mut ctx, n, op, &fused, arena, &[]);
-            // Collect which computed nodes were encoded as slot operands.
-            let protect_for_dst = collect_protect_from_operands(&operands, &ctx.placements);
-            let placement = ctx.place_result(n, e4_result, &protect_for_dst);
-            let dst = EmitCtx::dst_from_placement(placement);
-            ctx.emit_with_split(op, e4_result, dst, operands);
-            // Release consumed operands.
-            for c in consumed {
-                ctx.release_if_dead(c);
-            }
+            // Slot placement via the footprint-aware chunked path (resolves,
+            // emits, and releases per chunk).
+            ctx.emit_grouped_slotted(n, op, e4_result, &groups, &[], 0, true);
             // Emit copies to each root destination.
             if let Some(idx) = gi {
                 let src_op = ctx.operand_for(n);
@@ -910,50 +875,32 @@ pub(crate) fn emit_layer(
 
 #[cfg(test)]
 mod tests {
-    use super::EmitCtx;
     use crate::compiler::{CompileParams, compile_layer};
     use crate::eval_ref::tests::fixture;
     use crate::isa::{Dst, MAX_ARITY};
     use gkr_design_space::import::load_circuit;
 
-    /// Regression test: continuation chunks must not exceed MAX_ARITY after
-    /// prepending the accumulator operand.
+    /// Regression test for footprint-aware splitting: every emitted
+    /// instruction stays within the lane cap, on the circuit with the widest
+    /// Sums (bigint, arity 65), at a budget where the old arity-only splitter
+    /// was infeasible (its single wide instruction protected ~50 cells).
     #[test]
-    fn split_chunks_stay_within_max_arity() {
-        // SumK/ProdK: unit = 1.  70 operands -> first=31, cont=1+30=31. All ≤ 31.
-        let counts = EmitCtx::split_chunks(70, 1);
-        for &c in &counts {
+    fn chunked_emission_respects_lane_cap_at_tight_budget() {
+        let c = load_circuit(&fixture("bigint_with_extended_control_codegen_ir_gkr.json")).unwrap();
+        let cl = compile_layer(
+            &c.circuit.layers[0],
+            &c.graphs[0],
+            CompileParams { slot_budget_cells: 24, ..Default::default() },
+        );
+        for i in &cl.program.instrs {
+            let unit = if i.op == crate::isa::Op::DotK { 2 } else { 1 };
             assert!(
-                c <= MAX_ARITY,
-                "SumK chunk size {c} exceeds MAX_ARITY={MAX_ARITY} (counts={counts:?})"
+                i.operands.len() <= MAX_ARITY * unit,
+                "instr exceeds lane cap: {} operands (unit {unit})",
+                i.operands.len()
             );
         }
-        // Sum of counts must equal total (first chunk) + continuation payloads + prepends.
-        // Simpler: the first count is the first chunk payload; continuations include
-        // the prepend. Total payload = first + sum(cont - unit).
-        let payload: usize = counts[0] + counts[1..].iter().map(|&c| c - 1).sum::<usize>();
-        assert_eq!(payload, 70, "SumK: payload mismatch {payload}");
-
-        // DotK: unit = 2.  70 pairs (140 operands) -> first=62, cont=2+60=62. All ≤ 62 = 31*2.
-        let counts = EmitCtx::split_chunks(140, 2);
-        for &c in &counts {
-            assert!(
-                c <= MAX_ARITY * 2,
-                "DotK chunk size {c} exceeds MAX_ARITY*2={} (counts={counts:?})",
-                MAX_ARITY * 2
-            );
-        }
-        let payload: usize = counts[0] + counts[1..].iter().map(|&c| c - 2).sum::<usize>();
-        assert_eq!(payload, 140, "DotK: payload mismatch {payload}");
-
-        // Edge: exactly MAX_ARITY operands -> single instruction, no split.
-        let counts = EmitCtx::split_chunks(MAX_ARITY, 1);
-        assert_eq!(counts, vec![MAX_ARITY]);
-
-        // Edge: MAX_ARITY + 1 -> two instructions; continuation has 1 payload + 1 prepend = 2.
-        let counts = EmitCtx::split_chunks(MAX_ARITY + 1, 1);
-        assert_eq!(counts.len(), 2);
-        assert!(counts.iter().all(|&c| c <= MAX_ARITY));
+        assert!(cl.stats.spill_evictions > 0, "expected spills at 24 cells");
     }
 
     #[test]
