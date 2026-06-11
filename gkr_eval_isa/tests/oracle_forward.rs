@@ -114,6 +114,34 @@ fn fixed_regs_absorb_hub_reads() {
 }
 
 #[test]
+fn oracle_all_fixtures() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../cs/compiled_circuits");
+    let mut paths: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| {
+            let p = e.unwrap().path();
+            p.file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .contains("codegen_ir")
+                .then_some(p)
+        })
+        .collect();
+    paths.sort();
+    assert_eq!(paths.len(), 22, "expected 22 IR fixtures");
+    for p in &paths {
+        check_circuit(p, CompileParams::default(), 7);
+        // And once with realistic GPU-ish budgets.
+        check_circuit(
+            p,
+            CompileParams { slot_budget_cells: 96, fixed_reg_cells: 16, ..Default::default() },
+            7 + 1,
+        );
+    }
+}
+
+#[test]
 fn tiny_budget_actually_spills() {
     let c = load_circuit(&fixture("blake2_g_function_codegen_ir_gkr.json")).unwrap();
     // Layer 0 is the only layer with instructions; budget=2 < max_live=3 forces spills.
