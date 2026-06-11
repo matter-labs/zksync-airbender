@@ -48,10 +48,35 @@ pub struct LayerCost {
     pub infeasible_reason: Option<String>,
 }
 
+/// One point of the pin-vs-working-set sweep: at a FIXED total slot budget,
+/// `pin_request` cells go to the pinned hub prefix and the rest stay working
+/// set. Pinning absorbs repeated source reads (global -> guaranteed smem) but
+/// shrinks the working set, raising remat — which itself re-reads cone leaves
+/// from sources. `src_reads` therefore captures both sides of the trade in
+/// one number (preloads included); `instrs` is the compute side.
+#[derive(Serialize)]
+pub struct PinTradePoint {
+    pub slot_cells: usize,
+    pub pin_request: usize,
+    /// Cells the prefix actually uses (< request once hub candidates run out).
+    pub pinned_cells: usize,
+    pub feasible: bool,
+    pub src_reads: usize,
+    pub instrs: usize,
+    pub spill_evictions: usize,
+    pub remat_instrs: usize,
+    pub pinned_hits: usize,
+}
+
+/// Total budgets at which the pin-vs-working-set split is swept (layer 0,
+/// fixed regs 0, pin stepped by 4 leaving >=4 working cells).
+pub const PIN_TRADE_SLOTS: [usize; 5] = [16, 24, 32, 48, 64];
+
 #[derive(Serialize)]
 pub struct CircuitCost {
     pub path: String,
     pub layers: Vec<LayerCost>,
+    pub pin_trade: Vec<PinTradePoint>,
 }
 
 fn try_compile(
@@ -154,7 +179,50 @@ pub fn circuit_cost(path: &str, c: &LoadedCircuit) -> CircuitCost {
             }
         }
     }
-    CircuitCost { path: path.to_string(), layers }
+    let pin_trade = pin_trade_sweep(&c.circuit.layers[0], &c.graphs[0]);
+    CircuitCost { path: path.to_string(), layers, pin_trade }
+}
+
+fn pin_trade_sweep(layer: &CodegenLayer, g: &AnalysisGraph) -> Vec<PinTradePoint> {
+    let mut points = Vec::new();
+    for &slots in &PIN_TRADE_SLOTS {
+        let mut pin = 0usize;
+        while slots - pin >= 4 {
+            let params = CompileParams {
+                slot_budget_cells: slots,
+                fixed_reg_cells: 0,
+                pinned_slot_cells: pin,
+                order: OrderKind::Arena,
+            };
+            let p = match catch_unwind(AssertUnwindSafe(|| compile_layer(layer, g, params))) {
+                Ok(cl) => PinTradePoint {
+                    slot_cells: slots,
+                    pin_request: pin,
+                    pinned_cells: cl.stats.pinned_cells,
+                    feasible: true,
+                    src_reads: cl.stats.operand_kind_hist[0],
+                    instrs: cl.stats.instrs,
+                    spill_evictions: cl.stats.spill_evictions,
+                    remat_instrs: cl.stats.remat_instrs,
+                    pinned_hits: cl.stats.pinned_hits,
+                },
+                Err(_) => PinTradePoint {
+                    slot_cells: slots,
+                    pin_request: pin,
+                    pinned_cells: pin,
+                    feasible: false,
+                    src_reads: 0,
+                    instrs: 0,
+                    spill_evictions: 0,
+                    remat_instrs: 0,
+                    pinned_hits: 0,
+                },
+            };
+            points.push(p);
+            pin += 4;
+        }
+    }
+    points
 }
 
 pub fn to_markdown(costs: &[CircuitCost]) -> String {
@@ -251,6 +319,35 @@ pub fn to_markdown(costs: &[CircuitCost]) -> String {
                     st.max_live_cells,
                 )
                 .unwrap();
+            }
+        }
+        if !c.pin_trade.is_empty() {
+            writeln!(
+                s,
+                "\nPin-vs-working-set at fixed TOTAL budget (layer 0, fixed regs 0; `pin→src reads/instrs`, `*` = min src reads):\n"
+            )
+            .unwrap();
+            for &slots in &PIN_TRADE_SLOTS {
+                let pts: Vec<&PinTradePoint> =
+                    c.pin_trade.iter().filter(|p| p.slot_cells == slots).collect();
+                let best = pts
+                    .iter()
+                    .filter(|p| p.feasible)
+                    .min_by_key(|p| (p.src_reads, p.instrs))
+                    .map(|p| p.pin_request);
+                write!(s, "- S={slots}: ").unwrap();
+                for (i, p) in pts.iter().enumerate() {
+                    if i > 0 {
+                        write!(s, " | ").unwrap();
+                    }
+                    if !p.feasible {
+                        write!(s, "{}→✗", p.pin_request).unwrap();
+                    } else {
+                        let star = if best == Some(p.pin_request) { "*" } else { "" };
+                        write!(s, "{star}{}→{}/{}", p.pin_request, p.src_reads, p.instrs).unwrap();
+                    }
+                }
+                writeln!(s).unwrap();
             }
         }
     }
