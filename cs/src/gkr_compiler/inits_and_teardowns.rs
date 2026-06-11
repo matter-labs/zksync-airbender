@@ -271,4 +271,27 @@ mod test {
             "compiled_circuits/inits_and_teardowns_preprocessed_layout_gkr.json",
         );
     }
+
+    /// Fixture generator (run explicitly): emit the lowered codegen-IR JSON in
+    /// both the caching and no-caching variants. Run with:
+    ///
+    ///   cargo test -p cs generate_inits_and_teardowns_codegen_ir_json -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn generate_inits_and_teardowns_codegen_ir_json() {
+        use crate::gkr_compiler::write_codegen_ir_fixture;
+        use ::field::baby_bear::base::BabyBearField;
+
+        let cached = compile_inits_and_teardowns_circuit::<BabyBearField, 2>(16, 24, true);
+        write_codegen_ir_fixture(
+            &cached,
+            "compiled_circuits/inits_and_teardowns_codegen_ir_gkr.json",
+        );
+
+        let no_caches = compile_inits_and_teardowns_circuit::<BabyBearField, 2>(16, 24, false);
+        write_codegen_ir_fixture(
+            &no_caches,
+            "compiled_circuits/inits_and_teardowns_codegen_ir_no_caches_gkr.json",
+        );
+    }
 }

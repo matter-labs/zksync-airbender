@@ -1912,3 +1912,24 @@ pub fn dump_ssa_witness_eval_form<F: PrimeField>(
     let (_resolution_order, ssa_forms) = graph.compute_resolution_order();
     ssa_forms
 }
+
+/// Test-only fixture writer shared by the per-circuit codegen-IR generator
+/// tests: lower a compiled GKR artifact to the codegen IR, verify it, and
+/// write pretty JSON to `filename` (relative to the crate root).
+#[cfg(test)]
+pub(crate) fn write_codegen_ir_fixture<F: PrimeField + PartialEq>(
+    artifact: &GKRCircuitArtifact<F>,
+    filename: &str,
+) {
+    let circuit = lower::<F>(artifact).expect("lower must succeed");
+    circuit.verify().expect("lowered circuit must verify");
+    let json = to_json_string(&circuit).expect("to_json_string must succeed");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(filename);
+    std::fs::write(&path, &json).expect("write json");
+    println!(
+        "wrote {} ({} layers, {} bytes)",
+        path.display(),
+        circuit.layers.len(),
+        json.len()
+    );
+}

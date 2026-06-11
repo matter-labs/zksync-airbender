@@ -496,4 +496,53 @@ mod test {
             "compiled_circuits/mem_word_only_layout_no_caches_gkr.json",
         );
     }
+
+    /// Fixture generator (run explicitly): emit the lowered codegen-IR JSON in
+    /// both the caching and no-caching variants. Run with:
+    ///
+    ///   cargo test -p cs generate_mem_word_only_codegen_ir_json -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn generate_mem_word_only_codegen_ir_json() {
+        use ::field::baby_bear::base::BabyBearField;
+        use crate::gkr_compiler::write_codegen_ir_fixture;
+
+        let table_fn = |cs: &mut crate::cs::circuit_impl::BasicAssembly<BabyBearField>| {
+            mem_word_only_table_addition_fn(cs);
+            // ROM tables must be added here (with dummy bytecode) so that
+            // offset_for_decoder_table in the compiled JSON reflects the correct
+            // total_tables_len at prove time, when real ROM tables are present.
+            for (table_type, table) in create_mem_word_only_special_tables::<
+                BabyBearField,
+                { common_constants::ROM_SECOND_WORD_BITS },
+            >(&[])
+            {
+                cs.add_table_with_content(table_type, table);
+            }
+        };
+
+        let cached = compile_unrolled_circuit_state_transition_into_gkr::<BabyBearField>(
+            &table_fn,
+            &|cs| mem_word_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
+            common_constants::ROM_WORD_SIZE,
+            24,
+        );
+        write_codegen_ir_fixture(
+            &cached,
+            "compiled_circuits/mem_word_only_codegen_ir_gkr.json",
+        );
+
+        let no_caches = compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<
+            BabyBearField,
+        >(
+            &table_fn,
+            &|cs| mem_word_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
+            common_constants::ROM_WORD_SIZE,
+            24,
+        );
+        write_codegen_ir_fixture(
+            &no_caches,
+            "compiled_circuits/mem_word_only_codegen_ir_no_caches_gkr.json",
+        );
+    }
 }

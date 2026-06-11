@@ -1791,6 +1791,41 @@ mod test {
         );
     }
 
+    /// Fixture generator (run explicitly): emit the lowered codegen-IR JSON in
+    /// both the caching and no-caching variants. Run with:
+    ///
+    ///   cargo test -p cs generate_keccak_special5_codegen_ir_json -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn generate_keccak_special5_codegen_ir_json() {
+        use ::field::baby_bear::base::BabyBearField;
+        use crate::gkr_compiler::write_codegen_ir_fixture;
+
+        let cached = compile_delegation_circuit_into_gkr::<BabyBearField>(
+            &|cs| keccak_special5_delegation_circuit_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_keccak_special5_delegation_circuit::<_, _, false>(cs);
+            },
+            22,
+        );
+        write_codegen_ir_fixture(
+            &cached,
+            "compiled_circuits/keccak_special5_codegen_ir_gkr.json",
+        );
+
+        let no_caches = compile_delegation_circuit_into_gkr_without_caches::<BabyBearField>(
+            &|cs| keccak_special5_delegation_circuit_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_keccak_special5_delegation_circuit::<_, _, false>(cs);
+            },
+            22,
+        );
+        write_codegen_ir_fixture(
+            &no_caches,
+            "compiled_circuits/keccak_special5_codegen_ir_no_caches_gkr.json",
+        );
+    }
+
     // #[test]
     // fn stress_test_compile_keccak_special5() {
     //     skip_if_ci!();

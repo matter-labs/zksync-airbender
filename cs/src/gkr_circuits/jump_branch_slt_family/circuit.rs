@@ -791,4 +791,39 @@ mod test {
             "compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json",
         );
     }
+
+    /// Fixture generator (run explicitly): emit the lowered codegen-IR JSON in
+    /// both the caching and no-caching variants. Run with:
+    ///
+    ///   cargo test -p cs generate_jump_branch_slt_codegen_ir_json -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn generate_jump_branch_slt_codegen_ir_json() {
+        use ::field::baby_bear::base::BabyBearField;
+        use crate::gkr_compiler::write_codegen_ir_fixture;
+
+        let cached = compile_unrolled_circuit_state_transition_into_gkr::<BabyBearField>(
+            &|cs| jump_branch_slt_table_addition_fn(cs),
+            &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
+            common_constants::ROM_WORD_SIZE,
+            24,
+        );
+        write_codegen_ir_fixture(
+            &cached,
+            "compiled_circuits/jump_branch_slt_codegen_ir_gkr.json",
+        );
+
+        let no_caches = compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<
+            BabyBearField,
+        >(
+            &|cs| jump_branch_slt_table_addition_fn(cs),
+            &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
+            common_constants::ROM_WORD_SIZE,
+            24,
+        );
+        write_codegen_ir_fixture(
+            &no_caches,
+            "compiled_circuits/jump_branch_slt_codegen_ir_no_caches_gkr.json",
+        );
+    }
 }

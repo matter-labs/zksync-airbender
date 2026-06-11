@@ -935,4 +935,39 @@ mod test {
             "compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json",
         );
     }
+
+    /// Fixture generator (run explicitly): emit the lowered codegen-IR JSON in
+    /// both the caching and no-caching variants. Run with:
+    ///
+    ///   cargo test -p cs generate_bigint_with_extended_control_codegen_ir_json -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn generate_bigint_with_extended_control_codegen_ir_json() {
+        use ::field::baby_bear::base::BabyBearField;
+        use crate::gkr_compiler::write_codegen_ir_fixture;
+
+        let cached = compile_delegation_circuit_into_gkr::<BabyBearField>(
+            &|cs| bigint_with_extended_control_delegation_circuit_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_bigint_with_extended_control_delegation_circuit(cs);
+            },
+            22,
+        );
+        write_codegen_ir_fixture(
+            &cached,
+            "compiled_circuits/bigint_with_extended_control_codegen_ir_gkr.json",
+        );
+
+        let no_caches = compile_delegation_circuit_into_gkr_without_caches::<BabyBearField>(
+            &|cs| bigint_with_extended_control_delegation_circuit_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_bigint_with_extended_control_delegation_circuit(cs);
+            },
+            22,
+        );
+        write_codegen_ir_fixture(
+            &no_caches,
+            "compiled_circuits/bigint_with_extended_control_codegen_ir_no_caches_gkr.json",
+        );
+    }
 }

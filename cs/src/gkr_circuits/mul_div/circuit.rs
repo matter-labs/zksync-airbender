@@ -1055,4 +1055,39 @@ mod test {
             "compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json",
         );
     }
+
+    /// Fixture generator (run explicitly): emit the lowered codegen-IR JSON in
+    /// both the caching and no-caching variants. Run with:
+    ///
+    ///   cargo test -p cs generate_unsigned_mul_div_codegen_ir_json -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn generate_unsigned_mul_div_codegen_ir_json() {
+        use ::field::baby_bear::base::BabyBearField;
+        use crate::gkr_compiler::write_codegen_ir_fixture;
+
+        let cached = compile_unrolled_circuit_state_transition_into_gkr::<BabyBearField>(
+            &|cs| mul_div_table_addition_fn::<_, _, false>(cs),
+            &|cs| mul_div_circuit_with_preprocessed_bytecode_for_gkr::<_, _, false>(cs),
+            common_constants::ROM_WORD_SIZE,
+            24,
+        );
+        write_codegen_ir_fixture(
+            &cached,
+            "compiled_circuits/unsigned_mul_div_codegen_ir_gkr.json",
+        );
+
+        let no_caches = compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<
+            BabyBearField,
+        >(
+            &|cs| mul_div_table_addition_fn::<_, _, false>(cs),
+            &|cs| mul_div_circuit_with_preprocessed_bytecode_for_gkr::<_, _, false>(cs),
+            common_constants::ROM_WORD_SIZE,
+            24,
+        );
+        write_codegen_ir_fixture(
+            &no_caches,
+            "compiled_circuits/unsigned_mul_div_codegen_ir_no_caches_gkr.json",
+        );
+    }
 }
