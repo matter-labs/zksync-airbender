@@ -82,35 +82,34 @@ fn oracle_add_sub_both_layouts() {
 // blake2 is the correct circuit for verifying the spill/remat path.
 #[test]
 fn oracle_blake2_tiny_slot_budget_with_spills() {
-    let p = CompileParams { slot_budget_cells: 2, fixed_reg_cells: 0, ..Default::default() };
+    let p = CompileParams { budget_cells: 2, ..Default::default() };
     check_circuit(&fixture("blake2_g_function_codegen_ir_gkr.json"), p, 0xBEEF);
 }
 
 #[test]
 fn oracle_bigint_mid_pressure_budget64() {
     // ~99 evictions + ~99 remats on L0 — the strongest spill-path validation.
-    let p = CompileParams { slot_budget_cells: 64, fixed_reg_cells: 0, ..Default::default() };
+    let p = CompileParams { budget_cells: 64, ..Default::default() };
     check_circuit(&fixture("bigint_with_extended_control_codegen_ir_gkr.json"), p, 0xB161);
 }
 
 #[test]
-fn oracle_blake2_with_fixed_regs() {
-    let p = CompileParams { slot_budget_cells: 4096, fixed_reg_cells: 16, ..Default::default() };
+fn oracle_blake2_pinned_unbounded() {
+    let p = CompileParams { budget_cells: 4096, pinned_cells: 16, ..Default::default() };
     check_circuit(&fixture("blake2_with_extended_control_codegen_ir_gkr.json"), p, 0xF1E);
 }
 
 #[test]
-fn fixed_regs_absorb_hub_reads() {
+fn pin_saturation_absorbs_hub_reads() {
+    // Saturated pin (every hub candidate cached): source reads collapse to
+    // one per distinct column; the absorbed re-reads show up as pinned_hits.
     let c = load_circuit(&fixture("blake2_with_extended_control_codegen_ir_gkr.json")).unwrap();
     let cl = compile_layer(
         &c.circuit.layers[0],
         &c.graphs[0],
-        CompileParams { slot_budget_cells: 4096, fixed_reg_cells: 16, ..Default::default() },
+        CompileParams { budget_cells: 4096, pinned_cells: 4096, ..Default::default() },
     );
-    // Hub columns have program fanout 34-89; 16 bf cells must absorb >100 reads.
-    // (If this threshold fails, check the actual pv.uses distribution — gate-input
-    // references to Place nodes directly don't count as program reads.)
-    assert!(cl.stats.fixed_reg_hits > 100, "got {}", cl.stats.fixed_reg_hits);
+    assert!(cl.stats.pinned_hits > 1000, "got {}", cl.stats.pinned_hits);
 }
 
 #[test]
@@ -132,12 +131,10 @@ fn oracle_all_fixtures() {
     assert_eq!(paths.len(), 22, "expected 22 IR fixtures");
     for p in &paths {
         check_circuit(p, CompileParams::default(), 7);
-        // And once with realistic GPU-ish budgets (64 cells measured feasible
-        // across all 22 fixtures during Task 7 review; fixed regs only lower
-        // slot pressure further).
+        // And once with a realistic GPU-ish budget, half of it pinned.
         check_circuit(
             p,
-            CompileParams { slot_budget_cells: 64, fixed_reg_cells: 16, ..Default::default() },
+            CompileParams { budget_cells: 64, pinned_cells: 32, ..Default::default() },
             7 + 1,
         );
     }
@@ -150,7 +147,7 @@ fn tiny_budget_actually_spills() {
     let cl = compile_layer(
         &c.circuit.layers[0],
         &c.graphs[0],
-        CompileParams { slot_budget_cells: 2, fixed_reg_cells: 0, ..Default::default() },
+        CompileParams { budget_cells: 2, ..Default::default() },
     );
     assert!(cl.stats.spill_evictions > 0, "expected spill_evictions > 0 at budget=2, got 0");
     assert!(cl.stats.remat_instrs > 0, "expected remat_instrs > 0 at budget=2, got 0");
@@ -161,33 +158,27 @@ fn oracle_bigint_tight_budget_after_footprint_split() {
     // The arity-only splitter made bigint infeasible below 56 cells (one wide
     // instruction protected ~50 slot-resident operands). Footprint-aware
     // chunking must make 16 cells both feasible and correct.
-    let p = CompileParams { slot_budget_cells: 16, ..Default::default() };
+    let p = CompileParams { budget_cells: 16, ..Default::default() };
     check_circuit(&fixture("bigint_with_extended_control_codegen_ir_gkr.json"), p, 0xB162);
 }
 
 #[test]
 fn oracle_pinned_slots() {
-    // Pinned hub prefix: preloaded, never evicted, read as ordinary slots.
-    let p = CompileParams { slot_budget_cells: 32, pinned_slot_cells: 16, ..Default::default() };
+    // Pinned hub prefix: preloaded, never evicted, read as ordinary cells.
+    let p = CompileParams { budget_cells: 32, pinned_cells: 16, ..Default::default() };
     check_circuit(&fixture("blake2_with_extended_control_codegen_ir_gkr.json"), p, 0xF1A5);
 
     let c = load_circuit(&fixture("blake2_with_extended_control_codegen_ir_gkr.json")).unwrap();
     let cl = compile_layer(&c.circuit.layers[0], &c.graphs[0], p);
     assert!(cl.stats.pinned_cells > 0, "pin assignment empty");
-    // Hub fanout is 34-89; 16 pinned cells must absorb >100 reads (same bar
-    // as the fixed-reg test — the two banks share the scoring).
+    // Hub fanout is 34-89; 16 pinned cells must absorb >100 reads.
     assert!(cl.stats.pinned_hits > 100, "got {}", cl.stats.pinned_hits);
 
-    // Pinned + fixed compose: fixed takes the top hubs, pin the next tier.
-    let p2 = CompileParams {
-        slot_budget_cells: 32,
-        fixed_reg_cells: 8,
-        pinned_slot_cells: 16,
-        ..Default::default()
-    };
+    // A bigger pin share of the same total budget absorbs more.
+    let p2 = CompileParams { budget_cells: 32, pinned_cells: 24, ..Default::default() };
     check_circuit(&fixture("blake2_with_extended_control_codegen_ir_gkr.json"), p2, 0xF1A6);
     let cl2 = compile_layer(&c.circuit.layers[0], &c.graphs[0], p2);
-    assert!(cl2.stats.fixed_reg_hits > 0 && cl2.stats.pinned_hits > 0);
+    assert!(cl2.stats.pinned_hits > cl.stats.pinned_hits);
 }
 
 #[test]
@@ -216,20 +207,13 @@ fn oracle_min_feasible_budget() {
                     compile_layer(
                         &c.circuit.layers[0],
                         &c.graphs[0],
-                        CompileParams { slot_budget_cells: slots, ..Default::default() },
+                        CompileParams { budget_cells: slots, ..Default::default() },
                     )
                 }))
                 .is_ok()
             })
             .unwrap_or_else(|| panic!("{}: no feasible budget in grid", p.display()));
-        for fixed in [0, 16] {
-            let params = CompileParams {
-                slot_budget_cells: min,
-                fixed_reg_cells: fixed,
-                ..Default::default()
-            };
-            check_circuit(p, params, 0x51EE + fixed as u64);
-        }
+        check_circuit(p, CompileParams { budget_cells: min, ..Default::default() }, 0x51EE);
     }
 }
 

@@ -2,7 +2,7 @@
 //! DAG (GateOutput = staged leaf; gate-input cones = roots).
 
 mod emit;
-mod fixed_regs;
+mod pinning;
 mod slots;
 pub mod view;
 
@@ -22,27 +22,25 @@ pub enum OrderKind {
 
 #[derive(Clone, Copy, Debug)]
 pub struct CompileParams {
-    /// bf cells available in the slot file (e4 = 4 cells).
-    pub slot_budget_cells: usize,
-    /// bf cells in the decode-selected fixed-register file (0 = disabled).
-    pub fixed_reg_cells: usize,
-    /// bf cells carved out of the slot budget for PINNED values: hub
-    /// leaves/intermediates preloaded (or kept) in a never-evicted slot-file
-    /// prefix — guaranteed smem residency instead of hoping for L1 hits, and
-    /// indexable unlike the fixed-register file. 0 = disabled.
-    pub pinned_slot_cells: usize,
+    /// One UNIFIED bf-cell budget (e4 = 4 cells) covering registers + smem
+    /// together. The compiler only decides the pinned-vs-working split and
+    /// which values to pin; whether a given cell address physically lands in
+    /// smem or in a decode-selected register is a later backend decision made
+    /// per address from access counts (hot -> indexable smem, cold -> the
+    /// selector-tree register file). The ISA's fixed-reg operand kind stays
+    /// reserved for that remap; the compiler no longer emits it.
+    pub budget_cells: usize,
+    /// bf cells (out of `budget_cells`) for PINNED values: hub leaves AND hub
+    /// intermediates kept in a never-evicted prefix of the cell file —
+    /// guaranteed residency instead of hoping for L1 hits. 0 = disabled.
+    pub pinned_cells: usize,
     pub order: OrderKind,
 }
 
 impl Default for CompileParams {
     fn default() -> Self {
-        // Validation default: effectively unbounded slots, no fixed regs.
-        CompileParams {
-            slot_budget_cells: 4096,
-            fixed_reg_cells: 0,
-            pinned_slot_cells: 0,
-            order: OrderKind::Arena,
-        }
+        // Validation default: effectively unbounded cells, no pinning.
+        CompileParams { budget_cells: 4096, pinned_cells: 0, order: OrderKind::Arena }
     }
 }
 
@@ -66,12 +64,16 @@ pub struct CompileStats {
     pub max_live_cells: usize,
     pub spill_evictions: usize,
     pub remat_instrs: usize,
-    /// Operand references served by the fixed-register file.
-    pub fixed_reg_hits: usize,
-    /// Operand references served by the pinned slot-file prefix.
+    /// Operand references served by the pinned prefix.
     pub pinned_hits: usize,
-    /// Cells actually reserved for the pinned prefix (<= params.pinned_slot_cells).
+    /// Cells actually reserved for the pinned prefix (<= params.pinned_cells).
     pub pinned_cells: usize,
+    /// Total cell-granular accesses (reads + writes, e4 counts 4) to the cell
+    /// file, and the share captured by the top {8, 16, 24, 32} hottest cell
+    /// addresses — the data for the later smem-vs-register placement of each
+    /// address (hot -> indexable smem, cold -> selector-tree registers).
+    pub cell_accesses_total: usize,
+    pub cell_accesses_top: [usize; 4],
 }
 
 pub struct CompiledLayer {

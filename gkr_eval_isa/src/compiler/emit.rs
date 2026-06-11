@@ -1,6 +1,6 @@
 //! Arena-order instruction emission over the ProgramView DAG (forward pass).
 
-use super::fixed_regs;
+use super::pinning;
 use super::slots::SlotAlloc;
 use super::view::{self, ProgramView};
 use super::{CompileParams, CompileStats, CompiledLayer, OrderKind, SourceMap, build_const_table, enumerate_sources, is_computed, node_domain};
@@ -19,9 +19,8 @@ struct LiveReg {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Placement {
     Slot { cell: u16, e4: bool },
-    FixedReg { cell: u16, e4: bool },
-    /// A cell in the pinned slot-file prefix: written once (leaf preload or
-    /// first computation), never evicted, never released.
+    /// A cell in the pinned prefix: written once (leaf preload or first
+    /// computation), never evicted, never released.
     PinnedSlot { cell: u16, e4: bool },
 }
 
@@ -45,14 +44,13 @@ struct EmitCtx<'a> {
     /// included because those are satisfied immediately at the producer's own
     /// position, so the value never stays live waiting for them.
     use_positions: Vec<Vec<usize>>,
-    /// Fixed-register file assignment: node -> bf-cell index. Empty when
-    /// params.fixed_reg_cells == 0. Nodes in this map always write to
-    /// Dst::FixedReg and are never allocated slots.
-    fixed: HashMap<usize, u16>,
-    /// Pinned slot-file prefix assignment: node -> absolute slot cell. Leaves
-    /// are preloaded into their cell; computed nodes write it at emission and
+    /// Pinned prefix assignment: node -> absolute cell address. Leaves are
+    /// preloaded into their cell; computed nodes write it at emission and
     /// stay resident for the whole program.
     pinned: HashMap<usize, u16>,
+    /// Reads + writes per cell address (e4 touches 4 cells) — the data for
+    /// the later per-address smem-vs-register placement.
+    cell_accesses: Vec<u32>,
 }
 
 /// One logical operand group of an instruction: `unit` operand lanes that must
@@ -96,8 +94,8 @@ impl<'a> EmitCtx<'a> {
                         cell,
                         width: if e4 { 4 } else { 1 },
                     }),
-                    // FixedReg and PinnedSlot are never evicted.
-                    Placement::FixedReg { .. } | Placement::PinnedSlot { .. } => None,
+                    // The pinned prefix is never evicted.
+                    Placement::PinnedSlot { .. } => None,
                 }
             })
             .collect()
@@ -116,12 +114,16 @@ impl<'a> EmitCtx<'a> {
             // so we find the victim node first (immutable phase), then mutate.
             let pos = self.pos;
             let victims = self.build_victims(protect);
-            // Pick the victim with the furthest next use, tie-break by width.
+            // Pick the victim with the furthest next use, tie-break by width
+            // then node id. The node id makes the key TOTAL: victims come
+            // from a HashMap walk, and without it ties resolve by hash
+            // iteration order, making compilation nondeterministic across
+            // runs (caught as run-to-run jitter in the static report).
             let budget = self.slot_alloc.budget();
             let protected = protect.len();
             let victim = victims
                 .iter()
-                .max_by_key(|r| (self.next_use(r.node, pos), r.width))
+                .max_by_key(|r| (self.next_use(r.node, pos), r.width, r.node))
                 .unwrap_or_else(|| panic!(
                     "slot budget infeasible for instruction footprint: \
                      need {width} more cells, budget {budget}, \
@@ -192,7 +194,7 @@ impl<'a> EmitCtx<'a> {
     /// missing placement means an upcoming remat into a fresh slot).
     fn protect_footprint(&self, node: usize) -> usize {
         match self.placements.get(&node) {
-            Some(Placement::FixedReg { .. }) | Some(Placement::PinnedSlot { .. }) => 0,
+            Some(Placement::PinnedSlot { .. }) => 0,
             Some(Placement::Slot { e4, .. }) => {
                 if *e4 { 4 } else { 1 }
             }
@@ -255,7 +257,7 @@ impl<'a> EmitCtx<'a> {
         let unit = if op == Op::DotK { 2 } else { 1 };
         let dst_w = if e4_result { 4 } else { 1 };
         let budget = self.slot_alloc.budget();
-        let dst_in_slots = !self.fixed.contains_key(&n) && !self.pinned.contains_key(&n);
+        let dst_in_slots = !self.pinned.contains_key(&n);
 
         let mut placement: Option<Placement> = None;
         let mut gi = 0usize;
@@ -340,12 +342,10 @@ impl<'a> EmitCtx<'a> {
                 v => Kind::Const(*self.const_id.get(&v).expect("constant not in table")),
             },
             ExprNode::Place { .. } | ExprNode::GateOutput { .. } => {
-                // A leaf preloaded into the fixed-register file or the pinned
-                // slot prefix is read from there. Check placement FIRST.
+                // A leaf preloaded into the pinned prefix is read from
+                // there. Check placement FIRST.
                 match self.placements.get(&node).copied() {
-                    Some(p @ (Placement::FixedReg { .. } | Placement::PinnedSlot { .. })) => {
-                        Kind::Placed(p)
-                    }
+                    Some(p @ Placement::PinnedSlot { .. }) => Kind::Placed(p),
                     _ => {
                         let (id, e4) = *self.source_id.get(&node).expect("source not mapped");
                         Kind::Source { id, e4 }
@@ -375,14 +375,11 @@ impl<'a> EmitCtx<'a> {
         }
     }
 
-    /// Operand for an existing placement; attributes pinned-prefix reads.
-    /// (fixed_reg_hits are counted at record_instr time by operand kind;
-    /// pinned reads are indistinguishable from ordinary Slot operands there,
-    /// so they are attributed here.)
+    /// Operand for an existing placement; attributes pinned-prefix reads
+    /// (indistinguishable from ordinary Slot operands at record_instr time).
     fn placement_operand(&mut self, p: Placement) -> Operand {
         match p {
             Placement::Slot { cell, e4 } => Operand::Slot { cell, e4 },
-            Placement::FixedReg { cell, e4 } => Operand::FixedReg { cell, e4 },
             Placement::PinnedSlot { cell, e4 } => {
                 self.stats.pinned_hits += 1;
                 Operand::Slot { cell, e4 }
@@ -396,9 +393,9 @@ impl<'a> EmitCtx<'a> {
         }
         self.remaining_uses[node] -= 1;
         if self.remaining_uses[node] == 0 {
-            // Check placement type before removing. FixedReg placements stay in
-            // the map permanently so that subsequent operand_for calls still find
-            // the value pinned in the fixed-register file.
+            // Check placement type before removing. Pinned placements stay in
+            // the map permanently so that subsequent operand_for calls still
+            // find the value.
             match self.placements.get(&node) {
                 Some(Placement::Slot { cell, e4 }) => {
                     let w = if *e4 { 4 } else { 1 };
@@ -406,10 +403,10 @@ impl<'a> EmitCtx<'a> {
                     self.placements.remove(&node);
                     self.slot_alloc.release(c, w);
                 }
-                Some(Placement::FixedReg { .. }) | Some(Placement::PinnedSlot { .. }) => {
-                    // FixedReg / pinned cells stay resident for the whole
-                    // program — do NOT remove the placement entry; future
-                    // operand_for calls must still resolve to it even after
+                Some(Placement::PinnedSlot { .. }) => {
+                    // Pinned cells stay resident for the whole program — do
+                    // NOT remove the placement entry; future operand_for
+                    // calls must still resolve to it even after
                     // remaining_uses hits 0.
                 }
                 None => {}
@@ -422,15 +419,9 @@ impl<'a> EmitCtx<'a> {
     /// that have already been resolved and must remain readable until the
     /// instruction is pushed).
     ///
-    /// If `node` appears in the fixed-register map, it is assigned to
-    /// `Dst::FixedReg` instead (no slot allocation).
+    /// If `node` appears in the pinned map, it writes its reserved prefix
+    /// cell instead (no allocation).
     fn place_result(&mut self, node: usize, e4: bool, protect: &[usize]) -> Placement {
-        // Fixed-register candidates go to the fixed file, not the slot allocator.
-        if let Some(&cell) = self.fixed.get(&node) {
-            let p = Placement::FixedReg { cell, e4 };
-            self.placements.insert(node, p);
-            return p;
-        }
         // Pinned computed candidates write their reserved prefix cell and stay
         // resident for the whole program (no allocation, no eviction).
         if let Some(&cell) = self.pinned.get(&node) {
@@ -448,7 +439,13 @@ impl<'a> EmitCtx<'a> {
     fn dst_from_placement(p: Placement) -> Dst {
         match p {
             Placement::Slot { cell, .. } | Placement::PinnedSlot { cell, .. } => Dst::Slot(cell),
-            Placement::FixedReg { cell, .. } => Dst::FixedReg(cell),
+        }
+    }
+
+    fn touch_cells(&mut self, cell: u16, e4: bool) {
+        let w = if e4 { 4 } else { 1 };
+        for c in cell as usize..cell as usize + w {
+            self.cell_accesses[c] += 1;
         }
     }
 
@@ -458,17 +455,20 @@ impl<'a> EmitCtx<'a> {
         for o in &operands {
             let kind_idx = match o {
                 Operand::Source { .. } => 0,
-                Operand::Slot { .. } => 1,
-                Operand::FixedReg { .. } => {
-                    self.stats.fixed_reg_hits += 1;
-                    2
+                Operand::Slot { cell, e4 } => {
+                    self.touch_cells(*cell, *e4);
+                    1
                 }
+                Operand::FixedReg { .. } => 2, // reserved for the backend remap; never emitted
                 Operand::Const { .. } => 3,
                 Operand::Zero => 4,
                 Operand::One => 5,
                 Operand::NegOne => 6,
             };
             self.stats.operand_kind_hist[kind_idx] += 1;
+        }
+        if let Dst::Slot(cell) = dst {
+            self.touch_cells(cell, e4_result);
         }
         self.instrs.push(Instr { op, e4_result, dst, operands });
     }
@@ -541,17 +541,9 @@ pub(crate) fn emit_layer(
     let arena: &[ExprNode] = &layer.arena.nodes;
     let pv = view::build(layer, g);
 
-    // Assign fixed-register file. Empty map when budget == 0 (disabled).
-    let fixed = fixed_regs::assign(arena, &pv, params.fixed_reg_cells, &HashMap::new());
-
-    // Assign the pinned slot prefix from the remaining hub candidates. The
-    // bank-relative cells double as absolute slot addresses (prefix at 0).
-    let pinned = fixed_regs::assign(
-        arena,
-        &pv,
-        params.pinned_slot_cells.min(params.slot_budget_cells),
-        &fixed,
-    );
+    // Assign the pinned prefix (hub leaves and intermediates alike). The
+    // prefix-relative cells double as absolute cell addresses (prefix at 0).
+    let pinned = pinning::assign(arena, &pv, params.pinned_cells.min(params.budget_cells));
     let pinned_prefix = pinned
         .iter()
         .map(|(&n, &c)| c as usize + if node_domain(&arena[n]) == Domain::Ext { 4 } else { 1 })
@@ -587,7 +579,7 @@ pub(crate) fn emit_layer(
         output_idx.entry(node).or_default().push(j);
     }
 
-    let mut slot_alloc = SlotAlloc::new(params.slot_budget_cells);
+    let mut slot_alloc = SlotAlloc::new(params.budget_cells);
     slot_alloc.reserve_prefix(pinned_prefix);
 
     // Determine emission order.
@@ -691,36 +683,15 @@ pub(crate) fn emit_layer(
         slot_alloc,
         pos: 0,
         use_positions,
-        fixed: fixed.clone(),
         pinned: pinned.clone(),
+        cell_accesses: vec![0; params.budget_cells],
     };
     ctx.stats.pinned_cells = pinned_prefix;
 
-    // Preload leaf (Place/GateOutput) candidates assigned to the fixed-register
-    // file. These nodes appear in the `fixed` map but are not computed (they are
-    // not in the `order` list), so they need an explicit SumK arity-1 preload
-    // that copies the staged source into the fixed cell. Emit in ascending node-id
-    // order for determinism.
-    if params.fixed_reg_cells > 0 {
-        let mut leaf_fixed: Vec<(usize, u16)> = fixed
-            .iter()
-            .filter(|&(&node, _)| !is_computed(&arena[node]))
-            .map(|(&node, &cell)| (node, cell))
-            .collect();
-        leaf_fixed.sort_by_key(|&(node, _)| node);
-        for (node, cell) in leaf_fixed {
-            let e4 = node_domain(&arena[node]) == Domain::Ext;
-            // Build the source operand directly from source_id (not via
-            // operand_for — the preload is what establishes the fixed placement).
-            let (id, _) = *ctx.source_id.get(&node).expect("leaf fixed-reg node not in source_id");
-            let src_op = Operand::Source { id, e4 };
-            ctx.placements.insert(node, Placement::FixedReg { cell, e4 });
-            ctx.record_instr(Op::SumK, e4, Dst::FixedReg(cell), vec![src_op]);
-        }
-    }
-
-    // Same preload for leaves assigned to the pinned slot prefix; computed
-    // pinned nodes get their PinnedSlot placement at emission (place_result).
+    // Preload leaves assigned to the pinned prefix (an explicit SumK arity-1
+    // copy of the staged source; ascending node-id order for determinism);
+    // computed pinned nodes get their PinnedSlot placement at emission
+    // (place_result).
     if pinned_prefix > 0 {
         let mut leaf_pinned: Vec<(usize, u16)> = pinned
             .iter()
@@ -847,13 +818,24 @@ pub(crate) fn emit_layer(
     ctx.stats.max_live_cells = max_live_cells;
     ctx.stats.gate_in_roots = pv.gate_in_roots.len();
 
+    // Access concentration over cell addresses, for the later per-address
+    // smem-vs-register decision (hot -> indexable smem, cold -> selector-tree
+    // registers).
+    let mut acc = ctx.cell_accesses.clone();
+    acc.sort_unstable_by(|a, b| b.cmp(a));
+    ctx.stats.cell_accesses_total = acc.iter().map(|&a| a as usize).sum();
+    for (i, k) in [8usize, 16, 24, 32].into_iter().enumerate() {
+        ctx.stats.cell_accesses_top[i] =
+            acc.iter().take(k).map(|&a| a as usize).sum();
+    }
+
     // Build program.
     let n_consts = consts.len();
     let program = Program {
         instrs: ctx.instrs,
         consts,
         n_slot_cells: max_live_cells as u16,
-        n_fixed_cells: params.fixed_reg_cells as u16,
+        n_fixed_cells: 0,
         n_sources_bf: source_map.bf.len() as u16,
         n_sources_e4: source_map.e4.len() as u16,
         n_outputs: g.outputs.len() as u16,
@@ -890,7 +872,7 @@ mod tests {
         let cl = compile_layer(
             &c.circuit.layers[0],
             &c.graphs[0],
-            CompileParams { slot_budget_cells: 24, ..Default::default() },
+            CompileParams { budget_cells: 24, ..Default::default() },
         );
         for i in &cl.program.instrs {
             let unit = if i.op == crate::isa::Op::DotK { 2 } else { 1 };
