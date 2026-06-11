@@ -23,17 +23,16 @@
 //! (zero DRAM); eq/tail/transcript fixed work is ignored (<= tens of KB per
 //! layer vs N-scaled traffic).
 //!
-//! Known refinements from adversarial review, not yet modeled (all small vs
-//! the N-scaled totals; see review journal wf_4c6af944-29c):
-//! - virtual-setup columns DO cost bytes from round 2 on (after-two virtual
-//!   Arcs + e4 tail) — modeled as zero in all rounds here (<= 2 cols/circuit);
-//! - copy/linear-output gate kinds may not emit backward terms at all
-//!   (alias-registered); round-0 reads for them are possibly over-counted;
-//! - InitsOrTeardownsInitialPair folds more columns than
-//!   gate_kind_input_nodes reports (variant payload gap);
-//! - orphan-extras path (dense eq materialization + orphan column reads) not
-//!   modeled; explicit-step byte shape approximated; tower partials blockwise
-//!   stage at acc > 256 not modeled.
+//! Known refinements, not modeled. Materiality quantified by the Codex
+//! re-review (.agents/audits/2026-06-11-gkr-backward-cost-model-rereview.md)
+//! against the shipped fixtures — verdict: headline numbers hold at ~+-10%:
+//! - copy/linear-output gates may not emit backward terms (alias-registered);
+//!   round-0 over-count bounded at <=3.4% (add_sub) / <=0.4% (blake2) of
+//!   circuit-total backward bytes — the only refinement worth modeling, if
+//!   the alias-registration semantics are ever pinned down;
+//! - virtual-setup columns from round 2 (~0.5% / ~0.02%), explicit-step
+//!   shape, tower partials blockwise stage, InitsOrTeardownsInitialPair
+//!   operand gap and orphan-extras (both 0% on shipped fixtures): negligible.
 
 use crate::graph::{AnalysisGraph, NodeIdx, Origin};
 use crate::import::LoadedCircuit;
@@ -133,27 +132,10 @@ fn column_units(g: &AnalysisGraph, root: NodeIdx, out: &mut Vec<NodeIdx>) {
     }
 }
 
-/// Distinct real operand-column addresses of a layer's backward fold set —
-/// the columns the backward pass folds (quadratic AND linear referenced).
-/// Used by the cache remat analysis for exact marginal-fold overlap.
-pub fn backward_fold_addrs(
-    g: &AnalysisGraph,
-    layer: &cs::gkr_compiler::codegen_ir::CodegenLayer,
-) -> std::collections::HashSet<GKRAddress> {
-    layer_sources_inner(g, layer).1
-}
-
 fn layer_sources(
     g: &AnalysisGraph,
     layer: &cs::gkr_compiler::codegen_ir::CodegenLayer,
 ) -> LayerSources {
-    layer_sources_inner(g, layer).0
-}
-
-fn layer_sources_inner(
-    g: &AnalysisGraph,
-    layer: &cs::gkr_compiler::codegen_ir::CodegenLayer,
-) -> (LayerSources, std::collections::HashSet<GKRAddress>) {
     use cs::gkr_compiler::codegen_ir::{GateKind, gate_kind_input_nodes};
 
     let mut quad = vec![false; g.nodes.len()];
@@ -209,7 +191,6 @@ fn layer_sources_inner(
     // already counted as a CachedColumn load if any gate consumes it).
 
     let (mut bf, mut e4, mut virt, mut linear_only_bf) = (0, 0, 0, 0);
-    let mut fold_addrs = std::collections::HashSet::new();
     for i in 0..g.nodes.len() {
         if !quad[i] && !lin[i] {
             continue;
@@ -222,9 +203,6 @@ fn layer_sources_inner(
         if addr.is_some_and(|a| is_virtual(&a)) {
             virt += 1;
             continue;
-        }
-        if let Some(a) = addr {
-            fold_addrs.insert(a);
         }
         match n.domain {
             Domain::Base => {
@@ -248,17 +226,14 @@ fn layer_sources_inner(
         }
     }
 
-    (
-        LayerSources {
-            bf,
-            e4,
-            virt,
-            linear_only_bf,
-            c0_bf,
-            c0_e4,
-        },
-        fold_addrs,
-    )
+    LayerSources {
+        bf,
+        e4,
+        virt,
+        linear_only_bf,
+        c0_bf,
+        c0_e4,
+    }
 }
 
 /// Per-round byte model for one layer with N = 2^fs rows.

@@ -57,10 +57,6 @@ pub struct CircuitReuse {
     pub caches: Vec<CacheIngredients>,
 }
 
-fn is_virtual_addr(a: &GKRAddress) -> bool {
-    matches!(a, GKRAddress::VirtualSetup(_))
-}
-
 /// Backward fold-chain bytes/row for one materialized column (per-original-row
 /// units, geometric in trace length; mirrors `analysis::backward` formulas):
 /// e4: r0 16 + r1 (16+8) + r2 (8+4) + tail ~12 ≈ 64; bf: r0 4 + r1 (4+8) +
