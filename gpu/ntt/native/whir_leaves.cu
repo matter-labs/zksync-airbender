@@ -40,10 +40,11 @@ EXTERN __launch_bounds__(512, 2) __global__
   extern __shared__ uint8_t smem[];
 
   const unsigned leaves_per_coset = 1 << log_leaves_per_coset;
-  const unsigned slot_in_leaf = 2 * threadIdx.y;
+  const unsigned slot_in_leaf = threadIdx.y;
+  const unsigned initial_exchg_stride = leaves_per_coset << (log_values_per_leaf - 1);
   // Grabbing inputs by jumping around in bitreversed order is convenient for the NTT-like transform.
-  const unsigned src_row_a = leaves_per_coset * bitreverse_low_bits(slot_in_leaf, log_values_per_leaf);
-  const unsigned src_row_b = src_row_a + (leaves_per_coset << (log_values_per_leaf - 1));
+  const unsigned src_row_a = leaves_per_coset * slot_in_leaf;
+  const unsigned src_row_b = src_row_a + initial_exchg_stride;
 
   const e4 a = src.get_at_row(src_row_a);
   const e4 b = src.get_at_row(src_row_b);
@@ -59,34 +60,35 @@ EXTERN __launch_bounds__(512, 2) __global__
     const e4 d = e4::mul(bf::mul(x_inv, two_inv_power), e4::sub(a, b));
 
     dst.set(c);
-    dst.set_at_row(leaves_per_coset, d);
+    dst.set_at_row(initial_exchg_stride, d);
   } else {
     e4 *smem_thread = reinterpret_cast<e4 *>(smem) + threadIdx.x;
     bf *x_invs = reinterpret_cast<bf *>(smem + 2 * blockDim.x * blockDim.y * sizeof(e4)) + threadIdx.x;
 
     // We need to multiply by two_inv_power at some point. Might as well be here.
     smem_thread[blockDim.x * slot_in_leaf] = e4::mul(two_inv_power, e4::add(a, b));
-    smem_thread[blockDim.x * (slot_in_leaf + 1)] = e4::mul(bf::mul(x_inv, two_inv_power), e4::sub(a, b));
+    smem_thread[blockDim.x * (slot_in_leaf + blockDim.y)] = e4::mul(bf::mul(x_inv, two_inv_power), e4::sub(a, b));
 
     // Middle stages (stage enumeration runs from 0 to log_values_per_leaf - 1)
     for (unsigned stage = 1; stage < log_values_per_leaf - 1; stage++) {
-      const unsigned exchg_stride = 1 << stage;
-      const unsigned exchg_region = threadIdx.y >> stage;
+      const unsigned log_exchg_stride = log_values_per_leaf - 1 - stage;
+      const unsigned exchg_stride = 1 << log_exchg_stride;
+      const unsigned exchg_region = threadIdx.y >> log_exchg_stride;
       const unsigned exchg_lane = threadIdx.y & (exchg_stride - 1);
       const unsigned slot_in_leaf = 2 * exchg_stride * exchg_region + exchg_lane;
 
-      // Exchange region leaders publish squared x_invs
-      if (exchg_lane == 0) {
+      // Publish squared x_invs reusable across exchange regions
+      if (exchg_region == 0) {
         x_inv = bf::sqr(x_inv);
-        x_invs[blockDim.x * exchg_region] = x_inv;
+        x_invs[blockDim.x * exchg_lane] = x_inv;
       }
       // TODO: Evaluate performance impact of full syncthreads().
       // If it's bad, remap threads so exchanges happen within warps, with a swizzled access pattern to avoid bank conflicts.
       __syncthreads();
       const e4 a = smem_thread[blockDim.x * slot_in_leaf];
       const e4 b = smem_thread[blockDim.x * (slot_in_leaf + exchg_stride)];
-      if (exchg_lane != 0)
-        x_inv = x_invs[blockDim.x * exchg_region];
+      if (exchg_region != 0)
+        x_inv = x_invs[blockDim.x * exchg_lane];
       // not needed because
       //  - in each stage, each thread acts on its touched smem in place,
       //  - we use fresh smem to share x_invs each iteration
@@ -101,11 +103,9 @@ EXTERN __launch_bounds__(512, 2) __global__
     }
 
     // Last stage (special cased to elide a bit of work)
-    const unsigned stage = log_values_per_leaf - 1;
-    const unsigned exchg_stride = 1 << stage;
-    const unsigned slot_in_leaf = threadIdx.y;
+    const unsigned slot_in_leaf = 2 * threadIdx.y;
 
-    // Exchange region leader publishes squared x_inv
+    // Leader publishes final squared x_inv
     if (threadIdx.y == 0) {
       x_inv = bf::sqr(x_inv);
       x_invs[0] = x_inv;
@@ -114,13 +114,12 @@ EXTERN __launch_bounds__(512, 2) __global__
     if (threadIdx.y != 0)
       x_inv = x_invs[0];
     const e4 a = smem_thread[blockDim.x * slot_in_leaf];
-    const e4 b = smem_thread[blockDim.x * (slot_in_leaf + exchg_stride)];
+    const e4 b = smem_thread[blockDim.x * (slot_in_leaf + 1)];
 
     const e4 c = e4::add(a, b);
     const e4 d = e4::mul(x_inv, e4::sub(a, b));
-    const unsigned base_dst_slot_in_leaf = bitreverse_low_bits(slot_in_leaf, log_values_per_leaf);
-    dst.set_at_row(leaves_per_coset * base_dst_slot_in_leaf, c);
-    dst.set_at_row(leaves_per_coset * (base_dst_slot_in_leaf + 1), d);
+    dst.set_at_row(leaves_per_coset * slot_in_leaf, c);
+    dst.set_at_row(leaves_per_coset * (slot_in_leaf + 1), d);
   }
 }
 
