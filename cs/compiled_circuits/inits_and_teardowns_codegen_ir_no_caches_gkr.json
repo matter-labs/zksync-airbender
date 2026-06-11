@@ -1,0 +1,2882 @@
+{
+  "layers": [
+    {
+      "arena": {
+        "nodes": [
+          {
+            "Place": {
+              "addr": {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              "domain": "Base"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              },
+              "domain": "Base"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 0
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 1
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 2
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 3
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 4
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 5
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 6
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 7
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 8
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 9
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 10
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 11
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 12
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 13
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 14
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 15
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          }
+        ],
+        "hints": [
+          {
+            "uses": 16,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              }
+            ]
+          },
+          {
+            "uses": 16,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "VirtualSetup": "InitsAndTeardownsLow"
+              },
+              {
+                "VirtualSetup": "InitsAndTeardownsHigh"
+              }
+            ]
+          }
+        ]
+      },
+      "gates_external": [],
+      "gates": [
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                0,
+                1
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 2,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 0
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 0,
+              "value": 2
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    2,
+                    3
+                  ],
+                  "lhs_value": [
+                    0,
+                    1
+                  ],
+                  "rhs_timestamp": [
+                    6,
+                    7
+                  ],
+                  "rhs_value": [
+                    4,
+                    5
+                  ]
+                }
+              },
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                0,
+                1
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 3,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 1
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 1,
+              "value": 3
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                2,
+                3
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 4,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 2
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 2,
+              "value": 4
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    10,
+                    11
+                  ],
+                  "lhs_value": [
+                    8,
+                    9
+                  ],
+                  "rhs_timestamp": [
+                    14,
+                    15
+                  ],
+                  "rhs_value": [
+                    12,
+                    13
+                  ]
+                }
+              },
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                2,
+                3
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 5,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 3
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 3,
+              "value": 5
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                4,
+                5
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 6,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 4
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 4,
+              "value": 6
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    18,
+                    19
+                  ],
+                  "lhs_value": [
+                    16,
+                    17
+                  ],
+                  "rhs_timestamp": [
+                    22,
+                    23
+                  ],
+                  "rhs_value": [
+                    20,
+                    21
+                  ]
+                }
+              },
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                4,
+                5
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 7,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 5
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 5,
+              "value": 7
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                6,
+                7
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 8,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 6
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 6,
+              "value": 8
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    26,
+                    27
+                  ],
+                  "lhs_value": [
+                    24,
+                    25
+                  ],
+                  "rhs_timestamp": [
+                    30,
+                    31
+                  ],
+                  "rhs_value": [
+                    28,
+                    29
+                  ]
+                }
+              },
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                6,
+                7
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 9,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 7
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 7,
+              "value": 9
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                8,
+                9
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 10,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 8
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 8,
+              "value": 10
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    34,
+                    35
+                  ],
+                  "lhs_value": [
+                    32,
+                    33
+                  ],
+                  "rhs_timestamp": [
+                    38,
+                    39
+                  ],
+                  "rhs_value": [
+                    36,
+                    37
+                  ]
+                }
+              },
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                8,
+                9
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 11,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 9
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 9,
+              "value": 11
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                10,
+                11
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 12,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 10
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 10,
+              "value": 12
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    42,
+                    43
+                  ],
+                  "lhs_value": [
+                    40,
+                    41
+                  ],
+                  "rhs_timestamp": [
+                    46,
+                    47
+                  ],
+                  "rhs_value": [
+                    44,
+                    45
+                  ]
+                }
+              },
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                10,
+                11
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 13,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 11
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 11,
+              "value": 13
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                12,
+                13
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 14,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 12
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 12,
+              "value": 14
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    50,
+                    51
+                  ],
+                  "lhs_value": [
+                    48,
+                    49
+                  ],
+                  "rhs_timestamp": [
+                    54,
+                    55
+                  ],
+                  "rhs_value": [
+                    52,
+                    53
+                  ]
+                }
+              },
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                12,
+                13
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 15,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 13
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 13,
+              "value": 15
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                14,
+                15
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 16,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 14
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 14,
+              "value": 16
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    58,
+                    59
+                  ],
+                  "lhs_value": [
+                    56,
+                    57
+                  ],
+                  "rhs_timestamp": [
+                    62,
+                    63
+                  ],
+                  "rhs_value": [
+                    60,
+                    61
+                  ]
+                }
+              },
+              "setup": [
+                0,
+                1
+              ],
+              "set_idxes": [
+                14,
+                15
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 17,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 15
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 15,
+              "value": 17
+            }
+          ],
+          "num_challenges": 1
+        }
+      ],
+      "caches": [],
+      "intermediate_layer_width": null
+    },
+    {
+      "arena": {
+        "nodes": [
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 1
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 3
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 0
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 5
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 7
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 1
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 9
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 11
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 2
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 13
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 15
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 3
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 0
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 2
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 4
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 4
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 6
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 5
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 8
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 10
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 6
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 12
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 14
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 7
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          }
+        ],
+        "hints": [
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 1
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 3
+                }
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 1
+                }
+              },
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 3
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 5
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 7
+                }
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 5
+                }
+              },
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 7
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 9
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 11
+                }
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 9
+                }
+              },
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 11
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 13
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 15
+                }
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 13
+                }
+              },
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 15
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 0
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 2
+                }
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 0
+                }
+              },
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 2
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 4
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 6
+                }
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 4
+                }
+              },
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 6
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 8
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 10
+                }
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 8
+                }
+              },
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 10
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 12
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 14
+                }
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 12
+                }
+              },
+              {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 14
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gates_external": [],
+      "gates": [
+        {
+          "kind": {
+            "TrivialProduct": {
+              "input": [
+                0,
+                1
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 2,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 0
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 0,
+              "value": 2
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "TrivialProduct": {
+              "input": [
+                3,
+                4
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 5,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 1
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 1,
+              "value": 5
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "TrivialProduct": {
+              "input": [
+                6,
+                7
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 8,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 2
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 2,
+              "value": 8
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "TrivialProduct": {
+              "input": [
+                9,
+                10
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 11,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 3
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 3,
+              "value": 11
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "TrivialProduct": {
+              "input": [
+                12,
+                13
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 14,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 4
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 4,
+              "value": 14
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "TrivialProduct": {
+              "input": [
+                15,
+                16
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 17,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 5
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 5,
+              "value": 17
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "TrivialProduct": {
+              "input": [
+                18,
+                19
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 20,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 6
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 6,
+              "value": 20
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "TrivialProduct": {
+              "input": [
+                21,
+                22
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 23,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 7
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 7,
+              "value": 23
+            }
+          ],
+          "num_challenges": 1
+        }
+      ],
+      "caches": [],
+      "intermediate_layer_width": 16
+    },
+    {
+      "arena": {
+        "nodes": [
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 0
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 1
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 0
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 2
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 3
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 1
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 4
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 5
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 2
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 6
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 7
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "Gate": 3
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          }
+        ],
+        "hints": [
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 0
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 1
+                }
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 0
+                }
+              },
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 1
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 2
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 3
+                }
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 2
+                }
+              },
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 3
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 4
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 5
+                }
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 4
+                }
+              },
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 5
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 6
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 7
+                }
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 6
+                }
+              },
+              {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 7
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gates_external": [],
+      "gates": [
+        {
+          "kind": {
+            "TrivialProduct": {
+              "input": [
+                0,
+                1
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 2,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 0
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 0,
+              "value": 2
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "TrivialProduct": {
+              "input": [
+                3,
+                4
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 5,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 1
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 1,
+              "value": 5
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "TrivialProduct": {
+              "input": [
+                6,
+                7
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 8,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 2
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 2,
+              "value": 8
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "TrivialProduct": {
+              "input": [
+                9,
+                10
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 11,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 3
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 3,
+              "value": 11
+            }
+          ],
+          "num_challenges": 1
+        }
+      ],
+      "caches": [],
+      "intermediate_layer_width": 8
+    },
+    {
+      "arena": {
+        "nodes": [
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 0
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 1
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "GateExternal": 0
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 2
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 3
+                }
+              },
+              "domain": "Ext"
+            }
+          },
+          {
+            "GateOutput": {
+              "producer": {
+                "GateExternal": 1
+              },
+              "out": 0,
+              "domain": "Ext"
+            }
+          }
+        ],
+        "hints": [
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 0
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 1
+                }
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 0
+                }
+              },
+              {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 1
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 2
+                }
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 3
+                }
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 2
+                }
+              },
+              {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 3
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gates_external": [
+        {
+          "kind": {
+            "TrivialProduct": {
+              "input": [
+                0,
+                1
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 2,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 0
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 0,
+              "value": 2
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "TrivialProduct": {
+              "input": [
+                3,
+                4
+              ]
+            }
+          },
+          "dst": [
+            {
+              "node": 5,
+              "addr": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 1
+                }
+              },
+              "forward_source": "Computed"
+            }
+          ],
+          "batch_terms": [
+            {
+              "power": 1,
+              "value": 5
+            }
+          ],
+          "num_challenges": 1
+        }
+      ],
+      "gates": [],
+      "caches": [],
+      "intermediate_layer_width": 4
+    }
+  ],
+  "globals": {
+    "trace_len": 16777216,
+    "offset_for_decoder_table": 0,
+    "has_decoder_lookup": false,
+    "generic_lookup_tables_width": 0,
+    "tables_ids_in_generic_lookups": false,
+    "num_generic_lookups": 0,
+    "decode_table_columns_mask": [],
+    "table_offsets": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "total_tables_size": 0,
+    "scratch_space_size": 0,
+    "scratch_space_mapping": [],
+    "scratch_space_mapping_rev": {},
+    "global_output_map": {
+      "PermutationProduct": [
+        {
+          "InnerLayer": {
+            "layer": 4,
+            "offset": 0
+          }
+        },
+        {
+          "InnerLayer": {
+            "layer": 4,
+            "offset": 1
+          }
+        }
+      ]
+    },
+    "memory_layout": {
+      "ram_access_sets": [],
+      "machine_state": null,
+      "delegation_state": null,
+      "decoder_input": null,
+      "indirect_access_variable_offsets": [],
+      "teardown_sets": [
+        [
+          [
+            {
+              "BaseLayerMemory": 2
+            },
+            {
+              "BaseLayerMemory": 3
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 0
+            },
+            {
+              "BaseLayerMemory": 1
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 6
+            },
+            {
+              "BaseLayerMemory": 7
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 4
+            },
+            {
+              "BaseLayerMemory": 5
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 10
+            },
+            {
+              "BaseLayerMemory": 11
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 8
+            },
+            {
+              "BaseLayerMemory": 9
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 14
+            },
+            {
+              "BaseLayerMemory": 15
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 12
+            },
+            {
+              "BaseLayerMemory": 13
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 18
+            },
+            {
+              "BaseLayerMemory": 19
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 16
+            },
+            {
+              "BaseLayerMemory": 17
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 22
+            },
+            {
+              "BaseLayerMemory": 23
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 20
+            },
+            {
+              "BaseLayerMemory": 21
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 26
+            },
+            {
+              "BaseLayerMemory": 27
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 24
+            },
+            {
+              "BaseLayerMemory": 25
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 30
+            },
+            {
+              "BaseLayerMemory": 31
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 28
+            },
+            {
+              "BaseLayerMemory": 29
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 34
+            },
+            {
+              "BaseLayerMemory": 35
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 32
+            },
+            {
+              "BaseLayerMemory": 33
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 38
+            },
+            {
+              "BaseLayerMemory": 39
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 36
+            },
+            {
+              "BaseLayerMemory": 37
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 42
+            },
+            {
+              "BaseLayerMemory": 43
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 40
+            },
+            {
+              "BaseLayerMemory": 41
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 46
+            },
+            {
+              "BaseLayerMemory": 47
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 44
+            },
+            {
+              "BaseLayerMemory": 45
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 50
+            },
+            {
+              "BaseLayerMemory": 51
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 48
+            },
+            {
+              "BaseLayerMemory": 49
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 54
+            },
+            {
+              "BaseLayerMemory": 55
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 52
+            },
+            {
+              "BaseLayerMemory": 53
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 58
+            },
+            {
+              "BaseLayerMemory": 59
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 56
+            },
+            {
+              "BaseLayerMemory": 57
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "BaseLayerMemory": 62
+            },
+            {
+              "BaseLayerMemory": 63
+            }
+          ],
+          [
+            {
+              "BaseLayerMemory": 60
+            },
+            {
+              "BaseLayerMemory": 61
+            }
+          ]
+        ]
+      ],
+      "total_width": 64,
+      "inits_and_teardowns_word_bits": 2
+    },
+    "witness_layout": {
+      "multiplicities_columns_for_range_check_16": {
+        "start": 0,
+        "end": 0
+      },
+      "multiplicities_columns_for_timestamp_range_check": {
+        "start": 0,
+        "end": 0
+      },
+      "multiplicities_columns_for_generic_lookup": {
+        "start": 0,
+        "end": 0
+      },
+      "total_width": 0
+    }
+  }
+}

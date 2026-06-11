@@ -3417,6 +3417,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 52
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 52
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3436,6 +3457,11 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Place": {
+                  "BaseLayerMemory": 49
+                }
               }
             }
           }
@@ -3455,6 +3481,11 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Place": {
+                  "BaseLayerMemory": 51
+                }
               }
             }
           }
@@ -3540,6 +3571,119 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 22
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 6
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 13
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 38
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 43
+                    }
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 9
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013134849
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 29
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013200385
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 28
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 128
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 26
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 16
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 25
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013134849
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 1
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013200385
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 0
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3649,6 +3793,153 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 0
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 27
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 28
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 7
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 14
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 39
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 44
+                    }
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 10
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013134849
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 31
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013200385
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 30
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 29
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 128
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 21
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 16
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 20
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013134849
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013200385
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 2
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3680,6 +3971,39 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 43
+                    }
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 16
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 512
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 44
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3711,6 +4035,39 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 45
+                    }
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 17
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 512
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 42
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3772,6 +4129,85 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 10
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 35
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 20
+                    }
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 23
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013200385
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 38
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 256
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 36
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013200385
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 12
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 256
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 11
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3845,6 +4281,95 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 7
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 12
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 37
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 38
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 21
+                    }
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 24
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013200385
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 39
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 256
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 34
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013200385
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 13
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 256
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 8
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3876,6 +4401,39 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 35
+                    }
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 30
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 256
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 36
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3907,6 +4465,39 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 37
+                    }
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 31
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 256
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 34
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3940,6 +4531,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 0
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 0
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3973,6 +4585,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 1
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4006,6 +4639,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 2
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 2
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4039,6 +4693,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4072,6 +4747,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 12
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 12
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4105,6 +4801,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 13
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 13
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4138,6 +4855,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 28
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 28
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4171,6 +4909,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 29
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 29
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4204,6 +4963,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 30
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 30
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4237,6 +5017,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 31
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 31
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4270,6 +5071,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 38
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 38
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4303,6 +5125,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 39
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 39
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4336,6 +5179,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 46
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 46
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4369,6 +5233,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 47
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 47
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4402,6 +5287,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 48
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 48
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4435,6 +5341,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 49
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 49
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4468,6 +5395,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 50
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 50
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4501,6 +5449,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 51
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 51
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4534,6 +5503,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 52
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 52
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4567,6 +5557,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 53
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 53
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -4600,6 +5611,27 @@
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 54
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 2013265920
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 54
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -7490,7 +8522,73 @@
     {
       "AssertZero": {
         "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Var": 0
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            },
+            {
+              "Var": 0
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  0,
+                  0,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  0,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
           "Var": 4
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  4,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
         },
         "prevent_optimizations": true
       }
@@ -7500,12 +8598,27 @@
         "expr": {
           "Var": 6
         },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  6,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
         "prevent_optimizations": true
       }
     },
     {
-      "Define": {
-        "dst": 17,
+      "AssertZero": {
         "expr": {
           "Sum": [
             {
@@ -7582,14 +8695,172 @@
                   "Var": 66
                 }
               ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 17
+                }
+              ]
             }
           ]
-        }
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  15,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  17,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  19,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  33,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  35,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744970275,
+                "inner": [
+                  37,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1476674629,
+                "inner": [
+                  38,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  59,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435422,
+                "inner": [
+                  62,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 134217455,
+                "inner": [
+                  63,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744970275,
+                "inner": [
+                  65,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1476674629,
+                "inner": [
+                  66,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": false
       }
     },
     {
-      "Define": {
-        "dst": 18,
+      "AssertZero": {
         "expr": {
           "Sum": [
             {
@@ -7692,14 +8963,220 @@
                   "Var": 68
                 }
               ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 18
+                }
+              ]
             }
           ]
-        }
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  16,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  18,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  20,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  34,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  36,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  37,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 536870908,
+                "inner": [
+                  38,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744970275,
+                "inner": [
+                  39,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1476674629,
+                "inner": [
+                  40,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435422,
+                "inner": [
+                  57,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 134217455,
+                "inner": [
+                  58,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  64,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  65,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 536870908,
+                "inner": [
+                  66,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744970275,
+                "inner": [
+                  67,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1476674629,
+                "inner": [
+                  68,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": false
       }
     },
     {
-      "Define": {
-        "dst": 21,
+      "AssertZero": {
         "expr": {
           "Sum": [
             {
@@ -7714,14 +9191,64 @@
                   "Var": 81
                 }
               ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 21
+                }
+              ]
             }
           ]
-        }
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  21,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  80,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 536869820,
+                "inner": [
+                  81,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": false
       }
     },
     {
-      "Define": {
-        "dst": 22,
+      "AssertZero": {
         "expr": {
           "Sum": [
             {
@@ -7736,14 +9263,64 @@
                   "Var": 79
                 }
               ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 22
+                }
+              ]
             }
           ]
-        }
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  22,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 536869820,
+                "inner": [
+                  79,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  82,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": false
       }
     },
     {
-      "Define": {
-        "dst": 25,
+      "AssertZero": {
         "expr": {
           "Sum": [
             {
@@ -7794,14 +9371,124 @@
                   "Var": 75
                 }
               ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 25
+                }
+              ]
             }
           ]
-        }
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  23,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  25,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  47,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  48,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744970275,
+                "inner": [
+                  49,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  72,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  73,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744970275,
+                "inner": [
+                  75,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": false
       }
     },
     {
-      "Define": {
-        "dst": 26,
+      "AssertZero": {
         "expr": {
           "Sum": [
             {
@@ -7858,14 +9545,148 @@
                   "Var": 76
                 }
               ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 26
+                }
+              ]
             }
           ]
-        }
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  24,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  26,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  44,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  45,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  49,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744970275,
+                "inner": [
+                  50,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  71,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  74,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  75,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744970275,
+                "inner": [
+                  76,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": false
       }
     },
     {
-      "Define": {
-        "dst": 29,
+      "AssertZero": {
         "expr": {
           "Sum": [
             {
@@ -7880,14 +9701,64 @@
                   "Var": 73
                 }
               ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 29
+                }
+              ]
             }
           ]
-        }
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  29,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  72,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  73,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": false
       }
     },
     {
-      "Define": {
-        "dst": 30,
+      "AssertZero": {
         "expr": {
           "Sum": [
             {
@@ -7902,9 +9773,1110 @@
                   "Var": 71
                 }
               ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 30
+                }
+              ]
             }
           ]
-        }
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  30,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  71,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  74,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 37
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 37
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  37,
+                  37,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  37,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 38
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 38
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  38,
+                  38,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  38,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 39
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 39
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  39,
+                  39,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  39,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 40
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 40
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  40,
+                  40,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  40,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 49
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 49
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  49,
+                  49,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  49,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 50
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 50
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  50,
+                  50,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  50,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 65
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 65
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  65,
+                  65,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  65,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 66
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 66
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  66,
+                  66,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  66,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 67
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 67
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  67,
+                  67,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  67,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 68
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 68
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  68,
+                  68,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  68,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 75
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 75
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  75,
+                  75,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  75,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 76
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 76
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  76,
+                  76,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  76,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 85
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 85
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  85,
+                  85,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  85,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 88
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 88
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  88,
+                  88,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  88,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 91
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 91
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  91,
+                  91,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  91,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 94
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 94
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  94,
+                  94,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  94,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 97
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 97
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  97,
+                  97,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  97,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 100
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 100
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  100,
+                  100,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  100,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 103
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 103
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  103,
+                  103,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  103,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 106
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 106
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  106,
+                  106,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  106,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 109
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 109
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  109,
+                  109,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  109,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
       }
     }
   ],
@@ -10111,11 +13083,11 @@
     "41": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::38",
     "42": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::38",
     "43": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::117",
-    "44": "Variable at cs/src/cs/circuit_impl.rs::1259",
-    "45": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "44": "Variable at cs/src/cs/circuit_impl.rs::1228",
+    "45": "Variable at cs/src/cs/circuit_impl.rs::1228",
     "46": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::117",
-    "47": "Variable at cs/src/cs/circuit_impl.rs::1259",
-    "48": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "47": "Variable at cs/src/cs/circuit_impl.rs::1228",
+    "48": "Variable at cs/src/cs/circuit_impl.rs::1228",
     "49": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::204",
     "50": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::206",
     "51": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::213",
@@ -10124,32 +13096,32 @@
     "54": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::213",
     "55": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::301",
     "56": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::302",
-    "57": "Variable at cs/src/cs/circuit_impl.rs::1259",
-    "58": "Variable at cs/src/cs/circuit_impl.rs::1259",
-    "59": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "57": "Variable at cs/src/cs/circuit_impl.rs::1228",
+    "58": "Variable at cs/src/cs/circuit_impl.rs::1228",
+    "59": "Variable at cs/src/cs/circuit_impl.rs::1228",
     "60": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::301",
     "61": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::302",
-    "62": "Variable at cs/src/cs/circuit_impl.rs::1259",
-    "63": "Variable at cs/src/cs/circuit_impl.rs::1259",
-    "64": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "62": "Variable at cs/src/cs/circuit_impl.rs::1228",
+    "63": "Variable at cs/src/cs/circuit_impl.rs::1228",
+    "64": "Variable at cs/src/cs/circuit_impl.rs::1228",
     "65": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::434",
     "66": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::434",
     "67": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::436",
     "68": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::436",
     "69": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::441",
     "70": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::441",
-    "71": "Variable at cs/src/cs/circuit_impl.rs::1259",
-    "72": "Variable at cs/src/cs/circuit_impl.rs::1259",
-    "73": "Variable at cs/src/cs/circuit_impl.rs::1259",
-    "74": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "71": "Variable at cs/src/cs/circuit_impl.rs::1228",
+    "72": "Variable at cs/src/cs/circuit_impl.rs::1228",
+    "73": "Variable at cs/src/cs/circuit_impl.rs::1228",
+    "74": "Variable at cs/src/cs/circuit_impl.rs::1228",
     "75": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::552",
     "76": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::554",
     "77": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::561",
     "78": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::561",
-    "79": "Variable at cs/src/cs/circuit_impl.rs::1259",
-    "80": "Variable at cs/src/cs/circuit_impl.rs::1259",
-    "81": "Variable at cs/src/cs/circuit_impl.rs::1259",
-    "82": "Variable at cs/src/cs/circuit_impl.rs::1259",
+    "79": "Variable at cs/src/cs/circuit_impl.rs::1228",
+    "80": "Variable at cs/src/cs/circuit_impl.rs::1228",
+    "81": "Variable at cs/src/cs/circuit_impl.rs::1228",
+    "82": "Variable at cs/src/cs/circuit_impl.rs::1228",
     "83": "ram or indirect query 0, register read_ts[0]",
     "84": "ram or indirect query 0, register read_ts[1]",
     "85": "indirect access query 0, register acccess interm ts borrow",

@@ -146207,7 +146207,7 @@
     ],
     "total_tables_size": 344384,
     "scratch_space_size": 0,
-    "scratch_space_mapping": {},
+    "scratch_space_mapping": [],
     "scratch_space_mapping_rev": {},
     "global_output_map": {
       "PermutationProduct": [
