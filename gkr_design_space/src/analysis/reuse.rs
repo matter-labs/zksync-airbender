@@ -38,37 +38,16 @@ pub struct CacheIngredients {
     /// Per consumer layer: fan-in bytes NOT already in that layer's baseline
     /// loaded set — the marginal traffic if recomputed there instead of loaded.
     pub marginal_bytes_per_row: Vec<(usize, u64)>,
-    /// Linear (challenge-weighted column combination: the lookup family) vs
-    /// nonlinear (memory-tuple products). Folding commutes with linear caches
-    /// only — a linear cache is recomputable from folded operands at ANY
-    /// backward round; a nonlinear one must be materialized (degree cap
-    /// forbids composing it into max-quadratic relations).
-    pub linear: bool,
-    /// One forward evaluation of the cache value at a single point.
-    /// Backward per-round remat across all rounds sums to ~2N evaluations
-    /// (geometric halving), i.e. ~2x one forward pass of compute.
+    /// NO current cache kind is backward-rematerializable (audit
+    /// 2026-06-11): lookup caches are table GATHERS t[mapping(x)] — the
+    /// LinearComb in their CacheKind is the index computation, not the value —
+    /// and fold(gather) != gather(fold); memory tuples are products (degree
+    /// cap). The only sound variant is deferring materialization to backward
+    /// round 0 (on-hypercube), which saves exactly the forward store below.
     pub recompute_ops: RecomputeOps,
-    /// Backward fold-chain bytes/row of the materialized cache column
-    /// (strategy a/b): what remat avoids.
+    /// Backward fold-chain bytes/row of the materialized cache column —
+    /// unavoidable for every current cache kind once it is consumed backward.
     pub bwd_materialize_bytes_per_row: u64,
-    /// Linear caches only: marginal fan-in fold-chain bytes/row if remat'd in
-    /// backward (fan-in columns not already folded for other terms, worst
-    /// consumer layer). None = nonlinear, remat not viable.
-    pub bwd_remat_marginal_bytes_per_row: Option<u64>,
-}
-
-/// Joint scenario: rematerialize ALL linear caches at once. Shared fan-in
-/// columns are counted once (the per-cache marginals over-count them).
-#[derive(Debug, Serialize)]
-pub struct JointLinearRemat {
-    pub remat_caches: usize,
-    /// Fold chains added: union of linear-cache fan-in columns not in the
-    /// baseline backward fold set of their layer.
-    pub added_fold_bytes_per_row: u64,
-    /// Fold chains avoided: the remat'd cache columns themselves.
-    pub avoided_fold_bytes_per_row: u64,
-    /// Forward materialization stores avoided.
-    pub avoided_store_bytes_per_row: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -76,7 +55,6 @@ pub struct CircuitReuse {
     /// Fan-out histogram over computed nodes, all layers pooled: fanout -> count.
     pub fanout_histogram: BTreeMap<u32, u32>,
     pub caches: Vec<CacheIngredients>,
-    pub joint_linear_remat: JointLinearRemat,
 }
 
 fn is_virtual_addr(a: &GKRAddress) -> bool {
@@ -172,17 +150,6 @@ pub fn circuit_reuse(c: &LoadedCircuit) -> CircuitReuse {
         })
         .collect();
 
-    // Exact backward fold-address set per layer (for remat marginal overlap —
-    // a remat'd cache's fan-in column is free iff that layer's backward pass
-    // already folds it for other terms).
-    let layer_folds: Vec<HashSet<GKRAddress>> = c
-        .circuit
-        .layers
-        .iter()
-        .zip(&c.graphs)
-        .map(|(layer, g)| crate::analysis::backward::backward_fold_addrs(g, layer))
-        .collect();
-
     // Cached-addr consumers: addr -> [(layer, uses)].
     let mut consumers: HashMap<GKRAddress, Vec<(usize, u32)>> = HashMap::new();
     for (li, g) in c.graphs.iter().enumerate() {
@@ -225,27 +192,9 @@ pub fn circuit_reuse(c: &LoadedCircuit) -> CircuitReuse {
                 })
                 .collect();
 
-            let linear = !matches!(cache.kind, CacheKind::MemoryTuple { .. });
             let recompute_ops =
                 cache_recompute_ops(g, layer, &layer.arena.nodes, cache, fanin_cols as u64);
             let width = g.nodes[out_node].width_bytes();
-            // Remat in backward: the cache column's own fold chain is avoided;
-            // marginal cost = fold chains of fan-in columns not already folded
-            // in the consumer layer (worst consumer = max marginal set).
-            let bwd_remat_marginal_bytes_per_row = linear.then(|| {
-                uses_per_layer
-                    .iter()
-                    .map(|&(cl, _)| {
-                        fanin_addrs
-                            .iter()
-                            .filter(|(a, _)| !layer_folds[cl].contains(a))
-                            .map(|&(_, w)| fold_chain_bytes_per_row(w as u32))
-                            .sum::<u64>()
-                    })
-                    .max()
-                    .unwrap_or(0)
-            });
-
             caches.push(CacheIngredients {
                 producing_layer: li,
                 addr: cache.out.1,
@@ -255,56 +204,15 @@ pub fn circuit_reuse(c: &LoadedCircuit) -> CircuitReuse {
                 fanin_cols,
                 fanin_bytes_per_row,
                 marginal_bytes_per_row,
-                linear,
                 recompute_ops,
                 bwd_materialize_bytes_per_row: fold_chain_bytes_per_row(width),
-                bwd_remat_marginal_bytes_per_row,
             });
-        }
-    }
-
-    // Joint linear-remat scenario: union fan-in columns across all linear
-    // caches per producing layer, count each added fold chain once.
-    let mut joint = JointLinearRemat {
-        remat_caches: 0,
-        added_fold_bytes_per_row: 0,
-        avoided_fold_bytes_per_row: 0,
-        avoided_store_bytes_per_row: 0,
-    };
-    let mut added: HashMap<usize, HashSet<GKRAddress>> = HashMap::new();
-    let mut added_widths: HashMap<GKRAddress, u64> = HashMap::new();
-    for (li, (layer, g)) in c.circuit.layers.iter().zip(&c.graphs).enumerate() {
-        for cache in &layer.caches {
-            if matches!(cache.kind, CacheKind::MemoryTuple { .. }) {
-                continue;
-            }
-            joint.remat_caches += 1;
-            let out_node = cache.out.0.0 as usize;
-            let width = g.nodes[out_node].width_bytes();
-            joint.avoided_fold_bytes_per_row += fold_chain_bytes_per_row(width);
-            joint.avoided_store_bytes_per_row += width as u64;
-            for &i in &closure_load_nodes(g, out_node) {
-                if let Origin::InputColumn(a) | Origin::CachedColumn(a) | Origin::Scratch(a) =
-                    g.nodes[i].origin
-                {
-                    if !is_virtual_addr(&a) && !layer_folds[li].contains(&a) {
-                        added.entry(li).or_default().insert(a);
-                        added_widths.insert(a, g.nodes[i].width_bytes() as u64);
-                    }
-                }
-            }
-        }
-    }
-    for set in added.values() {
-        for a in set {
-            joint.added_fold_bytes_per_row += fold_chain_bytes_per_row(added_widths[a] as u32);
         }
     }
 
     CircuitReuse {
         fanout_histogram,
         caches,
-        joint_linear_remat: joint,
     }
 }
 
@@ -329,12 +237,8 @@ mod tests {
             // every cache the compiler materialized has at least one consumer
             assert!(ci.total_uses >= 1, "dead cache {:?}", ci.addr);
             assert!(ci.recompute_ops.weighted > 0, "zero-op cache {:?}", ci.addr);
-            // linear caches get a remat estimate, nonlinear (memory tuples) None
-            assert_eq!(ci.linear, ci.bwd_remat_marginal_bytes_per_row.is_some());
+            assert!(ci.bwd_materialize_bytes_per_row > 0);
         }
-        // add_sub has both linear lookup caches and nonlinear memory tuples
-        assert!(r.caches.iter().any(|ci| ci.linear));
-        assert!(r.caches.iter().any(|ci| !ci.linear));
         assert!(!r.fanout_histogram.is_empty());
     }
 }
