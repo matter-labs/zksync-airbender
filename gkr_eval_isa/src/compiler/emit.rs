@@ -54,18 +54,10 @@ impl<'a> EmitCtx<'a> {
     /// such a node — the caller's debug_assert guards this).
     fn next_use(&self, node: usize, after: usize) -> usize {
         let uses = &self.use_positions[node];
-        // Binary search for first position > after (strictly after, since `after`
-        // is the current position where we're about to produce, not consume).
-        match uses.binary_search(&after) {
-            Ok(i) => {
-                // Exact match: there's a use AT `after`. Walk forward to find the
-                // first entry strictly greater (the real "next" future use from
-                // the current position's perspective during eviction is any use
-                // that hasn't happened yet, including the current one).
-                uses.get(i).copied().unwrap_or(usize::MAX)
-            }
-            Err(i) => uses.get(i).copied().unwrap_or(usize::MAX),
-        }
+        // First use at or after the current position (a use AT `after` is one
+        // that has not been satisfied yet during this iteration).
+        let i = uses.partition_point(|&p| p < after);
+        uses.get(i).copied().unwrap_or(usize::MAX)
     }
 
     /// Build the victim list from all current Slot placements, excluding any

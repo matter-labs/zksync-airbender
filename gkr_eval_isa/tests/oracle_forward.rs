@@ -155,3 +155,17 @@ fn tiny_budget_actually_spills() {
     assert!(cl.stats.spill_evictions > 0, "expected spill_evictions > 0 at budget=2, got 0");
     assert!(cl.stats.remat_instrs > 0, "expected remat_instrs > 0 at budget=2, got 0");
 }
+
+#[test]
+fn oracle_pressure_order() {
+    // The report compiles Pressure-order programs for the order-validation
+    // comparison; this checks they are also CORRECT (final-review gap).
+    use gkr_eval_isa::compiler::OrderKind;
+    for f in [
+        "bigint_with_extended_control_codegen_ir_gkr.json",
+        "blake2_with_extended_control_codegen_ir_gkr.json",
+    ] {
+        let p = CompileParams { order: OrderKind::Pressure, ..Default::default() };
+        check_circuit(&fixture(f), p, 0x9E55);
+    }
+}
