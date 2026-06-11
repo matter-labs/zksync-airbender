@@ -1,5 +1,6 @@
 //! Arena-order instruction emission over the ProgramView DAG (forward pass).
 
+use super::fixed_regs;
 use super::slots::SlotAlloc;
 use super::view::{self, ProgramView};
 use super::{CompileParams, CompileStats, CompiledLayer, OrderKind, SourceMap, build_const_table, enumerate_sources, is_computed, node_domain};
@@ -41,6 +42,10 @@ struct EmitCtx<'a> {
     /// included because those are satisfied immediately at the producer's own
     /// position, so the value never stays live waiting for them.
     use_positions: Vec<Vec<usize>>,
+    /// Fixed-register file assignment: node -> bf-cell index. Empty when
+    /// params.fixed_reg_cells == 0. Nodes in this map always write to
+    /// Dst::FixedReg and are never allocated slots.
+    fixed: HashMap<usize, u16>,
 }
 
 impl<'a> EmitCtx<'a> {
@@ -225,6 +230,10 @@ impl<'a> EmitCtx<'a> {
                 v => Operand::Const { idx: *self.const_id.get(&v).expect("constant not in table") },
             },
             ExprNode::Place { .. } | ExprNode::GateOutput { .. } => {
+                // A leaf pinned to the fixed-register file is read from there.
+                if let Some(Placement::FixedReg { cell, e4 }) = self.placements.get(&node).copied() {
+                    return Operand::FixedReg { cell, e4 };
+                }
                 let (id, e4) = *self.source_id.get(&node).expect("source not mapped");
                 Operand::Source { id, e4 }
             }
@@ -241,7 +250,7 @@ impl<'a> EmitCtx<'a> {
         use crate::isa::NEG_ONE_U32;
         // Classify the node kind without keeping a borrow on self.arena, so that
         // we can call self.remat() (which needs &mut self) in the computed branch.
-        enum Kind { Zero, One, NegOne, Const(u8), Source { id: u16, e4: bool }, Computed }
+        enum Kind { Zero, One, NegOne, Const(u8), Source { id: u16, e4: bool }, FixedRegLeaf { cell: u16, e4: bool }, Computed }
         let kind = match &self.arena[node] {
             ExprNode::Constant(c) => match *c {
                 0 => Kind::Zero,
@@ -250,8 +259,17 @@ impl<'a> EmitCtx<'a> {
                 v => Kind::Const(*self.const_id.get(&v).expect("constant not in table")),
             },
             ExprNode::Place { .. } | ExprNode::GateOutput { .. } => {
-                let (id, e4) = *self.source_id.get(&node).expect("source not mapped");
-                Kind::Source { id, e4 }
+                // A leaf pinned to the fixed-register file is read from there.
+                // Check placement FIRST — preloads write the value to a fixed cell.
+                if let Some(Placement::FixedReg { cell, e4 }) = self.placements.get(&node).copied() {
+                    // Count as a fixed_reg_hit in record_instr when the operand is used.
+                    // Return a sentinel that lets the match arm below emit the right operand.
+                    let _ = (cell, e4); // captured below via FixedRegLeaf
+                    Kind::FixedRegLeaf { cell, e4 }
+                } else {
+                    let (id, e4) = *self.source_id.get(&node).expect("source not mapped");
+                    Kind::Source { id, e4 }
+                }
             }
             ExprNode::Sum { .. } | ExprNode::Product { .. } => Kind::Computed,
         };
@@ -261,6 +279,7 @@ impl<'a> EmitCtx<'a> {
             Kind::NegOne => Operand::NegOne,
             Kind::Const(idx) => Operand::Const { idx },
             Kind::Source { id, e4 } => Operand::Source { id, e4 },
+            Kind::FixedRegLeaf { cell, e4 } => Operand::FixedReg { cell, e4 },
             Kind::Computed => {
                 // If the placement was evicted, rematerialize it now.
                 // Empty protect is sound today: build_operands pre-remats operands
@@ -286,16 +305,22 @@ impl<'a> EmitCtx<'a> {
         }
         self.remaining_uses[node] -= 1;
         if self.remaining_uses[node] == 0 {
-            if let Some(placement) = self.placements.remove(&node) {
-                match placement {
-                    Placement::Slot { cell, e4 } => {
-                        let w = if e4 { 4 } else { 1 };
-                        self.slot_alloc.release(cell, w);
-                    }
-                    Placement::FixedReg { .. } => {
-                        // FixedReg cells are not freed (they persist for the program).
-                    }
+            // Check placement type before removing. FixedReg placements stay in
+            // the map permanently so that subsequent operand_for calls still find
+            // the value pinned in the fixed-register file.
+            match self.placements.get(&node) {
+                Some(Placement::Slot { cell, e4 }) => {
+                    let w = if *e4 { 4 } else { 1 };
+                    let c = *cell;
+                    self.placements.remove(&node);
+                    self.slot_alloc.release(c, w);
                 }
+                Some(Placement::FixedReg { .. }) => {
+                    // FixedReg cells are pinned for the whole program — do NOT
+                    // remove the placement entry; future operand_for calls must
+                    // still resolve to FixedReg even after remaining_uses hits 0.
+                }
+                None => {}
             }
         }
     }
@@ -304,7 +329,16 @@ impl<'a> EmitCtx<'a> {
     /// `protect` = node ids whose slots must not be evicted (they are operands
     /// that have already been resolved and must remain readable until the
     /// instruction is pushed).
+    ///
+    /// If `node` appears in the fixed-register map, it is assigned to
+    /// `Dst::FixedReg` instead (no slot allocation).
     fn place_result(&mut self, node: usize, e4: bool, protect: &[usize]) -> Placement {
+        // Fixed-register candidates go to the fixed file, not the slot allocator.
+        if let Some(&cell) = self.fixed.get(&node) {
+            let p = Placement::FixedReg { cell, e4 };
+            self.placements.insert(node, p);
+            return p;
+        }
         let w = if e4 { 4 } else { 1 };
         let cell = self.alloc_with_eviction(node, w, protect);
         let p = Placement::Slot { cell, e4 };
@@ -541,6 +575,9 @@ pub(crate) fn emit_layer(
     let arena: &[ExprNode] = &layer.arena.nodes;
     let pv = view::build(layer, g);
 
+    // Assign fixed-register file. Empty map when budget == 0 (disabled).
+    let fixed = fixed_regs::assign(arena, &pv, params.fixed_reg_cells);
+
     // Build source map and source_id lookup.
     let source_map = enumerate_sources(arena);
     let mut source_id: HashMap<usize, (u16, bool)> = HashMap::new();
@@ -673,7 +710,31 @@ pub(crate) fn emit_layer(
         slot_alloc,
         pos: 0,
         use_positions,
+        fixed: fixed.clone(),
     };
+
+    // Preload leaf (Place/GateOutput) candidates assigned to the fixed-register
+    // file. These nodes appear in the `fixed` map but are not computed (they are
+    // not in the `order` list), so they need an explicit SumK arity-1 preload
+    // that copies the staged source into the fixed cell. Emit in ascending node-id
+    // order for determinism.
+    if params.fixed_reg_cells > 0 {
+        let mut leaf_fixed: Vec<(usize, u16)> = fixed
+            .iter()
+            .filter(|&(&node, _)| !is_computed(&arena[node]))
+            .map(|(&node, &cell)| (node, cell))
+            .collect();
+        leaf_fixed.sort_by_key(|&(node, _)| node);
+        for (node, cell) in leaf_fixed {
+            let e4 = node_domain(&arena[node]) == Domain::Ext;
+            // Build the source operand directly from source_id (not via
+            // operand_for — the preload is what establishes the fixed placement).
+            let (id, _) = *ctx.source_id.get(&node).expect("leaf fixed-reg node not in source_id");
+            let src_op = Operand::Source { id, e4 };
+            ctx.placements.insert(node, Placement::FixedReg { cell, e4 });
+            ctx.record_instr(Op::SumK, e4, Dst::FixedReg(cell), vec![src_op]);
+        }
+    }
 
     // Main emission walk.
     for (walk_idx, &n) in order.iter().enumerate() {

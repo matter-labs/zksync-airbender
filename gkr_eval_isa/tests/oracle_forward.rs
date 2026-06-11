@@ -94,6 +94,26 @@ fn oracle_bigint_mid_pressure_budget64() {
 }
 
 #[test]
+fn oracle_blake2_with_fixed_regs() {
+    let p = CompileParams { slot_budget_cells: 4096, fixed_reg_cells: 16, ..Default::default() };
+    check_circuit(&fixture("blake2_with_extended_control_codegen_ir_gkr.json"), p, 0xF1E);
+}
+
+#[test]
+fn fixed_regs_absorb_hub_reads() {
+    let c = load_circuit(&fixture("blake2_with_extended_control_codegen_ir_gkr.json")).unwrap();
+    let cl = compile_layer(
+        &c.circuit.layers[0],
+        &c.graphs[0],
+        CompileParams { slot_budget_cells: 4096, fixed_reg_cells: 16, ..Default::default() },
+    );
+    // Hub columns have program fanout 34-89; 16 bf cells must absorb >100 reads.
+    // (If this threshold fails, check the actual pv.uses distribution — gate-input
+    // references to Place nodes directly don't count as program reads.)
+    assert!(cl.stats.fixed_reg_hits > 100, "got {}", cl.stats.fixed_reg_hits);
+}
+
+#[test]
 fn tiny_budget_actually_spills() {
     let c = load_circuit(&fixture("blake2_g_function_codegen_ir_gkr.json")).unwrap();
     // Layer 0 is the only layer with instructions; budget=2 < max_live=3 forces spills.
