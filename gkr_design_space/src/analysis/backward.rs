@@ -22,6 +22,18 @@
 //! `ld.ca` term reads of just-written fold caches are treated as cache-hot
 //! (zero DRAM); eq/tail/transcript fixed work is ignored (<= tens of KB per
 //! layer vs N-scaled traffic).
+//!
+//! Known refinements from adversarial review, not yet modeled (all small vs
+//! the N-scaled totals; see review journal wf_4c6af944-29c):
+//! - virtual-setup columns DO cost bytes from round 2 on (after-two virtual
+//!   Arcs + e4 tail) — modeled as zero in all rounds here (<= 2 cols/circuit);
+//! - copy/linear-output gate kinds may not emit backward terms at all
+//!   (alias-registered); round-0 reads for them are possibly over-counted;
+//! - InitsOrTeardownsInitialPair folds more columns than
+//!   gate_kind_input_nodes reports (variant payload gap);
+//! - orphan-extras path (dense eq materialization + orphan column reads) not
+//!   modeled; explicit-step byte shape approximated; tower partials blockwise
+//!   stage at acc > 256 not modeled.
 
 use crate::graph::{AnalysisGraph, NodeIdx, Origin};
 use crate::import::LoadedCircuit;
@@ -364,6 +376,12 @@ pub fn backward_cost(c: &LoadedCircuit, params: BackwardParams) -> BackwardCost 
     // doubling backward from 2^final_trace_log2 up to trace_len / 2. All-e4,
     // 2 output claims per record, no warp-partial variant.
     let records = c.circuit.globals.global_output_map.len();
+    // The GPU asserts folding_steps >= 2 per dim-reducing layer and never
+    // clamps; mirror that instead of silently modeling a rejected config.
+    assert!(
+        params.final_trace_log2 >= 2,
+        "final_trace_log2 must be >= 2 (GPU asserts folding_steps >= 2)"
+    );
     let tower_layers: Vec<LayerBackwardCost> = (params.final_trace_log2..fs)
         .map(|k| {
             let src = LayerSources {
@@ -374,7 +392,10 @@ pub fn backward_cost(c: &LoadedCircuit, params: BackwardParams) -> BackwardCost 
                 c0_bf: 0,
                 c0_e4: records * 2,
             };
-            cost_layer(k as usize, "dim_reducing", k.max(2), &src, false)
+            // Input polys have 2*2^k elements (2x the output domain): size the
+            // layer at fs = k+1 so round 0 reads the full input polys and the
+            // fold tail telescopes from 2^k (review finding: 2x undercount).
+            cost_layer(k as usize, "dim_reducing", k + 1, &src, false)
         })
         .collect();
 
