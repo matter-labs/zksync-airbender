@@ -3,7 +3,7 @@ use super::{boolean::BoolNodeExpression, integer::FixedWidthIntegerNodeExpressio
 use crate::definitions::Variable;
 use crate::oracle::Placeholder;
 use crate::witness_placer::*;
-use ::field::{Field, PrimeField};
+use ::field::PrimeField;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum FieldNodeExpression<F: PrimeField> {
@@ -11,6 +11,7 @@ pub enum FieldNodeExpression<F: PrimeField> {
     SubExpression(usize),
     Constant(F),
     FromInteger(Box<FixedWidthIntegerNodeExpression<F>>),
+    FromRawReprWithReduction(Box<FixedWidthIntegerNodeExpression<F>>),
     FromMask(Box<BoolNodeExpression<F>>),
     OracleValue {
         placeholder: Placeholder,
@@ -61,7 +62,7 @@ impl<F: PrimeField> FieldNodeExpression<F> {
                 // nothing
             }
             // the rest is recursive
-            Self::FromInteger(inner) => {
+            Self::FromInteger(inner) | Self::FromRawReprWithReduction(inner) => {
                 inner.make_subexpressions(set, lookup_fn);
             }
             Self::FromMask(inner) => {
@@ -240,14 +241,9 @@ impl<F: PrimeField> WitnessComputationalField<F> for FieldNodeExpression<F> {
         Self::FromInteger(Box::new(value))
     }
     fn from_raw_repr_with_reduction(value: Self::IntegerRepresentation) -> Self {
-        let mut x = Self::from_integer(value);
-        x.mul_assign(&Self::constant(F::from_reduced_raw_repr(1)));
-        x
+        Self::FromRawReprWithReduction(Box::new(value))
     }
     fn into_raw_repr_reduced(self) -> Self::IntegerRepresentation {
-        let r = F::from_reduced_raw_repr(1).inverse().unwrap();
-        let mut x = self;
-        x.mul_assign(&Self::constant(r));
-        x.as_integer()
+        FixedWidthIntegerNodeExpression::U32RawReprReducedFromField(Box::new(self))
     }
 }

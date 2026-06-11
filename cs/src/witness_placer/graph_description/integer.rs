@@ -28,6 +28,7 @@ pub enum FixedWidthIntegerNodeExpression<F: PrimeField> {
     ConstantU32(u32),
     U32FromMask(Box<BoolNodeExpression<F>>),
     U32FromField(Box<FieldNodeExpression<F>>),
+    U32RawReprReducedFromField(Box<FieldNodeExpression<F>>),
     WidenFromU8(Box<Self>),
     WidenFromU16(Box<Self>),
     TruncateFromU16(Box<Self>),
@@ -127,6 +128,7 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
             // the rest is recursive
             Self::U32FromMask(..) => 32u32,
             Self::U32FromField(..) => 32u32,
+            Self::U32RawReprReducedFromField(..) => 32u32,
             Self::TruncateFromU32(inner) => {
                 assert_eq!(inner.bit_width(), 32);
                 16u32
@@ -239,7 +241,7 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
                 inner.make_subexpressions(set, lookup_fn);
                 // set.add_boolean_subexprs(inner);
             }
-            Self::U32FromField(inner) => {
+            Self::U32FromField(inner) | Self::U32RawReprReducedFromField(inner) => {
                 inner.make_subexpressions(set, lookup_fn);
                 // set.add_field_subexprs(inner);
             }

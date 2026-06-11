@@ -47,6 +47,14 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                     let #new_ident = #witness_placer_ident::Field::from_integer(#var_ident);
                 }
             }
+            FieldNodeExpression::FromRawReprWithReduction(expr) => {
+                let var_ident = self.integer_expr_into_var(expr);
+                let new_ident = self.create_var();
+                let witness_placer_ident = &self.witness_placer_ident;
+                quote! {
+                    let #new_ident = #witness_placer_ident::Field::from_raw_repr_with_reduction(#var_ident);
+                }
+            }
             FieldNodeExpression::FromMask(expr) => {
                 let var_ident = self.boolean_expr_into_var(expr);
                 let new_ident = self.create_var();
