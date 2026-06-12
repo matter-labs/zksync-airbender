@@ -9,6 +9,7 @@
 //! per-round-class dimension for full stage 2 lands with the 1b backward plan.
 
 use crate::compiler::{CompileParams, CompileStats, OrderKind, compile_layer};
+use crate::compiler::fwd::{FwdParams, compile_forward};
 use cs::gkr_compiler::codegen_ir::CodegenLayer;
 use gkr_design_space::graph::AnalysisGraph;
 use gkr_design_space::import::LoadedCircuit;
@@ -64,6 +65,31 @@ pub struct PinTradePoint {
 }
 
 #[derive(Serialize)]
+pub struct FwdPoint {
+    pub budget_cells: usize,
+    pub feasible: bool,
+    pub src_reads: usize,
+    pub instrs: usize,
+    pub leaf_loads: usize,
+    pub cache_refires: usize,
+    pub evictions: usize,
+    pub max_live_cells: usize,
+}
+
+#[derive(Serialize)]
+pub struct FwdReport {
+    pub native_gates: usize,
+    pub native_caches: usize,
+    /// Distinct columns — the generated kernel's load-once read floor.
+    pub floor: usize,
+    pub payload_bytes: usize,
+    pub bytes_unbounded: usize,
+    pub max_native_arity: usize,
+    pub native_arity_over_31: usize,
+    pub points: Vec<FwdPoint>,
+}
+
+#[derive(Serialize)]
 pub struct UpperLayer {
     pub layer: usize,
     pub stats: CompileStats,
@@ -77,6 +103,7 @@ pub struct CircuitCost {
     /// Layers >=1 that own instructions, at (∞, no pin).
     pub upper_layers: Vec<UpperLayer>,
     pub trade: Vec<PinTradePoint>,
+    pub fwd: FwdReport,
 }
 
 fn trade_point(
@@ -160,7 +187,45 @@ pub fn circuit_cost(path: &str, c: &LoadedCircuit) -> CircuitCost {
             trade.push(trade_point(layer0, g0, budget, 0, true, OrderKind::Reuse));
         }
     }
-    CircuitCost { path: path.to_string(), baseline, upper_layers, trade }
+    let fwd_base = compile_forward(layer0, g0, FwdParams::default());
+    let mut fwd_points = Vec::new();
+    for &budget in &SLOT_GRID {
+        let params = FwdParams { budget_cells: budget, leaf_cache: true };
+        let pt = match catch_unwind(AssertUnwindSafe(|| compile_forward(layer0, g0, params))) {
+            Ok(cf) => FwdPoint {
+                budget_cells: budget,
+                feasible: true,
+                src_reads: cf.stats.src_reads,
+                instrs: cf.stats.instrs,
+                leaf_loads: cf.stats.leaf_loads,
+                cache_refires: cf.stats.cache_refires,
+                evictions: cf.stats.evictions,
+                max_live_cells: cf.stats.max_live_cells,
+            },
+            Err(_) => FwdPoint {
+                budget_cells: budget,
+                feasible: false,
+                src_reads: 0,
+                instrs: 0,
+                leaf_loads: 0,
+                cache_refires: 0,
+                evictions: 0,
+                max_live_cells: 0,
+            },
+        };
+        fwd_points.push(pt);
+    }
+    let fwd = FwdReport {
+        native_gates: fwd_base.stats.native_gates,
+        native_caches: fwd_base.stats.native_caches,
+        floor: fwd_base.stats.distinct_sources,
+        payload_bytes: fwd_base.stats.payload_bytes,
+        bytes_unbounded: fwd_base.stats.bytes,
+        max_native_arity: fwd_base.stats.max_native_arity,
+        native_arity_over_31: fwd_base.stats.native_arity_over_31,
+        points: fwd_points,
+    };
+    CircuitCost { path: path.to_string(), baseline, upper_layers, trade, fwd }
 }
 
 pub fn to_markdown(costs: &[CircuitCost]) -> String {
@@ -198,6 +263,41 @@ pub fn to_markdown(costs: &[CircuitCost]) -> String {
             )
             .unwrap();
         }
+        let f = &c.fwd;
+        writeln!(
+            s,
+            "forward native program: {} gates + {} caches, floor {} reads, payload {} B, {} B total ({}), max arity {}{}",
+            f.native_gates,
+            f.native_caches,
+            f.floor,
+            f.payload_bytes,
+            f.bytes_unbounded,
+            residency_tier(f.bytes_unbounded),
+            f.max_native_arity,
+            if f.native_arity_over_31 > 0 {
+                format!(" ({} ops over 31 lanes)", f.native_arity_over_31)
+            } else {
+                String::new()
+            },
+        )
+        .unwrap();
+        write!(s, "- fwd: ").unwrap();
+        for (i, p) in f.points.iter().enumerate() {
+            if i > 0 {
+                write!(s, " | ").unwrap();
+            }
+            let label = if p.budget_cells == UNBOUNDED {
+                "S=∞".to_string()
+            } else {
+                format!("S={}", p.budget_cells)
+            };
+            if p.feasible {
+                write!(s, "{label}→{}/{}", p.src_reads, p.instrs).unwrap();
+            } else {
+                write!(s, "{label}→✗").unwrap();
+            }
+        }
+        writeln!(s, "  (reads/instrs; floor {} = generated-kernel dedup)", f.floor).unwrap();
         if b.instrs == 0 {
             writeln!(s, "(zero-instruction layer 0 — no trade to sweep)\n").unwrap();
             continue;
