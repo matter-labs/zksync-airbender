@@ -20,11 +20,11 @@ use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
 use crate::merkle_trees::DefaultTreeConstructor;
 use crate::tests::gkr::GKRFullWitnessTrace;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
-use cs::gkr_circuits::ExecutorFamilyDecoderData;
-use cs::tables::TableDriver;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use common_constants::INITIAL_PC;
 use cs::definitions::INITIAL_TIMESTAMP;
+use cs::gkr_circuits::ExecutorFamilyDecoderData;
+use cs::tables::TableDriver;
 use cs::utils::split_timestamp;
 use fft::Twiddles;
 use field::Field;
@@ -361,17 +361,20 @@ where
 
     let memory_trace = if run_memory_consistency_check {
         println!("Computing memory trace (unified)");
-        Some(
-            evaluate_gkr_memory_witness_for_executor_family::<BabyBearField, _, _, _>(
-                unified_circuit,
-                NUM_CYCLES_PER_CHUNK,
-                &oracle,
-                worker,
-                Some(unified_inits_and_teardowns.clone()),
-                Global,
-                Global,
-            ),
-        )
+        Some(evaluate_gkr_memory_witness_for_executor_family::<
+            BabyBearField,
+            _,
+            _,
+            _,
+        >(
+            unified_circuit,
+            NUM_CYCLES_PER_CHUNK,
+            &oracle,
+            worker,
+            Some(unified_inits_and_teardowns.clone()),
+            Global,
+            Global,
+        ))
     } else {
         None
     };

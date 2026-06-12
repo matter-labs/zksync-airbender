@@ -1,36 +1,16 @@
 use super::*;
 use crate::definitions::produce_initial_permutation_product_contribution;
-use crate::gkr::prover::prove_configured_with_gkr;
-use crate::gkr::prover::setup::GKRSetup;
-use crate::gkr::prover::GKRExternalChallenges;
-use crate::gkr::prover_config::example_configs;
-use crate::gkr::witness_gen::delegation_circuits::evaluate_gkr_memory_witness_for_delegation_circuit;
-use crate::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
-use crate::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
-use crate::gkr::witness_gen::family_circuits::evaluate_init_and_teardown_memory_witness;
-use crate::gkr::witness_gen::oracles::MemoryCircuitOracle;
-use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
-use crate::merkle_trees::DefaultTreeConstructor;
-use crate::tracers::oracles::transpiler_oracles::delegation::*;
 use ::field::baby_bear::base::BabyBearField;
 use ::field::baby_bear::ext4::BabyBearExt4;
 use common_constants::INITIAL_PC;
-use common_constants::TIMESTAMP_STEP;
 use cs::definitions::INITIAL_TIMESTAMP;
 use cs::definitions::*;
 use cs::gkr_circuits::opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization;
 use cs::gkr_circuits::process_binary_into_separate_tables_ext;
 use cs::tables::TableDriver;
-use fft::materialize_powers_serial_starting_with_elem;
-use fft::Twiddles;
 use field::Field;
-use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
-use riscv_transpiler::ir::simple_instruction_set::Instruction;
 use riscv_transpiler::ir::*;
-use riscv_transpiler::replayer::*;
 use riscv_transpiler::vm::Counters;
-use riscv_transpiler::witness::*;
 use std::alloc::Global;
 use std::collections::BTreeSet;
 use worker::Worker;
@@ -759,58 +739,18 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
 #[test]
 fn add_sub_mop_real_program_check_satisfied() {
-    use riscv_transpiler::ir::*;
-    use riscv_transpiler::vm::*;
+    use riscv_transpiler::vm::DelegationsAndFamiliesCounters;
 
     type CountersT = DelegationsAndFamiliesCounters;
     const CIRCUIT_TYPE: u8 = ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
 
     let worker = Worker::new_with_num_threads(8);
 
-    let binary = std::fs::read("../examples/mop_smoke/app.bin").unwrap();
-    let text_section = std::fs::read("../examples/mop_smoke/app.text").unwrap();
-    let binary: Vec<u32> = binary
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
-    let text_section: Vec<u32> = text_section
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
+    let config = super::orchestration::common::ProgramConfig::mop_smoke();
+    let vm = super::orchestration::common::run_vm_and_capture::<CountersT>(&config, &worker);
 
-    let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
-    let tape = SimpleTape::new(&instructions);
-    let cycles_bound = 1 << 20;
-
-    let mut ram = RamWithRomRegion::<{ common_constants::ROM_SECOND_WORD_BITS }>::from_rom_content(
-        &binary,
-        RAM_BOUND_BYTES,
-    );
-    let mut state = State::initial_with_counters(CountersT::default());
-    let mut snapshotter = SimpleSnapshotter::<CountersT, { common_constants::ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(cycles_bound, state);
-    let mut non_determinism = QuasiUARTSource::new_with_reads(vec![15, 1]);
-    let is_program_finished = VM::<CountersT>::run_basic_unrolled::<_, _, _, BabyBearField>(
-        &mut state,
-        &mut ram,
-        &mut snapshotter,
-        &tape,
-        cycles_bound,
-        &mut non_determinism,
-    );
-
-    assert!(is_program_finished);
-
-    let counters = snapshotter.snapshots.last().unwrap().state.counters;
-    let num_calls = counters.get_calls_to_circuit_family::<CIRCUIT_TYPE>();
+    let num_calls = vm.counters.get_calls_to_circuit_family::<CIRCUIT_TYPE>();
     assert!(num_calls > 0);
-
-    let mut expected_final_state = state;
-    expected_final_state.counters = Default::default();
 
     let preprocessing_data = process_binary_into_separate_tables_ext::<
         BabyBearField,
@@ -818,7 +758,7 @@ fn add_sub_mop_real_program_check_satisfied() {
         true,
         Global,
     >(
-        &text_section,
+        &vm.text_section,
         &opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization(),
         1 << 20,
         &[
@@ -844,78 +784,33 @@ fn add_sub_mop_real_program_check_satisfied() {
     // Replay + oracle + witness-gen go through the shared per-family orchestration
     // builder (no memory-consistency check: this test only needs the full trace
     // for `check_satisfied` and the prove below).
-    let full_trace = super::orchestration::per_family::build_nonmem_family_full_trace::<
-        CIRCUIT_TYPE,
-        _,
-    >(
-        &snapshotter,
-        &tape,
-        &expected_final_state,
-        cycles_bound,
-        num_calls,
-        &circuit,
-        &table_driver,
-        decoder_table_data,
-        add_sub_lui_auipc_mop::witness_eval_fn,
-        NUM_CYCLES_PER_CHUNK,
-        false,
-        &worker,
-    );
+    let full_trace =
+        super::orchestration::per_family::build_nonmem_family_full_trace::<CIRCUIT_TYPE, _>(
+            &vm.snapshotter,
+            &vm.tape,
+            &vm.expected_final_state,
+            vm.cycles_bound,
+            num_calls,
+            &circuit,
+            &table_driver,
+            decoder_table_data,
+            add_sub_lui_auipc_mop::witness_eval_fn,
+            NUM_CYCLES_PER_CHUNK,
+            false,
+            &worker,
+        );
 
     assert!(check_satisfied(&circuit, &full_trace));
 
-    let level = SecurityLevel::Sec80;
     let trace_len = 1usize << TRACE_LEN_LOG2;
-    let memory_argument_alpha = BabyBearExt4::from_array_of_base([
-        BabyBearField::new(2),
-        BabyBearField::new(5),
-        BabyBearField::new(42),
-        BabyBearField::new(123),
-    ]);
-    let permutation_argument_additive_part = BabyBearExt4::from_array_of_base([
-        BabyBearField::new(7),
-        BabyBearField::new(11),
-        BabyBearField::new(1024),
-        BabyBearField::new(8000),
-    ]);
-    let permutation_argument_linearization_challenges: [BabyBearExt4;
-        NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
-        materialize_powers_serial_starting_with_elem::<_, Global>(
-            memory_argument_alpha,
-            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
-        )
-        .try_into()
-        .unwrap();
-    let external_challenges = GKRExternalChallenges::<BabyBearField, BabyBearExt4> {
-        permutation_argument_linearization_challenges,
-        permutation_argument_additive_part,
-        _marker: std::marker::PhantomData,
-    };
-    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
-        TRACE_LEN_LOG2,
-        level,
-    );
-    let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    let setup = GKRSetup::construct(&table_driver, decoder_table_data, trace_len, &circuit);
-    let setup_commitment = setup.commit(
-        &twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        &worker,
-    );
-
-    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+    let proof = super::orchestration::per_family::prove_built_family_trace(
         &circuit,
-        &external_challenges,
+        &table_driver,
+        decoder_table_data,
         full_trace,
-        &setup,
-        &setup_commitment,
-        &twiddles,
-        &prover_config,
-        Vec::new(),
         trace_len,
+        &super::orchestration::common::hardcoded_external_challenges(),
+        SecurityLevel::Sec80,
         &worker,
     );
 

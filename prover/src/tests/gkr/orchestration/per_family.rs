@@ -547,17 +547,20 @@ where
 
     let memory_trace = if run_memory_consistency_check {
         println!("Computing memory trace");
-        Some(
-            evaluate_gkr_memory_witness_for_executor_family::<BabyBearField, _, _, _>(
-                circuit,
-                num_cycles_per_chunk,
-                &oracle,
-                worker,
-                None,
-                Global,
-                Global,
-            ),
-        )
+        Some(evaluate_gkr_memory_witness_for_executor_family::<
+            BabyBearField,
+            _,
+            _,
+            _,
+        >(
+            circuit,
+            num_cycles_per_chunk,
+            &oracle,
+            worker,
+            None,
+            Global,
+            Global,
+        ))
     } else {
         None
     };
