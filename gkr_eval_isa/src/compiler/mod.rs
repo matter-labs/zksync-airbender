@@ -71,8 +71,8 @@ pub struct CompileStats {
     pub instrs: usize,
     pub lanes: usize,
     pub bytes: usize,
-    /// [SumK, ProdK, DotK]
-    pub op_hist: [usize; 3],
+    /// [SumK, ProdK, DotK, NativeK]
+    pub op_hist: [usize; 4],
     /// Indexed by operand-kind code 0..=6.
     pub operand_kind_hist: [usize; 7],
     pub gate_in_roots: usize,

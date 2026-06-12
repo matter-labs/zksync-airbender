@@ -98,6 +98,7 @@ pub fn execute(p: &Program, src: &StagedSources) -> ExecResult {
                 }
                 a
             }
+            Op::NativeK => unreachable!("NativeK execution lands in the next task"),
         };
 
         match ins.dst {
@@ -105,6 +106,7 @@ pub fn execute(p: &Program, src: &StagedSources) -> ExecResult {
             Dst::FixedReg(cell) => write_cells(&mut fixed, cell, ins.e4_result, acc),
             Dst::Output(j) => outputs[j as usize] = Some(acc),
             Dst::GateIn(i) => gate_ins[i as usize] = Some(acc),
+            Dst::Native => unreachable!("Dst::Native is NativeK-only"),
         }
     }
     ExecResult { outputs, gate_ins }

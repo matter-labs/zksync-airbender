@@ -516,7 +516,7 @@ impl<'a> EmitCtx<'a> {
         if let Dst::Slot(cell) = dst {
             self.touch_cells(cell, e4_result);
         }
-        self.instrs.push(Instr { op, e4_result, dst, operands });
+        self.instrs.push(Instr { op, e4_result, dst, operands, payload: None });
     }
 }
 
@@ -576,6 +576,7 @@ fn build_groups(arena: &[ExprNode], n: usize, op: Op, fused: &[bool]) -> Vec<Ope
                 })
                 .collect()
         }
+        Op::NativeK => unreachable!("NativeK is not emitted by the cone compiler"),
     }
 }
 
@@ -892,6 +893,7 @@ pub(crate) fn emit_layer(
         n_sources_e4: source_map.e4.len() as u16,
         n_outputs: g.outputs.len() as u16,
         n_gate_ins: pv.gate_in_roots.len() as u16,
+        payloads: vec![],
     };
 
     // Run encode to trigger asserts.

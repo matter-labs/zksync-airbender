@@ -7,6 +7,9 @@ pub enum Op {
     SumK = 0,
     ProdK = 1,
     DotK = 2,
+    /// Native op (GateK or CacheK — discriminated by the payload record).
+    /// Carries a payload lane and an explicit operand-count lane.
+    NativeK = 3,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -19,8 +22,12 @@ pub enum Dst {
     /// are skipped, so indices may be sparse).
     Output(u16),
     /// Gate-input staging index — computed gate/cache input values handed to
-    /// native gate logic.
+    /// native gate logic (cone programs only; forward programs never use it).
     GateIn(u16),
+    /// No interpreter-visible destination: a GateK's stores are native,
+    /// driven by its payload. NativeK-only; shares dst-class code 3 with
+    /// GateIn (disambiguated by op).
+    Native,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,7 +50,21 @@ pub struct Instr {
     pub e4_result: bool,
     pub dst: Dst,
     /// SumK/ProdK: k operands. DotK: 2k operands, consecutive pairs.
+    /// NativeK: canonical payload-shape operand lanes.
     pub operands: Vec<Operand>,
+    /// NativeK only: index into the program's payload table.
+    pub payload: Option<u16>,
+}
+
+/// Interpreter-facing payload metadata (the full IR records live in
+/// `CompiledForward::payloads`; the Program only needs what execution uses).
+#[derive(Clone, Debug, PartialEq)]
+pub struct PayloadMeta {
+    /// `Some(cache_index)` for CacheK (index into the layer's cache list,
+    /// = the sentinel index); `None` for GateK.
+    pub cache: Option<u16>,
+    /// CacheK result domain (drives the sentinel cell write width).
+    pub e4: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -57,8 +78,12 @@ pub struct Program {
     pub n_sources_e4: u16,
     /// Size of the ORIGINAL layer output-slot list (sparse writes).
     pub n_outputs: u16,
-    /// Number of gate-input staging values the program produces.
+    /// Number of gate-input staging values the program produces (cone
+    /// programs; 0 for forward programs).
     pub n_gate_ins: u16,
+    /// NativeK payload metadata, indexed by the instruction payload lane.
+    /// Empty for cone programs.
+    pub payloads: Vec<PayloadMeta>,
 }
 
 impl Instr {
@@ -77,23 +102,40 @@ const DST_SENTINEL: u16 = 63;
 pub fn encode(p: &Program) -> Vec<u16> {
     let mut lanes = Vec::new();
     for ins in &p.instrs {
-        assert!(ins.arity() <= MAX_ARITY, "compiler must split wide nodes");
+        let native = ins.op == Op::NativeK;
+        assert_eq!(native, ins.payload.is_some(), "payload iff NativeK");
+        if !native {
+            assert!(ins.arity() <= MAX_ARITY, "compiler must split wide nodes");
+            assert!(!matches!(ins.dst, Dst::Native), "Dst::Native is NativeK-only");
+        } else {
+            assert!(
+                matches!(ins.dst, Dst::Native | Dst::Slot(_)),
+                "NativeK dst is Native (gate) or Slot (cache cell)"
+            );
+        }
         let (dst_class, dst_idx) = match ins.dst {
             Dst::Slot(i) => (0u16, i),
             Dst::FixedReg(i) => (1, i),
             Dst::Output(i) => (2, i),
             Dst::GateIn(i) => (3, i),
+            Dst::Native => (3, 0),
         };
         let dst_lo = if dst_idx < DST_SENTINEL { dst_idx } else { DST_SENTINEL };
+        // NativeK leaves the 5-bit arity field 0 and spends a count lane.
+        let arity_bits = if native { 0 } else { ins.arity() as u16 };
         lanes.push(
             (ins.op as u16)
                 | ((ins.e4_result as u16) << 2)
                 | (dst_class << 3)
-                | ((ins.arity() as u16) << 5)
+                | (arity_bits << 5)
                 | (dst_lo << 10),
         );
         if dst_lo == DST_SENTINEL {
             lanes.push(dst_idx);
+        }
+        if native {
+            lanes.push(ins.payload.unwrap());
+            lanes.push(ins.operands.len() as u16);
         }
         for o in &ins.operands {
             let (kind, e4, idx) = match *o {
@@ -123,7 +165,8 @@ pub fn decode(lanes: &[u16], n_instr: usize) -> Vec<Instr> {
         let op = match h & 0b11 {
             0 => Op::SumK,
             1 => Op::ProdK,
-            _ => Op::DotK,
+            2 => Op::DotK,
+            _ => Op::NativeK,
         };
         let e4_result = (h >> 2) & 1 == 1;
         let dst_class = (h >> 3) & 0b11;
@@ -136,13 +179,22 @@ pub fn decode(lanes: &[u16], n_instr: usize) -> Vec<Instr> {
         } else {
             dst_lo
         };
-        let dst = match dst_class {
-            0 => Dst::Slot(dst_idx),
-            1 => Dst::FixedReg(dst_idx),
-            2 => Dst::Output(dst_idx),
+        let dst = match (dst_class, op) {
+            (0, _) => Dst::Slot(dst_idx),
+            (1, _) => Dst::FixedReg(dst_idx),
+            (2, _) => Dst::Output(dst_idx),
+            (3, Op::NativeK) => Dst::Native,
             _ => Dst::GateIn(dst_idx),
         };
-        let n_operands = if matches!(op, Op::DotK) { arity * 2 } else { arity };
+        let (payload, n_operands) = if op == Op::NativeK {
+            let pl = lanes[i];
+            i += 1;
+            let cnt = lanes[i] as usize;
+            i += 1;
+            (Some(pl), cnt)
+        } else {
+            (None, if matches!(op, Op::DotK) { arity * 2 } else { arity })
+        };
         let mut operands = Vec::with_capacity(n_operands);
         for _ in 0..n_operands {
             let l = lanes[i];
@@ -159,7 +211,7 @@ pub fn decode(lanes: &[u16], n_instr: usize) -> Vec<Instr> {
                 _ => Operand::NegOne,
             });
         }
-        out.push(Instr { op, e4_result, dst, operands });
+        out.push(Instr { op, e4_result, dst, operands, payload });
     }
     assert_eq!(i, lanes.len(), "trailing lanes");
     out
@@ -181,6 +233,7 @@ mod tests {
                     Operand::Const { idx: 2 },
                     Operand::NegOne,
                 ],
+                payload: None,
             },
             Instr {
                 op: Op::DotK,
@@ -192,12 +245,33 @@ mod tests {
                     Operand::FixedReg { cell: 0, e4: false },
                     Operand::One,
                 ],
+                payload: None,
+            },
+            Instr {
+                op: Op::NativeK,
+                e4_result: true,
+                dst: Dst::Slot(4), // CacheK: e4 cache result cell
+                operands: vec![
+                    Operand::Source { id: 9, e4: false },
+                    Operand::Slot { cell: 0, e4: false },
+                ],
+                payload: Some(1),
+            },
+            Instr {
+                op: Op::NativeK,
+                e4_result: false,
+                dst: Dst::Native, // GateK: no interpreter dst
+                operands: vec![Operand::Slot { cell: 4, e4: true }],
+                payload: Some(7),
             },
         ];
         let p = Program { instrs: instrs.clone(), ..Default::default() };
         let lanes = encode(&p);
-        // instr0: 1 header + 3 operands; instr1: 1 header + 1 dst + 4 operands.
-        assert_eq!(lanes.len(), 4 + 6);
-        assert_eq!(decode(&lanes, 2), instrs);
+        // instr0: 1 header + 3 operands = 4
+        // instr1: 1 header + 1 dst + 4 operands = 6
+        // NativeK-cache: 1 header + 1 payload + 1 count + 2 operands = 5
+        // NativeK-gate: 1 header + 1 payload + 1 count + 1 operand = 4
+        assert_eq!(lanes.len(), 4 + 6 + 5 + 4);
+        assert_eq!(decode(&lanes, 4), instrs);
     }
 }
