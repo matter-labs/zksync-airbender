@@ -634,6 +634,7 @@ pub(crate) fn emit_layer(
             .filter(|&n| is_computed(&arena[n]) && pv.uses[n] > 0)
             .collect(),
         OrderKind::Pressure => view::pressure_order(arena, &pv),
+        OrderKind::Reuse => view::reuse_order(arena, &pv, params.budget_cells),
     };
 
     // Identify fused product nodes: product nodes that are children of a Sum node

@@ -47,6 +47,8 @@ pub struct PinTradePoint {
     /// Dynamic leaf residency (multi-use leaves load/evict like
     /// intermediates) instead of the static pinned prefix.
     pub leaf_cache: bool,
+    /// Emission order used (Arena, or the cache-aware greedy Reuse order).
+    pub order: OrderKind,
     pub feasible: bool,
     pub src_reads: usize,
     pub instrs: usize,
@@ -83,19 +85,16 @@ fn trade_point(
     budget: usize,
     pin: usize,
     leaf_cache: bool,
+    order: OrderKind,
 ) -> PinTradePoint {
-    let params = CompileParams {
-        budget_cells: budget,
-        pinned_cells: pin,
-        leaf_cache,
-        order: OrderKind::Arena,
-    };
+    let params = CompileParams { budget_cells: budget, pinned_cells: pin, leaf_cache, order };
     match catch_unwind(AssertUnwindSafe(|| compile_layer(layer, g, params))) {
         Ok(cl) => PinTradePoint {
             budget_cells: budget,
             pin_request: pin,
             pinned_cells: cl.stats.pinned_cells,
             leaf_cache,
+            order,
             feasible: true,
             src_reads: cl.stats.operand_kind_hist[0],
             instrs: cl.stats.instrs,
@@ -112,6 +111,7 @@ fn trade_point(
             pin_request: pin,
             pinned_cells: pin,
             leaf_cache,
+            order,
             feasible: false,
             src_reads: 0,
             instrs: 0,
@@ -145,17 +145,19 @@ pub fn circuit_cost(path: &str, c: &LoadedCircuit) -> CircuitCost {
             // No pin (== baseline), saturated pin (max-absorbable bound), and
             // dynamic leaf residency (should match saturation's src reads:
             // every multi-use leaf loaded exactly once, never evicted).
-            trade.push(trade_point(layer0, g0, budget, 0, false));
-            trade.push(trade_point(layer0, g0, budget, UNBOUNDED, false));
-            trade.push(trade_point(layer0, g0, budget, 0, true));
+            trade.push(trade_point(layer0, g0, budget, 0, false, OrderKind::Arena));
+            trade.push(trade_point(layer0, g0, budget, UNBOUNDED, false, OrderKind::Arena));
+            trade.push(trade_point(layer0, g0, budget, 0, true, OrderKind::Arena));
         } else {
             let mut pin = 0usize;
             while budget - pin >= 4 {
-                trade.push(trade_point(layer0, g0, budget, pin, false));
+                trade.push(trade_point(layer0, g0, budget, pin, false, OrderKind::Arena));
                 pin += 4;
             }
-            // Dynamic leaf residency: same budget, no static split at all.
-            trade.push(trade_point(layer0, g0, budget, 0, true));
+            // Dynamic leaf residency: same budget, no static split at all —
+            // in arena order and in the cache-aware greedy Reuse order.
+            trade.push(trade_point(layer0, g0, budget, 0, true, OrderKind::Arena));
+            trade.push(trade_point(layer0, g0, budget, 0, true, OrderKind::Reuse));
         }
     }
     CircuitCost { path: path.to_string(), baseline, upper_layers, trade }
@@ -167,7 +169,7 @@ pub fn to_markdown(costs: &[CircuitCost]) -> String {
     writeln!(s, "# gkr_eval_isa static cost report — unified-budget pin trade (forward subset)\n")
         .unwrap();
     writeln!(s, "Model: registers + smem are ONE cell budget; swept decision = pinned cache vs working set split (step 4). The smem-vs-register placement of each address is decided later from access counts.").unwrap();
-    writeln!(s, "Trade lines: `pin→src reads/instrs`, `*` = min src reads (assumes reads are the binding cost — DRAM-bound). ✗ = infeasible split. `dyn` = dynamic leaf residency (no static pin; multi-use leaves load/evict like intermediates).").unwrap();
+    writeln!(s, "Trade lines: `pin→src reads/instrs`, `*` = min src reads (assumes reads are the binding cost — DRAM-bound). ✗ = infeasible split. `dyn` = dynamic leaf residency (no static pin; multi-use leaves load/evict like intermediates), arena order. `dynG` = dyn + cache-aware greedy reuse order.").unwrap();
     writeln!(s, "Access lines: share of all cell accesses captured by the top 8/16/24/32 hottest addresses, at the starred split.\n").unwrap();
     for c in costs {
         let name = c.path.rsplit('/').next().unwrap_or(&c.path);
@@ -219,7 +221,9 @@ pub fn to_markdown(costs: &[CircuitCost]) -> String {
                 if i > 0 {
                     write!(s, " | ").unwrap();
                 }
-                let label = if p.leaf_cache {
+                let label = if p.leaf_cache && p.order == OrderKind::Reuse {
+                    "dynG".to_string()
+                } else if p.leaf_cache {
                     "dyn".to_string()
                 } else if p.pin_request == UNBOUNDED {
                     "sat".to_string()

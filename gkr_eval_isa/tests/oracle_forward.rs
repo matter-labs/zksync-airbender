@@ -256,6 +256,29 @@ fn oracle_min_feasible_budget() {
 }
 
 #[test]
+fn oracle_reuse_order() {
+    // Cache-aware greedy order (dynG report points) must stay correct under
+    // dynamic leaf residency at tight budgets (loads/evictions/reloads under
+    // the reordered schedule).
+    use gkr_eval_isa::compiler::OrderKind;
+    for f in [
+        "bigint_with_extended_control_codegen_ir_gkr.json",
+        "blake2_with_extended_control_codegen_ir_gkr.json",
+        "keccak_special5_codegen_ir_gkr.json",
+    ] {
+        for budget in [16, 32] {
+            let p = CompileParams {
+                budget_cells: budget,
+                leaf_cache: true,
+                order: OrderKind::Reuse,
+                ..Default::default()
+            };
+            check_circuit(&fixture(f), p, 0x6EED);
+        }
+    }
+}
+
+#[test]
 fn oracle_pressure_order() {
     // The report compiles Pressure-order programs for the order-validation
     // comparison; this checks they are also CORRECT (final-review gap).

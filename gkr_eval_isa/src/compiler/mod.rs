@@ -18,6 +18,10 @@ pub enum OrderKind {
     Arena,
     /// Greedy pressure-aware order over ProgramView (view::pressure_order).
     Pressure,
+    /// Cache-aware greedy list scheduling (view::reuse_order): pick the ready
+    /// node needing the fewest new source reads against a simulated resident
+    /// set of budget_cells. Targets order-dependent eviction loss.
+    Reuse,
 }
 
 #[derive(Clone, Copy, Debug)]
