@@ -736,3 +736,190 @@ pub fn gkr_run_basic_unrolled_test_impl(
         assert_eq!(permutation_argument_accumulator, BabyBearExt4::ONE);
     }
 }
+
+#[test]
+fn add_sub_mop_real_program_check_satisfied() {
+    use riscv_transpiler::ir::*;
+    use riscv_transpiler::vm::*;
+
+    type CountersT = DelegationsAndFamiliesCounters;
+    const CIRCUIT_TYPE: u8 = ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
+
+    let worker = Worker::new_with_num_threads(8);
+
+    let binary = std::fs::read("../examples/mop_smoke/app.bin").unwrap();
+    let text_section = std::fs::read("../examples/mop_smoke/app.text").unwrap();
+    let binary: Vec<u32> = binary
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+    let text_section: Vec<u32> = text_section
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
+    let tape = SimpleTape::new(&instructions);
+    let cycles_bound = 1 << 20;
+
+    let mut ram = RamWithRomRegion::<{ common_constants::ROM_SECOND_WORD_BITS }>::from_rom_content(
+        &binary,
+        RAM_BOUND_BYTES,
+    );
+    let mut state = State::initial_with_counters(CountersT::default());
+    let mut snapshotter = SimpleSnapshotter::<CountersT, { common_constants::ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(cycles_bound, state);
+    let mut non_determinism = QuasiUARTSource::new_with_reads(vec![15, 1]);
+    let is_program_finished = VM::<CountersT>::run_basic_unrolled::<_, _, _, BabyBearField>(
+        &mut state,
+        &mut ram,
+        &mut snapshotter,
+        &tape,
+        cycles_bound,
+        &mut non_determinism,
+    );
+
+    assert!(is_program_finished);
+
+    let counters = snapshotter.snapshots.last().unwrap().state.counters;
+    let num_calls = counters.get_calls_to_circuit_family::<CIRCUIT_TYPE>();
+    assert!(num_calls > 0);
+
+    let mut expected_final_state = state;
+    expected_final_state.counters = Default::default();
+
+    let mut state = snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = snapshotter
+        .reads_buffer
+        .make_range(0..snapshotter.reads_buffer.len());
+    let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
+    let mut buffers = vec![&mut buffer[..]];
+    let mut tracer = NonMemDestinationHolder::<CIRCUIT_TYPE> {
+        buffers: &mut buffers[..],
+    };
+    ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _, BabyBearField>(
+        &mut state,
+        &mut ram,
+        &tape,
+        &mut (),
+        cycles_bound,
+        &mut tracer,
+    );
+    assert_eq!(expected_final_state, state);
+
+    let preprocessing_data = process_binary_into_separate_tables_ext::<
+        BabyBearField,
+        FullUnsignedMachineDecoderConfig,
+        true,
+        Global,
+    >(
+        &text_section,
+        &opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization(),
+        1 << 20,
+        &[
+            NON_DETERMINISM_CSR as u16,
+            BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
+            KECCAK_SPECIAL5_CSR_REGISTER as u16,
+            BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
+        ],
+    );
+    let decoder_table_data = &preprocessing_data[&CIRCUIT_TYPE];
+    let witness_gen_data = decoder_table_data
+        .iter()
+        .map(|el| el.unwrap_or(Default::default()))
+        .collect::<Vec<_>>();
+
+    let oracle = NonMemoryCircuitOracle {
+        inner: &buffer[..],
+        decoder_table: &witness_gen_data,
+        default_pc_value_in_padding: 4,
+    };
+
+    let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+        deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
+    } else {
+        deserialize_from_file(
+            "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
+        )
+    };
+    let mut table_driver = TableDriver::<BabyBearField>::new();
+    cs::gkr_circuits::add_sub_family::add_sub_lui_auipc_mop_table_driver_fn(&mut table_driver);
+
+    let full_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
+        &circuit,
+        add_sub_lui_auipc_mop::witness_eval_fn,
+        NUM_CYCLES_PER_CHUNK,
+        &oracle,
+        &table_driver,
+        &worker,
+        Global,
+        Global,
+    );
+
+    assert!(check_satisfied(&circuit, &full_trace));
+
+    let level = SecurityLevel::Sec80;
+    let trace_len = 1usize << TRACE_LEN_LOG2;
+    let memory_argument_alpha = BabyBearExt4::from_array_of_base([
+        BabyBearField::new(2),
+        BabyBearField::new(5),
+        BabyBearField::new(42),
+        BabyBearField::new(123),
+    ]);
+    let permutation_argument_additive_part = BabyBearExt4::from_array_of_base([
+        BabyBearField::new(7),
+        BabyBearField::new(11),
+        BabyBearField::new(1024),
+        BabyBearField::new(8000),
+    ]);
+    let permutation_argument_linearization_challenges: [BabyBearExt4;
+        NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
+        materialize_powers_serial_starting_with_elem::<_, Global>(
+            memory_argument_alpha,
+            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
+        )
+        .try_into()
+        .unwrap();
+    let external_challenges = GKRExternalChallenges::<BabyBearField, BabyBearExt4> {
+        permutation_argument_linearization_challenges,
+        permutation_argument_additive_part,
+        _marker: std::marker::PhantomData,
+    };
+    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
+        TRACE_LEN_LOG2,
+        level,
+    );
+    let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+    let setup = GKRSetup::construct(&table_driver, decoder_table_data, trace_len, &circuit);
+    let setup_commitment = setup.commit(
+        &twiddles,
+        prover_config.lde_factor,
+        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+        prover_config.cap_size,
+        trace_len.trailing_zeros() as usize,
+        &worker,
+    );
+
+    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+        &circuit,
+        &external_challenges,
+        full_trace,
+        &setup,
+        &setup_commitment,
+        &twiddles,
+        &prover_config,
+        Vec::new(),
+        trace_len,
+        &worker,
+    );
+
+    serialize_to_file(&proof, "test_proofs/mop_add_sub_gkr_proof.json");
+}

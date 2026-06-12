@@ -642,10 +642,10 @@ pub(crate) unsafe fn gkr_count_special_multiplicities<'a, F: PrimeField, O: Orac
         let value = evaluate_linear_relation(&range_check_expression.input, &*proxy);
         assert!(
             value.as_u32_reduced() <= u16::MAX as u32,
-            "invalid value {:?} in range check 16 expression {:?} at row {}",
-            absolute_row_idx,
+            "invalid value {} in range check 16 expression {:?} at row {}",
+            value,
             range_check_expression,
-            value
+            absolute_row_idx
         );
         let index = value.as_u32_reduced() as usize;
         debug_assert!(idx < range_check_16_chunk.len());

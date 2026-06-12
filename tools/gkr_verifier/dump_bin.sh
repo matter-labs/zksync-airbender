@@ -54,7 +54,7 @@ COMMON_FLAGS="--release -Z panic-immediate-abort -Z build-std=core,alloc --no-de
 if ! $SHOW_WARNINGS; then
     sed -i.bak '/"-C", "force-frame-pointers",/a\
   "-A", "warnings",' .cargo/config.toml
-    trap 'mv .cargo/config.toml.bak .cargo/config.toml' EXIT
+    trap 'if [ -f .cargo/config.toml.bak ]; then mv .cargo/config.toml.bak .cargo/config.toml; fi' EXIT
 fi
 
 echo "==> Building RISC-V binaries (blake: ${BLAKE_MODE}, variant: ${VARIANT})"
@@ -66,14 +66,35 @@ cargo build $COMMON_FLAGS $BIN_FLAGS
 
 # Extract .bin / .elf / .text in parallel
 echo "==> Extracting binaries"
+log_dir=$(mktemp -d)
+pids=""
 for circuit in $CIRCUITS; do
     (
         rm -f ${circuit}.bin ${circuit}.elf ${circuit}.text
         cargo objcopy $COMMON_FLAGS --bin "$circuit" -- -O binary ${circuit}.bin
         cargo objcopy $COMMON_FLAGS --bin "$circuit" -- -R .text ${circuit}.elf
         cargo objcopy $COMMON_FLAGS --bin "$circuit" -- -O binary --only-section=.text ${circuit}.text
-    ) > /dev/null 2>&1 &
+    ) > "${log_dir}/${circuit}.log" 2>&1 &
+    pids="${pids} $!"
 done
-wait
+
+rc=0
+for pid in $pids; do
+    wait "$pid" || rc=1
+done
+
+if [ "$rc" -ne 0 ]; then
+    echo "ERROR: binary extraction failed." >&2
+    for circuit in $CIRCUITS; do
+        if [ ! -s "${circuit}.bin" ] || [ ! -s "${circuit}.elf" ] || [ ! -s "${circuit}.text" ]; then
+            echo "  --- ${circuit} ---" >&2
+            tail -n 10 "${log_dir}/${circuit}.log" >&2
+        fi
+    done
+    echo "Hint: \"Could not find tool: objcopy\" means the llvm-tools component is missing — run: rustup component add llvm-tools" >&2
+    rm -rf "$log_dir"
+    exit 1
+fi
+rm -rf "$log_dir"
 
 echo "==> Done: $CIRCUITS"
