@@ -5,6 +5,7 @@ mod emit;
 mod pinning;
 mod slots;
 pub mod view;
+pub mod fwd;
 
 use crate::isa::{NEG_ONE_U32, Program};
 use cs::gkr_compiler::codegen_ir::{CodegenLayer, Domain, ExprNode};
