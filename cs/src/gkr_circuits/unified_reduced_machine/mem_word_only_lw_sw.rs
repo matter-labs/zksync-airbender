@@ -1,10 +1,10 @@
+use super::circuit::{LookupRequest, F4_SCRATCH_BOOLS, F4_SCRATCH_VARS};
 use super::*;
 use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
 use crate::types::*;
 use crate::witness_placer::*;
 use field::PrimeField;
-use super::circuit::{LookupRequest, F4_SCRATCH_BOOLS, F4_SCRATCH_VARS};
 
 /// Per-cycle Family-4 LW/SW constraints (the data-path piece). Caller
 /// (`mem_word_only.rs`) has already done the register/RAM dispatch.
@@ -213,7 +213,8 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
             shift16_term * rom_term + Term::from(ram_addr[1]) - rom_bound_high;
         let residue: Constraint<F> = is_fam4 * residue_inner;
         assert_eq!(residue.degree(), 2);
-        let residue_var = cs.add_intermediate_named_variable_from_constraint(residue, "rom residue");
+        let residue_var =
+            cs.add_intermediate_named_variable_from_constraint(residue, "rom residue");
         cs.require_invariant_from_lookup_input(
             LookupInput::from(residue_var),
             Invariant::RangeChecked { width: 16 },
@@ -236,13 +237,10 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     // The "not_rom" gate is inlined at its use sites (output1 / output2 below)
     // as the degree-1 expression `(is_lw + is_sw) - gate_fam4_rom`. Saves 1
     // committed col vs the previous shape where both were base-layer Booleans.
-    let is_fam4_sum = || -> Constraint<F> {
-        Constraint::from(is_lw) + Constraint::from(is_sw)
-    };
+    let is_fam4_sum = || -> Constraint<F> { Constraint::from(is_lw) + Constraint::from(is_sw) };
     let gate_fam4_rom = cs.add_named_boolean_variable("gate_fam4_rom");
     cs.add_constraint(
-        Constraint::from(gate_fam4_rom)
-            - is_fam4_sum() * Constraint::from(is_rom_base_layer),
+        Constraint::from(gate_fam4_rom) - is_fam4_sum() * Constraint::from(is_rom_base_layer),
     );
     {
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
@@ -285,8 +283,7 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         let romread_table = Term::from(TableType::AlignedRomRead.to_num());
         // table_id = execute * gate_fam4_rom * romread_table — collapses to 0
         // (ZeroEntry) when another family fires or on padding.
-        let table_id =
-            Constraint::from(inputs.execute) * Term::from(gate_fam4_rom) * romread_table;
+        let table_id = Constraint::from(inputs.execute) * Term::from(gate_fam4_rom) * romread_table;
         LookupRequest {
             table_id,
             inputs: vec![input, output1, output2],

@@ -119,6 +119,19 @@ impl ProgramConfig {
             ram_bound_bytes: RAM_BOUND_BYTES,
         }
     }
+
+    /// `mop_smoke` — a program built to exercise all four `mop.*` opcodes
+    /// (the modular-arithmetic extension handled by the `add_sub_lui_auipc_mop`
+    /// family). Per-family use; drives `add_sub_mop_real_program_check_satisfied`.
+    pub fn mop_smoke() -> Self {
+        Self {
+            binary_path: "../examples/mop_smoke/app.bin".to_string(),
+            text_section_path: "../examples/mop_smoke/app.text".to_string(),
+            non_determinism_reads: vec![15, 1],
+            cycles_bound: 1 << 20,
+            ram_bound_bytes: RAM_BOUND_BYTES,
+        }
+    }
 }
 
 /// Output of [`run_vm_and_capture`]: the binary buffers, the snapshotter the

@@ -18,7 +18,10 @@ use crate::gkr::witness_gen::family_circuits::{
 use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
 use crate::merkle_trees::DefaultTreeConstructor;
+use crate::tests::gkr::GKRFullWitnessTrace;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
+use cs::gkr_circuits::ExecutorFamilyDecoderData;
+use cs::tables::TableDriver;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use common_constants::INITIAL_PC;
 use cs::definitions::INITIAL_TIMESTAMP;
@@ -286,7 +289,7 @@ where
     }
 }
 
-fn prove_unified_inner<C>(
+pub fn build_unified_full_trace<C>(
     vm: &VmRunOutput<C>,
     unified_circuit: &GKRCircuitArtifact<BabyBearField>,
     num_unified_teardown_sets: usize,
@@ -298,16 +301,16 @@ fn prove_unified_inner<C>(
             BabyBearField,
         >,
     ),
-    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
-    level: SecurityLevel,
-    proof_suffix: &str,
+    run_memory_consistency_check: bool,
     worker: &Worker,
-) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>
+) -> (
+    GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    TableDriver<BabyBearField>,
+    Vec<Option<ExecutorFamilyDecoderData>>,
+)
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
-    let trace_len: usize = 1 << TRACE_LEN_LOG2;
-
     // Replay the captured trace into the unified destination holder.
     let mut state = vm.snapshotter.initial_snapshot.state;
     let mut ram_log_buffers = vm
@@ -356,17 +359,22 @@ where
             &mut unified_inits_and_teardowns,
         );
 
-    println!("Computing memory trace (unified)");
-    let unified_memory_trace =
-        evaluate_gkr_memory_witness_for_executor_family::<BabyBearField, _, _, _>(
-            unified_circuit,
-            NUM_CYCLES_PER_CHUNK,
-            &oracle,
-            worker,
-            Some(unified_inits_and_teardowns.clone()),
-            Global,
-            Global,
-        );
+    let memory_trace = if run_memory_consistency_check {
+        println!("Computing memory trace (unified)");
+        Some(
+            evaluate_gkr_memory_witness_for_executor_family::<BabyBearField, _, _, _>(
+                unified_circuit,
+                NUM_CYCLES_PER_CHUNK,
+                &oracle,
+                worker,
+                Some(unified_inits_and_teardowns.clone()),
+                Global,
+                Global,
+            ),
+        )
+    } else {
+        None
+    };
 
     println!("Computing full trace (unified)");
     let unified_full_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
@@ -381,7 +389,45 @@ where
         Global,
     );
 
-    super::common::ensure_memory_trace_consistency(&unified_memory_trace, &unified_full_trace);
+    if let Some(memory_trace) = &memory_trace {
+        super::common::ensure_memory_trace_consistency(memory_trace, &unified_full_trace);
+    }
+
+    let decoder_table = oracle.decoder_table_with_options().to_vec();
+    (unified_full_trace, unified_table_driver, decoder_table)
+}
+
+fn prove_unified_inner<C>(
+    vm: &VmRunOutput<C>,
+    unified_circuit: &GKRCircuitArtifact<BabyBearField>,
+    num_unified_teardown_sets: usize,
+    num_calls: usize,
+    eval_fn: fn(
+        &mut crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy<
+            '_,
+            UnifiedRiscvCircuitOracle<'_>,
+            BabyBearField,
+        >,
+    ),
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    level: SecurityLevel,
+    proof_suffix: &str,
+    worker: &Worker,
+) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>
+where
+    C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
+{
+    let trace_len: usize = 1 << TRACE_LEN_LOG2;
+
+    let (unified_full_trace, unified_table_driver, decoder_table) = build_unified_full_trace(
+        vm,
+        unified_circuit,
+        num_unified_teardown_sets,
+        num_calls,
+        eval_fn,
+        true,
+        worker,
+    );
 
     #[cfg(all(feature = "gkr_check_satisfied", any(test, feature = "test")))]
     {
@@ -399,7 +445,7 @@ where
     let unified_twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
     let unified_setup = GKRSetup::construct(
         &unified_table_driver,
-        oracle.decoder_table_with_options(),
+        &decoder_table,
         trace_len,
         unified_circuit,
     );

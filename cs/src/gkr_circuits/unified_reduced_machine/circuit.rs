@@ -276,6 +276,9 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     let WordRepresentation::U16Limbs(rd_write_limbs) = rd_access.write_value.clone() else {
         unreachable!()
     };
+    let WordRepresentation::U16Limbs(rd_read_limbs) = rd_access.read_value.clone() else {
+        unreachable!()
+    };
     let rs2_read_timestamp = rs2_access.read_timestamp;
     let scratch_bools: [Boolean; UNIFIED_SCRATCH_BOOL_COUNT] = core::array::from_fn(|i| {
         cs.add_named_boolean_variable(&format!("shared scratch bool[{i}]"))
@@ -297,6 +300,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         rs1_limbs,
         rs2_limbs,
         rd_write_limbs,
+        rd_read_limbs,
         rs2_read_timestamp,
         shared_intermediate_reg,
         core::array::from_fn::<_, F1_SCRATCH_BOOLS, _>(|i| scratch_bools[i]),

@@ -1,15 +1,36 @@
 use super::*;
 use crate::definitions::produce_initial_permutation_product_contribution;
+use crate::gkr::prover::prove_configured_with_gkr;
+use crate::gkr::prover::setup::GKRSetup;
+use crate::gkr::prover::GKRExternalChallenges;
+use crate::gkr::prover_config::example_configs;
+use crate::gkr::witness_gen::delegation_circuits::evaluate_gkr_memory_witness_for_delegation_circuit;
+use crate::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
+use crate::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
+use crate::gkr::witness_gen::family_circuits::evaluate_init_and_teardown_memory_witness;
+use crate::gkr::witness_gen::oracles::MemoryCircuitOracle;
+use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
+use crate::merkle_trees::DefaultTreeConstructor;
+use crate::tracers::oracles::transpiler_oracles::delegation::*;
 use ::field::baby_bear::base::BabyBearField;
 use ::field::baby_bear::ext4::BabyBearExt4;
 use common_constants::INITIAL_PC;
+use common_constants::TIMESTAMP_STEP;
 use cs::definitions::INITIAL_TIMESTAMP;
 use cs::definitions::*;
 use cs::gkr_circuits::opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization;
 use cs::gkr_circuits::process_binary_into_separate_tables_ext;
+use cs::tables::TableDriver;
+use fft::materialize_powers_serial_starting_with_elem;
+use fft::Twiddles;
 use field::Field;
-use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
+use riscv_transpiler::ir::simple_instruction_set::Instruction;
+use riscv_transpiler::ir::*;
+use riscv_transpiler::replayer::*;
 use riscv_transpiler::vm::Counters;
+use riscv_transpiler::witness::*;
 use std::alloc::Global;
 use std::collections::BTreeSet;
 use worker::Worker;
@@ -32,7 +53,6 @@ const RAM_BOUND_WORDS: usize = RAM_BOUND_BYTES / core::mem::size_of::<u32>();
 
 const CHECK_MEMORY_PERMUTATION_ONLY: bool = false;
 const PROVE_EMPTY: bool = true;
-
 
 pub use crate::definitions::SecurityLevel;
 
@@ -792,28 +812,6 @@ fn add_sub_mop_real_program_check_satisfied() {
     let mut expected_final_state = state;
     expected_final_state.counters = Default::default();
 
-    let mut state = snapshotter.initial_snapshot.state;
-    let mut ram_log_buffers = snapshotter
-        .reads_buffer
-        .make_range(0..snapshotter.reads_buffer.len());
-    let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
-        ram_log: &mut ram_log_buffers,
-    };
-    let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
-    let mut tracer = NonMemDestinationHolder::<CIRCUIT_TYPE> {
-        buffers: &mut buffers[..],
-    };
-    ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _, BabyBearField>(
-        &mut state,
-        &mut ram,
-        &tape,
-        &mut (),
-        cycles_bound,
-        &mut tracer,
-    );
-    assert_eq!(expected_final_state, state);
-
     let preprocessing_data = process_binary_into_separate_tables_ext::<
         BabyBearField,
         FullUnsignedMachineDecoderConfig,
@@ -832,16 +830,6 @@ fn add_sub_mop_real_program_check_satisfied() {
         ],
     );
     let decoder_table_data = &preprocessing_data[&CIRCUIT_TYPE];
-    let witness_gen_data = decoder_table_data
-        .iter()
-        .map(|el| el.unwrap_or(Default::default()))
-        .collect::<Vec<_>>();
-
-    let oracle = NonMemoryCircuitOracle {
-        inner: &buffer[..],
-        decoder_table: &witness_gen_data,
-        default_pc_value_in_padding: 4,
-    };
 
     let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
         deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
@@ -853,15 +841,25 @@ fn add_sub_mop_real_program_check_satisfied() {
     let mut table_driver = TableDriver::<BabyBearField>::new();
     cs::gkr_circuits::add_sub_family::add_sub_lui_auipc_mop_table_driver_fn(&mut table_driver);
 
-    let full_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
+    // Replay + oracle + witness-gen go through the shared per-family orchestration
+    // builder (no memory-consistency check: this test only needs the full trace
+    // for `check_satisfied` and the prove below).
+    let full_trace = super::orchestration::per_family::build_nonmem_family_full_trace::<
+        CIRCUIT_TYPE,
+        _,
+    >(
+        &snapshotter,
+        &tape,
+        &expected_final_state,
+        cycles_bound,
+        num_calls,
         &circuit,
+        &table_driver,
+        decoder_table_data,
         add_sub_lui_auipc_mop::witness_eval_fn,
         NUM_CYCLES_PER_CHUNK,
-        &oracle,
-        &table_driver,
+        false,
         &worker,
-        Global,
-        Global,
     );
 
     assert!(check_satisfied(&circuit, &full_trace));

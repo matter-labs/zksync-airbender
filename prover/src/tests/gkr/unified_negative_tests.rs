@@ -1,20 +1,14 @@
 use super::orchestration::common::{run_vm_and_capture, ProgramConfig};
 use super::{check_lookups_in_range, *};
-use crate::gkr::witness_gen::family_circuits::{
-    build_unified_table_driver, evaluate_gkr_witness_for_executor_family,
-};
-use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use ::field::baby_bear::base::BabyBearField;
 use ::field::Field;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use cs::gkr_circuits::unified_reduced_machine::{
-    FAMILY_1_FLAG_OFFSET, FAMILY_2_FLAG_OFFSET, FAMILY_4_LW_BIT, FAMILY_4_SW_BIT,
-    UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
+    FAMILY_1_FLAG_OFFSET, FAMILY_2_FLAG_OFFSET, FAMILY_3_FLAG_OFFSET, FAMILY_4_LW_BIT,
+    FAMILY_4_SW_BIT,
 };
-use riscv_transpiler::replayer::*;
+use proptest::prelude::*;
 use riscv_transpiler::vm::*;
-use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp;
-use riscv_transpiler::witness::UnifiedDestinationHolder;
 use std::alloc::Global;
 use worker::Worker;
 
@@ -98,65 +92,18 @@ fn build_satisfying_trace_with_mutation(
     assert!(num_calls < NUM_CYCLES_PER_CHUNK);
 
     let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
-    let mut inits_and_teardowns = Vec::with_capacity(num_teardown_sets);
-    for _ in 0..num_teardown_sets {
-        let a = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        let b = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        let c = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        let d = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        inits_and_teardowns.push(([a, b], [c, d]));
-    }
-    vm.ram
-        .collect_inits_and_teardowns_into_columns::<BabyBearField, _>(
+    // Reuse the orchestration trace builder (no memory-consistency check: the negative tests
+    // only need the witness trace for check_satisfied, and we mutate it below).
+    let (mut full_trace, _table_driver, _decoder_table) =
+        super::orchestration::unified::build_unified_full_trace(
+            &vm,
+            &circuit,
+            num_teardown_sets,
+            num_calls,
+            super::unified_reduced_machine::witness_eval_fn,
+            false,
             &worker,
-            TRACE_LEN_LOG2,
-            0,
-            &mut inits_and_teardowns,
         );
-
-    // Replay the snapshotter into the unified destination tracer.
-    let mut state = vm.snapshotter.initial_snapshot.state;
-    let mut ram_log_buffers = vm
-        .snapshotter
-        .reads_buffer
-        .make_range(0..vm.snapshotter.reads_buffer.len());
-    let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
-        ram_log: &mut ram_log_buffers,
-    };
-    let mut buffer = vec![UnifiedOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
-    let mut tracer = UnifiedDestinationHolder {
-        buffers: &mut buffers[..],
-    };
-    ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _, BabyBearField>(
-        &mut state,
-        &mut ram,
-        &vm.tape,
-        &mut (),
-        vm.cycles_bound,
-        &mut tracer,
-    );
-    assert_eq!(vm.expected_final_state, state);
-
-    let oracle = UnifiedRiscvCircuitOracle::new::<BabyBearField>(
-        &buffer[..],
-        &vm.text_section,
-        common_constants::ROM_WORD_SIZE,
-    );
-
-    let table_driver = build_unified_table_driver::<BabyBearField>(&vm.binary);
-
-    let mut full_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
-        &circuit,
-        super::unified_reduced_machine::witness_eval_fn,
-        NUM_CYCLES_PER_CHUNK,
-        &oracle,
-        &table_driver,
-        &worker,
-        Some(inits_and_teardowns),
-        Global,
-        Global,
-    );
 
     mutate(&circuit, &mut full_trace);
 
@@ -567,5 +514,93 @@ fn unified_top14_pooled_corruption_on_sw_row_rejected() {
     assert!(
         !check_satisfied(&circuit, &full_trace),
         "expected pooled top_14 corruption on SW row to fail check_satisfied (gated decomposition)"
+    );
+}
+
+/// FMAMOD_BIT = 6 within Family 1's bitmask (`add_sub_family/decoder.rs`).
+const FMA_BIT_INDEX: usize = FAMILY_1_FLAG_OFFSET + 6;
+/// MULMOD_BIT = 5 within Family 1's bitmask.
+const MULMOD_BIT_INDEX: usize = FAMILY_1_FLAG_OFFSET + 5;
+
+/// Property-based SOUNDNESS test (anti-weakening) across families. For each family's per-row
+/// ARITHMETIC output, perturbing a limb by ANY nonzero amount *within its 16-bit range* — so the
+/// change breaks a degree-2 constraint, not the range-check lookup that `check_satisfied_row` does
+/// NOT evaluate — must be caught. Generalises the hand-written `slt_rd_write_high_limb_nonzero_rejected`
+/// / `fma_rd_write_forge_rejected` over random (target, delta). multi_family_smoke exercises all four
+/// families. The 2^24 trace is built ONCE; each proptest case only mutates+restores a single cell.
+#[test]
+fn pbt_family_output_corruption_always_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|_, _| {});
+
+    let targets: &[(&str, usize, &str)] = &[
+        (
+            "F1 MULMOD out_lo",
+            MULMOD_BIT_INDEX,
+            "rd/mem write write_value[0]",
+        ),
+        (
+            "F1 MULMOD out_hi",
+            MULMOD_BIT_INDEX,
+            "rd/mem write write_value[1]",
+        ),
+        (
+            "F1 FMA out_lo",
+            FMA_BIT_INDEX,
+            "rd/mem write write_value[0]",
+        ),
+        (
+            "F2 SLT out_hi",
+            FAMILY_2_FLAG_OFFSET + 2,
+            "rd/mem write write_value[1]",
+        ),
+        (
+            "F3 shift/binop out_lo",
+            FAMILY_3_FLAG_OFFSET,
+            "rd/mem write write_value[0]",
+        ),
+    ];
+    let resolved: Vec<(&str, usize, GKRAddress)> = targets
+        .iter()
+        .filter_map(|(label, bit, col)| {
+            let bit_addr = find_base_layer_address(&circuit, &format!("family_bit[{bit}]"));
+            let row = (0..base_trace_len(&full_trace))
+                .find(|&r| read_cell(&full_trace, bit_addr, r) == BabyBearField::ONE)?;
+            assert!(
+                check_satisfied_row(&circuit, &full_trace, row),
+                "honest row {row} for {label} must satisfy before corruption"
+            );
+            Some((*label, row, find_base_layer_address(&circuit, col)))
+        })
+        .collect();
+
+    println!(
+        "pbt corruption targets resolved ({}/{}): {:?}",
+        resolved.len(),
+        targets.len(),
+        resolved.iter().map(|(l, _, _)| *l).collect::<Vec<_>>()
+    );
+    assert!(
+        resolved.len() >= 4,
+        "expected the F1/F2 arithmetic-output targets to resolve, got {}",
+        resolved.len()
+    );
+    let trace = std::cell::RefCell::new(full_trace);
+    proptest!(
+        ProptestConfig::with_cases(512),
+        |(t in 0usize..resolved.len(), delta in 1u32..=0xFFFFu32)| {
+            let (label, row, addr) = resolved[t];
+            let mut tr = trace.borrow_mut();
+            let orig = read_cell(&tr, addr, row);
+            // delta in 1..=0xFFFF is never a multiple of 0x10000, so the masked value always differs.
+            let corrupted = orig.as_u32_reduced().wrapping_add(delta) & 0xFFFF;
+            write_cell(&mut tr, addr, row, BabyBearField::new(corrupted));
+            let caught = !check_satisfied_row(&circuit, &tr, row);
+            write_cell(&mut tr, addr, row, orig); // restore for the next case
+            prop_assert!(
+                caught,
+                "corrupting {label} (orig {} -> {corrupted}) at row {row} was NOT caught",
+                orig.as_u32_reduced()
+            );
+        }
     );
 }

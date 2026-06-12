@@ -20,152 +20,169 @@ fn eval_fn_3<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_8 = witness_proxy.get_witness_place_boolean(8usize);
     let v_9 = witness_proxy.get_witness_place_boolean(9usize);
     let v_10 = witness_proxy.get_witness_place_boolean(10usize);
-    let v_11 = witness_proxy.get_witness_place_boolean(13usize);
-    let v_12 = witness_proxy.get_memory_place_u8(2usize);
-    let v_13 = witness_proxy.get_memory_place_u8(3usize);
-    let v_14 = witness_proxy.get_memory_place_u8(4usize);
-    let v_15 = witness_proxy.get_memory_place_u8(5usize);
-    let v_16 = witness_proxy.get_memory_place_u8(9usize);
-    let v_17 = witness_proxy.get_memory_place_u8(10usize);
-    let v_18 = witness_proxy.get_memory_place_u8(11usize);
-    let v_19 = witness_proxy.get_memory_place_u8(12usize);
-    let v_20 = W::Mask::or(&v_5, &v_6);
-    let v_21 = W::Mask::or(&v_20, &v_7);
-    let v_22 = W::Mask::or(&v_21, &v_8);
-    let v_23 = W::Mask::or(&v_22, &v_9);
-    let v_24 = W::Mask::or(&v_23, &v_10);
-    let v_25 = W::Mask::constant(false);
-    let v_26 = v_15.widen();
-    let v_27 = v_26.shl(8u32);
-    let v_28 = v_14.widen();
-    let mut v_29 = v_27;
-    W::U16::add_assign(&mut v_29, &v_28);
-    let v_30 = v_29.widen();
-    let v_31 = v_30.shl(16u32);
-    let v_32 = v_13.widen();
-    let v_33 = v_32.shl(8u32);
-    let v_34 = v_12.widen();
-    let mut v_35 = v_33;
-    W::U16::add_assign(&mut v_35, &v_34);
-    let v_36 = v_35.widen();
-    let mut v_37 = v_31;
-    W::U32::add_assign(&mut v_37, &v_36);
-    let v_38 = W::Field::from_integer(v_37);
-    let v_39 = v_19.widen();
-    let v_40 = v_39.shl(8u32);
-    let v_41 = v_18.widen();
-    let mut v_42 = v_40;
-    W::U16::add_assign(&mut v_42, &v_41);
-    let v_43 = v_42.widen();
-    let v_44 = v_43.shl(16u32);
-    let v_45 = v_17.widen();
-    let v_46 = v_45.shl(8u32);
-    let v_47 = v_16.widen();
-    let mut v_48 = v_46;
-    W::U16::add_assign(&mut v_48, &v_47);
-    let v_49 = v_48.widen();
-    let mut v_50 = v_44;
-    W::U32::add_assign(&mut v_50, &v_49);
-    let v_51 = W::Field::from_integer(v_50);
-    let mut v_52 = v_38;
-    W::Field::mul_assign(&mut v_52, &v_51);
-    let v_53 = v_52.as_integer();
-    let v_54 = W::U32::constant(2013265921u32);
-    let v_55 = W::U32::overflowing_sub(&v_53, &v_54).1;
-    let mut v_56 = v_38;
-    W::Field::sub_assign(&mut v_56, &v_51);
-    let v_57 = v_56.as_integer();
-    let v_58 = W::U32::overflowing_sub(&v_57, &v_54).1;
-    let mut v_59 = v_38;
-    W::Field::add_assign(&mut v_59, &v_51);
-    let v_60 = v_59.as_integer();
-    let v_61 = W::U32::overflowing_sub(&v_60, &v_54).1;
-    let v_62 = v_2.widen();
-    let v_63 = v_62.shl(16u32);
-    let v_64 = v_1.widen();
-    let mut v_65 = v_63;
-    W::U32::add_assign(&mut v_65, &v_64);
-    let v_66 = v_4.widen();
-    let v_67 = v_66.shl(16u32);
-    let v_68 = v_3.widen();
-    let mut v_69 = v_67;
-    W::U32::add_assign(&mut v_69, &v_68);
-    let v_70 = W::U32::overflowing_add(&v_65, &v_69).1;
-    let v_71 = W::U32::overflowing_sub(&v_37, &v_50).1;
-    let v_72 = W::U32::overflowing_add(&v_37, &v_50).1;
-    let mut v_73 = v_37;
-    W::U32::add_assign(&mut v_73, &v_50);
-    let v_74 = W::U32::overflowing_add(&v_73, &v_69).1;
-    let v_75 = W::Mask::or(&v_72, &v_74);
-    let v_76 = W::Mask::select(&v_5, &v_75, &v_25);
-    let v_77 = W::Mask::select(&v_6, &v_71, &v_76);
-    let v_78 = W::Mask::select(&v_7, &v_70, &v_77);
-    let v_79 = W::Mask::select(&v_8, &v_61, &v_78);
-    let v_80 = W::Mask::select(&v_9, &v_58, &v_79);
-    let v_81 = W::Mask::select(&v_10, &v_55, &v_80);
-    let v_82 = W::Mask::select(&v_11, &v_25, &v_81);
+    let v_11 = witness_proxy.get_witness_place_boolean(11usize);
+    let v_12 = witness_proxy.get_witness_place_boolean(13usize);
+    let v_13 = witness_proxy.get_memory_place_u8(2usize);
+    let v_14 = witness_proxy.get_memory_place_u8(3usize);
+    let v_15 = witness_proxy.get_memory_place_u8(4usize);
+    let v_16 = witness_proxy.get_memory_place_u8(5usize);
+    let v_17 = witness_proxy.get_memory_place_u8(9usize);
+    let v_18 = witness_proxy.get_memory_place_u8(10usize);
+    let v_19 = witness_proxy.get_memory_place_u8(11usize);
+    let v_20 = witness_proxy.get_memory_place_u8(12usize);
+    let v_21 = witness_proxy.get_memory_place_u16(18usize);
+    let v_22 = witness_proxy.get_memory_place_u16(19usize);
+    let v_23 = W::Mask::or(&v_5, &v_6);
+    let v_24 = W::Mask::or(&v_23, &v_7);
+    let v_25 = W::Mask::or(&v_24, &v_8);
+    let v_26 = W::Mask::or(&v_25, &v_9);
+    let v_27 = W::Mask::or(&v_26, &v_10);
+    let v_28 = W::Mask::or(&v_27, &v_11);
+    let v_29 = W::Mask::constant(false);
+    let v_30 = W::Mask::or(&v_10, &v_11);
+    let v_31 = v_16.widen();
+    let v_32 = v_31.shl(8u32);
+    let v_33 = v_15.widen();
+    let mut v_34 = v_32;
+    W::U16::add_assign(&mut v_34, &v_33);
+    let v_35 = v_34.widen();
+    let v_36 = v_35.shl(16u32);
+    let v_37 = v_14.widen();
+    let v_38 = v_37.shl(8u32);
+    let v_39 = v_13.widen();
+    let mut v_40 = v_38;
+    W::U16::add_assign(&mut v_40, &v_39);
+    let v_41 = v_40.widen();
+    let mut v_42 = v_36;
+    W::U32::add_assign(&mut v_42, &v_41);
+    let v_43 = W::Field::from_raw_repr_with_reduction(v_42);
+    let v_44 = v_20.widen();
+    let v_45 = v_44.shl(8u32);
+    let v_46 = v_19.widen();
+    let mut v_47 = v_45;
+    W::U16::add_assign(&mut v_47, &v_46);
+    let v_48 = v_47.widen();
+    let v_49 = v_48.shl(16u32);
+    let v_50 = v_18.widen();
+    let v_51 = v_50.shl(8u32);
+    let v_52 = v_17.widen();
+    let mut v_53 = v_51;
+    W::U16::add_assign(&mut v_53, &v_52);
+    let v_54 = v_53.widen();
+    let mut v_55 = v_49;
+    W::U32::add_assign(&mut v_55, &v_54);
+    let v_56 = W::Field::from_raw_repr_with_reduction(v_55);
+    let mut v_57 = v_43;
+    W::Field::mul_assign(&mut v_57, &v_56);
+    let v_58 = v_22.widen();
+    let v_59 = v_58.shl(16u32);
+    let v_60 = v_21.widen();
+    let mut v_61 = v_59;
+    W::U32::add_assign(&mut v_61, &v_60);
+    let v_62 = W::Field::from_raw_repr_with_reduction(v_61);
+    let mut v_63 = v_57;
+    W::Field::add_assign(&mut v_63, &v_62);
+    let v_64 = W::Field::select(&v_11, &v_63, &v_57);
+    let v_65 = v_64.into_raw_repr_reduced();
+    let v_66 = W::U32::constant(2013265921u32);
+    let v_67 = W::U32::overflowing_sub(&v_65, &v_66).1;
+    let v_68 = W::Field::from_integer(v_42);
+    let v_69 = W::Field::from_integer(v_55);
+    let mut v_70 = v_68;
+    W::Field::sub_assign(&mut v_70, &v_69);
+    let v_71 = v_70.as_integer();
+    let v_72 = W::U32::overflowing_sub(&v_71, &v_66).1;
+    let mut v_73 = v_68;
+    W::Field::add_assign(&mut v_73, &v_69);
+    let v_74 = v_73.as_integer();
+    let v_75 = W::U32::overflowing_sub(&v_74, &v_66).1;
+    let v_76 = v_2.widen();
+    let v_77 = v_76.shl(16u32);
+    let v_78 = v_1.widen();
+    let mut v_79 = v_77;
+    W::U32::add_assign(&mut v_79, &v_78);
+    let v_80 = v_4.widen();
+    let v_81 = v_80.shl(16u32);
+    let v_82 = v_3.widen();
+    let mut v_83 = v_81;
+    W::U32::add_assign(&mut v_83, &v_82);
+    let v_84 = W::U32::overflowing_add(&v_79, &v_83).1;
+    let v_85 = W::U32::overflowing_sub(&v_42, &v_55).1;
+    let v_86 = W::U32::overflowing_add(&v_42, &v_55).1;
+    let mut v_87 = v_42;
+    W::U32::add_assign(&mut v_87, &v_55);
+    let v_88 = W::U32::overflowing_add(&v_87, &v_83).1;
+    let v_89 = W::Mask::or(&v_86, &v_88);
+    let v_90 = W::Mask::select(&v_5, &v_89, &v_29);
+    let v_91 = W::Mask::select(&v_6, &v_85, &v_90);
+    let v_92 = W::Mask::select(&v_7, &v_84, &v_91);
+    let v_93 = W::Mask::select(&v_8, &v_75, &v_92);
+    let v_94 = W::Mask::select(&v_9, &v_72, &v_93);
+    let v_95 = W::Mask::select(&v_30, &v_67, &v_94);
+    let v_96 = W::Mask::select(&v_12, &v_29, &v_95);
     witness_proxy.set_witness_place_boolean(
         21usize,
         W::Mask::select(
-            &v_24,
-            &v_82,
+            &v_28,
+            &v_96,
             &witness_proxy.get_witness_place_boolean(21usize),
         ),
     );
-    let v_84 = v_53.truncate();
-    let v_85 = W::U16::constant(1u16);
-    let v_86 = W::U16::overflowing_sub(&v_84, &v_85).1;
-    let v_87 = v_57.truncate();
-    let v_88 = W::U16::overflowing_sub(&v_87, &v_85).1;
-    let v_89 = v_60.truncate();
-    let v_90 = W::U16::overflowing_sub(&v_89, &v_85).1;
-    let v_91 = W::U16::overflowing_add(&v_1, &v_3).1;
-    let v_92 = W::U16::overflowing_sub(&v_35, &v_48).1;
-    let mut v_93 = v_35;
-    W::U16::sub_assign(&mut v_93, &v_48);
-    let v_94 = W::U16::overflowing_sub(&v_93, &v_3).1;
-    let v_95 = W::Mask::or(&v_92, &v_94);
-    let v_96 = W::U16::overflowing_add(&v_35, &v_48).1;
-    let mut v_97 = v_35;
-    W::U16::add_assign(&mut v_97, &v_48);
-    let v_98 = W::U16::overflowing_add(&v_97, &v_3).1;
-    let v_99 = W::Mask::or(&v_96, &v_98);
-    let v_100 = W::Mask::select(&v_5, &v_99, &v_25);
-    let v_101 = W::Mask::select(&v_6, &v_95, &v_100);
-    let v_102 = W::Mask::select(&v_7, &v_91, &v_101);
-    let v_103 = W::Mask::select(&v_8, &v_90, &v_102);
-    let v_104 = W::Mask::select(&v_9, &v_88, &v_103);
-    let v_105 = W::Mask::select(&v_10, &v_86, &v_104);
+    let v_98 = v_65.truncate();
+    let v_99 = W::U16::constant(1u16);
+    let v_100 = W::U16::overflowing_sub(&v_98, &v_99).1;
+    let v_101 = v_71.truncate();
+    let v_102 = W::U16::overflowing_sub(&v_101, &v_99).1;
+    let v_103 = v_74.truncate();
+    let v_104 = W::U16::overflowing_sub(&v_103, &v_99).1;
+    let v_105 = W::U16::overflowing_add(&v_1, &v_3).1;
+    let v_106 = W::U16::overflowing_sub(&v_40, &v_53).1;
+    let mut v_107 = v_40;
+    W::U16::sub_assign(&mut v_107, &v_53);
+    let v_108 = W::U16::overflowing_sub(&v_107, &v_3).1;
+    let v_109 = W::Mask::or(&v_106, &v_108);
+    let v_110 = W::U16::overflowing_add(&v_40, &v_53).1;
+    let mut v_111 = v_40;
+    W::U16::add_assign(&mut v_111, &v_53);
+    let v_112 = W::U16::overflowing_add(&v_111, &v_3).1;
+    let v_113 = W::Mask::or(&v_110, &v_112);
+    let v_114 = W::Mask::select(&v_5, &v_113, &v_29);
+    let v_115 = W::Mask::select(&v_6, &v_109, &v_114);
+    let v_116 = W::Mask::select(&v_7, &v_105, &v_115);
+    let v_117 = W::Mask::select(&v_8, &v_104, &v_116);
+    let v_118 = W::Mask::select(&v_9, &v_102, &v_117);
+    let v_119 = W::Mask::select(&v_30, &v_100, &v_118);
     witness_proxy.set_witness_place_boolean(
         22usize,
         W::Mask::select(
-            &v_24,
-            &v_105,
+            &v_28,
+            &v_119,
             &witness_proxy.get_witness_place_boolean(22usize),
         ),
     );
-    let mut v_107 = v_53;
-    W::U32::sub_assign(&mut v_107, &v_54);
-    let mut v_108 = v_57;
-    W::U32::sub_assign(&mut v_108, &v_54);
-    let mut v_109 = v_60;
-    W::U32::sub_assign(&mut v_109, &v_54);
-    let v_110 = W::U32::constant(0u32);
-    let v_111 = WitnessComputationCore::select(&v_8, &v_109, &v_110);
-    let v_112 = WitnessComputationCore::select(&v_9, &v_108, &v_111);
-    let v_113 = WitnessComputationCore::select(&v_10, &v_107, &v_112);
-    let v_114 = v_113.truncate();
+    let mut v_121 = v_65;
+    W::U32::sub_assign(&mut v_121, &v_66);
+    let mut v_122 = v_71;
+    W::U32::sub_assign(&mut v_122, &v_66);
+    let mut v_123 = v_74;
+    W::U32::sub_assign(&mut v_123, &v_66);
+    let v_124 = W::U32::constant(0u32);
+    let v_125 = WitnessComputationCore::select(&v_8, &v_123, &v_124);
+    let v_126 = WitnessComputationCore::select(&v_9, &v_122, &v_125);
+    let v_127 = WitnessComputationCore::select(&v_30, &v_121, &v_126);
+    let v_128 = v_127.truncate();
     witness_proxy.set_witness_place_u16(
         43usize,
-        W::U16::select(&v_24, &v_114, &witness_proxy.get_witness_place_u16(43usize)),
+        W::U16::select(&v_28, &v_128, &witness_proxy.get_witness_place_u16(43usize)),
     );
-    let v_116 = v_113.shr(16u32);
-    let v_117 = v_116.truncate();
+    let v_130 = v_127.shr(16u32);
+    let v_131 = v_130.truncate();
     witness_proxy.set_witness_place_u16(
         44usize,
-        W::U16::select(&v_24, &v_117, &witness_proxy.get_witness_place_u16(44usize)),
+        W::U16::select(&v_28, &v_131, &witness_proxy.get_witness_place_u16(44usize)),
     );
-    witness_proxy.set_witness_place(45usize, v_52);
+    let v_133 = W::Field::from_integer(v_65);
+    witness_proxy.set_witness_place(45usize, v_133);
 }
 #[allow(unused_variables)]
 fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(

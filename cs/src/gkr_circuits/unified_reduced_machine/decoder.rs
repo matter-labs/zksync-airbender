@@ -12,8 +12,7 @@ use crate::types::Boolean;
 use super::circuit::{
     FAMILY_1_FLAG_OFFSET as F1_OFFSET, FAMILY_2_FLAG_OFFSET as F2_OFFSET,
     FAMILY_3_FLAG_OFFSET as F3_OFFSET, FAMILY_4_FLAG_OFFSET as F4_OFFSET,
-    FAMILY_4_LW_BIT as F4_LW_BIT, FAMILY_4_SW_BIT as F4_SW_BIT,
-    UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
+    FAMILY_4_LW_BIT as F4_LW_BIT, FAMILY_4_SW_BIT as F4_SW_BIT, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
 
 // Family 4 in the unified bitmask is one-hot LW/SW (2 bits), not the standalone
@@ -182,13 +181,7 @@ mod tests {
     fn family_4_lw_sw_one_hot() {
         use riscv_transpiler::ir::simple_instruction_set::{Instruction, InstructionName};
 
-        let lw = Instruction::new(
-            InstructionName::Lw,
-            1,
-            0,
-            2,
-            0,
-        );
+        let lw = Instruction::new(InstructionName::Lw, 1, 0, 2, 0);
         let decoded = UnifiedReducedMachineDecoder
             .define_decoder_subspace(lw)
             .unwrap();
@@ -198,13 +191,7 @@ mod tests {
             "LW should set exactly bit F4_LW_BIT"
         );
 
-        let sw = Instruction::new(
-            InstructionName::Sw,
-            1,
-            2,
-            0,
-            0,
-        );
+        let sw = Instruction::new(InstructionName::Sw, 1, 2, 0, 0);
         let decoded = UnifiedReducedMachineDecoder
             .define_decoder_subspace(sw)
             .unwrap();
@@ -214,5 +201,4 @@ mod tests {
             "SW should set exactly bit F4_SW_BIT"
         );
     }
-
 }
