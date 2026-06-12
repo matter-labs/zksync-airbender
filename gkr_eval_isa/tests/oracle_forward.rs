@@ -36,6 +36,7 @@ fn check_circuit(path: &std::path::Path, params: CompileParams, seed: u64) {
         let src = StagedSources {
             bf: cl.source_map.bf.iter().map(|&n| base_part(row.leaf_vals[n].unwrap())).collect(),
             e4: cl.source_map.e4.iter().map(|&n| row.leaf_vals[n].unwrap()).collect(),
+            cache_outs: vec![],
         };
         let got = execute(&cl.program, &src);
 

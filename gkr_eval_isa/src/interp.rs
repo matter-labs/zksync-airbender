@@ -9,6 +9,16 @@ use field::{Field, FieldExtension, PrimeField};
 pub struct StagedSources {
     pub bf: Vec<Bf>,
     pub e4: Vec<Ext>,
+    /// CacheK sentinel outputs, indexed by cache index (PayloadMeta::cache).
+    /// Empty for cone programs.
+    pub cache_outs: Vec<Ext>,
+}
+
+/// One NativeK firing: which payload, and the operand values delivered.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NativeFire {
+    pub payload: u16,
+    pub vals: Vec<Ext>,
 }
 
 pub struct ExecResult {
@@ -17,6 +27,8 @@ pub struct ExecResult {
     pub outputs: Vec<Option<Ext>>,
     /// Indexed by gate-in staging index.
     pub gate_ins: Vec<Option<Ext>>,
+    /// NativeK firings in program order (the trace the oracle checks).
+    pub native_trace: Vec<NativeFire>,
 }
 
 fn read_cells(cells: &[Bf], cell: u16, e4: bool) -> Ext {
@@ -49,6 +61,7 @@ pub fn execute(p: &Program, src: &StagedSources) -> ExecResult {
     let mut fixed = vec![Bf::ZERO; p.n_fixed_cells as usize];
     let mut outputs: Vec<Option<Ext>> = vec![None; p.n_outputs as usize];
     let mut gate_ins: Vec<Option<Ext>> = vec![None; p.n_gate_ins as usize];
+    let mut native_trace: Vec<NativeFire> = Vec::new();
 
     for ins in &p.instrs {
         let read = |o: &Operand| -> Ext {
@@ -70,6 +83,20 @@ pub fn execute(p: &Program, src: &StagedSources) -> ExecResult {
                 }
             }
         };
+
+        if ins.op == Op::NativeK {
+            let vals: Vec<Ext> = ins.operands.iter().map(|o| read(o)).collect();
+            let pid = ins.payload.expect("NativeK without payload");
+            native_trace.push(NativeFire { payload: pid, vals });
+            // CacheK: write the caller-provided sentinel into the result cell.
+            // GateK (Dst::Native): no interpreter-visible store.
+            if let Some(c) = p.payloads[pid as usize].cache {
+                if let Dst::Slot(cell) = ins.dst {
+                    write_cells(&mut slots, cell, ins.e4_result, src.cache_outs[c as usize]);
+                }
+            }
+            continue;
+        }
 
         let acc = match ins.op {
             Op::SumK => {
@@ -98,7 +125,7 @@ pub fn execute(p: &Program, src: &StagedSources) -> ExecResult {
                 }
                 a
             }
-            Op::NativeK => unreachable!("NativeK execution lands in the next task"),
+            Op::NativeK => unreachable!("NativeK is handled by the early-continue above"),
         };
 
         match ins.dst {
@@ -109,5 +136,60 @@ pub fn execute(p: &Program, src: &StagedSources) -> ExecResult {
             Dst::Native => unreachable!("Dst::Native is NativeK-only"),
         }
     }
-    ExecResult { outputs, gate_ins }
+    ExecResult { outputs, gate_ins, native_trace }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::isa::{Instr, PayloadMeta};
+    use field::PrimeField;
+
+    #[test]
+    fn nativek_traces_and_writes_sentinels() {
+        let p = Program {
+            instrs: vec![
+                // CacheK 0: reads source 0, result sentinel into cell 0 (bf).
+                Instr {
+                    op: Op::NativeK,
+                    e4_result: false,
+                    dst: Dst::Slot(0),
+                    operands: vec![Operand::Source { id: 0, e4: false }],
+                    payload: Some(0),
+                },
+                // GateK 1: reads the cache cell and source 1.
+                Instr {
+                    op: Op::NativeK,
+                    e4_result: false,
+                    dst: Dst::Native,
+                    operands: vec![
+                        Operand::Slot { cell: 0, e4: false },
+                        Operand::Source { id: 1, e4: false },
+                    ],
+                    payload: Some(1),
+                },
+            ],
+            n_slot_cells: 1,
+            n_sources_bf: 2,
+            payloads: vec![
+                PayloadMeta { cache: Some(0), e4: false },
+                PayloadMeta { cache: None, e4: false },
+            ],
+            ..Default::default()
+        };
+        let src = StagedSources {
+            bf: vec![Bf::from_u32_with_reduction(3), Bf::from_u32_with_reduction(5)],
+            e4: vec![],
+            cache_outs: vec![lift(Bf::from_u32_with_reduction(7))],
+        };
+        let got = execute(&p, &src);
+        assert_eq!(got.native_trace.len(), 2);
+        assert_eq!(got.native_trace[0].payload, 0);
+        assert_eq!(got.native_trace[0].vals, vec![lift(Bf::from_u32_with_reduction(3))]);
+        // The gate reads the SENTINEL from the cache cell, not the input.
+        assert_eq!(
+            got.native_trace[1].vals,
+            vec![lift(Bf::from_u32_with_reduction(7)), lift(Bf::from_u32_with_reduction(5))]
+        );
+    }
 }
