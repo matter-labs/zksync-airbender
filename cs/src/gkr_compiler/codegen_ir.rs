@@ -1116,7 +1116,19 @@ fn lower_cache(
         },
         C::VectorizedLookupSetup(_) => CacheKind::VectorizedLookupSetup,
     };
-    let out_node = b.add_gate_output(ProducerId::Cache(idx), 0, Domain::Ext, addr);
+    // The out domain follows the cache VALUE: a single-column lookup input is
+    // a base lincomb (the forward kernel emits and stores it as bf); the
+    // folded kinds (alpha-folded tuples, challenge-folded memory tuples,
+    // lookup setup) are ext. Same-layer consumer Places resolve with the
+    // matching domain — stamping Ext unconditionally (the old behavior) left
+    // SingleColumnLookup outs inconsistent with their consumers.
+    let out_domain = match &kind {
+        CacheKind::SingleColumnLookup { .. } => Domain::Base,
+        CacheKind::VectorizedLookup { .. }
+        | CacheKind::MemoryTuple { .. }
+        | CacheKind::VectorizedLookupSetup => Domain::Ext,
+    };
+    let out_node = b.add_gate_output(ProducerId::Cache(idx), 0, out_domain, addr);
     CodegenCache {
         kind,
         inputs,
