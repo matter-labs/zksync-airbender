@@ -120,7 +120,7 @@ fn native_dag_soundness() {
             }
             let mut place_per_cache: HashMap<usize, usize> = HashMap::new();
             for (i, n) in arena.iter().enumerate() {
-                if let ExprNode::Place { addr, .. } = n {
+                if let ExprNode::Place { addr, domain, .. } = n {
                     if matches!(addr, GKRAddress::Cached { .. }) {
                         let ci = *addr_to_cache.get(addr).unwrap_or_else(|| {
                             panic!("{name} L{li} node {i}: Cached Place with no producing cache")
@@ -130,6 +130,18 @@ fn native_dag_soundness() {
                             prev.is_none(),
                             "{name} L{li}: two Place nodes for cache {ci} (CSE violation)"
                         );
+                        // Producer/consumer domain consistency: lower_cache
+                        // stamps the cache-out GateOutput per CacheKind (fixed
+                        // 2026-06-12 — it used to be Ext unconditionally); the
+                        // consumer Place must agree, since cell widths and
+                        // sentinel domains are derived from it.
+                        let out_node = layer.caches[ci].out.0.0 as usize;
+                        if let ExprNode::GateOutput { domain: god, .. } = &arena[out_node] {
+                            assert_eq!(
+                                god, domain,
+                                "{name} L{li}: cache {ci} out domain != consumer Place domain"
+                            );
+                        }
                     }
                 }
             }

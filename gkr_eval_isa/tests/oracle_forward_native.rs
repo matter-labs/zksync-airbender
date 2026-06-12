@@ -76,10 +76,12 @@ fn check_layer(
     assert_eq!(alias, cf.cached_alias, "{name} L{li}: alias maps diverge");
 
     // Sentinels per cache — domain must match PayloadMeta.e4 (the alias Place
-    // node domain the compiler uses for write_cells), NOT c.out.0 (GateOutput).
-    // The two can diverge: GateOutput domain is the cache's own output domain,
-    // while the Place domain is derived from the consumer's expected domain at
-    // resolve()-time. The sentinel must be in the same domain the program writes.
+    // node domain the compiler uses for write_cells). Historically the cache
+    // out GateOutput was stamped Ext unconditionally and could diverge from
+    // the consumer Place; lower_cache now stamps per CacheKind and the
+    // native_guards test pins producer/consumer agreement. PayloadMeta.e4
+    // remains the right coupling: it is literally the domain the program
+    // writes with.
     let sentinels: Vec<Ext> = (0..layer.caches.len())
         .map(|ci| rand_ext(&mut rng, cf.program.payloads[ci].e4))
         .collect();
