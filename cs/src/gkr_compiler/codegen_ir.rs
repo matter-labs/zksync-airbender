@@ -95,13 +95,13 @@ pub struct ExprArena {
     pub hints: Vec<NodeHints>,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ForwardSource {
     Computed,
     ScratchPrefill,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OutputSlot {
     pub node: NodeId,
     pub addr: GKRAddress,
@@ -117,7 +117,7 @@ pub struct OutputSlot {
 /// anchors the first sparse operand; the full folded constraint lives in the
 /// `GateKind`'s sparse terms, so `uses`/footprint still see all operands via
 /// the gate-input enumeration.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BatchTerm {
     pub power: u32,
     pub value: NodeId,
@@ -365,7 +365,7 @@ pub struct CodegenGlobals {
     pub witness_layout: GKRWitnessLayout,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CodegenGate {
     pub kind: GateKind,
     pub dst: Vec<OutputSlot>,
