@@ -38,9 +38,9 @@ fn bench_stub_kernel_roundtrip() {
 
 // ---------------------------------------------------------------------------
 // Task 3: GPU↔CPU interpreter parity on synthetic staged sources.
-// NativeK instructions are SKIPPED by the kernel (counted); CPU cache
-// sentinels are forced to ZERO so both sides agree by construction (the
-// kernel's zero-initialized cell file == the skipped sentinel write).
+// NativeK payload routines are SKIPPED by the kernel (counted), but the
+// CacheK Dst::Slot sentinel write is replicated with ZERO; CPU cache
+// sentinels are forced to ZERO so both sides agree by construction.
 // ---------------------------------------------------------------------------
 
 use gkr_design_space::import::load_circuit;
@@ -96,6 +96,8 @@ struct ParityPoint<'a> {
     output_e4_dev: DeviceAllocation<u32>,
     /// [native_skip, error_flag].
     debug_dev: DeviceAllocation<u32>,
+    /// Final cell-file dump, layout [c * t + row], budget_cells x t.
+    debug_cells_dev: DeviceAllocation<Bf>,
 }
 
 fn build_parity_point<'a>(
@@ -179,6 +181,7 @@ fn build_parity_point<'a>(
     let outputs_tbl_dev = alloc_upload(context, &outputs_host);
     let output_e4_dev = alloc_upload(context, &lowered.output_e4);
     let debug_dev = alloc_upload(context, &[0u32; 2][..]);
+    let debug_cells_dev = alloc_upload(context, &vec![Bf::ZERO; lowered.budget_cells as usize * t]);
 
     ParityPoint {
         context,
@@ -197,6 +200,7 @@ fn build_parity_point<'a>(
         outputs_tbl_dev,
         output_e4_dev,
         debug_dev,
+        debug_cells_dev,
     }
 }
 
@@ -232,6 +236,13 @@ impl ParityPoint<'_> {
             context.get_exec_stream(),
         )
         .unwrap();
+        let n_cells = self.lowered.budget_cells as usize;
+        memory_copy_async(
+            &mut self.debug_cells_dev,
+            &vec![Bf::ZERO; n_cells * t],
+            context.get_exec_stream(),
+        )
+        .unwrap();
 
         let program_ldg = match residency {
             InterpResidency::Ldg => self.lanes_dev.as_ptr(),
@@ -250,6 +261,7 @@ impl ParityPoint<'_> {
             count: t as u32,
             native_skip: self.debug_dev.as_mut_ptr(),
             error_flag: unsafe { self.debug_dev.as_mut_ptr().add(1) },
+            debug_cells: self.debug_cells_dev.as_mut_ptr() as *mut BF,
         };
         launch_bench_fwd_interp(&desc, residency, context).unwrap();
 
@@ -271,6 +283,13 @@ impl ParityPoint<'_> {
             )
             .unwrap();
         }
+        let mut cells_host = vec![Bf::ZERO; n_cells * t];
+        memory_copy_async(
+            &mut cells_host,
+            &self.debug_cells_dev,
+            context.get_exec_stream(),
+        )
+        .unwrap();
         let mut debug_host = [0u32; 2];
         memory_copy_async(
             &mut debug_host[..],
@@ -295,6 +314,24 @@ impl ParityPoint<'_> {
             n_native * t as u32,
             "{label}: native_skip counter (expected {n_native} NativeK x {t} threads)"
         );
+
+        // Cell-file parity: the kernel dumps its FINAL smem cell file; compare
+        // against the CPU interpreter's final slot file for every cell. This
+        // exercises the value path even when cf.outputs is empty.
+        assert_eq!(
+            self.cpu.final_cells.len(),
+            n_cells,
+            "{label}: CPU cell-file length vs lowered budget_cells"
+        );
+        for row in [0usize, t - 1] {
+            for c in 0..n_cells {
+                assert_eq!(
+                    cells_host[c * t + row],
+                    self.cpu.final_cells[c],
+                    "{label}: cell {c} row {row}"
+                );
+            }
+        }
 
         // Outputs: rows 0 and t-1 must equal the CPU interpreter's result.
         for &(j, e4, col) in &self.out_slots {

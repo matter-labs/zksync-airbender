@@ -55,6 +55,9 @@ pub(crate) struct InterpDesc {
     pub native_skip: *mut u32,
     /// Debug flag: `INTERP_ERR_*` bits atomicOr'd by the kernel; 0 = clean.
     pub error_flag: *mut u32,
+    /// Final cell-file dump for parity tests; null in timing runs. Layout
+    /// `[c * count + gid]`, `budget_cells x count` bf elements.
+    pub debug_cells: *mut BF,
 }
 
 cuda_kernel_signature_arguments_and_function!(
@@ -100,8 +103,9 @@ pub(crate) fn launch_bench_fwd_interp(
     context: &ProverContext,
 ) -> CudaResult<()> {
     let grid_dim = desc.count.max(1).div_ceil(BENCH_INTERP_THREADS_PER_BLOCK);
-    let dynamic_smem_bytes =
-        desc.budget_cells as usize * 4 * BENCH_INTERP_THREADS_PER_BLOCK as usize;
+    let dynamic_smem_bytes = desc.budget_cells as usize
+        * std::mem::size_of::<BF>()
+        * BENCH_INTERP_THREADS_PER_BLOCK as usize;
     let config = CudaLaunchConfig::builder()
         .grid_dim(grid_dim)
         .block_dim(BENCH_INTERP_THREADS_PER_BLOCK)

@@ -29,7 +29,8 @@ EXTERN __launch_bounds__(128, 4) __global__ void ab_gkr_bench_fwd_interp_smoke_k
 // ---------------------------------------------------------------------------
 
 // ABI mirrored bit-for-bit by bench_interp/mod.rs `InterpDesc`. Task 4
-// EXTENDS this struct with: const u8 *payloads; const u32 *payload_offsets.
+// EXTENDS this struct (after debug_cells) with: const u8 *payloads;
+// const u32 *payload_offsets.
 struct interp_desc {
   const u16 *program_ldg;     // lane stream (global); ignored by the LDC variant
   u32 program_lanes;          // total lane count — decode must consume exactly this
@@ -46,6 +47,7 @@ struct interp_desc {
   u32 count;            // rows
   u32 *native_skip;     // debug: one global counter, += per (NativeK, thread)
   u32 *error_flag;      // debug: atomicOr'd INTERP_ERR_* bits; 0 = clean run
+  bf *debug_cells;      // null in timing runs; layout [c * count + gid], budget_cells x count
 };
 
 // Unexpected-program report bits (Task-3 scope traps, no asm("trap;") so the
@@ -72,6 +74,8 @@ template <bool LDC> DEVICE_FORCEINLINE void interp_body(const interp_desc d) {
   // cell INDICES (quad-aligned by the compiler), i.e. blockDim.x-strided here.
   auto cell = [&](const u32 c) -> bf & { return reinterpret_cast<bf *>(interp_smem)[c * blockDim.x + threadIdx.x]; };
   // CPU zero-initializes the slot file (interp.rs:60); smem is undefined.
+  // TIMING NOTE (Task 6): fixed per-thread cost a production kernel might
+  // elide; measure with and without before reading absolute numbers.
   for (u32 c = 0; c < d.budget_cells; c++)
     cell(c) = bf::ZERO();
 
@@ -94,8 +98,19 @@ template <bool LDC> DEVICE_FORCEINLINE void interp_body(const interp_desc d) {
       i++;         // payload index — unused until Task 4
       const u32 cnt = program_lane<LDC>(d, i++);
       i += cnt; // skip operand lanes
-      // Task 3: skipped ENTIRELY, including the CacheK Dst::Slot sentinel
-      // write (interp.rs:93-97) — the parity test zeroes CPU sentinels.
+      // Task 3: the payload routine is skipped, but the CacheK Dst::Slot
+      // sentinel write (interp.rs:93-97) is REPLICATED with ZERO — the parity
+      // test forces CPU sentinels to zero, and with cell reuse the sentinel
+      // can overwrite a live cell, so skipping the write breaks cell-file
+      // parity. GateK is dst_class 3 (Dst::Native, isa.rs:121) — no store.
+      if (dst_class == 0) {
+        cell(dst_idx) = bf::ZERO();
+        if (e4_result) {
+          cell(dst_idx + 1) = bf::ZERO();
+          cell(dst_idx + 2) = bf::ZERO();
+          cell(dst_idx + 3) = bf::ZERO();
+        }
+      }
       native_skipped++;
       continue;
     }
@@ -178,9 +193,16 @@ template <bool LDC> DEVICE_FORCEINLINE void interp_body(const interp_desc d) {
 
   if (err == 0 && i != d.program_lanes)
     err = INTERP_ERR_TRAILING_LANES; // mirror of decode's trailing-lanes assert (isa.rs:216)
+  // Parity-test cell-file dump: unconditional on err so failures stay debuggable.
+  if (d.debug_cells != nullptr)
+    for (u32 c = 0; c < d.budget_cells; c++)
+      d.debug_cells[c * d.count + gid] = cell(c);
   if (err != 0)
     atomicOr(d.error_flag, err);
-  if (native_skipped != 0)
+  // TIMING NOTE (Task 6): one atomicAdd per thread to a single global counter
+  // is contended serialization in the kernel tail — timing runs must pass
+  // native_skip = nullptr (guarded here), like debug_cells.
+  if (native_skipped != 0 && d.native_skip != nullptr)
     atomicAdd(d.native_skip, native_skipped); // test expects n_native_instrs * count total
 }
 

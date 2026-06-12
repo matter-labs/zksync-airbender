@@ -78,6 +78,20 @@ pub(crate) fn lower_program(
         "forward programs have no fixed-reg file"
     );
     assert_eq!(p.n_gate_ins, 0, "forward programs have no gate-in staging");
+    // The kernel writes a zero sentinel for ANY NativeK with a Slot dst (it
+    // has no payload table until Task 4); the CPU writes sentinels only for
+    // cache payloads. Pin the equivalence here so a non-cache Slot-dst
+    // NativeK cannot silently diverge.
+    for ins in &p.instrs {
+        if ins.op == gkr_eval_isa::isa::Op::NativeK {
+            let is_cache = p.payloads[ins.payload.unwrap() as usize].cache.is_some();
+            let has_slot_dst = matches!(ins.dst, Dst::Slot(_));
+            assert_eq!(
+                is_cache, has_slot_dst,
+                "NativeK Slot-dst <=> cache payload violated"
+            );
+        }
+    }
     let lanes = encode(p);
 
     let n_bf = p.n_sources_bf as usize;
