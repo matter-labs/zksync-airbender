@@ -137,6 +137,44 @@ fn oracle_all_fixtures() {
             CompileParams { budget_cells: 64, pinned_cells: 32, ..Default::default() },
             7 + 1,
         );
+        // And once with dynamic leaf residency at a tight budget (loads,
+        // leaf evictions, and reload decisions all exercised).
+        check_circuit(
+            p,
+            CompileParams { budget_cells: 16, leaf_cache: true, ..Default::default() },
+            7 + 2,
+        );
+    }
+}
+
+#[test]
+fn dynamic_leaf_residency_matches_pin_saturation_at_unbounded() {
+    // At an unbounded budget, dynamic leaf residency loads every multi-use
+    // leaf exactly once and never evicts — its src reads must equal pin
+    // saturation's (one read per distinct multi-use column + single-use
+    // reads), the max-absorbable bound.
+    for f in [
+        "blake2_with_extended_control_codegen_ir_gkr.json",
+        "bigint_with_extended_control_codegen_ir_gkr.json",
+        "keccak_special5_codegen_ir_gkr.json",
+    ] {
+        let c = load_circuit(&fixture(f)).unwrap();
+        let sat = compile_layer(
+            &c.circuit.layers[0],
+            &c.graphs[0],
+            CompileParams { budget_cells: 4096, pinned_cells: 4096, ..Default::default() },
+        );
+        let dyn_ = compile_layer(
+            &c.circuit.layers[0],
+            &c.graphs[0],
+            CompileParams { budget_cells: 4096, leaf_cache: true, ..Default::default() },
+        );
+        assert!(dyn_.stats.leaf_loads > 0, "{f}: no leaf loads at unbounded");
+        assert_eq!(dyn_.stats.spill_evictions, 0, "{f}: evictions at unbounded");
+        assert_eq!(
+            dyn_.stats.operand_kind_hist[0], sat.stats.operand_kind_hist[0],
+            "{f}: dyn-∞ src reads != pin-saturation src reads"
+        );
     }
 }
 

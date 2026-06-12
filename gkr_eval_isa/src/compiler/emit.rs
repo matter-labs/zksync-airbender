@@ -48,6 +48,9 @@ struct EmitCtx<'a> {
     /// preloaded into their cell; computed nodes write it at emission and
     /// stay resident for the whole program.
     pinned: HashMap<usize, u16>,
+    /// Dynamic leaf residency (params.leaf_cache): multi-use leaves load into
+    /// an evictable slot on first use instead of re-reading the source per use.
+    leaf_cache: bool,
     /// Reads + writes per cell address (e4 touches 4 cells) — the data for
     /// the later per-address smem-vs-register placement.
     cell_accesses: Vec<u32>,
@@ -114,16 +117,19 @@ impl<'a> EmitCtx<'a> {
             // so we find the victim node first (immutable phase), then mutate.
             let pos = self.pos;
             let victims = self.build_victims(protect);
-            // Pick the victim with the furthest next use, tie-break by width
-            // then node id. The node id makes the key TOTAL: victims come
-            // from a HashMap walk, and without it ties resolve by hash
-            // iteration order, making compilation nondeterministic across
+            // Pick the victim with the furthest next use; tie-break preferring
+            // leaves (re-materializing a leaf costs one load vs a remat cone),
+            // then width, then node id. The node id makes the key TOTAL:
+            // victims come from a HashMap walk, and without it ties resolve by
+            // hash iteration order, making compilation nondeterministic across
             // runs (caught as run-to-run jitter in the static report).
             let budget = self.slot_alloc.budget();
             let protected = protect.len();
             let victim = victims
                 .iter()
-                .max_by_key(|r| (self.next_use(r.node, pos), r.width, r.node))
+                .max_by_key(|r| {
+                    (self.next_use(r.node, pos), !is_computed(&self.arena[r.node]), r.width, r.node)
+                })
                 .unwrap_or_else(|| panic!(
                     "slot budget infeasible for instruction footprint: \
                      need {width} more cells, budget {budget}, \
@@ -132,15 +138,20 @@ impl<'a> EmitCtx<'a> {
             let evicted_node = victim.node;
             let evicted_cell = victim.cell;
             let evicted_width = victim.width;
-            // Safety: evicted node must have a future use — otherwise it would
-            // have been dead and released by release_if_dead. If remaining_uses > 0
-            // then use_positions must be non-empty (they were populated from the
-            // same consumer edges).
+            // Safety (computed nodes only): evicted node must have a future use —
+            // otherwise it would have been dead and released by release_if_dead.
+            // If remaining_uses > 0 then use_positions must be non-empty (they
+            // were populated from the same consumer edges).
             // Safe ONLY because root-use copies are emitted in the producer's own
             // iteration: a root-use-only placement never survives into an eviction
             // window. If root copies are ever deferred, this assert will fire spuriously.
+            // Leaves are exempt: a leaf resident may carry a trailing-output use
+            // (no walk position), and evicting it is always safe — the value
+            // remains readable from the staged source.
             debug_assert!(
-                self.next_use(evicted_node, pos) != usize::MAX || self.remaining_uses[evicted_node] == 0,
+                !is_computed(&self.arena[evicted_node])
+                    || self.next_use(evicted_node, pos) != usize::MAX
+                    || self.remaining_uses[evicted_node] == 0,
                 "evicted node {evicted_node} has remaining_uses={} but no future use position \
                  (use_positions={:?})",
                 self.remaining_uses[evicted_node],
@@ -189,19 +200,41 @@ impl<'a> EmitCtx<'a> {
         p
     }
 
-    /// Slot cells this operand's protection will occupy: 0 when it is (or will
-    /// be) served outside the evictable slot file, its width otherwise (a
-    /// missing placement means an upcoming remat into a fresh slot).
-    fn protect_footprint(&self, node: usize) -> usize {
+    /// Slot cells this operand's protection will occupy once resolved: 0 when
+    /// it is (or will be) served outside the evictable slot file, its width
+    /// otherwise. For computed nodes a missing placement means an upcoming
+    /// remat into a fresh slot; for leaves it means an upcoming load iff
+    /// leaf_cache is on and the leaf still has >= 2 uses ahead.
+    fn operand_footprint(&self, node: usize) -> usize {
+        let w = || if node_domain(&self.arena[node]) == Domain::Ext { 4 } else { 1 };
         match self.placements.get(&node) {
             Some(Placement::PinnedSlot { .. }) => 0,
             Some(Placement::Slot { e4, .. }) => {
                 if *e4 { 4 } else { 1 }
             }
-            None => {
-                if node_domain(&self.arena[node]) == Domain::Ext { 4 } else { 1 }
-            }
+            None => match &self.arena[node] {
+                ExprNode::Constant(_) => 0,
+                ExprNode::Sum { .. } | ExprNode::Product { .. } => w(),
+                _leaf => {
+                    if self.leaf_cache && self.remaining_uses[node] >= 2 { w() } else { 0 }
+                }
+            },
         }
+    }
+
+    /// Load a non-resident leaf into an evictable slot (SumK arity-1 copy of
+    /// the staged source). The dynamic-residency counterpart of remat: the
+    /// "cone" of a leaf is a single load.
+    fn load_leaf(&mut self, node: usize, protect: &[usize]) -> Placement {
+        let e4 = node_domain(&self.arena[node]) == Domain::Ext;
+        let w = if e4 { 4 } else { 1 };
+        let cell = self.alloc_with_eviction(node, w, protect);
+        let p = Placement::Slot { cell, e4 };
+        self.placements.insert(node, p);
+        let (id, src_e4) = *self.source_id.get(&node).expect("leaf not in source map");
+        self.record_instr(Op::SumK, e4, Dst::Slot(cell), vec![Operand::Source { id, e4: src_e4 }]);
+        self.stats.leaf_loads += 1;
+        p
     }
 
     /// Resolve one operand group into `ops`, rematerializing evicted computed
@@ -220,12 +253,25 @@ impl<'a> EmitCtx<'a> {
                 None => ops.push(Operand::One),
                 Some(c) => {
                     let computed = is_computed(&self.arena[c]);
+                    let is_leaf = super::is_leaf(&self.arena[c]);
                     if computed && !self.placements.contains_key(&c) {
                         self.remat(c, depth, protect);
                     }
+                    if self.leaf_cache
+                        && is_leaf
+                        && !self.placements.contains_key(&c)
+                        && self.remaining_uses[c] >= 2
+                    {
+                        self.load_leaf(c, protect);
+                    }
                     let o = self.operand_for(c);
-                    if computed && !protect.contains(&c) {
-                        *protect_cells += self.protect_footprint(c);
+                    // Protect every operand occupying an evictable slot until
+                    // the chunk's instruction is pushed (computed values AND
+                    // loaded leaves alike).
+                    if matches!(self.placements.get(&c), Some(Placement::Slot { .. }))
+                        && !protect.contains(&c)
+                    {
+                        *protect_cells += self.operand_footprint(c);
                         protect.push(c);
                     }
                     ops.push(o);
@@ -300,8 +346,8 @@ impl<'a> EmitCtx<'a> {
                 let g = &groups[gi];
                 let mut add = 0usize;
                 for c in g.nodes.iter().flatten() {
-                    if is_computed(&self.arena[*c]) && !protect.contains(c) {
-                        add += self.protect_footprint(*c);
+                    if !protect.contains(c) {
+                        add += self.operand_footprint(*c);
                     }
                 }
                 // Close the chunk rather than exceed the footprint cap; every
@@ -342,11 +388,11 @@ impl<'a> EmitCtx<'a> {
                 v => Kind::Const(*self.const_id.get(&v).expect("constant not in table")),
             },
             ExprNode::Place { .. } | ExprNode::GateOutput { .. } => {
-                // A leaf preloaded into the pinned prefix is read from
-                // there. Check placement FIRST.
+                // A resident leaf (pinned preload or dynamic load) is read
+                // from its cell; otherwise straight from the staged source.
                 match self.placements.get(&node).copied() {
-                    Some(p @ Placement::PinnedSlot { .. }) => Kind::Placed(p),
-                    _ => {
+                    Some(p) => Kind::Placed(p),
+                    None => {
                         let (id, e4) = *self.source_id.get(&node).expect("source not mapped");
                         Kind::Source { id, e4 }
                     }
@@ -665,7 +711,11 @@ pub(crate) fn emit_layer(
             _ => continue,
         };
         for c in consumed {
-            if is_computed(&arena[c]) {
+            // Leaves get use positions too when dynamic residency is on —
+            // Belady needs their next use to rank them as eviction victims.
+            if is_computed(&arena[c])
+                || (params.leaf_cache && super::is_leaf(&arena[c]))
+            {
                 use_positions[c].push(p);
             }
         }
@@ -684,6 +734,7 @@ pub(crate) fn emit_layer(
         pos: 0,
         use_positions,
         pinned: pinned.clone(),
+        leaf_cache: params.leaf_cache,
         cell_accesses: vec![0; params.budget_cells],
     };
     ctx.stats.pinned_cells = pinned_prefix;
@@ -736,9 +787,9 @@ pub(crate) fn emit_layer(
         let mut est_cells = 0usize;
         let mut est_seen: Vec<usize> = Vec::new();
         for c in groups.iter().flat_map(|g| g.nodes.iter().flatten()) {
-            if is_computed(&arena[*c]) && !est_seen.contains(c) {
+            if !est_seen.contains(c) {
                 est_seen.push(*c);
-                est_cells += ctx.protect_footprint(*c);
+                est_cells += ctx.operand_footprint(*c);
             }
         }
         let single_chunk_ok = groups.len() <= MAX_ARITY

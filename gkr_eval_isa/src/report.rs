@@ -44,12 +44,16 @@ pub struct PinTradePoint {
     pub pin_request: usize,
     /// Cells the prefix actually uses (< request once hub candidates run out).
     pub pinned_cells: usize,
+    /// Dynamic leaf residency (multi-use leaves load/evict like
+    /// intermediates) instead of the static pinned prefix.
+    pub leaf_cache: bool,
     pub feasible: bool,
     pub src_reads: usize,
     pub instrs: usize,
     pub bytes: usize,
     pub spill_evictions: usize,
     pub remat_instrs: usize,
+    pub leaf_loads: usize,
     pub pinned_hits: usize,
     /// Total cell accesses and the share captured by the top {8,16,24,32}
     /// hottest addresses — the data for the smem-vs-register split.
@@ -78,20 +82,27 @@ fn trade_point(
     g: &AnalysisGraph,
     budget: usize,
     pin: usize,
+    leaf_cache: bool,
 ) -> PinTradePoint {
-    let params =
-        CompileParams { budget_cells: budget, pinned_cells: pin, order: OrderKind::Arena };
+    let params = CompileParams {
+        budget_cells: budget,
+        pinned_cells: pin,
+        leaf_cache,
+        order: OrderKind::Arena,
+    };
     match catch_unwind(AssertUnwindSafe(|| compile_layer(layer, g, params))) {
         Ok(cl) => PinTradePoint {
             budget_cells: budget,
             pin_request: pin,
             pinned_cells: cl.stats.pinned_cells,
+            leaf_cache,
             feasible: true,
             src_reads: cl.stats.operand_kind_hist[0],
             instrs: cl.stats.instrs,
             bytes: cl.stats.bytes,
             spill_evictions: cl.stats.spill_evictions,
             remat_instrs: cl.stats.remat_instrs,
+            leaf_loads: cl.stats.leaf_loads,
             pinned_hits: cl.stats.pinned_hits,
             cell_accesses_total: cl.stats.cell_accesses_total,
             cell_accesses_top: cl.stats.cell_accesses_top,
@@ -100,12 +111,14 @@ fn trade_point(
             budget_cells: budget,
             pin_request: pin,
             pinned_cells: pin,
+            leaf_cache,
             feasible: false,
             src_reads: 0,
             instrs: 0,
             bytes: 0,
             spill_evictions: 0,
             remat_instrs: 0,
+            leaf_loads: 0,
             pinned_hits: 0,
             cell_accesses_total: 0,
             cell_accesses_top: [0; 4],
@@ -129,16 +142,20 @@ pub fn circuit_cost(path: &str, c: &LoadedCircuit) -> CircuitCost {
     let mut trade = Vec::new();
     for &budget in &SLOT_GRID {
         if budget == UNBOUNDED {
-            // Two points suffice: no pin (== baseline) and saturated pin
-            // (every hub candidate cached — the max-absorbable bound).
-            trade.push(trade_point(layer0, g0, budget, 0));
-            trade.push(trade_point(layer0, g0, budget, UNBOUNDED));
+            // No pin (== baseline), saturated pin (max-absorbable bound), and
+            // dynamic leaf residency (should match saturation's src reads:
+            // every multi-use leaf loaded exactly once, never evicted).
+            trade.push(trade_point(layer0, g0, budget, 0, false));
+            trade.push(trade_point(layer0, g0, budget, UNBOUNDED, false));
+            trade.push(trade_point(layer0, g0, budget, 0, true));
         } else {
             let mut pin = 0usize;
             while budget - pin >= 4 {
-                trade.push(trade_point(layer0, g0, budget, pin));
+                trade.push(trade_point(layer0, g0, budget, pin, false));
                 pin += 4;
             }
+            // Dynamic leaf residency: same budget, no static split at all.
+            trade.push(trade_point(layer0, g0, budget, 0, true));
         }
     }
     CircuitCost { path: path.to_string(), baseline, upper_layers, trade }
@@ -150,7 +167,7 @@ pub fn to_markdown(costs: &[CircuitCost]) -> String {
     writeln!(s, "# gkr_eval_isa static cost report — unified-budget pin trade (forward subset)\n")
         .unwrap();
     writeln!(s, "Model: registers + smem are ONE cell budget; swept decision = pinned cache vs working set split (step 4). The smem-vs-register placement of each address is decided later from access counts.").unwrap();
-    writeln!(s, "Trade lines: `pin→src reads/instrs`, `*` = min src reads (assumes reads are the binding cost — DRAM-bound). ✗ = infeasible split.").unwrap();
+    writeln!(s, "Trade lines: `pin→src reads/instrs`, `*` = min src reads (assumes reads are the binding cost — DRAM-bound). ✗ = infeasible split. `dyn` = dynamic leaf residency (no static pin; multi-use leaves load/evict like intermediates).").unwrap();
     writeln!(s, "Access lines: share of all cell accesses captured by the top 8/16/24/32 hottest addresses, at the starred split.\n").unwrap();
     for c in costs {
         let name = c.path.rsplit('/').next().unwrap_or(&c.path);
@@ -187,11 +204,12 @@ pub fn to_markdown(costs: &[CircuitCost]) -> String {
         for &budget in &SLOT_GRID {
             let pts: Vec<&PinTradePoint> =
                 c.trade.iter().filter(|p| p.budget_cells == budget).collect();
-            let best = pts
+            let best_idx = pts
                 .iter()
-                .filter(|p| p.feasible)
-                .min_by_key(|p| (p.src_reads, p.instrs))
-                .map(|p| p.pin_request);
+                .enumerate()
+                .filter(|(_, p)| p.feasible)
+                .min_by_key(|(_, p)| (p.src_reads, p.instrs))
+                .map(|(i, _)| i);
             if budget == UNBOUNDED {
                 write!(s, "- S=∞: ").unwrap();
             } else {
@@ -201,12 +219,17 @@ pub fn to_markdown(costs: &[CircuitCost]) -> String {
                 if i > 0 {
                     write!(s, " | ").unwrap();
                 }
-                let label =
-                    if p.pin_request == UNBOUNDED { "sat".to_string() } else { p.pin_request.to_string() };
+                let label = if p.leaf_cache {
+                    "dyn".to_string()
+                } else if p.pin_request == UNBOUNDED {
+                    "sat".to_string()
+                } else {
+                    p.pin_request.to_string()
+                };
                 if !p.feasible {
                     write!(s, "{label}→✗").unwrap();
                 } else {
-                    let star = if best == Some(p.pin_request) { "*" } else { "" };
+                    let star = if best_idx == Some(i) { "*" } else { "" };
                     write!(s, "{star}{label}→{}/{}", p.src_reads, p.instrs).unwrap();
                 }
             }

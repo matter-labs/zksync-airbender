@@ -34,13 +34,24 @@ pub struct CompileParams {
     /// intermediates kept in a never-evicted prefix of the cell file —
     /// guaranteed residency instead of hoping for L1 hits. 0 = disabled.
     pub pinned_cells: usize,
+    /// Dynamic leaf residency: treat multi-use leaves like intermediates —
+    /// materializable (one SumK arity-1 load from the staged source) and
+    /// purgeable (Belady-evicted). Leaf eviction is always safe: the value
+    /// stays in global, so the next use just re-decides load-vs-direct-read.
+    /// The dynamic alternative to the static pinned prefix.
+    pub leaf_cache: bool,
     pub order: OrderKind,
 }
 
 impl Default for CompileParams {
     fn default() -> Self {
         // Validation default: effectively unbounded cells, no pinning.
-        CompileParams { budget_cells: 4096, pinned_cells: 0, order: OrderKind::Arena }
+        CompileParams {
+            budget_cells: 4096,
+            pinned_cells: 0,
+            leaf_cache: false,
+            order: OrderKind::Arena,
+        }
     }
 }
 
@@ -64,6 +75,8 @@ pub struct CompileStats {
     pub max_live_cells: usize,
     pub spill_evictions: usize,
     pub remat_instrs: usize,
+    /// Leaf loads emitted under `leaf_cache` (SumK arity-1 source -> slot).
+    pub leaf_loads: usize,
     /// Operand references served by the pinned prefix.
     pub pinned_hits: usize,
     /// Cells actually reserved for the pinned prefix (<= params.pinned_cells).
