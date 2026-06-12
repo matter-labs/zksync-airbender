@@ -45,6 +45,56 @@ impl SlotAlloc {
         self.high_water_cells = cells;
     }
 
+    /// Currently-free cell count (capacity check for optional loads).
+    pub fn free_cells(&self) -> usize {
+        self.free.iter().filter(|f| **f).count()
+    }
+
+    /// Fragmentation-immune allocation for the forward compiler ONLY (the
+    /// cone compiler keeps the original first-fit so its validated numbers
+    /// are untouched). Two-ended regions over the shared free map: bf cells
+    /// (width 1) fill bottom-up, packing into already-dirty quads first; e4
+    /// quads (width 4, aligned) fill top-down. bf churn therefore can never
+    /// scatter single cells across the quads e4 needs — alignment starvation
+    /// (free cells exist but no free aligned quad) becomes impossible until
+    /// the regions genuinely collide, i.e. true capacity exhaustion.
+    pub fn alloc_packed(&mut self, width_cells: usize) -> Option<u16> {
+        if width_cells == 1 {
+            // Pass 1: a free cell inside a dirty quad (bottom-up).
+            let mut c = 0;
+            while c + 4 <= self.free.len() {
+                let quad = &self.free[c..c + 4];
+                if quad.iter().any(|f| !*f) {
+                    if let Some(k) = quad.iter().position(|f| *f) {
+                        self.free[c + k] = false;
+                        self.high_water_cells = self.high_water_cells.max(c + k + 1);
+                        return Some((c + k) as u16);
+                    }
+                }
+                c += 4;
+            }
+            // Pass 2: first-fit (clean quads / tail cells).
+            return self.alloc(1);
+        }
+        debug_assert_eq!(width_cells, 4, "forward widths are 1 or 4");
+        if self.free.len() < 4 {
+            return None;
+        }
+        // e4: topmost free aligned quad, scanning down.
+        let mut c = (self.free.len() / 4).saturating_sub(1) * 4;
+        loop {
+            if self.free[c..c + 4].iter().all(|f| *f) {
+                self.free[c..c + 4].iter_mut().for_each(|f| *f = false);
+                self.high_water_cells = self.high_water_cells.max(c + 4);
+                return Some(c as u16);
+            }
+            if c == 0 {
+                return None;
+            }
+            c -= 4;
+        }
+    }
+
     pub fn release(&mut self, cell: u16, width_cells: usize) {
         let c = cell as usize;
         debug_assert!(c + width_cells <= self.free.len());

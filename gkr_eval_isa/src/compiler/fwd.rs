@@ -367,7 +367,7 @@ impl<'a> FwdCtx<'a> {
     /// mandatory allocations panic = infeasible budget).
     fn try_alloc_evicting(&mut self, width: usize, protect: &[usize]) -> Option<u16> {
         loop {
-            if let Some(cell) = self.alloc.alloc(width) {
+            if let Some(cell) = self.alloc.alloc_packed(width) {
                 return Some(cell);
             }
             let pos = self.pos;
@@ -386,13 +386,53 @@ impl<'a> FwdCtx<'a> {
 
     fn must_alloc(&mut self, node: usize, width: usize, protect: &[usize]) -> u16 {
         self.try_alloc_evicting(width, protect).unwrap_or_else(|| {
+            let detail: Vec<String> = protect
+                .iter()
+                .map(|&n| {
+                    let placed = self.placements.get(&n);
+                    format!(
+                        "{n}{}[{}]",
+                        if self.v.alias.contains_key(&n) { "A" } else { "L" },
+                        placed.map(|&(_, e4)| if e4 { 4 } else { 1 }).unwrap_or(0)
+                    )
+                })
+                .collect();
             panic!(
                 "forward budget infeasible: need {width} cells for node {node}, \
-                 {} protected, budget {}",
-                protect.len(),
-                self.alloc.budget()
+                 budget {}, free {}, protected: {}",
+                self.alloc.budget(),
+                self.alloc.free_cells(),
+                detail.join(" ")
             )
         })
+    }
+
+    /// The protect-invariant that keeps mandatory allocations feasible: after
+    /// hypothetically protecting `candidate`, at least one aligned quad must
+    /// remain whose cells are all free or evictable (i.e. not protected). A
+    /// width-only check is insufficient — protected bf cells scattered across
+    /// every quad starve an aligned e4 allocation even with plenty of free
+    /// cells (observed on keccak S=16 / blake2 S=56). Plain-leaf lanes that
+    /// would break the invariant are demoted to direct source re-reads.
+    fn mandatory_quad_survives(&self, protect: &[usize], candidate: usize) -> bool {
+        let budget = self.alloc.budget();
+        let mut blocked = vec![false; budget];
+        for &n in protect.iter().chain(std::iter::once(&candidate)) {
+            if let Some(&(cell, e4)) = self.placements.get(&n) {
+                let w = if e4 { 4 } else { 1 };
+                for c in cell as usize..(cell as usize + w).min(budget) {
+                    blocked[c] = true;
+                }
+            }
+        }
+        let mut c = 0;
+        while c + 4 <= budget {
+            if blocked[c..c + 4].iter().all(|b| !*b) {
+                return true;
+            }
+            c += 4;
+        }
+        false
     }
 
     /// Resolve one operand lane. All operands are constants, plain leaves,
@@ -419,13 +459,29 @@ impl<'a> FwdCtx<'a> {
             // OPTIONAL load: leaf-vs-leaf Belady only — never evict a cache
             // resident for a leaf (a re-fire costs more than a re-load).
             let w = self.width(node);
+            // MANDATORY-ALLOC SLACK: a load becomes protected for the rest of
+            // this instruction, so unchecked loads can fill the budget and jam
+            // a later mandatory allocation (cache dst / refire) behind the
+            // protect list — observed as NON-MONOTONIC infeasibility (a budget
+            // failing where a smaller one passed, because more loads were
+            // accepted). Require that after the load, >= 4 cells (the max
+            // mandatory width, one e4) stay free or evictable-unprotected.
+            let unprot: usize = self
+                .placements
+                .iter()
+                .filter(|(n, _)| !protect.contains(n))
+                .map(|(_, &(_, e4))| if e4 { 4 } else { 1 })
+                .sum();
+            let spare_after = (self.alloc.free_cells() + unprot).saturating_sub(w);
             let mut opt_protect = protect.clone();
             for &n in self.placements.keys() {
                 if self.v.alias.contains_key(&n) && !opt_protect.contains(&n) {
                     opt_protect.push(n);
                 }
             }
-            if let Some(cell) = self.try_alloc_evicting(w, &opt_protect) {
+            if spare_after >= 4
+                && let Some(cell) = self.try_alloc_evicting(w, &opt_protect)
+            {
                 let e4 = w == 4;
                 self.placements.insert(node, (cell, e4));
                 let (id, src_e4) = *self.source_id.get(&node).expect("leaf not in source map");
@@ -441,6 +497,23 @@ impl<'a> FwdCtx<'a> {
         }
         match self.placements.get(&node) {
             Some(&(cell, e4)) => {
+                // A plain-leaf cell lane is NEVER mandatory: the value is also
+                // readable from its staged source. If protecting this cell
+                // would push the instruction's protected footprint past the
+                // budget minus mandatory-dst headroom (4 = one e4), demote the
+                // lane to a direct source re-read — the cell stays resident
+                // for other consumers. Without this, lanes of long-resident
+                // loaded leaves jam a later mandatory alloc (cache dst /
+                // refire), observed as NON-MONOTONIC infeasibility.
+                let plain_leaf = !self.v.alias.contains_key(&node);
+                if plain_leaf
+                    && !protect.contains(&node)
+                    && !self.mandatory_quad_survives(protect, node)
+                {
+                    let (id, src_e4) =
+                        *self.source_id.get(&node).expect("leaf not in source map");
+                    return Operand::Source { id, e4: src_e4 };
+                }
                 if !protect.contains(&node) {
                     protect.push(node);
                 }
