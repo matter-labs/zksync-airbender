@@ -56,6 +56,7 @@ fn check_layer(
     layer: &cs::gkr_compiler::codegen_ir::CodegenLayer,
     cf: &CompiledForward,
     seed: u64,
+    exclude_max_quadratic: bool,
 ) {
     let arena = &layer.arena.nodes;
     let mut rng = StdRng::seed_from_u64(seed ^ ((li as u64) << 32));
@@ -109,6 +110,11 @@ fn check_layer(
     }
     for gate in layer.gates.iter().chain(&layer.gates_external) {
         if !fwd_eligible(gate) {
+            continue;
+        }
+        // Equal-work filter mirror (NOT the compiler's helper): the predicate
+        // is re-stated inline so a compiler-side filter bug cannot hide.
+        if exclude_max_quadratic && matches!(gate.kind, GateKind::MaxQuadratic { .. }) {
             continue;
         }
         ref_payloads.push(PayloadRecord::Gate(gate.clone()));
@@ -190,7 +196,8 @@ fn forward_oracle_all_fixtures() {
         let name = p.file_name().unwrap().to_str().unwrap().to_string();
         for (li, (layer, g)) in c.circuit.layers.iter().zip(&c.graphs).enumerate() {
             for (k, budget) in [4096usize, 16, 8].into_iter().enumerate() {
-                let params = FwdParams { budget_cells: budget, leaf_cache: true };
+                let params =
+                    FwdParams { budget_cells: budget, leaf_cache: true, ..FwdParams::default() };
                 let cf = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     compile_forward(layer, g, params)
                 })) {
@@ -203,7 +210,7 @@ fn forward_oracle_all_fixtures() {
                 if budget < 4096 {
                     tight_ok += 1;
                 }
-                check_layer(&name, li, layer, &cf, 0xF0D + k as u64);
+                check_layer(&name, li, layer, &cf, 0xF0D + k as u64, false);
             }
         }
     }
@@ -229,8 +236,33 @@ fn forward_floor_invariant_heavy_circuits() {
         let nocache = compile_forward(
             &c.circuit.layers[0],
             &c.graphs[0],
-            FwdParams { budget_cells: 4096, leaf_cache: false },
+            FwdParams { budget_cells: 4096, leaf_cache: false, ..FwdParams::default() },
         );
         assert!(nocache.stats.src_reads > cf.stats.src_reads, "{f}: no reuse to cache?");
     }
+}
+
+#[test]
+fn equal_work_filter_drops_max_quadratic_only() {
+    // shift_binop has MaxQuadratic gates (CPU census, spec §2a of full-dag spec).
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../cs/compiled_circuits/shift_binop_codegen_ir_gkr.json");
+    let c = load_circuit(&path).unwrap();
+    let layer = &c.circuit.layers[0];
+    let full = compile_forward(layer, &c.graphs[0], FwdParams::default());
+    let filtered = compile_forward(
+        layer,
+        &c.graphs[0],
+        FwdParams { exclude_max_quadratic: true, ..FwdParams::default() },
+    );
+    let mq = |p: &PayloadRecord| {
+        matches!(p, PayloadRecord::Gate(g) if matches!(g.kind, GateKind::MaxQuadratic { .. }))
+    };
+    let full_mq = full.payloads.iter().filter(|p| mq(p)).count();
+    assert!(full_mq > 0, "fixture lost its MaxQuadratic gates?");
+    assert_eq!(filtered.payloads.iter().filter(|p| mq(p)).count(), 0);
+    // Everything else survives: payload count differs by exactly the MQ gates.
+    assert_eq!(filtered.payloads.len(), full.payloads.len() - full_mq);
+    // Filtered program still passes the full oracle.
+    check_layer("shift_binop[filtered]", 0, layer, &filtered, 0xF11, true);
 }

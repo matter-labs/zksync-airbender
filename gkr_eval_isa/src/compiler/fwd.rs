@@ -27,11 +27,18 @@ pub struct FwdParams {
     /// Dynamic leaf residency over native operand reads. Loads are OPTIONAL:
     /// skipped when they would evict a cache resident or not fit.
     pub leaf_cache: bool,
+    /// Equal-work A/B variant: drop MaxQuadratic gates from the program (the
+    /// production flat forward pass never computes them — witness-stage
+    /// precomputed). Default OFF; the unfiltered contract is unchanged.
+    /// NOTE: the source table layout (`n_sources_bf/e4`) is intentionally
+    /// UNFILTERED — leaves read only by dropped gates keep their slots so the
+    /// A/B variants share one staging layout; read/instr stats do shrink.
+    pub exclude_max_quadratic: bool,
 }
 
 impl Default for FwdParams {
     fn default() -> Self {
-        FwdParams { budget_cells: 4096, leaf_cache: true }
+        FwdParams { budget_cells: 4096, leaf_cache: true, exclude_max_quadratic: false }
     }
 }
 
@@ -213,8 +220,17 @@ struct FwdView {
     n_caches: usize,
 }
 
-fn build_fwd_view(layer: &CodegenLayer, g: &AnalysisGraph) -> FwdView {
+fn build_fwd_view(layer: &CodegenLayer, g: &AnalysisGraph, params: FwdParams) -> FwdView {
     let arena: &[ExprNode] = &layer.arena.nodes;
+
+    // THE eligibility population: every downstream consumer (schedule,
+    // payload table, operand enumeration, stats) derives from this view, so
+    // the equal-work filter is applied exactly once, here.
+    let eligible = |gate: &CodegenGate| {
+        fwd_eligible(gate)
+            && !(params.exclude_max_quadratic
+                && matches!(gate.kind, GateKind::MaxQuadratic { .. }))
+    };
 
     // Alias: cache out-address -> the (unique, guarded) Cached Place node.
     let mut addr_to_place: HashMap<GKRAddress, usize> = HashMap::new();
@@ -240,7 +256,7 @@ fn build_fwd_view(layer: &CodegenLayer, g: &AnalysisGraph) -> FwdView {
         cache_cell_node.push(place);
     }
     for gate in layer.gates.iter().chain(&layer.gates_external) {
-        if !fwd_eligible(gate) {
+        if !eligible(gate) {
             continue;
         }
         payloads.push(PayloadRecord::Gate(gate.clone()));
@@ -628,7 +644,7 @@ pub fn compile_forward(
     params: FwdParams,
 ) -> CompiledForward {
     let arena: &[ExprNode] = &layer.arena.nodes;
-    let v = build_fwd_view(layer, g);
+    let v = build_fwd_view(layer, g, params);
     let schedule = build_schedule(&v);
 
     let source_map = enumerate_fwd_sources(arena, &v.alias);

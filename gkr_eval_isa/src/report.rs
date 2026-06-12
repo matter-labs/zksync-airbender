@@ -190,7 +190,7 @@ pub fn circuit_cost(path: &str, c: &LoadedCircuit) -> CircuitCost {
     let fwd_base = compile_forward(layer0, g0, FwdParams::default());
     let mut fwd_points = Vec::new();
     for &budget in &SLOT_GRID {
-        let params = FwdParams { budget_cells: budget, leaf_cache: true };
+        let params = FwdParams { budget_cells: budget, leaf_cache: true, ..FwdParams::default() };
         let pt = match catch_unwind(AssertUnwindSafe(|| compile_forward(layer0, g0, params))) {
             Ok(cf) => FwdPoint {
                 budget_cells: budget,
