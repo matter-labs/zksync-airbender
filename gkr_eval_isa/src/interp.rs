@@ -29,6 +29,10 @@ pub struct ExecResult {
     pub gate_ins: Vec<Option<Ext>>,
     /// NativeK firings in program order (the trace the oracle checks).
     pub native_trace: Vec<NativeFire>,
+    /// FINAL slot cell file (length = program.n_slot_cells), snapshotted just
+    /// before returning. Exists for cross-implementation parity checks (e.g.
+    /// the GPU interpreter's debug cell-file dump).
+    pub final_cells: Vec<Bf>,
 }
 
 fn read_cells(cells: &[Bf], cell: u16, e4: bool) -> Ext {
@@ -136,7 +140,7 @@ pub fn execute(p: &Program, src: &StagedSources) -> ExecResult {
             Dst::Native => unreachable!("Dst::Native is NativeK-only"),
         }
     }
-    ExecResult { outputs, gate_ins, native_trace }
+    ExecResult { outputs, gate_ins, native_trace, final_cells: slots }
 }
 
 #[cfg(test)]
