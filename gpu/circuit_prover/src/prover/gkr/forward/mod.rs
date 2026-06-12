@@ -197,6 +197,9 @@ impl<B, E> GpuGKRForwardOutput<B, E> {
 pub(crate) mod kernels;
 pub(super) use kernels::*;
 
+// Both cfg gates are load-bearing — see the module doc before simplifying.
+#[cfg(all(test, feature = "bench"))]
+pub(crate) mod bench_interp;
 mod cache_relation;
 mod dimension_reducing;
 mod flat_plan;

@@ -8,7 +8,17 @@ fn main() {
     // `DEP_GPU_HASH_NATIVE_INCLUDE` (and `DEP_GPU_CORE_NATIVE_INCLUDE`) as CMake
     // include defines. `deterministic_pow` propagates to `AB_DETERMINISTIC_POW`
     // so the GPU PoW search matches the host verifier (proof parity).
-    gpu_native_build::CudaArchive::new("circuit_prover_native", "GPU_PROVER")
-        .deterministic_pow(true)
-        .build();
+    let mut archive = gpu_native_build::CudaArchive::new("circuit_prover_native", "GPU_PROVER")
+        .deterministic_pow(true);
+    // The `bench` feature compiles the GKR eval-ISA bench kernels
+    // (`native/bench/`) into `circuit_prover_native` itself (same archive,
+    // gated contents). They must share the
+    // device-link module with the production kernels (the interpreter reads
+    // `__constant__` symbols like `ab_gkr_lookup_gamma_consts` defined there),
+    // so this is a CMake option on `circuit_prover_native`, not a separate
+    // archive.
+    if std::env::var_os("CARGO_FEATURE_BENCH").is_some() {
+        archive = archive.define("AB_GKR_BENCH", "ON");
+    }
+    archive.build();
 }

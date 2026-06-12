@@ -13,6 +13,13 @@ add_subdirectory(ops)
 add_subdirectory(prover)
 add_subdirectory(primitives)
 add_subdirectory(witness)
+# Bench-only GKR eval-ISA kernels. Compiled into circuit_prover_native (not a
+# separate archive) so they share its device-link module and its __constant__
+# symbols; gated so production builds never include them.
+option(AB_GKR_BENCH "Compile GKR eval-ISA bench kernels" OFF)
+if (AB_GKR_BENCH)
+    add_subdirectory(bench)
+endif ()
 foreach (circuit_prover_target circuit_prover_native)
     target_include_directories(${circuit_prover_target} PRIVATE ${GPU_CORE_NATIVE_INCLUDE} ${GPU_HASH_NATIVE_INCLUDE})
     set_target_properties(${circuit_prover_target} PROPERTIES CUDA_STANDARD 20)

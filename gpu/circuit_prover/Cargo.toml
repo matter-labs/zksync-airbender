@@ -47,6 +47,10 @@ type-map = "0.5"
 
 [features]
 default = ["security_80", "deterministic_pow"]
+# Compiles the GKR eval-ISA bench kernels (native/bench/) into
+# circuit_prover_native and enables the cfg(all(test, feature = "bench"))
+# harness modules. Never enabled in production builds.
+bench = []
 deterministic_pow = ["prover/deterministic_pow", "gpu_hash/deterministic_pow"]
 log_gpu_mem_usage = []
 security_80 = ["verifier_common/security_80"]
@@ -64,3 +68,8 @@ serial_test = "3"
 blake2s_u32 = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
+# Consumed only by the cfg(all(test, feature = "bench")) stage-3 bench
+# harness (prover::gkr::forward::bench_interp); dev-deps cannot be
+# feature-gated, so they build for all test profiles.
+gkr_design_space = { path = "../../gkr_design_space" }
+gkr_eval_isa = { path = "../../gkr_eval_isa" }
