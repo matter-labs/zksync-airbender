@@ -26,8 +26,7 @@ pub(crate) const BENCH_INTERP_THREADS_PER_BLOCK: u32 = 128;
 pub(crate) const BENCH_INTERP_PROGRAM_LDC_LANES: usize = 14336;
 
 /// Mirror of `interp_desc` in `native/bench/gkr_fwd_interp.cu` — keep the
-/// two in sync field-for-field. Task 4 extends BOTH sides with the payload
-/// buffer pointer + offset table.
+/// two in sync field-for-field.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct InterpDesc {
@@ -52,12 +51,18 @@ pub(crate) struct InterpDesc {
     pub budget_cells: u32,
     pub count: u32,
     /// Debug counter: incremented once per (NativeK instruction, active thread).
-    pub native_skip: *mut u32,
+    pub native_fired: *mut u32,
     /// Debug flag: `INTERP_ERR_*` bits atomicOr'd by the kernel; 0 = clean.
     pub error_flag: *mut u32,
     /// Final cell-file dump for parity tests; null in timing runs. Layout
     /// `[c * count + gid]`, `budget_cells x count` bf elements.
     pub debug_cells: *mut BF,
+    /// NativeK payload table: one 16B-aligned byte buffer of variable-size
+    /// tagged records (writer: `lower::lower_payloads`; reader + full ABI
+    /// comment: `fire_payload` in the `.cu`). Always LDG-resident.
+    pub payloads: *const u8,
+    /// Per-payload-index byte offset into `payloads`.
+    pub payload_offsets: *const u32,
 }
 
 cuda_kernel_signature_arguments_and_function!(
