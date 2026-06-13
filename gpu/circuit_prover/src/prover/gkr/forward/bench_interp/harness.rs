@@ -33,7 +33,8 @@ use super::fixture::{resolve_decoder_pred, CircuitFixture, LayerFixture};
 use super::lower::{lower_payloads, lowered_payload_pointers, payload_kind_shape};
 use super::{
     bench_interp_blocks_per_sm, bench_interp_dynamic_smem_bytes, launch_bench_fwd_interp,
-    upload_bench_program_to_constant, BenchThreads, InterpResidency, BENCH_INTERP_DEFAULT_SMEM_CAP,
+    launch_bench_fwd_interp_smem, upload_bench_program_to_constant, BenchThreads, InterpResidency,
+    BENCH_INTERP_DEFAULT_SMEM_CAP,
 };
 
 /// Outcome of one correctness point. The `Verified` variant carries no timing
@@ -146,6 +147,57 @@ pub(super) fn time_interp(
         launch_bench_fwd_interp(&desc, residency, threads, context).unwrap();
     });
     Some((median, min))
+}
+
+/// Time the INTERPRETER side ONLY, at an EXPLICIT dynamic-smem footprint (the
+/// `time_interp` body with a padded/natural `smem_bytes` instead of the
+/// budget-implied one). Sets B/C/D are interpreter-side sweeps — the flat
+/// launch-sum does not vary with the interpreter's budget/smem/residency, so it
+/// is NOT re-timed per point here (set A already carries the flat baseline).
+/// `smem_bytes` is set B's constant pad or set C's natural size. Returns
+/// `Some((median_ms, min_ms))`, or `None` for LDC when the program does not fit.
+pub(super) fn time_interp_smem(
+    fixture: &CircuitFixture,
+    setup: &super::tests::InterpDeviceSetup,
+    residency: InterpResidency,
+    threads: BenchThreads,
+    smem_bytes: usize,
+    iters: usize,
+) -> Option<(f32, f32)> {
+    let context = fixture.context();
+    let stream = context.get_exec_stream();
+    if residency == InterpResidency::Ldc {
+        if !upload_bench_program_to_constant(&setup.lanes).unwrap() {
+            return None;
+        }
+        context.get_exec_stream().synchronize().unwrap();
+    }
+    let desc = setup.timing_desc();
+    let (median, min) = time_iters(stream, iters, || {
+        launch_bench_fwd_interp_smem(&desc, residency, threads, smem_bytes, context).unwrap();
+    });
+    Some((median, min))
+}
+
+/// Non-panicking `compile_forward`: returns `None` for a genuinely infeasible
+/// (budget, filter) (mandatory cache-cell operands exceeding the budget), so a
+/// sweep can record an "infeasible" marker and move on instead of aborting.
+/// Shared by the sets B/C feasible-subset sweeps.
+pub(super) fn compile_feasible(
+    cg_layer: &CodegenLayer,
+    graph: &AnalysisGraph,
+    budget: usize,
+    exclude_max_quadratic: bool,
+) -> Option<CompiledForward> {
+    let fwd_params = FwdParams {
+        budget_cells: budget,
+        leaf_cache: true,
+        exclude_max_quadratic,
+    };
+    catch_unwind(AssertUnwindSafe(|| {
+        compile_forward(cg_layer, graph, fwd_params)
+    }))
+    .ok()
 }
 
 /// A pre-scan result: the best-feasible budget (min interpreter median) for a
@@ -439,5 +491,193 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
         s.clone()
     } else {
         "<non-string panic>".to_string()
+    }
+}
+
+// ===========================================================================
+// Set B secondary readout — host-side ordinary least squares (spec §6.2(B),
+// "exploratory correlation"). NO external crate: a plain normal-equations
+// solve via Gaussian elimination with partial pivoting. This is a CORRELATION,
+// not a causal/validated model: the response is interpreter wall-clock pooled
+// across circuits x layers x budgets, the predictors are the per-point
+// compiler stats + circuit fixed-effect dummies (controller decision). The
+// caller labels it accordingly in the report.
+// ===========================================================================
+
+/// A single observation for the pooled regression: response (interp median ms)
+/// + the predictor row (already including the leading intercept 1.0 and the
+/// circuit fixed-effect dummies — the caller assembles the design row so the
+/// solver stays predictor-agnostic).
+pub(super) struct RegressionObs {
+    pub response: f64,
+    /// Design row WITH the leading intercept term (`predictors[0] == 1.0`).
+    pub predictors: Vec<f64>,
+}
+
+/// OLS fit result: one coefficient per design column (intercept first), R², and
+/// residual degrees of freedom (`n_obs - n_coeffs`). `None` columns indicate a
+/// rank-deficient / unestimable fit (the solver bailed) — the caller reports
+/// that honestly rather than fabricating coefficients.
+pub(super) struct RegressionFit {
+    pub coefficients: Vec<f64>,
+    pub r_squared: f64,
+    pub n_obs: usize,
+    pub n_coeffs: usize,
+    pub residual_dof: isize,
+}
+
+/// Fit `response ~ predictors` by ordinary least squares: build the normal
+/// equations `XᵀX β = Xᵀy` and solve via Gaussian elimination with partial
+/// pivoting. Returns `Err(reason)` when the system is rank-deficient (more
+/// coefficients than observations, or a (near-)singular `XᵀX` — e.g. a
+/// constant predictor column or a circuit dummy that never varies in the pool),
+/// so the caller can report "unestimable" instead of garbage. R² is computed
+/// against the response mean.
+pub(super) fn fit_ols(obs: &[RegressionObs]) -> Result<RegressionFit, String> {
+    let n = obs.len();
+    if n == 0 {
+        return Err("no observations".into());
+    }
+    let p = obs[0].predictors.len();
+    if obs.iter().any(|o| o.predictors.len() != p) {
+        return Err("ragged design matrix (predictor count varies per obs)".into());
+    }
+    if p > n {
+        return Err(format!(
+            "rank-deficient: {p} coefficients > {n} observations — reduce predictors"
+        ));
+    }
+
+    // Normal equations: A = XᵀX (p x p), b = Xᵀy (p).
+    let mut a = vec![vec![0.0f64; p]; p];
+    let mut b = vec![0.0f64; p];
+    for o in obs {
+        for i in 0..p {
+            b[i] += o.predictors[i] * o.response;
+            for j in 0..p {
+                a[i][j] += o.predictors[i] * o.predictors[j];
+            }
+        }
+    }
+
+    // Solve A beta = b via Gaussian elimination with partial pivoting.
+    let beta = gauss_solve(a, b)?;
+
+    // R²: 1 - SSres/SStot. SStot against the response mean.
+    let mean = obs.iter().map(|o| o.response).sum::<f64>() / n as f64;
+    let mut ss_res = 0.0f64;
+    let mut ss_tot = 0.0f64;
+    for o in obs {
+        let pred: f64 = o.predictors.iter().zip(&beta).map(|(x, c)| x * c).sum();
+        ss_res += (o.response - pred).powi(2);
+        ss_tot += (o.response - mean).powi(2);
+    }
+    let r_squared = if ss_tot > 0.0 {
+        1.0 - ss_res / ss_tot
+    } else {
+        0.0
+    };
+
+    Ok(RegressionFit {
+        coefficients: beta,
+        r_squared,
+        n_obs: n,
+        n_coeffs: p,
+        residual_dof: n as isize - p as isize,
+    })
+}
+
+/// Solve a dense `n x n` linear system `a x = b` by Gaussian elimination with
+/// partial pivoting. `Err` on a (near-)singular matrix.
+fn gauss_solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Result<Vec<f64>, String> {
+    let n = b.len();
+    for col in 0..n {
+        // Partial pivot: largest |a[row][col]| at or below the diagonal.
+        let mut pivot = col;
+        let mut best = a[col][col].abs();
+        for row in (col + 1)..n {
+            let v = a[row][col].abs();
+            if v > best {
+                best = v;
+                pivot = row;
+            }
+        }
+        if best < 1e-12 {
+            return Err(format!(
+                "singular normal-equations matrix at column {col} (collinear \
+                 predictor or a circuit dummy with no within-pool variation)"
+            ));
+        }
+        a.swap(col, pivot);
+        b.swap(col, pivot);
+        // Eliminate below.
+        for row in (col + 1)..n {
+            let factor = a[row][col] / a[col][col];
+            for k in col..n {
+                a[row][k] -= factor * a[col][k];
+            }
+            b[row] -= factor * b[col];
+        }
+    }
+    // Back-substitution.
+    let mut x = vec![0.0f64; n];
+    for col in (0..n).rev() {
+        let mut s = b[col];
+        for k in (col + 1)..n {
+            s -= a[col][k] * x[k];
+        }
+        x[col] = s / a[col][col];
+    }
+    Ok(x)
+}
+
+#[cfg(test)]
+mod ols_tests {
+    use super::{fit_ols, RegressionObs};
+
+    /// A known-coefficient fit recovers its coefficients and R²≈1 (the OLS
+    /// solver is pure host arithmetic — testable without a GPU).
+    #[test]
+    fn ols_recovers_exact_linear_relation() {
+        // y = 2 + 3*x1 - 1*x2, no noise.
+        let pts = [(1.0, 1.0), (2.0, 0.0), (0.0, 3.0), (4.0, 2.0), (1.0, 5.0)];
+        let obs: Vec<RegressionObs> = pts
+            .iter()
+            .map(|&(x1, x2)| RegressionObs {
+                response: 2.0 + 3.0 * x1 - x2,
+                predictors: vec![1.0, x1, x2],
+            })
+            .collect();
+        let fit = fit_ols(&obs).unwrap();
+        assert!((fit.coefficients[0] - 2.0).abs() < 1e-6, "intercept");
+        assert!((fit.coefficients[1] - 3.0).abs() < 1e-6, "x1 coeff");
+        assert!((fit.coefficients[2] + 1.0).abs() < 1e-6, "x2 coeff");
+        assert!(fit.r_squared > 1.0 - 1e-9, "R^2 ~ 1");
+        assert_eq!(fit.residual_dof, 2);
+    }
+
+    /// More coefficients than observations is reported as rank-deficient, not
+    /// silently solved.
+    #[test]
+    fn ols_rank_deficient_is_an_error() {
+        let obs = vec![RegressionObs {
+            response: 1.0,
+            predictors: vec![1.0, 0.0, 0.0],
+        }];
+        assert!(fit_ols(&obs).is_err());
+    }
+
+    /// A collinear predictor (a circuit dummy that never varies) makes the
+    /// normal-equations matrix singular — reported, not fabricated.
+    #[test]
+    fn ols_collinear_predictor_is_an_error() {
+        // Second column is identically 1.0 == the intercept => collinear.
+        let obs: Vec<RegressionObs> = (0..4)
+            .map(|i| RegressionObs {
+                response: i as f64,
+                predictors: vec![1.0, 1.0, i as f64],
+            })
+            .collect();
+        assert!(fit_ols(&obs).is_err());
     }
 }

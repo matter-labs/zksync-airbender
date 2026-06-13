@@ -193,6 +193,49 @@ pub(crate) fn bench_interp_blocks_per_sm(
     )
 }
 
+/// Static blocks-per-SM for an EXPLICIT dynamic-smem footprint (the padded
+/// size set B holds constant, the natural size set C sweeps). Opts the kernel
+/// into the large-smem cap first when the footprint exceeds the 48 KB default,
+/// so the occupancy query and a later launch agree.
+pub(crate) fn bench_interp_blocks_per_sm_smem(
+    threads: BenchThreads,
+    residency: InterpResidency,
+    smem_bytes: usize,
+) -> CudaResult<i32> {
+    let tpb = threads.threads_per_block();
+    let kernel = threads.kernel(residency);
+    if smem_bytes > BENCH_INTERP_DEFAULT_SMEM_CAP {
+        opt_in_large_smem(kernel, smem_bytes)?;
+    }
+    era_cudart::occupancy::max_active_blocks_per_multiprocessor(
+        &GkrBenchFwdInterpFunction(kernel),
+        tpb as i32,
+        smem_bytes,
+    )
+}
+
+/// The largest dynamic-smem footprint that still sustains `target_blocks`
+/// blocks/SM at `tpb` threads, given the queried per-SM smem limit, rounded
+/// DOWN to the cell-quad granularity (`tpb * sizeof(BF)` per cell). Set B's
+/// "constant padded smem" (spec §4 + controller decision): every set-B launch
+/// pads to this fixed size so occupancy is held constant across the budget grid
+/// and only per-thread work varies. `per_sm_smem_limit` is
+/// `MaxSharedMemoryPerMultiprocessor`. Returns the chosen byte size; the caller
+/// records it. NOTE the spec ceiling: at 128 threads, 64 cells x 128 = 32 KB,
+/// so `floor(per_sm/4)` typically lands at/above the 48-cell point — the pad is
+/// the achievable largest size at `target_blocks`, never forced to a specific
+/// cell count.
+pub(crate) fn padded_smem_for_blocks(
+    tpb: u32,
+    per_sm_smem_limit: usize,
+    target_blocks: usize,
+) -> usize {
+    let per_block = per_sm_smem_limit / target_blocks.max(1);
+    // Round down to a whole cell-quad (one bf cell across the block = tpb * 4B).
+    let cell_stride = tpb as usize * std::mem::size_of::<BF>();
+    (per_block / cell_stride) * cell_stride
+}
+
 /// Host-side fit check + `__constant__` upload for the LDC variant. Returns
 /// false (no upload) when the program exceeds the 28KB constant array.
 /// Synchronous H2D — bench/test harness code only.
@@ -215,19 +258,45 @@ pub(crate) fn launch_bench_fwd_interp(
     threads: BenchThreads,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    let smem = bench_interp_dynamic_smem_bytes(desc.budget_cells, threads.threads_per_block());
+    launch_bench_fwd_interp_smem(desc, residency, threads, smem, context)
+}
+
+/// Launch the interpreter with an EXPLICIT dynamic-smem footprint, which may be
+/// PADDED above the `budget_cells`-implied size (set B holds smem constant
+/// across budgets so occupancy/BW is fixed and only per-thread work varies, spec
+/// §4 "smem sizing regimes"). The kernel only touches `cells[c * blockDim.x]`
+/// for `c < budget_cells`, so a larger allocation is a safe prefix-use; the pad
+/// just constrains `blocks/SM`. `smem_bytes` MUST be >= the natural footprint
+/// (asserted) — a SMALLER request would let the kernel read past its block's
+/// smem. Opts the kernel into the >48 KB cap when needed (idempotent).
+pub(crate) fn launch_bench_fwd_interp_smem(
+    desc: &InterpDesc,
+    residency: InterpResidency,
+    threads: BenchThreads,
+    smem_bytes: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
     let tpb = threads.threads_per_block();
     let grid_dim = desc.count.max(1).div_ceil(tpb);
-    let dynamic_smem_bytes = bench_interp_dynamic_smem_bytes(desc.budget_cells, tpb);
+    let natural = bench_interp_dynamic_smem_bytes(desc.budget_cells, tpb);
+    assert!(
+        smem_bytes >= natural,
+        "padded smem {smem_bytes} below the natural footprint {natural} \
+         (budget_cells {} x {tpb} threads): the kernel would read past its block",
+        desc.budget_cells,
+    );
     let kernel = threads.kernel(residency);
-    // >48 KB dynamic smem (256 threads x >12 cells) needs the opt-in before the
-    // launch will accept the request; idempotent for the small-budget case.
-    if dynamic_smem_bytes > BENCH_INTERP_DEFAULT_SMEM_CAP {
-        opt_in_large_smem(kernel, dynamic_smem_bytes)?;
+    // >48 KB dynamic smem (256 threads x >12 cells, or any padded size past the
+    // cap) needs the opt-in before the launch will accept the request;
+    // idempotent for the small-footprint case.
+    if smem_bytes > BENCH_INTERP_DEFAULT_SMEM_CAP {
+        opt_in_large_smem(kernel, smem_bytes)?;
     }
     let config = CudaLaunchConfig::builder()
         .grid_dim(grid_dim)
         .block_dim(tpb)
-        .dynamic_smem_bytes(dynamic_smem_bytes)
+        .dynamic_smem_bytes(smem_bytes)
         .stream(context.get_exec_stream())
         .build();
     let args = GkrBenchFwdInterpArguments::new(*desc);

@@ -1924,6 +1924,13 @@ use super::harness::{
 };
 use super::report::{AbReport, AbRow, DeviceAttrs, SideTiming};
 
+use super::harness::{compile_feasible, fit_ols, time_interp_smem, RegressionObs};
+use super::report::{RegressionBlock, SetBRow, SetCRow, SetDRow};
+use super::{
+    bench_interp_blocks_per_sm_smem, bench_interp_dynamic_smem_bytes, padded_smem_for_blocks,
+    BENCH_INTERP_DEFAULT_SMEM_CAP, BENCH_INTERP_THREADS_PER_BLOCK,
+};
+
 /// Count of fwd-eligible MaxQuadratic gates a layer carries (the equal-work
 /// filter target). Zero for add_sub/blake2 (rows coincide); positive for bigint.
 fn fwd_eligible_mq_count(layer: &CodegenLayer) -> usize {
@@ -2242,6 +2249,11 @@ fn stage3_fwd_interp_ab() {
         iters_full: TIMING_ITERS,
         iters_prescan: PRESCAN_ITERS,
         rows,
+        set_b: Vec::new(),
+        set_b_padded_smem_bytes: 0,
+        set_c: Vec::new(),
+        set_d: Vec::new(),
+        regression: None,
         skips: skips.clone(),
     };
     println!("\n{}", report.to_markdown());
@@ -2270,4 +2282,622 @@ fn stage3_fwd_interp_ab() {
             "{circuit}: no LDG/128 verdict row timed"
         );
     }
+}
+
+// ===========================================================================
+// Task 7 — measurement sets B/C/D + the combined report (spec §6.2(B)/(C)/(D)).
+//
+// One `#[ignore]` GPU test runs ALL FOUR sets (A verdict + B cost decomposition
+// + C occupancy curve + D LDC/LDG) and writes the COMBINED report with the
+// exploratory regression. Set A's per-point correctness gating (`run_point`)
+// + `stage3_run_point_correctness` anchor correctness; sets B/C/D are TIMING
+// sweeps — un-gated swept budgets are annotated `gated = timing-only` (NOT
+// device-compared at full trace_len, which would be prohibitive: add_sub
+// trace_len = 2^24). Where a swept budget coincides with a set-A gated verdict
+// (or the 32/64 anchor), it is marked `gated = yes` and reuses that verdict.
+// ===========================================================================
+
+/// Query the three device attrs the sweeps need (mirrors set A's inline query).
+#[cfg(not(no_cuda))]
+fn query_device_attrs() -> DeviceAttrs {
+    use era_cudart::device::{device_get_attribute, get_device};
+    use era_cudart_sys::CudaDeviceAttr;
+    let dev = get_device().unwrap();
+    DeviceAttrs {
+        max_shared_memory_per_multiprocessor: device_get_attribute(
+            CudaDeviceAttr::MaxSharedMemoryPerMultiprocessor,
+            dev,
+        )
+        .unwrap(),
+        max_shared_memory_per_block_optin: device_get_attribute(
+            CudaDeviceAttr::MaxSharedMemoryPerBlockOptin,
+            dev,
+        )
+        .unwrap(),
+        sm_count: device_get_attribute(CudaDeviceAttr::MultiProcessorCount, dev).unwrap() as usize,
+    }
+}
+
+/// Per-point compiler stats for the EXACT timed program (filtered for equal-work
+/// rows) — used to fill the set-B row + assemble the regression predictor row.
+struct PointStats {
+    n_instr: u32,
+    instrs: usize,
+    src_reads: usize,
+    cell_reads: usize,
+    cache_refires: usize,
+    max_live_cells: usize,
+    payload_bytes: usize,
+}
+
+/// Build the per-point stats for the EXACT timed program: the compiler's
+/// per-point `cf.stats` (filtered for equal-work rows) joined with the lowered
+/// program's instruction count + payload-table byte count (from the device
+/// setup). Shared by sets B/C and the regression predictor row.
+#[cfg(not(no_cuda))]
+fn point_stats(cf: &CompiledForward, setup: &InterpDeviceSetup) -> PointStats {
+    PointStats {
+        n_instr: setup.n_instr,
+        instrs: cf.stats.instrs,
+        src_reads: cf.stats.src_reads,
+        cell_reads: cf.stats.cell_reads,
+        cache_refires: cf.stats.cache_refires,
+        max_live_cells: cf.stats.max_live_cells,
+        payload_bytes: setup.payload_bytes,
+    }
+}
+
+/// Task 7 combined sweep: sets A/B/C/D + the exploratory regression, written to
+/// the combined report. Set A is the verdict (same flow as `stage3_fwd_interp_ab`,
+/// run here so the combined report carries it + the no-silent-gaps assert
+/// covers it); B/C/D are interpreter-side timing sweeps over the feasible budget
+/// grid; the regression is the §6.2(B) secondary "exploratory correlation".
+#[test]
+#[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh (see .agents/gpu_work.md)
+#[cfg(not(no_cuda))]
+#[serial]
+fn stage3_fwd_interp_sweeps() {
+    use super::harness::{run_point, PointParams, PointResult};
+
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    let device = query_device_attrs();
+
+    // Set B's CONSTANT padded smem: the largest footprint sustaining 4 blocks/SM
+    // at 128 threads (= floor(MaxSharedMemoryPerMultiprocessor/4) rounded to cell
+    // granularity), clamped to the per-block opt-in cap so every set-B launch is
+    // actually launchable. Occupancy is then held constant across the budget grid
+    // — only per-thread work varies (controller decision).
+    let per_sm = device.max_shared_memory_per_multiprocessor as usize;
+    let optin_cap = device.max_shared_memory_per_block_optin as usize;
+    let tpb = BENCH_INTERP_THREADS_PER_BLOCK; // set B is FIXED 128 threads.
+    let cell_stride = tpb as usize * std::mem::size_of::<BF>();
+    let padded_unclamped = padded_smem_for_blocks(tpb, per_sm, 4);
+    // Clamp to the opt-in cap (rounded down to cell granularity) if it would
+    // exceed it — document + pick achievable (controller "when to STOP" guard).
+    let padded_smem = padded_unclamped.min((optin_cap / cell_stride) * cell_stride);
+    println!(
+        "set B padded smem: floor({per_sm}/4)={padded_unclamped}B, optin cap {optin_cap}B => using {padded_smem}B \
+         ({} cells x {tpb} thr)",
+        padded_smem / cell_stride,
+    );
+
+    let mut rows: Vec<AbRow> = Vec::new();
+    let mut set_b: Vec<SetBRow> = Vec::new();
+    let mut set_c: Vec<SetCRow> = Vec::new();
+    let mut set_d: Vec<SetDRow> = Vec::new();
+    let mut obs: Vec<RegressionObs> = Vec::new();
+    let mut skips: Vec<String> = Vec::new();
+    let mut failures: Vec<String> = Vec::new();
+
+    // Circuit fixed-effect dummies: one indicator column per circuit beyond the
+    // first (the first is folded into the intercept). Predictor layout (design
+    // row) the regression builds per observation:
+    //   [1.0, dummy_circuit1, dummy_circuit2, n_instr, src_reads, cell_reads,
+    //    payload_bytes]
+    let n_circuits = STAGE3_CIRCUITS.len();
+    let predictor_labels: Vec<String> = {
+        let mut v = vec!["intercept".to_string()];
+        for c in &STAGE3_CIRCUITS[1..] {
+            v.push(format!("circuit[{c}]"));
+        }
+        v.extend(
+            ["n_instr", "src_reads", "cell_reads", "payload_bytes"]
+                .iter()
+                .map(|s| s.to_string()),
+        );
+        v
+    };
+
+    for (ci, circuit) in STAGE3_CIRCUITS.into_iter().enumerate() {
+        assert_layer_consistency(circuit);
+        let loaded = load_circuit(&dir.join(format!("{circuit}_codegen_ir_gkr.json"))).unwrap();
+        let fixture = CircuitFixture::build(circuit);
+        assert!(
+            !fixture.layers.is_empty(),
+            "{circuit}: fixture has no layers"
+        );
+
+        let circuit_seed = 0x57A6_E3u64 ^ ((ci as u64) << 32);
+        let count = fixture.trace_len.min(TIMING_COUNT_CAP);
+        let capped = count < fixture.trace_len;
+        println!(
+            "{circuit}: trace_len {} -> timed count {count}{}",
+            fixture.trace_len,
+            if capped { " (capped)" } else { "" }
+        );
+
+        for layer_idx in 0..fixture.layers.len() {
+            let replayable = fixture.layers[layer_idx].replayable_launch_count();
+            if layer_idx != 0 && replayable == 0 {
+                continue;
+            }
+            let cg_layer = &loaded.circuit.layers[layer_idx];
+            let graph = &loaded.graphs[layer_idx];
+            let layer = &fixture.layers[layer_idx];
+
+            let mq = fwd_eligible_mq_count(cg_layer);
+            let rows_coincide = mq == 0;
+            let shapes: &[bool] = if rows_coincide {
+                &[false]
+            } else {
+                &[false, true]
+            };
+
+            for &exclude_mq in shapes {
+                let shape_str = if exclude_mq {
+                    "equal-work"
+                } else {
+                    "production"
+                };
+
+                // ---- Set A (verdict): same flow as stage3_fwd_interp_ab — prescan
+                // each config, gate the timed budgets, time the verified rows. The
+                // gated-budget set feeds the B/C/D `gated` annotation.
+                let configs = [
+                    (InterpResidency::Ldg, BenchThreads::T128),
+                    (InterpResidency::Ldg, BenchThreads::T256),
+                    (InterpResidency::Ldc, BenchThreads::T128),
+                ];
+                let mut config_budgets: Vec<(InterpResidency, BenchThreads, Option<usize>)> =
+                    Vec::with_capacity(configs.len());
+                for (residency, threads) in configs {
+                    let chosen = prescan_best_budget(
+                        &fixture, layer_idx, cg_layer, graph, exclude_mq, residency, threads, count,
+                    )
+                    .map(|p| p.budget);
+                    if chosen.is_none() {
+                        skips.push(format!(
+                            "{circuit} L{layer_idx} {residency:?}/{} {shape_str}: no feasible+timeable budget in grid {BUDGET_GRID:?}",
+                            threads.threads_per_block(),
+                        ));
+                    }
+                    config_budgets.push((residency, threads, chosen));
+                }
+
+                let mut gated_budgets: std::collections::BTreeSet<usize> =
+                    std::collections::BTreeSet::new();
+                for budget in config_budgets
+                    .iter()
+                    .filter_map(|&(_, _, b)| b)
+                    .collect::<std::collections::BTreeSet<usize>>()
+                {
+                    let label = format!(
+                        "{circuit} L{layer_idx} budget {budget}{}",
+                        if exclude_mq { " [equal-work]" } else { "" }
+                    );
+                    let result = run_point(
+                        &fixture,
+                        layer_idx,
+                        cg_layer,
+                        graph,
+                        PointParams {
+                            budget,
+                            exclude_max_quadratic: exclude_mq,
+                        },
+                        circuit_seed,
+                        &label,
+                    );
+                    match &result {
+                        PointResult::Verified => {
+                            gated_budgets.insert(budget);
+                        }
+                        PointResult::Infeasible => {
+                            skips.push(format!(
+                                "{label}: INFEASIBLE (run_point) — timed budget skipped"
+                            ));
+                        }
+                        PointResult::Failed { gate, reason } => {
+                            failures.push(format!("[{gate}] {label}: {reason}"));
+                        }
+                    }
+                }
+
+                for (residency, threads, chosen) in config_budgets {
+                    let Some(budget) = chosen else { continue };
+                    if !gated_budgets.contains(&budget) {
+                        continue;
+                    }
+                    if let Some(row) = time_config_row(
+                        &fixture,
+                        layer_idx,
+                        cg_layer,
+                        graph,
+                        circuit,
+                        exclude_mq,
+                        rows_coincide,
+                        residency,
+                        threads,
+                        budget,
+                        count,
+                        &mut skips,
+                    ) {
+                        rows.push(row);
+                    }
+                }
+
+                // The 32/64 budgets are correctness-gated by stage3_run_point_correctness
+                // (all circuits/layers/filters); fold them into the gated set so a
+                // swept point at 32 or 64 is annotated `gated = yes`.
+                gated_budgets.insert(32);
+                gated_budgets.insert(64);
+
+                // ---- Sets B & C: sweep BUDGET_GRID ∩ feasible at FIXED LDG/T128.
+                // Set B holds the CONSTANT padded smem; set C uses the NATURAL
+                // (budget-implied) footprint. One device setup per budget serves
+                // both (the lowered program is identical; only the launch's smem
+                // size differs).
+                for &budget in &BUDGET_GRID {
+                    let Some(cf) = compile_feasible(cg_layer, graph, budget, exclude_mq) else {
+                        skips.push(format!(
+                            "{circuit} L{layer_idx} {shape_str} budget {budget}: compile_forward infeasible (sets B/C)"
+                        ));
+                        continue;
+                    };
+                    let gated = gated_budgets.contains(&budget);
+                    let setup = build_interp_device_setup(&fixture, layer, &cf, cg_layer, count);
+                    let stats = point_stats(&cf, &setup);
+
+                    // Set B: constant padded smem. Skip a budget whose natural
+                    // (budget-implied) footprint already exceeds the constant pad —
+                    // launching at a smaller pad would let the kernel read past its
+                    // block (only possible if the pad was clamped to the optin cap).
+                    let natural_for_budget = bench_interp_dynamic_smem_bytes(budget as u32, tpb);
+                    if natural_for_budget > padded_smem {
+                        skips.push(format!(
+                            "{circuit} L{layer_idx} {shape_str} budget {budget}: natural smem {natural_for_budget}B > set-B pad {padded_smem}B — set B point skipped"
+                        ));
+                    } else if let Some((med, min)) = time_interp_smem(
+                        &fixture,
+                        &setup,
+                        InterpResidency::Ldg,
+                        BenchThreads::T128,
+                        padded_smem,
+                        TIMING_ITERS,
+                    ) {
+                        let blk = bench_interp_blocks_per_sm_smem(
+                            BenchThreads::T128,
+                            InterpResidency::Ldg,
+                            padded_smem,
+                        )
+                        .unwrap_or(0);
+                        set_b.push(SetBRow {
+                            circuit: circuit.to_string(),
+                            layer: layer_idx,
+                            budget,
+                            equal_work: exclude_mq,
+                            padded_smem_bytes: padded_smem,
+                            blocks_per_sm: blk,
+                            interp_median_ms: med,
+                            interp_min_ms: min,
+                            gated,
+                            n_instr: stats.n_instr,
+                            instrs: stats.instrs,
+                            src_reads: stats.src_reads,
+                            cell_reads: stats.cell_reads,
+                            cache_refires: stats.cache_refires,
+                            max_live_cells: stats.max_live_cells,
+                            payload_bytes: stats.payload_bytes,
+                        });
+                        // Regression observation: response = interp median;
+                        // predictors = intercept + circuit dummies + numeric stats.
+                        let mut pred = vec![1.0f64];
+                        for k in 1..n_circuits {
+                            pred.push(if k == ci { 1.0 } else { 0.0 });
+                        }
+                        pred.push(stats.n_instr as f64);
+                        pred.push(stats.src_reads as f64);
+                        pred.push(stats.cell_reads as f64);
+                        pred.push(stats.payload_bytes as f64);
+                        obs.push(RegressionObs {
+                            response: med as f64,
+                            predictors: pred,
+                        });
+                    }
+
+                    // Set C: natural (budget-implied) smem.
+                    let nat_smem = natural_for_budget;
+                    if let Some((med, min)) = time_interp_smem(
+                        &fixture,
+                        &setup,
+                        InterpResidency::Ldg,
+                        BenchThreads::T128,
+                        nat_smem,
+                        TIMING_ITERS,
+                    ) {
+                        let blk = bench_interp_blocks_per_sm_smem(
+                            BenchThreads::T128,
+                            InterpResidency::Ldg,
+                            nat_smem,
+                        )
+                        .unwrap_or(0);
+                        set_c.push(SetCRow {
+                            circuit: circuit.to_string(),
+                            layer: layer_idx,
+                            budget,
+                            equal_work: exclude_mq,
+                            natural_smem_bytes: nat_smem,
+                            blocks_per_sm: blk,
+                            large_smem_optin: nat_smem > BENCH_INTERP_DEFAULT_SMEM_CAP,
+                            interp_median_ms: med,
+                            interp_min_ms: min,
+                            gated,
+                        });
+                    }
+                }
+
+                // ---- Set D: LDC vs LDG at one budget where the program fits the
+                // __constant__ array. Pick the smallest feasible grid budget whose
+                // program uploads; identical config (LDG/T128, natural smem) on both
+                // sides. add_sub L0 fits certainly; bigint checked dynamically.
+                for &budget in &BUDGET_GRID {
+                    let Some(cf) = compile_feasible(cg_layer, graph, budget, exclude_mq) else {
+                        continue;
+                    };
+                    let setup = build_interp_device_setup(&fixture, layer, &cf, cg_layer, count);
+                    // Does the program fit __constant__?
+                    if !upload_bench_program_to_constant(&setup.lanes).unwrap() {
+                        continue;
+                    }
+                    fixture.context().get_exec_stream().synchronize().unwrap();
+                    let nat_smem = bench_interp_dynamic_smem_bytes(budget as u32, tpb);
+                    let Some((ldg_med, ldg_min)) = time_interp_smem(
+                        &fixture,
+                        &setup,
+                        InterpResidency::Ldg,
+                        BenchThreads::T128,
+                        nat_smem,
+                        TIMING_ITERS,
+                    ) else {
+                        continue;
+                    };
+                    let Some((ldc_med, ldc_min)) = time_interp_smem(
+                        &fixture,
+                        &setup,
+                        InterpResidency::Ldc,
+                        BenchThreads::T128,
+                        nat_smem,
+                        TIMING_ITERS,
+                    ) else {
+                        continue;
+                    };
+                    set_d.push(SetDRow {
+                        circuit: circuit.to_string(),
+                        layer: layer_idx,
+                        budget,
+                        equal_work: exclude_mq,
+                        threads: tpb,
+                        smem_bytes: nat_smem,
+                        ldg_median_ms: ldg_med,
+                        ldg_min_ms: ldg_min,
+                        ldc_median_ms: ldc_med,
+                        ldc_min_ms: ldc_min,
+                        ldc_over_ldg: if ldg_med > 0.0 {
+                            ldc_med / ldg_med
+                        } else {
+                            f32::INFINITY
+                        },
+                        gated: gated_budgets.contains(&budget),
+                    });
+                    println!(
+                        "SET-D {circuit} L{layer_idx} {shape_str} budget {budget}: LDG {ldg_med:.4}ms LDC {ldc_med:.4}ms => {:.2}x",
+                        if ldg_med > 0.0 { ldc_med / ldg_med } else { f32::INFINITY },
+                    );
+                    break; // one LDC/LDG comparison per (layer, filter) is enough.
+                }
+            }
+        }
+    }
+
+    // ---- The §6.2(B) secondary exploratory regression over all set-B points.
+    let regression = build_regression(&obs, &predictor_labels);
+    match &regression.error {
+        Some(err) => println!("regression: UNESTIMABLE — {err}"),
+        None => println!(
+            "regression: R^2 {:.4}, n_obs {}, n_coeffs {}, residual dof {}",
+            regression.r_squared, regression.n_obs, regression.n_coeffs, regression.residual_dof
+        ),
+    }
+
+    let report = AbReport {
+        device,
+        iters_full: TIMING_ITERS,
+        iters_prescan: PRESCAN_ITERS,
+        rows,
+        set_b,
+        set_b_padded_smem_bytes: padded_smem,
+        set_c,
+        set_d,
+        regression: Some(regression),
+        skips: skips.clone(),
+    };
+    println!("\n{}", report.to_markdown());
+    let (md, json) = super::report::write_report(&report);
+    println!(
+        "wrote combined report: {} / {}",
+        md.display(),
+        json.display()
+    );
+
+    // No silent gaps for SET A (the controller's 7.4 assert): no Failed gate, at
+    // least one LDG/128 verdict row per circuit, sets B/C non-empty.
+    assert!(
+        failures.is_empty(),
+        "sweeps reported {} failed correctness point(s):\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+    assert!(
+        !report.rows.is_empty(),
+        "sweeps produced no set-A verdict rows (every point skipped?)"
+    );
+    for circuit in STAGE3_CIRCUITS {
+        assert!(
+            report
+                .rows
+                .iter()
+                .any(|r| r.circuit == circuit && r.residency == "Ldg" && r.interp_threads == 128),
+            "{circuit}: no LDG/128 verdict row timed (set A)"
+        );
+    }
+    assert!(!report.set_b.is_empty(), "set B produced no rows");
+    assert!(!report.set_c.is_empty(), "set C produced no rows");
+    assert!(
+        !report.set_d.is_empty(),
+        "set D produced no LDC/LDG comparison (no program fit __constant__?)"
+    );
+}
+
+/// Assemble the exploratory regression block from the pooled set-B observations.
+/// Drops constant (zero-variance) predictor columns BEFORE the fit so a circuit
+/// dummy or numeric stat that never varies in the pool does not force a
+/// rank-deficient bail; reports any remaining unestimability honestly. Keeps the
+/// label↔coefficient alignment by tracking which columns survived.
+fn build_regression(obs: &[RegressionObs], labels: &[String]) -> RegressionBlock {
+    if obs.is_empty() {
+        return RegressionBlock {
+            predictor_labels: labels.to_vec(),
+            coefficients: Vec::new(),
+            r_squared: 0.0,
+            n_obs: 0,
+            n_coeffs: labels.len(),
+            residual_dof: 0,
+            error: Some("no set-B observations to regress".to_string()),
+        };
+    }
+    let p = obs[0].predictors.len();
+    // Keep column 0 (intercept) always; drop any other column with no variance.
+    let mut keep: Vec<usize> = Vec::new();
+    for col in 0..p {
+        if col == 0 {
+            keep.push(col);
+            continue;
+        }
+        let first = obs[0].predictors[col];
+        if obs
+            .iter()
+            .any(|o| (o.predictors[col] - first).abs() > f64::EPSILON)
+        {
+            keep.push(col);
+        }
+    }
+    let reduced: Vec<RegressionObs> = obs
+        .iter()
+        .map(|o| RegressionObs {
+            response: o.response,
+            predictors: keep.iter().map(|&c| o.predictors[c]).collect(),
+        })
+        .collect();
+    let kept_labels: Vec<String> = keep.iter().map(|&c| labels[c].clone()).collect();
+
+    match fit_ols(&reduced) {
+        Ok(fit) => RegressionBlock {
+            predictor_labels: kept_labels,
+            coefficients: fit.coefficients,
+            r_squared: fit.r_squared,
+            n_obs: fit.n_obs,
+            n_coeffs: fit.n_coeffs,
+            residual_dof: fit.residual_dof,
+            error: None,
+        },
+        Err(reason) => RegressionBlock {
+            predictor_labels: kept_labels.clone(),
+            coefficients: Vec::new(),
+            r_squared: 0.0,
+            n_obs: reduced.len(),
+            n_coeffs: kept_labels.len(),
+            residual_dof: reduced.len() as isize - kept_labels.len() as isize,
+            error: Some(reason),
+        },
+    }
+}
+
+/// ncu profiling TARGET (`#[ignore]`, GPU). Runs EXACTLY ONE interpreter point —
+/// one circuit (env `STAGE3_NCU_CIRCUIT`, default add_sub) at one budget (env
+/// `STAGE3_NCU_BUDGET`, default 32), LDG/T128, ONE interpreter launch — so an
+/// `ncu` wrapper captures a single clean kernel instance. NOT part of the normal
+/// sweep (no report, no grid). Wrap it per `gpu/docs/profiling_ncu.md` "Quick
+/// Kernel Mode" + the `circuit_prover` profiling doc; the interpreter kernel
+/// symbol is `ab_gkr_bench_fwd_interp_ldg_kernel`. Example (build the bench test
+/// binary first, then run UNDER the GPU lock):
+///
+/// ```bash
+/// TEST_BINARY="$(
+///   cargo test -p circuit_prover --features bench stage3_fwd_interp_ncu_target \
+///     --release --no-run --message-format=json \
+///     | python3 .agents/bin/cargo_test_executables.py)"
+/// STAGE3_NCU_CIRCUIT=add_sub_lui_auipc_mop STAGE3_NCU_BUDGET=32 \
+/// .agents/bin/with_gpu_lock.sh ncu \
+///   --set basic \
+///   --kernel-name-base demangled \
+///   --kernel-name 'regex:ab_gkr_bench_fwd_interp_ldg_kernel' \
+///   --launch-count 1 \
+///   -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_gkr_interp" \
+///   "$TEST_BINARY" \
+///   --exact prover::gkr::forward::bench_interp::tests::stage3_fwd_interp_ncu_target \
+///   --ignored --nocapture
+/// ```
+///
+/// (No `--nvtx`/`--nvtx-include`: this test issues a single matching launch, so a
+/// `--launch-count 1` kernel-name filter is sufficient to isolate it. Output goes
+/// to the ignored `target/profiling/ncu/` per `.agents/gpu_work.md`.)
+#[test]
+#[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh (see .agents/gpu_work.md)
+#[cfg(not(no_cuda))]
+#[serial]
+fn stage3_fwd_interp_ncu_target() {
+    let circuit =
+        std::env::var("STAGE3_NCU_CIRCUIT").unwrap_or_else(|_| STAGE3_CIRCUITS[0].to_string());
+    let budget: usize = std::env::var("STAGE3_NCU_BUDGET")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(32);
+    assert!(
+        STAGE3_CIRCUITS.contains(&circuit.as_str()),
+        "STAGE3_NCU_CIRCUIT={circuit} is not a stage-3 circuit ({STAGE3_CIRCUITS:?})"
+    );
+    println!("ncu target: circuit {circuit} budget {budget} (LDG/T128, one launch)");
+
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    let loaded = load_circuit(&dir.join(format!("{circuit}_codegen_ir_gkr.json"))).unwrap();
+    let fixture = CircuitFixture::build(&circuit);
+    let layer_idx = 0usize;
+    let cg_layer = &loaded.circuit.layers[layer_idx];
+    let graph = &loaded.graphs[layer_idx];
+    let layer = &fixture.layers[layer_idx];
+    let count = fixture.trace_len.min(TIMING_COUNT_CAP);
+
+    let cf = compile_feasible(cg_layer, graph, budget, false)
+        .unwrap_or_else(|| panic!("{circuit} L0 budget {budget} infeasible for ncu target"));
+    let setup = build_interp_device_setup(&fixture, layer, &cf, cg_layer, count);
+    let desc = setup.timing_desc();
+    // EXACTLY ONE interpreter launch (the kernel ncu isolates).
+    launch_bench_fwd_interp(
+        &desc,
+        InterpResidency::Ldg,
+        BenchThreads::T128,
+        fixture.context(),
+    )
+    .unwrap();
+    fixture.context().get_exec_stream().synchronize().unwrap();
+    println!("ncu target: one ab_gkr_bench_fwd_interp_ldg_kernel launch complete");
 }

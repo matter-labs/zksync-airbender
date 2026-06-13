@@ -7,6 +7,8 @@
 use serde::Serialize;
 use std::fmt::Write as _;
 
+use super::harness::BUDGET_GRID;
+
 /// Device attributes queried once, recorded in the report header (spec §6.2).
 #[derive(Serialize, Clone)]
 pub(super) struct DeviceAttrs {
@@ -74,14 +76,125 @@ pub(super) struct AbRow {
     pub max_live_cells: usize,
 }
 
-/// The full §6.2(A) report: queried device attrs, the per-point rows, and any
-/// skip/infeasible markers (spec §6.2 output requirement).
+/// One row of the §6.2(B) cost-decomposition table: a (circuit, layer, budget,
+/// filter) point timed at the FIXED LDG residency under a CONSTANT padded smem
+/// (occupancy held constant across the budget grid; only per-thread work
+/// varies). Per-point compiler stats are recomputed for the EXACT program timed
+/// (filtered for equal-work rows). `gated` records whether this point's
+/// (budget, filter) was correctness-verified by set A / `run_point` or is a
+/// timing-only sweep point (no implication that every swept budget was checked).
+#[derive(Serialize, Clone)]
+pub(super) struct SetBRow {
+    pub circuit: String,
+    pub layer: usize,
+    pub budget: usize,
+    pub equal_work: bool,
+    /// The constant padded dynamic-smem footprint every set-B launch used.
+    pub padded_smem_bytes: usize,
+    /// Static blocks-per-SM at the padded footprint (held constant by design).
+    pub blocks_per_sm: i32,
+    pub interp_median_ms: f32,
+    pub interp_min_ms: f32,
+    /// `true` when this (budget, filter) was correctness-gated (set A's verdict
+    /// or the 32/64 anchor); `false` = timing-only sweep point.
+    pub gated: bool,
+    // Per-point compiler stats for the EXACT timed program.
+    pub n_instr: u32,
+    pub instrs: usize,
+    pub src_reads: usize,
+    pub cell_reads: usize,
+    pub cache_refires: usize,
+    pub max_live_cells: usize,
+    pub payload_bytes: usize,
+}
+
+/// One row of the §6.2(C) occupancy-curve table: a (circuit, layer, budget,
+/// filter) point at NATURAL smem sizing (the budget-implied footprint, swept up
+/// to 64 cells), recording blocks/SM and wall-clock vs budget — the carve-out
+/// trade. `gated` annotated as in set B.
+#[derive(Serialize, Clone)]
+pub(super) struct SetCRow {
+    pub circuit: String,
+    pub layer: usize,
+    pub budget: usize,
+    pub equal_work: bool,
+    /// Natural (budget-implied) dynamic-smem footprint.
+    pub natural_smem_bytes: usize,
+    pub blocks_per_sm: i32,
+    /// Whether the natural footprint opted into the >48 KB cap.
+    pub large_smem_optin: bool,
+    pub interp_median_ms: f32,
+    pub interp_min_ms: f32,
+    pub gated: bool,
+}
+
+/// One row of the §6.2(D) LDC-vs-LDG table: a single (circuit, layer, budget,
+/// filter) point timed BOTH ways at an identical config, with the LDG/LDC
+/// median and the ratio. The program must fit `__constant__` for the LDC side.
+#[derive(Serialize, Clone)]
+pub(super) struct SetDRow {
+    pub circuit: String,
+    pub layer: usize,
+    pub budget: usize,
+    pub equal_work: bool,
+    pub threads: u32,
+    pub smem_bytes: usize,
+    pub ldg_median_ms: f32,
+    pub ldg_min_ms: f32,
+    pub ldc_median_ms: f32,
+    pub ldc_min_ms: f32,
+    /// LDC median / LDG median (< 1 means LDC is faster).
+    pub ldc_over_ldg: f32,
+    pub gated: bool,
+}
+
+/// The pooled OLS "exploratory correlation" (spec §6.2(B) secondary). The
+/// response is interpreter median wall-clock pooled across circuits × layers ×
+/// budgets; the predictors are per-point compiler stats + circuit fixed-effect
+/// dummies. Labeled exploratory/correlational, NOT causal. `error` is `Some`
+/// when the fit was rank-deficient/unestimable (the coefficients are then
+/// empty) — reported honestly rather than fabricated.
+#[derive(Serialize, Clone)]
+pub(super) struct RegressionBlock {
+    /// Column labels aligned with `coefficients` (intercept first, then circuit
+    /// dummies, then the numeric predictors).
+    pub predictor_labels: Vec<String>,
+    pub coefficients: Vec<f64>,
+    pub r_squared: f64,
+    pub n_obs: usize,
+    pub n_coeffs: usize,
+    pub residual_dof: isize,
+    /// `Some(reason)` when the fit was unestimable; `coefficients` is then empty.
+    pub error: Option<String>,
+}
+
+/// The full §6.2 report: §6.2(A) verdict A/B (always present), plus the §6.2
+/// (B)/(C)/(D) sweep sections + the exploratory regression when the sweeps test
+/// produced them (the set-A-only test leaves them empty/None). Includes queried
+/// device attrs, the set-B constant padded-smem value, and skip/infeasible
+/// markers (spec §6.2 output requirement).
 #[derive(Serialize)]
 pub(super) struct AbReport {
     pub device: DeviceAttrs,
     pub iters_full: usize,
     pub iters_prescan: usize,
     pub rows: Vec<AbRow>,
+    /// §6.2(B) cost-decomposition rows (empty in the set-A-only report).
+    #[serde(default)]
+    pub set_b: Vec<SetBRow>,
+    /// The constant padded-smem footprint set B held across the budget grid
+    /// (`floor(MaxSharedMemoryPerMultiprocessor/4)` rounded to cell granularity).
+    #[serde(default)]
+    pub set_b_padded_smem_bytes: usize,
+    /// §6.2(C) occupancy-curve rows (empty in the set-A-only report).
+    #[serde(default)]
+    pub set_c: Vec<SetCRow>,
+    /// §6.2(D) LDC-vs-LDG rows (empty in the set-A-only report).
+    #[serde(default)]
+    pub set_d: Vec<SetDRow>,
+    /// §6.2(B) secondary exploratory regression (None in the set-A-only report).
+    #[serde(default)]
+    pub regression: Option<RegressionBlock>,
     /// Free-form skip/infeasible markers ("circuit L# budget: reason").
     pub skips: Vec<String>,
 }
@@ -178,6 +291,10 @@ impl AbReport {
         }
         writeln!(s).unwrap();
 
+        self.write_set_b(&mut s);
+        self.write_set_c(&mut s);
+        self.write_set_d(&mut s);
+
         if !self.skips.is_empty() {
             writeln!(s, "## Skips / infeasible markers\n").unwrap();
             for sk in &self.skips {
@@ -186,6 +303,195 @@ impl AbReport {
             writeln!(s).unwrap();
         }
         s
+    }
+
+    /// §6.2(B) cost-decomposition table + the exploratory regression block.
+    /// Skipped entirely when the set-A-only test wrote the report.
+    fn write_set_b(&self, s: &mut String) {
+        if self.set_b.is_empty() {
+            return;
+        }
+        writeln!(s, "## B. Cost decomposition (spec §6.2(B))\n").unwrap();
+        writeln!(
+            s,
+            "Full feasible budget grid {BUDGET_GRID:?} ∩ feasible, FIXED LDG residency, \
+             CONSTANT padded dynamic smem = {} bytes (= floor(MaxSharedMemoryPerMultiprocessor/4) \
+             rounded to cell granularity — occupancy held constant across the grid so only \
+             per-thread work varies, spec §4 + controller decision). Per-point compiler stats are \
+             recomputed for the EXACT program timed (filtered for equal-work rows). `gated` = the \
+             (budget, filter) was correctness-verified (set A's verdict or the 32/64 anchor); \
+             un-gated rows are TIMING-ONLY sweep points (NOT correctness-checked at this budget — \
+             correctness is anchored by set A's per-point gating + `stage3_run_point_correctness`).\n",
+            self.set_b_padded_smem_bytes,
+        )
+        .unwrap();
+        writeln!(
+            s,
+            "| circuit | L | budget | shape | gated | pad smem B | blk/SM | interp med/min ms | \
+             n_instr | instr | src_rd | cell_rd | refires | live | payload B |"
+        )
+        .unwrap();
+        writeln!(
+            s,
+            "|---|--:|--:|---|---|--:|--:|---|--:|--:|--:|--:|--:|--:|--:|"
+        )
+        .unwrap();
+        for r in &self.set_b {
+            writeln!(
+                s,
+                "| {} | {} | {} | {} | {} | {} | {} | {:.4}/{:.4} | {} | {} | {} | {} | {} | {} | {} |",
+                r.circuit,
+                r.layer,
+                r.budget,
+                if r.equal_work { "equal-work" } else { "production" },
+                if r.gated { "yes" } else { "timing-only" },
+                r.padded_smem_bytes,
+                r.blocks_per_sm,
+                r.interp_median_ms,
+                r.interp_min_ms,
+                r.n_instr,
+                r.instrs,
+                r.src_reads,
+                r.cell_reads,
+                r.cache_refires,
+                r.max_live_cells,
+                r.payload_bytes,
+            )
+            .unwrap();
+        }
+        writeln!(s).unwrap();
+
+        // The exploratory regression secondary.
+        writeln!(
+            s,
+            "### B-secondary: pooled wall-clock regression (EXPLORATORY CORRELATION)\n"
+        )
+        .unwrap();
+        writeln!(
+            s,
+            "Ordinary-least-squares fit of interpreter median (ms) ~ per-point compiler stats + \
+             circuit fixed-effect dummies, pooled across circuits × layers × budgets. This is a \
+             CORRELATION, not a causal/validated model: read the signs/magnitudes as descriptive \
+             only. Rank-deficiency is reported, never fabricated.\n"
+        )
+        .unwrap();
+        match &self.regression {
+            None => {
+                writeln!(s, "_No regression computed (set-A-only report)._\n").unwrap();
+            }
+            Some(reg) => {
+                if let Some(err) = &reg.error {
+                    writeln!(
+                        s,
+                        "**Unestimable**: {err}\n\n(n_obs = {}, attempted n_coeffs = {})\n",
+                        reg.n_obs, reg.n_coeffs
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(s, "| predictor | coefficient |").unwrap();
+                    writeln!(s, "|---|--:|").unwrap();
+                    for (label, c) in reg.predictor_labels.iter().zip(&reg.coefficients) {
+                        writeln!(s, "| {label} | {c:.6e} |").unwrap();
+                    }
+                    writeln!(
+                        s,
+                        "\n- R²: {:.4}\n- observations: {}\n- coefficients: {}\n- residual dof: {}\n",
+                        reg.r_squared, reg.n_obs, reg.n_coeffs, reg.residual_dof
+                    )
+                    .unwrap();
+                }
+            }
+        }
+    }
+
+    /// §6.2(C) occupancy-curve table (natural smem sizing, blocks/SM + wall-clock
+    /// vs budget). Skipped when the set-A-only test wrote the report.
+    fn write_set_c(&self, s: &mut String) {
+        if self.set_c.is_empty() {
+            return;
+        }
+        writeln!(s, "## C. Occupancy curve (spec §6.2(C))\n").unwrap();
+        writeln!(
+            s,
+            "NATURAL dynamic-smem sizing (budget-implied footprint) swept across the feasible \
+             budget grid incl. 64 cells, FIXED LDG residency: static blocks/SM and interpreter \
+             wall-clock vs budget — the carve-out trade. `gated` annotated as in set B.\n"
+        )
+        .unwrap();
+        writeln!(
+            s,
+            "| circuit | L | budget | shape | gated | nat smem B | optin | blk/SM | interp med/min ms |"
+        )
+        .unwrap();
+        writeln!(s, "|---|--:|--:|---|---|--:|---|--:|---|").unwrap();
+        for r in &self.set_c {
+            writeln!(
+                s,
+                "| {} | {} | {} | {} | {} | {} | {} | {} | {:.4}/{:.4} |",
+                r.circuit,
+                r.layer,
+                r.budget,
+                if r.equal_work {
+                    "equal-work"
+                } else {
+                    "production"
+                },
+                if r.gated { "yes" } else { "timing-only" },
+                r.natural_smem_bytes,
+                if r.large_smem_optin { "yes" } else { "no" },
+                r.blocks_per_sm,
+                r.interp_median_ms,
+                r.interp_min_ms,
+            )
+            .unwrap();
+        }
+        writeln!(s).unwrap();
+    }
+
+    /// §6.2(D) LDC-vs-LDG table (one circuit/layer where both fit, identical
+    /// config otherwise). Skipped when the set-A-only test wrote the report.
+    fn write_set_d(&self, s: &mut String) {
+        if self.set_d.is_empty() {
+            return;
+        }
+        writeln!(s, "## D. LDC vs LDG (spec §6.2(D))\n").unwrap();
+        writeln!(
+            s,
+            "One circuit/layer/budget where the program fits `__constant__`, timed BOTH ways at \
+             an identical config (same threads, same natural smem). `ldc/ldg` < 1 means the \
+             constant-resident program is faster. `gated` annotated as in set B.\n"
+        )
+        .unwrap();
+        writeln!(
+            s,
+            "| circuit | L | budget | shape | gated | thr | smem B | LDG med/min ms | LDC med/min ms | LDC/LDG |"
+        )
+        .unwrap();
+        writeln!(s, "|---|--:|--:|---|---|--:|--:|---|---|--:|").unwrap();
+        for r in &self.set_d {
+            writeln!(
+                s,
+                "| {} | {} | {} | {} | {} | {} | {} | {:.4}/{:.4} | {:.4}/{:.4} | {:.2}× |",
+                r.circuit,
+                r.layer,
+                r.budget,
+                if r.equal_work {
+                    "equal-work"
+                } else {
+                    "production"
+                },
+                if r.gated { "yes" } else { "timing-only" },
+                r.threads,
+                r.smem_bytes,
+                r.ldg_median_ms,
+                r.ldg_min_ms,
+                r.ldc_median_ms,
+                r.ldc_min_ms,
+                r.ldc_over_ldg,
+            )
+            .unwrap();
+        }
+        writeln!(s).unwrap();
     }
 }
 
