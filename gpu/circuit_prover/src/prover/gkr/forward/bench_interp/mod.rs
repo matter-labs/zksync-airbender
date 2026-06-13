@@ -9,6 +9,7 @@
 //! see dev-dependencies.
 
 mod fixture;
+pub(crate) mod harness;
 mod lower;
 mod tests;
 

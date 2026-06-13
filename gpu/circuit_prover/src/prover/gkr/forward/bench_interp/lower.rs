@@ -681,6 +681,60 @@ pub(crate) fn lower_payloads(
     lp
 }
 
+/// Pointers re-read from a lowered payload's record bytes — the same u64
+/// fields `verify_lowered_payloads` walks past. Lets the harness's structural
+/// gate (b) assert the embedded pointers match the resolver's GKRAddress
+/// resolution byte-for-byte, without re-plumbing the lowering's closures.
+pub(crate) struct LoweredPayloadPointers {
+    /// One device base per dst slot j (the `u64` written at `off + 16 + 8*j`).
+    pub dsts: Vec<u64>,
+    /// `VectorizedLookupSetup` table base (`PK_CACHE_LOOKUP_SETUP` tail); else None.
+    pub setup_table: Option<u64>,
+    /// Decoder execute-predicate base (affine tail decoder-select suffix); else None.
+    pub decoder_pred: Option<u64>,
+}
+
+/// Re-read payload `p`'s embedded pointers from `lp.bytes`, mirroring the
+/// device reader's cursor arithmetic (the SAME walk as `verify_lowered_payloads`).
+pub(crate) fn lowered_payload_pointers(lp: &LoweredPayloads, p: usize) -> LoweredPayloadPointers {
+    let rd_u16 = |off: usize| u16::from_le_bytes(lp.bytes[off..off + 2].try_into().unwrap());
+    let rd_u32 = |off: usize| u32::from_le_bytes(lp.bytes[off..off + 4].try_into().unwrap());
+    let rd_u64 = |off: usize| u64::from_le_bytes(lp.bytes[off..off + 8].try_into().unwrap());
+
+    let off = lp.offsets[p] as usize;
+    let kind = rd_u16(off);
+    let n_dsts = rd_u16(off + 2) as usize;
+    let n_ops = rd_u16(off + 4) as usize;
+    let flags = rd_u16(off + 6);
+    let num_challenges = rd_u32(off + 8) as usize;
+
+    let dsts: Vec<u64> = (0..n_dsts).map(|j| rd_u64(off + 16 + 8 * j)).collect();
+
+    // Cursor past header + dst pointers + powers — the start of the per-kind tail.
+    let mut cur = off + 16 + 8 * n_dsts + 4 * num_challenges;
+    let mut setup_table = None;
+    let mut decoder_pred = None;
+    match kind {
+        PK_VEC_LOOKUP_GATE | PK_CACHE_VECTORIZED_LOOKUP | PK_CACHE_MEMORY_TUPLE => {
+            cur = (cur + 15) & !15;
+            cur += 16 * (1 + n_ops); // constant + per-lane coeffs (e4)
+            if flags & PF_DECODER_SELECT != 0 {
+                cur += 16; // decoder-fill e4
+                decoder_pred = Some(rd_u64(cur));
+            }
+        }
+        PK_CACHE_LOOKUP_SETUP => {
+            setup_table = Some(rd_u64(cur));
+        }
+        _ => {}
+    }
+    LoweredPayloadPointers {
+        dsts,
+        setup_table,
+        decoder_pred,
+    }
+}
+
 /// Structural cross-check: re-parse the byte buffer with an independent
 /// host-side cursor mirroring the device reader, asserting per payload that
 /// the kind tag matches the `PayloadRecord` variant, the dst count matches

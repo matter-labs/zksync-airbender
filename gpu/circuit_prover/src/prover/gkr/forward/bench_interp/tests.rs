@@ -1365,16 +1365,20 @@ fn read_device_column_e4(ptr: *const u8, t: usize, context: &ProverContext) -> V
 }
 
 /// Lower + run + device-compare one (circuit, layer, budget) point against the
-/// flat references already resident in storage. Returns the lanes for an
-/// optional LDC pass. Panics on any parity mismatch.
+/// flat references already resident in storage. This is the body of harness
+/// gate (c): on the FIRST mismatch (non-zero `error_flag`, wrong `native_fired`
+/// count, vacuous comparison set, or any dst/output row divergence) it returns
+/// `Err(reason)`; a full pass returns `Ok(())`. Both the harness `run_point`
+/// and the legacy `stage3_real_fixture_interp_parity` driver call through here
+/// (the driver unwraps the `Err` into a panic, preserving its old semantics).
 #[cfg(not(no_cuda))]
-fn run_real_fixture_parity_point(
+pub(super) fn run_real_fixture_parity_point(
     fixture: &CircuitFixture,
     layer: &LayerFixture,
     cf: &gkr_eval_isa::compiler::fwd::CompiledForward,
     cg_layer: &cs::gkr_compiler::codegen_ir::CodegenLayer,
     label: &str,
-) {
+) -> Result<(), String> {
     use super::fixture::{
         materialize_virtual_setup_column, resolve_decoder_pred, resolve_output, resolve_source,
         source_virtual_setup,
@@ -1586,14 +1590,20 @@ fn run_real_fixture_parity_point(
     memory_copy_async(&mut debug_host[..], &debug_dev, context.get_exec_stream()).unwrap();
     context.get_exec_stream().synchronize().unwrap();
 
-    assert_eq!(debug_host[1], 0, "{label}: kernel reported INTERP_ERR bits");
+    if debug_host[1] != 0 {
+        return Err(format!(
+            "{label}: kernel reported INTERP_ERR bits {:#x}",
+            debug_host[1]
+        ));
+    }
 
     // Non-vacuity: there must be SOMETHING to compare, else the per-row loops
     // below run zero iterations and the point "passes" while checking nothing.
-    assert!(
-        !cf.payloads.is_empty() || !cf.outputs.is_empty(),
-        "{label}: nothing to compare (empty payloads+outputs)"
-    );
+    if cf.payloads.is_empty() && cf.outputs.is_empty() {
+        return Err(format!(
+            "{label}: nothing to compare (empty payloads+outputs)"
+        ));
+    }
 
     // NativeK fire accounting (mirrors `run_and_check` / `interp_full_parity`):
     // once per (NativeK instruction, active thread). Proves the kernel actually
@@ -1604,31 +1614,32 @@ fn run_real_fixture_parity_point(
         .iter()
         .filter(|i| i.op == Op::NativeK)
         .count() as u32;
-    assert_eq!(
-        debug_host[0],
-        n_native * t as u32,
-        "{label}: native_fired counter (expected {n_native} NativeK x {t} threads)"
-    );
+    if debug_host[0] != n_native * t as u32 {
+        return Err(format!(
+            "{label}: native_fired counter {} (expected {n_native} NativeK x {t} threads)",
+            debug_host[0]
+        ));
+    }
 
     // Payload dst columns: rows 0 and t-1 must equal the flat reference.
     let rows = [0usize, t - 1];
     for (p, per) in pay_slots.iter().enumerate() {
         for (j, &(e4, col)) in per.iter().enumerate() {
             let (ref_e4, ref_bf, ref_ext) = &payload_refs[p][j];
-            assert_eq!(*ref_e4, e4, "{label}: payload {p} dst {j} width disagrees");
+            if *ref_e4 != e4 {
+                return Err(format!("{label}: payload {p} dst {j} width disagrees"));
+            }
             for &row in &rows {
                 if e4 {
-                    assert_eq!(
-                        pay_e4_host[col * t + row],
-                        ref_ext[row],
-                        "{label}: payload {p} dst {j} (e4) row {row} vs flat ref"
-                    );
-                } else {
-                    assert_eq!(
-                        pay_bf_host[col * t + row],
-                        ref_bf[row],
-                        "{label}: payload {p} dst {j} (bf) row {row} vs flat ref"
-                    );
+                    if pay_e4_host[col * t + row] != ref_ext[row] {
+                        return Err(format!(
+                            "{label}: payload {p} dst {j} (e4) row {row} mismatch vs flat ref"
+                        ));
+                    }
+                } else if pay_bf_host[col * t + row] != ref_bf[row] {
+                    return Err(format!(
+                        "{label}: payload {p} dst {j} (bf) row {row} mismatch vs flat ref"
+                    ));
                 }
             }
         }
@@ -1642,17 +1653,15 @@ fn run_real_fixture_parity_point(
             .expect("output ref");
         for &row in &rows {
             if e4 {
-                assert_eq!(
-                    out_e4_host[col * t + row],
-                    ref_ext[row],
-                    "{label}: e4 output {j} row {row} vs flat ref"
-                );
-            } else {
-                assert_eq!(
-                    out_bf_host[col * t + row],
-                    ref_bf[row],
-                    "{label}: bf output {j} row {row} vs flat ref"
-                );
+                if out_e4_host[col * t + row] != ref_ext[row] {
+                    return Err(format!(
+                        "{label}: e4 output {j} row {row} mismatch vs flat ref"
+                    ));
+                }
+            } else if out_bf_host[col * t + row] != ref_bf[row] {
+                return Err(format!(
+                    "{label}: bf output {j} row {row} mismatch vs flat ref"
+                ));
             }
         }
     }
@@ -1661,19 +1670,31 @@ fn run_real_fixture_parity_point(
         cf.payloads.len(),
         out_slots.len()
     );
+    Ok(())
 }
 
-/// 6.B — real-fixture interpreter device-compare gate (`#[ignore]`, GPU). For
-/// each of the 3 stage-3 circuits, build the forward fixture, replay layer 0's
-/// flat launches, and device-compare the interpreter's dst/output columns
-/// against the flat references at feasible budgets. PASS required on all 3.
+/// 6.C-1 — per-point correctness driver (`#[ignore]`, GPU). Drives `run_point`
+/// (the three-gate harness: CPU oracle, structural lowering, device-compare)
+/// over all 3 stage-3 circuits × all layers × budgets {32, 64} × filter rows
+/// (production-shape always; the equal-work MaxQuadratic-filtered row for bigint
+/// at the top budget, per `interp_full_parity`'s logic). Collects every
+/// `(label, PointResult)`; asserts every result is `Verified` or `Infeasible`
+/// (NONE `Failed`) and at least one `Verified` per circuit. Same coverage the
+/// old `stage3_real_fixture_interp_parity` had, now routed through `run_point`.
+///
+/// Layer/budget grid + filter rows + the `assert_layer_consistency` precheck
+/// live HERE (the driver); `run_point` owns the per-point replay + the gates.
 #[test]
 #[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh (see .agents/gpu_work.md)
 #[cfg(not(no_cuda))]
 #[serial]
-fn stage3_real_fixture_interp_parity() {
+fn stage3_run_point_correctness() {
+    use super::harness::{run_point, PointParams, PointResult};
+
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
-    for circuit in STAGE3_CIRCUITS {
+    let mut results: Vec<(String, PointResult)> = Vec::new();
+
+    for (ci, circuit) in STAGE3_CIRCUITS.into_iter().enumerate() {
         // CPU precheck first (cheap; catches representation drift).
         assert_layer_consistency(circuit);
 
@@ -1689,59 +1710,84 @@ fn stage3_real_fixture_interp_parity() {
             "{circuit}: codegen IR vs artifact layer count"
         );
 
+        // Per-circuit base seed (same scheme `interp_full_parity` uses);
+        // `check_layer` mixes in the layer index itself.
+        let circuit_seed = 0x57A6_E3u64 ^ ((ci as u64) << 32);
+
         // Layer 0 is mandatory; include any further layer that has replayable
-        // launches and whose codegen layer compiles at a feasible budget.
-        let candidate_layers: Vec<usize> = (0..fixture.layers.len()).collect();
-        let mut circuit_feasible = false;
-        for &layer_idx in &candidate_layers {
-            let layer = &fixture.layers[layer_idx];
-            let replayable = layer
+        // launches (others carry no flat reference for the device-compare).
+        let mut circuit_verified = false;
+        for layer_idx in 0..fixture.layers.len() {
+            let replayable = fixture.layers[layer_idx]
                 .flat_launches
                 .iter()
                 .filter(|l| !matches!(l, super::fixture::FlatLaunch::MaterializeSingle))
                 .count();
-            // Layer 0 is required even if it had no replayable launches; other
-            // layers without replayable launches carry no flat reference.
             if layer_idx != 0 && replayable == 0 {
                 continue;
             }
 
-            // Replay the flat launches so storage holds the real references.
-            fixture.replay_layer(layer_idx).unwrap();
-            fixture.context().get_exec_stream().synchronize().unwrap();
-
             let cg_layer = &loaded.circuit.layers[layer_idx];
             let graph = &loaded.graphs[layer_idx];
-            let arena = &cg_layer.arena.nodes;
-            let mut layer_feasible = false;
             for budget in [32usize, 64] {
-                let params = FwdParams {
-                    budget_cells: budget,
-                    leaf_cache: true,
-                    exclude_max_quadratic: false,
-                };
-                let cf = match catch_unwind(AssertUnwindSafe(|| {
-                    compile_forward(cg_layer, graph, params)
-                })) {
-                    Ok(cf) => cf,
-                    Err(_) => {
-                        println!("SKIP {circuit} L{layer_idx} budget {budget}: compile_forward infeasible");
-                        continue;
+                // Production-shape always; the equal-work row only for bigint at
+                // the top budget (matching `interp_full_parity`): add_sub/blake2
+                // have zero fwd-eligible MaxQuadratic gates, so the rows coincide.
+                let filter_rows: &[bool] =
+                    if circuit == "bigint_with_extended_control" && budget == 64 {
+                        &[false, true]
+                    } else {
+                        &[false]
+                    };
+                for &exclude_mq in filter_rows {
+                    let label = format!(
+                        "{circuit} L{layer_idx} budget {budget}{}",
+                        if exclude_mq { " [equal-work]" } else { "" }
+                    );
+                    let params = PointParams {
+                        budget,
+                        exclude_max_quadratic: exclude_mq,
+                    };
+                    let result = run_point(
+                        &fixture,
+                        layer_idx,
+                        cg_layer,
+                        graph,
+                        params,
+                        circuit_seed,
+                        &label,
+                    );
+                    match &result {
+                        PointResult::Verified => circuit_verified = true,
+                        PointResult::Infeasible => {
+                            println!("INFEASIBLE {label}");
+                        }
+                        PointResult::Failed { gate, reason } => {
+                            println!("FAILED [{gate}] {label}: {reason}");
+                        }
                     }
-                };
-                let label = format!("{circuit} L{layer_idx} budget {budget}");
-                run_real_fixture_parity_point(&fixture, layer, &cf, cg_layer, &label);
-                layer_feasible = true;
-                circuit_feasible = true;
+                    results.push((label, result));
+                }
             }
-            assert!(
-                layer_idx != 0 || layer_feasible,
-                "{circuit}: layer 0 infeasible at every budget — no parity point"
-            );
         }
         assert!(
-            circuit_feasible,
-            "{circuit}: no feasible (layer, budget) parity point"
+            circuit_verified,
+            "{circuit}: no point Verified (need >=1 per circuit)"
         );
     }
+
+    // No point may be Failed; report all failures together before panicking.
+    let failures: Vec<String> = results
+        .iter()
+        .filter_map(|(label, r)| match r {
+            PointResult::Failed { gate, reason } => Some(format!("[{gate}] {label}: {reason}")),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "run_point reported {} failed point(s):\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
