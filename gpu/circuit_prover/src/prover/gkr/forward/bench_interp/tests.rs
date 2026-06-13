@@ -946,42 +946,10 @@ impl ParityPoint<'_> {
         };
         launch_bench_fwd_interp(&desc, residency, context).unwrap();
 
-        let mut out_bf_host = vec![Bf::ZERO; n_out_bf * t];
-        if n_out_bf > 0 {
-            memory_copy_async(
-                &mut out_bf_host,
-                &self.out_bf_dev[0..n_out_bf * t],
-                context.get_exec_stream(),
-            )
-            .unwrap();
-        }
-        let mut out_e4_host = vec![Ext::ZERO; n_out_e4 * t];
-        if n_out_e4 > 0 {
-            memory_copy_async(
-                &mut out_e4_host,
-                &self.out_e4_dev[0..n_out_e4 * t],
-                context.get_exec_stream(),
-            )
-            .unwrap();
-        }
-        let mut pay_bf_host = vec![Bf::ZERO; self.layout.n_bf_cols * t];
-        if self.layout.n_bf_cols > 0 {
-            memory_copy_async(
-                &mut pay_bf_host,
-                &self.payload_bf_dev[0..self.layout.n_bf_cols * t],
-                context.get_exec_stream(),
-            )
-            .unwrap();
-        }
-        let mut pay_e4_host = vec![Ext::ZERO; self.layout.n_e4_cols * t];
-        if self.layout.n_e4_cols > 0 {
-            memory_copy_async(
-                &mut pay_e4_host,
-                &self.payload_e4_dev[0..self.layout.n_e4_cols * t],
-                context.get_exec_stream(),
-            )
-            .unwrap();
-        }
+        let out_bf_host = readback_packed(&self.out_bf_dev, n_out_bf, t, context);
+        let out_e4_host = readback_packed(&self.out_e4_dev, n_out_e4, t, context);
+        let pay_bf_host = readback_packed(&self.payload_bf_dev, self.layout.n_bf_cols, t, context);
+        let pay_e4_host = readback_packed(&self.payload_e4_dev, self.layout.n_e4_cols, t, context);
         let mut cells_host = vec![Bf::ZERO; n_cells * t];
         memory_copy_async(
             &mut cells_host,
@@ -1360,6 +1328,22 @@ fn stage3_add_sub_fixture_smoke() {
 // are ALREADY staged on device by the flat preamble — NOT re-staged here.
 // ===========================================================================
 
+/// Read back a packed column buffer (`n_cols * t` elements, layout `col*t+row`)
+/// to host, skipping the copy when there are no columns. Shared by both parity
+/// harnesses' readback (the `if n_cols > 0 { memory_copy_async(..) }` pattern).
+fn readback_packed<T: Field>(
+    dev: &DeviceSlice<T>,
+    n_cols: usize,
+    t: usize,
+    context: &ProverContext,
+) -> Vec<T> {
+    let mut host = vec![T::ZERO; n_cols * t];
+    if n_cols > 0 {
+        memory_copy_async(&mut host, &dev[0..n_cols * t], context.get_exec_stream()).unwrap();
+    }
+    host
+}
+
 /// Read `t` elements from a raw device column pointer to host (bf or e4).
 #[cfg(not(no_cuda))]
 fn read_device_column_bf(ptr: *const u8, t: usize, context: &ProverContext) -> Vec<Bf> {
@@ -1594,47 +1578,37 @@ fn run_real_fixture_parity_point(
     launch_bench_fwd_interp(&desc, InterpResidency::Ldg, context).unwrap();
 
     // (iv) Read interpreter dsts/outputs back and compare to the flat reference.
-    let mut pay_bf_host = vec![Bf::ZERO; n_pay_bf * t];
-    if n_pay_bf > 0 {
-        memory_copy_async(
-            &mut pay_bf_host,
-            &pay_bf_dev[0..n_pay_bf * t],
-            context.get_exec_stream(),
-        )
-        .unwrap();
-    }
-    let mut pay_e4_host = vec![Ext::ZERO; n_pay_e4 * t];
-    if n_pay_e4 > 0 {
-        memory_copy_async(
-            &mut pay_e4_host,
-            &pay_e4_dev[0..n_pay_e4 * t],
-            context.get_exec_stream(),
-        )
-        .unwrap();
-    }
-    let mut out_bf_host = vec![Bf::ZERO; n_out_bf * t];
-    if n_out_bf > 0 {
-        memory_copy_async(
-            &mut out_bf_host,
-            &out_bf_dev[0..n_out_bf * t],
-            context.get_exec_stream(),
-        )
-        .unwrap();
-    }
-    let mut out_e4_host = vec![Ext::ZERO; n_out_e4 * t];
-    if n_out_e4 > 0 {
-        memory_copy_async(
-            &mut out_e4_host,
-            &out_e4_dev[0..n_out_e4 * t],
-            context.get_exec_stream(),
-        )
-        .unwrap();
-    }
+    let pay_bf_host = readback_packed(&pay_bf_dev, n_pay_bf, t, context);
+    let pay_e4_host = readback_packed(&pay_e4_dev, n_pay_e4, t, context);
+    let out_bf_host = readback_packed(&out_bf_dev, n_out_bf, t, context);
+    let out_e4_host = readback_packed(&out_e4_dev, n_out_e4, t, context);
     let mut debug_host = [0u32; 2];
     memory_copy_async(&mut debug_host[..], &debug_dev, context.get_exec_stream()).unwrap();
     context.get_exec_stream().synchronize().unwrap();
 
     assert_eq!(debug_host[1], 0, "{label}: kernel reported INTERP_ERR bits");
+
+    // Non-vacuity: there must be SOMETHING to compare, else the per-row loops
+    // below run zero iterations and the point "passes" while checking nothing.
+    assert!(
+        !cf.payloads.is_empty() || !cf.outputs.is_empty(),
+        "{label}: nothing to compare (empty payloads+outputs)"
+    );
+
+    // NativeK fire accounting (mirrors `run_and_check` / `interp_full_parity`):
+    // once per (NativeK instruction, active thread). Proves the kernel actually
+    // executed the payload routines rather than no-op'ing past them.
+    let n_native = cf
+        .program
+        .instrs
+        .iter()
+        .filter(|i| i.op == Op::NativeK)
+        .count() as u32;
+    assert_eq!(
+        debug_host[0],
+        n_native * t as u32,
+        "{label}: native_fired counter (expected {n_native} NativeK x {t} threads)"
+    );
 
     // Payload dst columns: rows 0 and t-1 must equal the flat reference.
     let rows = [0usize, t - 1];

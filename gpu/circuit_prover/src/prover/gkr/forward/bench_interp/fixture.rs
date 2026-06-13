@@ -459,9 +459,7 @@ impl CircuitFixture {
             )
         })
     }
-}
 
-impl CircuitFixture {
     /// The owning `ProverContext` for this fixture's replay/A-B launches.
     pub(crate) fn context(&self) -> &ProverContext {
         self.keepalive.context()
@@ -809,7 +807,7 @@ pub(crate) fn build_add_sub_circuit_fixture() -> CircuitFixture {
         captured_challenges = (refs.lookup_alpha, refs.lookup_additive_part);
         capture_forward_pass(
             refs.context,
-            Some(refs.setup_trace_holder),
+            refs.setup_trace_holder,
             refs.stage1,
             refs.forward_setup,
             refs.compiled_circuit,
@@ -846,7 +844,7 @@ fn build_delegation_circuit_fixture(circuit: &str) -> CircuitFixture {
     let keepalive = crate::prover::tests::build_delegation_forward_capture(circuit, |refs| {
         let result = capture_forward_pass(
             refs.context,
-            Some(refs.setup_trace_holder),
+            refs.setup_trace_holder,
             refs.stage1,
             refs.forward_setup,
             refs.compiled_circuit,
@@ -888,14 +886,15 @@ pub(crate) type CaptureResult = (
 /// captured launch pointers (mappings / generic-lookup) stay resident for
 /// replay — a forward-only test concession that only keeps more buffers alive.
 ///
-/// `setup_trace_holder` is `None` for delegation circuits (zero uploaded setup
-/// columns), matching production's `synthetic_setup_trace_holder` branch; when
-/// present it carries the resident setup columns (add_sub). The storage
-/// bootstrap binds zero setup columns in the None case.
+/// Both circuit families pass a real `setup_trace_holder`: add_sub passes its
+/// fixture's setup holder, and delegation passes the holder carrying the
+/// `generic_lookup_tables_width` setup columns. Delegation DOES carry setup
+/// columns — the empty `&[]` it feeds `CpuGKRSetup::construct` is only the empty
+/// *decoder* table; the setup still has `generic_lookup_tables_width` columns.
 #[allow(clippy::too_many_arguments)]
 fn capture_forward_pass(
     context: &ProverContext,
-    setup_trace_holder: Option<&TraceHolder<BF>>,
+    setup_trace_holder: &TraceHolder<BF>,
     stage1: &GpuGKRStage1Output,
     forward_setup: &GpuGKRForwardSetup<E4>,
     raw_compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -906,16 +905,12 @@ fn capture_forward_pass(
     let external_challenges = *external_challenges;
     let trace_len = compiled_circuit.trace_len;
 
-    // Bootstrap exactly as production: Some(holder) for an uploaded setup
-    // (add_sub), None for the zero-column delegation case. The column count is
-    // the holder's own (0 for delegation), which the bootstrap asserts.
-    let setup_columns_count = setup_trace_holder.map_or(0, |h| h.columns_count);
-    // Trace geometry: prefer the setup holder, else the memory holder (the
-    // delegation case lacks a setup holder but all three holders share geometry,
-    // which `bootstrap_storage_from_trace_holders` asserts).
-    let geom = setup_trace_holder.unwrap_or(&stage1.memory_trace_holder);
+    // Bootstrap exactly as production: the holder carries the uploaded setup
+    // columns (the bootstrap asserts the bound count against the holder's own).
+    let setup_columns_count = setup_trace_holder.columns_count;
+    let geom = setup_trace_holder;
     let mut storage: GpuGKRStorage<BF, E4> = bootstrap_storage_from_trace_holders::<E4>(
-        setup_trace_holder,
+        Some(setup_trace_holder),
         setup_columns_count,
         geom.log_domain_size,
         geom.log_lde_factor,
@@ -1185,6 +1180,10 @@ pub(crate) fn materialize_virtual_setup_column(poly: VirtualSetupPoly, t: usize)
                 VirtualSetupPoly::InitsAndTeardownsLow => (row << 2) & 0xffff,
                 VirtualSetupPoly::InitsAndTeardownsHigh => row >> 14,
             };
+            // Host reduces (`from_u32_with_reduction`) while the device uses
+            // `from_u32_unchecked`; equal here because every arm value above is
+            // < BabyBear modulus. A future `VirtualSetupPoly` arm whose value may
+            // exceed the modulus MUST keep reducing here host-side.
             BF::from_u32_with_reduction(v)
         })
         .collect()
