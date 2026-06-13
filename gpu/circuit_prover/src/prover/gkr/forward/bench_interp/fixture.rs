@@ -43,12 +43,19 @@ use crate::prover::gkr::stage1::GpuGKRStage1Output;
 use crate::prover::gkr::storage_layout::GpuGKRStorageLayout;
 use crate::prover::gkr::transform::normalize_compiled_circuit_for_gpu;
 use crate::prover::gkr::{ForwardKernels, GpuGKRStorage};
+use crate::prover::trace::holder::TraceHolder;
 use crate::prover::ProverContext;
 use crate::upstream::{
     GKRAddress, GKRCircuitArtifact, GKRExternalChallenges, GKRLayerDescription, NoFieldGKRRelation,
+    TableType, VirtualSetupPoly,
 };
 
+use cs::gkr_compiler::codegen_ir::{CodegenLayer, ExprNode, ProducerId};
+use field::{Field, FieldExtension, PrimeField};
 use gkr_design_space::graph::{AnalysisGraph, Origin};
+use gkr_eval_isa::compiler::fwd::{CompiledForward, PayloadRecord};
+
+use super::lower::BenchChallenges;
 
 /// Regeneration hint surfaced on any 5.1 precheck mismatch.
 pub(crate) const CODEGEN_IR_REGEN_CMD: &str = "cargo test -p cs --release -- --ignored codegen_ir";
@@ -314,26 +321,46 @@ pub(crate) struct LayerFixture {
     pub(crate) trace_len: usize,
 }
 
+/// Per-circuit keepalive: owns the family-specific preamble state (transfers,
+/// setup host/transfer, trace, the base test fixture) whose device buffers back
+/// the captured launch pointers + the `addr_resolve` map. Held opaquely so the
+/// `LayerFixture` raw pointers stay valid for the lifetime of every replay.
+pub(crate) enum CircuitKeepalive {
+    /// add_sub (unrolled): the base fixture + the moved-out stage1/forward-setup
+    /// from `build_basic_unrolled_forward_capture`.
+    Unrolled {
+        base: crate::prover::tests::BasicUnrolledFixture,
+        /// Held only to keep its device buffers (mappings/scratch) alive for the
+        /// captured launch pointers; never read directly.
+        #[allow(dead_code)]
+        stage1: GpuGKRStage1Output,
+        forward_setup: GpuGKRForwardSetup<E4>,
+    },
+    /// bigint / blake2 (delegation): the owned context + the preamble keepalive
+    /// bundle built by `build_delegation_forward_capture`.
+    Delegation(Box<crate::prover::tests::DelegationForwardCaptureKeepalive>),
+}
+
 /// Per-circuit fixture: owns everything the per-layer launches and pointer maps
-/// reference (storage backings, stage1, forward setup, the base test fixture
-/// holding `ProverContext`), so the `LayerFixture` raw pointers stay valid for
-/// the duration of every replay. Forward-only.
+/// reference (storage backings, stage1, forward setup, the family-specific
+/// keepalive holding `ProverContext`), so the `LayerFixture` raw pointers stay
+/// valid for the duration of every replay. Forward-only.
 pub(crate) struct CircuitFixture {
-    /// Keeps `ProverContext` + all H2D'd backings alive; also the access path to
-    /// the context for replay launches.
-    pub(crate) base: crate::prover::tests::BasicUnrolledFixture,
+    /// Keeps all family-specific H2D'd backings alive (incl. the owning
+    /// `ProverContext`); the access path to the context for replay launches.
+    pub(crate) keepalive: CircuitKeepalive,
     pub(crate) compiled_circuit: GKRCircuitArtifact<BF>,
     pub(crate) external_challenges: GKRExternalChallenges<BF, E4>,
     pub(crate) trace_len: usize,
     /// Forward storage AFTER the capturing pass (all real outputs resident).
     pub(crate) storage: GpuGKRStorage<BF, E4>,
     pub(crate) layers: Vec<LayerFixture>,
-    /// Kept alive: forward-setup lookup buffers + stage1 mappings/scratch that
-    /// the captured launches reference.
-    #[allow(dead_code)]
-    pub(crate) stage1: GpuGKRStage1Output,
-    #[allow(dead_code)]
-    pub(crate) forward_setup: GpuGKRForwardSetup<E4>,
+    /// Lookup folding challenge (`lookup_alpha`) captured at the draw site;
+    /// feeds `BenchChallenges::alpha` and the decoder-fill recovery.
+    pub(crate) lookup_alpha: E4,
+    /// Lookup additive part (`lookup_additive_part`); equals `BenchChallenges::
+    /// gamma` and the device-staged `ab_gkr_lookup_gamma_consts` base value.
+    pub(crate) lookup_additive_part: E4,
 }
 
 /// Deep-clone the captured deferred-inits launches (the dst views are shared
@@ -353,14 +380,138 @@ fn clone_pending_inits(pending: &[PendingInitsLaunch<E4>]) -> Vec<PendingInitsLa
         .collect()
 }
 
+impl CircuitKeepalive {
+    /// The owning `ProverContext` (the replay launches issue onto its streams).
+    pub(crate) fn context(&self) -> &ProverContext {
+        match self {
+            CircuitKeepalive::Unrolled { base, .. } => &base.context,
+            CircuitKeepalive::Delegation(keepalive) => &keepalive.context,
+        }
+    }
+
+    /// The forward setup whose `generic_lookup()` buffer is the device base of
+    /// the single `VectorizedLookupSetup` cache out (the interpreter's setup
+    /// table). Same buffer the flat path's setup cache reads from.
+    pub(crate) fn forward_setup(&self) -> &GpuGKRForwardSetup<E4> {
+        match self {
+            CircuitKeepalive::Unrolled { forward_setup, .. } => forward_setup,
+            CircuitKeepalive::Delegation(keepalive) => &keepalive.forward_setup,
+        }
+    }
+}
+
 impl CircuitFixture {
+    /// The decoder execute-predicate address (`BaseLayerMemory(machine_state.
+    /// execute)`), or `None` when the circuit has no machine state (delegation).
+    /// Derived once from the normalized circuit; layer-independent.
+    pub(crate) fn decoder_predicate_address(&self) -> Option<GKRAddress> {
+        self.compiled_circuit
+            .memory_layout
+            .machine_state
+            .as_ref()
+            .map(|machine_state| GKRAddress::BaseLayerMemory(machine_state.execute))
+    }
+
+    /// `(generic_lookup device base, valid length)` — the single
+    /// `VectorizedLookupSetup` cache out (the interpreter's setup table).
+    pub(crate) fn setup_table(&self) -> (*const u8, u32) {
+        let fs = self.keepalive.forward_setup();
+        (
+            fs.generic_lookup().as_ptr() as *const u8,
+            fs.generic_lookup_len() as u32,
+        )
+    }
+
+    /// Resolve a GKRAddress to its resident device column in the POST-CAPTURE
+    /// storage (every layer's outputs + hydrated scratch are bound). Returns
+    /// `(is_e4, base ptr)`. Unlike a per-layer `addr_resolve`, this sees
+    /// next-layer hydrated MaxQuadratic scratch (`InnerLayer { layer: L+1 }`),
+    /// the flat reference for an MQ gate dst at layer L.
+    pub(crate) fn storage_column(&self, addr: GKRAddress) -> Option<(bool, *const u8)> {
+        if let Some(p) = self.storage.try_get_base_poly(addr) {
+            Some((false, p.as_ptr() as *const u8))
+        } else {
+            self.storage
+                .try_get_ext_poly(addr)
+                .map(|p| (true, p.as_ptr() as *const u8))
+        }
+    }
+
+    /// The flat reference column for payload `p`'s j-th dst: the resident
+    /// storage column at the gate's `dst[j].addr` / cache `out.1` (MaxQuadratic
+    /// gate dsts resolve to the hydrated witness-stage scratch value).
+    pub(crate) fn payload_dst_reference(
+        &self,
+        cf: &CompiledForward,
+        p: usize,
+        j: usize,
+    ) -> (bool, *const u8) {
+        let addr = match &cf.payloads[p] {
+            PayloadRecord::Gate(g) => g.dst[j].addr,
+            PayloadRecord::Cache(c) => {
+                assert_eq!(j, 0, "cache payload {p} has a single dst");
+                c.out.1
+            }
+        };
+        self.storage_column(addr).unwrap_or_else(|| {
+            panic!(
+                "payload_dst_reference: payload {p} dst {j} addr {addr:?} not resident in storage"
+            )
+        })
+    }
+}
+
+impl CircuitFixture {
+    /// The owning `ProverContext` for this fixture's replay/A-B launches.
+    pub(crate) fn context(&self) -> &ProverContext {
+        self.keepalive.context()
+    }
+
+    /// Assemble the interpreter's `BenchChallenges` from the captured lookup
+    /// challenges + the fixture's external (memory-argument) challenges. Each
+    /// field is sourced exactly as the production forward path consumes it
+    /// (see the field docs).
+    pub(crate) fn bench_challenges(&self) -> BenchChallenges {
+        let perm = &self
+            .external_challenges
+            .permutation_argument_linearization_challenges;
+        // Roles ADDR_LOW..VAL_HIGH = the first 6 linearization challenges; same
+        // index convention as lower.rs and the flat permutation-argument path.
+        let perm_challenges: [E4; 6] = std::array::from_fn(|role| perm[role]);
+
+        // decoder_fill = lookup_alpha^(generic_width-1) * TableType::Decoder,
+        // only when the circuit carries table-ids in its generic lookups
+        // (forward setup's `tables_ids_in_generic_lookups` gate); else ZERO.
+        let decoder_fill = if self.compiled_circuit.tables_ids_in_generic_lookups {
+            let width = self.compiled_circuit.generic_lookup_tables_width;
+            assert!(width > 0, "tables_ids_in_generic_lookups with zero width");
+            let mut t = self.lookup_alpha.pow((width - 1) as u32);
+            t.mul_assign_by_base(&BF::from_u32_unchecked(TableType::Decoder as u32));
+            t
+        } else {
+            E4::ZERO
+        };
+
+        BenchChallenges {
+            // gamma == lookup_additive_part; the routines read [g, g^2, 2g] from
+            // the `ab_gkr_lookup_gamma_consts` symbol that the flat preamble's
+            // `schedule_lookup_gamma_consts_prelude` already staged from this
+            // exact value — so the real-fixture run must NOT re-stage it.
+            gamma: self.lookup_additive_part,
+            alpha: self.lookup_alpha,
+            perm_challenges,
+            perm_additive: self.external_challenges.permutation_argument_additive_part,
+            decoder_fill,
+        }
+    }
+
     /// Replay every captured flat launch of `layer_idx` in production order.
     /// Replayable launches re-issue the SAME kernels into the SAME storage
     /// buffers (idempotent given the resident source columns); the result is
     /// the layer's real flat-side outputs. Test code — synchronization is the
     /// caller's responsibility (see the smoke test).
     pub(crate) fn replay_layer(&self, layer_idx: usize) -> CudaResult<()> {
-        let context = &self.base.context;
+        let context = self.context();
         let trace_len = self.trace_len;
         let layer = &self.layers[layer_idx];
         for launch in &layer.flat_launches {
@@ -616,6 +767,21 @@ fn capture_layer(
     })
 }
 
+impl CircuitFixture {
+    /// Build the per-circuit forward fixture, dispatching by circuit family:
+    /// `add_sub_lui_auipc_mop` → the unrolled preamble; `bigint_*`/`blake2_*` →
+    /// the delegation preamble. Both drive the SAME `capture_forward_pass`.
+    pub(crate) fn build(circuit: &str) -> CircuitFixture {
+        match circuit {
+            "add_sub_lui_auipc_mop" => build_add_sub_circuit_fixture(),
+            "bigint_with_extended_control" | "blake2_with_extended_control" => {
+                build_delegation_circuit_fixture(circuit)
+            }
+            other => panic!("CircuitFixture::build: unsupported circuit {other}"),
+        }
+    }
+}
+
 /// Build the per-circuit forward fixture for `add_sub` (the smoke-test target).
 /// Runs the REAL unrolled preamble (artifact + trace + stage1 + forward setup),
 /// then a capturing forward pass that mirrors `schedule_forward_pass`'s preamble
@@ -625,9 +791,6 @@ fn capture_layer(
 /// here so the captured launch pointers (mappings / generic-lookup) remain
 /// resident for replay — a forward-only test concession that only keeps more
 /// buffers alive, never fewer.
-//
-// Task 6: delegation preamble for bigint/blake2 (their fixtures are first needed
-// by the multi-circuit A/B; 5.1 already covers all 3 at the artifact level).
 pub(crate) fn build_add_sub_circuit_fixture() -> CircuitFixture {
     let (base, _expected_cpu_proof) =
         crate::prover::tests::prepare_basic_unrolled_add_sub_fixture_for_bench();
@@ -637,27 +800,80 @@ pub(crate) fn build_add_sub_circuit_fixture() -> CircuitFixture {
     // returns the populated storage + per-layer fixtures + the normalized
     // circuit; `stage1`/`forward_setup` are returned alongside so we keep them
     // alive (their device buffers back the captured launch pointers).
+    let mut captured_challenges = (E4::ZERO, E4::ZERO);
     let (
         stage1,
         forward_setup,
         (compiled_circuit, external_challenges, trace_len, storage, layers),
     ) = crate::prover::tests::build_basic_unrolled_forward_capture(&base, |refs| {
-        capture_forward_pass(refs)
+        captured_challenges = (refs.lookup_alpha, refs.lookup_additive_part);
+        capture_forward_pass(
+            refs.context,
+            Some(refs.setup_trace_holder),
+            refs.stage1,
+            refs.forward_setup,
+            refs.compiled_circuit,
+            refs.external_challenges,
+            refs.final_trace_size_log_2,
+        )
     });
+    let (lookup_alpha, lookup_additive_part) = captured_challenges;
 
     CircuitFixture {
-        base,
+        keepalive: CircuitKeepalive::Unrolled {
+            base,
+            stage1,
+            forward_setup,
+        },
         compiled_circuit,
         external_challenges,
         trace_len,
         storage,
         layers,
-        stage1,
-        forward_setup,
+        lookup_alpha,
+        lookup_additive_part,
     }
 }
 
-type CaptureResult = (
+/// Build the per-circuit forward fixture for a delegation circuit (bigint /
+/// blake2). Runs the REAL delegation preamble (trace replay → stage1 → forward
+/// setup, via `build_delegation_forward_capture`), then the SAME capturing
+/// forward pass as add_sub. The delegation setup trace holder carries the
+/// `generic_lookup_tables_width` setup columns (the `Setup(0..)` sources), so
+/// it is passed through to the storage bootstrap.
+fn build_delegation_circuit_fixture(circuit: &str) -> CircuitFixture {
+    let mut captured: Option<(E4, E4, CaptureResult)> = None;
+    let keepalive = crate::prover::tests::build_delegation_forward_capture(circuit, |refs| {
+        let result = capture_forward_pass(
+            refs.context,
+            Some(refs.setup_trace_holder),
+            refs.stage1,
+            refs.forward_setup,
+            refs.compiled_circuit,
+            refs.external_challenges,
+            refs.final_trace_size_log_2,
+        );
+        captured = Some((refs.lookup_alpha, refs.lookup_additive_part, result));
+    });
+    let (
+        lookup_alpha,
+        lookup_additive_part,
+        (compiled_circuit, external_challenges, trace_len, storage, layers),
+    ) = captured.expect("delegation capture callback did not run");
+
+    CircuitFixture {
+        keepalive: CircuitKeepalive::Delegation(Box::new(keepalive)),
+        compiled_circuit,
+        external_challenges,
+        trace_len,
+        storage,
+        layers,
+        lookup_alpha,
+        lookup_additive_part,
+    }
+}
+
+pub(crate) type CaptureResult = (
     GKRCircuitArtifact<BF>,
     GKRExternalChallenges<BF, E4>,
     usize,
@@ -671,24 +887,40 @@ type CaptureResult = (
 /// lookup-resource releases production performs are intentionally skipped so the
 /// captured launch pointers (mappings / generic-lookup) stay resident for
 /// replay — a forward-only test concession that only keeps more buffers alive.
+///
+/// `setup_trace_holder` is `None` for delegation circuits (zero uploaded setup
+/// columns), matching production's `synthetic_setup_trace_holder` branch; when
+/// present it carries the resident setup columns (add_sub). The storage
+/// bootstrap binds zero setup columns in the None case.
+#[allow(clippy::too_many_arguments)]
 fn capture_forward_pass(
-    refs: crate::prover::tests::BasicUnrolledForwardPreambleRefs<'_>,
+    context: &ProverContext,
+    setup_trace_holder: Option<&TraceHolder<BF>>,
+    stage1: &GpuGKRStage1Output,
+    forward_setup: &GpuGKRForwardSetup<E4>,
+    raw_compiled_circuit: &GKRCircuitArtifact<BF>,
+    external_challenges: &GKRExternalChallenges<BF, E4>,
+    final_trace_size_log_2: usize,
 ) -> CaptureResult {
-    let context = refs.context;
-    let compiled_circuit = normalize_compiled_circuit_for_gpu(refs.compiled_circuit.clone());
-    let external_challenges = refs.external_challenges.clone();
+    let compiled_circuit = normalize_compiled_circuit_for_gpu(raw_compiled_circuit.clone());
+    let external_challenges = *external_challenges;
     let trace_len = compiled_circuit.trace_len;
-    let setup_trace_holder = refs.setup_trace_holder;
-    let stage1 = refs.stage1;
-    let forward_setup = refs.forward_setup;
 
+    // Bootstrap exactly as production: Some(holder) for an uploaded setup
+    // (add_sub), None for the zero-column delegation case. The column count is
+    // the holder's own (0 for delegation), which the bootstrap asserts.
+    let setup_columns_count = setup_trace_holder.map_or(0, |h| h.columns_count);
+    // Trace geometry: prefer the setup holder, else the memory holder (the
+    // delegation case lacks a setup holder but all three holders share geometry,
+    // which `bootstrap_storage_from_trace_holders` asserts).
+    let geom = setup_trace_holder.unwrap_or(&stage1.memory_trace_holder);
     let mut storage: GpuGKRStorage<BF, E4> = bootstrap_storage_from_trace_holders::<E4>(
-        Some(setup_trace_holder),
-        setup_trace_holder.columns_count,
-        setup_trace_holder.log_domain_size,
-        setup_trace_holder.log_lde_factor,
-        setup_trace_holder.log_rows_per_leaf,
-        setup_trace_holder.log_tree_cap_size,
+        setup_trace_holder,
+        setup_columns_count,
+        geom.log_domain_size,
+        geom.log_lde_factor,
+        geom.log_rows_per_leaf,
+        geom.log_tree_cap_size,
         &stage1.memory_trace_holder,
         &stage1.witness_trace_holder,
         context,
@@ -696,7 +928,7 @@ fn capture_forward_pass(
     .unwrap();
     let storage_layout = std::sync::Arc::new(GpuGKRStorageLayout::from_artifact_with_tower(
         &compiled_circuit,
-        refs.final_trace_size_log_2,
+        final_trace_size_log_2,
     ));
     storage.set_layout(storage_layout);
     bind_scratch_space_into_storage(&compiled_circuit, stage1, &mut storage);
@@ -743,4 +975,260 @@ fn capture_forward_pass(
         storage,
         layers,
     )
+}
+
+// ===========================================================================
+// Task 6.B — real-fixture resolvers (the three-key-space leaf → device pointer
+// mapping the interpreter lowering consumes).
+//
+// `lower.rs` resolves a source/output/dst LEAF to a device column base; against
+// the real fixture every leaf maps through ONE of three companion key-spaces:
+//   - `addr_resolve`  (resident input/output/cache-out GKRAddress → ptr),
+//   - `cf.cached_alias` (same-layer Cached *Place* → producing cache → cache-out
+//     GKRAddress, which is an `addr_resolve` key once the cache has fired),
+//   - `scratch_ref`   (ScratchSpace/InnerLayer MaxQuadratic operands).
+// `VectorizedLookupSetup` cache outs are NOT bound at a GKRAddress; they live in
+// the forward setup's `generic_lookup()` buffer (resolved separately).
+// ===========================================================================
+
+/// Is `addr` a witness-stage scratch address (resolved via `scratch_ref`, not
+/// `addr_resolve`)? MaxQuadratic operands carry these.
+pub(crate) fn is_scratch_addr(addr: GKRAddress) -> bool {
+    matches!(
+        addr,
+        GKRAddress::ScratchSpace(_) | GKRAddress::InnerLayer { .. }
+    )
+}
+
+/// Look up a `GKRAddress`: `scratch_ref` first (the layer's hydrated scratch
+/// values), then the layer's `addr_resolve`, then the POST-CAPTURE `storage` as
+/// a fallback. The storage fallback covers a GateOutput source that references a
+/// MaxQuadratic output at the NEXT layer (`InnerLayer { layer: L+1 }`), hydrated
+/// only when that later layer was captured — resident in `storage` but absent
+/// from layer L's per-layer maps. Returns `None` if none carries it.
+pub(crate) fn resolve_addr(
+    layer: &LayerFixture,
+    storage: &GpuGKRStorage<BF, E4>,
+    addr: GKRAddress,
+) -> Option<*const u8> {
+    if is_scratch_addr(addr) {
+        if let Some(&(_, p)) = layer.scratch_ref.iter().find(|&&(a, _)| a == addr) {
+            return Some(p);
+        }
+    }
+    if let Some(&p) = layer.addr_resolve.get(&addr) {
+        return Some(p);
+    }
+    if let Some(p) = storage.try_get_base_poly(addr) {
+        return Some(p.as_ptr() as *const u8);
+    }
+    storage
+        .try_get_ext_poly(addr)
+        .map(|p| p.as_ptr() as *const u8)
+}
+
+/// Resolve the device base for the cache out of payload `ci` (a `Cached`
+/// GKRAddress that is an `addr_resolve` key once the cache has fired).
+pub(crate) fn resolve_cache_out(
+    layer: &LayerFixture,
+    storage: &GpuGKRStorage<BF, E4>,
+    cf: &CompiledForward,
+    ci: usize,
+) -> Option<*const u8> {
+    let addr = match &cf.payloads[ci] {
+        PayloadRecord::Cache(c) => c.out.1,
+        PayloadRecord::Gate(_) => return None,
+    };
+    resolve_addr(layer, storage, addr)
+}
+
+/// The materialized GKRAddress of producer `producer`'s output `out` — the gate
+/// `dst[out].addr` (or cache `out.1`). A `GateOutput` source/leaf references a
+/// gate whose output production is NOT in the forward program (filtered out as
+/// `fwd_eligible`/equal-work, materialized separately into storage); its value
+/// is the resident column at that dst address.
+fn producer_output_addr(
+    layer_ir: &CodegenLayer,
+    producer: ProducerId,
+    out: u32,
+) -> Option<GKRAddress> {
+    match producer {
+        ProducerId::Gate(g) => layer_ir
+            .gates
+            .get(g as usize)
+            .and_then(|gate| gate.dst.get(out as usize))
+            .map(|slot| slot.addr),
+        ProducerId::GateExternal(g) => layer_ir
+            .gates_external
+            .get(g as usize)
+            .and_then(|gate| gate.dst.get(out as usize))
+            .map(|slot| slot.addr),
+        ProducerId::Cache(c) => layer_ir.caches.get(c as usize).map(|cache| cache.out.1),
+    }
+}
+
+/// Resolve ONE arena leaf node (source/output/dst) to its device column base.
+/// Branches on the arena variant + address class per the three-key-space logic.
+pub(crate) fn resolve_leaf_node(
+    layer: &LayerFixture,
+    storage: &GpuGKRStorage<BF, E4>,
+    cf: &CompiledForward,
+    layer_ir: &CodegenLayer,
+    node: usize,
+) -> *const u8 {
+    match &layer_ir.arena.nodes[node] {
+        ExprNode::Place { addr, .. } => {
+            // A same-layer Cached Place is an alias to its producing cache's out
+            // cell (resolved through cached_alias → cache-out address); a Cached
+            // Place with no producer this layer is resident from a prior layer
+            // (addr_resolve). Scratch Places resolve via scratch_ref.
+            if let Some(&ci) = cf.cached_alias.get(&node) {
+                resolve_cache_out(layer, storage, cf, ci as usize).unwrap_or_else(|| {
+                    panic!("resolve_leaf: cached alias node {node} (cache {ci}) unresolved")
+                })
+            } else {
+                resolve_addr(layer, storage, *addr).unwrap_or_else(|| {
+                    panic!("resolve_leaf: Place node {node} addr {addr:?} unresolved")
+                })
+            }
+        }
+        // A GateOutput leaf carries no address on the node. If it aliases a
+        // same-layer cache out, resolve through cached_alias; otherwise it is the
+        // output of a non-fwd-eligible producer materialized separately into
+        // storage — resolve through that producer's dst address (a MaxQuadratic
+        // producer's dst at `InnerLayer { layer: L+1 }` resolves to the hydrated
+        // scratch value via the storage fallback in `resolve_addr`).
+        ExprNode::GateOutput { producer, out, .. } => {
+            if let Some(&ci) = cf.cached_alias.get(&node) {
+                return resolve_cache_out(layer, storage, cf, ci as usize).unwrap_or_else(|| {
+                    panic!("resolve_leaf: GateOutput alias node {node} (cache {ci}) unresolved")
+                });
+            }
+            let addr = producer_output_addr(layer_ir, *producer, *out).unwrap_or_else(|| {
+                panic!("resolve_leaf: GateOutput node {node} ({producer:?} out {out}) has no producer dst")
+            });
+            resolve_addr(layer, storage, addr).unwrap_or_else(|| {
+                panic!(
+                    "resolve_leaf: GateOutput node {node} ({producer:?}) dst {addr:?} unresolved"
+                )
+            })
+        }
+        other => panic!("resolve_leaf: node {node} is not a leaf: {other:?}"),
+    }
+}
+
+/// Resolve a source-bank index `i` (into `cf.source_map.bf` / `.e4`) to its
+/// device column base, mapping the bank index → arena node → leaf resolution.
+pub(crate) fn resolve_source(
+    layer: &LayerFixture,
+    storage: &GpuGKRStorage<BF, E4>,
+    cf: &CompiledForward,
+    layer_ir: &CodegenLayer,
+    i: usize,
+    e4: bool,
+) -> *const u8 {
+    let node = if e4 {
+        cf.source_map.e4[i]
+    } else {
+        cf.source_map.bf[i]
+    };
+    resolve_leaf_node(layer, storage, cf, layer_ir, node)
+}
+
+/// If bf source-bank index `i` is a `VirtualSetup` Place leaf, return its poly
+/// kind. Virtual-setup columns have NO resident device buffer (production
+/// synthesizes them from the row index inside the kernel via
+/// `gkr_virtual_base_value`); the interpreter, which reads a flat pointer per
+/// source, needs them MATERIALIZED into a real buffer (see
+/// `materialize_virtual_setup_column`). e4 sources are never virtual-setup
+/// (virtual setup polys are base-field), so only the bf bank is scanned.
+pub(crate) fn source_virtual_setup(
+    cf: &CompiledForward,
+    arena: &[ExprNode],
+    i: usize,
+) -> Option<VirtualSetupPoly> {
+    let node = cf.source_map.bf[i];
+    match arena[node] {
+        ExprNode::Place {
+            addr: GKRAddress::VirtualSetup(poly),
+            ..
+        } => Some(poly),
+        _ => None,
+    }
+}
+
+/// Materialize the per-row values of a virtual-setup base column for `t` rows,
+/// byte-for-byte equal to the device `gkr_virtual_base_value` switch
+/// (`native/prover/gkr/support/kernel_helpers.cuh`). Returned canonical-form
+/// `BF` (Montgomery, the device column representation).
+pub(crate) fn materialize_virtual_setup_column(poly: VirtualSetupPoly, t: usize) -> Vec<BF> {
+    // Mirror of GKR_TIMESTAMP_COLUMNS_NUM_BITS (descriptors.cuh) — sourced from
+    // the upstream constant so it cannot drift from the native value.
+    let timestamp_bits: u32 = crate::upstream::TIMESTAMP_COLUMNS_NUM_BITS;
+    (0..t as u32)
+        .map(|row| {
+            let v = match poly {
+                VirtualSetupPoly::RangeCheck16Bits => {
+                    if row < (1u32 << 16) {
+                        row
+                    } else {
+                        0
+                    }
+                }
+                VirtualSetupPoly::RangeCheckTimestamp => {
+                    if row < (1u32 << timestamp_bits) {
+                        row
+                    } else {
+                        0
+                    }
+                }
+                VirtualSetupPoly::InitsAndTeardownsLow => (row << 2) & 0xffff,
+                VirtualSetupPoly::InitsAndTeardownsHigh => row >> 14,
+            };
+            BF::from_u32_with_reduction(v)
+        })
+        .collect()
+}
+
+/// Resolve a `cf.outputs` slot `j` (its arena node id is the second tuple field)
+/// to a `*mut u8` column base + whether the output column holds e4 elements.
+pub(crate) fn resolve_output(
+    layer: &LayerFixture,
+    storage: &GpuGKRStorage<BF, E4>,
+    cf: &CompiledForward,
+    layer_ir: &CodegenLayer,
+    j: u16,
+) -> (*mut u8, bool) {
+    let &(_, node) = cf
+        .outputs
+        .iter()
+        .find(|&&(jj, _)| jj == j)
+        .unwrap_or_else(|| panic!("resolve_output: unknown output slot {j}"));
+    let e4 = matches!(
+        layer_ir.arena.nodes[node],
+        ExprNode::Place {
+            domain: cs::gkr_compiler::codegen_ir::Domain::Ext,
+            ..
+        } | ExprNode::GateOutput {
+            domain: cs::gkr_compiler::codegen_ir::Domain::Ext,
+            ..
+        }
+    );
+    (
+        resolve_leaf_node(layer, storage, cf, layer_ir, node) as *mut u8,
+        e4,
+    )
+}
+
+/// Resolve the decoder execute-predicate column (a bf column at
+/// `BaseLayerMemory(machine_state.execute)`), for decoder vector lookups.
+pub(crate) fn resolve_decoder_pred(
+    layer: &LayerFixture,
+    storage: &GpuGKRStorage<BF, E4>,
+    decoder_predicate_address: Option<GKRAddress>,
+) -> *const u8 {
+    let addr = decoder_predicate_address
+        .expect("resolve_decoder_pred: decoder lookup without a machine-state predicate address");
+    resolve_addr(layer, storage, addr)
+        .unwrap_or_else(|| panic!("resolve_decoder_pred: predicate addr {addr:?} unresolved"))
 }

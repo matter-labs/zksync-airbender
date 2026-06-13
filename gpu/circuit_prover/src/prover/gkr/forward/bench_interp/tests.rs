@@ -1213,7 +1213,8 @@ fn interp_full_parity() {
 // ===========================================================================
 
 use super::fixture::{
-    assert_layer_consistency, build_add_sub_circuit_fixture, relation_output_addrs, STAGE3_CIRCUITS,
+    assert_layer_consistency, build_add_sub_circuit_fixture, relation_output_addrs, CircuitFixture,
+    LayerFixture, STAGE3_CIRCUITS,
 };
 
 /// 5.1 — CPU-only representation-consistency precheck (spec §6.0). For each of
@@ -1238,7 +1239,7 @@ fn read_layer_outputs(
 ) -> Vec<(crate::upstream::GKRAddress, bool, Vec<u8>)> {
     use crate::upstream::GKRAddress;
     use std::collections::BTreeSet;
-    let context = &fixture.base.context;
+    let context = fixture.context();
     let layer = &fixture.compiled_circuit.layers[layer_idx];
     let mut output_set: BTreeSet<GKRAddress> = BTreeSet::new();
     for gate in layer
@@ -1293,7 +1294,7 @@ fn stage3_add_sub_fixture_smoke() {
     let fixture = build_add_sub_circuit_fixture();
     assert!(!fixture.layers.is_empty(), "fixture has no layers");
 
-    let context = &fixture.base.context;
+    let context = fixture.context();
     for layer in &fixture.layers {
         // A meaningful smoke layer must have at least one replayable launch.
         let replayable = layer
@@ -1341,6 +1342,432 @@ fn stage3_add_sub_fixture_smoke() {
             layer.layer_idx,
             replayable,
             first.len()
+        );
+    }
+}
+
+// ===========================================================================
+// Task 6.B: real-fixture interpreter device-compare parity (spec §6.1 step 4c).
+//
+// For each of the 3 stage-3 circuits at layer 0 (and any other feasible layers),
+// at each feasible budget: (i) replay the layer's flat launches into storage,
+// (ii) read the flat-produced dst/output references from storage (MaxQuadratic
+// dsts read from the hydrated scratch reference), (iii) lower the interpreter
+// program + payloads with the REAL resolvers (sources -> resident storage
+// columns, dsts/outputs -> FRESH packed buffers) + the fixture's real
+// `bench_challenges()`, (iv) run the interpreter and assert its dst/output
+// columns equal the flat reference at rows 0 and trace_len-1. The gamma consts
+// are ALREADY staged on device by the flat preamble — NOT re-staged here.
+// ===========================================================================
+
+/// Read `t` elements from a raw device column pointer to host (bf or e4).
+#[cfg(not(no_cuda))]
+fn read_device_column_bf(ptr: *const u8, t: usize, context: &ProverContext) -> Vec<Bf> {
+    let mut host = vec![Bf::ZERO; t];
+    // SAFETY: `ptr` is a resident bf column of >= t elements (storage poly or
+    // hydrated scratch); the read is stream-ordered, host buffer matches len.
+    let slice = unsafe { DeviceSlice::from_raw_parts(ptr as *const Bf, t) };
+    memory_copy_async(&mut host, slice, context.get_exec_stream()).unwrap();
+    host
+}
+
+#[cfg(not(no_cuda))]
+fn read_device_column_e4(ptr: *const u8, t: usize, context: &ProverContext) -> Vec<Ext> {
+    let mut host = vec![Ext::ZERO; t];
+    // SAFETY: `ptr` is a resident e4 column of >= t elements; stream-ordered.
+    let slice = unsafe { DeviceSlice::from_raw_parts(ptr as *const Ext, t) };
+    memory_copy_async(&mut host, slice, context.get_exec_stream()).unwrap();
+    host
+}
+
+/// Lower + run + device-compare one (circuit, layer, budget) point against the
+/// flat references already resident in storage. Returns the lanes for an
+/// optional LDC pass. Panics on any parity mismatch.
+#[cfg(not(no_cuda))]
+fn run_real_fixture_parity_point(
+    fixture: &CircuitFixture,
+    layer: &LayerFixture,
+    cf: &gkr_eval_isa::compiler::fwd::CompiledForward,
+    cg_layer: &cs::gkr_compiler::codegen_ir::CodegenLayer,
+    label: &str,
+) {
+    use super::fixture::{
+        materialize_virtual_setup_column, resolve_decoder_pred, resolve_output, resolve_source,
+        source_virtual_setup,
+    };
+    let arena = &cg_layer.arena.nodes;
+    let context = fixture.context();
+    let t = fixture.trace_len;
+    let ch = fixture.bench_challenges();
+    let decoder_pred_addr = fixture.decoder_predicate_address();
+
+    // Virtual-setup bf source columns (RangeCheck16Bits / RangeCheckTimestamp /
+    // inits) have NO resident device buffer — production synthesizes them in the
+    // kernel from the row index. The interpreter reads a flat pointer per source,
+    // so materialize each such column (byte-for-byte the device formula) and
+    // upload it; the bf source resolver below serves these from `virtual_src`.
+    let mut virtual_src: std::collections::BTreeMap<usize, DeviceAllocation<Bf>> =
+        std::collections::BTreeMap::new();
+    for i in 0..cf.source_map.bf.len() {
+        if let Some(poly) = source_virtual_setup(cf, arena, i) {
+            let col = materialize_virtual_setup_column(poly, t);
+            virtual_src.insert(i, alloc_upload(context, &col));
+        }
+    }
+    context.get_exec_stream().synchronize().unwrap();
+
+    // (ii) Flat references: per payload dst (and per program output), the
+    // resident POST-CAPTURE storage column. Read from `fixture.storage` (every
+    // layer's flat outputs + hydrated scratch are bound) so a MaxQuadratic gate
+    // dst at `InnerLayer { layer: L+1 }` — never produced flat-side — resolves to
+    // the hydrated witness-stage scratch value (spec §6.1 step 2). The kind-
+    // implied e4 width is cross-checked against the storage column's width.
+    let payload_refs: Vec<Vec<(bool, Vec<Bf>, Vec<Ext>)>> = cf
+        .payloads
+        .iter()
+        .enumerate()
+        .map(|(p, rec)| {
+            let (_, n_dsts, _) = payload_kind_shape(rec);
+            (0..n_dsts)
+                .map(|j| {
+                    let want_e4 = payload_dst_e4(rec, j);
+                    let (e4, ptr) = fixture.payload_dst_reference(cf, p, j);
+                    assert_eq!(
+                        e4, want_e4,
+                        "{label}: payload {p} dst {j} storage width vs kind width"
+                    );
+                    if e4 {
+                        (true, Vec::new(), read_device_column_e4(ptr, t, context))
+                    } else {
+                        (false, read_device_column_bf(ptr, t, context), Vec::new())
+                    }
+                })
+                .collect()
+        })
+        .collect();
+    let output_refs: Vec<(u16, bool, Vec<Bf>, Vec<Ext>)> = cf
+        .outputs
+        .iter()
+        .map(|&(j, _)| {
+            let (_, e4) = resolve_output(layer, &fixture.storage, cf, cg_layer, j);
+            let node = cf.outputs.iter().find(|&&(jj, _)| jj == j).unwrap().1;
+            let addr = match arena[node] {
+                cs::gkr_compiler::codegen_ir::ExprNode::Place { addr, .. } => addr,
+                ref other => panic!("{label}: output slot {j} node is not a Place: {other:?}"),
+            };
+            let (_, ptr) = fixture
+                .storage_column(addr)
+                .unwrap_or_else(|| panic!("{label}: output {j} addr {addr:?} not resident"));
+            if e4 {
+                (j, true, Vec::new(), read_device_column_e4(ptr, t, context))
+            } else {
+                (j, false, read_device_column_bf(ptr, t, context), Vec::new())
+            }
+        })
+        .collect();
+    context.get_exec_stream().synchronize().unwrap();
+
+    // (iii) Fresh interpreter dst buffers, packed per width (the interpreter
+    // writes here, NOT into storage, so flat references stay intact).
+    let widths = output_widths(&cf.program);
+    let mut out_slots = Vec::new();
+    let (mut n_out_bf, mut n_out_e4) = (0usize, 0usize);
+    for &(j, _node) in &cf.outputs {
+        let e4 = widths[j as usize].expect("cf.outputs slot never written");
+        let col = if e4 { &mut n_out_e4 } else { &mut n_out_bf };
+        out_slots.push((j, e4, *col));
+        *col += 1;
+    }
+    let out_bf_dev = alloc_upload(context, &vec![Bf::ZERO; n_out_bf * t]);
+    let out_e4_dev = alloc_upload(context, &vec![Ext::ZERO; n_out_e4 * t]);
+
+    // Payload dst columns packed per width; cf payload p, dst j -> (e4, col).
+    let mut pay_slots: Vec<Vec<(bool, usize)>> = Vec::with_capacity(cf.payloads.len());
+    let (mut n_pay_bf, mut n_pay_e4) = (0usize, 0usize);
+    for rec in &cf.payloads {
+        let (_, n_dsts, _) = payload_kind_shape(rec);
+        let mut per = Vec::with_capacity(n_dsts);
+        for j in 0..n_dsts {
+            let e4 = payload_dst_e4(rec, j);
+            let col = if e4 { &mut n_pay_e4 } else { &mut n_pay_bf };
+            per.push((e4, *col));
+            *col += 1;
+        }
+        pay_slots.push(per);
+    }
+    let pay_bf_dev = alloc_upload(context, &vec![Bf::ZERO; n_pay_bf * t]);
+    let pay_e4_dev = alloc_upload(context, &vec![Ext::ZERO; n_pay_e4 * t]);
+
+    // (iii) Lower: sources -> resident storage columns; outputs/dsts -> fresh
+    // packed buffers; decoder pred -> storage predicate column; setup table ->
+    // forward setup's generic_lookup buffer.
+    let lowered = lower_program(
+        cf,
+        |i| {
+            // Virtual-setup bf sources are served from the materialized buffer;
+            // all other bf sources resolve to their resident storage column.
+            if let Some(dev) = virtual_src.get(&i) {
+                dev.as_ptr() as *const u8
+            } else {
+                resolve_source(layer, &fixture.storage, cf, cg_layer, i, false)
+            }
+        },
+        |i| resolve_source(layer, &fixture.storage, cf, cg_layer, i, true),
+        |j| {
+            let (_, e4, col) = *out_slots
+                .iter()
+                .find(|&&(jj, ..)| jj == j)
+                .expect("unknown output slot");
+            let ptr = if e4 {
+                (unsafe { out_e4_dev.as_ptr().add(col * t) }) as *mut u8
+            } else {
+                (unsafe { out_bf_dev.as_ptr().add(col * t) }) as *mut u8
+            };
+            (ptr, e4)
+        },
+    );
+
+    let (setup_ptr, setup_len) = fixture.setup_table();
+    let lp: LoweredPayloads = lower_payloads(
+        cf,
+        arena,
+        |p, _rec, j| {
+            let (e4, col) = pay_slots[p][j];
+            if e4 {
+                (unsafe { pay_e4_dev.as_ptr().add(col * t) }) as *mut u8
+            } else {
+                (unsafe { pay_bf_dev.as_ptr().add(col * t) }) as *mut u8
+            }
+        },
+        |_p, _rec| resolve_decoder_pred(layer, &fixture.storage, decoder_pred_addr),
+        |_ci| (setup_ptr, setup_len),
+        &ch,
+    );
+    println!(
+        "{label}: payload table {} bytes / {} records, {} program lanes",
+        lp.bytes.len(),
+        lp.offsets.len(),
+        lowered.lanes.len(),
+    );
+
+    // Upload program + payloads. Record bytes go into an E4-backed (16B-aligned)
+    // allocation — the device reader does reinterpret-cast e4 loads.
+    let mut padded = lp.bytes.clone();
+    while padded.len() % 16 != 0 {
+        padded.push(0);
+    }
+    let bytes_e4: Vec<Ext> = padded
+        .chunks_exact(16)
+        // SAFETY: Ext is a plain 16-byte POD (4 Montgomery u32 limbs).
+        .map(|c| unsafe { std::ptr::read_unaligned(c.as_ptr() as *const Ext) })
+        .collect();
+    let payload_bytes_dev = alloc_upload(context, &bytes_e4);
+    let payload_offsets_dev = alloc_upload(context, &lp.offsets);
+    let lanes_dev = alloc_upload(context, &lowered.lanes);
+    let consts_dev = alloc_upload(context, &lowered.consts);
+    let sources_host: Vec<u64> = lowered.source_ptrs.iter().map(|&p| p as u64).collect();
+    let sources_tbl_dev = alloc_upload(context, &sources_host);
+    let outputs_host: Vec<u64> = lowered.output_ptrs.iter().map(|&p| p as u64).collect();
+    let outputs_tbl_dev = alloc_upload(context, &outputs_host);
+    let output_e4_dev = alloc_upload(context, &lowered.output_e4);
+    let mut debug_dev = alloc_upload(context, &[0u32; 2][..]);
+    let n_cells = lowered.budget_cells as usize;
+    let mut debug_cells_dev = alloc_upload(context, &vec![Bf::ZERO; n_cells.max(1) * t]);
+
+    let desc = InterpDesc {
+        program_ldg: lanes_dev.as_ptr(),
+        program_lanes: lowered.lanes.len() as u32,
+        n_instr: lowered.n_instr,
+        sources: sources_tbl_dev.as_ptr() as *const *const u8,
+        n_sources_bf: lowered.n_sources_bf,
+        outputs: outputs_tbl_dev.as_ptr() as *const *mut u8,
+        output_e4: output_e4_dev.as_ptr(),
+        consts: consts_dev.as_ptr(),
+        budget_cells: lowered.budget_cells,
+        count: t as u32,
+        native_fired: debug_dev.as_mut_ptr(),
+        error_flag: unsafe { debug_dev.as_mut_ptr().add(1) },
+        debug_cells: debug_cells_dev.as_mut_ptr() as *mut BF,
+        payloads: payload_bytes_dev.as_ptr() as *const u8,
+        payload_offsets: payload_offsets_dev.as_ptr(),
+    };
+    launch_bench_fwd_interp(&desc, InterpResidency::Ldg, context).unwrap();
+
+    // (iv) Read interpreter dsts/outputs back and compare to the flat reference.
+    let mut pay_bf_host = vec![Bf::ZERO; n_pay_bf * t];
+    if n_pay_bf > 0 {
+        memory_copy_async(
+            &mut pay_bf_host,
+            &pay_bf_dev[0..n_pay_bf * t],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+    }
+    let mut pay_e4_host = vec![Ext::ZERO; n_pay_e4 * t];
+    if n_pay_e4 > 0 {
+        memory_copy_async(
+            &mut pay_e4_host,
+            &pay_e4_dev[0..n_pay_e4 * t],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+    }
+    let mut out_bf_host = vec![Bf::ZERO; n_out_bf * t];
+    if n_out_bf > 0 {
+        memory_copy_async(
+            &mut out_bf_host,
+            &out_bf_dev[0..n_out_bf * t],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+    }
+    let mut out_e4_host = vec![Ext::ZERO; n_out_e4 * t];
+    if n_out_e4 > 0 {
+        memory_copy_async(
+            &mut out_e4_host,
+            &out_e4_dev[0..n_out_e4 * t],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+    }
+    let mut debug_host = [0u32; 2];
+    memory_copy_async(&mut debug_host[..], &debug_dev, context.get_exec_stream()).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    assert_eq!(debug_host[1], 0, "{label}: kernel reported INTERP_ERR bits");
+
+    // Payload dst columns: rows 0 and t-1 must equal the flat reference.
+    let rows = [0usize, t - 1];
+    for (p, per) in pay_slots.iter().enumerate() {
+        for (j, &(e4, col)) in per.iter().enumerate() {
+            let (ref_e4, ref_bf, ref_ext) = &payload_refs[p][j];
+            assert_eq!(*ref_e4, e4, "{label}: payload {p} dst {j} width disagrees");
+            for &row in &rows {
+                if e4 {
+                    assert_eq!(
+                        pay_e4_host[col * t + row],
+                        ref_ext[row],
+                        "{label}: payload {p} dst {j} (e4) row {row} vs flat ref"
+                    );
+                } else {
+                    assert_eq!(
+                        pay_bf_host[col * t + row],
+                        ref_bf[row],
+                        "{label}: payload {p} dst {j} (bf) row {row} vs flat ref"
+                    );
+                }
+            }
+        }
+    }
+
+    // Program outputs (empty corpus-wide for forward programs; assertion kept).
+    for &(j, e4, col) in &out_slots {
+        let (_, _, ref_bf, ref_ext) = output_refs
+            .iter()
+            .find(|&&(jj, ..)| jj == j)
+            .expect("output ref");
+        for &row in &rows {
+            if e4 {
+                assert_eq!(
+                    out_e4_host[col * t + row],
+                    ref_ext[row],
+                    "{label}: e4 output {j} row {row} vs flat ref"
+                );
+            } else {
+                assert_eq!(
+                    out_bf_host[col * t + row],
+                    ref_bf[row],
+                    "{label}: bf output {j} row {row} vs flat ref"
+                );
+            }
+        }
+    }
+    println!(
+        "{label}: PASS ({} payloads, {} outputs)",
+        cf.payloads.len(),
+        out_slots.len()
+    );
+}
+
+/// 6.B — real-fixture interpreter device-compare gate (`#[ignore]`, GPU). For
+/// each of the 3 stage-3 circuits, build the forward fixture, replay layer 0's
+/// flat launches, and device-compare the interpreter's dst/output columns
+/// against the flat references at feasible budgets. PASS required on all 3.
+#[test]
+#[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh (see .agents/gpu_work.md)
+#[cfg(not(no_cuda))]
+#[serial]
+fn stage3_real_fixture_interp_parity() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    for circuit in STAGE3_CIRCUITS {
+        // CPU precheck first (cheap; catches representation drift).
+        assert_layer_consistency(circuit);
+
+        let loaded = load_circuit(&dir.join(format!("{circuit}_codegen_ir_gkr.json"))).unwrap();
+        let fixture = CircuitFixture::build(circuit);
+        assert!(
+            !fixture.layers.is_empty(),
+            "{circuit}: fixture has no layers"
+        );
+        assert_eq!(
+            loaded.circuit.layers.len(),
+            fixture.compiled_circuit.layers.len(),
+            "{circuit}: codegen IR vs artifact layer count"
+        );
+
+        // Layer 0 is mandatory; include any further layer that has replayable
+        // launches and whose codegen layer compiles at a feasible budget.
+        let candidate_layers: Vec<usize> = (0..fixture.layers.len()).collect();
+        let mut circuit_feasible = false;
+        for &layer_idx in &candidate_layers {
+            let layer = &fixture.layers[layer_idx];
+            let replayable = layer
+                .flat_launches
+                .iter()
+                .filter(|l| !matches!(l, super::fixture::FlatLaunch::MaterializeSingle))
+                .count();
+            // Layer 0 is required even if it had no replayable launches; other
+            // layers without replayable launches carry no flat reference.
+            if layer_idx != 0 && replayable == 0 {
+                continue;
+            }
+
+            // Replay the flat launches so storage holds the real references.
+            fixture.replay_layer(layer_idx).unwrap();
+            fixture.context().get_exec_stream().synchronize().unwrap();
+
+            let cg_layer = &loaded.circuit.layers[layer_idx];
+            let graph = &loaded.graphs[layer_idx];
+            let arena = &cg_layer.arena.nodes;
+            let mut layer_feasible = false;
+            for budget in [32usize, 64] {
+                let params = FwdParams {
+                    budget_cells: budget,
+                    leaf_cache: true,
+                    exclude_max_quadratic: false,
+                };
+                let cf = match catch_unwind(AssertUnwindSafe(|| {
+                    compile_forward(cg_layer, graph, params)
+                })) {
+                    Ok(cf) => cf,
+                    Err(_) => {
+                        println!("SKIP {circuit} L{layer_idx} budget {budget}: compile_forward infeasible");
+                        continue;
+                    }
+                };
+                let label = format!("{circuit} L{layer_idx} budget {budget}");
+                run_real_fixture_parity_point(&fixture, layer, &cf, cg_layer, &label);
+                layer_feasible = true;
+                circuit_feasible = true;
+            }
+            assert!(
+                layer_idx != 0 || layer_feasible,
+                "{circuit}: layer 0 infeasible at every budget — no parity point"
+            );
+        }
+        assert!(
+            circuit_feasible,
+            "{circuit}: no feasible (layer, budget) parity point"
         );
     }
 }

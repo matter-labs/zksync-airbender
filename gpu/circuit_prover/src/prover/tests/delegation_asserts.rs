@@ -476,6 +476,299 @@ pub(super) fn assert_blake2_delegation_workflow_matches_cpu(
     );
 }
 
+// ===========================================================================
+// Task 6.B — delegation forward-capture entrypoint for the stage-3 bench.
+//
+// The analog of `build_basic_unrolled_forward_capture` (fixtures_helpers.rs)
+// for delegation circuits: run the REAL delegation preamble (trace replay →
+// memory/witness eval → setup commit/transfer → stage1 → forward setup, exactly
+// as `assert_delegation_workflow_matches_cpu` does up to but NOT including
+// `schedule_forward_pass`/the CPU-parity comparisons) and invoke a capture
+// callback with the resulting state. The owned preamble state (context, setup
+// host/transfer, GPU trace, stage1, forward setup) is returned in a keepalive
+// the caller holds for the lifetime of every replay/A-B launch.
+// ===========================================================================
+
+/// Immutable references to the delegation forward preamble state, handed to the
+/// stage-3 bench fixture's capturing pass (`bench_interp::fixture`). Mirrors
+/// `BasicUnrolledForwardPreambleRefs` for the delegation family. The setup trace
+/// holder carries the `generic_lookup_tables_width` setup columns (the
+/// `Setup(0..)` forward sources), bound into storage by the capturing pass.
+#[cfg(feature = "bench")]
+pub(crate) struct DelegationForwardCaptureRefs<'a> {
+    pub(crate) setup_trace_holder: &'a crate::prover::trace::holder::TraceHolder<BF>,
+    pub(crate) stage1: &'a GpuGKRStage1Output,
+    pub(crate) forward_setup: &'a crate::prover::gkr::setup::GpuGKRForwardSetup<E4>,
+    pub(crate) compiled_circuit: &'a GKRCircuitArtifact<BF>,
+    pub(crate) external_challenges: &'a GKRExternalChallenges<BF, E4>,
+    pub(crate) final_trace_size_log_2: usize,
+    pub(crate) lookup_alpha: E4,
+    pub(crate) lookup_additive_part: E4,
+    pub(crate) context: &'a ProverContext,
+}
+
+/// Owned delegation preamble state kept alive for the lifetime of the captured
+/// launch pointers + the `addr_resolve`/`scratch_ref` maps. The setup transfer
+/// (and its Arc'd host), the GPU trace, stage1 and forward setup all back device
+/// buffers the captured launches reference.
+#[cfg(feature = "bench")]
+pub(crate) struct DelegationForwardCaptureKeepalive {
+    pub(crate) context: ProverContext,
+    pub(crate) forward_setup: crate::prover::gkr::setup::GpuGKRForwardSetup<E4>,
+    #[allow(dead_code)]
+    pub(crate) stage1: GpuGKRStage1Output,
+    #[allow(dead_code)]
+    pub(crate) gpu_trace: TracingDataDevice,
+    #[allow(dead_code)]
+    pub(crate) gpu_setup_transfer: GpuGKRSetupTransfer<'static>,
+    #[allow(dead_code)]
+    pub(crate) gpu_setup_host: Arc<GpuGKRSetupHost>,
+}
+
+/// The delegation final-trace-size used by the stage-3 bench fixture (the same
+/// value `assert_delegation_workflow_matches_cpu` uses).
+#[cfg(feature = "bench")]
+const DELEGATION_CAPTURE_FINAL_TRACE_SIZE_LOG_2: usize = 4;
+
+/// Run the delegation forward preamble and invoke `capture` with the resulting
+/// state; returns the keepalive that owns the preamble's device backings. The
+/// `final_trace_size_log_2` is fixed (no dimension-reduction tail is captured).
+#[cfg(feature = "bench")]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn build_delegation_forward_capture_inner<W, F>(
+    circuit_type: DelegationCircuitType,
+    compiled_circuit: GKRCircuitArtifact<BF>,
+    buffer: &[W],
+    table_driver: &TableDriver<BF>,
+    build_gpu_trace: F,
+    capture: impl FnOnce(DelegationForwardCaptureRefs<'_>),
+) -> DelegationForwardCaptureKeepalive
+where
+    W: Copy,
+    F: FnOnce(crate::primitives::context::DeviceAllocation<W>) -> TracingDataDevice,
+{
+    let trace_len = compiled_circuit.trace_len;
+    let prover_config = delegation_prover_config(circuit_type);
+    let whir_schedule = prover_config.whir_schedule.clone();
+    let external_challenges = test_external_challenges();
+
+    // The GPU forward path is real-execution-derived through the device trace
+    // (`gpu_trace`): stage1 + scratch hydration run on device from it. No
+    // CPU-side witness/parity reference is computed here (GPU-only fixture
+    // construction), unlike `assert_delegation_workflow_matches_cpu`.
+
+    // `&[]` is the (empty) decoder table — NOT the setup trace columns. The
+    // delegation setup still has `generic_lookup_tables_width` setup columns
+    // (the `Setup(0..)` sources the forward layer reads), bound into storage via
+    // the setup trace holder below.
+    let setup = CpuGKRSetup::construct(table_driver, &[], trace_len, &compiled_circuit);
+
+    let context = make_test_context(64 * 1024, 1024);
+    let gpu_setup_host = Arc::new(
+        GpuGKRSetupHost::precompute_from_cpu_setup(
+            &setup,
+            whir_schedule.base_lde_factor.trailing_zeros(),
+            whir_schedule.whir_steps_schedule[0] as u32,
+            whir_schedule.cap_size.trailing_zeros(),
+            &context,
+        )
+        .unwrap(),
+    );
+    let mut gpu_setup_transfer: GpuGKRSetupTransfer<'static> =
+        GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
+    let _h2d = crate::prover::transfer::single_shot_h2d(
+        |t| gpu_setup_transfer.schedule_transfer(t, &context),
+        &context,
+    )
+    .unwrap();
+    context.get_h2d_stream().synchronize().unwrap();
+
+    let gpu_setup_caps = gpu_setup_transfer
+        .trace_holder
+        .read_per_coset_caps_synchronously(&context)
+        .unwrap();
+
+    let trace_data = upload_slice_to_device_for_test(buffer, &context);
+    let gpu_trace = build_gpu_trace(trace_data);
+
+    let stage1_output = generate_stage1_output_for_test(
+        CircuitType::Delegation(circuit_type),
+        &compiled_circuit,
+        &gpu_setup_transfer,
+        None,
+        None,
+        &gpu_trace,
+        &context,
+    )
+    .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    let (gpu_memory_caps, _gpu_memory_commitment_ms) = commit_memory(
+        CircuitType::Delegation(circuit_type),
+        &compiled_circuit,
+        None,
+        &gpu_trace,
+        &prover_config,
+        &context,
+    )
+    .unwrap()
+    .finish()
+    .unwrap();
+
+    let gpu_witness_caps_capture = stage1_output
+        .witness_trace_holder
+        .read_per_coset_caps_synchronously(&context)
+        .unwrap();
+
+    // Rebuild the transcript seed exactly as the prover does and draw the lookup
+    // challenges so the staged gamma/alpha match the device-resident values.
+    let mut gpu_transcript_input = Vec::new();
+    external_challenges.flatten_into_buffer(&mut gpu_transcript_input);
+    flatten_merkle_caps_iter_into(gpu_setup_caps.into_iter(), &mut gpu_transcript_input);
+    flatten_merkle_caps_iter_into(gpu_memory_caps.into_iter(), &mut gpu_transcript_input);
+    flatten_merkle_caps_iter_into(
+        gpu_witness_caps_capture.into_iter(),
+        &mut gpu_transcript_input,
+    );
+    let mut gpu_seed = Transcript::commit_initial(&gpu_transcript_input);
+    let lookup_challenges = draw_random_field_els::<BF, E4>(&mut gpu_seed, 3);
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge]: [E4; 3] =
+        lookup_challenges.try_into().unwrap();
+    let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
+    unsafe {
+        lookup_challenges_host
+            .get_mut_accessor()
+            .get_mut()
+            .copy_from_slice(&[
+                lookup_alpha,
+                lookup_additive_part,
+                constraints_batch_challenge,
+            ]);
+    }
+
+    let forward_setup = gpu_setup_transfer
+        .schedule_forward_setup(
+            &compiled_circuit,
+            upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
+            &context,
+        )
+        .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    capture(DelegationForwardCaptureRefs {
+        setup_trace_holder: &gpu_setup_transfer.trace_holder,
+        stage1: &stage1_output,
+        forward_setup: &forward_setup,
+        compiled_circuit: &compiled_circuit,
+        external_challenges: &external_challenges,
+        final_trace_size_log_2: DELEGATION_CAPTURE_FINAL_TRACE_SIZE_LOG_2,
+        lookup_alpha,
+        lookup_additive_part,
+        context: &context,
+    });
+
+    DelegationForwardCaptureKeepalive {
+        context,
+        forward_setup,
+        stage1: stage1_output,
+        gpu_trace,
+        gpu_setup_transfer,
+        gpu_setup_host,
+    }
+}
+
+/// Dispatch to the bigint / blake2 delegation forward-capture preamble by name.
+#[cfg(feature = "bench")]
+pub(crate) fn build_delegation_forward_capture(
+    circuit: &str,
+    capture: impl FnOnce(DelegationForwardCaptureRefs<'_>),
+) -> DelegationForwardCaptureKeepalive {
+    let compiled_circuit: GKRCircuitArtifact<BF> = crate::prover::tests::deserialize_json_for_test(
+        &format!("cs/compiled_circuits/{circuit}_layout_gkr.json"),
+    );
+    match circuit {
+        "bigint_with_extended_control" => {
+            let mut table_driver = TableDriver::<BF>::new();
+            cs::gkr_circuits::delegation::bigint_with_control::bigint_with_extended_control_delegation_circuit_table_driver_fn(
+                &mut table_driver,
+            );
+            let buffer = replay_delegation_trace_buffer(
+                false,
+                |counters| counters.bigint_calls,
+                BigintDelegationWitness::empty(),
+                |tape, cycles_bound, replay_state, replay_ram, buffer| {
+                    let mut buffers = vec![buffer];
+                    let mut tracer = BigintDelegationDestinationHolder {
+                        buffers: &mut buffers[..],
+                    };
+                    ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
+                        replay_state,
+                        replay_ram,
+                        tape,
+                        &mut (),
+                        cycles_bound,
+                        &mut tracer,
+                    );
+                },
+            );
+            build_delegation_forward_capture_inner(
+                DelegationCircuitType::BigIntWithControl,
+                compiled_circuit,
+                &buffer,
+                &table_driver,
+                |tracing_data| {
+                    TracingDataDevice::Delegation(DelegationTracingDataDevice::BigIntWithControl(
+                        crate::witness::trace_delegation::DelegationTraceDevice { tracing_data },
+                    ))
+                },
+                capture,
+            )
+        }
+        "blake2_with_extended_control" => {
+            let mut table_driver = TableDriver::<BF>::new();
+            cs::gkr_circuits::delegation::blake2_round_with_extended_control::blake2_with_extended_control_table_driver_fn(
+                &mut table_driver,
+            );
+            let buffer = replay_delegation_trace_buffer(
+                false,
+                |counters| counters.blake_calls,
+                Blake2sRoundFunctionDelegationWitness::empty(),
+                |tape, cycles_bound, replay_state, replay_ram, buffer| {
+                    let mut buffers = vec![buffer];
+                    let mut tracer = BlakeDelegationDestinationHolder {
+                        buffers: &mut buffers[..],
+                    };
+                    ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
+                        replay_state,
+                        replay_ram,
+                        tape,
+                        &mut (),
+                        cycles_bound,
+                        &mut tracer,
+                    );
+                },
+            );
+            build_delegation_forward_capture_inner(
+                DelegationCircuitType::Blake2WithCompression,
+                compiled_circuit,
+                &buffer,
+                &table_driver,
+                |tracing_data| {
+                    TracingDataDevice::Delegation(
+                        DelegationTracingDataDevice::Blake2WithCompression(
+                            crate::witness::trace_delegation::DelegationTraceDevice {
+                                tracing_data,
+                            },
+                        ),
+                    )
+                },
+                capture,
+            )
+        }
+        other => panic!("build_delegation_forward_capture: unsupported circuit {other}"),
+    }
+}
+
 pub(super) fn assert_keccak_delegation_workflow_matches_cpu(
     compiled_circuit: GKRCircuitArtifact<BF>,
 ) {

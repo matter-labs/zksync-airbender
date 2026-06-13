@@ -110,6 +110,12 @@ use poly_helpers::*;
 
 use asserts::*;
 use delegation_asserts::*;
+// Re-exported for the stage-3 bench fixture (`bench_interp::fixture`), which
+// reaches them as `crate::prover::tests::...`.
+#[cfg(feature = "bench")]
+pub(crate) use delegation_asserts::{
+    build_delegation_forward_capture, DelegationForwardCaptureKeepalive,
+};
 
 use expected_specs::*;
 use memory_workflow::*;

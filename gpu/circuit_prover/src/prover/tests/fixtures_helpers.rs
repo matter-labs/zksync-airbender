@@ -653,6 +653,13 @@ pub(crate) struct BasicUnrolledForwardPreambleRefs<'a> {
     pub(crate) compiled_circuit: &'a GKRCircuitArtifact<BF>,
     pub(crate) external_challenges: &'a GKRExternalChallenges<BF, E4>,
     pub(crate) final_trace_size_log_2: usize,
+    /// Lookup folding challenge (`lookup_alpha`), drawn in this preamble and
+    /// otherwise dropped after upload. The stage-3 bench captures it to rebuild
+    /// the interpreter's `BenchChallenges` (gamma/alpha/decoder-fill).
+    pub(crate) lookup_alpha: E4,
+    /// Lookup additive part (`lookup_additive_part` == the interpreter's gamma);
+    /// the same value the gamma-consts prelude stages on device.
+    pub(crate) lookup_additive_part: E4,
     pub(crate) context: &'a ProverContext,
 }
 
@@ -757,6 +764,8 @@ pub(crate) fn build_basic_unrolled_forward_capture<R>(
         compiled_circuit: &base.compiled_circuit,
         external_challenges: &base.external_challenges,
         final_trace_size_log_2: base.final_trace_size_log_2,
+        lookup_alpha,
+        lookup_additive_part,
         context: &base.context,
     });
 
