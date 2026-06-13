@@ -57,7 +57,6 @@ pub(crate) enum PointResult {
 /// so a single gate certifies every residency timed at that point.
 pub(crate) struct PointParams {
     pub budget: usize,
-    pub exclude_max_quadratic: bool,
 }
 
 // ===========================================================================
@@ -187,12 +186,10 @@ pub(super) fn compile_feasible(
     cg_layer: &CodegenLayer,
     graph: &AnalysisGraph,
     budget: usize,
-    exclude_max_quadratic: bool,
 ) -> Option<CompiledForward> {
     let fwd_params = FwdParams {
         budget_cells: budget,
         leaf_cache: true,
-        exclude_max_quadratic,
     };
     catch_unwind(AssertUnwindSafe(|| {
         compile_forward(cg_layer, graph, fwd_params)
@@ -220,7 +217,6 @@ pub(super) fn prescan_best_budget(
     layer_idx: usize,
     cg_layer: &CodegenLayer,
     graph: &AnalysisGraph,
-    exclude_max_quadratic: bool,
     residency: InterpResidency,
     threads: BenchThreads,
     count: usize,
@@ -231,7 +227,6 @@ pub(super) fn prescan_best_budget(
         let fwd_params = FwdParams {
             budget_cells: budget,
             leaf_cache: true,
-            exclude_max_quadratic,
         };
         // Feasibility: a panicking compile = infeasible budget; skip.
         let cf = match catch_unwind(AssertUnwindSafe(|| {
@@ -333,7 +328,6 @@ pub(crate) fn run_point(
     let fwd_params = FwdParams {
         budget_cells: params.budget,
         leaf_cache: true,
-        exclude_max_quadratic: params.exclude_max_quadratic,
     };
 
     // ---- compile_forward: a panic here = genuine infeasibility, not a fail.
@@ -347,14 +341,7 @@ pub(crate) fn run_point(
     // ---- Gate (a): CPU oracle. `check_layer` PANICS on any violation; convert
     // a panic into a recorded failure.
     if let Err(panic) = catch_unwind(AssertUnwindSafe(|| {
-        gkr_eval_isa::test_support::check_layer(
-            label,
-            layer_idx,
-            cg_layer,
-            &cf,
-            seed,
-            params.exclude_max_quadratic,
-        )
+        gkr_eval_isa::test_support::check_layer(label, layer_idx, cg_layer, &cf, seed)
     })) {
         return PointResult::Failed {
             gate: "oracle",

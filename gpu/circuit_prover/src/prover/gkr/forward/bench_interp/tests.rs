@@ -67,7 +67,8 @@ use cs::gkr_compiler::{
 };
 use gkr_design_space::import::load_circuit;
 use gkr_eval_isa::compiler::fwd::{
-    compile_forward, fwd_eligible, CompiledForward, FwdParams, PayloadRecord,
+    compile_forward, fwd_eligible, gate_is_scratch_prefilled, CompiledForward, FwdParams,
+    PayloadRecord,
 };
 use gkr_eval_isa::eval_ref::{lift, random_row, Bf, Ext, RowAssignment};
 use gkr_eval_isa::interp::{execute, ExecResult, StagedSources};
@@ -497,8 +498,8 @@ fn cache_value(
 
 // ---------------------------------------------------------------------------
 // Payload dst-buffer layout. Built over the UNFILTERED payload enumeration so
-// the equal-work (MaxQuadratic-filtered) row shares the exact buffer layout —
-// the filtered run must leave the MQ columns untouched (asserted).
+// the production-faithful program shares the exact buffer layout — the
+// scratch-prefilled records the program skips must be left untouched (asserted).
 // ---------------------------------------------------------------------------
 
 /// Does this layer carry a decoder-select payload (a `VectorizedLookup` cache
@@ -541,15 +542,16 @@ struct PayloadDstLayout {
     slots: Vec<Vec<(bool, usize)>>,
     n_bf_cols: usize,
     n_e4_cols: usize,
-    /// Unfiltered record indices that are MaxQuadratic gates (the columns the
-    /// equal-work row must leave untouched).
-    mq_records: Vec<usize>,
+    /// Unfiltered record indices that are scratch-prefilled gates (the columns
+    /// the production-faithful program leaves untouched — their value is read
+    /// from witness-stage scratch by address, never computed here).
+    scratch_records: Vec<usize>,
 }
 
 fn build_dst_layout(records: &[PayloadRecord]) -> PayloadDstLayout {
     let (mut n_bf, mut n_e4) = (0usize, 0usize);
     let mut slots = Vec::with_capacity(records.len());
-    let mut mq_records = Vec::new();
+    let mut scratch_records = Vec::new();
     for (r, rec) in records.iter().enumerate() {
         let (_, n_dsts, _) = payload_kind_shape(rec);
         let mut per = Vec::with_capacity(n_dsts);
@@ -560,28 +562,29 @@ fn build_dst_layout(records: &[PayloadRecord]) -> PayloadDstLayout {
             *col += 1;
         }
         slots.push(per);
-        if matches!(rec, PayloadRecord::Gate(g) if matches!(g.kind, GateKind::MaxQuadratic { .. }))
-        {
-            mq_records.push(r);
+        if matches!(rec, PayloadRecord::Gate(g) if gate_is_scratch_prefilled(g)) {
+            scratch_records.push(r);
         }
     }
     PayloadDstLayout {
         slots,
         n_bf_cols: n_bf,
         n_e4_cols: n_e4,
-        mq_records,
+        scratch_records,
     }
 }
 
-/// cf payload index -> unfiltered record index (replays the equal-work filter).
-fn payload_record_map(layer: &CodegenLayer, cf: &CompiledForward, exclude_mq: bool) -> Vec<usize> {
+/// cf payload index -> unfiltered record index. Replays the compiler's
+/// production-faithful skip EXACTLY (`gate_is_scratch_prefilled`) so
+/// `map.len() == cf.payloads.len()`.
+fn payload_record_map(layer: &CodegenLayer, cf: &CompiledForward) -> Vec<usize> {
     let mut map: Vec<usize> = (0..layer.caches.len()).collect();
     let mut r = layer.caches.len();
     for g in layer.gates.iter().chain(&layer.gates_external) {
         if !fwd_eligible(g) {
             continue;
         }
-        if !(exclude_mq && matches!(g.kind, GateKind::MaxQuadratic { .. })) {
+        if !gate_is_scratch_prefilled(g) {
             map.push(r);
         }
         r += 1;
@@ -645,7 +648,6 @@ fn build_parity_point<'a>(
     label: String,
     layer: &CodegenLayer,
     cf: CompiledForward,
-    exclude_mq: bool,
     seed: u64,
 ) -> ParityPoint<'a> {
     let t = PARITY_TRACE_LEN;
@@ -760,15 +762,23 @@ fn build_parity_point<'a>(
         },
     );
 
-    // Payload dst buffers over the UNFILTERED layout (shared between the
-    // equal-work and production-shape rows).
+    // Payload dst buffers over the UNFILTERED layout (the program's records are
+    // a subset — the scratch-prefilled gates are skipped).
     let records = unfiltered_records(layer);
     let layout = build_dst_layout(&records);
-    let record_map = payload_record_map(layer, &cf, exclude_mq);
+    let record_map = payload_record_map(layer, &cf);
 
     // Non-vacuity: a covered MaxQuadratic payload must produce a nonzero mirror
     // value, else the dst compare against a zero reference would be vacuous.
-    let mq_set: std::collections::HashSet<usize> = layout.mq_records.iter().copied().collect();
+    let mq_set: std::collections::HashSet<usize> = layout
+        .slots
+        .iter()
+        .enumerate()
+        .filter(|(r, _)| {
+            matches!(&records[*r], PayloadRecord::Gate(g) if matches!(g.kind, GateKind::MaxQuadratic { .. }))
+        })
+        .map(|(r, _)| r)
+        .collect();
     let mut mq_covered = false;
     let mut mq_nonzero = false;
     for (p, outs) in expected.iter().enumerate() {
@@ -1024,20 +1034,24 @@ impl ParityPoint<'_> {
             }
         }
 
-        // Equal-work row: the filtered-out MaxQuadratic dst columns must stay
-        // untouched (all-zero) — nothing in the program may write them.
+        // Production-faithful skip: the scratch-prefilled dst columns the program
+        // omits must stay untouched (all-zero) — nothing in the program may write
+        // them (their value is read from witness-stage scratch by address).
         let covered: std::collections::HashSet<usize> = self.record_map.iter().copied().collect();
-        for &r in &self.layout.mq_records {
+        for &r in &self.layout.scratch_records {
             if covered.contains(&r) {
-                continue; // production-shape row computes MQ normally
+                continue; // a computed record sharing this index would be written
             }
             for &(e4, col) in &self.layout.slots[r] {
-                assert!(!e4, "MaxQuadratic dst is a bf column by contract");
+                assert!(
+                    !e4,
+                    "scratch-prefilled MaxQuadratic dst is a bf column by contract"
+                );
                 assert!(
                     pay_bf_host[col * t..(col + 1) * t]
                         .iter()
                         .all(|v| v.is_zero()),
-                    "{label}: filtered MaxQuadratic record {r} dst column written"
+                    "{label}: scratch-prefilled record {r} dst column written"
                 );
             }
         }
@@ -1095,75 +1109,46 @@ fn interp_full_parity() {
         let graph = &c.graphs[0];
         let mut compiled_any = false;
         for budget in [32usize, 64] {
-            // bigint at the top budget also runs the equal-work
-            // (MaxQuadratic-filtered) row with the SAME seed: the mirror
-            // values of every surviving payload coincide, and the MQ dst
-            // columns must stay untouched. add_sub/blake2 have zero
-            // fwd-eligible MaxQuadratic gates (rows coincide).
-            let filter_rows: &[bool] = if circuit == "bigint_with_extended_control" && budget == 64
-            {
-                &[false, true]
-            } else {
-                &[false]
+            // ONE production-faithful program per budget: the compiler always
+            // skips scratch-prefilled gates (MaxQuadratic in scratch), so there
+            // is no separate equal-work shape — that filtering is now intrinsic.
+            let params = FwdParams {
+                budget_cells: budget,
+                leaf_cache: true,
             };
-            for &exclude_mq in filter_rows {
-                let params = FwdParams {
-                    budget_cells: budget,
-                    leaf_cache: true,
-                    exclude_max_quadratic: exclude_mq,
-                };
-                // Tight budgets can be GENUINELY infeasible (mandatory
-                // cache-cell operands exceeding the budget) — skip with a
-                // recorded marker.
-                let cf = match catch_unwind(AssertUnwindSafe(|| {
-                    compile_forward(layer, graph, params)
-                })) {
-                    Ok(cf) => cf,
-                    Err(_) => {
-                        println!("SKIP {circuit} L0 budget {budget}: compile_forward infeasible");
-                        continue;
-                    }
-                };
-                compiled_any = true;
-                if exclude_mq {
-                    let n_mq = unfiltered_records(layer)
-                        .iter()
-                        .filter(|r| {
-                            matches!(r, PayloadRecord::Gate(g)
-                                if matches!(g.kind, GateKind::MaxQuadratic { .. }))
-                        })
-                        .count();
-                    assert!(n_mq > 0, "{circuit}: filtered row without MQ gates");
+            // Tight budgets can be GENUINELY infeasible (mandatory cache-cell
+            // operands exceeding the budget) — skip with a recorded marker.
+            let cf = match catch_unwind(AssertUnwindSafe(|| compile_forward(layer, graph, params)))
+            {
+                Ok(cf) => cf,
+                Err(_) => {
+                    println!("SKIP {circuit} L0 budget {budget}: compile_forward infeasible");
+                    continue;
                 }
-                let label = format!(
-                    "{circuit} L0 budget {budget}{}",
-                    if exclude_mq { " [equal-work]" } else { "" }
-                );
-                // Same seed for the filtered and unfiltered bigint points:
-                // identical staged row + challenges => identical mirrors.
-                let seed = 0x57A6_E3u64 ^ ((ci as u64) << 32) ^ budget as u64;
-                let mut point =
-                    build_parity_point(&context, label.clone(), layer, cf, exclude_mq, seed);
-                point.run_and_check(InterpResidency::Ldg);
-                // Record which decoder-select branch this point exercised (the
-                // exec_val derives from the same seed: build_parity_point sets it
-                // to ONE when bit 6 is set, else ZERO).
-                if layer_has_decoder_payload(layer) {
-                    decoder_present = true;
-                    if (seed >> 6) & 1 == 1 {
-                        decoder_exec_seen = true;
-                    } else {
-                        decoder_fill_seen = true;
-                    }
-                }
-                if upload_bench_program_to_constant(&point.lowered.lanes).unwrap() {
-                    point.run_and_check(InterpResidency::Ldc);
+            };
+            compiled_any = true;
+            let label = format!("{circuit} L0 budget {budget}");
+            let seed = 0x57A6_E3u64 ^ ((ci as u64) << 32) ^ budget as u64;
+            let mut point = build_parity_point(&context, label.clone(), layer, cf, seed);
+            point.run_and_check(InterpResidency::Ldg);
+            // Record which decoder-select branch this point exercised (the
+            // exec_val derives from the same seed: build_parity_point sets it
+            // to ONE when bit 6 is set, else ZERO).
+            if layer_has_decoder_payload(layer) {
+                decoder_present = true;
+                if (seed >> 6) & 1 == 1 {
+                    decoder_exec_seen = true;
                 } else {
-                    println!(
-                        "SKIP {label} LDC: program {} lanes exceeds the 28KB constant array",
-                        point.lowered.lanes.len()
-                    );
+                    decoder_fill_seen = true;
                 }
+            }
+            if upload_bench_program_to_constant(&point.lowered.lanes).unwrap() {
+                point.run_and_check(InterpResidency::Ldc);
+            } else {
+                println!(
+                    "SKIP {label} LDC: program {} lanes exceeds the 28KB constant array",
+                    point.lowered.lanes.len()
+                );
             }
         }
         assert!(
@@ -1797,15 +1782,15 @@ pub(super) fn run_real_fixture_parity_point(
 
 /// 6.C-1 — per-point correctness driver (`#[ignore]`, GPU). Drives `run_point`
 /// (the three-gate harness: CPU oracle, structural lowering, device-compare)
-/// over all 3 stage-3 circuits × all layers × budgets {32, 64} × filter rows
-/// (production-shape always; the equal-work MaxQuadratic-filtered row for bigint
-/// at the top budget, per `interp_full_parity`'s logic). Collects every
-/// `(label, PointResult)`; asserts every result is `Verified` or `Infeasible`
-/// (NONE `Failed`) and at least one `Verified` per circuit. Same coverage the
-/// old `stage3_real_fixture_interp_parity` had, now routed through `run_point`.
+/// over all 3 stage-3 circuits × all layers × budgets {32, 64}. Each point
+/// compiles the ONE production-faithful program (the compiler always skips
+/// scratch-prefilled gates). Collects every `(label, PointResult)`; asserts
+/// every result is `Verified` or `Infeasible` (NONE `Failed`) and at least one
+/// `Verified` per circuit. Same coverage the old
+/// `stage3_real_fixture_interp_parity` had, now routed through `run_point`.
 ///
-/// Layer/budget grid + filter rows + the `assert_layer_consistency` precheck
-/// live HERE (the driver); `run_point` owns the per-point replay + the gates.
+/// Layer/budget grid + the `assert_layer_consistency` precheck live HERE (the
+/// driver); `run_point` owns the per-point replay + the gates.
 #[test]
 #[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh (see .agents/gpu_work.md)
 #[cfg(not(no_cuda))]
@@ -1852,44 +1837,30 @@ fn stage3_run_point_correctness() {
             let cg_layer = &loaded.circuit.layers[layer_idx];
             let graph = &loaded.graphs[layer_idx];
             for budget in [32usize, 64] {
-                // Production-shape always; the equal-work row only for bigint at
-                // the top budget (matching `interp_full_parity`): add_sub/blake2
-                // have zero fwd-eligible MaxQuadratic gates, so the rows coincide.
-                let filter_rows: &[bool] =
-                    if circuit == "bigint_with_extended_control" && budget == 64 {
-                        &[false, true]
-                    } else {
-                        &[false]
-                    };
-                for &exclude_mq in filter_rows {
-                    let label = format!(
-                        "{circuit} L{layer_idx} budget {budget}{}",
-                        if exclude_mq { " [equal-work]" } else { "" }
-                    );
-                    let params = PointParams {
-                        budget,
-                        exclude_max_quadratic: exclude_mq,
-                    };
-                    let result = run_point(
-                        &fixture,
-                        layer_idx,
-                        cg_layer,
-                        graph,
-                        params,
-                        circuit_seed,
-                        &label,
-                    );
-                    match &result {
-                        PointResult::Verified => circuit_verified = true,
-                        PointResult::Infeasible => {
-                            println!("INFEASIBLE {label}");
-                        }
-                        PointResult::Failed { gate, reason } => {
-                            println!("FAILED [{gate}] {label}: {reason}");
-                        }
+                // ONE production-faithful program per (layer, budget): the
+                // compiler always skips scratch-prefilled gates, so there is no
+                // separate equal-work shape.
+                let label = format!("{circuit} L{layer_idx} budget {budget}");
+                let params = PointParams { budget };
+                let result = run_point(
+                    &fixture,
+                    layer_idx,
+                    cg_layer,
+                    graph,
+                    params,
+                    circuit_seed,
+                    &label,
+                );
+                match &result {
+                    PointResult::Verified => circuit_verified = true,
+                    PointResult::Infeasible => {
+                        println!("INFEASIBLE {label}");
                     }
-                    results.push((label, result));
+                    PointResult::Failed { gate, reason } => {
+                        println!("FAILED [{gate}] {label}: {reason}");
+                    }
                 }
+                results.push((label, result));
             }
         }
         assert!(
@@ -1931,26 +1902,14 @@ use super::{
     BENCH_INTERP_DEFAULT_SMEM_CAP, BENCH_INTERP_THREADS_PER_BLOCK,
 };
 
-/// Count of fwd-eligible MaxQuadratic gates a layer carries (the equal-work
-/// filter target). Zero for add_sub/blake2 (rows coincide); positive for bigint.
-fn fwd_eligible_mq_count(layer: &CodegenLayer) -> usize {
-    layer
-        .gates
-        .iter()
-        .chain(&layer.gates_external)
-        .filter(|g| fwd_eligible(g) && matches!(g.kind, GateKind::MaxQuadratic { .. }))
-        .count()
-}
-
 /// Compile + time ONE (residency, threads) config row of an already-Verified
-/// (`budget`, filter) point at `count`, building it into an `AbRow`. The caller
-/// pre-scans the config's best-feasible budget (`prescan_best_budget`) and gates
-/// it via `run_point` BEFORE calling this, then passes the chosen `budget` in —
-/// so timing is recorded ONLY for a gate-Verified point at the EXACT timed
-/// budget (spec §6.1.4). This recompiles at that budget for the EXACT timed
-/// program's stats (`cf.stats`, filtered for equal-work rows). Returns `None`
-/// (with a recorded skip) when the program is not timeable for this config at
-/// `budget` (e.g. LDC never fits).
+/// `budget` point at `count`, building it into an `AbRow`. The caller pre-scans
+/// the config's best-feasible budget (`prescan_best_budget`) and gates it via
+/// `run_point` BEFORE calling this, then passes the chosen `budget` in — so
+/// timing is recorded ONLY for a gate-Verified point at the EXACT timed budget
+/// (spec §6.1.4). This recompiles at that budget for the EXACT timed program's
+/// stats (`cf.stats`). Returns `None` (with a recorded skip) when the program is
+/// not timeable for this config at `budget` (e.g. LDC never fits).
 #[allow(clippy::too_many_arguments)]
 #[cfg(not(no_cuda))]
 fn time_config_row(
@@ -1959,8 +1918,6 @@ fn time_config_row(
     cg_layer: &CodegenLayer,
     graph: &gkr_design_space::graph::AnalysisGraph,
     circuit: &str,
-    exclude_mq: bool,
-    rows_coincide: bool,
     residency: InterpResidency,
     threads: BenchThreads,
     budget: usize,
@@ -1974,7 +1931,6 @@ fn time_config_row(
         FwdParams {
             budget_cells: budget,
             leaf_cache: true,
-            exclude_max_quadratic: exclude_mq,
         },
     );
     let layer = &fixture.layers[layer_idx];
@@ -2000,8 +1956,6 @@ fn time_config_row(
         budget,
         residency: format!("{residency:?}"),
         interp_threads: threads.threads_per_block(),
-        equal_work: exclude_mq,
-        rows_coincide,
         timed_count: count,
         trace_len,
         capped: count < trace_len,
@@ -2034,7 +1988,7 @@ fn time_config_row(
 
 /// 6.C-2 — verdict A/B test (`#[ignore]`, GPU; spec §6.2(A), §6.3, §9). For each
 /// of the 3 stage-3 circuits × all layers (L0 + replayable upper layers) ×
-/// best-feasible budget × {LDG, LDC-if-fits} × {production-shape, equal-work}:
+/// best-feasible budget × {LDG, LDC-if-fits}:
 ///
 ///   1. Pre-scan the budget grid for the best-feasible budget (min interpreter
 ///      median, N={PRESCAN_ITERS}), including the THREADS=256 fairness config.
@@ -2045,9 +1999,9 @@ fn time_config_row(
 ///      events, N={TIMING_ITERS}, at the capped count `min(trace_len, 1<<20)`.
 ///   4. Emit the §6.2(A) table to stdout + `.agents/audits/...{md,json}`.
 ///
-/// Filter coincidence (spec §9): add_sub/blake2 have ZERO fwd-eligible
-/// MaxQuadratic, so the equal-work row coincides with production — run ONCE,
-/// `rows_coincide=true`. Only bigint runs a distinct equal-work row.
+/// The program is production-faithful: the compiler always skips scratch-
+/// prefilled gates (MaxQuadratic in scratch), so there is a single shape per
+/// point — no separate equal-work row.
 ///
 /// No silent gaps: every set-A point is either timed (a row), or recorded as a
 /// Failed/Infeasible point, or a pre-scan/fit skip; the test asserts the union
@@ -2091,132 +2045,100 @@ fn stage3_fwd_interp_ab() {
             let cg_layer = &loaded.circuit.layers[layer_idx];
             let graph = &loaded.graphs[layer_idx];
 
-            // Filter shapes: production always; a distinct equal-work row only
-            // when the layer has fwd-eligible MaxQuadratic gates (bigint). Else
-            // the rows coincide — run production once with rows_coincide=true.
-            let mq = fwd_eligible_mq_count(cg_layer);
-            let rows_coincide = mq == 0;
-            let shapes: &[bool] = if rows_coincide {
-                &[false]
-            } else {
-                &[false, true]
-            };
+            // ONE production-faithful program per (circuit, layer): the compiler
+            // always skips scratch-prefilled gates, so there is no separate
+            // equal-work shape to run.
+            let configs = [
+                (InterpResidency::Ldg, BenchThreads::T128),
+                (InterpResidency::Ldg, BenchThreads::T256),
+                (InterpResidency::Ldc, BenchThreads::T128),
+            ];
 
-            for &exclude_mq in shapes {
-                let shape_str = if exclude_mq {
-                    "equal-work"
-                } else {
-                    "production"
-                };
-                let configs = [
-                    (InterpResidency::Ldg, BenchThreads::T128),
-                    (InterpResidency::Ldg, BenchThreads::T256),
-                    (InterpResidency::Ldc, BenchThreads::T128),
-                ];
+            // (1) Pre-scan EACH config for its own best-feasible budget (min
+            // interpreter median over the grid). The configs may land on
+            // DIFFERENT budgets, so the exact budget that will be TIMED varies
+            // per config — each one must be gated at its own budget.
+            let mut config_budgets: Vec<(InterpResidency, BenchThreads, Option<usize>)> =
+                Vec::with_capacity(configs.len());
+            for (residency, threads) in configs {
+                let chosen = prescan_best_budget(
+                    &fixture, layer_idx, cg_layer, graph, residency, threads, count,
+                )
+                .map(|p| p.budget);
+                if chosen.is_none() {
+                    skips.push(format!(
+                        "{circuit} L{layer_idx} {residency:?}/{}: no feasible+timeable budget in grid {BUDGET_GRID:?}",
+                        threads.threads_per_block(),
+                    ));
+                }
+                config_budgets.push((residency, threads, chosen));
+            }
 
-                // (1) Pre-scan EACH config for its own best-feasible budget (min
-                // interpreter median over the grid). The configs may land on
-                // DIFFERENT budgets, so the exact budget that will be TIMED
-                // varies per config — each one must be gated at its own budget.
-                let mut config_budgets: Vec<(InterpResidency, BenchThreads, Option<usize>)> =
-                    Vec::with_capacity(configs.len());
-                for (residency, threads) in configs {
-                    let chosen = prescan_best_budget(
-                        &fixture, layer_idx, cg_layer, graph, exclude_mq, residency, threads, count,
-                    )
-                    .map(|p| p.budget);
-                    if chosen.is_none() {
+            // (2) Gate EVERY distinct budget that WILL be timed — the union of
+            // the configs' chosen budgets (spec §6.1.4). A single LDG/128
+            // `run_point` at a budget certifies all configs timed at that same
+            // point: the lowered program is identical across residencies (LDC
+            // just uploads the same program to `__constant__`) and the kernel
+            // body is block-size-agnostic. The map memoizes the verdict so each
+            // budget is gated (and device-compared) at most ONCE per layer.
+            let mut gated: std::collections::BTreeMap<usize, PointResult> =
+                std::collections::BTreeMap::new();
+            for budget in config_budgets
+                .iter()
+                .filter_map(|&(_, _, b)| b)
+                .collect::<std::collections::BTreeSet<usize>>()
+            {
+                let label = format!("{circuit} L{layer_idx} budget {budget}");
+                let result = run_point(
+                    &fixture,
+                    layer_idx,
+                    cg_layer,
+                    graph,
+                    PointParams { budget },
+                    circuit_seed,
+                    &label,
+                );
+                // Record a non-Verified verdict at a TIMED budget right here —
+                // no silent gap: the budget's configs are then skipped below.
+                match &result {
+                    PointResult::Verified => {}
+                    PointResult::Infeasible => {
                         skips.push(format!(
-                            "{circuit} L{layer_idx} {residency:?}/{} {shape_str}: no feasible+timeable budget in grid {BUDGET_GRID:?}",
-                            threads.threads_per_block(),
+                            "{label}: INFEASIBLE (run_point) — timed budget skipped"
                         ));
                     }
-                    config_budgets.push((residency, threads, chosen));
+                    PointResult::Failed { gate, reason } => {
+                        failures.push(format!("[{gate}] {label}: {reason}"));
+                    }
                 }
+                gated.insert(budget, result);
+            }
 
-                // (2) Gate EVERY distinct (budget, filter) that WILL be timed —
-                // the union of the configs' chosen budgets (spec §6.1.4). A single
-                // LDG/128 `run_point` at (budget, filter) certifies all configs
-                // timed at that same point: the lowered program is identical
-                // across residencies (LDC just uploads the same program to
-                // `__constant__`) and the kernel body is block-size-agnostic. The
-                // map memoizes the verdict so each budget is gated (and
-                // device-compared) at most ONCE per (layer, filter).
-                let mut gated: std::collections::BTreeMap<usize, PointResult> =
-                    std::collections::BTreeMap::new();
-                for budget in config_budgets
-                    .iter()
-                    .filter_map(|&(_, _, b)| b)
-                    .collect::<std::collections::BTreeSet<usize>>()
-                {
-                    let label = format!(
-                        "{circuit} L{layer_idx} budget {budget}{}",
-                        if exclude_mq { " [equal-work]" } else { "" }
-                    );
-                    let result = run_point(
-                        &fixture,
-                        layer_idx,
-                        cg_layer,
-                        graph,
-                        PointParams {
-                            budget,
-                            exclude_max_quadratic: exclude_mq,
-                        },
-                        circuit_seed,
-                        &label,
-                    );
-                    // Record a non-Verified verdict at a TIMED budget right here —
-                    // no silent gap: the budget's configs are then skipped below.
-                    match &result {
-                        PointResult::Verified => {}
-                        PointResult::Infeasible => {
-                            skips.push(format!(
-                                "{label}: INFEASIBLE (run_point) — timed budget skipped"
-                            ));
-                        }
-                        PointResult::Failed { gate, reason } => {
-                            failures.push(format!("[{gate}] {label}: {reason}"));
-                        }
-                    }
-                    gated.insert(budget, result);
+            // (3) Time each config row ONLY at its gate-Verified budget
+            // (LDG/128 verdict, LDG/256 §9 fairness, LDC/128 where it fits).
+            // A config whose chosen budget did not Verify is skipped here; its
+            // verdict is already recorded in `failures`/`skips` above.
+            for (residency, threads, chosen) in config_budgets {
+                let Some(budget) = chosen else { continue };
+                if !matches!(gated.get(&budget), Some(PointResult::Verified)) {
+                    // Failed/Infeasible at this timed budget — recorded above.
+                    continue;
                 }
-
-                // (3) Time each config row ONLY at its gate-Verified budget
-                // (LDG/128 verdict, LDG/256 §9 fairness, LDC/128 where it fits).
-                // A config whose chosen budget did not Verify is skipped here; its
-                // verdict is already recorded in `failures`/`skips` above.
-                for (residency, threads, chosen) in config_budgets {
-                    let Some(budget) = chosen else { continue };
-                    if !matches!(gated.get(&budget), Some(PointResult::Verified)) {
-                        // Failed/Infeasible at this timed budget — recorded above.
-                        continue;
-                    }
-                    if let Some(row) = time_config_row(
-                        &fixture,
-                        layer_idx,
-                        cg_layer,
-                        graph,
-                        circuit,
-                        exclude_mq,
-                        rows_coincide,
-                        residency,
-                        threads,
-                        budget,
-                        count,
-                        &mut skips,
-                    ) {
-                        println!(
-                            "TIMED {circuit} L{layer_idx} {residency:?}/{} {shape_str} budget {budget}: flat {:.4}ms (x{}) interp {:.4}ms => {:.2}x  blk/SM {} smem {}B",
-                            threads.threads_per_block(),
-                            row.flat.median_ms,
-                            row.flat.launches,
-                            row.interp.median_ms,
-                            row.interp_over_flat,
-                            row.interp_blocks_per_sm,
-                            row.interp_smem_bytes,
-                        );
-                        rows.push(row);
-                    }
+                if let Some(row) = time_config_row(
+                    &fixture, layer_idx, cg_layer, graph, circuit, residency, threads, budget,
+                    count, &mut skips,
+                ) {
+                    println!(
+                        "TIMED {circuit} L{layer_idx} {residency:?}/{} budget {budget}: flat {:.4}ms (x{}) interp {:.4}ms => {:.2}x  blk/SM {} smem {}B",
+                        threads.threads_per_block(),
+                        row.flat.median_ms,
+                        row.flat.launches,
+                        row.interp.median_ms,
+                        row.interp_over_flat,
+                        row.interp_blocks_per_sm,
+                        row.interp_smem_bytes,
+                    );
+                    rows.push(row);
                 }
             }
         }
@@ -2318,8 +2240,8 @@ fn query_device_attrs() -> DeviceAttrs {
     }
 }
 
-/// Per-point compiler stats for the EXACT timed program (filtered for equal-work
-/// rows) — used to fill the set-B row + assemble the regression predictor row.
+/// Per-point compiler stats for the EXACT timed program — used to fill the
+/// set-B row + assemble the regression predictor row.
 struct PointStats {
     n_instr: u32,
     instrs: usize,
@@ -2331,9 +2253,9 @@ struct PointStats {
 }
 
 /// Build the per-point stats for the EXACT timed program: the compiler's
-/// per-point `cf.stats` (filtered for equal-work rows) joined with the lowered
-/// program's instruction count + payload-table byte count (from the device
-/// setup). Shared by sets B/C and the regression predictor row.
+/// per-point `cf.stats` joined with the lowered program's instruction count +
+/// payload-table byte count (from the device setup). Shared by sets B/C and the
+/// regression predictor row.
 #[cfg(not(no_cuda))]
 fn point_stats(cf: &CompiledForward, setup: &InterpDeviceSetup) -> PointStats {
     PointStats {
@@ -2435,275 +2357,258 @@ fn stage3_fwd_interp_sweeps() {
             let graph = &loaded.graphs[layer_idx];
             let layer = &fixture.layers[layer_idx];
 
-            let mq = fwd_eligible_mq_count(cg_layer);
-            let rows_coincide = mq == 0;
-            let shapes: &[bool] = if rows_coincide {
-                &[false]
-            } else {
-                &[false, true]
-            };
+            // ONE production-faithful program per (circuit, layer): the compiler
+            // always skips scratch-prefilled gates, so there is no separate
+            // equal-work shape.
 
-            for &exclude_mq in shapes {
-                let shape_str = if exclude_mq {
-                    "equal-work"
-                } else {
-                    "production"
+            // ---- Set A (verdict): same flow as stage3_fwd_interp_ab — prescan
+            // each config, gate the timed budgets, time the verified rows. The
+            // gated-budget set feeds the B/C/D `gated` annotation.
+            let configs = [
+                (InterpResidency::Ldg, BenchThreads::T128),
+                (InterpResidency::Ldg, BenchThreads::T256),
+                (InterpResidency::Ldc, BenchThreads::T128),
+            ];
+            let mut config_budgets: Vec<(InterpResidency, BenchThreads, Option<usize>)> =
+                Vec::with_capacity(configs.len());
+            for (residency, threads) in configs {
+                let chosen = prescan_best_budget(
+                    &fixture, layer_idx, cg_layer, graph, residency, threads, count,
+                )
+                .map(|p| p.budget);
+                if chosen.is_none() {
+                    skips.push(format!(
+                        "{circuit} L{layer_idx} {residency:?}/{}: no feasible+timeable budget in grid {BUDGET_GRID:?}",
+                        threads.threads_per_block(),
+                    ));
+                }
+                config_budgets.push((residency, threads, chosen));
+            }
+
+            let mut gated_budgets: std::collections::BTreeSet<usize> =
+                std::collections::BTreeSet::new();
+            for budget in config_budgets
+                .iter()
+                .filter_map(|&(_, _, b)| b)
+                .collect::<std::collections::BTreeSet<usize>>()
+            {
+                let label = format!("{circuit} L{layer_idx} budget {budget}");
+                let result = run_point(
+                    &fixture,
+                    layer_idx,
+                    cg_layer,
+                    graph,
+                    PointParams { budget },
+                    circuit_seed,
+                    &label,
+                );
+                match &result {
+                    PointResult::Verified => {
+                        gated_budgets.insert(budget);
+                    }
+                    PointResult::Infeasible => {
+                        skips.push(format!(
+                            "{label}: INFEASIBLE (run_point) — timed budget skipped"
+                        ));
+                    }
+                    PointResult::Failed { gate, reason } => {
+                        failures.push(format!("[{gate}] {label}: {reason}"));
+                    }
+                }
+            }
+
+            for (residency, threads, chosen) in config_budgets {
+                let Some(budget) = chosen else { continue };
+                if !gated_budgets.contains(&budget) {
+                    continue;
+                }
+                if let Some(row) = time_config_row(
+                    &fixture, layer_idx, cg_layer, graph, circuit, residency, threads, budget,
+                    count, &mut skips,
+                ) {
+                    rows.push(row);
+                }
+            }
+
+            // The 32/64 budgets are correctness-gated by stage3_run_point_correctness
+            // (all circuits/layers); fold them into the gated set so a swept point
+            // at 32 or 64 is annotated `gated = yes`.
+            gated_budgets.insert(32);
+            gated_budgets.insert(64);
+
+            // ---- Sets B & C: sweep BUDGET_GRID ∩ feasible at FIXED LDG/T128.
+            // Set B holds the CONSTANT padded smem; set C uses the NATURAL
+            // (budget-implied) footprint. One device setup per budget serves
+            // both (the lowered program is identical; only the launch's smem
+            // size differs).
+            for &budget in &BUDGET_GRID {
+                let Some(cf) = compile_feasible(cg_layer, graph, budget) else {
+                    skips.push(format!(
+                        "{circuit} L{layer_idx} budget {budget}: compile_forward infeasible (sets B/C)"
+                    ));
+                    continue;
                 };
+                let gated = gated_budgets.contains(&budget);
+                let setup = build_interp_device_setup(&fixture, layer, &cf, cg_layer, count);
+                let stats = point_stats(&cf, &setup);
 
-                // ---- Set A (verdict): same flow as stage3_fwd_interp_ab — prescan
-                // each config, gate the timed budgets, time the verified rows. The
-                // gated-budget set feeds the B/C/D `gated` annotation.
-                let configs = [
-                    (InterpResidency::Ldg, BenchThreads::T128),
-                    (InterpResidency::Ldg, BenchThreads::T256),
-                    (InterpResidency::Ldc, BenchThreads::T128),
-                ];
-                let mut config_budgets: Vec<(InterpResidency, BenchThreads, Option<usize>)> =
-                    Vec::with_capacity(configs.len());
-                for (residency, threads) in configs {
-                    let chosen = prescan_best_budget(
-                        &fixture, layer_idx, cg_layer, graph, exclude_mq, residency, threads, count,
-                    )
-                    .map(|p| p.budget);
-                    if chosen.is_none() {
-                        skips.push(format!(
-                            "{circuit} L{layer_idx} {residency:?}/{} {shape_str}: no feasible+timeable budget in grid {BUDGET_GRID:?}",
-                            threads.threads_per_block(),
-                        ));
-                    }
-                    config_budgets.push((residency, threads, chosen));
-                }
-
-                let mut gated_budgets: std::collections::BTreeSet<usize> =
-                    std::collections::BTreeSet::new();
-                for budget in config_budgets
-                    .iter()
-                    .filter_map(|&(_, _, b)| b)
-                    .collect::<std::collections::BTreeSet<usize>>()
-                {
-                    let label = format!(
-                        "{circuit} L{layer_idx} budget {budget}{}",
-                        if exclude_mq { " [equal-work]" } else { "" }
-                    );
-                    let result = run_point(
-                        &fixture,
-                        layer_idx,
-                        cg_layer,
-                        graph,
-                        PointParams {
-                            budget,
-                            exclude_max_quadratic: exclude_mq,
-                        },
-                        circuit_seed,
-                        &label,
-                    );
-                    match &result {
-                        PointResult::Verified => {
-                            gated_budgets.insert(budget);
-                        }
-                        PointResult::Infeasible => {
-                            skips.push(format!(
-                                "{label}: INFEASIBLE (run_point) — timed budget skipped"
-                            ));
-                        }
-                        PointResult::Failed { gate, reason } => {
-                            failures.push(format!("[{gate}] {label}: {reason}"));
-                        }
-                    }
-                }
-
-                for (residency, threads, chosen) in config_budgets {
-                    let Some(budget) = chosen else { continue };
-                    if !gated_budgets.contains(&budget) {
-                        continue;
-                    }
-                    if let Some(row) = time_config_row(
-                        &fixture,
-                        layer_idx,
-                        cg_layer,
-                        graph,
-                        circuit,
-                        exclude_mq,
-                        rows_coincide,
-                        residency,
-                        threads,
-                        budget,
-                        count,
-                        &mut skips,
-                    ) {
-                        rows.push(row);
-                    }
-                }
-
-                // The 32/64 budgets are correctness-gated by stage3_run_point_correctness
-                // (all circuits/layers/filters); fold them into the gated set so a
-                // swept point at 32 or 64 is annotated `gated = yes`.
-                gated_budgets.insert(32);
-                gated_budgets.insert(64);
-
-                // ---- Sets B & C: sweep BUDGET_GRID ∩ feasible at FIXED LDG/T128.
-                // Set B holds the CONSTANT padded smem; set C uses the NATURAL
-                // (budget-implied) footprint. One device setup per budget serves
-                // both (the lowered program is identical; only the launch's smem
-                // size differs).
-                for &budget in &BUDGET_GRID {
-                    let Some(cf) = compile_feasible(cg_layer, graph, budget, exclude_mq) else {
-                        skips.push(format!(
-                            "{circuit} L{layer_idx} {shape_str} budget {budget}: compile_forward infeasible (sets B/C)"
-                        ));
-                        continue;
-                    };
-                    let gated = gated_budgets.contains(&budget);
-                    let setup = build_interp_device_setup(&fixture, layer, &cf, cg_layer, count);
-                    let stats = point_stats(&cf, &setup);
-
-                    // Set B: constant padded smem. Skip a budget whose natural
-                    // (budget-implied) footprint already exceeds the constant pad —
-                    // launching at a smaller pad would let the kernel read past its
-                    // block (only possible if the pad was clamped to the optin cap).
-                    let natural_for_budget = bench_interp_dynamic_smem_bytes(budget as u32, tpb);
-                    if natural_for_budget > padded_smem {
-                        skips.push(format!(
-                            "{circuit} L{layer_idx} {shape_str} budget {budget}: natural smem {natural_for_budget}B > set-B pad {padded_smem}B — set B point skipped"
-                        ));
-                    } else if let Some((med, min)) = time_interp_smem(
-                        &fixture,
-                        &setup,
-                        InterpResidency::Ldg,
+                // Set B: constant padded smem. Skip a budget whose natural
+                // (budget-implied) footprint already exceeds the constant pad —
+                // launching at a smaller pad would let the kernel read past its
+                // block (only possible if the pad was clamped to the optin cap).
+                let natural_for_budget = bench_interp_dynamic_smem_bytes(budget as u32, tpb);
+                if natural_for_budget > padded_smem {
+                    skips.push(format!(
+                        "{circuit} L{layer_idx} budget {budget}: natural smem {natural_for_budget}B > set-B pad {padded_smem}B — set B point skipped"
+                    ));
+                } else if let Some((med, min)) = time_interp_smem(
+                    &fixture,
+                    &setup,
+                    InterpResidency::Ldg,
+                    BenchThreads::T128,
+                    padded_smem,
+                    TIMING_ITERS,
+                ) {
+                    let blk = bench_interp_blocks_per_sm_smem(
                         BenchThreads::T128,
+                        InterpResidency::Ldg,
                         padded_smem,
-                        TIMING_ITERS,
-                    ) {
-                        let blk = bench_interp_blocks_per_sm_smem(
-                            BenchThreads::T128,
-                            InterpResidency::Ldg,
-                            padded_smem,
-                        )
-                        .unwrap_or(0);
-                        set_b.push(SetBRow {
-                            circuit: circuit.to_string(),
-                            layer: layer_idx,
-                            budget,
-                            equal_work: exclude_mq,
-                            padded_smem_bytes: padded_smem,
-                            blocks_per_sm: blk,
-                            interp_median_ms: med,
-                            interp_min_ms: min,
-                            gated,
-                            n_instr: stats.n_instr,
-                            instrs: stats.instrs,
-                            src_reads: stats.src_reads,
-                            cell_reads: stats.cell_reads,
-                            cache_refires: stats.cache_refires,
-                            max_live_cells: stats.max_live_cells,
-                            payload_bytes: stats.payload_bytes,
-                        });
-                        // Regression observation: response = interp median;
-                        // predictors = intercept + circuit dummies + numeric stats.
-                        let mut pred = vec![1.0f64];
-                        for k in 1..n_circuits {
-                            pred.push(if k == ci { 1.0 } else { 0.0 });
-                        }
-                        pred.push(stats.n_instr as f64);
-                        pred.push(stats.src_reads as f64);
-                        pred.push(stats.cell_reads as f64);
-                        pred.push(stats.payload_bytes as f64);
-                        obs.push(RegressionObs {
-                            response: med as f64,
-                            predictors: pred,
-                        });
-                    }
-
-                    // Set C: natural (budget-implied) smem.
-                    let nat_smem = natural_for_budget;
-                    if let Some((med, min)) = time_interp_smem(
-                        &fixture,
-                        &setup,
-                        InterpResidency::Ldg,
-                        BenchThreads::T128,
-                        nat_smem,
-                        TIMING_ITERS,
-                    ) {
-                        let blk = bench_interp_blocks_per_sm_smem(
-                            BenchThreads::T128,
-                            InterpResidency::Ldg,
-                            nat_smem,
-                        )
-                        .unwrap_or(0);
-                        set_c.push(SetCRow {
-                            circuit: circuit.to_string(),
-                            layer: layer_idx,
-                            budget,
-                            equal_work: exclude_mq,
-                            natural_smem_bytes: nat_smem,
-                            blocks_per_sm: blk,
-                            large_smem_optin: nat_smem > BENCH_INTERP_DEFAULT_SMEM_CAP,
-                            interp_median_ms: med,
-                            interp_min_ms: min,
-                            gated,
-                        });
-                    }
-                }
-
-                // ---- Set D: LDC vs LDG at one budget where the program fits the
-                // __constant__ array. Pick the smallest feasible grid budget whose
-                // program uploads; identical config (LDG/T128, natural smem) on both
-                // sides. add_sub L0 fits certainly; bigint checked dynamically.
-                for &budget in &BUDGET_GRID {
-                    let Some(cf) = compile_feasible(cg_layer, graph, budget, exclude_mq) else {
-                        continue;
-                    };
-                    let setup = build_interp_device_setup(&fixture, layer, &cf, cg_layer, count);
-                    // Does the program fit __constant__?
-                    if !upload_bench_program_to_constant(&setup.lanes).unwrap() {
-                        continue;
-                    }
-                    fixture.context().get_exec_stream().synchronize().unwrap();
-                    let nat_smem = bench_interp_dynamic_smem_bytes(budget as u32, tpb);
-                    let Some((ldg_med, ldg_min)) = time_interp_smem(
-                        &fixture,
-                        &setup,
-                        InterpResidency::Ldg,
-                        BenchThreads::T128,
-                        nat_smem,
-                        TIMING_ITERS,
-                    ) else {
-                        continue;
-                    };
-                    let Some((ldc_med, ldc_min)) = time_interp_smem(
-                        &fixture,
-                        &setup,
-                        InterpResidency::Ldc,
-                        BenchThreads::T128,
-                        nat_smem,
-                        TIMING_ITERS,
-                    ) else {
-                        continue;
-                    };
-                    set_d.push(SetDRow {
+                        false,
+                    )
+                    .unwrap_or(0);
+                    set_b.push(SetBRow {
                         circuit: circuit.to_string(),
                         layer: layer_idx,
                         budget,
-                        equal_work: exclude_mq,
-                        threads: tpb,
-                        smem_bytes: nat_smem,
-                        ldg_median_ms: ldg_med,
-                        ldg_min_ms: ldg_min,
-                        ldc_median_ms: ldc_med,
-                        ldc_min_ms: ldc_min,
-                        ldc_over_ldg: if ldg_med > 0.0 {
-                            ldc_med / ldg_med
-                        } else {
-                            f32::INFINITY
-                        },
-                        gated: gated_budgets.contains(&budget),
+                        padded_smem_bytes: padded_smem,
+                        blocks_per_sm: blk,
+                        interp_median_ms: med,
+                        interp_min_ms: min,
+                        gated,
+                        n_instr: stats.n_instr,
+                        instrs: stats.instrs,
+                        src_reads: stats.src_reads,
+                        cell_reads: stats.cell_reads,
+                        cache_refires: stats.cache_refires,
+                        max_live_cells: stats.max_live_cells,
+                        payload_bytes: stats.payload_bytes,
                     });
-                    println!(
-                        "SET-D {circuit} L{layer_idx} {shape_str} budget {budget}: LDG {ldg_med:.4}ms LDC {ldc_med:.4}ms => {:.2}x",
-                        if ldg_med > 0.0 { ldc_med / ldg_med } else { f32::INFINITY },
-                    );
-                    break; // one LDC/LDG comparison per (layer, filter) is enough.
+                    // Regression observation: response = interp median;
+                    // predictors = intercept + circuit dummies + numeric stats.
+                    let mut pred = vec![1.0f64];
+                    for k in 1..n_circuits {
+                        pred.push(if k == ci { 1.0 } else { 0.0 });
+                    }
+                    pred.push(stats.n_instr as f64);
+                    pred.push(stats.src_reads as f64);
+                    pred.push(stats.cell_reads as f64);
+                    pred.push(stats.payload_bytes as f64);
+                    obs.push(RegressionObs {
+                        response: med as f64,
+                        predictors: pred,
+                    });
                 }
+
+                // Set C: natural (budget-implied) smem.
+                let nat_smem = natural_for_budget;
+                if let Some((med, min)) = time_interp_smem(
+                    &fixture,
+                    &setup,
+                    InterpResidency::Ldg,
+                    BenchThreads::T128,
+                    nat_smem,
+                    TIMING_ITERS,
+                ) {
+                    let blk = bench_interp_blocks_per_sm_smem(
+                        BenchThreads::T128,
+                        InterpResidency::Ldg,
+                        nat_smem,
+                        false,
+                    )
+                    .unwrap_or(0);
+                    // Forced 100% shared-memory carveout: does forcing the L1/smem
+                    // split toward shared memory lift occupancy at budgets the
+                    // sweep otherwise leaves on the driver default? (Resets to
+                    // default internally so the timed runs are not biased.)
+                    let blk_forced = bench_interp_blocks_per_sm_smem(
+                        BenchThreads::T128,
+                        InterpResidency::Ldg,
+                        nat_smem,
+                        true,
+                    )
+                    .unwrap_or(0);
+                    set_c.push(SetCRow {
+                        circuit: circuit.to_string(),
+                        layer: layer_idx,
+                        budget,
+                        natural_smem_bytes: nat_smem,
+                        blocks_per_sm: blk,
+                        blocks_per_sm_forced: blk_forced,
+                        large_smem_optin: nat_smem > BENCH_INTERP_DEFAULT_SMEM_CAP,
+                        interp_median_ms: med,
+                        interp_min_ms: min,
+                        gated,
+                    });
+                }
+            }
+
+            // ---- Set D: LDC vs LDG at one budget where the program fits the
+            // __constant__ array. Pick the smallest feasible grid budget whose
+            // program uploads; identical config (LDG/T128, natural smem) on both
+            // sides. add_sub L0 fits certainly; bigint checked dynamically.
+            for &budget in &BUDGET_GRID {
+                let Some(cf) = compile_feasible(cg_layer, graph, budget) else {
+                    continue;
+                };
+                let setup = build_interp_device_setup(&fixture, layer, &cf, cg_layer, count);
+                // Does the program fit __constant__?
+                if !upload_bench_program_to_constant(&setup.lanes).unwrap() {
+                    continue;
+                }
+                fixture.context().get_exec_stream().synchronize().unwrap();
+                let nat_smem = bench_interp_dynamic_smem_bytes(budget as u32, tpb);
+                let Some((ldg_med, ldg_min)) = time_interp_smem(
+                    &fixture,
+                    &setup,
+                    InterpResidency::Ldg,
+                    BenchThreads::T128,
+                    nat_smem,
+                    TIMING_ITERS,
+                ) else {
+                    continue;
+                };
+                let Some((ldc_med, ldc_min)) = time_interp_smem(
+                    &fixture,
+                    &setup,
+                    InterpResidency::Ldc,
+                    BenchThreads::T128,
+                    nat_smem,
+                    TIMING_ITERS,
+                ) else {
+                    continue;
+                };
+                set_d.push(SetDRow {
+                    circuit: circuit.to_string(),
+                    layer: layer_idx,
+                    budget,
+                    threads: tpb,
+                    smem_bytes: nat_smem,
+                    ldg_median_ms: ldg_med,
+                    ldg_min_ms: ldg_min,
+                    ldc_median_ms: ldc_med,
+                    ldc_min_ms: ldc_min,
+                    ldc_over_ldg: if ldg_med > 0.0 {
+                        ldc_med / ldg_med
+                    } else {
+                        f32::INFINITY
+                    },
+                    gated: gated_budgets.contains(&budget),
+                });
+                println!(
+                    "SET-D {circuit} L{layer_idx} budget {budget}: LDG {ldg_med:.4}ms LDC {ldc_med:.4}ms => {:.2}x",
+                    if ldg_med > 0.0 { ldc_med / ldg_med } else { f32::INFINITY },
+                );
+                break; // one LDC/LDG comparison per layer is enough.
             }
         }
     }
@@ -2886,7 +2791,7 @@ fn stage3_fwd_interp_ncu_target() {
     let layer = &fixture.layers[layer_idx];
     let count = fixture.trace_len.min(TIMING_COUNT_CAP);
 
-    let cf = compile_feasible(cg_layer, graph, budget, false)
+    let cf = compile_feasible(cg_layer, graph, budget)
         .unwrap_or_else(|| panic!("{circuit} L0 budget {budget} infeasible for ncu target"));
     let setup = build_interp_device_setup(&fixture, layer, &cf, cg_layer, count);
     let desc = setup.timing_desc();
@@ -2900,4 +2805,83 @@ fn stage3_fwd_interp_ncu_target() {
     .unwrap();
     fixture.context().get_exec_stream().synchronize().unwrap();
     println!("ncu target: one ab_gkr_bench_fwd_interp_ldg_kernel launch complete");
+}
+
+/// ncu profiling TARGET for the FLAT side (`#[ignore]`, GPU). Replays ONE
+/// layer's full production flat launch sequence (the cache + flat-descriptor
+/// kernels) so an `ncu` wrapper can capture the flat path for an apples-to-apples
+/// comparison against `stage3_fwd_interp_ncu_target` (the "why is interp slower"
+/// question). Parameterized by `STAGE3_NCU_CIRCUIT` (default add_sub); the
+/// budget env is read for parity but UNUSED on the flat side (the flat program
+/// is not budget-parameterized). The replay uses the same capped element count
+/// as the interp target, so both sides run the same grid.
+///
+/// Unlike the interp target, `CircuitFixture::build` ITSELF launches these two
+/// kernels during its capturing pass (for EVERY layer), and a warmup replay
+/// runs first — so the build pass + warmup precede the profiled launches. The
+/// profiled replay is therefore wrapped in an NVTX range (`flat_fwd_ncu`) and
+/// `ncu` MUST scope to it with `--nvtx --nvtx-include` so only the profiled
+/// layer-0 launches are captured. The two launched symbols are
+/// `ab_gkr_forward_cache_e4_kernel` and `ab_gkr_flat_forward_layer_e4_kernel`.
+/// The test prints the per-layer replayable launch count (sum the captured
+/// per-kernel metrics over those launches to compare against the interpreter's
+/// single launch).
+///
+/// ```bash
+/// TEST_BINARY="$(
+///   cargo test -p circuit_prover --features bench stage3_flat_fwd_ncu_target \
+///     --release --no-run --message-format=json \
+///     | python3 .agents/bin/cargo_test_executables.py)"
+/// STAGE3_NCU_CIRCUIT=blake2_with_extended_control \
+/// .agents/bin/with_gpu_lock.sh ncu \
+///   --nvtx --nvtx-include "flat_fwd_ncu/" \
+///   --set basic \
+///   --kernel-name-base demangled \
+///   --kernel-name 'regex:ab_gkr_forward_cache_e4_kernel|ab_gkr_flat_forward_layer_e4_kernel' \
+///   -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_gkr_flat" \
+///   "$TEST_BINARY" \
+///   --exact prover::gkr::forward::bench_interp::tests::stage3_flat_fwd_ncu_target \
+///   --ignored --nocapture
+/// ```
+///
+/// (KNOWN GAP: a non-replayable `MaterializeSingle` launch, if the layer has one
+/// (bigint/blake2 L0), is NOT replayed — the flat capture omits that single
+/// materialization kernel vs. true production. Output goes to the ignored
+/// `target/profiling/ncu/` per `.agents/gpu_work.md`.)
+#[test]
+#[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh (see .agents/gpu_work.md)
+#[cfg(not(no_cuda))]
+#[serial]
+fn stage3_flat_fwd_ncu_target() {
+    let circuit =
+        std::env::var("STAGE3_NCU_CIRCUIT").unwrap_or_else(|_| STAGE3_CIRCUITS[0].to_string());
+    assert!(
+        STAGE3_CIRCUITS.contains(&circuit.as_str()),
+        "STAGE3_NCU_CIRCUIT={circuit} is not a stage-3 circuit ({STAGE3_CIRCUITS:?})"
+    );
+    let fixture = CircuitFixture::build(&circuit);
+    let layer_idx = 0usize;
+    assert!(
+        !fixture.layers.is_empty(),
+        "{circuit}: fixture has no layers"
+    );
+    let count = fixture.trace_len.min(TIMING_COUNT_CAP);
+    let n_launches = fixture.layers[layer_idx].replayable_launch_count();
+    println!(
+        "ncu flat target: circuit {circuit} L0, {n_launches} replayable flat launches \
+         (build pass + warmup precede the profiled NVTX range `flat_fwd_ncu`)"
+    );
+
+    // Warmup OUTSIDE the profiled range (JIT/caches the kernels so the profiled
+    // capture is not polluted by first-launch overhead).
+    fixture.replay_layer_count(layer_idx, count).unwrap();
+    fixture.context().get_exec_stream().synchronize().unwrap();
+
+    // Profiled replay INSIDE the NVTX range (ncu `--nvtx-include "flat_fwd_ncu/"`).
+    {
+        let _range = crate::primitives::nvtx::scoped_range(None, "flat_fwd_ncu");
+        fixture.replay_layer_count(layer_idx, count).unwrap();
+        fixture.context().get_exec_stream().synchronize().unwrap();
+    }
+    println!("ncu flat target: profiled replay complete ({n_launches} flat launches)");
 }

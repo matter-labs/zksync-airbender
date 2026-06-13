@@ -314,7 +314,8 @@ pub(crate) struct LayerFixture {
     pub(crate) addr_resolve: BTreeMap<GKRAddress, *const u8>,
     /// Hydrated MaxQuadratic scratch reference values (the witness-stage scratch
     /// production trusts): scratch GKRAddress → device base pointer.
-    // Task 6: the equal-work row's MaxQuadratic input reference.
+    // The scratch-prefilled MaxQuadratic input reference the production-faithful
+    // program reads by address (rather than computing).
     #[allow(dead_code)]
     pub(crate) scratch_ref: Vec<(GKRAddress, *const u8)>,
     #[allow(dead_code)]
@@ -627,8 +628,9 @@ fn build_addr_resolve(
 
 /// The hydrated MaxQuadratic scratch reference for a layer: every
 /// `ScratchSpace`/`InnerLayer` scratch address mapped at this layer, resolved to
-/// its hydrated base-poly device pointer (the witness-stage scratch values, the
-/// equal-work row's MaxQuadratic input == production's flat reference).
+/// its hydrated base-poly device pointer (the witness-stage scratch values that
+/// the production-faithful program's scratch-prefilled MaxQuadratic inputs read
+/// by address — the flat reference for those gate dsts).
 fn build_scratch_ref(
     layer_idx: usize,
     compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -1073,9 +1075,9 @@ pub(crate) fn resolve_cache_out(
 
 /// The materialized GKRAddress of producer `producer`'s output `out` — the gate
 /// `dst[out].addr` (or cache `out.1`). A `GateOutput` source/leaf references a
-/// gate whose output production is NOT in the forward program (filtered out as
-/// `fwd_eligible`/equal-work, materialized separately into storage); its value
-/// is the resident column at that dst address.
+/// gate whose output production is NOT in the forward program (not
+/// `fwd_eligible`, or scratch-prefilled — materialized separately into storage);
+/// its value is the resident column at that dst address.
 fn producer_output_addr(
     layer_ir: &CodegenLayer,
     producer: ProducerId,

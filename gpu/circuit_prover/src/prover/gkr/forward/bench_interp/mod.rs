@@ -197,21 +197,42 @@ pub(crate) fn bench_interp_blocks_per_sm(
 /// size set B holds constant, the natural size set C sweeps). Opts the kernel
 /// into the large-smem cap first when the footprint exceeds the 48 KB default,
 /// so the occupancy query and a later launch agree.
+///
+/// `force_carveout`: when the footprint is at/below the 48 KB default cap (so
+/// the `opt_in_large_smem` carveout is otherwise NOT applied — the launch uses
+/// the driver-default L1/smem split), temporarily force a 100% shared-memory
+/// carveout for the occupancy query, then RESET to default. This measures
+/// whether forcing the split toward shared memory would lift occupancy at
+/// budgets the sweep otherwise leaves on the driver default (the "was
+/// high-budget occupancy left on the table?" question). The reset is mandatory:
+/// the timed launches share this function handle, so a sticky 100% would bias
+/// their L1 footprint. No effect on the `> cap` path (which legitimately keeps
+/// 100% to satisfy the large request).
 pub(crate) fn bench_interp_blocks_per_sm_smem(
     threads: BenchThreads,
     residency: InterpResidency,
     smem_bytes: usize,
+    force_carveout: bool,
 ) -> CudaResult<i32> {
     let tpb = threads.threads_per_block();
     let kernel = threads.kernel(residency);
+    let forced_below_cap = force_carveout && smem_bytes <= BENCH_INTERP_DEFAULT_SMEM_CAP;
     if smem_bytes > BENCH_INTERP_DEFAULT_SMEM_CAP {
         opt_in_large_smem(kernel, smem_bytes)?;
+    } else if forced_below_cap {
+        crate::primitives::utils::set_shared_carveout(kernel as *const std::ffi::c_void, 100);
     }
-    era_cudart::occupancy::max_active_blocks_per_multiprocessor(
+    let blocks = era_cudart::occupancy::max_active_blocks_per_multiprocessor(
         &GkrBenchFwdInterpFunction(kernel),
         tpb as i32,
         smem_bytes,
-    )
+    );
+    if forced_below_cap {
+        // Restore the driver default so subsequent timed launches sharing this
+        // function handle are not biased by the forced 100% carveout.
+        crate::primitives::utils::reset_shared_carveout(kernel as *const std::ffi::c_void);
+    }
+    blocks
 }
 
 /// The largest dynamic-smem footprint that still sustains `target_blocks`

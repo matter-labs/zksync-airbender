@@ -117,3 +117,11 @@ pub fn set_shared_carveout(kernel: *const c_void, pct: i32) {
         panic!("cudaFuncSetAttribute(PreferredSharedMemoryCarveout, {pct}) failed: {e:?}")
     });
 }
+
+/// Reset a kernel's preferred shared-memory carveout to the driver default
+/// (`cudaSharedmemCarveoutDefault` == -1). Use after temporarily forcing a
+/// carveout (e.g. for an occupancy probe) so a subsequent launch sharing the
+/// same function handle is not silently biased by the forced split.
+pub fn reset_shared_carveout(kernel: *const c_void) {
+    set_shared_carveout(kernel, -1);
+}

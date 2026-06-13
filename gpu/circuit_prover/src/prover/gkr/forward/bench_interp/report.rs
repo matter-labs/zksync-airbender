@@ -29,8 +29,8 @@ pub(super) struct SideTiming {
 }
 
 /// One row of the §6.2(A) verdict table: a (circuit, layer, best-feasible
-/// budget, residency, launch config, filter shape) point with both timed sides
-/// and the per-point context the spec mandates.
+/// budget, residency, launch config) point with both timed sides and the
+/// per-point context the spec mandates.
 #[derive(Serialize, Clone)]
 pub(super) struct AbRow {
     pub circuit: String,
@@ -41,11 +41,6 @@ pub(super) struct AbRow {
     pub residency: String,
     /// Launch config: threads-per-block of the timed interpreter side.
     pub interp_threads: u32,
-    /// `true` when this is the equal-work (MaxQuadratic-filtered) row.
-    pub equal_work: bool,
-    /// Set on circuits with zero fwd-eligible MaxQuadratic gates: the equal-work
-    /// and production-shape rows coincide (timed once, not duplicated; spec §9).
-    pub rows_coincide: bool,
     /// Element count both sides were timed at (capped per controller ruling;
     /// see `capped`). Always recorded.
     pub timed_count: usize,
@@ -67,8 +62,8 @@ pub(super) struct AbRow {
     pub program_bytes: usize,
     pub payload_bytes: usize,
     pub n_instr: u32,
-    // Compiler per-point stats (recomputed for the EXACT timed program — i.e.
-    // filtered-program stats on equal-work rows, never the unfiltered numbers).
+    // Compiler per-point stats (recomputed for the EXACT timed program — the
+    // production-faithful program the compiler emits).
     pub instrs: usize,
     pub src_reads: usize,
     pub cell_reads: usize,
@@ -76,27 +71,26 @@ pub(super) struct AbRow {
     pub max_live_cells: usize,
 }
 
-/// One row of the §6.2(B) cost-decomposition table: a (circuit, layer, budget,
-/// filter) point timed at the FIXED LDG residency under a CONSTANT padded smem
+/// One row of the §6.2(B) cost-decomposition table: a (circuit, layer, budget)
+/// point timed at the FIXED LDG residency under a CONSTANT padded smem
 /// (occupancy held constant across the budget grid; only per-thread work
-/// varies). Per-point compiler stats are recomputed for the EXACT program timed
-/// (filtered for equal-work rows). `gated` records whether this point's
-/// (budget, filter) was correctness-verified by set A / `run_point` or is a
-/// timing-only sweep point (no implication that every swept budget was checked).
+/// varies). Per-point compiler stats are recomputed for the EXACT program timed.
+/// `gated` records whether this point's budget was correctness-verified by set A
+/// / `run_point` or is a timing-only sweep point (no implication that every
+/// swept budget was checked).
 #[derive(Serialize, Clone)]
 pub(super) struct SetBRow {
     pub circuit: String,
     pub layer: usize,
     pub budget: usize,
-    pub equal_work: bool,
     /// The constant padded dynamic-smem footprint every set-B launch used.
     pub padded_smem_bytes: usize,
     /// Static blocks-per-SM at the padded footprint (held constant by design).
     pub blocks_per_sm: i32,
     pub interp_median_ms: f32,
     pub interp_min_ms: f32,
-    /// `true` when this (budget, filter) was correctness-gated (set A's verdict
-    /// or the 32/64 anchor); `false` = timing-only sweep point.
+    /// `true` when this budget was correctness-gated (set A's verdict or the
+    /// 32/64 anchor); `false` = timing-only sweep point.
     pub gated: bool,
     // Per-point compiler stats for the EXACT timed program.
     pub n_instr: u32,
@@ -108,19 +102,23 @@ pub(super) struct SetBRow {
     pub payload_bytes: usize,
 }
 
-/// One row of the §6.2(C) occupancy-curve table: a (circuit, layer, budget,
-/// filter) point at NATURAL smem sizing (the budget-implied footprint, swept up
-/// to 64 cells), recording blocks/SM and wall-clock vs budget — the carve-out
-/// trade. `gated` annotated as in set B.
+/// One row of the §6.2(C) occupancy-curve table: a (circuit, layer, budget)
+/// point at NATURAL smem sizing (the budget-implied footprint, swept up to 64
+/// cells), recording blocks/SM and wall-clock vs budget — the carve-out trade.
+/// `gated` annotated as in set B.
 #[derive(Serialize, Clone)]
 pub(super) struct SetCRow {
     pub circuit: String,
     pub layer: usize,
     pub budget: usize,
-    pub equal_work: bool,
     /// Natural (budget-implied) dynamic-smem footprint.
     pub natural_smem_bytes: usize,
     pub blocks_per_sm: i32,
+    /// Blocks/SM under a FORCED 100% shared-memory carveout (vs the
+    /// driver-default split in `blocks_per_sm`). Equal to `blocks_per_sm` when
+    /// the default split already grants enough smem; higher only if the default
+    /// left occupancy on the table.
+    pub blocks_per_sm_forced: i32,
     /// Whether the natural footprint opted into the >48 KB cap.
     pub large_smem_optin: bool,
     pub interp_median_ms: f32,
@@ -128,15 +126,14 @@ pub(super) struct SetCRow {
     pub gated: bool,
 }
 
-/// One row of the §6.2(D) LDC-vs-LDG table: a single (circuit, layer, budget,
-/// filter) point timed BOTH ways at an identical config, with the LDG/LDC
-/// median and the ratio. The program must fit `__constant__` for the LDC side.
+/// One row of the §6.2(D) LDC-vs-LDG table: a single (circuit, layer, budget)
+/// point timed BOTH ways at an identical config, with the LDG/LDC median and the
+/// ratio. The program must fit `__constant__` for the LDC side.
 #[derive(Serialize, Clone)]
 pub(super) struct SetDRow {
     pub circuit: String,
     pub layer: usize,
     pub budget: usize,
-    pub equal_work: bool,
     pub threads: u32,
     pub smem_bytes: usize,
     pub ldg_median_ms: f32,
@@ -240,32 +237,26 @@ impl AbReport {
         writeln!(s, "## A. Verdict A/B\n").unwrap();
         writeln!(
             s,
-            "| circuit | L | budget | resid | thr | shape | coincide | count (cap) | trace_len | \
+            "| circuit | L | budget | resid | thr | shape | count (cap) | trace_len | \
              flat med/min ms (×launch) | interp med/min ms | interp/flat | smem B | blk/SM | \
              optin | prog B | payload B | n_instr | instr | src_rd | cell_rd | refires | live |"
         )
         .unwrap();
         writeln!(
             s,
-            "|---|--:|--:|---|--:|---|---|--:|--:|---|---|--:|--:|--:|---|--:|--:|--:|--:|--:|--:|--:|--:|"
+            "|---|--:|--:|---|--:|---|--:|--:|---|---|--:|--:|--:|---|--:|--:|--:|--:|--:|--:|--:|--:|"
         )
         .unwrap();
         for r in &self.rows {
-            let shape = if r.equal_work {
-                "equal-work"
-            } else {
-                "production"
-            };
             writeln!(
                 s,
-                "| {} | {} | {} | {} | {} | {} | {} | {}{} | {} | {:.4}/{:.4} (×{}) | {:.4}/{:.4} | {:.2}× | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |",
+                "| {} | {} | {} | {} | {} | {} | {}{} | {} | {:.4}/{:.4} (×{}) | {:.4}/{:.4} | {:.2}× | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |",
                 r.circuit,
                 r.layer,
                 r.budget,
                 r.residency,
                 r.interp_threads,
-                shape,
-                if r.rows_coincide { "yes" } else { "no" },
+                "production",
                 r.timed_count,
                 if r.capped { " (cap)" } else { "" },
                 r.trace_len,
@@ -318,8 +309,8 @@ impl AbReport {
              CONSTANT padded dynamic smem = {} bytes (= floor(MaxSharedMemoryPerMultiprocessor/4) \
              rounded to cell granularity — occupancy held constant across the grid so only \
              per-thread work varies, spec §4 + controller decision). Per-point compiler stats are \
-             recomputed for the EXACT program timed (filtered for equal-work rows). `gated` = the \
-             (budget, filter) was correctness-verified (set A's verdict or the 32/64 anchor); \
+             recomputed for the EXACT program timed. `gated` = the \
+             budget was correctness-verified (set A's verdict or the 32/64 anchor); \
              un-gated rows are TIMING-ONLY sweep points (NOT correctness-checked at this budget — \
              correctness is anchored by set A's per-point gating + `stage3_run_point_correctness`).\n",
             self.set_b_padded_smem_bytes,
@@ -343,7 +334,7 @@ impl AbReport {
                 r.circuit,
                 r.layer,
                 r.budget,
-                if r.equal_work { "equal-work" } else { "production" },
+                "production",
                 if r.gated { "yes" } else { "timing-only" },
                 r.padded_smem_bytes,
                 r.blocks_per_sm,
@@ -415,31 +406,31 @@ impl AbReport {
             s,
             "NATURAL dynamic-smem sizing (budget-implied footprint) swept across the feasible \
              budget grid incl. 64 cells, FIXED LDG residency: static blocks/SM and interpreter \
-             wall-clock vs budget — the carve-out trade. `gated` annotated as in set B.\n"
+             wall-clock vs budget — the carve-out trade. `blk/SM` is the driver-default L1/smem \
+             split; `blk/SM 100%` forces a 100% shared-memory carveout for the occupancy query \
+             (reset before timing) — a higher value means the default split left occupancy on \
+             the table. `gated` annotated as in set B.\n"
         )
         .unwrap();
         writeln!(
             s,
-            "| circuit | L | budget | shape | gated | nat smem B | optin | blk/SM | interp med/min ms |"
+            "| circuit | L | budget | shape | gated | nat smem B | optin | blk/SM | blk/SM 100% | interp med/min ms |"
         )
         .unwrap();
-        writeln!(s, "|---|--:|--:|---|---|--:|---|--:|---|").unwrap();
+        writeln!(s, "|---|--:|--:|---|---|--:|---|--:|--:|---|").unwrap();
         for r in &self.set_c {
             writeln!(
                 s,
-                "| {} | {} | {} | {} | {} | {} | {} | {} | {:.4}/{:.4} |",
+                "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {:.4}/{:.4} |",
                 r.circuit,
                 r.layer,
                 r.budget,
-                if r.equal_work {
-                    "equal-work"
-                } else {
-                    "production"
-                },
+                "production",
                 if r.gated { "yes" } else { "timing-only" },
                 r.natural_smem_bytes,
                 if r.large_smem_optin { "yes" } else { "no" },
                 r.blocks_per_sm,
+                r.blocks_per_sm_forced,
                 r.interp_median_ms,
                 r.interp_min_ms,
             )
@@ -475,11 +466,7 @@ impl AbReport {
                 r.circuit,
                 r.layer,
                 r.budget,
-                if r.equal_work {
-                    "equal-work"
-                } else {
-                    "production"
-                },
+                "production",
                 if r.gated { "yes" } else { "timing-only" },
                 r.threads,
                 r.smem_bytes,
