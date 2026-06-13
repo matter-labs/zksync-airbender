@@ -13,8 +13,8 @@ use super::{SourceMap, build_const_table, is_computed, node_domain};
 use crate::isa::{Dst, Instr, MAX_ARITY, NEG_ONE_U32, Op, Operand, PayloadMeta, Program, encode};
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::codegen_ir::{
-    CacheKind, CodegenCache, CodegenGate, CodegenLayer, Domain, ExprNode, GateKind, LinearComb,
-    gate_kind_input_nodes,
+    CacheKind, CodegenCache, CodegenGate, CodegenLayer, Domain, ExprNode, ForwardSource, GateKind,
+    LinearComb, gate_kind_input_nodes,
 };
 use gkr_design_space::graph::AnalysisGraph;
 use serde::Serialize;
@@ -27,18 +27,11 @@ pub struct FwdParams {
     /// Dynamic leaf residency over native operand reads. Loads are OPTIONAL:
     /// skipped when they would evict a cache resident or not fit.
     pub leaf_cache: bool,
-    /// Equal-work A/B variant: drop MaxQuadratic gates from the program (the
-    /// production flat forward pass never computes them — witness-stage
-    /// precomputed). Default OFF; the unfiltered contract is unchanged.
-    /// NOTE: the source table layout (`n_sources_bf/e4`) is intentionally
-    /// UNFILTERED — leaves read only by dropped gates keep their slots so the
-    /// A/B variants share one staging layout; read/instr stats do shrink.
-    pub exclude_max_quadratic: bool,
 }
 
 impl Default for FwdParams {
     fn default() -> Self {
-        FwdParams { budget_cells: 4096, leaf_cache: true, exclude_max_quadratic: false }
+        FwdParams { budget_cells: 4096, leaf_cache: true }
     }
 }
 
@@ -97,6 +90,18 @@ pub fn fwd_eligible(g: &CodegenGate) -> bool {
             g.kind,
             GateKind::CopyInBaseField { .. } | GateKind::CopyInExtensionField { .. }
         )
+}
+
+/// Production-faithful skip: a gate whose every output is witness-stage scratch
+/// (`ForwardSource::ScratchPrefill`, e.g. scratch-backed `MaxQuadratic`) is NOT
+/// computed in the forward pass — its value is read from scratch by address
+/// downstream, exactly as the flat path's no-op arm (`flat_plan.rs`) and cs's
+/// `ForwardSource` rule (`codegen_ir.rs`) prescribe. The generated program must
+/// match production, so these gates are excluded from the eligibility population
+/// (the only `MaxQuadratic` left in a program is a `Computed` one).
+pub fn gate_is_scratch_prefilled(g: &CodegenGate) -> bool {
+    !g.dst.is_empty()
+        && g.dst.iter().all(|s| matches!(s.forward_source, ForwardSource::ScratchPrefill))
 }
 
 /// Canonical FORWARD operand nodes for a gate: `gate_kind_input_nodes`, with
@@ -225,12 +230,11 @@ fn build_fwd_view(layer: &CodegenLayer, g: &AnalysisGraph, params: FwdParams) ->
 
     // THE eligibility population: every downstream consumer (schedule,
     // payload table, operand enumeration, stats) derives from this view, so
-    // the equal-work filter is applied exactly once, here.
-    let eligible = |gate: &CodegenGate| {
-        fwd_eligible(gate)
-            && !(params.exclude_max_quadratic
-                && matches!(gate.kind, GateKind::MaxQuadratic { .. }))
-    };
+    // the production-faithful scratch-prefill skip is applied exactly once,
+    // here. Scratch-prefilled gates (witness-stage precomputed; the flat path
+    // never computes them either) are excluded so the program matches
+    // production — see `gate_is_scratch_prefilled`.
+    let eligible = |gate: &CodegenGate| fwd_eligible(gate) && !gate_is_scratch_prefilled(gate);
 
     // Alias: cache out-address -> the (unique, guarded) Cached Place node.
     let mut addr_to_place: HashMap<GKRAddress, usize> = HashMap::new();

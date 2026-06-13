@@ -54,7 +54,7 @@ fn forward_oracle_all_fixtures() {
                 if budget < 4096 {
                     tight_ok += 1;
                 }
-                check_layer(&name, li, layer, &cf, 0xF0D + k as u64, false);
+                check_layer(&name, li, layer, &cf, 0xF0D + k as u64);
             }
         }
     }
@@ -97,27 +97,27 @@ fn forward_floor_invariant_heavy_circuits() {
 }
 
 #[test]
-fn equal_work_filter_drops_max_quadratic_only() {
-    // shift_binop has MaxQuadratic gates (CPU census, spec §2a of full-dag spec).
+fn default_skips_scratch_prefilled_max_quadratic() {
+    // shift_binop has MaxQuadratic gates (CPU census, spec §2a of full-dag spec),
+    // and they are all scratch-prefilled (witness-stage precomputed). The
+    // production-faithful program must compute NONE of them — no A/B knob.
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../cs/compiled_circuits/shift_binop_codegen_ir_gkr.json");
     let c = load_circuit(&path).unwrap();
     let layer = &c.circuit.layers[0];
-    let full = compile_forward(layer, &c.graphs[0], FwdParams::default());
-    let filtered = compile_forward(
-        layer,
-        &c.graphs[0],
-        FwdParams {
-            exclude_max_quadratic: true,
-            ..FwdParams::default()
-        },
-    );
+    let cf = compile_forward(layer, &c.graphs[0], FwdParams::default());
     let mq = |p: &PayloadRecord| matches!(p, PayloadRecord::Gate(g) if matches!(g.kind, GateKind::MaxQuadratic { .. }));
-    let full_mq = full.payloads.iter().filter(|p| mq(p)).count();
-    assert!(full_mq > 0, "fixture lost its MaxQuadratic gates?");
-    assert_eq!(filtered.payloads.iter().filter(|p| mq(p)).count(), 0);
-    // Everything else survives: payload count differs by exactly the MQ gates.
-    assert_eq!(filtered.payloads.len(), full.payloads.len() - full_mq);
-    // Filtered program still passes the full oracle.
-    check_layer("shift_binop[filtered]", 0, layer, &filtered, 0xF11, true);
+    // The IR has MaxQuadratic gates...
+    let ir_mq = layer
+        .gates
+        .iter()
+        .chain(&layer.gates_external)
+        .filter(|g| matches!(g.kind, GateKind::MaxQuadratic { .. }))
+        .count();
+    assert!(ir_mq > 0, "fixture lost its MaxQuadratic gates?");
+    // ...but the production-faithful program computes none of them (all
+    // scratch-prefilled — read from witness scratch by address downstream).
+    assert_eq!(cf.payloads.iter().filter(|p| mq(p)).count(), 0);
+    // The program passes the full oracle with no exclude flag.
+    check_layer("shift_binop", 0, layer, &cf, 0xF11);
 }

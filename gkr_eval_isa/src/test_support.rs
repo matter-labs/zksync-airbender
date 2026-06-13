@@ -19,7 +19,7 @@ use crate::eval_ref::{self, Bf, Ext, lift, random_row};
 use crate::interp::{StagedSources, execute};
 use crate::isa::Op;
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::codegen_ir::{ExprNode, GateKind, gate_kind_input_nodes};
+use cs::gkr_compiler::codegen_ir::{ExprNode, ForwardSource, GateKind, gate_kind_input_nodes};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use std::collections::HashMap;
 
@@ -53,7 +53,6 @@ pub fn check_layer(
     layer: &cs::gkr_compiler::codegen_ir::CodegenLayer,
     cf: &CompiledForward,
     seed: u64,
-    exclude_max_quadratic: bool,
 ) {
     let arena = &layer.arena.nodes;
     let mut rng = StdRng::seed_from_u64(seed ^ ((li as u64) << 32));
@@ -109,9 +108,12 @@ pub fn check_layer(
         if !fwd_eligible(gate) {
             continue;
         }
-        // Equal-work filter mirror (NOT the compiler's helper): the predicate
-        // is re-stated inline so a compiler-side filter bug cannot hide.
-        if exclude_max_quadratic && matches!(gate.kind, GateKind::MaxQuadratic { .. }) {
+        // Production-faithful skip mirror (NOT the compiler's helper): the
+        // predicate is re-stated inline so a compiler-side filter bug cannot
+        // hide. A gate whose every output is scratch-prefilled (witness-stage
+        // precomputed) is read from scratch, never computed forward — exactly
+        // what the program must omit to match production.
+        if gate.dst.iter().all(|s| matches!(s.forward_source, ForwardSource::ScratchPrefill)) {
             continue;
         }
         ref_payloads.push(PayloadRecord::Gate(gate.clone()));
