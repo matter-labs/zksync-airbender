@@ -2,7 +2,9 @@
 //! (spec: .agents/specs/2026-06-12-gkr-eval-isa-stage3-cuda-bench-design.md §6.1
 //! step 4). `run_point` runs three correctness gates in order for ONE
 //! (circuit, layer, budget, filter) point and returns a structured
-//! `PointResult`. 6.C-2 will extend this with the timing phase.
+//! `PointResult`. The timing phase (`time_point` / `time_interp` /
+//! `prescan_best_budget`) lives in this file too; residency is a `time_point`
+//! argument, never gated by `run_point`.
 //!
 //! Correctness-gate failures are RECORDED as `PointResult::Failed` (not
 //! panicked) so the driver/report can show WHICH points failed; only a
@@ -48,7 +50,10 @@ pub(crate) enum PointResult {
     Infeasible,
 }
 
-/// The point's compiler parameters. 6.C-2 adds residency etc.
+/// The point's compiler parameters (budget + filter). Residency/threads are
+/// timing-only knobs (`time_point` args), NOT correctness-gate parameters: the
+/// lowered program for a given (budget, filter) is identical across residencies,
+/// so a single gate certifies every residency timed at that point.
 pub(crate) struct PointParams {
     pub budget: usize,
     pub exclude_max_quadratic: bool,
@@ -119,7 +124,6 @@ pub(super) fn time_flat(
 /// `__constant__` happens ONCE before the timed loop (spec §6.2). Returns
 /// `Some((median_ms, min_ms))`, or `None` for LDC when the program does not fit
 /// the constant array (caller records a skip).
-#[allow(clippy::too_many_arguments)]
 pub(super) fn time_interp(
     fixture: &CircuitFixture,
     setup: &super::tests::InterpDeviceSetup,

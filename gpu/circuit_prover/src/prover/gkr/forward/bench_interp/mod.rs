@@ -163,7 +163,9 @@ fn opt_in_large_smem(
     }
     .wrap()?;
     // Bias the SM's L1/smem split toward shared memory (100%) so a large request
-    // is satisfiable. Best-effort: ignore failure (some arches reject 100%).
+    // is satisfiable. `set_shared_carveout` PANICS on a failing
+    // `cudaFuncSetAttribute` (e.g. an arch that rejects a 100% carveout) — this
+    // is test/bench-only code, so a panic surfaces the misconfiguration loudly.
     crate::primitives::utils::set_shared_carveout(ptr, 100);
     Ok(())
 }

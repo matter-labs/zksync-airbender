@@ -1412,7 +1412,7 @@ pub(super) struct InterpDeviceSetup {
 /// into an `InterpDesc`. Sized for `count` elements. The returned `desc` has
 /// `debug_cells`/`native_fired` populated (debug_dev[0] = native_fired,
 /// debug_dev[1] = error_flag); timing callers null them via
-/// `setup.into_timing_desc()`.
+/// `setup.timing_desc()`.
 #[cfg(not(no_cuda))]
 pub(super) fn build_interp_device_setup(
     fixture: &CircuitFixture,
@@ -1919,8 +1919,8 @@ fn stage3_run_point_correctness() {
 // ===========================================================================
 
 use super::harness::{
-    prescan_best_budget, time_point, PreScan, TimedPoint, BUDGET_GRID, PRESCAN_ITERS,
-    TIMING_COUNT_CAP, TIMING_ITERS,
+    prescan_best_budget, time_point, TimedPoint, BUDGET_GRID, PRESCAN_ITERS, TIMING_COUNT_CAP,
+    TIMING_ITERS,
 };
 use super::report::{AbReport, AbRow, DeviceAttrs, SideTiming};
 
@@ -1935,13 +1935,15 @@ fn fwd_eligible_mq_count(layer: &CodegenLayer) -> usize {
         .count()
 }
 
-/// Compile + time ONE (residency, threads) config row of a Verified point at
-/// `count`, building it into an `AbRow`. Pre-scans the budget grid for the
-/// best-feasible budget (min interpreter median, `PRESCAN_ITERS`), then times
-/// that budget with `TIMING_ITERS`. The per-point compiler stats are read from
-/// the EXACT timed program's `cf.stats` (filtered for equal-work rows). Returns
-/// `None` (with a recorded skip) when no grid budget is feasible+timeable for
-/// this config (e.g. LDC never fits).
+/// Compile + time ONE (residency, threads) config row of an already-Verified
+/// (`budget`, filter) point at `count`, building it into an `AbRow`. The caller
+/// pre-scans the config's best-feasible budget (`prescan_best_budget`) and gates
+/// it via `run_point` BEFORE calling this, then passes the chosen `budget` in —
+/// so timing is recorded ONLY for a gate-Verified point at the EXACT timed
+/// budget (spec §6.1.4). This recompiles at that budget for the EXACT timed
+/// program's stats (`cf.stats`, filtered for equal-work rows). Returns `None`
+/// (with a recorded skip) when the program is not timeable for this config at
+/// `budget` (e.g. LDC never fits).
 #[allow(clippy::too_many_arguments)]
 #[cfg(not(no_cuda))]
 fn time_config_row(
@@ -1954,20 +1956,10 @@ fn time_config_row(
     rows_coincide: bool,
     residency: InterpResidency,
     threads: BenchThreads,
+    budget: usize,
     count: usize,
     skips: &mut Vec<String>,
 ) -> Option<AbRow> {
-    let Some(PreScan { budget, .. }) = prescan_best_budget(
-        fixture, layer_idx, cg_layer, graph, exclude_mq, residency, threads, count,
-    ) else {
-        skips.push(format!(
-            "{circuit} L{layer_idx} {residency:?}/{} {}: no feasible+timeable budget in grid {BUDGET_GRID:?}",
-            threads.threads_per_block(),
-            if exclude_mq { "equal-work" } else { "production" },
-        ));
-        return None;
-    };
-
     // Recompile at the chosen budget for the EXACT timed program's stats.
     let cf = compile_forward(
         cg_layer,
@@ -2104,64 +2096,94 @@ fn stage3_fwd_interp_ab() {
             };
 
             for &exclude_mq in shapes {
-                // (1+2) Pre-scan LDG/128 for the verdict budget, then run the
-                // correctness gates at it. Time only a Verified point.
-                let Some(PreScan { budget, .. }) = prescan_best_budget(
-                    &fixture,
-                    layer_idx,
-                    cg_layer,
-                    graph,
-                    exclude_mq,
-                    InterpResidency::Ldg,
-                    BenchThreads::T128,
-                    count,
-                ) else {
-                    skips.push(format!(
-                        "{circuit} L{layer_idx} {}: no feasible budget in grid {BUDGET_GRID:?}",
-                        if exclude_mq {
-                            "equal-work"
-                        } else {
-                            "production"
-                        },
-                    ));
-                    continue;
+                let shape_str = if exclude_mq {
+                    "equal-work"
+                } else {
+                    "production"
                 };
-                let label = format!(
-                    "{circuit} L{layer_idx} budget {budget}{}",
-                    if exclude_mq { " [equal-work]" } else { "" }
-                );
-                let result = run_point(
-                    &fixture,
-                    layer_idx,
-                    cg_layer,
-                    graph,
-                    PointParams {
-                        budget,
-                        exclude_max_quadratic: exclude_mq,
-                    },
-                    circuit_seed,
-                    &label,
-                );
-                match result {
-                    PointResult::Verified => {}
-                    PointResult::Infeasible => {
-                        skips.push(format!("{label}: INFEASIBLE (run_point)"));
-                        continue;
-                    }
-                    PointResult::Failed { gate, reason } => {
-                        failures.push(format!("[{gate}] {label}: {reason}"));
-                        continue;
-                    }
-                }
-
-                // (3) Time the config rows: LDG/128 (verdict), LDG/256 (§9
-                // fairness), LDC/128 (where it fits). Each pre-scans its own
-                // best-feasible budget independently.
-                for (residency, threads) in [
+                let configs = [
                     (InterpResidency::Ldg, BenchThreads::T128),
                     (InterpResidency::Ldg, BenchThreads::T256),
                     (InterpResidency::Ldc, BenchThreads::T128),
-                ] {
+                ];
+
+                // (1) Pre-scan EACH config for its own best-feasible budget (min
+                // interpreter median over the grid). The configs may land on
+                // DIFFERENT budgets, so the exact budget that will be TIMED
+                // varies per config — each one must be gated at its own budget.
+                let mut config_budgets: Vec<(InterpResidency, BenchThreads, Option<usize>)> =
+                    Vec::with_capacity(configs.len());
+                for (residency, threads) in configs {
+                    let chosen = prescan_best_budget(
+                        &fixture, layer_idx, cg_layer, graph, exclude_mq, residency, threads, count,
+                    )
+                    .map(|p| p.budget);
+                    if chosen.is_none() {
+                        skips.push(format!(
+                            "{circuit} L{layer_idx} {residency:?}/{} {shape_str}: no feasible+timeable budget in grid {BUDGET_GRID:?}",
+                            threads.threads_per_block(),
+                        ));
+                    }
+                    config_budgets.push((residency, threads, chosen));
+                }
+
+                // (2) Gate EVERY distinct (budget, filter) that WILL be timed —
+                // the union of the configs' chosen budgets (spec §6.1.4). A single
+                // LDG/128 `run_point` at (budget, filter) certifies all configs
+                // timed at that same point: the lowered program is identical
+                // across residencies (LDC just uploads the same program to
+                // `__constant__`) and the kernel body is block-size-agnostic. The
+                // map memoizes the verdict so each budget is gated (and
+                // device-compared) at most ONCE per (layer, filter).
+                let mut gated: std::collections::BTreeMap<usize, PointResult> =
+                    std::collections::BTreeMap::new();
+                for budget in config_budgets
+                    .iter()
+                    .filter_map(|&(_, _, b)| b)
+                    .collect::<std::collections::BTreeSet<usize>>()
+                {
+                    let label = format!(
+                        "{circuit} L{layer_idx} budget {budget}{}",
+                        if exclude_mq { " [equal-work]" } else { "" }
+                    );
+                    let result = run_point(
+                        &fixture,
+                        layer_idx,
+                        cg_layer,
+                        graph,
+                        PointParams {
+                            budget,
+                            exclude_max_quadratic: exclude_mq,
+                        },
+                        circuit_seed,
+                        &label,
+                    );
+                    // Record a non-Verified verdict at a TIMED budget right here —
+                    // no silent gap: the budget's configs are then skipped below.
+                    match &result {
+                        PointResult::Verified => {}
+                        PointResult::Infeasible => {
+                            skips.push(format!(
+                                "{label}: INFEASIBLE (run_point) — timed budget skipped"
+                            ));
+                        }
+                        PointResult::Failed { gate, reason } => {
+                            failures.push(format!("[{gate}] {label}: {reason}"));
+                        }
+                    }
+                    gated.insert(budget, result);
+                }
+
+                // (3) Time each config row ONLY at its gate-Verified budget
+                // (LDG/128 verdict, LDG/256 §9 fairness, LDC/128 where it fits).
+                // A config whose chosen budget did not Verify is skipped here; its
+                // verdict is already recorded in `failures`/`skips` above.
+                for (residency, threads, chosen) in config_budgets {
+                    let Some(budget) = chosen else { continue };
+                    if !matches!(gated.get(&budget), Some(PointResult::Verified)) {
+                        // Failed/Infeasible at this timed budget — recorded above.
+                        continue;
+                    }
                     if let Some(row) = time_config_row(
                         &fixture,
                         layer_idx,
@@ -2172,13 +2194,13 @@ fn stage3_fwd_interp_ab() {
                         rows_coincide,
                         residency,
                         threads,
+                        budget,
                         count,
                         &mut skips,
                     ) {
                         println!(
-                            "TIMED {circuit} L{layer_idx} {residency:?}/{} {}: flat {:.4}ms (x{}) interp {:.4}ms => {:.2}x  blk/SM {} smem {}B",
+                            "TIMED {circuit} L{layer_idx} {residency:?}/{} {shape_str} budget {budget}: flat {:.4}ms (x{}) interp {:.4}ms => {:.2}x  blk/SM {} smem {}B",
                             threads.threads_per_block(),
-                            if exclude_mq { "equal-work" } else { "production" },
                             row.flat.median_ms,
                             row.flat.launches,
                             row.interp.median_ms,

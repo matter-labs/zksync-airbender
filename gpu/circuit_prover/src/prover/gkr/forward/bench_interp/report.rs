@@ -129,12 +129,12 @@ impl AbReport {
             s,
             "| circuit | L | budget | resid | thr | shape | coincide | count (cap) | trace_len | \
              flat med/min ms (×launch) | interp med/min ms | interp/flat | smem B | blk/SM | \
-             optin | prog B | payload B | instr | src_rd | cell_rd | refires | live |"
+             optin | prog B | payload B | n_instr | instr | src_rd | cell_rd | refires | live |"
         )
         .unwrap();
         writeln!(
             s,
-            "|---|--:|--:|---|--:|---|---|--:|--:|---|---|--:|--:|--:|---|--:|--:|--:|--:|--:|--:|--:|"
+            "|---|--:|--:|---|--:|---|---|--:|--:|---|---|--:|--:|--:|---|--:|--:|--:|--:|--:|--:|--:|--:|"
         )
         .unwrap();
         for r in &self.rows {
@@ -192,7 +192,7 @@ impl AbReport {
 /// Write the report `.md` + `.json` to `.agents/audits/` (relative to the crate
 /// manifest's repo root). Returns the two paths written. GITIGNORED location.
 pub(super) fn write_report(report: &AbReport) -> (std::path::PathBuf, std::path::PathBuf) {
-    // CARGO_MANIFEST_DIR = gpu/circuit_prover; the repo root is three up.
+    // CARGO_MANIFEST_DIR = gpu/circuit_prover; the repo root is two up.
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()

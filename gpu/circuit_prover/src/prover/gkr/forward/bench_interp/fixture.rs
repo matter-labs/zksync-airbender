@@ -534,6 +534,15 @@ impl CircuitFixture {
     /// apples-to-apples (spec §6.2(A); controller ruling). Correctness gates pass
     /// the full `trace_len` via `replay_layer`; only the timed region caps.
     pub(crate) fn replay_layer_count(&self, layer_idx: usize, count: usize) -> CudaResult<()> {
+        // Capped-count soundness: the current 3-circuit corpus never populates
+        // `FlatLaunch::Inits` (none of the circuits emit
+        // `InitsOrTeardownsInitialPair`), so the only launchers exercised here
+        // (`launch_forward_cache` / `launch_flat_forward_layer`) honor `count`
+        // cleanly. A future inits-bearing circuit timed at a capped count would
+        // hit `materialize_inits_and_teardowns_initial_pair_into`'s
+        // `assert_eq!(dst.len(), trace_len)` (its dst is full-trace-sized) and
+        // panic — that launcher would need its inits dst re-sliced to `count`
+        // before capping could be used on an Inits launch.
         let context = self.context();
         let trace_len = count;
         let layer = &self.layers[layer_idx];
