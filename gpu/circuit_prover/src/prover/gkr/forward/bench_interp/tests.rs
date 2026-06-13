@@ -1,6 +1,6 @@
 use super::lower::{
-    lincomb_bf, lower_payloads, lower_program, mem_tuple_affine, output_widths, payload_dst_e4,
-    payload_kind_shape, vec_lookup_affine, BenchChallenges, LoweredPayloads, LoweredProgram,
+    lower_payloads, lower_program, output_widths, payload_dst_e4, payload_kind_shape,
+    BenchChallenges, LoweredPayloads, LoweredProgram,
 };
 use super::{
     launch_bench_fwd_interp, upload_bench_program_to_constant, InterpDesc, InterpResidency,
@@ -56,7 +56,14 @@ fn bench_stub_kernel_roundtrip() {
 // and the program outputs.
 // ---------------------------------------------------------------------------
 
-use cs::gkr_compiler::codegen_ir::{CacheKind, CodegenCache, CodegenGate, CodegenLayer, GateKind};
+use cs::definitions::gkr::RamWordRepresentation;
+use cs::gkr_compiler::codegen_ir::{
+    CacheKind, CodegenCache, CodegenGate, CodegenLayer, GateKind, LinearComb, MemTupleDescriptor,
+};
+use cs::gkr_compiler::{
+    CompiledAddressSpaceRelationStrict as AddrSpace, CompiledAddressStrict as Addr,
+    CompiledMemoryTimestamp as Ts,
+};
 use gkr_design_space::import::load_circuit;
 use gkr_eval_isa::compiler::fwd::{
     compile_forward, fwd_eligible, CompiledForward, FwdParams, PayloadRecord,
@@ -176,13 +183,142 @@ fn ext_sub(a: Ext, b: Ext) -> Ext {
     r
 }
 
-/// `constant + sum_k coeffs[k] * vals[k]` — the device `eval_affine_e4`.
-fn affine_eval((constant, coeffs): (Ext, Vec<Ext>), vals: &[Ext]) -> Ext {
-    assert_eq!(coeffs.len(), vals.len(), "affine arity mismatch");
-    let mut acc = constant;
-    for (c, v) in coeffs.iter().zip(vals) {
-        acc.add_assign(&ext_mul(*c, *v));
+// ---------------------------------------------------------------------------
+// Independent host evaluators for the affine payload kinds. Per the Task 4.5
+// review, the affine kinds must NOT reuse lower.rs's coefficient folds (host
+// expected and device bytes both derived from the same fold => a fold bug
+// corrupts both sides identically and the parity passes vacuously). These
+// recompute the expected value directly from the raw IR + challenges + operand
+// values, applying alpha^k / challenge roles at EVALUATION time — a structurally
+// different decomposition from lower::{vec_lookup_affine, mem_tuple_affine,
+// lincomb_bf}, while remaining mathematically equivalent to the (correct) folds.
+// ---------------------------------------------------------------------------
+
+// Challenge roles into perm_challenges[6] (cs/src/definitions/constants.rs).
+// The role->index convention is fixed; the field->role mapping below is the
+// independently-rewritten part (review: closes the fold-circularity gap).
+const R_ADDR_LOW: usize = 0;
+const R_ADDR_HIGH: usize = 1;
+const R_TS_LOW: usize = 2;
+const R_TS_HIGH: usize = 3;
+const R_VAL_LOW: usize = 4;
+const R_VAL_HIGH: usize = 5;
+
+/// `sum_k alpha^k * (col_k.constant + sum_j col_k.terms[j].coeff * vals[lane])`,
+/// applying alpha to each column's full sum at eval time (independent of
+/// lower::vec_lookup_affine, which pre-folds alpha into per-lane coeffs).
+fn indep_vec_lookup(columns: &[LinearComb], ch: &BenchChallenges, vals: &[Ext]) -> Ext {
+    let mut acc = Ext::ZERO;
+    let mut lane = 0usize;
+    for (k, col) in columns.iter().enumerate() {
+        let mut col_val = lift(mont(col.constant));
+        for &(coeff, _node) in &col.terms {
+            col_val.add_assign(&ext_mul(lift(mont(coeff)), vals[lane]));
+            lane += 1;
+        }
+        acc.add_assign(&ext_mul(ch.alpha_pow(k), col_val));
     }
+    assert_eq!(lane, vals.len(), "indep vec-lookup lane walk");
+    acc
+}
+
+/// `col.constant + sum_j col.terms[j].coeff * vals[j]` in the base subring (lifted).
+fn indep_lincomb(column: &LinearComb, vals: &[Ext]) -> Ext {
+    assert_eq!(column.terms.len(), vals.len(), "indep lincomb lane walk");
+    let mut acc = lift(mont(column.constant));
+    for (&(coeff, _node), &v) in column.terms.iter().zip(vals) {
+        acc.add_assign(&ext_mul(lift(mont(coeff)), v));
+    }
+    acc
+}
+
+/// Memory-tuple value computed inline from the descriptor: perm_additive +
+/// address-space term + sum_role chal[role] * (lane value or constant), walking
+/// dependencies() order and applying the challenge at eval time. Mirrors the
+/// VALUE semantics of gkr_forward_cache_memory_tuple / cache_relation.rs (NOT
+/// lower::mem_tuple_affine's coefficient construction).
+fn indep_mem_tuple(mt: &MemTupleDescriptor, ch: &BenchChallenges, vals: &[Ext]) -> Ext {
+    let d = &mt.descriptor;
+    let chal = |role: usize| ch.perm_challenges[role];
+    let mut acc = ch.perm_additive;
+    let mut lane = 0usize;
+
+    match d.address_space {
+        AddrSpace::Constant(c) => {
+            acc.add_assign(&lift(mont(c)));
+        }
+        AddrSpace::IsRam(_) => {
+            acc.add_assign(&vals[lane]); // value += col  (coeff ONE)
+            lane += 1;
+        }
+        AddrSpace::IsRegister(_) => {
+            acc.add_assign(&Ext::ONE);
+            let mut neg = Ext::ONE;
+            neg.negate();
+            acc.add_assign(&ext_mul(neg, vals[lane])); // value += 1 - col
+            lane += 1;
+        }
+    }
+
+    match &d.address {
+        Addr::ConstantU16(c) => {
+            acc.add_assign(&ext_mul(chal(R_ADDR_LOW), lift(mont(*c as u32))));
+        }
+        Addr::Constant(c) => {
+            acc.add_assign(&ext_mul(chal(R_ADDR_LOW), lift(mont(*c))));
+        }
+        Addr::U16Space(_) => {
+            acc.add_assign(&ext_mul(chal(R_ADDR_LOW), vals[lane]));
+            lane += 1;
+        }
+        Addr::U32Space(_) => {
+            acc.add_assign(&ext_mul(chal(R_ADDR_LOW), vals[lane]));
+            lane += 1;
+            acc.add_assign(&ext_mul(chal(R_ADDR_HIGH), vals[lane]));
+            lane += 1;
+        }
+        Addr::U32SpaceSpecialIndirect {
+            low_dynamic_offset,
+            low_offset,
+            ..
+        } => {
+            acc.add_assign(&ext_mul(chal(R_ADDR_LOW), vals[lane]));
+            lane += 1;
+            acc.add_assign(&ext_mul(chal(R_ADDR_HIGH), vals[lane]));
+            lane += 1;
+            if let Some((dyn_coeff, _)) = low_dynamic_offset {
+                let c = ext_mul(chal(R_ADDR_LOW), lift(mont(*dyn_coeff as u32)));
+                acc.add_assign(&ext_mul(c, vals[lane]));
+                lane += 1;
+            }
+            acc.add_assign(&ext_mul(chal(R_ADDR_LOW), lift(mont(*low_offset))));
+        }
+        other => panic!("indep mem-tuple address {other:?} unsupported"),
+    }
+
+    match d.timestamp {
+        Ts::Zero => {}
+        Ts::Normal(_) => {
+            acc.add_assign(&ext_mul(chal(R_TS_LOW), vals[lane]));
+            lane += 1;
+            acc.add_assign(&ext_mul(chal(R_TS_LOW), lift(mont(d.timestamp_offset))));
+            acc.add_assign(&ext_mul(chal(R_TS_HIGH), vals[lane]));
+            lane += 1;
+        }
+    }
+
+    match d.value {
+        RamWordRepresentation::Zero => {}
+        RamWordRepresentation::U16Limbs(_) => {
+            acc.add_assign(&ext_mul(chal(R_VAL_LOW), vals[lane]));
+            lane += 1;
+            acc.add_assign(&ext_mul(chal(R_VAL_HIGH), vals[lane]));
+            lane += 1;
+        }
+        RamWordRepresentation::U8Limbs(_) => panic!("indep mem-tuple U8Limbs unsupported"),
+    }
+
+    assert_eq!(lane, vals.len(), "indep mem-tuple lane walk");
     acc
 }
 
@@ -240,9 +376,10 @@ fn mirror_gate(
             let (a, b, d) = (vals[0], vals[1], sh(vals[2]));
             vec![ext_add(ext_mul(a, d), b), ext_mul(b, d)]
         }
-        // Alpha-folded affine form (emit_vectorized_lookup math), value-injected.
+        // Vector-lookup value recomputed independently from the raw columns +
+        // challenges (review: was circular via lower::vec_lookup_affine).
         GateKind::MaterializedVectorLookupInput { input } => {
-            let mut v = affine_eval(vec_lookup_affine(&input.columns, ch), vals);
+            let mut v = indep_vec_lookup(&input.columns, ch, vals);
             if input.lookup_set_index == usize::MAX && extras.exec_val.is_zero() {
                 v = ch.decoder_fill;
             }
@@ -286,30 +423,25 @@ fn mirror_cache(
     extras: &SyntheticExtras,
 ) -> Ext {
     match &c.kind {
-        // bf lincomb (emit_lincomb_base) == production setup_values[mapping[gid]].
-        CacheKind::SingleColumnLookup { column, .. } => {
-            let (constant, coeffs) = lincomb_bf(column);
-            affine_eval(
-                (lift(constant), coeffs.into_iter().map(lift).collect()),
-                vals,
-            )
-        }
-        // Alpha-folded tuple + decoder fill select (lookup_helpers.cuh:58-69).
+        // bf lincomb recomputed independently from the raw column (review: was
+        // circular via lower::lincomb_bf) == production setup_values[mapping[gid]].
+        CacheKind::SingleColumnLookup { column, .. } => indep_lincomb(column, vals),
+        // Vector-lookup tuple recomputed independently (review: was circular via
+        // lower::vec_lookup_affine) + decoder fill select (lookup_helpers.cuh:58-69).
         CacheKind::VectorizedLookup {
             columns,
             lookup_set_index,
         } => {
-            let v = affine_eval(vec_lookup_affine(columns, ch), vals);
+            let v = indep_vec_lookup(columns, ch, vals);
             if *lookup_set_index == usize::MAX && extras.exec_val.is_zero() {
                 ch.decoder_fill
             } else {
                 v
             }
         }
-        // Challenge-folded affine form (gkr_forward_cache_memory_tuple).
-        CacheKind::MemoryTuple { descriptor } => {
-            affine_eval(mem_tuple_affine(descriptor, ch), vals)
-        }
+        // Memory-tuple value recomputed independently from the descriptor
+        // (review: was circular via lower::mem_tuple_affine).
+        CacheKind::MemoryTuple { descriptor } => indep_mem_tuple(descriptor, ch, vals),
         // generic_lookup[gid] gather; the synthetic table is constant-fill so
         // the row-independent mirror value is exact (lookup_helpers.cuh:70-74).
         CacheKind::VectorizedLookupSetup => extras.setup_value,
@@ -367,6 +499,24 @@ fn cache_value(
 // the equal-work (MaxQuadratic-filtered) row shares the exact buffer layout —
 // the filtered run must leave the MQ columns untouched (asserted).
 // ---------------------------------------------------------------------------
+
+/// Does this layer carry a decoder-select payload (a `VectorizedLookup` cache
+/// or `MaterializedVectorLookupInput` gate with the formal `usize::MAX` set
+/// index)? Used to assert both decoder-select branches get exercised.
+fn layer_has_decoder_payload(layer: &CodegenLayer) -> bool {
+    layer.caches.iter().any(|c| {
+        matches!(&c.kind,
+        CacheKind::VectorizedLookup { lookup_set_index, .. } if *lookup_set_index == usize::MAX)
+    }) || layer
+        .gates
+        .iter()
+        .chain(&layer.gates_external)
+        .filter(|g| fwd_eligible(g))
+        .any(|g| {
+            matches!(&g.kind, GateKind::MaterializedVectorLookupInput { input }
+                if input.lookup_set_index == usize::MAX)
+        })
+}
 
 fn unfiltered_records(layer: &CodegenLayer) -> Vec<PayloadRecord> {
     let mut recs: Vec<PayloadRecord> = layer
@@ -614,6 +764,25 @@ fn build_parity_point<'a>(
     let records = unfiltered_records(layer);
     let layout = build_dst_layout(&records);
     let record_map = payload_record_map(layer, &cf, exclude_mq);
+
+    // Non-vacuity: a covered MaxQuadratic payload must produce a nonzero mirror
+    // value, else the dst compare against a zero reference would be vacuous.
+    let mq_set: std::collections::HashSet<usize> = layout.mq_records.iter().copied().collect();
+    let mut mq_covered = false;
+    let mut mq_nonzero = false;
+    for (p, outs) in expected.iter().enumerate() {
+        if mq_set.contains(&record_map[p]) {
+            mq_covered = true;
+            if outs.iter().any(|v| !v.is_zero()) {
+                mq_nonzero = true;
+            }
+        }
+    }
+    assert!(
+        !mq_covered || mq_nonzero,
+        "{label}: all covered MaxQuadratic mirrors are zero — vacuous compare, reseed"
+    );
+
     let payload_bf_dev = alloc_upload(context, &vec![Bf::ZERO; layout.n_bf_cols * t]);
     let payload_e4_dev = alloc_upload(context, &vec![Ext::ZERO; layout.n_e4_cols * t]);
     let pred_dev = alloc_upload(context, &vec![extras.exec_val; t]);
@@ -940,6 +1109,10 @@ impl ParityPoint<'_> {
 fn interp_full_parity() {
     let context = make_test_context(256, 32);
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    // Decoder-select branch coverage: both the affine/exec branch (exec_val != 0)
+    // and the fill branch (exec_val == 0) must actually run, else a skipped
+    // budget silently drops a branch while the test still passes.
+    let (mut decoder_present, mut decoder_exec_seen, mut decoder_fill_seen) = (false, false, false);
     for (ci, circuit) in [
         "add_sub_lui_auipc_mop",
         "bigint_with_extended_control",
@@ -1003,6 +1176,17 @@ fn interp_full_parity() {
                 let mut point =
                     build_parity_point(&context, label.clone(), layer, cf, exclude_mq, seed);
                 point.run_and_check(InterpResidency::Ldg);
+                // Record which decoder-select branch this point exercised (the
+                // exec_val derives from the same seed: build_parity_point sets it
+                // to ONE when bit 6 is set, else ZERO).
+                if layer_has_decoder_payload(layer) {
+                    decoder_present = true;
+                    if (seed >> 6) & 1 == 1 {
+                        decoder_exec_seen = true;
+                    } else {
+                        decoder_fill_seen = true;
+                    }
+                }
                 if upload_bench_program_to_constant(&point.lowered.lanes).unwrap() {
                     point.run_and_check(InterpResidency::Ldc);
                 } else {
@@ -1018,4 +1202,8 @@ fn interp_full_parity() {
             "{circuit}: no budget compiled — spurious-panic check"
         );
     }
+    assert!(
+        !decoder_present || (decoder_exec_seen && decoder_fill_seen),
+        "decoder-select coverage incomplete: exec_seen={decoder_exec_seen} fill_seen={decoder_fill_seen} — a budget was likely skipped"
+    );
 }

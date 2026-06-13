@@ -248,8 +248,6 @@ pub(crate) struct LoweredPayloads {
     pub bytes: Vec<u8>,
     /// Byte offset of payload p's record (each 16B-aligned).
     pub offsets: Vec<u32>,
-    /// Kind tag per payload (structural-check convenience).
-    pub kinds: Vec<u16>,
 }
 
 fn mont(c: u32) -> BF {
@@ -512,7 +510,6 @@ pub(crate) fn lower_payloads(
 ) -> LoweredPayloads {
     let mut w = RecWriter { bytes: Vec::new() };
     let mut offsets = Vec::with_capacity(cf.payloads.len());
-    let mut kinds = Vec::with_capacity(cf.payloads.len());
 
     for (p, rec) in cf.payloads.iter().enumerate() {
         let (kind, n_dsts, n_ops) = payload_kind_shape(rec);
@@ -579,7 +576,6 @@ pub(crate) fn lower_payloads(
 
         w.pad16();
         offsets.push(w.bytes.len() as u32);
-        kinds.push(kind);
 
         // Header (see the ABI comment in the .cu).
         w.u16(kind);
@@ -680,7 +676,6 @@ pub(crate) fn lower_payloads(
     let lp = LoweredPayloads {
         bytes: w.bytes,
         offsets,
-        kinds,
     };
     verify_lowered_payloads(&lp, cf);
     lp
