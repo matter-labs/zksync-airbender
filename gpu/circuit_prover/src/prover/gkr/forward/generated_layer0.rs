@@ -120,8 +120,7 @@ where
     // read on padding rows by the kernel; `forward_setup` (and thus the backing
     // allocation) outlives the stream-ordered launch scheduled by the caller.
     // `E == E4` in the only production monomorphization (asserted by the caller).
-    let decoder_fill_value =
-        forward_setup.decoder_lookup_fill_value_device().as_ptr() as *const E4;
+    let decoder_fill_value = forward_setup.decoder_lookup_fill_value_device().as_ptr() as *const E4;
 
     (perm_challenges, perm_additive, decoder_fill_value)
 }
@@ -150,7 +149,11 @@ fn materialize_ext_output_slot<E>(
 where
     E: Field + FieldExtension<BF> + 'static,
 {
-    let layout = storage.layout.as_ref().expect("storage layout required").clone();
+    let layout = storage
+        .layout
+        .as_ref()
+        .expect("storage layout required")
+        .clone();
     let addrs: Vec<GKRAddress> = match layout.layers.get(storage_layer) {
         Some(layer_layout) => layer_layout
             .index
@@ -190,7 +193,11 @@ fn materialize_base_output_slot<E>(
 where
     E: Field + FieldExtension<BF> + 'static,
 {
-    let layout = storage.layout.as_ref().expect("storage layout required").clone();
+    let layout = storage
+        .layout
+        .as_ref()
+        .expect("storage layout required")
+        .clone();
     let addrs: Vec<GKRAddress> = match layout.layers.get(storage_layer) {
         Some(layer_layout) => layer_layout
             .index

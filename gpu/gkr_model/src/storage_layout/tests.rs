@@ -408,7 +408,11 @@ fn forward_kernel_outputs_fit_four_pointer_backing_model_all_main_layers() {
                                     artifact.scratch_space_mapping.contains_key(addr);
                                 let key = format!(
                                     "(L{clayer},{class:?},{lfield:?}){}",
-                                    if scratch_backed { "[scratch-prematerialized]" } else { "" }
+                                    if scratch_backed {
+                                        "[scratch-prematerialized]"
+                                    } else {
+                                        ""
+                                    }
                                 );
                                 *escapes.entry(key).or_default() += 1;
                             }

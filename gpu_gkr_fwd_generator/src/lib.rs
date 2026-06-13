@@ -14,6 +14,8 @@
 //! forward pass, so this generator never emits them (and panics defensively if a
 //! forward output is ever found to depend on one).
 
+use cs::definitions::gkr::RamWordRepresentation as Word;
+use cs::definitions::{GKRAddress, VirtualSetupPoly};
 use cs::gkr_compiler::codegen_ir::{
     CacheKind, CodegenCache, CodegenGate, CodegenGlobals, CodegenLayer, Domain, ExprNode, GateKind,
     LinearComb, MemTupleDescriptor, NodeId,
@@ -22,9 +24,7 @@ use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict as AddrSpace, CompiledAddressStrict as Addr,
     CompiledMemoryTimestamp as Ts,
 };
-use cs::definitions::gkr::RamWordRepresentation as Word;
-use cs::definitions::{GKRAddress, VirtualSetupPoly};
-use gpu_gkr_model::storage_layout::{address_storage_layer, GpuGKRStorageLayout};
+use gpu_gkr_model::storage_layout::{GpuGKRStorageLayout, address_storage_layer};
 
 /// Concrete base field of the lowered circuits (BabyBear). The codegen IR is
 /// field-erased (`u32` constants), so this is only used at the edges.
@@ -385,7 +385,10 @@ impl<'a> Generator<'a> {
                 self.line(format!("E_ADD_BFC({next}, {acc}, {c})"));
                 acc = next;
             }
-            other => panic!("forward codegen: mem-tuple address_space {:?} unsupported", other),
+            other => panic!(
+                "forward codegen: mem-tuple address_space {:?} unsupported",
+                other
+            ),
         }
 
         // address term(s)
@@ -505,24 +508,26 @@ impl<'a> Generator<'a> {
                 let b = self.operand(layer, input[1]);
                 let g = format!("g{}", gate.dst[0].node.0);
                 self.line(format!("PRODUCT({g}, {a}, {b})"));
-                self.store_inner(layer, gate,0, &g);
+                self.store_inner(layer, gate, 0, &g);
             }
             GateKind::LookupPairFromMaterializedBaseInputs { input } => {
                 let b = self.operand(layer, input[0]);
                 let d = self.operand(layer, input[1]);
                 let (num, den) = self.lookup_dsts(gate);
                 self.line(format!("LOOKUP_BASE_PAIR({num}, {den}, {b}, {d})"));
-                self.store_inner(layer, gate,0, &num);
-                self.store_inner(layer, gate,1, &den);
+                self.store_inner(layer, gate, 0, &num);
+                self.store_inner(layer, gate, 1, &den);
             }
             GateKind::LookupFromMaterializedBaseInputWithSetup { input, setup } => {
                 let b = self.operand(layer, *input);
                 let c = self.operand(layer, setup[0]);
                 let d = self.operand(layer, setup[1]);
                 let (num, den) = self.lookup_dsts(gate);
-                self.line(format!("LOOKUP_BASE_MINUS_MULT({num}, {den}, {b}, {c}, {d})"));
-                self.store_inner(layer, gate,0, &num);
-                self.store_inner(layer, gate,1, &den);
+                self.line(format!(
+                    "LOOKUP_BASE_MINUS_MULT({num}, {den}, {b}, {c}, {d})"
+                ));
+                self.store_inner(layer, gate, 0, &num);
+                self.store_inner(layer, gate, 1, &den);
             }
             GateKind::LookupWithCachedDensAndSetup { input, setup } => {
                 let a = self.operand(layer, input[0]);
@@ -530,9 +535,11 @@ impl<'a> Generator<'a> {
                 let c = self.operand(layer, setup[0]);
                 let d = self.operand(layer, setup[1]);
                 let (num, den) = self.lookup_dsts(gate);
-                self.line(format!("LOOKUP_CACHED_DENS({num}, {den}, {a}, {b}, {c}, {d})"));
-                self.store_inner(layer, gate,0, &num);
-                self.store_inner(layer, gate,1, &den);
+                self.line(format!(
+                    "LOOKUP_CACHED_DENS({num}, {den}, {a}, {b}, {c}, {d})"
+                ));
+                self.store_inner(layer, gate, 0, &num);
+                self.store_inner(layer, gate, 1, &den);
             }
             // Ext twin of LookupPairFromMaterializedBaseInputs: both inputs are
             // already-materialized ext vector tuples (VectorizedLookup caches).
@@ -551,7 +558,9 @@ impl<'a> Generator<'a> {
                 let c = self.operand(layer, setup[0]);
                 let d = self.operand(layer, setup[1]);
                 let (num, den) = self.lookup_dsts(gate);
-                self.line(format!("LOOKUP_EXT_MINUS_MULT({num}, {den}, {b}, {c}, {d})"));
+                self.line(format!(
+                    "LOOKUP_EXT_MINUS_MULT({num}, {den}, {b}, {c}, {d})"
+                ));
                 self.store_inner(layer, gate, 0, &num);
                 self.store_inner(layer, gate, 1, &den);
             }
@@ -599,7 +608,10 @@ impl<'a> Generator<'a> {
         // The output domain is the producing GateOutput node's domain.
         let dom = match &layer.arena.nodes[gate.dst[slot].node.0 as usize] {
             ExprNode::GateOutput { domain, .. } => *domain,
-            other => panic!("gate dst node {} not a GateOutput: {:?}", gate.dst[slot].node.0, other),
+            other => panic!(
+                "gate dst node {} not a GateOutput: {:?}",
+                gate.dst[slot].node.0, other
+            ),
         };
         match dom {
             Domain::Ext => self.line(format!("STORE_INNER_EXT({poly_idx}, {var})")),
@@ -685,21 +697,31 @@ mod tests {
         for (li, layer) in circuit.layers.iter().enumerate() {
             let mut per_gate: BTreeMap<String, usize> = BTreeMap::new();
             for gate in layer.gates.iter().chain(layer.gates_external.iter()) {
-                *per_gate.entry(head(format!("{:?}", gate.kind))).or_default() += 1;
+                *per_gate
+                    .entry(head(format!("{:?}", gate.kind)))
+                    .or_default() += 1;
             }
             let mut per_cache: BTreeMap<String, usize> = BTreeMap::new();
             for cache in &layer.caches {
-                *per_cache.entry(head(format!("{:?}", cache.kind))).or_default() += 1;
+                *per_cache
+                    .entry(head(format!("{:?}", cache.kind)))
+                    .or_default() += 1;
                 if let CacheKind::MemoryTuple { descriptor } = &cache.kind {
                     let d = &descriptor.descriptor;
-                    *mt_space.entry(head(format!("{:?}", d.address_space))).or_default() += 1;
+                    *mt_space
+                        .entry(head(format!("{:?}", d.address_space)))
+                        .or_default() += 1;
                     *mt_addr.entry(head(format!("{:?}", d.address))).or_default() += 1;
                     *mt_value.entry(head(format!("{:?}", d.value))).or_default() += 1;
                 }
             }
             println!("layer {li}: gates={per_gate:?} caches={per_cache:?}");
-            for (k, v) in per_gate { *gate_kinds.entry(k).or_default() += v; }
-            for (k, v) in per_cache { *cache_kinds.entry(k).or_default() += v; }
+            for (k, v) in per_gate {
+                *gate_kinds.entry(k).or_default() += v;
+            }
+            for (k, v) in per_cache {
+                *cache_kinds.entry(k).or_default() += v;
+            }
         }
         println!("\n== TOTALS ==");
         println!("gate kinds:  {gate_kinds:?}");
@@ -770,17 +792,44 @@ mod tests {
         assert!(s.contains("FWD_FN_BEGIN(0)"));
         assert!(s.contains("FWD_FN_END"));
         assert_eq!(s.matches("PRODUCT(").count(), 4, "grand products");
-        assert_eq!(s.matches("LOOKUP_BASE_PAIR(").count(), 5, "base lookup pairs");
-        assert_eq!(s.matches("LOOKUP_BASE_MINUS_MULT(").count(), 2, "base-with-setup");
+        assert_eq!(
+            s.matches("LOOKUP_BASE_PAIR(").count(),
+            5,
+            "base lookup pairs"
+        );
+        assert_eq!(
+            s.matches("LOOKUP_BASE_MINUS_MULT(").count(),
+            2,
+            "base-with-setup"
+        );
         assert_eq!(s.matches("LOOKUP_CACHED_DENS(").count(), 1, "cached-dens");
-        assert_eq!(s.matches("STORE_CACHE_BASE(").count(), 6, "single-col caches");
-        assert_eq!(s.matches("STORE_CACHE_EXT(").count(), 10, "ext caches (8 memtuple+1 vec+1 setup)");
+        assert_eq!(
+            s.matches("STORE_CACHE_BASE(").count(),
+            6,
+            "single-col caches"
+        );
+        assert_eq!(
+            s.matches("STORE_CACHE_EXT(").count(),
+            10,
+            "ext caches (8 memtuple+1 vec+1 setup)"
+        );
         assert_eq!(e.copy_aliases.len(), 3, "3 CopyInBaseField aliases");
         // Decoder VectorizedLookup (cache 14, width 8): col_0 base→ext lift, 7
         // alpha-fma steps for cols 1..7, one predicate-select against the fill.
-        assert!(!s.contains("DECODER_LOOKUP_TODO"), "decoder stub fully replaced");
-        assert_eq!(s.matches("E_FROM_BASE(").count(), 1, "decoder col_0 base→ext lift");
-        assert_eq!(s.matches("E_FMA_ALPHA(").count(), 7, "decoder cols 1..7 alpha-fma");
+        assert!(
+            !s.contains("DECODER_LOOKUP_TODO"),
+            "decoder stub fully replaced"
+        );
+        assert_eq!(
+            s.matches("E_FROM_BASE(").count(),
+            1,
+            "decoder col_0 base→ext lift"
+        );
+        assert_eq!(
+            s.matches("E_FMA_ALPHA(").count(),
+            7,
+            "decoder cols 1..7 alpha-fma"
+        );
         assert_eq!(
             s.matches("SELECT_DECODER_FILL(").count(),
             1,
