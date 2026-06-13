@@ -233,7 +233,8 @@ use materialize_helpers::{
 
 use flat_plan::{
     analyze_forward_lookup_usage, build_flat_forward_plan, cache_relation_layer,
-    commit_flat_forward_plan, release_forward_lookup_resources_after_layer,
+    commit_flat_forward_plan, materialize_flat_forward_plan_inits,
+    release_forward_lookup_resources_after_layer,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -525,6 +526,10 @@ where
         trace_len,
         context,
     )?;
+    // Launch the deferred inits/teardowns materializations split out of plan
+    // building (behavior-preserving: same writes, before the flat-desc launches
+    // exactly as the prior inline materialize ran during plan building).
+    materialize_flat_forward_plan_inits(&plan, storage, external_challenges, trace_len, context)?;
     for desc in plan.descs.iter() {
         if kernels::flat_desc_has_work(desc) {
             kernels::launch_flat_forward_layer(desc, trace_len, context)?;
@@ -571,6 +576,43 @@ fn schedule_materialized_vector_lookup_inputs<E>(
 where
     E: FieldExtension<BF> + Field + SetByRef + SetByVal + crate::prover::gkr::ForwardKernels,
 {
+    // Behavior-preserving build/launch split (see `build_cache_relation_batches`):
+    // build all batches in order — each inserting its outputs into storage — then
+    // launch them in the same order, identical to the prior interleaved loop.
+    let batches = build_materialized_vector_lookup_input_batches(
+        expected_output_layer,
+        layer,
+        storage,
+        stage1,
+        forward_setup,
+        decoder_predicate_address,
+        context,
+    )?;
+    for batch in batches {
+        launch_forward_cache(batch, trace_len, context)?;
+    }
+
+    Ok(())
+}
+
+/// Build the `MaterializedVectorLookupInput` cache batches for a layer,
+/// inserting each output into `storage` in build order, and return the batches
+/// the caller must launch (via `launch_forward_cache`) in order. Split out from
+/// `schedule_materialized_vector_lookup_inputs` so the stage-3 bench fixture can
+/// capture the batches for replay; the production caller launches each
+/// immediately, which is exactly the prior behavior.
+fn build_materialized_vector_lookup_input_batches<E>(
+    expected_output_layer: usize,
+    layer: &GKRLayerDescription,
+    storage: &mut GpuGKRStorage<BF, E>,
+    stage1: &GpuGKRStage1Output,
+    forward_setup: &GpuGKRForwardSetup<E>,
+    decoder_predicate_address: Option<GKRAddress>,
+    context: &ProverContext,
+) -> CudaResult<Vec<GpuGKRForwardCacheBatch<E>>>
+where
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal + crate::prover::gkr::ForwardKernels,
+{
     let generic_lookup = if forward_setup.generic_lookup_len() > 0 {
         forward_setup.generic_lookup().as_ptr()
     } else {
@@ -589,6 +631,7 @@ where
         })
         .peekable();
 
+    let mut batches = Vec::new();
     while pending.peek().is_some() {
         let mut batch = GpuGKRForwardCacheBatch::default();
         let mut outputs = Vec::with_capacity(MAX_CACHE_RELATIONS_PER_LAYER);
@@ -643,10 +686,10 @@ where
         for (address, poly) in outputs {
             storage.insert_extension_at_layer(expected_output_layer, address, poly);
         }
-        launch_forward_cache(batch, trace_len, context)?;
+        batches.push(batch);
     }
 
-    Ok(())
+    Ok(batches)
 }
 
 fn schedule_materialized_single_lookup_inputs<E>(
@@ -854,14 +897,67 @@ where
     Sub: BinaryOp<E, BF, E>,
     Sub: BinaryOp<BF, BF, BF>,
 {
+    // Behavior-preserving build/launch split: build the batches (which mutates
+    // storage by inserting the cache outputs) and launch each immediately, in
+    // build order — identical to the previous inline build-and-launch loop.
+    // The build step is reused by the stage-3 bench fixture, which captures the
+    // returned batches for replay instead of launching them here.
+    let batches = build_cache_relation_batches(
+        layer_idx,
+        relations,
+        storage,
+        stage1,
+        forward_setup,
+        external_challenges,
+        decoder_predicate_address,
+        trace_len,
+        context,
+    )?;
+    for batch in batches {
+        launch_forward_cache(batch, trace_len, context)?;
+    }
+    Ok(())
+}
+
+/// Build the forward-cache batches for a layer's cached relations, inserting
+/// each lowered cache output into `storage` in build order. Returns the batches
+/// the caller must launch (via `launch_forward_cache`) in order. Split out from
+/// `schedule_cache_relations` so the stage-3 bench fixture can capture the
+/// batches for replay; the production caller launches each immediately, which
+/// is exactly the prior behavior.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn build_cache_relation_batches<E>(
+    layer_idx: usize,
+    relations: &BTreeMap<GKRAddress, NoFieldGKRCacheRelation>,
+    storage: &mut GpuGKRStorage<BF, E>,
+    stage1: &GpuGKRStage1Output,
+    forward_setup: &GpuGKRForwardSetup<E>,
+    external_challenges: &GKRExternalChallenges<BF, E>,
+    decoder_predicate_address: Option<GKRAddress>,
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<Vec<GpuGKRForwardCacheBatch<E>>>
+where
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal + crate::prover::gkr::ForwardKernels,
+    Add: BinaryOp<E, E, E>,
+    Add: BinaryOp<BF, E, E>,
+    Add: BinaryOp<E, BF, E>,
+    Mul: BinaryOp<E, E, E>,
+    Mul: BinaryOp<BF, E, E>,
+    Mul: BinaryOp<E, BF, E>,
+    Sub: BinaryOp<E, E, E>,
+    Sub: BinaryOp<E, BF, E>,
+    Sub: BinaryOp<BF, BF, BF>,
+{
     if relations.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     assert!(
         forward_setup.generic_lookup_len() <= u32::MAX as usize,
         "generic lookup runtime too large for fused forward cache kernel"
     );
 
+    let mut batches = Vec::new();
     let mut pending_relations = relations.iter();
     loop {
         let mut batch = GpuGKRForwardCacheBatch::default();
@@ -896,9 +992,9 @@ where
         if batch.count == 0 {
             break;
         }
-        launch_forward_cache(batch, trace_len, context)?;
+        batches.push(batch);
     }
-    Ok(())
+    Ok(batches)
 }
 
 #[cfg(test)]

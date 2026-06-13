@@ -8,6 +8,7 @@
 //! extern would fail to link), and a feature-gated non-test module could not
 //! see dev-dependencies.
 
+mod fixture;
 mod lower;
 mod tests;
 

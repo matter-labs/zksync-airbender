@@ -21,5 +21,7 @@ pub fn configure_kernel_attributes() {
 
 #[cfg(test)]
 pub(crate) mod test_utils;
+// `pub(crate)` so the stage-3 bench fixture (`gkr::forward::bench_interp`) can
+// reuse the add_sub forward preamble in `tests::fixtures_helpers`.
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

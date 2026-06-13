@@ -620,3 +620,150 @@ pub(crate) fn prepare_basic_unrolled_async_backward_fixture(
     );
     build_basic_unrolled_async_backward_fixture_from_base(base)
 }
+
+/// Build the base add_sub unrolled fixture for the stage-3 bench (no CPU
+/// reference proof). Thin `pub(crate)` wrapper over `prepare_basic_unrolled_fixture`
+/// so `bench_interp::fixture` can reach it without widening the private
+/// `BasicUnrolledFixtureBuildConfig`.
+#[cfg(feature = "bench")]
+pub(crate) fn prepare_basic_unrolled_add_sub_fixture_for_bench() -> (
+    BasicUnrolledFixture,
+    Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
+) {
+    prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
+        binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
+        text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
+        layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+        non_determinism_reads: &[15, 1],
+        compute_cpu_reference: false,
+        device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+    })
+}
+
+/// Immutable references to the forward preamble state, handed to the stage-3
+/// bench fixture's capturing pass (`bench_interp::fixture`). The setup trace
+/// holder is borrowed from the `GpuGKRSetupTransfer` that lives only for the
+/// duration of the capture callback (its column backings are Arc-cloned into
+/// the storage the callback builds, so it can be dropped afterwards).
+#[cfg(feature = "bench")]
+pub(crate) struct BasicUnrolledForwardPreambleRefs<'a> {
+    pub(crate) setup_trace_holder: &'a crate::prover::trace::holder::TraceHolder<BF>,
+    pub(crate) stage1: &'a GpuGKRStage1Output,
+    pub(crate) forward_setup: &'a crate::prover::gkr::setup::GpuGKRForwardSetup<E4>,
+    pub(crate) compiled_circuit: &'a GKRCircuitArtifact<BF>,
+    pub(crate) external_challenges: &'a GKRExternalChallenges<BF, E4>,
+    pub(crate) final_trace_size_log_2: usize,
+    pub(crate) context: &'a ProverContext,
+}
+
+/// Run the REAL add_sub unrolled forward preamble (transfers → stage1 →
+/// forward setup, exactly as `build_basic_unrolled_async_backward_fixture_from_base`
+/// does up to but NOT including `schedule_forward_pass`) and invoke `capture`
+/// with the resulting state. The transfers are kept alive across the `capture`
+/// call and dropped after it returns; `stage1` and `forward_setup` are returned
+/// (moved out) so the caller can keep them alive — their device buffers stay at
+/// stable addresses across the move, which the captured launch pointers rely on.
+///
+/// Stage-3 bench only. The capturing pass lives in `bench_interp::fixture`
+/// because it needs `gkr::forward`-private scheduling helpers; the lifetime-
+/// coupled preamble lives here because it owns the `GpuGKRSetupTransfer`.
+#[cfg(feature = "bench")]
+pub(crate) fn build_basic_unrolled_forward_capture<R>(
+    base: &BasicUnrolledFixture,
+    capture: impl FnOnce(BasicUnrolledForwardPreambleRefs<'_>) -> R,
+) -> (
+    GpuGKRStage1Output,
+    crate::prover::gkr::setup::GpuGKRForwardSetup<E4>,
+    R,
+) {
+    let mut transfers = base.create_transfers_for_context(&base.context).unwrap();
+    transfers.schedule(&base.context).unwrap();
+    base.context.get_h2d_stream().synchronize().unwrap();
+
+    let setup_ref = transfers
+        .setup
+        .as_ref()
+        .expect("fixture transfers always include setup");
+    let stage1_output = generate_stage1_output_for_test(
+        base.circuit_type,
+        &base.compiled_circuit,
+        setup_ref,
+        transfers
+            .decoder
+            .as_ref()
+            .map(|transfer| &transfer.data_device[..]),
+        None,
+        &transfers
+            .tracing_data
+            .as_ref()
+            .expect("fixture transfers always include tracing_data")
+            .data_device,
+        &base.context,
+    )
+    .unwrap();
+    base.context.get_exec_stream().synchronize().unwrap();
+
+    let mut lookup_challenges_host = unsafe { base.context.alloc_host_uninit_slice(3) };
+    let mut transcript_input = vec![];
+    base.external_challenges
+        .flatten_into_buffer(&mut transcript_input);
+    flatten_merkle_caps_iter_into(
+        setup_ref
+            .trace_holder
+            .read_per_coset_caps_synchronously(&base.context)
+            .unwrap()
+            .into_iter(),
+        &mut transcript_input,
+    );
+    flatten_merkle_caps_iter_into(
+        base.memory_tree_caps.clone().into_iter(),
+        &mut transcript_input,
+    );
+    flatten_merkle_caps_iter_into(
+        stage1_output
+            .witness_trace_holder
+            .read_per_coset_caps_synchronously(&base.context)
+            .unwrap()
+            .into_iter(),
+        &mut transcript_input,
+    );
+    let mut seed = Transcript::commit_initial(&transcript_input);
+    let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
+        challenges.try_into().unwrap();
+    unsafe {
+        lookup_challenges_host
+            .get_mut_accessor()
+            .get_mut()
+            .copy_from_slice(&[
+                lookup_alpha,
+                lookup_additive_part,
+                constraints_batch_challenge,
+            ]);
+    }
+    let forward_setup = setup_ref
+        .schedule_forward_setup(
+            &base.compiled_circuit,
+            upload_lookup_challenges_for_test(&lookup_challenges_host, &base.context),
+            &base.context,
+        )
+        .unwrap();
+    base.context.get_exec_stream().synchronize().unwrap();
+
+    let result = capture(BasicUnrolledForwardPreambleRefs {
+        setup_trace_holder: &setup_ref.trace_holder,
+        stage1: &stage1_output,
+        forward_setup: &forward_setup,
+        compiled_circuit: &base.compiled_circuit,
+        external_challenges: &base.external_challenges,
+        final_trace_size_log_2: base.final_trace_size_log_2,
+        context: &base.context,
+    });
+
+    // Transfers' column backings were Arc-cloned into the captured storage; the
+    // setup trace-holder borrow above is over now, so dropping transfers here is
+    // safe (and frees the staging buffers back to the pool).
+    drop(transfers);
+
+    (stage1_output, forward_setup, result)
+}

@@ -11,7 +11,7 @@ use super::super::{GpuBaseFieldPoly, GpuBaseFieldSourceKind, GpuExtensionFieldPo
 use crate::primitives::field::{BF, E4};
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use crate::prover::ProverContext;
-use crate::upstream::{Field, GKRAddress};
+use crate::upstream::{Field, GKRAddress, InitsOrTeardownsTimestampAndValue};
 
 #[derive(Clone, Copy, Default)]
 pub(crate) struct ForwardLookupUsage {
@@ -43,6 +43,24 @@ pub(crate) struct FlatForwardPlan<E> {
     pub(crate) computed_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
     pub(crate) aliased_base_outputs: Vec<(GKRAddress, GpuBaseFieldPoly<BF>)>,
     pub(crate) aliased_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
+    /// `InitsOrTeardownsInitialPair` materializations deferred out of plan
+    /// building so the launch can be replayed (build/launch split — see
+    /// `materialize_flat_forward_plan_inits`). The destination poly is a shared
+    /// clone of the view also recorded in `computed_extension_outputs`.
+    pub(crate) pending_inits: Vec<PendingInitsLaunch<E>>,
+}
+
+/// Captured arguments for one deferred `InitsOrTeardownsInitialPair`
+/// materialization. The destination view is allocated during plan building
+/// (and inserted into storage by `commit_flat_forward_plan`); the
+/// multi-kernel write into it is launched separately via
+/// `materialize_flat_forward_plan_inits` so the bench fixture can replay it.
+pub(crate) struct PendingInitsLaunch<E> {
+    pub(crate) dst: GpuExtensionFieldPoly<E>,
+    pub(crate) timestamp_and_value: InitsOrTeardownsTimestampAndValue,
+    pub(crate) setup: [GKRAddress; 2],
+    pub(crate) address_high_bits: [u32; 2],
+    pub(crate) address_high_bits_shift: u32,
 }
 
 #[repr(u32)]

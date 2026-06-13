@@ -1207,3 +1207,140 @@ fn interp_full_parity() {
         "decoder-select coverage incomplete: exec_seen={decoder_exec_seen} fill_seen={decoder_fill_seen} — a budget was likely skipped"
     );
 }
+
+// ===========================================================================
+// Task 5: real-circuit per-layer fixture builder.
+// ===========================================================================
+
+use super::fixture::{
+    assert_layer_consistency, build_add_sub_circuit_fixture, relation_output_addrs, STAGE3_CIRCUITS,
+};
+
+/// 5.1 — CPU-only representation-consistency precheck (spec §6.0). For each of
+/// the 3 circuits, the codegen-IR JSON and the prover-side artifact must agree
+/// per layer on cache count, cache-out address set, output address population,
+/// and source-column set. Non-ignored (CPU only).
+#[test]
+fn stage3_layer_consistency_precheck() {
+    for circuit in STAGE3_CIRCUITS {
+        assert_layer_consistency(circuit);
+    }
+}
+
+/// Read every output column the layer produces back to host bytes, in address
+/// order. Each entry is `(addr, e4, raw little-endian bytes)`. Uses the
+/// panic-robust `relation_output_addrs` (not `layer.outputs()`, which the
+/// upstream `dump_outputs` catch-all panics on for constraint gates).
+#[cfg(not(no_cuda))]
+fn read_layer_outputs(
+    fixture: &super::fixture::CircuitFixture,
+    layer_idx: usize,
+) -> Vec<(crate::upstream::GKRAddress, bool, Vec<u8>)> {
+    use crate::upstream::GKRAddress;
+    use std::collections::BTreeSet;
+    let context = &fixture.base.context;
+    let layer = &fixture.compiled_circuit.layers[layer_idx];
+    let mut output_set: BTreeSet<GKRAddress> = BTreeSet::new();
+    for gate in layer
+        .gates
+        .iter()
+        .chain(layer.gates_with_external_connections.iter())
+    {
+        output_set.extend(relation_output_addrs(&gate.enforced_relation));
+    }
+    let outputs: Vec<GKRAddress> = output_set.into_iter().collect();
+    let mut result = Vec::new();
+    for addr in outputs {
+        if let Some(poly) = fixture.storage.try_get_ext_poly(addr) {
+            let mut host = vec![E4::ZERO; poly.len()];
+            // SAFETY: poly.as_ptr() is a valid device E4 column of poly.len().
+            let slice = unsafe { DeviceSlice::from_raw_parts(poly.as_ptr(), poly.len()) };
+            memory_copy_async(&mut host, slice, context.get_exec_stream()).unwrap();
+            context.get_exec_stream().synchronize().unwrap();
+            let bytes = host
+                .iter()
+                .flat_map(|v| {
+                    let limbs: [u32; 4] = unsafe { std::mem::transmute(*v) };
+                    limbs.into_iter().flat_map(u32::to_le_bytes)
+                })
+                .collect();
+            result.push((addr, true, bytes));
+        } else if let Some(poly) = fixture.storage.try_get_base_poly(addr) {
+            let mut host = vec![BF::ZERO; poly.len()];
+            // SAFETY: poly.as_ptr() is a valid device BF column of poly.len().
+            let slice = unsafe { DeviceSlice::from_raw_parts(poly.as_ptr(), poly.len()) };
+            memory_copy_async(&mut host, slice, context.get_exec_stream()).unwrap();
+            context.get_exec_stream().synchronize().unwrap();
+            let bytes = host.iter().flat_map(|v| v.0.to_le_bytes()).collect();
+            result.push((addr, false, bytes));
+        }
+    }
+    result
+}
+
+/// 5.3 — Fixture smoke test (`#[ignore]`, GPU). Build the add_sub forward
+/// fixture, replay every layer's captured `flat_launches` twice, and assert the
+/// per-layer output columns are bytewise identical across the two replays
+/// (replayability). Also asserts the 5.1 precheck passes for add_sub.
+#[test]
+#[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh (see .agents/gpu_work.md)
+#[cfg(not(no_cuda))]
+#[serial]
+fn stage3_add_sub_fixture_smoke() {
+    // 5.1 precheck for the smoke-test circuit (CPU; cheap, run first).
+    assert_layer_consistency("add_sub_lui_auipc_mop");
+
+    let fixture = build_add_sub_circuit_fixture();
+    assert!(!fixture.layers.is_empty(), "fixture has no layers");
+
+    let context = &fixture.base.context;
+    for layer in &fixture.layers {
+        // A meaningful smoke layer must have at least one replayable launch.
+        let replayable = layer
+            .flat_launches
+            .iter()
+            .filter(|l| !matches!(l, super::fixture::FlatLaunch::MaterializeSingle))
+            .count();
+        if replayable == 0 {
+            continue;
+        }
+
+        fixture.replay_layer(layer.layer_idx).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        let first = read_layer_outputs(&fixture, layer.layer_idx);
+
+        fixture.replay_layer(layer.layer_idx).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        let second = read_layer_outputs(&fixture, layer.layer_idx);
+
+        assert_eq!(
+            first.len(),
+            second.len(),
+            "layer {}: output column count diverged across replays",
+            layer.layer_idx
+        );
+        for ((a_addr, a_e4, a_bytes), (b_addr, b_e4, b_bytes)) in first.iter().zip(second.iter()) {
+            assert_eq!(
+                a_addr, b_addr,
+                "layer {}: output address order",
+                layer.layer_idx
+            );
+            assert_eq!(
+                a_e4, b_e4,
+                "layer {}: output width {a_addr:?}",
+                layer.layer_idx
+            );
+            assert_eq!(
+                a_bytes, b_bytes,
+                "layer {}: output {a_addr:?} diverged across replays (non-replayable launch)",
+                layer.layer_idx
+            );
+        }
+        println!(
+            "layer {}: {} replayable launches, {} output columns identical across 2 replays",
+            layer.layer_idx,
+            replayable,
+            first.len()
+        );
+    }
+}

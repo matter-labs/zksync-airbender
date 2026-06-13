@@ -124,6 +124,7 @@ where
     let mut computed_extension_outputs = Vec::new();
     let mut aliased_base_outputs = Vec::new();
     let mut aliased_extension_outputs = Vec::new();
+    let mut pending_inits = Vec::new();
 
     for gate in gates.iter().chain(gates_with_external_connections.iter()) {
         assert_eq!(gate.output_layer, expected_output_layer);
@@ -679,19 +680,25 @@ where
                 output,
                 set_idxes,
             } => {
+                // Behavior-preserving build/launch split: allocate the
+                // destination view here (and record it as a computed output so
+                // `commit_flat_forward_plan` inserts it), but defer the
+                // multi-kernel materialization into `pending_inits` so the
+                // caller launches it via `materialize_flat_forward_plan_inits`.
+                // The production caller runs that immediately after building the
+                // plan — identical ordering and writes to the prior inline call;
+                // the stage-3 bench fixture captures `pending_inits` to replay.
                 let dst_view =
                     storage.allocate_ext_view(expected_output_layer, *output, context)?;
-                materialize_inits_and_teardowns_initial_pair_into(
-                    storage,
-                    &dst_view,
-                    timestamp_and_value,
-                    *setup,
-                    set_idxes.map(|idx| idx as u32),
-                    high_bits_offset_for_inits_and_teardowns::<2>(trace_len),
-                    external_challenges,
-                    trace_len,
-                    context,
-                )?;
+                pending_inits.push(PendingInitsLaunch {
+                    dst: dst_view.clone_shared(),
+                    timestamp_and_value: timestamp_and_value.clone(),
+                    setup: *setup,
+                    address_high_bits: set_idxes.map(|idx| idx as u32),
+                    address_high_bits_shift: high_bits_offset_for_inits_and_teardowns::<2>(
+                        trace_len,
+                    ),
+                });
                 computed_extension_outputs.push((*output, dst_view));
             }
             NoFieldGKRRelation::MaxQuadratic { .. }
@@ -712,7 +719,42 @@ where
         computed_extension_outputs,
         aliased_base_outputs,
         aliased_extension_outputs,
+        pending_inits,
     })
+}
+
+/// Launch the deferred `InitsOrTeardownsInitialPair` materializations recorded
+/// in `plan.pending_inits`, in build order. The production caller invokes this
+/// immediately after `build_flat_forward_plan` (before the flat-desc launches),
+/// which reproduces the prior inline-materialize behavior exactly; the stage-3
+/// bench fixture calls it on captured plans to replay the inits launches.
+pub(super) fn materialize_flat_forward_plan_inits<E>(
+    plan: &FlatForwardPlan<E>,
+    storage: &GpuGKRStorage<BF, E>,
+    external_challenges: &GKRExternalChallenges<BF, E>,
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<()>
+where
+    E: Field + FieldExtension<BF> + crate::prover::gkr::ForwardKernels + SetByVal,
+    Add: BinaryOp<E, E, E>,
+    Mul: BinaryOp<BF, E, E>,
+    Mul: BinaryOp<E, E, E>,
+{
+    for pending in &plan.pending_inits {
+        materialize_inits_and_teardowns_initial_pair_into(
+            storage,
+            &pending.dst,
+            &pending.timestamp_and_value,
+            pending.setup,
+            pending.address_high_bits,
+            pending.address_high_bits_shift,
+            external_challenges,
+            trace_len,
+            context,
+        )?;
+    }
+    Ok(())
 }
 
 pub(super) fn commit_flat_forward_plan<E>(
@@ -725,6 +767,10 @@ pub(super) fn commit_flat_forward_plan<E>(
         computed_extension_outputs,
         aliased_base_outputs,
         aliased_extension_outputs,
+        // Already launched via `materialize_flat_forward_plan_inits`; the
+        // destination views were recorded in `computed_extension_outputs` above
+        // and are inserted there.
+        pending_inits: _,
     } = plan;
 
     for (address, poly) in computed_extension_outputs {

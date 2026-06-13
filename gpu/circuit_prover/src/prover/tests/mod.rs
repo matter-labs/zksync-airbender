@@ -176,7 +176,9 @@ fn read_test_words(relative_path: &str) -> Vec<u32> {
         .collect()
 }
 
-fn deserialize_json_for_test<T: serde::de::DeserializeOwned>(relative_path: &str) -> T {
+// `pub(crate)` so the stage-3 bench 5.0 precheck (`bench_interp::fixture`) can
+// deserialize the prover-side `*_layout_gkr.json` artifact.
+pub(crate) fn deserialize_json_for_test<T: serde::de::DeserializeOwned>(relative_path: &str) -> T {
     let src = std::fs::File::open(test_artifact_path(relative_path)).unwrap();
     serde_json::from_reader(src).unwrap()
 }
@@ -759,5 +761,9 @@ fn assert_cached_kernel_addresses_are_layer_local(
     cached_addresses
 }
 
-mod fixtures_helpers;
-pub(super) use fixtures_helpers::*;
+pub(crate) mod fixtures_helpers;
+// `pub(crate)` re-export so the stage-3 bench fixture
+// (`gkr::forward::bench_interp::fixture`) can reach the forward-preamble helpers
+// (`build_basic_unrolled_forward_capture`, `prepare_basic_unrolled_add_sub_fixture_for_bench`,
+// `BasicUnrolledForwardPreambleRefs`) and `BasicUnrolledFixture`.
+pub(crate) use fixtures_helpers::*;
