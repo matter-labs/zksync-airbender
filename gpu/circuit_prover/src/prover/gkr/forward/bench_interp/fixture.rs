@@ -363,6 +363,20 @@ pub(crate) struct CircuitFixture {
     pub(crate) lookup_additive_part: E4,
 }
 
+impl LayerFixture {
+    /// Number of REPLAYABLE flat-side launches (every captured launch except the
+    /// not-yet-split `MaterializeSingle` marker). This is the flat side's
+    /// per-layer launch count for the §6.2(A) report's multi-launch-asymmetry
+    /// column (spec §9): flat is a SUM of launches vs the interpreter's single
+    /// launch.
+    pub(crate) fn replayable_launch_count(&self) -> usize {
+        self.flat_launches
+            .iter()
+            .filter(|l| !matches!(l, FlatLaunch::MaterializeSingle))
+            .count()
+    }
+}
+
 /// Deep-clone the captured deferred-inits launches (the dst views are shared
 /// clones). Used both to capture a replayable copy before
 /// `materialize_flat_forward_plan_inits` drains the source plan, and to launch
@@ -509,8 +523,19 @@ impl CircuitFixture {
     /// the layer's real flat-side outputs. Test code — synchronization is the
     /// caller's responsibility (see the smoke test).
     pub(crate) fn replay_layer(&self, layer_idx: usize) -> CudaResult<()> {
+        self.replay_layer_count(layer_idx, self.trace_len)
+    }
+
+    /// `replay_layer` with an explicit element `count` (≤ `self.trace_len`). The
+    /// flat launchers (`launch_flat_forward_layer` / `launch_forward_cache` /
+    /// `materialize_flat_forward_plan_inits`) grid on the passed count and write
+    /// only that prefix of the real-trace-sized buffers, so timing both sides at
+    /// a capped count bounds wall-clock and makes cross-circuit comparison
+    /// apples-to-apples (spec §6.2(A); controller ruling). Correctness gates pass
+    /// the full `trace_len` via `replay_layer`; only the timed region caps.
+    pub(crate) fn replay_layer_count(&self, layer_idx: usize, count: usize) -> CudaResult<()> {
         let context = self.context();
-        let trace_len = self.trace_len;
+        let trace_len = count;
         let layer = &self.layers[layer_idx];
         for launch in &layer.flat_launches {
             match launch {

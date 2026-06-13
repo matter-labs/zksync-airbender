@@ -585,4 +585,16 @@ EXTERN __launch_bounds__(128, 4) __global__ void ab_gkr_bench_fwd_interp_ldg_ker
 
 EXTERN __launch_bounds__(128, 4) __global__ void ab_gkr_bench_fwd_interp_ldc_kernel(const interp_desc desc) { interp_body<true>(desc); }
 
+// 256-thread launch-config-fairness variants (spec §9). interp_body is
+// block-size-AGNOSTIC (smem = budget*4*blockDim.x, all cell indexing strides by
+// blockDim.x / threadIdx.x), so the same body serves both block sizes; the only
+// difference is the __launch_bounds__ register/occupancy target. 256/2 mirrors
+// the doubled block with halved min-blocks-per-SM, so the static occupancy
+// target stays at 512 threads/SM (== 128/4). 256 thr x 64 cells x 4 B = 64 KB
+// dynamic smem exceeds the 48 KB default cap; the Rust launcher opts in via
+// cudaFuncSetAttribute(MaxDynamicSharedMemorySize) before launching.
+EXTERN __launch_bounds__(256, 2) __global__ void ab_gkr_bench_fwd_interp_ldg256_kernel(const interp_desc desc) { interp_body<false>(desc); }
+
+EXTERN __launch_bounds__(256, 2) __global__ void ab_gkr_bench_fwd_interp_ldc256_kernel(const interp_desc desc) { interp_body<true>(desc); }
+
 } // namespace airbender::prover::gkr::bench

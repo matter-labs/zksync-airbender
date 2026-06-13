@@ -3,7 +3,8 @@ use super::lower::{
     BenchChallenges, LoweredPayloads, LoweredProgram,
 };
 use super::{
-    launch_bench_fwd_interp, upload_bench_program_to_constant, InterpDesc, InterpResidency,
+    launch_bench_fwd_interp, upload_bench_program_to_constant, BenchThreads, InterpDesc,
+    InterpResidency,
 };
 
 use crate::allocator::tracker::AllocationPlacement;
@@ -944,7 +945,7 @@ impl ParityPoint<'_> {
             payloads: self.payload_bytes_dev.as_ptr() as *const u8,
             payload_offsets: self.payload_offsets_dev.as_ptr(),
         };
-        launch_bench_fwd_interp(&desc, residency, context).unwrap();
+        launch_bench_fwd_interp(&desc, residency, BenchThreads::T128, context).unwrap();
 
         let out_bf_host = readback_packed(&self.out_bf_dev, n_out_bf, t, context);
         let out_e4_host = readback_packed(&self.out_e4_dev, n_out_e4, t, context);
@@ -1364,36 +1365,74 @@ fn read_device_column_e4(ptr: *const u8, t: usize, context: &ProverContext) -> V
     host
 }
 
-/// Lower + run + device-compare one (circuit, layer, budget) point against the
-/// flat references already resident in storage. This is the body of harness
-/// gate (c): on the FIRST mismatch (non-zero `error_flag`, wrong `native_fired`
-/// count, vacuous comparison set, or any dst/output row divergence) it returns
-/// `Err(reason)`; a full pass returns `Ok(())`. Both the harness `run_point`
-/// and the legacy `stage3_real_fixture_interp_parity` driver call through here
-/// (the driver unwraps the `Err` into a panic, preserving its old semantics).
+/// The interpreter side of a real-fixture point, fully resident on device and
+/// ready to launch: the `InterpDesc` plus every backing allocation kept alive
+/// for the launch's lifetime. Shared by the device-compare gate (c) and the
+/// 6.C-2 timing path. The compare-only flat references are NOT built here.
+///
+/// `count` is the element count the buffers are sized for and the desc reports;
+/// the device columns the sources point into are real-trace-sized, so a
+/// `count < trace_len` reads/writes only a prefix (capped timing, spec §6.2(A)).
 #[cfg(not(no_cuda))]
-pub(super) fn run_real_fixture_parity_point(
+pub(super) struct InterpDeviceSetup {
+    pub(super) desc: InterpDesc,
+    pub(super) lanes: Vec<u16>,
+    /// cf payload p, dst j -> (e4, packed column index). For the compare.
+    pub(super) pay_slots: Vec<Vec<(bool, usize)>>,
+    pub(super) n_pay_bf: usize,
+    pub(super) n_pay_e4: usize,
+    /// (slot j, e4, packed column index). For the compare.
+    pub(super) out_slots: Vec<(u16, bool, usize)>,
+    pub(super) n_out_bf: usize,
+    pub(super) n_out_e4: usize,
+    pub(super) n_instr: u32,
+    pub(super) payload_bytes: usize,
+    pub(super) program_bytes: usize,
+    // Backing allocations: dropped (freed) when the setup is dropped; every raw
+    // pointer in `desc` and the read-back columns refer into these.
+    _virtual_src: std::collections::BTreeMap<usize, DeviceAllocation<Bf>>,
+    out_bf_dev: DeviceAllocation<Bf>,
+    out_e4_dev: DeviceAllocation<Ext>,
+    pay_bf_dev: DeviceAllocation<Bf>,
+    pay_e4_dev: DeviceAllocation<Ext>,
+    _payload_bytes_dev: DeviceAllocation<Ext>,
+    _payload_offsets_dev: DeviceAllocation<u32>,
+    _lanes_dev: DeviceAllocation<u16>,
+    _consts_dev: DeviceAllocation<BF>,
+    _sources_tbl_dev: DeviceAllocation<u64>,
+    _outputs_tbl_dev: DeviceAllocation<u64>,
+    _output_e4_dev: DeviceAllocation<u32>,
+    debug_dev: DeviceAllocation<u32>,
+    _debug_cells_dev: DeviceAllocation<Bf>,
+}
+
+/// Build the interpreter device side for one real-fixture point: materialize
+/// virtual-setup source columns, allocate fresh packed dst/output buffers, lower
+/// the program + payloads against the fixture's resolvers, and upload everything
+/// into an `InterpDesc`. Sized for `count` elements. The returned `desc` has
+/// `debug_cells`/`native_fired` populated (debug_dev[0] = native_fired,
+/// debug_dev[1] = error_flag); timing callers null them via
+/// `setup.into_timing_desc()`.
+#[cfg(not(no_cuda))]
+pub(super) fn build_interp_device_setup(
     fixture: &CircuitFixture,
     layer: &LayerFixture,
     cf: &gkr_eval_isa::compiler::fwd::CompiledForward,
     cg_layer: &cs::gkr_compiler::codegen_ir::CodegenLayer,
-    label: &str,
-) -> Result<(), String> {
+    count: usize,
+) -> InterpDeviceSetup {
     use super::fixture::{
-        materialize_virtual_setup_column, resolve_decoder_pred, resolve_output, resolve_source,
+        materialize_virtual_setup_column, resolve_decoder_pred, resolve_source,
         source_virtual_setup,
     };
     let arena = &cg_layer.arena.nodes;
     let context = fixture.context();
-    let t = fixture.trace_len;
+    let t = count;
     let ch = fixture.bench_challenges();
     let decoder_pred_addr = fixture.decoder_predicate_address();
 
-    // Virtual-setup bf source columns (RangeCheck16Bits / RangeCheckTimestamp /
-    // inits) have NO resident device buffer — production synthesizes them in the
-    // kernel from the row index. The interpreter reads a flat pointer per source,
-    // so materialize each such column (byte-for-byte the device formula) and
-    // upload it; the bf source resolver below serves these from `virtual_src`.
+    // Virtual-setup bf source columns have NO resident device buffer;
+    // materialize each (byte-for-byte the device formula) and upload.
     let mut virtual_src: std::collections::BTreeMap<usize, DeviceAllocation<Bf>> =
         std::collections::BTreeMap::new();
     for i in 0..cf.source_map.bf.len() {
@@ -1403,6 +1442,190 @@ pub(super) fn run_real_fixture_parity_point(
         }
     }
     context.get_exec_stream().synchronize().unwrap();
+
+    // Fresh interpreter dst buffers, packed per width (the interpreter writes
+    // here, NOT into storage, so flat references stay intact).
+    let widths = output_widths(&cf.program);
+    let mut out_slots = Vec::new();
+    let (mut n_out_bf, mut n_out_e4) = (0usize, 0usize);
+    for &(j, _node) in &cf.outputs {
+        let e4 = widths[j as usize].expect("cf.outputs slot never written");
+        let col = if e4 { &mut n_out_e4 } else { &mut n_out_bf };
+        out_slots.push((j, e4, *col));
+        *col += 1;
+    }
+    let out_bf_dev = alloc_upload(context, &vec![Bf::ZERO; n_out_bf * t]);
+    let out_e4_dev = alloc_upload(context, &vec![Ext::ZERO; n_out_e4 * t]);
+
+    let mut pay_slots: Vec<Vec<(bool, usize)>> = Vec::with_capacity(cf.payloads.len());
+    let (mut n_pay_bf, mut n_pay_e4) = (0usize, 0usize);
+    for rec in &cf.payloads {
+        let (_, n_dsts, _) = payload_kind_shape(rec);
+        let mut per = Vec::with_capacity(n_dsts);
+        for j in 0..n_dsts {
+            let e4 = payload_dst_e4(rec, j);
+            let col = if e4 { &mut n_pay_e4 } else { &mut n_pay_bf };
+            per.push((e4, *col));
+            *col += 1;
+        }
+        pay_slots.push(per);
+    }
+    let pay_bf_dev = alloc_upload(context, &vec![Bf::ZERO; n_pay_bf * t]);
+    let pay_e4_dev = alloc_upload(context, &vec![Ext::ZERO; n_pay_e4 * t]);
+
+    // Lower: sources -> resident storage columns; outputs/dsts -> fresh packed
+    // buffers; decoder pred -> storage predicate column; setup table -> forward
+    // setup's generic_lookup buffer.
+    let lowered = lower_program(
+        cf,
+        |i| {
+            if let Some(dev) = virtual_src.get(&i) {
+                dev.as_ptr() as *const u8
+            } else {
+                resolve_source(layer, &fixture.storage, cf, cg_layer, i, false)
+            }
+        },
+        |i| resolve_source(layer, &fixture.storage, cf, cg_layer, i, true),
+        |j| {
+            let (_, e4, col) = *out_slots
+                .iter()
+                .find(|&&(jj, ..)| jj == j)
+                .expect("unknown output slot");
+            let ptr = if e4 {
+                (unsafe { out_e4_dev.as_ptr().add(col * t) }) as *mut u8
+            } else {
+                (unsafe { out_bf_dev.as_ptr().add(col * t) }) as *mut u8
+            };
+            (ptr, e4)
+        },
+    );
+
+    let (setup_ptr, setup_len) = fixture.setup_table();
+    let lp: LoweredPayloads = lower_payloads(
+        cf,
+        arena,
+        |p, _rec, j| {
+            let (e4, col) = pay_slots[p][j];
+            if e4 {
+                (unsafe { pay_e4_dev.as_ptr().add(col * t) }) as *mut u8
+            } else {
+                (unsafe { pay_bf_dev.as_ptr().add(col * t) }) as *mut u8
+            }
+        },
+        |_p, _rec| resolve_decoder_pred(layer, &fixture.storage, decoder_pred_addr),
+        |_ci| (setup_ptr, setup_len),
+        &ch,
+    );
+
+    // Upload program + payloads. Record bytes go into an E4-backed (16B-aligned)
+    // allocation — the device reader does reinterpret-cast e4 loads.
+    let mut padded = lp.bytes.clone();
+    while padded.len() % 16 != 0 {
+        padded.push(0);
+    }
+    let bytes_e4: Vec<Ext> = padded
+        .chunks_exact(16)
+        // SAFETY: Ext is a plain 16-byte POD (4 Montgomery u32 limbs).
+        .map(|c| unsafe { std::ptr::read_unaligned(c.as_ptr() as *const Ext) })
+        .collect();
+    let payload_bytes_dev = alloc_upload(context, &bytes_e4);
+    let payload_offsets_dev = alloc_upload(context, &lp.offsets);
+    let lanes_dev = alloc_upload(context, &lowered.lanes);
+    let consts_dev = alloc_upload(context, &lowered.consts);
+    let sources_host: Vec<u64> = lowered.source_ptrs.iter().map(|&p| p as u64).collect();
+    let sources_tbl_dev = alloc_upload(context, &sources_host);
+    let outputs_host: Vec<u64> = lowered.output_ptrs.iter().map(|&p| p as u64).collect();
+    let outputs_tbl_dev = alloc_upload(context, &outputs_host);
+    let output_e4_dev = alloc_upload(context, &lowered.output_e4);
+    let mut debug_dev = alloc_upload(context, &[0u32; 2][..]);
+    let n_cells = lowered.budget_cells as usize;
+    let mut debug_cells_dev = alloc_upload(context, &vec![Bf::ZERO; n_cells.max(1) * t]);
+    context.get_exec_stream().synchronize().unwrap();
+
+    let desc = InterpDesc {
+        program_ldg: lanes_dev.as_ptr(),
+        program_lanes: lowered.lanes.len() as u32,
+        n_instr: lowered.n_instr,
+        sources: sources_tbl_dev.as_ptr() as *const *const u8,
+        n_sources_bf: lowered.n_sources_bf,
+        outputs: outputs_tbl_dev.as_ptr() as *const *mut u8,
+        output_e4: output_e4_dev.as_ptr(),
+        consts: consts_dev.as_ptr(),
+        budget_cells: lowered.budget_cells,
+        count: t as u32,
+        native_fired: debug_dev.as_mut_ptr(),
+        error_flag: unsafe { debug_dev.as_mut_ptr().add(1) },
+        debug_cells: debug_cells_dev.as_mut_ptr() as *mut BF,
+        payloads: payload_bytes_dev.as_ptr() as *const u8,
+        payload_offsets: payload_offsets_dev.as_ptr(),
+    };
+
+    InterpDeviceSetup {
+        desc,
+        lanes: lowered.lanes.clone(),
+        pay_slots,
+        n_pay_bf,
+        n_pay_e4,
+        out_slots,
+        n_out_bf,
+        n_out_e4,
+        n_instr: lowered.n_instr,
+        payload_bytes: lp.bytes.len(),
+        program_bytes: lowered.lanes.len() * 2 + lowered.consts.len() * 4,
+        _virtual_src: virtual_src,
+        out_bf_dev,
+        out_e4_dev,
+        pay_bf_dev,
+        pay_e4_dev,
+        _payload_bytes_dev: payload_bytes_dev,
+        _payload_offsets_dev: payload_offsets_dev,
+        _lanes_dev: lanes_dev,
+        _consts_dev: consts_dev,
+        _sources_tbl_dev: sources_tbl_dev,
+        _outputs_tbl_dev: outputs_tbl_dev,
+        _output_e4_dev: output_e4_dev,
+        debug_dev,
+        _debug_cells_dev: debug_cells_dev,
+    }
+}
+
+#[cfg(not(no_cuda))]
+impl InterpDeviceSetup {
+    /// A copy of the desc with the debug sinks nulled (`debug_cells` and
+    /// `native_fired`) — the timing-run form (spec §6.2: no cell dump, no fire
+    /// counter in the timed loop). `error_flag` stays wired so a faulting launch
+    /// still surfaces.
+    pub(super) fn timing_desc(&self) -> InterpDesc {
+        let mut d = self.desc;
+        d.debug_cells = std::ptr::null_mut();
+        d.native_fired = std::ptr::null_mut();
+        d
+    }
+}
+
+/// Lower + run + device-compare one (circuit, layer, budget) point against the
+/// flat references already resident in storage. This is the body of harness
+/// gate (c): on the FIRST mismatch (non-zero `error_flag`, wrong `native_fired`
+/// count, vacuous comparison set, or any dst/output row divergence) it returns
+/// `Err(reason)`; a full pass returns `Ok(())`. The sole caller is `run_point`'s
+/// gate (c) (`harness.rs`), which itself maps the `Err(reason)` into a recorded
+/// `PointResult::Failed` rather than panicking.
+///
+/// Builds the interpreter side via `build_interp_device_setup` (shared with the
+/// 6.C-2 timing path) at the full `trace_len`, then reads back the interpreter
+/// dst/output columns and compares them to the flat references.
+#[cfg(not(no_cuda))]
+pub(super) fn run_real_fixture_parity_point(
+    fixture: &CircuitFixture,
+    layer: &LayerFixture,
+    cf: &gkr_eval_isa::compiler::fwd::CompiledForward,
+    cg_layer: &cs::gkr_compiler::codegen_ir::CodegenLayer,
+    label: &str,
+) -> Result<(), String> {
+    use super::fixture::resolve_output;
+    let arena = &cg_layer.arena.nodes;
+    let context = fixture.context();
+    let t = fixture.trace_len;
 
     // (ii) Flat references: per payload dst (and per program output), the
     // resident POST-CAPTURE storage column. Read from `fixture.storage` (every
@@ -1455,139 +1678,38 @@ pub(super) fn run_real_fixture_parity_point(
         .collect();
     context.get_exec_stream().synchronize().unwrap();
 
-    // (iii) Fresh interpreter dst buffers, packed per width (the interpreter
-    // writes here, NOT into storage, so flat references stay intact).
-    let widths = output_widths(&cf.program);
-    let mut out_slots = Vec::new();
-    let (mut n_out_bf, mut n_out_e4) = (0usize, 0usize);
-    for &(j, _node) in &cf.outputs {
-        let e4 = widths[j as usize].expect("cf.outputs slot never written");
-        let col = if e4 { &mut n_out_e4 } else { &mut n_out_bf };
-        out_slots.push((j, e4, *col));
-        *col += 1;
-    }
-    let out_bf_dev = alloc_upload(context, &vec![Bf::ZERO; n_out_bf * t]);
-    let out_e4_dev = alloc_upload(context, &vec![Ext::ZERO; n_out_e4 * t]);
-
-    // Payload dst columns packed per width; cf payload p, dst j -> (e4, col).
-    let mut pay_slots: Vec<Vec<(bool, usize)>> = Vec::with_capacity(cf.payloads.len());
-    let (mut n_pay_bf, mut n_pay_e4) = (0usize, 0usize);
-    for rec in &cf.payloads {
-        let (_, n_dsts, _) = payload_kind_shape(rec);
-        let mut per = Vec::with_capacity(n_dsts);
-        for j in 0..n_dsts {
-            let e4 = payload_dst_e4(rec, j);
-            let col = if e4 { &mut n_pay_e4 } else { &mut n_pay_bf };
-            per.push((e4, *col));
-            *col += 1;
-        }
-        pay_slots.push(per);
-    }
-    let pay_bf_dev = alloc_upload(context, &vec![Bf::ZERO; n_pay_bf * t]);
-    let pay_e4_dev = alloc_upload(context, &vec![Ext::ZERO; n_pay_e4 * t]);
-
-    // (iii) Lower: sources -> resident storage columns; outputs/dsts -> fresh
-    // packed buffers; decoder pred -> storage predicate column; setup table ->
-    // forward setup's generic_lookup buffer.
-    let lowered = lower_program(
-        cf,
-        |i| {
-            // Virtual-setup bf sources are served from the materialized buffer;
-            // all other bf sources resolve to their resident storage column.
-            if let Some(dev) = virtual_src.get(&i) {
-                dev.as_ptr() as *const u8
-            } else {
-                resolve_source(layer, &fixture.storage, cf, cg_layer, i, false)
-            }
-        },
-        |i| resolve_source(layer, &fixture.storage, cf, cg_layer, i, true),
-        |j| {
-            let (_, e4, col) = *out_slots
-                .iter()
-                .find(|&&(jj, ..)| jj == j)
-                .expect("unknown output slot");
-            let ptr = if e4 {
-                (unsafe { out_e4_dev.as_ptr().add(col * t) }) as *mut u8
-            } else {
-                (unsafe { out_bf_dev.as_ptr().add(col * t) }) as *mut u8
-            };
-            (ptr, e4)
-        },
-    );
-
-    let (setup_ptr, setup_len) = fixture.setup_table();
-    let lp: LoweredPayloads = lower_payloads(
-        cf,
-        arena,
-        |p, _rec, j| {
-            let (e4, col) = pay_slots[p][j];
-            if e4 {
-                (unsafe { pay_e4_dev.as_ptr().add(col * t) }) as *mut u8
-            } else {
-                (unsafe { pay_bf_dev.as_ptr().add(col * t) }) as *mut u8
-            }
-        },
-        |_p, _rec| resolve_decoder_pred(layer, &fixture.storage, decoder_pred_addr),
-        |_ci| (setup_ptr, setup_len),
-        &ch,
-    );
+    // (iii) Build the interpreter side (materialize virtual-setup columns, fresh
+    // packed dst/output buffers, lower + upload, build the desc) at the full
+    // trace_len, then launch LDG/128 (gate (c) is LDG-only; the fairness configs
+    // exercise the same lowering through the timing path).
+    let setup = build_interp_device_setup(fixture, layer, cf, cg_layer, t);
     println!(
         "{label}: payload table {} bytes / {} records, {} program lanes",
-        lp.bytes.len(),
-        lp.offsets.len(),
-        lowered.lanes.len(),
+        setup.payload_bytes,
+        setup.pay_slots.iter().map(|p| p.len()).sum::<usize>(),
+        setup.lanes.len(),
     );
-
-    // Upload program + payloads. Record bytes go into an E4-backed (16B-aligned)
-    // allocation — the device reader does reinterpret-cast e4 loads.
-    let mut padded = lp.bytes.clone();
-    while padded.len() % 16 != 0 {
-        padded.push(0);
-    }
-    let bytes_e4: Vec<Ext> = padded
-        .chunks_exact(16)
-        // SAFETY: Ext is a plain 16-byte POD (4 Montgomery u32 limbs).
-        .map(|c| unsafe { std::ptr::read_unaligned(c.as_ptr() as *const Ext) })
-        .collect();
-    let payload_bytes_dev = alloc_upload(context, &bytes_e4);
-    let payload_offsets_dev = alloc_upload(context, &lp.offsets);
-    let lanes_dev = alloc_upload(context, &lowered.lanes);
-    let consts_dev = alloc_upload(context, &lowered.consts);
-    let sources_host: Vec<u64> = lowered.source_ptrs.iter().map(|&p| p as u64).collect();
-    let sources_tbl_dev = alloc_upload(context, &sources_host);
-    let outputs_host: Vec<u64> = lowered.output_ptrs.iter().map(|&p| p as u64).collect();
-    let outputs_tbl_dev = alloc_upload(context, &outputs_host);
-    let output_e4_dev = alloc_upload(context, &lowered.output_e4);
-    let mut debug_dev = alloc_upload(context, &[0u32; 2][..]);
-    let n_cells = lowered.budget_cells as usize;
-    let mut debug_cells_dev = alloc_upload(context, &vec![Bf::ZERO; n_cells.max(1) * t]);
-
-    let desc = InterpDesc {
-        program_ldg: lanes_dev.as_ptr(),
-        program_lanes: lowered.lanes.len() as u32,
-        n_instr: lowered.n_instr,
-        sources: sources_tbl_dev.as_ptr() as *const *const u8,
-        n_sources_bf: lowered.n_sources_bf,
-        outputs: outputs_tbl_dev.as_ptr() as *const *mut u8,
-        output_e4: output_e4_dev.as_ptr(),
-        consts: consts_dev.as_ptr(),
-        budget_cells: lowered.budget_cells,
-        count: t as u32,
-        native_fired: debug_dev.as_mut_ptr(),
-        error_flag: unsafe { debug_dev.as_mut_ptr().add(1) },
-        debug_cells: debug_cells_dev.as_mut_ptr() as *mut BF,
-        payloads: payload_bytes_dev.as_ptr() as *const u8,
-        payload_offsets: payload_offsets_dev.as_ptr(),
-    };
-    launch_bench_fwd_interp(&desc, InterpResidency::Ldg, context).unwrap();
+    launch_bench_fwd_interp(
+        &setup.desc,
+        InterpResidency::Ldg,
+        BenchThreads::T128,
+        context,
+    )
+    .unwrap();
 
     // (iv) Read interpreter dsts/outputs back and compare to the flat reference.
-    let pay_bf_host = readback_packed(&pay_bf_dev, n_pay_bf, t, context);
-    let pay_e4_host = readback_packed(&pay_e4_dev, n_pay_e4, t, context);
-    let out_bf_host = readback_packed(&out_bf_dev, n_out_bf, t, context);
-    let out_e4_host = readback_packed(&out_e4_dev, n_out_e4, t, context);
+    let (pay_slots, out_slots) = (&setup.pay_slots, &setup.out_slots);
+    let pay_bf_host = readback_packed(&setup.pay_bf_dev, setup.n_pay_bf, t, context);
+    let pay_e4_host = readback_packed(&setup.pay_e4_dev, setup.n_pay_e4, t, context);
+    let out_bf_host = readback_packed(&setup.out_bf_dev, setup.n_out_bf, t, context);
+    let out_e4_host = readback_packed(&setup.out_e4_dev, setup.n_out_e4, t, context);
     let mut debug_host = [0u32; 2];
-    memory_copy_async(&mut debug_host[..], &debug_dev, context.get_exec_stream()).unwrap();
+    memory_copy_async(
+        &mut debug_host[..],
+        &setup.debug_dev,
+        context.get_exec_stream(),
+    )
+    .unwrap();
     context.get_exec_stream().synchronize().unwrap();
 
     if debug_host[1] != 0 {
@@ -1646,7 +1768,7 @@ pub(super) fn run_real_fixture_parity_point(
     }
 
     // Program outputs (empty corpus-wide for forward programs; assertion kept).
-    for &(j, e4, col) in &out_slots {
+    for &(j, e4, col) in out_slots {
         let (_, _, ref_bf, ref_ext) = output_refs
             .iter()
             .find(|&&(jj, ..)| jj == j)
@@ -1790,4 +1912,340 @@ fn stage3_run_point_correctness() {
         failures.len(),
         failures.join("\n")
     );
+}
+
+// ===========================================================================
+// 6.C-2 — verdict A/B timing test (spec §6.2(A), §6.3, §9).
+// ===========================================================================
+
+use super::harness::{
+    prescan_best_budget, time_point, PreScan, TimedPoint, BUDGET_GRID, PRESCAN_ITERS,
+    TIMING_COUNT_CAP, TIMING_ITERS,
+};
+use super::report::{AbReport, AbRow, DeviceAttrs, SideTiming};
+
+/// Count of fwd-eligible MaxQuadratic gates a layer carries (the equal-work
+/// filter target). Zero for add_sub/blake2 (rows coincide); positive for bigint.
+fn fwd_eligible_mq_count(layer: &CodegenLayer) -> usize {
+    layer
+        .gates
+        .iter()
+        .chain(&layer.gates_external)
+        .filter(|g| fwd_eligible(g) && matches!(g.kind, GateKind::MaxQuadratic { .. }))
+        .count()
+}
+
+/// Compile + time ONE (residency, threads) config row of a Verified point at
+/// `count`, building it into an `AbRow`. Pre-scans the budget grid for the
+/// best-feasible budget (min interpreter median, `PRESCAN_ITERS`), then times
+/// that budget with `TIMING_ITERS`. The per-point compiler stats are read from
+/// the EXACT timed program's `cf.stats` (filtered for equal-work rows). Returns
+/// `None` (with a recorded skip) when no grid budget is feasible+timeable for
+/// this config (e.g. LDC never fits).
+#[allow(clippy::too_many_arguments)]
+#[cfg(not(no_cuda))]
+fn time_config_row(
+    fixture: &CircuitFixture,
+    layer_idx: usize,
+    cg_layer: &CodegenLayer,
+    graph: &gkr_design_space::graph::AnalysisGraph,
+    circuit: &str,
+    exclude_mq: bool,
+    rows_coincide: bool,
+    residency: InterpResidency,
+    threads: BenchThreads,
+    count: usize,
+    skips: &mut Vec<String>,
+) -> Option<AbRow> {
+    let Some(PreScan { budget, .. }) = prescan_best_budget(
+        fixture, layer_idx, cg_layer, graph, exclude_mq, residency, threads, count,
+    ) else {
+        skips.push(format!(
+            "{circuit} L{layer_idx} {residency:?}/{} {}: no feasible+timeable budget in grid {BUDGET_GRID:?}",
+            threads.threads_per_block(),
+            if exclude_mq { "equal-work" } else { "production" },
+        ));
+        return None;
+    };
+
+    // Recompile at the chosen budget for the EXACT timed program's stats.
+    let cf = compile_forward(
+        cg_layer,
+        graph,
+        FwdParams {
+            budget_cells: budget,
+            leaf_cache: true,
+            exclude_max_quadratic: exclude_mq,
+        },
+    );
+    let layer = &fixture.layers[layer_idx];
+    let Some(t): Option<TimedPoint> = time_point(
+        fixture, layer_idx, layer, &cf, cg_layer, residency, threads, count,
+    ) else {
+        skips.push(format!(
+            "{circuit} L{layer_idx} {residency:?}/{} budget {budget}: program does not fit constant array",
+            threads.threads_per_block(),
+        ));
+        return None;
+    };
+
+    let trace_len = fixture.trace_len;
+    let interp_over_flat = if t.flat_median_ms > 0.0 {
+        t.interp_median_ms / t.flat_median_ms
+    } else {
+        f32::INFINITY
+    };
+    Some(AbRow {
+        circuit: circuit.to_string(),
+        layer: layer_idx,
+        budget,
+        residency: format!("{residency:?}"),
+        interp_threads: threads.threads_per_block(),
+        equal_work: exclude_mq,
+        rows_coincide,
+        timed_count: count,
+        trace_len,
+        capped: count < trace_len,
+        flat: SideTiming {
+            median_ms: t.flat_median_ms,
+            min_ms: t.flat_min_ms,
+            launches: t.flat_launches,
+            iters: TIMING_ITERS,
+        },
+        interp: SideTiming {
+            median_ms: t.interp_median_ms,
+            min_ms: t.interp_min_ms,
+            launches: 1,
+            iters: TIMING_ITERS,
+        },
+        interp_over_flat,
+        interp_smem_bytes: t.interp_smem_bytes,
+        interp_blocks_per_sm: t.interp_blocks_per_sm,
+        interp_large_smem_optin: t.interp_large_smem_optin,
+        program_bytes: t.program_bytes,
+        payload_bytes: t.payload_bytes,
+        n_instr: t.n_instr,
+        instrs: cf.stats.instrs,
+        src_reads: cf.stats.src_reads,
+        cell_reads: cf.stats.cell_reads,
+        cache_refires: cf.stats.cache_refires,
+        max_live_cells: cf.stats.max_live_cells,
+    })
+}
+
+/// 6.C-2 — verdict A/B test (`#[ignore]`, GPU; spec §6.2(A), §6.3, §9). For each
+/// of the 3 stage-3 circuits × all layers (L0 + replayable upper layers) ×
+/// best-feasible budget × {LDG, LDC-if-fits} × {production-shape, equal-work}:
+///
+///   1. Pre-scan the budget grid for the best-feasible budget (min interpreter
+///      median, N={PRESCAN_ITERS}), including the THREADS=256 fairness config.
+///   2. Run the 3 correctness gates (`run_point`) at that budget; only a
+///      `Verified` point is timed. `Failed`/`Infeasible` are recorded — never
+///      timed (spec §6.1.4).
+///   3. Time both sides (flat replay-sum vs single interpreter launch) with CUDA
+///      events, N={TIMING_ITERS}, at the capped count `min(trace_len, 1<<20)`.
+///   4. Emit the §6.2(A) table to stdout + `.agents/audits/...{md,json}`.
+///
+/// Filter coincidence (spec §9): add_sub/blake2 have ZERO fwd-eligible
+/// MaxQuadratic, so the equal-work row coincides with production — run ONCE,
+/// `rows_coincide=true`. Only bigint runs a distinct equal-work row.
+///
+/// No silent gaps: every set-A point is either timed (a row), or recorded as a
+/// Failed/Infeasible point, or a pre-scan/fit skip; the test asserts the union
+/// covers the grid and panics on any `Failed`.
+#[test]
+#[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh (see .agents/gpu_work.md)
+#[cfg(not(no_cuda))]
+#[serial]
+fn stage3_fwd_interp_ab() {
+    use super::harness::{run_point, PointParams, PointResult};
+
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    let mut rows: Vec<AbRow> = Vec::new();
+    let mut skips: Vec<String> = Vec::new();
+    let mut failures: Vec<String> = Vec::new();
+
+    for (ci, circuit) in STAGE3_CIRCUITS.into_iter().enumerate() {
+        assert_layer_consistency(circuit);
+        let loaded = load_circuit(&dir.join(format!("{circuit}_codegen_ir_gkr.json"))).unwrap();
+        let fixture = CircuitFixture::build(circuit);
+        assert!(
+            !fixture.layers.is_empty(),
+            "{circuit}: fixture has no layers"
+        );
+
+        let circuit_seed = 0x57A6_E3u64 ^ ((ci as u64) << 32);
+        // Cross-circuit cap (controller ruling): both sides timed at this count.
+        let count = fixture.trace_len.min(TIMING_COUNT_CAP);
+        let capped = count < fixture.trace_len;
+        println!(
+            "{circuit}: trace_len {} -> timed count {count}{}",
+            fixture.trace_len,
+            if capped { " (capped)" } else { "" }
+        );
+
+        for layer_idx in 0..fixture.layers.len() {
+            let replayable = fixture.layers[layer_idx].replayable_launch_count();
+            if layer_idx != 0 && replayable == 0 {
+                continue;
+            }
+            let cg_layer = &loaded.circuit.layers[layer_idx];
+            let graph = &loaded.graphs[layer_idx];
+
+            // Filter shapes: production always; a distinct equal-work row only
+            // when the layer has fwd-eligible MaxQuadratic gates (bigint). Else
+            // the rows coincide — run production once with rows_coincide=true.
+            let mq = fwd_eligible_mq_count(cg_layer);
+            let rows_coincide = mq == 0;
+            let shapes: &[bool] = if rows_coincide {
+                &[false]
+            } else {
+                &[false, true]
+            };
+
+            for &exclude_mq in shapes {
+                // (1+2) Pre-scan LDG/128 for the verdict budget, then run the
+                // correctness gates at it. Time only a Verified point.
+                let Some(PreScan { budget, .. }) = prescan_best_budget(
+                    &fixture,
+                    layer_idx,
+                    cg_layer,
+                    graph,
+                    exclude_mq,
+                    InterpResidency::Ldg,
+                    BenchThreads::T128,
+                    count,
+                ) else {
+                    skips.push(format!(
+                        "{circuit} L{layer_idx} {}: no feasible budget in grid {BUDGET_GRID:?}",
+                        if exclude_mq {
+                            "equal-work"
+                        } else {
+                            "production"
+                        },
+                    ));
+                    continue;
+                };
+                let label = format!(
+                    "{circuit} L{layer_idx} budget {budget}{}",
+                    if exclude_mq { " [equal-work]" } else { "" }
+                );
+                let result = run_point(
+                    &fixture,
+                    layer_idx,
+                    cg_layer,
+                    graph,
+                    PointParams {
+                        budget,
+                        exclude_max_quadratic: exclude_mq,
+                    },
+                    circuit_seed,
+                    &label,
+                );
+                match result {
+                    PointResult::Verified => {}
+                    PointResult::Infeasible => {
+                        skips.push(format!("{label}: INFEASIBLE (run_point)"));
+                        continue;
+                    }
+                    PointResult::Failed { gate, reason } => {
+                        failures.push(format!("[{gate}] {label}: {reason}"));
+                        continue;
+                    }
+                }
+
+                // (3) Time the config rows: LDG/128 (verdict), LDG/256 (§9
+                // fairness), LDC/128 (where it fits). Each pre-scans its own
+                // best-feasible budget independently.
+                for (residency, threads) in [
+                    (InterpResidency::Ldg, BenchThreads::T128),
+                    (InterpResidency::Ldg, BenchThreads::T256),
+                    (InterpResidency::Ldc, BenchThreads::T128),
+                ] {
+                    if let Some(row) = time_config_row(
+                        &fixture,
+                        layer_idx,
+                        cg_layer,
+                        graph,
+                        circuit,
+                        exclude_mq,
+                        rows_coincide,
+                        residency,
+                        threads,
+                        count,
+                        &mut skips,
+                    ) {
+                        println!(
+                            "TIMED {circuit} L{layer_idx} {residency:?}/{} {}: flat {:.4}ms (x{}) interp {:.4}ms => {:.2}x  blk/SM {} smem {}B",
+                            threads.threads_per_block(),
+                            if exclude_mq { "equal-work" } else { "production" },
+                            row.flat.median_ms,
+                            row.flat.launches,
+                            row.interp.median_ms,
+                            row.interp_over_flat,
+                            row.interp_blocks_per_sm,
+                            row.interp_smem_bytes,
+                        );
+                        rows.push(row);
+                    }
+                }
+            }
+        }
+    }
+
+    // Build the report (queried device attrs + rows + skips) and write it.
+    let props = {
+        // Any built fixture's context exposes device props; rebuild a context-
+        // free attr query via the device API directly.
+        use era_cudart::device::{device_get_attribute, get_device};
+        use era_cudart_sys::CudaDeviceAttr;
+        let dev = get_device().unwrap();
+        DeviceAttrs {
+            max_shared_memory_per_multiprocessor: device_get_attribute(
+                CudaDeviceAttr::MaxSharedMemoryPerMultiprocessor,
+                dev,
+            )
+            .unwrap(),
+            max_shared_memory_per_block_optin: device_get_attribute(
+                CudaDeviceAttr::MaxSharedMemoryPerBlockOptin,
+                dev,
+            )
+            .unwrap(),
+            sm_count: device_get_attribute(CudaDeviceAttr::MultiProcessorCount, dev).unwrap()
+                as usize,
+        }
+    };
+    let report = AbReport {
+        device: props,
+        iters_full: TIMING_ITERS,
+        iters_prescan: PRESCAN_ITERS,
+        rows,
+        skips: skips.clone(),
+    };
+    println!("\n{}", report.to_markdown());
+    let (md, json) = super::report::write_report(&report);
+    println!("wrote report: {} / {}", md.display(), json.display());
+
+    // No silent gaps: every Verified point that pre-scanned a budget produced at
+    // least the LDG/128 verdict row. Assert no Failed correctness gate.
+    assert!(
+        failures.is_empty(),
+        "verdict A/B reported {} failed correctness point(s):\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+    assert!(
+        !report.rows.is_empty(),
+        "verdict A/B produced no timed rows (every point skipped?)"
+    );
+    // Each circuit must contribute at least one LDG/128 verdict row.
+    for circuit in STAGE3_CIRCUITS {
+        assert!(
+            report
+                .rows
+                .iter()
+                .any(|r| r.circuit == circuit && r.residency == "Ldg" && r.interp_threads == 128),
+            "{circuit}: no LDG/128 verdict row timed"
+        );
+    }
 }
