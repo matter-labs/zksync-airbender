@@ -513,7 +513,7 @@ where
         trace_len,
         context,
     )?;
-    let plan = build_flat_forward_plan(
+    let mut plan = build_flat_forward_plan(
         layer_idx,
         &layer.gates,
         &layer.gates_with_external_connections,
@@ -528,8 +528,15 @@ where
     )?;
     // Launch the deferred inits/teardowns materializations split out of plan
     // building (behavior-preserving: same writes, before the flat-desc launches
-    // exactly as the prior inline materialize ran during plan building).
-    materialize_flat_forward_plan_inits(&plan, storage, external_challenges, trace_len, context)?;
+    // exactly as the prior inline materialize ran during plan building). This
+    // drains `plan.pending_inits`, so the `commit_flat_forward_plan` assert holds.
+    materialize_flat_forward_plan_inits(
+        &mut plan,
+        storage,
+        external_challenges,
+        trace_len,
+        context,
+    )?;
     for desc in plan.descs.iter() {
         if kernels::flat_desc_has_work(desc) {
             kernels::launch_flat_forward_layer(desc, trace_len, context)?;

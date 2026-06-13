@@ -728,8 +728,13 @@ where
 /// immediately after `build_flat_forward_plan` (before the flat-desc launches),
 /// which reproduces the prior inline-materialize behavior exactly; the stage-3
 /// bench fixture calls it on captured plans to replay the inits launches.
+///
+/// **Drains** `plan.pending_inits` as it launches: on return the field is empty,
+/// so a forgotten launch surfaces as a non-empty field at commit time (see the
+/// `debug_assert!` in `commit_flat_forward_plan`). The committed destination
+/// views live in `computed_extension_outputs`, not here, so draining is safe.
 pub(super) fn materialize_flat_forward_plan_inits<E>(
-    plan: &FlatForwardPlan<E>,
+    plan: &mut FlatForwardPlan<E>,
     storage: &GpuGKRStorage<BF, E>,
     external_challenges: &GKRExternalChallenges<BF, E>,
     trace_len: usize,
@@ -741,7 +746,8 @@ where
     Mul: BinaryOp<BF, E, E>,
     Mul: BinaryOp<E, E, E>,
 {
-    for pending in &plan.pending_inits {
+    let pending_inits = std::mem::take(&mut plan.pending_inits);
+    for pending in &pending_inits {
         materialize_inits_and_teardowns_initial_pair_into(
             storage,
             &pending.dst,
@@ -767,11 +773,17 @@ pub(super) fn commit_flat_forward_plan<E>(
         computed_extension_outputs,
         aliased_base_outputs,
         aliased_extension_outputs,
-        // Already launched via `materialize_flat_forward_plan_inits`; the
-        // destination views were recorded in `computed_extension_outputs` above
-        // and are inserted there.
-        pending_inits: _,
+        // Must already be launched (and drained) via
+        // `materialize_flat_forward_plan_inits`; the destination views were
+        // recorded in `computed_extension_outputs` above and are inserted there.
+        pending_inits,
     } = plan;
+
+    debug_assert!(
+        pending_inits.is_empty(),
+        "pending_inits must be launched via materialize_flat_forward_plan_inits before commit"
+    );
+    drop(pending_inits);
 
     for (address, poly) in computed_extension_outputs {
         storage.insert_extension_at_layer(expected_output_layer, address, poly);

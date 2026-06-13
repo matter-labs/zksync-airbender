@@ -30,7 +30,7 @@ use super::super::flat_plan::{
 };
 use super::super::kernels::{
     flat_desc_has_work, launch_flat_forward_layer, launch_forward_cache, FlatForwardPlan,
-    GpuFlatForwardStaticDesc, GpuGKRForwardCacheBatch,
+    GpuFlatForwardStaticDesc, GpuGKRForwardCacheBatch, PendingInitsLaunch,
 };
 use super::super::{
     bind_scratch_space_into_storage, build_cache_relation_batches,
@@ -50,7 +50,7 @@ use crate::upstream::{
 
 use gkr_design_space::graph::{AnalysisGraph, Origin};
 
-/// Regeneration hint surfaced on any 5.0 precheck mismatch.
+/// Regeneration hint surfaced on any 5.1 precheck mismatch.
 pub(crate) const CODEGEN_IR_REGEN_CMD: &str = "cargo test -p cs --release -- --ignored codegen_ir";
 
 /// The three stage-3 circuits, with their compiled-circuit JSON basenames.
@@ -216,7 +216,7 @@ fn artifact_layer_view(layer: &GKRLayerDescription) -> LayerConsistencyView {
     }
 }
 
-/// 5.0 precheck for one circuit: load BOTH representations and assert per-layer
+/// 5.1 precheck for one circuit: load BOTH representations and assert per-layer
 /// agreement. Panics (with the regen hint) on any mismatch. CPU-only.
 pub(crate) fn assert_layer_consistency(circuit: &str) {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
@@ -336,6 +336,23 @@ pub(crate) struct CircuitFixture {
     pub(crate) forward_setup: GpuGKRForwardSetup<E4>,
 }
 
+/// Deep-clone the captured deferred-inits launches (the dst views are shared
+/// clones). Used both to capture a replayable copy before
+/// `materialize_flat_forward_plan_inits` drains the source plan, and to launch
+/// each replay from a fresh, drainable copy without consuming the captured one.
+fn clone_pending_inits(pending: &[PendingInitsLaunch<E4>]) -> Vec<PendingInitsLaunch<E4>> {
+    pending
+        .iter()
+        .map(|p| PendingInitsLaunch {
+            dst: p.dst.clone_shared(),
+            timestamp_and_value: p.timestamp_and_value.clone(),
+            setup: p.setup,
+            address_high_bits: p.address_high_bits,
+            address_high_bits_shift: p.address_high_bits_shift,
+        })
+        .collect()
+}
+
 impl CircuitFixture {
     /// Replay every captured flat launch of `layer_idx` in production order.
     /// Replayable launches re-issue the SAME kernels into the SAME storage
@@ -355,8 +372,19 @@ impl CircuitFixture {
                     launch_flat_forward_layer(desc, trace_len, context)?;
                 }
                 FlatLaunch::Inits(plan) => {
+                    // `materialize_flat_forward_plan_inits` DRAINS the plan it is
+                    // given. Replay must be repeatable (replay-twice identical),
+                    // so launch from a fresh clone and leave the captured plan
+                    // intact for the next replay.
+                    let mut replay_plan = FlatForwardPlan {
+                        descs: Vec::new(),
+                        computed_extension_outputs: Vec::new(),
+                        aliased_base_outputs: Vec::new(),
+                        aliased_extension_outputs: Vec::new(),
+                        pending_inits: clone_pending_inits(&plan.pending_inits),
+                    };
                     materialize_flat_forward_plan_inits(
-                        plan,
+                        &mut replay_plan,
                         &self.storage,
                         &self.external_challenges,
                         trace_len,
@@ -445,6 +473,12 @@ fn build_scratch_ref(
 /// each immediately to populate `storage` for later layers, while ALSO
 /// recording every launch into `flat_launches`. Returns the per-layer fixture.
 ///
+/// Intentionally mirrors the **UNFUSED** `schedule_layer` body only: it does
+/// NOT reproduce the `generated_layer0` fused A/B early-return path that
+/// `schedule_layer` takes when `AB_GKR_FWD_GENERATED_LAYER0` is active. The
+/// fixture wants the per-launch flat sequence as the bench baseline, so omitting
+/// the fused path is deliberate, not an oversight.
+///
 /// `MaterializeSingle` is launched (its production launcher is not split) but
 /// recorded as a non-replayable marker (Task 6 seam).
 #[allow(clippy::too_many_arguments)]
@@ -460,6 +494,10 @@ fn capture_layer(
     trace_len: usize,
     context: &ProverContext,
 ) -> CudaResult<LayerFixture> {
+    // Keep the fixture honest about the captured layer shape, matching the
+    // invariant `schedule_layer` asserts before scheduling a layer.
+    super::super::assert_forward_layer_invariants(layer_idx, compiled_circuit.layers.len(), layer);
+
     hydrate_scratch_space_layer(layer_idx, compiled_circuit, stage1, storage);
 
     let scratch_ref = build_scratch_ref(layer_idx, compiled_circuit, storage);
@@ -525,7 +563,7 @@ fn capture_layer(
     }
 
     // (4) flat plan: build, launch deferred inits, then the chunked descs.
-    let plan = build_flat_forward_plan(
+    let mut plan = build_flat_forward_plan(
         layer_idx,
         &layer.gates,
         &layer.gates_with_external_connections,
@@ -538,28 +576,27 @@ fn capture_layer(
         trace_len,
         context,
     )?;
-    materialize_flat_forward_plan_inits(&plan, storage, external_challenges, trace_len, context)?;
+    // Capture the deferred inits for replay BEFORE materializing — the
+    // materialize step DRAINS `plan.pending_inits`, so reading it afterward
+    // would see an empty field. The captured plan carries ONLY the deferred
+    // inits (the dst views are shared clones; the desc/output vecs are not
+    // needed for replay).
     if !plan.pending_inits.is_empty() {
-        // Capture a plan carrying ONLY the deferred inits (the dst views are
-        // shared clones; the desc/output vecs are not needed for replay).
         flat_launches.push(FlatLaunch::Inits(FlatForwardPlan {
             descs: Vec::new(),
             computed_extension_outputs: Vec::new(),
             aliased_base_outputs: Vec::new(),
             aliased_extension_outputs: Vec::new(),
-            pending_inits: plan
-                .pending_inits
-                .iter()
-                .map(|p| super::super::kernels::PendingInitsLaunch {
-                    dst: p.dst.clone_shared(),
-                    timestamp_and_value: p.timestamp_and_value.clone(),
-                    setup: p.setup,
-                    address_high_bits: p.address_high_bits,
-                    address_high_bits_shift: p.address_high_bits_shift,
-                })
-                .collect(),
+            pending_inits: clone_pending_inits(&plan.pending_inits),
         }));
     }
+    materialize_flat_forward_plan_inits(
+        &mut plan,
+        storage,
+        external_challenges,
+        trace_len,
+        context,
+    )?;
     for desc in plan.descs.iter() {
         if flat_desc_has_work(desc) {
             launch_flat_forward_layer(desc, trace_len, context)?;
