@@ -3,3 +3,4 @@
 //! later tasks; Task 2.1 seeds the joint matrix-slot table.
 
 pub mod matrix_table;
+pub mod challenges;
