@@ -154,7 +154,17 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
 
     fn get_u16_witness_from_placeholder(&self, placeholder: Placeholder, trace_step: usize) -> u16 {
         let Some(cycle_data) = self.inner.get(trace_step) else {
-            return 0;
+            return match placeholder {
+                Placeholder::ShuffleRamAddress(_)
+                | Placeholder::DelegationType
+                | Placeholder::DelegationABIOffset => 0,
+                a => panic!(
+                    "padding-row u16 query: placeholder {:?} has no defined default \
+                     (trace_step={trace_step} >= inner.len()={})",
+                    a,
+                    self.inner.len()
+                ),
+            };
         };
 
         let decoded = <Self as cs::oracle::Oracle<F>>::get_executor_family_data(self, trace_step);
@@ -211,7 +221,15 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
 
     fn get_u8_witness_from_placeholder(&self, placeholder: Placeholder, trace_step: usize) -> u8 {
         let Some(_cycle_data) = self.inner.get(trace_step) else {
-            return 0;
+            return match placeholder {
+                Placeholder::ShuffleRamAddress(_) => 0,
+                a => panic!(
+                    "padding-row u8 query: placeholder {:?} has no defined default \
+                     (trace_step={trace_step} >= inner.len()={})",
+                    a,
+                    self.inner.len()
+                ),
+            };
         };
 
         let decoded = <Self as cs::oracle::Oracle<F>>::get_executor_family_data(self, trace_step);

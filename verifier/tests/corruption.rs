@@ -369,6 +369,45 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
     );
 }
 
+fn test_rejects_corrupted_it_evals(name: &str) {
+    with_circuit!(name, SecurityLevel::Sec80, |m| {
+        type InitialTranscript = m::constants::ConcreteInitialTranscript;
+        let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker)
+            - (core::mem::offset_of!(InitialTranscript, setup_caps)
+                - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
+        let gkr_off = initial_transcript_responses_offset / core::mem::size_of::<u32>();
+
+        assert!(
+            m::constants::GKR_EVALS >= 160,
+            "{name} must have the 160-eval layout (i/t evals at [128..160])"
+        );
+        // First word of the first inits/teardowns ext4 eval (evals_slice[128]).
+        let it_eval_off = gkr_off + 128 * 4;
+
+        assert_rejects_corrupted_nds(
+            name,
+            SecurityLevel::Sec80,
+            "it_evals",
+            |nds| nds[it_eval_off] ^= 1,
+            |r| {
+                matches!(
+                    r,
+                    VerifyRejection::Error(
+                        VerificationError::GkrSumcheckRoundFailed { .. }
+                            | VerificationError::GkrFinalStepCheckFailed { .. }
+                            | VerificationError::GkrGrandProductCheckFailed
+                    )
+                )
+            },
+        );
+    });
+}
+
+#[test]
+fn rejects_corrupted_it_evals_unified_reduced_machine_sec_80() {
+    test_rejects_corrupted_it_evals("unified_reduced_machine");
+}
+
 macro_rules! generate_corruption_tests {
     ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
         $(

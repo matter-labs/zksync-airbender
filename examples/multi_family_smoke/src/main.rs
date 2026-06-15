@@ -84,6 +84,38 @@ fn mul_mod(a: u32, b: u32) -> u32 {
     rd
 }
 
+#[inline(never)]
+fn add_mod(a: u32, b: u32) -> u32 {
+    let rd;
+    unsafe {
+        core::arch::asm!(
+            "mop.rr.{idx} {rd}, {a}, {b}",
+            a = in(reg) a,
+            b = in(reg) b,
+            rd = lateout(reg) rd,
+            idx = const 0,
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+    rd
+}
+
+#[inline(never)]
+fn sub_mod(a: u32, b: u32) -> u32 {
+    let rd;
+    unsafe {
+        core::arch::asm!(
+            "mop.rr.{idx} {rd}, {a}, {b}",
+            a = in(reg) a,
+            b = in(reg) b,
+            rd = lateout(reg) rd,
+            idx = const 1,
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+    rd
+}
+
 unsafe fn workload() -> ! {
     // Read two non-deterministic inputs to prevent constant folding.
     // `n` is now the unbounded RISC-V cycle target (~50 cycles/iter, so
@@ -148,6 +180,9 @@ unsafe fn workload() -> ! {
 
     let fma_out = fma_mod(seed, n, sum);
     let mul_out = mul_mod(seed, n);
+    let add_out = add_mod(seed, n);
+    let sub_out = sub_mod(seed, n);
+    let sum = sum.wrapping_add(add_out).wrapping_add(sub_out);
 
     zksync_os_finish_success(&[sum, slt_acc, sltu_acc, n, seed, blake_out, fma_out, mul_out]);
 }

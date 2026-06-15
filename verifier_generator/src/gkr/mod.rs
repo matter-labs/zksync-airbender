@@ -1474,6 +1474,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
         let mut eval_offset = 0usize;
         let mut lookup_type_idx = 0usize;
+        let mut permutation_product_emitted = false;
         for group in &output_groups {
             match group.output_type {
                 OutputType::PermutationProduct => {
@@ -1500,8 +1501,10 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                             permutation_write_product = write_product;
                         }
                     });
+                    permutation_product_emitted = true;
                 }
                 OutputType::InitsAndTeardownsProduct => {
+                    assert!(permutation_product_emitted);
                     assert_eq!(group.num_addresses, 2);
                     let read_off = eval_offset;
                     let write_off = eval_offset + evals_per_poly;

@@ -20,8 +20,6 @@ use worker::Worker;
 const TRACE_LEN_LOG2: usize = 24;
 const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
-const USE_GKR_WITH_CACHES: bool = cfg!(not(feature = "no_caches"));
-
 // jump_branch_slt multiplicity column indices (from compiled circuit witness_layout)
 const MULTIPLICITY_COL_RANGE_CHECK_16: usize = 25;
 const MULTIPLICITY_COL_TIMESTAMP: usize = 26;
@@ -58,15 +56,9 @@ fn generate_proof(
     );
     let decoder_table_data = &preprocessing_data[&CIRCUIT_TYPE];
 
-    let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-        deserialize_from_file(
-            "../cs/compiled_circuits/jump_branch_slt_preprocessed_layout_gkr.json",
-        )
-    } else {
-        deserialize_from_file(
-            "../cs/compiled_circuits/jump_branch_slt_preprocessed_layout_no_caches_gkr.json",
-        )
-    };
+    let circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
+        &super::orchestration::per_family::circuit_path("jump_branch_slt"),
+    );
 
     let mut table_driver = TableDriver::<BabyBearField>::new();
     cs::gkr_circuits::jump_branch_slt_family::jump_branch_slt_table_driver_fn(&mut table_driver);
@@ -80,7 +72,7 @@ fn generate_proof(
     let mut full_trace = build_nonmem_family_full_trace::<CIRCUIT_TYPE, _>(
         &vm.snapshotter,
         &vm.tape,
-        &vm.expected_final_state,
+        &vm.expected_final_state(),
         vm.cycles_bound,
         num_calls,
         &circuit,

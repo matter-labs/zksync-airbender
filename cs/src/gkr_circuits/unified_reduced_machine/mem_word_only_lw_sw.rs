@@ -284,10 +284,7 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         // table_id = execute * gate_fam4_rom * romread_table — collapses to 0
         // (ZeroEntry) when another family fires or on padding.
         let table_id = Constraint::from(inputs.execute) * Term::from(gate_fam4_rom) * romread_table;
-        LookupRequest {
-            table_id,
-            inputs: vec![input, output1, output2],
-        }
+        LookupRequest::new(table_id, vec![input, output1, output2])
     };
 
     // When `is_sw = 1`, `writeaddr_lo` must be a multiple of 4 (RISC-V word

@@ -415,11 +415,14 @@ step_transpiler() {
 
 # per_family: malicious_proof test (#[ignore]) writes corrupted proofs with
 # self_checks OFF; verifier-side malicious.rs then asserts rejection.
-# unified: unified_negative_tests mutate the witness and assert check_satisfied
-# rejects — constraint-layer testing only, no proof produced. The two shapes
-# are deliberately asymmetric; see plans/negative_test_pipeline_rework.md for
-# the planned unified 4-stage pipeline (check_satisfied + self_checks + prove +
-# verifier reject) and per-family symmetric uplift.
+# unified: now BOTH layers (symmetric uplift from plans/negative_test_pipeline_rework.md):
+#   (1) unified_negative_tests mutate the witness and assert check_satisfied /
+#       check_lookups_in_range reject (constraint + range-lookup layer), and
+#   (2) generate_malicious_unified_proofs corrupts the witness and PROVES it
+#       (self_checks OFF), then verifier-side malicious.rs (rejects_malicious_unified_*)
+#       asserts the real verifier rejects (proof layer).
+# The inits/teardowns-eval corruption lives in the `corruption` step
+# (rejects_corrupted_it_evals_unified_reduced_machine_sec_80).
 step_malicious() {
   case "$MODE" in
     per_family)
@@ -434,11 +437,26 @@ step_malicious() {
           --test malicious -- --include-ignored
       ;;
     unified)
-      run_step "Unified negative tests (constraint-layer)" \
+      run_step "Unified negative tests (constraint + range-lookup layer)" \
         run_prover_cargo \
           "${PROVER_CARGO_FEATURE_ARGS[@]+"${PROVER_CARGO_FEATURE_ARGS[@]}"}" \
           "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
           -- --nocapture unified_negative
+      # Proof layer: corrupt the witness and PROVE it. Default features (no
+      # PROVER_CARGO_FEATURE_ARGS) ⇒ no gkr_self_checks (the bad witness reaches
+      # the prover) but proptest stays available, unlike per_family's
+      # --no-default-features path which unified_negative_tests.rs can't compile under.
+      # prove_built_unified_trace skips check_satisfied, so proving succeeds and the
+      # verifier is what must reject. GKR_BLAKE (set by run_prover_cargo) selects the
+      # matching program variant so the proof lines up with the verifier below.
+      run_step "Generate malicious unified proofs (corrupt witness, no self-checks)" \
+        run_prover_cargo \
+          "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
+          -- --ignored --nocapture generate_malicious_unified_proofs
+      run_step "Verify malicious unified proofs rejected (soundness gap tests)" \
+        env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier \
+          --no-default-features --features "$FEATURES" \
+          --test malicious -- --include-ignored rejects_malicious_unified
       ;;
   esac
 }

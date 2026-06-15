@@ -27,6 +27,7 @@ impl<F: PrimeField> GKRCompiler<F> {
         caching_is_allowed: bool,
     ) -> GKRCircuitArtifact<F> {
         assert!(max_bytecode_size_in_words.is_power_of_two());
+        assert!(num_inits_and_teardowns == 0 || num_inits_and_teardowns.is_power_of_two(),);
 
         let CircuitOutput {
             table_driver,

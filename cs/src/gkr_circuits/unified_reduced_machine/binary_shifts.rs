@@ -157,10 +157,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
                 F::from_u32(TableType::GetSignExtensionByte as u32).expect("must fit"),
             );
 
-        LookupRequest {
-            table_id,
-            inputs: vec![input_0, input_1, input_2],
-        }
+        LookupRequest::new(table_id, vec![input_0, input_1, input_2])
     };
 
     // per-byte main lookups (4): binary-op output bytes / shift output chunks
@@ -208,10 +205,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         table_id += Term::from(is_binary_op)
             * Term::from(inputs.decoder_data.funct3.expect("must be present"));
 
-        per_byte_requests.push(LookupRequest {
-            table_id,
-            inputs: constraints.to_vec(),
-        });
+        per_byte_requests.push(LookupRequest::new(table_id, constraints.to_vec()));
     }
 
     // rd-write constraint, gated on Family 3 firing so non-Family-3 cycles in the

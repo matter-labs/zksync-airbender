@@ -1,5 +1,9 @@
-use super::orchestration::common::{run_vm_and_capture, ProgramConfig};
+use super::orchestration::common::{
+    hardcoded_external_challenges, run_vm_and_capture, ProgramConfig,
+};
+use super::orchestration::unified::{build_unified_full_trace, prove_built_unified_trace};
 use super::{check_lookups_in_range, *};
+use crate::definitions::SecurityLevel;
 use ::field::baby_bear::base::BabyBearField;
 use ::field::Field;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
@@ -92,8 +96,6 @@ fn build_satisfying_trace_with_mutation(
     assert!(num_calls < NUM_CYCLES_PER_CHUNK);
 
     let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
-    // Reuse the orchestration trace builder (no memory-consistency check: the negative tests
-    // only need the witness trace for check_satisfied, and we mutate it below).
     let (mut full_trace, _table_driver, _decoder_table) =
         super::orchestration::unified::build_unified_full_trace(
             &vm,
@@ -158,7 +160,7 @@ fn two_family_bits_on_one_row_rejected() {
 /// rewrite from standalone's `selected_rd_high = (is_jal+is_jalr)*saved_pc_high`
 /// to per-opcode `is_X_writes_rd` helpers lost the implicit
 /// `selected_rd_high = 0 for SLT` zeroing; the explicit constraint
-/// `is_slt_writes_rd * rd_write_limbs[1] = 0` at jump_branch_slt.rs:786 restores
+/// `is_slt_writes_rd * rd_write_limbs[1] = 0` (in jump_branch_slt.rs) restores
 /// it. This test mutates `rd_write_limbs[1]` on an SLT row to a 16-bit non-zero
 /// value (so the top-level RC doesn't catch it) and asserts `check_satisfied`
 /// rejects — guards against accidental constraint drop in future refactors.
@@ -341,7 +343,7 @@ fn range_check_16_violation_caught_by_lookup_oracle() {
 /// Cross-family flag collision. Sets a bit from
 /// Family 1 (ADD, bit 0) AND a bit from Family 2 (JAL, bit 8) hot on the same
 /// executing row. The unified dispatch one-hot constraint at
-/// `circuit.rs:393-408` (`is_any_family_active - execute * Σ family-dispatch-bits = 0`,
+/// `apply_unified_family_dispatch_one_hot` (`is_any_family_active - execute * Σ family-dispatch-bits = 0`,
 /// with `is_any_family_active` Boolean) forces the sum across families to be in
 /// {0, 1} on executing rows. Two cross-family bits set ⇒ sum ≥ 2 ⇒ the Boolean
 /// is_any_family_active can't satisfy. `check_satisfied` must reject.
@@ -374,8 +376,8 @@ fn cross_family_flag_collision_rejected() {
 
 /// Padding-row family-bit leak: on a padding row (`execute = 0`), the decoder
 /// lookup is gated off, so the bitmask is NOT bound to a decoder table entry.
-/// The explicit padding-zero-sum constraint at `circuit.rs:418-432`
-/// (`(1 - execute) * Σ all 17 family-bits = 0`) is the only defence against a
+/// The explicit padding-zero-sum constraint in `apply_unified_family_dispatch_one_hot`
+/// (`(1 - execute) * Σ all family-dispatch bits = 0`) is the only defence against a
 /// malicious prover setting a family bit on a padding row. This test mutates a
 /// padding row to set `family_bit[0] = 1` and asserts `check_satisfied`
 /// rejects. Without that constraint, the prover could claim "extra"
@@ -521,6 +523,9 @@ fn unified_top14_pooled_corruption_on_sw_row_rejected() {
 const FMA_BIT_INDEX: usize = FAMILY_1_FLAG_OFFSET + 6;
 /// MULMOD_BIT = 5 within Family 1's bitmask.
 const MULMOD_BIT_INDEX: usize = FAMILY_1_FLAG_OFFSET + 5;
+/// ADDMOD_BIT = 3, SUBMOD_BIT = 4 within Family 1's bitmask.
+const ADDMOD_BIT_INDEX: usize = FAMILY_1_FLAG_OFFSET + 3;
+const SUBMOD_BIT_INDEX: usize = FAMILY_1_FLAG_OFFSET + 4;
 
 /// Property-based SOUNDNESS test (anti-weakening) across families. For each family's per-row
 /// ARITHMETIC output, perturbing a limb by ANY nonzero amount *within its 16-bit range* — so the
@@ -549,6 +554,31 @@ fn pbt_family_output_corruption_always_rejected() {
             "rd/mem write write_value[0]",
         ),
         (
+            "F1 FMA out_hi",
+            FMA_BIT_INDEX,
+            "rd/mem write write_value[1]",
+        ),
+        (
+            "F1 ADDMOD out_lo",
+            ADDMOD_BIT_INDEX,
+            "rd/mem write write_value[0]",
+        ),
+        (
+            "F1 ADDMOD out_hi",
+            ADDMOD_BIT_INDEX,
+            "rd/mem write write_value[1]",
+        ),
+        (
+            "F1 SUBMOD out_lo",
+            SUBMOD_BIT_INDEX,
+            "rd/mem write write_value[0]",
+        ),
+        (
+            "F1 SUBMOD out_hi",
+            SUBMOD_BIT_INDEX,
+            "rd/mem write write_value[1]",
+        ),
+        (
             "F2 SLT out_hi",
             FAMILY_2_FLAG_OFFSET + 2,
             "rd/mem write write_value[1]",
@@ -557,6 +587,11 @@ fn pbt_family_output_corruption_always_rejected() {
             "F3 shift/binop out_lo",
             FAMILY_3_FLAG_OFFSET,
             "rd/mem write write_value[0]",
+        ),
+        (
+            "F3 shift out_hi",
+            FAMILY_3_FLAG_OFFSET,
+            "rd/mem write write_value[1]",
         ),
     ];
     let resolved: Vec<(&str, usize, GKRAddress)> = targets
@@ -584,6 +619,12 @@ fn pbt_family_output_corruption_always_rejected() {
         "expected the F1/F2 arithmetic-output targets to resolve, got {}",
         resolved.len()
     );
+    for required in ["F1 ADDMOD out_lo", "F1 SUBMOD out_lo"] {
+        assert!(
+            resolved.iter().any(|(l, _, _)| *l == required),
+            "{required} did not resolve — rebuild multi_family_smoke (dump_bin.sh) so it issues mop.rr.0/1"
+        );
+    }
     let trace = std::cell::RefCell::new(full_trace);
     proptest!(
         ProptestConfig::with_cases(512),
@@ -602,5 +643,292 @@ fn pbt_family_output_corruption_always_rejected() {
                 orig.as_u32_reduced()
             );
         }
+    );
+}
+
+#[test]
+fn select_trick_each_half_binds() {
+    let (circuit, mut full_trace) = build_satisfying_trace_with_mutation(|_, _| {});
+
+    let lw_addr = find_base_layer_address(&circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
+    let sw_addr = find_base_layer_address(&circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
+    let ram_addr = [
+        find_base_layer_address(&circuit, "shared scratch var[0]"),
+        find_base_layer_address(&circuit, "shared scratch var[1]"),
+    ];
+
+    // (label, row-anchor flag, ram_addr limb)
+    let cases: &[(&str, GKRAddress, usize)] = &[
+        ("LW limb0 (load*ram_addr[0])", lw_addr, 0),
+        ("LW limb1 (load*ram_addr[1])", lw_addr, 1),
+        ("SW limb0 (store*ram_addr[0])", sw_addr, 0),
+        ("SW limb1 (store*ram_addr[1])", sw_addr, 1),
+    ];
+
+    for (label, anchor, limb) in cases {
+        let row = (0..base_trace_len(&full_trace))
+            .find(|&r| read_cell(&full_trace, *anchor, r) == BabyBearField::ONE)
+            .unwrap_or_else(|| panic!("multi_family_smoke must execute a {label} row"));
+        assert!(
+            check_satisfied_row(&circuit, &full_trace, row),
+            "{label}: honest row {row} must satisfy before corruption"
+        );
+        let addr = ram_addr[*limb];
+        let orig = read_cell(&full_trace, addr, row);
+        write_cell(&mut full_trace, addr, row, orig + BabyBearField::ONE);
+        let caught = !check_satisfied_row(&circuit, &full_trace, row);
+        write_cell(&mut full_trace, addr, row, orig); // restore for the next case
+        assert!(
+            caught,
+            "{label}: corrupting ram_addr[{limb}] on row {row} was NOT caught by the select-trick constraint"
+        );
+    }
+}
+
+#[test]
+fn unified_mulmod_intermediate_forge_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let mul_bit = find_base_layer_address(circuit, &format!("family_bit[{MULMOD_BIT_INDEX}]"));
+        let interm = find_base_layer_address(circuit, "MULMOD intermediate value");
+        let row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, mul_bit, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute MULMOD");
+        let cur = read_cell(trace, interm, row);
+        write_cell(trace, interm, row, cur + BabyBearField::ONE);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "forging MULMOD intermediate must break the montgomery_product_expr defining constraint"
+    );
+}
+
+#[test]
+fn unified_pc_bump_carry_flip_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let lw = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
+        let carry = find_base_layer_address(circuit, "unified pc-bump carry");
+        let row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, lw, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute an LW (non-F2 executing) row");
+        let cur = read_cell(trace, carry, row);
+        let flipped = if cur == BabyBearField::ZERO {
+            BabyBearField::ONE
+        } else {
+            BabyBearField::ZERO
+        };
+        write_cell(trace, carry, row, flipped);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "flipping pc-bump carry on a non-F2 executing row must break the pc+4 constraint"
+    );
+}
+
+#[test]
+fn lw_is_rom_forge_on_ram_region_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let lw = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
+        let is_rom = find_base_layer_address(circuit, "shared scratch bool[2]");
+        // RAM-region LW row = LW with honest is_rom == 0 (a data, not ROM, read).
+        let row = (0..base_trace_len(trace))
+            .find(|&r| {
+                read_cell(trace, lw, r) == BabyBearField::ONE
+                    && read_cell(trace, is_rom, r) == BabyBearField::ZERO
+            })
+            .expect("multi_family_smoke must execute a RAM-region LW (is_rom=0)");
+        write_cell(trace, is_rom, row, BabyBearField::ONE);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "forged is_rom=1 on a RAM-region LW row must break the rom-residue / gate_fam4_rom defining constraints"
+    );
+}
+
+#[test]
+fn baseline_trace_is_memory_consistent() {
+    type CountersT = DelegationsAndUnifiedCounters;
+    let worker = Worker::new_with_num_threads(8);
+
+    let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+        deserialize_from_file("../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json")
+    } else {
+        deserialize_from_file(
+            "../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
+        )
+    };
+
+    let config = ProgramConfig::multi_family_smoke_blake_g_function();
+    let vm = run_vm_and_capture::<CountersT>(&config, &worker);
+    let num_calls = vm
+        .counters
+        .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
+    let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
+
+    // The `true` flag makes build_unified_full_trace run ensure_memory_trace_consistency on
+    // the unmutated baseline; reaching here without a panic means the baseline is consistent.
+    let _ = super::orchestration::unified::build_unified_full_trace(
+        &vm,
+        &circuit,
+        num_teardown_sets,
+        num_calls,
+        super::unified_reduced_machine::witness_eval_fn,
+        true,
+        &worker,
+    );
+}
+
+#[derive(Clone, Copy)]
+enum StaticVerdict {
+    /// `check_satisfied` (arithmetic) rejects the corrupted witness.
+    ArithRejects,
+    /// `check_lookups_in_range` rejects it (arithmetic may or may not — agnostic).
+    RangeRejects,
+    /// Both static checkers PASS; only the real verifier rejects.
+    BothPass,
+}
+
+fn generate_malicious_unified_proof(
+    variant: &str,
+    static_verdict: StaticVerdict,
+    mutate: impl FnOnce(
+        &GKRCircuitArtifact<BabyBearField>,
+        &mut GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    ),
+) {
+    type CountersT = DelegationsAndUnifiedCounters;
+    let worker = Worker::new_with_num_threads(8);
+
+    let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+        deserialize_from_file("../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json")
+    } else {
+        deserialize_from_file(
+            "../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
+        )
+    };
+
+    // Match the blake variant to the verifier the pipeline builds (gkr_test.sh passes
+    // GKR_BLAKE=$BLAKE). Mirrors unified_circuit.rs; default (unset) = g_function.
+    let config = match std::env::var("GKR_BLAKE").ok().as_deref() {
+        Some("compression") | Some("blake2_with_compression") => {
+            ProgramConfig::multi_family_smoke_blake_compression()
+        }
+        _ => ProgramConfig::multi_family_smoke_blake_g_function(),
+    };
+    let vm = run_vm_and_capture::<CountersT>(&config, &worker);
+    let num_calls = vm
+        .counters
+        .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
+    let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
+
+    let (mut full_trace, table_driver, decoder_table) = build_unified_full_trace(
+        &vm,
+        &circuit,
+        num_teardown_sets,
+        num_calls,
+        super::unified_reduced_machine::witness_eval_fn,
+        false,
+        &worker,
+    );
+
+    mutate(&circuit, &mut full_trace);
+
+    match static_verdict {
+        StaticVerdict::ArithRejects => assert!(
+            !check_satisfied(&circuit, &full_trace),
+            "{variant}: expected check_satisfied to reject the corrupted witness (ArithRejects)"
+        ),
+        StaticVerdict::RangeRejects => assert!(
+            !check_lookups_in_range(&circuit, &full_trace),
+            "{variant}: expected check_lookups_in_range to reject the corrupted witness (RangeRejects)"
+        ),
+        StaticVerdict::BothPass => {
+            assert!(
+                check_satisfied(&circuit, &full_trace),
+                "{variant}: corruption unexpectedly visible to check_satisfied — should be verifier-only (BothPass)"
+            );
+            assert!(
+                check_lookups_in_range(&circuit, &full_trace),
+                "{variant}: corruption unexpectedly visible to check_lookups_in_range — should be verifier-only (BothPass)"
+            );
+        }
+    }
+
+    let proof = prove_built_unified_trace(
+        &circuit,
+        full_trace,
+        &table_driver,
+        &decoder_table,
+        num_teardown_sets,
+        &hardcoded_external_challenges(),
+        SecurityLevel::Sec80,
+        &worker,
+    );
+
+    serialize_to_file(
+        &proof,
+        &format!("test_proofs/malicious_unified_{variant}_gkr_proof.json"),
+    );
+}
+
+#[test]
+#[ignore]
+fn generate_malicious_unified_proofs() {
+    generate_malicious_unified_proof(
+        "rc16_overflow",
+        StaticVerdict::RangeRejects,
+        |circuit, trace| {
+            let target = circuit
+                .range_check_16_lookup_expressions
+                .iter()
+                .find_map(|l| {
+                    if l.input.is_trivial_single_input() {
+                        Some(l.input.linear_terms[0].1)
+                    } else {
+                        None
+                    }
+                })
+                .expect("expected at least one trivial single-input RC-16 lookup");
+            write_cell(trace, target, 0, BabyBearField::new(0x12345));
+        },
+    );
+
+    generate_malicious_unified_proof(
+        "is_rom_forge",
+        StaticVerdict::ArithRejects,
+        |circuit, trace| {
+            let lw = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
+            let is_rom = find_base_layer_address(circuit, "shared scratch bool[2]");
+            let row = (0..base_trace_len(trace))
+                .find(|&r| {
+                    read_cell(trace, lw, r) == BabyBearField::ONE
+                        && read_cell(trace, is_rom, r) == BabyBearField::ZERO
+                })
+                .expect("multi_family_smoke must execute a RAM-region LW (is_rom=0)");
+            write_cell(trace, is_rom, row, BabyBearField::ONE);
+        },
+    );
+
+    generate_malicious_unified_proof("f4_sw_value", StaticVerdict::BothPass, |circuit, trace| {
+        let sw = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
+        let write_value = find_base_layer_address(circuit, "rd/mem write write_value[0]");
+        let row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, sw, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one SW");
+        let cur = read_cell(trace, write_value, row);
+        write_cell(trace, write_value, row, cur + BabyBearField::ONE);
+    });
+
+    generate_malicious_unified_proof(
+        "f4_lw_value",
+        StaticVerdict::ArithRejects,
+        |circuit, trace| {
+            let lw = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
+            let load_byte = find_base_layer_address(circuit, "rs2/mem read read_value_u8[0]");
+            let row = (0..base_trace_len(trace))
+                .find(|&r| read_cell(trace, lw, r) == BabyBearField::ONE)
+                .expect("multi_family_smoke must execute at least one LW");
+            let bumped = (read_cell(trace, load_byte, row).as_u32_reduced() + 1) & 0xFF;
+            write_cell(trace, load_byte, row, BabyBearField::new(bumped));
+        },
     );
 }

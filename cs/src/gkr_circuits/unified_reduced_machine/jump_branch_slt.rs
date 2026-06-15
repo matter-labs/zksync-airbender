@@ -352,13 +352,13 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         is_fam2_sum() * Term::from(TableType::RegIsZero.to_num()),
         &f2_flag_vars,
     );
-    let regiszero_request = LookupRequest {
-        table_id: is_fam2_sum() * Term::from(TableType::RegIsZero.to_num()),
-        inputs: vec![
+    let regiszero_request = LookupRequest::new(
+        is_fam2_sum() * Term::from(TableType::RegIsZero.to_num()),
+        vec![
             is_fam2_sum() * regiszero_input,
             is_fam2_sum() * Term::from(comparison_result_is_zero),
         ],
-    };
+    );
 
     // sign of rs1's high U16 limb (reassembled from the high two bytes — that's
     // exactly `rs1_high_c`). U16GetSign maps the full 16-bit value to its sign.
@@ -370,13 +370,13 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
         &f2_flag_vars,
     );
-    let u16getsign_request = LookupRequest {
-        table_id: is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
-        inputs: vec![
+    let u16getsign_request = LookupRequest::new(
+        is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
+        vec![
             is_fam2_sum() * rs1_high_c.clone(),
             is_fam2_sum() * Term::from(rs1_sign),
         ],
-    };
+    );
 
     // and now we can resolve jump. Note that SLT/SLTU use the same formal(!) funct3 as BLT/BLTU,
     // and for JAL/JALR we formally set funct3 to be such that jump resolution will be always
@@ -401,13 +401,13 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSlt.to_num()),
         &f2_flag_vars,
     );
-    let cond_jmp_request = LookupRequest {
-        table_id: is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSlt.to_num()),
-        inputs: vec![
+    let cond_jmp_request = LookupRequest::new(
+        is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSlt.to_num()),
+        vec![
             is_fam2_sum() * cond_jmp_input,
             is_fam2_sum() * Term::from(should_jump_or_slt_value),
         ],
-    };
+    );
     let should_jump_if_branch = cs.add_named_variable("should jump if BRANCH opcode");
 
     // now we can compute next PC, as well as PC that will be placed into RD for JAL/JALR
@@ -696,14 +696,14 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // JumpCleanupOffset request for the shared pool: tuple
     // (is_fam2*input, is_fam2*bit_1, is_fam2*pc_out_low) under
     // table_id = is_fam2 * JumpCleanupOffset; (0,0,0)/ZeroEntry on non-F2 rows.
-    let jump_cleanup_request = LookupRequest {
-        table_id: is_fam2_sum() * Term::from(TableType::JumpCleanupOffset.to_num()),
-        inputs: vec![
+    let jump_cleanup_request = LookupRequest::new(
+        is_fam2_sum() * Term::from(TableType::JumpCleanupOffset.to_num()),
+        vec![
             is_fam2_sum() * Term::from(pc_intermediate_addition_tmp_low),
             is_fam2_sum() * Term::from(next_pc_bit_1),
             is_fam2_sum() * Term::from(inputs.cycle_end_state.pc[0]),
         ],
-    };
+    );
 
     // unaligned jump is unprovable, and we only need to check bit number 1, as jump offset is always 0 mod 2,
     // and PC is 0 mod 4

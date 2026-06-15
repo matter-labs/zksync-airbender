@@ -17,8 +17,6 @@ use worker::Worker;
 const NUM_INIT_AND_TEARDOWN_SETS: usize = 16;
 const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
 
-const USE_GKR_WITH_CACHES: bool = cfg!(not(feature = "no_caches"));
-
 // NOTE: these constants must match with ones used in CS crate to produce
 // layout and SSA forms, otherwise derived witness-gen functions may write into
 // invalid locations
@@ -92,20 +90,21 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &mut inits_and_teardowns,
         );
 
-    println!("Finished at PC = 0x{:08x}", vm.final_pc);
-    for (reg_idx, reg) in vm.register_final_state.iter().enumerate() {
+    println!("Finished at PC = 0x{:08x}", vm.final_pc());
+    for (reg_idx, reg) in vm.register_final_state().iter().enumerate() {
         println!("x{} = {}", reg_idx, reg.current_value);
     }
 
+    // Derived accessors first (they borrow all of `vm`), then move the owned fields out.
+    let expected_final_state = vm.expected_final_state();
+    let final_pc = vm.final_pc();
+    let final_timestamp = vm.final_timestamp();
+    let register_final_state = vm.register_final_state();
     let counters = vm.counters;
-    let snapshotter = vm.snapshotter;
-    let tape = vm.tape;
-    let expected_final_state = vm.expected_final_state;
-    let final_pc = vm.final_pc;
-    let final_timestamp = vm.final_timestamp;
-    let register_final_state = vm.register_final_state;
     let total_unique_teardowns = vm.total_unique_teardowns;
     let cycles_bound = vm.cycles_bound;
+    let snapshotter = vm.snapshotter;
+    let tape = vm.tape;
     let text_section = vm.text_section;
     let binary = vm.binary;
 
@@ -771,13 +770,9 @@ fn add_sub_mop_real_program_check_satisfied() {
     );
     let decoder_table_data = &preprocessing_data[&CIRCUIT_TYPE];
 
-    let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-        deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
-    } else {
-        deserialize_from_file(
-            "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
-        )
-    };
+    let circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
+        &super::orchestration::per_family::circuit_path("add_sub_lui_auipc_mop"),
+    );
     let mut table_driver = TableDriver::<BabyBearField>::new();
     cs::gkr_circuits::add_sub_family::add_sub_lui_auipc_mop_table_driver_fn(&mut table_driver);
 
@@ -788,7 +783,7 @@ fn add_sub_mop_real_program_check_satisfied() {
         super::orchestration::per_family::build_nonmem_family_full_trace::<CIRCUIT_TYPE, _>(
             &vm.snapshotter,
             &vm.tape,
-            &vm.expected_final_state,
+            &vm.expected_final_state(),
             vm.cycles_bound,
             num_calls,
             &circuit,

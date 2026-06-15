@@ -189,8 +189,8 @@ impl<'a> IsEmptyExt for MemoryCircuitOracle<'a> {
     }
 }
 
-/// Per-variant compiled-circuit JSON path.
-fn circuit_path(stem: &str) -> String {
+/// Per-variant compiled-circuit JSON path
+pub fn circuit_path(stem: &str) -> String {
     if USE_GKR_WITH_CACHES {
         format!("../cs/compiled_circuits/{stem}_layout_gkr.json")
     } else {

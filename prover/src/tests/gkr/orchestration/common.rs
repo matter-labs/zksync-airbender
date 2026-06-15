@@ -144,17 +144,42 @@ pub struct VmRunOutput<C: Counters + Copy + Default> {
     pub ram: RamWithRomRegion<{ common_constants::ROM_SECOND_WORD_BITS }>,
     pub snapshotter: SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     pub final_state: State<C>,
-    pub expected_final_state: State<C>,
     pub counters: C,
-    pub final_pc: u32,
-    pub final_timestamp: TimestampScalar,
-    pub register_final_state: [RamShuffleMemStateRecord; 32],
     pub shuffle_ram_touched_addresses: Vec<Vec<(u32, (TimestampScalar, u32)), Global>, Global>,
     pub total_unique_teardowns: usize,
     pub cycles_bound: usize,
     /// Echo of `ProgramConfig::ram_bound_bytes` so downstream consumers
     /// (i/t coverage checks, etc.) don't need to keep the config around.
     pub ram_bound_bytes: usize,
+}
+
+impl<C: Counters + Copy + Default> VmRunOutput<C> {
+    /// Final program counter, derived from `final_state` (previously a denormalized field).
+    pub fn final_pc(&self) -> u32 {
+        self.final_state.pc
+    }
+
+    /// Final timestamp, derived from `final_state`.
+    pub fn final_timestamp(&self) -> TimestampScalar {
+        self.final_state.timestamp
+    }
+
+    /// Per-register final (value, timestamp) records, derived from `final_state`.
+    pub fn register_final_state(&self) -> [RamShuffleMemStateRecord; 32] {
+        self.final_state
+            .registers
+            .map(|el| RamShuffleMemStateRecord {
+                last_access_timestamp: el.timestamp,
+                current_value: el.value,
+            })
+    }
+
+    /// `final_state` with counters zeroed — the boundary state the replayer must reproduce.
+    pub fn expected_final_state(&self) -> State<C> {
+        let mut s = self.final_state;
+        s.counters = Default::default();
+        s
+    }
 }
 
 /// Run the program in `config` once, capturing the snapshotter (so individual
@@ -228,17 +253,6 @@ where
         .sum();
     println!("Touched {} unique addresses", total_unique_teardowns);
 
-    let final_pc = state.pc;
-    let final_timestamp = state.timestamp;
-
-    let register_final_state = state.registers.map(|el| RamShuffleMemStateRecord {
-        last_access_timestamp: el.timestamp,
-        current_value: el.value,
-    });
-
-    let mut expected_final_state = state;
-    expected_final_state.counters = Default::default();
-
     VmRunOutput {
         binary,
         text_section,
@@ -247,11 +261,7 @@ where
         ram,
         snapshotter,
         final_state: state,
-        expected_final_state,
         counters,
-        final_pc,
-        final_timestamp,
-        register_final_state,
         shuffle_ram_touched_addresses,
         total_unique_teardowns,
         cycles_bound: config.cycles_bound,

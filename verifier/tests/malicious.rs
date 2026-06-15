@@ -96,3 +96,79 @@ fn rejects_malicious_memory_value() {
         )
     });
 }
+
+// ---- Unified reduced machine proof-level negative tests ----
+// Consume the proofs from `prover` `generate_malicious_unified_proofs` (run that first, WITHOUT gkr_self_checks)
+
+const UNIFIED_CIRCUIT_NAME: &str = "unified_reduced_machine";
+
+fn load_malicious_unified_proof(
+    variant: &str,
+) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
+    let path = format!(
+        "{}/prover/test_proofs/malicious_unified_{}_gkr_proof.json",
+        repo_root(),
+        variant
+    );
+    deserialize_from_file(&path)
+}
+
+fn assert_rejects_unified(variant: &str, expected: impl FnOnce(&VerificationError) -> bool) {
+    let proof = load_malicious_unified_proof(variant);
+    common::assert_rejects_with_variant(
+        UNIFIED_CIRCUIT_NAME,
+        SecurityLevel::Sec80,
+        variant,
+        &proof,
+        expected,
+    );
+}
+
+#[test]
+#[ignore]
+fn rejects_malicious_unified_rc16_overflow() {
+    assert_rejects_unified("rc16_overflow", |e| {
+        matches!(e, VerificationError::GkrLookupIdentityFailed { .. })
+    });
+}
+
+#[test]
+#[ignore]
+fn rejects_malicious_unified_is_rom_forge() {
+    assert_rejects_unified("is_rom_forge", |e| {
+        matches!(
+            e,
+            VerificationError::GkrLookupIdentityFailed { .. }
+                | VerificationError::GkrSumcheckRoundFailed { .. }
+                | VerificationError::GkrFinalStepCheckFailed { .. }
+        )
+    });
+}
+
+#[test]
+#[ignore]
+fn rejects_malicious_unified_f4_sw_value() {
+    assert_rejects_unified("f4_sw_value", |e| {
+        matches!(
+            e,
+            VerificationError::GkrSumcheckRoundFailed { .. }
+                | VerificationError::GkrFinalStepCheckFailed { .. }
+                | VerificationError::GkrPermutationCacheRelationFailed { .. }
+                | VerificationError::GkrGrandProductCheckFailed
+        )
+    });
+}
+
+#[test]
+#[ignore]
+fn rejects_malicious_unified_f4_lw_value() {
+    assert_rejects_unified("f4_lw_value", |e| {
+        matches!(
+            e,
+            VerificationError::GkrSumcheckRoundFailed { .. }
+                | VerificationError::GkrFinalStepCheckFailed { .. }
+                | VerificationError::GkrPermutationCacheRelationFailed { .. }
+                | VerificationError::GkrGrandProductCheckFailed
+        )
+    });
+}

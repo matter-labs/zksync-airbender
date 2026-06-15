@@ -27,12 +27,12 @@ use field::PrimeField;
 ///
 /// | Bit range  | Family                            | Count |
 /// |------------|-----------------------------------|-------|
-/// | [0..8)     | Family 1 (add_sub_lui_auipc_mop)  | 8     |
-/// | [8..13)    | Family 2 (jump_branch_slt)        | 5     |
-/// | [13..15)   | Family 3 (shift_binop)            | 2     |
-/// | [15..17)   | Family 4 (mem_word_only)          | 2     |
+/// | [0..9)     | Family 1 (add_sub_lui_auipc_mop)  | 9     |
+/// | [9..14)    | Family 2 (jump_branch_slt)        | 5     |
+/// | [14..16)   | Family 3 (shift_binop)            | 2     |
+/// | [16..18)   | Family 4 (mem_word_only)          | 2     |
 ///
-/// Family 4 is encoded one-hot in the unified bitmask (bit 15 = LW, bit 16 = SW)
+/// Family 4 is encoded one-hot in the unified bitmask (bit 16 = LW, bit 17 = SW)
 /// to match the per-sub-opcode convention used by Families 1/2/3. This diverges
 /// from the Family-4 standalone encoding (1 bit = is_store) but lets the unified
 /// body read the LW/SW gates directly as Booleans without committing additional
@@ -106,8 +106,19 @@ const UNIFIED_SCRATCH_VAR_COUNT: usize = {
 pub(super) const UNIFIED_LOOKUP_WIDTH: usize = 8;
 
 pub(super) struct LookupRequest<F: PrimeField> {
-    pub table_id: Constraint<F>,
-    pub inputs: Vec<Constraint<F>>,
+    table_id: Constraint<F>,
+    inputs: Vec<Constraint<F>>,
+}
+
+impl<F: PrimeField> LookupRequest<F> {
+    pub(super) fn new(table_id: Constraint<F>, inputs: Vec<Constraint<F>>) -> Self {
+        assert!(
+            inputs.len() <= UNIFIED_LOOKUP_WIDTH,
+            "LookupRequest has {} inputs, exceeds UNIFIED_LOOKUP_WIDTH={UNIFIED_LOOKUP_WIDTH}",
+            inputs.len()
+        );
+        Self { table_id, inputs }
+    }
 }
 
 fn flush_unified_lookup_pool<F: PrimeField, CS: Circuit<F>>(

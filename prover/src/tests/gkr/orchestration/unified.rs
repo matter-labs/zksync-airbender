@@ -152,10 +152,10 @@ where
     let unified_ram_coverage_bytes: usize =
         (num_unified_teardown_sets << TRACE_LEN_LOG2) << (WORD_BITS as usize);
     assert!(
-        unified_ram_coverage_bytes <= vm.cycles_bound * 4 * 4
-            || unified_ram_coverage_bytes <= vm.ram_bound_bytes,
-        "unified circuit i/t coverage ({unified_ram_coverage_bytes} bytes) doesn't fit the run; \
-         recompile unified with a larger num_inits_and_teardowns_pairs"
+        unified_ram_coverage_bytes >= vm.cycles_bound * 4 * 4
+            || unified_ram_coverage_bytes >= vm.ram_bound_bytes,
+        "unified circuit i/t coverage ({unified_ram_coverage_bytes} bytes) is smaller than the \
+         run's max RAM footprint; recompile unified with a larger num_inits_and_teardowns_pairs"
     );
 
     let _ = REDUCED_MACHINE_CIRCUIT_FAMILY_IDX; // touch import
@@ -168,7 +168,7 @@ where
         delegation_outputs.push(prove_delegation_blake::<C>(
             &vm.snapshotter,
             &vm.tape,
-            &vm.expected_final_state,
+            &vm.expected_final_state(),
             vm.cycles_bound,
             delegation_call_counts.blake,
             &external_challenges,
@@ -185,7 +185,7 @@ where
         delegation_outputs.push(prove_delegation_bigint::<C>(
             &vm.snapshotter,
             &vm.tape,
-            &vm.expected_final_state,
+            &vm.expected_final_state(),
             vm.cycles_bound,
             delegation_call_counts.bigint,
             &external_challenges,
@@ -202,7 +202,7 @@ where
         delegation_outputs.push(prove_delegation_keccak::<C>(
             &vm.snapshotter,
             &vm.tape,
-            &vm.expected_final_state,
+            &vm.expected_final_state(),
             vm.cycles_bound,
             delegation_call_counts.keccak,
             &external_challenges,
@@ -219,7 +219,7 @@ where
         delegation_outputs.push(prove_delegation_blake_g_function::<C>(
             &vm.snapshotter,
             &vm.tape,
-            &vm.expected_final_state,
+            &vm.expected_final_state(),
             vm.cycles_bound,
             delegation_call_counts.blake_g_function,
             &external_challenges,
@@ -259,15 +259,15 @@ where
     // --- Accumulator close-check. ---
 
     let register_final_state_raw = vm
-        .register_final_state
+        .register_final_state()
         .map(|el| (el.current_value, split_timestamp(el.last_access_timestamp)));
     let mut permutation_argument_accumulator =
         produce_initial_permutation_product_contribution::<BabyBearField, BabyBearExt4>(
             &register_final_state_raw,
             INITIAL_PC,
             split_timestamp(INITIAL_TIMESTAMP),
-            vm.final_pc,
-            split_timestamp(vm.final_timestamp),
+            vm.final_pc(),
+            split_timestamp(vm.final_timestamp()),
             &external_challenges,
         );
     if let Some(ref p) = unified_proof {
@@ -281,9 +281,9 @@ where
         unified_proof,
         compiled_unified_circuit: unified_circuit,
         delegation_outputs,
-        register_final_state: vm.register_final_state,
-        final_pc: vm.final_pc,
-        final_timestamp: vm.final_timestamp,
+        register_final_state: vm.register_final_state(),
+        final_pc: vm.final_pc(),
+        final_timestamp: vm.final_timestamp(),
         external_challenges,
         permutation_argument_accumulator,
     }
@@ -333,7 +333,7 @@ where
         vm.cycles_bound,
         &mut tracer,
     );
-    assert_eq!(vm.expected_final_state, state);
+    assert_eq!(vm.expected_final_state(), state);
 
     let oracle = UnifiedRiscvCircuitOracle::new::<BabyBearField>(
         &buffer[..],
@@ -420,8 +420,6 @@ fn prove_unified_inner<C>(
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
-    let trace_len: usize = 1 << TRACE_LEN_LOG2;
-
     let (unified_full_trace, unified_table_driver, decoder_table) = build_unified_full_trace(
         vm,
         unified_circuit,
@@ -441,14 +439,53 @@ where
         );
     }
 
+    let proof = prove_built_unified_trace(
+        unified_circuit,
+        unified_full_trace,
+        &unified_table_driver,
+        &decoder_table,
+        num_unified_teardown_sets,
+        external_challenges,
+        level,
+        worker,
+    );
+
+    delegations_serialize(
+        &proof,
+        &format!(
+            "test_proofs/unified_reduced_machine_{}_gkr_proof.json",
+            proof_suffix
+        ),
+    );
+
+    proof
+}
+
+/// Prove a *pre-built* unified witness trace: prover config + twiddles, construct &
+/// commit the setup, run the GKR prover with the inits/teardowns top-bits. Split out of
+/// [`prove_unified_inner`] so the unified malicious-proof generator can build a trace,
+/// corrupt it, and prove it through the exact same path (caller owns serialization).
+#[allow(clippy::too_many_arguments)]
+pub fn prove_built_unified_trace(
+    unified_circuit: &GKRCircuitArtifact<BabyBearField>,
+    unified_full_trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    unified_table_driver: &TableDriver<BabyBearField>,
+    decoder_table: &[Option<ExecutorFamilyDecoderData>],
+    num_unified_teardown_sets: usize,
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    level: SecurityLevel,
+    worker: &Worker,
+) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
+    let trace_len: usize = 1 << TRACE_LEN_LOG2;
+
     let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
         trace_len.trailing_zeros() as usize,
         level,
     );
     let unified_twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
     let unified_setup = GKRSetup::construct(
-        &unified_table_driver,
-        &decoder_table,
+        unified_table_driver,
+        decoder_table,
         trace_len,
         unified_circuit,
     );
@@ -478,14 +515,6 @@ where
         worker,
     );
     println!("Unified proving time is {:?}", now.elapsed());
-
-    delegations_serialize(
-        &proof,
-        &format!(
-            "test_proofs/unified_reduced_machine_{}_gkr_proof.json",
-            proof_suffix
-        ),
-    );
 
     proof
 }
