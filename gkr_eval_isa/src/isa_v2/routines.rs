@@ -32,8 +32,12 @@ pub enum LoweringKind {
     Arith,
     /// per-row macro (fold / lookup / grand-product / mapped lookup) → routine
     Macro,
-    /// pass-through aliased to an input backing → no instruction (Task 2.6)
+    /// `CopyInBaseField`/`CopyInExtensionField` column copy aliased to an input
+    /// backing → no instruction (Task 2.6). NOT for constraint gates.
     Alias,
+    /// constraint gate (Enforce*): empty dst, no forward output, emits no
+    /// instruction — NOT an alias-to-input.
+    Constraint,
     /// scratch-prefilled (MaxQuadratic) → no instruction (Task 1.2 / §4)
     ScratchSkip,
     /// a kind no lowering handles — hard failure at the phase-1 gate
@@ -167,10 +171,10 @@ pub fn lowering_kind(kind: &GateKind) -> LoweringKind {
 
         // Constraint gates: empty-dst, produce no forward output, emit no
         // instruction. Not output-bearing (v1 `gate_kind_bytes` marks them
-        // `unreachable!` in the forward population). Bucketed with the
-        // no-instruction "Alias" kind (non-Macro, no routine).
+        // `unreachable!` in the forward population). Distinct from Alias —
+        // these are NOT column copies to an input backing.
         EnforceSingleMaxQuadraticConstraint { .. }
-        | EnforceConstraintsMaxQuadratic { .. } => Alias,
+        | EnforceConstraintsMaxQuadratic { .. } => Constraint,
 
         // Host-side copy aliases: forward-INELIGIBLE per v1 `fwd_eligible`
         // (pass-through to an input backing) → no instruction.

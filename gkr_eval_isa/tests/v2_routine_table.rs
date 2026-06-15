@@ -48,7 +48,7 @@ fn every_forward_kind_is_classified_and_macros_have_routines() {
                         Some(id) => assert_resolvable(id, &format!("{name}: gate {:?}", gate.kind), &mut bad),
                         None => bad.push(format!("{name}: Macro gate without routine: {:?}", gate.kind)),
                     },
-                    LoweringKind::Arith | LoweringKind::Alias | LoweringKind::ScratchSkip => {
+                    LoweringKind::Arith | LoweringKind::Alias | LoweringKind::Constraint | LoweringKind::ScratchSkip => {
                         if routine_for_gate(&gate.kind).is_some() {
                             bad.push(format!("{name}: non-Macro gate has a routine (boundary leak): {:?}", gate.kind));
                         }
