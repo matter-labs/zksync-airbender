@@ -50,7 +50,7 @@ impl Default for FwdParams2 {
 
 /// The three computation-isolated forward strands (spec §6, §2). Defined here
 /// in Task 2.4; the partitioning logic lands in Task 2.7. (F6)
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Strand {
     BaseArith, // base Sum/Prod/Dot arena (CSE-rich)
     LookupGp,  // Lookup* leaves -> AggregateLookupRationalPair (AGG) cascade
@@ -542,12 +542,25 @@ pub fn compile_forward_v2(
 
     // Macro / gather / materialize lowering (Task 2.5). After the base-arith
     // instrs, emit one macro Instr2 per Macro gate and per cache. Macro instrs
-    // are not single arena nodes (instr_node = None); strand classification is
-    // Task 2.7's job, so tag all non-arith as BaseArith for now (instr-aligned).
+    // are not single arena nodes (instr_node = None). Strand classification
+    // (Task 2.7) tags each emitted macro from its `Header::Macro { routine }`
+    // via `routine_strand` (the spec §2 routine→strand map).
     let cache_kinds = macros::cache_kind_by_addr(layer);
     let mut mctx = macros::MacroCtx::new(&matrix_table, &const_idx, &cache_kinds);
     let mut macro_count = 0usize;
     let mut gather_lane_count = 0usize;
+
+    // Strand of an emitted macro instr from its header routine.
+    let macro_strand = |instr: &Instr2| -> Strand {
+        match instr.header {
+            Header::Macro { routine, .. } => {
+                let rid = routine_from_u8(routine);
+                routine_strand(rid)
+            }
+            // base-arith never reaches this loop.
+            Header::Arith { .. } => Strand::BaseArith,
+        }
+    };
 
     // Caches first (they produce values gates/outputs may read), then gates.
     for cache in &layer.caches {
@@ -563,9 +576,10 @@ pub fn compile_forward_v2(
             .iter()
             .filter(|d| matches!(d, Dst::Materialize { .. }))
             .count();
+        let strand = macro_strand(&instr);
         program.instrs.push(instr);
         instr_node.push(None);
-        instr_strand.push(Strand::BaseArith);
+        instr_strand.push(strand);
     }
     for gate in layer.gates.iter().chain(&layer.gates_external) {
         if let Some(instr) = macros::lower_gate(gate, arena, &mut mctx) {
@@ -580,9 +594,10 @@ pub fn compile_forward_v2(
                 .iter()
                 .filter(|d| matches!(d, Dst::Materialize { .. }))
                 .count();
+            let strand = macro_strand(&instr);
             program.instrs.push(instr);
             instr_node.push(None);
-            instr_strand.push(Strand::BaseArith);
+            instr_strand.push(strand);
         }
     }
 
@@ -610,16 +625,283 @@ pub fn compile_forward_v2(
     debug_assert_eq!(instr_node.len(), program.instrs.len());
     debug_assert_eq!(instr_strand.len(), program.instrs.len());
 
+    // (Task 2.7) §2 AGG/PROD isolation check + per-strand split. `isolation_ok`
+    // is `false` iff some instr reads a COMPUTED `Operand::Slot` whose writer is
+    // in a different strand. The per-strand decomposition is materialized when
+    // requested (Task 4.2 proxy) OR when isolation fails (Task 3.6 fallback);
+    // `split_into_strands` rematerializes any genuine cross-strand Slot dep so
+    // each per-strand program is independently valid.
+    let isolation_ok = isolation_holds(&program, &instr_strand);
+    let per_strand = if params.emit_per_strand || !isolation_ok {
+        Some(split_into_strands(&program, &instr_strand))
+    } else {
+        None
+    };
+
     CompiledForward2 {
         program,
         matrix_table,
         stats,
-        // Task 2.7 computes the §2 AGG/PROD isolation check + per-strand split.
-        isolation_ok: true,
-        per_strand: None,
+        isolation_ok,
+        per_strand,
         instr_node,
         instr_strand,
     }
+}
+
+/// §2 routine→strand map. `LookupGp` = the lookup num/den + aggregate +
+/// single/vectorized lookup family; `MemoryGp` = the memory-tuple caches AND the
+/// grand-product (PROD) cascade that consumes them; `BaseArith` = the gate-output
+/// fold.
+///
+/// `GrandProductStep`/`ProductStep` are the grand-product cascade steps. They
+/// carry no lookup-vs-memory tag in the gate kind (see `routine_for_gate`), and
+/// in the in-tree corpus they read only materialized backings (`Affine`) /
+/// inline gathers (`Indirect`) — NEVER a base-arith `Operand::Slot` — so the
+/// bucket choice creates no cross-strand `Slot` dependency either way (the
+/// isolation oracle only sees Slot-to-Slot crossings, and macros emit no Slot
+/// reads: `macros::operand_for`). We assign the PROD cascade to `MemoryGp`,
+/// matching the spec §2/§6 phrasing "MemoryGp — memory-tuple caches →
+/// grand-product (PROD) cascade", and the LOOKUP rational fold to `LookupGp`.
+pub(crate) fn routine_strand(routine: crate::isa_v2::RoutineId) -> Strand {
+    use crate::isa_v2::RoutineId::*;
+    match routine {
+        GateOutputFold => Strand::BaseArith,
+        LookupNumDen
+        | AggregateLookupPair
+        | SingleColumnLookup
+        | VectorizedLookup
+        | VectorizedLookupSetup => Strand::LookupGp,
+        MemoryTuple
+        | MemoryInitTeardownPair
+        | GrandProductStep
+        | ProductStep => Strand::MemoryGp,
+    }
+}
+
+/// Recover a `RoutineId` from the 7-bit header `routine` byte. The compiler only
+/// emits the dense 0..=9 ids; an out-of-range byte is a corrupt program.
+fn routine_from_u8(routine: u8) -> crate::isa_v2::RoutineId {
+    use crate::isa_v2::RoutineId::*;
+    match routine {
+        0 => GateOutputFold,
+        1 => LookupNumDen,
+        2 => GrandProductStep,
+        3 => AggregateLookupPair,
+        4 => SingleColumnLookup,
+        5 => MemoryTuple,
+        6 => VectorizedLookup,
+        7 => VectorizedLookupSetup,
+        8 => ProductStep,
+        9 => MemoryInitTeardownPair,
+        other => panic!("unknown routine id {other} in fused program header"),
+    }
+}
+
+/// Every COMPUTED `Operand::Slot { cell }` an instr reads — in its `operands`
+/// AND inside its `memtup` (roles + as-payload). Shared `Affine`/`Ldc`/
+/// `Indirect` INPUT reads are NOT computed transients, so they are excluded.
+fn slot_reads(instr: &Instr2) -> Vec<u8> {
+    let mut cells = Vec::new();
+    let mut scan = |op: &Operand| {
+        if let Operand::Slot { cell, .. } = op {
+            cells.push(*cell);
+        }
+    };
+    for op in &instr.operands {
+        scan(op);
+    }
+    if let Some(mt) = &instr.memtup {
+        for (_role, op) in &mt.roles {
+            scan(op);
+        }
+        if let Some(op) = &mt.as_payload {
+            scan(op);
+        }
+    }
+    cells
+}
+
+/// Every `Dst::Slot { cell }` an instr writes (a computed transient backing).
+fn slot_writes(instr: &Instr2) -> Vec<u8> {
+    instr
+        .dsts
+        .iter()
+        .filter_map(|d| match d {
+            Dst::Slot { cell, .. } => Some(*cell),
+            Dst::Materialize { .. } => None,
+        })
+        .collect()
+}
+
+/// §2 isolation check. Returns `false` iff some instruction reads an
+/// `Operand::Slot { cell }` (a COMPUTED transient) whose `Dst::Slot { cell }`
+/// writer (the LAST writer at or before this instr) lives in a DIFFERENT strand.
+/// Shared `Affine`/`Ldc`/`Indirect` input reads do not count — only computed
+/// Slot values cross. Slot reads inside `memtup` are accounted for too.
+///
+/// `instr_strand` must be instr-aligned (`== program.instrs.len()`).
+pub(crate) fn isolation_holds(program: &Program2, instr_strand: &[Strand]) -> bool {
+    debug_assert_eq!(instr_strand.len(), program.instrs.len());
+    // cell -> (strand of its current/last writer). Updated as we walk forward,
+    // so a reader sees the most-recent writer of that cell.
+    let mut writer_strand: HashMap<u8, Strand> = HashMap::new();
+    for (i, instr) in program.instrs.iter().enumerate() {
+        let strand = instr_strand[i];
+        for cell in slot_reads(instr) {
+            if let Some(&ws) = writer_strand.get(&cell) {
+                if ws != strand {
+                    return false;
+                }
+            }
+            // A Slot read with no prior writer is a forward-ordering bug, not a
+            // cross-strand dep; the emitter never produces one, so leave it to
+            // the per-strand dangling-read assertion to surface.
+        }
+        for cell in slot_writes(instr) {
+            writer_strand.insert(cell, strand);
+        }
+    }
+    true
+}
+
+/// Produce one INDEPENDENTLY-VALID `Program2` per strand (the §6/§7 fallback
+/// decomposition). Not a blind partition: a blind split leaves a consumer strand
+/// reading a `Slot` only the producer strand wrote (rereview-5). For every
+/// cross-strand `Slot` dependency (a `Dst::Slot { cell }` in strand A read by an
+/// `Operand::Slot { cell }` in strand B) we MATERIALIZE the bridge: the producer
+/// instr (kept in A's program) ALSO gets a `Dst::Materialize { slot, col }` into
+/// a fresh scratch matrix backing, and the consumer's `Operand::Slot { cell }`
+/// (in `operands` AND `memtup`) is rewritten to `Operand::Affine { slot, col }`
+/// of that backing. Fresh slot ids start at `program.n_matrix_slots`, one per
+/// materialized (writer-strand, cell) pair; col is 0.
+///
+/// When isolation holds (the §2 norm — all 22 in-tree fixtures) there are NO
+/// cross-strand Slot deps, so this reduces to a plain instr partition.
+pub(crate) fn split_into_strands(program: &Program2, instr_strand: &[Strand]) -> PerStrand2 {
+    debug_assert_eq!(instr_strand.len(), program.instrs.len());
+
+    // (1) Identify cross-strand Slot bridges. Walk forward tracking, per cell,
+    // the (instr index, strand) of its last Slot writer. A read from a different
+    // strand marks both the writer instr (must also Materialize) and the
+    // consumer operand (must be rewritten) against an allocated backing slot.
+    let mut last_writer: HashMap<u8, (usize, Strand)> = HashMap::new();
+    // (writer_instr_idx, cell) -> backing slot id (so the producer materializes
+    // each bridged cell exactly once, and every consumer of that same write
+    // rewrites to the SAME backing).
+    let mut bridge_slot: HashMap<(usize, u8), u8> = HashMap::new();
+    let mut next_slot: u8 = program.n_matrix_slots;
+
+    for (i, instr) in program.instrs.iter().enumerate() {
+        let strand = instr_strand[i];
+        for cell in slot_reads(instr) {
+            if let Some(&(wi, ws)) = last_writer.get(&cell) {
+                if ws != strand {
+                    bridge_slot.entry((wi, cell)).or_insert_with(|| {
+                        let s = next_slot;
+                        next_slot = next_slot.checked_add(1).expect("scratch slot overflow");
+                        s
+                    });
+                }
+            }
+        }
+        for cell in slot_writes(instr) {
+            last_writer.insert(cell, (i, strand));
+        }
+    }
+
+    // (2) Re-walk and emit per-strand programs. For each instr, in its OWN
+    // strand's program: a producer of a bridged cell gets an extra
+    // `Dst::Materialize`; a consumer reading a foreign-strand cell has that
+    // `Operand::Slot` (operands + memtup) rewritten to the bridge `Affine`.
+    let strands = [Strand::BaseArith, Strand::LookupGp, Strand::MemoryGp];
+    let mut programs: Vec<(Strand, Program2)> = Vec::new();
+
+    // We need, for each instr, the per-cell writer at the time of its reads, to
+    // know which reads are cross-strand. Recompute the same forward state.
+    let mut last_writer2: HashMap<u8, (usize, Strand)> = HashMap::new();
+    // cell -> backing slot for reads that are currently bridged (writer known).
+    // Rebuilt incrementally so a consumer can map cell -> the producer's slot.
+    let mut active_bridge: HashMap<u8, u8> = HashMap::new();
+
+    // Per-instr precomputed: the rewrite map (cell -> Affine backing) for reads,
+    // and the set of bridged cells this instr WRITES (-> add Materialize).
+    let mut read_rewrite: Vec<HashMap<u8, (u8, u16)>> = Vec::with_capacity(program.instrs.len());
+    let mut write_bridges: Vec<Vec<(u8, u16)>> = Vec::with_capacity(program.instrs.len());
+
+    for (i, instr) in program.instrs.iter().enumerate() {
+        let strand = instr_strand[i];
+        let mut rewrite: HashMap<u8, (u8, u16)> = HashMap::new();
+        for cell in slot_reads(instr) {
+            if let Some(&(wi, ws)) = last_writer2.get(&cell) {
+                if ws != strand {
+                    if let Some(&slot) = bridge_slot.get(&(wi, cell)) {
+                        rewrite.insert(cell, (slot, 0));
+                        active_bridge.insert(cell, slot);
+                    }
+                }
+            }
+        }
+        read_rewrite.push(rewrite);
+
+        let mut writes: Vec<(u8, u16)> = Vec::new();
+        for cell in slot_writes(instr) {
+            if let Some(&slot) = bridge_slot.get(&(i, cell)) {
+                writes.push((slot, 0));
+            }
+            last_writer2.insert(cell, (i, strand));
+        }
+        write_bridges.push(writes);
+    }
+
+    let rewrite_operand = |op: &Operand, rewrite: &HashMap<u8, (u8, u16)>| -> Operand {
+        if let Operand::Slot { cell, .. } = op {
+            if let Some(&(slot, col)) = rewrite.get(cell) {
+                return Operand::Affine { slot, col };
+            }
+        }
+        *op
+    };
+
+    for &s in &strands {
+        let mut instrs: Vec<Instr2> = Vec::new();
+        for (i, instr) in program.instrs.iter().enumerate() {
+            if instr_strand[i] != s {
+                continue;
+            }
+            let rewrite = &read_rewrite[i];
+            // Rewrite cross-strand Slot reads to their bridge Affine backing.
+            let operands: Vec<Operand> =
+                instr.operands.iter().map(|o| rewrite_operand(o, rewrite)).collect();
+            let memtup = instr.memtup.as_ref().map(|mt| crate::isa_v2::MemTup {
+                roles: mt
+                    .roles
+                    .iter()
+                    .map(|(role, op)| (*role, rewrite_operand(op, rewrite)))
+                    .collect(),
+                as_arm: mt.as_arm,
+                as_payload: mt.as_payload.as_ref().map(|op| rewrite_operand(op, rewrite)),
+            });
+            // Producers of bridged cells also Materialize into the backing.
+            let mut dsts = instr.dsts.clone();
+            for &(slot, col) in &write_bridges[i] {
+                dsts.push(Dst::Materialize { slot, col });
+            }
+            instrs.push(Instr2 { header: instr.header, operands, dsts, memtup });
+        }
+        if instrs.is_empty() {
+            continue;
+        }
+        let prog = Program2 {
+            instrs,
+            consts: program.consts.clone(),
+            n_slot_cells: program.n_slot_cells,
+            n_matrix_slots: next_slot,
+        };
+        programs.push((s, prog));
+    }
+
+    PerStrand2 { programs }
 }
 
 #[cfg(test)]
@@ -965,5 +1247,248 @@ mod tests {
         // dst-kind-checked above whenever it fires, so a future computed-output
         // circuit is covered without making this assertion brittle today.
         let _ = total_materialize_outputs;
+    }
+}
+
+/// Task 2.7: strand classification + isolation detection + per-strand split.
+#[cfg(test)]
+mod strand_tests {
+    use super::*;
+    use crate::isa_v2::{ArithOp, Dst, Header, Instr2, MemTup, Operand, Program2, RoutineId};
+    use crate::test_support::all_fixtures;
+    use cs::gkr_compiler::codegen_ir::CacheKind;
+    use gkr_design_space::import::load_circuit;
+    use std::collections::HashSet;
+
+    /// Test-only structural validity: every `Operand::Slot { cell }` read by an
+    /// instr in `prog` (in `operands` AND inside `memtup` roles/payload) has a
+    /// `Dst::Slot { cell }` writer EARLIER in the SAME program. A per-strand
+    /// program that fails this is reading a transient nobody in its own strand
+    /// produced (the rereview-5 dangling-read failure mode).
+    fn assert_no_dangling_slot_reads(prog: &Program2, s: Strand) {
+        let mut written: HashSet<u8> = HashSet::new();
+        for (i, instr) in prog.instrs.iter().enumerate() {
+            for cell in slot_reads(instr) {
+                assert!(
+                    written.contains(&cell),
+                    "{s:?} program instr {i} reads Slot cell {cell} with no earlier \
+                     same-strand Dst::Slot writer (dangling cross-strand read)"
+                );
+            }
+            for cell in slot_writes(instr) {
+                written.insert(cell);
+            }
+        }
+    }
+
+    /// TEST 1. A rich cached fixture (L0 has BOTH a lookup cache AND a
+    /// MemoryTuple cache) fuses into all THREE strands, the per-strand split is
+    /// an exact partition by count, AND `isolation_ok` holds for every fixture ×
+    /// layer (validating the routine→strand map fabricates no false dep).
+    #[test]
+    fn fused_partitions_into_three_strands() {
+        // Resolve a rich fixture dynamically: scan the corpus, pick the first
+        // whose L0 carries BOTH a lookup-family cache and a MemoryTuple cache.
+        let fixtures = all_fixtures();
+        let rich_path = fixtures
+            .iter()
+            .find(|p| {
+                let name = match p.file_name().and_then(|n| n.to_str()) {
+                    Some(n) => n,
+                    None => return false,
+                };
+                if name.contains("no_caches") {
+                    return false;
+                }
+                let c = match load_circuit(p) {
+                    Ok(c) => c,
+                    Err(_) => return false,
+                };
+                let Some(layer) = c.circuit.layers.first() else { return false };
+                let mut has_lookup = false;
+                let mut has_memory = false;
+                for cache in &layer.caches {
+                    match cache.kind {
+                        CacheKind::MemoryTuple { .. } => has_memory = true,
+                        CacheKind::SingleColumnLookup { .. }
+                        | CacheKind::VectorizedLookup { .. }
+                        | CacheKind::VectorizedLookupSetup => has_lookup = true,
+                    }
+                }
+                has_lookup && has_memory
+            })
+            .expect("a fixture whose L0 has BOTH a lookup cache AND a MemoryTuple cache");
+        let name = rich_path.file_name().unwrap().to_str().unwrap().to_string();
+        let c = load_circuit(rich_path).unwrap_or_else(|e| panic!("load {name}: {e:?}"));
+        let layer = &c.circuit.layers[0];
+        let g = &c.graphs[0];
+
+        let cf = compile_forward_v2(
+            layer,
+            g,
+            FwdParams2 { emit_per_strand: true, ..FwdParams2::default() },
+        );
+
+        assert!(cf.isolation_ok, "{name} L0: fused isolation must hold");
+        assert_eq!(
+            cf.instr_strand.len(),
+            cf.program.instrs.len(),
+            "{name} L0: instr_strand must be instr-aligned"
+        );
+
+        // All three strands must appear in the fused tagging.
+        let seen: HashSet<Strand> = cf.instr_strand.iter().copied().collect();
+        for s in [Strand::BaseArith, Strand::LookupGp, Strand::MemoryGp] {
+            assert!(seen.contains(&s), "{name} L0: strand {s:?} absent from fused program");
+        }
+
+        // Per-strand split is an EXACT partition by count.
+        let per = cf.per_strand.as_ref().expect("emit_per_strand => per_strand Some");
+        for (strand, prog) in &per.programs {
+            let count = cf.instr_strand.iter().filter(|&&s| s == *strand).count();
+            assert_eq!(
+                prog.instrs.len(),
+                count,
+                "{name} L0: strand {strand:?} program length {} != fused count {count}",
+                prog.instrs.len()
+            );
+            // Each per-strand program is independently valid (no dangling reads).
+            assert_no_dangling_slot_reads(prog, *strand);
+        }
+        // The split covers every fused instr exactly once (sum of per-strand
+        // lengths == fused length), since every instr is tagged with one strand.
+        let split_total: usize = per.programs.iter().map(|(_, p)| p.instrs.len()).sum();
+        assert_eq!(
+            split_total,
+            cf.program.instrs.len(),
+            "{name} L0: per-strand split is not a partition of the fused program"
+        );
+
+        // Corpus-wide: isolation_ok must hold for ALL 22 fixtures × every layer.
+        // A wrong routine→strand map would fabricate a false cross-strand Slot
+        // dep and flip this to false somewhere.
+        assert_eq!(fixtures.len(), 22, "expected the 22-fixture corpus");
+        for p in &fixtures {
+            let fname = p.file_name().unwrap().to_str().unwrap().to_string();
+            let c = load_circuit(p).unwrap_or_else(|e| panic!("load {fname}: {e:?}"));
+            for (li, layer) in c.circuit.layers.iter().enumerate() {
+                let Some(g) = c.graphs.get(li) else { continue };
+                let cf = compile_forward_v2(layer, g, FwdParams2::default());
+                assert!(
+                    cf.isolation_ok,
+                    "{fname} L{li}: isolation_ok must hold (routine→strand map \
+                     fabricated a false cross-strand dep?)"
+                );
+            }
+        }
+    }
+
+    /// TEST 2. A SYNTHETIC 3-instr program with a REAL cross-strand Slot dep is
+    /// detected (`isolation_holds == false`), `split_into_strands` materializes
+    /// the bridge so every per-strand program is dangling-read-free, and an
+    /// all-`BaseArith` tagging of the same instrs IS isolated (proving the
+    /// detector is not hardwired to false).
+    #[test]
+    fn isolation_detector_finds_real_cross_strand_dep_then_falls_back() {
+        // instr0 (BaseArith): writes Slot cell 0.
+        let instr0 = Instr2 {
+            header: Header::Arith { op: ArithOp::Sum, arity: 2 },
+            operands: vec![
+                Operand::Affine { slot: 0, col: 1 },
+                Operand::Affine { slot: 0, col: 2 },
+            ],
+            dsts: vec![Dst::Slot { e4: false, cell: 0 }],
+            memtup: None,
+        };
+        // instr1 (LookupGp): reads Slot cell 0 (the cross-strand read) plus a
+        // shared committed input; materializes its output.
+        let instr1 = Instr2 {
+            header: Header::Macro { routine: RoutineId::LookupNumDen as u8, n_operands: 2 },
+            operands: vec![
+                Operand::Slot { e4: false, cell: 0 },
+                Operand::Affine { slot: 1, col: 0 },
+            ],
+            dsts: vec![Dst::Materialize { slot: 2, col: 0 }],
+            memtup: None,
+        };
+        // instr2 (MemoryGp): a memory-tuple macro reading only committed columns.
+        let instr2 = Instr2 {
+            header: Header::Macro { routine: RoutineId::MemoryTuple as u8, n_operands: 1 },
+            operands: vec![],
+            dsts: vec![Dst::Materialize { slot: 3, col: 0 }],
+            memtup: Some(MemTup {
+                roles: vec![(0u8, Operand::Affine { slot: 4, col: 0 })],
+                as_arm: 0,
+                as_payload: None,
+            }),
+        };
+
+        let program = Program2 {
+            instrs: vec![instr0, instr1, instr2],
+            consts: Vec::new(),
+            n_slot_cells: 1,
+            n_matrix_slots: 5,
+        };
+
+        // Real strand tags: instr1 (LookupGp) reads a Slot instr0 (BaseArith)
+        // wrote => NOT isolated.
+        let tags = vec![Strand::BaseArith, Strand::LookupGp, Strand::MemoryGp];
+        assert!(
+            !isolation_holds(&program, &tags),
+            "LookupGp instr reading a BaseArith-written Slot must break isolation"
+        );
+
+        // The split must yield a program per strand, each independently valid:
+        // the bridge cell is materialized by the producer and the consumer reads
+        // it as an Affine backing (no dangling Slot read survives).
+        let per = split_into_strands(&program, &tags);
+        let strands_present: HashSet<Strand> = per.programs.iter().map(|(s, _)| *s).collect();
+        for s in [Strand::BaseArith, Strand::LookupGp, Strand::MemoryGp] {
+            assert!(strands_present.contains(&s), "split must emit a {s:?} program");
+        }
+        for (s, prog) in &per.programs {
+            assert_no_dangling_slot_reads(prog, *s);
+        }
+        // The bridge actually fired: the LookupGp consumer no longer reads any
+        // Slot (its cross-strand Slot read was rewritten to an Affine backing),
+        // and a fresh scratch backing slot (>= original n_matrix_slots) was used.
+        let lookup_prog = &per
+            .programs
+            .iter()
+            .find(|(s, _)| *s == Strand::LookupGp)
+            .expect("LookupGp program")
+            .1;
+        assert!(
+            lookup_prog.instrs.iter().all(|i| slot_reads(i).is_empty()),
+            "LookupGp consumer's cross-strand Slot read must be rewritten to Affine"
+        );
+        assert!(
+            lookup_prog.instrs[0]
+                .operands
+                .iter()
+                .any(|o| matches!(o, Operand::Affine { slot, .. } if *slot >= program.n_matrix_slots)),
+            "consumer must read the bridge via a fresh scratch Affine backing"
+        );
+        // The BaseArith producer must have gained the bridge Materialize.
+        let base_prog = &per
+            .programs
+            .iter()
+            .find(|(s, _)| *s == Strand::BaseArith)
+            .expect("BaseArith program")
+            .1;
+        assert!(
+            base_prog.instrs[0].dsts.iter().any(
+                |d| matches!(d, Dst::Materialize { slot, .. } if *slot >= program.n_matrix_slots)
+            ),
+            "producer must Materialize the bridged cell into the fresh backing"
+        );
+
+        // Detector is NOT hardwired to false: tagging ALL instrs BaseArith makes
+        // the same program isolated (no cross-strand crossing).
+        let all_base = vec![Strand::BaseArith; program.instrs.len()];
+        assert!(
+            isolation_holds(&program, &all_base),
+            "an all-BaseArith tagging has no cross-strand Slot dep => isolated"
+        );
     }
 }
