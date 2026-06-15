@@ -249,6 +249,9 @@ fn banks_with(values: &[Ext]) -> SourceBanks {
         consts: vec![],
         const_challenge: vec![],
         arg_challenge: vec![],
+        gamma: Ext::ZERO,
+        perm_challenges: vec![],
+        perm_additive: Ext::ZERO,
         gather_tables: GatherTables::default(),
         gid: 0,
     }
