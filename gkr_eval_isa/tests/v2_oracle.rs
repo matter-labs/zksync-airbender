@@ -487,7 +487,8 @@ use gkr_eval_isa::isa_v2::{LdcSub, SPECIAL_NEG_ONE, SPECIAL_ONE, SPECIAL_ZERO};
 // Memory-tuple folded-constant role tags (isa_v2) + the special-indirect dyn
 // term slot — mirrored here for the independent memtup reference decode.
 use gkr_eval_isa::isa_v2::{
-    MT_CONST_ADDR_LOW, MT_CONST_ADDR_LOW_DYN_COEFF, MT_CONST_ADDR_LOW_OFFSET, MT_CONST_TS_LOW_OFFSET,
+    MT_CONST_ADDR_HIGH, MT_CONST_ADDR_LOW, MT_CONST_ADDR_LOW_DYN_COEFF, MT_CONST_ADDR_LOW_OFFSET,
+    MT_CONST_TS_LOW_OFFSET,
 };
 const REF_MEMTUP_VALUE_HIGH_EXTRA_TERM: u8 = 7;
 // perm-challenge role indices (independent restatement of interp_v2's R_PERM_*).
@@ -529,7 +530,8 @@ fn slot_col_extent(ins: &Instr2) -> (usize, Vec<usize>) {
     for o in &ins.operands {
         scan(o, &mut max_col_per_slot);
     }
-    if let Some(mt) = &ins.memtup {
+    // Both tuples (memtup2 is Some for the id-14/20 products).
+    for mt in [ins.memtup.as_ref(), ins.memtup2.as_ref()].into_iter().flatten() {
         for (_r, o) in &mt.roles {
             scan(o, &mut max_col_per_slot);
         }
@@ -558,7 +560,7 @@ fn indirect_descs(ins: &Instr2) -> Vec<u16> {
     for o in &ins.operands {
         note(o, &mut descs);
     }
-    if let Some(mt) = &ins.memtup {
+    for mt in [ins.memtup.as_ref(), ins.memtup2.as_ref()].into_iter().flatten() {
         for (_r, o) in &mt.roles {
             note(o, &mut descs);
         }
@@ -627,6 +629,21 @@ fn staged_banks(ins: &Instr2, consts: &[u32], rng: &mut StdRng) -> (SourceBanks,
         n_len[di] = Some(1);
         descriptors[di].kind = IndirectKind::RowIndexedSetupE4;
     }
+    // R4: an id-20 MT_CONST_ADDR_HIGH lane is a launcher-deferred
+    // `InitsTeardownsHighAddr` gather. Tag those descriptors with that kind so the
+    // staged read exercises `resolve_gather`'s actual arm (a row-independent
+    // scalar at n[desc][0], identical in value to RowIndexedSetupE4 at gid 0).
+    for mt in [ins.memtup.as_ref(), ins.memtup2.as_ref()].into_iter().flatten() {
+        for (role, op) in &mt.consts {
+            if *role == MT_CONST_ADDR_HIGH {
+                if let Operand::Indirect { desc, .. } = op {
+                    let di = *desc as usize;
+                    descriptors[di].kind = IndirectKind::InitsTeardownsHighAddr;
+                    descriptors[di].inits_td_set_idx = Some(0);
+                }
+            }
+        }
+    }
     let gather_tables = GatherTables {
         n,
         mapping: vec![Vec::new(); max_desc],
@@ -684,9 +701,71 @@ fn ref_sh(v: Ext, src: &SourceBanks) -> Ext {
     r
 }
 
+/// Independent per-tuple fold (address-space arm, then role terms in REVERSE,
+/// then folded consts) — the shared reference for the four memory-tuple routines
+/// (id-15/19 materialize ONE tuple; id-14/20 multiply TWO). Mirrors
+/// `interp_v2::tuple_value` with a different summation order. `descs` resolves any
+/// Indirect lane (e.g. the id-20 launcher-deferred MT_CONST_ADDR_HIGH high bits).
+fn ref_tuple(mt: &MemTup, src: &SourceBanks, descs: &[GatherDescriptor]) -> Ext {
+    let mut acc = src.perm_additive;
+    // address-space arm.
+    match mt.as_arm {
+        1 => {
+            acc.add_assign(&ref_read(mt.as_payload.as_ref().unwrap(), src, descs));
+        }
+        2 => {
+            let col = ref_read(mt.as_payload.as_ref().unwrap(), src, descs);
+            let mut one_minus = Ext::ONE;
+            one_minus.sub_assign(&col);
+            acc.add_assign(&one_minus);
+        }
+        3 => {
+            acc.add_assign(&ref_read(mt.as_payload.as_ref().unwrap(), src, descs));
+        }
+        0 => {}
+        other => panic!("ref: as_arm {other}"),
+    }
+    // dyn-coeff (scales term-7 column).
+    let mut dyn_coeff: Option<Ext> = None;
+    for (role, op) in &mt.consts {
+        if *role == MT_CONST_ADDR_LOW_DYN_COEFF {
+            dyn_coeff = Some(ref_read(op, src, descs));
+        }
+    }
+    // role terms, reverse order.
+    for (term, op) in mt.roles.iter().rev() {
+        let col = ref_read(op, src, descs);
+        let chal = if *term == REF_MEMTUP_VALUE_HIGH_EXTRA_TERM {
+            let mut c = src.perm_challenges[REF_R_ADDR_LOW];
+            c.mul_assign(&dyn_coeff.expect("term-7 needs dyn coeff"));
+            c
+        } else {
+            src.perm_challenges[ref_perm_role_for_term(*term)]
+        };
+        let mut t = col;
+        t.mul_assign(&chal); // col·chal (commuted vs impl's chal·col).
+        acc.add_assign(&t);
+    }
+    // folded consts last.
+    for (role, op) in &mt.consts {
+        let val = ref_read(op, src, descs);
+        let role_idx = match *role {
+            MT_CONST_ADDR_LOW | MT_CONST_ADDR_LOW_OFFSET => REF_R_ADDR_LOW,
+            MT_CONST_ADDR_HIGH => REF_R_ADDR_HIGH,
+            MT_CONST_TS_LOW_OFFSET => REF_R_TS_LOW,
+            MT_CONST_ADDR_LOW_DYN_COEFF => continue,
+            other => panic!("ref: const role {other}"),
+        };
+        let mut t = val;
+        t.mul_assign(&src.perm_challenges[role_idx]);
+        acc.add_assign(&t);
+    }
+    acc
+}
+
 /// Independent reference for one emitted macro instruction. Returns the expected
 /// materialized outputs in dst order, computed with a DIFFERENT decomposition
-/// than `exec_macro`. `None` for the routines the corpus never emits (14/15/20).
+/// than `exec_macro`. `None` for routines with no reference arm here.
 fn ref_outputs(ins: &Instr2, src: &SourceBanks, descs: &[GatherDescriptor]) -> Option<Vec<Ext>> {
     let Header::Macro { routine, .. } = ins.header else {
         return None;
@@ -832,70 +911,31 @@ fn ref_outputs(ins: &Instr2, src: &SourceBanks, descs: &[GatherDescriptor]) -> O
             }
             vec![acc]
         }
-        // 19 MemoryTuple: independent fold (role terms in reverse, consts last).
-        x if x == RoutineId::MemoryTuple as u8 => {
-            let mt = ins.memtup.as_ref().expect("MemoryTuple carries a MemTup");
-            let mut acc = src.perm_additive;
-            // address-space arm.
-            match mt.as_arm {
-                1 => {
-                    acc.add_assign(&ref_read(mt.as_payload.as_ref().unwrap(), src, descs));
-                }
-                2 => {
-                    let col = ref_read(mt.as_payload.as_ref().unwrap(), src, descs);
-                    let mut one_minus = Ext::ONE;
-                    one_minus.sub_assign(&col);
-                    acc.add_assign(&one_minus);
-                }
-                3 => {
-                    acc.add_assign(&ref_read(mt.as_payload.as_ref().unwrap(), src, descs));
-                }
-                0 => {}
-                other => panic!("ref: as_arm {other}"),
-            }
-            // dyn-coeff (scales term-7 column).
-            let mut dyn_coeff: Option<Ext> = None;
-            for (role, op) in &mt.consts {
-                if *role == MT_CONST_ADDR_LOW_DYN_COEFF {
-                    dyn_coeff = Some(ref_read(op, src, descs));
-                }
-            }
-            // role terms, reverse order.
-            for (term, op) in mt.roles.iter().rev() {
-                let col = ref_read(op, src, descs);
-                let chal = if *term == REF_MEMTUP_VALUE_HIGH_EXTRA_TERM {
-                    let mut c = src.perm_challenges[REF_R_ADDR_LOW];
-                    c.mul_assign(&dyn_coeff.expect("term-7 needs dyn coeff"));
-                    c
-                } else {
-                    src.perm_challenges[ref_perm_role_for_term(*term)]
-                };
-                // col·chal (commuted vs impl's chal·col).
-                let mut t = col;
-                t.mul_assign(&chal);
-                acc.add_assign(&t);
-            }
-            // folded consts last.
-            for (role, op) in &mt.consts {
-                let val = ref_read(op, src, descs);
-                let role_idx = match *role {
-                    MT_CONST_ADDR_LOW | MT_CONST_ADDR_LOW_OFFSET => REF_R_ADDR_LOW,
-                    MT_CONST_TS_LOW_OFFSET => REF_R_TS_LOW,
-                    MT_CONST_ADDR_LOW_DYN_COEFF => continue,
-                    other => panic!("ref: const role {other}"),
-                };
-                let mut t = val;
-                t.mul_assign(&src.perm_challenges[role_idx]);
-                acc.add_assign(&t);
-            }
-            vec![acc]
+        // 15 MaterializeGrandProductTerm + 19 MemoryTuple: ONE tuple value.
+        x if x == RoutineId::MemoryTuple as u8
+            || x == RoutineId::MaterializeGrandProductTerm as u8 =>
+        {
+            let mt = ins.memtup.as_ref().expect("single-tuple routine carries a MemTup");
+            vec![ref_tuple(mt, src, descs)]
+        }
+        // 14 GrandProductWithoutCaches + 20 MemoryInitTeardownPair: the PRODUCT of
+        // two tuples (id-20's are the inits/teardowns KEYs). The multiply order is
+        // a free independence axis (commutative).
+        x if x == RoutineId::GrandProductWithoutCaches as u8
+            || x == RoutineId::MemoryInitTeardownPair as u8 =>
+        {
+            let t0 = ins.memtup.as_ref().expect("product routine carries memtup");
+            let t1 = ins.memtup2.as_ref().expect("product routine carries memtup2");
+            let mut v = ref_tuple(t1, src, descs);
+            v.mul_assign(&ref_tuple(t0, src, descs)); // t1·t0 (commuted vs impl's t0·t1)
+            vec![v]
         }
         // 18 VectorizedLookupSetup: the single RowIndexedSetupE4 gather value,
         // resolved through the staged descriptor (independent of the impl).
         x if x == RoutineId::VectorizedLookupSetup as u8 => {
             vec![r(0)]
         }
-        // 14/15/20 never emitted by the corpus.
+        // No reference arm (would be a genuinely-unhandled emitted routine).
         _ => return None,
     };
     Some(out)
@@ -903,15 +943,31 @@ fn ref_outputs(ins: &Instr2, src: &SourceBanks, descs: &[GatherDescriptor]) -> O
 
 #[test]
 fn interpreter_matches_hand_reference_real_instrs() {
-    let targets = [
-        "add_sub_lui_auipc_mop_codegen_ir_gkr.json",
-        "bigint_with_extended_control_codegen_ir_gkr.json",
-        "blake2_g_function_codegen_ir_gkr.json",
+    // (fixture, products_only). The 3 caches fixtures drive EVERY emitted routine
+    // (full R3 coverage). The `no_caches` + inits/teardowns fixtures are added
+    // ONLY to reach the grand-product / inits-teardowns routines (id-14 in every
+    // no_caches L0, id-15 in keccak_special5 no_caches, id-20 in both
+    // inits_and_teardowns variants); for those we drive ONLY id-14/15/20, since
+    // the no_caches variants also emit lincomb-form lookup pairs whose distinct
+    // operand shape is a SEPARATE (pre-R4) interpreter concern, out of scope here.
+    let targets: [(&str, bool); 7] = [
+        ("add_sub_lui_auipc_mop_codegen_ir_gkr.json", false),
+        ("bigint_with_extended_control_codegen_ir_gkr.json", false),
+        ("blake2_g_function_codegen_ir_gkr.json", false),
+        ("add_sub_lui_auipc_mop_codegen_ir_no_caches_gkr.json", true),
+        ("keccak_special5_codegen_ir_no_caches_gkr.json", true),
+        ("inits_and_teardowns_codegen_ir_gkr.json", true),
+        ("inits_and_teardowns_codegen_ir_no_caches_gkr.json", true),
     ];
+    let is_product_routine = |r: u8| {
+        r == RoutineId::GrandProductWithoutCaches as u8
+            || r == RoutineId::MaterializeGrandProductTerm as u8
+            || r == RoutineId::MemoryInitTeardownPair as u8
+    };
     // Per-routine coverage counts (non-vacuity + scope accounting).
     let mut counts: std::collections::BTreeMap<u8, usize> = std::collections::BTreeMap::new();
 
-    for name in targets {
+    for (name, products_only) in targets {
         let p = fixture_path(name);
         assert!(p.exists(), "target fixture {name} missing");
         let c = load_circuit(&p).unwrap_or_else(|e| panic!("load {name}: {e:?}"));
@@ -927,6 +983,12 @@ fn interpreter_matches_hand_reference_real_instrs() {
 
             for (ii, ins) in cf.program.instrs.iter().enumerate() {
                 let Header::Macro { routine, .. } = ins.header else { continue };
+
+                // `no_caches` + inits/teardowns fixtures are added ONLY for the
+                // product routines; skip their other (lincomb-pair) instrs here.
+                if products_only && !is_product_routine(routine) {
+                    continue;
+                }
 
                 // Per-instruction deterministic draw (distinct + reproducible).
                 // `staged_banks` also returns the gather-descriptor array sized to
@@ -970,7 +1032,7 @@ fn interpreter_matches_hand_reference_real_instrs() {
     }
 
     // Non-vacuity: every R3-implemented routine the corpus emits must be covered.
-    for id in [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 16, 17, 18, 19] {
+    for id in [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 14, 15, 16, 17, 18, 19, 20] {
         assert!(
             counts.get(&id).copied().unwrap_or(0) > 0,
             "real-instr oracle never exercised routine id {id} (probe STEP 0 says it is emitted)"
