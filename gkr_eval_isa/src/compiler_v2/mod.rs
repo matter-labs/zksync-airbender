@@ -820,9 +820,6 @@ pub(crate) fn split_into_strands(program: &Program2, instr_strand: &[Strand]) ->
     // We need, for each instr, the per-cell writer at the time of its reads, to
     // know which reads are cross-strand. Recompute the same forward state.
     let mut last_writer2: HashMap<u8, (usize, Strand)> = HashMap::new();
-    // cell -> backing slot for reads that are currently bridged (writer known).
-    // Rebuilt incrementally so a consumer can map cell -> the producer's slot.
-    let mut active_bridge: HashMap<u8, u8> = HashMap::new();
 
     // Per-instr precomputed: the rewrite map (cell -> Affine backing) for reads,
     // and the set of bridged cells this instr WRITES (-> add Materialize).
@@ -837,7 +834,6 @@ pub(crate) fn split_into_strands(program: &Program2, instr_strand: &[Strand]) ->
                 if ws != strand {
                     if let Some(&slot) = bridge_slot.get(&(wi, cell)) {
                         rewrite.insert(cell, (slot, 0));
-                        active_bridge.insert(cell, slot);
                     }
                 }
             }
@@ -1490,5 +1486,50 @@ mod strand_tests {
             isolation_holds(&program, &all_base),
             "an all-BaseArith tagging has no cross-strand Slot dep => isolated"
         );
+    }
+
+    /// Lock the routine→strand bucketing. The `isolation_holds` Slot-crossing
+    /// oracle is BLIND to how macros are bucketed across LookupGp/MemoryGp,
+    /// because production macro lowering never emits an `Operand::Slot` (it reads
+    /// committed columns via `Affine`/`Indirect`/`Ldc`) — so the corpus-wide
+    /// `isolation_ok == true` assertion cannot catch a Lookup↔Memory misbucket.
+    /// This exhaustive table is that missing guard: any future edit to
+    /// `routine_strand` that flips a routine forces a conscious update here.
+    ///
+    /// The bucketing is grounded in the cs/ GKR data-flow: the lookup argument
+    /// accumulates via its OWN tree (`AggregateLookupRationalPair`, i.e.
+    /// `AggregateLookupPair`), while the grand-product cascade
+    /// (`GrandProductStep`/`ProductStep` from `InitialGrandProduct*`/
+    /// `TrivialProduct`/`MaskIntoIdentityProduct`) serves the MEMORY permutation
+    /// argument only — the two trees never cross-feed
+    /// (cs/src/gkr_compiler/family_circuit.rs hands them as separate output
+    /// lists). Hence the whole PROD cascade is `MemoryGp`.
+    #[test]
+    fn routine_strand_mapping_is_locked() {
+        use crate::isa_v2::RoutineId::*;
+        let expected = [
+            (GateOutputFold, Strand::BaseArith),
+            (LookupNumDen, Strand::LookupGp),
+            (AggregateLookupPair, Strand::LookupGp),
+            (SingleColumnLookup, Strand::LookupGp),
+            (VectorizedLookup, Strand::LookupGp),
+            (VectorizedLookupSetup, Strand::LookupGp),
+            (MemoryTuple, Strand::MemoryGp),
+            (MemoryInitTeardownPair, Strand::MemoryGp),
+            (GrandProductStep, Strand::MemoryGp),
+            (ProductStep, Strand::MemoryGp),
+        ];
+        for (routine, strand) in expected {
+            assert_eq!(
+                routine_strand(routine),
+                strand,
+                "routine {routine:?} must map to {strand:?} (see cs/ data-flow note)"
+            );
+        }
+        // Non-vacuity: the table must cover every dense RoutineId 0..=9 (a new
+        // variant added to the enum without a row here is a coverage hole — the
+        // `routine_strand` match is exhaustive so it compiles, but its strand
+        // would be untested). Asserting the count pins the corpus of ids.
+        assert_eq!(expected.len(), 10, "RoutineId has 10 dense variants (0..=9)");
     }
 }
