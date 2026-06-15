@@ -10,6 +10,7 @@
 //! `error[E0583] file not found`).
 
 pub mod routines;
+pub mod encode;
 pub use routines::{
     lowering_kind, routine_for_cache, routine_for_gate, routine_table, ChallengeUse, FieldRole,
     LoweringKind, RoutineSchema, Shape,
