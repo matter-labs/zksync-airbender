@@ -489,6 +489,244 @@ fn forward_kernel_outputs_fit_four_pointer_backing_model_all_main_layers() {
     );
 }
 
+/// Retained joint-matrix census guard (ISA-v2 spec §2 / §8, Task 3.7).
+///
+/// Independently of the `gkr_eval_isa` crate's `MatrixTable`, reproduce the §2
+/// matrix-census figures from the LAUNCHER's own storage-layout model, so the
+/// census stays honest against the launcher. Per layer, count the distinct
+/// joint source+dst backings and assert the three ISA-cap invariants:
+///   - ≤ 16 backings/layer (the 4-bit `MatrixSlot` / `GKR_MAX_SLOTS` cap),
+///   - max column offset within the ISA cap (measured ≤ 645; the hard 10-bit
+///     `col` cap is 1024, so 645+64 catches drift without false alarms),
+///   - dual-write co-occurrence == 0 (no single dst address is produced by two
+///     distinct producers — gate output or cache out — within one layer).
+///
+/// The backing key mirrors `gkr_eval_isa::compiler_v2::matrix_table::BackingKey`
+/// (Task 2.1): `{ canonical_layer = address_storage_layer(addr), AddressClass =
+/// classify(&addr, canonical_layer), field (FieldType), stride_class = 0 }`.
+/// Critically, every field comes from the launcher's `GpuGKRStorageLayout`
+/// (`layout.lookup`), NOT the ISA crate — the census is computed against the
+/// model the launcher fills pointers against.
+#[test]
+#[serial]
+fn retained_matrix_census_within_bounds() {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    /// Joint backing key, mirroring `BackingKey` (Task 2.1). `stride_class` is
+    /// always 0 (single-stride corpus, same as the ISA crate).
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    struct BackingKey {
+        canonical_layer: usize,
+        class: AddressClass,
+        field: FieldType,
+        stride_class: u8,
+    }
+
+    /// Per-address column offset within its backing; mirrors the ISA crate's
+    /// `test_support::column_offset` (returns 0 for VirtualSetup, whose
+    /// `offset()` panics).
+    fn column_offset(addr: &GKRAddress) -> u32 {
+        match addr {
+            GKRAddress::VirtualSetup(_) => 0,
+            other => other.offset() as u32,
+        }
+    }
+
+    // ISA-cap headroom: the 10-bit `col` lane caps columns at 1024; the
+    // measured corpus max is 645. Guard against silent drift well below the
+    // hard cap but above the measured figure.
+    const MEASURED_MAX_COL: u32 = 645;
+    const COL_HEADROOM: u32 = 64;
+    const HARD_COL_CAP: u32 = 1024;
+
+    let dir = compiled_circuit_dir();
+    let mut loaded = BTreeSet::new();
+    let mut circuits_layers_exercised = 0usize;
+    let mut global_max_backings = 0usize;
+    let mut global_max_col = 0u32;
+
+    for basename in CIRCUIT_BASENAMES {
+        for cached in [true, false] {
+            let suffix = if cached {
+                "_layout_gkr.json"
+            } else {
+                "_layout_no_caches_gkr.json"
+            };
+            let path = dir.join(format!("{basename}{suffix}"));
+            let Some(artifact) = load_artifact(&path) else {
+                continue;
+            };
+            loaded.insert(*basename);
+            let tag = format!("{basename}/{}", if cached { "cached" } else { "no_caches" });
+
+            // The launcher's OWN storage-layout model — the same data structure
+            // every compact-`u16` descriptor builder consults.
+            let layout = GpuGKRStorageLayout::from_artifact(&artifact);
+
+            // Per artifact layer, gather the joint source+dst address set the
+            // launcher would key into matrix slots, exactly as the launcher
+            // enumerates a layer's gates and cache relations.
+            for (layer_idx, layer) in artifact.layers.iter().enumerate() {
+                // Distinct backing keys touched by this layer (source ∪ dst).
+                let mut backings: BTreeSet<BackingKey> = BTreeSet::new();
+                let mut max_col_this_layer = 0u32;
+                // dst addresses and the distinct producers that write them, to
+                // detect dual-write co-occurrence.
+                let mut dst_producers: BTreeMap<GKRAddress, BTreeSet<String>> = BTreeMap::new();
+                let mut had_any_addr = false;
+
+                // Closure: resolve an address through the launcher layout into
+                // its joint backing key, and fold it into the census.
+                let mut record_addr =
+                    |addr: GKRAddress, backings: &mut BTreeSet<BackingKey>, max_col: &mut u32| {
+                        // VirtualSetup is aliased onto Setup at storage time and
+                        // never claims its own backing (storage_layout drops it);
+                        // skip to match the launcher.
+                        if matches!(addr, GKRAddress::VirtualSetup(_)) {
+                            return;
+                        }
+                        let canonical_layer = address_storage_layer(addr);
+                        // Look the address up in the launcher's storage layout to
+                        // get its (canonical_layer, class, field) — NOT recomputed
+                        // from the ISA crate. `lookup` already applies the
+                        // alias / same-address-canonical fallbacks the launcher
+                        // uses, so CopyIn aliases resolve to their canonical.
+                        let Some((clayer, class, field, _poly_idx)) =
+                            layout.lookup(layer_idx, &addr)
+                        else {
+                            // Not every read resolves through a single layer's
+                            // backing (e.g. setup polys keyed at layer 0 read by
+                            // deeper layers resolve via the same-address
+                            // canonical fallback inside `lookup`); if it truly
+                            // has no backing, the address contributes no slot.
+                            return;
+                        };
+                        backings.insert(BackingKey {
+                            canonical_layer: clayer,
+                            class,
+                            field,
+                            stride_class: 0,
+                        });
+                        // Sanity: the launcher's canonical layer must match the
+                        // per-address storage layer for non-alias addresses.
+                        debug_assert!(
+                            clayer == canonical_layer || layout.aliases.contains_key(&addr),
+                            "{addr:?} canonical layer {clayer} != address_storage_layer {canonical_layer}"
+                        );
+                        *max_col = (*max_col).max(column_offset(&addr));
+                    };
+
+                // 1. Gate sources (reads) and destinations (writes).
+                for gate in layer
+                    .gates
+                    .iter()
+                    .chain(layer.gates_with_external_connections.iter())
+                {
+                    let mut reads = Vec::new();
+                    let mut writes = Vec::new();
+                    collect_addresses_from_relation(
+                        &gate.enforced_relation,
+                        &mut reads,
+                        &mut writes,
+                    );
+                    for addr in reads {
+                        had_any_addr = true;
+                        record_addr(addr, &mut backings, &mut max_col_this_layer);
+                    }
+                    for addr in &writes {
+                        had_any_addr = true;
+                        record_addr(*addr, &mut backings, &mut max_col_this_layer);
+                        // CopyIn outputs are host-side view aliases (no kernel
+                        // store); they don't claim a producer slot.
+                        if layout.aliases.contains_key(addr) {
+                            continue;
+                        }
+                        dst_producers
+                            .entry(*addr)
+                            .or_default()
+                            .insert(format!("gate:{:?}", core::mem::discriminant(&gate.enforced_relation)));
+                    }
+                }
+
+                // 2. Cache relations: reads + the cache addr itself as dst.
+                for (cache_addr, cache_rel) in layer.cached_relations.iter() {
+                    let mut reads = Vec::new();
+                    collect_addresses_from_cache_relation(cache_rel, &mut reads);
+                    for addr in reads {
+                        had_any_addr = true;
+                        record_addr(addr, &mut backings, &mut max_col_this_layer);
+                    }
+                    had_any_addr = true;
+                    record_addr(*cache_addr, &mut backings, &mut max_col_this_layer);
+                    dst_producers
+                        .entry(*cache_addr)
+                        .or_default()
+                        .insert("cache".to_string());
+                }
+
+                if !had_any_addr {
+                    continue;
+                }
+                circuits_layers_exercised += 1;
+
+                // (a) ≤ 16 backings/layer.
+                assert!(
+                    backings.len() <= GKR_MAX_SLOTS,
+                    "{tag} layer {layer_idx}: {} joint backings exceeds GKR_MAX_SLOTS={GKR_MAX_SLOTS}\nbackings={backings:?}",
+                    backings.len(),
+                );
+
+                // (b) columns within the ISA cap.
+                assert!(
+                    max_col_this_layer < HARD_COL_CAP,
+                    "{tag} layer {layer_idx}: max column offset {max_col_this_layer} \
+                     exceeds the hard 10-bit col cap {HARD_COL_CAP}"
+                );
+
+                // (c) dual-write co-occurrence == 0: no dst address produced by
+                // two distinct producers in the same layer.
+                for (addr, producers) in dst_producers.iter() {
+                    assert!(
+                        producers.len() <= 1,
+                        "{tag} layer {layer_idx}: dst {addr:?} dual-written by \
+                         {} distinct producers {producers:?}",
+                        producers.len(),
+                    );
+                }
+
+                global_max_backings = global_max_backings.max(backings.len());
+                global_max_col = global_max_col.max(max_col_this_layer);
+            }
+        }
+    }
+
+    // Non-vacuity: at least one layer exercised and backings actually counted.
+    assert_compilable_circuits_loaded(&loaded);
+    assert!(
+        circuits_layers_exercised > 0,
+        "census exercised no circuit×layer — fixtures missing or all empty"
+    );
+    assert!(
+        global_max_backings > 0,
+        "census counted zero backings — address enumeration produced nothing"
+    );
+
+    // §2 census figures, visible in test output.
+    eprintln!(
+        "[§2 retained census] circuits×layers exercised = {circuits_layers_exercised}, \
+         per-layer max joint backings = {global_max_backings} (cap {GKR_MAX_SLOTS}), \
+         max column offset = {global_max_col} (measured {MEASURED_MAX_COL}, hard cap {HARD_COL_CAP})"
+    );
+    // Drift guard: the measured corpus max column stays at/below the recorded
+    // figure plus headroom. A jump far above 645 means a circuit changed shape
+    // and the §2 figure needs re-confirming with RR before widening `col`.
+    assert!(
+        global_max_col <= MEASURED_MAX_COL + COL_HEADROOM,
+        "max column offset {global_max_col} drifted far above the measured {MEASURED_MAX_COL} \
+         (headroom {COL_HEADROOM}); re-confirm the §2 census figure before trusting the 10-bit col lane"
+    );
+}
+
 #[test]
 #[serial]
 fn relation_outputs_classifies_known_variants() {
