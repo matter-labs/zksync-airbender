@@ -577,7 +577,7 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(81usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(51usize, 1073741752usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(55usize, 1073741752usize)];
             const VAL_LN: [(usize, usize); 6usize] = [
                 (14usize, 268435454usize),
                 (15usize, 268435454usize),
@@ -609,17 +609,17 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 12usize] = [
                 (20usize, 268435454usize),
-                (43usize, 268435454usize),
-                (44usize, 268435454usize),
-                (43usize, 268435454usize),
-                (44usize, 268435454usize),
-                (43usize, 268435454usize),
-                (44usize, 268435454usize),
-                (43usize, 268435454usize),
-                (44usize, 268435454usize),
-                (67usize, 268435454usize),
-                (51usize, 268435454usize),
-                (51usize, 268295646usize),
+                (47usize, 268435454usize),
+                (48usize, 268435454usize),
+                (47usize, 268435454usize),
+                (48usize, 268435454usize),
+                (47usize, 268435454usize),
+                (48usize, 268435454usize),
+                (47usize, 268435454usize),
+                (48usize, 268435454usize),
+                (45usize, 268435454usize),
+                (55usize, 268435454usize),
+                (55usize, 268295646usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -633,32 +633,29 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 10usize] = [
+            const VAL_QO: [(usize, usize); 9usize] = [
                 (14usize, 1usize),
                 (15usize, 1usize),
                 (16usize, 1usize),
                 (17usize, 1usize),
-                (19usize, 1usize),
+                (19usize, 2usize),
                 (20usize, 1usize),
-                (67usize, 1usize),
-                (68usize, 1usize),
-                (71usize, 3usize),
-                (76usize, 3usize),
+                (69usize, 1usize),
+                (71usize, 2usize),
+                (76usize, 2usize),
             ];
-            const VAL_QI: [(usize, usize); 14usize] = [
+            const VAL_QI: [(usize, usize); 12usize] = [
                 (26usize, 268435454usize),
                 (26usize, 268435454usize),
                 (26usize, 268435454usize),
                 (26usize, 268435454usize),
-                (68usize, 268435454usize),
+                (45usize, 1996488705usize),
+                (69usize, 16777216usize),
                 (26usize, 268435454usize),
-                (51usize, 268435454usize),
-                (51usize, 268434910usize),
-                (67usize, 1744830467usize),
-                (68usize, 1744831011usize),
+                (55usize, 268435454usize),
+                (69usize, 1744830467usize),
                 (79usize, 268435454usize),
-                (67usize, 1744830467usize),
-                (68usize, 1744831011usize),
+                (69usize, 1744830467usize),
                 (79usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
@@ -673,22 +670,18 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 5usize] = [
+            const VAL_QO: [(usize, usize); 4usize] = [
                 (19usize, 1usize),
-                (69usize, 1usize),
                 (70usize, 1usize),
-                (71usize, 3usize),
-                (76usize, 3usize),
+                (71usize, 2usize),
+                (76usize, 2usize),
             ];
-            const VAL_QI: [(usize, usize); 9usize] = [
+            const VAL_QI: [(usize, usize); 6usize] = [
                 (26usize, 268435454usize),
-                (51usize, 268435454usize),
-                (51usize, 268434910usize),
-                (69usize, 1744830467usize),
-                (70usize, 1744831011usize),
+                (55usize, 268435454usize),
+                (70usize, 1744830467usize),
                 (80usize, 268435454usize),
-                (69usize, 1744830467usize),
-                (70usize, 1744831011usize),
+                (70usize, 1744830467usize),
                 (80usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
@@ -724,22 +717,18 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 5usize] = [
-                (14usize, 2usize),
-                (15usize, 2usize),
-                (16usize, 2usize),
-                (17usize, 2usize),
+                (14usize, 1usize),
+                (15usize, 1usize),
+                (16usize, 1usize),
+                (17usize, 1usize),
                 (20usize, 1usize),
             ];
-            const VAL_QI: [(usize, usize); 9usize] = [
-                (63usize, 268435454usize),
-                (64usize, 268434910usize),
-                (63usize, 268435454usize),
-                (64usize, 268434910usize),
-                (63usize, 268435454usize),
-                (64usize, 268434910usize),
-                (63usize, 268435454usize),
-                (64usize, 268434910usize),
-                (61usize, 268435454usize),
+            const VAL_QI: [(usize, usize); 5usize] = [
+                (66usize, 268435454usize),
+                (66usize, 268435454usize),
+                (66usize, 268435454usize),
+                (66usize, 268435454usize),
+                (43usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -768,8 +757,8 @@ unsafe fn layer_0_final_step_accumulator(
                 (27usize, 268435454usize),
                 (27usize, 268435454usize),
                 (27usize, 268435454usize),
-                (61usize, 268435454usize),
-                (67usize, 268435454usize),
+                (43usize, 268435454usize),
+                (45usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -894,13 +883,13 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 6usize] = [
                 (4usize, 4usize),
-                (14usize, 5usize),
-                (15usize, 5usize),
-                (16usize, 5usize),
-                (17usize, 5usize),
-                (20usize, 1usize),
+                (14usize, 4usize),
+                (15usize, 4usize),
+                (16usize, 4usize),
+                (17usize, 4usize),
+                (20usize, 2usize),
             ];
-            const VAL_QI: [(usize, usize); 25usize] = [
+            const VAL_QI: [(usize, usize); 22usize] = [
                 (14usize, 133099247usize),
                 (15usize, 133099247usize),
                 (16usize, 133099247usize),
@@ -908,24 +897,21 @@ unsafe fn layer_0_final_step_accumulator(
                 (22usize, 536591292usize),
                 (26usize, 1073182584usize),
                 (27usize, 268295646usize),
-                (69usize, 268435454usize),
-                (70usize, 268434910usize),
+                (70usize, 268435454usize),
                 (22usize, 536591292usize),
                 (26usize, 1073182584usize),
                 (27usize, 268295646usize),
-                (69usize, 268435454usize),
-                (70usize, 268434910usize),
+                (70usize, 268435454usize),
                 (22usize, 536591292usize),
                 (26usize, 1073182584usize),
                 (27usize, 268295646usize),
-                (69usize, 268435454usize),
-                (70usize, 268434910usize),
+                (70usize, 268435454usize),
                 (22usize, 536591292usize),
                 (26usize, 1073182584usize),
                 (27usize, 268295646usize),
-                (69usize, 268435454usize),
-                (70usize, 268434910usize),
-                (62usize, 268435454usize),
+                (70usize, 268435454usize),
+                (43usize, 1996488705usize),
+                (65usize, 16777216usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(19usize, 268435454usize)];
             let val =
@@ -945,17 +931,19 @@ unsafe fn layer_0_final_step_accumulator(
                 (15usize, 1usize),
                 (16usize, 1usize),
                 (17usize, 1usize),
-                (19usize, 1usize),
-                (20usize, 1usize),
+                (19usize, 2usize),
+                (20usize, 2usize),
             ];
-            const VAL_QI: [(usize, usize); 7usize] = [
+            const VAL_QI: [(usize, usize); 9usize] = [
                 (20usize, 268435454usize),
                 (28usize, 268435454usize),
                 (28usize, 268435454usize),
                 (28usize, 268435454usize),
                 (28usize, 268435454usize),
-                (62usize, 268435454usize),
-                (68usize, 268435454usize),
+                (43usize, 1996488705usize),
+                (65usize, 16777216usize),
+                (45usize, 1996488705usize),
+                (69usize, 16777216usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -1086,11 +1074,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (20usize, 1usize),
             ];
             const VAL_QI: [(usize, usize); 5usize] = [
-                (46usize, 268435454usize),
-                (46usize, 268435454usize),
-                (46usize, 268435454usize),
-                (46usize, 268435454usize),
-                (63usize, 268435454usize),
+                (50usize, 268435454usize),
+                (50usize, 268435454usize),
+                (50usize, 268435454usize),
+                (50usize, 268435454usize),
+                (44usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(19usize, 536870908usize)];
             let val =
@@ -1117,9 +1105,9 @@ unsafe fn layer_0_final_step_accumulator(
                 (25usize, 268435454usize),
                 (25usize, 268435454usize),
                 (25usize, 268435454usize),
-                (63usize, 268435454usize),
+                (44usize, 268435454usize),
                 (26usize, 268435454usize),
-                (69usize, 268435454usize),
+                (46usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -1247,8 +1235,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(20usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(64usize, 268435454usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(20usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(44usize, 1996488705usize), (66usize, 16777216usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(19usize, 805306362usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -1261,11 +1250,13 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 2usize] = [(19usize, 1usize), (20usize, 2usize)];
-            const VAL_QI: [(usize, usize); 3usize] = [
-                (64usize, 268435454usize),
+            const VAL_QO: [(usize, usize); 2usize] = [(19usize, 2usize), (20usize, 3usize)];
+            const VAL_QI: [(usize, usize); 5usize] = [
+                (44usize, 1996488705usize),
+                (66usize, 16777216usize),
                 (26usize, 268435454usize),
-                (70usize, 268435454usize),
+                (46usize, 1996488705usize),
+                (70usize, 16777216usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -1368,11 +1359,11 @@ unsafe fn layer_0_final_step_accumulator(
         const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 13usize] = [
             (
                 SimpleGateType::LookupWithSetup,
-                [43usize, 58usize, 98usize, 0usize],
+                [47usize, 62usize, 98usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [44usize, 79usize, 0usize, 0usize],
+                [48usize, 79usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
@@ -1380,7 +1371,7 @@ unsafe fn layer_0_final_step_accumulator(
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [46usize, 72usize, 0usize, 0usize],
+                [50usize, 72usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
@@ -1393,7 +1384,7 @@ unsafe fn layer_0_final_step_accumulator(
             (SimpleGateType::Copy, [87usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupWithSetup,
-                [88usize, 59usize, 99usize, 0usize],
+                [88usize, 63usize, 99usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
@@ -1410,7 +1401,7 @@ unsafe fn layer_0_final_step_accumulator(
             (SimpleGateType::Copy, [115usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupInitialWithCachedDenominators,
-                [81usize, 116usize, 60usize, 117usize],
+                [81usize, 116usize, 64usize, 117usize],
             ),
         ];
         let mut _sg = 0;
@@ -1618,34 +1609,17 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 5usize] = [
-                (11usize, 2usize),
-                (61usize, 4usize),
-                (62usize, 4usize),
-                (63usize, 4usize),
-                (64usize, 4usize),
-            ];
-            const VAL_QI: [(usize, usize); 18usize] = [
+            const VAL_QO: [(usize, usize); 3usize] =
+                [(11usize, 2usize), (65usize, 2usize), (66usize, 2usize)];
+            const VAL_QI: [(usize, usize); 6usize] = [
                 (74usize, 268435454usize),
                 (75usize, 268295646usize),
-                (67usize, 1usize),
-                (68usize, 256usize),
+                (69usize, 1usize),
+                (70usize, 65536usize),
                 (69usize, 65536usize),
-                (70usize, 16777216usize),
-                (67usize, 256usize),
-                (68usize, 65536usize),
-                (69usize, 16777216usize),
                 (70usize, 268435454usize),
-                (67usize, 65536usize),
-                (68usize, 16777216usize),
-                (69usize, 268435454usize),
-                (70usize, 268434910usize),
-                (67usize, 16777216usize),
-                (68usize, 268435454usize),
-                (69usize, 268434910usize),
-                (70usize, 268295646usize),
             ];
-            const VAL_LN: [(usize, usize); 1usize] = [(45usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(49usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -1658,36 +1632,28 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 4usize] = [
-                (8usize, 10usize),
-                (9usize, 10usize),
+                (8usize, 6usize),
+                (9usize, 6usize),
                 (10usize, 3usize),
                 (11usize, 3usize),
             ];
-            const VAL_QI: [(usize, usize); 26usize] = [
-                (61usize, 1744830467usize),
-                (62usize, 1744831011usize),
-                (63usize, 1744970275usize),
-                (64usize, 1780621859usize),
-                (67usize, 1744830467usize),
-                (68usize, 1744831011usize),
-                (69usize, 1744970275usize),
-                (70usize, 1780621859usize),
+            const VAL_QI: [(usize, usize); 18usize] = [
+                (65usize, 1744830467usize),
+                (66usize, 1744970275usize),
+                (69usize, 1744830467usize),
+                (70usize, 1744970275usize),
                 (79usize, 268435454usize),
                 (80usize, 268295646usize),
-                (61usize, 1744830467usize),
-                (62usize, 1744831011usize),
-                (63usize, 1744970275usize),
-                (64usize, 1780621859usize),
-                (67usize, 268435454usize),
-                (68usize, 268434910usize),
-                (69usize, 268295646usize),
-                (70usize, 232644062usize),
+                (65usize, 1744830467usize),
+                (66usize, 1744970275usize),
+                (69usize, 268435454usize),
+                (70usize, 268295646usize),
                 (79usize, 268435454usize),
                 (80usize, 268295646usize),
-                (45usize, 1744830467usize),
+                (49usize, 1744830467usize),
                 (79usize, 268435454usize),
                 (80usize, 268295646usize),
-                (45usize, 1744830467usize),
+                (49usize, 1744830467usize),
                 (79usize, 268435454usize),
                 (80usize, 268295646usize),
             ];
@@ -1734,43 +1700,39 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 8usize] = [
                 (2usize, 2usize),
-                (5usize, 6usize),
-                (6usize, 6usize),
+                (5usize, 4usize),
+                (6usize, 4usize),
                 (7usize, 3usize),
                 (8usize, 3usize),
                 (9usize, 3usize),
                 (10usize, 3usize),
                 (11usize, 3usize),
             ];
-            const VAL_QI: [(usize, usize); 29usize] = [
+            const VAL_QI: [(usize, usize); 25usize] = [
                 (5usize, 268435454usize),
                 (7usize, 268435454usize),
                 (22usize, 1744970275usize),
-                (61usize, 268435454usize),
-                (62usize, 268434910usize),
-                (67usize, 268435454usize),
-                (68usize, 268434910usize),
+                (65usize, 268435454usize),
+                (69usize, 268435454usize),
                 (79usize, 1744830467usize),
                 (22usize, 1744970275usize),
-                (61usize, 1744830467usize),
-                (62usize, 1744831011usize),
-                (67usize, 268435454usize),
-                (68usize, 268434910usize),
+                (65usize, 1744830467usize),
+                (69usize, 268435454usize),
                 (79usize, 268435454usize),
                 (22usize, 1744970275usize),
                 (79usize, 1744830467usize),
                 (82usize, 268435454usize),
                 (22usize, 1744970275usize),
-                (43usize, 268435454usize),
+                (47usize, 268435454usize),
                 (79usize, 1744830467usize),
                 (22usize, 1744970275usize),
-                (43usize, 268435454usize),
+                (47usize, 268435454usize),
                 (79usize, 1744830467usize),
                 (22usize, 1744970275usize),
-                (43usize, 268435454usize),
+                (47usize, 268435454usize),
                 (79usize, 1744830467usize),
                 (22usize, 1744970275usize),
-                (43usize, 268435454usize),
+                (47usize, 268435454usize),
                 (79usize, 1744830467usize),
             ];
             const VAL_LN: [(usize, usize); 4usize] = [
@@ -1792,30 +1754,26 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 8usize] = [
                 (3usize, 2usize),
-                (5usize, 7usize),
-                (6usize, 7usize),
+                (5usize, 5usize),
+                (6usize, 5usize),
                 (7usize, 4usize),
                 (8usize, 4usize),
                 (9usize, 4usize),
                 (10usize, 4usize),
                 (11usize, 4usize),
             ];
-            const VAL_QI: [(usize, usize); 36usize] = [
+            const VAL_QI: [(usize, usize); 32usize] = [
                 (5usize, 268435454usize),
                 (7usize, 268435454usize),
                 (21usize, 1744970275usize),
                 (22usize, 268435454usize),
-                (63usize, 268435454usize),
-                (64usize, 268434910usize),
-                (69usize, 268435454usize),
-                (70usize, 268434910usize),
+                (66usize, 268435454usize),
+                (70usize, 268435454usize),
                 (80usize, 1744830467usize),
                 (21usize, 1744970275usize),
                 (22usize, 268435454usize),
-                (63usize, 1744830467usize),
-                (64usize, 1744831011usize),
-                (69usize, 268435454usize),
-                (70usize, 268434910usize),
+                (66usize, 1744830467usize),
+                (70usize, 268435454usize),
                 (80usize, 268435454usize),
                 (21usize, 1744970275usize),
                 (22usize, 268435454usize),
@@ -1823,19 +1781,19 @@ unsafe fn layer_0_final_step_accumulator(
                 (83usize, 268435454usize),
                 (21usize, 1744970275usize),
                 (22usize, 268435454usize),
-                (44usize, 268435454usize),
+                (48usize, 268435454usize),
                 (80usize, 1744830467usize),
                 (21usize, 1744970275usize),
                 (22usize, 268435454usize),
-                (44usize, 268435454usize),
+                (48usize, 268435454usize),
                 (80usize, 1744830467usize),
                 (21usize, 1744970275usize),
                 (22usize, 268435454usize),
-                (44usize, 268435454usize),
+                (48usize, 268435454usize),
                 (80usize, 1744830467usize),
                 (21usize, 1744970275usize),
                 (22usize, 268435454usize),
-                (44usize, 268435454usize),
+                (48usize, 268435454usize),
                 (80usize, 1744830467usize),
             ];
             const VAL_LN: [(usize, usize); 4usize] = [
@@ -1855,24 +1813,8 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(12usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(67usize, 268435454usize), (68usize, 268434910usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(12usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(69usize, 268435454usize), (70usize, 268434910usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(12usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(69usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -1886,7 +1828,7 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(12usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(65usize, 268435454usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(70usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -1900,7 +1842,21 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(12usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(66usize, 268435454usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(67usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(12usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(68usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -1945,29 +1901,25 @@ unsafe fn layer_0_final_step_accumulator(
                 (2usize, 1usize),
                 (14usize, 3usize),
                 (15usize, 3usize),
-                (16usize, 6usize),
-                (17usize, 6usize),
+                (16usize, 4usize),
+                (17usize, 4usize),
             ];
-            const VAL_QI: [(usize, usize); 19usize] = [
+            const VAL_QI: [(usize, usize); 15usize] = [
                 (16usize, 268435454usize),
                 (21usize, 1744970275usize),
-                (43usize, 1744830467usize),
+                (47usize, 1744830467usize),
                 (82usize, 268435454usize),
                 (21usize, 1744970275usize),
-                (43usize, 1744830467usize),
+                (47usize, 1744830467usize),
                 (82usize, 268435454usize),
                 (21usize, 1744970275usize),
-                (43usize, 268435454usize),
-                (61usize, 1744830467usize),
-                (62usize, 1744831011usize),
-                (67usize, 268435454usize),
-                (68usize, 268434910usize),
+                (47usize, 268435454usize),
+                (65usize, 1744830467usize),
+                (69usize, 268435454usize),
                 (21usize, 1744970275usize),
-                (43usize, 268435454usize),
-                (61usize, 1744830467usize),
-                (62usize, 1744831011usize),
-                (67usize, 268435454usize),
-                (68usize, 268434910usize),
+                (47usize, 268435454usize),
+                (65usize, 1744830467usize),
+                (69usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 2usize] =
                 [(14usize, 1073741816usize), (15usize, 1073741816usize)];
@@ -1986,33 +1938,29 @@ unsafe fn layer_0_final_step_accumulator(
                 (3usize, 1usize),
                 (14usize, 4usize),
                 (15usize, 4usize),
-                (16usize, 7usize),
-                (17usize, 7usize),
+                (16usize, 5usize),
+                (17usize, 5usize),
             ];
-            const VAL_QI: [(usize, usize); 23usize] = [
+            const VAL_QI: [(usize, usize); 19usize] = [
                 (16usize, 268435454usize),
                 (21usize, 268435454usize),
                 (22usize, 1744970275usize),
-                (44usize, 1744830467usize),
+                (48usize, 1744830467usize),
                 (83usize, 268435454usize),
                 (21usize, 268435454usize),
                 (22usize, 1744970275usize),
-                (44usize, 1744830467usize),
+                (48usize, 1744830467usize),
                 (83usize, 268435454usize),
                 (21usize, 268435454usize),
                 (22usize, 1744970275usize),
-                (44usize, 268435454usize),
-                (63usize, 1744830467usize),
-                (64usize, 1744831011usize),
-                (69usize, 268435454usize),
-                (70usize, 268434910usize),
+                (48usize, 268435454usize),
+                (66usize, 1744830467usize),
+                (70usize, 268435454usize),
                 (21usize, 268435454usize),
                 (22usize, 1744970275usize),
-                (44usize, 268435454usize),
-                (63usize, 1744830467usize),
-                (64usize, 1744831011usize),
-                (69usize, 268435454usize),
-                (70usize, 268434910usize),
+                (48usize, 268435454usize),
+                (66usize, 1744830467usize),
+                (70usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -2028,7 +1976,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(17usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(28usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(47usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(51usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -2043,32 +1991,31 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 5usize] = [
                 (2usize, 3usize),
                 (14usize, 3usize),
-                (15usize, 4usize),
+                (15usize, 3usize),
                 (16usize, 3usize),
                 (17usize, 3usize),
             ];
-            const VAL_QI: [(usize, usize); 16usize] = [
+            const VAL_QI: [(usize, usize); 15usize] = [
                 (14usize, 268435454usize),
                 (15usize, 268435454usize),
-                (47usize, 268435454usize),
+                (51usize, 268435454usize),
                 (23usize, 1744970275usize),
-                (46usize, 1744830467usize),
+                (50usize, 1744830467usize),
                 (82usize, 268435454usize),
                 (23usize, 1744970275usize),
-                (46usize, 1744830467usize),
-                (61usize, 268435454usize),
-                (62usize, 268434910usize),
+                (50usize, 1744830467usize),
+                (65usize, 268435454usize),
                 (23usize, 1744970275usize),
-                (46usize, 1744830467usize),
+                (50usize, 1744830467usize),
                 (82usize, 268435454usize),
                 (23usize, 1744970275usize),
-                (46usize, 1744830467usize),
+                (50usize, 1744830467usize),
                 (82usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 3usize] = [
                 (16usize, 1073741816usize),
                 (17usize, 1073741816usize),
-                (47usize, 939524105usize),
+                (51usize, 939524105usize),
             ];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -2084,22 +2031,21 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 5usize] = [
                 (3usize, 3usize),
                 (14usize, 4usize),
-                (15usize, 5usize),
+                (15usize, 4usize),
                 (16usize, 4usize),
                 (17usize, 4usize),
             ];
-            const VAL_QI: [(usize, usize); 20usize] = [
+            const VAL_QI: [(usize, usize); 19usize] = [
                 (14usize, 268435454usize),
                 (15usize, 268435454usize),
-                (47usize, 268435454usize),
+                (51usize, 268435454usize),
                 (23usize, 268435454usize),
                 (24usize, 1744970275usize),
                 (83usize, 268435454usize),
                 (87usize, 1744830467usize),
                 (23usize, 268435454usize),
                 (24usize, 1744970275usize),
-                (63usize, 268435454usize),
-                (64usize, 268434910usize),
+                (66usize, 268435454usize),
                 (87usize, 1744830467usize),
                 (23usize, 268435454usize),
                 (24usize, 1744970275usize),
@@ -2127,7 +2073,7 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QI: [(usize, usize); 3usize] = [
                 (25usize, 268435454usize),
                 (25usize, 268435454usize),
-                (47usize, 268435454usize),
+                (51usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -2147,7 +2093,7 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_LN: [(usize, usize); 3usize] = [
                 (14usize, 1744830467usize),
                 (15usize, 1744830467usize),
-                (48usize, 268435454usize),
+                (52usize, 268435454usize),
             ];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -2163,7 +2109,7 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(16usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(18usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 2usize] =
-                [(16usize, 1744830467usize), (49usize, 268435454usize)];
+                [(16usize, 1744830467usize), (53usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -2187,7 +2133,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (18usize, 1744830467usize),
                 (18usize, 1744830467usize),
             ];
-            const VAL_LN: [(usize, usize); 1usize] = [(50usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(54usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -2201,13 +2147,13 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 4usize] = [
                 (28usize, 1usize),
-                (43usize, 1usize),
-                (48usize, 1usize),
-                (49usize, 1usize),
+                (47usize, 1usize),
+                (52usize, 1usize),
+                (53usize, 1usize),
             ];
             const VAL_QI: [(usize, usize); 4usize] = [
-                (49usize, 268435454usize),
-                (48usize, 268435454usize),
+                (53usize, 268435454usize),
+                (52usize, 268435454usize),
                 (79usize, 1744830467usize),
                 (79usize, 1744830467usize),
             ];
@@ -2223,9 +2169,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 2usize] = [(44usize, 1usize), (48usize, 1usize)];
+            const VAL_QO: [(usize, usize); 2usize] = [(48usize, 1usize), (52usize, 1usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(48usize, 268435454usize), (80usize, 1744830467usize)];
+                [(52usize, 268435454usize), (80usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -2238,7 +2184,7 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(49usize, 1usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(53usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(80usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -2252,7 +2198,7 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(50usize, 1usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(54usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(79usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -2266,7 +2212,7 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(50usize, 1usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(54usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(80usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -2413,23 +2359,20 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 6usize] = [
+            const VAL_QO: [(usize, usize); 5usize] = [
                 (2usize, 2usize),
                 (21usize, 2usize),
-                (61usize, 2usize),
-                (62usize, 2usize),
+                (65usize, 2usize),
                 (71usize, 1usize),
                 (76usize, 1usize),
             ];
-            const VAL_QI: [(usize, usize); 10usize] = [
+            const VAL_QI: [(usize, usize); 8usize] = [
                 (71usize, 268435454usize),
                 (76usize, 268435454usize),
                 (71usize, 1744970275usize),
                 (76usize, 1744970275usize),
                 (71usize, 268435454usize),
                 (76usize, 268435454usize),
-                (71usize, 268434910usize),
-                (76usize, 268434910usize),
                 (72usize, 1744830467usize),
                 (77usize, 1744830467usize),
             ];
@@ -2445,16 +2388,15 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 7usize] = [
+            const VAL_QO: [(usize, usize); 6usize] = [
                 (3usize, 2usize),
                 (21usize, 2usize),
                 (22usize, 2usize),
-                (63usize, 2usize),
-                (64usize, 2usize),
+                (66usize, 2usize),
                 (71usize, 1usize),
                 (76usize, 1usize),
             ];
-            const VAL_QI: [(usize, usize); 12usize] = [
+            const VAL_QI: [(usize, usize); 10usize] = [
                 (71usize, 268435454usize),
                 (76usize, 268435454usize),
                 (71usize, 268435454usize),
@@ -2463,8 +2405,6 @@ unsafe fn layer_0_final_step_accumulator(
                 (76usize, 1744970275usize),
                 (71usize, 268435454usize),
                 (76usize, 268435454usize),
-                (71usize, 268434910usize),
-                (76usize, 268434910usize),
                 (73usize, 1744830467usize),
                 (78usize, 1744830467usize),
             ];
@@ -2557,7 +2497,7 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(23usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
                 [(71usize, 1744830467usize), (76usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(51usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(55usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -2572,7 +2512,7 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 4usize] = [
                 (24usize, 1usize),
                 (25usize, 1usize),
-                (43usize, 1usize),
+                (47usize, 1usize),
                 (76usize, 1usize),
             ];
             const VAL_QI: [(usize, usize); 4usize] = [
@@ -2621,7 +2561,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (81usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 2usize] =
-                [(53usize, 268435454usize), (81usize, 1744830467usize)];
+                [(57usize, 268435454usize), (81usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -2633,13 +2573,13 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 2usize] = [(52usize, 1usize), (53usize, 2usize)];
+            const VAL_QO: [(usize, usize); 2usize] = [(56usize, 1usize), (57usize, 2usize)];
             const VAL_QI: [(usize, usize); 3usize] = [
-                (53usize, 1744970275usize),
+                (57usize, 1744970275usize),
                 (82usize, 268435454usize),
                 (86usize, 1744830467usize),
             ];
-            const VAL_LN: [(usize, usize); 1usize] = [(53usize, 1073741816usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(57usize, 1073741816usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -2651,9 +2591,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 2usize] = [(52usize, 1usize), (53usize, 2usize)];
+            const VAL_QO: [(usize, usize); 2usize] = [(56usize, 1usize), (57usize, 2usize)];
             const VAL_QI: [(usize, usize); 3usize] = [
-                (53usize, 268435454usize),
+                (57usize, 268435454usize),
                 (83usize, 268435454usize),
                 (87usize, 1744830467usize),
             ];
@@ -2707,7 +2647,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (81usize, 1744830467usize),
                 (81usize, 1744830467usize),
             ];
-            const VAL_LN: [(usize, usize); 1usize] = [(54usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(58usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -3162,62 +3102,6 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(48usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(48usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(48usize, 1744830467usize)];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(49usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(49usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(49usize, 1744830467usize)];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(50usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(50usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(50usize, 1744830467usize)];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(51usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(51usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(51usize, 1744830467usize)];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(52usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(52usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(52usize, 1744830467usize)];
@@ -3291,6 +3175,62 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(57usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(57usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(57usize, 1744830467usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(58usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(58usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(58usize, 1744830467usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(59usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(59usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(59usize, 1744830467usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(60usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(60usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(60usize, 1744830467usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(61usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(61usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(61usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -6515,8 +6455,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             state.prev_claims.clear();
             {
                 const LAYOUT_KIND: [usize; 133usize] = [
-                    1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 1usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 1usize, 1usize, 0usize, 0usize,
+                    1usize, 1usize, 0usize, 0usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
@@ -6531,19 +6471,19 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     0usize, 0usize, 0usize,
                 ];
                 const LAYOUT_POS: [usize; 133usize] = [
-                    0usize, 1usize, 61usize, 62usize, 63usize, 64usize, 2usize, 65usize, 66usize,
-                    67usize, 68usize, 69usize, 70usize, 71usize, 72usize, 73usize, 3usize, 4usize,
-                    74usize, 75usize, 76usize, 77usize, 78usize, 79usize, 80usize, 81usize,
-                    82usize, 83usize, 84usize, 85usize, 86usize, 87usize, 88usize, 89usize,
-                    90usize, 91usize, 92usize, 93usize, 94usize, 95usize, 96usize, 97usize, 0usize,
-                    1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize, 8usize, 9usize,
-                    10usize, 11usize, 12usize, 13usize, 14usize, 15usize, 16usize, 17usize,
-                    18usize, 19usize, 20usize, 21usize, 22usize, 23usize, 24usize, 25usize,
-                    26usize, 27usize, 28usize, 29usize, 30usize, 31usize, 32usize, 33usize,
-                    34usize, 35usize, 36usize, 37usize, 38usize, 39usize, 40usize, 41usize,
-                    42usize, 43usize, 44usize, 45usize, 46usize, 47usize, 48usize, 49usize,
-                    50usize, 51usize, 52usize, 53usize, 54usize, 55usize, 56usize, 57usize,
-                    58usize, 59usize, 60usize, 5usize, 6usize, 7usize, 8usize, 9usize, 10usize,
+                    0usize, 1usize, 65usize, 66usize, 2usize, 67usize, 68usize, 69usize, 70usize,
+                    71usize, 72usize, 73usize, 3usize, 4usize, 74usize, 75usize, 76usize, 77usize,
+                    78usize, 79usize, 80usize, 81usize, 82usize, 83usize, 84usize, 85usize,
+                    86usize, 87usize, 88usize, 89usize, 90usize, 91usize, 92usize, 93usize,
+                    94usize, 95usize, 96usize, 97usize, 0usize, 1usize, 2usize, 3usize, 4usize,
+                    5usize, 6usize, 7usize, 8usize, 9usize, 10usize, 11usize, 12usize, 13usize,
+                    14usize, 15usize, 16usize, 17usize, 18usize, 19usize, 20usize, 21usize,
+                    22usize, 23usize, 24usize, 25usize, 26usize, 27usize, 28usize, 29usize,
+                    30usize, 31usize, 32usize, 33usize, 34usize, 35usize, 36usize, 37usize,
+                    38usize, 39usize, 40usize, 41usize, 42usize, 43usize, 44usize, 45usize,
+                    46usize, 47usize, 48usize, 49usize, 50usize, 51usize, 52usize, 53usize,
+                    54usize, 55usize, 56usize, 57usize, 58usize, 59usize, 60usize, 61usize,
+                    62usize, 63usize, 64usize, 5usize, 6usize, 7usize, 8usize, 9usize, 10usize,
                     11usize, 12usize, 13usize, 14usize, 98usize, 99usize, 100usize, 101usize,
                     102usize, 103usize, 104usize, 105usize, 106usize, 107usize, 108usize, 109usize,
                     110usize, 111usize, 112usize, 113usize, 114usize, 115usize, 116usize, 117usize,
@@ -6577,23 +6517,23 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     (130usize, 133099247u32, 15usize, 3usize),
                 ];
                 const SC_TERMS: [(u32, usize); 18usize] = [
-                    (1744830467u32, 28usize),
+                    (1744830467u32, 24usize),
                     (268435454u32, 0usize),
                     (133099247u32, 97usize),
-                    (1744830467u32, 29usize),
+                    (1744830467u32, 25usize),
                     (268435454u32, 1usize),
                     (1744830467u32, 97usize),
-                    (1744830467u32, 28usize),
-                    (268435454u32, 7usize),
+                    (1744830467u32, 24usize),
+                    (268435454u32, 5usize),
                     (133099247u32, 98usize),
-                    (1744830467u32, 29usize),
-                    (268435454u32, 8usize),
+                    (1744830467u32, 25usize),
+                    (268435454u32, 6usize),
                     (1744830467u32, 98usize),
-                    (1744830467u32, 28usize),
-                    (268435454u32, 16usize),
+                    (1744830467u32, 24usize),
+                    (268435454u32, 12usize),
                     (133099247u32, 99usize),
-                    (1744830467u32, 29usize),
-                    (268435454u32, 17usize),
+                    (1744830467u32, 25usize),
+                    (268435454u32, 13usize),
                     (1744830467u32, 99usize),
                 ];
                 let mut _sc = 0;
@@ -6634,32 +6574,32 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     (268435358u32, 26usize, 0usize),
                 ];
                 const VL_TERMS: [(u32, usize); 26usize] = [
-                    (268435454u32, 26usize),
-                    (268435454u32, 27usize),
-                    (268435454u32, 6usize),
+                    (268435454u32, 22usize),
+                    (268435454u32, 23usize),
+                    (268435454u32, 4usize),
+                    (268435454u32, 38usize),
+                    (268435454u32, 39usize),
+                    (268435454u32, 40usize),
+                    (268435454u32, 41usize),
                     (268435454u32, 42usize),
                     (268435454u32, 43usize),
-                    (268435454u32, 44usize),
-                    (268435454u32, 45usize),
-                    (268435454u32, 46usize),
-                    (268435454u32, 47usize),
-                    (536870908u32, 48usize),
-                    (1073741816u32, 49usize),
-                    (134217711u32, 50usize),
-                    (268435422u32, 51usize),
-                    (536870844u32, 52usize),
-                    (1073741688u32, 53usize),
-                    (134217455u32, 54usize),
-                    (268434910u32, 55usize),
-                    (536869820u32, 56usize),
-                    (1073739640u32, 57usize),
-                    (134213359u32, 58usize),
-                    (268426718u32, 59usize),
-                    (536853436u32, 60usize),
-                    (1073706872u32, 61usize),
-                    (134147823u32, 62usize),
-                    (268295646u32, 13usize),
-                    (536591292u32, 20usize),
+                    (536870908u32, 44usize),
+                    (1073741816u32, 45usize),
+                    (134217711u32, 46usize),
+                    (268435422u32, 47usize),
+                    (536870844u32, 48usize),
+                    (1073741688u32, 49usize),
+                    (134217455u32, 50usize),
+                    (268434910u32, 51usize),
+                    (536869820u32, 52usize),
+                    (1073739640u32, 53usize),
+                    (134213359u32, 54usize),
+                    (268426718u32, 55usize),
+                    (536853436u32, 56usize),
+                    (1073706872u32, 57usize),
+                    (134147823u32, 58usize),
+                    (268295646u32, 9usize),
+                    (536591292u32, 16usize),
                 ];
                 let mut _vl = 0;
                 while _vl < 1usize {

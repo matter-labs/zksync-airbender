@@ -26,8 +26,8 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     inputs: &OpcodeFamilyCircuitState<F>,
     is_lw: Boolean,
     is_sw: Boolean,
-    rs1_limbs: [Variable; REGISTER_SIZE * 2],
-    memread_u8: [Variable; REGISTER_SIZE * 2],
+    rs1_limbs: [Variable; REGISTER_SIZE],
+    memread_u8: [Variable; REGISTER_SIZE],
     memwrite_u16: [Variable; REGISTER_SIZE],
     memread_addr: [Variable; REGISTER_SIZE],
     memwrite_addr: [Variable; REGISTER_SIZE],
@@ -36,15 +36,10 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     // Shared RC-16 slot (limb 0 of the F1/F2/F4 Register) for the SW-align `top_14`.
     top_14_slot: Variable,
 ) -> Vec<LookupRequest<F>> {
-    let byte_shift = F::from_u32_unchecked(1 << 8);
-    let rs1_low_c: Constraint<F> =
-        Constraint::from(rs1_limbs[0]) + Term::from((byte_shift, rs1_limbs[1]));
-    let rs1_high_c: Constraint<F> =
-        Constraint::from(rs1_limbs[2]) + Term::from((byte_shift, rs1_limbs[3]));
-    let memread_low_c: Constraint<F> =
-        Constraint::from(memread_u8[0]) + Term::from((byte_shift, memread_u8[1]));
-    let memread_high_c: Constraint<F> =
-        Constraint::from(memread_u8[2]) + Term::from((byte_shift, memread_u8[3]));
+    let rs1_low_c: Constraint<F> = Constraint::from(rs1_limbs[0]);
+    let rs1_high_c: Constraint<F> = Constraint::from(rs1_limbs[1]);
+    let memread_low_c: Constraint<F> = Constraint::from(memread_u8[0]);
+    let memread_high_c: Constraint<F> = Constraint::from(memread_u8[1]);
 
     let load = Constraint::from(is_lw);
     let store = Constraint::from(is_sw);
@@ -78,8 +73,8 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     let (is_sw_var, is_sw_neg) = is_sw.variable_and_negation_constant();
     {
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
-            let rs1_lo_val = placer.get_u16_from_u8_parts([rs1_limbs[0], rs1_limbs[1]]);
-            let rs1_hi_val = placer.get_u16_from_u8_parts([rs1_limbs[2], rs1_limbs[3]]);
+            let rs1_lo_val = placer.get_u16(rs1_limbs[0]);
+            let rs1_hi_val = placer.get_u16(rs1_limbs[1]);
             let imm_lo_val = placer.get_u16(imm_var_lo);
             let imm_hi_val = placer.get_u16(imm_var_hi);
             let (_, carry_lo) = rs1_lo_val.overflowing_add(&imm_lo_val);

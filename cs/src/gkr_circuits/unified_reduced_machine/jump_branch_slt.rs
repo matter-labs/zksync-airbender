@@ -19,23 +19,18 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     decoder: JumpSltBranchFamilyCircuitMask,
-    rs1_limbs: [Variable; 4],
-    rs2_limbs: [Variable; 4],
+    rs1_limbs: [Variable; 2],
+    rs2_limbs: [Variable; 2],
     rd_write_limbs: [Variable; 2],
     intermediate_reg: Register<F>,
     scratch_bools: [Boolean; F2_SCRATCH_BOOLS],
     scratch_vars: [Variable; F2_SCRATCH_VARS],
 ) -> Vec<LookupRequest<F>> {
     // U16 views of rs1/rs2 reassembled from U8 bytes via free algebra.
-    let byte_shift = F::from_u32_unchecked(1 << 8);
-    let rs1_low_c: Constraint<F> =
-        Constraint::from(rs1_limbs[0]) + Term::from((byte_shift, rs1_limbs[1]));
-    let rs1_high_c: Constraint<F> =
-        Constraint::from(rs1_limbs[2]) + Term::from((byte_shift, rs1_limbs[3]));
-    let rs2_low_c: Constraint<F> =
-        Constraint::from(rs2_limbs[0]) + Term::from((byte_shift, rs2_limbs[1]));
-    let rs2_high_c: Constraint<F> =
-        Constraint::from(rs2_limbs[2]) + Term::from((byte_shift, rs2_limbs[3]));
+    let rs1_low_c: Constraint<F> = Constraint::from(rs1_limbs[0]);
+    let rs1_high_c: Constraint<F> = Constraint::from(rs1_limbs[1]);
+    let rs2_low_c: Constraint<F> = Constraint::from(rs2_limbs[0]);
+    let rs2_high_c: Constraint<F> = Constraint::from(rs2_limbs[1]);
 
     // we do NOT need range checks on RD write values, as they will be results of masking
     // based on rd == x0 predicate. But we will need to add some temporary variables to get addition results
@@ -150,10 +145,10 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
 
             let imm_low = placer.get_u16(imm_vars[0]);
             let imm = placer.get_u32_from_u16_parts(imm_vars);
-            let rs1_low = placer.get_u16_from_u8_parts([rs1_vars[0], rs1_vars[1]]);
-            let rs1_u32 = placer.get_u32_from_u8_parts(rs1_vars);
-            let rs2_low = placer.get_u16_from_u8_parts([rs2_vars[0], rs2_vars[1]]);
-            let rs2_u32 = placer.get_u32_from_u8_parts(rs2_vars);
+            let rs1_low = placer.get_u16(rs1_vars[0]);
+            let rs1_u32 = placer.get_u32_from_u16_parts(rs1_vars);
+            let rs2_low = placer.get_u16(rs2_vars[0]);
+            let rs2_u32 = placer.get_u32_from_u16_parts(rs2_vars);
             let pc_low = placer.get_u16(pc_in_vars[0]);
             let pc_u32 = placer.get_u32_from_u16_parts(pc_in_vars);
 
@@ -432,8 +427,8 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
 
             let imm_low = placer.get_u16(imm_vars[0]);
             let imm = placer.get_u32_from_u16_parts(imm_vars);
-            let rs1_low = placer.get_u16_from_u8_parts([rs1_vars[0], rs1_vars[1]]);
-            let rs1_u32 = placer.get_u32_from_u8_parts(rs1_vars);
+            let rs1_low = placer.get_u16(rs1_vars[0]);
+            let rs1_u32 = placer.get_u32_from_u16_parts(rs1_vars);
             let pc_low = placer.get_u16(pc_in_vars[0]);
             let pc_u32 = placer.get_u32_from_u16_parts(pc_in_vars);
 

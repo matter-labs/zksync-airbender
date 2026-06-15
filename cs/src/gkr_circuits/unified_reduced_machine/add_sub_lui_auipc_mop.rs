@@ -24,8 +24,8 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     decoder: AddSubLuiAuipcMopFamilyCircuitMask,
-    rs1_limbs: [Variable; 4],
-    rs2_limbs: [Variable; 4],
+    rs1_limbs: [Variable; 2],
+    rs2_limbs: [Variable; 2],
     rd_write_limbs: [Variable; 2],
     rd_read_limbs: [Variable; 2],
     rs2_read_timestamp: [Variable; common_constants::NUM_TIMESTAMP_COLUMNS_FOR_RAM],
@@ -43,12 +43,11 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
 
     let carry_shift = F::from_u32_with_reduction(1 << 16);
 
-    // U16 low/high limb views of rs1/rs2, reassembled as `Expr` from the 4 committed U8 bytes
-    let byte_shift = F::from_u32_unchecked(1 << 8);
-    let rs1_low_e: Expr<F> = Expr::var(rs1_limbs[0]) + Expr::var(rs1_limbs[1]) * byte_shift;
-    let rs1_high_e: Expr<F> = Expr::var(rs1_limbs[2]) + Expr::var(rs1_limbs[3]) * byte_shift;
-    let rs2_low_e: Expr<F> = Expr::var(rs2_limbs[0]) + Expr::var(rs2_limbs[1]) * byte_shift;
-    let rs2_high_e: Expr<F> = Expr::var(rs2_limbs[2]) + Expr::var(rs2_limbs[3]) * byte_shift;
+    // U16 low/high limb views of rs1/rs2 — the committed read limbs directly.
+    let rs1_low_e: Expr<F> = Expr::var(rs1_limbs[0]);
+    let rs1_high_e: Expr<F> = Expr::var(rs1_limbs[1]);
+    let rs2_low_e: Expr<F> = Expr::var(rs2_limbs[0]);
+    let rs2_high_e: Expr<F> = Expr::var(rs2_limbs[1]);
 
     // we need range checks on the output to ensure proper addition
     let [out_low, out_high] = rd_write_limbs;
@@ -102,10 +101,10 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
 
             let imm_low = placer.get_u16(imm_vars[0]);
             let imm = placer.get_u32_from_u16_parts(imm_vars);
-            let rs1_low = placer.get_u16_from_u8_parts([rs1_vars[0], rs1_vars[1]]);
-            let rs1_u32 = placer.get_u32_from_u8_parts(rs1_vars);
-            let rs2_low = placer.get_u16_from_u8_parts([rs2_vars[0], rs2_vars[1]]);
-            let rs2_u32 = placer.get_u32_from_u8_parts(rs2_vars);
+            let rs1_low = placer.get_u16(rs1_vars[0]);
+            let rs1_u32 = placer.get_u32_from_u16_parts(rs1_vars);
+            let rs2_low = placer.get_u16(rs2_vars[0]);
+            let rs2_u32 = placer.get_u32_from_u16_parts(rs2_vars);
             let pc_low = placer.get_u16(pc_vars[0]);
             let pc_u32 = placer.get_u32_from_u16_parts(pc_vars);
             let boolean_false = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);

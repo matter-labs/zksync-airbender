@@ -85,7 +85,7 @@ const UNIFIED_SCRATCH_BOOL_COUNT: usize = {
 
 pub(super) const F1_SCRATCH_VARS: usize = 0;
 pub(super) const F2_SCRATCH_VARS: usize = 3; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value
-pub(super) const F3_SCRATCH_VARS: usize = 17; // shift/binop scratch_space
+pub(super) const F3_SCRATCH_VARS: usize = 21; // shift/binop scratch_space (17) + 4 rs1/rs2 low-byte split points
 pub(super) const F4_SCRATCH_VARS: usize = 2; // ram_addr[0], ram_addr[1]
 
 /// Shared base-layer scratch-Variable pool size = max across families.
@@ -209,16 +209,17 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     // SW (rd-slot ≡ RAM write); Families 1-3 + the matching half of Family 4 keep
     // them as register accesses by pinning `is_register = NOT is_lw / NOT is_sw`.
     //
-    // rs1 + rs2 are committed as U8 bytes so Family 3's
-    // byte-keyed lookups + Family 4's RAM-address lookup can use them directly.
-    // Families 1+2 + Family 4's address arithmetic algebraically reassemble U16
-    // from bytes via free degree-1 polynomial expressions inside their bodies.
-    // rd write remains U16.
+    // rs1 + rs2 are committed as U16 limbs (matched limb-for-limb against the
+    // RC-16 writes, so each limb is canonically pinned). Families 1/2/4 use the
+    // U16 halves directly. Family 3's byte-keyed lookups decompose each U16 limb
+    // on demand (1 committed scratch byte + 1 free linear-expression byte), and
+    // the byte-table membership range-checks both to u8 — so no separate RC-8 and
+    // no operand bytes committed to the memory oracle. rd write remains U16.
     let rs1_access = cs.request_mem_access(
         MemoryAccessRequest::RegisterRead {
             reg_idx: inputs.decoder_data.rs1_index,
             read_value_placeholder: Placeholder::ShuffleRamReadValue(0),
-            split_as_u8: true,
+            split_as_u8: false,
         },
         "rs1",
         0,
@@ -240,7 +241,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
             is_register: is_lw.toggle(),
             address: memread_addr,
             read_value_placeholder: Placeholder::ShuffleRamReadValue(1),
-            split_as_u8: true,
+            split_as_u8: false,
         },
         "rs2/mem read",
         1,
@@ -278,10 +279,10 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     let MemoryAccess::RegisterOrRam(rd_access) = rd_access else {
         unreachable!()
     };
-    let WordRepresentation::U8Limbs(rs1_limbs) = rs1_access.read_value else {
+    let WordRepresentation::U16Limbs(rs1_limbs) = rs1_access.read_value else {
         unreachable!()
     };
-    let WordRepresentation::U8Limbs(rs2_limbs) = rs2_access.read_value.clone() else {
+    let WordRepresentation::U16Limbs(rs2_limbs) = rs2_access.read_value.clone() else {
         unreachable!()
     };
     let WordRepresentation::U16Limbs(rd_write_limbs) = rd_access.write_value.clone() else {

@@ -979,28 +979,34 @@ fn generate_malicious_unified_proofs() {
         StaticVerdict::ArithRejects,
         |circuit, trace| {
             let lw = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
-            let load_byte = find_base_layer_address(circuit, "rs2/mem read read_value_u8[0]");
+            let load_limb = find_base_layer_address(circuit, "rs2/mem read read_value[0]");
             let row = (0..base_trace_len(trace))
                 .find(|&r| read_cell(trace, lw, r) == BabyBearField::ONE)
                 .expect("multi_family_smoke must execute at least one LW");
-            let bumped = (read_cell(trace, load_byte, row).as_u32_reduced() + 1) & 0xFF;
-            write_cell(trace, load_byte, row, BabyBearField::new(bumped));
+            let bumped = (read_cell(trace, load_limb, row).as_u32_reduced() + 1) & 0xFFFF;
+            write_cell(trace, load_limb, row, BabyBearField::new(bumped));
         },
     );
 
-    generate_malicious_unified_proof("f3_pooled_lookup", StaticVerdict::BothPass, |circuit, trace| {
-        let shift_bit =
-            find_base_layer_address(circuit, &format!("family_bit[{FAMILY_3_FLAG_OFFSET}]"));
-        let binop_bit =
-            find_base_layer_address(circuit, &format!("family_bit[{}]", FAMILY_3_FLAG_OFFSET + 1));
-        let scratch0 = find_base_layer_address(circuit, "shared scratch var[0]");
-        let row = (0..base_trace_len(trace))
-            .find(|&r| {
-                read_cell(trace, shift_bit, r) == BabyBearField::ONE
-                    || read_cell(trace, binop_bit, r) == BabyBearField::ONE
-            })
-            .expect("multi_family_smoke must execute at least one F3 (shift or binary-op)");
-        let cur = read_cell(trace, scratch0, row);
-        write_cell(trace, scratch0, row, cur + BabyBearField::ONE);
-    });
+    generate_malicious_unified_proof(
+        "f3_pooled_lookup",
+        StaticVerdict::BothPass,
+        |circuit, trace| {
+            let shift_bit =
+                find_base_layer_address(circuit, &format!("family_bit[{FAMILY_3_FLAG_OFFSET}]"));
+            let binop_bit = find_base_layer_address(
+                circuit,
+                &format!("family_bit[{}]", FAMILY_3_FLAG_OFFSET + 1),
+            );
+            let scratch0 = find_base_layer_address(circuit, "shared scratch var[0]");
+            let row = (0..base_trace_len(trace))
+                .find(|&r| {
+                    read_cell(trace, shift_bit, r) == BabyBearField::ONE
+                        || read_cell(trace, binop_bit, r) == BabyBearField::ONE
+                })
+                .expect("multi_family_smoke must execute at least one F3 (shift or binary-op)");
+            let cur = read_cell(trace, scratch0, row);
+            write_cell(trace, scratch0, row, cur + BabyBearField::ONE);
+        },
+    );
 }

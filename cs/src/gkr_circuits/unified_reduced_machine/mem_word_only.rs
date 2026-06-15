@@ -34,7 +34,7 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     inputs: OpcodeFamilyCircuitState<F>,
     is_lw: Boolean,
     is_sw: Boolean,
-    rs1_limbs: [Variable; REGISTER_SIZE * 2],
+    rs1_limbs: [Variable; REGISTER_SIZE],
     memread_access: RegisterOrRamAccess,
     memwrite_access: RegisterOrRamAccess,
     of_slots: [Boolean; F4_SCRATCH_BOOLS],
@@ -46,8 +46,8 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     // SW: mem[addr] || trap rom[addr] <- rs2                     with +0 offset accepted
     // NOTE: by preprocessing (decoder lookup) we have rd == 0 for loads not possible
 
-    let WordRepresentation::U8Limbs(memread_u8) = memread_access.read_value else {
-        unreachable!("memread access must be allocated as U8Limbs")
+    let WordRepresentation::U16Limbs(memread_u8) = memread_access.read_value else {
+        unreachable!("memread access must be allocated as U16Limbs")
     };
     let WordRepresentation::U16Limbs(memwrite_u16) = memwrite_access.write_value else {
         unreachable!("memwrite access must be allocated with U16 write limbs")

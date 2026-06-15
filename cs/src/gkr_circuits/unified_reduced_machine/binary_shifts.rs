@@ -4,7 +4,7 @@ use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
 use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables;
 use crate::gkr_circuits::binary_shifts_family::ShiftBinaryFamilyCircuitMask;
-use crate::types::*;
+use crate::witness_placer::*;
 use field::PrimeField;
 
 /// Family 3 (binary ops / shifts) constraints for the unified circuit. Mirrors the
@@ -14,8 +14,8 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     decoder: ShiftBinaryFamilyCircuitMask,
-    rs1_limbs: [Variable; 4],
-    rs2_limbs: [Variable; 4],
+    rs1_limbs: [Variable; 2],
+    rs2_limbs: [Variable; 2],
     rd_write_limbs: [Variable; 2],
     scratch_space: [Variable; F3_SCRATCH_VARS],
 ) -> Vec<LookupRequest<F>> {
@@ -36,9 +36,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     // - for binary ops we need just 5: one for sign-extension of the immediate, and 4 for outputs
     // - for shift we need 17: 4x4 for output contributions, and one for truncated shift amount
 
-    const _: () = assert!(
-        F3_SCRATCH_VARS == 17,
-    );
+    const _: () = assert!(F3_SCRATCH_VARS == 21);
     let [binary_ops_imm_sign_ext, binop_output_0, binop_output_1, binop_output_2, binop_output_3, ..] =
         scratch_space;
     let binary_ops_outputs = [
@@ -51,6 +49,44 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     let truncated_shift_amount = scratch_space[0];
     let shift_outputs: [Variable; 16] = core::array::from_fn(|i| scratch_space[i + 1]);
     let shift_output_chunks = shift_outputs.as_chunks::<4>().0;
+    
+    let inv_256 = F::from_u32_with_reduction(1 << 8).inverse().unwrap();
+    let rs1_b0 = scratch_space[17];
+    let rs1_b2 = scratch_space[18];
+    let rs2_b0 = scratch_space[19];
+    let rs2_b2 = scratch_space[20];
+    let hi_byte = |lo_limb: Variable, lo_byte: Variable| -> Constraint<F> {
+        let mut c = Constraint::from(lo_limb);
+        c -= Constraint::from(lo_byte);
+        c.scale(inv_256);
+        c
+    };
+    // [byte0(committed), byte1(linear), byte2(committed), byte3(linear)] per operand.
+    let rs1_bytes: [Constraint<F>; 4] = [
+        Constraint::from(rs1_b0),
+        hi_byte(rs1_limbs[0], rs1_b0),
+        Constraint::from(rs1_b2),
+        hi_byte(rs1_limbs[1], rs1_b2),
+    ];
+    let rs2_bytes: [Constraint<F>; 4] = [
+        Constraint::from(rs2_b0),
+        hi_byte(rs2_limbs[0], rs2_b0),
+        Constraint::from(rs2_b2),
+        hi_byte(rs2_limbs[1], rs2_b2),
+    ];
+    {
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let rs1_lo = placer.get_u16(rs1_limbs[0]);
+            let rs1_hi = placer.get_u16(rs1_limbs[1]);
+            let rs2_lo = placer.get_u16(rs2_limbs[0]);
+            let rs2_hi = placer.get_u16(rs2_limbs[1]);
+            placer.assign_u8(rs1_b0, &rs1_lo.truncate());
+            placer.assign_u8(rs1_b2, &rs1_hi.truncate());
+            placer.assign_u8(rs2_b0, &rs2_lo.truncate());
+            placer.assign_u8(rs2_b2, &rs2_hi.truncate());
+        };
+        cs.set_values(value_fn);
+    }
 
     let is_binary_op = decoder.perform_binary_op();
     let is_shift = decoder.perform_shift();
@@ -78,8 +114,8 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         );
 
         for i in 0..4 {
-            let a = rs1_limbs[i];
-            let b = rs2_limbs[i];
+            let a = rs1_bytes[i].clone();
+            let b = rs2_bytes[i].clone();
             let imm = if i >= 2 {
                 binary_ops_imm_sign_ext
             } else {
@@ -89,10 +125,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
 
             peek_lookup_values_unconstrained_into_variables(
                 cs,
-                &[
-                    LookupInput::from(a),
-                    LookupInput::from(Constraint::from(b) + Term::from(imm)),
-                ],
+                &[LookupInput::from(a), LookupInput::from(b + Term::from(imm))],
                 &[out],
                 LookupInput::from(inputs.decoder_data.funct3.expect("is present")),
                 is_binary_op,
@@ -105,8 +138,8 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         peek_lookup_values_unconstrained_into_variables(
             cs,
             &[
-                LookupInput::from(rs2_limbs[0]),
-                LookupInput::from(rs2_limbs[1]),
+                LookupInput::from(rs2_bytes[0].clone()),
+                LookupInput::from(rs2_bytes[1].clone()),
             ],
             &[truncated_shift_amount],
             LookupInput::from(
@@ -115,7 +148,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
             is_shift,
         );
         for i in 0..4 {
-            let a = rs1_limbs[i];
+            let a = rs1_bytes[i].clone();
             let outs = shift_output_chunks[i];
             let table_id = TableType::ShiftImplementationOverBytes;
             let byte_index = i;
@@ -141,11 +174,11 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     let combined_request = {
         let mut input_0 = Constraint::empty();
         input_0 += Term::from(is_binary_op) * Term::from(inputs.decoder_data.imm[1]);
-        input_0 += Term::from(is_shift) * Term::from(rs2_limbs[0]);
+        input_0 += Term::from(is_shift) * rs2_bytes[0].clone();
 
         let mut input_1 = Constraint::empty();
         input_1 += Term::from(is_binary_op) * Term::from(binary_ops_imm_sign_ext);
-        input_1 += Term::from(is_shift) * Term::from(rs2_limbs[1]);
+        input_1 += Term::from(is_shift) * rs2_bytes[1].clone();
 
         let mut input_2 = Constraint::empty();
         input_2 += Term::from(is_shift) * Term::from(truncated_shift_amount);
@@ -171,7 +204,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         let byte_index = i;
 
         // rs1 byte for the binary op, or byte index for shift
-        constraints[0] += Term::from(is_binary_op) * Term::from(rs1_limbs[i]);
+        constraints[0] += Term::from(is_binary_op) * rs1_bytes[i].clone();
         constraints[0] += Term::from(is_shift) * Term::from(byte_index as u32);
 
         let binary_op_imm = if i >= 2 {
@@ -181,9 +214,9 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         };
 
         // rs2 byte or imm extension for binary op, or rs1 byte for shift
-        constraints[1] += Term::from(is_binary_op) * Term::from(rs2_limbs[i]);
+        constraints[1] += Term::from(is_binary_op) * rs2_bytes[i].clone();
         constraints[1] += Term::from(is_binary_op) * Term::from(binary_op_imm);
-        constraints[1] += Term::from(is_shift) * Term::from(rs1_limbs[i]);
+        constraints[1] += Term::from(is_shift) * rs1_bytes[i].clone();
 
         // output for the binary op, or shift amount for shift
         constraints[2] += Term::from(is_binary_op) * Term::from(binary_ops_outputs[i]);
