@@ -260,57 +260,72 @@ pub fn execute2(p: &Program2, gathers: &[GatherDescriptor], src: &SourceBanks) -
             }
         };
 
-        let acc = match ins.header {
-            Header::Arith { op, .. } => match op {
-                ArithOp::Sum => {
-                    let mut a = Ext::ZERO;
-                    for o in &ins.operands {
-                        let v = read(o);
-                        a.add_assign(&v);
+        // Per-dst output values. Arith ops and single-output macros (GateOutputFold,
+        // GrandProductStep) produce ONE value broadcast to every footer dst (in the
+        // corpus that is a single dst). Multi-output macros (AggregateLookupPair:
+        // num,den) produce one value PER dst, aligned to `ins.dsts` (spec §3 /
+        // routine_table output_count). `outputs` is therefore indexed against the
+        // footer below.
+        let outputs: Vec<Ext> = match ins.header {
+            Header::Arith { op, .. } => {
+                let a = match op {
+                    ArithOp::Sum => {
+                        let mut a = Ext::ZERO;
+                        for o in &ins.operands {
+                            let v = read(o);
+                            a.add_assign(&v);
+                        }
+                        a
                     }
-                    a
-                }
-                ArithOp::Prod => {
-                    let mut a = Ext::ONE;
-                    for o in &ins.operands {
-                        let v = read(o);
-                        a.mul_assign(&v);
+                    ArithOp::Prod => {
+                        let mut a = Ext::ONE;
+                        for o in &ins.operands {
+                            let v = read(o);
+                            a.mul_assign(&v);
+                        }
+                        a
                     }
-                    a
-                }
-                ArithOp::Dot => {
-                    // Strength-reduced sum-of-products: arity = number of pairs;
-                    // accumulate operands[2k] * operands[2k+1].
-                    let mut a = Ext::ZERO;
-                    for pair in ins.operands.chunks(2) {
-                        let mut x = read(&pair[0]);
-                        let y = read(&pair[1]);
-                        x.mul_assign(&y);
-                        a.add_assign(&x);
+                    ArithOp::Dot => {
+                        // Strength-reduced sum-of-products: arity = number of pairs;
+                        // accumulate operands[2k] * operands[2k+1].
+                        let mut a = Ext::ZERO;
+                        for pair in ins.operands.chunks(2) {
+                            let mut x = read(&pair[0]);
+                            let y = read(&pair[1]);
+                            x.mul_assign(&y);
+                            a.add_assign(&x);
+                        }
+                        a
                     }
-                    a
-                }
-                ArithOp::Fma => {
-                    // Fused multiply-add lowering is a Task 3.3 concern (the 3.1
-                    // smoke path never emits Fma). Marked, not silently wrong.
-                    todo!("Task 3.3: ArithOp::Fma accumulation")
-                }
-            },
-            Header::Macro { routine, .. } => {
-                exec_macro(routine_from_u8(routine), ins, src, &read)
+                    ArithOp::Fma => {
+                        // Fused multiply-add lowering is a Task 3.3 concern (the 3.1
+                        // smoke path never emits Fma). Marked, not silently wrong.
+                        todo!("Task 3.3: ArithOp::Fma accumulation")
+                    }
+                };
+                vec![a]
             }
+            Header::Macro { routine, .. } => exec_macro(routine_from_u8(routine), ins, src, &read),
         };
 
-        // Footer: write each dst. Arith has one; multi-output macros (num/den)
-        // write the same accumulator placeholder per dst until Task 3.3 wires
-        // their distinct outputs. GateOutputFold is single-output.
-        for dst in &ins.dsts {
+        // Footer: write each dst its aligned output value. A single-valued result
+        // (`outputs.len() == 1`) is broadcast to every dst (matches the arith /
+        // single-output-macro contract); a multi-output macro supplies exactly
+        // one value per dst (num then den, in dst order — `macro_gate_dsts`).
+        debug_assert!(
+            outputs.len() == 1 || outputs.len() == ins.dsts.len(),
+            "macro output count {} aligns with neither broadcast (1) nor dst count {}",
+            outputs.len(),
+            ins.dsts.len()
+        );
+        for (i, dst) in ins.dsts.iter().enumerate() {
+            let v = if outputs.len() == 1 { outputs[0] } else { outputs[i] };
             match *dst {
-                Dst::Slot { e4, cell } => write_cells(&mut cells, cell as u16, e4, acc),
+                Dst::Slot { e4, cell } => write_cells(&mut cells, cell as u16, e4, v),
                 Dst::Materialize { slot, col } => {
                     let field_ext = src.matrix[slot as usize].field_ext;
-                    assert_store_width(field_ext, acc);
-                    materialized.push(((slot, col), acc));
+                    assert_store_width(field_ext, v);
+                    materialized.push(((slot, col), v));
                 }
             }
         }
@@ -340,29 +355,125 @@ fn read_ldc(src: &SourceBanks, sub: LdcSub, idx: u16) -> Ext {
     }
 }
 
-/// Dispatch one macro routine. Task 3.1 implements `GateOutputFold`; the rest
-/// are `todo!("Task 3.3")`. The smoke-test path only reaches GateOutputFold, so
-/// no panic fires there.
+/// Dispatch one macro routine, returning one output value PER footer dst (or a
+/// single value to broadcast). Task 3.1 landed `GateOutputFold`; Task 3.3 adds
+/// the routines whose per-row arithmetic is UNAMBIGUOUSLY determined by the
+/// `Instr2` alone — `GrandProductStep` (one product formula) and
+/// `AggregateLookupPair` (one rational-pair-combine formula).
+///
+/// THE REMAINING CORPUS ROUTINES STAY `todo!` ON PURPOSE — not for lack of
+/// effort, but because the v2 `Instr2` does NOT carry the discriminator their
+/// per-row formula needs. The production reference selects the formula by the
+/// `GateKind`/`CacheKind` (see the bench-interp `mirror_gate`/`mirror_cache`
+/// host reference at
+/// `gpu/circuit_prover/src/prover/gkr/forward/bench_interp/tests.rs:337-451`
+/// and its primitive-kind tags `PK_*` at `.../bench_interp/lower.rs:173-187`),
+/// where ONE v2 routine id fans out to several primitive kinds with DIFFERENT
+/// math that the lowered instruction cannot tell apart:
+///   - `LookupNumDen` (id 1) covers PK_LOOKUP_BASE_PAIR / _EXT_PAIR /
+///     _BASE_MINUS_MULT / _EXT_MINUS_MULT / _UNBALANCED_BASE / _CACHED_DENS
+///     (lookup_helpers.cuh:229-318). In the add_sub/bigint/blake2 corpus these
+///     collapse onto operand-arities {2,3,4}, and arity 3 alone hosts THREE
+///     distinct formulas (base-minus-mult, ext-minus-mult, unbalanced) — so
+///     arity does not pin the formula. Guessing one would be plausible-but-wrong.
+///   - `ProductStep` (id 8) covers BOTH `gkr_eval_product` (a·b) AND
+///     `gkr_eval_mask_identity` ((v−1)·m+1) (lookup_helpers.cuh:217/219-223),
+///     both arity-2 — likewise indistinguishable from the instruction.
+///   - `SingleColumnLookup` (id 4) / `VectorizedLookup` (id 6) fold their input
+///     COLUMNS by per-term lincomb / α-power coefficients (cache_relation.rs:347/
+///     382, gkr_forward_generation.cuh E_FMA_ALPHA) — the coefficients live on
+///     the forward setup, NOT in the operand lanes, so the value is not
+///     recoverable from `Instr2`.
+///   - `MemoryTuple` (id 5) folds a `constant_term` (perm-additive + the
+///     const-folded address/timestamp/value offsets) that the v2 lowering drops
+///     entirely (macros.rs:264-287 "constants fold into the routine's seed"),
+///     plus a per-role challenge whose byte-shift for the U8Limbs EXTRA terms is
+///     not carried (cache_relation.rs:259-298).
+///   - `VectorizedLookupSetup` (id 7) is a row-indexed gather `n[gid]`
+///     (lookup_helpers.cuh:70-74); the lowered operands are the input columns,
+///     not the gathered value, so the materialized result is not a function of
+///     the operands.
+/// `MemoryInitTeardownPair` (id 9) is not emitted by the corpus at all (probe
+/// STEP 0) and stays `todo!("Task 3.3+")`.
 fn exec_macro(
     routine: RoutineId,
     ins: &crate::isa_v2::Instr2,
     src: &SourceBanks,
     read: &dyn Fn(&Operand) -> Ext,
-) -> Ext {
+) -> Vec<Ext> {
     match routine {
-        RoutineId::GateOutputFold => gate_output_fold(ins, src, read),
+        RoutineId::GateOutputFold => vec![gate_output_fold(ins, src, read)],
+        RoutineId::GrandProductStep => vec![grand_product_step(ins, read)],
+        RoutineId::AggregateLookupPair => aggregate_lookup_pair(ins, read),
         RoutineId::LookupNumDen
-        | RoutineId::GrandProductStep
-        | RoutineId::AggregateLookupPair
         | RoutineId::SingleColumnLookup
         | RoutineId::MemoryTuple
         | RoutineId::VectorizedLookup
         | RoutineId::VectorizedLookupSetup
         | RoutineId::ProductStep
         | RoutineId::MemoryInitTeardownPair => {
-            todo!("Task 3.3: macro routine {routine:?} not yet implemented")
+            todo!(
+                "Task 3.3+: macro routine {routine:?} needs a per-GateKind discriminator the v2 \
+                 Instr2 does not carry (see exec_macro doc)"
+            )
         }
     }
+}
+
+/// `GrandProductStep` (routine 2, `gkr_forward_generation.cuh PRODUCT` →
+/// `gkr_eval_product`, `lookup_helpers.cuh:217`): one product node folded into
+/// the running grand product — `out = a · b` over the two ext factors.
+///
+/// Operand layout (macros.rs `lower_gate`): the gate's two input nodes, in IR
+/// order, ride operand lanes 0 and 1 — for `InitialGrandProductFromCaches`
+/// (`codegen_ir.rs:1231`, the only id-2 kind the corpus emits) that is
+/// `input.to_vec()`, the two cache factors. No challenge (schema
+/// `ChallengeUse::None`). Single ext output → one footer dst.
+fn grand_product_step(ins: &crate::isa_v2::Instr2, read: &dyn Fn(&Operand) -> Ext) -> Ext {
+    debug_assert_eq!(
+        ins.operands.len(),
+        2,
+        "GrandProductStep is a 2-factor product (gkr_eval_product)"
+    );
+    let mut a = read(&ins.operands[0]);
+    let b = read(&ins.operands[1]);
+    a.mul_assign(&b);
+    a
+}
+
+/// `AggregateLookupPair` (routine 3, `lookup_helpers.cuh:229` `gkr_eval_lookup_pair`,
+/// via `AggregateLookupRationalPair` — the only id-3 kind the corpus emits):
+/// combine two rational `(num,den)` pairs `(a,b)` and `(c,d)` into one:
+///   num = a·d + c·b      (cross-multiplied numerator)
+///   den = b·d            (product of denominators)
+///
+/// Operand layout (macros.rs `lower_gate` + `gate_kind_input_nodes`,
+/// `codegen_ir.rs:1318` `input.iter().flat_map(|pair| pair.iter())`): the IR
+/// input is `[[a,b],[c,d]]`, flattened to operand lanes `[a, b, c, d]` in that
+/// order. Two ext outputs → two footer dsts (num then den, `macro_gate_dsts`).
+/// No challenge folding in the reference (`mirror_gate`
+/// `bench_interp/tests.rs:350-352` applies none, despite the schema tagging
+/// `ConstAlphaGamma` for the more general cascade form).
+fn aggregate_lookup_pair(ins: &crate::isa_v2::Instr2, read: &dyn Fn(&Operand) -> Ext) -> Vec<Ext> {
+    debug_assert_eq!(
+        ins.operands.len(),
+        4,
+        "AggregateLookupPair combines two (num,den) pairs = 4 ext operands"
+    );
+    let a = read(&ins.operands[0]);
+    let b = read(&ins.operands[1]);
+    let c = read(&ins.operands[2]);
+    let d = read(&ins.operands[3]);
+    // num = a·d + c·b.
+    let mut num = a;
+    num.mul_assign(&d);
+    let mut cb = c;
+    cb.mul_assign(&b);
+    num.add_assign(&cb);
+    // den = b·d.
+    let mut den = b;
+    den.mul_assign(&d);
+    vec![num, den]
 }
 
 /// `GateOutputFold` (routine 0, `gkr_forward_generation.cuh E_FMA_ALPHA`):

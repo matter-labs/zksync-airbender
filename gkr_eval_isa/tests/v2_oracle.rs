@@ -194,3 +194,245 @@ fn gather_tracks_table_mapping_per_row() {
         "RowIndexedSetupE4 gid {setup_len} >= n_len {setup_len}: expected ZERO"
     );
 }
+
+// ===========================================================================
+// Task 3.3: END-TO-END VALUE ORACLE for `execute2`'s macro routines.
+//
+// Cross-checks the routine arithmetic the interpreter computes against a
+// HAND-WRITTEN reference using a DIFFERENT decomposition / summation order
+// (catches transcription slips), driven by the REAL fixtures' emitted
+// instructions (add_sub / bigint / blake2_g_function — the cached variants).
+//
+// HONESTY (spec §7 step 2): `cs` has NO numeric relation evaluator, so this
+// reference is hand-written and SHARES the .cuh / `bench_interp` host model as
+// its source of truth. The achievable independence here is a DIFFERENT
+// DECOMPOSITION (e.g. den-then-num, factored cross-products), NOT bug
+// independence — a shared transcription error in the .cuh anchor would fool
+// both sides. Real independence is the Phase-5 GPU cross-check, not this test.
+//
+// SCOPE (STEP-0 probe + the `exec_macro` doc): the three fixtures emit routine
+// ids {1,2,3,4,5,6,7,8} (probe: every layer). Of these, only `GrandProductStep`
+// (2) and `AggregateLookupPair` (3) have a per-row formula that the v2 `Instr2`
+// determines UNAMBIGUOUSLY — one product / one rational-pair-combine, no lost
+// coefficients or const-folding. The other emitted routines (1,4,5,6,7,8) fan a
+// single v2 routine id out to several production primitive kinds (`PK_*`,
+// `bench_interp/lower.rs:173-187`) whose math differs but which the lowered
+// instruction cannot tell apart (see the `exec_macro` doc for the exact gap and
+// .cuh/.rs anchors). They are intentionally `todo!`, so this oracle CANNOT run a
+// whole fixture program end-to-end (it would hit a `todo!`); it instead drives
+// `execute2` per pinnable instruction with fixture-shaped, `eval_ref`-style
+// random operand values + a fixed seed.
+//
+// The routine ARITHMETIC depends only on the operand VALUES, not on the operand
+// lane KIND (Affine/Indirect/Ldc all funnel through one `read` closure), so
+// feeding controlled values through `Affine` lanes faithfully exercises the
+// routine fold AND the multi-output footer wiring (num,den → two dsts).
+// ===========================================================================
+
+use gkr_eval_isa::compiler_v2::{compile_forward_v2, FwdParams2};
+use gkr_eval_isa::test_support::{all_fixtures, fixture_path, rand_ext};
+use gkr_design_space::import::load_circuit;
+use rand::{rngs::StdRng, SeedableRng};
+use std::collections::BTreeSet;
+
+/// One synthetic ext-field matrix slot whose columns are the controlled operand
+/// values for a single extracted macro instruction; the instruction's operands
+/// are rewritten to `Affine { slot: 0, col: k }` so `execute2` reads value `k`.
+fn ext_slot(values: &[Ext]) -> MatrixSlotData {
+    MatrixSlotData { field_ext: true, columns: values.to_vec() }
+}
+
+fn banks_with(values: &[Ext]) -> SourceBanks {
+    SourceBanks {
+        matrix: vec![ext_slot(values)],
+        consts: vec![],
+        const_challenge: vec![],
+        arg_challenge: vec![],
+        gather_tables: GatherTables::default(),
+        gid: 0,
+    }
+}
+
+/// Build a single-instruction `Program2` that runs `routine` over `n_operands`
+/// controlled values (read as `Affine { slot:0, col:k }`) and materializes its
+/// `output_count` outputs into a fresh ext slot (slot 0, cols starting past the
+/// operand columns so a store never clobbers an operand read).
+fn one_macro_program(routine: RoutineId, n_operands: usize, output_count: usize) -> Program2 {
+    let operands: Vec<Operand> =
+        (0..n_operands).map(|k| Operand::Affine { slot: 0, col: k as u16 }).collect();
+    // Materialize cols sit AFTER the operand cols (distinct columns; the slot
+    // vector is sized to cover both in the harness below).
+    let dsts: Vec<Dst> = (0..output_count)
+        .map(|j| Dst::Materialize { slot: 0, col: (n_operands + j) as u16 })
+        .collect();
+    Program2 {
+        instrs: vec![Instr2 {
+            header: Header::Macro { routine: routine as u8, n_operands: n_operands as u8 },
+            operands,
+            dsts,
+            memtup: None,
+        }],
+        consts: vec![],
+        n_slot_cells: 0,
+        n_matrix_slots: 1,
+    }
+}
+
+/// Run `routine` over `inputs` via `execute2` and return the materialized
+/// outputs in dst (num-then-den) order.
+fn run_macro(routine: RoutineId, inputs: &[Ext], output_count: usize) -> Vec<Ext> {
+    // Slot columns: the operand values, then `output_count` zero placeholders
+    // the Materialize footers will read their store FIELD from (not the value).
+    let mut cols = inputs.to_vec();
+    cols.extend(std::iter::repeat(Ext::ZERO).take(output_count));
+    let p = one_macro_program(routine, inputs.len(), output_count);
+    let src = banks_with(&cols);
+    let got = execute2(&p, &[], &src);
+    got.materialized.iter().map(|(_, v)| *v).collect()
+}
+
+/// HAND reference for `GrandProductStep` (id 2). DIFFERENT decomposition: the
+/// interpreter computes `a·b` directly; here we route through a one-element
+/// running accumulator (`acc *= a; acc *= b`) so the multiply order/assoc is
+/// re-expressed rather than copied.
+fn ref_grand_product(a: Ext, b: Ext) -> Ext {
+    let mut acc = Ext::ONE;
+    acc.mul_assign(&a);
+    acc.mul_assign(&b);
+    acc
+}
+
+/// HAND reference for `AggregateLookupPair` (id 3): combine `(a,b)`,`(c,d)`.
+/// Reference formula `num = a·d + c·b`, `den = b·d`. DIFFERENT decomposition:
+/// compute den FIRST, and form the numerator as `c·b + d·a` (operands swapped
+/// within each product and the two products added in the reverse order) so a
+/// mis-bound operand or a swapped cross-term in the impl would diverge.
+fn ref_aggregate_pair(a: Ext, b: Ext, c: Ext, d: Ext) -> (Ext, Ext) {
+    let mut den = d;
+    den.mul_assign(&b); // den = d·b  (== b·d, commuted)
+    let mut t0 = c;
+    t0.mul_assign(&b); // c·b
+    let mut t1 = d;
+    t1.mul_assign(&a); // d·a  (== a·d, commuted)
+    let mut num = t0;
+    num.add_assign(&t1); // num = c·b + d·a  (reverse add order)
+    (num, den)
+}
+
+#[test]
+fn interpreter_matches_hand_reference() {
+    // The three target fixtures (cached variants).
+    let targets = [
+        "add_sub_lui_auipc_mop_codegen_ir_gkr.json",
+        "bigint_with_extended_control_codegen_ir_gkr.json",
+        "blake2_g_function_codegen_ir_gkr.json",
+    ];
+
+    // Non-vacuity + scope accounting across the corpus.
+    let mut total_grand_product = 0usize;
+    let mut total_aggregate = 0usize;
+    // The emitted-but-intentionally-todo routine ids, to document the gap.
+    let mut emitted_unpinned: BTreeSet<u8> = BTreeSet::new();
+
+    for name in targets {
+        let p = fixture_path(name);
+        // `fixture_path` resolves under cs/compiled_circuits; assert the helper
+        // and the curated 22-fixture corpus still see the target.
+        assert!(p.exists(), "target fixture {name} missing");
+        assert!(
+            all_fixtures().iter().any(|f| f == &p),
+            "{name} not in the curated codegen_ir corpus"
+        );
+        let c = load_circuit(&p).unwrap_or_else(|e| panic!("load {name}: {e:?}"));
+
+        for (li, layer) in c.circuit.layers.iter().enumerate() {
+            let Some(g) = c.graphs.get(li) else { continue };
+            let cf = compile_forward_v2(layer, g, FwdParams2::default());
+
+            // Deterministic per-(fixture,layer) RNG (no Date.now / time seed).
+            let seed = 0xA11C_E5_u64 ^ ((name.len() as u64) << 40) ^ ((li as u64) << 8);
+            let mut rng = StdRng::seed_from_u64(seed);
+
+            for ins in &cf.program.instrs {
+                let Header::Macro { routine, n_operands } = ins.header else { continue };
+                match routine {
+                    // id 2 — GrandProductStep: a·b. Two ext operands, 1 output.
+                    x if x == RoutineId::GrandProductStep as u8 => {
+                        assert_eq!(n_operands, 2, "{name} L{li}: GrandProductStep arity != 2");
+                        assert_eq!(ins.dsts.len(), 1, "{name} L{li}: GrandProductStep 1 dst");
+                        let a = rand_ext(&mut rng, true);
+                        let b = rand_ext(&mut rng, true);
+                        let got = run_macro(RoutineId::GrandProductStep, &[a, b], 1);
+                        assert_eq!(got.len(), 1);
+                        assert_eq!(
+                            got[0],
+                            ref_grand_product(a, b),
+                            "{name} L{li}: GrandProductStep value mismatch"
+                        );
+                        total_grand_product += 1;
+                    }
+                    // id 3 — AggregateLookupPair: (num,den). Four ext operands,
+                    // 2 outputs (num then den).
+                    x if x == RoutineId::AggregateLookupPair as u8 => {
+                        assert_eq!(n_operands, 4, "{name} L{li}: AggregateLookupPair arity != 4");
+                        assert_eq!(
+                            ins.dsts.len(),
+                            2,
+                            "{name} L{li}: AggregateLookupPair must emit num+den dsts"
+                        );
+                        let a = rand_ext(&mut rng, true);
+                        let b = rand_ext(&mut rng, true);
+                        let cc = rand_ext(&mut rng, true);
+                        let d = rand_ext(&mut rng, true);
+                        let got = run_macro(RoutineId::AggregateLookupPair, &[a, b, cc, d], 2);
+                        assert_eq!(got.len(), 2, "two materialized outputs (num, den)");
+                        let (rnum, rden) = ref_aggregate_pair(a, b, cc, d);
+                        assert_eq!(got[0], rnum, "{name} L{li}: AggregateLookupPair num mismatch");
+                        assert_eq!(got[1], rden, "{name} L{li}: AggregateLookupPair den mismatch");
+                        // Multi-output wiring: num and den must be DISTINCT values
+                        // (a single-value broadcast bug would make them equal for
+                        // generic random inputs).
+                        assert_ne!(
+                            got[0], got[1],
+                            "{name} L{li}: num == den for random inputs — multi-output footer \
+                             collapsed to a broadcast?"
+                        );
+                        total_aggregate += 1;
+                    }
+                    // Emitted-but-unpinned routines: record the id (so the gap is
+                    // documented + non-vacuous), do not execute (would `todo!`).
+                    other => {
+                        emitted_unpinned.insert(other);
+                    }
+                }
+            }
+        }
+    }
+
+    // Non-vacuity: both pinnable routines must actually appear in the corpus.
+    assert!(
+        total_grand_product > 0,
+        "no GrandProductStep instrs across the target fixtures (oracle vacuous)"
+    );
+    assert!(
+        total_aggregate > 0,
+        "no AggregateLookupPair instrs across the target fixtures (oracle vacuous)"
+    );
+
+    // Document the gap explicitly: the corpus DOES emit the routines we leave
+    // `todo!`, so the partial is deliberate, not an accident of fixture choice.
+    // (Probe STEP 0 found ids {1,4,5,6,7,8} alongside the two pinned ones.)
+    for expected in [
+        RoutineId::LookupNumDen as u8,
+        RoutineId::SingleColumnLookup as u8,
+        RoutineId::MemoryTuple as u8,
+        RoutineId::VectorizedLookup as u8,
+        RoutineId::VectorizedLookupSetup as u8,
+        RoutineId::ProductStep as u8,
+    ] {
+        assert!(
+            emitted_unpinned.contains(&expected),
+            "expected the corpus to emit unpinned routine id {expected} (probe STEP 0)"
+        );
+    }
+}
