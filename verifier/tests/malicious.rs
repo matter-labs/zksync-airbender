@@ -87,11 +87,17 @@ fn rejects_malicious_witness_value() {
 #[test]
 #[ignore]
 fn rejects_malicious_memory_value() {
+    // A corrupted memory-trace value breaks the memory consistency argument. Observed
+    // rejection is GkrSingleLookupCacheRelationFailed (the value/timestamp cache); the other
+    // cache-relation / sumcheck variants are kept as acceptable alternatives (matches the
+    // cache-relation set in corruption.rs::test_rejects_corrupted_cache_relations).
     assert_rejects("memory_value", |e| {
         matches!(
             e,
             VerificationError::GkrSumcheckRoundFailed { .. }
                 | VerificationError::GkrFinalStepCheckFailed { .. }
+                | VerificationError::GkrSingleLookupCacheRelationFailed { .. }
+                | VerificationError::GkrVectorLookupCacheRelationFailed { .. }
                 | VerificationError::GkrPermutationCacheRelationFailed { .. }
         )
     });
