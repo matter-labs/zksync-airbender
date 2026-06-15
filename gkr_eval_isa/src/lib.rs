@@ -5,6 +5,7 @@ pub mod compiler;
 pub mod compiler_v2;
 pub mod eval_ref;
 pub mod interp;
+pub mod interp_v2;
 pub mod isa;
 pub mod isa_v2;
 pub mod report;
