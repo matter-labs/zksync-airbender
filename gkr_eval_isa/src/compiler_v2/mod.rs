@@ -742,6 +742,7 @@ mod tests {
         let mut total_multiuse_slot = 0usize; // (a) multi-use computed -> Slot
         let mut total_materialize_outputs = 0usize; // (a) computed output -> Materialize
         let mut total_alias_nodes = 0usize; // (b) Cached-Place aliases seen
+        let mut total_alias_backed = 0usize; // (b) alias (slot,col) backings keyed
         let mut total_indirect_for_alias = 0usize; // (b) aliases read via gather
         let mut total_maxq_gates = 0usize; // (c) MaxQuadratic gates
         let mut total_maxq_scratch = 0usize; // (c) of which scratch-prefilled
@@ -865,16 +866,36 @@ mod tests {
                         }
                     }
                 }
-                // Consumers of an alias read it via Indirect (gather), proving the
-                // alias is a pass-through (no staged-source Affine read of it).
-                // We can't map an Operand back to an arena node directly, so we
-                // count Indirect operands when the layer HAS aliases — a positive
-                // corpus-wide count proves the gather path is exercised. The
-                // per-layer no-base-arith-write check above is the strict guard.
+                // Alias-SPECIFIC pass-through proof: an alias (Cached Place) is
+                // gathered inline (`Operand::Indirect`), so its exact backing
+                // must NEVER appear as a staged-source `Operand::Affine` read.
+                // Keyed on (slot, col) — not slot alone — because the joint
+                // matrix table can coalesce several addresses onto one backing
+                // slot, so a slot-only check would false-positive a legitimate
+                // read of a non-alias address sharing that slot. An Affine read
+                // of an alias backing would be a stale read (the producing cache
+                // materializes AFTER the base-arith block), so this also guards
+                // the forward ordering: base-arith must not consume a cache
+                // output via a staged column.
+                let alias_slot_cols: HashSet<(u8, u16)> = alias_addrs
+                    .iter()
+                    .filter_map(|a| {
+                        cf.matrix_table.slot_for(a).map(|s| (s, cf.matrix_table.column_of(a)))
+                    })
+                    .collect();
+                total_alias_backed += alias_slot_cols.len();
                 for ins in &cf.program.instrs {
                     for op in &ins.operands {
-                        if matches!(op, Operand::Indirect { .. }) {
-                            total_indirect_for_alias += 1;
+                        match op {
+                            Operand::Affine { slot, col } => assert!(
+                                !alias_slot_cols.contains(&(*slot, *col)),
+                                "{name} L{li}: alias backing (slot {slot}, col {col}) read via a \
+                                 staged-source Affine — an alias must be a gather pass-through, \
+                                 and base-arith must not read a not-yet-materialized cache output"
+                            ),
+                            // Gather path exercised (corpus-wide corroboration).
+                            Operand::Indirect { .. } => total_indirect_for_alias += 1,
+                            _ => {}
                         }
                     }
                 }
@@ -921,6 +942,11 @@ mod tests {
         assert!(
             total_alias_nodes > 0,
             "(b) no Cached-Place pass-through alias in the corpus (vacuous)"
+        );
+        assert!(
+            total_alias_backed > 0,
+            "(b) no alias resolved to a matrix (slot,col) backing — the staged-Affine \
+             pass-through guard never ran (vacuous)"
         );
         assert!(
             total_indirect_for_alias > 0,
