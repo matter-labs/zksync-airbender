@@ -44,9 +44,70 @@ use crate::eval_ref::{self, Bf, Ext, lift, random_row};
 use crate::interp::{StagedSources, execute};
 use crate::isa::Op;
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::codegen_ir::{ExprNode, ForwardSource, GateKind, gate_kind_input_nodes};
+use cs::gkr_compiler::codegen_ir::{CodegenLayer, Domain, ExprNode, ForwardSource, GateKind, gate_kind_input_nodes};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use std::collections::HashMap;
+
+/// Union of every address a v2 program reads OR writes for one layer, annotated
+/// with its field/domain. `GKRAddress` alone does NOT encode base-vs-ext; the
+/// field lives in the IR node context. The single source-of-truth collector
+/// (MatrixTable in a later task builds its per-backing field from this).
+#[doc(hidden)]
+pub fn collect_v2_address_refs(layer: &CodegenLayer) -> Vec<(GKRAddress, Domain)> {
+    let arena = &layer.arena.nodes;
+    let mut out: Vec<(GKRAddress, Domain)> = Vec::new();
+
+    // SOURCES: every Place node carries its own address and domain directly.
+    for n in arena {
+        if let ExprNode::Place { addr, domain } = n {
+            out.push((*addr, *domain));
+        }
+    }
+
+    // DESTINATIONS — recover domain from the producing GateOutput node in the
+    // arena, which is always a GateOutput { domain, .. }.
+    //
+    // Cache outs: cache.out = (NodeId, GKRAddress).
+    for cache in &layer.caches {
+        let (node_id, addr) = cache.out;
+        let domain = match &arena[node_id.0 as usize] {
+            ExprNode::GateOutput { domain, .. } => *domain,
+            _ => Domain::Base, // defensive; IR invariant: cache out is always GateOutput
+        };
+        out.push((addr, domain));
+    }
+
+    // Gate dst slots (gates + gates_external): each OutputSlot has a node (the
+    // GateOutput) and an addr.
+    for gate in layer.gates.iter().chain(&layer.gates_external) {
+        for slot in &gate.dst {
+            let domain = match &arena[slot.node.0 as usize] {
+                ExprNode::GateOutput { domain, .. } => *domain,
+                _ => Domain::Base, // defensive; IR invariant: dst is always GateOutput
+            };
+            out.push((slot.addr, domain));
+        }
+    }
+
+    out
+}
+
+/// Column-only view for the R3 gate. Thin wrapper over the annotated collector
+/// — one underlying walk, so the gate and any later table can't diverge.
+#[doc(hidden)]
+pub fn collect_v2_addresses(layer: &CodegenLayer) -> Vec<GKRAddress> {
+    collect_v2_address_refs(layer).into_iter().map(|(a, _)| a).collect()
+}
+
+/// Per-address column offset within its backing; mirrors the v1 `safe_offset`
+/// (returns 0 for VirtualSetup, whose `offset()` panics).
+#[doc(hidden)]
+pub fn column_offset(addr: &GKRAddress) -> u32 {
+    match addr {
+        GKRAddress::VirtualSetup(_) => 0,
+        other => other.offset() as u32,
+    }
+}
 
 #[doc(hidden)]
 pub fn base_part(v: Ext) -> Bf {
