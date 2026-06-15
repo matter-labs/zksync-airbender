@@ -213,21 +213,21 @@ fn gather_tracks_table_mapping_per_row() {
 // SCOPE (STEP-0 probe + the `exec_macro` doc): with the finer Task-R1 RoutineId
 // set the three fixtures emit a spread of ids (probe: every layer) covering
 // `Product` (1), `MaskIdentity` (2), `AggregateLookupPair` (3), the lookup
-// num/den pair ids (4..=9), and the cache ids (16..=19). Of these, only
-// `Product` (1, `out = a·b`) and `AggregateLookupPair` (3, one rational-pair
-// combine) have a per-row formula the v2 `Instr2` determines UNAMBIGUOUSLY — no
-// γ-shift / setup multiplicity / lost lincomb coefficient. The other emitted
-// routines fold challenges or setup coefficients that live in banks / the
-// forward setup, not the operand lanes (see the `exec_macro` doc for the exact
-// gap and .cuh/.rs anchors). They are intentionally `todo!` (Task R3), so this
-// oracle CANNOT run a whole fixture program end-to-end (it would hit a `todo!`);
-// it instead drives `execute2` per pinnable instruction with fixture-shaped,
-// `eval_ref`-style random operand values + a fixed seed.
+// num/den pair ids (4..=9), and the cache ids (16..=19). R3 IMPLEMENTS ALL of
+// them in the CPU interpreter; the only routines NOT emitted by the corpus are
+// ids 14/15 (grand-product-without-caches) and 20 (memory-init/teardown pair),
+// which therefore stay `todo!` and are never reached.
 //
-// The routine ARITHMETIC depends only on the operand VALUES, not on the operand
-// lane KIND (Affine/Indirect/Ldc all funnel through one `read` closure), so
-// feeding controlled values through `Affine` lanes faithfully exercises the
-// routine fold AND the multi-output footer wiring (num,den → two dsts).
+// This first test (`interpreter_matches_hand_reference`) is the ORIGINAL
+// Phase-3 oracle for the two routines whose formula the `Instr2` pins WITHOUT
+// any challenge bank — `Product` and `AggregateLookupPair`. It feeds controlled
+// random values through `Affine` lanes (the routine arithmetic depends only on
+// the operand VALUES, not the lane KIND), exercising the fold + the multi-output
+// (num,den → two dsts) footer wiring. The newer
+// `interpreter_matches_hand_reference_real_instrs` test below drives `execute2`
+// over the REAL emitted instruction lane layouts (every R3 routine) with banks
+// staged from a deterministic seed — see its own header for the end-to-end vs
+// per-instruction scope decision.
 // ===========================================================================
 
 use gkr_eval_isa::compiler_v2::{compile_forward_v2, FwdParams2};
@@ -403,8 +403,9 @@ fn interpreter_matches_hand_reference() {
                         );
                         total_aggregate += 1;
                     }
-                    // Emitted-but-unpinned routines: record the id (so the gap is
-                    // documented + non-vacuous), do not execute (would `todo!`).
+                    // Other emitted routines: record the id (this test only
+                    // covers the two challenge-free routines; the comprehensive
+                    // `..._real_instrs` test below exercises the rest).
                     other => {
                         emitted_unpinned.insert(other);
                     }
@@ -413,7 +414,7 @@ fn interpreter_matches_hand_reference() {
         }
     }
 
-    // Non-vacuity: both pinnable routines must actually appear in the corpus.
+    // Non-vacuity: both routines must actually appear in the corpus.
     assert!(
         total_grand_product > 0,
         "no Product instrs across the target fixtures (oracle vacuous)"
@@ -423,9 +424,8 @@ fn interpreter_matches_hand_reference() {
         "no AggregateLookupPair instrs across the target fixtures (oracle vacuous)"
     );
 
-    // Document the gap explicitly: the corpus DOES emit the routines we leave
-    // `todo!` (Task R3), so the partial is deliberate, not an accident of fixture
-    // choice. Each of these appears in all three target fixtures (probe STEP 0).
+    // The corpus DOES emit the other R3 routines (covered by the
+    // `..._real_instrs` test below). Each appears across the target fixtures.
     for expected in [
         RoutineId::MaskIdentity as u8,
         RoutineId::LookupBasePair as u8,
@@ -438,7 +438,561 @@ fn interpreter_matches_hand_reference() {
     ] {
         assert!(
             emitted_unpinned.contains(&expected),
-            "expected the corpus to emit unpinned routine id {expected} (probe STEP 0)"
+            "expected the corpus to emit routine id {expected} (probe STEP 0)"
         );
+    }
+}
+
+// ===========================================================================
+// R3 Stage 2: REAL-INSTRUCTION end-to-end value oracle.
+//
+// For each target fixture × layer × emitted macro instruction, this runs the
+// ACTUAL emitted `Instr2` (its real Affine/Ldc/Indirect lane layout, real dst
+// count, real memtup role/const block) through `execute2`, with a `SourceBanks`
+// staged from a DETERMINISTIC seeded random row (no time source) — random matrix
+// columns, γ, per-role perm challenges, perm_additive, an α-power bank, and the
+// program's real `consts`. It then asserts every materialized output equals an
+// INDEPENDENT reference that decodes the SAME instruction lanes with a DIFFERENT
+// decomposition (re-ordered products/sums, commuted cross-terms, the lincomb /
+// vector-lookup / memory-tuple folds re-expanded outside-in).
+//
+// SCOPE — PER REAL INSTRUCTION, not a chained whole-program run. A chained
+// whole-program `execute2` would additionally need each gather descriptor's
+// table (`n`/`mapping`/`n_len`/`decoder_mask`/α-bank) staged to the reference
+// CACHE value at the resolved row — but the descriptor→cache-address mapping is
+// internal to the gather builder and NOT exposed on `CompiledForward2`, and the
+// decoder fill α-power / table-id are left `None` by `build_descriptor` for the
+// Phase-3 launcher to resolve. So a faithful whole-program SourceBanks cannot be
+// assembled from the public compile output today. Driving each REAL instruction
+// in isolation over staged banks is the sound, non-faking subset: it validates
+// the FULL lane DECODE of every emitted shape (constant/coeff/term-count
+// positions, γ-shift placement, memtup roles + folded-const roles, multi-output
+// num/den footer) for every R3 routine the corpus emits — which is the routine
+// arithmetic this task implements.
+//
+// HONESTY: the reference shares the .cuh / `bench_interp` host model as its
+// source of truth (`cs` has no numeric relation evaluator), so the independence
+// is DECOMPOSITION-only, NOT bug-independence — a shared .cuh transcription error
+// would fool both sides. The Phase-5 GPU cross-check is the real bug-independent
+// oracle. The `read` of a banked value is shared with `execute2` on purpose (it
+// is not the thing under test); the LANE INTERPRETATION (which lane is which
+// operand + the per-routine formula) is what is re-derived independently here.
+// ===========================================================================
+
+use field::FieldExtension;
+use gkr_eval_isa::isa_v2::{LdcSub, SPECIAL_NEG_ONE, SPECIAL_ONE, SPECIAL_ZERO};
+
+// Memory-tuple folded-constant role tags (isa_v2) + the special-indirect dyn
+// term slot — mirrored here for the independent memtup reference decode.
+use gkr_eval_isa::isa_v2::{
+    MT_CONST_ADDR_LOW, MT_CONST_ADDR_LOW_DYN_COEFF, MT_CONST_ADDR_LOW_OFFSET, MT_CONST_TS_LOW_OFFSET,
+};
+const REF_MEMTUP_VALUE_HIGH_EXTRA_TERM: u8 = 7;
+// perm-challenge role indices (independent restatement of interp_v2's R_PERM_*).
+const REF_R_ADDR_LOW: usize = 0;
+const REF_R_ADDR_HIGH: usize = 1;
+const REF_R_TS_LOW: usize = 2;
+const REF_R_TS_HIGH: usize = 3;
+const REF_R_VAL_LOW: usize = 4;
+const REF_R_VAL_HIGH: usize = 5;
+
+fn ref_perm_role_for_term(term: u8) -> usize {
+    match term {
+        0 => REF_R_ADDR_LOW,
+        1 => REF_R_ADDR_HIGH,
+        2 => REF_R_TS_LOW,
+        3 => REF_R_TS_HIGH,
+        4 => REF_R_VAL_LOW,
+        6 => REF_R_VAL_HIGH,
+        other => panic!("ref: memtup term {other} has no direct perm role"),
+    }
+}
+
+/// Number of matrix slots / max column the staged banks must cover, scanned off
+/// one instruction's lanes (operands, memtup roles/payload/consts).
+fn slot_col_extent(ins: &Instr2) -> (usize, Vec<usize>) {
+    let mut max_col_per_slot: Vec<usize> = Vec::new();
+    let bump = |slot: u8, col: u16, m: &mut Vec<usize>| {
+        let s = slot as usize;
+        if m.len() <= s {
+            m.resize(s + 1, 0);
+        }
+        m[s] = m[s].max(col as usize);
+    };
+    let scan = |op: &Operand, m: &mut Vec<usize>| {
+        if let Operand::Affine { slot, col } = op {
+            bump(*slot, *col, m);
+        }
+    };
+    for o in &ins.operands {
+        scan(o, &mut max_col_per_slot);
+    }
+    if let Some(mt) = &ins.memtup {
+        for (_r, o) in &mt.roles {
+            scan(o, &mut max_col_per_slot);
+        }
+        if let Some(p) = &mt.as_payload {
+            scan(p, &mut max_col_per_slot);
+        }
+        for (_r, o) in &mt.consts {
+            scan(o, &mut max_col_per_slot);
+        }
+    }
+    (max_col_per_slot.len(), max_col_per_slot)
+}
+
+/// Collect the distinct `Indirect` descriptor indices referenced by an
+/// instruction's lanes (operands + memtup payload/roles/consts — the corpus only
+/// puts Indirect in plain operands, but scanning all is safe).
+fn indirect_descs(ins: &Instr2) -> Vec<u16> {
+    let mut descs: Vec<u16> = Vec::new();
+    let note = |op: &Operand, d: &mut Vec<u16>| {
+        if let Operand::Indirect { desc, .. } = op {
+            if !d.contains(desc) {
+                d.push(*desc);
+            }
+        }
+    };
+    for o in &ins.operands {
+        note(o, &mut descs);
+    }
+    if let Some(mt) = &ins.memtup {
+        for (_r, o) in &mt.roles {
+            note(o, &mut descs);
+        }
+        if let Some(p) = &mt.as_payload {
+            note(p, &mut descs);
+        }
+        for (_r, o) in &mt.consts {
+            note(o, &mut descs);
+        }
+    }
+    descs
+}
+
+/// Build deterministic-random staged banks covering one instruction's slots,
+/// the program's `consts`, and random γ / 6 perm challenges / perm_additive /
+/// an α-power bank wide enough for any VectorizedLookup column count. Also stages
+/// a gather table + descriptor array so EVERY `Indirect` operand the instruction
+/// references (a cached-value lane) resolves to a known random value at gid 0:
+/// each referenced descriptor is a `RowIndexedSetupE4` with `n[desc] = [value]`,
+/// `n_len = Some(1)`, gid 0. The cache VALUES the forward path would gather are
+/// not recoverable from the public compile output (see the test header), so they
+/// are modeled here as fresh staged values — `execute2` and the reference both
+/// read THE SAME value through `resolve_gather`, exercising the routine fold over
+/// a faithfully-shaped (cached + committed + const) operand mix.
+fn staged_banks(ins: &Instr2, consts: &[u32], rng: &mut StdRng) -> (SourceBanks, Vec<GatherDescriptor>) {
+    let (n_slots, max_col) = slot_col_extent(ins);
+    let matrix: Vec<MatrixSlotData> = (0..n_slots.max(1))
+        .map(|s| {
+            let width = max_col.get(s).copied().unwrap_or(0) + 1;
+            MatrixSlotData {
+                field_ext: true,
+                columns: (0..width).map(|_| rand_ext(rng, true)).collect(),
+            }
+        })
+        .collect();
+    // α-power bank: const_challenge[k] = α^k (entry 0 unused — α^0 is a free lift).
+    let alpha = rand_ext(rng, true);
+    let mut const_challenge = vec![Ext::ZERO];
+    let mut p = Ext::ONE;
+    for _ in 1..32 {
+        p.mul_assign(&alpha);
+        const_challenge.push(p);
+    }
+    let perm_challenges: Vec<Ext> = (0..6).map(|_| rand_ext(rng, true)).collect();
+
+    // Gather tables: one entry per descriptor index up to the max referenced.
+    let referenced = indirect_descs(ins);
+    let max_desc = referenced.iter().copied().max().map(|m| m as usize + 1).unwrap_or(0);
+    let mut n: Vec<Vec<Ext>> = vec![Vec::new(); max_desc];
+    let mut n_len: Vec<Option<usize>> = vec![None; max_desc];
+    let mut descriptors: Vec<GatherDescriptor> = (0..max_desc)
+        .map(|_| GatherDescriptor {
+            // A placeholder kind for unreferenced gaps; referenced ones are set below.
+            kind: IndirectKind::RowIndexedSetupE4,
+            field_ext: true,
+            n_slot: None,
+            mapping_slot: None,
+            n_len: None,
+            decoder: None,
+        })
+        .collect();
+    for d in referenced {
+        let di = d as usize;
+        n[di] = vec![rand_ext(rng, true)];
+        n_len[di] = Some(1);
+        descriptors[di].kind = IndirectKind::RowIndexedSetupE4;
+    }
+    let gather_tables = GatherTables {
+        n,
+        mapping: vec![Vec::new(); max_desc],
+        n_len,
+        decoder_mask: vec![None; max_desc],
+        alpha_powers: vec![],
+    };
+
+    let src = SourceBanks {
+        matrix,
+        consts: consts.to_vec(),
+        const_challenge,
+        arg_challenge: vec![],
+        gamma: rand_ext(rng, true),
+        perm_challenges,
+        perm_additive: rand_ext(rng, true),
+        gather_tables,
+        gid: 0,
+    };
+    (src, descriptors)
+}
+
+/// Resolve one operand against the staged banks — SHARED with `execute2`'s read
+/// (the bank read is NOT the thing under test; the LANE INTERPRETATION is).
+/// Indirect resolves via the public `resolve_gather` against the staged
+/// descriptor array, exactly as `execute2` does.
+fn ref_read(op: &Operand, src: &SourceBanks, descs: &[GatherDescriptor]) -> Ext {
+    match *op {
+        Operand::Affine { slot, col } => src.matrix[slot as usize].columns[col as usize],
+        Operand::Ldc { sub, idx } => match sub {
+            LdcSub::Special => match idx {
+                SPECIAL_ZERO => Ext::ZERO,
+                SPECIAL_ONE => Ext::ONE,
+                SPECIAL_NEG_ONE => {
+                    let mut v = Ext::ONE;
+                    v.negate();
+                    v
+                }
+                other => panic!("ref: bad Special idx {other}"),
+            },
+            LdcSub::Const => lift(Bf::from_u32_with_reduction(src.consts[idx as usize])),
+            LdcSub::ConstChallenge => src.const_challenge[idx as usize],
+            LdcSub::ArgChallenge => src.arg_challenge[idx as usize],
+        },
+        Operand::Indirect { desc, .. } => {
+            resolve_gather(&descs[desc as usize], src.gid, &src.gather_tables, desc as usize)
+        }
+        Operand::Slot { .. } => panic!("ref_read: macro operands are never smem Slot in the corpus"),
+    }
+}
+
+fn ref_sh(v: Ext, src: &SourceBanks) -> Ext {
+    let mut r = v;
+    r.add_assign(&src.gamma);
+    r
+}
+
+/// Independent reference for one emitted macro instruction. Returns the expected
+/// materialized outputs in dst order, computed with a DIFFERENT decomposition
+/// than `exec_macro`. `None` for the routines the corpus never emits (14/15/20).
+fn ref_outputs(ins: &Instr2, src: &SourceBanks, descs: &[GatherDescriptor]) -> Option<Vec<Ext>> {
+    let Header::Macro { routine, .. } = ins.header else {
+        return None;
+    };
+    let ops = &ins.operands;
+    let r = |k: usize| ref_read(&ops[k], src, descs);
+    let out = match routine {
+        // 1 Product: b·a (commuted).
+        x if x == RoutineId::Product as u8 => {
+            let mut v = r(1);
+            v.mul_assign(&r(0));
+            vec![v]
+        }
+        // 2 MaskIdentity: v·m − m + 1 (expanded).
+        x if x == RoutineId::MaskIdentity as u8 => {
+            let (v, m) = (r(0), r(1));
+            let mut acc = v;
+            acc.mul_assign(&m);
+            acc.sub_assign(&m);
+            acc.add_assign(&Ext::ONE);
+            vec![acc]
+        }
+        // 3 AggregateLookupPair: den=d·b, num=c·b + d·a.
+        x if x == RoutineId::AggregateLookupPair as u8 => {
+            let (a, b, c, d) = (r(0), r(1), r(2), r(3));
+            let mut den = d;
+            den.mul_assign(&b);
+            let mut t0 = c;
+            t0.mul_assign(&b);
+            let mut t1 = d;
+            t1.mul_assign(&a);
+            let mut num = t0;
+            num.add_assign(&t1);
+            vec![num, den]
+        }
+        // 4/5 lookup pair: num=sh(d)+sh(b), den=sh(d)·sh(b); lanes [b,d].
+        x if x == RoutineId::LookupBasePair as u8 || x == RoutineId::LookupExtPair as u8 => {
+            let b = ref_sh(r(0), src);
+            let d = ref_sh(r(1), src);
+            let mut num = d;
+            num.add_assign(&b);
+            let mut den = d;
+            den.mul_assign(&b);
+            vec![num, den]
+        }
+        // 6/7 minus-mult: num = −c·sh(b) + sh(d), den = sh(b)·sh(d); [b,c,d].
+        x if x == RoutineId::LookupBaseMinusMult as u8
+            || x == RoutineId::LookupExtMinusMult as u8 =>
+        {
+            let b = ref_sh(r(0), src);
+            let c = r(1);
+            let d = ref_sh(r(2), src);
+            let mut ncb = c;
+            ncb.mul_assign(&b);
+            ncb.negate();
+            let mut num = ncb;
+            num.add_assign(&d);
+            let mut den = b;
+            den.mul_assign(&d);
+            vec![num, den]
+        }
+        // 8/13 cached-dens: num = a·sh(d) + (−c·sh(b)), den = sh(b)·sh(d); [a,b,c,d].
+        x if x == RoutineId::LookupCachedDens as u8
+            || x == RoutineId::LookupDecoderDensSetup as u8 =>
+        {
+            let a = r(0);
+            let b = ref_sh(r(1), src);
+            let c = r(2);
+            let d = ref_sh(r(3), src);
+            let mut ad = a;
+            ad.mul_assign(&d);
+            let mut ncb = c;
+            ncb.mul_assign(&b);
+            ncb.negate();
+            let mut num = ad;
+            num.add_assign(&ncb);
+            let mut den = b;
+            den.mul_assign(&d);
+            vec![num, den]
+        }
+        // 9/10 unbalanced: num = b + sh(d)·a, den = b·sh(d); [a,b,d].
+        x if x == RoutineId::LookupUnbalancedBase as u8
+            || x == RoutineId::LookupUnbalancedExt as u8 =>
+        {
+            let a = r(0);
+            let b = r(1);
+            let d = ref_sh(r(2), src);
+            let mut da = d;
+            da.mul_assign(&a);
+            let mut num = b;
+            num.add_assign(&da);
+            let mut den = b;
+            den.mul_assign(&d);
+            vec![num, den]
+        }
+        // 12/16 single-column lincomb: const + Σ coeff·col (terms reverse order).
+        x if x == RoutineId::SingleColumnLookup as u8
+            || x == RoutineId::MaterializeSingleLookup as u8 =>
+        {
+            // lanes [const, (coeff,col)…]; accumulate terms back-to-front then add const.
+            let mut acc = Ext::ZERO;
+            let mut i = ops.len();
+            while i > 1 {
+                // (coeff at i-2, col at i-1)
+                let mut t = r(i - 2);
+                t.mul_assign(&r(i - 1));
+                acc.add_assign(&t);
+                i -= 2;
+            }
+            acc.add_assign(&r(0));
+            vec![acc]
+        }
+        // 11/17 vectorized lookup: Σ_k α^k·(const_k + Σ coeff·col), self-describing.
+        x if x == RoutineId::VectorizedLookup as u8 || x == RoutineId::VectorLookupGate as u8 => {
+            // First decode the per-column sums, THEN fold by α-powers (outside the
+            // per-column loop) — different structure from the impl's interleave.
+            let mut col_sums: Vec<Ext> = Vec::new();
+            let mut pos = 0usize;
+            while pos < ops.len() {
+                let tc = {
+                    let v = r(pos);
+                    let coeffs = <Ext as FieldExtension<Bf>>::into_coeffs(v);
+                    coeffs[0].as_u32_reduced() as usize
+                };
+                pos += 1;
+                let mut s = r(pos); // constant_k
+                pos += 1;
+                for _ in 0..tc {
+                    let mut t = r(pos);
+                    t.mul_assign(&r(pos + 1));
+                    s.add_assign(&t);
+                    pos += 2;
+                }
+                col_sums.push(s);
+            }
+            let mut acc = Ext::ZERO;
+            for (k, s) in col_sums.iter().enumerate() {
+                let mut t = *s;
+                if k > 0 {
+                    t.mul_assign(&src.const_challenge[k]);
+                }
+                acc.add_assign(&t);
+            }
+            vec![acc]
+        }
+        // 19 MemoryTuple: independent fold (role terms in reverse, consts last).
+        x if x == RoutineId::MemoryTuple as u8 => {
+            let mt = ins.memtup.as_ref().expect("MemoryTuple carries a MemTup");
+            let mut acc = src.perm_additive;
+            // address-space arm.
+            match mt.as_arm {
+                1 => {
+                    acc.add_assign(&ref_read(mt.as_payload.as_ref().unwrap(), src, descs));
+                }
+                2 => {
+                    let col = ref_read(mt.as_payload.as_ref().unwrap(), src, descs);
+                    let mut one_minus = Ext::ONE;
+                    one_minus.sub_assign(&col);
+                    acc.add_assign(&one_minus);
+                }
+                3 => {
+                    acc.add_assign(&ref_read(mt.as_payload.as_ref().unwrap(), src, descs));
+                }
+                0 => {}
+                other => panic!("ref: as_arm {other}"),
+            }
+            // dyn-coeff (scales term-7 column).
+            let mut dyn_coeff: Option<Ext> = None;
+            for (role, op) in &mt.consts {
+                if *role == MT_CONST_ADDR_LOW_DYN_COEFF {
+                    dyn_coeff = Some(ref_read(op, src, descs));
+                }
+            }
+            // role terms, reverse order.
+            for (term, op) in mt.roles.iter().rev() {
+                let col = ref_read(op, src, descs);
+                let chal = if *term == REF_MEMTUP_VALUE_HIGH_EXTRA_TERM {
+                    let mut c = src.perm_challenges[REF_R_ADDR_LOW];
+                    c.mul_assign(&dyn_coeff.expect("term-7 needs dyn coeff"));
+                    c
+                } else {
+                    src.perm_challenges[ref_perm_role_for_term(*term)]
+                };
+                // col·chal (commuted vs impl's chal·col).
+                let mut t = col;
+                t.mul_assign(&chal);
+                acc.add_assign(&t);
+            }
+            // folded consts last.
+            for (role, op) in &mt.consts {
+                let val = ref_read(op, src, descs);
+                let role_idx = match *role {
+                    MT_CONST_ADDR_LOW | MT_CONST_ADDR_LOW_OFFSET => REF_R_ADDR_LOW,
+                    MT_CONST_TS_LOW_OFFSET => REF_R_TS_LOW,
+                    MT_CONST_ADDR_LOW_DYN_COEFF => continue,
+                    other => panic!("ref: const role {other}"),
+                };
+                let mut t = val;
+                t.mul_assign(&src.perm_challenges[role_idx]);
+                acc.add_assign(&t);
+            }
+            vec![acc]
+        }
+        // 18 VectorizedLookupSetup: the single RowIndexedSetupE4 gather value,
+        // resolved through the staged descriptor (independent of the impl).
+        x if x == RoutineId::VectorizedLookupSetup as u8 => {
+            vec![r(0)]
+        }
+        // 14/15/20 never emitted by the corpus.
+        _ => return None,
+    };
+    Some(out)
+}
+
+#[test]
+fn interpreter_matches_hand_reference_real_instrs() {
+    let targets = [
+        "add_sub_lui_auipc_mop_codegen_ir_gkr.json",
+        "bigint_with_extended_control_codegen_ir_gkr.json",
+        "blake2_g_function_codegen_ir_gkr.json",
+    ];
+    // Per-routine coverage counts (non-vacuity + scope accounting).
+    let mut counts: std::collections::BTreeMap<u8, usize> = std::collections::BTreeMap::new();
+
+    for name in targets {
+        let p = fixture_path(name);
+        assert!(p.exists(), "target fixture {name} missing");
+        let c = load_circuit(&p).unwrap_or_else(|e| panic!("load {name}: {e:?}"));
+        for (li, layer) in c.circuit.layers.iter().enumerate() {
+            let Some(g) = c.graphs.get(li) else { continue };
+            let cf = compile_forward_v2(layer, g, FwdParams2::default());
+            let consts = cf.program.consts.clone();
+
+            // Deterministic per-(fixture,layer) seed — FIXED, no time source.
+            let layer_seed: u64 = 0x9E37_79B9_7F4A_7C15
+                ^ ((name.len() as u64) << 40)
+                ^ ((li as u64) << 8);
+
+            for (ii, ins) in cf.program.instrs.iter().enumerate() {
+                let Header::Macro { routine, .. } = ins.header else { continue };
+
+                // Per-instruction deterministic draw (distinct + reproducible).
+                // `staged_banks` also returns the gather-descriptor array sized to
+                // the instruction's Indirect lanes (each a cached-value gather).
+                let mut rng = StdRng::seed_from_u64(layer_seed ^ ((ii as u64) << 1));
+                let (mut src, descs) = staged_banks(ins, &consts, &mut rng);
+                ensure_dst_cols(ins, &mut src);
+
+                // ids 14/15/20 are never emitted (corpus); skip defensively.
+                let Some(expect) = ref_outputs(ins, &src, &descs) else { continue };
+
+                // Run the REAL instruction in a one-instruction program over the
+                // staged banks + descriptors (the Indirect lanes resolve via the
+                // staged gather, identically in `execute2` and the reference).
+                let got = execute2(
+                    &Program2 {
+                        instrs: vec![ins.clone()],
+                        consts: consts.clone(),
+                        n_slot_cells: 0,
+                        n_matrix_slots: src.matrix.len() as u8,
+                    },
+                    &descs,
+                    &src,
+                );
+                let got_vals: Vec<Ext> = got.materialized.iter().map(|(_, v)| *v).collect();
+                assert_eq!(
+                    got_vals, expect,
+                    "{name} L{li} i{ii}: routine id {routine} value mismatch"
+                );
+                // num/den routines must produce DISTINCT outputs for random inputs
+                // (a broadcast bug would collapse them).
+                if got_vals.len() == 2 {
+                    assert_ne!(
+                        got_vals[0], got_vals[1],
+                        "{name} L{li} i{ii}: num == den (multi-output footer collapsed?)"
+                    );
+                }
+                *counts.entry(routine).or_default() += 1;
+            }
+        }
+    }
+
+    // Non-vacuity: every R3-implemented routine the corpus emits must be covered.
+    for id in [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 16, 17, 18, 19] {
+        assert!(
+            counts.get(&id).copied().unwrap_or(0) > 0,
+            "real-instr oracle never exercised routine id {id} (probe STEP 0 says it is emitted)"
+        );
+    }
+}
+
+/// Grow `src.matrix` so every Materialize dst column of `ins` is in range (a
+/// store reads `src.matrix[slot].field_ext`, and the column index must be a
+/// valid slot — though Materialize records rather than writes the column).
+fn ensure_dst_cols(ins: &Instr2, src: &mut SourceBanks) {
+    for d in &ins.dsts {
+        if let Dst::Materialize { slot, col } = d {
+            let s = *slot as usize;
+            if src.matrix.len() <= s {
+                src.matrix.resize(
+                    s + 1,
+                    MatrixSlotData { field_ext: true, columns: Vec::new() },
+                );
+            }
+            let need = *col as usize + 1;
+            if src.matrix[s].columns.len() < need {
+                src.matrix[s].columns.resize(need, Ext::ZERO);
+            }
+            src.matrix[s].field_ext = true;
+        }
     }
 }
