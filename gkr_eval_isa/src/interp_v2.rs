@@ -16,9 +16,9 @@
 use crate::compiler_v2::gather::{DecoderSpec, GatherDescriptor};
 use crate::eval_ref::{lift, Bf, Ext};
 use crate::isa_v2::{
-    ArithOp, Dst, Header, IndirectKind, LdcSub, Operand, Program2, RoutineId, MT_CONST_ADDR_LOW,
-    MT_CONST_ADDR_LOW_DYN_COEFF, MT_CONST_ADDR_LOW_OFFSET, MT_CONST_TS_LOW_OFFSET, SPECIAL_NEG_ONE,
-    SPECIAL_ONE, SPECIAL_ZERO,
+    ArithOp, Dst, Header, IndirectKind, LdcSub, Operand, Program2, RoutineId, MT_CONST_ADDR_HIGH,
+    MT_CONST_ADDR_LOW, MT_CONST_ADDR_LOW_DYN_COEFF, MT_CONST_ADDR_LOW_OFFSET, MT_CONST_TS_LOW_OFFSET,
+    SPECIAL_NEG_ONE, SPECIAL_ONE, SPECIAL_ZERO,
 };
 
 /// Memory-tuple TERM-slot index for the special-indirect dynamic-offset column
@@ -296,7 +296,12 @@ pub fn resolve_gather(
             t.n[desc_idx][gid]
         }
         IndirectKind::InitsTeardownsHighAddr => {
-            todo!("R4 part B: resolve InitsTeardownsHighAddr")
+            // id-20 high address bits `inits_and_teardowns_top_bits[set_idx] <<
+            // shift` — a per-set, ROW-INDEPENDENT scalar that is prover-runtime
+            // (absent from the codegen IR). The Phase-5 GPU launcher resolves the
+            // absolute value; here it is a single staged scalar (row 0) so the
+            // lane decode + the KEY product arithmetic are exercised.
+            t.n[desc_idx][0]
         }
     }
 }
@@ -486,12 +491,25 @@ fn exec_macro(
         RoutineId::MaterializeSingleLookup | RoutineId::SingleColumnLookup => {
             vec![single_column_lincomb(ins, read)]
         }
-        // GrandProductWithoutCaches: tuple(a)·tuple(b) — the product of two inlined
-        // memory-tuple combos. MaterializeGrandProductTerm: tuple(input). Both are
-        // MemTuple-shaped; the latter has 1 tuple, the former 2 (see fn doc).
-        RoutineId::GrandProductWithoutCaches
-        | RoutineId::MaterializeGrandProductTerm
-        | RoutineId::MemoryTuple => vec![memory_tuple(ins, src, read)],
+        // Single memory tuple: id-15 MaterializeGrandProductTerm and id-19
+        // MemoryTuple (cache) each materialize ONE tuple value.
+        RoutineId::MaterializeGrandProductTerm | RoutineId::MemoryTuple => {
+            vec![tuple_value(
+                ins.memtup.as_ref().expect("single-tuple routine carries `memtup`"),
+                src,
+                read,
+            )]
+        }
+        // Product of TWO memory tuples: id-14 GrandProductWithoutCaches
+        // (tuple(a)·tuple(b)) and id-20 MemoryInitTeardownPair (KEY(lhs)·KEY(rhs)).
+        // Single ext output; the multiply introduces no new challenge.
+        RoutineId::GrandProductWithoutCaches | RoutineId::MemoryInitTeardownPair => {
+            let t0 = ins.memtup.as_ref().expect("product routine carries `memtup`");
+            let t1 = ins.memtup2.as_ref().expect("product routine carries `memtup2`");
+            let mut v = tuple_value(t0, src, read);
+            v.mul_assign(&tuple_value(t1, src, read));
+            vec![v]
+        }
         // Row-indexed setup gather n[gid]: the single RowIndexedSetupE4 Indirect
         // operand (already resolved by `resolve_gather`).
         RoutineId::VectorizedLookupSetup => {
@@ -501,19 +519,6 @@ fn exec_macro(
                 "VectorizedLookupSetup is a single RowIndexedSetupE4 gather"
             );
             vec![read(&ins.operands[0])]
-        }
-        // Inits/teardowns initial (num,den) pair (mirror_cache has no arm — the
-        // corpus does not emit this gate; spec/probe STEP 0). The closed form is
-        // not pinned from mirror_gate/lookup_helpers.cuh, so it is left here as a
-        // precise TODO rather than guessed; no corpus test reaches this arm.
-        RoutineId::MemoryInitTeardownPair => {
-            // R3 TODO: InitsOrTeardownsInitialPair (id 20) — the inits/teardowns
-            // initial (num,den) pair closed form is not present in `mirror_gate`
-            // (no arm) nor `lookup_helpers.cuh`; pinning it needs the
-            // InitsOrTeardownsInitialPair codegen math (cs codegen_ir.rs). The
-            // corpus never emits it (probe STEP 0), so this arm is unreachable in
-            // every test; do NOT guess the formula.
-            todo!("R3 TODO: MemoryInitTeardownPair formula not pinned (no mirror_gate arm)")
         }
     }
 }
@@ -695,34 +700,24 @@ fn vectorized_lookup(
     acc
 }
 
-/// `MemoryTuple` (id 19), `GrandProductWithoutCaches` (id 14), and
-/// `MaterializeGrandProductTerm` (id 15). Each builds one or more memory-tuple
-/// affine combinations `tuple = perm_additive + address_space_term +
-/// Σ_role chal[role]·(lane value or constant)` (mirror_cache `MemoryTuple` /
+/// Evaluate ONE memory-tuple value from its `MemTup` lane block:
+/// `tuple = perm_additive + address_space_term + Σ_role chal[role]·(lane value)
+/// + Σ folded-const chal[role(const)]·c` (mirror_cache `MemoryTuple` /
 /// `indep_mem_tuple`), reading challenges from the perm/additive bank by role.
 ///
-/// id 19 (cache) materializes ONE tuple (the `MemTup` form: `roles` dynamic
-/// terms + `as_arm`/`as_payload` + the R2 `consts` block). id 15 likewise
-/// materializes ONE tuple. id 14 is the PRODUCT of TWO tuples — but in the
-/// corpus only id 19 carries a `MemTup`; ids 14/15 are not emitted (probe STEP 0
-/// — the `compile_forward_v2_runs_on_all_fixtures` test exercises every fixture
-/// without panicking on them). They share this arm: a `MemTup` present →
-/// single-tuple value; absent → R3 TODO (never reached in tests).
-fn memory_tuple(
-    ins: &crate::isa_v2::Instr2,
-    src: &SourceBanks,
-    read: &dyn Fn(&Operand) -> Ext,
-) -> Ext {
-    let Some(mt) = &ins.memtup else {
-        // R3 TODO: GrandProductWithoutCaches (14) / MaterializeGrandProductTerm
-        // (15) carry their inlined memory-tuple combos on the forward setup, not a
-        // `MemTup` lane block — the corpus never emits them (probe STEP 0), so no
-        // test reaches here. Pinning needs the cs codegen for those gates.
-        todo!(
-            "R3 TODO: grand-product-without-caches tuple combo not on the MemTup lanes \
-             (corpus never emits id 14/15; do NOT guess)"
-        );
-    };
+/// This is the shared per-tuple evaluator for the four memory-tuple routines:
+///   - id 19 `MemoryTuple` (cache) and id 15 `MaterializeGrandProductTerm` each
+///     materialize ONE tuple → `tuple_value(memtup)`.
+///   - id 14 `GrandProductWithoutCaches` is the PRODUCT of two inlined tuples →
+///     `tuple_value(memtup) · tuple_value(memtup2)`.
+///   - id 20 `MemoryInitTeardownPair` is the PRODUCT of two KEY tuples → same
+///     shape as id 14. Each id-20 KEY uses the RAM address-space arm
+///     (`as_arm = Constant(RAM=1)`, contributing +1) plus the launcher-deferred
+///     `MT_CONST_ADDR_HIGH` folded const (`chal(R_ADDR_HIGH)·(top_bits<<shift)`).
+/// The caller (`exec_macro`) passes the relevant `&MemTup` directly, so this
+/// function never needs to inspect `ins`; a guaranteed-present tuple removes the
+/// `memtup is None` ambiguity entirely.
+fn tuple_value(mt: &crate::isa_v2::MemTup, src: &SourceBanks, read: &dyn Fn(&Operand) -> Ext) -> Ext {
     // tuple = perm_additive + address-space term + Σ_role chal[role]·term.
     let mut acc = src.perm_additive;
 
@@ -789,6 +784,11 @@ fn memory_tuple(
         let chal_role = match *role {
             MT_CONST_ADDR_LOW | MT_CONST_ADDR_LOW_OFFSET => R_PERM_ADDR_LOW,
             MT_CONST_TS_LOW_OFFSET => R_PERM_TS_LOW,
+            // id-20 inits/teardowns high-address bits: chal(R_ADDR_HIGH)·(top_bits
+            // <<shift). The value is launcher-deferred (an InitsTeardownsHighAddr
+            // Indirect resolved by `resolve_gather`); here it folds exactly like
+            // the other address-low/ts-low consts, but under the ADDR_HIGH role.
+            MT_CONST_ADDR_HIGH => R_PERM_ADDR_HIGH,
             MT_CONST_ADDR_LOW_DYN_COEFF => continue, // folded into term 7 above
             other => panic!("memory-tuple const role {other} unknown"),
         };
@@ -1548,5 +1548,81 @@ mod tests {
         acc.add_assign(&off_term);
         assert_eq!(got, vec![acc]);
         assert_eq!(acc, e(98));
+    }
+
+    /// Run a product-of-two-tuples routine (id-14 / id-20) over two `MemTup`s.
+    fn run2(
+        routine: RoutineId,
+        memtup: crate::isa_v2::MemTup,
+        memtup2: crate::isa_v2::MemTup,
+        src: &SourceBanks,
+    ) -> Vec<Ext> {
+        let n_operands = (memtup.roles.len() + memtup2.roles.len()) as u8;
+        let p = Program2 {
+            instrs: vec![Instr2 {
+                header: Header::Macro { routine: routine as u8, n_operands },
+                operands: vec![],
+                dsts: vec![Dst::Materialize { slot: 0, col: 0 }],
+                memtup: Some(memtup),
+                memtup2: Some(memtup2),
+            }],
+            consts: vec![],
+            n_slot_cells: 0,
+            n_matrix_slots: 1,
+        };
+        execute2(&p, &[], src).materialized.iter().map(|(_, v)| *v).collect()
+    }
+
+    /// id 14 — GrandProductWithoutCaches: `out = T(t0)·T(t1)`. Two DISTINCT tuples
+    /// so a single-tuple bug (returning only `T(t0)`) diverges from the product.
+    #[test]
+    fn grand_product_two_tuple_product_unit() {
+        use crate::isa_v2::MemTup;
+        // chal(ADDR_LOW)=2; perm_additive=0 to isolate the role terms.
+        let perm = vec![e(2), e(3), e(4), e(5), e(6), e(7)];
+        // cols: 0 = t0 addr_low col = 5; 1 = t1 addr_low col = 11; 2 = out.
+        let cols = vec![e(5), e(11), Ext::ZERO];
+        let src = banks(cols, Ext::ZERO, perm.clone(), Ext::ZERO, vec![]);
+        let t0 = MemTup { roles: vec![(0, aff(0))], as_arm: 0, as_payload: None, consts: vec![] };
+        let t1 = MemTup { roles: vec![(0, aff(1))], as_arm: 0, as_payload: None, consts: vec![] };
+        let got = run2(RoutineId::GrandProductWithoutCaches, t0, t1, &src);
+        // T(t0) = 2·5 = 10; T(t1) = 2·11 = 22; product = 220.
+        let mut a = e(5);
+        a.mul_assign(&perm[0]);
+        let mut b = e(11);
+        b.mul_assign(&perm[0]);
+        let mut prod = a;
+        prod.mul_assign(&b);
+        assert_eq!(got, vec![prod]);
+        assert_eq!(prod, e(220));
+        // Mutation guard: the product is neither single-tuple value.
+        assert_ne!(got, vec![a]);
+        assert_ne!(got, vec![b]);
+    }
+
+    /// The id-20 high-address-bits const folds under chal(R_ADDR_HIGH), and the
+    /// RAM `as_arm` (Constant(1)) contributes +1 with no challenge.
+    #[test]
+    fn memory_tuple_addr_high_const_unit() {
+        use crate::isa_v2::{MemTup, MT_CONST_ADDR_HIGH};
+        // chal(ADDR_HIGH)=3; perm_additive=0.
+        let perm = vec![e(2), e(3), e(4), e(5), e(6), e(7)];
+        // cols: 0 = high-bits const value = 9; 1 = out.
+        let cols = vec![e(9), Ext::ZERO];
+        let src = banks(cols, Ext::ZERO, perm.clone(), Ext::ZERO, vec![]);
+        let memtup = MemTup {
+            roles: vec![],
+            as_arm: 1, // Constant (RAM=1)
+            as_payload: Some(Operand::Ldc { sub: LdcSub::Special, idx: SPECIAL_ONE }),
+            consts: vec![(MT_CONST_ADDR_HIGH, aff(0))],
+        };
+        let got = run(RoutineId::MemoryTuple, vec![], 1, Some(memtup), &src);
+        // tuple = 0(additive) + 1(RAM) + chal(ADDR_HIGH)·9 = 1 + 27 = 28.
+        let mut hi = e(9);
+        hi.mul_assign(&perm[1]);
+        let mut acc = Ext::ONE;
+        acc.add_assign(&hi);
+        assert_eq!(got, vec![acc]);
+        assert_eq!(acc, e(28));
     }
 }
