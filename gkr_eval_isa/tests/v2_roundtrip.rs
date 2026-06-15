@@ -16,10 +16,11 @@ fn roundtrip_all_layouts() {
             dsts: vec![Dst::Slot { e4: false, cell: 3 }],
             memtup: None,
         },
-        // macro-variable: header + count lane + 2 operands + 2 footer dsts.
-        // LookupNumDen is Shape::Variable, so encode2 emits a count lane (=2).
+        // macro-plain: header (n_operands=2) + 2 operands + 2 footer dsts.
+        // LookupNumDen is Shape::Plain; the operand count rides the header, so
+        // there is NO count lane — the 2 operand lanes follow the header directly.
         Instr2 {
-            header: Header::Macro { routine: RoutineId::LookupNumDen as u8 },
+            header: Header::Macro { routine: RoutineId::LookupNumDen as u8, n_operands: 2 },
             operands: vec![
                 Operand::Indirect { e4: true, desc: 4 },
                 Operand::Ldc { sub: LdcSub::ConstChallenge, idx: 0 },
@@ -30,9 +31,10 @@ fn roundtrip_all_layouts() {
             ],
             memtup: None,
         },
-        // macro-memtup: header + (count+as_arm) + role-tagged ops + as_payload + dst
+        // macro-memtup: header (n_operands = role count) + as_arm lane +
+        // role-tagged ops + as_payload + dst. MemoryTuple is Shape::MemTuple.
         Instr2 {
-            header: Header::Macro { routine: RoutineId::MemoryTuple as u8 },
+            header: Header::Macro { routine: RoutineId::MemoryTuple as u8, n_operands: 2 },
             operands: vec![],
             dsts: vec![Dst::Materialize { slot: 2, col: 0 }],
             memtup: Some(MemTup {

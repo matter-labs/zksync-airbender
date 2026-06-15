@@ -105,7 +105,13 @@ pub enum Dst {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Header {
     Arith { op: ArithOp, arity: u8 },
-    Macro { routine: u8 },
+    /// `n_operands` is the operand count, carried in the header's spare bits
+    /// (family(1)+routine(7) leaves a full byte) — exactly like arith `arity`.
+    /// There is NO separate count lane and NO `Fixed/Variable` shape split —
+    /// every macro states its operand count here. 7-bit (≤127). For the
+    /// memory-tuple macro, `n_operands` = the number of role-tagged terms; the
+    /// as-arm/payload still ride their own small lane.
+    Macro { routine: u8, n_operands: u8 },
 }
 
 /// Memory-tuple macro's variable shape (spec §5): role-tagged operands + an
@@ -176,7 +182,7 @@ mod tests {
         assert_eq!(arith.operands.len(), 3);
 
         let mac = Instr2 {
-            header: Header::Macro { routine: RoutineId::LookupNumDen as u8 },
+            header: Header::Macro { routine: RoutineId::LookupNumDen as u8, n_operands: 1 },
             operands: vec![Operand::Indirect { e4: true, desc: 0 }],
             dsts: vec![
                 Dst::Materialize { slot: 1, col: 10 },

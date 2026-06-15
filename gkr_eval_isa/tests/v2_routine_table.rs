@@ -4,7 +4,8 @@
 //!      `LoweringKind::Macro` requires a routine — arithmetic/alias/scratch
 //!      gates must NOT be forced into bogus routines;
 //!  (B) the routine table is decode-sound: dense, `id == index`, one schema
-//!      per `RoutineId`, fixed-shape counts match the round-trip test vectors.
+//!      per `RoutineId`, every shape well-formed (the operand count rides the
+//!      `Header::Macro.n_operands` field, not the shape).
 
 use gkr_eval_isa::isa_v2::routines::{
     lowering_kind, routine_for_cache, routine_for_gate, routine_table, LoweringKind, Shape,
@@ -78,12 +79,11 @@ fn routine_table_is_decode_sound() {
         assert_eq!(schema.id as usize, idx, "routine table not densely id-indexed at {idx}");
         assert!(schema.id <= 127, "routine-id {} exceeds 7-bit space", schema.id);
         assert!(!schema.reference.is_empty(), "routine {idx} has no reference anchor");
-        // Fixed-shape routines must declare a concrete operand count so decode
-        // knows the lane boundary without a count lane; Variable/MemTuple carry
-        // a count lane instead (Task 1.5).
+        // The operand COUNT lives in `Header::Macro.n_operands`, not the shape:
+        // every shape is well-formed (Plain or MemTuple), and decode reads the
+        // count from the header (no count lane, no Fixed(n)/Variable split).
         match schema.shape {
-            Shape::Fixed(n) => assert!(n <= 8, "Fixed routine {idx} arity {n} unreasonable"),
-            Shape::Variable | Shape::MemTuple => {}
+            Shape::Plain | Shape::MemTuple => {}
         }
         assert!(schema.output_count >= 1, "routine {idx} has no output");
     }

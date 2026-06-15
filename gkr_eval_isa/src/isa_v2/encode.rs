@@ -76,18 +76,15 @@ pub fn lane_count(p: &Program2) -> usize {
     for ins in &p.instrs {
         n += 1; // header lane
         match &ins.header {
-            Header::Macro { routine } if ins.memtup.is_some() => {
+            Header::Macro { .. } if ins.memtup.is_some() => {
                 let mt = ins.memtup.as_ref().unwrap();
-                n += 1; // count+as_arm lane
+                n += 1; // as_arm lane
                 n += 2 * mt.roles.len(); // role + operand per term
                 if mt.as_payload.is_some() {
                     n += 1;
                 }
             }
-            Header::Macro { routine } => {
-                if let super::routines::Shape::Variable = routine_table()[*routine as usize].shape {
-                    n += 1; // count lane
-                }
+            Header::Macro { .. } => {
                 n += ins.operands.len();
             }
             Header::Arith { .. } => {
@@ -105,27 +102,33 @@ pub fn encode2(p: &Program2) -> Vec<u16> {
         match ins.header {
             Header::Arith { op, arity } => {
                 assert!((arity as u32) <= MAX_ARITY, "arity {arity} exceeds 7-bit cap");
-                // family=0 | op:2 (bits 1..3) | arity:7 (bits 3..10)
+                // family=0 (bit0) | op:2 (bits 1..3) | arity:7 (bits 3..10)
                 lanes.push(0u16 | ((op as u16) << 1) | ((arity as u16) << 3));
             }
-            Header::Macro { routine } => {
+            Header::Macro { routine, n_operands } => {
                 assert!(routine <= MAX_ROUTINE_ID, "routine-id over 127");
-                // family=1 | routine:7 (bits 1..8)
-                lanes.push(1u16 | ((routine as u16) << 1));
+                assert!(n_operands <= 127, "macro n_operands {n_operands} exceeds 7-bit cap");
+                // family=1 (bit0) | routine:7 (bits 1..8) | n_operands:7 (bits
+                // 8..15); bit15 spare. The operand COUNT rides the header — there
+                // is NO count lane.
+                lanes.push(1u16 | ((routine as u16) << 1) | ((n_operands as u16) << 8));
             }
         }
-        // Operand region: shape decides whether a count lane precedes operands.
-        //  - Arith / Fixed macro: NO count lane (count is the header arity / the
-        //    routine schema's Fixed(n)).
-        //  - Variable macro: a single count lane, then `count` operands.
-        //  - MemTuple macro: a (count:4 | as_arm:2) lane, role-tagged operands,
-        //    optional as_payload lane.
+        // Operand region: dispatch ONLY on the wire structure.
+        //  - Arith / Plain macro: `n_operands` consecutive operand lanes (count
+        //    lives in the header).
+        //  - MemTuple macro: an as_arm lane (2 bits), then `n_operands`
+        //    role-tagged `(role, operand)` pairs, then an optional as_payload
+        //    lane (present iff as_arm != 0).
         match &ins.header {
-            Header::Macro { routine } if ins.memtup.is_some() => {
+            Header::Macro { routine, .. } if ins.memtup.is_some() => {
                 let mt = ins.memtup.as_ref().unwrap();
-                debug_assert_eq!(routine_table()[*routine as usize].shape, super::routines::Shape::MemTuple);
+                debug_assert_eq!(
+                    routine_table()[*routine as usize].shape,
+                    super::routines::Shape::MemTuple
+                );
                 assert!(mt.roles.len() <= 8, "memory-tuple over 8 linear terms");
-                lanes.push((mt.roles.len() as u16) | ((mt.as_arm as u16) << 4));
+                lanes.push(mt.as_arm as u16); // as_arm only (2 bits)
                 for (role, op) in &mt.roles {
                     lanes.push(*role as u16);
                     lanes.push(pack_operand(op));
@@ -134,22 +137,7 @@ pub fn encode2(p: &Program2) -> Vec<u16> {
                     lanes.push(pack_operand(p));
                 }
             }
-            Header::Macro { routine } => {
-                match routine_table()[*routine as usize].shape {
-                    super::routines::Shape::Variable => {
-                        assert!(ins.operands.len() <= 0x3FFF, "macro operand count overflow");
-                        lanes.push(ins.operands.len() as u16); // count lane
-                    }
-                    super::routines::Shape::Fixed(n) => {
-                        assert_eq!(ins.operands.len(), n as usize, "Fixed macro arity mismatch");
-                    }
-                    super::routines::Shape::MemTuple => unreachable!("MemTuple needs memtup"),
-                }
-                for o in &ins.operands {
-                    lanes.push(pack_operand(o));
-                }
-            }
-            Header::Arith { .. } => {
+            Header::Macro { .. } | Header::Arith { .. } => {
                 for o in &ins.operands {
                     lanes.push(pack_operand(o));
                 }
@@ -185,9 +173,10 @@ pub fn decode2(lanes: &[u16], n_instr: usize) -> Vec<Instr2> {
             let arity = (header_lane >> 3) as u8;
             Header::Arith { op, arity }
         } else {
-            // Macro: bits 1-7 = routine.
+            // Macro: bits 1-7 = routine, bits 8-14 = n_operands (bit15 spare).
             let routine = ((header_lane >> 1) & 0x7F) as u8;
-            Header::Macro { routine }
+            let n_operands = ((header_lane >> 8) & 0x7F) as u8;
+            Header::Macro { routine, n_operands }
         };
 
         let (operands, memtup, dst_count) = match header {
@@ -205,22 +194,12 @@ pub fn decode2(lanes: &[u16], n_instr: usize) -> Vec<Instr2> {
                 }).collect();
                 (ops, None, 1usize)
             }
-            Header::Macro { routine } => {
+            Header::Macro { routine, n_operands } => {
                 let schema = &routine_table()[routine as usize];
                 match schema.shape {
-                    Shape::Fixed(n) => {
-                        let ops: Vec<Operand> = (0..n as usize).map(|_| {
-                            let o = unpack_operand(lanes[pos]);
-                            pos += 1;
-                            o
-                        }).collect();
-                        (ops, None, schema.output_count as usize)
-                    }
-                    Shape::Variable => {
-                        // count lane first.
-                        let count = lanes[pos] as usize;
-                        pos += 1;
-                        let ops: Vec<Operand> = (0..count).map(|_| {
+                    Shape::Plain => {
+                        // `n_operands` (from the header) consecutive operand lanes.
+                        let ops: Vec<Operand> = (0..n_operands as usize).map(|_| {
                             let o = unpack_operand(lanes[pos]);
                             pos += 1;
                             o
@@ -228,12 +207,12 @@ pub fn decode2(lanes: &[u16], n_instr: usize) -> Vec<Instr2> {
                         (ops, None, schema.output_count as usize)
                     }
                     Shape::MemTuple => {
-                        // count+as_arm lane: bits 3-0 = count, bits 5-4 = as_arm.
-                        let count_arm_lane = lanes[pos];
+                        // as_arm lane (2 bits) only — the count is in the header.
+                        let as_arm = (lanes[pos] & 0x3) as u8;
                         pos += 1;
-                        let count = (count_arm_lane & 0xF) as usize;
-                        let as_arm = ((count_arm_lane >> 4) & 0x3) as u8;
 
+                        // `n_operands` role-tagged (role lane, operand lane) pairs.
+                        let count = n_operands as usize;
                         let mut roles = Vec::with_capacity(count);
                         for _ in 0..count {
                             let role = lanes[pos] as u8;

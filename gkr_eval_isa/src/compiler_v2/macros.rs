@@ -91,10 +91,6 @@ pub struct MacroCtx<'a> {
     pub gathers: Vec<GatherDescriptor>,
     /// Cached address -> its allocated descriptor index (dedup gathers).
     pub gather_idx: HashMap<GKRAddress, u16>,
-    /// Gates whose Fixed(n) routine could not be matched to the IR operand
-    /// count (structurally unrepresentable without a routine-table revision);
-    /// recorded here, NOT emitted. (Phase-3 review.)
-    pub skipped_fixed_mismatch: Vec<(RoutineId, usize)>,
 }
 
 impl<'a> MacroCtx<'a> {
@@ -109,7 +105,6 @@ impl<'a> MacroCtx<'a> {
             cache_kind_by_addr,
             gathers: Vec::new(),
             gather_idx: HashMap::new(),
-            skipped_fixed_mismatch: Vec::new(),
         }
     }
 
@@ -316,8 +311,10 @@ fn lower_memory_tuple(ctx: &mut MacroCtx, cache: &CodegenCache) -> Instr2 {
     debug_assert!(roles.len() <= 8, "memory-tuple over 8 linear terms");
 
     let dst = ctx.materialize_for(&cache.out.1);
+    // n_operands = the number of role-tagged terms (carried in the header).
+    let n_operands = roles.len() as u8;
     Instr2 {
-        header: Header::Macro { routine: RoutineId::MemoryTuple as u8 },
+        header: Header::Macro { routine: RoutineId::MemoryTuple as u8, n_operands },
         operands: Vec::new(),
         dsts: vec![dst],
         memtup: Some(MemTup { roles, as_arm, as_payload }),
@@ -325,10 +322,11 @@ fn lower_memory_tuple(ctx: &mut MacroCtx, cache: &CodegenCache) -> Instr2 {
 }
 
 /// Lower one forward gate. `Some(Instr2)` only for `LoweringKind::Macro` gates;
-/// `None` for Arith/Alias/Constraint/ScratchSkip (handled elsewhere / no emit),
-/// and `None` (recorded in `ctx.skipped_fixed_mismatch`) for a Fixed(n) routine
-/// whose IR operand count differs from `n` (structurally unrepresentable
-/// without a routine-table revision — flagged for Phase-3).
+/// `None` for Arith/Alias/Constraint/ScratchSkip (handled elsewhere / no emit).
+/// Every Macro gate now emits an `Instr2` whose `n_operands` is the actual IR
+/// input operand count — the grand-product gates that flatten 4-14 columns lower
+/// normally (no skip path; the operand count rides the header, not a Fixed(n)
+/// shape).
 pub fn lower_gate(gate: &CodegenGate, arena: &[ExprNode], ctx: &mut MacroCtx) -> Option<Instr2> {
     if lowering_kind(&gate.kind) != LoweringKind::Macro {
         return None;
@@ -336,31 +334,26 @@ pub fn lower_gate(gate: &CodegenGate, arena: &[ExprNode], ctx: &mut MacroCtx) ->
     let routine = routine_for_gate(&gate.kind).expect("Macro gate must have a routine");
     let schema = &routine_table()[routine as u8 as usize];
 
-    // Operand lanes — one per IR input node, in IR order.
+    // Operand lanes — one per IR input node, in IR order. `n_operands` (the
+    // operand count) rides the header; there is no count lane and no Fixed(n)
+    // shape, so flattening grand-product gates lower with their true column count.
     let input_nodes: Vec<usize> =
         gate_kind_input_nodes(&gate.kind).iter().map(|id| id.0 as usize).collect();
 
-    // Fixed-shape guard: the encoder asserts `operands.len() == n`. The
-    // memory-tuple-flattening grand-product gates (InitialGrandProductWithoutCaches
-    // / MaterializeGrandProductTermExpression) route to GrandProductStep Fixed(2)
-    // but expose many base columns (each a flattened MemTupleDescriptor). They are
-    // not representable as a clean 2-factor step without a routine-table revision;
-    // skip + flag rather than panic or silently drop operands.
-    if let Shape::Fixed(n) = schema.shape {
-        if input_nodes.len() != n as usize {
-            ctx.skipped_fixed_mismatch.push((routine, input_nodes.len()));
-            return None;
-        }
-    }
-
     let operands: Vec<Operand> =
         input_nodes.iter().map(|&c| ctx.operand_for(arena, c)).collect();
+    let n_operands = operands.len() as u8;
 
     // Footer dsts: one Materialize per gate output address. `output_count == 2`
     // (LookupNumDen-style num/den) derives both from the gate's dst slots.
     let dsts: Vec<Dst> = macro_gate_dsts(gate, schema.output_count, ctx);
 
-    Some(Instr2 { header: Header::Macro { routine: routine as u8 }, operands, dsts, memtup: None })
+    Some(Instr2 {
+        header: Header::Macro { routine: routine as u8, n_operands },
+        operands,
+        dsts,
+        memtup: None,
+    })
 }
 
 /// Footer dsts for a macro gate. The gate's `dst` OutputSlots carry the backing
@@ -395,16 +388,17 @@ pub fn lower_cache(cache: &CodegenCache, arena: &[ExprNode], ctx: &mut MacroCtx)
     let schema = &routine_table()[routine as u8 as usize];
 
     // Operand lanes — one per input column node (the linear-comb columns being
-    // looked up). All lookup-cache routines are Variable, so any count encodes.
+    // looked up). All lookup-cache routines are Plain; the count rides the header.
     debug_assert!(
-        matches!(schema.shape, Shape::Variable),
-        "lookup cache routine must be Variable-shaped"
+        matches!(schema.shape, Shape::Plain),
+        "lookup cache routine must be Plain-shaped"
     );
     let operands: Vec<Operand> = cache
         .inputs
         .iter()
         .map(|id| ctx.operand_for(arena, id.0 as usize))
         .collect();
+    let n_operands = operands.len() as u8;
 
     // Footer dst: the cache out address (cache.out.1). All lookup caches have
     // output_count 1.
@@ -412,7 +406,7 @@ pub fn lower_cache(cache: &CodegenCache, arena: &[ExprNode], ctx: &mut MacroCtx)
     let dst = ctx.materialize_for(&cache.out.1);
 
     Instr2 {
-        header: Header::Macro { routine: routine as u8 },
+        header: Header::Macro { routine: routine as u8, n_operands },
         operands,
         dsts: vec![dst],
         memtup: None,
@@ -469,7 +463,7 @@ mod tests {
                 let instr = lower_gate(gate, arena, &mut ctx)
                     .expect("LookupNumDen is a Macro gate, must lower");
                 assert!(
-                    matches!(instr.header, Header::Macro { routine } if routine == RoutineId::LookupNumDen as u8),
+                    matches!(instr.header, Header::Macro { routine, .. } if routine == RoutineId::LookupNumDen as u8),
                     "header must be Macro{{LookupNumDen}}"
                 );
                 assert_eq!(instr.dsts.len(), 2, "LookupNumDen emits num + den");
@@ -517,7 +511,7 @@ mod tests {
                     let mut ctx = ctx_for(layer, &mt, &ci, &ck);
                     let instr = lower_cache(cache, arena, &mut ctx);
                     assert!(
-                        matches!(instr.header, Header::Macro { routine } if routine == RoutineId::MemoryTuple as u8),
+                        matches!(instr.header, Header::Macro { routine, .. } if routine == RoutineId::MemoryTuple as u8),
                         "MemoryTuple header"
                     );
                     let mt_form = instr.memtup.as_ref().expect("MemoryTuple lowers to MemTup");
@@ -552,7 +546,7 @@ mod tests {
     fn compile_forward_v2_runs_on_all_fixtures() {
         // The key robustness gate: every fixture × every layer must compile
         // without panicking (catches unmapped input-node kinds and the encoder's
-        // Fixed/MemTuple/count asserts, plus the Task-2.4 GateOutput-operand
+        // n_operands/MemTuple asserts, plus the Task-2.4 GateOutput-operand
         // path). Also confirms the macro path is actually exercised (non-vacuous).
         let mut total_macros = 0usize;
         for p in all_fixtures() {
@@ -579,6 +573,54 @@ mod tests {
         assert!(
             total_macros > 0,
             "no macro instrs emitted across the corpus (test is vacuous)"
+        );
+    }
+
+    #[test]
+    fn no_macro_gate_is_skipped_corpus_wide() {
+        // The Fixed/Variable shape split (and the GrandProductStep Fixed(2) skip
+        // path that dropped 30 flattening grand-product gates) is gone: EVERY
+        // Macro-classified gate must now lower to an Instr2. Assert exactly that
+        // across the whole corpus — one lowering per Macro gate, zero skips.
+        let mut total_macro_gates = 0usize;
+        let mut lowered = 0usize;
+        for p in all_fixtures() {
+            let c = match load_circuit(&p) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            for layer in &c.circuit.layers {
+                let arena = &layer.arena.nodes;
+                let mt = MatrixTable::build(layer);
+                let consts = build_const_table(arena);
+                let ci: HashMap<u32, u16> =
+                    consts.iter().enumerate().map(|(i, v)| (*v, i as u16)).collect();
+                let ck = cache_kind_by_addr(layer);
+                let mut ctx = MacroCtx::new(&mt, &ci, &ck);
+                for gate in layer.gates.iter().chain(&layer.gates_external) {
+                    if lowering_kind(&gate.kind) != LoweringKind::Macro {
+                        continue;
+                    }
+                    total_macro_gates += 1;
+                    let instr = lower_gate(gate, arena, &mut ctx)
+                        .expect("every Macro gate must lower (no skip path)");
+                    // The operand count now rides the header.
+                    let Header::Macro { n_operands, .. } = instr.header else {
+                        panic!("Macro gate lowered to a non-Macro header");
+                    };
+                    assert_eq!(
+                        n_operands as usize,
+                        instr.operands.len(),
+                        "header n_operands must equal the emitted operand-lane count"
+                    );
+                    lowered += 1;
+                }
+            }
+        }
+        assert!(total_macro_gates > 0, "no Macro gates in the corpus (test is vacuous)");
+        assert_eq!(
+            lowered, total_macro_gates,
+            "every Macro gate must produce exactly one lowering (zero skipped)"
         );
     }
 }
