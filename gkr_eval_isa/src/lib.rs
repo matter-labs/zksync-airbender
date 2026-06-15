@@ -5,6 +5,7 @@ pub mod compiler;
 pub mod eval_ref;
 pub mod interp;
 pub mod isa;
+pub mod isa_v2;
 pub mod report;
 #[doc(hidden)]
 pub mod test_support;
