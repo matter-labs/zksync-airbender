@@ -33,7 +33,14 @@ pub struct FwdParams2 {
 impl Default for FwdParams2 {
     fn default() -> Self {
         Self {
-            budget_cells: 4096,
+            // A HARD cap on simultaneously-live slot cells. 120 (<=127) fits the
+            // 7-bit `Dst::Slot`/`Operand::Slot` cell field (SLOT_CELL_BITS) and
+            // the `u8` cell type, with headroom. The base-arith working set is
+            // bounded to this via order + Belady eviction + rematerialization
+            // (mirroring v1's `compile_layer`). Kept a parameter so the Phase-4
+            // report can still sweep it (incl. a huge value for the unbounded
+            // max_live measurement).
+            budget_cells: 120,
             leaf_cache: false,
             order: crate::compiler::OrderKind::Arena,
             emit_per_strand: false,
@@ -108,6 +115,277 @@ struct SlotResidence {
     cell: u8,
 }
 
+/// Bounded base-arith emitter: ports v1 `emit.rs`'s order + Belady eviction +
+/// rematerialization to the `Instr2` model so the simultaneously-live slot-cell
+/// working set stays under `FwdParams2::budget_cells`.
+///
+/// Differences vs v1's `EmitCtx`:
+/// - No DotK fusion, no footprint-aware chunking: every computed node lowers to
+///   exactly ONE `Header::Arith` instr with all its operands inline (plus remat
+///   duplicates). The only slot-pressure event is the dst allocation.
+/// - Leaves are NEVER resident: `ExprNode::Place` always lowers to a re-readable
+///   `Operand::Affine` (LDG), and `ExprNode::Constant` to `Operand::Ldc`. So the
+///   slot working set is computed Sum/Product results ONLY — the v1 "leaf cache"
+///   idea collapses to "leaf re-read is always free", and remat applies solely
+///   to evicted COMPUTED values (recompute by re-emitting their arith instr).
+struct FwdEmit<'a> {
+    arena: &'a [ExprNode],
+    matrix_table: &'a MatrixTable,
+    const_idx: &'a HashMap<u32, u16>,
+    output_addr: &'a HashMap<usize, cs::definitions::GKRAddress>,
+    /// Current slot residence of each live computed node (evicted => absent).
+    residence: HashMap<usize, SlotResidence>,
+    /// Remaining ARITH-OPERAND uses per node (== `use_positions[n].len()` at
+    /// start), decremented as operands are consumed; drives cell release. This
+    /// counts ONLY resident-cell reads in this walk — NOT gate-in/output root
+    /// references, which are served by Materialize/macro lowering off a backing
+    /// column (macros never read a base-arith slot: see `macros::operand_for`),
+    /// so a root ref must not pin a slot cell. Keeping this consistent with
+    /// `use_positions` is what makes the eviction invariant (line ~241) hold:
+    /// `remaining[n] == 0` exactly when `next_use(n, _) == MAX`. Remat does NOT
+    /// decrement these (remat reads are extra, beyond the accounted edges).
+    remaining: Vec<u32>,
+    /// For each arena node: sorted-ascending order-positions where it is consumed
+    /// as an arith operand. Belady victim selection ranks by furthest next use.
+    use_positions: Vec<Vec<usize>>,
+    /// Current main-walk position (index into the emission order vec).
+    pos: usize,
+    alloc: SlotAlloc,
+    instrs: Vec<Instr2>,
+    instr_node: Vec<Option<u32>>,
+    instr_strand: Vec<Strand>,
+    arith_count: usize,
+    materialize_count: usize,
+    /// Count of remat instrs (recomputes) emitted — a duplicate beyond the
+    /// node's single primary emission.
+    remat_instrs: usize,
+}
+
+impl<'a> FwdEmit<'a> {
+    /// Next use position of `node` at or after walk position `after`, or
+    /// `usize::MAX` if none.
+    fn next_use(&self, node: usize, after: usize) -> usize {
+        let uses = &self.use_positions[node];
+        let i = uses.partition_point(|&p| p < after);
+        uses.get(i).copied().unwrap_or(usize::MAX)
+    }
+
+    /// Resolve a child node to its typed operand lane. Computed children MUST be
+    /// resident at this point (the caller pre-remats evicted ones); leaves and
+    /// constants resolve to always-available LDG/LDC lanes.
+    fn operand_for(&self, child: usize) -> Operand {
+        match &self.arena[child] {
+            ExprNode::Constant(c) => {
+                let c = *c;
+                if c == 0 {
+                    Operand::Ldc { sub: LdcSub::Special, idx: SPECIAL_ZERO }
+                } else if c == 1 {
+                    Operand::Ldc { sub: LdcSub::Special, idx: SPECIAL_ONE }
+                } else if c == NEG_ONE_U32 {
+                    Operand::Ldc { sub: LdcSub::Special, idx: SPECIAL_NEG_ONE }
+                } else {
+                    let idx = *self
+                        .const_idx
+                        .get(&c)
+                        .expect("non-special const must be in the const table");
+                    Operand::Ldc { sub: LdcSub::Const, idx }
+                }
+            }
+            ExprNode::Place { addr, .. } => {
+                // Staged source column: LDG via the joint matrix table. Always
+                // re-readable, so leaves never occupy a slot cell.
+                let slot = self
+                    .matrix_table
+                    .slot_for(addr)
+                    .expect("Place source must have a backing slot");
+                Operand::Affine { slot, col: self.matrix_table.column_of(addr) }
+            }
+            ExprNode::Sum { .. } | ExprNode::Product { .. } => {
+                let r = self
+                    .residence
+                    .get(&child)
+                    .expect("computed operand must be resident before its use (remat failed?)");
+                Operand::Slot { e4: r.e4, cell: r.cell }
+            }
+            ExprNode::GateOutput { .. } => {
+                unreachable!("GateOutput operand in base-arith lowering (Task 2.5 scope)")
+            }
+        }
+    }
+
+    /// Allocate `width` cells, Belady-evicting live computed values as needed.
+    /// `protect` lists computed node ids whose cells must NOT be evicted (they
+    /// are operands already resolved for the current/parent instruction and must
+    /// stay readable until it is emitted).
+    fn alloc_with_eviction(&mut self, width: usize, protect: &[usize]) -> u8 {
+        loop {
+            if let Some(cell) = self.alloc.alloc(width) {
+                return cell as u8;
+            }
+            // Evict the resident computed value whose next use is furthest in the
+            // future (Belady optimal). Tie-break by width then node id to keep the
+            // key TOTAL (HashMap iteration order is otherwise nondeterministic).
+            let pos = self.pos;
+            let budget = self.alloc.budget();
+            let victim = self
+                .residence
+                .iter()
+                .filter(|(n, _)| !protect.contains(n))
+                .map(|(&n, r)| (n, r.cell, if r.e4 { 4usize } else { 1 }))
+                .max_by_key(|&(n, _, w)| (self.next_use(n, pos), w, n))
+                .map(|(n, cell, w)| (n, cell, w))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "slot budget infeasible: need {width} more cells, budget \
+                         {budget}, {} cells protected by the current instruction",
+                        protect.len()
+                    )
+                });
+            let (vn, vcell, vwidth) = victim;
+            // A computed victim must have a future use — else release_if_dead
+            // would have freed it already.
+            debug_assert!(
+                self.next_use(vn, pos) != usize::MAX || self.remaining[vn] == 0,
+                "evicted computed node {vn} has remaining={} but no future use \
+                 (use_positions={:?})",
+                self.remaining[vn],
+                self.use_positions[vn],
+            );
+            self.alloc.release(vcell as u16, vwidth);
+            self.residence.remove(&vn);
+        }
+    }
+
+    /// Rematerialize an evicted computed `node` by re-emitting its arith instr
+    /// into a freshly allocated slot. Recurses through evicted operands (DAG
+    /// depth is shallow). `protect` guards the consumer's already-resolved
+    /// operands so eviction during remat cannot free them. Returns the new
+    /// residence. Does NOT touch `remaining` — remat reads are extra.
+    fn remat(&mut self, node: usize, depth: usize, protect: &[usize]) -> SlotResidence {
+        debug_assert!(depth < 64, "remat recursion depth {depth} too deep (cycle?)");
+        let (op, children): (ArithOp, Vec<usize>) = match &self.arena[node] {
+            ExprNode::Sum { terms, .. } => {
+                (ArithOp::Sum, terms.iter().map(|t| t.0 as usize).collect())
+            }
+            ExprNode::Product { factors, .. } => {
+                (ArithOp::Prod, factors.iter().map(|f| f.0 as usize).collect())
+            }
+            _ => panic!("remat called on non-computed node {node}"),
+        };
+        // Resolve operands, rematerializing evicted computed children first and
+        // protecting them (plus the caller's protect set) so the dst allocation
+        // below cannot evict them. Operands are resolved in order, each freshly
+        // remat'd one protected as we go.
+        let mut protect: Vec<usize> = protect.to_vec();
+        let mut operands: Vec<Operand> = Vec::with_capacity(children.len());
+        for &c in &children {
+            if is_computed(&self.arena[c]) && !self.residence.contains_key(&c) {
+                let r = self.remat(c, depth + 1, &protect);
+                self.residence.insert(c, r);
+            }
+            operands.push(self.operand_for(c));
+            if is_computed(&self.arena[c]) && !protect.contains(&c) {
+                protect.push(c);
+            }
+        }
+        let e4 = node_domain(&self.arena[node]) == Domain::Ext;
+        let w = width_cells(self.arena, node);
+        let cell = self.alloc_with_eviction(w, &protect);
+        let res = SlotResidence { e4, cell };
+        self.instrs.push(Instr2 {
+            header: Header::Arith { op, arity: children.len() as u8 },
+            operands,
+            dsts: vec![Dst::Slot { e4, cell }],
+            memtup: None,
+        });
+        self.instr_node.push(Some(node as u32));
+        self.instr_strand.push(Strand::BaseArith);
+        self.arith_count += 1;
+        self.remat_instrs += 1;
+        res
+    }
+
+    /// Decrement an operand's accounted use count; free its cell once dead.
+    fn release_if_dead(&mut self, child: usize) {
+        if !is_computed(&self.arena[child]) {
+            return;
+        }
+        let r = self.remaining[child];
+        debug_assert!(r > 0, "operand {child} consumed past its use count");
+        self.remaining[child] = r - 1;
+        if self.remaining[child] == 0 {
+            if let Some(res) = self.residence.remove(&child) {
+                self.alloc.release(res.cell as u16, width_cells(self.arena, child));
+            }
+        }
+    }
+
+    /// Emit one primary arith instr for `node`: resolve operands (rematerializing
+    /// evicted computed ones), allocate the dst (Slot, with eviction, OR a
+    /// Materialize for layer-output nodes), record it, then release dead operands.
+    fn emit_node(&mut self, node: usize) {
+        let (op, children): (ArithOp, Vec<usize>) = match &self.arena[node] {
+            ExprNode::Sum { terms, .. } => {
+                (ArithOp::Sum, terms.iter().map(|t| t.0 as usize).collect())
+            }
+            ExprNode::Product { factors, .. } => {
+                (ArithOp::Prod, factors.iter().map(|f| f.0 as usize).collect())
+            }
+            _ => unreachable!("non-computed node in emission order"),
+        };
+
+        // Resolve operands in IR order. Rematerialize any evicted computed child
+        // into a fresh slot before reading it, and protect every resolved
+        // computed operand so the subsequent dst allocation (and later operands'
+        // remats) cannot evict it out from under this instruction.
+        let mut protect: Vec<usize> = Vec::new();
+        let mut operands: Vec<Operand> = Vec::with_capacity(children.len());
+        for &c in &children {
+            if is_computed(&self.arena[c]) && !self.residence.contains_key(&c) {
+                let r = self.remat(c, 0, &protect);
+                self.residence.insert(c, r);
+            }
+            operands.push(self.operand_for(c));
+            if is_computed(&self.arena[c]) && !protect.contains(&c) {
+                protect.push(c);
+            }
+        }
+
+        let e4 = node_domain(&self.arena[node]) == Domain::Ext;
+        let dst = if let Some(addr) = self.output_addr.get(&node) {
+            // Layer-output computed node materializes to its backing column; it
+            // takes no slot cell (matching the original v2 policy — such a node
+            // is not re-consumed as an arith operand in this corpus).
+            let slot = self
+                .matrix_table
+                .slot_for(addr)
+                .expect("computed layer output must have a backing slot");
+            self.materialize_count += 1;
+            Dst::Materialize { slot, col: self.matrix_table.column_of(addr) }
+        } else {
+            let w = width_cells(self.arena, node);
+            let cell = self.alloc_with_eviction(w, &protect);
+            self.residence.insert(node, SlotResidence { e4, cell });
+            Dst::Slot { e4, cell }
+        };
+
+        self.instrs.push(Instr2 {
+            header: Header::Arith { op, arity: children.len() as u8 },
+            operands,
+            dsts: vec![dst],
+            memtup: None,
+        });
+        self.instr_node.push(Some(node as u32));
+        self.instr_strand.push(Strand::BaseArith);
+        self.arith_count += 1;
+
+        // Release operand cells whose last accounted use was this instruction.
+        for &c in &children {
+            self.release_if_dead(c);
+        }
+    }
+}
+
 pub fn compile_forward_v2(
     layer: &CodegenLayer,
     g: &AnalysisGraph,
@@ -140,142 +418,91 @@ pub fn compile_forward_v2(
         }
     }
 
-    // Slot allocator for transient multi-use base intermediates AND single-use
-    // results that must survive to their (single) consumer. Allocate on the
-    // node's def; release operand cells after their last use (refcount via
-    // ProgramView fan-out). A straightforward correct policy — Belady/leaf-cache
-    // parity with v1 is a Phase-4 report concern, not a 2.4 correctness gate.
-    let mut alloc = SlotAlloc::new(params.budget_cells);
-    let mut residence: HashMap<usize, SlotResidence> = HashMap::new();
-    // Remaining uses, decremented as we consume operands (drives cell release).
-    let mut remaining: Vec<u32> = pv.uses.clone();
+    // Emission order: locality-aware over the ProgramView DAG to shrink the
+    // natural live set (mirroring v1's `emit_layer`). Arena order is the IR's
+    // topological CSE encounter order (children strictly precede parents); the
+    // greedy Pressure/Reuse orders are the alternatives the Phase-4 report
+    // sweeps. All three are topological, so operands are always emitted before
+    // their consumer regardless of choice.
+    let order: Vec<usize> = match params.order {
+        crate::compiler::OrderKind::Arena => arena
+            .iter()
+            .enumerate()
+            .filter(|(i, n)| is_computed(n) && pv.uses[*i] > 0)
+            .map(|(i, _)| i)
+            .collect(),
+        crate::compiler::OrderKind::Pressure => view::pressure_order(arena, &pv),
+        crate::compiler::OrderKind::Reuse => view::reuse_order(arena, &pv, params.budget_cells),
+    };
+
+    // Build use_positions: for each arena node, the sorted-ascending list of
+    // emission-order positions at which it is consumed as an arith operand.
+    // Belady victim selection ranks resident computed values by their furthest
+    // next use. Root references (gate-in / output copies) are NOT positions in
+    // this walk — they are satisfied by Materialize/macro lowering, never by a
+    // resident-cell read in this loop — so they do not extend liveness here.
+    let mut use_positions: Vec<Vec<usize>> = vec![Vec::new(); arena.len()];
+    for (p, &n) in order.iter().enumerate() {
+        let children: Vec<usize> = match &arena[n] {
+            ExprNode::Sum { terms, .. } => terms.iter().map(|t| t.0 as usize).collect(),
+            ExprNode::Product { factors, .. } => factors.iter().map(|f| f.0 as usize).collect(),
+            _ => continue,
+        };
+        for c in children {
+            if is_computed(&arena[c]) {
+                use_positions[c].push(p);
+            }
+        }
+    }
+    // use_positions[n] is sorted ascending because p increases monotonically.
+
+    // Bounded base-arith emission: order + Belady eviction + rematerialization
+    // keeps the simultaneously-live cell count under params.budget_cells.
+    //
+    // `remaining` is the per-node arith-operand use count — exactly
+    // `use_positions[n].len()`, NOT `pv.uses[n]`. `pv.uses` additionally counts
+    // gate-in/output root references (view.rs), but those are served by
+    // Materialize/macro lowering off a backing column, never by reading this
+    // node's slot cell (macros are arithmetic-free: `macros::operand_for`). So a
+    // root-only node (use_positions empty) must release immediately and never
+    // pin a cell — and the two liveness views stay consistent, which is what
+    // makes `alloc_with_eviction`'s `remaining==0 <=> next_use==MAX` invariant
+    // hold instead of panicking on a root-pinned victim.
+    let remaining: Vec<u32> = use_positions.iter().map(|v| v.len() as u32).collect();
+    let mut emit = FwdEmit {
+        arena,
+        matrix_table: &matrix_table,
+        const_idx: &const_idx,
+        output_addr: &output_addr,
+        residence: HashMap::new(),
+        remaining,
+        use_positions,
+        pos: 0,
+        alloc: SlotAlloc::new(params.budget_cells),
+        instrs: Vec::new(),
+        instr_node: Vec::new(),
+        instr_strand: Vec::new(),
+        arith_count: 0,
+        materialize_count: 0,
+        remat_instrs: 0,
+    };
+    for (p, &node) in order.iter().enumerate() {
+        emit.pos = p;
+        emit.emit_node(node);
+    }
 
     let mut program = Program2 {
-        instrs: Vec::new(),
+        instrs: emit.instrs,
         consts: consts.clone(),
         n_slot_cells: 0,
         n_matrix_slots: matrix_table.len() as u8,
     };
-    let mut instr_node: Vec<Option<u32>> = Vec::new();
-    let mut instr_strand: Vec<Strand> = Vec::new();
-    let mut arith_count = 0usize;
-    let mut materialize_count = 0usize;
-
-    // Emission order: arena order is the IR's topological CSE encounter order
-    // (children strictly precede parents), which is the Task 2.4 default. The
-    // alternative orders (Pressure/Reuse) are validated in the report; honoring
-    // them here is a no-op for correctness, so stick to arena order.
-    let order: Vec<usize> = arena
-        .iter()
-        .enumerate()
-        .filter(|(i, n)| is_computed(n) && pv.uses[*i] > 0)
-        .map(|(i, _)| i)
-        .collect();
-
-    // Resolve a child node to its typed operand lane.
-    let mut operand_for = |child: usize, residence: &HashMap<usize, SlotResidence>| -> Operand {
-        match &arena[child] {
-            ExprNode::Constant(c) => {
-                let c = *c;
-                if c == 0 {
-                    Operand::Ldc { sub: LdcSub::Special, idx: SPECIAL_ZERO }
-                } else if c == 1 {
-                    Operand::Ldc { sub: LdcSub::Special, idx: SPECIAL_ONE }
-                } else if c == NEG_ONE_U32 {
-                    Operand::Ldc { sub: LdcSub::Special, idx: SPECIAL_NEG_ONE }
-                } else {
-                    let idx = *const_idx
-                        .get(&c)
-                        .expect("non-special const must be in the const table");
-                    Operand::Ldc { sub: LdcSub::Const, idx }
-                }
-            }
-            ExprNode::Place { addr, .. } => {
-                // Staged source column: LDG via the joint matrix table. Field is
-                // implied by the slot's logical key, so the lane carries none.
-                let slot = matrix_table
-                    .slot_for(addr)
-                    .expect("Place source must have a backing slot");
-                Operand::Affine { slot, col: matrix_table.column_of(addr) }
-            }
-            ExprNode::Sum { .. } | ExprNode::Product { .. } => {
-                // CSE-resident computed result: read it back from its slot cell.
-                let r = residence
-                    .get(&child)
-                    .expect("computed operand must be resident before its use");
-                Operand::Slot { e4: r.e4, cell: r.cell }
-            }
-            ExprNode::GateOutput { .. } => {
-                // No GateOutput child appears at L0 (gates of prior layers do not
-                // feed L0 base arithmetic). Macro/gather lowering for these lands
-                // in Task 2.5; reaching here in a later fixture is a real gap.
-                unreachable!("GateOutput operand in base-arith lowering (Task 2.5 scope)")
-            }
-        }
-    };
-
-    for &node in &order {
-        let (op, children): (ArithOp, Vec<usize>) = match &arena[node] {
-            ExprNode::Sum { terms, .. } => {
-                (ArithOp::Sum, terms.iter().map(|t| t.0 as usize).collect())
-            }
-            ExprNode::Product { factors, .. } => {
-                (ArithOp::Prod, factors.iter().map(|f| f.0 as usize).collect())
-            }
-            // Only computed Sum/Product reach here (order filtered by is_computed).
-            _ => unreachable!("non-computed node in emission order"),
-        };
-
-        // Operand lanes — one per term/factor, in IR order (operand[k] reads the
-        // source for child[k]; VALUE binding is checked by the execute2 oracle).
-        let operands: Vec<Operand> =
-            children.iter().map(|&c| operand_for(c, &residence)).collect();
-
-        // Footer dst: a layer-output computed node materializes to its backing
-        // column; otherwise the result is a transient (multi- or single-use)
-        // base intermediate living in a slot cell.
-        let e4 = node_domain(&arena[node]) == Domain::Ext;
-        let dst = if let Some(addr) = output_addr.get(&node) {
-            let slot = matrix_table
-                .slot_for(addr)
-                .expect("computed layer output must have a backing slot");
-            materialize_count += 1;
-            Dst::Materialize { slot, col: matrix_table.column_of(addr) }
-        } else {
-            let w = width_cells(arena, node);
-            let cell = alloc
-                .alloc(w)
-                .expect("slot budget exhausted (raise FwdParams2::budget_cells)")
-                as u8;
-            residence.insert(node, SlotResidence { e4, cell });
-            Dst::Slot { e4, cell }
-        };
-
-        program.instrs.push(Instr2 {
-            header: Header::Arith { op, arity: children.len() as u8 },
-            operands,
-            dsts: vec![dst],
-            memtup: None,
-        });
-        instr_node.push(Some(node as u32));
-        instr_strand.push(Strand::BaseArith);
-        arith_count += 1;
-
-        // Release operand cells whose last use was this instruction (computed
-        // children only — Place/Const reads do not occupy a slot cell).
-        for &c in &children {
-            if is_computed(&arena[c]) {
-                let r = remaining[c];
-                debug_assert!(r > 0, "operand consumed past its use count");
-                remaining[c] = r - 1;
-                if remaining[c] == 0 {
-                    if let Some(res) = residence.remove(&c) {
-                        alloc.release(res.cell as u16, width_cells(arena, c));
-                    }
-                }
-            }
-        }
-    }
+    let mut instr_node = emit.instr_node;
+    let mut instr_strand = emit.instr_strand;
+    let arith_count = emit.arith_count;
+    let mut materialize_count = emit.materialize_count;
+    let _remat_instrs = emit.remat_instrs;
+    let alloc = emit.alloc;
 
     // Macro / gather / materialize lowering (Task 2.5). After the base-arith
     // instrs, emit one macro Instr2 per Macro gate and per cache. Macro instrs

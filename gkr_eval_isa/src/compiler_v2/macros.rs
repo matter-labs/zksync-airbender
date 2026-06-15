@@ -577,6 +577,77 @@ mod tests {
     }
 
     #[test]
+    fn bounded_working_set_fits_slot_field() {
+        // Fix B: the base-arith working set MUST fit the 7-bit slot-cell field
+        // (`SLOT_CELL_BITS == 7` => cell index < 128). Order + Belady eviction +
+        // rematerialization bound it; the default budget (120) sits under the
+        // cap. Two halves so the bound is both correct AND non-vacuous:
+        //   (1) load-bearing — some corpus layer's NATURAL (un-evicted) live set
+        //       exceeds the field cap, so eviction is doing real work. Measured
+        //       at budget 200: large enough that no eviction fires below the cap,
+        //       small enough that cell indices stay < 256 (so the `cell as u8`
+        //       store is lossless and `high_water_cells` is trustworthy). A huge
+        //       budget would overflow u8 and corrupt the counter — see mod.rs.
+        //   (2) bounded — under the default budget EVERY layer's high-water and
+        //       EVERY emitted Slot cell index fit the field.
+        use crate::isa_v2::{Dst, SLOT_CELL_BITS};
+        let cell_cap = 1u32 << SLOT_CELL_BITS; // 128
+
+        let mut max_natural = 0usize;
+        let mut any_slots = false;
+        for p in all_fixtures() {
+            let Ok(c) = load_circuit(&p) else { continue };
+            let name = p.file_name().unwrap().to_str().unwrap().to_string();
+            for (li, layer) in c.circuit.layers.iter().enumerate() {
+                let Some(g) = c.graphs.get(li) else { continue };
+
+                // (1) Natural high-water at a no-eviction-below-cap budget.
+                let nat = compile_forward_v2(
+                    layer,
+                    g,
+                    FwdParams2 { budget_cells: 200, ..FwdParams2::default() },
+                );
+                max_natural = max_natural.max(nat.stats.max_live_cells);
+
+                // (2) Default (bounded) compile: high-water + every Slot cell
+                // index must fit the 7-bit field.
+                let cf = compile_forward_v2(layer, g, FwdParams2::default());
+                assert!(
+                    (cf.stats.max_live_cells as u32) < cell_cap,
+                    "{name} L{li}: bounded max_live_cells {} exceeds 7-bit cell field cap {cell_cap}",
+                    cf.stats.max_live_cells
+                );
+                for ins in &cf.program.instrs {
+                    for op in &ins.operands {
+                        if let Operand::Slot { cell, .. } = op {
+                            any_slots = true;
+                            assert!(
+                                (*cell as u32) < cell_cap,
+                                "{name} L{li}: operand Slot cell {cell} over 7-bit field"
+                            );
+                        }
+                    }
+                    for d in &ins.dsts {
+                        if let Dst::Slot { cell, .. } = d {
+                            any_slots = true;
+                            assert!(
+                                (*cell as u32) < cell_cap,
+                                "{name} L{li}: dst Slot cell {cell} over 7-bit field"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        assert!(any_slots, "no Slot cells emitted across the corpus (test is vacuous)");
+        assert!(
+            max_natural >= cell_cap as usize,
+            "natural (un-evicted) live set never exceeded the field cap (max {max_natural}); \
+             eviction is not load-bearing, so the bounded half would be vacuous"
+        );
+    }
+
+    #[test]
     fn no_macro_gate_is_skipped_corpus_wide() {
         // The Fixed/Variable shape split (and the GrandProductStep Fixed(2) skip
         // path that dropped 30 flattening grand-product gates) is gone: EVERY
