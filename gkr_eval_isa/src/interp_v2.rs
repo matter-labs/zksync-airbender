@@ -295,6 +295,9 @@ pub fn resolve_gather(
             }
             t.n[desc_idx][gid]
         }
+        IndirectKind::InitsTeardownsHighAddr => {
+            todo!("R4 part B: resolve InitsTeardownsHighAddr")
+        }
     }
 }
 
@@ -980,6 +983,7 @@ mod tests {
                     ],
                     dsts: vec![Dst::Materialize { slot: 0, col: 4 }],
                     memtup: None,
+                    memtup2: None,
                 },
                 // DotK: col0*col1 + col2*col3 = 3*5 + 7*11 = 15 + 77 = 92
                 //       → Materialize slot 0 col 5.
@@ -993,6 +997,7 @@ mod tests {
                     ],
                     dsts: vec![Dst::Materialize { slot: 0, col: 5 }],
                     memtup: None,
+                    memtup2: None,
                 },
                 // GateOutputFold: α^0·col0 + α^1·col1 + α^2·col2
                 //   = 1*3 + 2*5 + 4*7 = 3 + 10 + 28 = 41 → Materialize slot 0 col 6.
@@ -1008,6 +1013,7 @@ mod tests {
                     ],
                     dsts: vec![Dst::Materialize { slot: 0, col: 6 }],
                     memtup: None,
+                    memtup2: None,
                 },
             ],
             consts: vec![],
@@ -1093,6 +1099,7 @@ mod tests {
                 operands,
                 dsts,
                 memtup,
+                memtup2: None,
             }],
             consts: vec![],
             n_slot_cells: 0,
@@ -1406,6 +1413,7 @@ mod tests {
             mapping_slot: None,
             n_len: None,
             decoder: None,
+            inits_td_set_idx: None,
         }];
         let mut src = banks(vec![Ext::ZERO], Ext::ZERO, vec![], Ext::ZERO, vec![]);
         src.gather_tables = gather_tables;
@@ -1419,6 +1427,7 @@ mod tests {
                 operands: vec![Operand::Indirect { e4: true, desc: 0 }],
                 dsts: vec![Dst::Materialize { slot: 0, col: 0 }],
                 memtup: None,
+                memtup2: None,
             }],
             consts: vec![],
             n_slot_cells: 0,

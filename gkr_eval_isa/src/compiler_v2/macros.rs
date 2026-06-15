@@ -83,19 +83,23 @@
 //!   per-role challenges are NOT lanes — R3 reads them from the perm/additive bank
 //!   by role.
 
-use crate::compiler_v2::gather::{build_descriptor, GatherDescriptor};
+use crate::compiler_v2::gather::{
+    build_descriptor, build_inits_td_high_addr_descriptor, GatherDescriptor,
+};
 use crate::compiler_v2::matrix_table::MatrixTable;
 use crate::isa::NEG_ONE_U32;
 use crate::isa_v2::{
     lowering_kind, routine_for_cache, routine_for_gate, routine_table, Dst, Header, Instr2, LdcSub,
-    LoweringKind, MemTup, Operand, RoutineId, Shape, MT_CONST_ADDR_LOW, MT_CONST_ADDR_LOW_DYN_COEFF,
-    MT_CONST_ADDR_LOW_OFFSET, MT_CONST_TS_LOW_OFFSET, SPECIAL_NEG_ONE, SPECIAL_ONE, SPECIAL_ZERO,
+    LoweringKind, MemTup, Operand, RoutineId, Shape, MT_CONST_ADDR_HIGH, MT_CONST_ADDR_LOW,
+    MT_CONST_ADDR_LOW_DYN_COEFF, MT_CONST_ADDR_LOW_OFFSET, MT_CONST_TS_LOW_OFFSET, SPECIAL_NEG_ONE,
+    SPECIAL_ONE, SPECIAL_ZERO,
 };
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::codegen_ir::{
     gate_kind_input_nodes, CacheKind, CodegenCache, CodegenGate, CodegenLayer, Domain, ExprNode,
-    LinearComb,
+    GateKind, LinearComb, MemTupleDescriptor, NodeId,
 };
+use cs::gkr_compiler::InitsOrTeardownsTimestampAndValue;
 use std::collections::HashMap;
 
 // Fixed memory-tuple role term indices (forward/kernels/mod.rs:31-39). Kept as
@@ -187,12 +191,25 @@ impl<'a> MacroCtx<'a> {
                 mapping_slot: None,
                 n_len: None,
                 decoder: None,
+                inits_td_set_idx: None,
             },
         };
         let i = self.gathers.len() as u16;
         self.gathers.push(desc);
         self.gather_idx.insert(addr, i);
         i
+    }
+
+    /// Mint a launcher-deferred `Operand::Indirect` for the id-20 high-address
+    /// constant `inits_and_teardowns_top_bits[set_idx] << high_bits_offset`. The
+    /// value is a prover-runtime scalar absent from the codegen IR, so it rides an
+    /// `InitsTeardownsHighAddr` gather descriptor (base field) that Phase-5
+    /// resolves; only the descriptor INDEX is structural here. Not deduped — each
+    /// id-20 key tuple mints its own descriptor for its `set_idx`.
+    fn inits_td_high_addr_operand(&mut self, set_idx: u8) -> Operand {
+        let i = self.gathers.len() as u16;
+        self.gathers.push(build_inits_td_high_addr_descriptor(set_idx));
+        Operand::Indirect { e4: false, desc: i }
     }
 
     /// Map one IR input node to its typed operand lane.
@@ -314,14 +331,17 @@ fn push_role(ctx: &MacroCtx, roles: &mut Vec<(u8, Operand)>, role: u8, offset: u
 /// `MemTup::consts` `(MT_CONST_* role, Ldc value)` lanes so R3 can reconstruct the
 /// value. `perm_additive` + the per-role permutation challenges stay in the
 /// challenge bank (read by role), NOT as lanes.
-fn lower_memory_tuple(ctx: &mut MacroCtx, cache: &CodegenCache) -> Instr2 {
+/// Build the `MemTup` (roles / as_arm / as_payload / consts) for ONE
+/// `MemTupleDescriptor` (its `.descriptor` is the
+/// `NoFieldSpecialMemoryContributionRelation`). Shared by the id-19 MemoryTuple
+/// cache lowering and the id-14/id-15 grand-product gate lowerings (each tuple is
+/// byte-identical to the id-19 cache combination). See `lower_memory_tuple` for
+/// the R2 folded-constant contract.
+fn mem_tup_from_descriptor(ctx: &mut MacroCtx, desc: &MemTupleDescriptor) -> MemTup {
     use cs::gkr_compiler::{CompiledAddressStrict, CompiledMemoryTimestamp};
     use cs::definitions::gkr::RamWordRepresentation;
 
-    let CacheKind::MemoryTuple { descriptor } = &cache.kind else {
-        unreachable!("lower_memory_tuple called on non-MemoryTuple cache");
-    };
-    let rel = &descriptor.descriptor;
+    let rel = &desc.descriptor;
     let mut roles: Vec<(u8, Operand)> = Vec::new();
     // R2 folded-constant lanes (recoverable `Ldc` values, tagged by the perm
     // challenge that multiplies them).
@@ -406,16 +426,93 @@ fn lower_memory_tuple(ctx: &mut MacroCtx, cache: &CodegenCache) -> Instr2 {
     // folded constants live in `consts`, NOT the 8 term slots.
     debug_assert!(roles.len() <= 8, "memory-tuple over 8 linear terms");
 
+    MemTup { roles, as_arm, as_payload, consts }
+}
+
+/// Lower a MemoryTuple cache (id-19) to the single-tuple `Instr2`: one `MemTup`
+/// built from the cache descriptor, materialized to the cache out address.
+fn lower_memory_tuple(ctx: &mut MacroCtx, cache: &CodegenCache) -> Instr2 {
+    let CacheKind::MemoryTuple { descriptor } = &cache.kind else {
+        unreachable!("lower_memory_tuple called on non-MemoryTuple cache");
+    };
+    let memtup = mem_tup_from_descriptor(ctx, descriptor);
     let dst = ctx.materialize_for(&cache.out.1);
     // n_operands = the number of role-tagged DYNAMIC terms (carried in the
     // header). The folded-constant count is self-described in the serialization.
-    let n_operands = roles.len() as u8;
+    let n_operands = memtup.roles.len() as u8;
     Instr2 {
         header: Header::Macro { routine: RoutineId::MemoryTuple as u8, n_operands },
         operands: Vec::new(),
         dsts: vec![dst],
-        memtup: Some(MemTup { roles, as_arm, as_payload, consts }),
+        memtup: Some(memtup),
+        memtup2: None,
     }
+}
+
+/// Teardown ts/value BaseLayerMemory column offsets for ONE id-20 key. The Init
+/// arm carries `None` (its ts/value contributions are zero — evaluate_init only
+/// folds the address terms); the Teardown arm carries the per-key `lhs_*`/`rhs_*`
+/// offsets (inits_and_teardowns.rs evaluate_teardown).
+struct TeardownCols {
+    timestamp: [usize; cs::definitions::NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+    value: [usize; 2],
+}
+
+/// Build ONE id-20 KEY `MemTup`: `KEY(slot) = perm_additive + RAM(=1) +
+/// chal(R_ADDR_LOW)·address_low + chal(R_ADDR_HIGH)·(address_high +
+/// (top_bits<<shift)) [+ ts/value terms for the Teardown arm]`
+/// (inits_and_teardowns.rs evaluate_init / evaluate_teardown). The address-space
+/// arm is the RAM constant; `setup[0]`/`setup[1]` are the (Base) address_low /
+/// address_high arena NodeIds; the high-bits `top_bits<<shift` constant is a
+/// launcher-deferred `MT_CONST_ADDR_HIGH` const (prover-runtime, not in the IR).
+///
+/// KNOWN LIMITATION (Phase-5): `address_low`/`address_high` are the VIRTUAL setup
+/// polys `InitsAndTeardownsLow`/`High`, which the matrix table collapses to the
+/// SAME `Affine{slot,col}` (`column_offset` is 0 for every `VirtualSetup` and
+/// both share one backing class), so the emitted ADDR_LOW and ADDR_HIGH lanes are
+/// indistinguishable here. This is inherent to v2's `VirtualSetup` operand
+/// encoding (not specific to id-20) and is INVISIBLE to the decomposition-only
+/// oracle (interp + reference read the same staged bank for both). The Phase-5
+/// GPU launcher — which computes the two virtual polys per row
+/// (`Low=(row<<2)&0xffff`, `High=row>>14`) — is where the distinction (and the
+/// `top_bits` resolution) actually lands. Tracked for the GPU bit-exact gate.
+fn inits_teardowns_key_tuple(
+    ctx: &mut MacroCtx,
+    arena: &[ExprNode],
+    setup: &[NodeId; 2],
+    set_idx: usize,
+    td_cols: Option<&TeardownCols>,
+) -> MemTup {
+    // address space is RAM (AddressSpaceType::RAM as u32 == 1).
+    let ram = cs::definitions::gkr::AddressSpaceType::RAM as u32;
+    let as_arm = AS_ARM_CONSTANT;
+    let as_payload = Some(ctx.const_scalar_operand(ram));
+
+    let mut roles: Vec<(u8, Operand)> = Vec::new();
+    // address_low / address_high are the two (Base) setup NodeIds — resolved via
+    // `operand_for` (arena NodeIds, NOT BaseLayerMemory offsets, so NOT push_role).
+    roles.push((
+        MEMORY_TUPLE_ADDRESS_LOW_TERM,
+        ctx.operand_for(arena, setup[0].0 as usize),
+    ));
+    roles.push((
+        MEMORY_TUPLE_ADDRESS_HIGH_TERM,
+        ctx.operand_for(arena, setup[1].0 as usize),
+    ));
+
+    // Teardown arm only: timestamp + value terms (BaseLayerMemory offsets).
+    if let Some(td) = td_cols {
+        push_role(ctx, &mut roles, MEMORY_TUPLE_TIMESTAMP_LOW_TERM, td.timestamp[0]);
+        push_role(ctx, &mut roles, MEMORY_TUPLE_TIMESTAMP_HIGH_TERM, td.timestamp[1]);
+        push_role(ctx, &mut roles, MEMORY_TUPLE_VALUE_LOW_TERM, td.value[0]);
+        push_role(ctx, &mut roles, MEMORY_TUPLE_VALUE_HIGH_TERM, td.value[1]);
+    }
+
+    // The high-bits constant `top_bits<<shift` folds under chal(R_ADDR_HIGH); its
+    // value is prover-runtime, carried as a launcher-deferred Indirect operand.
+    let consts = vec![(MT_CONST_ADDR_HIGH, ctx.inits_td_high_addr_operand(set_idx as u8))];
+
+    MemTup { roles, as_arm, as_payload, consts }
 }
 
 /// Lower one forward gate. `Some(Instr2)` only for `LoweringKind::Macro` gates;
@@ -424,12 +521,96 @@ fn lower_memory_tuple(ctx: &mut MacroCtx, cache: &CodegenCache) -> Instr2 {
 /// input operand count — the grand-product gates that flatten 4-14 columns lower
 /// normally (no skip path; the operand count rides the header, not a Fixed(n)
 /// shape).
+///
+/// Three GateKinds lower to a STRUCTURED tuple form (not the lossy flattened
+/// operand path): id-14 `InitialGrandProductWithoutCaches` (product of two
+/// inlined memory tuples), id-15 `MaterializeGrandProductTermExpression` (one
+/// inlined memory tuple), id-20 `InitsOrTeardownsInitialPair` (product of two
+/// inits/teardowns KEY tuples). They are matched BEFORE the generic path so the
+/// tuple structure (address-space arm, role tags, folded constants) is preserved.
 pub fn lower_gate(gate: &CodegenGate, arena: &[ExprNode], ctx: &mut MacroCtx) -> Option<Instr2> {
     if lowering_kind(&gate.kind) != LoweringKind::Macro {
         return None;
     }
     let routine = routine_for_gate(&gate.kind).expect("Macro gate must have a routine");
     let schema = &routine_table()[routine as u8 as usize];
+
+    // STRUCTURED tuple lowerings (lossless) — matched before the generic flattened
+    // operand path so the tuple structure survives for the interpreter (R4).
+    match &gate.kind {
+        // id-14: `out = tuple(input[0]) · tuple(input[1])` — two inlined memory
+        // tuples, single ext product. Each tuple is byte-identical to id-19.
+        GateKind::InitialGrandProductWithoutCaches { input } => {
+            let t0 = mem_tup_from_descriptor(ctx, &input[0]);
+            let t1 = mem_tup_from_descriptor(ctx, &input[1]);
+            let n_operands = (t0.roles.len() + t1.roles.len()) as u8;
+            let dsts = macro_gate_dsts(gate, 1, ctx);
+            return Some(Instr2 {
+                header: Header::Macro {
+                    routine: RoutineId::GrandProductWithoutCaches as u8,
+                    n_operands,
+                },
+                operands: Vec::new(),
+                dsts,
+                memtup: Some(t0),
+                memtup2: Some(t1),
+            });
+        }
+        // id-15: `out = tuple(input)` — materialize ONE inlined memory tuple
+        // (identical to id-19, single output).
+        GateKind::MaterializeGrandProductTermExpression { input } => {
+            let t0 = mem_tup_from_descriptor(ctx, input);
+            let n_operands = t0.roles.len() as u8;
+            let dsts = macro_gate_dsts(gate, 1, ctx);
+            return Some(Instr2 {
+                header: Header::Macro {
+                    routine: RoutineId::MaterializeGrandProductTerm as u8,
+                    n_operands,
+                },
+                operands: Vec::new(),
+                dsts,
+                memtup: Some(t0),
+                memtup2: None,
+            });
+        }
+        // id-20: `out = KEY(lhs) · KEY(rhs)` — single ext product of two
+        // inits/teardowns key tuples (output_count 1). Init vs Teardown is the
+        // `timestamp_and_value` arm (Init => no ts/value cols; Teardown => the
+        // per-key lhs/rhs ts/value offsets).
+        GateKind::InitsOrTeardownsInitialPair {
+            timestamp_and_value,
+            setup,
+            set_idxes,
+        } => {
+            let (lhs_cols, rhs_cols) = match timestamp_and_value {
+                InitsOrTeardownsTimestampAndValue::Init => (None, None),
+                InitsOrTeardownsTimestampAndValue::Teardown {
+                    lhs_timestamp,
+                    lhs_value,
+                    rhs_timestamp,
+                    rhs_value,
+                } => (
+                    Some(TeardownCols { timestamp: *lhs_timestamp, value: *lhs_value }),
+                    Some(TeardownCols { timestamp: *rhs_timestamp, value: *rhs_value }),
+                ),
+            };
+            let t0 = inits_teardowns_key_tuple(ctx, arena, setup, set_idxes[0], lhs_cols.as_ref());
+            let t1 = inits_teardowns_key_tuple(ctx, arena, setup, set_idxes[1], rhs_cols.as_ref());
+            let n_operands = (t0.roles.len() + t1.roles.len()) as u8;
+            let dsts = macro_gate_dsts(gate, 1, ctx);
+            return Some(Instr2 {
+                header: Header::Macro {
+                    routine: RoutineId::MemoryInitTeardownPair as u8,
+                    n_operands,
+                },
+                operands: Vec::new(),
+                dsts,
+                memtup: Some(t0),
+                memtup2: Some(t1),
+            });
+        }
+        _ => {}
+    }
 
     // Operand lanes — one per IR input node, in IR order. `n_operands` (the
     // operand count) rides the header; there is no count lane and no Fixed(n)
@@ -450,6 +631,7 @@ pub fn lower_gate(gate: &CodegenGate, arena: &[ExprNode], ctx: &mut MacroCtx) ->
         operands,
         dsts,
         memtup: None,
+        memtup2: None,
     })
 }
 
@@ -553,6 +735,7 @@ pub fn lower_cache(cache: &CodegenCache, arena: &[ExprNode], ctx: &mut MacroCtx)
         operands,
         dsts: vec![dst],
         memtup: None,
+        memtup2: None,
     }
 }
 
@@ -605,6 +788,83 @@ mod tests {
                 .unwrap_or_else(|| panic!("Const idx {idx} out of table (len {})", consts.len())),
             other => panic!("expected an Ldc lane, got {other:?}"),
         }
+    }
+
+    // R4: the three grand-product/inits-teardowns gates must lower LOSSLESSLY to
+    // structured memory tuples (NOT the old flattened-operand path with
+    // `memtup: None`). id-14/id-20 carry TWO tuples (product); id-15 one. id-20's
+    // KEY tuples use the RAM `as_arm` constant + the launcher-deferred
+    // MT_CONST_ADDR_HIGH high-bits const. This locks the lossless property the
+    // corpus-wide round-trip relies on, per emitting fixture.
+    #[test]
+    fn grand_product_and_inits_teardowns_lower_losslessly() {
+        use crate::isa_v2::MT_CONST_ADDR_HIGH;
+        let mut saw_14 = false;
+        let mut saw_15 = false;
+        let mut saw_20 = false;
+        for p in all_fixtures() {
+            let c = load_circuit(&p).unwrap();
+            for layer in &c.circuit.layers {
+                let arena = &layer.arena.nodes;
+                let mt = MatrixTable::build(layer);
+                let consts = build_const_table_v2(layer);
+                let ci: HashMap<u32, u16> =
+                    consts.iter().enumerate().map(|(i, v)| (*v, i as u16)).collect();
+                let ck = cache_kind_by_addr(layer);
+                for gate in layer.gates.iter().chain(&layer.gates_external) {
+                    let Some(routine) = routine_for_gate(&gate.kind) else { continue };
+                    let is_target = matches!(
+                        routine,
+                        RoutineId::GrandProductWithoutCaches
+                            | RoutineId::MaterializeGrandProductTerm
+                            | RoutineId::MemoryInitTeardownPair
+                    );
+                    if !is_target {
+                        continue;
+                    }
+                    let mut ctx = MacroCtx::new(&mt, &ci, &ck);
+                    let instr = lower_gate(gate, arena, &mut ctx).expect("target gate must lower");
+                    assert!(instr.operands.is_empty(), "memtup gate carries no operand lanes");
+                    // Presence of the primary tuple is the lossless invariant; a
+                    // memory tuple with an all-constant address/value legitimately
+                    // carries ZERO dynamic role terms (everything folds into
+                    // `as_arm`/`consts`), so don't require non-empty roles.
+                    let _t0 = instr.memtup.as_ref().expect("primary tuple must be present");
+                    assert_eq!(instr.dsts.len(), 1, "single ext output");
+                    match routine {
+                        RoutineId::MaterializeGrandProductTerm => {
+                            assert!(instr.memtup2.is_none(), "id-15 is single-tuple");
+                            saw_15 = true;
+                        }
+                        RoutineId::GrandProductWithoutCaches => {
+                            assert!(instr.memtup2.is_some(), "id-14 product needs two tuples");
+                            saw_14 = true;
+                        }
+                        RoutineId::MemoryInitTeardownPair => {
+                            let t1 = instr.memtup2.as_ref().expect("id-20 product needs two tuples");
+                            for t in [_t0, t1] {
+                                assert_eq!(t.as_arm, AS_ARM_CONSTANT, "id-20 key uses the RAM arm");
+                                let hi: Vec<_> = t
+                                    .consts
+                                    .iter()
+                                    .filter(|(r, _)| *r == MT_CONST_ADDR_HIGH)
+                                    .collect();
+                                assert_eq!(hi.len(), 1, "exactly one high-bits const per key");
+                                assert!(
+                                    matches!(hi[0].1, Operand::Indirect { .. }),
+                                    "high-bits is a launcher-deferred Indirect"
+                                );
+                            }
+                            saw_20 = true;
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }
+        }
+        assert!(saw_14, "corpus emits no id-14 (test vacuous)");
+        assert!(saw_15, "corpus emits no id-15 (test vacuous)");
+        assert!(saw_20, "corpus emits no id-20 (test vacuous)");
     }
 
     #[test]
@@ -1105,11 +1365,27 @@ mod tests {
                     let Header::Macro { n_operands, .. } = instr.header else {
                         panic!("Macro gate lowered to a non-Macro header");
                     };
-                    assert_eq!(
-                        n_operands as usize,
-                        instr.operands.len(),
-                        "header n_operands must equal the emitted operand-lane count"
-                    );
+                    if instr.memtup.is_some() {
+                        // MemTuple-shaped gates (id-14/id-15/id-20) carry their
+                        // data in `memtup`/`memtup2`, NOT operand lanes; the header
+                        // n_operands is the SUM of the carried tuples' role counts.
+                        let roles = instr.memtup.as_ref().map_or(0, |m| m.roles.len())
+                            + instr.memtup2.as_ref().map_or(0, |m| m.roles.len());
+                        assert!(
+                            instr.operands.is_empty(),
+                            "memtup-carrying gate must have no operand lanes"
+                        );
+                        assert_eq!(
+                            n_operands as usize, roles,
+                            "header n_operands must equal the total memtup role count"
+                        );
+                    } else {
+                        assert_eq!(
+                            n_operands as usize,
+                            instr.operands.len(),
+                            "header n_operands must equal the emitted operand-lane count"
+                        );
+                    }
                     lowered += 1;
                 }
             }

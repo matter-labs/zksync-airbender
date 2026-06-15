@@ -39,6 +39,7 @@ fn descriptor(
         mapping_slot: None,
         n_len: None,
         decoder,
+        inits_td_set_idx: None,
     }
 }
 
@@ -275,6 +276,7 @@ fn one_macro_program(routine: RoutineId, n_operands: usize, output_count: usize)
             operands,
             dsts,
             memtup: None,
+            memtup2: None,
         }],
         consts: vec![],
         n_slot_cells: 0,
@@ -616,6 +618,7 @@ fn staged_banks(ins: &Instr2, consts: &[u32], rng: &mut StdRng) -> (SourceBanks,
             mapping_slot: None,
             n_len: None,
             decoder: None,
+            inits_td_set_idx: None,
         })
         .collect();
     for d in referenced {
@@ -1020,6 +1023,7 @@ fn copy_program(dst: Dst) -> Program2 {
             operands: vec![Operand::Affine { slot: 0, col: 0 }],
             dsts: vec![dst],
             memtup: None,
+            memtup2: None,
         }],
         consts: vec![],
         n_slot_cells: 4,
@@ -1101,12 +1105,14 @@ fn slot_read_is_full_e4_width_regardless_of_store() {
                 operands: vec![Operand::Affine { slot: 0, col: 0 }],
                 dsts: vec![Dst::Slot { e4: true, cell: 0 }],
                 memtup: None,
+                memtup2: None,
             },
             Instr2 {
                 header: Header::Arith { op: ArithOp::Sum, arity: 1 },
                 operands: vec![Operand::Slot { e4: true, cell: 0 }],
                 dsts: vec![Dst::Materialize { slot: 0, col: 1 }],
                 memtup: None,
+                memtup2: None,
             },
         ],
         consts: vec![],
@@ -1212,12 +1218,14 @@ fn challenge_bank_swap_is_detected() {
                 ],
                 dsts: vec![Dst::Materialize { slot: 0, col: 2 }],
                 memtup: None,
+                memtup2: None,
             },
             Instr2 {
                 header: Header::Arith { op: ArithOp::Sum, arity: 1 },
                 operands: vec![Operand::Ldc { sub: LdcSub::ArgChallenge, idx: 1 }],
                 dsts: vec![Dst::Materialize { slot: 0, col: 3 }],
                 memtup: None,
+                memtup2: None,
             },
         ],
         consts: vec![],
@@ -1343,6 +1351,7 @@ fn in_kernel_fold_matches_v1_host_folded_coeff() {
                 operands,
                 dsts: vec![Dst::Materialize { slot: 0, col: out_col }],
                 memtup: None,
+                memtup2: None,
             }],
             consts: vec![],
             n_slot_cells: 0,
@@ -1372,6 +1381,7 @@ fn in_kernel_fold_matches_v1_host_folded_coeff() {
             operands: vec![Operand::Affine { slot: 0, col: 0 }],
             dsts: vec![Dst::Materialize { slot: 0, col: 1 }],
             memtup: None,
+            memtup2: None,
         }],
         consts: vec![],
         n_slot_cells: 0,

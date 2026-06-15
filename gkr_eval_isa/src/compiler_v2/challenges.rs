@@ -47,7 +47,7 @@ pub fn alpha_power_bank_index(col_k: u16) -> AlphaSlot {
 // `pub(crate) use` (never `pub use` — E0364). v1 behaviour is NOT changed by R2.
 
 use crate::isa::NEG_ONE_U32;
-use cs::gkr_compiler::codegen_ir::{CacheKind, CodegenLayer, ExprNode, LinearComb};
+use cs::gkr_compiler::codegen_ir::{CacheKind, CodegenLayer, ExprNode, GateKind, LinearComb};
 use cs::gkr_compiler::{CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp};
 
 /// R2 (Phase 2.5): a base-field scalar must ride a recoverable `Ldc` lane, never
@@ -162,6 +162,23 @@ pub(crate) fn build_const_table_v2(layer: &CodegenLayer) -> Vec<u32> {
                 collect_memtup_consts(&descriptor.descriptor, &mut consts);
             }
             CacheKind::VectorizedLookupSetup => {}
+        }
+    }
+    // R4: the grand-product GATES (id-14/id-15) carry inlined memory-tuple
+    // descriptors whose folded base-field constants must also be in the table,
+    // exactly like the id-19 MemoryTuple cache above. (id-20 InitsOrTeardowns
+    // adds no const-table entry: its RAM=1 seed is a Special lane and its
+    // high-address bits are a launcher-deferred Indirect, not an Ldc(Const).)
+    for gate in layer.gates.iter().chain(&layer.gates_external) {
+        match &gate.kind {
+            GateKind::InitialGrandProductWithoutCaches { input } => {
+                collect_memtup_consts(&input[0].descriptor, &mut consts);
+                collect_memtup_consts(&input[1].descriptor, &mut consts);
+            }
+            GateKind::MaterializeGrandProductTermExpression { input } => {
+                collect_memtup_consts(&input.descriptor, &mut consts);
+            }
+            _ => {}
         }
     }
     consts.sort_unstable();

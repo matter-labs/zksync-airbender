@@ -297,6 +297,7 @@ impl<'a> FwdEmit<'a> {
             operands,
             dsts: vec![Dst::Slot { e4, cell }],
             memtup: None,
+            memtup2: None,
         });
         self.instr_node.push(Some(node as u32));
         self.instr_strand.push(Strand::BaseArith);
@@ -374,6 +375,7 @@ impl<'a> FwdEmit<'a> {
             operands,
             dsts: vec![dst],
             memtup: None,
+            memtup2: None,
         });
         self.instr_node.push(Some(node as u32));
         self.instr_strand.push(Strand::BaseArith);
@@ -912,12 +914,24 @@ pub(crate) fn split_into_strands(program: &Program2, instr_strand: &[Strand]) ->
                 // Slot), so the rewrite is identity; carry them through verbatim.
                 consts: mt.consts.clone(),
             });
+            // Second tuple (product-of-two-tuples routines: id-14, id-20) rewrites
+            // the same way; None for single-tuple / non-memtup instrs.
+            let memtup2 = instr.memtup2.as_ref().map(|mt| crate::isa_v2::MemTup {
+                roles: mt
+                    .roles
+                    .iter()
+                    .map(|(role, op)| (*role, rewrite_operand(op, rewrite)))
+                    .collect(),
+                as_arm: mt.as_arm,
+                as_payload: mt.as_payload.as_ref().map(|op| rewrite_operand(op, rewrite)),
+                consts: mt.consts.clone(),
+            });
             // Producers of bridged cells also Materialize into the backing.
             let mut dsts = instr.dsts.clone();
             for &(slot, col) in &write_bridges[i] {
                 dsts.push(Dst::Materialize { slot, col });
             }
-            instrs.push(Instr2 { header: instr.header, operands, dsts, memtup });
+            instrs.push(Instr2 { header: instr.header, operands, dsts, memtup, memtup2 });
         }
         if instrs.is_empty() {
             continue;
@@ -1429,6 +1443,7 @@ mod strand_tests {
             ],
             dsts: vec![Dst::Slot { e4: false, cell: 0 }],
             memtup: None,
+            memtup2: None,
         };
         // instr1 (LookupGp): reads Slot cell 0 (the cross-strand read) plus a
         // shared committed input; materializes its output.
@@ -1440,6 +1455,7 @@ mod strand_tests {
             ],
             dsts: vec![Dst::Materialize { slot: 2, col: 0 }],
             memtup: None,
+            memtup2: None,
         };
         // instr2 (MemoryGp): a memory-tuple macro reading only committed columns.
         let instr2 = Instr2 {
@@ -1452,6 +1468,7 @@ mod strand_tests {
                 as_payload: None,
                 consts: Vec::new(),
             }),
+            memtup2: None,
         };
 
         let program = Program2 {

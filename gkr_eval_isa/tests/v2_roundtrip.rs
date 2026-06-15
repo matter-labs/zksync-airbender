@@ -15,6 +15,7 @@ fn roundtrip_all_layouts() {
             ],
             dsts: vec![Dst::Slot { e4: false, cell: 3 }],
             memtup: None,
+            memtup2: None,
         },
         // macro-plain: header (n_operands=2) + 2 operands + 2 footer dsts.
         // LookupExtPair is Shape::Plain (a num/den lookup pair, output_count 2);
@@ -31,6 +32,7 @@ fn roundtrip_all_layouts() {
                 Dst::Materialize { slot: 1, col: 11 },
             ],
             memtup: None,
+            memtup2: None,
         },
         // macro-memtup: header (n_operands = role count) + as_arm lane +
         // role-tagged ops + as_payload + R2 folded-const block + dst.
@@ -52,6 +54,36 @@ fn roundtrip_all_layouts() {
                     (MT_CONST_TS_LOW_OFFSET, Operand::Ldc { sub: LdcSub::Special, idx: 0 }),
                 ],
             }),
+            memtup2: None,
+        },
+        // macro-memtup product-of-two-tuples (id-14 GrandProductWithoutCaches):
+        // BOTH memtup + memtup2 populated with DISTINCT role sets and as_arms.
+        // The header carries the SUM of role counts (2 + 1); each tuple block is
+        // self-described by a leading role-count lane, so it must round-trip.
+        Instr2 {
+            header: Header::Macro {
+                routine: RoutineId::GrandProductWithoutCaches as u8,
+                n_operands: 3,
+            },
+            operands: vec![],
+            dsts: vec![Dst::Materialize { slot: 2, col: 7 }],
+            memtup: Some(MemTup {
+                roles: vec![
+                    (0, Operand::Affine { slot: 0, col: 3 }),
+                    (1, Operand::Affine { slot: 0, col: 4 }),
+                ],
+                as_arm: 1, // Constant
+                as_payload: Some(Operand::Ldc { sub: LdcSub::Special, idx: SPECIAL_ONE }),
+                consts: vec![
+                    (MT_CONST_ADDR_HIGH, Operand::Ldc { sub: LdcSub::Const, idx: 9 }),
+                ],
+            }),
+            memtup2: Some(MemTup {
+                roles: vec![(2, Operand::Affine { slot: 1, col: 6 })],
+                as_arm: 0, // Empty
+                as_payload: None,
+                consts: vec![],
+            }),
         },
     ];
     let p = Program2 { instrs: instrs.clone(), ..Default::default() };
@@ -68,6 +100,7 @@ fn arity_over_127_rejected() {
             operands: vec![Operand::Slot { e4: false, cell: 0 }; 200],
             dsts: vec![Dst::Slot { e4: false, cell: 0 }],
             memtup: None,
+            memtup2: None,
         }],
         ..Default::default()
     };

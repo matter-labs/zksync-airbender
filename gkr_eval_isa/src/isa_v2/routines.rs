@@ -174,13 +174,13 @@ pub fn routine_table() -> &'static [RoutineSchema] {
         // 14 — GrandProductWithoutCaches: `out = tuple(a)·tuple(b)` — product of
         // two INLINED memory-tuple affine combinations (not raw factors). 1 ext
         // output. Gate: InitialGrandProductWithoutCaches.
-        RoutineSchema { id: 14, name: "GrandProductWithoutCaches", shape: Plain, operand_field: Mixed,
+        RoutineSchema { id: 14, name: "GrandProductWithoutCaches", shape: MemTuple, operand_field: Mixed,
             output_count: 1, output_field: Ext, challenge: ArgPermAdditive,
             reference: "cache_relation.rs grand-product without caches (no PK)" },
         // 15 — MaterializeGrandProductTerm: `out = tuple(input)` — materialize ONE
         // memory-tuple affine combination (NOT a product). 1 ext output. Gate:
         // MaterializeGrandProductTermExpression.
-        RoutineSchema { id: 15, name: "MaterializeGrandProductTerm", shape: Plain, operand_field: Mixed,
+        RoutineSchema { id: 15, name: "MaterializeGrandProductTerm", shape: MemTuple, operand_field: Mixed,
             output_count: 1, output_field: Ext, challenge: ArgPermAdditive,
             reference: "cache_relation.rs materialize grand-product term (no PK)" },
         // 16 — SingleColumnLookup cache: base gather (virtual_setup[mapping[gid]])
@@ -208,16 +208,38 @@ pub fn routine_table() -> &'static [RoutineSchema] {
         RoutineSchema { id: 19, name: "MemoryTuple", shape: MemTuple, operand_field: Mixed,
             output_count: 1, output_field: Ext, challenge: ArgPermAdditive,
             reference: "cache_relation.rs:91 MemoryTuple address_space arm (PK_CACHE_MEMORY_TUPLE)" },
-        // 20 — MemoryInitTeardownPair: memory inits/teardowns initial (num,den)
-        // pair from a setup tuple, batched by the perm/additive arg + const
-        // challenges. 2 ext outputs (corpus gate.dst.len()==1 is padded to the
-        // schema's num+den count by `macro_gate_dsts`, matching the prior row).
+        // 20 — MemoryInitTeardownPair: `out = KEY(lhs) · KEY(rhs)`, a SINGLE ext
+        // grand-product term (NOT a num/den pair). Each KEY is a memory-permutation
+        // tuple: perm_additive + RAM + Σ_role chal[role]·col (+ the launcher-deferred
+        // high-address bits as a folded ADDR_HIGH const). output_count 1 (cs lowering
+        // is one_out; the prover forward ref computes lhs·rhs and stores one ext).
         // Gate: InitsOrTeardownsInitialPair.
-        RoutineSchema { id: 20, name: "MemoryInitTeardownPair", shape: Plain, operand_field: Mixed,
-            output_count: 2, output_field: Ext, challenge: Both,
-            reference: "lookup_helpers.cuh inits/teardowns num/den (no PK)" },
+        RoutineSchema { id: 20, name: "MemoryInitTeardownPair", shape: MemTuple, operand_field: Mixed,
+            output_count: 1, output_field: Ext, challenge: ArgPermAdditive,
+            reference: "prover forward_loop/inits_and_teardowns.rs evaluate_init/teardown + lhs*rhs" },
     ];
     T
+}
+
+/// Does this routine (by wire id) carry its operand structure in `Instr2.memtup`
+/// (and, for the product-of-two-tuples ids, `Instr2.memtup2`) rather than the
+/// flat operand lanes? True for id-19 MemoryTuple plus the three R4
+/// structured-tuple routines id-14 GrandProductWithoutCaches, id-15
+/// MaterializeGrandProductTerm, id-20 MemoryInitTeardownPair. The decoder uses
+/// this to route the operand region.
+pub fn routine_carries_memtup(routine: u8) -> bool {
+    routine == RoutineId::MemoryTuple as u8
+        || routine == RoutineId::GrandProductWithoutCaches as u8
+        || routine == RoutineId::MaterializeGrandProductTerm as u8
+        || routine == RoutineId::MemoryInitTeardownPair as u8
+}
+
+/// Does this routine (by wire id) carry TWO memory tuples whose values are
+/// multiplied (`memtup` AND `memtup2`)? id-14 GrandProductWithoutCaches and
+/// id-20 MemoryInitTeardownPair. id-15 / id-19 carry one tuple only.
+pub fn routine_is_two_tuples(routine: u8) -> bool {
+    routine == RoutineId::GrandProductWithoutCaches as u8
+        || routine == RoutineId::MemoryInitTeardownPair as u8
 }
 
 /// Classify a forward gate's lowering (finding 3). EXHAUSTIVE over the 30

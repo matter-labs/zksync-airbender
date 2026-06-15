@@ -33,6 +33,10 @@ pub struct GatherDescriptor {
     pub n_len: Option<u32>,
     /// Decoder predicate + fill scalar for DecoderMappedE4. Filled by Task 2.5.
     pub decoder: Option<DecoderSpec>,
+    /// `set_idx` for `IndirectKind::InitsTeardownsHighAddr` (id-20): selects
+    /// which `inits_and_teardowns_top_bits[set_idx]` the launcher resolves at
+    /// Phase-5. `None` for every other variant.
+    pub inits_td_set_idx: Option<u8>,
 }
 
 /// Decoder-lookup-specific fields: the fill α-power index and the lookup
@@ -100,6 +104,24 @@ pub fn build_descriptor(k: &CacheKind) -> GatherDescriptor {
         mapping_slot: None,
         n_len: None,
         decoder: None,
+        inits_td_set_idx: None,
+    }
+}
+
+/// Build the launcher-deferred `InitsTeardownsHighAddr` descriptor for id-20: it
+/// carries no IR-side table/mapping (the value
+/// `inits_and_teardowns_top_bits[set_idx] << high_bits_offset` is a prover-runtime
+/// scalar), only the `set_idx` the launcher resolves at Phase-5. `field_ext` is
+/// false — it is a base-field folded constant under `chal(R_ADDR_HIGH)`.
+pub fn build_inits_td_high_addr_descriptor(set_idx: u8) -> GatherDescriptor {
+    GatherDescriptor {
+        kind: crate::isa_v2::IndirectKind::InitsTeardownsHighAddr,
+        field_ext: false,
+        n_slot: None,
+        mapping_slot: None,
+        n_len: None,
+        decoder: None,
+        inits_td_set_idx: Some(set_idx),
     }
 }
 

@@ -149,6 +149,12 @@ pub enum IndirectKind {
     MappedGenericE4 = 1,   // VectorizedLookup plain: n[mapping[gid]], ext
     DecoderMappedE4 = 2,   // VectorizedLookup w/ decoder: predicate + fill
     RowIndexedSetupE4 = 3, // VectorizedLookupSetup: n[gid] + length guard
+    /// id-20 inits/teardowns high address bits: the PROVER-RUNTIME constant
+    /// `inits_and_teardowns_top_bits[set_idx] << high_bits_offset` that the
+    /// forward path folds under `chal(R_ADDR_HIGH)`. NOT in the codegen IR — a
+    /// launcher-deferred value resolved at Phase-5 (carried as the descriptor
+    /// INDEX in an `Operand::Indirect` lane, exactly like the other gathers).
+    InitsTeardownsHighAddr = 4,
 }
 
 /// 16-bit operand lane: `[kind:2][payload:14]` (spec §5).
@@ -198,6 +204,7 @@ pub const MT_CONST_ADDR_LOW: u8 = 64; // constant address term:   chal(R_ADDR_LO
 pub const MT_CONST_ADDR_LOW_OFFSET: u8 = 65; // special-indirect low_offset: chal(R_ADDR_LOW)·c
 pub const MT_CONST_ADDR_LOW_DYN_COEFF: u8 = 66; // special-indirect dyn coeff: scales the dyn column under chal(R_ADDR_LOW)
 pub const MT_CONST_TS_LOW_OFFSET: u8 = 67; // timestamp_offset:         chal(R_TS_LOW)·c
+pub const MT_CONST_ADDR_HIGH: u8 = 68; // inits/teardowns high address bits: chal(R_ADDR_HIGH)·(top_bits<<shift), launcher-deferred value
 
 /// Memory-tuple macro's variable shape (spec §5): role-tagged operands + an
 /// address-space arm/payload. Present only for the memory-tuple routine.
@@ -230,6 +237,9 @@ pub struct Instr2 {
     pub dsts: Vec<Dst>,
     /// Some(..) only for the memory-tuple routine.
     pub memtup: Option<MemTup>,
+    /// Second memory tuple — Some only for product-of-two-tuples routines (id-14
+    /// GrandProductWithoutCaches, id-20 MemoryInitTeardownPair); None otherwise.
+    pub memtup2: Option<MemTup>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -270,6 +280,7 @@ mod tests {
             ],
             dsts: vec![Dst::Slot { e4: false, cell: 1 }],
             memtup: None,
+            memtup2: None,
         };
         assert_eq!(arith.operands.len(), 3);
 
@@ -281,6 +292,7 @@ mod tests {
                 Dst::Materialize { slot: 1, col: 11 },
             ],
             memtup: None,
+            memtup2: None,
         };
         assert_eq!(mac.dsts.len(), 2);
     }

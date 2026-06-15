@@ -45,6 +45,66 @@ fn unpack_operand(l: u16) -> Operand {
     }
 }
 
+/// Encode one memory-tuple side-block: as_arm lane (2 bits), then `roles.len()`
+/// role-tagged `(role, operand)` pairs, an optional as_payload lane (present iff
+/// as_arm != 0), then the R2 folded-constant block (a count lane + `(role,
+/// value)` pairs). Self-described: `decode_memtup` mirrors this exactly.
+fn encode_memtup(mt: &MemTup, lanes: &mut Vec<u16>) {
+    assert!(mt.roles.len() <= 8, "memory-tuple over 8 linear terms");
+    lanes.push(mt.as_arm as u16); // as_arm only (2 bits)
+    for (role, op) in &mt.roles {
+        lanes.push(*role as u16);
+        lanes.push(pack_operand(op));
+    }
+    if let Some(p) = &mt.as_payload {
+        lanes.push(pack_operand(p));
+    }
+    // R2 folded-constant block: count lane, then (role, value) pairs.
+    lanes.push(mt.consts.len() as u16);
+    for (role, op) in &mt.consts {
+        lanes.push(*role as u16);
+        lanes.push(pack_operand(op));
+    }
+}
+
+/// Decode one memory-tuple side-block. `n_roles` is the role count (from the
+/// header for the primary `memtup`; from this block's own leading count for
+/// `memtup2`). Advances `pos` past the whole block.
+fn decode_memtup(lanes: &[u16], pos: &mut usize, n_roles: usize) -> MemTup {
+    let as_arm = (lanes[*pos] & 0x3) as u8;
+    *pos += 1;
+
+    let mut roles = Vec::with_capacity(n_roles);
+    for _ in 0..n_roles {
+        let role = lanes[*pos] as u8;
+        *pos += 1;
+        let op = unpack_operand(lanes[*pos]);
+        *pos += 1;
+        roles.push((role, op));
+    }
+
+    let as_payload = if as_arm != 0 {
+        let p = unpack_operand(lanes[*pos]);
+        *pos += 1;
+        Some(p)
+    } else {
+        None
+    };
+
+    let n_consts = lanes[*pos] as usize;
+    *pos += 1;
+    let mut consts = Vec::with_capacity(n_consts);
+    for _ in 0..n_consts {
+        let role = lanes[*pos] as u8;
+        *pos += 1;
+        let op = unpack_operand(lanes[*pos]);
+        *pos += 1;
+        consts.push((role, op));
+    }
+
+    MemTup { roles, as_arm, as_payload, consts }
+}
+
 fn pack_dst(d: &Dst) -> u16 {
     match *d {
         Dst::Slot { e4, cell } => 0u16 | ((e4 as u16) << 1) | ((cell as u16) << 2),
@@ -71,21 +131,39 @@ fn unpack_dst(l: u16) -> Dst {
 /// may legitimately exceed a single field's bit budget (e.g. a base-arith layer
 /// with >127 live slot cells — a real ISA-width finding, separate from
 /// macro lowering). The arithmetic mirrors `encode2`'s lane layout exactly.
+/// Lane count of ONE memory-tuple side-block (as_arm + role pairs + optional
+/// payload + the folded-constant count lane and its pairs). Shared by both
+/// `memtup` and `memtup2`.
+fn memtup_lane_count(mt: &MemTup) -> usize {
+    let mut n = 1; // as_arm lane
+    n += 2 * mt.roles.len(); // role + operand per term
+    if mt.as_payload.is_some() {
+        n += 1;
+    }
+    n += 1; // n_consts lane
+    n += 2 * mt.consts.len();
+    n
+}
+
 pub fn lane_count(p: &Program2) -> usize {
     let mut n = 0usize;
     for ins in &p.instrs {
         n += 1; // header lane
         match &ins.header {
-            Header::Macro { .. } if ins.memtup.is_some() => {
+            Header::Macro { routine, .. } if ins.memtup.is_some() => {
                 let mt = ins.memtup.as_ref().unwrap();
-                n += 1; // as_arm lane
-                n += 2 * mt.roles.len(); // role + operand per term
-                if mt.as_payload.is_some() {
-                    n += 1;
+                let two = super::routines::routine_is_two_tuples(*routine);
+                if two {
+                    n += 1; // leading role-count lane for the primary tuple
                 }
-                // R2 folded-constant block: a count lane + (role, value) pair each.
-                n += 1; // n_consts lane
-                n += 2 * mt.consts.len();
+                n += memtup_lane_count(mt);
+                // memtup2 presence lane (always emitted for memtup-carrying
+                // instrs), then the second tuple's own block when present.
+                n += 1; // memtup2 presence lane
+                if let Some(mt2) = &ins.memtup2 {
+                    n += 1; // leading role-count lane for the second tuple
+                    n += memtup_lane_count(mt2);
+                }
             }
             Header::Macro { .. } => {
                 n += ins.operands.len();
@@ -126,24 +204,26 @@ pub fn encode2(p: &Program2) -> Vec<u16> {
         match &ins.header {
             Header::Macro { routine, .. } if ins.memtup.is_some() => {
                 let mt = ins.memtup.as_ref().unwrap();
-                debug_assert_eq!(
-                    routine_table()[*routine as usize].shape,
-                    super::routines::Shape::MemTuple
+                let two = super::routines::routine_is_two_tuples(*routine);
+                debug_assert!(
+                    super::routines::routine_carries_memtup(*routine),
+                    "memtup carried only by memtup-shaped routines"
                 );
-                assert!(mt.roles.len() <= 8, "memory-tuple over 8 linear terms");
-                lanes.push(mt.as_arm as u16); // as_arm only (2 bits)
-                for (role, op) in &mt.roles {
-                    lanes.push(*role as u16);
-                    lanes.push(pack_operand(op));
+                // Two-tuple routines (id-14, id-20) carry the SUM of both tuples'
+                // role counts in the header, so each tuple block is self-described
+                // by a leading role-count lane. Single-tuple routines (id-15,
+                // id-19) recover the role count from the header `n_operands`.
+                if two {
+                    lanes.push(mt.roles.len() as u16);
                 }
-                if let Some(p) = &mt.as_payload {
-                    lanes.push(pack_operand(p));
-                }
-                // R2 folded-constant block: count lane, then (role, value) pairs.
-                lanes.push(mt.consts.len() as u16);
-                for (role, op) in &mt.consts {
-                    lanes.push(*role as u16);
-                    lanes.push(pack_operand(op));
+                encode_memtup(mt, &mut lanes);
+                // memtup2 presence lane (0/1), then the second tuple's block when
+                // present (product-of-two-tuples routines).
+                lanes.push(ins.memtup2.is_some() as u16);
+                if let Some(mt2) = &ins.memtup2 {
+                    debug_assert!(two, "memtup2 only on product-of-two-tuples routines");
+                    lanes.push(mt2.roles.len() as u16);
+                    encode_memtup(mt2, &mut lanes);
                 }
             }
             Header::Macro { .. } | Header::Arith { .. } => {
@@ -188,7 +268,7 @@ pub fn decode2(lanes: &[u16], n_instr: usize) -> Vec<Instr2> {
             Header::Macro { routine, n_operands }
         };
 
-        let (operands, memtup, dst_count) = match header {
+        let (operands, memtup, memtup2, dst_count) = match header {
             Header::Arith { op, arity } => {
                 // Dot uses 2*arity operand lanes; all others use arity.
                 let n_ops = if matches!(op, ArithOp::Dot) {
@@ -201,7 +281,7 @@ pub fn decode2(lanes: &[u16], n_instr: usize) -> Vec<Instr2> {
                     pos += 1;
                     o
                 }).collect();
-                (ops, None, 1usize)
+                (ops, None, None, 1usize)
             }
             Header::Macro { routine, n_operands } => {
                 let schema = &routine_table()[routine as usize];
@@ -213,48 +293,37 @@ pub fn decode2(lanes: &[u16], n_instr: usize) -> Vec<Instr2> {
                             pos += 1;
                             o
                         }).collect();
-                        (ops, None, schema.output_count as usize)
+                        (ops, None, None, schema.output_count as usize)
                     }
                     Shape::MemTuple => {
-                        // as_arm lane (2 bits) only — the count is in the header.
-                        let as_arm = (lanes[pos] & 0x3) as u8;
+                        // Mirror `encode2`: two-tuple routines (id-14, id-20) carry
+                        // the SUM of both tuples' role counts in the header, so the
+                        // primary tuple's own role count rides a leading lane;
+                        // single-tuple routines recover it from `n_operands`.
+                        let two = super::routines::routine_is_two_tuples(routine);
+                        let n_roles_primary = if two {
+                            let c = lanes[pos] as usize;
+                            pos += 1;
+                            c
+                        } else {
+                            n_operands as usize
+                        };
+                        let mt = decode_memtup(lanes, &mut pos, n_roles_primary);
+
+                        // memtup2 presence lane (always emitted for memtup-carrying
+                        // instrs), then the second tuple's block (own leading
+                        // role-count lane) when present.
+                        let has_two = lanes[pos] != 0;
                         pos += 1;
-
-                        // `n_operands` role-tagged (role lane, operand lane) pairs.
-                        let count = n_operands as usize;
-                        let mut roles = Vec::with_capacity(count);
-                        for _ in 0..count {
-                            let role = lanes[pos] as u8;
+                        let memtup2 = if has_two {
+                            let n_roles2 = lanes[pos] as usize;
                             pos += 1;
-                            let op = unpack_operand(lanes[pos]);
-                            pos += 1;
-                            roles.push((role, op));
-                        }
-
-                        // as_payload present if as_arm != 0 (i.e., arm is not Empty).
-                        let as_payload = if as_arm != 0 {
-                            let p = unpack_operand(lanes[pos]);
-                            pos += 1;
-                            Some(p)
+                            Some(decode_memtup(lanes, &mut pos, n_roles2))
                         } else {
                             None
                         };
 
-                        // R2 folded-constant block: a count lane, then that many
-                        // (role lane, value lane) pairs.
-                        let n_consts = lanes[pos] as usize;
-                        pos += 1;
-                        let mut consts = Vec::with_capacity(n_consts);
-                        for _ in 0..n_consts {
-                            let role = lanes[pos] as u8;
-                            pos += 1;
-                            let op = unpack_operand(lanes[pos]);
-                            pos += 1;
-                            consts.push((role, op));
-                        }
-
-                        let mt = MemTup { roles, as_arm, as_payload, consts };
-                        (vec![], Some(mt), schema.output_count as usize)
+                        (vec![], Some(mt), memtup2, schema.output_count as usize)
                     }
                 }
             }
@@ -267,7 +336,7 @@ pub fn decode2(lanes: &[u16], n_instr: usize) -> Vec<Instr2> {
             d
         }).collect();
 
-        instrs.push(Instr2 { header, operands, dsts, memtup });
+        instrs.push(Instr2 { header, operands, dsts, memtup, memtup2 });
     }
 
     instrs

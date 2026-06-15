@@ -45,6 +45,7 @@ use crate::interp::{StagedSources, execute};
 use crate::isa::Op;
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::codegen_ir::{CodegenLayer, Domain, ExprNode, ForwardSource, GateKind, gate_kind_input_nodes};
+use cs::gkr_compiler::InitsOrTeardownsTimestampAndValue;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use std::collections::HashMap;
 
@@ -86,6 +87,33 @@ pub fn collect_v2_address_refs(layer: &CodegenLayer) -> Vec<(GKRAddress, Domain)
                 _ => Domain::Base, // defensive; IR invariant: dst is always GateOutput
             };
             out.push((slot.addr, domain));
+        }
+    }
+
+    // R4: the id-20 InitsOrTeardownsInitialPair Teardown arm reads lhs/rhs
+    // timestamp+value BaseLayerMemory columns that live INSIDE the
+    // `timestamp_and_value` enum — the cs lowering does NOT resolve them into
+    // arena Place nodes (only `setup` is), so the source walk above misses them.
+    // Collect them explicitly so the matrix table backs them. (The Init arm
+    // carries none; the setup polys are arena Place nodes already collected.)
+    for gate in layer.gates.iter().chain(&layer.gates_external) {
+        if let GateKind::InitsOrTeardownsInitialPair { timestamp_and_value, .. } = &gate.kind {
+            if let InitsOrTeardownsTimestampAndValue::Teardown {
+                lhs_timestamp,
+                lhs_value,
+                rhs_timestamp,
+                rhs_value,
+            } = timestamp_and_value
+            {
+                for &off in lhs_timestamp
+                    .iter()
+                    .chain(lhs_value)
+                    .chain(rhs_timestamp)
+                    .chain(rhs_value)
+                {
+                    out.push((GKRAddress::BaseLayerMemory(off), Domain::Base));
+                }
+            }
         }
     }
 
