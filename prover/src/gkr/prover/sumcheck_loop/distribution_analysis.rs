@@ -178,6 +178,256 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
         partitioning
     }
+
+    /// Treat the batched description as one abstract quadratic form
+    ///
+    /// ```text
+    ///   acc = const + Σ c_i · x_i        (linear terms)
+    ///             + Σ c_ij · x_i · x_j   (quadratic terms)
+    /// ```
+    ///
+    /// and emit a straight-line evaluation program that uses at most `scratch_space` slots for live
+    /// values, trying to minimise how many times an input has to be (re-)read from memory.
+    ///
+    /// Cost model: every term must have all of its operands resident in scratch at the moment it is
+    /// evaluated, and the running accumulator is itself an intermediate that permanently occupies one
+    /// scratch slot — so the input cache has `scratch_space - 1` slots. Loading an input that was
+    /// loaded before and since evicted is a *re-read*, which is exactly what we minimise.
+    ///
+    /// The optimiser is a simple greedy scheduler: it repeatedly runs whichever term needs the fewest
+    /// new loads (preferring terms whose operands are already resident, then those whose new operands
+    /// are reused the most), and when it must evict it drops the resident input with the fewest
+    /// remaining uses (a Belady-style "evict the one needed furthest in the future" proxy).
+    pub(crate) fn optimize_quadratic_evaluation(
+        &self,
+        scratch_space: usize,
+    ) -> EvaluationPlan<E> {
+        assert!(
+            scratch_space >= 3,
+            "need >=1 slot for the accumulator and >=2 for a quadratic term's operands"
+        );
+        let challenge_constants = BatchedGKRTermDescriptionConstants {
+            external_challenges: GKRExternalChallenges {
+                permutation_argument_linearization_challenges: [E::ONE;
+                    NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+                permutation_argument_additive_part: E::ONE,
+                _marker: core::marker::PhantomData,
+            },
+            lookup_challenges_additive_part: E::ONE,
+            lookup_challenges_multiplicative_part: E::ONE,
+            _marker: core::marker::PhantomData,
+        };
+        let description = self.make_batched_description(&challenge_constants, self.layer);
+
+        // Flatten the whole description into one list of abstract terms over a dense variable set.
+        let mut index_of: BTreeMap<GKRAddress, usize> = BTreeMap::new();
+        let mut addresses: Vec<GKRAddress> = Vec::new();
+        let mut intern = |addr: GKRAddress,
+                          index_of: &mut BTreeMap<GKRAddress, usize>,
+                          addresses: &mut Vec<GKRAddress>|
+         -> usize {
+            if let Some(&i) = index_of.get(&addr) {
+                return i;
+            }
+            let i = addresses.len();
+            addresses.push(addr);
+            index_of.insert(addr, i);
+            i
+        };
+
+        let mut terms: Vec<AbstractTerm<E>> = Vec::new();
+        for part in [
+            &description.quadratic_part_base_by_base,
+            &description.quadratic_part_base_by_ext,
+            &description.quadratic_part_ext_by_ext,
+        ] {
+            for (a, others) in part.iter() {
+                let ai = intern(*a, &mut index_of, &mut addresses);
+                for (b, coeff) in others.iter() {
+                    let bi = intern(*b, &mut index_of, &mut addresses);
+                    terms.push(AbstractTerm {
+                        a: ai,
+                        b: Some(bi),
+                        coeff: *coeff,
+                    });
+                }
+            }
+        }
+        for part in [
+            &description.linear_part_base_by_everything,
+            &description.linear_part_ext_by_everything,
+        ] {
+            for (a, coeff) in part.iter() {
+                let ai = intern(*a, &mut index_of, &mut addresses);
+                terms.push(AbstractTerm {
+                    a: ai,
+                    b: None,
+                    coeff: *coeff,
+                });
+            }
+        }
+
+        greedy_schedule(&addresses, &terms, scratch_space)
+    }
+}
+
+/// One operand-bearing monomial of the quadratic form, over dense variable indices.
+struct AbstractTerm<E> {
+    a: usize,
+    b: Option<usize>,
+    coeff: E,
+}
+
+/// A single instruction of the emitted evaluation program.
+#[derive(Clone, Debug)]
+pub(crate) enum EvalStep<E> {
+    /// Read an input into a scratch slot. `reread` is true if this input had been loaded and evicted
+    /// before — i.e. this load is a re-read, the thing we are trying to avoid.
+    Load { address: GKRAddress, reread: bool },
+    /// Drop a resident input from scratch to make room.
+    Evict { address: GKRAddress },
+    /// `acc += coeff * a * b` (both operands resident).
+    MulAdd {
+        a: GKRAddress,
+        b: GKRAddress,
+        coeff: E,
+    },
+    /// `acc += coeff * a` (operand resident).
+    LinearAdd { address: GKRAddress, coeff: E },
+}
+
+/// The scheduled evaluation program plus its cost summary.
+#[derive(Clone, Debug)]
+pub(crate) struct EvaluationPlan<E> {
+    pub(crate) scratch_space: usize,
+    pub(crate) steps: Vec<EvalStep<E>>,
+    /// Number of distinct inputs; each must be read at least once (the unavoidable floor).
+    pub(crate) distinct_inputs: usize,
+    /// Reads with no scratch at all: every operand of every term re-read each time.
+    pub(crate) naive_reads: usize,
+    pub(crate) total_reads: usize,
+    pub(crate) re_reads: usize,
+}
+
+/// Greedy scratch-allocating scheduler. See [`optimize_quadratic_evaluation`] for the cost model.
+fn greedy_schedule<E: Field>(
+    addresses: &[GKRAddress],
+    terms: &[AbstractTerm<E>],
+    scratch_space: usize,
+) -> EvaluationPlan<E> {
+    let n_vars = addresses.len();
+    // One scratch slot is permanently held by the accumulator intermediate.
+    let input_capacity = scratch_space - 1;
+
+    let operands = |t: &AbstractTerm<E>| -> Vec<usize> {
+        match t.b {
+            Some(b) => vec![t.a, b],
+            None => vec![t.a],
+        }
+    };
+
+    // Remaining future uses of each variable; the Belady proxy for "needed furthest away".
+    let mut remaining_uses = vec![0usize; n_vars];
+    for t in terms.iter() {
+        for op in operands(t) {
+            remaining_uses[op] += 1;
+        }
+    }
+    let naive_reads: usize = terms.iter().map(|t| operands(t).len()).sum();
+
+    let mut resident: BTreeSet<usize> = BTreeSet::new();
+    let mut loaded_before = vec![false; n_vars];
+    let mut executed = vec![false; terms.len()];
+    let mut remaining = terms.len();
+
+    let mut steps = Vec::new();
+    let mut total_reads = 0usize;
+    let mut re_reads = 0usize;
+
+    while remaining > 0 {
+        // Pick the next term: fewest new loads, breaking ties towards loading the most-reused inputs.
+        let mut best: Option<(usize, usize, i64)> = None; // (term, loads, -reuse)
+        for (i, t) in terms.iter().enumerate() {
+            if executed[i] {
+                continue;
+            }
+            let ops = operands(t);
+            let loads = ops.iter().filter(|op| !resident.contains(op)).count();
+            let reuse: i64 = ops
+                .iter()
+                .filter(|op| !resident.contains(op))
+                .map(|&op| remaining_uses[op] as i64)
+                .sum();
+            let key = (loads, -reuse);
+            if best.is_none_or(|(_, bl, br)| key < (bl, br)) {
+                best = Some((i, loads, -reuse));
+            }
+        }
+        let (term_idx, _, _) = best.unwrap();
+        let term = &terms[term_idx];
+        let ops = operands(term);
+
+        // Bring every missing operand into scratch, evicting low-future-use inputs as needed.
+        for &op in ops.iter() {
+            if resident.contains(&op) {
+                continue;
+            }
+            while resident.len() >= input_capacity {
+                let victim = resident
+                    .iter()
+                    .filter(|r| !ops.contains(r))
+                    .copied()
+                    .min_by_key(|r| remaining_uses[*r]);
+                match victim {
+                    Some(v) => {
+                        resident.remove(&v);
+                        steps.push(EvalStep::Evict {
+                            address: addresses[v],
+                        });
+                    }
+                    None => break,
+                }
+            }
+            resident.insert(op);
+            total_reads += 1;
+            let reread = loaded_before[op];
+            if reread {
+                re_reads += 1;
+            }
+            loaded_before[op] = true;
+            steps.push(EvalStep::Load {
+                address: addresses[op],
+                reread,
+            });
+        }
+
+        // Emit the arithmetic and retire the term.
+        match term.b {
+            Some(b) => steps.push(EvalStep::MulAdd {
+                a: addresses[term.a],
+                b: addresses[b],
+                coeff: term.coeff,
+            }),
+            None => steps.push(EvalStep::LinearAdd {
+                address: addresses[term.a],
+                coeff: term.coeff,
+            }),
+        }
+        executed[term_idx] = true;
+        remaining -= 1;
+        for op in ops {
+            remaining_uses[op] -= 1;
+        }
+    }
+
+    EvaluationPlan {
+        scratch_space,
+        steps,
+        distinct_inputs: n_vars,
+        naive_reads,
+        total_reads,
+        re_reads,
+    }
 }
 
 /// Result of partitioning the quadratic interaction graph into clusters.
@@ -553,6 +803,91 @@ mod test {
             } else {
                 println!("    {:?} -> partition {}", address, parts[0]);
             }
+        }
+    }
+
+    #[test]
+    fn optimize_quadratic_evaluation_in_circuit() {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
+        } else {
+            deserialize_from_file(
+                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
+            )
+        };
+
+        let layer_idx = 0;
+        let layer = &circuit.layers[layer_idx];
+
+        let collector =
+            KernelCollector::<F, E>::from_layer(layer, layer_idx, E::ONE, E::ONE, E::ONE, &[], 0);
+
+        let scratch_space = 8;
+        let plan = collector.optimize_quadratic_evaluation(scratch_space);
+
+        println!(
+            "\n===== quadratic-form evaluation plan (scratch = {}, {} for inputs) =====",
+            plan.scratch_space,
+            plan.scratch_space - 1
+        );
+        for (i, step) in plan.steps.iter().enumerate() {
+            match step {
+                EvalStep::Load { address, reread } => println!(
+                    "  {:>4}: LOAD   {:?}{}",
+                    i,
+                    address,
+                    if *reread { "   (RE-READ)" } else { "" }
+                ),
+                EvalStep::Evict { address } => {
+                    println!("  {:>4}: EVICT  {:?}", i, address)
+                }
+                EvalStep::MulAdd { a, b, coeff } => {
+                    println!("  {:>4}: acc += {} * {:?} * {:?}", i, coeff, a, b)
+                }
+                EvalStep::LinearAdd { address, coeff } => {
+                    println!("  {:>4}: acc += {} * {:?}", i, coeff, address)
+                }
+            }
+        }
+
+        println!(
+            "\nfloor (distinct inputs) = {}, no-scratch reads = {}, plan reads = {} ({} of them re-reads)",
+            plan.distinct_inputs, plan.naive_reads, plan.total_reads, plan.re_reads,
+        );
+
+        // Sanity: every input is read at least once, and we never beat the theoretical floor.
+        assert!(plan.total_reads >= plan.distinct_inputs);
+        assert!(plan.total_reads <= plan.naive_reads);
+        assert_eq!(plan.total_reads, plan.distinct_inputs + plan.re_reads);
+    }
+
+    #[test]
+    fn sweep_scratch_vs_rereads() {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
+        } else {
+            deserialize_from_file(
+                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
+            )
+        };
+
+        let layer_idx = 0;
+        let layer = &circuit.layers[layer_idx];
+
+        let collector =
+            KernelCollector::<F, E>::from_layer(layer, layer_idx, E::ONE, E::ONE, E::ONE, &[], 0);
+
+        println!("scratch,input_slots,distinct_inputs,total_reads,re_reads");
+        for scratch in 8..=32 {
+            let plan = collector.optimize_quadratic_evaluation(scratch);
+            println!(
+                "{},{},{},{},{}",
+                scratch,
+                scratch - 1,
+                plan.distinct_inputs,
+                plan.total_reads,
+                plan.re_reads,
+            );
         }
     }
 }
