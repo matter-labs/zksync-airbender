@@ -27,3 +27,15 @@
       `generate_witness_values_delegation` function
     - add handling of the new variant in the `get_delegation_circuit_precomputations` function in
       `src/execution/precomputations.rs`
+
+## Configuration
+
+### Environment variables
+
+- `PROVER_GPU_MEMORY_FRACTION` — optional float in the range `(0.0, 1.0]`. Caps the prover's
+  device allocation to that fraction of **total** GPU memory (it allocates `min(free, total * fraction)`).
+  Useful for co-locating another GPU process (e.g. a SNARK prover) on the same device. When unset —
+  or set to a malformed / out-of-range value — the prover keeps its default behavior of allocating all
+  free GPU memory. Read once in `ProverContextConfig::default()`.
+
+  Example: `PROVER_GPU_MEMORY_FRACTION=0.6` caps the prover at ~60% of the GPU.

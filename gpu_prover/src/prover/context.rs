@@ -40,15 +40,23 @@ pub struct ProverContextConfig {
     pub allocation_block_log_size: u32,
     pub device_slack_blocks_count: usize,
     pub host_allocator_blocks_count: usize,
+    // When set, caps device allocation to this fraction of total GPU memory.
+    // Read from PROVER_GPU_MEMORY_FRACTION env var (0.0 < value <= 1.0).
+    pub max_memory_fraction: Option<f64>,
 }
 
 impl Default for ProverContextConfig {
     fn default() -> Self {
+        let max_memory_fraction = std::env::var("PROVER_GPU_MEMORY_FRACTION")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|&f| f > 0.0 && f <= 1.0);
         Self {
             powers_of_w_coarse_log_count: 12,
             allocation_block_log_size: 22,    // 4 MB blocks
             device_slack_blocks_count: 64,    // 256 MB slack
             host_allocator_blocks_count: 128, // 512 MB host allocator pool
+            max_memory_fraction,
         }
     }
 }
@@ -114,8 +122,12 @@ impl ProverContext {
         let exec_stream = CudaStream::create()?;
         let aux_stream = CudaStream::create()?;
         let h2d_stream = CudaStream::create()?;
-        let (free, _) = memory_get_info()?;
-        let mut device_blocks_count = free >> config.allocation_block_log_size;
+        let (free, total) = memory_get_info()?;
+        let cap = config
+            .max_memory_fraction
+            .map(|f| (total as f64 * f) as usize)
+            .unwrap_or(free);
+        let mut device_blocks_count = cap.min(free) >> config.allocation_block_log_size;
         let device_allocation = loop {
             let result = era_cudart::memory::DeviceAllocation::<u8>::alloc(
                 device_blocks_count << config.allocation_block_log_size,
