@@ -83,6 +83,9 @@ pub fn lane_count(p: &Program2) -> usize {
                 if mt.as_payload.is_some() {
                     n += 1;
                 }
+                // R2 folded-constant block: a count lane + (role, value) pair each.
+                n += 1; // n_consts lane
+                n += 2 * mt.consts.len();
             }
             Header::Macro { .. } => {
                 n += ins.operands.len();
@@ -135,6 +138,12 @@ pub fn encode2(p: &Program2) -> Vec<u16> {
                 }
                 if let Some(p) = &mt.as_payload {
                     lanes.push(pack_operand(p));
+                }
+                // R2 folded-constant block: count lane, then (role, value) pairs.
+                lanes.push(mt.consts.len() as u16);
+                for (role, op) in &mt.consts {
+                    lanes.push(*role as u16);
+                    lanes.push(pack_operand(op));
                 }
             }
             Header::Macro { .. } | Header::Arith { .. } => {
@@ -231,7 +240,20 @@ pub fn decode2(lanes: &[u16], n_instr: usize) -> Vec<Instr2> {
                             None
                         };
 
-                        let mt = MemTup { roles, as_arm, as_payload };
+                        // R2 folded-constant block: a count lane, then that many
+                        // (role lane, value lane) pairs.
+                        let n_consts = lanes[pos] as usize;
+                        pos += 1;
+                        let mut consts = Vec::with_capacity(n_consts);
+                        for _ in 0..n_consts {
+                            let role = lanes[pos] as u8;
+                            pos += 1;
+                            let op = unpack_operand(lanes[pos]);
+                            pos += 1;
+                            consts.push((role, op));
+                        }
+
+                        let mt = MemTup { roles, as_arm, as_payload, consts };
                         (vec![], Some(mt), schema.output_count as usize)
                     }
                 }

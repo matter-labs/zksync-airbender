@@ -26,17 +26,75 @@
 //! Footer dsts: the macro's output address(es) → `Dst::Materialize { slot,
 //! col }`. `output_count == 2` routines (num/den) emit TWO Materialize dsts
 //! derived from the gate's two `dst` output slots.
+//!
+//! # R2 (Phase 2.5) LANE CONTRACT — per cache routine id (R3 consumes this)
+//!
+//! Before R2 the lowering const-folded the cache coefficients/constants away
+//! (one operand per source column only), so the value was NOT reconstructible
+//! from the lane stream. R2 emits those scalars as explicit recoverable `Ldc`
+//! lanes (every non-special scalar is a real entry in `build_const_table_v2`, so
+//! `Ldc{Const,idx}` resolves to the exact value — NEVER a placeholder). The
+//! per-routine layouts below are decodable from the lane stream + the header
+//! `n_operands` ALONE. Challenges remain banks, not lanes (spec §5): the α-power
+//! for VectorizedLookup column `k` is implicit by group index `k`, and the
+//! memory-tuple `perm_additive` + per-role permutation challenges are read by
+//! role from the perm/additive bank.
+//!
+//! - **id 16 `SingleColumnLookup`** (Plain, base). `value = constant + Σ_j
+//!   coeff_j·col_j` (bench_interp/tests.rs::indep_lincomb). Operands:
+//!   `[Ldc(constant), Ldc(coeff_0), col_0, Ldc(coeff_1), col_1, …]`.
+//!   `n_operands = 1 + 2·terms.len()`. Decode: lane 0 is the constant; thereafter
+//!   consecutive `(Ldc coeff, column operand)` pairs to end of stream.
+//!
+//! - **id 17 `VectorizedLookup`** (Plain, mixed). `value = Σ_k α^k·(constant_k +
+//!   Σ_j coeff·col)` (bench_interp/tests.rs::indep_vec_lookup); α^k is implicit by
+//!   COLUMN index `k` (challenge bank, not a lane). The columns are a
+//!   `Vec<LinearComb>` whose per-column term counts VARY (corpus: up to 4 distinct
+//!   counts within one cache), so the layout is SELF-DESCRIBING: each column `k`
+//!   contributes a group `[Ldc(term_count_k), Ldc(constant_k), Ldc(coeff_0),
+//!   col_0, …]`. `n_operands = Σ_k (2 + 2·terms_k)`. Decode: read a `term_count`
+//!   lane (an `Ldc` whose VALUE is the count — counts ≥ 2 are real const-table
+//!   entries; 0/1 are Special), then a `constant` lane, then `term_count`
+//!   `(coeff, column)` pairs; repeat until the stream is consumed (column index =
+//!   group ordinal = `k`). The leading count lane per column is what makes the
+//!   stream round-trip-decodable despite the varying term counts.
+//!
+//! - **id 18 `VectorizedLookupSetup`** (Plain, ext). The value is the row-indexed
+//!   gather `n[gid]` (lookup_helpers.cuh:70), NOT a function of input columns.
+//!   Operand: a SINGLE `Operand::Indirect { e4: true, desc }` whose descriptor is
+//!   `IndirectKind::RowIndexedSetupE4` for the cache's own output address.
+//!   `n_operands = 1`. Decode: resolve the gather to `n[gid]`.
+//!
+//! - **id 19 `MemoryTuple`** (MemTuple shape). `value = perm_additive +
+//!   address_space_term + Σ_role chal[role]·(lane value or constant)`
+//!   (bench_interp/tests.rs::indep_mem_tuple). The MemTup carries: (a) up to 8
+//!   DYNAMIC role-tagged terms in `roles` (the GPU term slots; the header
+//!   `n_operands == roles.len()`), each a base-column `Affine` tagged by its
+//!   forward role index (0..=7); (b) the address-space `as_arm` (0 Empty / 1
+//!   Constant / 2 IsRegister / 3 IsRam) + `as_payload` (Const `Ldc` for Constant,
+//!   else an `Affine` column); (c) the R2 folded CONSTANTS in `consts`, each a
+//!   `(MT_CONST_* role, Ldc value)` pair — the constant address term
+//!   (`MT_CONST_ADDR_LOW`, folded under `chal(R_ADDR_LOW)`), the `timestamp_offset`
+//!   (`MT_CONST_TS_LOW_OFFSET`, under `chal(R_TS_LOW)`), and the special-indirect
+//!   `low_offset` (`MT_CONST_ADDR_LOW_OFFSET`) + dynamic-offset coefficient
+//!   (`MT_CONST_ADDR_LOW_DYN_COEFF`, scaling its value-extra-slot column under
+//!   `chal(R_ADDR_LOW)`). The `consts` block is self-described by a leading count
+//!   lane in `encode2` (NOT the header `n_operands`). `perm_additive` and the
+//!   per-role challenges are NOT lanes — R3 reads them from the perm/additive bank
+//!   by role.
 
 use crate::compiler_v2::gather::{build_descriptor, GatherDescriptor};
 use crate::compiler_v2::matrix_table::MatrixTable;
 use crate::isa::NEG_ONE_U32;
 use crate::isa_v2::{
     lowering_kind, routine_for_cache, routine_for_gate, routine_table, Dst, Header, Instr2, LdcSub,
-    LoweringKind, MemTup, Operand, RoutineId, Shape, SPECIAL_NEG_ONE, SPECIAL_ONE, SPECIAL_ZERO,
+    LoweringKind, MemTup, Operand, RoutineId, Shape, MT_CONST_ADDR_LOW, MT_CONST_ADDR_LOW_DYN_COEFF,
+    MT_CONST_ADDR_LOW_OFFSET, MT_CONST_TS_LOW_OFFSET, SPECIAL_NEG_ONE, SPECIAL_ONE, SPECIAL_ZERO,
 };
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::codegen_ir::{
     gate_kind_input_nodes, CacheKind, CodegenCache, CodegenGate, CodegenLayer, Domain, ExprNode,
+    LinearComb,
 };
 use std::collections::HashMap;
 
@@ -179,22 +237,23 @@ impl<'a> MacroCtx<'a> {
         Operand::Ldc { sub: LdcSub::Const, idx }
     }
 
-    /// Descriptor-sourced base-field scalar (e.g. the memory-tuple
-    /// address-space `Constant(c)` payload). These are routine-seed scalars,
-    /// NOT arena Constant nodes, so they need not be in the dedup table. Special
-    /// 0/1/-1 map to Special lanes; any other value rides a Const lane if the
-    /// table happens to hold it, else a structural placeholder (Ldc{Const,0})
-    /// the Phase-3 oracle re-binds from the descriptor. (Never panics.)
+    /// Descriptor-sourced base-field scalar → a RECOVERABLE `Ldc` lane (R2). The
+    /// memory-tuple address-space `Constant(c)` payload, the cache `LinearComb`
+    /// coefficients/constants, and the memory-tuple folded constants are routine
+    /// scalars, NOT arena Constant nodes — but `build_const_table_v2` now collects
+    /// every one of them, so a non-special value MUST resolve to a real index.
+    /// 0/1/-1 ride the Special lanes. A miss is a bug (the table augmentation
+    /// dropped a scalar): R2 forbids placeholder lanes — the VALUE must be
+    /// recoverable from the lane stream alone.
     fn const_scalar_operand(&self, c: u32) -> Operand {
         if let Some(o) = special_const(c) {
             return o;
         }
-        match self.const_idx.get(&c) {
-            Some(&idx) => Operand::Ldc { sub: LdcSub::Const, idx },
-            // Structural placeholder: the value lives in the descriptor the
-            // interpreter reads; the lane only needs to be a well-formed Const.
-            None => Operand::Ldc { sub: LdcSub::Const, idx: 0 },
-        }
+        let idx = *self
+            .const_idx
+            .get(&c)
+            .expect("R2: cache/memtup scalar must be in the v2 const table");
+        Operand::Ldc { sub: LdcSub::Const, idx }
     }
 
     fn affine_for(&self, addr: &GKRAddress) -> Operand {
@@ -242,9 +301,19 @@ fn push_role(ctx: &MacroCtx, roles: &mut Vec<(u8, Operand)>, role: u8, offset: u
     roles.push((role, ctx.affine_for(&GKRAddress::BaseLayerMemory(offset))));
 }
 
-/// Lower a MemoryTuple cache to the `MemTup` form: role-tagged operands (the
-/// fixed addr/ts/value term indices) + the address-space arm/payload. Mirrors
-/// the term assignment in `build_memory_expr` (cache_relation.rs:91+).
+/// Lower a MemoryTuple cache to the `MemTup` form: role-tagged DYNAMIC terms (the
+/// fixed addr/ts/value term indices) + the address-space arm/payload + the R2
+/// folded-CONSTANT lanes. Mirrors the term assignment in `build_memory_expr`
+/// (cache_relation.rs:91+) AND the value semantics of
+/// `bench_interp/tests.rs::indep_mem_tuple`.
+///
+/// R2: the GPU forward path folds the constant address term, the
+/// `timestamp_offset`, and the special-indirect `low_offset` + dynamic-offset
+/// coefficient into the tuple's permutation/additive seed, so they never occupy a
+/// GPU term slot. They are dropped from `roles` (kept ≤ 8) and instead emitted as
+/// `MemTup::consts` `(MT_CONST_* role, Ldc value)` lanes so R3 can reconstruct the
+/// value. `perm_additive` + the per-role permutation challenges stay in the
+/// challenge bank (read by role), NOT as lanes.
 fn lower_memory_tuple(ctx: &mut MacroCtx, cache: &CodegenCache) -> Instr2 {
     use cs::gkr_compiler::{CompiledAddressStrict, CompiledMemoryTimestamp};
     use cs::definitions::gkr::RamWordRepresentation;
@@ -254,14 +323,24 @@ fn lower_memory_tuple(ctx: &mut MacroCtx, cache: &CodegenCache) -> Instr2 {
     };
     let rel = &descriptor.descriptor;
     let mut roles: Vec<(u8, Operand)> = Vec::new();
+    // R2 folded-constant lanes (recoverable `Ldc` values, tagged by the perm
+    // challenge that multiplies them).
+    let mut consts: Vec<(u8, Operand)> = Vec::new();
 
     // address-space arm/payload.
     let (as_arm, as_payload) = address_space_arm(ctx, &rel.address_space);
 
-    // address terms (low/high) — constants fold into the routine's seed, only
-    // dynamic columns become operands.
+    // address terms (low/high). Dynamic columns become role-tagged terms; the
+    // constant address terms (`Constant`/`ConstantU16`) — previously dropped —
+    // become an `MT_CONST_ADDR_LOW` lane (the GPU folds them into the seed,
+    // multiplied by chal(R_ADDR_LOW): bench_interp/tests.rs:266-271).
     match &rel.address {
-        CompiledAddressStrict::ConstantU16(_) | CompiledAddressStrict::Constant(_) => {}
+        CompiledAddressStrict::ConstantU16(c) => {
+            consts.push((MT_CONST_ADDR_LOW, ctx.const_scalar_operand(*c as u32)));
+        }
+        CompiledAddressStrict::Constant(c) => {
+            consts.push((MT_CONST_ADDR_LOW, ctx.const_scalar_operand(*c)));
+        }
         CompiledAddressStrict::U16Space(off) => {
             push_role(ctx, &mut roles, MEMORY_TUPLE_ADDRESS_LOW_TERM, *off)
         }
@@ -270,15 +349,24 @@ fn lower_memory_tuple(ctx: &mut MacroCtx, cache: &CodegenCache) -> Instr2 {
             push_role(ctx, &mut roles, MEMORY_TUPLE_ADDRESS_HIGH_TERM, *high);
         }
         CompiledAddressStrict::U32SpaceSpecialIndirect {
-            low_base, low_dynamic_offset, high, ..
+            low_base, low_dynamic_offset, low_offset, high,
         } => {
             push_role(ctx, &mut roles, MEMORY_TUPLE_ADDRESS_LOW_TERM, *low_base);
             push_role(ctx, &mut roles, MEMORY_TUPLE_ADDRESS_HIGH_TERM, *high);
-            // The deferred low-dynamic term is appended last (next free slot)
-            // by `build_memory_expr`; tag it as a value-extra slot structurally.
-            if let Some((_, dyn_off)) = low_dynamic_offset {
+            // The deferred low-dynamic term: the column rides a value-extra term
+            // slot (build_memory_expr appends it last); its COEFFICIENT
+            // (`dyn_coeff`) is a folded constant scaling that column under
+            // chal(R_ADDR_LOW) (bench_interp/tests.rs:291-295).
+            if let Some((dyn_coeff, dyn_off)) = low_dynamic_offset {
                 push_role(ctx, &mut roles, MEMORY_TUPLE_VALUE_HIGH_EXTRA_TERM, *dyn_off);
+                consts.push((
+                    MT_CONST_ADDR_LOW_DYN_COEFF,
+                    ctx.const_scalar_operand(*dyn_coeff as u32),
+                ));
             }
+            // The constant low_offset folds into the seed under chal(R_ADDR_LOW)
+            // (bench_interp/tests.rs:296).
+            consts.push((MT_CONST_ADDR_LOW_OFFSET, ctx.const_scalar_operand(*low_offset)));
         }
         CompiledAddressStrict::U32SpaceGeneric(..) => {
             // Unsupported on the GPU memory path too (cache_relation.rs:198).
@@ -286,10 +374,17 @@ fn lower_memory_tuple(ctx: &mut MacroCtx, cache: &CodegenCache) -> Instr2 {
         }
     }
 
-    // timestamp terms (low/high).
+    // timestamp terms (low/high). The dynamic columns are role-tagged; the
+    // constant `timestamp_offset` — previously dropped — becomes an
+    // `MT_CONST_TS_LOW_OFFSET` lane (folded under chal(R_TS_LOW):
+    // bench_interp/tests.rs:306).
     if let CompiledMemoryTimestamp::Normal(ts) = &rel.timestamp {
         push_role(ctx, &mut roles, MEMORY_TUPLE_TIMESTAMP_LOW_TERM, ts[0]);
         push_role(ctx, &mut roles, MEMORY_TUPLE_TIMESTAMP_HIGH_TERM, ts[1]);
+        consts.push((
+            MT_CONST_TS_LOW_OFFSET,
+            ctx.const_scalar_operand(rel.timestamp_offset),
+        ));
     }
 
     // value terms.
@@ -307,17 +402,19 @@ fn lower_memory_tuple(ctx: &mut MacroCtx, cache: &CodegenCache) -> Instr2 {
         }
     }
 
-    // The MemTup carries up to 8 linear terms (forward/kernels/mod.rs:31).
+    // The MemTup carries up to 8 DYNAMIC linear terms (forward/kernels/mod.rs:31);
+    // folded constants live in `consts`, NOT the 8 term slots.
     debug_assert!(roles.len() <= 8, "memory-tuple over 8 linear terms");
 
     let dst = ctx.materialize_for(&cache.out.1);
-    // n_operands = the number of role-tagged terms (carried in the header).
+    // n_operands = the number of role-tagged DYNAMIC terms (carried in the
+    // header). The folded-constant count is self-described in the serialization.
     let n_operands = roles.len() as u8;
     Instr2 {
         header: Header::Macro { routine: RoutineId::MemoryTuple as u8, n_operands },
         operands: Vec::new(),
         dsts: vec![dst],
-        memtup: Some(MemTup { roles, as_arm, as_payload }),
+        memtup: Some(MemTup { roles, as_arm, as_payload, consts }),
     }
 }
 
@@ -377,27 +474,73 @@ fn macro_gate_dsts(gate: &CodegenGate, output_count: u8, ctx: &MacroCtx) -> Vec<
     dsts
 }
 
-/// Lower one cache. MemoryTuple → MemTup form; lookup caches → a gather-backed
-/// macro reading their input columns. Always returns an `Instr2` (every cache
-/// produces a forward output).
+/// Emit the operand lanes for one `LinearComb` column: lane 0 = `Ldc(constant)`,
+/// then per term an `Ldc(coeff)` IMMEDIATELY FOLLOWED by the term's column
+/// `Operand`. So `[Ldc(constant), Ldc(coeff_0), col_0, Ldc(coeff_1), col_1, …]`
+/// (`1 + 2·terms.len()` lanes). R2: the coefficients + constant were previously
+/// dropped (const-folded); they now ride recoverable `Ldc` lanes so R3 can
+/// reconstruct `constant + Σ coeff·col` (bench_interp/tests.rs::indep_lincomb).
+/// The term's source node is the `LinearComb.terms[j].1` NodeId (NOT the cache's
+/// flattened `inputs` list, whose order is the dependency walk, not the column
+/// walk).
+fn push_lincomb_lanes(ctx: &mut MacroCtx, arena: &[ExprNode], col: &LinearComb, out: &mut Vec<Operand>) {
+    out.push(ctx.const_scalar_operand(col.constant));
+    for &(coeff, node) in &col.terms {
+        out.push(ctx.const_scalar_operand(coeff));
+        out.push(ctx.operand_for(arena, node.0 as usize));
+    }
+}
+
+/// Lower one cache. MemoryTuple → MemTup form; lookup caches → a macro carrying
+/// the column coefficients + the source columns (R2) or the setup gather. Always
+/// returns an `Instr2` (every cache produces a forward output).
+///
+/// LANE CONTRACT (R3 consumes this — see the module-level doc):
+///  - id 16 SingleColumnLookup: `[Ldc(constant), (Ldc(coeff), col)…]` for the one
+///    column. `n_operands = 1 + 2·terms`.
+///  - id 17 VectorizedLookup: per column k, a self-describing group
+///    `[Ldc(term_count_k), Ldc(constant_k), (Ldc(coeff), col)…]`; α^k is implicit
+///    by group index k (challenge bank, not a lane). `n_operands = Σ_k (2 + 2·terms_k)`.
+///  - id 18 VectorizedLookupSetup: a SINGLE `Operand::Indirect` (RowIndexedSetupE4)
+///    resolving the row-indexed gather `n[gid]` of the cache's own output.
 pub fn lower_cache(cache: &CodegenCache, arena: &[ExprNode], ctx: &mut MacroCtx) -> Instr2 {
     if matches!(cache.kind, CacheKind::MemoryTuple { .. }) {
         return lower_memory_tuple(ctx, cache);
     }
     let routine = routine_for_cache(&cache.kind).expect("cache must have a routine");
     let schema = &routine_table()[routine as u8 as usize];
-
-    // Operand lanes — one per input column node (the linear-comb columns being
-    // looked up). All lookup-cache routines are Plain; the count rides the header.
     debug_assert!(
         matches!(schema.shape, Shape::Plain),
         "lookup cache routine must be Plain-shaped"
     );
-    let operands: Vec<Operand> = cache
-        .inputs
-        .iter()
-        .map(|id| ctx.operand_for(arena, id.0 as usize))
-        .collect();
+
+    let operands: Vec<Operand> = match &cache.kind {
+        // id 16: one base column. value = constant + Σ coeff·col.
+        CacheKind::SingleColumnLookup { column, .. } => {
+            let mut ops = Vec::with_capacity(1 + 2 * column.terms.len());
+            push_lincomb_lanes(ctx, arena, column, &mut ops);
+            ops
+        }
+        // id 17: value = Σ_k α^k·(constant_k + Σ coeff·col). Self-describing per
+        // column: a `Ldc(term_count_k)` lane, then the lincomb group. The count
+        // lane lets R3 segment the stream unambiguously even though columns have
+        // differing term counts (corpus: up to 4 distinct counts within one cache).
+        CacheKind::VectorizedLookup { columns, .. } => {
+            let mut ops = Vec::new();
+            for col in columns {
+                ops.push(ctx.const_scalar_operand(col.terms.len() as u32));
+                push_lincomb_lanes(ctx, arena, col, &mut ops);
+            }
+            ops
+        }
+        // id 18: the value is the row-indexed setup gather n[gid] (NOT a function
+        // of input columns); emit it as a single RowIndexedSetupE4 Indirect of the
+        // cache's own output address so R3 resolves n[gid] (lookup_helpers.cuh:70).
+        CacheKind::VectorizedLookupSetup => {
+            vec![Operand::Indirect { e4: true, desc: ctx.gather_index_for(cache.out.1, true) }]
+        }
+        CacheKind::MemoryTuple { .. } => unreachable!("MemoryTuple handled above"),
+    };
     let n_operands = operands.len() as u8;
 
     // Footer dst: the cache out address (cache.out.1). All lookup caches have
@@ -426,9 +569,10 @@ pub fn cache_kind_by_addr(layer: &CodegenLayer) -> HashMap<GKRAddress, CacheKind
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler_v2::challenges::build_const_table;
+    use crate::compiler_v2::challenges::build_const_table_v2;
     use crate::compiler_v2::{compile_forward_v2, FwdParams2};
-    use crate::isa_v2::{Header, Operand, RoutineId};
+    use crate::isa::NEG_ONE_U32;
+    use crate::isa_v2::{Header, LdcSub, Operand, RoutineId};
     use crate::test_support::{all_fixtures, fixture_path};
     use gkr_design_space::import::load_circuit;
 
@@ -442,6 +586,27 @@ mod tests {
         MacroCtx::new(mt, ci, ck)
     }
 
+    /// Resolve an `Ldc` operand back to the base-field u32 it encodes, using the
+    /// const table (Const lanes) and the fixed Special lanes (0/1/-1). Panics on
+    /// a non-Ldc operand or an out-of-range Const index — exactly the property
+    /// R2 must guarantee: every emitted coefficient/constant lane is a *value*,
+    /// not a placeholder. `consts` is `build_const_table_v2(layer)`.
+    fn ldc_value(op: &Operand, consts: &[u32]) -> u32 {
+        match op {
+            Operand::Ldc { sub: LdcSub::Special, idx } => match *idx {
+                SPECIAL_ZERO => 0,
+                SPECIAL_ONE => 1,
+                SPECIAL_NEG_ONE => NEG_ONE_U32,
+                other => panic!("unknown Special idx {other}"),
+            },
+            Operand::Ldc { sub: LdcSub::Const, idx } => consts
+                .get(*idx as usize)
+                .copied()
+                .unwrap_or_else(|| panic!("Const idx {idx} out of table (len {})", consts.len())),
+            other => panic!("expected an Ldc lane, got {other:?}"),
+        }
+    }
+
     #[test]
     fn lookup_pair_emits_two_materialize_dsts() {
         let c = load_circuit(&fixture_path("blake2_g_function_codegen_ir_gkr.json")).unwrap();
@@ -453,7 +618,7 @@ mod tests {
         for layer in &c.circuit.layers {
             let arena = &layer.arena.nodes;
             let mt = MatrixTable::build(layer);
-            let consts = build_const_table(arena);
+            let consts = build_const_table_v2(layer);
             let ci: HashMap<u32, u16> =
                 consts.iter().enumerate().map(|(i, v)| (*v, i as u16)).collect();
             let ck = cache_kind_by_addr(layer);
@@ -508,9 +673,22 @@ mod tests {
 
     #[test]
     fn memory_tuple_roles_and_arm() {
-        // Find a MemoryTuple cache in any fixture and lower it.
+        use crate::isa_v2::{
+            MT_CONST_ADDR_LOW, MT_CONST_ADDR_LOW_DYN_COEFF, MT_CONST_ADDR_LOW_OFFSET,
+            MT_CONST_TS_LOW_OFFSET,
+        };
+        use cs::gkr_compiler::{CompiledAddressStrict, CompiledMemoryTimestamp};
+
+        // Lower EVERY MemoryTuple cache in the corpus and check the dynamic
+        // role-tagged terms (≤ 8 Affine columns) AND the R2 folded-CONSTANT lanes
+        // (recoverable `Ldc` values tagged by a `MT_CONST_*` role).
         let mut found = false;
-        'outer: for p in all_fixtures() {
+        // Non-vacuity: at least one memtup must carry each folded-constant kind.
+        let mut saw_addr_const = false;
+        let mut saw_ts_offset = false;
+        let mut saw_indirect_offset = false;
+        let mut saw_indirect_dyn = false;
+        for p in all_fixtures() {
             let c = match load_circuit(&p) {
                 Ok(c) => c,
                 Err(_) => continue,
@@ -518,14 +696,13 @@ mod tests {
             for layer in &c.circuit.layers {
                 let arena = &layer.arena.nodes;
                 let mt = MatrixTable::build(layer);
-                let consts = build_const_table(arena);
+                let consts = build_const_table_v2(layer);
                 let ci: HashMap<u32, u16> =
                     consts.iter().enumerate().map(|(i, v)| (*v, i as u16)).collect();
                 let ck = cache_kind_by_addr(layer);
                 for cache in &layer.caches {
-                    if !matches!(cache.kind, CacheKind::MemoryTuple { .. }) {
-                        continue;
-                    }
+                    let CacheKind::MemoryTuple { descriptor } = &cache.kind else { continue };
+                    let rel = &descriptor.descriptor;
                     let mut ctx = ctx_for(layer, &mt, &ci, &ck);
                     let instr = lower_cache(cache, arena, &mut ctx);
                     assert!(
@@ -534,7 +711,15 @@ mod tests {
                     );
                     let mt_form = instr.memtup.as_ref().expect("MemoryTuple lowers to MemTup");
                     assert!(mt_form.as_arm <= 3, "as_arm in 0..=3 (got {})", mt_form.as_arm);
-                    // Role tags must be valid term indices (0..=7).
+                    // n_operands carries the DYNAMIC term count only (header).
+                    if let Header::Macro { n_operands, .. } = instr.header {
+                        assert_eq!(
+                            n_operands as usize,
+                            mt_form.roles.len(),
+                            "memtup n_operands == dynamic role count (consts are out-of-band)"
+                        );
+                    }
+                    // Role tags must be valid term indices (0..=7) on Affine cols.
                     for (role, op) in &mt_form.roles {
                         assert!(*role <= 7, "role index in 0..=7");
                         assert!(
@@ -542,7 +727,7 @@ mod tests {
                             "memory-tuple role columns are committed base columns (Affine)"
                         );
                     }
-                    assert!(mt_form.roles.len() <= 8, "<= 8 linear terms");
+                    assert!(mt_form.roles.len() <= 8, "<= 8 dynamic linear terms");
                     // Empty arm has no payload; non-empty carries one.
                     if mt_form.as_arm == AS_ARM_EMPTY {
                         assert!(mt_form.as_payload.is_none());
@@ -552,12 +737,235 @@ mod tests {
                             "non-empty as_arm carries a payload"
                         );
                     }
+                    // R2 folded constants: each is a recoverable `Ldc` value on a
+                    // known `MT_CONST_*` role.
+                    for (role, op) in &mt_form.consts {
+                        assert!(
+                            matches!(
+                                *role,
+                                MT_CONST_ADDR_LOW
+                                    | MT_CONST_ADDR_LOW_OFFSET
+                                    | MT_CONST_ADDR_LOW_DYN_COEFF
+                                    | MT_CONST_TS_LOW_OFFSET
+                            ),
+                            "unknown memtup const role {role}"
+                        );
+                        assert!(
+                            matches!(op, Operand::Ldc { .. }),
+                            "folded constant lanes are Ldc (value recoverable)"
+                        );
+                    }
+                    // Cross-check the const lanes against the descriptor: every
+                    // expected folded constant must appear with the right value.
+                    let val_of = |role: u8| -> Option<u32> {
+                        mt_form
+                            .consts
+                            .iter()
+                            .find(|(r, _)| *r == role)
+                            .map(|(_, op)| ldc_value(op, &consts))
+                    };
+                    match &rel.address {
+                        CompiledAddressStrict::ConstantU16(c) => {
+                            assert_eq!(val_of(MT_CONST_ADDR_LOW), Some(*c as u32));
+                            saw_addr_const = true;
+                        }
+                        CompiledAddressStrict::Constant(c) => {
+                            assert_eq!(val_of(MT_CONST_ADDR_LOW), Some(*c));
+                            saw_addr_const = true;
+                        }
+                        CompiledAddressStrict::U32SpaceSpecialIndirect {
+                            low_dynamic_offset,
+                            low_offset,
+                            ..
+                        } => {
+                            assert_eq!(val_of(MT_CONST_ADDR_LOW_OFFSET), Some(*low_offset));
+                            saw_indirect_offset = true;
+                            if let Some((dyn_coeff, _)) = low_dynamic_offset {
+                                assert_eq!(
+                                    val_of(MT_CONST_ADDR_LOW_DYN_COEFF),
+                                    Some(*dyn_coeff as u32)
+                                );
+                                saw_indirect_dyn = true;
+                            }
+                        }
+                        _ => {}
+                    }
+                    if let CompiledMemoryTimestamp::Normal(_) = &rel.timestamp {
+                        assert_eq!(val_of(MT_CONST_TS_LOW_OFFSET), Some(rel.timestamp_offset));
+                        saw_ts_offset = true;
+                    }
                     found = true;
-                    break 'outer;
                 }
             }
         }
         assert!(found, "no MemoryTuple cache found in the corpus");
+        assert!(saw_addr_const, "no constant-address memtup (folded-const test vacuous)");
+        assert!(saw_ts_offset, "no normal-timestamp memtup (ts-offset const test vacuous)");
+        assert!(saw_indirect_offset, "no special-indirect memtup (low_offset test vacuous)");
+        assert!(saw_indirect_dyn, "no special-indirect dyn-offset memtup (dyn-coeff test vacuous)");
+    }
+
+    #[test]
+    fn single_column_lookup_emits_constant_and_coeff_lanes() {
+        // id 16: operands = [Ldc(constant), (Ldc(coeff), col)…]; the value
+        // `constant + Σ coeff·col` must be reconstructible from the lanes alone
+        // (bench_interp/tests.rs::indep_lincomb). Lower every such cache and check
+        // the layout + that each coeff/constant resolves to its descriptor value.
+        let mut found = false;
+        for p in all_fixtures() {
+            let Ok(c) = load_circuit(&p) else { continue };
+            for layer in &c.circuit.layers {
+                let arena = &layer.arena.nodes;
+                let mt = MatrixTable::build(layer);
+                let consts = build_const_table_v2(layer);
+                let ci: HashMap<u32, u16> =
+                    consts.iter().enumerate().map(|(i, v)| (*v, i as u16)).collect();
+                let ck = cache_kind_by_addr(layer);
+                for cache in &layer.caches {
+                    let CacheKind::SingleColumnLookup { column, .. } = &cache.kind else { continue };
+                    let mut ctx = ctx_for(layer, &mt, &ci, &ck);
+                    let instr = lower_cache(cache, arena, &mut ctx);
+                    let Header::Macro { routine, n_operands } = instr.header else {
+                        panic!("SingleColumnLookup must lower to a Macro header");
+                    };
+                    assert_eq!(routine, RoutineId::SingleColumnLookup as u8);
+                    assert_eq!(
+                        n_operands as usize,
+                        1 + 2 * column.terms.len(),
+                        "id16 layout: 1 const + 2 lanes per term"
+                    );
+                    assert_eq!(n_operands as usize, instr.operands.len());
+                    // lane 0 = constant.
+                    assert_eq!(ldc_value(&instr.operands[0], &consts), column.constant);
+                    // per term: (Ldc coeff, column operand).
+                    for (j, &(coeff, _node)) in column.terms.iter().enumerate() {
+                        let coeff_lane = &instr.operands[1 + 2 * j];
+                        let col_lane = &instr.operands[1 + 2 * j + 1];
+                        assert_eq!(ldc_value(coeff_lane, &consts), coeff, "coeff lane {j}");
+                        assert!(
+                            !matches!(col_lane, Operand::Ldc { sub: LdcSub::Const, .. })
+                                || ldc_value(col_lane, &consts) == coeff,
+                            "column lane must be a source operand, not the coeff again"
+                        );
+                    }
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "no SingleColumnLookup cache in the corpus (test vacuous)");
+    }
+
+    #[test]
+    fn vectorized_lookup_emits_self_describing_column_groups() {
+        // id 17: per column k a group [Ldc(term_count_k), Ldc(constant_k),
+        // (Ldc(coeff), col)…]. Decode the stream using ONLY the count lanes +
+        // n_operands and confirm it segments into exactly `columns.len()` groups
+        // matching each column's term count, constant, and coefficients.
+        let mut found = false;
+        let mut saw_varying = false; // a cache with >1 distinct term count
+        for p in all_fixtures() {
+            let Ok(c) = load_circuit(&p) else { continue };
+            for layer in &c.circuit.layers {
+                let arena = &layer.arena.nodes;
+                let mt = MatrixTable::build(layer);
+                let consts = build_const_table_v2(layer);
+                let ci: HashMap<u32, u16> =
+                    consts.iter().enumerate().map(|(i, v)| (*v, i as u16)).collect();
+                let ck = cache_kind_by_addr(layer);
+                for cache in &layer.caches {
+                    let CacheKind::VectorizedLookup { columns, .. } = &cache.kind else { continue };
+                    let mut ctx = ctx_for(layer, &mt, &ci, &ck);
+                    let instr = lower_cache(cache, arena, &mut ctx);
+                    let Header::Macro { routine, n_operands } = instr.header else {
+                        panic!("VectorizedLookup must lower to a Macro header");
+                    };
+                    assert_eq!(routine, RoutineId::VectorizedLookup as u8);
+                    let expected: usize =
+                        columns.iter().map(|col| 2 + 2 * col.terms.len()).sum();
+                    assert_eq!(n_operands as usize, expected, "id17 group layout");
+                    assert_eq!(n_operands as usize, instr.operands.len());
+
+                    let distinct: std::collections::BTreeSet<usize> =
+                        columns.iter().map(|col| col.terms.len()).collect();
+                    if distinct.len() > 1 {
+                        saw_varying = true;
+                    }
+
+                    // SELF-DESCRIBING DECODE: walk the stream using only count
+                    // lanes + n_operands; reconstruct the column segmentation and
+                    // match it against the descriptor columns.
+                    let ops = &instr.operands;
+                    let mut pos = 0usize;
+                    for (k, col) in columns.iter().enumerate() {
+                        let term_count = ldc_value(&ops[pos], &consts) as usize;
+                        pos += 1;
+                        assert_eq!(term_count, col.terms.len(), "col {k} term-count lane");
+                        let constant = ldc_value(&ops[pos], &consts);
+                        pos += 1;
+                        assert_eq!(constant, col.constant, "col {k} constant lane");
+                        for (j, &(coeff, _)) in col.terms.iter().enumerate() {
+                            assert_eq!(
+                                ldc_value(&ops[pos], &consts),
+                                coeff,
+                                "col {k} term {j} coeff lane"
+                            );
+                            pos += 1; // coeff
+                            pos += 1; // column operand
+                        }
+                    }
+                    assert_eq!(pos, ops.len(), "decode consumed exactly n_operands lanes");
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "no VectorizedLookup cache in the corpus (test vacuous)");
+        assert!(
+            saw_varying,
+            "no VectorizedLookup with varying per-column term counts — the count-lane \
+             scheme would be untested (the self-describing requirement is the whole point)"
+        );
+    }
+
+    #[test]
+    fn vectorized_lookup_setup_emits_row_indexed_gather() {
+        // id 18: the value is the row-indexed setup gather n[gid], not a function
+        // of input columns; it must lower to a SINGLE RowIndexedSetupE4 Indirect.
+        use crate::isa_v2::IndirectKind;
+        let mut found = false;
+        for p in all_fixtures() {
+            let Ok(c) = load_circuit(&p) else { continue };
+            for layer in &c.circuit.layers {
+                let arena = &layer.arena.nodes;
+                let mt = MatrixTable::build(layer);
+                let consts = build_const_table_v2(layer);
+                let ci: HashMap<u32, u16> =
+                    consts.iter().enumerate().map(|(i, v)| (*v, i as u16)).collect();
+                let ck = cache_kind_by_addr(layer);
+                for cache in &layer.caches {
+                    if !matches!(cache.kind, CacheKind::VectorizedLookupSetup) {
+                        continue;
+                    }
+                    let mut ctx = ctx_for(layer, &mt, &ci, &ck);
+                    let instr = lower_cache(cache, arena, &mut ctx);
+                    let Header::Macro { routine, n_operands } = instr.header else {
+                        panic!("VectorizedLookupSetup must lower to a Macro header");
+                    };
+                    assert_eq!(routine, RoutineId::VectorizedLookupSetup as u8);
+                    assert_eq!(n_operands, 1, "setup gather is a single Indirect lane");
+                    let Operand::Indirect { e4, desc } = instr.operands[0] else {
+                        panic!("setup operand must be Indirect, got {:?}", instr.operands[0]);
+                    };
+                    assert!(e4, "setup gather is ext (E4)");
+                    assert_eq!(
+                        ctx.gathers[desc as usize].kind,
+                        IndirectKind::RowIndexedSetupE4,
+                        "setup gather must be RowIndexedSetupE4"
+                    );
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "no VectorizedLookupSetup cache in the corpus (test vacuous)");
     }
 
     #[test]
@@ -681,7 +1089,7 @@ mod tests {
             for layer in &c.circuit.layers {
                 let arena = &layer.arena.nodes;
                 let mt = MatrixTable::build(layer);
-                let consts = build_const_table(arena);
+                let consts = build_const_table_v2(layer);
                 let ci: HashMap<u32, u16> =
                     consts.iter().enumerate().map(|(i, v)| (*v, i as u16)).collect();
                 let ck = cache_kind_by_addr(layer);
@@ -710,6 +1118,42 @@ mod tests {
         assert_eq!(
             lowered, total_macro_gates,
             "every Macro gate must produce exactly one lowering (zero skipped)"
+        );
+    }
+
+    #[test]
+    fn compiled_programs_encode_decode_roundtrip_corpus_wide() {
+        // The R2 lane changes (the larger lookup operand streams + the memtup
+        // folded-constant block) must round-trip through the real encoder on every
+        // compiled program — otherwise R3 cannot read them back. Non-vacuous:
+        // every fixture × layer compiles AND at least one memtup with folded
+        // constants round-trips bit-exact.
+        use crate::isa_v2::encode::{decode2, encode2};
+        let mut saw_memtup_consts = false;
+        for p in all_fixtures() {
+            let name = p.file_name().unwrap().to_str().unwrap().to_string();
+            let c = load_circuit(&p).unwrap_or_else(|e| panic!("load {name}: {e:?}"));
+            for (li, layer) in c.circuit.layers.iter().enumerate() {
+                let Some(g) = c.graphs.get(li) else { continue };
+                let cf = compile_forward_v2(layer, g, FwdParams2::default());
+                for ins in &cf.program.instrs {
+                    if let Some(mt) = &ins.memtup {
+                        if !mt.consts.is_empty() {
+                            saw_memtup_consts = true;
+                        }
+                    }
+                }
+                let lanes = encode2(&cf.program);
+                let back = decode2(&lanes, cf.program.instrs.len());
+                assert_eq!(
+                    back, cf.program.instrs,
+                    "{name} L{li}: encode2/decode2 not bit-exact (R2 lane layout)"
+                );
+            }
+        }
+        assert!(
+            saw_memtup_consts,
+            "no memtup folded-constant block in the corpus (round-trip test under-covers R2)"
         );
     }
 }

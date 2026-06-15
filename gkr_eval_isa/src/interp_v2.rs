@@ -374,19 +374,28 @@ fn read_ldc(src: &SourceBanks, sub: LdcSub, idx: u16) -> Ext {
 ///     each shift their lane(s) by the additive challenge γ and fold a
 ///     setup multiplicity — challenges are banks, not operand lanes (spec §5).
 ///   - `MaskIdentity` is `(v−1)·m+1` (PK_MASK_IDENTITY, lookup_helpers.cuh).
-///   - `MaterializeSingleLookup` (id 12) / `VectorLookupGate` (id 11) /
-///     `SingleColumnLookup` (id 16) / `VectorizedLookup` (id 17) fold their input
-///     COLUMNS by per-term lincomb / α-power coefficients (cache_relation.rs:347/
-///     382, gkr_forward_generation.cuh E_FMA_ALPHA) — the coefficients live on
-///     the forward setup, NOT in the operand lanes.
-///   - `MemoryTuple` (id 19) / `GrandProductWithoutCaches` (id 14) /
-///     `MaterializeGrandProductTerm` (id 15) fold a `constant_term` (perm-additive
-///     + the const-folded address/timestamp/value offsets) the v2 lowering drops
-///     (macros.rs "constants fold into the routine's seed"), plus per-role
-///     challenges (cache_relation.rs:259-298).
+///   - `MaterializeSingleLookup` (id 12) / `VectorLookupGate` (id 11) fold their
+///     input COLUMNS by per-term lincomb / α-power coefficients
+///     (cache_relation.rs:347/382, gkr_forward_generation.cuh E_FMA_ALPHA) — the
+///     gate-form coefficients live on the forward setup, NOT in the operand lanes.
+///   - `SingleColumnLookup` (id 16) / `VectorizedLookup` (id 17): post-R2 the
+///     per-term coefficients + column constants RIDE THE OPERAND LANES as
+///     recoverable `Ldc` lanes (see the `compiler_v2::macros` module-level lane
+///     contract). id 16 = `[Ldc(const), (Ldc(coeff), col)…]`; id 17 = per-column
+///     self-describing groups `[Ldc(term_count), Ldc(const), (Ldc(coeff), col)…]`
+///     with α^k implicit by column index k (challenge bank). R3 reconstructs
+///     `constant + Σ coeff·col` (id 16) / `Σ_k α^k·(…)` (id 17) from the lanes;
+///     the `todo!` is the R3 accumulation, not a lossy stream.
+///   - `MemoryTuple` (id 19): post-R2 the folded base-field constants (constant
+///     address term, `timestamp_offset`, special-indirect `low_offset` +
+///     dynamic-offset coeff) ride `MemTup::consts` as `(MT_CONST_* role, Ldc)`
+///     lanes; the dynamic terms ride `roles`. `perm_additive` + the per-role
+///     permutation challenges stay banks (read by role). `GrandProductWithoutCaches`
+///     (id 14) / `MaterializeGrandProductTerm` (id 15) still fold a `constant_term`
+///     on the forward setup, plus per-role challenges (cache_relation.rs:259-298).
 ///   - `VectorizedLookupSetup` (id 18) is a row-indexed gather `n[gid]`
-///     (lookup_helpers.cuh); the lowered operands are the input columns, not the
-///     gathered value.
+///     (lookup_helpers.cuh); post-R2 the operand is the single RowIndexedSetupE4
+///     `Indirect` resolving that gather (not the input columns).
 /// `MemoryInitTeardownPair` (id 20) is not emitted by the corpus at all (probe
 /// STEP 0) and stays `todo!`.
 fn exec_macro(

@@ -186,18 +186,38 @@ pub enum Header {
     Macro { routine: u8, n_operands: u8 },
 }
 
+/// R2 (Phase 2.5) folded-constant role tags for `MemTup::consts`. These name the
+/// base-field scalars the GPU forward path FOLDS into the tuple's
+/// permutation/additive seed (so they are absent from the 8 GPU term slots), but
+/// which the CPU interpreter (R3) must reconstruct from the lane stream. Each is
+/// a `(role, Ldc)` pair: the `Ldc` carries the recoverable scalar VALUE, the role
+/// says which permutation challenge multiplies it (mirroring
+/// `bench_interp/tests.rs::indep_mem_tuple`). They live in a numeric space
+/// disjoint from the 0..=7 dynamic-term role indices.
+pub const MT_CONST_ADDR_LOW: u8 = 64; // constant address term:   chal(R_ADDR_LOW)·c
+pub const MT_CONST_ADDR_LOW_OFFSET: u8 = 65; // special-indirect low_offset: chal(R_ADDR_LOW)·c
+pub const MT_CONST_ADDR_LOW_DYN_COEFF: u8 = 66; // special-indirect dyn coeff: scales the dyn column under chal(R_ADDR_LOW)
+pub const MT_CONST_TS_LOW_OFFSET: u8 = 67; // timestamp_offset:         chal(R_TS_LOW)·c
+
 /// Memory-tuple macro's variable shape (spec §5): role-tagged operands + an
 /// address-space arm/payload. Present only for the memory-tuple routine.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MemTup {
-    /// 0..=8 counted linear terms, each tagged with its production role index
-    /// (addr lo/hi, timestamp lo/hi, value parts — forward/kernels/mod.rs:31).
+    /// 0..=8 counted DYNAMIC linear terms, each tagged with its production role
+    /// index (addr lo/hi, timestamp lo/hi, value parts — forward/kernels/mod.rs:31).
+    /// These are the GPU's 8 term slots; the header `n_operands` == `roles.len()`.
     pub roles: Vec<(u8, Operand)>,
     /// address-space arm: 0 Empty, 1 Constant, 2 IsRegister, 3 IsRam.
     pub as_arm: u8,
     /// dynamic base-column source (IsRegister/IsRam) or Const lane (Constant);
     /// None for Empty.
     pub as_payload: Option<Operand>,
+    /// R2: folded base-field CONSTANT terms (`MT_CONST_*` role + an `Ldc` value
+    /// lane). Empty pre-R2; the GPU folds these into the seed, R3 reconstructs
+    /// them. NOT counted by the header `n_operands` — self-described by a leading
+    /// count lane in the serialization (`encode2`). `perm_additive` and the
+    /// per-role permutation challenges are NOT here (they are challenge banks).
+    pub consts: Vec<(u8, Operand)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -16,7 +16,7 @@ use crate::isa_v2::{
     ArithOp, Dst, Header, Instr2, LdcSub, Operand, Program2, SPECIAL_NEG_ONE, SPECIAL_ONE,
     SPECIAL_ZERO,
 };
-use crate::compiler_v2::challenges::build_const_table;
+use crate::compiler_v2::challenges::build_const_table_v2;
 use cs::gkr_compiler::codegen_ir::{CodegenLayer, Domain, ExprNode};
 use gkr_design_space::graph::AnalysisGraph;
 use std::collections::HashMap;
@@ -397,9 +397,13 @@ pub fn compile_forward_v2(
     let pv: ProgramView = view::build(layer, g);
     let arena: &[ExprNode] = &layer.arena.nodes;
 
-    // Deduped bf-const table (0/1/-1 are Special, not entries) — same dedup v1
-    // uses, so the LdcSub::Const indices line up with the launcher's const bank.
-    let consts = build_const_table(arena);
+    // Deduped bf-const table (0/1/-1 are Special, not entries). R2: the v2 table
+    // is a SUPERSET of the arena-only v1 table — it also collects the cache
+    // `LinearComb` coeffs/constants and the memory-tuple folded constants that
+    // `macros::lower_cache` now emits as recoverable `Ldc{Const}` lanes (so a
+    // coefficient is never a placeholder). Arena consts keep their entries, so
+    // base-arith `Ldc{Const}` lookups still resolve.
+    let consts = build_const_table_v2(layer);
     let const_idx: HashMap<u32, u16> = consts
         .iter()
         .enumerate()
@@ -904,6 +908,9 @@ pub(crate) fn split_into_strands(program: &Program2, instr_strand: &[Strand]) ->
                     .collect(),
                 as_arm: mt.as_arm,
                 as_payload: mt.as_payload.as_ref().map(|op| rewrite_operand(op, rewrite)),
+                // R2 folded-constant lanes are all `Ldc` (never a cross-strand
+                // Slot), so the rewrite is identity; carry them through verbatim.
+                consts: mt.consts.clone(),
             });
             // Producers of bridged cells also Materialize into the backing.
             let mut dsts = instr.dsts.clone();
@@ -1226,7 +1233,7 @@ mod tests {
                     total_maxq_scratch += 1;
                     // The macro lowering must not emit an instruction for it.
                     let cache_kinds = macros::cache_kind_by_addr(layer);
-                    let consts = challenges::build_const_table(arena);
+                    let consts = challenges::build_const_table_v2(layer);
                     let const_idx: HashMap<u32, u16> =
                         consts.iter().enumerate().map(|(i, c)| (*c, i as u16)).collect();
                     let mut mctx =
@@ -1443,6 +1450,7 @@ mod strand_tests {
                 roles: vec![(0u8, Operand::Affine { slot: 4, col: 0 })],
                 as_arm: 0,
                 as_payload: None,
+                consts: Vec::new(),
             }),
         };
 

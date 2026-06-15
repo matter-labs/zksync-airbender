@@ -33,7 +33,8 @@ fn roundtrip_all_layouts() {
             memtup: None,
         },
         // macro-memtup: header (n_operands = role count) + as_arm lane +
-        // role-tagged ops + as_payload + dst. MemoryTuple is Shape::MemTuple.
+        // role-tagged ops + as_payload + R2 folded-const block + dst.
+        // MemoryTuple is Shape::MemTuple.
         Instr2 {
             header: Header::Macro { routine: RoutineId::MemoryTuple as u8, n_operands: 2 },
             operands: vec![],
@@ -45,6 +46,11 @@ fn roundtrip_all_layouts() {
                 ],
                 as_arm: 3, // IsRam
                 as_payload: Some(Operand::Affine { slot: 3, col: 0 }),
+                // R2 folded constants: (role, Ldc value) pairs must round-trip.
+                consts: vec![
+                    (MT_CONST_ADDR_LOW, Operand::Ldc { sub: LdcSub::Const, idx: 5 }),
+                    (MT_CONST_TS_LOW_OFFSET, Operand::Ldc { sub: LdcSub::Special, idx: 0 }),
+                ],
             }),
         },
     ];
