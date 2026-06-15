@@ -4,3 +4,4 @@
 
 pub mod matrix_table;
 pub mod challenges;
+pub mod gather;
