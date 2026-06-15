@@ -85,6 +85,14 @@ pub struct MatrixSlotData {
 /// The off-instruction gather tables (spec §4). Indexed by descriptor index:
 /// `n[desc]` is the value table, `mapping[desc]` the per-row index table, and
 /// `n_len[desc]` the optional length guard for the row-indexed setup variant.
+///
+/// `decoder_mask` / `alpha_powers` back the decoder predicate (spec finding 1):
+/// the interpreter resolves the DecoderMappedE4 path itself rather than being
+/// handed a pre-resolved value, so it needs the per-row mask AND the α-power
+/// bank to RECOMPUTE the fill scalar from `DecoderSpec`. They mirror the CUDA
+/// `descriptor.decoder_mask` per-row load (`lookup_helpers.cuh:62`) and the
+/// `ab_gkr_lookup_alpha_powers` __constant__ bank used to fold the fill
+/// (`gkr_forward_setup_generic_lookup:410`).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GatherTables {
     /// Value table per descriptor (`n` / `virtual_setup`).
@@ -93,6 +101,15 @@ pub struct GatherTables {
     pub mapping: Vec<Vec<u32>>,
     /// Length guard per descriptor (RowIndexedSetupE4 zero-pads beyond this).
     pub n_len: Vec<Option<usize>>,
+    /// Per-row decoder predicate mask per descriptor (`Some` only for
+    /// DecoderMappedE4; `None` otherwise). A row whose mask is base-zero is
+    /// masked out and resolves to the fill scalar instead of the mapped value
+    /// (mirrors the CUDA `enabled.limb == 0` branch, `lookup_helpers.cuh:63`).
+    pub decoder_mask: Vec<Option<Vec<Bf>>>,
+    /// The `ab_gkr_lookup_alpha_powers` bank (`alpha_powers[k] == α^k`). The
+    /// decoder fill scalar is `α^fill_alpha_power · table_id`, recomputed here
+    /// from `DecoderSpec` so the interpreter — not its caller — resolves it.
+    pub alpha_powers: Vec<Ext>,
 }
 
 /// Everything `execute2` reads that is not in the program: matrix backings, the
@@ -136,11 +153,15 @@ pub struct ExecResult2 {
 ///   we read it through `gid` rather than constant-folding so off-by-one/stride
 ///   bugs surface (the smoke test exercises both mapped arms).
 /// - `DecoderMappedE4`: same mapped read, plus the decoder predicate + fill
-///   (`d.decoder`). When the predicate is satisfied the mapped value is used;
-///   otherwise the fill α-power (from `const_challenge`) is substituted. The IR
-///   carries only `lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX`; the
-///   fill α-power / table id are resolved on `DecoderSpec`. Implemented
-///   correct-by-spec; not exercised by the 3.1 smoke test.
+///   (`d.decoder`). A per-row base-field mask `decoder_mask[desc_idx][gid]`
+///   selects the branch: a non-zero mask keeps the mapped value; a base-zero
+///   mask is masked out and substitutes the fill scalar
+///   `α^fill_alpha_power · table_id` (recomputed here from `DecoderSpec` + the
+///   `alpha_powers` bank — the interpreter resolves it, not its caller). This
+///   mirrors `lookup_helpers.cuh:58-69` (the `enabled.limb == 0` branch) and
+///   the fill fold in `gkr_forward_setup_generic_lookup:409-413`. The IR carries
+///   only `lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX`; the fill
+///   α-power / table id come off `DecoderSpec`.
 /// - `RowIndexedSetupE4`: no mapping — read `n[desc_idx][gid]`, zero-padded
 ///   beyond `n_len[desc_idx]` (LOOKUP_SETUP length guard).
 pub fn resolve_gather(
@@ -155,16 +176,44 @@ pub fn resolve_gather(
             t.n[desc_idx][row]
         }
         IndirectKind::DecoderMappedE4 => {
-            // Decoder lookup (cache_relation.rs:394, lookup_helpers.cuh:70):
-            // the predicate selects between the mapped value and the fill
-            // α-power. The decoder spec carries the fill α-power index +
-            // table id. With no predicate available here, default to the
-            // mapped value (the fill only applies on the masked-out branch);
-            // the fill α-power read is wired so Task 3.3 can drive it.
+            // Decoder lookup (cache_relation.rs:382-419, lookup_helpers.cuh:58-69).
+            // First the same mapped read as the plain variant, then the per-row
+            // predicate mask. The CUDA path is:
+            //   E value = generic_lookup[mapping[gid]];
+            //   if (decoder_mask != nullptr) {
+            //     bf enabled = decoder_mask[gid];
+            //     if (enabled.limb == 0) value = decoder_fill_value[0];
+            //   }
+            // i.e. a base-zero mask is masked out and substitutes the fill
+            // scalar; any non-zero mask keeps the mapped value.
             let row = t.mapping[desc_idx][gid] as usize;
             let mapped = t.n[desc_idx][row];
             match &d.decoder {
-                Some(DecoderSpec { fill_alpha_power: _, table_id: _ }) => mapped,
+                Some(DecoderSpec { fill_alpha_power, table_id }) => {
+                    // No mask table => the decoder fill never fires (mirrors the
+                    // CUDA `decoder_mask == nullptr` guard): always keep mapped.
+                    let enabled = t.decoder_mask[desc_idx]
+                        .as_ref()
+                        .map(|mask| !mask[gid].is_zero())
+                        .unwrap_or(true);
+                    if enabled {
+                        mapped
+                    } else {
+                        // Fill scalar = α^fill_alpha_power · table_id, recomputed
+                        // here from DecoderSpec + the alpha-power bank — the
+                        // single device scalar that
+                        // `gkr_forward_setup_generic_lookup:409-413` precomputes:
+                        //   E fill = ab_gkr_lookup_alpha_powers[col_count-1]
+                        //            * bf(decoder_table_id);
+                        // (`fill_alpha_power` is that `col_count-1` index.)
+                        let mut fill = t.alpha_powers[*fill_alpha_power as usize];
+                        fill.mul_assign(&lift(Bf::from_u32_with_reduction(*table_id)));
+                        fill
+                    }
+                }
+                // A DecoderMappedE4 with no DecoderSpec is a malformed descriptor
+                // (the decoder fill datum is the one variant-specific field it
+                // must carry); fall back to the mapped value.
                 None => mapped,
             }
         }
