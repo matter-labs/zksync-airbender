@@ -65,6 +65,40 @@ fn unpack_dst(l: u16) -> Dst {
     }
 }
 
+/// Lane COUNT for a program, without packing (so it never trips the
+/// width debug-asserts in `pack_operand`/`pack_dst`). Used for the compiler's
+/// stats `lanes`/`bytes` estimate, where only the count matters and a program
+/// may legitimately exceed a single field's bit budget (e.g. a base-arith layer
+/// with >127 live slot cells — a real ISA-width finding, separate from
+/// macro lowering). The arithmetic mirrors `encode2`'s lane layout exactly.
+pub fn lane_count(p: &Program2) -> usize {
+    let mut n = 0usize;
+    for ins in &p.instrs {
+        n += 1; // header lane
+        match &ins.header {
+            Header::Macro { routine } if ins.memtup.is_some() => {
+                let mt = ins.memtup.as_ref().unwrap();
+                n += 1; // count+as_arm lane
+                n += 2 * mt.roles.len(); // role + operand per term
+                if mt.as_payload.is_some() {
+                    n += 1;
+                }
+            }
+            Header::Macro { routine } => {
+                if let super::routines::Shape::Variable = routine_table()[*routine as usize].shape {
+                    n += 1; // count lane
+                }
+                n += ins.operands.len();
+            }
+            Header::Arith { .. } => {
+                n += ins.operands.len();
+            }
+        }
+        n += ins.dsts.len();
+    }
+    n
+}
+
 pub fn encode2(p: &Program2) -> Vec<u16> {
     let mut lanes = Vec::new();
     for ins in &p.instrs {

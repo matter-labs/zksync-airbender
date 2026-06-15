@@ -78,22 +78,28 @@ pub fn variant_for(k: &CacheKind) -> (IndirectKind, bool) {
     }
 }
 
-/// Build a full `GatherDescriptor` from a `CacheKind`. Variant and field_ext
-/// are derived from `variant_for`; the slot/len/decoder fields are filled from
-/// the matrix table and forward-setup by Task 2.5.
-///
-/// TODO(Task 2.5): fill `n_slot`, `mapping_slot`, `n_len`, `decoder` from the
-/// joint matrix table + forward setup parameters.
-#[allow(dead_code)]
+/// Build a `GatherDescriptor` from a `CacheKind`. Variant and `field_ext` come
+/// from `variant_for`. The slot/len/decoder fields are matrix-table /
+/// forward-setup specifics that the FORWARD path does not need to bind
+/// structurally (a forward inline gather of a CACHED VALUE is identified by its
+/// descriptor INDEX in the operand lane — spec §4); they are left `None` here
+/// and filled precisely by the Phase-3 interpreter from the forward setup. The
+/// `decoder` predicate/fill scalar is the one variant-specific datum the
+/// decoder lookup carries; the IR exposes it via the `lookup_set_index ==
+/// DECODER_LOOKUP_FORMAL_SET_INDEX` convention only (no fill α-power / table id
+/// in the per-layer IR), so it is left `None` for Phase-3 to resolve against
+/// the circuit globals.
 pub fn build_descriptor(k: &CacheKind) -> GatherDescriptor {
     let (kind, field_ext) = variant_for(k);
     GatherDescriptor {
         kind,
         field_ext,
-        n_slot: None,       // TODO(Task 2.5): fill from matrix table
-        mapping_slot: None, // TODO(Task 2.5): fill from matrix table
-        n_len: None,        // TODO(Task 2.5): fill for RowIndexedSetupE4
-        decoder: None,      // TODO(Task 2.5): fill for DecoderMappedE4
+        // Forward inline gather: the table/mapping pointers live on the forward
+        // setup, bound by the Phase-3 interpreter from the descriptor variant.
+        n_slot: None,
+        mapping_slot: None,
+        n_len: None,
+        decoder: None,
     }
 }
 

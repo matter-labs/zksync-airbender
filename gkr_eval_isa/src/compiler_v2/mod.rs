@@ -5,6 +5,7 @@
 pub mod matrix_table;
 pub mod challenges;
 pub mod gather;
+pub mod macros;
 
 use crate::compiler::slots::SlotAlloc;
 use crate::compiler::view::{self, ProgramView};
@@ -276,22 +277,68 @@ pub fn compile_forward_v2(
         }
     }
 
-    // Macro / gather / materialize lowering is OUT OF SCOPE for Task 2.4:
-    // Task 2.5 lowers gates/caches to Header::Macro; Task 2.6 hardens
-    // Materialize/Slot selection + pass-through aliasing + scratch-prefill skip.
-    // add_sub L0 is pure base arithmetic, so the program is complete as-is.
+    // Macro / gather / materialize lowering (Task 2.5). After the base-arith
+    // instrs, emit one macro Instr2 per Macro gate and per cache. Macro instrs
+    // are not single arena nodes (instr_node = None); strand classification is
+    // Task 2.7's job, so tag all non-arith as BaseArith for now (instr-aligned).
+    let cache_kinds = macros::cache_kind_by_addr(layer);
+    let mut mctx = macros::MacroCtx::new(&matrix_table, &const_idx, &cache_kinds);
+    let mut macro_count = 0usize;
+    let mut gather_lane_count = 0usize;
+
+    // Caches first (they produce values gates/outputs may read), then gates.
+    for cache in &layer.caches {
+        let instr = macros::lower_cache(cache, arena, &mut mctx);
+        macro_count += 1;
+        gather_lane_count += instr
+            .operands
+            .iter()
+            .filter(|o| matches!(o, Operand::Indirect { .. }))
+            .count();
+        materialize_count += instr
+            .dsts
+            .iter()
+            .filter(|d| matches!(d, Dst::Materialize { .. }))
+            .count();
+        program.instrs.push(instr);
+        instr_node.push(None);
+        instr_strand.push(Strand::BaseArith);
+    }
+    for gate in layer.gates.iter().chain(&layer.gates_external) {
+        if let Some(instr) = macros::lower_gate(gate, arena, &mut mctx) {
+            macro_count += 1;
+            gather_lane_count += instr
+                .operands
+                .iter()
+                .filter(|o| matches!(o, Operand::Indirect { .. }))
+                .count();
+            materialize_count += instr
+                .dsts
+                .iter()
+                .filter(|d| matches!(d, Dst::Materialize { .. }))
+                .count();
+            program.instrs.push(instr);
+            instr_node.push(None);
+            instr_strand.push(Strand::BaseArith);
+        }
+    }
 
     program.n_slot_cells = alloc.high_water_cells as u16;
 
-    let lanes = crate::isa_v2::encode::encode2(&program).len();
+    // Non-packing lane count for stats: a base-arith layer can have >127 live
+    // slot cells (a real 7-bit SLOT_CELL_BITS finding, orthogonal to macro
+    // lowering), which would trip `encode2`'s width debug-assert. `lane_count`
+    // mirrors the same lane layout without packing, so the compiler stays
+    // panic-free across the whole corpus.
+    let lanes = crate::isa_v2::encode::lane_count(&program);
     let stats = CompileStats2 {
         instrs: program.instrs.len(),
         lanes,
         // 16-bit lanes -> 2 bytes each.
         bytes: lanes * 2,
         arith: arith_count,
-        macros: 0,
-        gathers: 0,
+        macros: macro_count,
+        gathers: gather_lane_count,
         materializes: materialize_count,
         max_live_cells: alloc.high_water_cells,
         n_matrix_slots: matrix_table.len(),
