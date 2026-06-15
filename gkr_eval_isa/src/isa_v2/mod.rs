@@ -4,10 +4,16 @@
 //!
 //! `RoutineId` lives HERE (not in routines.rs) because the ISA types reference
 //! it; `routines.rs` (Task 1.4) reads it via `super::RoutineId` and owns the
-//! descriptor table/lowering. The `pub mod routines;` / `pub mod encode;`
-//! declarations are added by Tasks 1.4 / 1.5 when those files are created — do
-//! NOT declare them now (finding F1: declaring a module before its file exists
-//! is a hard `error[E0583] file not found`).
+//! descriptor table/lowering. `pub mod routines;` (Task 1.4) is declared below;
+//! `pub mod encode;` (Task 1.5) is added when that file is created — do NOT
+//! declare a module before its file exists (finding F1: hard
+//! `error[E0583] file not found`).
+
+pub mod routines;
+pub use routines::{
+    lowering_kind, routine_for_cache, routine_for_gate, routine_table, ChallengeUse, FieldRole,
+    LoweringKind, RoutineSchema, Shape,
+};
 
 /// Macro routine id (7-bit wire id). Discriminants are dense and stable; the
 /// full descriptor table + lowering live in `routines.rs` (Task 1.4), which
@@ -22,9 +28,13 @@ pub enum RoutineId {
     AggregateLookupPair = 3, // AggregateLookupRationalPair cascade
     SingleColumnLookup = 4,  // base gather + base store, cache_relation.rs:347
     MemoryTuple = 5,         // cache_relation.rs:91, role-tagged + as-arm
-    // IMPLEMENTER (Task 1.4): extend to the full corpus (~40-50 routines, §9),
-    // keeping discriminants dense (id == index) and adding the linear/quadratic
-    // axis as the low bit where it applies.
+    // --- Task 1.4 extension: the remaining §3/§4/§9 corpus routines, dense
+    // (id == index) after MemoryTuple. ids 0..=5 above are STABLE (the 1.3/1.5
+    // round-trip vectors reference LookupNumDen + MemoryTuple by name).
+    VectorizedLookup = 6,    // VectorizedLookup cache gather, cache_relation.rs:382
+    VectorizedLookupSetup = 7, // row-indexed setup gather, gkr_forward_generation.cuh LOOKUP_SETUP
+    ProductStep = 8,         // per-row product / mask-identity, lookup_helpers.cuh gkr_eval_product
+    MemoryInitTeardownPair = 9, // inits/teardowns initial num/den pair, lookup_helpers.cuh
 }
 
 // --- Width constants (the 16-bit lanes, spec §5) ---
