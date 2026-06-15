@@ -2,6 +2,7 @@
 //! GKR eval core. Spec: .agents/specs/2026-06-11-gkr-eval-isa-design.md.
 
 pub mod compiler;
+pub mod compiler_v2;
 pub mod eval_ref;
 pub mod interp;
 pub mod isa;

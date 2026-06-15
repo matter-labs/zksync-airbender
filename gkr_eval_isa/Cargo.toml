@@ -12,6 +12,12 @@ categories.workspace = true
 [dependencies]
 cs = { workspace = true, features = ["compiler"] }
 gkr_design_space = { path = "../gkr_design_space" }
+# CPU-only GKR layout model (deps cs+field, no CUDA, no cycle — verified Task 2.1
+# Step 0). Provides the launcher address taxonomy (`address_audit::{classify,
+# AddressClass}`) + per-address storage layer (`storage_layout::
+# address_storage_layer`) the matrix-slot table keys against, so the compiler's
+# slot assignment cannot drift from the model the launcher fills pointers for.
+gpu_gkr_model = { workspace = true }
 field = { workspace = true }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
