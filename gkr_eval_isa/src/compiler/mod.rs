@@ -2,8 +2,8 @@
 //! DAG (GateOutput = staged leaf; gate-input cones = roots).
 
 mod emit;
-mod pinning;
-mod slots;
+pub(crate) mod pinning;
+pub(crate) mod slots;
 pub mod view;
 pub mod fwd;
 
