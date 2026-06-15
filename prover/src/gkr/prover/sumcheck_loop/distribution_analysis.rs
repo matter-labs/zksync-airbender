@@ -201,11 +201,143 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(crate) fn optimize_quadratic_evaluation(
         &self,
         scratch_space: usize,
+        scheduler: Scheduler,
     ) -> EvaluationPlan<E> {
         assert!(
             scratch_space >= 3,
             "need >=1 slot for the accumulator and >=2 for a quadratic term's operands"
         );
+        let (addresses, terms) = self.flatten_quadratic_form();
+        schedule(&addresses, &terms, scratch_space, scheduler)
+    }
+
+    /// Same scratch-space model as [`optimize_quadratic_evaluation`], but evaluate the form one
+    /// *independent partition at a time*.
+    ///
+    /// The quadratic form's variables split into connected components: two variables are linked iff
+    /// they share a quadratic term, and a variable that only appears in linear terms is its own
+    /// component. Components share no variables, so they are independent subexpressions — evaluating
+    /// one never needs a value from another, and the scratch is wiped between them.
+    ///
+    /// Consequences:
+    /// * Any component whose variable count fits in the input cache (`scratch_space - 1`) is a
+    ///   **zero-re-read subexpression**: load each member once, run all its terms, done.
+    /// * Only components larger than the cache can incur re-reads, and those are confined to the
+    ///   component — they can never thrash against unrelated variables.
+    ///
+    /// We emit the fitting (free) partitions first, then greedily schedule the oversized ones with
+    /// the same stable, deterministic greedy as before.
+    pub(crate) fn optimize_quadratic_evaluation_partitioned(
+        &self,
+        scratch_space: usize,
+        scheduler: Scheduler,
+    ) -> PartitionedPlan<E> {
+        assert!(
+            scratch_space >= 3,
+            "need >=1 slot for the accumulator and >=2 for a quadratic term's operands"
+        );
+        let input_capacity = scratch_space - 1;
+        let (addresses, terms) = self.flatten_quadratic_form();
+        let n_vars = addresses.len();
+
+        // Union variables that share a quadratic term -> connected components.
+        let mut parent: Vec<usize> = (0..n_vars).collect();
+        fn find(parent: &mut [usize], mut x: usize) -> usize {
+            while parent[x] != x {
+                parent[x] = parent[parent[x]];
+                x = parent[x];
+            }
+            x
+        }
+        for t in terms.iter() {
+            if let Some(b) = t.b {
+                let (ra, rb) = (find(&mut parent, t.a), find(&mut parent, b));
+                if ra != rb {
+                    parent[ra] = rb;
+                }
+            }
+        }
+
+        // Collect each component's member variables and the terms assigned to it.
+        let mut members_of: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        let mut terms_of: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for v in 0..n_vars {
+            let r = find(&mut parent, v);
+            members_of.entry(r).or_default().push(v);
+        }
+        for (i, t) in terms.iter().enumerate() {
+            let r = find(&mut parent, t.a);
+            terms_of.entry(r).or_default().push(i);
+        }
+
+        // Schedule each component independently with fresh scratch, then order the results so the
+        // free (fitting) partitions come first.
+        let mut partition_plans: Vec<PartitionPlan<E>> = Vec::new();
+        for (root, members) in members_of.iter() {
+            // Local dense re-indexing for this partition.
+            let local_addresses: Vec<GKRAddress> = members.iter().map(|&v| addresses[v]).collect();
+            let local_index: BTreeMap<usize, usize> = members
+                .iter()
+                .enumerate()
+                .map(|(local, &global)| (global, local))
+                .collect();
+            let local_terms: Vec<AbstractTerm<E>> = terms_of
+                .get(root)
+                .map(|idxs| idxs.as_slice())
+                .unwrap_or(&[])
+                .iter()
+                .map(|&i| {
+                    let t = &terms[i];
+                    AbstractTerm {
+                        a: local_index[&t.a],
+                        b: t.b.map(|b| local_index[&b]),
+                        coeff: t.coeff,
+                    }
+                })
+                .collect();
+
+            let plan = schedule(&local_addresses, &local_terms, scratch_space, scheduler);
+            partition_plans.push(PartitionPlan {
+                members: local_addresses,
+                fits: members.len() <= input_capacity,
+                total_reads: plan.total_reads,
+                re_reads: plan.re_reads,
+                steps: plan.steps,
+            });
+        }
+
+        // Stable order: free partitions first (largest first within each group for readability).
+        partition_plans.sort_by_key(|p| (!p.fits, std::cmp::Reverse(p.members.len())));
+
+        let distinct_inputs = n_vars;
+        let naive_reads: usize = partition_plans
+            .iter()
+            .flat_map(|p| p.steps.iter())
+            .filter(|s| matches!(s, EvalStep::MulAdd { .. } | EvalStep::LinearAdd { .. }))
+            .map(|s| match s {
+                EvalStep::MulAdd { .. } => 2,
+                _ => 1,
+            })
+            .sum();
+        let total_reads: usize = partition_plans.iter().map(|p| p.total_reads).sum();
+        let re_reads: usize = partition_plans.iter().map(|p| p.re_reads).sum();
+        let fitting_partitions = partition_plans.iter().filter(|p| p.fits).count();
+        let oversized_partitions = partition_plans.len() - fitting_partitions;
+
+        PartitionedPlan {
+            scratch_space,
+            partitions: partition_plans,
+            distinct_inputs,
+            naive_reads,
+            total_reads,
+            re_reads,
+            fitting_partitions,
+            oversized_partitions,
+        }
+    }
+
+    /// Flatten the batched description into a dense variable set and a flat list of abstract terms.
+    fn flatten_quadratic_form(&self) -> (Vec<GKRAddress>, Vec<AbstractTerm<E>>) {
         let challenge_constants = BatchedGKRTermDescriptionConstants {
             external_challenges: GKRExternalChallenges {
                 permutation_argument_linearization_challenges: [E::ONE;
@@ -219,7 +351,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         };
         let description = self.make_batched_description(&challenge_constants, self.layer);
 
-        // Flatten the whole description into one list of abstract terms over a dense variable set.
         let mut index_of: BTreeMap<GKRAddress, usize> = BTreeMap::new();
         let mut addresses: Vec<GKRAddress> = Vec::new();
         let mut intern = |addr: GKRAddress,
@@ -267,7 +398,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
             }
         }
 
-        greedy_schedule(&addresses, &terms, scratch_space)
+        (addresses, terms)
     }
 }
 
@@ -309,31 +440,86 @@ pub(crate) struct EvaluationPlan<E> {
     pub(crate) re_reads: usize,
 }
 
-/// Greedy scratch-allocating scheduler. See [`optimize_quadratic_evaluation`] for the cost model.
-fn greedy_schedule<E: Field>(
+/// The evaluation program for a single independent partition (connected component).
+#[derive(Clone, Debug)]
+pub(crate) struct PartitionPlan<E> {
+    pub(crate) members: Vec<GKRAddress>,
+    pub(crate) steps: Vec<EvalStep<E>>,
+    /// Whether the partition fits the input cache, i.e. needs zero re-reads.
+    pub(crate) fits: bool,
+    pub(crate) total_reads: usize,
+    pub(crate) re_reads: usize,
+}
+
+/// Partitioned evaluation plan: independent partitions, free ones first, plus the cost summary.
+#[derive(Clone, Debug)]
+pub(crate) struct PartitionedPlan<E> {
+    pub(crate) scratch_space: usize,
+    pub(crate) partitions: Vec<PartitionPlan<E>>,
+    pub(crate) distinct_inputs: usize,
+    pub(crate) naive_reads: usize,
+    pub(crate) total_reads: usize,
+    pub(crate) re_reads: usize,
+    pub(crate) fitting_partitions: usize,
+    pub(crate) oversized_partitions: usize,
+}
+
+/// Which scratch-allocation strategy to use when scheduling a quadratic-form evaluation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub(crate) enum Scheduler {
+    /// Online greedy: pick the cheapest term to run next, evict the resident with the fewest
+    /// *remaining* uses (a heuristic proxy for "needed furthest away").
+    GreedySearch,
+    /// Belady / MIN: keep the greedy's term order but use the provably optimal eviction for that
+    /// fixed reference string — evict the resident whose *next* use is furthest in the future.
+    #[default]
+    Belady,
+}
+
+fn operands_of<E>(t: &AbstractTerm<E>) -> Vec<usize> {
+    match t.b {
+        Some(b) => vec![t.a, b],
+        None => vec![t.a],
+    }
+}
+
+/// Schedule an evaluation of `terms` over `addresses` within `scratch_space`, using `scheduler`.
+///
+/// Both strategies share the same term ordering (the greedy pass below); they differ only in the
+/// eviction policy, so the comparison isolates eviction quality. See [`optimize_quadratic_evaluation`]
+/// for the cost model.
+fn schedule<E: Field>(
     addresses: &[GKRAddress],
     terms: &[AbstractTerm<E>],
     scratch_space: usize,
+    scheduler: Scheduler,
 ) -> EvaluationPlan<E> {
+    let (greedy_plan, order) = greedy_run(addresses, terms, scratch_space);
+    match scheduler {
+        Scheduler::GreedySearch => greedy_plan,
+        Scheduler::Belady => belady_replay(addresses, terms, &order, scratch_space),
+    }
+}
+
+/// Online greedy scheduler. Returns its plan and the order in which it executed the terms (so a
+/// different eviction policy can be replayed over the same order).
+fn greedy_run<E: Field>(
+    addresses: &[GKRAddress],
+    terms: &[AbstractTerm<E>],
+    scratch_space: usize,
+) -> (EvaluationPlan<E>, Vec<usize>) {
     let n_vars = addresses.len();
     // One scratch slot is permanently held by the accumulator intermediate.
     let input_capacity = scratch_space - 1;
 
-    let operands = |t: &AbstractTerm<E>| -> Vec<usize> {
-        match t.b {
-            Some(b) => vec![t.a, b],
-            None => vec![t.a],
-        }
-    };
-
-    // Remaining future uses of each variable; the Belady proxy for "needed furthest away".
+    // Remaining future uses of each variable; the proxy for "needed furthest away".
     let mut remaining_uses = vec![0usize; n_vars];
     for t in terms.iter() {
-        for op in operands(t) {
+        for op in operands_of(t) {
             remaining_uses[op] += 1;
         }
     }
-    let naive_reads: usize = terms.iter().map(|t| operands(t).len()).sum();
+    let naive_reads: usize = terms.iter().map(|t| operands_of(t).len()).sum();
 
     let mut resident: BTreeSet<usize> = BTreeSet::new();
     let mut loaded_before = vec![false; n_vars];
@@ -341,6 +527,7 @@ fn greedy_schedule<E: Field>(
     let mut remaining = terms.len();
 
     let mut steps = Vec::new();
+    let mut order = Vec::with_capacity(terms.len());
     let mut total_reads = 0usize;
     let mut re_reads = 0usize;
 
@@ -351,7 +538,7 @@ fn greedy_schedule<E: Field>(
             if executed[i] {
                 continue;
             }
-            let ops = operands(t);
+            let ops = operands_of(t);
             let loads = ops.iter().filter(|op| !resident.contains(op)).count();
             let reuse: i64 = ops
                 .iter()
@@ -365,7 +552,7 @@ fn greedy_schedule<E: Field>(
         }
         let (term_idx, _, _) = best.unwrap();
         let term = &terms[term_idx];
-        let ops = operands(term);
+        let ops = operands_of(term);
 
         // Bring every missing operand into scratch, evicting low-future-use inputs as needed.
         for &op in ops.iter() {
@@ -401,23 +588,94 @@ fn greedy_schedule<E: Field>(
             });
         }
 
-        // Emit the arithmetic and retire the term.
-        match term.b {
-            Some(b) => steps.push(EvalStep::MulAdd {
-                a: addresses[term.a],
-                b: addresses[b],
-                coeff: term.coeff,
-            }),
-            None => steps.push(EvalStep::LinearAdd {
-                address: addresses[term.a],
-                coeff: term.coeff,
-            }),
-        }
+        emit_arithmetic(&mut steps, addresses, term);
+        order.push(term_idx);
         executed[term_idx] = true;
         remaining -= 1;
         for op in ops {
             remaining_uses[op] -= 1;
         }
+    }
+
+    let plan = EvaluationPlan {
+        scratch_space,
+        steps,
+        distinct_inputs: n_vars,
+        naive_reads,
+        total_reads,
+        re_reads,
+    };
+    (plan, order)
+}
+
+/// Replay a fixed term `order` with Belady's optimal (MIN) eviction: when scratch is full, evict the
+/// resident input whose next use in the remaining sequence is furthest away (or never).
+fn belady_replay<E: Field>(
+    addresses: &[GKRAddress],
+    terms: &[AbstractTerm<E>],
+    order: &[usize],
+    scratch_space: usize,
+) -> EvaluationPlan<E> {
+    let n_vars = addresses.len();
+    let input_capacity = scratch_space - 1;
+    let naive_reads: usize = terms.iter().map(|t| operands_of(t).len()).sum();
+
+    // For each variable, the ascending positions in `order` at which it is an operand.
+    let mut occurrences: Vec<Vec<usize>> = vec![Vec::new(); n_vars];
+    for (pos, &ti) in order.iter().enumerate() {
+        for op in operands_of(&terms[ti]) {
+            occurrences[op].push(pos);
+        }
+    }
+    // Next position strictly after `pos` at which `v` is used, or usize::MAX if never again.
+    let next_use = |v: usize, pos: usize| -> usize {
+        let list = &occurrences[v];
+        let idx = list.partition_point(|&p| p <= pos);
+        list.get(idx).copied().unwrap_or(usize::MAX)
+    };
+
+    let mut resident: BTreeSet<usize> = BTreeSet::new();
+    let mut loaded_before = vec![false; n_vars];
+    let mut steps = Vec::new();
+    let mut total_reads = 0usize;
+    let mut re_reads = 0usize;
+
+    for (pos, &term_idx) in order.iter().enumerate() {
+        let term = &terms[term_idx];
+        let ops = operands_of(term);
+        for &op in ops.iter() {
+            if resident.contains(&op) {
+                continue;
+            }
+            while resident.len() >= input_capacity {
+                let victim = resident
+                    .iter()
+                    .filter(|r| !ops.contains(r))
+                    .copied()
+                    .max_by_key(|&r| next_use(r, pos));
+                match victim {
+                    Some(v) => {
+                        resident.remove(&v);
+                        steps.push(EvalStep::Evict {
+                            address: addresses[v],
+                        });
+                    }
+                    None => break,
+                }
+            }
+            resident.insert(op);
+            total_reads += 1;
+            let reread = loaded_before[op];
+            if reread {
+                re_reads += 1;
+            }
+            loaded_before[op] = true;
+            steps.push(EvalStep::Load {
+                address: addresses[op],
+                reread,
+            });
+        }
+        emit_arithmetic(&mut steps, addresses, term);
     }
 
     EvaluationPlan {
@@ -427,6 +685,24 @@ fn greedy_schedule<E: Field>(
         naive_reads,
         total_reads,
         re_reads,
+    }
+}
+
+fn emit_arithmetic<E: Field>(
+    steps: &mut Vec<EvalStep<E>>,
+    addresses: &[GKRAddress],
+    term: &AbstractTerm<E>,
+) {
+    match term.b {
+        Some(b) => steps.push(EvalStep::MulAdd {
+            a: addresses[term.a],
+            b: addresses[b],
+            coeff: term.coeff,
+        }),
+        None => steps.push(EvalStep::LinearAdd {
+            address: addresses[term.a],
+            coeff: term.coeff,
+        }),
     }
 }
 
@@ -823,7 +1099,7 @@ mod test {
             KernelCollector::<F, E>::from_layer(layer, layer_idx, E::ONE, E::ONE, E::ONE, &[], 0);
 
         let scratch_space = 8;
-        let plan = collector.optimize_quadratic_evaluation(scratch_space);
+        let plan = collector.optimize_quadratic_evaluation(scratch_space, Scheduler::default());
 
         println!(
             "\n===== quadratic-form evaluation plan (scratch = {}, {} for inputs) =====",
@@ -862,6 +1138,82 @@ mod test {
     }
 
     #[test]
+    fn optimize_quadratic_evaluation_partitioned_in_circuit() {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
+        } else {
+            deserialize_from_file(
+                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
+            )
+        };
+
+        let layer_idx = 0;
+        let layer = &circuit.layers[layer_idx];
+
+        let collector =
+            KernelCollector::<F, E>::from_layer(layer, layer_idx, E::ONE, E::ONE, E::ONE, &[], 0);
+
+        let scratch_space = 8;
+        let plan =
+            collector.optimize_quadratic_evaluation_partitioned(scratch_space, Scheduler::default());
+
+        println!(
+            "\n===== partitioned evaluation plan (scratch = {}, {} for inputs) =====",
+            plan.scratch_space,
+            plan.scratch_space - 1
+        );
+        println!(
+            "{} partition(s): {} fit the cache (zero re-reads), {} oversized.",
+            plan.partitions.len(),
+            plan.fitting_partitions,
+            plan.oversized_partitions,
+        );
+
+        for (p, part) in plan.partitions.iter().enumerate() {
+            println!(
+                "\n-- partition {} : {} member(s), {} ({} reads, {} re-reads) --",
+                p,
+                part.members.len(),
+                if part.fits { "FITS" } else { "OVERSIZED" },
+                part.total_reads,
+                part.re_reads,
+            );
+            for (i, step) in part.steps.iter().enumerate() {
+                match step {
+                    EvalStep::Load { address, reread } => println!(
+                        "  {:>4}: LOAD   {:?}{}",
+                        i,
+                        address,
+                        if *reread { "   (RE-READ)" } else { "" }
+                    ),
+                    EvalStep::Evict { address } => println!("  {:>4}: EVICT  {:?}", i, address),
+                    EvalStep::MulAdd { a, b, coeff } => {
+                        println!("  {:>4}: acc += {} * {:?} * {:?}", i, coeff, a, b)
+                    }
+                    EvalStep::LinearAdd { address, coeff } => {
+                        println!("  {:>4}: acc += {} * {:?}", i, coeff, address)
+                    }
+                }
+            }
+        }
+
+        println!(
+            "\nfloor (distinct inputs) = {}, no-scratch reads = {}, plan reads = {} ({} of them re-reads)",
+            plan.distinct_inputs, plan.naive_reads, plan.total_reads, plan.re_reads,
+        );
+
+        // Re-reads can only come from oversized partitions.
+        let reread_from_fitting: usize = plan
+            .partitions
+            .iter()
+            .filter(|p| p.fits)
+            .map(|p| p.re_reads)
+            .sum();
+        assert_eq!(reread_from_fitting, 0, "fitting partitions must never re-read");
+        assert_eq!(plan.total_reads, plan.distinct_inputs + plan.re_reads);
+    }
+
+    #[test]
     fn sweep_scratch_vs_rereads() {
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
             deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
@@ -877,16 +1229,23 @@ mod test {
         let collector =
             KernelCollector::<F, E>::from_layer(layer, layer_idx, E::ONE, E::ONE, E::ONE, &[], 0);
 
-        println!("scratch,input_slots,distinct_inputs,total_reads,re_reads");
-        for scratch in 8..=32 {
-            let plan = collector.optimize_quadratic_evaluation(scratch);
+        // Compare both schedulers across the scratch range, for the global and partitioned modes.
+        println!("scratch,distinct,greedy_rr,belady_rr,greedy_part_rr,belady_part_rr");
+        for scratch in 4..=16 {
+            let greedy = collector.optimize_quadratic_evaluation(scratch, Scheduler::GreedySearch);
+            let belady = collector.optimize_quadratic_evaluation(scratch, Scheduler::Belady);
+            let greedy_part = collector
+                .optimize_quadratic_evaluation_partitioned(scratch, Scheduler::GreedySearch);
+            let belady_part =
+                collector.optimize_quadratic_evaluation_partitioned(scratch, Scheduler::Belady);
             println!(
-                "{},{},{},{},{}",
+                "{},{},{},{},{},{}",
                 scratch,
-                scratch - 1,
-                plan.distinct_inputs,
-                plan.total_reads,
-                plan.re_reads,
+                greedy.distinct_inputs,
+                greedy.re_reads,
+                belady.re_reads,
+                greedy_part.re_reads,
+                belady_part.re_reads,
             );
         }
     }
