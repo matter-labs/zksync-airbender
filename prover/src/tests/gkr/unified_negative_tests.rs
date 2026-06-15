@@ -703,6 +703,62 @@ fn unified_mulmod_intermediate_forge_rejected() {
 }
 
 #[test]
+fn fma_noncanonical_output_rejected() {
+    const BABY_BEAR_P: u64 = 0x7800_0001;
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let fma_bit = find_base_layer_address(circuit, &format!("family_bit[{FMA_BIT_INDEX}]"));
+        let out_lo = find_base_layer_address(circuit, "rd/mem write write_value[0]");
+        let out_hi = find_base_layer_address(circuit, "rd/mem write write_value[1]");
+        let row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, fma_bit, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one FMA (mop.rr fma variant)");
+        let lo = read_cell(trace, out_lo, row).as_u32_reduced() as u64;
+        let hi = read_cell(trace, out_hi, row).as_u32_reduced() as u64;
+        // Honest modular `out < p`, so `out + p < 2^32` and decomposes into two u16 limbs.
+        let forged = lo + (hi << 16) + BABY_BEAR_P;
+        write_cell(
+            trace,
+            out_lo,
+            row,
+            BabyBearField::new((forged & 0xFFFF) as u32),
+        );
+        write_cell(
+            trace,
+            out_hi,
+            row,
+            BabyBearField::new(((forged >> 16) & 0xFFFF) as u32),
+        );
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected non-canonical FMA output (out + p) to fail check_satisfied via eq_modular_*"
+    );
+}
+
+#[test]
+fn f3_binary_op_and_shift_both_set_rejected() {
+    let shift_bit = FAMILY_3_FLAG_OFFSET;
+    let binop_bit = FAMILY_3_FLAG_OFFSET + 1;
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let shift_addr = find_base_layer_address(circuit, &format!("family_bit[{shift_bit}]"));
+        let binop_addr = find_base_layer_address(circuit, &format!("family_bit[{binop_bit}]"));
+        // Anchor on any F3 row (either sub-opcode), then force BOTH bits hot.
+        let f3_row = (0..base_trace_len(trace))
+            .find(|&r| {
+                read_cell(trace, shift_addr, r) == BabyBearField::ONE
+                    || read_cell(trace, binop_addr, r) == BabyBearField::ONE
+            })
+            .expect("multi_family_smoke must execute at least one F3 (shift or binary-op)");
+        write_cell(trace, shift_addr, f3_row, BabyBearField::ONE);
+        write_cell(trace, binop_addr, f3_row, BabyBearField::ONE);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected both F3 sub-opcode bits set (f3_sum = 2) to fail check_satisfied"
+    );
+}
+
+#[test]
 fn unified_pc_bump_carry_flip_rejected() {
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
         let lw = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
@@ -931,4 +987,20 @@ fn generate_malicious_unified_proofs() {
             write_cell(trace, load_byte, row, BabyBearField::new(bumped));
         },
     );
+
+    generate_malicious_unified_proof("f3_pooled_lookup", StaticVerdict::BothPass, |circuit, trace| {
+        let shift_bit =
+            find_base_layer_address(circuit, &format!("family_bit[{FAMILY_3_FLAG_OFFSET}]"));
+        let binop_bit =
+            find_base_layer_address(circuit, &format!("family_bit[{}]", FAMILY_3_FLAG_OFFSET + 1));
+        let scratch0 = find_base_layer_address(circuit, "shared scratch var[0]");
+        let row = (0..base_trace_len(trace))
+            .find(|&r| {
+                read_cell(trace, shift_bit, r) == BabyBearField::ONE
+                    || read_cell(trace, binop_bit, r) == BabyBearField::ONE
+            })
+            .expect("multi_family_smoke must execute at least one F3 (shift or binary-op)");
+        let cur = read_cell(trace, scratch0, row);
+        write_cell(trace, scratch0, row, cur + BabyBearField::ONE);
+    });
 }

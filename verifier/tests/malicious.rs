@@ -178,3 +178,18 @@ fn rejects_malicious_unified_f4_lw_value() {
         )
     });
 }
+
+#[test]
+#[ignore]
+fn rejects_malicious_unified_f3_pooled_lookup() {
+    assert_rejects_unified("f3_pooled_lookup", |e| {
+        matches!(
+            e,
+            VerificationError::GkrLookupIdentityFailed { .. }
+                | VerificationError::GkrSingleLookupCacheRelationFailed { .. }
+                | VerificationError::GkrVectorLookupCacheRelationFailed { .. }
+                | VerificationError::GkrSumcheckRoundFailed { .. }
+                | VerificationError::GkrFinalStepCheckFailed { .. }
+        )
+    });
+}

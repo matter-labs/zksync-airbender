@@ -256,13 +256,9 @@ where
     );
     assert_eq!(*expected_final_state, state);
 
-    let witness_gen_data: Vec<ExecutorFamilyDecoderData> = decoder_table_data
-        .iter()
-        .map(|el| el.unwrap_or(Default::default()))
-        .collect();
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
-        decoder_table: &witness_gen_data,
+        decoder_table: decoder_table_data,
         default_pc_value_in_padding: 4,
     };
 
@@ -348,13 +344,9 @@ where
     );
     assert_eq!(*expected_final_state, state);
 
-    let witness_gen_data: Vec<ExecutorFamilyDecoderData> = decoder_table_data
-        .iter()
-        .map(|el| el.unwrap_or(Default::default()))
-        .collect();
     let oracle = MemoryCircuitOracle {
         inner: &buffer[..],
-        decoder_table: &witness_gen_data,
+        decoder_table: decoder_table_data,
     };
 
     let should_prove = !compute_only
@@ -535,13 +527,9 @@ where
     );
     assert_eq!(*expected_final_state, state);
 
-    let witness_gen_data: Vec<ExecutorFamilyDecoderData> = decoder_table_data
-        .iter()
-        .map(|el| el.unwrap_or(Default::default()))
-        .collect();
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
-        decoder_table: &witness_gen_data,
+        decoder_table: decoder_table_data,
         default_pc_value_in_padding: 4,
     };
 

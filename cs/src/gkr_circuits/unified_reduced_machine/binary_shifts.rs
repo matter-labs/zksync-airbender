@@ -36,6 +36,9 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     // - for binary ops we need just 5: one for sign-extension of the immediate, and 4 for outputs
     // - for shift we need 17: 4x4 for output contributions, and one for truncated shift amount
 
+    const _: () = assert!(
+        F3_SCRATCH_VARS == 17,
+    );
     let [binary_ops_imm_sign_ext, binop_output_0, binop_output_1, binop_output_2, binop_output_3, ..] =
         scratch_space;
     let binary_ops_outputs = [
@@ -46,7 +49,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     ];
 
     let truncated_shift_amount = scratch_space[0];
-    let shift_outputs: [Variable; 16] = scratch_space[1..].try_into().unwrap();
+    let shift_outputs: [Variable; 16] = core::array::from_fn(|i| scratch_space[i + 1]);
     let shift_output_chunks = shift_outputs.as_chunks::<4>().0;
 
     let is_binary_op = decoder.perform_binary_op();
