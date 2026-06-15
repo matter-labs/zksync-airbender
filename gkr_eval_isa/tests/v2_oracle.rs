@@ -1120,3 +1120,267 @@ fn slot_read_is_full_e4_width_regardless_of_store() {
         "all four e4 limbs must round-trip through the Slot read"
     );
 }
+
+// ===========================================================================
+// Task 3.5 — CHALLENGE-BANK ORACLE (spec §5, the "43 KB elimination" win).
+//
+// The v2 ISA DEFERS the α^k·c fold. v1 baked the host-folded coefficient
+// `α^k·c` into an opaque payload; v2 instead carries the RAW const `c` on an
+// `Ldc{Const}` lane and reads `α^k` from the COLUMN-INDEXED `ConstChallenge`
+// bank, multiplying IN-KERNEL. The two banks are distinct transfer channels
+// (`challenges::bank_for_family`): α/γ → `ConstChallenge` (device __constant__),
+// perm/additive → `ArgChallenge` (kernel-arg). These tests prove the deferred
+// fold is FAITHFUL: (a) each family routes to the channel the model declares;
+// the swap test proves the interpreter reads the RIGHT bank (a single synthetic
+// challenge set would mask a wrong-bank read); the fold-parity test proves the
+// in-kernel `α^k · c` reproduces v1's host-folded coefficient bit-for-bit.
+// ===========================================================================
+
+use gkr_eval_isa::compiler_v2::challenges::{
+    alpha_power_bank_index, bank_for_family, AlphaSlot, ChallengeFamily,
+};
+
+/// A `SourceBanks` carrying explicit `const_challenge` (α/γ channel) and
+/// `arg_challenge` (perm/additive channel) banks, plus one ext matrix slot for
+/// the operand columns. Everything else is neutral.
+fn dual_bank_src(
+    cols: Vec<Ext>,
+    const_challenge: Vec<Ext>,
+    arg_challenge: Vec<Ext>,
+) -> SourceBanks {
+    SourceBanks {
+        matrix: vec![ext_slot(&cols)],
+        consts: vec![],
+        const_challenge,
+        arg_challenge,
+        gamma: Ext::ZERO,
+        perm_challenges: vec![],
+        perm_additive: Ext::ZERO,
+        gather_tables: GatherTables::default(),
+        gid: 0,
+    }
+}
+
+#[test]
+fn challenge_bank_swap_is_detected() {
+    // --- sub-check (a): each FAMILY routes to the channel the model declares ---
+    // α/γ ride the device __constant__ ConstChallenge bank; perm/additive ride
+    // the kernel-arg ArgChallenge bank (spec §5). This is the routing the swap
+    // test relies on (which physical bank each in-kernel read indexes).
+    assert_eq!(bank_for_family(ChallengeFamily::Alpha), LdcSub::ConstChallenge);
+    assert_eq!(bank_for_family(ChallengeFamily::Gamma), LdcSub::ConstChallenge);
+    assert_eq!(
+        bank_for_family(ChallengeFamily::PermLinearization),
+        LdcSub::ArgChallenge
+    );
+    assert_eq!(
+        bank_for_family(ChallengeFamily::AdditiveSeed),
+        LdcSub::ArgChallenge
+    );
+
+    // --- the swap: a routine reading BOTH banks must change if they swap ---
+    // Two instructions, each reading a DIFFERENT channel:
+    //   instr 0: GateOutputFold over [col0, col1] reads α^1 from const_challenge[1]
+    //            (the ConstChallenge / α-power bank).            out0 = col0 + α^1·col1
+    //   instr 1: Sum over an Ldc{ArgChallenge, idx 1} lane reads arg_challenge[1]
+    //            (the ArgChallenge / perm-additive bank).        out1 = arg_challenge[1]
+    // FILL THE TWO BANKS WITH DISTINCT VALUES so a wrong-bank read (or a swap) is
+    // observable: a single synthetic set shared across both banks would make a
+    // const↔arg swap a no-op and hide the channel routing.
+    let col0 = lift(bf(3));
+    let col1 = lift(bf(5));
+
+    // const_challenge[1] = α^1 = 7 ; arg_challenge[1] = 9 (DISTINCT, and distinct
+    // from the column values so the output algebra cannot coincidentally match).
+    let alpha1 = lift(bf(7));
+    let arg1 = lift(bf(9));
+    let const_bank = vec![Ext::ZERO, alpha1]; // entry 0 unused (α^0 free lift)
+    let arg_bank = vec![Ext::ZERO, arg1]; // entry 0 unused here
+
+    // The two-instruction program. GateOutputFold materializes to col 2; the
+    // arg-bank Sum materializes to col 3.
+    let prog = Program2 {
+        instrs: vec![
+            Instr2 {
+                header: Header::Macro {
+                    routine: RoutineId::GateOutputFold as u8,
+                    n_operands: 2,
+                },
+                operands: vec![
+                    Operand::Affine { slot: 0, col: 0 },
+                    Operand::Affine { slot: 0, col: 1 },
+                ],
+                dsts: vec![Dst::Materialize { slot: 0, col: 2 }],
+                memtup: None,
+            },
+            Instr2 {
+                header: Header::Arith { op: ArithOp::Sum, arity: 1 },
+                operands: vec![Operand::Ldc { sub: LdcSub::ArgChallenge, idx: 1 }],
+                dsts: vec![Dst::Materialize { slot: 0, col: 3 }],
+                memtup: None,
+            },
+        ],
+        consts: vec![],
+        n_slot_cells: 0,
+        n_matrix_slots: 1,
+    };
+
+    // Slot 0 columns: the two source cols + two output placeholders.
+    let cols = vec![col0, col1, Ext::ZERO, Ext::ZERO];
+
+    // Baseline: banks filled as declared.
+    let base = execute2(&prog, &[], &dual_bank_src(cols.clone(), const_bank.clone(), arg_bank.clone()));
+    let base_vals: Vec<Ext> = base.materialized.iter().map(|(_, v)| *v).collect();
+
+    // Hand reference confirms each output reads its OWN bank:
+    //   out0 = col0 + α^1·col1 = 3 + 7·5 = 38   (ConstChallenge bank)
+    //   out1 = arg_challenge[1] = 9             (ArgChallenge bank)
+    let mut expect0 = col0;
+    let mut a1c1 = alpha1;
+    a1c1.mul_assign(&col1);
+    expect0.add_assign(&a1c1);
+    assert_eq!(base_vals, vec![expect0, arg1], "baseline must read each value from its OWN bank");
+
+    // Swap the two banks' CONTENTS and rerun. Now const_challenge holds the arg
+    // values and vice-versa; a faithful interpreter reads through the SAME
+    // channel as before, so BOTH outputs must change.
+    let swapped = execute2(
+        &prog,
+        &[],
+        // const_challenge <- arg_bank, arg_challenge <- const_bank.
+        &dual_bank_src(cols.clone(), arg_bank.clone(), const_bank.clone()),
+    );
+    let swapped_vals: Vec<Ext> = swapped.materialized.iter().map(|(_, v)| *v).collect();
+
+    // Distinct fills make the swap observable on BOTH outputs.
+    assert_ne!(
+        base_vals, swapped_vals,
+        "swapping the bank contents must change the result — a wrong-bank read is otherwise masked"
+    );
+    assert_ne!(
+        base_vals[0], swapped_vals[0],
+        "GateOutputFold α^1 read must come from the ConstChallenge bank (changed on swap)"
+    );
+    assert_ne!(
+        base_vals[1], swapped_vals[1],
+        "Ldc{{ArgChallenge}} read must come from the ArgChallenge bank (changed on swap)"
+    );
+    // And the swapped values are exactly the cross-read references:
+    //   out0' = col0 + arg1·col1 = 3 + 9·5 = 48 ; out1' = const1 = α^1 = 7.
+    let mut expect0_swapped = col0;
+    let mut a1c1_swapped = arg1;
+    a1c1_swapped.mul_assign(&col1);
+    expect0_swapped.add_assign(&a1c1_swapped);
+    assert_eq!(
+        swapped_vals,
+        vec![expect0_swapped, alpha1],
+        "after swap each channel reads the OTHER bank's contents"
+    );
+}
+
+#[test]
+fn in_kernel_fold_matches_v1_host_folded_coeff() {
+    // The deferred-fold identity. v1 BAKED `α^k · c` into a payload (the host
+    // folded the coefficient). v2 carries the RAW `c` on an `Ldc{Const}` lane (or
+    // a column value) and reads `α^k` from the column-indexed ConstChallenge bank
+    // (`alpha_power_bank_index`), multiplying IN-KERNEL. Prove the v2 in-kernel
+    // fold reproduces the v1 host-folded coefficient bit-for-bit across ≥2 column
+    // indices — INCLUDING k=0 (the free α^0=1 lift) and some k≥1 (a real bank read).
+    //
+    // We do NOT need v1 production code: the "host-folded coeff" is `α^k·lift(c)`
+    // computed directly here, and the "v2 in-kernel fold" is a GateOutputFold
+    // instruction (`acc = Σ_k α^k·col_k`) reading raw `c` from a column lane and
+    // `α^k` from `const_challenge[k]`.
+
+    // Concrete α, and a raw const c PER COLUMN (distinct so a wrong α-power index
+    // surfaces as a mismatch). α = 2 (lifted): α^0=1, α^1=2, α^2=4, α^3=8.
+    let alpha = lift(bf(2));
+    let mut alpha_powers = vec![Ext::ONE]; // alpha_powers[k] = α^k
+    for _ in 1..4 {
+        let mut next = *alpha_powers.last().unwrap();
+        next.mul_assign(&alpha);
+        alpha_powers.push(next);
+    }
+    // const_challenge[k] = α^k for k >= 1; entry 0 is unused (α^0 is a free lift).
+    let const_challenge = vec![Ext::ZERO, alpha_powers[1], alpha_powers[2], alpha_powers[3]];
+
+    // Raw consts c_k riding the GateOutputFold column lanes (k = 0..=3). Distinct
+    // values; none equal to a power of α so a coincidental match is implausible.
+    let raw_c: Vec<u32> = vec![11, 13, 17, 19];
+    let cols: Vec<Ext> = raw_c.iter().map(|&c| lift(bf(c))).collect();
+
+    // α-power indexing CONFIRMED against `alpha_power_bank_index`: col 0 is the
+    // OneLift (free α^0=1), col k>=1 reads bank entry k.
+    assert_eq!(alpha_power_bank_index(0), AlphaSlot::OneLift);
+    for k in 1u16..raw_c.len() as u16 {
+        assert_eq!(alpha_power_bank_index(k), AlphaSlot::Power(k));
+    }
+
+    // For each column index k, run a SINGLE-LANE GateOutputFold that contributes
+    // only that one term, so the materialized output is exactly the in-kernel
+    // fold of column k. To isolate term k we place c_k at column 0 of a fold when
+    // k==0 (free lift), and for k>=1 we run a 2-lane fold [dummy_zero, c_k] so the
+    // k=1 bank entry α^1 multiplies c_k — but the bank index is POSITIONAL (the
+    // operand position is the α-power index), so to test α^k we must place c_k at
+    // operand position k. We therefore build a (k+1)-lane fold whose lanes 0..k-1
+    // are zero and lane k carries c_k: out = α^k·c_k (all other terms vanish).
+    for k in 0..raw_c.len() {
+        // (k+1) operand lanes: zeros for positions 0..k, c_k at position k.
+        // Columns: col j (j < k) = 0, col k = c_k, then one output placeholder.
+        let mut fold_cols: Vec<Ext> = vec![Ext::ZERO; k];
+        fold_cols.push(cols[k]); // position k carries the raw const
+        let out_col = (k + 1) as u16;
+        fold_cols.push(Ext::ZERO); // output placeholder
+
+        let operands: Vec<Operand> =
+            (0..=k).map(|j| Operand::Affine { slot: 0, col: j as u16 }).collect();
+        let prog = Program2 {
+            instrs: vec![Instr2 {
+                header: Header::Macro {
+                    routine: RoutineId::GateOutputFold as u8,
+                    n_operands: (k + 1) as u8,
+                },
+                operands,
+                dsts: vec![Dst::Materialize { slot: 0, col: out_col }],
+                memtup: None,
+            }],
+            consts: vec![],
+            n_slot_cells: 0,
+            n_matrix_slots: 1,
+        };
+        let src = dual_bank_src(fold_cols, const_challenge.clone(), vec![]);
+        let got = execute2(&prog, &[], &src);
+        let in_kernel = got.materialized[0].1;
+
+        // v1 host-folded reference: α^k · lift(c_k), computed DIRECTLY here.
+        let mut host_folded = alpha_powers[k];
+        host_folded.mul_assign(&lift(bf(raw_c[k])));
+
+        assert_eq!(
+            in_kernel, host_folded,
+            "k={k}: v2 in-kernel α^{k}·c MUST equal the v1 host-folded coeff α^{k}·{}",
+            raw_c[k]
+        );
+    }
+
+    // Explicit witnesses at the two ends: k=0 is the FREE lift (α^0=1, so the
+    // fold output is just lift(c_0)); k=3 is a real bank read (α^3·c_3).
+    // k=0 (free lift): fold of a single lane [c_0] -> lift(c_0).
+    let p0 = Program2 {
+        instrs: vec![Instr2 {
+            header: Header::Macro { routine: RoutineId::GateOutputFold as u8, n_operands: 1 },
+            operands: vec![Operand::Affine { slot: 0, col: 0 }],
+            dsts: vec![Dst::Materialize { slot: 0, col: 1 }],
+            memtup: None,
+        }],
+        consts: vec![],
+        n_slot_cells: 0,
+        n_matrix_slots: 1,
+    };
+    let got0 = execute2(
+        &p0,
+        &[],
+        &dual_bank_src(vec![cols[0], Ext::ZERO], const_challenge.clone(), vec![]),
+    );
+    assert_eq!(got0.materialized[0].1, lift(bf(raw_c[0])), "k=0 free lift = lift(c_0)");
+}
