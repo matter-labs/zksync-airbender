@@ -24,9 +24,10 @@ use cs::{definitions::GKRAddress, gkr_compiler::OutputType};
 use kernel_collector::KernelCollector;
 use transcript::Seed;
 
-mod batch_evaluation;
+pub(crate) mod batch_evaluation;
 mod distribution_analysis;
 mod kernel_collector;
+pub(crate) mod windowed_mode;
 
 /// # Panics
 /// Panics if claims or challenge points for the output layer are missing from storage.
@@ -443,6 +444,18 @@ where
     [(); E::DEGREE]: Sized,
 {
     if USE_BATCHING {
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::sumcheck_loop::windowed_sumcheck_loop;
+        windowed_sumcheck_loop::<F, E, N>(
+            collector,
+            initial_claim,
+            prev_challenges,
+            eq_poly,
+            gkr_storage,
+            challenge_constants,
+            folding_steps,
+            worker,
+            seed,
+        );
         println!("Running sumcheck loop in batched mode");
     } else {
         println!("Running sumcheck loop in individual kernel mode");

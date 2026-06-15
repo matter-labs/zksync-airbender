@@ -5,6 +5,8 @@ use cs::definitions::GKRAddress;
 use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic};
 use worker::Worker;
 
+use crate::gkr::prover::sumcheck_loop::windowed_mode::full_size_scratch::initial_round::evaluate_initial_with_full_sized_scratch;
+use crate::gkr::sumcheck::access_and_fold::DisjointAccessQuasiSlice;
 use crate::gkr::sumcheck::eq_poly::*;
 use crate::gkr::sumcheck::{
     access_and_fold::{ExtensionFieldPoly, GKRLayerSource, GKRStorage},
@@ -735,14 +737,57 @@ fn test_windowed_product() {
         }
     }
 
-    // for i in 0..27 {
-    //     let x2 = i % 3;
-    //     let x1 = (i / 3) % 3;
-    //     let x0 = (i / 9) % 3;
-    //     println!("Acc {} : {} : {} = {} * {}", var_repr(x0), var_repr(x1), var_repr(x2), accumulator[i], eq_prefactors[i]);
+    {
+        // self-check our batched description
+        use crate::gkr::prover::sumcheck_loop::batch_evaluation::BatchedGKRDescription;
+        use crate::gkr::prover::sumcheck_loop::windowed_mode::full_size_scratch::produce_descriptions_from_batched_description;
+        let batched_description = BatchedGKRDescription {
+            quadratic_part_base_by_base: Vec::new(),
+            quadratic_part_base_by_ext: Vec::new(),
+            quadratic_part_ext_by_ext: vec![(
+                GKRAddress::InnerLayer {
+                    layer: 0,
+                    offset: 0,
+                },
+                vec![(
+                    GKRAddress::InnerLayer {
+                        layer: 0,
+                        offset: 1,
+                    },
+                    E::ONE,
+                )],
+            )],
+            linear_part_base_by_everything: Vec::new(),
+            linear_part_ext_by_everything: Vec::new(),
+            outputs_in_base: Vec::new(),
+            outputs_in_ext: Vec::new(),
+            constant_term: E::ZERO,
+            _marker: core::marker::PhantomData::<F>,
+        };
+        dbg!(&batched_description);
 
-    //     accumulator[i].mul_assign(&eq_prefactors[i]);
-    // }
+        let (windowed_description, src_base, src_ext) =
+            produce_descriptions_from_batched_description(&batched_description);
+        let base_sources = vec![];
+        let ext_sources: Vec<_> = src_ext
+            .iter()
+            .map(|el| {
+                let slice = storage.try_get_ext_poly(*el).unwrap();
+                DisjointAccessQuasiSlice::<_, false>::from_init_slice(slice)
+            })
+            .collect();
+
+        let row_range = 0..2;
+        let acc = evaluate_initial_with_full_sized_scratch(
+            &base_sources,
+            &ext_sources,
+            &windowed_description,
+            precomputed_eq,
+            FOLDING_STEPS,
+            row_range,
+        );
+        assert_eq!(acc, accumulator);
+    }
 
     // for the first round we need to sum over x1 and x2
 

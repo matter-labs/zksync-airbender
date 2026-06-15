@@ -77,11 +77,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 kernel
             );
 
-            // use crate::gkr::prover::sumcheck_loop::kernel_collector::KernelVariant;
-            // if let KernelVariant::MaxQuadratic(..) = kernel {
-            //     dbg!(&terms);
-            // }
-
             for (batch_challege, term) in challenges.iter().zip(terms.iter()) {
                 for (a, other_terms) in term.quadratic_part_base_by_base.iter() {
                     for (b, c) in other_terms.iter() {
@@ -203,7 +198,7 @@ pub(crate) fn evaluate_batched_gkr_description<
 
     let work_size = accumulator.len();
     assert!(work_size.is_power_of_two());
-
+    let now = std::time::Instant::now();
     match step {
         0 => {
             for (a, other_terms) in description.quadratic_part_base_by_base.iter() {
@@ -500,6 +495,8 @@ pub(crate) fn evaluate_batched_gkr_description<
             }
         }
     }
+
+    println!("Round {} took {:?}", step, now.elapsed());
 }
 
 fn evaluate_quadratic_term<
