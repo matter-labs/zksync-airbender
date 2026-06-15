@@ -101,6 +101,378 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
             println!("Ext variable {:?} happens in {} quad terms with base, {} quad terms with ext and {} linear terms", a, with_base, with_ext, in_linear);
         }
     }
+
+    /// Build the interaction graph induced by the `quadratic_part_base_by_base` terms of the
+    /// batched description, and partition it.
+    ///
+    /// Each quadratic term contributes an undirected edge between the two [`GKRAddress`]es it
+    /// multiplies: if `a` is a key in the (conceptual) map and `b` appears as one of the entries of
+    /// its value `Vec<(GKRAddress, E)>`, then the graph has an edge `a -- b`.
+    pub(crate) fn partition_quadratic_graph(&self, target_cluster_size: usize) -> GraphPartitioning<E> {
+        let challenge_constants = BatchedGKRTermDescriptionConstants {
+            external_challenges: GKRExternalChallenges {
+                permutation_argument_linearization_challenges: [E::ONE;
+                    NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+                permutation_argument_additive_part: E::ONE,
+                _marker: core::marker::PhantomData,
+            },
+            lookup_challenges_additive_part: E::ONE,
+            lookup_challenges_multiplicative_part: E::ONE,
+            _marker: core::marker::PhantomData,
+        };
+        let batched_description = self.make_batched_description(&challenge_constants, self.layer);
+
+        let mut graph = AddressGraph::new();
+        graph.add_quadratic_part(batched_description.quadratic_part_base_by_base.iter());
+        graph.add_quadratic_part(batched_description.quadratic_part_base_by_ext.iter());
+        graph.add_quadratic_part(batched_description.quadratic_part_ext_by_ext.iter());
+
+        println!(
+            "merged quadratic graph (base_by_base + base_by_ext + ext_by_ext): {} vertices, {} edges",
+            graph.num_vertices(),
+            graph.num_edges()
+        );
+
+        let clusters = graph.greedy_clusters(target_cluster_size);
+        let partitioning = graph.build_partitioning(&clusters);
+
+        // Reporting.
+        let isolated_pairs = clusters
+            .iter()
+            .filter(|c| c.kind == ClusterKind::IsolatedPair)
+            .count();
+        let singletons = clusters
+            .iter()
+            .filter(|c| c.kind == ClusterKind::Singleton)
+            .count();
+        let clustered = clusters
+            .iter()
+            .filter(|c| c.kind == ClusterKind::Clustered)
+            .count();
+        // An address that lands in more than one cluster is shared (overlap / separator variable).
+        let shared = partitioning
+            .address_to_partitions
+            .values()
+            .filter(|parts| parts.len() > 1)
+            .count();
+        let overlap_incidences: usize = partitioning
+            .address_to_partitions
+            .values()
+            .map(|parts| parts.len() - 1)
+            .sum();
+        println!(
+            "Two-phase partition (target cluster size {}): {} cluster(s) total = \
+             {} isolated pair(s) + {} singleton(s) + {} grown cluster(s).",
+            target_cluster_size,
+            clusters.len(),
+            isolated_pairs,
+            singletons,
+            clustered,
+        );
+        println!(
+            "  Phase 2 overlap: {} shared address(es), {} total overlap incidence(s).",
+            shared, overlap_incidences,
+        );
+        let sizes: Vec<usize> = clusters.iter().map(|c| c.vertices.len()).collect();
+        println!("  cluster sizes = {:?}", sizes);
+
+        partitioning
+    }
+}
+
+/// Result of partitioning the quadratic interaction graph into clusters.
+///
+/// Holds the two complementary views:
+/// * `partitions`: cluster number -> all member [`GKRAddress`]es, each with the quadratic terms
+///   (neighbour address + coefficient) of that cluster incident to it.
+/// * `address_to_partitions`: [`GKRAddress`] -> every cluster it belongs to. More than one entry
+///   means the address is *shared* across clusters (an overlap / separator variable).
+#[derive(Clone, Debug)]
+pub(crate) struct GraphPartitioning<E> {
+    pub(crate) partitions: BTreeMap<usize, Vec<(GKRAddress, Vec<(GKRAddress, E)>)>>,
+    pub(crate) address_to_partitions: BTreeMap<GKRAddress, Vec<usize>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ClusterKind {
+    /// A fully-isolated connected component of size 2 (Phase 1).
+    IsolatedPair,
+    /// A fully-isolated connected component of size 1 (no quadratic terms).
+    Singleton,
+    /// A cluster grown out of a larger component (Phase 2), possibly overlapping others.
+    Clustered,
+}
+
+/// A single cluster: its member vertices and the quadratic terms (edges, canonical `u < v`) assigned
+/// to it. Every assigned term has both endpoints among `vertices`, so the cluster is self-contained.
+struct ClusterRaw<E> {
+    vertices: BTreeSet<usize>,
+    edges: Vec<(usize, usize, E)>,
+    kind: ClusterKind,
+}
+
+/// Undirected graph over [`GKRAddress`]es with a dense internal vertex indexing. Each edge carries
+/// the coefficient of the quadratic term that induced it.
+struct AddressGraph<E> {
+    addresses: Vec<GKRAddress>,
+    index_of: BTreeMap<GKRAddress, usize>,
+    adjacency: Vec<BTreeMap<usize, E>>,
+}
+
+impl<E: Field> AddressGraph<E> {
+    fn new() -> Self {
+        Self {
+            addresses: Vec::new(),
+            index_of: BTreeMap::new(),
+            adjacency: Vec::new(),
+        }
+    }
+
+    /// Add edges from one `quadratic_part_*` representation: for every key `a` and every
+    /// `(b, coeff)` in its value vector we add an edge `a -- b` carrying `coeff` (self-loops are
+    /// ignored).
+    ///
+    /// Can be called repeatedly to merge contributions from `base_by_base`, `base_by_ext` and
+    /// `ext_by_ext` into the same graph; vertices are deduplicated and coefficients of a repeated
+    /// edge are accumulated.
+    fn add_quadratic_part<'a>(
+        &mut self,
+        terms: impl Iterator<Item = &'a (GKRAddress, Vec<(GKRAddress, E)>)>,
+    ) where
+        E: 'a,
+    {
+        for (a, neighbours) in terms {
+            // make sure isolated keys still become vertices
+            self.vertex(*a);
+            for (b, coeff) in neighbours.iter() {
+                self.add_edge(*a, *b, *coeff);
+            }
+        }
+    }
+
+    fn vertex(&mut self, address: GKRAddress) -> usize {
+        if let Some(&idx) = self.index_of.get(&address) {
+            return idx;
+        }
+        let idx = self.addresses.len();
+        self.addresses.push(address);
+        self.index_of.insert(address, idx);
+        self.adjacency.push(BTreeMap::new());
+        idx
+    }
+
+    fn add_edge(&mut self, a: GKRAddress, b: GKRAddress, coeff: E) {
+        if a == b {
+            return;
+        }
+        let a = self.vertex(a);
+        let b = self.vertex(b);
+        self.adjacency[a].entry(b).or_insert(E::ZERO).add_assign(&coeff);
+        self.adjacency[b].entry(a).or_insert(E::ZERO).add_assign(&coeff);
+    }
+
+    /// Build the cluster list with the two-phase strategy:
+    ///
+    /// * **Phase 1** — every connected component of size <= 2 is emitted directly: size-2 components
+    ///   are the fully-isolated pairs we want as many of as possible, size-1 are stray singletons.
+    ///   These never overlap anything.
+    /// * **Phase 2** — each larger component is greedily cut into connected clusters of roughly
+    ///   `target_cluster_size` vertices (see [`greedy_cluster_component`]). Because every quadratic
+    ///   term must stay wholly inside one cluster, a term straddling a cut forces both endpoints to
+    ///   be shared, so clusters overlap on their boundary vertices; the greedy growth picks the
+    ///   expansion vertices that add the fewest boundary edges to keep that overlap small.
+    fn greedy_clusters(&self, target_cluster_size: usize) -> Vec<ClusterRaw<E>> {
+        let mut clusters = Vec::new();
+        for component in self.connected_components() {
+            match component.len() {
+                1 => {
+                    let mut vertices = BTreeSet::new();
+                    vertices.insert(component[0]);
+                    clusters.push(ClusterRaw {
+                        vertices,
+                        edges: Vec::new(),
+                        kind: ClusterKind::Singleton,
+                    });
+                }
+                2 => {
+                    let (u, v) = (component[0], component[1]);
+                    let (lo, hi) = (u.min(v), u.max(v));
+                    let coeff = self.adjacency[lo][&hi];
+                    clusters.push(ClusterRaw {
+                        vertices: [lo, hi].into_iter().collect(),
+                        edges: vec![(lo, hi, coeff)],
+                        kind: ClusterKind::IsolatedPair,
+                    });
+                }
+                _ => {
+                    clusters.extend(self.greedy_cluster_component(&component, target_cluster_size));
+                }
+            }
+        }
+        clusters
+    }
+
+    /// Greedily cut one (large) connected component into connected clusters of about
+    /// `target_cluster_size` vertices, assigning every edge to exactly one cluster.
+    ///
+    /// Each cluster grows from a seed edge: we repeatedly absorb edges already fully inside the
+    /// cluster (free, no new vertex), then expand to the neighbouring vertex with the smallest
+    /// *external* degree (fewest edges leaving the current cluster) so the boundary — and hence the
+    /// overlap with future clusters — stays minimal. Growth stops once the cluster reaches the
+    /// target size; remaining edges seed the next cluster.
+    fn greedy_cluster_component(
+        &self,
+        component: &[usize],
+        target_cluster_size: usize,
+    ) -> Vec<ClusterRaw<E>> {
+        let target = target_cluster_size.max(2);
+        // Canonical (u < v) edges of this component, still to be assigned.
+        let mut unassigned: BTreeSet<(usize, usize)> = BTreeSet::new();
+        for &u in component {
+            for &v in self.adjacency[u].keys() {
+                if u < v {
+                    unassigned.insert((u, v));
+                }
+            }
+        }
+
+        let coeff_of = |lo: usize, hi: usize| self.adjacency[lo][&hi];
+        let mut clusters = Vec::new();
+
+        while !unassigned.is_empty() {
+            // Seed with the unassigned edge whose endpoints have the smallest combined degree,
+            // i.e. start growing from the periphery.
+            let seed = *unassigned
+                .iter()
+                .min_by_key(|(u, v)| self.adjacency[*u].len() + self.adjacency[*v].len())
+                .unwrap();
+            unassigned.remove(&seed);
+            let mut vertices: BTreeSet<usize> = [seed.0, seed.1].into_iter().collect();
+            let mut edges: Vec<(usize, usize, E)> = vec![(seed.0, seed.1, coeff_of(seed.0, seed.1))];
+
+            loop {
+                // Absorb every unassigned edge that is already fully inside the cluster: it adds a
+                // term for free without enlarging the vertex set.
+                let internal: Vec<(usize, usize)> = unassigned
+                    .iter()
+                    .filter(|(u, v)| vertices.contains(u) && vertices.contains(v))
+                    .copied()
+                    .collect();
+                for e in internal {
+                    unassigned.remove(&e);
+                    edges.push((e.0, e.1, coeff_of(e.0, e.1)));
+                }
+
+                if vertices.len() >= target {
+                    break;
+                }
+
+                // Expand to the frontier vertex with the lowest external degree.
+                let mut best: Option<(usize, (usize, usize), usize)> = None; // (outside, edge, score)
+                for &(u, v) in unassigned.iter() {
+                    let (inside, outside) = match (vertices.contains(&u), vertices.contains(&v)) {
+                        (true, false) => (u, v),
+                        (false, true) => (v, u),
+                        _ => continue,
+                    };
+                    let _ = inside;
+                    // External degree of `outside`: edges from it to vertices *not yet* in cluster.
+                    let external = self.adjacency[outside]
+                        .keys()
+                        .filter(|w| !vertices.contains(w))
+                        .count();
+                    if best.is_none_or(|(_, _, s)| external < s) {
+                        best = Some((outside, (u, v), external));
+                    }
+                }
+
+                match best {
+                    Some((outside, edge, _)) => {
+                        vertices.insert(outside);
+                        unassigned.remove(&edge);
+                        edges.push((edge.0, edge.1, coeff_of(edge.0, edge.1)));
+                    }
+                    None => break,
+                }
+            }
+
+            clusters.push(ClusterRaw {
+                vertices,
+                edges,
+                kind: ClusterKind::Clustered,
+            });
+        }
+
+        clusters
+    }
+
+    /// Materialise the two output maps from a cluster list.
+    fn build_partitioning(&self, clusters: &[ClusterRaw<E>]) -> GraphPartitioning<E> {
+        let mut partitions: BTreeMap<usize, Vec<(GKRAddress, Vec<(GKRAddress, E)>)>> =
+            BTreeMap::new();
+        let mut address_to_partitions: BTreeMap<GKRAddress, Vec<usize>> = BTreeMap::new();
+
+        for (cluster_id, cluster) in clusters.iter().enumerate() {
+            // Seed every member with an empty term list and record its cluster membership.
+            let mut member_terms: BTreeMap<GKRAddress, Vec<(GKRAddress, E)>> = BTreeMap::new();
+            for &v in cluster.vertices.iter() {
+                member_terms.entry(self.addresses[v]).or_default();
+                address_to_partitions
+                    .entry(self.addresses[v])
+                    .or_default()
+                    .push(cluster_id);
+            }
+            // Attach each assigned term to both of its endpoints.
+            for &(u, v, coeff) in cluster.edges.iter() {
+                let (au, av) = (self.addresses[u], self.addresses[v]);
+                member_terms.get_mut(&au).unwrap().push((av, coeff));
+                member_terms.get_mut(&av).unwrap().push((au, coeff));
+            }
+            partitions.insert(cluster_id, member_terms.into_iter().collect());
+        }
+
+        GraphPartitioning {
+            partitions,
+            address_to_partitions,
+        }
+    }
+
+    fn num_vertices(&self) -> usize {
+        self.addresses.len()
+    }
+
+    fn num_edges(&self) -> usize {
+        self.adjacency.iter().map(|nbs| nbs.len()).sum::<usize>() / 2
+    }
+
+    /// Connected components via iterative DFS. Each returned `Vec` lists the vertex indices of one
+    /// component. Disjoint components can be processed completely independently.
+    fn connected_components(&self) -> Vec<Vec<usize>> {
+        let n = self.num_vertices();
+        let mut component_of = vec![usize::MAX; n];
+        let mut components = Vec::new();
+        for start in 0..n {
+            if component_of[start] != usize::MAX {
+                continue;
+            }
+            let id = components.len();
+            let mut members = Vec::new();
+            let mut stack = vec![start];
+            component_of[start] = id;
+            while let Some(v) = stack.pop() {
+                members.push(v);
+                for &nb in self.adjacency[v].keys() {
+                    if component_of[nb] == usize::MAX {
+                        component_of[nb] = id;
+                        stack.push(nb);
+                    }
+                }
+            }
+            components.push(members);
+        }
+        components
+    }
+
 }
 
 #[cfg(test)]
@@ -119,11 +491,11 @@ mod test {
     fn analyze_terms_in_circuit() {
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
             deserialize_from_file(
-                "../cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_gkr.json",
+                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json",
             )
         } else {
             deserialize_from_file(
-                "../cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_no_caches_gkr.json",
+                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
             )
         };
 
@@ -134,5 +506,53 @@ mod test {
             KernelCollector::<F, E>::from_layer(layer, layer_idx, E::ONE, E::ONE, E::ONE, &[], 0);
 
         collector.analyze_terms();
+    }
+
+    #[test]
+    fn partition_quadratic_graph_in_circuit() {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file(
+                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json",
+            )
+        } else {
+            deserialize_from_file(
+                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
+            )
+        };
+
+        let layer_idx = 0;
+        let layer = &circuit.layers[layer_idx];
+
+        let collector =
+            KernelCollector::<F, E>::from_layer(layer, layer_idx, E::ONE, E::ONE, E::ONE, &[], 0);
+
+        let target_cluster_size = 9;
+        let partitioning = collector.partition_quadratic_graph(target_cluster_size);
+
+        println!("\n===== partition -> members and their quadratic terms =====");
+        for (part, members) in partitioning.partitions.iter() {
+            println!("partition {} ({} member(s)):", part, members.len());
+            // Each quadratic term is stored on both endpoints; print every undirected term once.
+            let mut printed = BTreeSet::new();
+            for (address, terms) in members.iter() {
+                println!("    {:?}", address);
+                for (neighbour, coeff) in terms.iter() {
+                    let key = (address.min(neighbour), address.max(neighbour));
+                    if !printed.insert(key) {
+                        continue;
+                    }
+                    println!("        * {:?} x {:?}  (coeff {})", address, neighbour, coeff);
+                }
+            }
+        }
+
+        println!("\n===== GKRAddress -> partition(s)  (multiple = shared/overlap) =====");
+        for (address, parts) in partitioning.address_to_partitions.iter() {
+            if parts.len() > 1 {
+                println!("    {:?} -> partitions {:?}  (SHARED)", address, parts);
+            } else {
+                println!("    {:?} -> partition {}", address, parts[0]);
+            }
+        }
     }
 }
