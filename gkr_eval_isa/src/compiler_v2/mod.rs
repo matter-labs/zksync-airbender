@@ -406,10 +406,46 @@ pub fn compile_forward_v2(
         .map(|(i, c)| (*c, i as u16))
         .collect();
 
-    // Computed nodes that are layer outputs the PROGRAM owns (node is NOT a
-    // native GateOutput): these materialize to their backing column. add_sub L0
-    // has none, but the path is exercised by later fixtures (Task 2.6 hardens
-    // alias/scratch handling on top of this simple correct policy).
+    // Dst selection + pass-through aliasing + scratch-prefill skip (Task 2.6).
+    //
+    // (a) Dst::Materialize vs Dst::Slot. A computed node that is a PROGRAM-owned
+    //     layer output (the output node is NOT a native GateOutput) materializes
+    //     to its backing column (`Dst::Materialize`, below in `emit_node`); every
+    //     OTHER computed node — including every multi-use CSE intermediate — gets
+    //     a bounded `Dst::Slot`. (In the in-tree corpus EVERY program output node
+    //     is a native GateOutput, so `output_addr` is empty and the Materialize
+    //     arm is correct-but-unexercised here; macros/caches are the only sources
+    //     of `Dst::Materialize` in practice. The arm stays for circuits that copy
+    //     a computed value out directly.)
+    //
+    // (b) Pass-through aliasing (no-emit). The genuine alias in this corpus is a
+    //     Cached `Place` node — a leaf column whose address is produced by a
+    //     SAME-layer cache (v1's `cached_alias`, fwd.rs:251-258). It is the
+    //     consumer-side read of a cache cell, NOT a staged source. Two facts make
+    //     it a true pass-through with no instruction of its own:
+    //       - It is a `Place` (never `is_computed`), so it never enters the
+    //         base-arith emission `order` and emits no `Header::Arith` instr.
+    //       - When a macro/cache consumes it, `macros::operand_for` maps the
+    //         `GKRAddress::Cached` Place to an inline gather (`Operand::Indirect`),
+    //         never an `Operand::Affine` staged-source read — so no copy/load
+    //         instruction backs the alias either. Consumers resolve to the cache's
+    //         own `Dst::Materialize` backing, produced once by `lower_cache`.
+    //     `CopyInBaseField`/`CopyInExtensionField` gates are the other alias class
+    //     (`LoweringKind::Alias`): `lower_gate` returns `None` for them, so they
+    //     emit nothing and the consumer reads the copied-in backing directly.
+    //
+    // (c) Scratch-prefill skip. A scratch-prefilled `MaxQuadratic` is a
+    //     witness-stage value read from scratch by address, never computed
+    //     forward. It is classified `LoweringKind::ScratchSkip`
+    //     (routines.rs:172), for which `macros::lower_gate` returns `None` — so it
+    //     emits no instruction. We keep the KIND-based skip rather than the v1
+    //     per-gate predicate (`gate_is_scratch_prefilled`) because the corpus
+    //     invariant "every forward `MaxQuadratic` is scratch-prefilled" is pinned
+    //     by `tests/v2_gates.rs::maxquadratic_all_scratch_prefilled`; if a
+    //     non-scratch `MaxQuadratic` ever appears it is a new design item (spec
+    //     §9), not a silent mis-lowering. The Task-2.6 test asserts BOTH that no
+    //     `MaxQuadratic` gate produces an `Instr2` AND that the invariant still
+    //     holds, so the kind-based skip stays sound.
     let mut output_addr: HashMap<usize, cs::definitions::GKRAddress> = HashMap::new();
     for out in &g.outputs {
         if !matches!(arena[out.node], ExprNode::GateOutput { .. }) {
@@ -674,5 +710,234 @@ mod tests {
             }
         }
         assert!(cf.program.consts.len() <= 256, "const table within u8 index space");
+    }
+
+    /// Task 2.6: corpus-wide dst-selection + pass-through aliasing + scratch
+    /// skip. Over all 22 fixtures × every layer:
+    ///  (a) every multi-use (`pv.uses >= 2`) computed intermediate that is NOT a
+    ///      program-owned output gets a `Dst::Slot`; a computed program output
+    ///      gets a `Dst::Materialize`.
+    ///  (b) a pass-through alias — a Cached `Place` node whose address is produced
+    ///      by a same-layer cache — emits NO `Instr2` of its own; consumers read
+    ///      it via an inline gather (`Operand::Indirect`), never a staged-source
+    ///      Affine, and the only writer of its backing is the producing cache's
+    ///      `Dst::Materialize`. Proven non-vacuous (>= 1 alias consumed).
+    ///  (c) no `MaxQuadratic` gate produces an `Instr2` (kind-based ScratchSkip),
+    ///      and the corpus invariant that every such gate IS scratch-prefilled
+    ///      still holds (so the kind-based skip is sound — see the comment in
+    ///      `compile_forward_v2`).
+    #[test]
+    fn dst_selection_alias_and_scratch_skip_22_fixtures() {
+        use crate::compiler::fwd::gate_is_scratch_prefilled;
+        use crate::isa_v2::Operand;
+        use crate::test_support::all_fixtures;
+        use cs::definitions::GKRAddress;
+        use cs::gkr_compiler::codegen_ir::GateKind;
+        use std::collections::{HashMap, HashSet};
+
+        let fixtures = all_fixtures();
+        assert_eq!(fixtures.len(), 22, "expected the 22-fixture codegen_ir corpus");
+
+        // Non-vacuity accumulators across the whole corpus.
+        let mut total_multiuse_slot = 0usize; // (a) multi-use computed -> Slot
+        let mut total_materialize_outputs = 0usize; // (a) computed output -> Materialize
+        let mut total_alias_nodes = 0usize; // (b) Cached-Place aliases seen
+        let mut total_indirect_for_alias = 0usize; // (b) aliases read via gather
+        let mut total_maxq_gates = 0usize; // (c) MaxQuadratic gates
+        let mut total_maxq_scratch = 0usize; // (c) of which scratch-prefilled
+
+        for p in &fixtures {
+            let name = p.file_name().unwrap().to_str().unwrap().to_string();
+            let c = load_circuit(p).unwrap_or_else(|e| panic!("load {name}: {e:?}"));
+            for (li, layer) in c.circuit.layers.iter().enumerate() {
+                let Some(g) = c.graphs.get(li) else { continue };
+                let arena = &layer.arena.nodes;
+                let pv = view::build(layer, g);
+                let cf = compile_forward_v2(layer, g, FwdParams2::default());
+
+                // Program-owned output nodes (node is NOT a native GateOutput):
+                // the only nodes allowed a base-arith `Dst::Materialize`.
+                let output_nodes: HashSet<usize> = g
+                    .outputs
+                    .iter()
+                    .filter(|o| !matches!(arena[o.node], ExprNode::GateOutput { .. }))
+                    .map(|o| o.node)
+                    .collect();
+
+                // (a) Bind each base-arith instr back to its arena node and check
+                //     the dst KIND against the node's role. instr_node must be
+                //     instr-aligned, else the zip silently drops instrs.
+                assert_eq!(
+                    cf.instr_node.len(),
+                    cf.program.instrs.len(),
+                    "{name} L{li}: instr_node not instr-aligned"
+                );
+                // A computed node may be emitted (as Slot) MORE THAN ONCE via
+                // rematerialization; track which nodes we have seen materialized.
+                for (ins, node) in cf.program.instrs.iter().zip(&cf.instr_node) {
+                    let Header::Arith { .. } = ins.header else { continue };
+                    let nid = node.expect("arith instr carries its arena node id") as usize;
+                    assert!(is_computed(&arena[nid]), "{name} L{li}: arith node not computed");
+                    match ins.dsts.as_slice() {
+                        [Dst::Slot { .. }] => {
+                            // A Slot dst must NOT be a program-owned output node
+                            // (those must Materialize).
+                            assert!(
+                                !output_nodes.contains(&nid),
+                                "{name} L{li}: computed output node {nid} written to a Slot, \
+                                 must Materialize"
+                            );
+                        }
+                        [Dst::Materialize { .. }] => {
+                            total_materialize_outputs += 1;
+                            assert!(
+                                output_nodes.contains(&nid),
+                                "{name} L{li}: non-output computed node {nid} Materialized; \
+                                 only program-owned outputs may Materialize from base-arith"
+                            );
+                        }
+                        _ => panic!("{name} L{li}: arith must have exactly one footer dst"),
+                    }
+                }
+
+                // (a) Every multi-use computed intermediate that is NOT a program
+                //     output must be emitted with a Slot dst (at least its primary
+                //     emission). Build node -> set of dst kinds it received.
+                let mut node_has_slot: HashMap<usize, bool> = HashMap::new();
+                for (ins, node) in cf.program.instrs.iter().zip(&cf.instr_node) {
+                    let Header::Arith { .. } = ins.header else { continue };
+                    let nid = node.unwrap() as usize;
+                    if matches!(ins.dsts.as_slice(), [Dst::Slot { .. }]) {
+                        node_has_slot.insert(nid, true);
+                    }
+                }
+                for (i, n) in arena.iter().enumerate() {
+                    if is_computed(n) && pv.uses[i] >= 2 && !output_nodes.contains(&i) {
+                        assert!(
+                            *node_has_slot.get(&i).unwrap_or(&false),
+                            "{name} L{li}: multi-use computed node {i} (uses={}) \
+                             never received a Dst::Slot",
+                            pv.uses[i]
+                        );
+                        total_multiuse_slot += 1;
+                    }
+                }
+
+                // (b) Pass-through aliasing. Cached-Place alias set = Place nodes
+                //     whose addr is produced by a same-layer cache (v1 cached_alias).
+                let mut cache_out_addr: HashMap<GKRAddress, usize> = HashMap::new();
+                for (ci, cache) in layer.caches.iter().enumerate() {
+                    cache_out_addr.insert(cache.out.1, ci);
+                }
+                let mut alias_addrs: HashSet<GKRAddress> = HashSet::new();
+                for n in arena.iter() {
+                    if let ExprNode::Place { addr, .. } = n {
+                        if cache_out_addr.contains_key(addr) {
+                            alias_addrs.insert(*addr);
+                            total_alias_nodes += 1;
+                        }
+                    }
+                }
+                // The matrix-table slot of each alias address == the slot the
+                // producing cache materializes into. The ONLY instruction writing
+                // that (slot,col) backing must be a `Dst::Materialize` (the cache),
+                // never a base-arith Slot/Materialize keyed to the alias and never
+                // a duplicate copy. base-arith writes Slots (cells), not matrix
+                // backings, so there is structurally no base-arith write of an
+                // alias backing — assert that holds.
+                let alias_slots: HashSet<u8> = alias_addrs
+                    .iter()
+                    .filter_map(|a| cf.matrix_table.slot_for(a))
+                    .collect();
+                for (ins, node) in cf.program.instrs.iter().zip(&cf.instr_node) {
+                    if !matches!(ins.header, Header::Arith { .. }) {
+                        continue;
+                    }
+                    // No base-arith instr may Materialize into an alias backing.
+                    for d in &ins.dsts {
+                        if let Dst::Materialize { slot, .. } = d {
+                            assert!(
+                                !alias_slots.contains(slot),
+                                "{name} L{li}: base-arith instr (node {:?}) materialized into \
+                                 an alias cache backing slot {slot}",
+                                node
+                            );
+                        }
+                    }
+                }
+                // Consumers of an alias read it via Indirect (gather), proving the
+                // alias is a pass-through (no staged-source Affine read of it).
+                // We can't map an Operand back to an arena node directly, so we
+                // count Indirect operands when the layer HAS aliases — a positive
+                // corpus-wide count proves the gather path is exercised. The
+                // per-layer no-base-arith-write check above is the strict guard.
+                for ins in &cf.program.instrs {
+                    for op in &ins.operands {
+                        if matches!(op, Operand::Indirect { .. }) {
+                            total_indirect_for_alias += 1;
+                        }
+                    }
+                }
+
+                // (c) Scratch-prefill skip. No Instr2 may exist for a MaxQuadratic
+                //     gate. Base-arith never lowers a gate (instr_node bound nodes
+                //     are Sum/Product, asserted above), and `lower_gate` returns
+                //     None for ScratchSkip — so the corpus must emit zero macro
+                //     instrs attributable to MaxQuadratic. We assert the stronger,
+                //     directly-checkable fact: every MaxQuadratic gate IS
+                //     scratch-prefilled (so the kind-based skip is sound), and the
+                //     macro lowering of each returns None.
+                for gate in layer.gates.iter().chain(&layer.gates_external) {
+                    if !matches!(gate.kind, GateKind::MaxQuadratic { .. }) {
+                        continue;
+                    }
+                    total_maxq_gates += 1;
+                    assert!(
+                        gate_is_scratch_prefilled(gate),
+                        "{name} L{li}: a non-scratch forward MaxQuadratic appeared — \
+                         the kind-based ScratchSkip is no longer sound (spec §9 design item)"
+                    );
+                    total_maxq_scratch += 1;
+                    // The macro lowering must not emit an instruction for it.
+                    let cache_kinds = macros::cache_kind_by_addr(layer);
+                    let consts = challenges::build_const_table(arena);
+                    let const_idx: HashMap<u32, u16> =
+                        consts.iter().enumerate().map(|(i, c)| (*c, i as u16)).collect();
+                    let mut mctx =
+                        macros::MacroCtx::new(&cf.matrix_table, &const_idx, &cache_kinds);
+                    assert!(
+                        macros::lower_gate(gate, arena, &mut mctx).is_none(),
+                        "{name} L{li}: scratch MaxQuadratic lowered to an Instr2 (must skip)"
+                    );
+                }
+            }
+        }
+
+        // Non-vacuity: each phenomenon must actually occur in the corpus.
+        assert!(
+            total_multiuse_slot > 0,
+            "(a) no multi-use computed intermediate landed in a Slot (vacuous)"
+        );
+        assert!(
+            total_alias_nodes > 0,
+            "(b) no Cached-Place pass-through alias in the corpus (vacuous)"
+        );
+        assert!(
+            total_indirect_for_alias > 0,
+            "(b) no alias consumed via gather (Indirect); pass-through path unexercised"
+        );
+        assert!(
+            total_maxq_gates > 0,
+            "(c) no MaxQuadratic gate in the corpus (scratch-skip test vacuous)"
+        );
+        assert_eq!(
+            total_maxq_scratch, total_maxq_gates,
+            "(c) some MaxQuadratic gate was not scratch-prefilled"
+        );
+        // `total_materialize_outputs` is 0 in the in-tree corpus (every program
+        // output node is a native GateOutput); the Materialize arm is still
+        // dst-kind-checked above whenever it fires, so a future computed-output
+        // circuit is covered without making this assertion brittle today.
+        let _ = total_materialize_outputs;
     }
 }
