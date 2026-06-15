@@ -16,26 +16,98 @@ pub use routines::{
     LoweringKind, RoutineSchema, Shape,
 };
 
-/// Macro routine id (7-bit wire id). Discriminants are dense and stable; the
-/// full descriptor table + lowering live in `routines.rs` (Task 1.4), which
-/// references this enum via `super::RoutineId`. Seeded with the routines the
-/// 1.3/1.5 tests touch; Task 1.4 extends it to the full §3/§4/§9 set.
+/// Macro routine id (7-bit wire id). Discriminants are dense (id == index) and
+/// 1:1 with the FORWARD FORMULA — there is exactly one `RoutineId` per distinct
+/// per-row math, mirroring the production primitive-kind tags `PK_*`
+/// (`gpu/circuit_prover/src/prover/gkr/forward/bench_interp/lower.rs:173-188`).
+/// The earlier v2 ids (Task 1.3/1.4) were LOSSY — `LookupNumDen` collapsed ~15
+/// distinct lookup formulas onto one id and `ProductStep` collapsed a·b with
+/// `(v−1)·m+1`. This set restores the 1:1 discriminator (Task R1) without any
+/// bit-layout change (still 7-bit, `MAX_ROUTINE_ID = 127`). The full descriptor
+/// table + per-GateKind/CacheKind mapping live in `routines.rs`, which reads the
+/// ids via `super::RoutineId`.
+///
+/// Each variant names its forward formula + the `PK_*` anchor it mirrors (or
+/// "no PK" when the formula is real corpus math that the GPU bench census in
+/// `lower.rs:387-439` does not yet cover — those stay `todo!` until R3, exactly
+/// like the PK-anchored ids). `g` = lookup additive challenge γ; `sh(x)=x+g`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum RoutineId {
-    GateOutputFold = 0,      // gkr_forward_generation.cuh E_FMA_ALPHA fold
-    LookupNumDen = 1,        // lookup num/den, lookup_helpers.cuh
-    GrandProductStep = 2,    // permutation grand-product step
-    AggregateLookupPair = 3, // AggregateLookupRationalPair cascade
-    SingleColumnLookup = 4,  // base gather + base store, cache_relation.rs:347
-    MemoryTuple = 5,         // cache_relation.rs:91, role-tagged + as-arm
-    // --- Task 1.4 extension: the remaining §3/§4/§9 corpus routines, dense
-    // (id == index) after MemoryTuple. ids 0..=5 above are STABLE (the 1.3/1.5
-    // round-trip vectors reference LookupNumDen + MemoryTuple by name).
-    VectorizedLookup = 6,    // VectorizedLookup cache gather, cache_relation.rs:382
-    VectorizedLookupSetup = 7, // row-indexed setup gather, gkr_forward_generation.cuh LOOKUP_SETUP
-    ProductStep = 8,         // per-row product / mask-identity, lookup_helpers.cuh gkr_eval_product
-    MemoryInitTeardownPair = 9, // inits/teardowns initial num/den pair, lookup_helpers.cuh
+    /// `acc = Σ_k α^k · col_k` per-layer GateOutput fold (compiler-emitted; no
+    /// GateKind maps here). PK: none (E_FMA_ALPHA, not a payload kind).
+    GateOutputFold = 0,
+    /// `out = a·b` (two ext factors). PK_PRODUCT. Gates: `TrivialProduct`,
+    /// `InitialGrandProductFromCaches`, `UnbalancedGrandProductWithCache`
+    /// (`scalar·input`).
+    Product = 1,
+    /// `out = (v−1)·m + 1` (mask into identity). PK_MASK_IDENTITY. Gate:
+    /// `MaskIntoIdentityProduct`.
+    MaskIdentity = 2,
+    /// `num = a·d + c·b; den = b·d` (aggregate two rational pairs). PK_LOOKUP_PAIR4.
+    /// Gate: `AggregateLookupRationalPair`.
+    AggregateLookupPair = 3,
+    /// `num = sh(b)+sh(d); den = sh(b)·sh(d)`, BASE inputs. PK_LOOKUP_BASE_PAIR.
+    /// Gates: `LookupPairFromMaterializedBaseInputs`, `LookupPairFromBaseInputs`.
+    LookupBasePair = 4,
+    /// Same symmetric-pair formula, EXT inputs. PK_LOOKUP_EXT_PAIR. Gates:
+    /// `LookupPairFromMaterializedVectorInputs`, `LookupPairFromVectorInputs`,
+    /// `LookupPairFromCachedVectorInputs`.
+    LookupExtPair = 5,
+    /// `num = sh(d) − c·sh(b); den = sh(b)·sh(d)`, BASE input + setup multiplicity.
+    /// PK_LOOKUP_BASE_MINUS_MULT. Gate: `LookupFromMaterializedBaseInputWithSetup`.
+    LookupBaseMinusMult = 6,
+    /// Same minus-multiplicity formula, EXT input. PK_LOOKUP_EXT_MINUS_MULT.
+    /// Gates: `LookupFromMaterializedVectorInputWithSetup`,
+    /// `LookupFromVectorInputWithSetup`.
+    LookupExtMinusMult = 7,
+    /// `num = a·sh(d) − c·sh(b); den = sh(b)·sh(d)` (all four lanes cached).
+    /// PK_LOOKUP_CACHED_DENS. Gate: `LookupWithCachedDensAndSetup`.
+    LookupCachedDens = 8,
+    /// `num = a·sh(d) + b; den = b·sh(d)` (unbalanced), BASE inputs.
+    /// PK_LOOKUP_UNBALANCED_BASE. Gate: `LookupUnbalancedPairWithMaterializedBaseInputs`.
+    LookupUnbalancedBase = 9,
+    /// Same unbalanced formula, EXT inputs. PK_LOOKUP_UNBALANCED_EXT. Gates:
+    /// `LookupUnbalancedPairWithMaterializedVectorInputs`,
+    /// `LookupUnbalancedPairWithVectorInputs`.
+    LookupUnbalancedExt = 10,
+    /// Single ext value = the α-folded vector-lookup affine combination (with
+    /// decoder-fill select). PK_VEC_LOOKUP_GATE. Gate: `MaterializedVectorLookupInput`.
+    VectorLookupGate = 11,
+    /// Single BASE value = a column's linear combination (gate form of the
+    /// single-column lookup). PK: none for the gate (the CACHE form is
+    /// PK_CACHE_SINGLE_COLUMN); distinct forward formula from everything else.
+    /// Gate: `MaterializeSingleLookupInput`.
+    MaterializeSingleLookup = 12,
+    /// `num = a·sh(d) − c·sh(b); den = sh(b)·sh(d)` with `a` = decoder predicate
+    /// and `b` derived inline from a vector input (dens NOT cached). Same closed
+    /// form as `LookupCachedDens` but DISTINCT operand provenance, so a distinct
+    /// routine. PK: none (decoder-specific, outside the GPU bench census). Gates:
+    /// `LookupWithDensAndCachedSetup`, `LookupWithDensAndSetupExpressions`.
+    LookupDecoderDensSetup = 13,
+    /// `out = tuple(a)·tuple(b)` — product of two INLINED memory-tuple affine
+    /// combinations (not raw operand factors). PK: none (outside the GPU bench
+    /// census). Gate: `InitialGrandProductWithoutCaches`.
+    GrandProductWithoutCaches = 14,
+    /// `out = tuple(input)` — materialize ONE memory-tuple affine combination
+    /// (NOT a product). PK: none (outside the GPU bench census). Gate:
+    /// `MaterializeGrandProductTermExpression`.
+    MaterializeGrandProductTerm = 15,
+    /// SingleColumnLookup cache: base gather (virtual_setup[mapping[gid]]) + base
+    /// store. PK_CACHE_SINGLE_COLUMN. Cache: `SingleColumnLookup`.
+    SingleColumnLookup = 16,
+    /// VectorizedLookup cache: ext gather over a column vector, optionally
+    /// decoder-mapped. PK_CACHE_VECTORIZED_LOOKUP. Cache: `VectorizedLookup`.
+    VectorizedLookup = 17,
+    /// VectorizedLookupSetup cache: row-indexed setup gather, zero-padded beyond
+    /// generic_lookup_len. PK_CACHE_LOOKUP_SETUP. Cache: `VectorizedLookupSetup`.
+    VectorizedLookupSetup = 18,
+    /// MemoryTuple cache: role-tagged linear terms + address-space arm/payload.
+    /// PK_CACHE_MEMORY_TUPLE. Cache: `MemoryTuple`.
+    MemoryTuple = 19,
+    /// Memory inits/teardowns initial `(num,den)` pair from a setup tuple. PK:
+    /// none (not in the GPU bench census). Gate: `InitsOrTeardownsInitialPair`.
+    MemoryInitTeardownPair = 20,
 }
 
 // --- Width constants (the 16-bit lanes, spec §5) ---
@@ -182,7 +254,7 @@ mod tests {
         assert_eq!(arith.operands.len(), 3);
 
         let mac = Instr2 {
-            header: Header::Macro { routine: RoutineId::LookupNumDen as u8, n_operands: 1 },
+            header: Header::Macro { routine: RoutineId::LookupExtPair as u8, n_operands: 1 },
             operands: vec![Operand::Indirect { e4: true, desc: 0 }],
             dsts: vec![
                 Dst::Materialize { slot: 1, col: 10 },

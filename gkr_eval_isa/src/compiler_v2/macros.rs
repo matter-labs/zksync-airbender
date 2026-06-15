@@ -345,7 +345,7 @@ pub fn lower_gate(gate: &CodegenGate, arena: &[ExprNode], ctx: &mut MacroCtx) ->
     let n_operands = operands.len() as u8;
 
     // Footer dsts: one Materialize per gate output address. `output_count == 2`
-    // (LookupNumDen-style num/den) derives both from the gate's dst slots.
+    // (a lookup num/den pair) derives both from the gate's dst slots.
     let dsts: Vec<Dst> = macro_gate_dsts(gate, schema.output_count, ctx);
 
     Some(Instr2 {
@@ -443,10 +443,12 @@ mod tests {
     }
 
     #[test]
-    fn lookup_numden_emits_two_materialize_dsts() {
+    fn lookup_pair_emits_two_materialize_dsts() {
         let c = load_circuit(&fixture_path("blake2_g_function_codegen_ir_gkr.json")).unwrap();
-        // Find a layer + gate whose lowering is Macro AND routine is LookupNumDen
-        // (output_count 2).
+        // Find a layer + gate whose lowering is Macro AND whose routine is a
+        // lookup num/den pair (output_count == 2) — post-R1 the single lossy
+        // `LookupNumDen` id fans out to several formula ids (LookupBasePair,
+        // LookupExtPair, …); any of them must still emit num + den.
         let mut found = false;
         for layer in &c.circuit.layers {
             let arena = &layer.arena.nodes;
@@ -456,17 +458,33 @@ mod tests {
                 consts.iter().enumerate().map(|(i, v)| (*v, i as u16)).collect();
             let ck = cache_kind_by_addr(layer);
             for gate in layer.gates.iter().chain(&layer.gates_external) {
-                if routine_for_gate(&gate.kind) != Some(RoutineId::LookupNumDen) {
+                let Some(routine) = routine_for_gate(&gate.kind) else { continue };
+                // Restrict to the lookup-pair (num/den) ids: output_count 2 AND a
+                // lookup-family routine (not the aggregate or memory-init pair).
+                if routine_table()[routine as usize].output_count != 2 {
+                    continue;
+                }
+                if !matches!(
+                    routine,
+                    RoutineId::LookupBasePair
+                        | RoutineId::LookupExtPair
+                        | RoutineId::LookupBaseMinusMult
+                        | RoutineId::LookupExtMinusMult
+                        | RoutineId::LookupCachedDens
+                        | RoutineId::LookupUnbalancedBase
+                        | RoutineId::LookupUnbalancedExt
+                        | RoutineId::LookupDecoderDensSetup
+                ) {
                     continue;
                 }
                 let mut ctx = ctx_for(layer, &mt, &ci, &ck);
                 let instr = lower_gate(gate, arena, &mut ctx)
-                    .expect("LookupNumDen is a Macro gate, must lower");
+                    .expect("lookup-pair is a Macro gate, must lower");
                 assert!(
-                    matches!(instr.header, Header::Macro { routine, .. } if routine == RoutineId::LookupNumDen as u8),
-                    "header must be Macro{{LookupNumDen}}"
+                    matches!(instr.header, Header::Macro { routine: r, .. } if r == routine as u8),
+                    "header must be Macro{{lookup pair}}"
                 );
-                assert_eq!(instr.dsts.len(), 2, "LookupNumDen emits num + den");
+                assert_eq!(instr.dsts.len(), 2, "lookup pair emits num + den");
                 for d in &instr.dsts {
                     assert!(matches!(d, Dst::Materialize { .. }), "both dsts Materialize");
                 }
@@ -485,7 +503,7 @@ mod tests {
                 break;
             }
         }
-        assert!(found, "no LookupNumDen Macro gate found in blake2 fixture");
+        assert!(found, "no lookup-pair Macro gate found in blake2 fixture");
     }
 
     #[test]

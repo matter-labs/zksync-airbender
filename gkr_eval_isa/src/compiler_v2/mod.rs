@@ -649,51 +649,78 @@ pub fn compile_forward_v2(
     }
 }
 
-/// §2 routine→strand map. `LookupGp` = the lookup num/den + aggregate +
-/// single/vectorized lookup family; `MemoryGp` = the memory-tuple caches AND the
-/// grand-product (PROD) cascade that consumes them; `BaseArith` = the gate-output
+/// §2 routine→strand map, by FAMILY. `LookupGp` = the whole lookup-argument
+/// family (the num/den pair routines, the aggregate, the single/vectorized
+/// lookup gathers + their gate forms); `MemoryGp` = the memory-tuple caches AND
+/// the grand-product (PROD) cascade that consumes them (product, mask-identity,
+/// tuple grand-products, memory init/teardown); `BaseArith` = the gate-output
 /// fold.
 ///
-/// `GrandProductStep`/`ProductStep` are the grand-product cascade steps. They
-/// carry no lookup-vs-memory tag in the gate kind (see `routine_for_gate`), and
-/// in the in-tree corpus they read only materialized backings (`Affine`) /
-/// inline gathers (`Indirect`) — NEVER a base-arith `Operand::Slot` — so the
-/// bucket choice creates no cross-strand `Slot` dependency either way (the
-/// isolation oracle only sees Slot-to-Slot crossings, and macros emit no Slot
-/// reads: `macros::operand_for`). We assign the PROD cascade to `MemoryGp`,
-/// matching the spec §2/§6 phrasing "MemoryGp — memory-tuple caches →
-/// grand-product (PROD) cascade", and the LOOKUP rational fold to `LookupGp`.
+/// The PROD cascade routines (`Product`/`MaskIdentity`/`GrandProductWithoutCaches`/
+/// `MaterializeGrandProductTerm`/`MemoryInitTeardownPair`) carry no
+/// lookup-vs-memory tag in the gate kind (see `routine_for_gate`), and in the
+/// in-tree corpus they read only materialized backings (`Affine`) / inline
+/// gathers (`Indirect`) — NEVER a base-arith `Operand::Slot` — so the bucket
+/// choice creates no cross-strand `Slot` dependency either way (the isolation
+/// oracle only sees Slot-to-Slot crossings, and macros emit no Slot reads:
+/// `macros::operand_for`). We assign the PROD cascade to `MemoryGp`, matching
+/// the spec §2/§6 phrasing "MemoryGp — memory-tuple caches → grand-product
+/// (PROD) cascade", and the LOOKUP rational/gather family to `LookupGp`.
 pub(crate) fn routine_strand(routine: crate::isa_v2::RoutineId) -> Strand {
     use crate::isa_v2::RoutineId::*;
     match routine {
         GateOutputFold => Strand::BaseArith,
-        LookupNumDen
-        | AggregateLookupPair
+        // Lookup-argument family.
+        AggregateLookupPair
+        | LookupBasePair
+        | LookupExtPair
+        | LookupBaseMinusMult
+        | LookupExtMinusMult
+        | LookupCachedDens
+        | LookupUnbalancedBase
+        | LookupUnbalancedExt
+        | LookupDecoderDensSetup
+        | VectorLookupGate
+        | MaterializeSingleLookup
         | SingleColumnLookup
         | VectorizedLookup
         | VectorizedLookupSetup => Strand::LookupGp,
-        MemoryTuple
-        | MemoryInitTeardownPair
-        | GrandProductStep
-        | ProductStep => Strand::MemoryGp,
+        // Memory permutation / grand-product (PROD) cascade.
+        Product
+        | MaskIdentity
+        | GrandProductWithoutCaches
+        | MaterializeGrandProductTerm
+        | MemoryTuple
+        | MemoryInitTeardownPair => Strand::MemoryGp,
     }
 }
 
 /// Recover a `RoutineId` from the 7-bit header `routine` byte. The compiler only
-/// emits the dense 0..=9 ids; an out-of-range byte is a corrupt program.
+/// emits the dense 0..=20 ids; an out-of-range byte is a corrupt program.
 fn routine_from_u8(routine: u8) -> crate::isa_v2::RoutineId {
     use crate::isa_v2::RoutineId::*;
     match routine {
         0 => GateOutputFold,
-        1 => LookupNumDen,
-        2 => GrandProductStep,
+        1 => Product,
+        2 => MaskIdentity,
         3 => AggregateLookupPair,
-        4 => SingleColumnLookup,
-        5 => MemoryTuple,
-        6 => VectorizedLookup,
-        7 => VectorizedLookupSetup,
-        8 => ProductStep,
-        9 => MemoryInitTeardownPair,
+        4 => LookupBasePair,
+        5 => LookupExtPair,
+        6 => LookupBaseMinusMult,
+        7 => LookupExtMinusMult,
+        8 => LookupCachedDens,
+        9 => LookupUnbalancedBase,
+        10 => LookupUnbalancedExt,
+        11 => VectorLookupGate,
+        12 => MaterializeSingleLookup,
+        13 => LookupDecoderDensSetup,
+        14 => GrandProductWithoutCaches,
+        15 => MaterializeGrandProductTerm,
+        16 => SingleColumnLookup,
+        17 => VectorizedLookup,
+        18 => VectorizedLookupSetup,
+        19 => MemoryTuple,
+        20 => MemoryInitTeardownPair,
         other => panic!("unknown routine id {other} in fused program header"),
     }
 }
@@ -1399,7 +1426,7 @@ mod strand_tests {
         // instr1 (LookupGp): reads Slot cell 0 (the cross-strand read) plus a
         // shared committed input; materializes its output.
         let instr1 = Instr2 {
-            header: Header::Macro { routine: RoutineId::LookupNumDen as u8, n_operands: 2 },
+            header: Header::Macro { routine: RoutineId::LookupExtPair as u8, n_operands: 2 },
             operands: vec![
                 Operand::Slot { e4: false, cell: 0 },
                 Operand::Affine { slot: 1, col: 0 },
@@ -1497,10 +1524,11 @@ mod strand_tests {
     /// `routine_strand` that flips a routine forces a conscious update here.
     ///
     /// The bucketing is grounded in the cs/ GKR data-flow: the lookup argument
-    /// accumulates via its OWN tree (`AggregateLookupRationalPair`, i.e.
-    /// `AggregateLookupPair`), while the grand-product cascade
-    /// (`GrandProductStep`/`ProductStep` from `InitialGrandProduct*`/
-    /// `TrivialProduct`/`MaskIntoIdentityProduct`) serves the MEMORY permutation
+    /// accumulates via its OWN tree (the lookup pair/aggregate/gather family),
+    /// while the grand-product cascade (`Product`/`MaskIdentity`/
+    /// `GrandProductWithoutCaches`/`MaterializeGrandProductTerm` from
+    /// `InitialGrandProduct*`/`TrivialProduct`/`MaskIntoIdentityProduct`, plus
+    /// `MemoryTuple`/`MemoryInitTeardownPair`) serves the MEMORY permutation
     /// argument only — the two trees never cross-feed
     /// (cs/src/gkr_compiler/family_circuit.rs hands them as separate output
     /// lists). Hence the whole PROD cascade is `MemoryGp`.
@@ -1509,15 +1537,26 @@ mod strand_tests {
         use crate::isa_v2::RoutineId::*;
         let expected = [
             (GateOutputFold, Strand::BaseArith),
-            (LookupNumDen, Strand::LookupGp),
+            (Product, Strand::MemoryGp),
+            (MaskIdentity, Strand::MemoryGp),
             (AggregateLookupPair, Strand::LookupGp),
+            (LookupBasePair, Strand::LookupGp),
+            (LookupExtPair, Strand::LookupGp),
+            (LookupBaseMinusMult, Strand::LookupGp),
+            (LookupExtMinusMult, Strand::LookupGp),
+            (LookupCachedDens, Strand::LookupGp),
+            (LookupUnbalancedBase, Strand::LookupGp),
+            (LookupUnbalancedExt, Strand::LookupGp),
+            (VectorLookupGate, Strand::LookupGp),
+            (MaterializeSingleLookup, Strand::LookupGp),
+            (LookupDecoderDensSetup, Strand::LookupGp),
+            (GrandProductWithoutCaches, Strand::MemoryGp),
+            (MaterializeGrandProductTerm, Strand::MemoryGp),
             (SingleColumnLookup, Strand::LookupGp),
             (VectorizedLookup, Strand::LookupGp),
             (VectorizedLookupSetup, Strand::LookupGp),
             (MemoryTuple, Strand::MemoryGp),
             (MemoryInitTeardownPair, Strand::MemoryGp),
-            (GrandProductStep, Strand::MemoryGp),
-            (ProductStep, Strand::MemoryGp),
         ];
         for (routine, strand) in expected {
             assert_eq!(
@@ -1526,10 +1565,10 @@ mod strand_tests {
                 "routine {routine:?} must map to {strand:?} (see cs/ data-flow note)"
             );
         }
-        // Non-vacuity: the table must cover every dense RoutineId 0..=9 (a new
+        // Non-vacuity: the table must cover every dense RoutineId 0..=20 (a new
         // variant added to the enum without a row here is a coverage hole — the
         // `routine_strand` match is exhaustive so it compiles, but its strand
         // would be untested). Asserting the count pins the corpus of ids.
-        assert_eq!(expected.len(), 10, "RoutineId has 10 dense variants (0..=9)");
+        assert_eq!(expected.len(), 21, "RoutineId has 21 dense variants (0..=20)");
     }
 }

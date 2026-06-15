@@ -210,18 +210,19 @@ fn gather_tracks_table_mapping_per_row() {
 // independence — a shared transcription error in the .cuh anchor would fool
 // both sides. Real independence is the Phase-5 GPU cross-check, not this test.
 //
-// SCOPE (STEP-0 probe + the `exec_macro` doc): the three fixtures emit routine
-// ids {1,2,3,4,5,6,7,8} (probe: every layer). Of these, only `GrandProductStep`
-// (2) and `AggregateLookupPair` (3) have a per-row formula that the v2 `Instr2`
-// determines UNAMBIGUOUSLY — one product / one rational-pair-combine, no lost
-// coefficients or const-folding. The other emitted routines (1,4,5,6,7,8) fan a
-// single v2 routine id out to several production primitive kinds (`PK_*`,
-// `bench_interp/lower.rs:173-187`) whose math differs but which the lowered
-// instruction cannot tell apart (see the `exec_macro` doc for the exact gap and
-// .cuh/.rs anchors). They are intentionally `todo!`, so this oracle CANNOT run a
-// whole fixture program end-to-end (it would hit a `todo!`); it instead drives
-// `execute2` per pinnable instruction with fixture-shaped, `eval_ref`-style
-// random operand values + a fixed seed.
+// SCOPE (STEP-0 probe + the `exec_macro` doc): with the finer Task-R1 RoutineId
+// set the three fixtures emit a spread of ids (probe: every layer) covering
+// `Product` (1), `MaskIdentity` (2), `AggregateLookupPair` (3), the lookup
+// num/den pair ids (4..=9), and the cache ids (16..=19). Of these, only
+// `Product` (1, `out = a·b`) and `AggregateLookupPair` (3, one rational-pair
+// combine) have a per-row formula the v2 `Instr2` determines UNAMBIGUOUSLY — no
+// γ-shift / setup multiplicity / lost lincomb coefficient. The other emitted
+// routines fold challenges or setup coefficients that live in banks / the
+// forward setup, not the operand lanes (see the `exec_macro` doc for the exact
+// gap and .cuh/.rs anchors). They are intentionally `todo!` (Task R3), so this
+// oracle CANNOT run a whole fixture program end-to-end (it would hit a `todo!`);
+// it instead drives `execute2` per pinnable instruction with fixture-shaped,
+// `eval_ref`-style random operand values + a fixed seed.
 //
 // The routine ARITHMETIC depends only on the operand VALUES, not on the operand
 // lane KIND (Affine/Indirect/Ldc all funnel through one `read` closure), so
@@ -291,7 +292,7 @@ fn run_macro(routine: RoutineId, inputs: &[Ext], output_count: usize) -> Vec<Ext
     got.materialized.iter().map(|(_, v)| *v).collect()
 }
 
-/// HAND reference for `GrandProductStep` (id 2). DIFFERENT decomposition: the
+/// HAND reference for `Product` (id 1, `out = a·b`). DIFFERENT decomposition: the
 /// interpreter computes `a·b` directly; here we route through a one-element
 /// running accumulator (`acc *= a; acc *= b`) so the multiply order/assoc is
 /// re-expressed rather than copied.
@@ -356,18 +357,18 @@ fn interpreter_matches_hand_reference() {
             for ins in &cf.program.instrs {
                 let Header::Macro { routine, n_operands } = ins.header else { continue };
                 match routine {
-                    // id 2 — GrandProductStep: a·b. Two ext operands, 1 output.
-                    x if x == RoutineId::GrandProductStep as u8 => {
-                        assert_eq!(n_operands, 2, "{name} L{li}: GrandProductStep arity != 2");
-                        assert_eq!(ins.dsts.len(), 1, "{name} L{li}: GrandProductStep 1 dst");
+                    // id 1 — Product: a·b. Two ext operands, 1 output.
+                    x if x == RoutineId::Product as u8 => {
+                        assert_eq!(n_operands, 2, "{name} L{li}: Product arity != 2");
+                        assert_eq!(ins.dsts.len(), 1, "{name} L{li}: Product 1 dst");
                         let a = rand_ext(&mut rng, true);
                         let b = rand_ext(&mut rng, true);
-                        let got = run_macro(RoutineId::GrandProductStep, &[a, b], 1);
+                        let got = run_macro(RoutineId::Product, &[a, b], 1);
                         assert_eq!(got.len(), 1);
                         assert_eq!(
                             got[0],
                             ref_grand_product(a, b),
-                            "{name} L{li}: GrandProductStep value mismatch"
+                            "{name} L{li}: Product value mismatch"
                         );
                         total_grand_product += 1;
                     }
@@ -412,7 +413,7 @@ fn interpreter_matches_hand_reference() {
     // Non-vacuity: both pinnable routines must actually appear in the corpus.
     assert!(
         total_grand_product > 0,
-        "no GrandProductStep instrs across the target fixtures (oracle vacuous)"
+        "no Product instrs across the target fixtures (oracle vacuous)"
     );
     assert!(
         total_aggregate > 0,
@@ -420,15 +421,17 @@ fn interpreter_matches_hand_reference() {
     );
 
     // Document the gap explicitly: the corpus DOES emit the routines we leave
-    // `todo!`, so the partial is deliberate, not an accident of fixture choice.
-    // (Probe STEP 0 found ids {1,4,5,6,7,8} alongside the two pinned ones.)
+    // `todo!` (Task R3), so the partial is deliberate, not an accident of fixture
+    // choice. Each of these appears in all three target fixtures (probe STEP 0).
     for expected in [
-        RoutineId::LookupNumDen as u8,
+        RoutineId::MaskIdentity as u8,
+        RoutineId::LookupBasePair as u8,
+        RoutineId::LookupBaseMinusMult as u8,
+        RoutineId::LookupUnbalancedBase as u8,
         RoutineId::SingleColumnLookup as u8,
         RoutineId::MemoryTuple as u8,
         RoutineId::VectorizedLookup as u8,
         RoutineId::VectorizedLookupSetup as u8,
-        RoutineId::ProductStep as u8,
     ] {
         assert!(
             emitted_unpinned.contains(&expected),

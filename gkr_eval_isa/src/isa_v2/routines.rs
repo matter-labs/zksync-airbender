@@ -70,76 +70,152 @@ pub struct RoutineSchema {
 use super::RoutineId;
 
 pub fn routine_table() -> &'static [RoutineSchema] {
-    // One entry per RoutineId, fields filled from the cuh/rs references. Dense
-    // (id == index); the (B) decode-soundness gate asserts this.
+    // One row per RoutineId (Task R1: the FINER 1:1 id↔forward-formula set —
+    // see the per-variant doc comments in isa_v2/mod.rs for each row's formula +
+    // PK_* anchor + the GateKind/CacheKind(s) it owns). Dense (id == index); the
+    // (B) decode-soundness gate asserts this. `output_count` is load-bearing:
+    // `macros::macro_gate_dsts` reads it to size the footer (lookup num/den ids
+    // → 2; product / single-value / cache ids → 1). The math is implemented in
+    // the interpreter only for the two pinned ids (Product, AggregateLookupPair),
+    // R3 fills the rest; the schema is final regardless.
     use ChallengeUse::*;
     use FieldRole::*;
     use Shape::*;
     const T: &[RoutineSchema] = &[
-        // 0 — per-layer GateOutput fold: ∑ α^k · b accumulator (Task 2.5 reads
-        // α-powers column-indexed + γ as [γ,γ²,2γ]). Reads a per-gate column
-        // count (carried in the header's `n_operands`) → Plain. The
-        // output-accumulation routine; no GateKind maps here (the compiler
-        // emits it for the output combine), kept stable for the 1.5 round-trip
-        // vector + Task 2.5.
+        // 0 — per-layer GateOutput fold: ∑ α^k · col_k accumulator (Task 2.5
+        // reads α-powers column-indexed + γ as [γ,γ²,2γ]). Per-gate column count
+        // rides the header → Plain. No GateKind maps here (compiler-emitted for
+        // the output combine).
         RoutineSchema { id: 0, name: "GateOutputFold", shape: Plain, operand_field: Mixed,
             output_count: 1, output_field: Ext, challenge: ConstAlphaGamma,
             reference: "gkr_forward_generation.cuh E_FMA_ALPHA" },
-        // 1 — LookupNumDen folds a variable column count into num+den → Plain,
-        // 2 outputs. The shifted-by-γ lookup pair (gkr_eval_lookup_*pair, base &
-        // ext, balanced/unbalanced, cached-dens, minus-multiplicity). (The
-        // round-trip test's 2 operands ride consecutive operand lanes; the count
-        // is in the header.)
-        RoutineSchema { id: 1, name: "LookupNumDen", shape: Plain, operand_field: Mixed,
-            output_count: 2, output_field: Ext, challenge: Both,
-            reference: "lookup_helpers.cuh num/den" },
-        // 2 — grand-product accumulation step: a single product node folded into
-        // the running grand product (PRODUCT macro). Two ext factors → 1 ext.
-        RoutineSchema { id: 2, name: "GrandProductStep", shape: Plain, operand_field: Ext,
+        // 1 — Product: `out = a·b` (PK_PRODUCT, gkr_eval_product). Two ext factors
+        // → 1 ext. Gates: TrivialProduct, InitialGrandProductFromCaches,
+        // UnbalancedGrandProductWithCache.
+        RoutineSchema { id: 1, name: "Product", shape: Plain, operand_field: Ext,
             output_count: 1, output_field: Ext, challenge: None,
-            reference: "gkr_forward_generation.cuh PRODUCT (gkr_eval_product)" },
-        // 3 — AggregateLookupRationalPair: combine two (num,den) rational pairs
-        // into one, batched by the α/γ const challenges. 4 ext operands → 2 ext
-        // (aggregated num,den).
+            reference: "lookup_helpers.cuh gkr_eval_product (PK_PRODUCT)" },
+        // 2 — MaskIdentity: `out = (v−1)·m + 1` (PK_MASK_IDENTITY,
+        // gkr_eval_mask_identity). Two operands → 1 ext. Gate:
+        // MaskIntoIdentityProduct.
+        RoutineSchema { id: 2, name: "MaskIdentity", shape: Plain, operand_field: Mixed,
+            output_count: 1, output_field: Ext, challenge: None,
+            reference: "lookup_helpers.cuh gkr_eval_mask_identity (PK_MASK_IDENTITY)" },
+        // 3 — AggregateLookupPair: `num = a·d + c·b; den = b·d` (PK_LOOKUP_PAIR4).
+        // 4 ext operands → 2 ext (aggregated num,den). Gate:
+        // AggregateLookupRationalPair.
         RoutineSchema { id: 3, name: "AggregateLookupPair", shape: Plain, operand_field: Ext,
             output_count: 2, output_field: Ext, challenge: ConstAlphaGamma,
-            reference: "lookup_helpers.cuh aggregate rational pair" },
-        // 4 — SingleColumnLookup cache: base gather (virtual_setup[mapping[gid]])
-        // + base store. Linear-comb column count in the header → 1 base output.
-        // Uses the perm-linearization / additive-seed arg challenges.
-        RoutineSchema { id: 4, name: "SingleColumnLookup", shape: Plain, operand_field: Base,
-            output_count: 1, output_field: Base, challenge: ArgPermAdditive,
-            reference: "cache_relation.rs:347 SingleColumnLookup" },
-        // 5 — MemoryTuple cache: role-tagged linear terms (addr/ts/value, 8 max)
-        // + address-space arm/payload (Empty/Constant/IsRegister/IsRam). MemTuple
-        // shape; 1 ext grand-product term output.
-        RoutineSchema { id: 5, name: "MemoryTuple", shape: MemTuple, operand_field: Mixed,
-            output_count: 1, output_field: Ext, challenge: ArgPermAdditive,
-            reference: "cache_relation.rs:91 MemoryTuple (address_space_kind arm)" },
-        // 6 — VectorizedLookup cache gather: n[mapping[gid]] over a column vector,
-        // optionally decoder-mapped. Header-carried column count → 1 ext output.
-        RoutineSchema { id: 6, name: "VectorizedLookup", shape: Plain, operand_field: Mixed,
-            output_count: 1, output_field: Ext, challenge: None,
-            reference: "cache_relation.rs:382 VectorizedLookup gather" },
-        // 7 — VectorizedLookupSetup cache: row-indexed setup gather, zero-padded
-        // beyond generic_lookup_len (LOOKUP_SETUP). Few operands (row gid
-        // index + length guard, count in the header) → Plain, 1 ext output.
-        RoutineSchema { id: 7, name: "VectorizedLookupSetup", shape: Plain, operand_field: Ext,
-            output_count: 1, output_field: Ext, challenge: None,
-            reference: "gkr_forward_generation.cuh LOOKUP_SETUP" },
-        // 8 — per-row product primitive (gkr_eval_product) / mask-into-identity
-        // (gkr_eval_mask_identity): TrivialProduct + MaskIntoIdentityProduct.
-        // Two operands → 1 ext. Distinct from GrandProductStep (id 2) which is the
-        // structural grand-product accumulation, not a leaf product.
-        RoutineSchema { id: 8, name: "ProductStep", shape: Plain, operand_field: Mixed,
-            output_count: 1, output_field: Ext, challenge: None,
-            reference: "lookup_helpers.cuh gkr_eval_product / gkr_eval_mask_identity" },
-        // 9 — InitsOrTeardownsInitialPair: memory inits/teardowns initial (num,den)
-        // pair from a setup tuple, batched by the perm/additive arg + const
-        // challenges. Header-carried timestamp/value term count → 2 ext outputs.
-        RoutineSchema { id: 9, name: "MemoryInitTeardownPair", shape: Plain, operand_field: Mixed,
+            reference: "lookup_helpers.cuh aggregate rational pair (PK_LOOKUP_PAIR4)" },
+        // 4 — LookupBasePair: `num = sh(b)+sh(d); den = sh(b)·sh(d)`, BASE inputs
+        // (PK_LOOKUP_BASE_PAIR; sh(x)=x+γ). 2 outputs. Gates:
+        // LookupPairFromMaterializedBaseInputs, LookupPairFromBaseInputs.
+        RoutineSchema { id: 4, name: "LookupBasePair", shape: Plain, operand_field: Base,
             output_count: 2, output_field: Ext, challenge: Both,
-            reference: "lookup_helpers.cuh inits/teardowns num/den" },
+            reference: "lookup_helpers.cuh gkr_eval_lookup_pair base (PK_LOOKUP_BASE_PAIR)" },
+        // 5 — LookupExtPair: same symmetric-pair formula, EXT inputs
+        // (PK_LOOKUP_EXT_PAIR). 2 outputs. Gates:
+        // LookupPairFromMaterializedVectorInputs, LookupPairFromVectorInputs,
+        // LookupPairFromCachedVectorInputs.
+        RoutineSchema { id: 5, name: "LookupExtPair", shape: Plain, operand_field: Ext,
+            output_count: 2, output_field: Ext, challenge: Both,
+            reference: "lookup_helpers.cuh gkr_eval_lookup_pair ext (PK_LOOKUP_EXT_PAIR)" },
+        // 6 — LookupBaseMinusMult: `num = sh(d) − c·sh(b); den = sh(b)·sh(d)`,
+        // BASE input + setup multiplicity (PK_LOOKUP_BASE_MINUS_MULT). 2 outputs.
+        // Gate: LookupFromMaterializedBaseInputWithSetup.
+        RoutineSchema { id: 6, name: "LookupBaseMinusMult", shape: Plain, operand_field: Mixed,
+            output_count: 2, output_field: Ext, challenge: Both,
+            reference: "lookup_helpers.cuh lookup base minus-mult (PK_LOOKUP_BASE_MINUS_MULT)" },
+        // 7 — LookupExtMinusMult: same minus-multiplicity formula, EXT input
+        // (PK_LOOKUP_EXT_MINUS_MULT). 2 outputs. Gates:
+        // LookupFromMaterializedVectorInputWithSetup, LookupFromVectorInputWithSetup.
+        RoutineSchema { id: 7, name: "LookupExtMinusMult", shape: Plain, operand_field: Ext,
+            output_count: 2, output_field: Ext, challenge: Both,
+            reference: "lookup_helpers.cuh lookup ext minus-mult (PK_LOOKUP_EXT_MINUS_MULT)" },
+        // 8 — LookupCachedDens: `num = a·sh(d) − c·sh(b); den = sh(b)·sh(d)`, all
+        // four lanes cached (PK_LOOKUP_CACHED_DENS). 2 outputs. Gate:
+        // LookupWithCachedDensAndSetup.
+        RoutineSchema { id: 8, name: "LookupCachedDens", shape: Plain, operand_field: Ext,
+            output_count: 2, output_field: Ext, challenge: Both,
+            reference: "lookup_helpers.cuh lookup cached-dens (PK_LOOKUP_CACHED_DENS)" },
+        // 9 — LookupUnbalancedBase: `num = a·sh(d) + b; den = b·sh(d)`
+        // (unbalanced), BASE inputs (PK_LOOKUP_UNBALANCED_BASE). 2 outputs. Gate:
+        // LookupUnbalancedPairWithMaterializedBaseInputs.
+        RoutineSchema { id: 9, name: "LookupUnbalancedBase", shape: Plain, operand_field: Base,
+            output_count: 2, output_field: Ext, challenge: Both,
+            reference: "lookup_helpers.cuh lookup unbalanced base (PK_LOOKUP_UNBALANCED_BASE)" },
+        // 10 — LookupUnbalancedExt: same unbalanced formula, EXT inputs
+        // (PK_LOOKUP_UNBALANCED_EXT). 2 outputs. Gates:
+        // LookupUnbalancedPairWithMaterializedVectorInputs,
+        // LookupUnbalancedPairWithVectorInputs.
+        RoutineSchema { id: 10, name: "LookupUnbalancedExt", shape: Plain, operand_field: Ext,
+            output_count: 2, output_field: Ext, challenge: Both,
+            reference: "lookup_helpers.cuh lookup unbalanced ext (PK_LOOKUP_UNBALANCED_EXT)" },
+        // 11 — VectorLookupGate: single ext value = α-folded vector-lookup affine
+        // combination with decoder-fill select (PK_VEC_LOOKUP_GATE). 1 output.
+        // Gate: MaterializedVectorLookupInput.
+        RoutineSchema { id: 11, name: "VectorLookupGate", shape: Plain, operand_field: Mixed,
+            output_count: 1, output_field: Ext, challenge: ConstAlphaGamma,
+            reference: "gkr_forward_setup_generic_lookup vec gate (PK_VEC_LOOKUP_GATE)" },
+        // 12 — MaterializeSingleLookup: single BASE value = a column's linear
+        // combination (gate form of the single-column lookup; cache form is id
+        // 16). 1 base output. Gate: MaterializeSingleLookupInput.
+        RoutineSchema { id: 12, name: "MaterializeSingleLookup", shape: Plain, operand_field: Base,
+            output_count: 1, output_field: Base, challenge: ArgPermAdditive,
+            reference: "cache_relation.rs SingleColumnLookup (gate form)" },
+        // 13 — LookupDecoderDensSetup: `num = a·sh(d) − c·sh(b); den = sh(b)·sh(d)`
+        // with `a` = decoder predicate, `b` derived inline from a vector input
+        // (dens NOT cached). Same closed form as id 8, distinct operand
+        // provenance. 2 outputs. Gates: LookupWithDensAndCachedSetup,
+        // LookupWithDensAndSetupExpressions.
+        RoutineSchema { id: 13, name: "LookupDecoderDensSetup", shape: Plain, operand_field: Mixed,
+            output_count: 2, output_field: Ext, challenge: Both,
+            reference: "lookup_helpers.cuh decoder dens+setup (no PK)" },
+        // 14 — GrandProductWithoutCaches: `out = tuple(a)·tuple(b)` — product of
+        // two INLINED memory-tuple affine combinations (not raw factors). 1 ext
+        // output. Gate: InitialGrandProductWithoutCaches.
+        RoutineSchema { id: 14, name: "GrandProductWithoutCaches", shape: Plain, operand_field: Mixed,
+            output_count: 1, output_field: Ext, challenge: ArgPermAdditive,
+            reference: "cache_relation.rs grand-product without caches (no PK)" },
+        // 15 — MaterializeGrandProductTerm: `out = tuple(input)` — materialize ONE
+        // memory-tuple affine combination (NOT a product). 1 ext output. Gate:
+        // MaterializeGrandProductTermExpression.
+        RoutineSchema { id: 15, name: "MaterializeGrandProductTerm", shape: Plain, operand_field: Mixed,
+            output_count: 1, output_field: Ext, challenge: ArgPermAdditive,
+            reference: "cache_relation.rs materialize grand-product term (no PK)" },
+        // 16 — SingleColumnLookup cache: base gather (virtual_setup[mapping[gid]])
+        // + base store (PK_CACHE_SINGLE_COLUMN). 1 base output. Cache:
+        // SingleColumnLookup.
+        RoutineSchema { id: 16, name: "SingleColumnLookup", shape: Plain, operand_field: Base,
+            output_count: 1, output_field: Base, challenge: ArgPermAdditive,
+            reference: "cache_relation.rs:347 SingleColumnLookup (PK_CACHE_SINGLE_COLUMN)" },
+        // 17 — VectorizedLookup cache: ext gather over a column vector, optionally
+        // decoder-mapped (PK_CACHE_VECTORIZED_LOOKUP). 1 ext output. Cache:
+        // VectorizedLookup.
+        RoutineSchema { id: 17, name: "VectorizedLookup", shape: Plain, operand_field: Mixed,
+            output_count: 1, output_field: Ext, challenge: None,
+            reference: "cache_relation.rs:382 VectorizedLookup gather (PK_CACHE_VECTORIZED_LOOKUP)" },
+        // 18 — VectorizedLookupSetup cache: row-indexed setup gather, zero-padded
+        // beyond generic_lookup_len (PK_CACHE_LOOKUP_SETUP). 1 ext output. Cache:
+        // VectorizedLookupSetup.
+        RoutineSchema { id: 18, name: "VectorizedLookupSetup", shape: Plain, operand_field: Ext,
+            output_count: 1, output_field: Ext, challenge: None,
+            reference: "gkr_forward_generation.cuh LOOKUP_SETUP (PK_CACHE_LOOKUP_SETUP)" },
+        // 19 — MemoryTuple cache: role-tagged linear terms (addr/ts/value, 8 max)
+        // + address-space arm/payload (Empty/Constant/IsRegister/IsRam)
+        // (PK_CACHE_MEMORY_TUPLE). MemTuple shape; 1 ext grand-product term.
+        // Cache: MemoryTuple.
+        RoutineSchema { id: 19, name: "MemoryTuple", shape: MemTuple, operand_field: Mixed,
+            output_count: 1, output_field: Ext, challenge: ArgPermAdditive,
+            reference: "cache_relation.rs:91 MemoryTuple address_space arm (PK_CACHE_MEMORY_TUPLE)" },
+        // 20 — MemoryInitTeardownPair: memory inits/teardowns initial (num,den)
+        // pair from a setup tuple, batched by the perm/additive arg + const
+        // challenges. 2 ext outputs (corpus gate.dst.len()==1 is padded to the
+        // schema's num+den count by `macro_gate_dsts`, matching the prior row).
+        // Gate: InitsOrTeardownsInitialPair.
+        RoutineSchema { id: 20, name: "MemoryInitTeardownPair", shape: Plain, operand_field: Mixed,
+            output_count: 2, output_field: Ext, challenge: Both,
+            reference: "lookup_helpers.cuh inits/teardowns num/den (no PK)" },
     ];
     T
 }
@@ -235,37 +311,57 @@ pub fn routine_for_gate(kind: &GateKind) -> Option<RoutineId> {
         | CopyInBaseField { .. }
         | CopyInExtensionField { .. } => return None,
 
-        // Grand-product accumulation.
-        InitialGrandProductFromCaches { .. }
-        | InitialGrandProductWithoutCaches { .. }
-        | UnbalancedGrandProductWithCache { .. }
-        | MaterializeGrandProductTermExpression { .. } => GrandProductStep,
+        // `out = a·b` (PK_PRODUCT). The two grand-product-from-caches gates feed
+        // their two cache factors; UnbalancedGrandProductWithCache feeds
+        // `[scalar, input]` — all the same a·b primitive.
+        TrivialProduct { .. }
+        | InitialGrandProductFromCaches { .. }
+        | UnbalancedGrandProductWithCache { .. } => Product,
 
-        // Leaf product primitives.
-        TrivialProduct { .. } | MaskIntoIdentityProduct { .. } => ProductStep,
+        // `out = (v−1)·m + 1` (PK_MASK_IDENTITY).
+        MaskIntoIdentityProduct { .. } => MaskIdentity,
 
-        // Lookup num/den family.
-        MaterializeSingleLookupInput { .. }
-        | MaterializedVectorLookupInput { .. }
-        | LookupWithCachedDensAndSetup { .. }
-        | LookupWithDensAndSetupExpressions { .. }
-        | LookupWithDensAndCachedSetup { .. }
-        | LookupPairFromBaseInputs { .. }
-        | LookupPairFromMaterializedBaseInputs { .. }
-        | LookupFromMaterializedBaseInputWithSetup { .. }
-        | LookupUnbalancedPairWithMaterializedBaseInputs { .. }
-        | LookupPairFromVectorInputs { .. }
-        | LookupPairFromMaterializedVectorInputs { .. }
-        | LookupFromVectorInputWithSetup { .. }
-        | LookupFromMaterializedVectorInputWithSetup { .. }
-        | LookupPairFromCachedVectorInputs { .. }
-        | LookupUnbalancedPairWithVectorInputs { .. }
-        | LookupUnbalancedPairWithMaterializedVectorInputs { .. } => LookupNumDen,
+        // `out = tuple(a)·tuple(b)` over two inlined memory-tuple affine combos.
+        InitialGrandProductWithoutCaches { .. } => GrandProductWithoutCaches,
 
-        // Aggregate rational pair.
+        // `out = tuple(input)` — materialize ONE memory-tuple affine combo.
+        MaterializeGrandProductTermExpression { .. } => MaterializeGrandProductTerm,
+
+        // Aggregate two rational (num,den) pairs (PK_LOOKUP_PAIR4).
         AggregateLookupRationalPair { .. } => AggregateLookupPair,
 
-        // Memory inits/teardowns initial pair.
+        // Symmetric lookup pair `num = sh(b)+sh(d); den = sh(b)·sh(d)`, base/ext.
+        LookupPairFromMaterializedBaseInputs { .. }
+        | LookupPairFromBaseInputs { .. } => LookupBasePair,
+        LookupPairFromMaterializedVectorInputs { .. }
+        | LookupPairFromVectorInputs { .. }
+        | LookupPairFromCachedVectorInputs { .. } => LookupExtPair,
+
+        // Minus-multiplicity `num = sh(d) − c·sh(b); den = sh(b)·sh(d)`, base/ext.
+        LookupFromMaterializedBaseInputWithSetup { .. } => LookupBaseMinusMult,
+        LookupFromMaterializedVectorInputWithSetup { .. }
+        | LookupFromVectorInputWithSetup { .. } => LookupExtMinusMult,
+
+        // Cached-dens `num = a·sh(d) − c·sh(b); den = sh(b)·sh(d)` (all cached).
+        LookupWithCachedDensAndSetup { .. } => LookupCachedDens,
+
+        // Unbalanced `num = a·sh(d) + b; den = b·sh(d)`, base/ext.
+        LookupUnbalancedPairWithMaterializedBaseInputs { .. } => LookupUnbalancedBase,
+        LookupUnbalancedPairWithMaterializedVectorInputs { .. }
+        | LookupUnbalancedPairWithVectorInputs { .. } => LookupUnbalancedExt,
+
+        // Decoder-predicate dens+setup (same closed form as cached-dens, distinct
+        // operand provenance).
+        LookupWithDensAndCachedSetup { .. }
+        | LookupWithDensAndSetupExpressions { .. } => LookupDecoderDensSetup,
+
+        // α-folded vector-lookup affine combination (gate form, decoder-fill).
+        MaterializedVectorLookupInput { .. } => VectorLookupGate,
+
+        // Single-column lookup gate form (one base linear combination).
+        MaterializeSingleLookupInput { .. } => MaterializeSingleLookup,
+
+        // Memory inits/teardowns initial (num,den) pair.
         InitsOrTeardownsInitialPair { .. } => MemoryInitTeardownPair,
     })
 }

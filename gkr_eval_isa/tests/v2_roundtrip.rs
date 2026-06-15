@@ -17,10 +17,11 @@ fn roundtrip_all_layouts() {
             memtup: None,
         },
         // macro-plain: header (n_operands=2) + 2 operands + 2 footer dsts.
-        // LookupNumDen is Shape::Plain; the operand count rides the header, so
-        // there is NO count lane — the 2 operand lanes follow the header directly.
+        // LookupExtPair is Shape::Plain (a num/den lookup pair, output_count 2);
+        // the operand count rides the header, so there is NO count lane — the 2
+        // operand lanes follow the header directly.
         Instr2 {
-            header: Header::Macro { routine: RoutineId::LookupNumDen as u8, n_operands: 2 },
+            header: Header::Macro { routine: RoutineId::LookupExtPair as u8, n_operands: 2 },
             operands: vec![
                 Operand::Indirect { e4: true, desc: 4 },
                 Operand::Ldc { sub: LdcSub::ConstChallenge, idx: 0 },

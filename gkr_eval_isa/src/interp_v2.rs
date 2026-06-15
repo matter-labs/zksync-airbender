@@ -261,7 +261,7 @@ pub fn execute2(p: &Program2, gathers: &[GatherDescriptor], src: &SourceBanks) -
         };
 
         // Per-dst output values. Arith ops and single-output macros (GateOutputFold,
-        // GrandProductStep) produce ONE value broadcast to every footer dst (in the
+        // Product) produce ONE value broadcast to every footer dst (in the
         // corpus that is a single dst). Multi-output macros (AggregateLookupPair:
         // num,den) produce one value PER dst, aligned to `ins.dsts` (spec §3 /
         // routine_table output_count). `outputs` is therefore indexed against the
@@ -358,43 +358,37 @@ fn read_ldc(src: &SourceBanks, sub: LdcSub, idx: u16) -> Ext {
 /// Dispatch one macro routine, returning one output value PER footer dst (or a
 /// single value to broadcast). Task 3.1 landed `GateOutputFold`; Task 3.3 adds
 /// the routines whose per-row arithmetic is UNAMBIGUOUSLY determined by the
-/// `Instr2` alone — `GrandProductStep` (one product formula) and
-/// `AggregateLookupPair` (one rational-pair-combine formula).
+/// `Instr2` alone — `Product` (one a·b product formula) and `AggregateLookupPair`
+/// (one rational-pair-combine formula).
 ///
-/// THE REMAINING CORPUS ROUTINES STAY `todo!` ON PURPOSE — not for lack of
-/// effort, but because the v2 `Instr2` does NOT carry the discriminator their
-/// per-row formula needs. The production reference selects the formula by the
-/// `GateKind`/`CacheKind` (see the bench-interp `mirror_gate`/`mirror_cache`
-/// host reference at
-/// `gpu/circuit_prover/src/prover/gkr/forward/bench_interp/tests.rs:337-451`
-/// and its primitive-kind tags `PK_*` at `.../bench_interp/lower.rs:173-187`),
-/// where ONE v2 routine id fans out to several primitive kinds with DIFFERENT
-/// math that the lowered instruction cannot tell apart:
-///   - `LookupNumDen` (id 1) covers PK_LOOKUP_BASE_PAIR / _EXT_PAIR /
-///     _BASE_MINUS_MULT / _EXT_MINUS_MULT / _UNBALANCED_BASE / _CACHED_DENS
-///     (lookup_helpers.cuh:229-318). In the add_sub/bigint/blake2 corpus these
-///     collapse onto operand-arities {2,3,4}, and arity 3 alone hosts THREE
-///     distinct formulas (base-minus-mult, ext-minus-mult, unbalanced) — so
-///     arity does not pin the formula. Guessing one would be plausible-but-wrong.
-///   - `ProductStep` (id 8) covers BOTH `gkr_eval_product` (a·b) AND
-///     `gkr_eval_mask_identity` ((v−1)·m+1) (lookup_helpers.cuh:217/219-223),
-///     both arity-2 — likewise indistinguishable from the instruction.
-///   - `SingleColumnLookup` (id 4) / `VectorizedLookup` (id 6) fold their input
+/// THE REMAINING CORPUS ROUTINES STAY `todo!` ON PURPOSE (Task R3) — not for
+/// lack of effort, but because their per-row formula either reads a discriminator
+/// the v2 `Instr2` does not carry or folds coefficients that live on the forward
+/// setup, not the operand lanes. With the finer Task-R1 RoutineId set the id IS
+/// now 1:1 with the forward formula (see the per-variant doc comments in
+/// isa_v2/mod.rs and the `PK_*` tags at `.../bench_interp/lower.rs:173-188`), so
+/// the remaining `todo!`s are an R3-implementation gap, not an id-aliasing gap:
+///   - The lookup num/den routines (`LookupBasePair`/`LookupExtPair`/
+///     `LookupBaseMinusMult`/`LookupExtMinusMult`/`LookupCachedDens`/
+///     `LookupUnbalancedBase`/`LookupUnbalancedExt`/`LookupDecoderDensSetup`)
+///     each shift their lane(s) by the additive challenge γ and fold a
+///     setup multiplicity — challenges are banks, not operand lanes (spec §5).
+///   - `MaskIdentity` is `(v−1)·m+1` (PK_MASK_IDENTITY, lookup_helpers.cuh).
+///   - `MaterializeSingleLookup` (id 12) / `VectorLookupGate` (id 11) /
+///     `SingleColumnLookup` (id 16) / `VectorizedLookup` (id 17) fold their input
 ///     COLUMNS by per-term lincomb / α-power coefficients (cache_relation.rs:347/
 ///     382, gkr_forward_generation.cuh E_FMA_ALPHA) — the coefficients live on
-///     the forward setup, NOT in the operand lanes, so the value is not
-///     recoverable from `Instr2`.
-///   - `MemoryTuple` (id 5) folds a `constant_term` (perm-additive + the
-///     const-folded address/timestamp/value offsets) that the v2 lowering drops
-///     entirely (macros.rs:264-287 "constants fold into the routine's seed"),
-///     plus a per-role challenge whose byte-shift for the U8Limbs EXTRA terms is
-///     not carried (cache_relation.rs:259-298).
-///   - `VectorizedLookupSetup` (id 7) is a row-indexed gather `n[gid]`
-///     (lookup_helpers.cuh:70-74); the lowered operands are the input columns,
-///     not the gathered value, so the materialized result is not a function of
-///     the operands.
-/// `MemoryInitTeardownPair` (id 9) is not emitted by the corpus at all (probe
-/// STEP 0) and stays `todo!("Task 3.3+")`.
+///     the forward setup, NOT in the operand lanes.
+///   - `MemoryTuple` (id 19) / `GrandProductWithoutCaches` (id 14) /
+///     `MaterializeGrandProductTerm` (id 15) fold a `constant_term` (perm-additive
+///     + the const-folded address/timestamp/value offsets) the v2 lowering drops
+///     (macros.rs "constants fold into the routine's seed"), plus per-role
+///     challenges (cache_relation.rs:259-298).
+///   - `VectorizedLookupSetup` (id 18) is a row-indexed gather `n[gid]`
+///     (lookup_helpers.cuh); the lowered operands are the input columns, not the
+///     gathered value.
+/// `MemoryInitTeardownPair` (id 20) is not emitted by the corpus at all (probe
+/// STEP 0) and stays `todo!`.
 fn exec_macro(
     routine: RoutineId,
     ins: &crate::isa_v2::Instr2,
@@ -403,37 +397,45 @@ fn exec_macro(
 ) -> Vec<Ext> {
     match routine {
         RoutineId::GateOutputFold => vec![gate_output_fold(ins, src, read)],
-        RoutineId::GrandProductStep => vec![grand_product_step(ins, read)],
+        RoutineId::Product => vec![product(ins, read)],
         RoutineId::AggregateLookupPair => aggregate_lookup_pair(ins, read),
-        RoutineId::LookupNumDen
+        RoutineId::MaskIdentity
+        | RoutineId::LookupBasePair
+        | RoutineId::LookupExtPair
+        | RoutineId::LookupBaseMinusMult
+        | RoutineId::LookupExtMinusMult
+        | RoutineId::LookupCachedDens
+        | RoutineId::LookupUnbalancedBase
+        | RoutineId::LookupUnbalancedExt
+        | RoutineId::VectorLookupGate
+        | RoutineId::MaterializeSingleLookup
+        | RoutineId::LookupDecoderDensSetup
+        | RoutineId::GrandProductWithoutCaches
+        | RoutineId::MaterializeGrandProductTerm
         | RoutineId::SingleColumnLookup
         | RoutineId::MemoryTuple
         | RoutineId::VectorizedLookup
         | RoutineId::VectorizedLookupSetup
-        | RoutineId::ProductStep
         | RoutineId::MemoryInitTeardownPair => {
-            todo!(
-                "Task 3.3+: macro routine {routine:?} needs a per-GateKind discriminator the v2 \
-                 Instr2 does not carry (see exec_macro doc)"
-            )
+            todo!("Task R3: {routine:?}")
         }
     }
 }
 
-/// `GrandProductStep` (routine 2, `gkr_forward_generation.cuh PRODUCT` →
-/// `gkr_eval_product`, `lookup_helpers.cuh:217`): one product node folded into
-/// the running grand product — `out = a · b` over the two ext factors.
+/// `Product` (routine 1, PK_PRODUCT → `gkr_eval_product`, `lookup_helpers.cuh`):
+/// `out = a · b` over the two ext factors. One product node folded into the
+/// running grand product.
 ///
-/// Operand layout (macros.rs `lower_gate`): the gate's two input nodes, in IR
-/// order, ride operand lanes 0 and 1 — for `InitialGrandProductFromCaches`
-/// (`codegen_ir.rs:1231`, the only id-2 kind the corpus emits) that is
-/// `input.to_vec()`, the two cache factors. No challenge (schema
-/// `ChallengeUse::None`). Single ext output → one footer dst.
-fn grand_product_step(ins: &crate::isa_v2::Instr2, read: &dyn Fn(&Operand) -> Ext) -> Ext {
+/// Operand layout (macros.rs `lower_gate` + `gate_kind_input_nodes`): the gate's
+/// two input nodes ride operand lanes 0 and 1 — for `TrivialProduct` /
+/// `InitialGrandProductFromCaches` that is `input.to_vec()` (the two factors),
+/// for `UnbalancedGrandProductWithCache` it is `[scalar, input]`. No challenge
+/// (schema `ChallengeUse::None`). Single ext output → one footer dst.
+fn product(ins: &crate::isa_v2::Instr2, read: &dyn Fn(&Operand) -> Ext) -> Ext {
     debug_assert_eq!(
         ins.operands.len(),
         2,
-        "GrandProductStep is a 2-factor product (gkr_eval_product)"
+        "Product is a 2-factor product (gkr_eval_product)"
     );
     let mut a = read(&ins.operands[0]);
     let b = read(&ins.operands[1]);
@@ -507,15 +509,26 @@ fn gate_output_fold(
 fn routine_from_u8(routine: u8) -> RoutineId {
     match routine {
         0 => RoutineId::GateOutputFold,
-        1 => RoutineId::LookupNumDen,
-        2 => RoutineId::GrandProductStep,
+        1 => RoutineId::Product,
+        2 => RoutineId::MaskIdentity,
         3 => RoutineId::AggregateLookupPair,
-        4 => RoutineId::SingleColumnLookup,
-        5 => RoutineId::MemoryTuple,
-        6 => RoutineId::VectorizedLookup,
-        7 => RoutineId::VectorizedLookupSetup,
-        8 => RoutineId::ProductStep,
-        9 => RoutineId::MemoryInitTeardownPair,
+        4 => RoutineId::LookupBasePair,
+        5 => RoutineId::LookupExtPair,
+        6 => RoutineId::LookupBaseMinusMult,
+        7 => RoutineId::LookupExtMinusMult,
+        8 => RoutineId::LookupCachedDens,
+        9 => RoutineId::LookupUnbalancedBase,
+        10 => RoutineId::LookupUnbalancedExt,
+        11 => RoutineId::VectorLookupGate,
+        12 => RoutineId::MaterializeSingleLookup,
+        13 => RoutineId::LookupDecoderDensSetup,
+        14 => RoutineId::GrandProductWithoutCaches,
+        15 => RoutineId::MaterializeGrandProductTerm,
+        16 => RoutineId::SingleColumnLookup,
+        17 => RoutineId::VectorizedLookup,
+        18 => RoutineId::VectorizedLookupSetup,
+        19 => RoutineId::MemoryTuple,
+        20 => RoutineId::MemoryInitTeardownPair,
         other => panic!("unknown routine id {other} in fused program header"),
     }
 }
