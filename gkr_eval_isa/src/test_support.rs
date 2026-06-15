@@ -14,6 +14,31 @@
 //! consumer reading a cache cell before its CacheK fired would see zeros and
 //! fail the value comparison, so produce-before-consume is checked implicitly.
 
+/// Absolute path to a fixture under `cs/compiled_circuits/`. Shared by in-crate
+/// unit tests AND integration tests (the `eval_ref::tests::fixture` helper is
+/// `#[cfg(test)] pub(crate)` and is NOT visible cross-crate).
+#[doc(hidden)]
+pub fn fixture_path(name: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../cs/compiled_circuits")
+        .join(name)
+}
+
+/// All 22 `codegen_ir` fixtures, sorted.
+#[doc(hidden)]
+pub fn all_fixtures() -> Vec<std::path::PathBuf> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../cs/compiled_circuits");
+    let mut paths: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| {
+            let p = e.unwrap().path();
+            p.file_name()?.to_str()?.contains("codegen_ir").then_some(p)
+        })
+        .collect();
+    paths.sort();
+    paths
+}
+
 use crate::compiler::fwd::{CompiledForward, PayloadRecord, fwd_eligible};
 use crate::eval_ref::{self, Bf, Ext, lift, random_row};
 use crate::interp::{StagedSources, execute};
