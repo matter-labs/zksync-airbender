@@ -996,3 +996,127 @@ fn ensure_dst_cols(ins: &Instr2, src: &mut SourceBanks) {
         }
     }
 }
+
+// ===========================================================================
+// Task 3.4 — store-width relation oracle (R7 / re-review-4).
+//
+// The interpreter enforces the §7 store-width relation in its footer: a base-
+// field commit must carry zero ext high limbs (write_cells / assert_store_width,
+// ported from v1 interp.rs:55). These tests drive it through the PUBLIC
+// `execute2`: (a) a base value lifts cleanly to either width; (b) an ext value
+// with a non-zero high limb is rejected on a base-width store; (c) an ext value
+// round-trips at full e4 width through a Slot read regardless of dst field.
+// (The relation is a debug_assert, matching v1 — these run under the default
+// debug `cargo test` profile.)
+// ===========================================================================
+
+/// Single instruction: Sum over one Affine source (slot 0, col 0) into `dst`.
+/// Sum of one operand IS that operand, so `execute2` stores the source verbatim,
+/// isolating the footer store-width check.
+fn copy_program(dst: Dst) -> Program2 {
+    Program2 {
+        instrs: vec![Instr2 {
+            header: Header::Arith { op: ArithOp::Sum, arity: 1 },
+            operands: vec![Operand::Affine { slot: 0, col: 0 }],
+            dsts: vec![dst],
+            memtup: None,
+        }],
+        consts: vec![],
+        n_slot_cells: 4,
+        n_matrix_slots: 2,
+    }
+}
+
+/// Slot 0 ext-field (source col 0 = `col0`, col 1 spare output); slot 1
+/// base-field (a base-width Materialize destination).
+fn store_width_banks(col0: Ext) -> SourceBanks {
+    SourceBanks {
+        matrix: vec![
+            MatrixSlotData { field_ext: true, columns: vec![col0, Ext::ZERO] },
+            MatrixSlotData { field_ext: false, columns: vec![Ext::ZERO] },
+        ],
+        consts: vec![],
+        const_challenge: vec![],
+        arg_challenge: vec![],
+        gamma: Ext::ZERO,
+        perm_challenges: vec![],
+        perm_additive: Ext::ZERO,
+        gather_tables: GatherTables::default(),
+        gid: 0,
+    }
+}
+
+#[test]
+fn base_to_ext_lift_passes() {
+    // (a) A base-domain value (canonical: high limbs zero) is legal at BOTH
+    // widths — the relation permits the base->ext lift and the base->base store;
+    // it only forbids dropping NON-zero high limbs.
+    let base_val = lift(bf(7)); // coeffs [7, 0, 0, 0]
+
+    // base-width Materialize into base-field slot 1: passes (high limbs zero).
+    let got_base = execute2(
+        &copy_program(Dst::Materialize { slot: 1, col: 0 }),
+        &[],
+        &store_width_banks(base_val),
+    );
+    assert_eq!(got_base.materialized, vec![((1, 0), base_val)]);
+
+    // ext-width Materialize into ext slot 0 (col 1): the lift; value stays canonical.
+    let got_ext = execute2(
+        &copy_program(Dst::Materialize { slot: 0, col: 1 }),
+        &[],
+        &store_width_banks(base_val),
+    );
+    assert_eq!(got_ext.materialized, vec![((0, 1), base_val)]);
+    let coeffs = <Ext as FieldExtension<Bf>>::into_coeffs(got_ext.materialized[0].1);
+    assert!(
+        coeffs[1].is_zero() && coeffs[2].is_zero() && coeffs[3].is_zero(),
+        "lifted base value must carry canonical zero high limbs"
+    );
+}
+
+#[test]
+#[should_panic(expected = "non-base")]
+fn ext_to_base_truncation_fails() {
+    // (b) An ext value with a non-zero high limb stored to a base-width dst must
+    // be REJECTED (the zero-high-limb relation), never silently truncated.
+    let ext_val = <Ext as FieldExtension<Bf>>::from_coeffs([bf(1), bf(2), bf(0), bf(0)]);
+    let _ = execute2(
+        &copy_program(Dst::Materialize { slot: 1, col: 0 }),
+        &[],
+        &store_width_banks(ext_val),
+    );
+}
+
+#[test]
+fn slot_read_is_full_e4_width_regardless_of_store() {
+    // (c) Reads use the full e4 width: an ext value stashed in an ext Slot
+    // round-trips all four limbs (no dst-field-driven truncation on the read
+    // path). Stash to Slot{e4:true}, then copy that Slot to an ext Materialize.
+    let ext_val = <Ext as FieldExtension<Bf>>::from_coeffs([bf(3), bf(5), bf(7), bf(9)]);
+    let p = Program2 {
+        instrs: vec![
+            Instr2 {
+                header: Header::Arith { op: ArithOp::Sum, arity: 1 },
+                operands: vec![Operand::Affine { slot: 0, col: 0 }],
+                dsts: vec![Dst::Slot { e4: true, cell: 0 }],
+                memtup: None,
+            },
+            Instr2 {
+                header: Header::Arith { op: ArithOp::Sum, arity: 1 },
+                operands: vec![Operand::Slot { e4: true, cell: 0 }],
+                dsts: vec![Dst::Materialize { slot: 0, col: 1 }],
+                memtup: None,
+            },
+        ],
+        consts: vec![],
+        n_slot_cells: 4,
+        n_matrix_slots: 2,
+    };
+    let got = execute2(&p, &[], &store_width_banks(ext_val));
+    assert_eq!(
+        got.materialized,
+        vec![((0, 1), ext_val)],
+        "all four e4 limbs must round-trip through the Slot read"
+    );
+}
