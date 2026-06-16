@@ -8,6 +8,14 @@ pub const LOAD_HALF_WORD_OP_KEY: DecoderInstructionVariantsKey =
 pub const SIGN_EXTEND_ON_LOAD_OP_KEY: DecoderInstructionVariantsKey =
     DecoderInstructionVariantsKey("LB/LW");
 
+fn reduced_lw_alignment_constraint<F: PrimeField>(
+    bit_0: Term<F>,
+    bit_1: Term<F>,
+    execute_family: Boolean,
+) -> Constraint<F> {
+    (bit_0 + bit_1) * execute_family.get_terms()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LoadOp<const SUPPORT_SIGNED: bool, const SUPPORT_LESS_THAN_WORD: bool>;
 
@@ -72,6 +80,44 @@ impl<const SUPPORT_SIGNED: bool, const SUPPORT_LESS_THAN_WORD: bool> DecodableMa
         };
 
         Ok(params)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use field::Mersenne31Field;
+
+    use super::*;
+
+    fn reduced_lw_alignment_value(low_bits: u64, execute: bool) -> Option<u64> {
+        let bit_0 = low_bits & 1;
+        let bit_1 = (low_bits >> 1) & 1;
+        let mut constraint = reduced_lw_alignment_constraint::<Mersenne31Field>(
+            Term::from(bit_0),
+            Term::from(bit_1),
+            Boolean::Constant(execute),
+        );
+        constraint.normalize();
+        if constraint.terms.is_empty() {
+            None
+        } else {
+            Some(constraint.as_constant().as_u64_reduced())
+        }
+    }
+
+    #[test]
+    fn reduced_lw_alignment_constraint_allows_only_zero_low_bits_when_executed() {
+        assert_eq!(reduced_lw_alignment_value(0b00, true), None);
+        assert_eq!(reduced_lw_alignment_value(0b01, true), Some(1));
+        assert_eq!(reduced_lw_alignment_value(0b10, true), Some(1));
+        assert_eq!(reduced_lw_alignment_value(0b11, true), Some(2));
+    }
+
+    #[test]
+    fn reduced_lw_alignment_constraint_is_inactive_when_not_executed() {
+        for low_bits in 0..=0b11 {
+            assert_eq!(reduced_lw_alignment_value(low_bits, false), None);
+        }
     }
 }
 
@@ -398,9 +444,11 @@ impl<const SUPPORT_SIGNED: bool, const SUPPORT_LESS_THAN_WORD: bool>
                 TableType::MemoryOffsetGetBits.to_num(),
                 execute_family,
             );
-            cs.add_constraint(
-                (Term::from(bit_0) + Term::from(bit_1)) * execute_family.get_terms(),
-            );
+            cs.add_constraint(reduced_lw_alignment_constraint(
+                Term::from(bit_0),
+                Term::from(bit_1),
+                execute_family,
+            ));
 
             let [is_ram_range, address_high_bits_for_rom] = opt_ctx.append_lookup_relation(
                 cs,

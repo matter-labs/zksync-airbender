@@ -254,6 +254,50 @@ fn merge_recursive_circuit_output(first: [u32; 16], second: [u32; 16]) -> [u32; 
     result
 }
 
+#[cfg(all(
+    test,
+    any(feature = "universal_circuit", feature = "universal_circuit_no_delegation")
+))]
+mod tests {
+    use super::*;
+
+    fn recursive_output() -> [u32; 16] {
+        let mut output = [0u32; 16];
+        output[8..16].copy_from_slice(&[11, 12, 13, 14, 15, 16, 17, 18]);
+        output
+    }
+
+    #[test]
+    fn merge_recursive_circuit_output_accepts_zero_word_7() {
+        let first = recursive_output();
+        let second = recursive_output();
+
+        let result = merge_recursive_circuit_output(first, second);
+
+        assert_eq!(&result[8..16], &first[8..16]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Recursive proof output word 7 must be zero")]
+    fn merge_recursive_circuit_output_rejects_nonzero_first_word_7() {
+        let mut first = recursive_output();
+        let second = recursive_output();
+        first[7] = 1;
+
+        merge_recursive_circuit_output(first, second);
+    }
+
+    #[test]
+    #[should_panic(expected = "Recursive proof output word 7 must be zero")]
+    fn merge_recursive_circuit_output_rejects_nonzero_second_word_7() {
+        let first = recursive_output();
+        let mut second = recursive_output();
+        second[7] = 1;
+
+        merge_recursive_circuit_output(first, second);
+    }
+}
+
 #[cfg(feature = "verifier_tests")]
 unsafe fn workload() -> ! {
     use core::mem::MaybeUninit;
