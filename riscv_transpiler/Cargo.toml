@@ -23,7 +23,7 @@ object = { workspace = true, optional = true }
 serde-big-array = "*"
 keccak = "*"
 
-dynasmrt = { version = "4", optional = true }
+dynasmrt = { version = "5", optional = true }
 riscv-decode = {version = "0.2", optional = true }
 capstone = {version = "0.13", optional = true }
 

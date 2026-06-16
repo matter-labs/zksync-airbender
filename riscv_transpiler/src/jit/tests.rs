@@ -27,14 +27,21 @@ fn run_jit_program(program: &[u32]) {
     JittedCode::<_>::run_alternative_simulator(program, &mut (), &[], None);
 }
 
-/// Assert that a JIT-triggered runtime panic occurs by re-running the current
-/// test in a subprocess.
+/// Assert that an unsupported instruction aborts the process (with `expected`
+/// somewhere in its output) by re-running the current test in a subprocess.
 ///
-/// We can not use `#[should_panic]` or `catch_unwind` here because the panic is
-/// raised from an `extern "sysv64"` callback reached from JIT-generated code.
-/// Rust treats that path as non-unwinding, so the process aborts instead of
-/// producing a catchable unwind.
-fn assert_jit_runtime_panic(test_name: &str, fixture_env_var: &str, instruction: &str) {
+/// We can not use `#[should_panic]` or `catch_unwind` here because the JIT-runtime
+/// panic is raised from an `extern "sysv64"` callback reached from JIT-generated
+/// code. Rust treats that path as non-unwinding, so the process aborts instead of
+/// producing a catchable unwind. Some instructions are instead rejected earlier,
+/// while decoding the bytecode into the intermediate `Instruction` representation;
+/// those abort with a decode-time panic message rather than the JIT-runtime one.
+fn assert_jit_aborts(
+    test_name: &str,
+    fixture_env_var: &str,
+    instruction: &str,
+    expected: &str,
+) {
     let output = std::process::Command::new(
         std::env::current_exe().expect("test binary path should be available"),
     )
@@ -54,8 +61,8 @@ fn assert_jit_runtime_panic(test_name: &str, fixture_env_var: &str, instruction:
     let stderr = String::from_utf8_lossy(&output.stderr);
     let combined_output = format!("{stdout}\n{stderr}");
     assert!(
-        combined_output.contains("Runtime explicitly panicked"),
-        "expected runtime panic output for `{instruction}`, got:\n{combined_output}",
+        combined_output.contains(expected),
+        "expected `{expected}` in output for `{instruction}`, got:\n{combined_output}",
     );
 }
 
@@ -63,23 +70,36 @@ fn assert_jit_runtime_panic(test_name: &str, fixture_env_var: &str, instruction:
 #[serial_test::serial]
 fn test_jit_unsupported_instructions_trap_at_runtime() {
     let fixture_env_var = "RISCV_TRANSPILER_UNSUPPORTED_INSTRUCTION_FIXTURE";
-    let unsupported_instructions = [
+    // Instructions that decode into the intermediate representation (as `Illegal`
+    // or an unsupported opcode) but are lowered to a JIT-runtime execution panic.
+    let runtime_trapped = [
         "mulhsu x0, x1, x2",
         "div x0, x1, x2",
         "rem x0, x1, x2",
-        "ecall",
-        "ebreak",
         "fence",
     ];
+    // Environment calls have no JIT/VM lowering at all and are rejected while the
+    // bytecode is decoded into the intermediate representation.
+    let decode_rejected = ["ecall", "ebreak"];
 
     if let Ok(instruction) = std::env::var(fixture_env_var) {
         run_jit_program(&[assemble_single_instruction(&instruction)]);
     } else {
-        for instruction in unsupported_instructions {
-            assert_jit_runtime_panic(
-                "jit::tests::test_jit_unsupported_instructions_trap_at_runtime",
+        let test_name = "jit::tests::test_jit_unsupported_instructions_trap_at_runtime";
+        for instruction in runtime_trapped {
+            assert_jit_aborts(
+                test_name,
                 fixture_env_var,
                 instruction,
+                "Runtime explicitly panicked",
+            );
+        }
+        for instruction in decode_rejected {
+            assert_jit_aborts(
+                test_name,
+                fixture_env_var,
+                instruction,
+                "Unknown system funct3",
             );
         }
     }
@@ -234,9 +254,7 @@ fn test_jit_full_block() {
         .map(|el| u32::from_be_bytes(*el))
         .collect();
     let mut source = QuasiUARTSource::new_with_reads(witness);
-
     let (state, _) = JittedCode::<_>::run_alternative_simulator(&text, &mut source, &binary, None);
-
     println!("PC = 0x{:08x}", state.pc);
     dbg!(state.registers);
 }
@@ -810,7 +828,8 @@ fn test_perf_with_trace_keeping() {
         .collect();
     let mut source = QuasiUARTSource::new_with_reads(witness);
 
-    let simulator = JittedCode::<_>::preprocess_bytecode(&text, None);
+    let instructions = preprocess_bytecode::<FullUnsignedMachineDecoderConfig, false>(&text);
+    let simulator = JittedCode::<_>::preprocess_bytecode(&instructions, None);
 
     let mut implementation = PreallocatedSnapshots::<1024, _>::new_in(Global, &mut source);
     let initial_chunk = implementation.initial_snapshot();
@@ -847,7 +866,8 @@ fn test_replayer_over_jit() {
         .collect();
     let mut source = QuasiUARTSource::new_with_reads(witness);
 
-    let simulator = JittedCode::<_>::preprocess_bytecode(&text, None);
+    let jit_instructions = preprocess_bytecode::<FullUnsignedMachineDecoderConfig, false>(&text);
+    let simulator = JittedCode::<_>::preprocess_bytecode(&jit_instructions, None);
 
     let mut implementation = PreallocatedSnapshots::<1024, _>::new_in(Global, &mut source);
     let initial_chunk = implementation.initial_snapshot();

@@ -3,7 +3,7 @@ use common_constants::*;
 use std::alloc::Allocator;
 use std::collections::HashSet;
 use std::ptr::NonNull;
-use std::{mem::offset_of, ptr::addr_of_mut};
+use std::mem::offset_of;
 
 #[cfg(target_pointer_width = "64")]
 mod delegations;
