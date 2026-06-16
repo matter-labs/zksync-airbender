@@ -187,9 +187,10 @@ unsafe fn workload() -> ! {
             // verify first proof & use it as the seed for the rolling hash
             //
             // the proof's outputs are as follows:
-            // output[0..8] - the actual output of the circuit
+            // output[0..7] - output words bound by the rolling hash
+            // output[7] - reserved SNARK-compatibility word; must be zero
             // output[8..16] - the verification key (should be the same across all proofs, checked inside merge_recursive_circuit_output)
-            // merging is done over inputs [0..8], whilst key is not modified (being copied over and over)
+            // merging is done over output[0..7], whilst key is not modified (being copied over and over)
             let mut rolling_hash = full_statement_verifier::verify_recursion_layer();
 
             // iterate over remaining circuits
@@ -218,16 +219,14 @@ unsafe fn workload() -> ! {
 /// TL;DR; Keccaks the two outputs together.
 ///
 /// Note, a proof is structured as follows:
-/// - first 8 u32s are the actual proof output
-/// - last 8 u32s are the verification key identifier (proving chain)
+/// - words 0 through 6 are output words bound by the rolling hash
+/// - word 7 is reserved for SNARK compatibility and must be zero
+/// - words 8 through 15 are the verification key identifier (proving chain)
 fn merge_recursive_circuit_output(first: [u32; 16], second: [u32; 16]) -> [u32; 16] {
     // Proving chain must be equal
     for i in 8..16 {
         assert_eq!(first[i], second[i], "Proving chains must be equal");
     }
-
-    // To make it compatible with our SNARK - we'll assume that last register (7th) is 0 (as snark ignores that too).
-    // and we'll actually shift them all by 1.
 
     assert_eq!(first[7], 0, "Recursive proof output word 7 must be zero");
     assert_eq!(second[7], 0, "Recursive proof output word 7 must be zero");
