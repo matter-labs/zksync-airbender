@@ -246,8 +246,9 @@ fn merge_recursive_circuit_output(first: [u32; 16], second: [u32; 16]) -> [u32; 
     }
 
     let mut result = [0u32; 16];
-    // merged outputs
-    result[0..8].copy_from_slice(&hasher.finalize());
+    // merged outputs. Word 7 stays reserved for SNARK compatibility, so rolling merges keep the
+    // same shape as fresh recursive proof outputs.
+    result[0..7].copy_from_slice(&hasher.finalize()[0..7]);
     // same vk
     result[8..16].copy_from_slice(&first[8..16]);
 
@@ -256,7 +257,10 @@ fn merge_recursive_circuit_output(first: [u32; 16], second: [u32; 16]) -> [u32; 
 
 #[cfg(all(
     test,
-    any(feature = "universal_circuit", feature = "universal_circuit_no_delegation")
+    any(
+        feature = "universal_circuit",
+        feature = "universal_circuit_no_delegation"
+    )
 ))]
 mod tests {
     use super::*;
@@ -275,6 +279,23 @@ mod tests {
         let result = merge_recursive_circuit_output(first, second);
 
         assert_eq!(&result[8..16], &first[8..16]);
+        assert_eq!(result[7], 0);
+    }
+
+    #[test]
+    fn merge_recursive_circuit_output_can_chain_rolling_outputs() {
+        let mut first = recursive_output();
+        let mut second = recursive_output();
+        let mut third = recursive_output();
+        first[0] = 1;
+        second[0] = 2;
+        third[0] = 3;
+
+        let rolling_hash = merge_recursive_circuit_output(first, second);
+        let result = merge_recursive_circuit_output(rolling_hash, third);
+
+        assert_eq!(&result[8..16], &third[8..16]);
+        assert_eq!(result[7], 0);
     }
 
     #[test]
