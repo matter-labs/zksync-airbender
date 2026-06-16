@@ -270,47 +270,46 @@ fn rv_reg_to_xmm_reg(x: u8) -> (u8, u8) {
     (xmm_register, imm)
 }
 
-const MACHINE_STATE_XMM_REG_IDX: u8 = RV_REGISTERS_NUM_XMMS;
-const MACHINE_STATE_XMM_REG_IMM: u8 = 0;
+// const MACHINE_STATE_XMM_REG_IDX: u8 = RV_REGISTERS_NUM_XMMS;
+// const MACHINE_STATE_XMM_REG_IMM: u8 = 0;
 
-fn cache_machine_ctx_ptr(ops: &mut x64::Assembler) {
-    dynasm!(ops
-        ; push rdx
-        ; mov [rsp + (MachineState::CONTEXT_PTR_OFFSET as i32)], rdx
-        ; pinsrq Rx(MACHINE_STATE_XMM_REG_IDX), rdx, MACHINE_STATE_XMM_REG_IMM as i8
-        ; pop rdx
-    );
-}
+// fn cache_machine_ctx_ptr(ops: &mut x64::Assembler) {
+//     dynasm!(ops
+//         ; push rdx
+//         ; mov [rsp + (MachineState::CONTEXT_PTR_OFFSET as i32)], rdx
+//         ; pinsrq Rx(MACHINE_STATE_XMM_REG_IDX), rdx, MACHINE_STATE_XMM_REG_IMM as i8
+//         ; pop rdx
+//     );
+// }
 
-macro_rules! load_cached_machine_ctx_ptr {
-    ($ops:ident, $d:expr) => {
-        dynasm!($ops
-            ; pextrq $d, Rx(MACHINE_STATE_XMM_REG_IDX), MACHINE_STATE_XMM_REG_IMM as i8
-        );
-    };
-}
+// macro_rules! load_cached_machine_ctx_ptr {
+//     ($ops:ident, $d:expr) => {
+//         dynasm!($ops
+//             ; pextrq $d, Rx(MACHINE_STATE_XMM_REG_IDX), MACHINE_STATE_XMM_REG_IMM as i8
+//         );
+//     };
+// }
 
-const NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX: u8 = RV_REGISTERS_NUM_XMMS;
+const NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX: u8 = 2; // NOTE: in XMM2 interpreted as [u32; 4] in line 0 lives r8, so
+                                                         // when we will interpret it as [u64; 2] we can use line 1
 const NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IMM: u8 = 1;
 
 macro_rules! cache_non_determinism_responses_ptr {
-    ($ops:ident, $d:expr) => {
+    ($ops:ident, $d:tt) => {
         dynasm!($ops
             ; pinsrq Rx(NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX), $d, NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IMM as i8
         );
     };
 }
 
-macro_rules! read_non_determinism_responses_ptr {
-    ($ops:ident, $d:expr, #c:expr) => {
-        dynasm!($ops
-            // cache, read, dump
-            ; pextrq $c, Rx(NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX), NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IMM as i8
-            ; movd $c, [$c]
-            ; add $c, 4
-            ; pinsrq Rx(NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX), $c, NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IMM as i8
-        );
-    };
+fn read_non_determinism_responses_ptr_mangling_rcx(ops: &mut x64::Assembler, destination: u8) {
+    dynasm!(ops
+        // cache, read, dump
+        ; pextrq rcx, Rx(NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX), NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IMM as i8
+        ; mov Rd(destination), [rcx]
+        ; add rcx, 4 // size_of::<u32>()
+        ; pinsrq Rx(NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX), rcx, NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IMM as i8
+    );
 }
 
 fn store_result(ops: &mut x64::Assembler, x: u32) {
@@ -618,13 +617,33 @@ impl<I: ContextImpl> JittedCode<I> {
         dynasm!(ops
             ; mov [rsp + (MachineState::CONTEXT_PTR_OFFSET as i32)], rdx
         );
-        // we will also cache it into XMM for performance
-        cache_machine_ctx_ptr(&mut ops);
+        // // NOTE: potential path for next performance optimization
+        // // we will also cache it into XMM for performance
+        // cache_machine_ctx_ptr(&mut ops);
 
         // in case of context that provides flattened responses - we will cache it too
         if I::PROVIDES_FLATTENED_NON_DETERMINISM {
-            // stack is all set, so we can call external context and read the value into register
-            todo!();
+            // stack is all set, so we can call external context and read the value into register.
+            // pointer to the context is in RDX already (also stashed at CONTEXT_PTR_OFFSET).
+            // We use the usual call wrappers to preserve our live registers across the call,
+            // then read the raw responses pointer returned in RAX.
+            dynasm!(ops
+                ; mov rdx, rsp
+                ;; before_call!(ops)
+                ; push rdx
+                ; push r9
+                ; mov rax, QWORD (Context::<I>::nondeterminism_as_raw_ptr as *const ()).addr() as usize as isize as i64
+                ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)] // first argument is pointer to the context
+                ; call rax
+                ; pop r9
+                ; pop rdx
+                ;; after_call!(ops)
+                // // the external call clobbers caller-saved XMM registers, including the one
+                // // holding the cached context pointer, so re-cache it from the machine state
+                // ; mov rcx, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
+                // ; pinsrq Rx(MACHINE_STATE_XMM_REG_IDX), rcx, MACHINE_STATE_XMM_REG_IMM as i8
+            );
+            // RAX now holds the raw non-determinism responses pointer
             cache_non_determinism_responses_ptr!(ops, rax);
         }
 
@@ -1511,14 +1530,24 @@ impl<I: ContextImpl> JittedCode<I> {
 
                 // CSRRW reading the non-determinism CSR into rd
                 Op::ZicsrNonDeterminismRead => {
+                    assert!(rs1 == 0);
+                    assert!(rd != 0);
+
                     if I::PROVIDES_FLATTENED_NON_DETERMINISM {
-                        todo!()
+                        // we need two registers: one as destination, another one as temporary scratch
+                        let out = destination_gpr(rd);
+                        pre_bump_timestamp_and_touch!(ops, 1, 0);
+                        read_non_determinism_responses_ptr_mangling_rcx(&mut ops, out);
+                        store_result(&mut ops, rd);
+                        pre_bump_timestamp_and_touch!(ops, 1, rd);
+                        bump_timestamp!(ops, 2);
+                        record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
+                        issue_snapshot = true;
+                        i += 1;
                     } else {
                         // default implementation when we save machine state and call external function
                         let out = destination_gpr(rd);
                         // We want to read non-determinism value into RD
-                        assert!(rs1 == 0);
-                        assert!(rd != 0);
                         // as usual, we will stash our machine state into stack, and call external implementation
                         pre_bump_timestamp_and_touch!(ops, 1, 0);
                         dynasm!(ops

@@ -335,6 +335,8 @@ impl<'a> FlattenedContextImpl<'a> {
 }
 
 impl<'a> ContextImpl for FlattenedContextImpl<'a> {
+    const PROVIDES_FLATTENED_NON_DETERMINISM: bool = true;
+
     fn nondeterminism_as_raw_ptr(&self) -> Option<*const u32> {
         Some(self.non_determinism_start_ptr)
     }

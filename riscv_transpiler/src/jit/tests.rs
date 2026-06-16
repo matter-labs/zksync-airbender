@@ -254,6 +254,28 @@ fn test_jit_full_block() {
     dbg!(state.registers);
 }
 
+#[test]
+#[serial_test::serial]
+fn test_jit_full_block_with_flattened_responder() {
+    let path = std::env::current_dir().unwrap();
+    println!("The current directory is {}", path.display());
+
+    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+
+    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
+    let witness: Vec<_> = witness
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|el| u32::from_be_bytes(*el))
+        .collect();
+    let (state, _) = JittedCode::run_with_flattened_context(&text, &witness[..], &binary, None);
+    println!("PC = 0x{:08x}", state.pc);
+    dbg!(state.registers);
+}
+
 fn run_reference_for_num_cycles(
     binary: &[u32],
     text: &[u32],
