@@ -13,6 +13,7 @@
 
 pub mod abstractions;
 pub mod analysis;
+pub mod control_flow_artifact;
 pub mod cycle;
 pub mod ir;
 pub mod jit;

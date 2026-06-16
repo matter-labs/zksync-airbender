@@ -313,6 +313,50 @@ fn test_bytecode_analysis_full_block() {
     println!("{}", stats);
 }
 
+/// Build the control-flow target artifact (static JAL/BRANCH/JALR-fusion targets +
+/// dynamic JALR targets) for the full zkSync OS block, print its summary, and
+/// round-trip it through disk. Heavy (runs the reference VM), so ignored by default.
+/// Run with:
+///   cargo test --features jit --release --lib \
+///     jit::tests::test_build_cfg_artifact_full_block -- --ignored --nocapture
+#[test]
+#[ignore = "artifact build; run explicitly with --ignored --nocapture"]
+#[serial_test::serial]
+fn test_build_cfg_artifact_full_block() {
+    use crate::control_flow_artifact::{build_control_flow_artifact, ControlFlowArtifact};
+
+    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+
+    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
+    let witness: Vec<u32> = witness
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|el| u32::from_be_bytes(*el))
+        .collect();
+
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
+
+    // Supply one or more non-determinism instances here; more diverse instances
+    // improve dynamic JALR target coverage. We only have one witness fixture.
+    let nd_sources = vec![QuasiUARTSource::new_with_reads(witness)];
+
+    let artifact =
+        build_control_flow_artifact(&instructions, &binary, nd_sources, u64::MAX / 2);
+    println!("{}", artifact);
+
+    // Serialize to disk and verify the round-trip.
+    let path = std::env::temp_dir().join("zksync_os_cfg_artifact.txt");
+    artifact.save_to_file(&path).expect("save artifact");
+    println!("artifact written to {}", path.display());
+    let reloaded = ControlFlowArtifact::load_from_file(&path).expect("load artifact");
+    assert_eq!(artifact, reloaded, "artifact serialization round-trip mismatch");
+    println!("round-trip OK");
+}
+
 fn run_reference_for_num_cycles(
     binary: &[u32],
     text: &[u32],
