@@ -1851,7 +1851,7 @@ impl<'a> JittedCode<FlattenedContextImpl<'a>> {
 
         let mut memory: Box<MemoryHolder> = unsafe {
             // let mut memory: Box<MemoryHolder> = Box::new_uninit().assume_init();
-            let mut memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
+            let memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
 
             memory
         };
