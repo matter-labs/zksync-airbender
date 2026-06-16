@@ -11,6 +11,7 @@ use crate::compiler::slots::SlotAlloc;
 use crate::compiler::view::{self, ProgramView};
 use crate::compiler::{is_computed, node_domain};
 use crate::compiler_v2::matrix_table::MatrixTable;
+use crate::compiler_v2::gather::GatherDescriptor;
 use crate::isa::NEG_ONE_U32;
 use crate::isa_v2::{
     ArithOp, Dst, Header, Instr2, LdcSub, Operand, Program2, SPECIAL_NEG_ONE, SPECIAL_ONE,
@@ -97,6 +98,20 @@ pub struct CompiledForward2 {
     /// (`instr_strand.len() == program.instrs.len()`). Filled by Task 2.7; lets
     /// the strand test prove EXACT one-strand-per-instr coverage (RR2-F3).
     pub instr_strand: Vec<Strand>,
+    /// Gather descriptors indexed by the `desc` lane of `Operand::Indirect`
+    /// (Phase-5). One entry per distinct gathered cached address (deduped) plus
+    /// the per-set id-20 `InitsTeardownsHighAddr` descriptors. The CPU oracle
+    /// builds mock tables for these; the GPU harness binds each to its real
+    /// device table via `gather_addrs` + the producing `CacheKind`.
+    pub gathers: Vec<GatherDescriptor>,
+    /// Per-descriptor source identity, `desc`-aligned with `gathers`
+    /// (`gather_addrs.len() == gathers.len()`). `Some(addr)` is the cached
+    /// `GKRAddress` whose value/mapping/decoder tables back this gather (resolve
+    /// it through the launcher's storage layout to device pointers); `None` for
+    /// the launcher-deferred `InitsTeardownsHighAddr` descriptors, whose datum
+    /// is the per-set `top_bits<<shift` scalar (carried in the descriptor's
+    /// `inits_td_set_idx`), not a circuit address.
+    pub gather_addrs: Vec<Option<cs::definitions::GKRAddress>>,
 }
 
 /// bf-cell width of a node's result.
@@ -609,6 +624,19 @@ pub fn compile_forward_v2(
 
     program.n_slot_cells = alloc.high_water_cells as u16;
 
+    // (Phase-5) Surface the gather descriptors + their source identity so the GPU
+    // harness can bind each `Indirect` desc to a real device table. `mctx.gathers`
+    // is desc-index-ordered (the index minted in `gather_index_for` /
+    // `inits_td_high_addr_operand`); `mctx.gather_idx` is the cached
+    // address -> desc map. Inits/teardowns high-addr descriptors are not in
+    // `gather_idx` (they carry a `set_idx`, not an address) so their slot stays
+    // `None`. This is the only consumer-visible identity the CPU oracle mocked.
+    let gathers = std::mem::take(&mut mctx.gathers);
+    let mut gather_addrs: Vec<Option<cs::definitions::GKRAddress>> = vec![None; gathers.len()];
+    for (addr, &idx) in &mctx.gather_idx {
+        gather_addrs[idx as usize] = Some(*addr);
+    }
+
     // Non-packing lane count for stats: a base-arith layer can have >127 live
     // slot cells (a real 7-bit SLOT_CELL_BITS finding, orthogonal to macro
     // lowering), which would trip `encode2`'s width debug-assert. `lane_count`
@@ -652,6 +680,8 @@ pub fn compile_forward_v2(
         per_strand,
         instr_node,
         instr_strand,
+        gathers,
+        gather_addrs,
     }
 }
 
@@ -1036,6 +1066,67 @@ mod tests {
             }
         }
         assert!(cf.program.consts.len() <= 256, "const table within u8 index space");
+    }
+
+    /// Phase-5: every `Operand::Indirect { desc }` lane indexes a real
+    /// descriptor, `gather_addrs` is desc-aligned with `gathers`, and every
+    /// non-deferred descriptor carries a source address (so the GPU harness can
+    /// bind it to a device table). Non-vacuous: at least one fixture emits a
+    /// gather whose descriptor resolves to a cached address.
+    #[test]
+    fn gather_descriptors_exposed_and_desc_aligned() {
+        use crate::isa_v2::IndirectKind;
+        use crate::test_support::all_fixtures;
+        let mut saw_addr_backed_gather = false;
+        for p in all_fixtures() {
+            let c = load_circuit(&p).unwrap();
+            let name = p.file_name().unwrap().to_str().unwrap();
+            for (li, layer) in c.circuit.layers.iter().enumerate() {
+                let cf = compile_forward_v2(layer, &c.graphs[li], FwdParams2::default());
+                assert_eq!(
+                    cf.gather_addrs.len(),
+                    cf.gathers.len(),
+                    "{name} L{li}: gather_addrs must be desc-aligned with gathers"
+                );
+                // Every Indirect lane in the program indexes a real descriptor.
+                for ins in &cf.program.instrs {
+                    for o in &ins.operands {
+                        if let Operand::Indirect { desc, .. } = o {
+                            assert!(
+                                (*desc as usize) < cf.gathers.len(),
+                                "{name} L{li}: Indirect desc {desc} out of range \
+                                 (gathers {})",
+                                cf.gathers.len()
+                            );
+                        }
+                    }
+                }
+                // Non-deferred descriptors must name their source address; only
+                // the launcher-deferred id-20 high-addr gather is address-free.
+                for (i, d) in cf.gathers.iter().enumerate() {
+                    match d.kind {
+                        IndirectKind::InitsTeardownsHighAddr => {
+                            assert!(
+                                d.inits_td_set_idx.is_some(),
+                                "{name} L{li}: inits/teardowns desc {i} lacks a set_idx"
+                            );
+                        }
+                        _ => {
+                            assert!(
+                                cf.gather_addrs[i].is_some(),
+                                "{name} L{li}: descriptor {i} ({:?}) has no source address",
+                                d.kind
+                            );
+                            saw_addr_backed_gather = true;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            saw_addr_backed_gather,
+            "no fixture emitted an address-backed gather — exposure is vacuous"
+        );
     }
 
     /// Task 2.6: corpus-wide dst-selection + pass-through aliasing + scratch
