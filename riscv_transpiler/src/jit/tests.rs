@@ -276,6 +276,43 @@ fn test_jit_full_block_with_flattened_responder() {
     dbg!(state.registers);
 }
 
+/// Static + dynamic bytecode instrumentation for the full zkSync OS block.
+/// Heavy (runs the reference VM over the whole block), so it is ignored by default.
+/// Run with:
+///   cargo test --features jit --release --lib \
+///     jit::tests::test_bytecode_analysis_full_block -- --ignored --nocapture
+#[test]
+#[ignore = "analysis pass; run explicitly with --ignored --nocapture"]
+#[serial_test::serial]
+fn test_bytecode_analysis_full_block() {
+    use crate::analysis::{analyze_dynamic_execution, analyze_static_bytecode};
+
+    let (binary_raw, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
+    let _ = binary_raw;
+    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+
+    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
+    let witness: Vec<u32> = witness
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|el| u32::from_be_bytes(*el))
+        .collect();
+
+    // Decode like the replayer (PROTECT_AGAINST_MID_DELEGATION_JUMPS = true) so the
+    // dynamic pass can execute delegations as single ops.
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
+
+    println!("{}", analyze_static_bytecode(&instructions));
+
+    let mut source = QuasiUARTSource::new_with_reads(witness);
+    let stats =
+        analyze_dynamic_execution(&instructions, &binary, &mut source, u64::MAX / 2);
+    println!("{}", stats);
+}
+
 fn run_reference_for_num_cycles(
     binary: &[u32],
     text: &[u32],

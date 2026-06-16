@@ -8,42 +8,64 @@
 # section) is negligible next to the ~6e8 emulated RISC-V instructions executed
 # by `run_program`, so whole-process counters are a faithful proxy for it.
 #
-# Two measurement back-ends:
+# Measurement back-ends:
 #
-#   1. macOS Instruments (`xctrace`) "CPU Counters" template -> hardware
-#      "Instructions Retired" / "Cycles". This needs Developer Mode enabled:
-#          sudo DevToolsSecurity -enable
-#      and may require approving a one-time authorization dialog. It does NOT
-#      work in a headless/SSH session.
+#   1. macOS Instruments (`xctrace`) with a CUSTOM "CPU Counters" template that
+#      records hardware PMCs in "Sample by Time" mode (so they are CLI-exportable).
+#      The built-in "CPU Counters" template uses "CPU Bottlenecks" mode whose PMC
+#      values are GUI-only and CANNOT be exported by `xctrace export`. Create the
+#      custom template once (see RECIPE below); pass its name with --template.
 #
-#   2. Wall-clock fallback (always works): the test itself prints
-#          "Frequency is <MHz> MHz over <N> instructions (<ns> ns run time)"
-#      from which we derive ns and host-cycles per emulated instruction.
+#   2. Wall-clock fallback (always works, --no-instruments): the test prints
+#          "Frequency is <MHz> MHz over <N> instructions (<ns> ns run time)".
+#
+# RECIPE -- create the custom template ONCE (needs the Instruments GUI):
+#   1. Open Instruments (Xcode > Open Developer Tool > Instruments).
+#   2. New trace -> choose "CPU Counters" (or Blank, then add the "CPU Counters"
+#      instrument).
+#   3. Select the "CPU Counters" instrument and open its recording configuration
+#      (counter configuration editor / Recording Options).
+#   4. Switch the sampling strategy from the "CPU Bottlenecks" preset to
+#      "Sample by Time" (e.g. 1 ms) and add the events:
+#          Instructions  (INST_RETIRED / FIXED_INSTRUCTIONS)
+#          Cycles        (CPU_CLK_UNHALTED / CORE_ACTIVE_CYCLES / FIXED_CYCLES)
+#   5. File > Save As Template... and name it exactly:  CPU Counters Raw
 #
 # Usage:
-#   scripts/profile_flattened.sh [RUNS] [--no-instruments]
-#       RUNS              number of repetitions (default 10)
-#       --no-instruments  skip xctrace, only collect wall-clock timing
+#   scripts/profile_flattened.sh [RUNS] [--template=NAME] [--no-instruments] [--debug]
+#       RUNS               number of repetitions (default 10)
+#       --template=NAME    Instruments template name (default "CPU Counters Raw")
+#       --no-instruments   skip xctrace, only collect wall-clock timing
+#       --debug            dump the exported counter-table schema/columns/rows
 #
 set -uo pipefail
 
 RUNS=10
 USE_INSTRUMENTS=1
+TEMPLATE="CPU Counters Raw"
+DEBUG=0
 for arg in "$@"; do
   case "$arg" in
     --no-instruments) USE_INSTRUMENTS=0 ;;
+    --debug) DEBUG=1 ;;
+    --template=*) TEMPLATE="${arg#--template=}" ;;
     [0-9]*) RUNS="$arg" ;;
     *) echo "unknown arg: $arg" >&2; exit 2 ;;
   esac
 done
 
 CRATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$CRATE_DIR"
 
 TEST_NAME="test_jit_full_block_with_flattened_responder"
 TEST_FILTER="jit::tests::${TEST_NAME}"
 OUT_DIR="${CRATE_DIR}/target/profile_flattened"
 mkdir -p "$OUT_DIR"
+
+print_recipe() {
+  sed -n '/^# RECIPE/,/CPU Counters Raw$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+}
 
 echo "==> Building release test binary"
 # Build (don't run) and capture the test executable path from cargo's JSON output.
@@ -96,9 +118,8 @@ run_plain() { # $1 = log file
 
 run_instruments() { # $1 = log file, $2 = trace dir
   rm -rf "$2"
-  # CPU Counters records hardware PMCs (Instructions Retired, Cycles, ...).
   xcrun xctrace record \
-    --template "CPU Counters" \
+    --template "$TEMPLATE" \
     --output "$2" \
     --target-stdout - \
     --launch -- "$TEST_BIN" --exact "$TEST_FILTER" --nocapture >"$1" 2>&1
@@ -114,46 +135,135 @@ print(f"{m.group(1)} {m.group(2)}" if m else "")
 PY
 }
 
-echo "==> Running ${RUNS}x ($([[ $HAVE_XCTRACE == 1 ]] && echo 'Instruments CPU Counters' || echo 'wall-clock only'))"
-printf "%4s  %16s  %14s  %12s\n" "run" "riscv_instr" "ns" "ns/instr"
+# Record a setup-only run (RISCV_PROFILE_SKIP_RUN=1): same decode + JIT compile +
+# allocations as a full run, but `run_program` is skipped. Subtracting its counters
+# from a full run isolates run_program (setup is ~half the process here).
+run_instruments_skip() { # $1 = log, $2 = trace dir
+  rm -rf "$2"
+  xcrun xctrace record \
+    --template "$TEMPLATE" \
+    --output "$2" \
+    --env RISCV_PROFILE_SKIP_RUN=1 \
+    --target-stdout - \
+    --launch -- "$TEST_BIN" --exact "$TEST_FILTER" --nocapture >"$1" 2>&1
+}
 
-SUM_NS=0
-SUM_INSTR=0
-N_OK=0
+# Echo "INSTR CYCLES" extracted from a trace (0 0 if unavailable).
+counters_of() { # $1 = trace dir
+  local out i c
+  out="$(/usr/bin/python3 "$SCRIPT_DIR/extract_counters.py" "$1" 2>/dev/null)"
+  i="$(grep -m1 '^instructions=' <<<"$out" | cut -d= -f2)"
+  c="$(grep -m1 '^cycles=' <<<"$out" | cut -d= -f2)"
+  echo "${i:-0} ${c:-0}"
+}
+
+median() { /usr/bin/python3 -c "import sys,statistics as s; xs=[int(x) for x in sys.argv[1:] if x and x!='0']; print(int(s.median(xs)) if xs else 0)" "$@"; }
+
+# Probe the template on a full run 1: confirm it runs and yields PMC counters.
+if [[ "$HAVE_XCTRACE" == "1" ]]; then
+  echo "==> Probing template \"$TEMPLATE\" (full run 1)"
+  run_instruments "$OUT_DIR/run_1.log" "$OUT_DIR/run_1.trace"
+  if ! grep -q "instructions (" "$OUT_DIR/run_1.log" 2>/dev/null; then
+    echo "ERROR: Instruments recording with template \"$TEMPLATE\" did not run the test" >&2
+    echo "       (template missing, or xctrace failed). Last log lines:" >&2
+    tail -n 5 "$OUT_DIR/run_1.log" | sed 's/^/         /' >&2
+    echo >&2; print_recipe >&2; echo >&2
+    echo "Then re-run, or pass --template=\"<your name>\" / use --no-instruments." >&2
+    exit 1
+  fi
+  [[ $DEBUG == 1 ]] && PROFILE_DEBUG=1 /usr/bin/python3 "$SCRIPT_DIR/extract_counters.py" "$OUT_DIR/run_1.trace" --debug >/dev/null 2>&1
+  if ! grep -q "^instructions=" <<<"$(/usr/bin/python3 "$SCRIPT_DIR/extract_counters.py" "$OUT_DIR/run_1.trace" 2>/dev/null)"; then
+    echo "WARNING: no usable PMC counter table from \"$TEMPLATE\" (probably still in" >&2
+    echo "         'CPU Bottlenecks' mode; PMCs are then GUI-only). Recipe:" >&2
+    echo >&2; print_recipe >&2; echo >&2
+    echo "(continuing with wall-clock timing only)"
+    HAVE_XCTRACE=0
+  fi
+fi
+
+# --- Baseline (setup-only) phase, for run_program isolation -------------------
+BASE_I=0; BASE_C=0
+if [[ "$HAVE_XCTRACE" == "1" ]]; then
+  BASE_RUNS=3
+  echo "==> Recording ${BASE_RUNS} setup-only baselines (skip run_program)"
+  bi=(); bc=()
+  for k in $(seq 1 "$BASE_RUNS"); do
+    run_instruments_skip "$OUT_DIR/base_${k}.log" "$OUT_DIR/base_${k}.trace"
+    read -r I C <<<"$(counters_of "$OUT_DIR/base_${k}.trace")"
+    bi+=("$I"); bc+=("$C")
+    printf "  baseline %d: x86=%'d cycles=%'d\n" "$k" "$I" "$C"
+  done
+  BASE_I="$(median "${bi[@]}")"; BASE_C="$(median "${bc[@]}")"
+  printf "  baseline median (subtracted): x86=%'d cycles=%'d\n" "$BASE_I" "$BASE_C"
+fi
+
+# --- Full runs ---------------------------------------------------------------
+echo "==> Running ${RUNS}x full ($([[ $HAVE_XCTRACE == 1 ]] && echo "$TEMPLATE; net = full - setup baseline" || echo 'wall-clock only'))"
+if [[ "$HAVE_XCTRACE" == "1" ]]; then
+  printf "%4s  %14s  %16s  %16s  %6s  %9s\n" "run" "riscv_instr" "x86_net" "cyc_net" "ipc" "x86/riscv"
+else
+  printf "%4s  %14s  %14s  %12s\n" "run" "riscv_instr" "ns" "ns/instr"
+fi
+
+SUM_NS=0; SUM_RISCV=0; N_OK=0; N_CNT=0; X86S=(); CYCS=()
 for i in $(seq 1 "$RUNS"); do
-  LOG="$OUT_DIR/run_${i}.log"
+  LOG="$OUT_DIR/run_${i}.log"; TRACE="$OUT_DIR/run_${i}.trace"
   if [[ "$HAVE_XCTRACE" == "1" ]]; then
-    run_instruments "$LOG" "$OUT_DIR/run_${i}.trace"
+    [[ "$i" == "1" && -d "$TRACE" ]] || run_instruments "$LOG" "$TRACE"
   else
-    run_plain "$LOG"
+    [[ "$i" == "1" && -s "$LOG" ]] || run_plain "$LOG"
   fi
+
   read -r N NS <<<"$(parse_log "$LOG")"
-  if [[ -z "${N:-}" ]]; then
-    printf "%4s  %16s\n" "$i" "FAILED (see $LOG)"
-    continue
+  if [[ -z "${N:-}" ]]; then printf "%4s  %14s\n" "$i" "FAILED (see $LOG)"; continue; fi
+  SUM_RISCV=$((SUM_RISCV + N)); SUM_NS=$((SUM_NS + NS)); N_OK=$((N_OK + 1))
+
+  if [[ "$HAVE_XCTRACE" == "1" ]]; then
+    read -r X86G CYCG <<<"$(counters_of "$TRACE")"
+    if [[ "${X86G:-0}" != "0" ]]; then
+      read -r X86 CYC IPC RATIO <<<"$(/usr/bin/python3 -c "
+xg,cg,bi,bc,n=$X86G,$CYCG,$BASE_I,$BASE_C,$N
+x=xg-bi; c=cg-bc
+print(x, c, (f'{x/c:.3f}' if c>0 else '-'), f'{x/n:.2f}')
+")"
+      printf "%4s  %14s  %16d  %16d  %6s  %9s\n" "$i" "$N" "$X86" "$CYC" "$IPC" "$RATIO"
+      X86S+=("$X86"); CYCS+=("$CYC"); N_CNT=$((N_CNT + 1))
+    else
+      printf "%4s  %14s  %16s\n" "$i" "$N" "(no counters; see $TRACE)"
+    fi
+  else
+    NSPI="$(/usr/bin/python3 -c "print(f'{$NS/$N:.3f}')")"
+    printf "%4s  %14s  %14s  %12s\n" "$i" "$N" "$NS" "$NSPI"
   fi
-  NSPI="$(/usr/bin/python3 -c "print(f'{$NS/$N:.3f}')")"
-  printf "%4s  %16s  %14s  %12s\n" "$i" "$N" "$NS" "$NSPI"
-  SUM_NS=$((SUM_NS + NS)); SUM_INSTR=$((SUM_INSTR + N)); N_OK=$((N_OK + 1))
 done
 
-if [[ "$N_OK" -gt 0 ]]; then
-  echo "==> Averages over ${N_OK} successful runs"
+echo "==> Summary (run_program only; setup baseline subtracted)"
+if [[ "$N_CNT" -gt 0 ]]; then
+  # run_program is deterministic, so its true host-instruction count is constant;
+  # run-to-run noise (memory pressure, scheduling) only ADDS counts. Report MIN
+  # (least-perturbed, best estimate) and MEDIAN (robust); mean is shown but skewed.
+  X86STR="${X86S[*]}"; CYCSTR="${CYCS[*]}"
   /usr/bin/python3 -c "
-ns=$SUM_NS/$N_OK; n=$SUM_INSTR/$N_OK
+import statistics as s
+riscv=$SUM_RISCV/$N_OK
+xs=[int(v) for v in '$X86STR'.split()]; cs=[int(v) for v in '$CYCSTR'.split()]
+print(f'  emulated RISC-V instructions : {riscv:,.0f}  (deterministic; {len(xs)} runs)')
+print(f'  host x86 / emulated  : min={min(xs)/riscv:.2f}  median={s.median(xs)/riscv:.2f}  mean={s.mean(xs)/riscv:.2f}')
+print(f'  host cyc / emulated  : min={min(cs)/riscv:.2f}  median={s.median(cs)/riscv:.2f}  mean={s.mean(cs)/riscv:.2f}')
+print(f'  IPC (min-run)        : {min(xs)/min(cs):.3f}    IPC (median): {s.median(xs)/s.median(cs):.3f}')
+print(f'  --> best estimate (min run): {min(xs):,} x86 instr, {min(cs):,} cycles')
+print(f'  (setup baseline subtracted   : x86={$BASE_I:,}, cycles={$BASE_C:,})')
+"
+elif [[ "$N_OK" -gt 0 ]]; then
+  /usr/bin/python3 -c "
+ns=$SUM_NS/$N_OK; n=$SUM_RISCV/$N_OK
 print(f'  emulated RISC-V instructions : {n:,.0f}')
 print(f'  run_program wall time        : {ns:,.0f} ns ({ns/1e6:.1f} ms)')
 print(f'  ns per emulated instruction  : {ns/n:.4f}')
 print(f'  emulated MHz                 : {n/ns*1e3:.1f}')
-# Assuming a ~3.0 GHz host core, host cycles per emulated instruction:
-print(f'  ~host cycles/instr @3.0GHz   : {ns/n*3.0:.2f}')
 "
 fi
 
 if [[ "$HAVE_XCTRACE" == "1" ]]; then
-  echo "==> Instruments traces in $OUT_DIR/run_*.trace"
-  echo "    Open in Instruments GUI, or export Instructions Retired with e.g.:"
-  echo "      xcrun xctrace export --input $OUT_DIR/run_1.trace --toc"
-  echo "      xcrun xctrace export --input $OUT_DIR/run_1.trace \\"
-  echo "        --xpath '/trace-toc/run[@number=\"1\"]/data/table[@schema=\"counters-profile\"]'"
+  echo "==> Traces in $OUT_DIR/run_*.trace + base_*.trace (open in Instruments for top-down detail)"
 fi

@@ -12,6 +12,7 @@
 // that just dispatches a function pointer
 
 pub mod abstractions;
+pub mod analysis;
 pub mod cycle;
 pub mod ir;
 pub mod jit;

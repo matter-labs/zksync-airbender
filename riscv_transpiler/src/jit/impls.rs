@@ -1879,6 +1879,17 @@ impl<'a> JittedCode<FlattenedContextImpl<'a>> {
         >(program);
         let runner = Self::preprocess_bytecode(&instructions, cycles_bound);
 
+        // Profiling baseline: when RISCV_PROFILE_SKIP_RUN is set we do all of the
+        // setup (decode + JIT compile + the large allocations) but skip execution,
+        // so subtracting this run's CPU counters from a full run isolates the cost
+        // of `run_program` itself. Production paths never set this variable.
+        if std::env::var_os("RISCV_PROFILE_SKIP_RUN").is_some() {
+            std::hint::black_box(&runner);
+            std::hint::black_box(memory.as_mut());
+            std::hint::black_box(trace.as_mut());
+            return (MachineState::initial(), memory);
+        }
+
         runner.run(
             &mut context,
             memory.as_mut(),
