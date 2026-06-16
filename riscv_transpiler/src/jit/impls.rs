@@ -51,16 +51,15 @@ unsafe impl<I: ContextImpl> Sync for JittedCode<I> {}
 // In general, callee-saved as rbx, r12-r15 and rbp. RSP is also callee saved, but it's special-case.
 
 // The prologue saves all callee-saved registers
-// This allows us to use all but rbp and rsp
-// Using rbp would mess with debuggers
+// This allows us to use all but rsp. RBP is saved/restored as a callee-saved
+// register but is NOT used as a frame pointer, so it is free as scratch inside.
 // Using rsp would cause signal handlers to write to some random location
 // instead of the stack.
 macro_rules! prologue {
     ($ops:ident) => {
         dynasm!($ops
             // stack is 8 mod 16 here
-            ; push rbp
-            ; mov rbp, rsp
+            ; push rbp // saved (callee-saved); we do NOT use it as a frame pointer
 
             ; push rbx
             ; push r12
@@ -84,7 +83,7 @@ macro_rules! epilogue {
             ; pop r13
             ; pop r12
             ; pop rbx
-            ; leave // movs RBP into RSP, and pops RBP
+            ; pop rbp // restore caller's RBP (no frame pointer; RSP balanced manually)
 
             ; ret
         )
@@ -949,12 +948,10 @@ impl<I: ContextImpl> JittedCode<I> {
                         dynasm!(ops
                             ; movsx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
                             ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; push rbp
                             ; mov rbp, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // read timestamp
                             ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
                             ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write value into trace
                             ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rbp // write old value into trace
-                            ; pop rbp
                         );
                         bump_timestamp!(ops, 1);
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
@@ -971,12 +968,10 @@ impl<I: ContextImpl> JittedCode<I> {
                         dynasm!(ops
                             ; movzx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
                             ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; push rbp
                             ; mov rbp, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // for read timestamp
                             ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
                             ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write value into trace
                             ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rbp // write old value into trace
-                            ; pop rbp
                         );
                         bump_timestamp!(ops, 1);
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
@@ -994,12 +989,10 @@ impl<I: ContextImpl> JittedCode<I> {
                         dynasm!(ops
                             ; movsx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
                             ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; push rbp
                             ; mov rbp, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // for read timestamp
                             ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
                             ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write value into trace
                             ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rbp // write old value into trace
-                            ; pop rbp
                         );
                         bump_timestamp!(ops, 1);
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
@@ -1017,12 +1010,10 @@ impl<I: ContextImpl> JittedCode<I> {
                         dynasm!(ops
                             ; movzx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
                             ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; push rbp
                             ; mov rbp, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // for read timestamp
                             ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
                             ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write value into trace
                             ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rbp // write old value into trace
-                            ; pop rbp
                         );
                         bump_timestamp!(ops, 1);
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
@@ -1442,7 +1433,6 @@ impl<I: ContextImpl> JittedCode<I> {
                     touch_register_and_increment_timestamp!(ops, rs2);
                     dynasm!(ops
                         // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
-                        ; push rbp
                         ; mov ebp, DWORD [rsi + 4 * rax] // load old word(!) value into RAX
                         ; mov BYTE [rsi + Rq(SCRATCH_REGISTER)], Rb(value) // store new value - just enough bytes
                         ; push rdx
@@ -1451,7 +1441,6 @@ impl<I: ContextImpl> JittedCode<I> {
                         ; mov [rdi + r9 * 4], ebp // write old value into trace
                         ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
                         ; pop rdx
-                        ; pop rbp
                     );
                     bump_timestamp!(ops, 2);
                     record_circuit_type(&mut ops, CounterType::MemSubword, 1);
@@ -1472,7 +1461,6 @@ impl<I: ContextImpl> JittedCode<I> {
                     touch_register_and_increment_timestamp!(ops, rs2);
                     dynasm!(ops
                         // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
-                        ; push rbp
                         ; mov ebp, DWORD [rsi + 4 * rax] // load old word(!) value into RAX
                         ; mov WORD [rsi + Rq(SCRATCH_REGISTER)], Rw(value) // store new value - just enough bytes
                         ; push rdx
@@ -1481,7 +1469,6 @@ impl<I: ContextImpl> JittedCode<I> {
                         ; mov [rdi + r9 * 4], ebp // write old value into trace
                         ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
                         ; pop rdx
-                        ; pop rbp
                     );
                     bump_timestamp!(ops, 2);
                     record_circuit_type(&mut ops, CounterType::MemSubword, 1);

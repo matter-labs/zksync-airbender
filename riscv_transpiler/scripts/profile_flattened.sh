@@ -182,25 +182,26 @@ if [[ "$HAVE_XCTRACE" == "1" ]]; then
 fi
 
 # --- Baseline (setup-only) phase, for run_program isolation -------------------
-BASE_I=0; BASE_C=0
+# run_program and the setup are both deterministic; per-core PMC noise only ADDS
+# counts. So we record several setup-only baselines and several full runs and use
+# MIN(full) - MIN(baseline): each min picks the least-perturbed (cleanest) window,
+# which is the robust estimate of run_program's true host-instruction/cycle cost.
+BI=(); BC=()
 if [[ "$HAVE_XCTRACE" == "1" ]]; then
-  BASE_RUNS=3
+  BASE_RUNS=5
   echo "==> Recording ${BASE_RUNS} setup-only baselines (skip run_program)"
-  bi=(); bc=()
   for k in $(seq 1 "$BASE_RUNS"); do
     run_instruments_skip "$OUT_DIR/base_${k}.log" "$OUT_DIR/base_${k}.trace"
     read -r I C <<<"$(counters_of "$OUT_DIR/base_${k}.trace")"
-    bi+=("$I"); bc+=("$C")
+    BI+=("$I"); BC+=("$C")
     printf "  baseline %d: x86=%'d cycles=%'d\n" "$k" "$I" "$C"
   done
-  BASE_I="$(median "${bi[@]}")"; BASE_C="$(median "${bc[@]}")"
-  printf "  baseline median (subtracted): x86=%'d cycles=%'d\n" "$BASE_I" "$BASE_C"
 fi
 
 # --- Full runs ---------------------------------------------------------------
-echo "==> Running ${RUNS}x full ($([[ $HAVE_XCTRACE == 1 ]] && echo "$TEMPLATE; net = full - setup baseline" || echo 'wall-clock only'))"
+echo "==> Running ${RUNS}x full ($([[ $HAVE_XCTRACE == 1 ]] && echo "$TEMPLATE; gross = whole process" || echo 'wall-clock only'))"
 if [[ "$HAVE_XCTRACE" == "1" ]]; then
-  printf "%4s  %14s  %16s  %16s  %6s  %9s\n" "run" "riscv_instr" "x86_net" "cyc_net" "ipc" "x86/riscv"
+  printf "%4s  %14s  %16s  %16s  %6s\n" "run" "riscv_instr" "x86_gross" "cyc_gross" "ipc"
 else
   printf "%4s  %14s  %14s  %12s\n" "run" "riscv_instr" "ns" "ns/instr"
 fi
@@ -221,13 +222,9 @@ for i in $(seq 1 "$RUNS"); do
   if [[ "$HAVE_XCTRACE" == "1" ]]; then
     read -r X86G CYCG <<<"$(counters_of "$TRACE")"
     if [[ "${X86G:-0}" != "0" ]]; then
-      read -r X86 CYC IPC RATIO <<<"$(/usr/bin/python3 -c "
-xg,cg,bi,bc,n=$X86G,$CYCG,$BASE_I,$BASE_C,$N
-x=xg-bi; c=cg-bc
-print(x, c, (f'{x/c:.3f}' if c>0 else '-'), f'{x/n:.2f}')
-")"
-      printf "%4s  %14s  %16d  %16d  %6s  %9s\n" "$i" "$N" "$X86" "$CYC" "$IPC" "$RATIO"
-      X86S+=("$X86"); CYCS+=("$CYC"); N_CNT=$((N_CNT + 1))
+      IPC="$( [[ "${CYCG%.*}" != 0 ]] && /usr/bin/python3 -c "print(f'{$X86G/$CYCG:.3f}')" || echo "-" )"
+      printf "%4s  %14s  %16d  %16d  %6s\n" "$i" "$N" "$X86G" "$CYCG" "$IPC"
+      X86S+=("$X86G"); CYCS+=("$CYCG"); N_CNT=$((N_CNT + 1))
     else
       printf "%4s  %14s  %16s\n" "$i" "$N" "(no counters; see $TRACE)"
     fi
@@ -237,22 +234,22 @@ print(x, c, (f'{x/c:.3f}' if c>0 else '-'), f'{x/n:.2f}')
   fi
 done
 
-echo "==> Summary (run_program only; setup baseline subtracted)"
+echo "==> Summary (run_program only = MIN(full) - MIN(setup baseline))"
 if [[ "$N_CNT" -gt 0 ]]; then
-  # run_program is deterministic, so its true host-instruction count is constant;
-  # run-to-run noise (memory pressure, scheduling) only ADDS counts. Report MIN
-  # (least-perturbed, best estimate) and MEDIAN (robust); mean is shown but skewed.
-  X86STR="${X86S[*]}"; CYCSTR="${CYCS[*]}"
+  X86STR="${X86S[*]}"; CYCSTR="${CYCS[*]}"; BISTR="${BI[*]}"; BCSTR="${BC[*]}"
   /usr/bin/python3 -c "
-import statistics as s
 riscv=$SUM_RISCV/$N_OK
 xs=[int(v) for v in '$X86STR'.split()]; cs=[int(v) for v in '$CYCSTR'.split()]
-print(f'  emulated RISC-V instructions : {riscv:,.0f}  (deterministic; {len(xs)} runs)')
-print(f'  host x86 / emulated  : min={min(xs)/riscv:.2f}  median={s.median(xs)/riscv:.2f}  mean={s.mean(xs)/riscv:.2f}')
-print(f'  host cyc / emulated  : min={min(cs)/riscv:.2f}  median={s.median(cs)/riscv:.2f}  mean={s.mean(cs)/riscv:.2f}')
-print(f'  IPC (min-run)        : {min(xs)/min(cs):.3f}    IPC (median): {s.median(xs)/s.median(cs):.3f}')
-print(f'  --> best estimate (min run): {min(xs):,} x86 instr, {min(cs):,} cycles')
-print(f'  (setup baseline subtracted   : x86={$BASE_I:,}, cycles={$BASE_C:,})')
+bi=[int(v) for v in '$BISTR'.split()] or [0]; bc=[int(v) for v in '$BCSTR'.split()] or [0]
+fx,fc=min(xs),min(cs); bx,bcy=min(bi),min(bc)
+nx,nc=fx-bx,fc-bcy
+print(f'  emulated RISC-V instructions : {riscv:,.0f}  (deterministic)')
+print(f'  MIN full gross   : x86={fx:,}  cyc={fc:,}')
+print(f'  MIN setup base   : x86={bx:,}  cyc={bcy:,}')
+print(f'  run_program net  : x86={nx:,}  cyc={nc:,}')
+print(f'  host x86 / emulated instr    : {nx/riscv:.2f}')
+print(f'  host cycles / emulated instr : {nc/riscv:.2f}')
+print(f'  IPC                          : {nx/nc:.3f}' if nc>0 else '  IPC: n/a')
 "
 elif [[ "$N_OK" -gt 0 ]]; then
   /usr/bin/python3 -c "
