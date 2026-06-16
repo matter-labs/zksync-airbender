@@ -187,9 +187,10 @@ unsafe fn workload() -> ! {
             // verify first proof & use it as the seed for the rolling hash
             //
             // the proof's outputs are as follows:
-            // output[0..8] - the actual output of the circuit
+            // output[0..7] - output words bound by the rolling hash
+            // output[7] - reserved SNARK-compatibility word; must be zero
             // output[8..16] - the verification key (should be the same across all proofs, checked inside merge_recursive_circuit_output)
-            // merging is done over inputs [0..8], whilst key is not modified (being copied over and over)
+            // merging is done over output[0..7], whilst key is not modified (being copied over and over)
             let mut rolling_hash = full_statement_verifier::verify_recursion_layer();
 
             // iterate over remaining circuits
@@ -218,18 +219,18 @@ unsafe fn workload() -> ! {
 /// TL;DR; Keccaks the two outputs together.
 ///
 /// Note, a proof is structured as follows:
-/// - first 8 u32s are the actual proof output
-/// - last 8 u32s are the verification key identifier (proving chain)
+/// - words 0 through 6 are output words bound by the rolling hash
+/// - word 7 is reserved for SNARK compatibility and must be zero
+/// - words 8 through 15 are the verification key identifier (proving chain)
 fn merge_recursive_circuit_output(first: [u32; 16], second: [u32; 16]) -> [u32; 16] {
     // Proving chain must be equal
     for i in 8..16 {
         assert_eq!(first[i], second[i], "Proving chains must be equal");
     }
 
-    // To make it compatible with our SNARK - we'll assume that last register (7th) is 0 (as snark ignores that too).
-    // and we'll actually shift them all by 1.
+    assert_eq!(first[7], 0, "Recursive proof output word 7 must be zero");
+    assert_eq!(second[7], 0, "Recursive proof output word 7 must be zero");
 
-    // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
     let mut hasher = Keccak32::new();
     hasher.update(&[0u32]);
 
@@ -237,7 +238,6 @@ fn merge_recursive_circuit_output(first: [u32; 16], second: [u32; 16]) -> [u32; 
         hasher.update(&[*val]);
     }
 
-    // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
     hasher.update(&[0u32]);
 
     for val in &second[0..7] {
@@ -245,12 +245,77 @@ fn merge_recursive_circuit_output(first: [u32; 16], second: [u32; 16]) -> [u32; 
     }
 
     let mut result = [0u32; 16];
-    // merged outputs
-    result[0..8].copy_from_slice(&hasher.finalize());
+    // merged outputs. Word 7 stays reserved for SNARK compatibility, so rolling merges keep the
+    // same shape as fresh recursive proof outputs.
+    result[0..7].copy_from_slice(&hasher.finalize()[0..7]);
     // same vk
     result[8..16].copy_from_slice(&first[8..16]);
 
     result
+}
+
+#[cfg(all(
+    test,
+    any(
+        feature = "universal_circuit",
+        feature = "universal_circuit_no_delegation"
+    )
+))]
+mod tests {
+    use super::*;
+
+    fn recursive_output() -> [u32; 16] {
+        let mut output = [0u32; 16];
+        output[8..16].copy_from_slice(&[11, 12, 13, 14, 15, 16, 17, 18]);
+        output
+    }
+
+    #[test]
+    fn merge_recursive_circuit_output_accepts_zero_word_7() {
+        let first = recursive_output();
+        let second = recursive_output();
+
+        let result = merge_recursive_circuit_output(first, second);
+
+        assert_eq!(&result[8..16], &first[8..16]);
+        assert_eq!(result[7], 0);
+    }
+
+    #[test]
+    fn merge_recursive_circuit_output_can_chain_rolling_outputs() {
+        let mut first = recursive_output();
+        let mut second = recursive_output();
+        let mut third = recursive_output();
+        first[0] = 1;
+        second[0] = 2;
+        third[0] = 3;
+
+        let rolling_hash = merge_recursive_circuit_output(first, second);
+        let result = merge_recursive_circuit_output(rolling_hash, third);
+
+        assert_eq!(&result[8..16], &third[8..16]);
+        assert_eq!(result[7], 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Recursive proof output word 7 must be zero")]
+    fn merge_recursive_circuit_output_rejects_nonzero_first_word_7() {
+        let mut first = recursive_output();
+        let second = recursive_output();
+        first[7] = 1;
+
+        merge_recursive_circuit_output(first, second);
+    }
+
+    #[test]
+    #[should_panic(expected = "Recursive proof output word 7 must be zero")]
+    fn merge_recursive_circuit_output_rejects_nonzero_second_word_7() {
+        let first = recursive_output();
+        let mut second = recursive_output();
+        second[7] = 1;
+
+        merge_recursive_circuit_output(first, second);
+    }
 }
 
 #[cfg(feature = "verifier_tests")]
