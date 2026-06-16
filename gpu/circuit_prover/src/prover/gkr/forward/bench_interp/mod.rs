@@ -14,6 +14,7 @@ mod interp_v2_gpu;
 mod lower;
 mod report;
 mod tests;
+mod tests_v2;
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::{CudaResult, CudaResultWrap};
