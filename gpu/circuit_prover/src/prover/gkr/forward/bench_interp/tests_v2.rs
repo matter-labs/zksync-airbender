@@ -20,11 +20,13 @@ use crate::prover::ProverContext;
 
 use era_cudart::memory::memory_copy_async;
 
+use gkr_eval_isa::compiler_v2::gather::GatherDescriptor;
 use gkr_eval_isa::eval_ref::{lift, Bf, Ext};
-use gkr_eval_isa::interp_v2::{execute2, MatrixSlotData, SourceBanks};
+use gkr_eval_isa::interp_v2::{execute2, GatherTables, MatrixSlotData, SourceBanks};
 use gkr_eval_isa::isa_v2::encode::encode2;
 use gkr_eval_isa::isa_v2::{
-    ArithOp, Dst, Header, Instr2, Operand, Program2, RoutineId, SPECIAL_ONE,
+    ArithOp, Dst, Header, IndirectKind, Instr2, LdcSub, MemTup, Operand, Program2, RoutineId,
+    SPECIAL_ONE,
 };
 
 use field::{Field, FieldExtension, PrimeField};
@@ -310,6 +312,242 @@ fn v2_interp_staged_parity_vs_execute2() {
                 got[col][gid], expected[col][gid],
                 "mismatch at output col {col} row {gid}"
             );
+        }
+    }
+}
+
+const MEM_TABLE: usize = 64; // mapped-gather value-table length
+
+fn desc(kind: IndirectKind, field_ext: bool) -> GatherDescriptor {
+    GatherDescriptor {
+        kind,
+        field_ext,
+        n_slot: None,
+        mapping_slot: None,
+        n_len: None,
+        decoder: None,
+        inits_td_set_idx: None,
+    }
+}
+
+/// Build the memtup + gather program. Slots as in `build_program` (0 ext in,
+/// 1 base in, 2 ext out). Gathers: desc0 = RowIndexedSetupE4, desc1 =
+/// MappedGenericE4.
+fn build_program_memtup_gather() -> Program2 {
+    use Operand::*;
+    let m = |routine: RoutineId, n: u8| Header::Macro { routine: routine as u8, n_operands: n };
+    let cst = |idx: u16| Ldc { sub: LdcSub::Const, idx };
+    let instrs = vec![
+        // 1. MemoryTuple (id 19): IsRam arm (payload = base col s1c0), roles
+        //    [(ADDR_LOW, s0c0), (TS_LOW, s0c1)], const [(MT_CONST_ADDR_LOW, c0)].
+        Instr2 {
+            header: m(RoutineId::MemoryTuple, 2),
+            operands: vec![],
+            dsts: vec![Dst::Materialize { slot: 2, col: 0 }],
+            memtup: Some(MemTup {
+                roles: vec![(0, Affine { slot: 0, col: 0 }), (2, Affine { slot: 0, col: 1 })],
+                as_arm: 3, // IsRam
+                as_payload: Some(Affine { slot: 1, col: 0 }),
+                consts: vec![(64, cst(0))],
+            }),
+            memtup2: None,
+        },
+        // 2. GrandProductWithoutCaches (id 14): tuple0 (Constant arm c1, role
+        //    [(ADDR_LOW, s0c0)]) * tuple1 (Empty arm, roles [(ADDR_HIGH, s0c1),
+        //    (VAL_LOW, s0c2)]). Header n_operands ignored for two-tuple.
+        Instr2 {
+            header: m(RoutineId::GrandProductWithoutCaches, 3),
+            operands: vec![],
+            dsts: vec![Dst::Materialize { slot: 2, col: 1 }],
+            memtup: Some(MemTup {
+                roles: vec![(0, Affine { slot: 0, col: 0 })],
+                as_arm: 1, // Constant
+                as_payload: Some(cst(1)),
+                consts: vec![],
+            }),
+            memtup2: Some(MemTup {
+                roles: vec![(1, Affine { slot: 0, col: 1 }), (4, Affine { slot: 0, col: 2 })],
+                as_arm: 0, // Empty
+                as_payload: None,
+                consts: vec![],
+            }),
+        },
+        // 3. VectorizedLookupSetup (id 18): single RowIndexedSetupE4 gather n[gid].
+        Instr2 {
+            header: m(RoutineId::VectorizedLookupSetup, 1),
+            operands: vec![Indirect { e4: true, desc: 0 }],
+            dsts: vec![Dst::Materialize { slot: 2, col: 2 }],
+            memtup: None,
+            memtup2: None,
+        },
+        // 4. VectorizedLookup (id 17) with a MAPPED gather column: one group
+        //    [term_count=1, const_k(c0), coeff(c1), col(Indirect desc1)].
+        Instr2 {
+            header: m(RoutineId::VectorizedLookup, 4),
+            operands: vec![
+                Ldc { sub: LdcSub::Special, idx: SPECIAL_ONE },
+                cst(0),
+                cst(1),
+                Indirect { e4: true, desc: 1 },
+            ],
+            dsts: vec![Dst::Materialize { slot: 2, col: 3 }],
+            memtup: None,
+            memtup2: None,
+        },
+    ];
+    Program2 { instrs, consts: vec![7u32, 13u32], n_slot_cells: 0, n_matrix_slots: 3 }
+}
+
+const N_OUT_COLS_MG: usize = 4;
+
+#[test]
+#[cfg(not(no_cuda))]
+fn v2_interp_staged_parity_memtup_gather() {
+    let context = make_test_context(256, 32);
+    let mut rng = StdRng::seed_from_u64(0x5202_0002u64);
+    let program = build_program_memtup_gather();
+    let lanes = encode2(&program);
+    let gathers = vec![desc(IndirectKind::RowIndexedSetupE4, true), desc(IndirectKind::MappedGenericE4, true)];
+
+    // staged matrix columns: slot0 3 ext, slot1 2 base.
+    let s0: Vec<Vec<Ext>> = (0..3).map(|_| (0..T).map(|_| rand_ext(&mut rng)).collect()).collect();
+    let s1: Vec<Vec<Bf>> = (0..2).map(|_| (0..T).map(|_| rand_bf(&mut rng)).collect()).collect();
+
+    // gather tables.
+    let n0: Vec<Ext> = (0..T).map(|_| rand_ext(&mut rng)).collect(); // RowIndexedSetupE4
+    let n1: Vec<Ext> = (0..MEM_TABLE).map(|_| rand_ext(&mut rng)).collect(); // MappedGenericE4 table
+    let map1: Vec<u32> = (0..T).map(|_| (rng.gen::<u32>() % MEM_TABLE as u32)).collect();
+
+    // challenges.
+    let gamma = rand_ext(&mut rng);
+    let perm: Vec<Ext> = (0..6).map(|_| rand_ext(&mut rng)).collect();
+    let perm_additive = rand_ext(&mut rng);
+
+    // CPU golden.
+    let mut expected: Vec<Vec<Ext>> = vec![vec![Ext::ZERO; T]; N_OUT_COLS_MG];
+    for gid in 0..T {
+        let gt = GatherTables {
+            n: vec![n0.clone(), n1.clone()],
+            mapping: vec![vec![], map1.clone()],
+            n_len: vec![Some(T), None],
+            decoder_mask: vec![None, None],
+            alpha_powers: vec![],
+        };
+        let sb = SourceBanks {
+            matrix: vec![
+                MatrixSlotData { field_ext: true, columns: vec![s0[0][gid], s0[1][gid], s0[2][gid]] },
+                MatrixSlotData { field_ext: false, columns: vec![lift(s1[0][gid]), lift(s1[1][gid])] },
+                MatrixSlotData { field_ext: true, columns: vec![] },
+            ],
+            consts: program.consts.clone(),
+            const_challenge: vec![Ext::ZERO; 4],
+            arg_challenge: vec![],
+            gamma,
+            perm_challenges: perm.clone(),
+            perm_additive,
+            gather_tables: gt,
+            gid,
+        };
+        let res = execute2(&program, &gathers, &sb);
+        for ((slot, col), v) in res.materialized {
+            assert_eq!(slot, 2);
+            expected[col as usize][gid] = v;
+        }
+    }
+
+    // device staging.
+    let lanes_dev = upload(&context, &lanes);
+    let consts_mont: Vec<BF> = program.consts.iter().map(|&c| BF::from_u32_with_reduction(c)).collect();
+    let consts_dev = upload(&context, &consts_mont);
+    let cc_dev = upload(&context, &vec![E4::ZERO; 4]);
+    let mut scalars = [E4::ZERO; 8];
+    scalars[0] = gamma;
+    for r in 0..6 {
+        scalars[1 + r] = perm[r];
+    }
+    scalars[7] = perm_additive;
+    let scalars_dev = upload(&context, &scalars);
+
+    let s0_dev: Vec<DeviceAllocation<E4>> = s0.iter().map(|c| upload(&context, c)).collect();
+    let s1_dev: Vec<DeviceAllocation<BF>> = s1.iter().map(|c| upload(&context, c)).collect();
+    let col_base: Vec<u32> = vec![0, 3, 5, 5];
+    let col_base_dev = upload(&context, &col_base);
+    let mut columns_host: Vec<u64> = Vec::new();
+    for c in &s0_dev {
+        columns_host.push(c.as_ptr() as u64);
+    }
+    for c in &s1_dev {
+        columns_host.push(c.as_ptr() as u64);
+    }
+    let columns_dev = upload(&context, &columns_host);
+
+    // gather device buffers.
+    let n0_dev = upload(&context, &n0);
+    let n1_dev = upload(&context, &n1);
+    let map1_dev = upload(&context, &map1);
+    let desc_kind_dev = upload(&context, &[3u8, 1u8]);
+    let desc_n_host: Vec<u64> = vec![n0_dev.as_ptr() as u64, n1_dev.as_ptr() as u64];
+    let desc_n_dev = upload(&context, &desc_n_host);
+    let desc_mapping_host: Vec<u64> = vec![0u64, map1_dev.as_ptr() as u64];
+    let desc_mapping_dev = upload(&context, &desc_mapping_host);
+    let desc_n_len_dev = upload(&context, &[T as u32, 0xFFFF_FFFFu32]);
+    let desc_mask_dev = upload(&context, &[0u64, 0u64]);
+    let desc_fill_alpha_dev = upload(&context, &[0u32, 0u32]);
+    let desc_table_id_dev = upload(&context, &[0u32, 0u32]);
+
+    let out_dev: Vec<DeviceAllocation<E4>> = (0..N_OUT_COLS_MG).map(|_| upload(&context, &vec![E4::ZERO; T])).collect();
+    let out_base: Vec<u32> = vec![0, 0, 0, N_OUT_COLS_MG as u32];
+    let out_base_dev = upload(&context, &out_base);
+    let out_cols_host: Vec<u64> = out_dev.iter().map(|c| c.as_ptr() as u64).collect();
+    let out_cols_dev = upload(&context, &out_cols_host);
+
+    let mut err_dev = upload(&context, &[0u32]);
+
+    let dsc = InterpDesc2 {
+        program_ldg: lanes_dev.as_ptr(),
+        program_lanes: lanes.len() as u32,
+        n_instr: program.instrs.len() as u32,
+        columns: columns_dev.as_ptr() as *const *const u8,
+        col_base: col_base_dev.as_ptr(),
+        slot_is_e4: 0b001 | 0b100,
+        n_matrix_slots: 3,
+        consts: consts_dev.as_ptr(),
+        const_challenge: cc_dev.as_ptr(),
+        n_const_challenge: 4,
+        arg_challenge: ptr::null(),
+        n_arg_challenge: 0,
+        challenge_scalars: scalars_dev.as_ptr(),
+        n_descs: 2,
+        desc_kind: desc_kind_dev.as_ptr(),
+        desc_field_e4: 0b11,
+        desc_n: desc_n_dev.as_ptr() as *const *const u8,
+        desc_mapping: desc_mapping_dev.as_ptr() as *const *const u32,
+        desc_n_len: desc_n_len_dev.as_ptr(),
+        desc_mask: desc_mask_dev.as_ptr() as *const *const BF,
+        desc_fill_alpha: desc_fill_alpha_dev.as_ptr(),
+        desc_table_id: desc_table_id_dev.as_ptr(),
+        out_columns: out_cols_dev.as_ptr() as *const *mut u8,
+        out_base: out_base_dev.as_ptr(),
+        out_is_e4: 0b100,
+        budget_cells: 0,
+        count: T as u32,
+        error_flag: err_dev.as_mut_ptr(),
+    };
+
+    launch_bench_fwd_interp_v2(&dsc, InterpResidency::Ldg, BenchThreads::T128, &context).unwrap();
+
+    let mut err_host = [0u32];
+    memory_copy_async(&mut err_host, &err_dev, context.get_exec_stream()).unwrap();
+    let mut got: Vec<Vec<E4>> = vec![vec![E4::ZERO; T]; N_OUT_COLS_MG];
+    for (col, dev) in out_dev.iter().enumerate() {
+        memory_copy_async(&mut got[col], dev, context.get_exec_stream()).unwrap();
+    }
+    context.get_exec_stream().synchronize().unwrap();
+
+    assert_eq!(err_host[0], 0, "kernel error_flag set: 0x{:x}", err_host[0]);
+    for col in 0..N_OUT_COLS_MG {
+        for gid in 0..T {
+            assert_eq!(got[col][gid], expected[col][gid], "mismatch at output col {col} row {gid}");
         }
     }
 }
