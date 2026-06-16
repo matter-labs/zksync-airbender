@@ -5,6 +5,7 @@ pub(crate) mod kernels;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 
+#[cfg(test)]
 use crate::allocator::tracker::AllocationPlacement;
 #[cfg(test)]
 use crate::ops::blake2s::Digest;
@@ -175,7 +176,6 @@ impl GpuWhirExtensionOracle {
         //     bit_reverse_in_place(&mut coeffs_matrix, stream)?;
         // }
 
-        let stream = context.get_exec_stream();
         let mut trace_holder = TraceHolder::new(
             total_leaf_count_log2,
             0,
@@ -192,41 +192,13 @@ impl GpuWhirExtensionOracle {
         // `commit_all_into_from_ntt`) reads the natural layout in place.
         let monomial_coeffs_slice = monomial_coeffs.slice();
         let monomial_coeffs_stride = monomial_coeffs.stride();
-        let device_properties = context.get_device_properties();
         let inputs_matrix =
             DeviceMatrixChunk::new(monomial_coeffs_slice, monomial_coeffs_stride, 0, trace_len);
-        let ntt_ctx = context.ntt_device_context();
-        // Recursive WHIR folds to a small trace (trace_len_log2 <= 13), the DIT
-        // forward-NTT range, which needs a pooled d-table scratch (len >= N).
-        // Allocate from the stream-ordered pool so this stays enqueue-only per
-        // the GPU scheduling contract; the handle outlives the launches below.
-        // Outside the DIT range the compact path ignores the scratch, so the
-        // allocation is skipped entirely.
-        let mut d_scratch = if trace_len_log2 <= 13 {
-            Some(context.alloc::<BF>(trace_len, AllocationPlacement::BestFit)?)
-        } else {
-            None
-        };
-        let scratch_opt = d_scratch.as_mut().map(|s| &mut s[..]);
-        {
-            let cosets_backing = trace_holder.get_uninit_consolidated_cosets_mut();
-            crate::ops::ntt::bitreversed_monomials_to_natural_evals_multi_coset(
-                &inputs_matrix,
-                cosets_backing,
-                trace_len_log2,
-                log_lde_factor as usize,
-                EXT4_DEGREE,
-                false,
-                ntt_ctx,
-                scratch_opt,
-                stream,
-                device_properties,
-            )?;
-        }
-        trace_holder.mark_cosets_materialized();
+
         match cap_target {
             CapTarget::OwnAllocation => {
-                trace_holder.commit_all_from_ntt(
+                trace_holder.whir_lde_and_commit_all(
+                    &inputs_matrix,
                     trace_len_log2 as u32,
                     log_lde_factor,
                     log_values_per_leaf,
@@ -236,7 +208,8 @@ impl GpuWhirExtensionOracle {
                 )?;
             }
             CapTarget::Slab(dst_u32) => {
-                trace_holder.commit_all_into_from_ntt(
+                trace_holder.whir_lde_and_commit_all_into(
+                    &inputs_matrix,
                     dst_u32,
                     trace_len_log2 as u32,
                     log_lde_factor,
@@ -247,6 +220,7 @@ impl GpuWhirExtensionOracle {
                 )?;
             }
         }
+        trace_holder.mark_cosets_materialized();
 
         Ok(Self {
             trace_holder,
