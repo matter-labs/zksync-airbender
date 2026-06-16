@@ -2,8 +2,8 @@ use crate::vm::*;
 use common_constants::*;
 use std::alloc::Allocator;
 use std::collections::HashSet;
-use std::ptr::NonNull;
 use std::mem::offset_of;
+use std::ptr::NonNull;
 
 #[cfg(target_pointer_width = "64")]
 mod delegations;
@@ -25,8 +25,6 @@ pub use self::impls::*;
 
 #[cfg(all(target_arch = "x86_64", feature = "jit", test))]
 mod tests;
-
-const MAX_RAM_SIZE: usize = 1 << 30; // 1 Gb, as we want to avoid having separate pointers to RAM (that we want to have continuous to perform very simple read/writes), and timestamp bookkeeping space
 
 pub const RAM_SIZE: usize = 1 << 30;
 const NUM_RAM_WORDS: usize = RAM_SIZE / core::mem::size_of::<u32>();
@@ -152,6 +150,12 @@ pub struct TraceChunk {
 }
 
 pub trait ContextImpl {
+    const PROVIDES_FLATTENED_NON_DETERMINISM: bool = false;
+
+    fn nondeterminism_as_raw_ptr(&self) -> Option<*const u32> {
+        None
+    }
+
     fn read_nondeterminism(&mut self) -> u32;
 
     fn write_nondeterminism(&mut self, value: u32, memory: &RamImage);

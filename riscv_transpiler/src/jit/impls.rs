@@ -270,6 +270,49 @@ fn rv_reg_to_xmm_reg(x: u8) -> (u8, u8) {
     (xmm_register, imm)
 }
 
+const MACHINE_STATE_XMM_REG_IDX: u8 = RV_REGISTERS_NUM_XMMS;
+const MACHINE_STATE_XMM_REG_IMM: u8 = 0;
+
+fn cache_machine_ctx_ptr(ops: &mut x64::Assembler) {
+    dynasm!(ops
+        ; push rdx
+        ; mov [rsp + (MachineState::CONTEXT_PTR_OFFSET as i32)], rdx
+        ; pinsrq Rx(MACHINE_STATE_XMM_REG_IDX), rdx, MACHINE_STATE_XMM_REG_IMM as i8
+        ; pop rdx
+    );
+}
+
+macro_rules! load_cached_machine_ctx_ptr {
+    ($ops:ident, $d:expr) => {
+        dynasm!($ops
+            ; pextrq $d, Rx(MACHINE_STATE_XMM_REG_IDX), MACHINE_STATE_XMM_REG_IMM as i8
+        );
+    };
+}
+
+const NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX: u8 = RV_REGISTERS_NUM_XMMS;
+const NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IMM: u8 = 1;
+
+macro_rules! cache_non_determinism_responses_ptr {
+    ($ops:ident, $d:expr) => {
+        dynasm!($ops
+            ; pinsrq Rx(NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX), $d, NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IMM as i8
+        );
+    };
+}
+
+macro_rules! read_non_determinism_responses_ptr {
+    ($ops:ident, $d:expr, #c:expr) => {
+        dynasm!($ops
+            // cache, read, dump
+            ; pextrq $c, Rx(NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX), NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IMM as i8
+            ; movd $c, [$c]
+            ; add $c, 4
+            ; pinsrq Rx(NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX), $c, NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IMM as i8
+        );
+    };
+}
+
 fn store_result(ops: &mut x64::Assembler, x: u32) {
     assert!(x != 0);
     assert!(x < 32);
@@ -575,6 +618,15 @@ impl<I: ContextImpl> JittedCode<I> {
         dynasm!(ops
             ; mov [rsp + (MachineState::CONTEXT_PTR_OFFSET as i32)], rdx
         );
+        // we will also cache it into XMM for performance
+        cache_machine_ctx_ptr(&mut ops);
+
+        // in case of context that provides flattened responses - we will cache it too
+        if I::PROVIDES_FLATTENED_NON_DETERMINISM {
+            // stack is all set, so we can call external context and read the value into register
+            todo!();
+            cache_non_determinism_responses_ptr!(ops, rax);
+        }
 
         // Static jump targets for JAL and branch instructions - we may NOT use some of them, but it is ok
         let instruction_labels = (0..program.len())
@@ -1459,59 +1511,73 @@ impl<I: ContextImpl> JittedCode<I> {
 
                 // CSRRW reading the non-determinism CSR into rd
                 Op::ZicsrNonDeterminismRead => {
-                    let out = destination_gpr(rd);
-                    // We want to read non-determinism value into RD
-                    assert!(rs1 == 0);
-                    assert!(rd != 0);
-                    // as usual, we will stash our machine state into stack, and call external implementation
-                    pre_bump_timestamp_and_touch!(ops, 1, 0);
-                    dynasm!(ops
-                        ; mov rdx, rsp
-                        ;; before_call!(ops)
-                        ; push rdx
-                        ; push r9
-                        ; mov rax, QWORD (Context::<I>::read_nondeterminism as *const ()).addr() as usize as isize as i64
-                        ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
-                        ; call rax
-                        ; pop r9
-                        ; pop rdx
-                        ;; after_call!(ops)
-                        ; mov Rd(out), eax
-                        ; mov [rdi + r9 * 4], eax // use common trace for non-determinism reads
-                        ; mov QWORD [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], 0 // use 0 for timestamp
-                    );
-                    store_result(&mut ops, rd);
-                    pre_bump_timestamp_and_touch!(ops, 1, rd);
-                    bump_timestamp!(ops, 2);
-                    record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
-                    issue_snapshot = true;
-                    i += 1;
+                    if I::PROVIDES_FLATTENED_NON_DETERMINISM {
+                        todo!()
+                    } else {
+                        // default implementation when we save machine state and call external function
+                        let out = destination_gpr(rd);
+                        // We want to read non-determinism value into RD
+                        assert!(rs1 == 0);
+                        assert!(rd != 0);
+                        // as usual, we will stash our machine state into stack, and call external implementation
+                        pre_bump_timestamp_and_touch!(ops, 1, 0);
+                        dynasm!(ops
+                            ; mov rdx, rsp
+                            ;; before_call!(ops)
+                            ; push rdx
+                            ; push r9
+                            ; mov rax, QWORD (Context::<I>::read_nondeterminism as *const ()).addr() as usize as isize as i64
+                            ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
+                            ; call rax
+                            ; pop r9
+                            ; pop rdx
+                            ;; after_call!(ops)
+                            ; mov Rd(out), eax
+                            ; mov [rdi + r9 * 4], eax // use common trace for non-determinism reads
+                            ; mov QWORD [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], 0 // use 0 for timestamp
+                        );
+                        store_result(&mut ops, rd);
+                        pre_bump_timestamp_and_touch!(ops, 1, rd);
+                        bump_timestamp!(ops, 2);
+                        record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
+                        issue_snapshot = true;
+                        i += 1;
+                    }
                 }
                 // CSRRW writing rs1 into the non-determinism CSR
                 Op::ZicsrNonDeterminismWrite => {
                     assert!(rs1 != 0);
                     assert!(rd == 0);
 
-                    load_into(&mut ops, rs1, SCRATCH_REGISTER);
-                    touch_register_and_increment_timestamp!(ops, rs1);
-                    dynasm!(ops
-                        ; mov rdx, rsp
-                        ;; before_call!(ops)
-                        ; push rdx
-                        ; push r9
-                        ; mov rax, QWORD (Context::<I>::write_nondeterminism as *const ()).addr() as usize as isize as i64
-                        ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
-                        ; mov rdx, rsi
-                        ; mov esi, Rd(SCRATCH_REGISTER)
-                        ; call rax
-                        ; pop r9
-                        ; pop rdx
-                        ;; after_call!(ops)
-                    );
-                    pre_bump_timestamp_and_touch!(ops, 1, 0);
-                    bump_timestamp!(ops, 2);
-                    record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
-                    i += 1;
+                    if I::PROVIDES_FLATTENED_NON_DETERMINISM {
+                        // effectively NOP, just touch registers
+                        touch_register_and_increment_timestamp!(ops, rs1);
+                        pre_bump_timestamp_and_touch!(ops, 1, 0);
+                        bump_timestamp!(ops, 2);
+                        record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
+                        i += 1;
+                    } else {
+                        load_into(&mut ops, rs1, SCRATCH_REGISTER);
+                        touch_register_and_increment_timestamp!(ops, rs1);
+                        dynasm!(ops
+                            ; mov rdx, rsp
+                            ;; before_call!(ops)
+                            ; push rdx
+                            ; push r9
+                            ; mov rax, QWORD (Context::<I>::write_nondeterminism as *const ()).addr() as usize as isize as i64
+                            ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
+                            ; mov rdx, rsi
+                            ; mov esi, Rd(SCRATCH_REGISTER)
+                            ; call rax
+                            ; pop r9
+                            ; pop rdx
+                            ;; after_call!(ops)
+                        );
+                        pre_bump_timestamp_and_touch!(ops, 1, 0);
+                        bump_timestamp!(ops, 2);
+                        record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
+                        i += 1;
+                    }
                 }
                 // Delegation CSRs. The delegation type is encoded in `imm` and equals
                 // the corresponding CSR register number. Consecutive identical
@@ -1748,6 +1814,63 @@ impl<I: ContextImpl> JittedCode<I> {
     }
 }
 
+impl<'a> JittedCode<FlattenedContextImpl<'a>> {
+    pub fn run_with_flattened_context(
+        program: &[u32],
+        non_determinism_responses: &'a [u32],
+        initial_memory: &[u32],
+        cycles_bound: Option<u32>,
+    ) -> (MachineState, Box<MemoryHolder>) {
+        let mut context = Context::<FlattenedContextImpl<'_>> {
+            implementation: FlattenedContextImpl::new(non_determinism_responses),
+        };
+
+        let mut memory: Box<MemoryHolder> = unsafe {
+            // let mut memory: Box<MemoryHolder> = Box::new_uninit().assume_init();
+            let mut memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
+
+            memory
+        };
+
+        // println!(
+        //     "Memory chunk address = 0x{:x}",
+        //     (&*memory as *const MemoryHolder).addr()
+        // );
+
+        let mut trace: Box<TraceChunk> = unsafe {
+            // let trace = Box::new_uninit().assume_init();
+            let trace: Box<TraceChunk> = Box::new_zeroed().assume_init();
+
+            trace
+        };
+
+        // println!(
+        //     "Initial trace chunk address = 0x{:x}",
+        //     (&*trace as *const TraceChunk).addr()
+        // );
+
+        let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<
+            crate::ir::FullUnsignedMachineDecoderConfig,
+            false,
+        >(program);
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound);
+
+        runner.run(
+            &mut context,
+            memory.as_mut(),
+            unsafe { NonNull::new_unchecked(trace.as_mut() as *mut _) },
+            initial_memory,
+        );
+
+        let final_state = context
+            .implementation
+            .take_final_state()
+            .expect("must finish execution");
+
+        (final_state, memory)
+    }
+}
+
 impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
     pub fn run_alternative_simulator(
         program: &[u32],
@@ -1786,8 +1909,6 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         //     "Initial trace chunk address = 0x{:x}",
         //     (&*trace as *const TraceChunk).addr()
         // );
-
-        let context_ref_mut = &mut context;
 
         let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<
             crate::ir::FullUnsignedMachineDecoderConfig,
@@ -1899,6 +2020,14 @@ pub struct Context<I: ContextImpl> {
 }
 
 impl<I: ContextImpl> Context<I> {
+    extern "sysv64" fn nondeterminism_as_raw_ptr(&self) -> *const u32 {
+        if let Some(ptr) = self.implementation.nondeterminism_as_raw_ptr() {
+            ptr
+        } else {
+            core::ptr::null()
+        }
+    }
+
     extern "sysv64" fn read_nondeterminism(&mut self) -> u32 {
         self.implementation.read_nondeterminism()
     }
@@ -1941,9 +2070,6 @@ extern "sysv64" fn print_registers(
     instruction: u32,
 ) {
     let cycle = (timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
-    if cycle < 836694 {
-        return;
-    }
     // println!(
     //     "Cycle {}: PC = 0x{:08x}, instruction 0x{:08x}",
     //     cycle
@@ -1954,11 +2080,7 @@ extern "sysv64" fn print_registers(
         "{registers:?} at cycle {} and PC = 0x{:08x}, instruction 0x{:08x}",
         cycle, pc, instruction
     );
-    if let Ok(opcode) = riscv_decode::decode(instruction) {
-        println!("Will execute {:?}", opcode);
-    } else {
-        println!("Will execute some custom opcode");
-    }
+    view_rv32_assembly(&[instruction], 0);
 }
 
 extern "sysv64" fn print_runtime_panic(timestamp: u64, machine_state: &MachineState) {

@@ -36,12 +36,7 @@ fn run_jit_program(program: &[u32]) {
 /// producing a catchable unwind. Some instructions are instead rejected earlier,
 /// while decoding the bytecode into the intermediate `Instruction` representation;
 /// those abort with a decode-time panic message rather than the JIT-runtime one.
-fn assert_jit_aborts(
-    test_name: &str,
-    fixture_env_var: &str,
-    instruction: &str,
-    expected: &str,
-) {
+fn assert_jit_aborts(test_name: &str, fixture_env_var: &str, instruction: &str, expected: &str) {
     let output = std::process::Command::new(
         std::env::current_exe().expect("test binary path should be available"),
     )
