@@ -392,6 +392,16 @@ impl<const SUPPORT_SIGNED: bool, const SUPPORT_LESS_THAN_WORD: bool>
             let (unaligned_address, _of_flag) =
                 opt_ctx.append_add_relation(src1, imm, execute_family, cs);
 
+            let [bit_0, bit_1] = opt_ctx.append_lookup_relation(
+                cs,
+                &[unaligned_address.0[0].get_variable()],
+                TableType::MemoryOffsetGetBits.to_num(),
+                execute_family,
+            );
+            cs.add_constraint(
+                (Term::from(bit_0) + Term::from(bit_1)) * execute_family.get_terms(),
+            );
+
             let [is_ram_range, address_high_bits_for_rom] = opt_ctx.append_lookup_relation(
                 cs,
                 &[unaligned_address.0[1].get_variable()],

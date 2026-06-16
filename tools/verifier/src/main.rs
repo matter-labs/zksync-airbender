@@ -229,7 +229,9 @@ fn merge_recursive_circuit_output(first: [u32; 16], second: [u32; 16]) -> [u32; 
     // To make it compatible with our SNARK - we'll assume that last register (7th) is 0 (as snark ignores that too).
     // and we'll actually shift them all by 1.
 
-    // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
+    assert_eq!(first[7], 0, "Recursive proof output word 7 must be zero");
+    assert_eq!(second[7], 0, "Recursive proof output word 7 must be zero");
+
     let mut hasher = Keccak32::new();
     hasher.update(&[0u32]);
 
@@ -237,7 +239,6 @@ fn merge_recursive_circuit_output(first: [u32; 16], second: [u32; 16]) -> [u32; 
         hasher.update(&[*val]);
     }
 
-    // TODO: in the future, check explicitly that output1[7] && output2[7] == 0.
     hasher.update(&[0u32]);
 
     for val in &second[0..7] {
