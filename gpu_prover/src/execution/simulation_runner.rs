@@ -193,9 +193,10 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
                     MachineType::Full => {
                         preprocess_bytecode::<FullMachineDecoderConfig, false>(&text_section)
                     }
-                    MachineType::FullUnsigned => {
-                        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, false>(&text_section)
-                    }
+                    MachineType::FullUnsigned => preprocess_bytecode::<
+                        FullUnsignedMachineDecoderConfig,
+                        false,
+                    >(&text_section),
                     MachineType::Reduced => {
                         preprocess_bytecode::<ReducedMachineDecoderConfig, false>(&text_section)
                     }

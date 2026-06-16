@@ -84,6 +84,10 @@ pub struct MachineState {
     pub pc: u32,
     pub timestamp: TimestampScalar,
     pub(crate) context_ptr: *mut (),
+    // Spill slot used to preserve the cached flattened non-determinism responses
+    // pointer (held in an XMM lane during execution) across `save_machine_state!`
+    // / `after_call!`, which would otherwise clobber that lane.
+    pub(crate) non_determinism_responses_ptr: u64,
 }
 
 impl MachineState {
@@ -99,6 +103,8 @@ impl MachineState {
     const PC_OFFSET: usize = offset_of!(Self, pc);
     const TIMESTAMP_OFFSET: usize = offset_of!(Self, timestamp);
     const CONTEXT_PTR_OFFSET: usize = offset_of!(Self, context_ptr);
+    const NON_DETERMINISM_RESPONSES_PTR_OFFSET: usize =
+        offset_of!(Self, non_determinism_responses_ptr);
 
     pub fn initial() -> Self {
         Self {
@@ -108,6 +114,7 @@ impl MachineState {
             pc: 0,
             timestamp: INITIAL_TIMESTAMP,
             context_ptr: core::ptr::dangling_mut(),
+            non_determinism_responses_ptr: 0,
         }
     }
 

@@ -190,6 +190,9 @@ macro_rules! save_machine_state {
 
             // put current timestamp (without assumptions about mod 4)
             ; mov [rdx + (MachineState::TIMESTAMP_OFFSET as i32)], r8
+            // NOTE: the flattened non-determinism responses pointer lives directly in the
+            // `MachineState` field, which is plain memory and is therefore preserved across
+            // the call without any explicit save/restore here.
         )
     }
 }
@@ -230,6 +233,8 @@ macro_rules! update_machine_state_post_call {
             ; movdqu xmm5, [rdx + 80]
             ; movdqu xmm6, [rdx + 96]
             ; movdqu xmm7, [rdx + 112]
+            // NOTE: the flattened non-determinism responses pointer is kept in its own
+            // `MachineState` field (plain memory), so there is nothing to restore here.
         )
     }
 }
@@ -290,27 +295,11 @@ fn rv_reg_to_xmm_reg(x: u8) -> (u8, u8) {
 //     };
 // }
 
-const NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX: u8 = 2; // NOTE: in XMM2 interpreted as [u32; 4] in line 0 lives r8, so
-                                                         // when we will interpret it as [u64; 2] we can use line 1
-const NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IMM: u8 = 1;
-
-macro_rules! cache_non_determinism_responses_ptr {
-    ($ops:ident, $d:tt) => {
-        dynasm!($ops
-            ; pinsrq Rx(NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX), $d, NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IMM as i8
-        );
-    };
-}
-
-fn read_non_determinism_responses_ptr_mangling_rcx(ops: &mut x64::Assembler, destination: u8) {
-    dynasm!(ops
-        // cache, read, dump
-        ; pextrq rcx, Rx(NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX), NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IMM as i8
-        ; mov Rd(destination), [rcx]
-        ; add rcx, 4 // size_of::<u32>()
-        ; pinsrq Rx(NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IDX), rcx, NON_DETERMINISM_RESPONSES_PTR_XMM_REG_IMM as i8
-    );
-}
+// NOTE: the flattened non-determinism responses pointer (cursor into the flat array of
+// responses) is kept in the dedicated `MachineState::non_determinism_responses_ptr` field
+// rather than in an XMM lane. That field is plain memory, so it survives external calls
+// (delegations, trace flushes) without any save/restore, and the hot read path simply
+// reloads / bumps / stores it (see the flattened `ZicsrNonDeterminismRead` branch).
 
 fn store_result(ops: &mut x64::Assembler, x: u32) {
     assert!(x != 0);
@@ -638,13 +627,11 @@ impl<I: ContextImpl> JittedCode<I> {
                 ; pop r9
                 ; pop rdx
                 ;; after_call!(ops)
-                // // the external call clobbers caller-saved XMM registers, including the one
-                // // holding the cached context pointer, so re-cache it from the machine state
-                // ; mov rcx, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
-                // ; pinsrq Rx(MACHINE_STATE_XMM_REG_IDX), rcx, MACHINE_STATE_XMM_REG_IMM as i8
+                // RAX now holds the raw non-determinism responses pointer. Store it into the
+                // dedicated MachineState field (RDX still points at MachineState), which is the
+                // single source of truth used by the flattened ZicsrNonDeterminismRead path.
+                ; mov [rdx + (MachineState::NON_DETERMINISM_RESPONSES_PTR_OFFSET as i32)], rax
             );
-            // RAX now holds the raw non-determinism responses pointer
-            cache_non_determinism_responses_ptr!(ops, rax);
         }
 
         // Static jump targets for JAL and branch instructions - we may NOT use some of them, but it is ok
@@ -1534,10 +1521,18 @@ impl<I: ContextImpl> JittedCode<I> {
                     assert!(rd != 0);
 
                     if I::PROVIDES_FLATTENED_NON_DETERMINISM {
-                        // we need two registers: one as destination, another one as temporary scratch
+                        // Flattened responses live as a flat array in memory; the cursor into
+                        // that array is kept in the dedicated MachineState field (RSP points at
+                        // MachineState here). Reload the cursor, read the next response into the
+                        // destination, then bump the cursor by one u32 and store it back.
                         let out = destination_gpr(rd);
                         pre_bump_timestamp_and_touch!(ops, 1, 0);
-                        read_non_determinism_responses_ptr_mangling_rcx(&mut ops, out);
+                        dynasm!(ops
+                            ; mov rcx, [rsp + (MachineState::NON_DETERMINISM_RESPONSES_PTR_OFFSET as i32)]
+                            ; mov Rd(out), [rcx]
+                            ; add rcx, 4 // size_of::<u32>()
+                            ; mov [rsp + (MachineState::NON_DETERMINISM_RESPONSES_PTR_OFFSET as i32)], rcx
+                        );
                         store_result(&mut ops, rd);
                         pre_bump_timestamp_and_touch!(ops, 1, rd);
                         bump_timestamp!(ops, 2);
