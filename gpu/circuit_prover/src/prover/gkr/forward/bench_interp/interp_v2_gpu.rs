@@ -44,7 +44,6 @@ pub(crate) struct InterpDesc2 {
 
     pub n_descs: u32,
     pub desc_kind: *const u8,
-    pub desc_field_e4: u32,
     pub desc_n: *const *const u8,
     pub desc_mapping: *const *const u32,
     pub desc_n_len: *const u32,

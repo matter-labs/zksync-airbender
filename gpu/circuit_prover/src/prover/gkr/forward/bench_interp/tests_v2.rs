@@ -20,7 +20,7 @@ use crate::prover::ProverContext;
 
 use era_cudart::memory::memory_copy_async;
 
-use gkr_eval_isa::compiler_v2::gather::GatherDescriptor;
+use gkr_eval_isa::compiler_v2::gather::{DecoderSpec, GatherDescriptor};
 use gkr_eval_isa::eval_ref::{lift, Bf, Ext};
 use gkr_eval_isa::interp_v2::{execute2, GatherTables, MatrixSlotData, SourceBanks};
 use gkr_eval_isa::isa_v2::encode::encode2;
@@ -279,7 +279,6 @@ fn v2_interp_staged_parity_vs_execute2() {
         challenge_scalars: scalars_dev.as_ptr(),
         n_descs: 0,
         desc_kind: ptr::null(),
-        desc_field_e4: 0,
         desc_n: ptr::null(),
         desc_mapping: ptr::null(),
         desc_n_len: ptr::null(),
@@ -519,7 +518,6 @@ fn v2_interp_staged_parity_memtup_gather() {
         challenge_scalars: scalars_dev.as_ptr(),
         n_descs: 2,
         desc_kind: desc_kind_dev.as_ptr(),
-        desc_field_e4: 0b11,
         desc_n: desc_n_dev.as_ptr() as *const *const u8,
         desc_mapping: desc_mapping_dev.as_ptr() as *const *const u32,
         desc_n_len: desc_n_len_dev.as_ptr(),
@@ -550,4 +548,379 @@ fn v2_interp_staged_parity_memtup_gather() {
             assert_eq!(got[col][gid], expected[col][gid], "mismatch at output col {col} row {gid}");
         }
     }
+}
+
+/// Staged parity for the DecoderMappedE4 gather — the one gather kind tests #1/#2
+/// never covered (it surfaced as the add_sub real-fixture residual). Program:
+/// `GateOutputFold[Indirect(decoder)]` (1 operand → α^0·gather = the gather
+/// value). Stages a value table + mapping + a decoder mask with BOTH zero
+/// (disabled → fill) and non-zero (enabled → mapped) rows + an α-power bank, runs
+/// `execute2` per row and the kernel over all rows, asserts bit-exact. Isolates
+/// the kernel's decoder math (fill formula, mask polarity, mapped read) from the
+/// real-fixture device binding.
+#[test]
+#[cfg(not(no_cuda))]
+fn v2_interp_staged_parity_decoder() {
+    let context = make_test_context(256, 32);
+    let mut rng = StdRng::seed_from_u64(0x5202_0003u64);
+
+    const P: u16 = 2; // fill_alpha_power
+    const TID: u32 = 5; // table_id
+    const NT: usize = 64; // decoder value-table length
+
+    let program = Program2 {
+        instrs: vec![Instr2 {
+            header: Header::Macro { routine: RoutineId::GateOutputFold as u8, n_operands: 1 },
+            operands: vec![Operand::Indirect { e4: true, desc: 0 }],
+            dsts: vec![Dst::Materialize { slot: 2, col: 0 }],
+            memtup: None,
+            memtup2: None,
+        }],
+        consts: vec![],
+        n_slot_cells: 0,
+        n_matrix_slots: 3,
+    };
+    let lanes = encode2(&program);
+    let gathers = vec![GatherDescriptor {
+        kind: IndirectKind::DecoderMappedE4,
+        field_ext: true,
+        n_slot: None,
+        mapping_slot: None,
+        n_len: None,
+        decoder: Some(DecoderSpec { fill_alpha_power: P, table_id: TID }),
+        inits_td_set_idx: None,
+    }];
+
+    // decoder tables: value table, per-row mapping, and a mask that is base-ZERO
+    // on ~1/3 of rows (fill path) and non-zero elsewhere (mapped path).
+    let n: Vec<Ext> = (0..NT).map(|_| rand_ext(&mut rng)).collect();
+    let mapping: Vec<u32> = (0..T).map(|_| rng.gen::<u32>() % NT as u32).collect();
+    let mask: Vec<Bf> =
+        (0..T).map(|gid| if gid % 3 == 0 { Bf::ZERO } else { rand_bf(&mut rng) }).collect();
+    // α-power bank [1, a, a^2, …, a^P].
+    let alpha = rand_ext(&mut rng);
+    let alpha_powers: Vec<Ext> = {
+        let mut v = vec![Ext::ONE; P as usize + 1];
+        let mut acc = Ext::ONE;
+        for k in 1..=P as usize {
+            acc.mul_assign(&alpha);
+            v[k] = acc;
+        }
+        v
+    };
+
+    // CPU golden.
+    let mut expected = vec![Ext::ZERO; T];
+    for gid in 0..T {
+        let gt = GatherTables {
+            n: vec![n.clone()],
+            mapping: vec![mapping.clone()],
+            n_len: vec![None],
+            decoder_mask: vec![Some(mask.clone())],
+            alpha_powers: alpha_powers.clone(),
+        };
+        let sb = SourceBanks {
+            matrix: vec![
+                MatrixSlotData { field_ext: true, columns: vec![] },
+                MatrixSlotData { field_ext: false, columns: vec![] },
+                MatrixSlotData { field_ext: true, columns: vec![] },
+            ],
+            consts: vec![],
+            const_challenge: alpha_powers.clone(),
+            arg_challenge: vec![],
+            gamma: Ext::ZERO,
+            perm_challenges: vec![Ext::ZERO; 6],
+            perm_additive: Ext::ZERO,
+            gather_tables: gt,
+            gid,
+        };
+        let res = execute2(&program, &gathers, &sb);
+        for ((slot, col), v) in res.materialized {
+            assert_eq!((slot, col), (2, 0));
+            expected[gid] = v;
+        }
+    }
+
+    // device staging.
+    let lanes_dev = upload(&context, &lanes);
+    let consts_dev = upload(&context, &[BF::ZERO]);
+    let cc_dev = upload(&context, &alpha_powers);
+    let scalars_dev = upload(&context, &[E4::ZERO; 8]);
+    let n_dev = upload(&context, &n);
+    let mapping_dev = upload(&context, &mapping);
+    let mask_dev = upload(&context, &mask);
+    let desc_kind_dev = upload(&context, &[2u8]); // DecoderMappedE4
+    let desc_n_dev = upload(&context, &[n_dev.as_ptr() as u64]);
+    let desc_mapping_dev = upload(&context, &[mapping_dev.as_ptr() as u64]);
+    let desc_n_len_dev = upload(&context, &[0xFFFF_FFFFu32]);
+    let desc_mask_dev = upload(&context, &[mask_dev.as_ptr() as u64]);
+    let desc_fill_alpha_dev = upload(&context, &[P as u32]);
+    let desc_table_id_dev = upload(&context, &[TID]);
+
+    let col_base_dev = upload(&context, &[0u32, 0, 0, 0]);
+    let columns_dev = upload(&context, &[0u64]);
+    let out_dev = upload(&context, &vec![E4::ZERO; T]);
+    let out_base_dev = upload(&context, &[0u32, 0, 0, 1]);
+    let out_cols_dev = upload(&context, &[out_dev.as_ptr() as u64]);
+    let mut err_dev = upload(&context, &[0u32]);
+
+    let dsc = InterpDesc2 {
+        program_ldg: lanes_dev.as_ptr(),
+        program_lanes: lanes.len() as u32,
+        n_instr: 1,
+        columns: columns_dev.as_ptr() as *const *const u8,
+        col_base: col_base_dev.as_ptr(),
+        slot_is_e4: 0b100,
+        n_matrix_slots: 3,
+        consts: consts_dev.as_ptr(),
+        const_challenge: cc_dev.as_ptr(),
+        n_const_challenge: alpha_powers.len() as u32,
+        arg_challenge: ptr::null(),
+        n_arg_challenge: 0,
+        challenge_scalars: scalars_dev.as_ptr(),
+        n_descs: 1,
+        desc_kind: desc_kind_dev.as_ptr(),
+        desc_n: desc_n_dev.as_ptr() as *const *const u8,
+        desc_mapping: desc_mapping_dev.as_ptr() as *const *const u32,
+        desc_n_len: desc_n_len_dev.as_ptr(),
+        desc_mask: desc_mask_dev.as_ptr() as *const *const BF,
+        desc_fill_alpha: desc_fill_alpha_dev.as_ptr(),
+        desc_table_id: desc_table_id_dev.as_ptr(),
+        out_columns: out_cols_dev.as_ptr() as *const *mut u8,
+        out_base: out_base_dev.as_ptr(),
+        out_is_e4: 0b100,
+        budget_cells: 0,
+        count: T as u32,
+        error_flag: err_dev.as_mut_ptr(),
+    };
+
+    launch_bench_fwd_interp_v2(&dsc, InterpResidency::Ldg, BenchThreads::T128, &context).unwrap();
+
+    let mut err_host = [0u32];
+    memory_copy_async(&mut err_host, &err_dev, context.get_exec_stream()).unwrap();
+    let mut got = vec![E4::ZERO; T];
+    memory_copy_async(&mut got, &out_dev, context.get_exec_stream()).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    assert_eq!(err_host[0], 0, "kernel error_flag set: 0x{:x}", err_host[0]);
+    for gid in 0..T {
+        assert_eq!(
+            got[gid], expected[gid],
+            "decoder mismatch at row {gid} ({})",
+            if gid % 3 == 0 { "mask=0 -> fill" } else { "mask!=0 -> mapped" }
+        );
+    }
+}
+
+// ===========================================================================
+// 5.2 — REAL-WITNESS bit-exact parity gate (spec Phase 5.2).
+//
+// The staged tests above prove kernel == CPU-golden (execute2) on random data.
+// This gate proves kernel == PRODUCTION at real-witness scale: compile each
+// stage-3 circuit's L0 forward layer with the v2 compiler, replay the production
+// FLAT launchers to populate `fixture.storage` with the real golden, bind the v2
+// kernel's matrix tables / gathers / challenge banks to the SAME production
+// buffers (lower_v2::build_interp_desc2_real), run the kernel, then compare each
+// `Dst::Materialize` output against its resident production storage column at
+// rows [0, t-1].
+// ===========================================================================
+
+use super::fixture::CircuitFixture;
+use super::lower_v2::{
+    build_interp_desc2_real, read_golden_bf, read_golden_e4, readback_out_bf, readback_out_e4,
+};
+use gkr_eval_isa::compiler_v2::{compile_forward_v2, FwdParams2};
+use gkr_design_space::import::load_circuit;
+use serial_test::serial;
+
+/// 5.2 — real-witness bit-exact parity for the v2 forward interpreter kernel
+/// (`#[ignore]`, GPU). For each stage-3 circuit at layer 0: build the production
+/// fixture, replay the flat forward launchers (the golden), compile the v2
+/// forward program, bind the kernel to the real production tables, launch
+/// LDG/128, read back every materialized output, and assert it equals the
+/// resident production FLAT golden at rows [0, t-1]. Non-vacuous (>= 1 output
+/// compared per circuit) and `error_flag == 0`.
+///
+/// COMPILE-ONLY in this phase: the test body is authored correctly but is NOT
+/// executed here (it runs later on GPU via `.agents/bin/with_gpu_lock.sh`).
+#[test]
+#[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh (see .agents/gpu_work.md)
+#[cfg(not(no_cuda))]
+#[serial]
+fn v2_real_fixture_parity() {
+    use super::fixture::STAGE3_CIRCUITS;
+
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    // Collect per-circuit failures and report them all at the end, so one GPU
+    // run surfaces the parity status of EVERY stage-3 circuit (not just the
+    // first to mismatch).
+    let mut circuit_failures: Vec<String> = Vec::new();
+
+    for circuit in STAGE3_CIRCUITS {
+        let loaded =
+            load_circuit(&dir.join(format!("{circuit}_codegen_ir_gkr.json"))).unwrap();
+        let fixture = CircuitFixture::build(circuit);
+        assert!(!fixture.layers.is_empty(), "{circuit}: fixture has no layers");
+        assert_eq!(
+            loaded.circuit.layers.len(),
+            fixture.compiled_circuit.layers.len(),
+            "{circuit}: codegen IR vs artifact layer count"
+        );
+
+        let layer_idx = 0usize;
+        let context = fixture.context();
+        let t = fixture.trace_len;
+
+        // (1) Production FLAT golden: replay every captured launch of L0 into
+        // `fixture.storage` (the same kernels the flat path runs; idempotent).
+        fixture
+            .replay_layer_count(layer_idx, t)
+            .unwrap_or_else(|e| panic!("{circuit}: replay_layer_count failed: {e:?}"));
+
+        // (2) Compile the v2 forward program for this layer.
+        let cg_layer = &loaded.circuit.layers[layer_idx];
+        let g = &loaded.graphs[layer_idx];
+        let cf2 = compile_forward_v2(cg_layer, g, FwdParams2::default());
+
+        // (3) Bind the kernel to the REAL production tables.
+        let mut setup = build_interp_desc2_real(&fixture, layer_idx, &cf2, cg_layer);
+
+        // Surface any gather binding gap loudly (a launcher-deferred kind that
+        // could not be resolved from the fixture). A non-empty list means the
+        // bit-exact compare below may not cover those gathers' consumers.
+        for gap in &setup.unbound_gathers {
+            println!("{circuit} L{layer_idx}: GATHER GAP: {gap}");
+        }
+        if !setup.unbound_gathers.is_empty() {
+            circuit_failures.push(format!(
+                "{circuit} L{layer_idx}: {} unbound gather(s):\n{}",
+                setup.unbound_gathers.len(),
+                setup.unbound_gathers.join("\n"),
+            ));
+            continue;
+        }
+
+        println!(
+            "{circuit} L{layer_idx}: {} slots, {} lanes, {} materialize outputs",
+            setup.n_matrix_slots,
+            setup.n_lanes,
+            setup.out_columns.len(),
+        );
+
+        // (4) Run the kernel (LDG/128) over all rows.
+        launch_bench_fwd_interp_v2(&setup.desc, InterpResidency::Ldg, BenchThreads::T128, context)
+            .unwrap();
+
+        // (5) Read back the materialized outputs + error flag, snapshot the
+        // production goldens, then compare at rows [0, t-1].
+        let mut err_host = [0u32];
+        memory_copy_async(&mut err_host[..], setup.err_dev(), context.get_exec_stream())
+            .unwrap();
+
+        // Read back kernel outputs with the element stride the kernel WROTE:
+        // e4 outputs are 16-byte stores (`readback_out_e4`); bf outputs are a
+        // contiguous 4-byte bf column (`readback_out_bf`) — reading a bf output
+        // back as E4 would read byte `row*16` while the kernel wrote it at byte
+        // `row*4`, matching only at row 0 (silent parity failure at row t-1).
+        let mut kernel_e4: Vec<Option<Vec<E4>>> = Vec::with_capacity(setup.out_columns.len());
+        let mut kernel_bf: Vec<Option<Vec<BF>>> = Vec::with_capacity(setup.out_columns.len());
+        for oc in &setup.out_columns {
+            if oc.e4 {
+                kernel_e4.push(Some(readback_out_e4(&oc.buf, t, context)));
+                kernel_bf.push(None);
+            } else {
+                kernel_bf.push(Some(readback_out_bf(&oc.buf, t, context)));
+                kernel_e4.push(None);
+            }
+        }
+        // Production goldens, resolved through the resident storage column.
+        let mut golden_bf: Vec<Option<Vec<BF>>> = Vec::with_capacity(setup.out_columns.len());
+        let mut golden_e4: Vec<Option<Vec<E4>>> = Vec::with_capacity(setup.out_columns.len());
+        for oc in &setup.out_columns {
+            let (is_e4, ptr) = fixture.storage_column(oc.golden_addr).unwrap_or_else(|| {
+                panic!(
+                    "{circuit} L{layer_idx}: materialize output addr {:?} not resident in storage",
+                    oc.golden_addr
+                )
+            });
+            assert_eq!(
+                is_e4, oc.e4,
+                "{circuit} L{layer_idx}: output (slot {}, col {}) storage width vs slot field",
+                oc.slot, oc.col
+            );
+            if oc.e4 {
+                golden_e4.push(Some(read_golden_e4(ptr, t, context)));
+                golden_bf.push(None);
+            } else {
+                golden_bf.push(Some(read_golden_bf(ptr, t, context)));
+                golden_e4.push(None);
+            }
+        }
+        context.get_exec_stream().synchronize().unwrap();
+
+        if err_host[0] != 0 {
+            circuit_failures.push(format!(
+                "{circuit} L{layer_idx}: kernel error_flag set: 0x{:x}",
+                err_host[0]
+            ));
+            continue;
+        }
+
+        // Non-vacuity: must compare SOMETHING.
+        if setup.out_columns.is_empty() {
+            circuit_failures.push(format!(
+                "{circuit} L{layer_idx}: no materialize outputs to compare (vacuous gate)"
+            ));
+            continue;
+        }
+
+        let rows = [0usize, t - 1];
+        let mut n_mismatch = 0usize;
+        let mut sample: Vec<String> = Vec::new();
+        for (oi, oc) in setup.out_columns.iter().enumerate() {
+            for &row in &rows {
+                let (got_s, want_s) = if oc.e4 {
+                    let want = golden_e4[oi].as_ref().unwrap()[row];
+                    let got = kernel_e4[oi].as_ref().unwrap()[row];
+                    if got == want {
+                        continue;
+                    }
+                    (format!("{got:?}"), format!("{want:?}"))
+                } else {
+                    let want = golden_bf[oi].as_ref().unwrap()[row];
+                    let got = kernel_bf[oi].as_ref().unwrap()[row];
+                    if got == want {
+                        continue;
+                    }
+                    (format!("{got:?}"), format!("{want:?}"))
+                };
+                n_mismatch += 1;
+                if sample.len() < 12 {
+                    sample.push(format!(
+                        "(slot {}, col {}) row {row} golden {:?}: kernel {got_s} vs prod {want_s}",
+                        oc.slot, oc.col, oc.golden_addr
+                    ));
+                }
+            }
+        }
+        if n_mismatch == 0 {
+            println!(
+                "{circuit} L{layer_idx}: PASS ({} outputs compared)",
+                setup.out_columns.len()
+            );
+        } else {
+            circuit_failures.push(format!(
+                "{circuit} L{layer_idx}: {n_mismatch} mismatch(es) over {} outputs x2 rows (sample):\n  {}",
+                setup.out_columns.len(),
+                sample.join("\n  ")
+            ));
+        }
+    }
+
+    assert!(
+        circuit_failures.is_empty(),
+        "v2 real-fixture parity: {} circuit(s) FAILED:\n{}",
+        circuit_failures.len(),
+        circuit_failures.join("\n---\n")
+    );
 }

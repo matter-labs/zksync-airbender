@@ -121,10 +121,12 @@ struct interp_desc2 {
   // e4[8]: [0] gamma, [1+role] perm_challenges, [7] perm_additive (CS_* above).
   const e4 *challenge_scalars;
 
-  // Gather descriptors (indexed by the Indirect `desc` lane).
+  // Gather descriptors (indexed by the Indirect `desc` lane). The value field
+  // (e4 vs bf) is derived from `desc_kind` (see `desc_e4`) — only the base-field
+  // MappedVirtualBf/InitsTeardownsHighAddr kinds are bf — so there is no
+  // per-desc field bitset (which a >32-gather circuit would overflow anyway).
   u32 n_descs;
   const u8 *desc_kind;
-  u32 desc_field_e4;              // bitset over descs: 1 = e4 value field
   const void *const *desc_n;      // value table base per desc
   const u32 *const *desc_mapping; // per-row mapping per desc (null if none)
   const u32 *desc_n_len;          // length guard per desc (0xFFFFFFFF = none)
@@ -153,7 +155,10 @@ template <bool LDC> DEVICE_FORCEINLINE u16 v2_lane(const interp_desc2 &d, const 
 
 DEVICE_FORCEINLINE bool slot_e4(const interp_desc2 &d, const u32 slot) { return ((d.slot_is_e4 >> slot) & 1u) != 0; }
 DEVICE_FORCEINLINE bool out_slot_e4(const interp_desc2 &d, const u32 slot) { return ((d.out_is_e4 >> slot) & 1u) != 0; }
-DEVICE_FORCEINLINE bool desc_e4(const interp_desc2 &d, const u32 desc) { return ((d.desc_field_e4 >> desc) & 1u) != 0; }
+// The gather value field is determined by its kind: only MappedVirtualBf (0) and
+// InitsTeardownsHighAddr (4) are base; the three mapped/setup E4 kinds are ext.
+// (Mirrors `compiler_v2::gather::variant_for`, which sets `field_ext` from kind.)
+DEVICE_FORCEINLINE bool desc_e4(const u8 kind) { return kind != GK_MAPPED_VIRTUAL_BF && kind != GK_INITS_TEARDOWNS_HIGH_ADDR; }
 
 // Load a matrix-slot column value at this row (Affine read).
 DEVICE_FORCEINLINE e4 load_affine(const interp_desc2 &d, const u32 slot, const u32 col, const unsigned gid, u32 &err) {
@@ -204,7 +209,7 @@ DEVICE_FORCEINLINE void write_cell(bf *cell_base, const u32 cell, const bool is_
 // resolve_gather mirror (interp_v2.rs resolve_gather).
 DEVICE_FORCEINLINE e4 resolve_gather(const interp_desc2 &d, const u32 desc, const unsigned gid) {
   const u8 kind = d.desc_kind[desc];
-  const bool is_e4 = desc_e4(d, desc);
+  const bool is_e4 = desc_e4(kind);
   const void *table = d.desc_n[desc];
   auto load_at = [&](const u32 row) -> e4 {
     return is_e4 ? reinterpret_cast<const e4 *>(table)[row] : e4::from_scalar(reinterpret_cast<const bf *>(table)[row]);
@@ -220,9 +225,13 @@ DEVICE_FORCEINLINE e4 resolve_gather(const interp_desc2 &d, const u32 desc, cons
     const e4 mapped = load_at(row);
     const bf *mask = d.desc_mask[desc];
     if (mask != nullptr && mask[gid].limb == 0) {
-      // fill = alpha^fill_alpha_power * table_id  (recomputed, interp_v2.rs:276)
+      // fill = alpha^fill_alpha_power * table_id  (recomputed, interp_v2.rs:276).
+      // table_id is a raw integer id; it MUST enter the field via the Montgomery
+      // conversion (`from_u32_unchecked`), mirroring execute2's
+      // `lift(Bf::from_u32_with_reduction(table_id))`. The bare `bf(u32)` ctor
+      // (field.cuh:26) sets the raw limb (NON-Montgomery) and is wrong here.
       e4 fill = d.const_challenge[d.desc_fill_alpha[desc]];
-      return e4::mul(fill, bf(d.desc_table_id[desc]));
+      return e4::mul(fill, bf::from_u32_unchecked(d.desc_table_id[desc]));
     }
     return mapped;
   }

@@ -12,6 +12,7 @@ mod fixture;
 pub(crate) mod harness;
 mod interp_v2_gpu;
 mod lower;
+mod lower_v2;
 mod report;
 mod tests;
 mod tests_v2;
