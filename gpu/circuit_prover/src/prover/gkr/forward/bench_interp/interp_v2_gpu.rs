@@ -80,6 +80,36 @@ cuda_kernel_declaration!(pub(crate)
     ab_gkr_bench_fwd_interp_v2_ldc256_kernel(desc: InterpDesc2)
 );
 
+// Static-shared-memory cell-budget sweep family (LDG, 128 threads). One symbol
+// per compiled budget; `v2_static_kernel(n)` maps a budget to its symbol.
+macro_rules! decl_static_v2 {
+    ($($n:literal => $sym:ident),* $(,)?) => {
+        $( cuda_kernel_declaration!(pub(crate) $sym(desc: InterpDesc2)); )*
+        /// Static-smem kernel for cell budget `budget` (16..=64 step 4), or None.
+        pub(crate) fn v2_static_kernel(budget: u32) -> Option<unsafe extern "C" fn(InterpDesc2)> {
+            Some(match budget {
+                $( $n => $sym, )*
+                _ => return None,
+            })
+        }
+    };
+}
+decl_static_v2!(
+    16 => ab_gkr_bench_fwd_interp_v2_ldg_s16_kernel,
+    20 => ab_gkr_bench_fwd_interp_v2_ldg_s20_kernel,
+    24 => ab_gkr_bench_fwd_interp_v2_ldg_s24_kernel,
+    28 => ab_gkr_bench_fwd_interp_v2_ldg_s28_kernel,
+    32 => ab_gkr_bench_fwd_interp_v2_ldg_s32_kernel,
+    36 => ab_gkr_bench_fwd_interp_v2_ldg_s36_kernel,
+    40 => ab_gkr_bench_fwd_interp_v2_ldg_s40_kernel,
+    44 => ab_gkr_bench_fwd_interp_v2_ldg_s44_kernel,
+    48 => ab_gkr_bench_fwd_interp_v2_ldg_s48_kernel,
+    52 => ab_gkr_bench_fwd_interp_v2_ldg_s52_kernel,
+    56 => ab_gkr_bench_fwd_interp_v2_ldg_s56_kernel,
+    60 => ab_gkr_bench_fwd_interp_v2_ldg_s60_kernel,
+    64 => ab_gkr_bench_fwd_interp_v2_ldg_s64_kernel,
+);
+
 fn v2_kernel(
     threads: BenchThreads,
     residency: InterpResidency,
@@ -130,6 +160,35 @@ pub(crate) fn launch_bench_fwd_interp_v2(
         .grid_dim(grid_dim)
         .block_dim(tpb)
         .dynamic_smem_bytes(smem)
+        .stream(context.get_exec_stream())
+        .build();
+    let args = GkrBenchFwdInterpV2Arguments::new(*desc);
+    GkrBenchFwdInterpV2Function(kernel).launch(&config, &args)
+}
+
+/// Launch the static-shared-memory v2 interpreter for cell budget `budget_cap`
+/// (one of the compiled sweep budgets, 16..=64 step 4). The cell file is a
+/// compile-time `__shared__` array sized `budget_cap*128` bf, so NO dynamic smem
+/// is requested — the footprint is visible to ptxas (occupancy + launch bounds).
+/// LDG residency, 128 threads. Requires `desc.budget_cells <= budget_cap`.
+pub(crate) fn launch_bench_fwd_interp_v2_static(
+    desc: &InterpDesc2,
+    budget_cap: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(
+        desc.budget_cells <= budget_cap,
+        "static kernel budget {budget_cap} < realized cells {}",
+        desc.budget_cells
+    );
+    let kernel = v2_static_kernel(budget_cap)
+        .unwrap_or_else(|| panic!("no static v2 kernel compiled for budget {budget_cap}"));
+    let tpb = 128u32;
+    let grid_dim = desc.count.max(1).div_ceil(tpb);
+    let config = CudaLaunchConfig::builder()
+        .grid_dim(grid_dim)
+        .block_dim(tpb)
+        .dynamic_smem_bytes(0)
         .stream(context.get_exec_stream())
         .build();
     let args = GkrBenchFwdInterpV2Arguments::new(*desc);

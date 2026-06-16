@@ -394,16 +394,11 @@ template <bool LDC> DEVICE_FORCEINLINE e4 eval_memtup_t(const interp_desc2 &d, b
 #undef LANE
 }
 
-template <bool LDC> DEVICE_FORCEINLINE void interp2_body(const interp_desc2 d) {
+// Core program execution over a pre-zeroed per-thread cell file. `cell_base`
+// points at this thread's cell 0; cell `c` lives at `cell_base[c * blockDim.x]`.
+// The cell-file storage (dynamic vs static shared memory) is the wrapper's job.
+template <bool LDC> DEVICE_FORCEINLINE void interp2_core(const interp_desc2 d, bf *cell_base, const unsigned gid) {
 #define LANE(i) v2_lane<LDC>(d, (i))
-  extern __shared__ u32 interp2_smem[];
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= d.count)
-    return;
-  bf *cell_base = reinterpret_cast<bf *>(interp2_smem) + threadIdx.x;
-  for (u32 c = 0; c < d.budget_cells; c++)
-    cell_base[c * blockDim.x] = bf::ZERO();
-
   u32 i = 0; // lane cursor (warp-uniform)
   u32 err = 0;
 
@@ -644,9 +639,64 @@ template <bool LDC> DEVICE_FORCEINLINE void interp2_body(const interp_desc2 d) {
 #undef LANE
 }
 
+// --- Cell-file storage wrappers ------------------------------------------
+
+// Dynamic shared memory: the smem byte count is a launch parameter, so its
+// footprint is OPAQUE to ptxas — the compiler cannot fold it into occupancy or
+// __launch_bounds__, and real occupancy is silently capped at launch time.
+template <bool LDC> DEVICE_FORCEINLINE void interp2_body(const interp_desc2 d) {
+  extern __shared__ u32 interp2_smem[];
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= d.count)
+    return;
+  bf *cell_base = reinterpret_cast<bf *>(interp2_smem) + threadIdx.x;
+  for (u32 c = 0; c < d.budget_cells; c++)
+    cell_base[c * blockDim.x] = bf::ZERO();
+  interp2_core<LDC>(d, cell_base, gid);
+}
+
+// Static shared memory: N_CELLS is a compile-time constant, so the __shared__
+// footprint is visible to ptxas — it feeds the occupancy calculator and the
+// __launch_bounds__ register sizing. 128-thread blocks only (sweep config).
+template <bool LDC, u32 N_CELLS> DEVICE_FORCEINLINE void interp2_body_static(const interp_desc2 d) {
+  __shared__ bf interp2_cells_s[N_CELLS * 128];
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= d.count)
+    return;
+  bf *cell_base = interp2_cells_s + threadIdx.x;
+  for (u32 c = 0; c < N_CELLS; c++)
+    cell_base[c * 128] = bf::ZERO();
+  interp2_core<LDC>(d, cell_base, gid);
+}
+
 EXTERN __launch_bounds__(128, 4) __global__ void ab_gkr_bench_fwd_interp_v2_ldg_kernel(const interp_desc2 desc) { interp2_body<false>(desc); }
 EXTERN __launch_bounds__(128, 4) __global__ void ab_gkr_bench_fwd_interp_v2_ldc_kernel(const interp_desc2 desc) { interp2_body<true>(desc); }
 EXTERN __launch_bounds__(256, 2) __global__ void ab_gkr_bench_fwd_interp_v2_ldg256_kernel(const interp_desc2 desc) { interp2_body<false>(desc); }
 EXTERN __launch_bounds__(256, 2) __global__ void ab_gkr_bench_fwd_interp_v2_ldc256_kernel(const interp_desc2 desc) { interp2_body<true>(desc); }
+
+// --- Static-smem cell-budget sweep family (LDG, 128 threads) -------------
+// One symbol per cell budget so the __shared__ size is a compile-time constant.
+// minBlocks is the occupancy the static smem permits: SM shared capacity
+// (~100 KB on sm_120) / per-block footprint (N*128*4 B + ~1 KB driver), clamped
+// to the 12-block warp limit (4 warps/block). ptxas then sizes registers to
+// that smem-permitted occupancy instead of a hardcoded target.
+#define INTERP2_SMEM_BLOCKS(N) ((102400u / ((N) * 512u + 1024u)) > 12u ? 12u : ((102400u / ((N) * 512u + 1024u)) < 1u ? 1u : (102400u / ((N) * 512u + 1024u))))
+#define INTERP2_STATIC_LDG_KERNEL(N)                                                                                                                           \
+  EXTERN __launch_bounds__(128, INTERP2_SMEM_BLOCKS(N)) __global__ void ab_gkr_bench_fwd_interp_v2_ldg_s##N##_kernel(const interp_desc2 desc) {                \
+    interp2_body_static<false, N>(desc);                                                                                                                       \
+  }
+INTERP2_STATIC_LDG_KERNEL(16)
+INTERP2_STATIC_LDG_KERNEL(20)
+INTERP2_STATIC_LDG_KERNEL(24)
+INTERP2_STATIC_LDG_KERNEL(28)
+INTERP2_STATIC_LDG_KERNEL(32)
+INTERP2_STATIC_LDG_KERNEL(36)
+INTERP2_STATIC_LDG_KERNEL(40)
+INTERP2_STATIC_LDG_KERNEL(44)
+INTERP2_STATIC_LDG_KERNEL(48)
+INTERP2_STATIC_LDG_KERNEL(52)
+INTERP2_STATIC_LDG_KERNEL(56)
+INTERP2_STATIC_LDG_KERNEL(60)
+INTERP2_STATIC_LDG_KERNEL(64)
 
 } // namespace airbender::prover::gkr::bench

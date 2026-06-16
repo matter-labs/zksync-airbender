@@ -924,3 +924,140 @@ fn v2_real_fixture_parity() {
         circuit_failures.join("\n---\n")
     );
 }
+
+// ===========================================================================
+// Phase 6 — VERDICT timing: fused-v2 vs production FLAT (cache + flat) at the
+// REAL trace_len (NOT the stage-3 1<<20 cap, which fits L2 and masks the fusion
+// BW win). Median + min over ITERS CUDA-event-timed launches per side.
+// ===========================================================================
+
+/// Phase 6 wall-clock verdict (`#[ignore]`, GPU). For each stage-3 circuit at
+/// L0: production forward (gkr_forward_cache + flat, via `replay_layer_count`)
+/// vs the fused-v2 interpreter (`launch_bench_fwd_interp_v2`), both at the full
+/// `trace_len`. Prints median/min ms per side + the fused/flat ratio. Exploratory
+/// (no assertion) — the attributed ncu pass interprets the numbers.
+#[test]
+#[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh
+#[cfg(not(no_cuda))]
+#[serial]
+fn v2_real_fixture_timing() {
+    use super::fixture::STAGE3_CIRCUITS;
+    use super::harness::{time_flat, time_iters};
+
+    const ITERS: usize = 30;
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+
+    for circuit in STAGE3_CIRCUITS {
+        let loaded = load_circuit(&dir.join(format!("{circuit}_codegen_ir_gkr.json"))).unwrap();
+        let fixture = CircuitFixture::build(circuit);
+        let layer_idx = 0usize;
+        let t = fixture.trace_len;
+        let context = fixture.context();
+
+        // Warm: replay once (also leaves the production golden resident, which the
+        // fused-v2 gathers read for the resident setup caches).
+        fixture.replay_layer_count(layer_idx, t).unwrap();
+
+        let cg_layer = &loaded.circuit.layers[layer_idx];
+        let g = &loaded.graphs[layer_idx];
+        let cf2 = compile_forward_v2(cg_layer, g, FwdParams2::default());
+        let setup = build_interp_desc2_real(&fixture, layer_idx, &cf2, cg_layer);
+        if !setup.unbound_gathers.is_empty() {
+            println!("TIMING {circuit} L0: SKIP ({} unbound gathers)", setup.unbound_gathers.len());
+            continue;
+        }
+
+        // Baseline: production cache + flat replay at FULL trace_len.
+        let (fmed, fmin, flaunch) = time_flat(&fixture, layer_idx, t, ITERS);
+        // Fused-v2: one launch per iter at FULL trace_len (setup.desc.count == t).
+        let (imed, imin) = time_iters(context.get_exec_stream(), ITERS, || {
+            launch_bench_fwd_interp_v2(&setup.desc, InterpResidency::Ldg, BenchThreads::T128, context)
+                .unwrap();
+        });
+
+        println!(
+            "TIMING {circuit} L0 t=2^{} ({} outs, {} lanes): \
+             flat med={fmed:.3}ms min={fmin:.3}ms ({flaunch} launches) | \
+             fused-v2 med={imed:.3}ms min={imin:.3}ms | fused/flat={:.3}",
+            (t as f64).log2().round() as u32,
+            setup.out_columns.len(),
+            setup.n_lanes,
+            imed / fmed,
+        );
+    }
+}
+
+/// Phase 6 cell-budget sweep (`#[ignore]`, GPU). Static-shared-memory v2
+/// interpreter at cell budgets 16..=64 (step 4). For each stage-3 circuit at L0,
+/// compile the program to each cap (Belady eviction + remat fit it; too-small
+/// caps are infeasible and reported), launch the matching static kernel — NO
+/// dynamic smem, so the `__shared__` footprint is visible to ptxas (occupancy +
+/// launch bounds) — and time vs the production flat baseline. Reveals the
+/// occupancy-vs-eviction sweet spot. Exploratory (no assertion).
+#[test]
+#[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh
+#[cfg(not(no_cuda))]
+#[serial]
+fn v2_budget_sweep_timing() {
+    use super::fixture::STAGE3_CIRCUITS;
+    use super::harness::{time_flat, time_iters};
+    use super::interp_v2_gpu::launch_bench_fwd_interp_v2_static;
+    use std::panic::AssertUnwindSafe;
+
+    const ITERS: usize = 30;
+    const BUDGETS: [u32; 13] = [16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64];
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+
+    for circuit in STAGE3_CIRCUITS {
+        let loaded = load_circuit(&dir.join(format!("{circuit}_codegen_ir_gkr.json"))).unwrap();
+        let fixture = CircuitFixture::build(circuit);
+        let layer_idx = 0usize;
+        let t = fixture.trace_len;
+        let context = fixture.context();
+        fixture.replay_layer_count(layer_idx, t).unwrap();
+
+        let cg_layer = &loaded.circuit.layers[layer_idx];
+        let g = &loaded.graphs[layer_idx];
+
+        // Production flat baseline once (cap-independent).
+        let (fmed, fmin, flaunch) = time_flat(&fixture, layer_idx, t, ITERS);
+        println!(
+            "SWEEP {circuit} L0 t=2^{}: flat med={fmed:.3}ms min={fmin:.3}ms ({flaunch} launches)",
+            (t as f64).log2().round() as u32,
+        );
+
+        for &n in &BUDGETS {
+            let params = FwdParams2 { budget_cells: n as usize, ..FwdParams2::default() };
+            // Too-small caps panic (mandatory working set exceeds the budget) —
+            // catch + report instead of aborting the whole sweep. Silence the
+            // panic hook only across this one call.
+            let prev = std::panic::take_hook();
+            std::panic::set_hook(Box::new(|_| {}));
+            let res = std::panic::catch_unwind(AssertUnwindSafe(|| compile_forward_v2(cg_layer, g, params)));
+            std::panic::set_hook(prev);
+            let cf2 = match res {
+                Ok(c) => c,
+                Err(_) => {
+                    println!("  S={n:>2}: INFEASIBLE (mandatory working set exceeds cap)");
+                    continue;
+                }
+            };
+            let setup = build_interp_desc2_real(&fixture, layer_idx, &cf2, cg_layer);
+            if !setup.unbound_gathers.is_empty() {
+                println!("  S={n:>2}: SKIP ({} unbound gathers)", setup.unbound_gathers.len());
+                continue;
+            }
+            let cells = setup.desc.budget_cells;
+            let (imed, imin) = time_iters(context.get_exec_stream(), ITERS, || {
+                launch_bench_fwd_interp_v2_static(&setup.desc, n, context).unwrap();
+            });
+            println!(
+                "  S={n:>2}: cells={cells:>3} lanes={:>5} smem={:>2}KB \
+                 med={imed:.3}ms min={imin:.3}ms fused/flat={:.3}",
+                setup.n_lanes,
+                n / 2,
+                imed / fmed,
+            );
+        }
+    }
+}
