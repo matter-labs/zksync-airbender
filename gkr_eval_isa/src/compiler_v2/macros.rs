@@ -609,6 +609,35 @@ pub fn lower_gate(gate: &CodegenGate, arena: &[ExprNode], ctx: &mut MacroCtx) ->
                 memtup2: Some(t1),
             });
         }
+        // id-11 VectorLookupGate (gate form of the vectorized lookup):
+        // `value = Σ_k α^k·(constant_k + Σ_j coeff_j·col_j)` over the gate's
+        // `VectorLookup.columns` (each a `LinearComb`) — IDENTICAL structure to the
+        // id-17 cache form (see `lower_cache`). The generic per-input-node flatten
+        // below is LOSSY for this gate: it drops the per-column constants/coeffs and
+        // the self-describing grouping, so the interpreter (which decodes both id-11
+        // and id-17 with the same `vectorized_lookup` group walk) would read a column
+        // value as the term-count and skip the whole accumulation (-> all-zero). Emit
+        // the same self-describing `[Ldc(term_count_k), Ldc(const_k), (Ldc(coeff),
+        // col)…]` per-column layout the cache uses.
+        GateKind::MaterializedVectorLookupInput { input } => {
+            let mut ops = Vec::new();
+            for col in &input.columns {
+                ops.push(ctx.const_scalar_operand(col.terms.len() as u32));
+                push_lincomb_lanes(ctx, arena, col, &mut ops);
+            }
+            let n_operands = ops.len() as u8;
+            let dsts = macro_gate_dsts(gate, 1, ctx);
+            return Some(Instr2 {
+                header: Header::Macro {
+                    routine: RoutineId::VectorLookupGate as u8,
+                    n_operands,
+                },
+                operands: ops,
+                dsts,
+                memtup: None,
+                memtup2: None,
+            });
+        }
         _ => {}
     }
 
