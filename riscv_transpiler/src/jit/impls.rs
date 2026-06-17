@@ -90,6 +90,37 @@ macro_rules! epilogue {
     };
 }
 
+// Spill / reload the vectorized circuit-family counters (xmm8..=xmm12) to the
+// MachineState `counters` array (16-byte aligned, so movdqa is valid). Used ONLY at
+// snapshot boundaries (trace flush / final), where the snapshotter reads the counters.
+// Delegation and non-determinism external calls deliberately do NOT spill counters:
+// they never read or modify them (verified: the delegation implementations only touch
+// the trace and registers), so the values just need to survive the call in xmm8..=xmm12.
+// MachineState pointer must be in RDX.
+macro_rules! spill_counters {
+    ($ops:ident) => {
+        dynasm!($ops
+            ; movdqa [rdx + (MachineState::COUNTERS_OFFSET as i32) + 0], xmm8
+            ; movdqa [rdx + (MachineState::COUNTERS_OFFSET as i32) + 16], xmm9
+            ; movdqa [rdx + (MachineState::COUNTERS_OFFSET as i32) + 32], xmm10
+            ; movdqa [rdx + (MachineState::COUNTERS_OFFSET as i32) + 48], xmm11
+            ; movdqa [rdx + (MachineState::COUNTERS_OFFSET as i32) + 64], xmm12
+        )
+    };
+}
+
+macro_rules! reload_counters {
+    ($ops:ident) => {
+        dynasm!($ops
+            ; movdqa xmm8, [rdx + (MachineState::COUNTERS_OFFSET as i32) + 0]
+            ; movdqa xmm9, [rdx + (MachineState::COUNTERS_OFFSET as i32) + 16]
+            ; movdqa xmm10, [rdx + (MachineState::COUNTERS_OFFSET as i32) + 32]
+            ; movdqa xmm11, [rdx + (MachineState::COUNTERS_OFFSET as i32) + 48]
+            ; movdqa xmm12, [rdx + (MachineState::COUNTERS_OFFSET as i32) + 64]
+        )
+    };
+}
+
 macro_rules! receive_trace {
     ($ops:ident, $recv:expr) => {
         dynasm!($ops
@@ -98,6 +129,7 @@ macro_rules! receive_trace {
             // we only call this function after executing the opcode in full,
             // so we do not care about rax (for stores), rdx (for loads) or rcx (scratch)
             ;; before_call!($ops)
+            ;; spill_counters!($ops) // make the live counters visible to the snapshotter
             // ; push rax
             // ; push rcx
             ; push rdx
@@ -108,6 +140,7 @@ macro_rules! receive_trace {
             ; call rax
             ; pop rdx
             ;; after_call!($ops) // actual structure is 8 bytes above RSP
+            ;; reload_counters!($ops) // the snapshotter call clobbered caller-saved xmm8..=xmm12
             // and in RAX we expect the return value, that is a NEW pointer to the scratch space if needed
             ; mov rdi, rax
             ; mov r9, [rdi + (TraceChunk::LEN_OFFSET as i32)] // update the counter from what our handler said
@@ -128,6 +161,7 @@ macro_rules! quit {
             ; mov rdx, rsp // put MachineState into RDX
             ; mov [rdi + (TraceChunk::LEN_OFFSET as i32)], r9 // write length
             ;; before_call!($ops)
+            ;; spill_counters!($ops) // make the live counters visible in the final state
             ; push rdx
             ; mov rax, QWORD ($recv as *const ()).addr() as usize as isize as i64
             ; mov rsi, rdi // second argument is our trace chunk
@@ -189,6 +223,11 @@ macro_rules! save_machine_state {
 
             // put current timestamp (without assumptions about mod 4)
             ; mov [rdx + (MachineState::TIMESTAMP_OFFSET as i32)], r8
+            // NOTE: the circuit-family counters (xmm8..=xmm12) are NOT spilled here.
+            // External callees reached through before_call! (delegations, non-determinism)
+            // do not read or modify counters, and do not clobber xmm8..=xmm12, so the live
+            // values survive the call. Counters are spilled only at snapshot boundaries
+            // (see `spill_counters!` in `receive_trace!`/`quit!`).
             // NOTE: the flattened non-determinism responses pointer lives directly in the
             // `MachineState` field, which is plain memory and is therefore preserved across
             // the call without any explicit save/restore here.
@@ -232,6 +271,8 @@ macro_rules! update_machine_state_post_call {
             ; movdqu xmm5, [rdx + 80]
             ; movdqu xmm6, [rdx + 96]
             ; movdqu xmm7, [rdx + 112]
+            // NOTE: circuit-family counters (xmm8..=xmm12) are not reloaded here; they are
+            // not spilled by the matching save_machine_state! and survive the call.
             // NOTE: the flattened non-determinism responses pointer is kept in its own
             // `MachineState` field (plain memory), so there is nothing to restore here.
         )
@@ -462,18 +503,35 @@ macro_rules! check_to_save_trace {
     };
 }
 
+// Circuit-family counters are kept in vector registers xmm8..=xmm12 (two u64 lanes
+// each, covering counters[0..10]) instead of in memory, so an increment is a `paddq`
+// on the vector-ALU ports (p0/1/5) rather than a read-modify-write store on the single
+// store port (p4) — the measured bottleneck. They are spilled to / reloaded from the
+// MachineState `counters` array in `save_machine_state!`/`after_call!`, so snapshots and
+// the final state still observe the correct cumulative values. (Legacy-SSE `paddq` keeps
+// us off the AVX/SSE transition penalty, matching the existing pextrd/pinsrd/movdqu code.)
 fn record_circuit_type(ops: &mut x64::Assembler, circuit_type: CounterType, by: u16) {
     assert!(by > 0);
     let x = circuit_type as u8;
+    let grp = 8 + x / 2; // xmm8..=xmm12
+    let lane = x % 2; // qword lane within the register
 
     if by == 1 {
-        dynasm!(ops
-            ; inc QWORD [rsp + 8 * (x as i32) + (MachineState::COUNTERS_OFFSET as i32)]
-        );
+        if lane == 0 {
+            dynasm!(ops ; paddq Rx(grp), [->cve_one_q0]);
+        } else {
+            dynasm!(ops ; paddq Rx(grp), [->cve_one_q1]);
+        }
     } else {
+        // Rare (delegations): build `by` at the right qword lane in a scratch xmm.
         dynasm!(ops
-            ; add QWORD [rsp + 8 * (x as i32) + (MachineState::COUNTERS_OFFSET as i32)], by as i32
+            ; mov eax, by as i32
+            ; movd Rx(15), eax
         );
+        if lane == 1 {
+            dynasm!(ops ; pslldq Rx(15), 8);
+        }
+        dynasm!(ops ; paddq Rx(grp), Rx(15));
     }
 }
 
@@ -1752,6 +1810,18 @@ impl<I: ContextImpl> JittedCode<I> {
         dynasm!(ops
             ; ->jump_offsets:
             ; .bytes jump_offsets.into_iter().flat_map(|x| x.to_le_bytes())
+        );
+
+        // 16-byte-aligned one-hot constants for the vectorized counter increments
+        // (`paddq xmm, [->cve_one_qN]`). q0 increments the low qword lane, q1 the high.
+        dynasm!(ops
+            ; .align 16
+            ; ->cve_one_q0:
+            ; .bytes 1u64.to_le_bytes()
+            ; .bytes 0u64.to_le_bytes()
+            ; ->cve_one_q1:
+            ; .bytes 0u64.to_le_bytes()
+            ; .bytes 1u64.to_le_bytes()
         );
 
         let receive_trace_fn = Context::<I>::receive_trace;

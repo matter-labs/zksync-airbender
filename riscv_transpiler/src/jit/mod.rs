@@ -46,10 +46,46 @@ pub const MAX_TRACE_CHUNK_LEN: usize = const {
 
 pub const MAX_NUM_COUNTERS: usize = 16;
 
-// Rustdoc can hit query cycles when downstream crates expose inline
-// `[u64; MAX_NUM_COUNTERS]` bounds in public APIs. Naming the counter payload
-// keeps the machine layout intact while giving those APIs a stable alias.
-pub type MachineCounters = [u64; MAX_NUM_COUNTERS];
+// Circuit-family counters. These are kept live in vector registers (xmm8..=xmm12)
+// during JITted execution and spilled to / reloaded from this array with aligned
+// 128-bit moves (movdqa). The explicit `align(16)` guarantees this array's address
+// is 16-byte aligned regardless of surrounding `MachineState` layout changes, which
+// is required for the aligned vector spill to be correct (an unaligned movdqa #GPs).
+#[repr(C, align(16))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MachineCounters {
+    pub values: [u64; MAX_NUM_COUNTERS],
+}
+
+impl MachineCounters {
+    pub const fn new() -> Self {
+        Self {
+            values: [0; MAX_NUM_COUNTERS],
+        }
+    }
+}
+
+impl Default for MachineCounters {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// Index by counter slot (e.g. `state.counters[CounterType::MemWord as usize]`).
+impl core::ops::Index<usize> for MachineCounters {
+    type Output = u64;
+    #[inline(always)]
+    fn index(&self, idx: usize) -> &u64 {
+        &self.values[idx]
+    }
+}
+
+impl core::ops::IndexMut<usize> for MachineCounters {
+    #[inline(always)]
+    fn index_mut(&mut self, idx: usize) -> &mut u64 {
+        &mut self.values[idx]
+    }
+}
 
 const _: () = const {
     assert!(MAX_NUM_COUNTERS >= CounterType::FormalEnd as u8 as usize);
@@ -110,7 +146,7 @@ impl MachineState {
         Self {
             registers: [0; 32],
             register_timestamps: [0; 32],
-            counters: [0; MAX_NUM_COUNTERS],
+            counters: MachineCounters::new(),
             pc: 0,
             timestamp: INITIAL_TIMESTAMP,
             context_ptr: core::ptr::dangling_mut(),
