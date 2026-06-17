@@ -6,3 +6,6 @@ pub use field_infer::*;
 
 pub mod arena;
 pub use arena::*;
+
+pub mod eval;
+pub use eval::*;
