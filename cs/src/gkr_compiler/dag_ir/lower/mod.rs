@@ -37,6 +37,7 @@ mod arithmetic;
 mod constraint;
 mod lookup;
 mod memory;
+mod util;
 
 use std::collections::{BTreeMap, HashMap};
 

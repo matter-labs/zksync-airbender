@@ -22,25 +22,11 @@ use super::super::{
     ArenaBuilder, ChallengeKey, ChallengeRef, ChallengePower, ExprId, Root, RootId,
     RootOrigin, RootSlot, SourceKind,
 };
-use super::{map_address, LayerOut, RootGroup};
-use crate::definitions::GKRAddress;
+use super::{LayerOut, RootGroup};
+use super::util::{apply_coeff, const_expr, read_expr, sum_terms};
 use crate::gkr_compiler::{
     NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldMaxQuadraticGKRRelation,
 };
-
-// ── Inline helpers (mirror arithmetic.rs surface to keep arithmetic.rs self-contained) ──
-
-/// Intern `Expr::Source(map_address(addr))`.
-fn read_expr(arena: &mut ArenaBuilder, addr: GKRAddress) -> ExprId {
-    let src = arena.intern_source(map_address(addr));
-    arena.source_expr(src)
-}
-
-/// Intern `Expr::Source(Constant { value })`.
-fn const_expr(arena: &mut ArenaBuilder, value: u32) -> ExprId {
-    let src = arena.intern_source(SourceKind::Constant { value });
-    arena.source_expr(src)
-}
 
 /// Intern `Expr::Source(Challenge { key, power })`.
 fn challenge_expr(arena: &mut ArenaBuilder, key: ChallengeKey, power: ChallengePower) -> ExprId {
@@ -48,25 +34,6 @@ fn challenge_expr(arena: &mut ArenaBuilder, key: ChallengeKey, power: ChallengeP
         reference: ChallengeRef { key, power },
     });
     arena.source_expr(src)
-}
-
-/// `c · term` — omit the coefficient node when `c == 1` (multiplicative identity).
-fn apply_coeff(arena: &mut ArenaBuilder, c: u32, term: ExprId) -> ExprId {
-    if c == 1 {
-        term
-    } else {
-        let cc = const_expr(arena, c);
-        arena.mul(vec![cc, term])
-    }
-}
-
-/// Collapse additive terms: empty → `Constant(0)`, one → that term, many → `Add`.
-fn sum_terms(arena: &mut ArenaBuilder, terms: Vec<ExprId>) -> ExprId {
-    match terms.len() {
-        0 => const_expr(arena, 0),
-        1 => terms[0],
-        _ => arena.add(terms),
-    }
 }
 
 /// Intern `rho^p` where `rho = Challenge(ConstraintAggregation, ·)`.
