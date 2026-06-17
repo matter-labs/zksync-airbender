@@ -809,6 +809,8 @@ pub(crate) mod tests {
             make_test_context(2048, 64)
         };
 
+        const LDE_FACTOR: usize = 4;
+
         // Tests a range of parameters.
         for &log_coeff_size in log_coeff_sizes.iter() {
             for &values_per_leaf in values_per_leafs.iter() {
@@ -817,7 +819,7 @@ pub(crate) mod tests {
                 let cpu = cpu_extension_oracle_from_monomial_form(
                     &monomial_coeffs,
                     &twiddles,
-                    4,
+                    LDE_FACTOR,
                     values_per_leaf,
                     4,
                     transform_leaves_to_multilinear_coeffs,
@@ -825,7 +827,7 @@ pub(crate) mod tests {
                 );
                 let gpu = GpuWhirExtensionOracle::from_monomial_coeffs(
                     &monomial_coeffs,
-                    4,
+                    LDE_FACTOR,
                     values_per_leaf,
                     4,
                     transform_leaves_to_multilinear_coeffs,
@@ -833,7 +835,7 @@ pub(crate) mod tests {
                 )
                 .unwrap();
 
-                for coset_index in 0..4 {
+                for coset_index in 0..LDE_FACTOR {
                     // helpful for debugging
                     // let gpu_results = gpu.copy_coset_values(coset_index, &context);
                     // let cpu_results = cpu.cosets[coset_index].values_normal_order.column.to_vec();

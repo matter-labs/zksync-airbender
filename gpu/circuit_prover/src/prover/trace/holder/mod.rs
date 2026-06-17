@@ -30,13 +30,10 @@ use crate::primitives::device_structures::DeviceMatrix;
 use crate::primitives::device_structures::{
     DeviceMatrixChunk, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl,
 };
-use crate::primitives::field::{BF, E4};
+use crate::primitives::field::BF;
 use crate::prover::ProverContext;
-use crate::upstream::FieldExtension;
 
 pub(crate) const PARTIAL_TREE_REDUCTION_LAYERS: u32 = crate::primitives::utils::LOG_WARP_SIZE;
-
-const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 
 #[derive(Copy, Clone)]
 pub(crate) enum TreesCacheMode {
@@ -1321,6 +1318,7 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
         None
     };
 
+    let total_cosets = 1 << natural_log_lde_factor;
     let l2_bytes = device_properties.l2_cache_size_bytes;
     let single_bf_col_bytes = std::mem::size_of::<BF>() << log_trace_len;
     let single_coset_bytes = src_cols_per_coset * single_bf_col_bytes;
@@ -1332,19 +1330,22 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
             nearest.next_power_of_two() >> 1
         }
     } else {
-        1
+        // don't bother with chunking
+        total_cosets
     };
-    let total_cosets = 1 << natural_log_lde_factor;
     if total_cosets > cosets_in_tile_chunk {
         assert_eq!(total_cosets % cosets_in_tile_chunk, 0);
     }
+
     let mut ntt_output_matrix = DeviceMatrixMut::new(ntt_output, trace_len);
+
     for coset_index_base in (0..total_cosets).step_by(cosets_in_tile_chunk) {
         let cosets_in_tile =
             std::cmp::min(cosets_in_tile_chunk, total_cosets - coset_index_base);
+        // The NTT and hashing APIs don't internally apply an offset for coset_index_base,
+        // so for them we have to manually select the start in ntt_output.
+        let offset = src_cols_per_coset * trace_len * coset_index_base;
         let scratch_opt = d_scratch.as_mut().map(|s| &mut s[..]);
-        // The NTT API does not internally apply an offset for coset_index_base.
-        let offset = EXT4_DEGREE * trace_len * coset_index_base;
         bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range(
             inputs_matrix,
             &mut (ntt_output_matrix.slice_mut())[offset..],
@@ -1352,7 +1353,7 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
             natural_log_lde_factor as usize,
             cosets_in_tile,
             coset_index_base,
-            EXT4_DEGREE,
+            src_cols_per_coset,
             false,
             ntt_ctx,
             scratch_opt,
@@ -1372,7 +1373,7 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
             )?;
         }
         crate::ops::blake2s::launch_leaves_kernel_from_ntt_multi_coset(
-            ntt_output_matrix.slice(),
+            &(ntt_output_matrix.slice())[offset..],
             leaves,
             log_values_per_leaf,
             src_cols_per_coset as u32,
@@ -1384,22 +1385,6 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
             stream,
         )?;
     }
-    // } else {
-    //     let coset_index_base = 0;
-    //     let cosets_in_tile = 1usize << natural_log_lde_factor;
-    //     crate::ops::blake2s::launch_leaves_kernel_from_ntt_multi_coset(
-    //         ntt_output,
-    //         leaves,
-    //         log_values_per_leaf,
-    //         src_cols_per_coset as u32,
-    //         natural_log_lde_factor,
-    //         coset_index_base,
-    //         cosets_in_tile,
-    //         packed_leaf_count,
-    //         trace_len as u32,
-    //         stream,
-    //     )?;
-    // }
 
     // Single-tree node layers: build_merkle_tree_nodes operates on a flat
     // `[leaves | nodes]` slab. `layers_count - 1` because the leaf layer is
