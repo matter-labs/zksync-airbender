@@ -41,7 +41,6 @@ use crate::definitions::GKRAddress;
 use super::super::{
     ArenaBuilder, ChallengeKey, ChallengePower, ChallengeRef, ExprId, LookupValueKind, SourceKind,
 };
-use super::map_address;
 
 /// Range-check single-column lookups with this width resolve a `RangeCheck16Index`;
 /// any other width is a timestamp index.
@@ -71,9 +70,12 @@ fn alpha_pow(arena: &mut ArenaBuilder, j: u32) -> ExprId {
     arena.source_expr(src)
 }
 
-/// `Read(map_address(addr))` — for materialized / cached / setup operands.
+/// `Read`/`Prior` of `addr` — for materialized / cached / setup operands.
+///
+/// A same-layer cache address aliases its materializing root via `Prior`; see
+/// [`super::util::read_source`].
 pub(super) fn read(arena: &mut ArenaBuilder, addr: GKRAddress) -> ExprId {
-    let src = arena.intern_source(map_address(addr));
+    let src = arena.intern_source(super::util::read_source(arena, addr));
     arena.source_expr(src)
 }
 

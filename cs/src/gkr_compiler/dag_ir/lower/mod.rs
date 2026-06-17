@@ -1,11 +1,27 @@
 //! DAG-IR generator: lowers a compiled `GKRCircuitArtifact` into a `DagCircuit`.
 //!
 //! # Driver
-//! For each `GKRLayerDescription`, the per-layer driver iterates `layer.gates`
-//! THEN `layer.gates_with_external_connections`. This order is protocol
-//! significant — it matches the retired `assign_batch_powers` order in the
-//! codegen IR — so claim-bearing roots are emitted in the same sequence the
+//! For each `GKRLayerDescription`, the per-layer driver first materializes
+//! `layer.cached_relations` into `Cache`-sink `Output` roots, then iterates
+//! `layer.gates` THEN `layer.gates_with_external_connections`. The gate order is
+//! protocol significant — it matches the retired `assign_batch_powers` order in
+//! the codegen IR — so claim-bearing roots are emitted in the same sequence the
 //! sumcheck batching expects.
+//!
+//! # Caches (materialization-only roots)
+//! Each `(addr, NoFieldGKRCacheRelation)` lowers via [`lower_cache`] to a
+//! `Cache{layer,offset}`-sink `Output` root using the same per-variant builder a
+//! gate would use (single-column lookup → `Base`; vectorized lookup / vectorized
+//! setup / memory tuple → `Ext`). Cache roots are NOT claim-bearing: they record
+//! no `RootOrigin` and are excluded from the `BatchingOrder` (they consume no
+//! batching power), matching the source artifact where caches are computed per
+//! layer but excluded from batch-power assignment. Caches are materialized FIRST
+//! so the cache-address → `RootId` alias map is populated; a subsequent gate
+//! input that reads a same-layer cache address then resolves to
+//! `SourceKind::Prior{ id }` (the materializing root) instead of a
+//! `Read(CacheOutput)` compatibility read — see [`util::read_source`]. A genuine
+//! external/compat cache read (no in-layer materializer) still falls back to
+//! `Read(CacheOutput)`.
 //!
 //! # Staged lowering
 //! The arithmetic/copy family (`LinearBaseFieldRelation`, `MaxQuadratic`,
@@ -39,12 +55,14 @@ mod lookup;
 mod memory;
 mod util;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use field::PrimeField;
 
 use crate::definitions::{GKRAddress, VirtualSetupPoly};
-use crate::gkr_compiler::{GKRCircuitArtifact, GateArtifacts, NoFieldGKRRelation};
+use crate::gkr_compiler::{
+    GKRCircuitArtifact, GateArtifacts, NoFieldGKRCacheRelation, NoFieldGKRRelation,
+};
 
 use super::{
     ArenaBuilder, BatchingOrder, DagCircuit, DagGlobals, DagLayer, ExprId, FieldKind, ReadPlace,
@@ -58,8 +76,10 @@ use super::{
 /// cross-layer `Read{LayerOutput|CacheOutput}` reads; `VirtualSetup` maps the
 /// `VirtualSetupPoly` variant to its `VirtualSetupKind`.
 ///
-/// (Prior-aliasing of cache reads is deferred to Task 11; `CacheOutput` is the
-/// correct placeholder until then.)
+/// This is the field-agnostic fallback. A `GKRAddress::Cached` materialized as a
+/// cache root in the current layer is aliased to its root via `Prior` BEFORE this
+/// fallback runs (see [`util::read_source`]); the `CacheOutput` arm here is the
+/// genuine external/compat read for caches with no in-layer materializer.
 pub(crate) fn map_address(addr: GKRAddress) -> SourceKind {
     match addr {
         GKRAddress::BaseLayerWitness(column) => SourceKind::Read {
@@ -167,6 +187,41 @@ impl LayerOut {
         Ok(())
     }
 
+    /// Emit one materialization-only cache `Output` root for `expr`, writing to
+    /// the `Cache{layer,offset}` sink at `addr` with `field`, and return its
+    /// `RootId`.
+    ///
+    /// Cache roots are NOT claim-bearing: they record NO `RootOrigin` and are NOT
+    /// added to the batching order. They exist so same-layer consumers can alias
+    /// them through `Prior` (see the module + design docs).
+    fn emit_cache(
+        &mut self,
+        expr: ExprId,
+        addr: GKRAddress,
+        field: FieldKind,
+    ) -> Result<RootId, String> {
+        let (layer, offset) = match addr {
+            GKRAddress::Cached { layer, offset } => (layer, offset),
+            other => {
+                return Err(format!(
+                    "dag_ir: cache relation keyed by non-cache address {:?}",
+                    other
+                ));
+            }
+        };
+        let sink_id = SinkId(self.sinks.len() as u32);
+        self.sinks.push(SinkInfo {
+            kind: SinkKind::Cache { layer, offset },
+            field,
+        });
+        let root_id = RootId(self.roots.len() as u32);
+        self.roots.push(Root::Output {
+            expr,
+            sink: sink_id,
+        });
+        Ok(root_id)
+    }
+
     /// Emit TWO adjacent `Output` roots — num (slot `Output(0)`) then den (slot
     /// `Output(1)`) — for a two-output lookup gate, writing to `output[0]` and
     /// `output[1]` with `field`. The roots are adjacent in emission order so they
@@ -237,8 +292,9 @@ fn lower_relation(
         R::CopyInExtensionField { input, output } => {
             // The input is read in the extension field; record that contextual
             // field for any read that is not base-storage-implied so later
-            // validators can resolve it.
-            if let SourceKind::Read { place } = map_address(*input) {
+            // validators can resolve it. A same-layer cache input aliases via
+            // `Prior` (no `Read` place to tag), so guard on the resolved source.
+            if let SourceKind::Read { place } = util::read_source(arena, *input) {
                 out.read_field.insert(place, FieldKind::Ext);
             }
             let (expr, field) = arithmetic::lower_copy(arena, *input, FieldKind::Ext);
@@ -483,11 +539,52 @@ fn lower_relation(
     }
 }
 
+/// Materialize one cache relation into a `Cache`-sink `Output` root.
+///
+/// The expr is built by reusing the matching gate builder per
+/// [`NoFieldGKRCacheRelation`] variant (the same arithmetic the codegen IR's
+/// `lower_cache` used), and the sink field follows the cache VALUE:
+///
+/// - `SingleColumnLookup` → [`lookup::single_column_lookup`], `Base` (a base
+///   lincomb resolved to a single base lookup column).
+/// - `VectorizedLookup` → [`lookup::folded_lookup`], `Ext` (alpha-folded).
+/// - `VectorizedLookupSetup` → [`lookup::folded_setup`], `Ext` (alpha-folded
+///   setup reads).
+/// - `MemoryTuple` → [`memory::lower_memory_tuple`], `Ext` (challenge-folded).
+///
+/// Returns the materialized root's `RootId`. The root is materialization-only:
+/// it carries no `RootOrigin` and is excluded from the batching order.
+fn lower_cache(
+    arena: &mut ArenaBuilder,
+    out: &mut LayerOut,
+    addr: GKRAddress,
+    rel: &NoFieldGKRCacheRelation,
+    minus_one: u32,
+) -> Result<RootId, String> {
+    use NoFieldGKRCacheRelation as C;
+    let (expr, field) = match rel {
+        C::SingleColumnLookup {
+            relation,
+            range_check_width,
+        } => {
+            let expr =
+                lookup::single_column_lookup(arena, relation, *range_check_width as u32);
+            (expr, FieldKind::Base)
+        }
+        C::VectorizedLookup(vl) => (lookup::folded_lookup(arena, vl), FieldKind::Ext),
+        C::VectorizedLookupSetup(cols) => (lookup::folded_setup(arena, cols), FieldKind::Ext),
+        C::MemoryTuple(mt) => (memory::lower_memory_tuple(arena, mt, minus_one)?, FieldKind::Ext),
+    };
+    out.emit_cache(expr, addr, field)
+}
+
 /// Lower one `GKRLayerDescription` into a `DagLayer`.
 ///
-/// Gates are lowered in protocol order: `gates` first, then
-/// `gates_with_external_connections`. Every emitted `Output` root is claim
-/// bearing and therefore listed in `batching` in emission order.
+/// Caches are materialized FIRST (so same-layer cache reads can alias them via
+/// `Prior`), then gates in protocol order: `gates` first, then
+/// `gates_with_external_connections`. Every emitted gate `Output`/`Constraint`
+/// root is claim bearing and therefore listed in `batching` in emission order;
+/// the materialization-only cache roots are excluded.
 fn lower_layer<F: PrimeField + PartialEq>(
     artifact: &GKRCircuitArtifact<F>,
     layer_index: usize,
@@ -503,6 +600,20 @@ fn lower_layer<F: PrimeField + PartialEq>(
     // Circuit globals the inits/teardowns top-bits constant resolves from.
     let trace_len = artifact.trace_len;
     let inits_word_bits = artifact.memory_layout.inits_and_teardowns_word_bits;
+
+    // ── Materialize caches FIRST ─────────────────────────────────────────────
+    // Cache roots occupy the leading RootId slots so the cache-address → RootId
+    // alias map is populated before any gate is lowered. They are
+    // materialization-only: no origin, excluded from batching.
+    let mut cache_roots: BTreeSet<RootId> = BTreeSet::new();
+    let mut cache_aliases: HashMap<GKRAddress, RootId> = HashMap::new();
+    for (addr, rel) in layer.cached_relations.iter() {
+        let root_id = lower_cache(&mut arena, &mut out, *addr, rel, minus_one)?;
+        cache_roots.insert(root_id);
+        cache_aliases.insert(*addr, root_id);
+    }
+    // From here on, a same-layer cache read aliases its materializing root.
+    arena.set_cache_aliases(cache_aliases);
 
     let lower_group = |arena: &mut ArenaBuilder,
                        out: &mut LayerOut,
@@ -532,9 +643,14 @@ fn lower_layer<F: PrimeField + PartialEq>(
         &layer.gates_with_external_connections,
     )?;
 
-    // Every Output root emitted here is claim-bearing; batch them in emission order.
+    // Batching order = the claim-bearing roots only (every non-cache root), in
+    // emission order (caches, then gates → gates_external). Cache roots consume
+    // no batching power, so they are skipped here.
     let batching = BatchingOrder {
-        roots: (0..out.roots.len() as u32).map(RootId).collect(),
+        roots: (0..out.roots.len() as u32)
+            .map(RootId)
+            .filter(|id| !cache_roots.contains(id))
+            .collect(),
     };
 
     Ok(DagLayer {
@@ -1731,5 +1847,154 @@ mod tests {
                 "{name} must lower without Err"
             );
         }
+    }
+
+    // ── Caches + batching order (Task 11): whole add_sub artifact ─────────────
+
+    use crate::gkr_compiler::test_support::build_add_sub_artifact;
+
+    /// A root is a `Cache`-sink `Output` root.
+    fn is_cache_root(layer: &DagLayer, root: &Root) -> bool {
+        matches!(root, Root::Output { sink, .. }
+            if matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. }))
+    }
+
+    /// Count of claim-bearing roots: every non-`Cache` `Output` plus every `Constraint`.
+    fn claim_bearing_count(layer: &DagLayer) -> usize {
+        layer
+            .roots
+            .iter()
+            .filter(|r| match r {
+                Root::Output { sink, .. } => {
+                    !matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. })
+                }
+                Root::Constraint { .. } => true,
+            })
+            .count()
+    }
+
+    /// The whole add_sub artifact (the cache variant) lowers without `Err`.
+    #[test]
+    fn add_sub_artifact_lowers_without_err() {
+        let artifact = build_add_sub_artifact();
+        assert!(
+            lower_dag(&artifact).is_ok(),
+            "the whole add_sub artifact must lower without Err"
+        );
+    }
+
+    /// The cache variant must actually contain caches; otherwise the cache tests
+    /// below vacuously pass. (Guards against a fixture regression.)
+    #[test]
+    fn add_sub_artifact_has_caches() {
+        let artifact = build_add_sub_artifact();
+        let total_caches: usize = artifact
+            .layers
+            .iter()
+            .map(|l| l.cached_relations.len())
+            .sum();
+        assert!(
+            total_caches > 0,
+            "the cache variant must materialize at least one cache"
+        );
+    }
+
+    /// Cache roots: `Cache` sink, ABSENT from `batching.roots` and `origins`.
+    #[test]
+    fn cache_roots_have_cache_sinks_and_no_beta_no_origin() {
+        let artifact = build_add_sub_artifact();
+        let circuit = lower_dag(&artifact).expect("lower_dag must succeed");
+
+        let mut saw_cache_root = false;
+        for layer in &circuit.layers {
+            // The number of cache roots equals the number of cached relations in
+            // the source layer (each materializes exactly one root).
+            let n_cache_roots = layer
+                .roots
+                .iter()
+                .filter(|r| is_cache_root(layer, r))
+                .count();
+
+            for (i, root) in layer.roots.iter().enumerate() {
+                let id = RootId(i as u32);
+                if is_cache_root(layer, root) {
+                    saw_cache_root = true;
+                    // Materialization-only: no beta power, no origin.
+                    assert!(
+                        !layer.batching.roots.contains(&id),
+                        "cache root {id:?} must be absent from the batching order"
+                    );
+                    assert!(
+                        !layer.origins.contains_key(&id),
+                        "cache root {id:?} must have no RootOrigin"
+                    );
+                }
+            }
+
+            // Cache roots occupy the LEADING RootId slots (materialized first).
+            for i in 0..n_cache_roots {
+                assert!(
+                    is_cache_root(layer, &layer.roots[i]),
+                    "cache roots must be the leading roots in the layer"
+                );
+            }
+        }
+        assert!(saw_cache_root, "expected at least one cache root across layers");
+    }
+
+    /// `batching.roots.len()` equals the claim-bearing root count per layer.
+    #[test]
+    fn batching_len_equals_claim_bearing_root_count() {
+        let artifact = build_add_sub_artifact();
+        let circuit = lower_dag(&artifact).expect("lower_dag must succeed");
+        for layer in &circuit.layers {
+            assert_eq!(
+                layer.batching.roots.len(),
+                claim_bearing_count(layer),
+                "batching order length must equal the claim-bearing root count"
+            );
+            // The batching order is exactly the non-cache roots in emission order.
+            let expected: Vec<RootId> = (0..layer.roots.len() as u32)
+                .map(RootId)
+                .filter(|id| !is_cache_root(layer, &layer.roots[id.0 as usize]))
+                .collect();
+            assert_eq!(
+                layer.batching.roots, expected,
+                "batching order must be the non-cache roots in emission order"
+            );
+            // Every batched root carries a RootOrigin; cache roots never do.
+            for id in &layer.batching.roots {
+                assert!(
+                    layer.origins.contains_key(id),
+                    "every claim-bearing root must have a RootOrigin"
+                );
+            }
+        }
+    }
+
+    /// At least one gate input resolves to a `Prior` aliasing a cache root: the
+    /// add_sub denominator caches are consumed by same-layer product gates.
+    #[test]
+    fn a_gate_reads_a_cache_through_prior() {
+        let artifact = build_add_sub_artifact();
+        let circuit = lower_dag(&artifact).expect("lower_dag must succeed");
+
+        let mut found_prior_to_cache = false;
+        for layer in &circuit.layers {
+            for source in &layer.sources {
+                if let SourceKind::Prior { id } = &source.kind {
+                    // The Prior must resolve to a real root in THIS layer, and
+                    // (for add_sub) that root is a materialization-only cache root.
+                    let root = &layer.roots[id.0 as usize];
+                    if is_cache_root(layer, root) {
+                        found_prior_to_cache = true;
+                    }
+                }
+            }
+        }
+        assert!(
+            found_prior_to_cache,
+            "a same-layer cache read must alias the cache root via Prior"
+        );
     }
 }

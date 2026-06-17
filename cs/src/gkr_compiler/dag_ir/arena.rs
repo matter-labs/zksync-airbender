@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use super::{Expr, ExprId, SourceId, SourceInfo, SourceKind};
+use crate::definitions::GKRAddress;
+
+use super::{Expr, ExprId, RootId, SourceId, SourceInfo, SourceKind};
 
 // ── ArenaBuilder ─────────────────────────────────────────────────────────────
 
@@ -9,12 +11,20 @@ use super::{Expr, ExprId, SourceId, SourceInfo, SourceKind};
 /// `intern_source` deduplicates `SourceKind` values.
 /// `add` / `mul` flatten nested same-op children, sort operands by `ExprId`
 /// (ascending), keep repeated operands, and then intern the canonical `Expr`.
+///
+/// `cache_aliases` maps each `GKRAddress::Cached` address materialized as a
+/// cache root in THIS layer to that root's `RootId`. The lowering read helpers
+/// consult it via [`ArenaBuilder::cache_alias`] so a same-layer cache read
+/// becomes `SourceKind::Prior` instead of a `Read(CacheOutput)` compatibility
+/// read (see the `lower` module docs and the design doc's "Roots" section).
 pub struct ArenaBuilder {
     sources: Vec<SourceInfo>,
     source_map: HashMap<SourceKind, SourceId>,
 
     exprs: Vec<Expr>,
     expr_map: HashMap<Expr, ExprId>,
+
+    cache_aliases: HashMap<GKRAddress, RootId>,
 }
 
 impl ArenaBuilder {
@@ -24,7 +34,23 @@ impl ArenaBuilder {
             source_map: HashMap::new(),
             exprs: Vec::new(),
             expr_map: HashMap::new(),
+            cache_aliases: HashMap::new(),
         }
+    }
+
+    /// Register the in-layer cache-address → cache-root alias map.
+    ///
+    /// Called once, after all cache roots are materialized and before any gate
+    /// is lowered, so subsequent reads of a same-layer cache address alias to
+    /// the materializing root through `Prior`.
+    pub fn set_cache_aliases(&mut self, aliases: HashMap<GKRAddress, RootId>) {
+        self.cache_aliases = aliases;
+    }
+
+    /// The cache root aliasing `addr`, if `addr` was materialized as a cache
+    /// root in THIS layer. `None` for any non-cache or external/compat address.
+    pub fn cache_alias(&self, addr: GKRAddress) -> Option<RootId> {
+        self.cache_aliases.get(&addr).copied()
     }
 
     /// Intern a `SourceKind`, returning an existing `SourceId` if an identical
