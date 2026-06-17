@@ -263,10 +263,13 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
         // ── Per-source field-kind invariants ─────────────────────────────────
         check_source_field_kinds(layer, li)?;
 
-        // ── Acyclicity over the full dependency graph ─────────────────────────
-        check_acyclic(layer, li)?;
-
-        // ── Prior resolves to a declared root ─────────────────────────────────
+        // ── Prior resolves to a declared Output root ──────────────────────────
+        // This MUST run before `check_acyclic` so that the DFS `successors`
+        // helper can safely index `layer.roots[id.0 as usize]` without
+        // panicking on an out-of-range id.  A `Prior` pointing at a
+        // `Constraint` root is also rejected here: `source_field` in
+        // `field_infer.rs` hits `unreachable!()` on that case, so we gate it
+        // cleanly before the field-inference pass ever runs.
         for (si, src) in layer.sources.iter().enumerate() {
             if let SourceKind::Prior { id } = &src.kind {
                 if id.0 as usize >= layer.roots.len() {
@@ -275,8 +278,20 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
                         id
                     ));
                 }
+                // Per the IR contract, Prior is only valid against a
+                // materialization-only Output root (never a Constraint root).
+                if !matches!(layer.roots[id.0 as usize], Root::Output { .. }) {
+                    return Err(format!(
+                        "layer {li} source {si}: Prior {:?} must reference an Output root, \
+                         not a Constraint root",
+                        id
+                    ));
+                }
             }
         }
+
+        // ── Acyclicity over the full dependency graph ─────────────────────────
+        check_acyclic(layer, li)?;
 
         // ── Batching-membership: claim-bearing exactly once, caches absent ────
         // Classify each root: cache-sink Output = materialization-only; every
@@ -384,6 +399,24 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
 /// FNV-1a hash over the operator shape + source kinds. Used to compare two
 /// constraint roots beyond their `RootOrigin` — kind alone is too weak, since two
 /// constraint roots can swap while both stay kind `Constraint` (review 2/M2).
+///
+/// # Forward-looking guard (spec §7)
+///
+/// The inequality branch in `check_batching_parity` (where `prev != digest`) is
+/// currently unreachable: the lowering emits exactly one `Root::Constraint` per
+/// relation, so every `(group, relation_index)` key in
+/// `constraint_digest_by_origin` is unique within a layer — no two batching
+/// positions can share the same origin key.
+///
+/// The digest is intentionally kept as a **forward-looking guard mandated by
+/// spec §7** ("constraint roots are compared by `RootOrigin` plus a
+/// lowered-expression digest").  If a future lowering ever emits multiple
+/// constraint roots for the same relation, the digest would catch a swap where
+/// both share an origin but carry distinct expr subtrees.
+///
+/// The *actual* anti-swap protection that spec §7 requires today is delivered
+/// by the position-by-position `RootOrigin` comparison that precedes the digest
+/// check.  Do not remove the digest; it is a spec requirement, not dead code.
 fn expr_digest(id: ExprId, layer: &DagLayer) -> u64 {
     fn fnv(mut h: u64, byte: u8) -> u64 {
         h ^= byte as u64;
@@ -1216,5 +1249,122 @@ mod tests {
         validate(&dag).expect("add_sub (no caches) DAG must validate");
         check_batching_parity::<ConcreteField>(&dag, &retired)
             .expect("add_sub (no caches) batching parity must hold");
+    }
+
+    // ── Finding 1: validate must return Err (not panic) on malformed Priors ──
+
+    /// An out-of-range Prior id must produce `Err`, never an index-out-of-bounds
+    /// panic.  Previously `check_acyclic` indexed `layer.roots[id.0 as usize]`
+    /// before the bounds check ran, causing a panic.
+    #[test]
+    fn rejects_out_of_range_prior() {
+        let mut layer = good_single_layer();
+        // Inject a second source whose Prior id (99) is well beyond roots.len() (1).
+        layer.sources.push(SourceInfo {
+            kind: SourceKind::Prior { id: RootId(99) },
+        });
+        // Add a second expr and a second sink so the batching/field checks don't
+        // fire first for an unrelated reason.
+        layer.exprs.push(Expr::Source(SourceId(1)));
+        layer.sinks.push(SinkInfo {
+            kind: SinkKind::Inner { layer: 0, offset: 1 },
+            field: FieldKind::Base,
+        });
+        // Add a second root pointing at the new expr/sink so the batching order
+        // stays well-formed (claim-bearing root present exactly once).
+        layer.roots.push(Root::Output {
+            expr: ExprId(1),
+            sink: SinkId(1),
+        });
+        layer.batching.roots.push(RootId(1));
+        layer.origins.insert(
+            RootId(1),
+            RootOrigin {
+                group: RootGroup::Gates,
+                relation_index: 1,
+                slot: RootSlot::Output(0),
+            },
+        );
+        let result = validate(&circuit_of(layer));
+        assert!(
+            result.is_err(),
+            "out-of-range Prior must be rejected with Err, not panic"
+        );
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("undeclared root"),
+            "error should mention undeclared root, got: {msg}"
+        );
+    }
+
+    /// A Prior that points at a `Constraint` root (not an `Output` root) must
+    /// produce `Err`.  Previously this reached `source_field` → `unreachable!()`
+    /// → panic.
+    #[test]
+    fn rejects_prior_to_constraint_root() {
+        // Layer:
+        //   root 0: Constraint { expr 0 }          ← the target of the Prior
+        //   root 1: Output { expr 1, sink 0 }       ← claim-bearing
+        //
+        //   source 0: Constant(7)                   ← feeds expr 0
+        //   source 1: Prior { id: RootId(0) }       ← illegal: points at Constraint
+        //   expr 0: Source(SourceId(0))
+        //   expr 1: Source(SourceId(1))             ← the Output root's expr
+        //
+        // The Constraint root has no sink; the Output root sinks to Inner{0,0}.
+        let sources = vec![
+            SourceInfo { kind: SourceKind::Constant { value: 7 } },
+            SourceInfo { kind: SourceKind::Prior { id: RootId(0) } }, // invalid: targets Constraint
+        ];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),
+            Expr::Source(SourceId(1)),
+        ];
+        let sinks = vec![SinkInfo {
+            kind: SinkKind::Inner { layer: 0, offset: 0 },
+            field: FieldKind::Base,
+        }];
+        let roots = vec![
+            Root::Constraint { expr: ExprId(0) },
+            Root::Output { expr: ExprId(1), sink: SinkId(0) },
+        ];
+        let mut origins = BTreeMap::new();
+        // root 0 is a Constraint — claim-bearing; must appear in batching.
+        origins.insert(
+            RootId(0),
+            RootOrigin {
+                group: RootGroup::Gates,
+                relation_index: 0,
+                slot: RootSlot::Constraint(0),
+            },
+        );
+        origins.insert(
+            RootId(1),
+            RootOrigin {
+                group: RootGroup::Gates,
+                relation_index: 1,
+                slot: RootSlot::Output(0),
+            },
+        );
+        let layer = DagLayer {
+            sources,
+            exprs,
+            roots,
+            sinks,
+            batching: BatchingOrder {
+                roots: vec![RootId(0), RootId(1)],
+            },
+            origins,
+        };
+        let result = validate(&circuit_of(layer));
+        assert!(
+            result.is_err(),
+            "Prior pointing at a Constraint root must be rejected with Err, not panic"
+        );
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("Constraint root"),
+            "error should mention Constraint root, got: {msg}"
+        );
     }
 }
