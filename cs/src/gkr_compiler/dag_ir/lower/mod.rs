@@ -41,13 +41,10 @@
 //! inference: Linear / MaxQuadratic / CopyInBaseField → `Base`,
 //! CopyInExtensionField → `Ext`. Deriving it via `source_field`/`expr_field`
 //! would hit the `LayerOutput`/`CacheOutput` cross-layer gap (those reads carry
-//! no field tag), so we never do that here.
-//!
-//! `read_field` records the field of any read whose field is known-from-context
-//! but NOT base-storage-implied — specifically `CopyInExtensionField`'s input,
-//! which is read as `Ext`. The map is threaded through so later passes (Task 12
-//! validators) can resolve cross-layer read fields. For THIS task it is built
-//! but not yet surfaced on `DagCircuit`/`DagLayer` (see the report's concern).
+//! no field tag), so we never do that here. Cross-layer read fields are resolved
+//! by the Task-12 validator, which walks layers in declaration order and reads a
+//! later layer's `Read{LayerOutput|CacheOutput}` field from the producing layer's
+//! sink `FieldKind` — so the generator records no per-read field map of its own.
 
 mod arithmetic;
 mod constraint;
@@ -132,18 +129,11 @@ fn output_sink_kind(addr: GKRAddress) -> Result<SinkKind, String> {
     }
 }
 
-/// Per-layer accumulator: roots, sinks, origins, and the contextual read-field map.
+/// Per-layer accumulator: roots, sinks, and origins.
 struct LayerOut {
     roots: Vec<Root>,
     sinks: Vec<SinkInfo>,
     origins: BTreeMap<RootId, RootOrigin>,
-    /// Fields of reads known-from-context but not base-storage-implied (Ext copies).
-    ///
-    /// Built for downstream passes (Task 12 validators) to resolve cross-layer
-    /// read fields; not yet surfaced on `DagLayer`/`DagCircuit` (see report
-    /// concern), hence `#[allow(dead_code)]` until a consumer reads it.
-    #[allow(dead_code)]
-    read_field: HashMap<ReadPlace, FieldKind>,
 }
 
 impl LayerOut {
@@ -152,7 +142,6 @@ impl LayerOut {
             roots: Vec::new(),
             sinks: Vec::new(),
             origins: BTreeMap::new(),
-            read_field: HashMap::new(),
         }
     }
 
@@ -290,13 +279,9 @@ fn lower_relation(
             out.emit_output(expr, *output, field, group, relation_index)
         }
         R::CopyInExtensionField { input, output } => {
-            // The input is read in the extension field; record that contextual
-            // field for any read that is not base-storage-implied so later
-            // validators can resolve it. A same-layer cache input aliases via
-            // `Prior` (no `Read` place to tag), so guard on the resolved source.
-            if let SourceKind::Read { place } = util::read_source(arena, *input) {
-                out.read_field.insert(place, FieldKind::Ext);
-            }
+            // The input is read in the extension field. The cross-layer read's
+            // `Ext` field is resolved by the Task-12 validator from the producing
+            // layer's sink, so nothing is recorded here.
             let (expr, field) = arithmetic::lower_copy(arena, *input, FieldKind::Ext);
             out.emit_output(expr, *output, field, group, relation_index)
         }

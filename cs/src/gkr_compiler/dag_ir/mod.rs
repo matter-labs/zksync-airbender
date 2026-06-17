@@ -12,3 +12,6 @@ pub use eval::*;
 
 pub mod lower;
 pub use lower::lower_dag;
+
+pub mod validate;
+pub use validate::*;
