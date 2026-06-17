@@ -9,3 +9,6 @@ pub use arena::*;
 
 pub mod eval;
 pub use eval::*;
+
+pub mod lower;
+pub use lower::lower_dag;
