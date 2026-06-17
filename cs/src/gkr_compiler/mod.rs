@@ -41,6 +41,8 @@ mod lookup;
 pub(crate) mod lookup_nodes;
 pub(crate) mod memory_like_grand_product;
 mod range_check_exprs;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 mod utils;
 
 pub use self::compiled_constraint::*;

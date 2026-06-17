@@ -39,6 +39,10 @@ serial_test = "3"
 
 [features]
 compiler = ["blake2s_u32", "fft", "itertools", "derivative", "smallvec", "proc-macro2", "quote", "seq-macro", "super-seq-macro", "serde_json", "bincode", "rayon", "type-map", "layout-rs", "serde_with", "arrayvec", "riscv_transpiler"]
+# Shared GKR test-support fixtures (artifact/relation builders) exposed `pub`
+# so downstream crates (e.g. `prover`) can reuse them in dev-dependencies.
+# The builders use the `compile_*` paths gated by `compiler`, so it pulls in `compiler`.
+test-support = ["compiler"]
 # Will perform witness evaluation in synthesis functions
 debug_evaluate_witness = []
 # When enabled, the crate will print detailed debug logs.

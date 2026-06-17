@@ -39,6 +39,10 @@ bincode = { version = "1.3" }
 criterion = "0.5"
 hex = "*"
 serial_test = "3"
+# Shared GKR test fixtures from `cs`. Cargo unifies this with the existing
+# normal dependency on `cs` for test/dev builds, enabling the `test-support`
+# feature only there.
+cs = { workspace = true, features = ["test-support"] }
 
 [[bench]]
 name = "pow_bench"
