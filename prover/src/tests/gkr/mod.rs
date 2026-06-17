@@ -20,7 +20,9 @@ pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &s
 }
 
 pub(crate) mod codegen_ir_crossval;
+pub(crate) mod dag_ir_differential;
 pub(crate) mod dag_ir_oracle;
+pub(crate) mod dag_ir_reference;
 pub(crate) mod evaluators;
 
 mod family_circuits;
