@@ -15,3 +15,6 @@ pub use lower::lower_dag;
 
 pub mod validate;
 pub use validate::*;
+
+#[cfg(test)]
+mod coverage_tests;
