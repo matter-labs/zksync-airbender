@@ -80,3 +80,20 @@ pub(crate) fn compute_aggregated_key_value_dyn<F: PrimeField, E: FieldExtension<
 
     result
 }
+
+#[cfg(feature = "prover")]
+pub fn read_memory_trace_row<F: PrimeField>(
+    witness: &crate::gkr::witness_gen::family_circuits::GKRMemoryOnlyWitnessTrace<
+        F,
+        impl core::alloc::Allocator + Clone,
+        impl core::alloc::Allocator + Clone,
+    >,
+    row: usize,
+    buffer: &mut Vec<F>,
+) {
+    buffer.clear();
+    for column in witness.column_major_trace.iter() {
+        let value = column[row];
+        buffer.push(value);
+    }
+}

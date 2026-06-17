@@ -1,6 +1,8 @@
 // NOTE: here we need struct definition for external crates, but we will panic in implementations instead
 use super::*;
 use crate::aligned_array::AlignedArray64;
+#[cfg(feature = "blake2_g_function")]
+use crate::aligned_array::A64;
 
 #[cfg(all(
     target_arch = "riscv32",
@@ -10,7 +12,11 @@ compile_error!("multiple features activated for blake delegation");
 
 #[cfg(not(all(
     target_arch = "riscv32",
-    any(feature = "blake2_with_compression", feature = "blake2_g_function")
+    any(
+        feature = "blake2_with_compression",
+        feature = "blake2_g_function",
+        feature = "special_opcodes_extension"
+    )
 )))]
 mod baseline_impl;
 
@@ -19,6 +25,9 @@ mod round_function_delegation_impl;
 
 #[cfg(all(target_arch = "riscv32", feature = "blake2_g_function"))]
 mod mixing_function_delegation_impl;
+
+#[cfg(all(target_arch = "riscv32", feature = "special_opcodes_extension"))]
+mod use_special_opcodes_impl;
 
 // we will pass
 // - mutable ptr to state + extended state (basically - to self),
@@ -31,6 +40,13 @@ mod mixing_function_delegation_impl;
 #[repr(C, align(128))]
 pub struct Blake2RoundFunctionEvaluator {
     pub state: [u32; BLAKE2S_STATE_WIDTH_IN_U32_WORDS], // represents current state
+    #[cfg(all(target_arch = "riscv32", feature = "blake2_g_function"))]
+    _aligner: A64,
+
+    #[cfg(any(
+        all(target_arch = "riscv32", feature = "blake2_with_compression"),
+        all(target_arch = "riscv32", feature = "blake2_g_function")
+    ))]
     pub extended_state: [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS], // represents scratch space for evaluation
     // there is no input buffer, and we will use registers to actually pass control flow flags
     // there will be special buffer for witness to write into, that

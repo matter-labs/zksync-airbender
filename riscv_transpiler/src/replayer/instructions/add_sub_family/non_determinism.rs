@@ -55,7 +55,7 @@ pub(crate) fn nd_read<C: Counters, R: RAM, ND: NonDeterminismCSRSource>(
 #[inline(always)]
 pub(crate) fn nd_write<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {

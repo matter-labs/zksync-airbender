@@ -12,11 +12,11 @@ pub struct ThreadLocalBasedSource;
 
 impl NonDeterminismSource for ThreadLocalBasedSource {
     #[inline(always)]
-    fn read_word() -> u32 {
+    fn read_word(&mut self) -> u32 {
         read_word()
     }
     #[inline(always)]
-    fn read_reduced_field_element(modulus: u32) -> u32 {
+    fn read_reduced_field_element(&mut self, modulus: u32) -> u32 {
         read_field_element(modulus)
     }
 }
@@ -42,6 +42,9 @@ pub fn try_read_word() -> Option<u32> {
 }
 
 fn read_word() -> u32 {
+    #[cfg(feature = "verifier_stats")]
+    non_determinism_source::stats::NDS_STATS
+        .with_borrow_mut(|s| s.read_bytes += core::mem::size_of::<u32>());
     try_read_word().expect("next word from thread local source")
 }
 

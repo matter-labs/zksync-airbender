@@ -11,3 +11,13 @@ categories.workspace = true
 
 [dependencies]
 serde.workspace = true
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+seq-macro = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+tempfile = { workspace = true }
+
+[features]
+verifier_stats = []

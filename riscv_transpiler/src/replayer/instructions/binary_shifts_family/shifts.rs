@@ -3,14 +3,14 @@ use super::*;
 #[inline(always)]
 pub(crate) fn sll<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
     let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
     let rs2_value_to_use = rs2_value.wrapping_add(instr.imm);
-    let mut rd = rs1_value.wrapping_shl(rs2_value_to_use);
+    let rd = rs1_value.wrapping_shl(rs2_value_to_use);
     let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
 
     if tracer.needs_tracing_data_for_circuit_family::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>() {
@@ -37,14 +37,14 @@ pub(crate) fn sll<C: Counters, R: RAM>(
 #[inline(always)]
 pub(crate) fn srl<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
     let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
     let rs2_value_to_use = rs2_value.wrapping_add(instr.imm);
-    let mut rd = rs1_value.wrapping_shr(rs2_value_to_use);
+    let rd = rs1_value.wrapping_shr(rs2_value_to_use);
     let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
 
     if tracer.needs_tracing_data_for_circuit_family::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>() {
@@ -71,14 +71,14 @@ pub(crate) fn srl<C: Counters, R: RAM>(
 #[inline(always)]
 pub(crate) fn sra<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
     let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
     let rs2_value_to_use = rs2_value.wrapping_add(instr.imm);
-    let mut rd = (rs1_value as i32).wrapping_shr(rs2_value_to_use) as u32;
+    let rd = (rs1_value as i32).wrapping_shr(rs2_value_to_use) as u32;
     let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
 
     if tracer.needs_tracing_data_for_circuit_family::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>() {

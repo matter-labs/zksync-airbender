@@ -1,6 +1,6 @@
 use super::*;
 use crate::gkr::prover::{apply_row_wise, GKRExternalChallenges};
-use crate::gkr::sumcheck::access_and_fold::BaseFieldPolySource;
+use crate::gkr::sumcheck::access_and_fold::{BaseFieldPoly, BaseFieldPolySource};
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct GKRInputs {
@@ -210,6 +210,69 @@ pub trait BatchedGKRKernel<F: PrimeField, E: FieldExtension<F> + Field> {
             "Not implemented yet for {:?}",
             core::any::type_name::<Self>()
         );
+    }
+}
+
+pub fn forward_evaluate_single_input_kernel_with_base_inputs<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    const OUT: usize,
+    K: SingleInputTypeBatchSumcheckEvaluationKernel<F, E, OUT>,
+>(
+    kernel: &K,
+    inputs: &GKRInputs,
+    storage: &mut GKRStorage<F, E>,
+    expected_output_layer: usize,
+    trace_len: usize,
+    worker: &Worker,
+) {
+    use std::mem::MaybeUninit;
+    assert!(trace_len.is_power_of_two());
+    unsafe {
+        let mut inputs = inputs.clone();
+        let outputs = std::mem::replace(&mut inputs.outputs_in_base, vec![]);
+        assert_eq!(outputs.len(), OUT);
+        for output in outputs.iter() {
+            output.assert_as_layer(expected_output_layer);
+        }
+        let sources = storage.get_for_sumcheck_round_0(&inputs);
+        let mut destinations = Vec::with_capacity(outputs.len());
+        for _ in 0..outputs.len() {
+            destinations.push(Box::<[F]>::new_uninit_slice(trace_len));
+        }
+        let mut destinations_refs = Vec::with_capacity(outputs.len());
+        for el in destinations.iter_mut() {
+            destinations_refs.push(&mut el[..]);
+        }
+
+        let inputs = &sources.base_field_inputs;
+
+        apply_row_wise::<_, E>(
+            destinations_refs,
+            vec![],
+            trace_len,
+            worker,
+            |dest, _, chunk_start, chunk_size| {
+                assert_eq!(dest.len(), OUT);
+                let mut destinations: [&mut [MaybeUninit<F>]; OUT] = dest.try_into().unwrap();
+                for index in 0..chunk_size {
+                    let absolute_index = chunk_start + index;
+                    let value = kernel.evaluate_forward(absolute_index, inputs);
+                    for (dst, val) in destinations.iter_mut().zip(value.into_iter()) {
+                        dst[index].write(val);
+                    }
+                }
+            },
+        );
+
+        for (output, destination) in outputs.into_iter().zip(destinations.into_iter()) {
+            let values = destination.assume_init();
+            storage.insert_base_field_at_layer(
+                expected_output_layer,
+                output,
+                BaseFieldPoly::new(values),
+            );
+        }
     }
 }
 

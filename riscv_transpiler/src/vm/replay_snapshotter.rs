@@ -1,6 +1,6 @@
 use std::alloc::Allocator;
 
-use crate::jit::{CounterType, MAX_NUM_COUNTERS, MAX_TRACE_CHUNK_LEN};
+use crate::jit::{CounterType, MachineCounters, MAX_TRACE_CHUNK_LEN};
 
 use super::*;
 
@@ -11,6 +11,7 @@ pub struct DelegationsCounters {
     pub blake_calls: usize,
     pub bigint_calls: usize,
     pub keccak_calls: usize,
+    pub blake_g_function_calls: usize,
 }
 
 impl Counters for DelegationsCounters {
@@ -25,6 +26,10 @@ impl Counters for DelegationsCounters {
     #[inline(always)]
     fn bump_keccak_special5(&mut self, by: usize) {
         self.keccak_calls += by;
+    }
+    #[inline(always)]
+    fn bump_blake2_g_function(&mut self, by: usize) {
+        self.blake_g_function_calls += by;
     }
     #[inline(always)]
     fn log_circuit_family<const FAMILY: u8>(&mut self) {}
@@ -48,6 +53,7 @@ pub struct DelegationsAndFamiliesCounters {
     pub blake_calls: usize,
     pub bigint_calls: usize,
     pub keccak_calls: usize,
+    pub blake_g_function_calls: usize,
 }
 
 impl Counters for DelegationsAndFamiliesCounters {
@@ -62,6 +68,10 @@ impl Counters for DelegationsAndFamiliesCounters {
     #[inline(always)]
     fn bump_keccak_special5(&mut self, by: usize) {
         self.keccak_calls += by;
+    }
+    #[inline(always)]
+    fn bump_blake2_g_function(&mut self, by: usize) {
+        self.blake_g_function_calls += by;
     }
     #[inline(always)]
     fn log_circuit_family<const FAMILY: u8>(&mut self) {
@@ -119,8 +129,8 @@ impl Counters for DelegationsAndFamiliesCounters {
     }
 }
 
-impl From<[u64; MAX_NUM_COUNTERS]> for DelegationsAndFamiliesCounters {
-    fn from(counters: [u64; MAX_NUM_COUNTERS]) -> Self {
+impl From<MachineCounters> for DelegationsAndFamiliesCounters {
+    fn from(counters: MachineCounters) -> Self {
         Self {
             add_sub_family: counters[CounterType::AddSubLui as u8 as usize] as usize,
             slt_branch_family: counters[CounterType::BranchSlt as u8 as usize] as usize,
@@ -131,6 +141,8 @@ impl From<[u64; MAX_NUM_COUNTERS]> for DelegationsAndFamiliesCounters {
             blake_calls: counters[CounterType::BlakeDelegation as u8 as usize] as usize,
             bigint_calls: counters[CounterType::BigintDelegation as u8 as usize] as usize,
             keccak_calls: counters[CounterType::KeccakDelegation as u8 as usize] as usize,
+            blake_g_function_calls: counters[CounterType::BlakeGFunctionDelegation as u8 as usize]
+                as usize,
         }
     }
 }
@@ -142,6 +154,7 @@ pub struct DelegationsAndUnifiedCounters {
     pub blake_calls: usize,
     pub bigint_calls: usize,
     pub keccak_calls: usize,
+    pub blake_g_function_calls: usize,
     pub cycles: usize,
 }
 
@@ -157,6 +170,10 @@ impl Counters for DelegationsAndUnifiedCounters {
     #[inline(always)]
     fn bump_keccak_special5(&mut self, by: usize) {
         self.keccak_calls += by;
+    }
+    #[inline(always)]
+    fn bump_blake2_g_function(&mut self, by: usize) {
+        self.blake_g_function_calls += by;
     }
     #[inline(always)]
     fn log_circuit_family<const FAMILY: u8>(&mut self) {
@@ -204,8 +221,8 @@ impl Counters for DelegationsAndUnifiedCounters {
     }
 }
 
-impl From<[u64; MAX_NUM_COUNTERS]> for DelegationsAndUnifiedCounters {
-    fn from(counters: [u64; MAX_NUM_COUNTERS]) -> Self {
+impl From<MachineCounters> for DelegationsAndUnifiedCounters {
+    fn from(counters: MachineCounters) -> Self {
         let add_sub_family = counters[CounterType::AddSubLui as u8 as usize] as usize;
         let slt_branch_family = counters[CounterType::BranchSlt as u8 as usize] as usize;
         let binary_shift_family = counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize;
@@ -223,6 +240,8 @@ impl From<[u64; MAX_NUM_COUNTERS]> for DelegationsAndUnifiedCounters {
             blake_calls: counters[CounterType::BlakeDelegation as u8 as usize] as usize,
             bigint_calls: counters[CounterType::BigintDelegation as u8 as usize] as usize,
             keccak_calls: counters[CounterType::KeccakDelegation as u8 as usize] as usize,
+            blake_g_function_calls: counters[CounterType::BlakeGFunctionDelegation as u8 as usize]
+                as usize,
             cycles,
         }
     }
@@ -404,10 +423,10 @@ impl<C: Counters, const ROM_BOUND_SECOND_WORD_BITS: usize, MB: ReplayBuffer<(u32
     fn take_snapshot_if_needed(&mut self, state: &State<C>) -> bool {
         use crate::jit::{MAX_TRACE_CHUNK_LEN, TRACE_CHUNK_LEN};
         if self.reads_buffer.len() - self.current_partial_snapshot.reads_offset >= TRACE_CHUNK_LEN {
-            // debug_assert!(
-            //     self.reads_buffer.len() - self.current_partial_snapshot.reads_offset
-            //         <= MAX_TRACE_CHUNK_LEN
-            // );
+            debug_assert!(
+                self.reads_buffer.len() - self.current_partial_snapshot.reads_offset
+                    <= MAX_TRACE_CHUNK_LEN
+            );
             self.snapshot_impl(state);
         }
         false

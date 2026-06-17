@@ -5,7 +5,6 @@
 // use zksync_airbender::compiler::AirCompiler;
 // use cs::config::Config;
 // use cs::cs_reference::BasicAssembly;
-// use zksync_airbender::devices::executor::run;
 // use std::alloc::Global;
 //
 // use fft::Twiddles;

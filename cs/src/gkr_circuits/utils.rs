@@ -1,7 +1,7 @@
 use super::*;
-use crate::constraint::*;
 use crate::cs::circuit_trait::Circuit;
 use crate::cs::circuit_trait::Invariant;
+use crate::structured_expr::Expr;
 use crate::types::LIMB_WIDTH;
 use crate::witness_placer::*;
 use field::PrimeField;
@@ -31,20 +31,14 @@ pub fn calculate_pc_next_no_overflows_with_range_checks<F: PrimeField, CS: Circu
         },
     );
 
-    let mut carry_constraint = Constraint::<F>::empty();
-    carry_constraint += Term::from(pc[0]);
-    carry_constraint += Term::from(common_constants::PC_STEP as u32);
-    carry_constraint -= Term::from(pc_next_low);
-    carry_constraint.scale(F::from_u32_unchecked(1 << 16).inverse().unwrap());
+    let carry = (Expr::<F>::var(pc[0]) + Expr::from(common_constants::PC_STEP as u32)
+        - Expr::var(pc_next_low))
+        * F::from_u32_unchecked(1 << 16).inverse().unwrap();
 
     // ensure boolean
-    let mut t = carry_constraint.clone();
-    t -= Term::from(1u32);
-    circuit.add_constraint(carry_constraint.clone() * t);
+    circuit.add_constraint_expr(carry.clone() * (carry.clone() - Expr::one()));
 
-    let mut pc_high_constraint = carry_constraint.clone();
-    pc_high_constraint += Term::from(pc[1]);
-    pc_high_constraint -= Term::from(pc_next_high);
+    let pc_high = carry + Expr::var(pc[1]) - Expr::var(pc_next_high);
 
     // NOTE: we should try to set values before setting constraint as much as possible
     // setting values for overflow flags
@@ -59,7 +53,14 @@ pub fn calculate_pc_next_no_overflows_with_range_checks<F: PrimeField, CS: Circu
     };
     circuit.set_values(value_fn);
 
-    circuit.add_constraint_allow_explicit_linear_prevent_optimizations(pc_high_constraint);
+    circuit.add_constraint_allow_explicit_linear_prevent_optimizations_expr(pc_high);
+}
+pub(crate) fn montgomery_product_expr<F: PrimeField>(a: Expr<F>, b: Expr<F>) -> Expr<F> {
+    if F::IS_MONT_REPR {
+        a * b * Expr::<F>::constant(F::from_reduced_raw_repr(1))
+    } else {
+        a * b
+    }
 }
 
 pub(crate) fn update_intermediate_carry_value<

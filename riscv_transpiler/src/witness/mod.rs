@@ -1,7 +1,9 @@
 pub mod data_structs;
 pub mod delegation;
 
-use common_constants::{bigint_with_control::*, blake2s_with_control::*, keccak_special5::*};
+use common_constants::{
+    bigint_with_control::*, blake2s_g_function::*, blake2s_with_control::*, keccak_special5::*,
+};
 use std::mem::MaybeUninit;
 
 pub use self::data_structs::*;
@@ -191,6 +193,14 @@ pub type KeccakDelegationDestinationHolder<'a> = DelegationDestinationHolder<
     NUM_KECCAK_SPECIAL5_INDIRECT_READS,
     KECCAK_SPECIAL5_X11_NUM_WRITES,
     KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS,
+>;
+pub type BlakeGFunctionDelegationDestinationHolder<'a> = DelegationDestinationHolder<
+    'a,
+    { common_constants::blake2s_g_function::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16 },
+    NUM_BLAKE2S_G_FUNCTION_REGISTER_ACCESSES,
+    BLAKE2S_G_FUNCTION_X11_NUM_READS,
+    BLAKE2S_G_FUNCTION_X10_NUM_WRITES,
+    NUM_BLAKE2S_G_FUNCTION_VARIABLE_OFFSETS,
 >;
 
 pub struct UninitDelegationDestinationHolder<

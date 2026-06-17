@@ -1,6 +1,7 @@
 use super::*;
 use crate::cs::circuit::*;
 use crate::definitions::*;
+use crate::structured_expr::Expr;
 use crate::types::Boolean;
 use crate::types::Num;
 use crate::witness_placer::*;
@@ -84,14 +85,20 @@ impl<F: PrimeField> LongRegister<F> {
         assert!(high <= u32::MAX);
         Some(low as u64 | (high as u64) << 32)
     }
+    fn chunks(self) -> [Num<F>; 4] {
+        [
+            self.low32.0[0],
+            self.low32.0[1],
+            self.high32.0[0],
+            self.high32.0[1],
+        ]
+    }
+    fn chunks_expr(self) -> [Expr<F>; 4] {
+        self.chunks().map(Expr::from)
+    }
     #[expect(unused)]
     pub fn get_value_chunks_unsigned<C: Circuit<F>>(self, cs: &C) -> [F; 4] {
-        [
-            self.low32.0[0].get_value(cs).unwrap(),
-            self.low32.0[1].get_value(cs).unwrap(),
-            self.high32.0[0].get_value(cs).unwrap(),
-            self.high32.0[1].get_value(cs).unwrap(),
-        ]
+        self.chunks().map(|chunk| chunk.get_value(cs).unwrap())
     }
 }
 
@@ -108,12 +115,12 @@ impl<F: PrimeField> LongRegisterDecomposition<F> {
             high32: high32_vars.map(Num::Var),
         }
     }
-    fn complete_composition(&self) -> [Constraint<F>; 4] {
+    fn complete_composition(&self) -> [Expr<F>; 4] {
         [
-            Constraint::from(self.low32[0]) + Term::from(1 << 8) * Term::from(self.low32[1]),
-            Constraint::from(self.low32[2]) + Term::from(1 << 8) * Term::from(self.low32[3]),
-            Constraint::from(self.high32[0]) + Term::from(1 << 8) * Term::from(self.high32[1]),
-            Constraint::from(self.high32[2]) + Term::from(1 << 8) * Term::from(self.high32[3]),
+            Expr::from(self.low32[0]) + Expr::from(1u32 << 8) * Expr::from(self.low32[1]),
+            Expr::from(self.low32[2]) + Expr::from(1u32 << 8) * Expr::from(self.low32[3]),
+            Expr::from(self.high32[0]) + Expr::from(1u32 << 8) * Expr::from(self.high32[1]),
+            Expr::from(self.high32[2]) + Expr::from(1u32 << 8) * Expr::from(self.high32[3]),
         ]
     }
 }
@@ -125,7 +132,7 @@ impl<F: PrimeField> LongRegisterRotation<F> {
         let vars = from_fn(|i| [leftvars[i], rightvars[i]].map(Num::Var));
         LongRegisterRotation { chunks_u16: vars }
     }
-    fn complete_rotation(&self, u16_boundary_flags: [Constraint<F>; 4]) -> [Constraint<F>; 4] {
+    fn complete_rotation(&self, u16_boundary_flags: [Expr<F>; 4]) -> [Expr<F>; 4] {
         debug_assert!(u16_boundary_flags.iter().all(|x| x.degree() <= 1));
         // orthogonal flags, they assist with rotation composition
         let [is_rot_lt16, is_rot_lt32, is_rot_lt48, is_rot_lt64] = u16_boundary_flags;
@@ -139,10 +146,10 @@ impl<F: PrimeField> LongRegisterRotation<F> {
             let [c_left, c_right] = self.chunks_u16[2];
             let [d_left, d_right] = self.chunks_u16[3];
             [
-                Constraint::from(a_right) + Term::from(d_left),
-                Constraint::from(b_right) + Term::from(a_left),
-                Constraint::from(c_right) + Term::from(b_left),
-                Constraint::from(d_right) + Term::from(c_left),
+                Expr::from(a_right) + Expr::from(d_left),
+                Expr::from(b_right) + Expr::from(a_left),
+                Expr::from(c_right) + Expr::from(b_left),
+                Expr::from(d_right) + Expr::from(c_left),
             ]
         };
         // IF is_rot_lt16 THEN rotation is  0..16, SO take the chunk that fits that exact spot
@@ -353,8 +360,8 @@ pub fn define_keccak_special5_delegation_circuit<
         };
         cs.set_values(value_fn);
 
-        cs.add_constraint_allow_explicit_linear(Constraint::from(control_reg[1])); // we expect high 16 bits to be empty
-        cs.add_constraint_allow_explicit_linear(Constraint::from(control_reg_next[1])); // we expect high 16 bits to be empty
+        cs.add_constraint_allow_explicit_linear_expr(Expr::var(control_reg[1])); // we expect high 16 bits to be empty
+        cs.add_constraint_allow_explicit_linear_expr(Expr::var(control_reg_next[1])); // we expect high 16 bits to be empty
         (control_reg[0], control_reg_next[0]) // only the low 11 bits contain control info
     };
 
@@ -364,14 +371,21 @@ pub fn define_keccak_special5_delegation_circuit<
         let [s1, s2, s3, s4, s5, s6] = from_fn(|_| cs.add_variable());
         {
             // control is properly range checked later by bitmasks, so don't worry :)
-            let control_with_exe =
-                Constraint::from(control) + Term::from(1 << 11) * Term::from(execute);
-            let [s1, s2, s3, s4, s5, s6] = [s1, s2, s3, s4, s5, s6].map(Constraint::from);
-            cs.enforce_lookup_tuple_for_fixed_table(
-                &[control_with_exe.clone(), s1, s2, s3, s4, s5, s6].map(LookupInput::from),
-                TableType::KeccakPermutationIndices,
-                false,
-            );
+            let control_with_exe = Expr::var(control) + Expr::from(1u32 << 11) * Expr::var(execute);
+            if CS::ASSUME_MEMORY_VALUES_ASSIGNED {
+                let [s1, s2, s3, s4, s5, s6] = [s1, s2, s3, s4, s5, s6].map(Expr::var);
+                cs.enforce_lookup_tuple_for_fixed_table(
+                    &[control_with_exe.clone(), s1, s2, s3, s4, s5, s6].map(LookupInput::from),
+                    TableType::KeccakPermutationIndices,
+                    false,
+                );
+            } else {
+                cs.set_variables_from_lookup_constrained(
+                    &[control_with_exe.clone()].map(LookupInput::from),
+                    &[s1, s2, s3, s4, s5, s6],
+                    LookupQueryTableType::Constant(TableType::KeccakPermutationIndices),
+                );
+            }
         }
         [s1, s2, s3, s4, s5, s6]
     };
@@ -451,8 +465,7 @@ pub fn define_keccak_special5_delegation_circuit<
                 placer.assign_mask(execute, &truebool);
             };
             cs.set_values(value_fn);
-            let control_with_exe =
-                Constraint::from(control) + Term::from(1 << 11) * Term::from(execute);
+            let control_with_exe = Expr::var(control) + Expr::from(1u32 << 11) * Expr::var(execute);
             cs.peek_lookup_value_unconstrained_ext(
                 &[LookupInput::from(control_with_exe.clone())],
                 &[
@@ -507,31 +520,34 @@ pub fn define_keccak_special5_delegation_circuit<
         let precompile_bitmask: [Boolean; 7] = from_fn(|_| cs.add_boolean_variable());
         let precompile = {
             // WARNING: p0 remains unconstrained!
-            precompile_bitmask
-                .into_iter()
-                .enumerate()
-                .fold(Constraint::from(0), |acc, (i, bit)| {
-                    acc + Term::from(i as u32) * Term::from(bit)
-                })
+            Expr::sum(
+                precompile_bitmask
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &bit)| Expr::from(i as u32) * Expr::from(bit))
+                    .collect(),
+            )
         };
         let iter_bitmask: [Boolean; 5] = from_fn(|_| cs.add_boolean_variable());
         let iter = {
             // WARNING: i0 remains unconstrained!
-            iter_bitmask
-                .into_iter()
-                .enumerate()
-                .fold(Constraint::from(0), |acc, (i, bit)| {
-                    acc + Term::from(i as u32) * Term::from(bit)
-                })
+            Expr::sum(
+                iter_bitmask
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &bit)| Expr::from(i as u32) * Expr::from(bit))
+                    .collect(),
+            )
         };
         let round_bits: [Boolean; 5] = from_fn(|_| cs.add_boolean_variable());
         let round = {
-            round_bits
-                .into_iter()
-                .enumerate()
-                .fold(Constraint::from(0), |acc, (i, bit)| {
-                    acc + Term::from(1 << i) * Term::from(bit)
-                })
+            Expr::sum(
+                round_bits
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &bit)| Expr::from(1u32 << i) * Expr::from(bit))
+                    .collect(),
+            )
         };
 
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
@@ -587,31 +603,31 @@ pub fn define_keccak_special5_delegation_circuit<
         cs.set_values(value_fn);
 
         // compose, to give meaning to (almost) all the bits
-        cs.add_constraint_allow_explicit_linear(
+        cs.add_constraint_allow_explicit_linear_expr(
             precompile.clone()
-                + Term::from(1 << 3) * iter.clone()
-                + Term::from(1 << 6) * round.clone()
-                - Term::from(control),
+                + Expr::from(1u32 << 3) * iter.clone()
+                + Expr::from(1u32 << 6) * round.clone()
+                - Expr::var(control),
         );
 
         // as p0 and i0 are unconstrained, we give them meaning
         {
-            let precompile_bitmask_sum = precompile_bitmask
-                .iter()
-                .fold(Constraint::from(0), |acc, &flag| acc + Term::from(flag));
-            let iter_bitmask_sum = iter_bitmask
-                .iter()
-                .fold(Constraint::from(0), |acc, &flag| acc + Term::from(flag));
-            cs.add_constraint(
-                Constraint::from(execute) * (precompile_bitmask_sum.clone() - Term::from(1)),
+            let precompile_bitmask_sum = Expr::sum(
+                precompile_bitmask
+                    .iter()
+                    .map(|&flag| Expr::from(flag))
+                    .collect(),
             );
-            cs.add_constraint(
-                Constraint::from(execute) * (iter_bitmask_sum.clone() - Term::from(1)),
+            let iter_bitmask_sum =
+                Expr::sum(iter_bitmask.iter().map(|&flag| Expr::from(flag)).collect());
+            cs.add_constraint_expr(
+                Expr::var(execute) * (precompile_bitmask_sum.clone() - Expr::one()),
             );
-            cs.add_constraint(
-                Constraint::from(Boolean::Is(execute).toggle()) * precompile_bitmask_sum,
+            cs.add_constraint_expr(Expr::var(execute) * (iter_bitmask_sum.clone() - Expr::one()));
+            cs.add_constraint_expr(
+                Expr::from(Boolean::Is(execute).toggle()) * precompile_bitmask_sum,
             );
-            cs.add_constraint(Constraint::from(Boolean::Is(execute).toggle()) * iter_bitmask_sum);
+            cs.add_constraint_expr(Expr::from(Boolean::Is(execute).toggle()) * iter_bitmask_sum);
         }
 
         (precompile_bitmask, iter_bitmask, precompile, iter, round)
@@ -625,19 +641,21 @@ pub fn define_keccak_special5_delegation_circuit<
     // now we enforce the control_next bump
     {
         let precompile_next = precompile
-            + (Term::from(is_columnmix1) + Term::from(is_columnmix2) + Term::from(is_chi1)) // precompiles that always advance
-            + (Term::from(is_iota_columnxor) + Term::from(is_theta) + Term::from(is_rho)) * Term::from(is_iter4) // only advance after 5 loops
-            - Term::from(is_chi2) * (Constraint::from(1) + Term::from(5)*Term::from(is_iter4)); // retreat always, and after 5 loops reset
+            + (Expr::from(is_columnmix1) + Expr::from(is_columnmix2) + Expr::from(is_chi1)) // precompiles that always advance
+            + (Expr::from(is_iota_columnxor) + Expr::from(is_theta) + Expr::from(is_rho)) * Expr::from(is_iter4) // only advance after 5 loops
+            - Expr::from(is_chi2) * (Expr::one() + Expr::from(5u32) * Expr::from(is_iter4)); // retreat always, and after 5 loops reset
         let iter_next = iter
-            + (Term::from(is_iota_columnxor)
-                + Term::from(is_theta)
-                + Term::from(is_rho)
-                + Term::from(is_chi2))
-                * (Constraint::from(1) - Term::from(5) * Term::from(is_iter4)); // precompiles that advance always, and after 5 loops reset
-        let round_next = round.clone() + Term::from(is_chi2) * Term::from(is_iter4); // only last precompile + last loop advances round
-        cs.add_constraint(
-            precompile_next + Term::from(1 << 3) * iter_next + Term::from(1 << 6) * round_next
-                - Term::from(control_next),
+            + (Expr::from(is_iota_columnxor)
+                + Expr::from(is_theta)
+                + Expr::from(is_rho)
+                + Expr::from(is_chi2))
+                * (Expr::one() - Expr::from(5u32) * Expr::from(is_iter4)); // precompiles that advance always, and after 5 loops reset
+        let round_next = round.clone() + Expr::from(is_chi2) * Expr::from(is_iter4); // only last precompile + last loop advances round
+        cs.add_constraint_expr(
+            precompile_next
+                + Expr::from(1u32 << 3) * iter_next
+                + Expr::from(1u32 << 6) * round_next
+                - Expr::var(control_next),
         );
     }
 
@@ -659,21 +677,16 @@ pub fn define_keccak_special5_delegation_circuit<
 
     // for iota, we let the special xor table find the proper 64-bit value based on the round
     let p0_round_constant_control_reg = {
-        let round_if_iter0 = cs.add_variable_from_constraint(round * Term::from(is_iter0)); // (might not be necessary but let's do it for safety)
-        let chunks_u8: [Constraint<F>; 8] = from_fn(|i| {
-            Constraint::from(round_if_iter0) + Term::from(1 << 5) * Term::from(i as u32)
-        });
+        let round_if_iter0 = cs.add_variable_from_expr(round * Expr::from(is_iter0)); // (might not be necessary but let's do it for safety)
+        let chunks_u8: [Expr<F>; 8] =
+            from_fn(|i| Expr::var(round_if_iter0) + Expr::from(1u32 << 5) * Expr::from(i as u32));
         let chunks_u16: [Num<F>; 4] = from_fn(|i| {
-            cs.add_variable_from_constraint_allow_explicit_linear(
-                chunks_u8[i * 2].clone() + Term::from(1 << 8) * chunks_u8[i * 2 + 1].clone(),
+            cs.add_variable_from_expr_allow_explicit_linear(
+                chunks_u8[i * 2].clone() + Expr::from(1u32 << 8) * chunks_u8[i * 2 + 1].clone(),
             )
         })
         .map(Num::Var);
 
-        // NEW (but worse performance ??)
-        // let round_if_iter0 = round * Term::from(is_iter0); // (might not be necessary but let's do it for safety)
-        // let chunks_u8: [Constraint<F>; 8] = from_fn(|i| round_if_iter0.clone() + Term::from(1<<5)*Term::from(i as u64));
-        // let chunks_u16: [Num<F>; 4] = from_fn(|i| cs.add_variable_from_constraint(chunks_u8[i*2].clone() + Term::from(1<<8)*chunks_u8[i*2+1].clone())).map(Num::Var);
         LongRegister {
             low32: Register([chunks_u16[0], chunks_u16[1]]),
             high32: Register([chunks_u16[2], chunks_u16[3]]),
@@ -1477,17 +1490,23 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>, const N: usize, const DEBUG: boo
         // precompile_rotation_constants must be valid u64 rotations
         // precompile_rotation_flags must be just an expansion of RotL precompile_flags
         // precompile_table_ids with RotL can't have the second input candidate
-        assert!(precompile_rotation_constants.into_iter().all(|c| c < 64));
-        let is_rot = precompile_flags.iter().zip(&precompile_table_ids).fold(
-            Constraint::from(0),
-            |acc, (&flag, &table)| {
-                acc + Term::from(if table == TableType::RotL { 1 } else { 0 }) * Term::from(flag)
-            },
+        assert!(precompile_rotation_constants.iter().all(|&c| c < 64));
+        let is_rot = Expr::sum(
+            precompile_flags
+                .iter()
+                .zip(&precompile_table_ids)
+                .map(|(&flag, &table)| {
+                    Expr::from(if table == TableType::RotL { 1 } else { 0 }) * Expr::from(flag)
+                })
+                .collect(),
         );
-        let is_rot_ = precompile_rotation_flags
-            .iter()
-            .fold(Constraint::from(0), |acc, &flag| acc + Term::from(flag));
-        cs.add_constraint_allow_explicit_linear_prevent_optimizations(is_rot - is_rot_);
+        let is_rot_ = Expr::sum(
+            precompile_rotation_flags
+                .iter()
+                .map(|&flag| Expr::from(flag))
+                .collect(),
+        );
+        cs.add_constraint_allow_explicit_linear_prevent_optimizations_expr(is_rot - is_rot_);
         assert!(
             N >= input_output_candidates
                 .iter()
@@ -1506,10 +1525,13 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>, const N: usize, const DEBUG: boo
 
     // FIRST enforce all 8 binop lookups
     {
-        let mut table_id = Constraint::<F>::empty();
-        for (flag, table) in precompile_flags.iter().zip(precompile_table_ids.iter()) {
-            table_id += Term::from(*flag) * Term::from(table.to_num());
-        }
+        let table_id = Expr::sum(
+            precompile_flags
+                .iter()
+                .zip(precompile_table_ids.iter())
+                .map(|(&flag, &table)| Expr::from(flag) * Expr::from(table))
+                .collect(),
+        );
         assert_eq!(table_id.degree(), 1);
         let tuples: [[Variable; 3]; 8] = from_fn(|i| [a[i], b[i], c[i]]);
         for tuple in tuples {
@@ -1521,43 +1543,30 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>, const N: usize, const DEBUG: boo
     }
 
     // SECOND we prepare some deg.1 rotation information
-    let rot_const_mod16 = {
-        let mut rot_const_mod16 = Constraint::from(0);
-        for (flag, constant) in precompile_rotation_flags
-            .into_iter()
-            .zip(precompile_rotation_constants)
-        {
-            rot_const_mod16 += Term::from(flag) * Term::from((constant % 16) as u32);
-        }
-        rot_const_mod16
-    };
-    let rot_out_u16_boundary_flags = {
-        let mut rot_bounds: [Constraint<F>; 4] = from_fn(|_| Constraint::from(0));
-        for (flag, constant) in precompile_rotation_flags
-            .into_iter()
-            .zip(precompile_rotation_constants)
-        {
-            if constant < 16 {
-                rot_bounds[0] += Term::from(flag);
-            } else if constant < 32 {
-                rot_bounds[1] += Term::from(flag);
-            } else if constant < 48 {
-                rot_bounds[2] += Term::from(flag);
-            } else if constant < 64 {
-                rot_bounds[3] += Term::from(flag);
-            } else {
-                unreachable!()
-            }
-        }
-        rot_bounds
-    };
-    let is_rot = rot_out_u16_boundary_flags[0].clone()
-        + rot_out_u16_boundary_flags[1].clone()
-        + rot_out_u16_boundary_flags[2].clone()
-        + rot_out_u16_boundary_flags[3].clone();
+    let rot_const_mod16 = Expr::sum(
+        precompile_rotation_flags
+            .iter()
+            .zip(precompile_rotation_constants.iter())
+            .map(|(&flag, &constant)| Expr::from(flag) * Expr::from((constant % 16) as u32))
+            .collect(),
+    );
+    let rot_out_u16_boundary_flags: [Expr<F>; 4] = from_fn(|boundary| {
+        let lower = 16 * boundary as u64;
+        let upper = lower + 16;
+        Expr::sum(
+            precompile_rotation_flags
+                .iter()
+                .zip(precompile_rotation_constants.iter())
+                .filter_map(|(&flag, &constant)| {
+                    (lower <= constant && constant < upper).then(|| Expr::from(flag))
+                })
+                .collect(),
+        )
+    });
+    let is_rot = Expr::sum(rot_out_u16_boundary_flags.iter().cloned().collect());
 
     // FINALLY, we enforce manual routing!
-    let (in1, in2, out): ([Constraint<F>; 4], [Constraint<F>; 4], [Constraint<F>; 4]) = {
+    let (in1, in2, out): ([Expr<F>; 4], [Expr<F>; 4], [Expr<F>; 4]) = {
         // we need to extract some partial results first
         // when we deal with a column: it's either u8 input chunks or (u16 input || u4 rotconst) chunks
         // when we deal with b column: it's either u8 input chunks or u16 (left half rot) output chunks
@@ -1568,7 +1577,7 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>, const N: usize, const DEBUG: boo
         let a_u16minusrotconst = {
             // only 4 lookup inputs are needed for rotation
             let a_u16: [Variable; 4] = a[..4].try_into().unwrap();
-            a_u16.map(|var| Constraint::from(var) - Term::from(1 << 16) * rot_const_mod16.clone())
+            a_u16.map(|var| Expr::var(var) - Expr::from(1u32 << 16) * rot_const_mod16.clone())
         };
         let bc_u16rotfinish_ifrot = {
             // only 4 lookup outputs are needed for rotation
@@ -1579,7 +1588,7 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>, const N: usize, const DEBUG: boo
             LongRegisterRotation::from(b_u16left, c_u16right)
                 .complete_rotation(rot_out_u16_boundary_flags)
         };
-        let not_rot = Constraint::from(Constraint::from(1) - is_rot.clone());
+        let not_rot = Expr::one() - is_rot.clone();
 
         // now we just choose the appropriate input/output based on which operation we perform
         (
@@ -1594,29 +1603,42 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>, const N: usize, const DEBUG: boo
         )
     };
     let (in1_candidate, in2_candidate, out_candidate) = {
-        let mut in1_candidate: [Constraint<F>; 4] = from_fn(|_| Constraint::from(0));
-        let mut in2_candidate: [Constraint<F>; 4] = from_fn(|_| Constraint::from(0));
-        let mut out_candidate: [Constraint<F>; 4] = from_fn(|_| Constraint::from(0));
-        for (flag, (in1_u64, in2_u64, out_u64)) in
-            precompile_flags.into_iter().zip(input_output_candidates)
-        {
-            in1_candidate[0] += Constraint::from(flag) * Term::from(in1_u64.low32.0[0]);
-            in1_candidate[1] += Constraint::from(flag) * Term::from(in1_u64.low32.0[1]);
-            in1_candidate[2] += Constraint::from(flag) * Term::from(in1_u64.high32.0[0]);
-            in1_candidate[3] += Constraint::from(flag) * Term::from(in1_u64.high32.0[1]);
-
-            if let Some(in2_u64) = in2_u64 {
-                in2_candidate[0] += Constraint::from(flag) * Term::from(in2_u64.low32.0[0]);
-                in2_candidate[1] += Constraint::from(flag) * Term::from(in2_u64.low32.0[1]);
-                in2_candidate[2] += Constraint::from(flag) * Term::from(in2_u64.high32.0[0]);
-                in2_candidate[3] += Constraint::from(flag) * Term::from(in2_u64.high32.0[1]);
-            }
-
-            out_candidate[0] += Constraint::from(flag) * Term::from(out_u64.low32.0[0]);
-            out_candidate[1] += Constraint::from(flag) * Term::from(out_u64.low32.0[1]);
-            out_candidate[2] += Constraint::from(flag) * Term::from(out_u64.high32.0[0]);
-            out_candidate[3] += Constraint::from(flag) * Term::from(out_u64.high32.0[1]);
-        }
+        let in1_candidate: [Expr<F>; 4] = from_fn(|chunk_idx| {
+            Expr::sum(
+                precompile_flags
+                    .iter()
+                    .zip(input_output_candidates.iter())
+                    .map(|(&flag, (in1_u64, _, _))| {
+                        in1_u64.chunks_expr()[chunk_idx].clone().mask(flag)
+                    })
+                    .collect(),
+            )
+        });
+        let in2_candidate: [Expr<F>; 4] = from_fn(|chunk_idx| {
+            Expr::sum(
+                precompile_flags
+                    .iter()
+                    .zip(input_output_candidates.iter())
+                    .map(|(&flag, (_, in2_u64, _))| {
+                        in2_u64
+                            .map(|in2_u64| in2_u64.chunks_expr()[chunk_idx].clone())
+                            .unwrap_or_else(Expr::zero)
+                            .mask(flag)
+                    })
+                    .collect(),
+            )
+        });
+        let out_candidate: [Expr<F>; 4] = from_fn(|chunk_idx| {
+            Expr::sum(
+                precompile_flags
+                    .iter()
+                    .zip(input_output_candidates.iter())
+                    .map(|(&flag, (_, _, out_u64))| {
+                        out_u64.chunks_expr()[chunk_idx].clone().mask(flag)
+                    })
+                    .collect(),
+            )
+        });
         (in1_candidate, in2_candidate, out_candidate)
     };
 
@@ -1629,29 +1651,41 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>, const N: usize, const DEBUG: boo
             "\t\tprecompile_rotation_flags: {:?}",
             precompile_rotation_flags.map(|b| b.get_value(cs).unwrap())
         );
-        println!("\t\trot_const_mod16: {:?}", rot_const_mod16.get_value(cs));
-        println!("\t\tis_rot: {:?}", is_rot.get_value(cs).unwrap());
+        println!(
+            "\t\trot_const_mod16: {:?}",
+            rot_const_mod16.to_max_quadratic_constraint().get_value(cs)
+        );
+        println!(
+            "\t\tis_rot: {:?}",
+            is_rot.to_max_quadratic_constraint().get_value(cs).unwrap()
+        );
         println!(
             "\t\tin1_candidate: {:?}",
-            in1_candidate.clone().map(|con| con.get_value(cs).unwrap())
+            in1_candidate
+                .clone()
+                .map(|expr| expr.to_max_quadratic_constraint().get_value(cs).unwrap())
         );
         println!(
             "\t\tin1: {:?}",
-            in1.clone().map(|con| con.get_value(cs).unwrap())
+            in1.clone()
+                .map(|expr| expr.to_max_quadratic_constraint().get_value(cs).unwrap())
         );
         println!(
             "\t\tin2_candidate: {:?}",
-            in2_candidate.clone().map(|con| con.get_value(cs).unwrap())
+            in2_candidate
+                .clone()
+                .map(|expr| expr.to_max_quadratic_constraint().get_value(cs).unwrap())
         );
         println!(
             "\t\tin2: {:?}",
-            in2.clone().map(|con| con.get_value(cs).unwrap())
+            in2.clone()
+                .map(|expr| expr.to_max_quadratic_constraint().get_value(cs).unwrap())
         );
         println!(
             "\t\tbin_out_u8: {:?}",
             LongRegisterDecomposition::from(c)
                 .complete_composition()
-                .map(|con| con.get_value(cs).unwrap())
+                .map(|expr| expr.to_max_quadratic_constraint().get_value(cs).unwrap())
         );
         println!(
             "\t\trot_out_u16: {:?}",
@@ -1661,18 +1695,21 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>, const N: usize, const DEBUG: boo
         );
         println!(
             "\t\tout_candidate: {:?}",
-            out_candidate.clone().map(|con| con.get_value(cs).unwrap())
+            out_candidate
+                .clone()
+                .map(|expr| expr.to_max_quadratic_constraint().get_value(cs).unwrap())
         );
         println!(
             "\t\tout: {:?}",
-            out.clone().map(|con| con.get_value(cs).unwrap())
+            out.clone()
+                .map(|expr| expr.to_max_quadratic_constraint().get_value(cs).unwrap())
         );
     }
 
     for i in 0..4 {
-        cs.add_constraint(in1[i].clone() - in1_candidate[i].clone());
-        cs.add_constraint(in2[i].clone() - in2_candidate[i].clone());
-        cs.add_constraint(out[i].clone() - out_candidate[i].clone());
+        cs.add_constraint_expr(in1[i].clone() - in1_candidate[i].clone());
+        cs.add_constraint_expr(in2[i].clone() - in2_candidate[i].clone());
+        cs.add_constraint_expr(out[i].clone() - out_candidate[i].clone());
     }
 }
 
@@ -1684,22 +1721,10 @@ fn enforce_copies<F: PrimeField, CS: Circuit<F>>(
     for (flag, candidates) in precompile_flags.into_iter().zip(input_output_candidates) {
         for (in_u64, out_u64) in candidates {
             // dbg!(in_u64, out_u64, flag);
-            cs.add_constraint(
-                Constraint::from(flag)
-                    * (Term::from(in_u64.low32.0[0]) - Term::from(out_u64.low32.0[0])),
-            );
-            cs.add_constraint(
-                Constraint::from(flag)
-                    * (Term::from(in_u64.low32.0[1]) - Term::from(out_u64.low32.0[1])),
-            );
-            cs.add_constraint(
-                Constraint::from(flag)
-                    * (Term::from(in_u64.high32.0[0]) - Term::from(out_u64.high32.0[0])),
-            );
-            cs.add_constraint(
-                Constraint::from(flag)
-                    * (Term::from(in_u64.high32.0[1]) - Term::from(out_u64.high32.0[1])),
-            );
+            for (in_chunk, out_chunk) in in_u64.chunks_expr().into_iter().zip(out_u64.chunks_expr())
+            {
+                cs.add_constraint_expr((in_chunk - out_chunk).mask(flag));
+            }
         }
     }
 }

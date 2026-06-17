@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::gkr::{OracleInfo, OracleType};
 use crate::field_wrapper::FieldWrapper;
+use crate::gkr::{OracleInfo, OracleType};
 use prover::gkr::prover::WhirSchedule;
 
 /// Compute draw_words for a given number of queries and query index bits.
@@ -60,17 +60,41 @@ fn round_params(
 fn generate_single_oracle_query_body<MW: FieldWrapper>(
     leaf_ext_words_expr: TokenStream,
     hash_buf_size_const: TokenStream,
+    leaf_cap_expr: TokenStream,
     values_per_leaf_expr: TokenStream,
+    fold_steps_expr: TokenStream,
     oracle_depth_expr: TokenStream,
     oracle_cap_expr: TokenStream,
 ) -> TokenStream {
     let quartic_struct = MW::quartic_struct();
 
+    // The leaf buffer (`leaf`) holds `values_per_leaf` field elements. Coefficient
+    // form evaluates it against the precomputed monomial tensor; evaluation form
+    // folds it with `fold_coset`. Exactly one branch is compiled.
+    let fold_computation = if cfg!(feature = "eval_leaves") {
+        quote! {
+            let base_root_inv = extended_generator_inv.pow(query_index as u32);
+            let folded = fold_coset(
+                leaf.as_slice(), #fold_steps_expr,
+                folding_challenges.as_slice(),
+                base_root_inv, high_powers_offsets.as_slice(),
+                fold_buf_a.as_mut_slice(), fold_buf_b.as_mut_slice(),
+            );
+        }
+    } else {
+        quote! {
+            let folded = eval_multilinear_with_monomial_tensor(
+                leaf.as_slice(),
+                monomial_weights.as_slice(),
+            );
+        }
+    };
+
     quote! {
         {
             let mut i = 0;
             while i < #leaf_ext_words_expr {
-                hash_buf.write(i, read_reduced_field_el::<I>());
+                hash_buf.write(i, read_reduced_field_el::<I>(nd_source));
                 i += 1;
             }
         }
@@ -80,25 +104,22 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
         let init_buf = hash_buf.assume_init_subarray::<#hash_buf_size_const>();
         hash_leaf_data_into_state(&mut ts.hasher, init_buf, #leaf_ext_words_expr);
         if !verify_merkle_path::<I>(
-            &mut ts.hasher, tree_index, #oracle_depth_expr, #oracle_cap_expr,
+            &mut ts.hasher, tree_index, #oracle_depth_expr, #oracle_cap_expr, nd_source,
         ) {
             return Err(E::whir_merkle_path_failed(q));
         }
 
-        let mut coeffs: LazyVec<#quartic_struct, { #values_per_leaf_expr }> =
+        let mut leaf: LazyVec<#quartic_struct, { #leaf_cap_expr }> =
             LazyVec::new();
         let mut j = 0;
         while j < #values_per_leaf_expr {
-            coeffs.push(ext_from_raw_word_slice(
+            leaf.push(ext_from_raw_word_slice(
                 &init_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
             ));
             j += 1;
         }
 
-        let folded = eval_multilinear_with_monomial_tensor(
-            coeffs.as_slice(),
-            monomial_weights.as_slice(),
-        );
+        #fold_computation
     }
 }
 
@@ -141,6 +162,12 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
 
     let mul_delin = MW::mul_assign(quote! { t }, quote! { current_delinearization_challenge });
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
+    let add_correction_by_challenge = MW::add_assign_product(
+        quote! { claim_correction },
+        quote! { folded },
+        quote! { current_delinearization_challenge },
+    );
+
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
     let mul_ood_delin = MW::mul_assign(
         quote! { claim_correction },
@@ -225,12 +252,25 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                         initial_transcript. #oracle_type (),
                         &gamma_powers[..], #gamma_off,
                         &mut acc0, &mut acc1, q,
+                        nd_source,
                     )?;
                 });
             }
             gamma_offset_acc += num_cols;
         }
     }
+
+    // Fold-helper imports differ by encoding. These `use` items merge across the
+    // round modules emitted into the generated `whir.rs`, so importing the active
+    // fold helper(s) here makes them available to the internal/final rounds too.
+    let fold_fn_imports = if cfg!(feature = "eval_leaves") {
+        quote! { fold_coset, }
+    } else {
+        quote! {
+            evals_to_multilinear_coeffs, precompute_monomial_tensor,
+            eval_multilinear_with_monomial_tensor,
+        }
+    };
 
     quote! {
         #field_use_stmts
@@ -250,8 +290,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
         };
         use super::common::{
             verify_whir_sumcheck_step, materialize_gamma_powers,
-            evals_to_multilinear_coeffs, precompute_monomial_tensor,
-            eval_multilinear_with_monomial_tensor,
+            #fold_fn_imports
             read_reduced_field_el, draw_single_field_el, compute_tree_index,
             process_oracle_query,
             fold_whir_accumulator, push_whir_pow_entry,
@@ -281,6 +320,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
                 #quartic_struct, MAX_POW_ENTRIES,
             >,
+            nd_source: &mut I,
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
             unsafe {
                 let gamma_powers: [#quartic_struct; TOTAL_ORACLE_COLS] =
@@ -289,8 +329,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 {
                     let mut col_idx = 0;
                     while col_idx < TOTAL_ORACLE_COLS {
-                        let claim_idx = *INITIAL_WHIR_CLAIM_INDICES.get_unchecked(col_idx);
-                        let eval: #quartic_struct = *base_layer_claims.get_unchecked(claim_idx);
+                        let eval: #quartic_struct = *base_layer_claims.get_unchecked(col_idx);
                         let mut term = *gamma_powers.get_unchecked(col_idx);
                         #batch_mul_eval;
                         #add_claim_eval;
@@ -303,7 +342,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 let mut round_idx = 0;
                 while round_idx < WHIR_FOLD_STEPS[0] {
                     let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
-                        ts, claim, round_idx,
+                        ts, claim, round_idx, nd_source,
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
@@ -318,7 +357,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                         * BLAKE2S_BLOCK_SIZE_U32_WORDS
                 };
                 let intermediate_cap =
-                    read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts);
+                    read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts, nd_source);
 
                 let ood_point = draw_single_field_el(ts);
 
@@ -333,7 +372,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 {
                     let mut i = 0;
                     while i < OOD_DATA_WORDS {
-                        ood_buf.data_write(i, read_reduced_field_el::<I>());
+                        ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                         i += 1;
                     }
                 }
@@ -342,7 +381,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 };
                 ts.commit(&mut ood_buf, OOD_DATA_WORDS);
 
-                read_and_verify_pow::<I>(ts, INITIAL_POW_BITS);
+                read_and_verify_pow::<I>(ts, INITIAL_POW_BITS, nd_source);
                 let query_indices = draw_query_indices::<INITIAL_NUM_QUERIES, INITIAL_DRAW_WORDS>(
                     ts, INITIAL_NUM_QUERIES, INITIAL_QUERY_INDEX_BITS,
                     INITIAL_DRAW_WORDS,
@@ -388,6 +427,8 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                         <#quartic_struct>::from_base(query_point_base),
                         current_delinearization_challenge,
                     );
+
+                    // #add_correction_by_challenge; // not beneficial
 
                     let mut t = folded;
                     #mul_delin;
@@ -463,6 +504,12 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
     let mul_delin = MW::mul_assign(quote! { t }, quote! { current_delinearization_challenge });
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
+    let add_correction_by_challenge = MW::add_assign_product(
+        quote! { claim_correction },
+        quote! { folded },
+        quote! { current_delinearization_challenge },
+    );
+
     let mul_ood_delin = MW::mul_assign(
         quote! { claim_correction },
         quote! { delinearization_challenge },
@@ -476,9 +523,36 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
         quote! { leaf_ext_words },
         quote! { INTERNAL_HASH_BUF_SIZE },
         quote! { MAX_INTERNAL_VALUES_PER_LEAF },
+        quote! { values_per_leaf },
+        quote! { fold_steps },
         quote! { oracle_depth },
         quote! { prev_oracle_cap },
     );
+
+    // Per-round fold setup: coefficient form precomputes the monomial tensor;
+    // evaluation form precomputes the high-power offsets and fold scratch buffers.
+    let internal_fold_setup = if cfg!(feature = "eval_leaves") {
+        quote! {
+            let extended_generator_inv =
+                #field_struct::TWO_ADICITY_GENERATORS_INVERSED[INTERNAL_RS_DOMAIN_LOG2[ir]];
+            let mut high_powers_offsets = LazyVec::<#field_struct, MAX_HIGH_POWERS>::new();
+            compute_high_powers_offsets(fold_steps, &mut high_powers_offsets);
+            const INTERNAL_FOLD_BUF_HALF: usize = MAX_INTERNAL_VALUES_PER_LEAF / 2;
+            let mut fold_buf_a = LazyVec::<#quartic_struct, INTERNAL_FOLD_BUF_HALF>::new();
+            fold_buf_a.set_len(INTERNAL_FOLD_BUF_HALF);
+            let mut fold_buf_b = LazyVec::<#quartic_struct, INTERNAL_FOLD_BUF_HALF>::new();
+            fold_buf_b.set_len(INTERNAL_FOLD_BUF_HALF);
+        }
+    } else {
+        quote! {
+            let mut monomial_weights =
+                LazyVec::<#quartic_struct, MAX_INTERNAL_VALUES_PER_LEAF>::new();
+            precompute_monomial_tensor(
+                folding_challenges.as_slice(),
+                &mut monomial_weights,
+            );
+        }
+    };
 
     quote! {
         use super::common::{
@@ -519,6 +593,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
                 #quartic_struct, MAX_POW_ENTRIES,
             >,
+            nd_source: &mut I,
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
             unsafe {
                 let fold_steps = WHIR_FOLD_STEPS[round_idx];
@@ -533,7 +608,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                 let mut round = 0;
                 while round < fold_steps {
                     let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
-                        ts, claim, round,
+                        ts, claim, round, nd_source,
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
@@ -548,7 +623,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                         * BLAKE2S_BLOCK_SIZE_U32_WORDS
                 };
                 let intermediate_cap =
-                    read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts);
+                    read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts, nd_source);
 
                 let ood_point = draw_single_field_el(ts);
 
@@ -563,7 +638,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                 {
                     let mut i = 0;
                     while i < OOD_DATA_WORDS {
-                        ood_buf.data_write(i, read_reduced_field_el::<I>());
+                        ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                         i += 1;
                     }
                 }
@@ -572,7 +647,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                 };
                 ts.commit(&mut ood_buf, OOD_DATA_WORDS);
 
-                read_and_verify_pow::<I>(ts, WHIR_POW_BITS[round_idx]);
+                read_and_verify_pow::<I>(ts, WHIR_POW_BITS[round_idx], nd_source);
                 let query_index_bits = INTERNAL_QUERY_INDEX_BITS[ir];
                 let draw_words = INTERNAL_DRAW_WORDS[ir];
                 let query_indices =
@@ -596,12 +671,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                 let coset_tree_size = INTERNAL_COSET_TREE_SIZE[ir];
                 let oracle_depth = WHIR_ORACLE_DEPTHS[round_idx - 1];
 
-                let mut monomial_weights =
-                    LazyVec::<#quartic_struct, MAX_INTERNAL_VALUES_PER_LEAF>::new();
-                precompute_monomial_tensor(
-                    folding_challenges.as_slice(),
-                    &mut monomial_weights,
-                );
+                #internal_fold_setup
 
                 let mut q = 0;
                 while q < num_queries {
@@ -621,6 +691,8 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                         <#quartic_struct>::from_base(query_point_base),
                         current_delinearization_challenge,
                     );
+
+                    // #add_correction_by_challenge; // not beneficial
 
                     let mut t = folded;
                     #mul_delin;
@@ -683,9 +755,36 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
         quote! { FINAL_LEAF_EXT_WORDS },
         quote! { FINAL_HASH_BUF_SIZE },
         quote! { FINAL_VALUES_PER_LEAF },
+        quote! { FINAL_VALUES_PER_LEAF },
+        quote! { FINAL_FOLD_STEPS },
         quote! { oracle_depth },
         quote! { prev_oracle_cap },
     );
+
+    // Per-round fold setup (final round): coefficient form precomputes the monomial
+    // tensor; evaluation form precomputes high-power offsets and fold scratch.
+    let final_fold_setup = if cfg!(feature = "eval_leaves") {
+        quote! {
+            let extended_generator_inv =
+                #field_struct::TWO_ADICITY_GENERATORS_INVERSED[FINAL_RS_DOMAIN_LOG2];
+            let mut high_powers_offsets = LazyVec::<#field_struct, MAX_HIGH_POWERS>::new();
+            compute_high_powers_offsets(FINAL_FOLD_STEPS, &mut high_powers_offsets);
+            const FINAL_FOLD_BUF_HALF: usize = FINAL_VALUES_PER_LEAF / 2;
+            let mut fold_buf_a = LazyVec::<#quartic_struct, FINAL_FOLD_BUF_HALF>::new();
+            fold_buf_a.set_len(FINAL_FOLD_BUF_HALF);
+            let mut fold_buf_b = LazyVec::<#quartic_struct, FINAL_FOLD_BUF_HALF>::new();
+            fold_buf_b.set_len(FINAL_FOLD_BUF_HALF);
+        }
+    } else {
+        quote! {
+            let mut monomial_weights =
+                LazyVec::<#quartic_struct, FINAL_VALUES_PER_LEAF>::new();
+            precompute_monomial_tensor(
+                folding_challenges.as_slice(),
+                &mut monomial_weights,
+            );
+        }
+    };
 
     quote! {
         const FINAL_FOLD_STEPS: usize = #fold_steps;
@@ -711,6 +810,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
                 #quartic_struct, MAX_POW_ENTRIES,
             >,
+            nd_source: &mut I,
         ) -> Result<(), E::Error> {
             unsafe {
                 let mut claim = claim;
@@ -719,7 +819,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                 let mut round = 0;
                 while round < FINAL_FOLD_STEPS {
                     let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
-                        ts, claim, round,
+                        ts, claim, round, nd_source,
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
@@ -744,14 +844,14 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                 {
                     let mut i = 0;
                     while i < FINAL_MONOMIALS_DATA_WORDS {
-                        monomials_buf.data_write(i, read_reduced_field_el::<I>());
+                        monomials_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
                         i += 1;
                     }
                 }
                 ts.commit(&mut monomials_buf, FINAL_MONOMIALS_DATA_WORDS);
                 let monomials: &[#quartic_struct] = monomials_buf.data_as::<#quartic_struct>(FINAL_MONOMIALS_LEN);
 
-                read_and_verify_pow::<I>(ts, FINAL_POW_BITS);
+                read_and_verify_pow::<I>(ts, FINAL_POW_BITS, nd_source);
                 let query_indices =
                     draw_query_indices::<MAX_INTERNAL_NUM_QUERIES, MAX_INTERNAL_DRAW_WORDS>(
                         ts, FINAL_NUM_QUERIES, FINAL_QUERY_INDEX_BITS, FINAL_DRAW_WORDS,
@@ -760,12 +860,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                 let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[FINAL_RS_DOMAIN_LOG2];
                 let oracle_depth = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];
 
-                let mut monomial_weights =
-                    LazyVec::<#quartic_struct, FINAL_VALUES_PER_LEAF>::new();
-                precompute_monomial_tensor(
-                    folding_challenges.as_slice(),
-                    &mut monomial_weights,
-                );
+                #final_fold_setup
 
                 let mut folded_values: LazyVec<#quartic_struct, FINAL_NUM_QUERIES> =
                     LazyVec::new();

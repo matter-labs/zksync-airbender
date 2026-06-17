@@ -1,5 +1,6 @@
 use super::*;
 use crate::constraint::Constraint;
+use crate::structured_expr::Expr;
 use crate::witness_placer::*;
 use field::PrimeField;
 
@@ -59,5 +60,39 @@ impl<F: PrimeField> From<Constraint<F>> for LookupInput<F> {
             linear_terms,
             constant_coeff,
         }
+    }
+}
+
+impl<F: PrimeField> From<Expr<F>> for LookupInput<F> {
+    #[track_caller]
+    fn from(value: Expr<F>) -> Self {
+        let value = value.canonicalize();
+        value.validate_degree_at_most(1);
+        Self::from(value.to_max_quadratic_constraint())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use field::{Field, Mersenne31Field};
+
+    type F = Mersenne31Field;
+
+    #[test]
+    fn lookup_input_expr_canonicalizes_before_degree_check() {
+        let expr = Expr::<F>::Product(vec![
+            Expr::zero(),
+            Expr::var(Variable(1)),
+            Expr::var(Variable(2)),
+        ]);
+
+        assert_eq!(
+            LookupInput::from(expr),
+            LookupInput::Expression {
+                linear_terms: vec![],
+                constant_coeff: F::ZERO,
+            }
+        );
     }
 }

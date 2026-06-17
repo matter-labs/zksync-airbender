@@ -23,6 +23,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             table_driver,
             num_of_variables,
             constraints,
+            structured_statements,
             lookups,
             memory_queries,
             range_check_expressions,
@@ -220,31 +221,6 @@ impl<F: PrimeField> GKRCompiler<F> {
             let c = t.clone() * t.clone() - t;
             constraints.push((c, false));
         }
-
-        // // now we can optimize the constraints and all remaining variables
-        // for c in constraints.iter_mut() {
-        //     c.0.normalize();
-        // }
-
-        // let (optimized_out_variables, mut constraints) = optimize_out_linear_constraints(
-        //     &[],
-        //     &[],
-        //     &substitutions,
-        //     constraints,
-        //     &mut all_variables_to_place,
-        // );
-
-        // println!(
-        //     "{} variables were optimized out",
-        //     optimized_out_variables.len()
-        // );
-        // let scratch_space_size = optimized_out_variables.len();
-
-        // for var in optimized_out_variables.iter() {
-        //     if let Some(c) = variables_from_constraints.remove(var) {
-        //         assert!(c.degree() < 2);
-        //     }
-        // }
 
         // normalize constraint for next steps
         for c in constraints.iter_mut() {
@@ -506,6 +482,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             total_width: graph.base_layer_memory.len(),
             teardown_sets: Vec::new(),
             decoder_input: None,
+            inits_and_teardowns_word_bits: None,
         };
 
         let multiplicities_columns_for_range_check_16 =
@@ -621,6 +598,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 
             degree_2_constraints,
             degree_1_constraints,
+            structured_statements,
 
             generic_lookups: generic_lookups_compiled,
             range_check_16_lookup_expressions: range_check_16_lookups_compiled,

@@ -1,7 +1,14 @@
 use proc_macro2::TokenStream;
+use prover::field::PrimeField;
 use quote::quote;
 
 pub trait FieldWrapper {
+    type BaseField: PrimeField;
+
+    fn coeff_to_internal_repr(coeff: u32) -> u32 {
+        Self::BaseField::from_u32_with_reduction(coeff).as_u32_raw_repr_reduced()
+    }
+
     fn field_struct() -> TokenStream;
     fn complex_struct() -> TokenStream;
     fn quartic_struct() -> TokenStream;
@@ -10,14 +17,21 @@ pub trait FieldWrapper {
     fn field_new(value: TokenStream) -> TokenStream;
     fn quartic_zero() -> TokenStream;
     fn quartic_one() -> TokenStream;
+    fn quartic_from_base(value: TokenStream) -> TokenStream;
 
     fn add_assign(a: TokenStream, b: TokenStream) -> TokenStream;
     fn sub_assign(a: TokenStream, b: TokenStream) -> TokenStream;
     fn mul_assign(a: TokenStream, b: TokenStream) -> TokenStream;
+    fn add_assign_product(acc: TokenStream, a: TokenStream, b: TokenStream) -> TokenStream;
 
     fn add_assign_base(a: TokenStream, b: TokenStream) -> TokenStream;
     fn sub_assign_base(a: TokenStream, b: TokenStream) -> TokenStream;
     fn mul_assign_by_base(a: TokenStream, b: TokenStream) -> TokenStream;
+    fn add_assign_product_with_base(
+        acc: TokenStream,
+        ext: TokenStream,
+        base: TokenStream,
+    ) -> TokenStream;
 
     fn double(a: TokenStream) -> TokenStream;
     fn square(a: TokenStream) -> TokenStream;
@@ -47,6 +61,8 @@ pub trait FieldWrapper {
 pub struct DefaultBabyBearField;
 
 impl FieldWrapper for DefaultBabyBearField {
+    type BaseField = prover::field::baby_bear::base::BabyBearField;
+
     fn field_struct() -> TokenStream {
         quote! { BabyBearField }
     }
@@ -75,6 +91,10 @@ impl FieldWrapper for DefaultBabyBearField {
         quote! { BabyBearExt4::ONE }
     }
 
+    fn quartic_from_base(value: TokenStream) -> TokenStream {
+        quote! { BabyBearExt4::from_base(#value) }
+    }
+
     fn add_assign(a: TokenStream, b: TokenStream) -> TokenStream {
         quote! { field_ops::add_assign(&mut #a, & #b) }
     }
@@ -87,6 +107,10 @@ impl FieldWrapper for DefaultBabyBearField {
         quote! { field_ops::mul_assign(&mut #a, & #b) }
     }
 
+    fn add_assign_product(acc: TokenStream, a: TokenStream, b: TokenStream) -> TokenStream {
+        quote! { field_ops::add_assign_product(&mut #acc, & #a, & #b) }
+    }
+
     fn add_assign_base(a: TokenStream, b: TokenStream) -> TokenStream {
         quote! { field_ops::add_assign_base(&mut #a, & #b) }
     }
@@ -97,6 +121,10 @@ impl FieldWrapper for DefaultBabyBearField {
 
     fn mul_assign_by_base(a: TokenStream, b: TokenStream) -> TokenStream {
         quote! { field_ops::mul_assign_by_base(&mut #a, & #b) }
+    }
+
+    fn add_assign_product_with_base(a: TokenStream, b: TokenStream, c: TokenStream) -> TokenStream {
+        quote! { field_ops::add_assign_product_with_base(&mut #a, & #b, & #c) }
     }
 
     fn double(a: TokenStream) -> TokenStream {
@@ -150,6 +178,8 @@ impl FieldWrapper for DefaultBabyBearField {
 pub struct DefaultMersenne31Field;
 
 impl FieldWrapper for DefaultMersenne31Field {
+    type BaseField = prover::field::Mersenne31Field;
+
     fn field_struct() -> TokenStream {
         quote! { Mersenne31Field }
     }
@@ -178,6 +208,10 @@ impl FieldWrapper for DefaultMersenne31Field {
         quote! { Mersenne31Quartic::ONE }
     }
 
+    fn quartic_from_base(value: TokenStream) -> TokenStream {
+        quote! { Mersenne31Quartic::from_base(#value) }
+    }
+
     fn add_assign(a: TokenStream, b: TokenStream) -> TokenStream {
         quote! { field_ops::add_assign(&mut #a, & #b) }
     }
@@ -190,6 +224,10 @@ impl FieldWrapper for DefaultMersenne31Field {
         quote! { field_ops::mul_assign(&mut #a, & #b) }
     }
 
+    fn add_assign_product(acc: TokenStream, a: TokenStream, b: TokenStream) -> TokenStream {
+        todo!();
+    }
+
     fn add_assign_base(a: TokenStream, b: TokenStream) -> TokenStream {
         quote! { field_ops::add_assign_base(&mut #a, & #b) }
     }
@@ -200,6 +238,10 @@ impl FieldWrapper for DefaultMersenne31Field {
 
     fn mul_assign_by_base(a: TokenStream, b: TokenStream) -> TokenStream {
         quote! { field_ops::mul_assign_by_base(&mut #a, & #b) }
+    }
+
+    fn add_assign_product_with_base(a: TokenStream, b: TokenStream, c: TokenStream) -> TokenStream {
+        todo!();
     }
 
     fn double(a: TokenStream) -> TokenStream {

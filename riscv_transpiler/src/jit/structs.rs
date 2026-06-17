@@ -238,7 +238,7 @@ impl<'a, N: NonDeterminismCSRSource> ContextImpl for DefaultContextImpl<'a, N> {
         self.non_determinism_source.read()
     }
 
-    fn write_nondeterminism(&mut self, value: u32, memory: &[u32; RAM_SIZE]) {
+    fn write_nondeterminism(&mut self, value: u32, memory: &RamImage) {
         self.non_determinism_source
             .write_with_memory_access(memory, value);
     }

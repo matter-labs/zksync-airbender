@@ -11,6 +11,7 @@ pub enum FieldNodeExpression<F: PrimeField> {
     SubExpression(usize),
     Constant(F),
     FromInteger(Box<FixedWidthIntegerNodeExpression<F>>),
+    FromRawReprWithReduction(Box<FixedWidthIntegerNodeExpression<F>>),
     FromMask(Box<BoolNodeExpression<F>>),
     OracleValue {
         placeholder: Placeholder,
@@ -61,7 +62,7 @@ impl<F: PrimeField> FieldNodeExpression<F> {
                 // nothing
             }
             // the rest is recursive
-            Self::FromInteger(inner) => {
+            Self::FromInteger(inner) | Self::FromRawReprWithReduction(inner) => {
                 inner.make_subexpressions(set, lookup_fn);
             }
             Self::FromMask(inner) => {
@@ -238,5 +239,11 @@ impl<F: PrimeField> WitnessComputationalField<F> for FieldNodeExpression<F> {
     }
     fn from_integer(value: Self::IntegerRepresentation) -> Self {
         Self::FromInteger(Box::new(value))
+    }
+    fn from_raw_repr_with_reduction(value: Self::IntegerRepresentation) -> Self {
+        Self::FromRawReprWithReduction(Box::new(value))
+    }
+    fn into_raw_repr_reduced(self) -> Self::IntegerRepresentation {
+        FixedWidthIntegerNodeExpression::U32RawReprReducedFromField(Box::new(self))
     }
 }

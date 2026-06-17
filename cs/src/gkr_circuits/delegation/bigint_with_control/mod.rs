@@ -3,9 +3,10 @@ use std::collections::BTreeMap;
 use super::*;
 use crate::cs::circuit::*;
 use crate::cs::circuit_trait::Invariant;
-use crate::cs::utils::collapse_max_quadratic_constraint_into;
+use crate::cs::utils::collapse_max_quadratic_expr_into;
 use crate::definitions::REGISTER_SIZE;
 use crate::gkr_circuits::*;
+use crate::structured_expr::Expr;
 use crate::types::Boolean;
 use crate::types::Num;
 use crate::witness_placer::*;
@@ -193,15 +194,13 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     // We will check for a proper bitmask, for all terms EXCEPT carry, as it can be encountered
     // in combination with add/sub
 
-    let mut constraint = Constraint::<F>::empty();
+    let mut bitmask_sum = Expr::<F>::zero();
     for (idx, bit) in control_bitmask.iter().enumerate() {
         if idx != CARRY_BIT_IDX {
-            constraint = constraint + bit.get_terms();
+            bitmask_sum = bitmask_sum + Expr::from(*bit);
         }
     }
-    let constraint_minus_one = constraint.clone() - Term::from(1u32);
-    constraint = constraint * constraint_minus_one;
-    cs.add_constraint(constraint);
+    cs.add_constraint_expr(bitmask_sum.clone() * (bitmask_sum - Expr::one()));
 
     let perform_add = control_bitmask[ADD_OP_BIT_IDX];
     let perform_sub = control_bitmask[SUB_OP_BIT_IDX];
@@ -250,13 +249,18 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
         }
     }
 
+    let perform_add_boolean = perform_add;
+    let perform_sub_boolean = perform_sub;
+    let perform_sub_negate_boolean = perform_sub_negate;
+    let perform_mul_low_boolean = perform_mul_low;
+    let perform_mul_high_boolean = perform_mul_high;
     let perform_eq_boolean = perform_eq;
+    let carry_or_borrow_boolean = carry_or_borrow;
+    let perform_memcopy_boolean = perform_memcopy;
 
     let perform_add = perform_add.get_variable().unwrap();
     let perform_sub = perform_sub.get_variable().unwrap();
     let perform_sub_negate = perform_sub_negate.get_variable().unwrap();
-    let perform_mul_low = perform_mul_low.get_variable().unwrap();
-    let perform_mul_high = perform_mul_high.get_variable().unwrap();
     let perform_eq = perform_eq.get_variable().unwrap();
     let carry_or_borrow = carry_or_borrow.get_variable().unwrap();
     let perform_memcopy = perform_memcopy.get_variable().unwrap();
@@ -452,52 +456,52 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
         let of_for_limb = intermediate_carry_variables[limb_idx];
         // now select and add from constraint
 
-        let mut constraint = Constraint::<F>::empty();
         // selection of virtual A limb
-        constraint = constraint + Term::from(perform_add) * Term::from(a_limbs[limb_idx]);
-        constraint =
-            constraint + Term::from(perform_sub) * Term::from(additive_ops_result[limb_idx]);
-        constraint = constraint + Term::from(perform_sub_negate) * Term::from(a_limbs[limb_idx]);
-        constraint =
-            constraint + Term::from(perform_eq) * Term::from(additive_ops_result[limb_idx]);
+        let selected_a = Expr::var(a_limbs[limb_idx]).mask(perform_add_boolean)
+            + Expr::var(additive_ops_result[limb_idx]).mask(perform_sub_boolean)
+            + Expr::var(a_limbs[limb_idx]).mask(perform_sub_negate_boolean)
+            + Expr::var(additive_ops_result[limb_idx]).mask(perform_eq_boolean);
         // and nothing for memcopy
 
         // selection of virtual B limb
-        constraint = constraint + Term::from(perform_add) * Term::from(b_limbs[limb_idx]);
-        constraint = constraint + Term::from(perform_sub) * Term::from(b_limbs[limb_idx]);
-        constraint =
-            constraint + Term::from(perform_sub_negate) * Term::from(additive_ops_result[limb_idx]);
-        constraint = constraint + Term::from(perform_eq) * Term::from(b_limbs[limb_idx]);
+        let selected_b_without_memcopy = Expr::var(b_limbs[limb_idx]).mask(perform_add_boolean)
+            + Expr::var(b_limbs[limb_idx]).mask(perform_sub_boolean)
+            + Expr::var(additive_ops_result[limb_idx]).mask(perform_sub_negate_boolean)
+            + Expr::var(b_limbs[limb_idx]).mask(perform_eq_boolean);
         // memcopy is present here
-        constraint = constraint + Term::from(perform_memcopy) * Term::from(b_limbs[limb_idx]);
+        let selected_b =
+            selected_b_without_memcopy + Expr::var(b_limbs[limb_idx]).mask(perform_memcopy_boolean);
 
         // selection of virtual C limb
-        constraint =
-            constraint - Term::from(perform_add) * Term::from(additive_ops_result[limb_idx]);
-        constraint = constraint - Term::from(perform_sub) * Term::from(a_limbs[limb_idx]);
-        constraint = constraint - Term::from(perform_sub_negate) * Term::from(b_limbs[limb_idx]);
-        constraint = constraint - Term::from(perform_eq) * Term::from(a_limbs[limb_idx]);
+        let selected_c_without_memcopy = Expr::var(additive_ops_result[limb_idx])
+            .mask(perform_add_boolean)
+            + Expr::var(a_limbs[limb_idx]).mask(perform_sub_boolean)
+            + Expr::var(b_limbs[limb_idx]).mask(perform_sub_negate_boolean)
+            + Expr::var(a_limbs[limb_idx]).mask(perform_eq_boolean);
         // memcopy is present here
-        constraint =
-            constraint - Term::from(perform_memcopy) * Term::from(additive_ops_result[limb_idx]);
+        let selected_c = selected_c_without_memcopy
+            + Expr::var(additive_ops_result[limb_idx]).mask(perform_memcopy_boolean);
 
         // and propagate carries
-        constraint -= Term::from((F::from_u32_unchecked(1 << 16), of_for_limb));
-        if limb_idx == 0 {
+        let carry_expr = if limb_idx == 0 {
             // we only "use" carry or borrow in case of add/sub/sub_neg, but it is still degree 2
 
             // we always add it along with "b" term
-            constraint = constraint + Term::from(perform_add) * Term::from(carry_or_borrow);
-            constraint = constraint + Term::from(perform_sub) * Term::from(carry_or_borrow);
-            constraint = constraint + Term::from(perform_sub_negate) * Term::from(carry_or_borrow);
+            let carry_or_borrow = Expr::from(carry_or_borrow_boolean);
+            let carry_without_memcopy = carry_or_borrow.clone().mask(perform_add_boolean)
+                + carry_or_borrow.clone().mask(perform_sub_boolean)
+                + carry_or_borrow.clone().mask(perform_sub_negate_boolean);
             // memcopy is present here
-            constraint = constraint + Term::from(perform_memcopy) * Term::from(carry_or_borrow);
+            carry_without_memcopy + carry_or_borrow.mask(perform_memcopy_boolean)
         } else {
             let previous_carry = previous_of.take().unwrap();
-            constraint += Term::from(previous_carry);
-        }
+            Expr::var(previous_carry)
+        };
 
-        cs.add_constraint(constraint);
+        cs.add_constraint_expr(
+            selected_a + selected_b - selected_c + carry_expr
+                - Expr::var(of_for_limb) * F::from_u32_unchecked(1 << 16),
+        );
 
         previous_of = Some(of_for_limb);
     }
@@ -516,10 +520,10 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
                 &[LookupInput::from(*el)],
                 TableType::U16GetLowByte,
             );
-            dst.push(Constraint::from(l));
-            let mut high_constraint = Constraint::from(*el) - Term::from(l);
-            high_constraint.scale(F::from_u32_unchecked(1 << 8).inverse().unwrap());
-            dst.push(high_constraint);
+            dst.push(Expr::var(l));
+            let high_expr =
+                (Expr::var(*el) - Expr::var(l)) * F::from_u32_unchecked(1 << 8).inverse().unwrap();
+            dst.push(high_expr);
         }
     }
 
@@ -549,7 +553,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     // We will encounter intermediate products from 25 to 29 bits,
     // so we will need rangecheck tables from 9 to 13 bits
 
-    let mut range_checks_buffer: BTreeMap<u32, Vec<Constraint<F>>> = BTreeMap::new();
+    let mut range_checks_buffer: BTreeMap<u32, Vec<Expr<F>>> = BTreeMap::new();
 
     // we will make full product below, but we will merge range checks for result of add/sub/etc and of product_low
 
@@ -564,21 +568,21 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
         .try_into()
         .unwrap();
 
-    let mut carry_constraint = Constraint::<F>::empty();
+    let mut carry_expr = Expr::<F>::zero();
     let mut carry_range = 0u64;
     for (i, product_word) in full_product.iter().enumerate() {
-        let mut product_constraint = carry_constraint.clone();
+        let mut product_expr = carry_expr.clone();
         let mut product_range = carry_range;
         for a_byte_idx in 0..32 {
             for b_byte_idx in 0..32 {
                 if a_byte_idx + b_byte_idx == 2 * i {
-                    product_constraint = product_constraint
-                        + (a_bytes[a_byte_idx].clone() * b_bytes[b_byte_idx].clone());
+                    product_expr =
+                        product_expr + (a_bytes[a_byte_idx].clone() * b_bytes[b_byte_idx].clone());
                     product_range += 255u64 * 255u64;
                 } else if a_byte_idx + b_byte_idx == 2 * i + 1 {
-                    let mut t = a_bytes[a_byte_idx].clone() * b_bytes[b_byte_idx].clone();
-                    t.scale(F::from_u32_unchecked(1 << 8));
-                    product_constraint = product_constraint + t;
+                    let t = (a_bytes[a_byte_idx].clone() * b_bytes[b_byte_idx].clone())
+                        * F::from_u32_unchecked(1 << 8);
+                    product_expr = product_expr + t;
                     product_range += (255u64 * 255u64) << 8;
                 }
             }
@@ -589,11 +593,10 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
         if i == full_product.len() - 1 {
             assert!(product_range < 1 << 16);
             // no further overflow is possible, and we should collapse directly
-            collapse_max_quadratic_constraint_into(cs, product_constraint.clone(), *product_word);
-            product_constraint -= Term::from(*product_word);
-            cs.add_constraint(product_constraint);
+            collapse_max_quadratic_expr_into(cs, product_expr.clone(), *product_word);
+            cs.define_variable_from_expr(*product_word, product_expr);
         } else {
-            let product_intermediate = cs.add_variable_from_constraint(product_constraint);
+            let product_intermediate = cs.add_variable_from_expr(product_expr);
             // now split it - we only need to assign a witness to already range-checked product word,
             // and perform extra range check for carry constraint
 
@@ -609,10 +612,8 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
             cs.set_values(value_fn);
 
             carry_range = product_range >> 16;
-            carry_constraint = Constraint::empty();
-            carry_constraint += Term::from(product_intermediate);
-            carry_constraint -= Term::from(product_word);
-            carry_constraint.scale(F::from_u32_unchecked(1 << 16).inverse().unwrap());
+            carry_expr = (Expr::var(product_intermediate) - Expr::var(product_word))
+                * F::from_u32_unchecked(1 << 16).inverse().unwrap();
 
             // {
             //     if let Some(value) = cs.get_value(product_intermediate) {
@@ -628,7 +629,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
             range_checks_buffer
                 .entry(carry_bits)
                 .or_default()
-                .push(carry_constraint.clone());
+                .push(carry_expr.clone());
         }
     }
 
@@ -656,17 +657,16 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
             .zip(product_low.into_iter())
             .enumerate()
         {
-            let mut constraint = Constraint::empty();
-            constraint = constraint + Term::from(perform_add) * Term::from(a);
-            constraint = constraint + Term::from(perform_sub) * Term::from(a);
-            constraint = constraint + Term::from(perform_sub_negate) * Term::from(a);
-            constraint = constraint + Term::from(perform_eq) * Term::from(a);
-            constraint = constraint + Term::from(perform_memcopy) * Term::from(a);
-            constraint = constraint + Term::from(perform_mul_low) * Term::from(b);
-            constraint = constraint + Term::from(perform_mul_high) * Term::from(b);
+            let expr = Expr::var(a).mask(perform_add_boolean)
+                + Expr::var(a).mask(perform_sub_boolean)
+                + Expr::var(a).mask(perform_sub_negate_boolean)
+                + Expr::var(a).mask(perform_eq_boolean)
+                + Expr::var(a).mask(perform_memcopy_boolean)
+                + Expr::var(b).mask(perform_mul_low_boolean)
+                + Expr::var(b).mask(perform_mul_high_boolean);
 
-            let t = cs.add_intermediate_named_variable_from_constraint(
-                constraint,
+            let t = cs.add_intermediate_named_variable_from_expr(
+                expr,
                 &format!("range check selection for limb {}", i),
             );
             cs.require_invariant(t, Invariant::RangeChecked { width: 16 });
@@ -719,13 +719,13 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     // now multiplication is fully constrained, so we can select the outputs, and write them directly into memory
 
     let all_flags = [
-        perform_add,
-        perform_sub,
-        perform_sub_negate,
-        perform_eq,
-        perform_mul_low,
-        perform_mul_high,
-        perform_memcopy,
+        perform_add_boolean,
+        perform_sub_boolean,
+        perform_sub_negate_boolean,
+        perform_eq_boolean,
+        perform_mul_low_boolean,
+        perform_mul_high_boolean,
+        perform_memcopy_boolean,
     ];
     let all_results = [
         add_sub_operation_result,
@@ -740,14 +740,13 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     let output_vars = output_placeholder_state.iter().flatten();
 
     for (idx, output_var) in output_vars.enumerate() {
-        let mut constraint = Constraint::<F>::empty();
+        let mut expr = Expr::<F>::zero();
         for (flag, result) in all_flags.iter().zip(all_results.iter()) {
             let limb = result[idx];
-            constraint = constraint + (Term::from(*flag) * Term::from(limb));
+            expr = expr + Expr::var(limb).mask(*flag);
         }
-        collapse_max_quadratic_constraint_into(cs, constraint.clone(), *output_var);
-        constraint -= Term::from(*output_var);
-        cs.add_constraint(constraint);
+        collapse_max_quadratic_expr_into(cs, expr.clone(), *output_var);
+        cs.define_variable_from_expr(*output_var, expr);
     }
 
     // and now we can resolve updated flag
@@ -764,21 +763,17 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     // layers.
 
     let zero_check_input_in_intermediate_layer = {
-        let mut accumulation_constraint = Constraint::<F>::empty();
+        let mut accumulation_expr = Expr::<F>::zero();
         for (comparison_output, product_high) in eq_operation_words_for_zero_check
             .into_iter()
             .zip(product_high.into_iter())
         {
-            accumulation_constraint =
-                accumulation_constraint + (Term::from(perform_eq) * Term::from(comparison_output));
-            accumulation_constraint =
-                accumulation_constraint + (Term::from(perform_mul_low) * Term::from(product_high));
+            accumulation_expr = accumulation_expr
+                + Expr::var(comparison_output).mask(perform_eq_boolean)
+                + Expr::var(product_high).mask(perform_mul_low_boolean);
         }
 
-        cs.add_intermediate_named_variable_from_constraint(
-            accumulation_constraint,
-            "sum for zero-check",
-        )
+        cs.add_intermediate_named_variable_from_expr(accumulation_expr, "sum for zero-check")
     };
 
     let all_zeroes = {
@@ -799,22 +794,22 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
         // now we need to copy first, and then add constraint
 
-        let var_inv_copied = cs.add_intermediate_named_variable_from_constraint(
-            Constraint::from(var_inv),
+        let var_inv_copied = cs.add_intermediate_named_variable_from_expr(
+            Expr::var(var_inv),
             "inv var for zero check copy",
         );
-        let zero_flag_var_copied = cs.add_intermediate_named_variable_from_constraint(
-            Constraint::from(zero_flag_var),
+        let zero_flag_var_copied = cs.add_intermediate_named_variable_from_expr(
+            Expr::var(zero_flag_var),
             "is zero var for zero check copy",
         );
 
-        cs.add_constraint(
-            Term::from(zero_check_input_in_intermediate_layer) * Term::from(zero_flag_var_copied),
+        cs.add_constraint_expr(
+            Expr::var(zero_check_input_in_intermediate_layer) * Expr::var(zero_flag_var_copied),
         );
-        cs.add_constraint(
-            Term::from(zero_check_input_in_intermediate_layer) * Term::from(var_inv_copied)
-                + Term::from(zero_flag_var_copied)
-                - Term::from(1),
+        cs.add_constraint_expr(
+            Expr::var(zero_check_input_in_intermediate_layer) * Expr::var(var_inv_copied)
+                + Expr::var(zero_flag_var_copied)
+                - Expr::one(),
         );
 
         zero_flag
@@ -837,20 +832,15 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
         panic!()
     };
 
-    let mut constraint = Constraint::<F>::empty();
-    constraint = constraint + (Term::from(perform_add) * Term::from(result_of_variable));
-    constraint = constraint + (Term::from(perform_sub) * Term::from(result_of_variable));
-    constraint = constraint + (Term::from(perform_sub_negate) * Term::from(result_of_variable));
-    constraint =
-        constraint + (Term::from(perform_eq) * Term::from(perform_eq_bit.get_variable().unwrap()));
-    constraint = constraint
-        + (Term::from(perform_mul_low)
-            * (Term::from(1u32) - Term::from(all_zeroes.get_variable().unwrap())));
+    let mut expr = Expr::var(result_of_variable).mask(perform_add_boolean)
+        + Expr::var(result_of_variable).mask(perform_sub_boolean)
+        + Expr::var(result_of_variable).mask(perform_sub_negate_boolean)
+        + Expr::from(perform_eq_bit).mask(perform_eq_boolean)
+        + Expr::from(all_zeroes.toggle()).mask(perform_mul_low_boolean);
     // memcopy is same as addition
-    constraint = constraint + (Term::from(perform_memcopy) * Term::from(result_of_variable));
-    collapse_max_quadratic_constraint_into(cs, constraint.clone(), x12_write_vars[0]);
-    constraint -= Term::from(x12_write_vars[0]);
-    cs.add_constraint(constraint);
+    expr = expr + Expr::var(result_of_variable).mask(perform_memcopy_boolean);
+    collapse_max_quadratic_expr_into(cs, expr.clone(), x12_write_vars[0]);
+    cs.define_variable_from_expr(x12_write_vars[0], expr);
 
     // set value for high bits and constraint it
     let x12_write_vars_high = x12_write_vars[1];
@@ -860,8 +850,9 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     };
     cs.set_values(value_fn);
 
-    let constraint = Constraint::<F>::empty() + Term::from(x12_write_vars[1]);
-    cs.add_constraint_allow_explicit_linear_prevent_optimizations(constraint);
+    cs.add_constraint_allow_explicit_linear_prevent_optimizations_expr(Expr::var(
+        x12_write_vars[1],
+    ));
 
     {
         for (i, input) in output_placeholder_state.iter().enumerate() {

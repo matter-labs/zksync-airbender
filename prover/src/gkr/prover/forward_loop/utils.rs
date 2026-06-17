@@ -141,6 +141,7 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
                                 let v = evaluate_linear_relation_at_row(rel, gkr_storage, row);
                                 println!("Column {} = {}", idx, v);
                             }
+                            println!("Mapping index = {}", mapping_index);
                         }
                         assert_eq!(
                             naive_eval, mapped_value,

@@ -1,17 +1,36 @@
 #![no_std]
 
-pub trait NonDeterminismSource: 'static + Send + Sync + Clone + Copy {
-    fn read_word() -> u32;
-    fn read_reduced_field_element(modulus: u32) -> u32;
+#[cfg(feature = "verifier_stats")]
+pub mod stats;
+
+pub trait NonDeterminismSource: Send + Sync {
+    fn read_word(&mut self) -> u32;
+    fn read_reduced_field_element(&mut self, modulus: u32) -> u32;
 }
 
-impl NonDeterminismSource for () {
-    fn read_word() -> u32 {
-        0
+// impl NonDeterminismSource for () {
+//     #[inline(always)]
+//     fn read_word(&mut self) -> u32 {
+//         0
+//     }
+//     #[inline(always)]
+//     fn read_reduced_field_element(&mut self, _modulus: u32) -> u32 {
+//         0
+//     }
+// }
+
+impl<T: core::iter::Iterator<Item = u32> + Send + Sync + ?Sized> NonDeterminismSource for T {
+    #[inline(always)]
+    fn read_word(&mut self) -> u32 {
+        self.next().expect("next word")
     }
 
-    fn read_reduced_field_element(_modulus: u32) -> u32 {
-        0
+    #[inline(always)]
+    fn read_reduced_field_element(&mut self, modulus: u32) -> u32 {
+        let value = self.next().expect("next word");
+        // assert!(value < modulus, "by default we expect reduced field elements everywhere");
+
+        value
     }
 }
 
@@ -22,11 +41,15 @@ pub struct CSRBasedSource;
 #[cfg(target_arch = "riscv32")]
 impl NonDeterminismSource for CSRBasedSource {
     #[inline(always)]
-    fn read_word() -> u32 {
+    fn read_word(&mut self) -> u32 {
+        #[cfg(feature = "verifier_stats")]
+        stats::NDS_STATS.with_borrow_mut(|s| s.read_bytes += core::mem::size_of::<u32>());
         csr_read_word()
     }
     #[inline(always)]
-    fn read_reduced_field_element(modulus: u32) -> u32 {
+    fn read_reduced_field_element(&mut self, modulus: u32) -> u32 {
+        #[cfg(feature = "verifier_stats")]
+        stats::NDS_STATS.with_borrow_mut(|s| s.read_bytes += core::mem::size_of::<u32>());
         csr_read_field_element(modulus)
     }
 }
@@ -49,15 +72,15 @@ fn csr_read_word() -> u32 {
 #[inline(always)]
 #[cfg(target_arch = "riscv32")]
 fn csr_read_field_element(_modulus: u32) -> u32 {
+    use common_constants::mops::MOP_ADD_MOD;
     let mut output;
     unsafe {
         core::arch::asm!(
             "csrrw {tmp}, 0x7c0, x0",
-            // "remu {rd}, {tmp}, {ch}",
-            "mop.rr.0 {rd}, {tmp}, x0",
-            // ch = in(reg) modulus,
+            "mop.rr.{idx} {rd}, {tmp}, x0",
             tmp = out(reg) _,
             rd = lateout(reg) output,
+            idx = const MOP_ADD_MOD,
             options(nomem, nostack, preserves_flags)
         );
     }

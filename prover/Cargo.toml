@@ -55,6 +55,10 @@ debug_satisfiable = []
 gkr_self_checks = []
 # When set, prover tests load no-caches circuit variants
 no_caches = []
+# When set, WHIR intermediate-oracle leaves are committed in evaluation form
+# (the pre-coefficient-encoding behavior). Default (feature off) is coefficient form.
+eval_leaves = []
+verifier_stats = ["non_determinism_source/verifier_stats"]
 # Will perform witness evaluation in synthesis functions
 cs_debug = ["cs/debug_evaluate_witness"]
 # Print detailed debug logs

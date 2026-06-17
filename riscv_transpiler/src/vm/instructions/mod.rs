@@ -37,10 +37,8 @@ pub(crate) fn write_register_for_pure_opcode<
     reg_idx: u8,
     value: u32,
 ) {
+    debug_assert_ne!(reg_idx, 0);
     unsafe {
-        if reg_idx == 0 {
-            debug_assert_eq!(value, 0);
-        }
         let reg = state.registers.get_unchecked_mut(reg_idx as usize);
         debug_assert!(reg.timestamp < (state.timestamp | TIMESTAMP_OFFSET));
         reg.timestamp = state.timestamp | TIMESTAMP_OFFSET;
@@ -73,16 +71,6 @@ pub(crate) fn default_increase_pc<C: Counters>(state: &mut State<C>) {
 #[inline(always)]
 pub(crate) fn increment_family_counter<C: Counters, const FAMILY: u8>(state: &mut State<C>) {
     state.counters.log_circuit_family::<FAMILY>();
-}
-
-#[inline(always)]
-pub(crate) fn increment_family_counter_by<C: Counters, const FAMILY: u8>(
-    state: &mut State<C>,
-    by: usize,
-) {
-    state
-        .counters
-        .log_multiple_circuit_family_calls::<FAMILY>(by);
 }
 
 #[inline(always)]

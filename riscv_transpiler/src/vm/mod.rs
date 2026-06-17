@@ -1,5 +1,5 @@
 use crate::ir::simple_instruction_set::*;
-use crate::jit::{MachineState, MAX_NUM_COUNTERS};
+use crate::jit::{MachineCounters, MachineState};
 use common_constants::{circuit_families::*, INITIAL_PC};
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use field::PrimeField;
@@ -14,7 +14,7 @@ mod ram_with_rom_region;
 mod replay_snapshotter;
 mod simple_tape;
 
-pub(crate) mod delegations;
+pub mod delegations;
 
 pub use self::execution_observer::ExecutionObserver;
 #[cfg(feature = "flamegraph")]
@@ -27,6 +27,7 @@ pub trait Counters: 'static + Clone + Copy + Debug + PartialEq + Eq + Send + Syn
     fn bump_bigint(&mut self, by: usize);
     fn bump_blake2_round_function(&mut self, by: usize);
     fn bump_keccak_special5(&mut self, by: usize);
+    fn bump_blake2_g_function(&mut self, by: usize);
     #[inline(always)]
     fn log_circuit_family<const FAMILY: u8>(&mut self) {
         self.log_multiple_circuit_family_calls::<FAMILY>(1)
@@ -65,7 +66,7 @@ impl<C: Counters> State<C> {
     }
 }
 
-impl<C: Counters + From<[u64; MAX_NUM_COUNTERS]>> From<MachineState> for State<C> {
+impl<C: Counters + From<MachineCounters>> From<MachineState> for State<C> {
     fn from(state: MachineState) -> Self {
         Self {
             registers: std::array::from_fn(|i| Register {
@@ -386,6 +387,12 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
             InstructionName::ZimopMul => {
                 add_sub_family::mop::mop_mulmod::<C, S, R, F>(state, ram, snapshotter, instr)
             }
+            InstructionName::ZimopFMA => {
+                add_sub_family::mop::mop_fmamod::<C, S, R, F>(state, ram, snapshotter, instr)
+            }
+            InstructionName::ZimopTriAdd => {
+                add_sub_family::mop::mop_tri_add::<C, S, R, F>(state, ram, snapshotter, instr)
+            }
             InstructionName::ZicsrNonDeterminismRead => add_sub_family::non_determinism::nd_read::<
                 C,
                 S,
@@ -455,6 +462,15 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
             InstructionName::Sra => {
                 binary_shifts_family::shifts::sra::<C, S, R>(state, ram, snapshotter, instr)
             }
+            InstructionName::Rol => {
+                binary_shifts_family::shifts::rol::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::Ror => {
+                binary_shifts_family::shifts::ror::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::ZimopIXorRot => {
+                binary_shifts_family::mopi::mopi_xor_rot::<C, S, R>(state, ram, snapshotter, instr)
+            }
 
             InstructionName::Mul => mul_div::mul::<C, S, R>(state, ram, snapshotter, instr),
             InstructionName::Mulhu => mul_div::mulhu::<C, S, R>(state, ram, snapshotter, instr),
@@ -462,13 +478,6 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
             InstructionName::Remu => mul_div::remu::<C, S, R>(state, ram, snapshotter, instr),
 
             InstructionName::ZicsrMarkerCsr => marker::<C, S, R, E>(state, ram, snapshotter, instr),
-
-            InstructionName::Rol => {
-                binary_shifts_family::shifts::rol::<C, S, R>(state, ram, snapshotter, instr)
-            }
-            InstructionName::Ror => {
-                binary_shifts_family::shifts::ror::<C, S, R>(state, ram, snapshotter, instr)
-            }
 
             a @ _ => {
                 panic!("Unknown instruction {:?}", a);
@@ -582,6 +591,18 @@ pub(crate) mod test {
         );
 
         dbg!(&state.registers[10..18]);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_pretty_show_assembly() {
+        // let (_, binary) = read_binary(&Path::new("examples/fibonacci/app.bin"));
+        let (_, text) = read_binary(&Path::new(
+            "../tools/gkr_verifier/add_sub_lui_auipc_mop_sec_80.text",
+        ));
+        for opcode in text.iter().take(16) {
+            println!("0x{:08x}", opcode);
+        }
     }
 
     #[test]
@@ -716,7 +737,7 @@ pub(crate) mod test {
         let mut source = QuasiUARTSource::new_with_reads(vec![]);
 
         let instructions: Vec<Instruction> =
-            preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
+            preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
         let mut ram =
             RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
@@ -755,7 +776,7 @@ pub(crate) mod test {
         );
 
         println!("PC = 0x{:08x}", state.pc);
-        dbg!(state.registers.map(|el| el.value));
+        dbg!(&state.registers.map(|el| el.value)[10..18]);
     }
 
     #[test]

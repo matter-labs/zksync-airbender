@@ -1,9 +1,8 @@
 use super::*;
-use crate::constraint::Constraint;
-use crate::constraint::Term;
 use crate::cs::circuit_trait::*;
 use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables;
 use crate::oracle::Placeholder;
+use crate::structured_expr::Expr;
 use crate::tables::TableDriver;
 use crate::types::*;
 use field::PrimeField;
@@ -12,6 +11,10 @@ const TABLES_TOTAL_WIDTH: usize = 8;
 
 // NOTE: this circuit should specify non-dummy CSR table in proving/setup. while compilation in tests
 // takes case of properly computing offsets by using dummy table
+
+fn byte_pair_expr<F: PrimeField>(low: Variable, high: Variable) -> Expr<F> {
+    Expr::var(low) + Expr::var(high) * F::from_u32_with_reduction(1 << 8)
+}
 
 pub fn shift_binop_tables() -> Vec<TableType> {
     vec![
@@ -154,8 +157,8 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
     let is_binary_op = decoder.perform_binary_op();
     let is_shift = decoder.perform_shift();
 
-    let shift_amount_constraint =
-        Constraint::from(truncated_shift_amount) + Term::from(inputs.decoder_data.imm[0]);
+    let shift_amount_expr =
+        Expr::var(truncated_shift_amount) + Expr::var(inputs.decoder_data.imm[0]);
 
     // Here we only assign witness
 
@@ -185,7 +188,7 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
                 cs,
                 &[
                     LookupInput::from(a),
-                    LookupInput::from(Constraint::from(b) + Term::from(imm)),
+                    LookupInput::from(Expr::var(b) + Expr::var(imm)),
                 ],
                 &[out],
                 LookupInput::from(inputs.decoder_data.funct3.expect("is present")),
@@ -219,7 +222,7 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
                 &[
                     LookupInput::from(F::from_u32_unchecked(byte_index as u32)),
                     LookupInput::from(a),
-                    LookupInput::from(shift_amount_constraint.clone()),
+                    LookupInput::from(shift_amount_expr.clone()),
                     LookupInput::from(inputs.decoder_data.funct3.expect("is present")),
                 ],
                 &outs,
@@ -234,39 +237,29 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
 
     // constraint for shift amount or immediate sign extension
     {
-        let mut input_0 = Constraint::empty();
-        input_0 += Term::from(is_binary_op) * Term::from(inputs.decoder_data.imm[1]);
-        input_0 += Term::from(is_shift) * Term::from(rs2_limbs[0]);
-        let input_0 = cs.add_intermediate_named_variable_from_constraint(
+        let input_0 = Expr::var(inputs.decoder_data.imm[1]).mask(is_binary_op)
+            + Expr::var(rs2_limbs[0]).mask(is_shift);
+        let input_0 = cs.add_intermediate_named_variable_from_expr(
             input_0,
             "input 0 for binary sign ext/trucate shift",
         );
 
-        let mut input_1 = Constraint::empty();
-        input_1 += Term::from(is_binary_op) * Term::from(binary_ops_imm_sign_ext);
-        input_1 += Term::from(is_shift) * Term::from(rs2_limbs[1]);
-        let input_1 = cs.add_intermediate_named_variable_from_constraint(
+        let input_1 = Expr::var(binary_ops_imm_sign_ext).mask(is_binary_op)
+            + Expr::var(rs2_limbs[1]).mask(is_shift);
+        let input_1 = cs.add_intermediate_named_variable_from_expr(
             input_1,
             "input 1 for binary sign ext/trucate shift",
         );
 
-        let mut input_2 = Constraint::empty();
-        input_2 += Term::from(is_shift) * Term::from(truncated_shift_amount);
-        let input_2 = cs.add_intermediate_named_variable_from_constraint(
+        let input_2 = Expr::var(truncated_shift_amount).mask(is_shift);
+        let input_2 = cs.add_intermediate_named_variable_from_expr(
             input_2,
             "input 2 for binary sign ext/trucate shift",
         );
 
-        let mut table_id = Constraint::empty();
-        table_id += Term::from(is_shift)
-            * Term::from_field(
-                F::from_u32(TableType::TruncateShiftAmountAndRangeCheck8 as u32).expect("must fit"),
-            );
-        table_id += Term::from(is_binary_op)
-            * Term::from_field(
-                F::from_u32(TableType::GetSignExtensionByte as u32).expect("must fit"),
-            );
-        let table_id = cs.add_intermediate_named_variable_from_constraint(
+        let table_id = Expr::<F>::from(TableType::TruncateShiftAmountAndRangeCheck8).mask(is_shift)
+            + Expr::<F>::from(TableType::GetSignExtensionByte).mask(is_binary_op);
+        let table_id = cs.add_intermediate_named_variable_from_expr(
             table_id,
             "table ID for binary sign ext/trucate shift",
         );
@@ -283,14 +276,7 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
     // and value-related lookups
     {
         for i in 0..4 {
-            let mut constraints: [Constraint<F>; TABLES_TOTAL_WIDTH] =
-                std::array::from_fn(|_| Constraint::empty());
-
             let byte_index = i;
-
-            // rs1 byte for the binary op, or byte index for shift
-            constraints[0] += Term::from(is_binary_op) * Term::from(rs1_limbs[i]);
-            constraints[0] += Term::from(is_shift) * Term::from(byte_index as u32);
 
             let binary_op_imm = if i >= 2 {
                 binary_ops_imm_sign_ext
@@ -298,31 +284,32 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
                 inputs.decoder_data.imm[i]
             };
 
-            // rs2 byte or imm extension for binary op, or rs1 byte for shift
-            constraints[1] += Term::from(is_binary_op) * Term::from(rs2_limbs[i]);
-            constraints[1] += Term::from(is_binary_op) * Term::from(binary_op_imm);
-            constraints[1] += Term::from(is_shift) * Term::from(rs1_limbs[i]);
-
-            // output for the binary op, or shift amount for shift
-            constraints[2] += Term::from(is_binary_op) * Term::from(binary_ops_outputs[i]);
-            constraints[2] += shift_amount_constraint.clone() * Term::from(is_shift);
-
-            // only shift is used for inputs below. funct3 here
-            constraints[3] +=
-                Term::from(is_shift) * Term::from(inputs.decoder_data.funct3.expect("is present"));
-
             let shift_outputs = shift_output_chunks[i];
 
-            for j in 0..4 {
+            let input_exprs: [Expr<F>; TABLES_TOTAL_WIDTH] = [
+                // rs1 byte for the binary op, or byte index for shift
+                Expr::var(rs1_limbs[i]).mask(is_binary_op)
+                    + Expr::from(byte_index as u32).mask(is_shift),
+                // rs2 byte or imm extension for binary op, or rs1 byte for shift
+                (Expr::var(rs2_limbs[i]) + Expr::var(binary_op_imm)).mask(is_binary_op)
+                    + Expr::var(rs1_limbs[i]).mask(is_shift),
+                // output for the binary op, or shift amount for shift
+                Expr::var(binary_ops_outputs[i]).mask(is_binary_op)
+                    + shift_amount_expr.clone().mask(is_shift),
+                // only shift is used for inputs below. funct3 here
+                Expr::var(inputs.decoder_data.funct3.expect("is present")).mask(is_shift),
                 // and outputs of shifts here
-                constraints[4 + j] += Term::from(is_shift) * Term::from(shift_outputs[j]);
-            }
+                Expr::var(shift_outputs[0]).mask(is_shift),
+                Expr::var(shift_outputs[1]).mask(is_shift),
+                Expr::var(shift_outputs[2]).mask(is_shift),
+                Expr::var(shift_outputs[3]).mask(is_shift),
+            ];
 
-            let input_vars: [Variable; TABLES_TOTAL_WIDTH] = constraints
+            let input_vars: [Variable; TABLES_TOTAL_WIDTH] = input_exprs
                 .into_iter()
                 .enumerate()
                 .map(|(idx, el)| {
-                    cs.add_intermediate_named_variable_from_constraint(
+                    cs.add_intermediate_named_variable_from_expr(
                         el,
                         &format!("lookup input {} for main part of ops for byte {}", idx, i),
                     )
@@ -335,12 +322,10 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
 
             let table_id = {
                 let shift_table_id = TableType::ShiftImplementationOverBytes;
-                let mut table_id = Constraint::empty();
-                table_id += Term::from(is_shift)
-                    * Term::from_field(F::from_u32(shift_table_id as u32).expect("must fit"));
-                table_id += Term::from(is_binary_op)
-                    * Term::from(inputs.decoder_data.funct3.expect("must be present"));
-                let table_id = cs.add_intermediate_named_variable_from_constraint(
+                let table_id = Expr::<F>::from(shift_table_id).mask(is_shift)
+                    + Expr::var(inputs.decoder_data.funct3.expect("must be present"))
+                        .mask(is_binary_op);
+                let table_id = cs.add_intermediate_named_variable_from_expr(
                     table_id,
                     "table ID for binary/shift main ops",
                 );
@@ -354,29 +339,30 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
 
     // select and write to RD - easiest part
 
-    let mut low_constraint = Constraint::empty();
-    low_constraint += Term::from(is_binary_op)
-        * (Term::from(1 << 8) * Term::from(binary_ops_outputs[1])
-            + Term::from(binary_ops_outputs[0]));
-    for i in 0..4 {
-        let shift_outputs = shift_output_chunks[i];
-        low_constraint += Term::from(is_shift)
-            * (Term::from(1 << 8) * Term::from(shift_outputs[1]) + Term::from(shift_outputs[0]));
-    }
-    low_constraint -= Term::from(rd_write_limbs[0]);
-    cs.add_constraint(low_constraint);
+    // The shift result is assembled from four table contributions. Keep those
+    // contributions grouped before applying the opcode mask so the metadata
+    // carries the intended word-shape rather than four unrelated masked terms.
+    let shift_low_expr = Expr::sum(
+        shift_output_chunks
+            .iter()
+            .map(|shift_outputs| byte_pair_expr(shift_outputs[0], shift_outputs[1]))
+            .collect(),
+    );
+    let low_expr = byte_pair_expr(binary_ops_outputs[0], binary_ops_outputs[1]).mask(is_binary_op)
+        + shift_low_expr.mask(is_shift)
+        - Expr::var(rd_write_limbs[0]);
+    cs.add_constraint_expr(low_expr);
 
-    let mut high_constraint = Constraint::empty();
-    high_constraint += Term::from(is_binary_op)
-        * (Term::from(1 << 8) * Term::from(binary_ops_outputs[3])
-            + Term::from(binary_ops_outputs[2]));
-    for i in 0..4 {
-        let shift_outputs = shift_output_chunks[i];
-        high_constraint += Term::from(is_shift)
-            * (Term::from(1 << 8) * Term::from(shift_outputs[3]) + Term::from(shift_outputs[2]));
-    }
-    high_constraint -= Term::from(rd_write_limbs[1]);
-    cs.add_constraint(high_constraint);
+    let shift_high_expr = Expr::sum(
+        shift_output_chunks
+            .iter()
+            .map(|shift_outputs| byte_pair_expr(shift_outputs[2], shift_outputs[3]))
+            .collect(),
+    );
+    let high_expr = byte_pair_expr(binary_ops_outputs[2], binary_ops_outputs[3]).mask(is_binary_op)
+        + shift_high_expr.mask(is_shift)
+        - Expr::var(rd_write_limbs[1]);
+    cs.add_constraint_expr(high_expr);
 
     if let Some(rd_reg) = Register(rd_write_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
         println!("RD value = 0x{:08x}", rd_reg);
@@ -403,18 +389,92 @@ pub fn shift_binop_circuit_with_preprocessed_bytecode_for_gkr<F: PrimeField, CS:
 
 #[cfg(test)]
 mod test {
+    use field::Field;
     use test_utils::skip_if_ci;
 
     use super::*;
+    use crate::cs::circuit_impl::BasicAssembly;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_gkr;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
     use crate::gkr_compiler::dump_ssa_witness_eval_form;
+    use crate::structured_expr::StructuredStatement;
     use crate::utils::serialize_to_file;
+
+    type F = ::field::Mersenne31Field;
+
+    fn is_scaled_byte_variable(expr: &Expr<F>) -> bool {
+        let byte_shift = F::from_u32_with_reduction(1 << 8);
+
+        match expr {
+            Expr::Product(factors) if factors.len() == 2 => {
+                factors
+                    .iter()
+                    .any(|factor| matches!(factor, Expr::Constant(value) if *value == byte_shift))
+                    && factors.iter().any(|factor| matches!(factor, Expr::Var(_)))
+            }
+            _ => false,
+        }
+    }
+
+    fn is_byte_pair_expr(expr: &Expr<F>) -> bool {
+        match expr {
+            Expr::Sum(terms) if terms.len() == 2 => {
+                terms.iter().any(|term| matches!(term, Expr::Var(_)))
+                    && terms.iter().any(is_scaled_byte_variable)
+            }
+            _ => false,
+        }
+    }
+
+    fn contains_masked_byte_pair(expr: &Expr<F>) -> bool {
+        match expr {
+            Expr::Product(factors)
+                if factors.len() == 2
+                    && factors.iter().any(is_byte_pair_expr)
+                    && factors.iter().any(|factor| matches!(factor, Expr::Var(_))) =>
+            {
+                true
+            }
+            Expr::Sum(terms) | Expr::Product(terms) => terms.iter().any(contains_masked_byte_pair),
+            Expr::Constant(_) | Expr::Var(_) => false,
+        }
+    }
+
+    fn contains_negated_variable(expr: &Expr<F>) -> bool {
+        match expr {
+            Expr::Product(factors) if factors.len() == 2 => {
+                factors
+                    .iter()
+                    .any(|factor| matches!(factor, Expr::Constant(value) if *value == F::MINUS_ONE))
+                    && factors.iter().any(|factor| matches!(factor, Expr::Var(_)))
+            }
+            Expr::Sum(terms) | Expr::Product(terms) => terms.iter().any(contains_negated_variable),
+            Expr::Constant(_) | Expr::Var(_) => false,
+        }
+    }
+
+    #[test]
+    fn shift_binop_circuit_records_structured_output_selection() {
+        let mut cs = BasicAssembly::<F>::new();
+        shift_binop_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
+        let (output, _) = cs.finalize();
+
+        assert!(output
+            .structured_statements
+            .iter()
+            .any(|statement| matches!(
+                statement,
+                StructuredStatement::AssertZero {
+                    expr,
+                    prevent_optimizations: false,
+                } if contains_masked_byte_pair(expr) && contains_negated_variable(expr)
+            )));
+    }
 
     #[test]
     fn compile_shift_binop_into_gkr() {
         skip_if_ci!();
-        use ::field::baby_bear::base::BabyBearField;
+        use field::baby_bear::base::BabyBearField;
 
         let gkr_compiled = compile_unrolled_circuit_state_transition_into_gkr::<BabyBearField>(
             &|cs| shift_binop_table_addition_fn(cs),
@@ -425,14 +485,14 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/shift_binop_preprocessed_layout_gkr.json",
+            "compiled_circuits/shift_binop_layout_gkr.json",
         );
     }
 
     #[test]
     fn compile_shift_binop_gkr_witness_graph() {
         skip_if_ci!();
-        use ::field::baby_bear::base::BabyBearField;
+        use field::baby_bear::base::BabyBearField;
 
         let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
             &|cs| shift_binop_table_addition_fn(cs),
@@ -444,7 +504,7 @@ mod test {
     #[test]
     fn compile_shift_binop_into_no_caches_gkr() {
         skip_if_ci!();
-        use ::field::baby_bear::base::BabyBearField;
+        use field::baby_bear::base::BabyBearField;
 
         let gkr_compiled =
             compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<
@@ -458,7 +518,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/shift_binop_preprocessed_layout_no_caches_gkr.json",
+            "compiled_circuits/shift_binop_layout_no_caches_gkr.json",
         );
     }
 }

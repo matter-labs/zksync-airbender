@@ -1,9 +1,8 @@
 use super::decoder::DivMulDecoder;
 use super::*;
-use crate::constraint::Constraint;
-use crate::constraint::Term;
 use crate::cs::circuit_trait::*;
 use crate::oracle::Placeholder;
+use crate::structured_expr::Expr;
 use crate::tables::TableDriver;
 use crate::types::*;
 use crate::witness_placer::*;
@@ -110,9 +109,7 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
 
     let shift_left_16_bits = F::from_u32_with_reduction(1 << 16);
     let shift_left_8_bits = F::from_u32_with_reduction(1 << 8);
-    let shift_left_8_bits_term = Term::from_field(shift_left_8_bits);
     let shift_right_8_bits = F::from_u32_with_reduction(1 << 8).inverse().unwrap();
-    let shift_right_8_bits_term = Term::from_field(shift_right_8_bits);
 
     // we need range checks on the output to ensure proper addition
     let [out_low, out_high] = rd_write_limbs;
@@ -151,7 +148,7 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
             println!("MUL");
         }
         if is_mulhu.get_value(cs).unwrap_or(false) {
-            println!("MULHI");
+            println!("MULHU");
         }
         if is_divu.get_value(cs).unwrap_or(false) {
             println!("DIVU");
@@ -160,8 +157,14 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
             println!("REMU");
         }
 
-        let is_division_group_constraint = Term::<F>::from(is_divu) + Term::from(is_remu);
-        let is_multiplication_group_constraint = Term::<F>::from(is_mul) + Term::from(is_mulhu);
+        let is_mul_expr = Expr::<F>::from(is_mul);
+        let is_mulhu_expr = Expr::<F>::from(is_mulhu);
+        let is_divu_expr = Expr::<F>::from(is_divu);
+        let is_remu_expr = Expr::<F>::from(is_remu);
+        let is_multiplication_group_expr = is_mul_expr.clone() + is_mulhu_expr.clone();
+        let is_division_group_expr = is_divu_expr.clone() + is_remu_expr.clone();
+        let active_opcode_group_expr =
+            is_multiplication_group_expr.clone() + is_division_group_expr.clone();
 
         // Generic strategy:
         // - choose variables for (high, low) = q * divisor + remainder pattern
@@ -172,7 +175,7 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
         let rs2_is_zero = cs.add_named_variable("RS2 is zero out var");
         cs.set_variables_from_lookup_constrained(
             &[LookupInput::from(
-                Constraint::empty() + Term::from(rs2_limbs[0]) + Term::from(rs2_limbs[1]),
+                Expr::<F>::var(rs2_limbs[0]) + Expr::var(rs2_limbs[1]),
             )],
             &[rs2_is_zero],
             cs::circuit::LookupQueryTableType::Constant(TableType::RegIsZero),
@@ -184,18 +187,14 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
         // allocate splitting of future `q` and `divisor` and allocate witness for them
         let divisor_byte_0 = cs.add_named_variable("Divisor byte 0");
         cs.set_variables_from_lookup_constrained(
-            &[LookupInput::from(
-                Constraint::empty() + Term::from(rs2_limbs[0]),
-            )],
+            &[LookupInput::from(Expr::<F>::var(rs2_limbs[0]))],
             &[divisor_byte_0],
             cs::circuit::LookupQueryTableType::Constant(TableType::U16GetLowByte),
         );
 
         let divisor_byte_2 = cs.add_named_variable("Divisor byte 2");
         cs.set_variables_from_lookup_constrained(
-            &[LookupInput::from(
-                Constraint::empty() + Term::from(rs2_limbs[1]),
-            )],
+            &[LookupInput::from(Expr::<F>::var(rs2_limbs[1]))],
             &[divisor_byte_2],
             cs::circuit::LookupQueryTableType::Constant(TableType::U16GetLowByte),
         );
@@ -229,15 +228,8 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
 
         // we do not need exact ranges for carry witnesses, just some range checks that fit
         // worst case option, and do NOT overflow the field
-        assert!(F::CHAR_BITS > 16 + 13);
         let intermedaite_carry_witness: [Variable; 3] = std::array::from_fn(|i| {
             let var = cs.add_named_variable(&format!("Intermediate carry witness[{}]", i));
-            cs.enforce_lookup_tuple_for_fixed_table(
-                &[LookupInput::from(Constraint::empty() + Term::from(var))],
-                TableType::RangeCheck13,
-                false,
-            );
-
             var
         });
 
@@ -284,7 +276,6 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                 let mut remainder_for_enforcement =
                     <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
 
-                let div_by_zero = is_div_family.and(&rs2_is_zero);
                 // first we need to get extra/rd values, to then get u8 splits,
                 // and perform comparisons
 
@@ -380,9 +371,9 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                 // quickly decide on the byte splitting - we have all the values
                 {
                     let rs1_byte_0 = rs1_u32.truncate().truncate();
-                    let rs1_byte_1 = rs2_u32.shr(8).truncate().truncate();
+                    let rs1_byte_1 = rs1_u32.shr(8).truncate().truncate();
                     let rs1_byte_2 = rs1_u32.shr(16).truncate().truncate();
-                    let rs1_byte_3 = rs2_u32.shr(24).truncate().truncate();
+                    let rs1_byte_3 = rs1_u32.shr(24).truncate().truncate();
                     quotient_byte_0_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
                         &is_mul_family,
                         &rs1_byte_0,
@@ -457,10 +448,10 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                     );
                 }
 
-                let divisor_byte_0 = rs2_u32.truncate().truncate();
-                let divisor_byte_1 = rs2_u32.shr(8).truncate().truncate();
-                let divisor_byte_2 = rs2_u32.shr(16).truncate().truncate();
-                let divisor_byte_3 = rs2_u32.shr(24).truncate().truncate();
+                let divisor_byte_0_value = rs2_u32.truncate().truncate();
+                let divisor_byte_1_value = rs2_u32.shr(8).truncate().truncate();
+                let divisor_byte_2_value = rs2_u32.shr(16).truncate().truncate();
+                let divisor_byte_3_value = rs2_u32.shr(24).truncate().truncate();
 
                 // and finally we can compute intermediate witness values
                 {
@@ -469,18 +460,18 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                         <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
                     bits_0_to_16_carry.add_assign(
                         &quotient_byte_0_value
-                            .widening_product(&divisor_byte_0)
+                            .widening_product(&divisor_byte_0_value)
                             .widen(),
                     );
                     bits_0_to_16_carry.add_assign(
                         &quotient_byte_1_value
-                            .widening_product(&divisor_byte_0)
+                            .widening_product(&divisor_byte_0_value)
                             .widen()
                             .shl(8),
                     );
                     bits_0_to_16_carry.add_assign(
                         &quotient_byte_0_value
-                            .widening_product(&divisor_byte_1)
+                            .widening_product(&divisor_byte_1_value)
                             .widen()
                             .shl(8),
                     );
@@ -494,40 +485,40 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                         <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
                     bits_16_to_32_carry.add_assign(
                         &quotient_byte_1_value
-                            .widening_product(&divisor_byte_1)
+                            .widening_product(&divisor_byte_1_value)
                             .widen(),
                     );
                     bits_16_to_32_carry.add_assign(
                         &quotient_byte_2_value
-                            .widening_product(&divisor_byte_0)
+                            .widening_product(&divisor_byte_0_value)
                             .widen(),
                     );
                     bits_16_to_32_carry.add_assign(
                         &quotient_byte_0_value
-                            .widening_product(&divisor_byte_2)
+                            .widening_product(&divisor_byte_2_value)
                             .widen(),
                     );
                     bits_16_to_32_carry.add_assign(
                         &quotient_byte_3_value
-                            .widening_product(&divisor_byte_0)
+                            .widening_product(&divisor_byte_0_value)
                             .widen()
                             .shl(8),
                     );
                     bits_16_to_32_carry.add_assign(
                         &quotient_byte_0_value
-                            .widening_product(&divisor_byte_3)
+                            .widening_product(&divisor_byte_3_value)
                             .widen()
                             .shl(8),
                     );
                     bits_16_to_32_carry.add_assign(
                         &quotient_byte_2_value
-                            .widening_product(&divisor_byte_1)
+                            .widening_product(&divisor_byte_1_value)
                             .widen()
                             .shl(8),
                     );
                     bits_16_to_32_carry.add_assign(
                         &quotient_byte_1_value
-                            .widening_product(&divisor_byte_2)
+                            .widening_product(&divisor_byte_2_value)
                             .widen()
                             .shl(8),
                     );
@@ -542,28 +533,28 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                         <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
                     bits_32_to_48_carry.add_assign(
                         &quotient_byte_3_value
-                            .widening_product(&divisor_byte_1)
+                            .widening_product(&divisor_byte_1_value)
                             .widen(),
                     );
                     bits_32_to_48_carry.add_assign(
                         &quotient_byte_2_value
-                            .widening_product(&divisor_byte_2)
+                            .widening_product(&divisor_byte_2_value)
                             .widen(),
                     );
                     bits_32_to_48_carry.add_assign(
                         &quotient_byte_1_value
-                            .widening_product(&divisor_byte_3)
+                            .widening_product(&divisor_byte_3_value)
                             .widen(),
                     );
                     bits_32_to_48_carry.add_assign(
                         &quotient_byte_3_value
-                            .widening_product(&divisor_byte_2)
+                            .widening_product(&divisor_byte_2_value)
                             .widen()
                             .shl(8),
                     );
                     bits_32_to_48_carry.add_assign(
                         &quotient_byte_3_value
-                            .widening_product(&divisor_byte_2)
+                            .widening_product(&divisor_byte_2_value)
                             .widen()
                             .shl(8),
                     );
@@ -628,96 +619,102 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
             cs.set_values(value_fn);
         }
 
+        // range-check intermediate carries
+        {
+            assert!(F::CHAR_BITS > 16 + 13);
+            intermedaite_carry_witness.iter().for_each(|var| {
+                cs.enforce_lookup_tuple_for_fixed_table(
+                    &[LookupInput::from(Expr::<F>::var(*var))],
+                    TableType::RangeCheck13,
+                    false,
+                );
+            });
+        }
+
         // now we push everything to the intermediate layer
-        let divisor_is_zero_if_division_layer_1 = cs
-            .add_intermediate_named_variable_from_constraint(
-                is_division_group_constraint.clone() * Term::from(rs2_is_zero),
-                "divisor is zero if division at layer 1",
-            );
+        let divisor_is_zero_if_division_layer_1 = cs.add_intermediate_named_variable_from_expr(
+            is_division_group_expr.clone() * Expr::var(rs2_is_zero),
+            "divisor is zero if division at layer 1",
+        );
 
         // select all variables and push them to layer 1
         let low_at_layer_1: [Variable; 2] = std::array::from_fn(|i| {
-            cs.add_intermediate_named_variable_from_constraint(
-                Term::from(is_mul) * Term::from(rd_write_limbs[i])
-                    + Term::from(is_mulhu) * Term::from(extra_witness[i])
-                    + Term::from(is_divu) * Term::from(rs1_limbs[i])
-                    + Term::from(is_remu) * Term::from(rs1_limbs[i]),
+            cs.add_intermediate_named_variable_from_expr(
+                Expr::var(rd_write_limbs[i]).mask(is_mul)
+                    + Expr::var(extra_witness[i]).mask(is_mulhu)
+                    + is_division_group_expr.clone() * Expr::var(rs1_limbs[i]),
                 &format!("low[{}] at layer 1", i),
             )
         });
         let high_at_layer_1: [Variable; 2] = std::array::from_fn(|i| {
-            cs.add_intermediate_named_variable_from_constraint(
-                Term::from(is_mulhu) * Term::from(rd_write_limbs[i])
-                    + Term::from(is_mul) * Term::from(extra_witness[i]),
+            cs.add_intermediate_named_variable_from_expr(
+                Expr::var(rd_write_limbs[i]).mask(is_mulhu)
+                    + Expr::var(extra_witness[i]).mask(is_mul),
                 // 0 if any division group
                 &format!("high[{}] at layer 1", i),
             )
         });
         let quotient_at_layer_1: [Variable; 2] = std::array::from_fn(|i| {
-            cs.add_intermediate_named_variable_from_constraint(
-                Term::from(is_mul) * Term::from(rs1_limbs[i])
-                    + Term::from(is_mulhu) * Term::from(rs1_limbs[i])
-                    + Term::from(is_divu) * Term::from(rd_write_limbs[i])
-                    + Term::from(is_remu) * Term::from(extra_witness[i]),
+            cs.add_intermediate_named_variable_from_expr(
+                is_multiplication_group_expr.clone() * Expr::var(rs1_limbs[i])
+                    + Expr::var(rd_write_limbs[i]).mask(is_divu)
+                    + Expr::var(extra_witness[i]).mask(is_remu),
                 &format!("quotient[{}] at layer 1", i),
             )
         });
         let remainder_at_layer_1: [Variable; 2] = std::array::from_fn(|i| {
-            cs.add_intermediate_named_variable_from_constraint(
+            cs.add_intermediate_named_variable_from_expr(
                 // 0 for any mul
-                Term::from(is_divu) * Term::from(extra_witness[i])
-                    + Term::from(is_remu) * Term::from(rd_write_limbs[i]),
+                Expr::var(extra_witness[i]).mask(is_divu)
+                    + Expr::var(rd_write_limbs[i]).mask(is_remu),
                 &format!("remainder[{}] at layer 1", i),
             )
         });
         // it'll select 0, so padding rows are fine
         let divisor_at_layer_1: [Variable; 2] = std::array::from_fn(|i| {
-            cs.add_intermediate_named_variable_from_constraint(
-                Term::from(is_mul) * Term::from(rs2_limbs[i])
-                    + Term::from(is_mulhu) * Term::from(rs2_limbs[i])
-                    + Term::from(is_divu) * Term::from(rs2_limbs[i])
-                    + Term::from(is_remu) * Term::from(rs2_limbs[i]),
+            cs.add_intermediate_named_variable_from_expr(
+                active_opcode_group_expr.clone() * Expr::var(rs2_limbs[i]),
                 &format!("divisor[{}] at layer 1", i),
             )
         });
 
-        let is_division_family_at_layer_1 = cs.add_intermediate_named_variable_from_constraint(
-            is_division_group_constraint,
+        let is_division_family_at_layer_1 = cs.add_intermediate_named_variable_from_expr(
+            is_division_group_expr.clone(),
             "is division family at layer 1",
         );
 
         let remainder_comparison_u16_witness_low_at_layer_1 = cs
-            .add_intermediate_named_variable_from_constraint(
-                Constraint::from(remainder_comparison_u16_witness_low),
+            .add_intermediate_named_variable_from_expr(
+                Expr::var(remainder_comparison_u16_witness_low),
                 "Remainder comparison U16 witness low at layer 1",
             );
         let remainder_comparison_u16_witness_high_at_layer_1 = cs
-            .add_intermediate_named_variable_from_constraint(
-                Constraint::from(remainder_comparison_u16_witness_high),
+            .add_intermediate_named_variable_from_expr(
+                Expr::var(remainder_comparison_u16_witness_high),
                 "Remainder comparison U16 witness high at layer 1",
             );
 
-        let divisor_byte_0_at_layer_1 = cs.add_intermediate_named_variable_from_constraint(
-            Constraint::from(divisor_byte_0),
+        let divisor_byte_0_at_layer_1 = cs.add_intermediate_named_variable_from_expr(
+            Expr::var(divisor_byte_0),
             "divisor byte 0 at layer 1",
         );
-        let divisor_byte_2_at_layer_1 = cs.add_intermediate_named_variable_from_constraint(
-            Constraint::from(divisor_byte_2),
+        let divisor_byte_2_at_layer_1 = cs.add_intermediate_named_variable_from_expr(
+            Expr::var(divisor_byte_2),
             "divisor byte 2 at layer 1",
         );
-        let quotient_byte_0_at_layer_1 = cs.add_intermediate_named_variable_from_constraint(
-            Constraint::from(quotient_byte_0),
+        let quotient_byte_0_at_layer_1 = cs.add_intermediate_named_variable_from_expr(
+            Expr::var(quotient_byte_0),
             "quotient byte 0 at layer 1",
         );
-        let quotient_byte_2_at_layer_1 = cs.add_intermediate_named_variable_from_constraint(
-            Constraint::from(quotient_byte_2),
+        let quotient_byte_2_at_layer_1 = cs.add_intermediate_named_variable_from_expr(
+            Expr::var(quotient_byte_2),
             "quotient byte 2 at layer 1",
         );
         let intermedaite_carry_witness_layer_1 = {
             let mut i = 0;
             intermedaite_carry_witness.map(|el| {
-                let t = cs.add_intermediate_named_variable_from_constraint(
-                    Constraint::from(el),
+                let t = cs.add_intermediate_named_variable_from_expr(
+                    Expr::var(el),
                     &format!("intermediate carry witness[{}] at layer 1", i),
                 );
                 i += 1;
@@ -747,21 +744,21 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
         // simply enforce the schoolbook multiplication relation
         {
             let quotient_bytes = [
-                Constraint::from(quotient_byte_0_at_layer_1),
-                (Term::from(quotient_at_layer_1[0]) - Term::from(quotient_byte_0_at_layer_1))
-                    * shift_right_8_bits_term,
-                Constraint::from(quotient_byte_2_at_layer_1),
-                (Term::from(quotient_at_layer_1[1]) - Term::from(quotient_byte_2_at_layer_1))
-                    * shift_right_8_bits_term,
+                Expr::<F>::var(quotient_byte_0_at_layer_1),
+                (Expr::<F>::var(quotient_at_layer_1[0]) - Expr::var(quotient_byte_0_at_layer_1))
+                    * shift_right_8_bits,
+                Expr::<F>::var(quotient_byte_2_at_layer_1),
+                (Expr::<F>::var(quotient_at_layer_1[1]) - Expr::var(quotient_byte_2_at_layer_1))
+                    * shift_right_8_bits,
             ];
 
             let divisor_bytes = [
-                Constraint::from(divisor_byte_0_at_layer_1),
-                (Term::from(divisor_at_layer_1[0]) - Term::from(divisor_byte_0_at_layer_1))
-                    * shift_right_8_bits_term,
-                Constraint::from(divisor_byte_2_at_layer_1),
-                (Term::from(divisor_at_layer_1[1]) - Term::from(divisor_byte_2_at_layer_1))
-                    * shift_right_8_bits_term,
+                Expr::<F>::var(divisor_byte_0_at_layer_1),
+                (Expr::<F>::var(divisor_at_layer_1[0]) - Expr::var(divisor_byte_0_at_layer_1))
+                    * shift_right_8_bits,
+                Expr::<F>::var(divisor_byte_2_at_layer_1),
+                (Expr::<F>::var(divisor_at_layer_1[1]) - Expr::var(divisor_byte_2_at_layer_1))
+                    * shift_right_8_bits,
             ];
 
             let target_u16_words = [
@@ -793,33 +790,45 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
             ];
 
             for i in 0..4 {
+                // `i` marks u16-ish chunks over which we accumulate
+                // schoolbook multplication terms
                 println!("Computing enforcement on limb {}", i);
 
-                let mut constraint = Constraint::<F>::empty();
+                let mut expr = Expr::<F>::zero();
 
                 for j in 0..4 {
                     let q_byte = &quotient_bytes[j];
                     for k in 0..4 {
                         let d_byte = &divisor_bytes[k];
                         if j + k == 2 * i {
-                            constraint += q_byte.clone() * d_byte.clone();
+                            // println!(" + {:?} * {:?}", q_byte.get_value(cs), d_byte.get_value(cs));
+                            expr = expr + q_byte.clone() * d_byte.clone();
                         } else if j + k == 2 * i + 1 {
-                            constraint += q_byte.clone() * d_byte.clone() * shift_left_8_bits_term;
+                            // println!(
+                            //     " + 256 * {:?} * {:?}",
+                            //     q_byte.get_value(cs),
+                            //     d_byte.get_value(cs)
+                            // );
+                            expr = expr + q_byte.clone() * d_byte.clone() * shift_left_8_bits;
                         }
                     }
                 }
 
                 if let Some(addend) = addends_u16_words[i] {
-                    constraint += Term::from(addend);
+                    // println!(" + {:?}", cs.get_value(addend));
+                    expr = expr + Expr::var(addend);
                 }
                 if let Some(carry_in) = carry_in_u16_words[i] {
-                    constraint += Term::from(carry_in);
+                    // println!(" + {:?}", cs.get_value(carry_in));
+                    expr = expr + Expr::var(carry_in);
                 }
                 if let Some(carry_out) = carry_out_u16_words[i] {
-                    constraint -= Term::from((shift_left_16_bits, carry_out));
+                    // println!(" - 2^16 * {:?}", cs.get_value(carry_out));
+                    expr = expr - Expr::var(carry_out) * shift_left_16_bits;
                 }
-                constraint -= Term::from(target_u16_words[i]);
-                cs.add_constraint(constraint);
+                // println!(" - {:?}", cs.get_value(target_u16_words[i]));
+                expr = expr - Expr::var(target_u16_words[i]);
+                cs.add_constraint_expr(expr);
             }
         }
 
@@ -830,39 +839,44 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
         // In this case remainder is 0
 
         // 2^16 * of + remainder - divisor = witness
-        let mut t = Term::from(remainder_comparison_u16_witness_low_at_layer_1)
-            - Term::from(remainder_at_layer_1[0])
-            + Term::from(divisor_at_layer_1[0]);
-        t.scale(shift_left_16_bits.inverse().unwrap());
-        cs.add_constraint(t.clone() * (t.clone() - Term::from(1)));
+        let remainder_comparison_carry =
+            (Expr::<F>::var(remainder_comparison_u16_witness_low_at_layer_1)
+                - Expr::var(remainder_at_layer_1[0])
+                + Expr::var(divisor_at_layer_1[0]))
+                * shift_left_16_bits.inverse().unwrap();
+        cs.add_constraint_expr(
+            remainder_comparison_carry.clone()
+                * (remainder_comparison_carry.clone() - Expr::<F>::one()),
+        );
 
         // 2^16*(1 - divisor_is_zero) + remainder - divisor - carry = witness
-        let mut c = Term::from(1u32) - Term::from(divisor_is_zero_if_division_layer_1);
-        c.scale(shift_left_16_bits);
-        c = c + Term::from(remainder_at_layer_1[1]);
-        c = c - Term::from(divisor_at_layer_1[1]);
-        c = c - t;
-        c = c - Term::from(remainder_comparison_u16_witness_high_at_layer_1);
-        // and mask it into division family only
-        c = c * Term::from(is_division_family_at_layer_1);
-        cs.add_constraint(c);
-
-        cs.add_constraint(
-            (Term::<F>::from(low_at_layer_1[0]) - Term::from(remainder_at_layer_1[0]))
-                * Term::from(divisor_is_zero_if_division_layer_1),
-        );
-        cs.add_constraint(
-            (Term::<F>::from(low_at_layer_1[1]) - Term::from(remainder_at_layer_1[1]))
-                * Term::from(divisor_is_zero_if_division_layer_1),
+        let high_remainder_comparison = (Expr::<F>::one()
+            - Expr::var(divisor_is_zero_if_division_layer_1))
+            * shift_left_16_bits
+            + Expr::var(remainder_at_layer_1[1])
+            - Expr::var(divisor_at_layer_1[1])
+            - remainder_comparison_carry
+            - Expr::var(remainder_comparison_u16_witness_high_at_layer_1);
+        cs.add_constraint_expr(
+            high_remainder_comparison * Expr::var(is_division_family_at_layer_1),
         );
 
-        cs.add_constraint(
-            (Term::<F>::from(u16::MAX as u32) - Term::from(quotient_at_layer_1[0]))
-                * Term::from(divisor_is_zero_if_division_layer_1),
+        cs.add_constraint_expr(
+            (Expr::<F>::var(low_at_layer_1[0]) - Expr::var(remainder_at_layer_1[0]))
+                * Expr::var(divisor_is_zero_if_division_layer_1),
         );
-        cs.add_constraint(
-            (Term::<F>::from(u16::MAX as u32) - Term::from(quotient_at_layer_1[1]))
-                * Term::from(divisor_is_zero_if_division_layer_1),
+        cs.add_constraint_expr(
+            (Expr::<F>::var(low_at_layer_1[1]) - Expr::var(remainder_at_layer_1[1]))
+                * Expr::var(divisor_is_zero_if_division_layer_1),
+        );
+
+        cs.add_constraint_expr(
+            (Expr::<F>::from(u16::MAX as u32) - Expr::var(quotient_at_layer_1[0]))
+                * Expr::var(divisor_is_zero_if_division_layer_1),
+        );
+        cs.add_constraint_expr(
+            (Expr::<F>::from(u16::MAX as u32) - Expr::var(quotient_at_layer_1[1]))
+                * Expr::var(divisor_is_zero_if_division_layer_1),
         );
     } else {
         todo!("support signed ops")
@@ -904,10 +918,89 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
+    use crate::cs::circuit_impl::BasicAssembly;
+    use crate::cs::circuit_output::CircuitOutput;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_gkr;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
     use crate::gkr_compiler::dump_ssa_witness_eval_form;
+    use crate::structured_expr::StructuredStatement;
     use crate::utils::serialize_to_file;
+
+    type F = ::field::Mersenne31Field;
+
+    fn named_variable(output: &CircuitOutput<F>, expected_name: &str) -> Variable {
+        output
+            .variable_names
+            .iter()
+            .find_map(|(variable, name)| (name == expected_name).then_some(*variable))
+            .expect("named variable must exist")
+    }
+
+    fn defined_expr_for<'a>(output: &'a CircuitOutput<F>, expected_name: &str) -> &'a Expr<F> {
+        let variable = named_variable(output, expected_name);
+
+        output
+            .structured_statements
+            .iter()
+            .find_map(|statement| match statement {
+                StructuredStatement::Define { dst, expr } if *dst == variable => Some(expr),
+                StructuredStatement::Define { .. } | StructuredStatement::AssertZero { .. } => None,
+            })
+            .expect("named variable must have structured definition")
+    }
+
+    fn contains_product_with_sum_factor(expr: &Expr<F>) -> bool {
+        match expr {
+            Expr::Product(factors) => {
+                factors.iter().any(|factor| matches!(factor, Expr::Sum(_)))
+                    || factors.iter().any(contains_product_with_sum_factor)
+            }
+            Expr::Sum(terms) => terms.iter().any(contains_product_with_sum_factor),
+            Expr::Constant(_) | Expr::Var(_) => false,
+        }
+    }
+
+    fn grouped_schoolbook_terms_count(expr: &Expr<F>) -> usize {
+        let Expr::Sum(terms) = expr else {
+            return 0;
+        };
+
+        terms
+            .iter()
+            .filter(|term| contains_product_with_sum_factor(term))
+            .count()
+    }
+
+    #[test]
+    fn unsigned_mul_div_records_grouped_layer_1_selectors() {
+        let mut cs = BasicAssembly::<F>::new();
+        mul_div_circuit_with_preprocessed_bytecode_for_gkr::<_, _, false>(&mut cs);
+        let (output, _) = cs.finalize();
+
+        let divisor_is_zero = defined_expr_for(&output, "divisor is zero if division at layer 1");
+        let quotient = defined_expr_for(&output, "quotient[0] at layer 1");
+        let divisor = defined_expr_for(&output, "divisor[0] at layer 1");
+
+        assert!(contains_product_with_sum_factor(divisor_is_zero));
+        assert!(contains_product_with_sum_factor(quotient));
+        assert!(contains_product_with_sum_factor(divisor));
+    }
+
+    #[test]
+    fn unsigned_mul_div_records_grouped_schoolbook_terms() {
+        let mut cs = BasicAssembly::<F>::new();
+        mul_div_circuit_with_preprocessed_bytecode_for_gkr::<_, _, false>(&mut cs);
+        let (output, _) = cs.finalize();
+
+        assert!(output
+            .structured_statements
+            .iter()
+            .any(|statement| matches!(
+                statement,
+                StructuredStatement::AssertZero { expr, .. }
+                    if grouped_schoolbook_terms_count(expr) >= 2
+            )));
+    }
 
     #[test]
     fn compile_unsigned_mul_div_into_gkr() {
@@ -923,7 +1016,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/unsigned_mul_div_preprocessed_layout_gkr.json",
+            "compiled_circuits/unsigned_mul_div_layout_gkr.json",
         );
     }
 
@@ -938,7 +1031,7 @@ mod test {
         );
         serialize_to_file(
             &ssa_forms,
-            "compiled_circuits/unsigned_mul_div_preprocessed_ssa_gkr.json",
+            "compiled_circuits/unsigned_mul_div_ssa_gkr.json",
         );
     }
 
@@ -959,7 +1052,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/unsigned_mul_div_preprocessed_layout_no_caches_gkr.json",
+            "compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json",
         );
     }
 }

@@ -9,7 +9,7 @@ pub(crate) mod non_determinism;
 #[inline(always)]
 pub(crate) fn nop_op<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {

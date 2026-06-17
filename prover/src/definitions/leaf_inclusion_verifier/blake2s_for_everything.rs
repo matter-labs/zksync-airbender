@@ -26,6 +26,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifier {
         depth: usize,
         leaf_encoding: &AlignedSlice64<u32>,
         merkle_cap: &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
+        nd_source: &mut I,
     ) -> bool {
         // our strategy is:
         // - since leaf is used for other purposes, we have to copy it into the buffer, no options here
@@ -123,7 +124,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifier {
                 for _ in 0..8 {
                     // BLAKE2S_DIGEST_SIZE_U32_WORDS
                     // hashes are unstructured u32
-                    witness_dst_ptr.write(I::read_word());
+                    witness_dst_ptr.write(nd_source.read_word());
                     witness_dst_ptr = witness_dst_ptr.add(1);
                 }
                 index >>= 1;
@@ -157,7 +158,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifier {
                 for _ in 0..8 {
                     // BLAKE2S_DIGEST_SIZE_U32_WORDS
                     // hashes are unstructured u32
-                    witness_dst_ptr.write(I::read_word());
+                    witness_dst_ptr.write(nd_source.read_word());
                     witness_dst_ptr = witness_dst_ptr.add(1);
                 }
                 index >>= 1;
@@ -229,7 +230,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifier {
                 for _ in 0..8 {
                     // BLAKE2S_DIGEST_SIZE_U32_WORDS
                     // hashes are unstructured u32
-                    witness_dst_ptr.write(I::read_word());
+                    witness_dst_ptr.write(nd_source.read_word());
                     witness_dst_ptr = witness_dst_ptr.add(1);
                 }
                 index >>= 1;

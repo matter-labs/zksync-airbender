@@ -1,14 +1,17 @@
 use super::decoder::AddSubLuiAuipcMopDecoder;
 use super::*;
-use crate::constraint::Constraint;
-use crate::constraint::Term;
 use crate::cs::circuit_trait::*;
-use crate::gkr_circuits::utils::update_intermediate_carry_value;
+use crate::gkr_circuits::utils::{montgomery_product_expr, update_intermediate_carry_value};
 use crate::oracle::Placeholder;
+use crate::structured_expr::Expr;
 use crate::tables::TableDriver;
 use crate::types::*;
 use crate::witness_placer::*;
 use field::PrimeField;
+
+fn word_from_u16_limbs_expr<F: PrimeField>(limbs: [Variable; 2], limb_shift: F) -> Expr<F> {
+    Expr::var(limbs[0]) + Expr::var(limbs[1]) * limb_shift
+}
 
 pub fn add_sub_lui_auipc_mop_table_addition_fn<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
     // no tables
@@ -87,6 +90,9 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     let WordRepresentation::U16Limbs(rs2_limbs) = rs2_access.read_value else {
         unreachable!()
     };
+    let WordRepresentation::U16Limbs(rd_read_limbs) = rd_access.read_value else {
+        unreachable!()
+    };
     let WordRepresentation::U16Limbs(rd_write_limbs) = rd_access.write_value else {
         unreachable!()
     };
@@ -97,7 +103,6 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     let modulus_high = F::from_u32_unchecked(((F::CHARACTERISTICS >> 16) as u16) as u32);
 
     let carry_shift = F::from_u32_with_reduction(1 << 16);
-    let shift_term = Term::from_field(carry_shift);
 
     // we need range checks on the output to ensure proper addition
     let [out_low, out_high] = rd_write_limbs;
@@ -125,6 +130,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     let is_addmod = decoder.perform_addmod();
     let is_submod = decoder.perform_submod();
     let is_mulmod = decoder.perform_mulmod();
+    let is_fmamod = decoder.perform_fmamod();
     let is_delegation_call = decoder.perform_delegation_call();
     let is_non_determinism_read = decoder.perform_non_determinism_read();
 
@@ -145,6 +151,9 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     }
     if is_mulmod.get_value(cs).unwrap_or(false) {
         println!("MOP_MUL");
+    }
+    if is_fmamod.get_value(cs).unwrap_or(false) {
+        println!("MOP_FMA");
     }
     if is_delegation_call.get_value(cs).unwrap_or(false) {
         println!("DELEGATION CALL");
@@ -167,6 +176,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         let pc_vars = inputs.cycle_start_state.pc;
         let rs1_vars = rs1_limbs;
         let rs2_vars = rs2_limbs;
+        let rd_read_vars = rd_read_limbs;
 
         let is_add_var = is_add.get_variable().unwrap();
         let is_sub_var = is_sub.get_variable().unwrap();
@@ -174,6 +184,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         let is_addmod_var = is_addmod.get_variable().unwrap();
         let is_submod_var = is_submod.get_variable().unwrap();
         let is_mulmod_var = is_mulmod.get_variable().unwrap();
+        let is_fmamod_var = is_fmamod.get_variable().unwrap();
         let _is_delegation_call_var = is_delegation_call.get_variable().unwrap();
         let is_non_determinism_read_var = is_non_determinism_read.get_variable().unwrap();
 
@@ -192,6 +203,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             let rs1_u32 = placer.get_u32_from_u16_parts(rs1_vars);
             let rs2_low = placer.get_u16(rs2_vars[0]);
             let rs2_u32 = placer.get_u32_from_u16_parts(rs2_vars);
+            let rd_read_u32 = placer.get_u32_from_u16_parts(rd_read_vars);
             let pc_low = placer.get_u16(pc_vars[0]);
             let pc_u32 = placer.get_u32_from_u16_parts(pc_vars);
             let boolean_false = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
@@ -259,11 +271,11 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
 
             let rs1_f =
                 <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
-                    rs1_u32,
+                    rs1_u32.clone(),
                 );
             let rs2_f =
                 <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
-                    rs2_u32,
+                    rs2_u32.clone(),
                 );
 
             // addmod
@@ -329,34 +341,53 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                     None,
                 );
             }
-            // mulmod - both final and intermediate var (unconditional)
+            // mulmod - both final and intermediate var (unconditional), and fmamod via mixing addition term
             {
                 let is_mulmod = placer.get_boolean(is_mulmod_var);
-                let mulmod_field = {
-                    let mut mulmod_f = rs1_f.clone();
-                    mulmod_f.mul_assign(&rs2_f);
-                    mulmod_f
-                };
-                placer.assign_field(mulmod_intermediate_var, &mulmod_field);
-                let mulmod_result = mulmod_field.clone().as_integer();
+                let is_fmamod = placer.get_boolean(is_fmamod_var);
+                let is_mul_like = is_mulmod.or(&is_fmamod);
+                let op1 =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
+                        rs1_u32,
+                    );
+                let op2 =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
+                        rs2_u32,
+                    );
+                let rd_raw =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
+                        rd_read_u32,
+                    );
+                let mut mulmod_field = op1;
+                mulmod_field.mul_assign(&op2);
+                mulmod_field.add_assign_masked(&is_fmamod, &rd_raw);
+                let mulmod_result = mulmod_field.into_raw_repr_reduced();
+                placer.assign_field(
+                    mulmod_intermediate_var,
+                    &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
+                        mulmod_result.clone(),
+                    ),
+                );
                 let mul_mod_low = mulmod_result.truncate();
                 out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                    &is_mulmod,
+                    &is_mul_like,
                     &mulmod_result,
                     &out_value,
                 );
                 let (tmp, of) = mulmod_result.overflowing_sub(&modulus_constant);
                 intermediate_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                    &is_mulmod,
+                    &is_mul_like,
                     &tmp,
                     &intermediate_value,
                 );
                 of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                    &is_mulmod, &of, &of_value,
+                    &is_mul_like,
+                    &of,
+                    &of_value,
                 );
                 update_intermediate_carry_value::<F, CS::WitnessPlacer, true>(
                     &mut u16_intermedaite_carry_value,
-                    &is_mulmod,
+                    &is_mul_like,
                     &mul_mod_low,
                     &modulus_low,
                     None,
@@ -393,46 +424,50 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     // separate constraint for addmod/submod/mulmod. We use intermediate range-checked register to check
     // field element normalization
 
+    // it'll be useful later on. We have a guarantee that all opcode flags are disjoint, and so
+    // we can just use addition
+    let is_modular = Expr::<F>::Sum(vec![
+        Expr::from(is_addmod),
+        Expr::from(is_submod),
+        Expr::from(is_mulmod),
+        Expr::from(is_fmamod),
+    ]);
+
     {
+        let rs1 = word_from_u16_limbs_expr(rs1_limbs, carry_shift);
+        let rs2 = word_from_u16_limbs_expr(rs2_limbs, carry_shift);
+        let rd_read = word_from_u16_limbs_expr(rd_read_limbs, carry_shift);
+        let out = word_from_u16_limbs_expr([out_low, out_high], carry_shift);
+
         // ADDMOD
         {
-            cs.add_constraint(
-                Constraint::from(is_addmod)
-                    * ((Constraint::from(out_low) + shift_term * Term::from(out_high))
-                        - (Constraint::from(rs1_limbs[0])
-                            + shift_term * Term::from(rs1_limbs[1])
-                            + Term::from(rs2_limbs[0])
-                            + shift_term * Term::from(rs2_limbs[1]))),
-            );
-            cs.add_constraint(Term::from(is_addmod) * (Term::from(1u32) - Term::from(carry)));
-        };
-
+            // nothing extra
+        }
         // SUBMOD
         {
-            cs.add_constraint(
-                Constraint::from(is_submod)
-                    * ((Constraint::from(out_low) + shift_term * Term::from(out_high))
-                        - (Constraint::from(rs1_limbs[0]) + shift_term * Term::from(rs1_limbs[1])
-                            - Term::from(rs2_limbs[0])
-                            - shift_term * Term::from(rs2_limbs[1]))),
-            );
-            cs.add_constraint(Term::from(is_submod) * (Term::from(1u32) - Term::from(carry)));
+            // nothing extra
         }
-
         // MULMOD
         {
-            cs.add_constraint(
-                (Constraint::from(rs1_limbs[0]) + shift_term * Term::from(rs1_limbs[1]))
-                    * (Constraint::from(rs2_limbs[0]) + shift_term * Term::from(rs2_limbs[1]))
-                    - Term::from(mulmod_intermediate_var),
+            // use intermediate variable, and mix-in the addition part
+            cs.add_constraint_expr(
+                montgomery_product_expr(rs1.clone(), rs2.clone())
+                    + rd_read * Expr::var(is_fmamod.get_variable().unwrap())
+                    - Expr::var(mulmod_intermediate_var),
             );
-            cs.add_constraint(
-                Constraint::from(is_mulmod)
-                    * ((Constraint::from(out_low) + shift_term * Term::from(out_high))
-                        - Term::from(mulmod_intermediate_var)),
-            );
-            cs.add_constraint(Term::from(is_mulmod) * (Term::from(1u32) - Term::from(carry)));
         }
+
+        // enforce field ops - all at once, as we know that flags are disjoint
+        // TODO: maybe we want to restructure it, but it'll not make less multiplications anyway
+        let is_mul_like = Expr::<F>::Sum(vec![Expr::from(is_mulmod), Expr::from(is_fmamod)]);
+        cs.add_constraint_expr(
+            (out.clone() - (rs1.clone() + rs2.clone())).mask(is_addmod)
+                + (out.clone() - (rs1.clone() - rs2)).mask(is_submod)
+                + (out - Expr::var(mulmod_intermediate_var)) * is_mul_like,
+        );
+
+        // check normalization
+        cs.add_constraint_expr((Expr::<F>::one() - Expr::from(carry)) * is_modular.clone());
 
         // out < modulus, so
         // 2^32*of + out - modulus = tmp
@@ -445,100 +480,73 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     // - one that links register/imm inputs and output
     // - another that enforces reduction for GKR
 
-    // generic constraint for addition-like ops links to RD directly
+    // generic constraint for addition-like ops links to RD directly.
+    // each opcode contributes one linear equation per limb; we mask by its family bit and sum.
+    // addmod/submod/mulmod share an equation per limb, so we factor it once and multiply
+    // it by the sum of their opcode masks.
+    // NOTE: for additions we blindly mix imm and rs2 as preprocessing ensures that if imm != 0 then rs2 = x0
     {
-        let mut add_like_low_constraint = Constraint::empty();
-        // rs1
-        add_like_low_constraint += Term::from(is_add) * Term::from(rs1_limbs[0]);
-        add_like_low_constraint +=
-            Term::from(is_auipc) * Term::from(inputs.cycle_start_state.pc[0]);
-        // for subtraction 2^16*of + a - b = c -> 2^16*of + a = b + c
-        add_like_low_constraint += Term::from(is_sub) * Term::from(out_low);
-        // for modular ops we also do 2^16*of + out - modulus -> intermediate
-        add_like_low_constraint +=
-            Term::from(is_addmod) * Term::from(intermediate_tmp.0[0].get_variable());
-        add_like_low_constraint +=
-            Term::from(is_submod) * Term::from(intermediate_tmp.0[0].get_variable());
-        add_like_low_constraint +=
-            Term::from(is_mulmod) * Term::from(intermediate_tmp.0[0].get_variable());
-        // rs2
-        // NOTE: for additions we blindly mix imm and rs2 as preprocessing ensures that if imm !=0 then rs2 = x0
-        add_like_low_constraint += Term::from(is_add) * Term::from(rs2_limbs[0]);
-        add_like_low_constraint += Term::from(is_add) * Term::from(inputs.decoder_data.imm[0]);
-        add_like_low_constraint += Term::from(is_auipc) * Term::from(inputs.decoder_data.imm[0]);
-        add_like_low_constraint += Term::from(is_sub) * Term::from(rs2_limbs[0]);
-        add_like_low_constraint += Term::from((modulus_low, is_addmod.get_variable().unwrap()));
-        add_like_low_constraint += Term::from((modulus_low, is_submod.get_variable().unwrap()));
-        add_like_low_constraint += Term::from((modulus_low, is_mulmod.get_variable().unwrap()));
-        // rd
-        add_like_low_constraint -= Term::from(is_add) * Term::from(out_low);
-        add_like_low_constraint -= Term::from(is_auipc) * Term::from(out_low);
-        add_like_low_constraint -= Term::from(is_sub) * Term::from(rs1_limbs[0]);
-        add_like_low_constraint -= Term::from(is_addmod) * Term::from(out_low);
-        add_like_low_constraint -= Term::from(is_submod) * Term::from(out_low);
-        add_like_low_constraint -= Term::from(is_mulmod) * Term::from(out_low);
-
-        // intermediate carry
         let intermediate_carry_var = intermediate_carry.get_variable().unwrap();
-        add_like_low_constraint -=
-            Term::from(is_add) * Term::from((carry_shift, intermediate_carry_var));
-        add_like_low_constraint -=
-            Term::from(is_auipc) * Term::from((carry_shift, intermediate_carry_var));
-        add_like_low_constraint -=
-            Term::from(is_sub) * Term::from((carry_shift, intermediate_carry_var));
-        add_like_low_constraint -=
-            Term::from(is_addmod) * Term::from((carry_shift, intermediate_carry_var));
-        add_like_low_constraint -=
-            Term::from(is_submod) * Term::from((carry_shift, intermediate_carry_var));
-        add_like_low_constraint -=
-            Term::from(is_mulmod) * Term::from((carry_shift, intermediate_carry_var));
-        cs.add_constraint(add_like_low_constraint);
-
-        // high part
-        let mut add_like_high_constraint = Constraint::empty();
-        // intermediate carry
-        add_like_high_constraint += Term::from(is_add) * Term::from(intermediate_carry);
-        add_like_high_constraint += Term::from(is_auipc) * Term::from(intermediate_carry);
-        add_like_high_constraint += Term::from(is_sub) * Term::from(intermediate_carry);
-        add_like_high_constraint += Term::from(is_addmod) * Term::from(intermediate_carry);
-        add_like_high_constraint += Term::from(is_submod) * Term::from(intermediate_carry);
-        add_like_high_constraint += Term::from(is_mulmod) * Term::from(intermediate_carry);
-        // rs1
-        add_like_high_constraint += Term::from(is_add) * Term::from(rs1_limbs[1]);
-        add_like_high_constraint +=
-            Term::from(is_auipc) * Term::from(inputs.cycle_start_state.pc[1]);
-        add_like_high_constraint += Term::from(is_sub) * Term::from(out_high);
-        add_like_high_constraint +=
-            Term::from(is_addmod) * Term::from(intermediate_tmp.0[1].get_variable());
-        add_like_high_constraint +=
-            Term::from(is_submod) * Term::from(intermediate_tmp.0[1].get_variable());
-        add_like_high_constraint +=
-            Term::from(is_mulmod) * Term::from(intermediate_tmp.0[1].get_variable());
-        // rs2
-        // NOTE: for additions we blindly mix imm and rs2 as preprocessing ensures that if imm !=0 then rs2 = x0
-        add_like_high_constraint += Term::from(is_add) * Term::from(rs2_limbs[1]);
-        add_like_high_constraint += Term::from(is_add) * Term::from(inputs.decoder_data.imm[1]);
-        add_like_high_constraint += Term::from(is_auipc) * Term::from(inputs.decoder_data.imm[1]);
-        add_like_high_constraint += Term::from(is_sub) * Term::from(rs2_limbs[1]);
-        add_like_high_constraint += Term::from((modulus_high, is_addmod.get_variable().unwrap()));
-        add_like_high_constraint += Term::from((modulus_high, is_submod.get_variable().unwrap()));
-        add_like_high_constraint += Term::from((modulus_high, is_mulmod.get_variable().unwrap()));
-        // rd
-        add_like_high_constraint -= Term::from(is_add) * Term::from(out_high);
-        add_like_high_constraint -= Term::from(is_auipc) * Term::from(out_high);
-        add_like_high_constraint -= Term::from(is_sub) * Term::from(rs1_limbs[1]);
-        add_like_high_constraint += Term::from(is_addmod) * Term::from(out_high);
-        add_like_high_constraint += Term::from(is_submod) * Term::from(out_high);
-        add_like_high_constraint += Term::from(is_mulmod) * Term::from(out_high);
-        // final carry
         let carry_var = carry.get_variable().unwrap();
-        add_like_high_constraint -= Term::from(is_add) * Term::from((carry_shift, carry_var));
-        add_like_high_constraint -= Term::from(is_auipc) * Term::from((carry_shift, carry_var));
-        add_like_high_constraint -= Term::from(is_sub) * Term::from((carry_shift, carry_var));
-        add_like_high_constraint -= Term::from(is_addmod) * Term::from((carry_shift, carry_var));
-        add_like_high_constraint -= Term::from(is_submod) * Term::from((carry_shift, carry_var));
-        add_like_high_constraint -= Term::from(is_mulmod) * Term::from((carry_shift, carry_var));
-        cs.add_constraint(add_like_high_constraint);
+
+        // low limb
+        // ADD/ADDI/LUI: rs1 + rs2 + imm - rd - 2^16 * intermediate_carry
+        let eq_add_low = Expr::var(rs1_limbs[0])
+            + Expr::var(rs2_limbs[0])
+            + Expr::var(inputs.decoder_data.imm[0])
+            - Expr::var(out_low)
+            - Expr::var(intermediate_carry_var) * carry_shift;
+        // AUIPC: pc + imm (no rs1/rs2)
+        let eq_auipc_low = Expr::var(inputs.cycle_start_state.pc[0])
+            + Expr::var(inputs.decoder_data.imm[0])
+            - Expr::var(out_low)
+            - Expr::var(intermediate_carry_var) * carry_shift;
+        // SUB rearranged: 2^16*of + out + rs2 - rs1
+        let eq_sub_low = Expr::var(out_low) + Expr::var(rs2_limbs[0])
+            - Expr::var(rs1_limbs[0])
+            - Expr::var(intermediate_carry_var) * carry_shift;
+        // modular ops: 2^16*of + out - modulus = intermediate_tmp
+        let eq_modular_low = Expr::var(intermediate_tmp.0[0].get_variable())
+            + Expr::<F>::constant(modulus_low)
+            - Expr::var(out_low)
+            - Expr::var(intermediate_carry_var) * carry_shift;
+
+        cs.add_constraint_expr(Expr::Sum(vec![
+            eq_add_low.mask(is_add),
+            eq_auipc_low.mask(is_auipc),
+            eq_sub_low.mask(is_sub),
+            eq_modular_low * is_modular.clone(),
+        ]));
+
+        // high limb: same structure plus intermediate_carry (carry-in from low limb),
+        // and final carry-out shifted by 2^16
+        let eq_add_high = Expr::<F>::from(intermediate_carry)
+            + Expr::var(rs1_limbs[1])
+            + Expr::var(rs2_limbs[1])
+            + Expr::var(inputs.decoder_data.imm[1])
+            - Expr::var(out_high)
+            - Expr::var(carry_var) * carry_shift;
+        let eq_auipc_high = Expr::<F>::from(intermediate_carry)
+            + Expr::var(inputs.cycle_start_state.pc[1])
+            + Expr::var(inputs.decoder_data.imm[1])
+            - Expr::var(out_high)
+            - Expr::var(carry_var) * carry_shift;
+        let eq_sub_high =
+            Expr::<F>::from(intermediate_carry) + Expr::var(out_high) + Expr::var(rs2_limbs[1])
+                - Expr::var(rs1_limbs[1])
+                - Expr::var(carry_var) * carry_shift;
+        let eq_modular_high = Expr::<F>::from(intermediate_carry)
+            + Expr::var(intermediate_tmp.0[1].get_variable())
+            + Expr::<F>::constant(modulus_high)
+            - Expr::var(out_high)
+            - Expr::var(carry_var) * carry_shift;
+
+        cs.add_constraint_expr(Expr::Sum(vec![
+            eq_add_high.mask(is_add),
+            eq_auipc_high.mask(is_auipc),
+            eq_sub_high.mask(is_sub),
+            eq_modular_high * is_modular,
+        ]));
     }
 
     // Delegation call
@@ -548,18 +556,14 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     // We also ensure that out value is 0 as from preprocessing rd = x0
     {
         // delegation register value
-        cs.add_constraint(Term::from(is_delegation_call) * Term::from(rs2_limbs[0]));
-        cs.add_constraint(Term::from(is_delegation_call) * Term::from(rs2_limbs[1]));
+        cs.add_constraint_expr(Expr::var(rs2_limbs[0]).mask(is_delegation_call));
+        cs.add_constraint_expr(Expr::var(rs2_limbs[1]).mask(is_delegation_call));
         // read timestamp
-        cs.add_constraint(
-            Term::from(is_delegation_call) * Term::from(rs2_access.read_timestamp[0]),
-        );
-        cs.add_constraint(
-            Term::from(is_delegation_call) * Term::from(rs2_access.read_timestamp[1]),
-        );
+        cs.add_constraint_expr(Expr::var(rs2_access.read_timestamp[0]).mask(is_delegation_call));
+        cs.add_constraint_expr(Expr::var(rs2_access.read_timestamp[1]).mask(is_delegation_call));
         // out value
-        cs.add_constraint(Term::from(is_delegation_call) * Term::from(rd_write_limbs[0]));
-        cs.add_constraint(Term::from(is_delegation_call) * Term::from(rd_write_limbs[1]));
+        cs.add_constraint_expr(Expr::var(rd_write_limbs[0]).mask(is_delegation_call));
+        cs.add_constraint_expr(Expr::var(rd_write_limbs[1]).mask(is_delegation_call));
     }
 
     // Non-determinism - actually we do not have ANY constraint on RD value, other than range checks
@@ -597,15 +601,89 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
+    use crate::cs::circuit_impl::BasicAssembly;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_gkr;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
     use crate::gkr_compiler::dump_ssa_witness_eval_form;
+    use crate::structured_expr::StructuredStatement;
     use crate::utils::serialize_to_file;
+
+    type F = ::field::Mersenne31Field;
+
+    fn contains_variable(expr: &Expr<F>, variable: Variable) -> bool {
+        match expr {
+            Expr::Constant(_) => false,
+            Expr::Var(candidate) => *candidate == variable,
+            Expr::Sum(terms) | Expr::Product(terms) => {
+                terms.iter().any(|term| contains_variable(term, variable))
+            }
+        }
+    }
+
+    fn is_scaled_variable(expr: &Expr<F>) -> bool {
+        match expr {
+            Expr::Product(factors) if factors.len() == 2 => {
+                factors
+                    .iter()
+                    .any(|factor| matches!(factor, Expr::Constant(_)))
+                    && factors.iter().any(|factor| matches!(factor, Expr::Var(_)))
+            }
+            _ => false,
+        }
+    }
+
+    fn is_word_from_u16_limbs(expr: &Expr<F>) -> bool {
+        match expr {
+            Expr::Sum(terms) if terms.len() == 2 => {
+                terms.iter().any(|term| matches!(term, Expr::Var(_)))
+                    && terms.iter().any(is_scaled_variable)
+            }
+            _ => false,
+        }
+    }
+
+    fn contains_product_of_word_exprs(expr: &Expr<F>) -> bool {
+        match expr {
+            Expr::Product(factors)
+                if factors.len() == 2 && factors.iter().all(is_word_from_u16_limbs) =>
+            {
+                true
+            }
+            Expr::Sum(terms) | Expr::Product(terms) => {
+                terms.iter().any(contains_product_of_word_exprs)
+            }
+            Expr::Constant(_) | Expr::Var(_) => false,
+        }
+    }
+
+    #[test]
+    fn add_sub_circuit_records_structured_mulmod_word_product() {
+        let mut cs = BasicAssembly::<F>::new();
+        add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
+        let (output, _) = cs.finalize();
+        let mulmod_intermediate = output
+            .variable_names
+            .iter()
+            .find_map(|(variable, name)| (name == "MULMOD intermediate value").then_some(*variable))
+            .expect("mulmod intermediate variable must be named");
+
+        assert!(output
+            .structured_statements
+            .iter()
+            .any(|statement| matches!(
+                statement,
+                StructuredStatement::AssertZero {
+                    expr,
+                    prevent_optimizations: false,
+                } if contains_product_of_word_exprs(expr)
+                    && contains_variable(expr, mulmod_intermediate)
+            )));
+    }
 
     #[test]
     fn compile_add_sub_lui_auipc_mop_into_gkr() {
         skip_if_ci!();
-        use ::field::baby_bear::base::BabyBearField;
+        use field::baby_bear::base::BabyBearField;
 
         let gkr_compiled = compile_unrolled_circuit_state_transition_into_gkr::<BabyBearField>(
             &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
@@ -616,14 +694,14 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_gkr.json",
+            "compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json",
         );
     }
 
     #[test]
     fn compile_add_sub_lui_auipc_mop_gkr_witness_graph() {
         skip_if_ci!();
-        use ::field::baby_bear::base::BabyBearField;
+        use field::baby_bear::base::BabyBearField;
 
         let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
             &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
@@ -638,7 +716,7 @@ mod test {
     #[test]
     fn compile_add_sub_lui_auipc_mop_into_no_caches_gkr() {
         skip_if_ci!();
-        use ::field::baby_bear::base::BabyBearField;
+        use field::baby_bear::base::BabyBearField;
 
         let gkr_compiled =
             compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<
@@ -652,7 +730,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_no_caches_gkr.json",
+            "compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
         );
     }
 }

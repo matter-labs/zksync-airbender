@@ -1,4 +1,4 @@
-pub const ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS: usize = 8;
+pub const ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS: usize = 9;
 
 pub const JUMP_SLT_BRANCH_FAMILY_NUM_BITS: usize = 5;
 

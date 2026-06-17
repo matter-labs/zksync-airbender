@@ -1,13 +1,9 @@
 use core::mem::MaybeUninit;
 use non_determinism_source::NonDeterminismSource;
 
-pub const DIGEST_SIZE_U32_WORDS: usize = 8;
+pub use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS as DIGEST_SIZE_U32_WORDS;
 
-const _: () = const {
-    assert!(DIGEST_SIZE_U32_WORDS == blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS);
-
-    ()
-};
+// NOTE: we use digest size of u32 words of blake. For algebraic hashes it would be roughly the same in number of field elements
 
 // Simple structure to hold root or cap of the Merkle tree. Almost a proxy for a bag of bytes. If used with
 // algebrai hashes, it's caller's responsibility to either expect some reduction behavior,
@@ -43,7 +39,8 @@ impl<const N: usize> MerkleTreeCap<N> {
         }
     }
 
-    pub fn new<I: NonDeterminismSource>() -> Self {
+    #[inline(always)]
+    pub fn new<I: NonDeterminismSource>(nd_source: &mut I) -> Self {
         unsafe {
             let mut new = Self {
                 cap: [MaybeUninit::uninit(); N].map(|el| el.assume_init()),
@@ -51,7 +48,7 @@ impl<const N: usize> MerkleTreeCap<N> {
 
             for dst in new.cap.iter_mut() {
                 for dst in dst.iter_mut() {
-                    *dst = I::read_word();
+                    *dst = nd_source.read_word();
                 }
             }
 
@@ -59,12 +56,23 @@ impl<const N: usize> MerkleTreeCap<N> {
         }
     }
 
-    pub unsafe fn read_caps_into<I: NonDeterminismSource, const M: usize>(dst: *mut [Self; M]) {
+    #[inline(always)]
+    pub unsafe fn read_caps_into<I: NonDeterminismSource, const M: usize>(
+        dst: *mut [Self; M],
+        nd_source: &mut I,
+    ) {
         let mut ptr: *mut u32 = dst.cast();
         let end = ptr.add(DIGEST_SIZE_U32_WORDS * N * M);
         while ptr < end {
-            ptr.write(I::read_word());
+            ptr.write(nd_source.read_word());
             ptr = ptr.add(1);
+        }
+    }
+
+    pub fn flatten_single(input: &'_ Self) -> &'_ [u32] {
+        // layouts are the same
+        unsafe {
+            core::slice::from_raw_parts(input.cap.as_ptr().cast::<u32>(), DIGEST_SIZE_U32_WORDS * N)
         }
     }
 
@@ -73,12 +81,44 @@ impl<const N: usize> MerkleTreeCap<N> {
         unsafe {
             core::slice::from_raw_parts(
                 input.as_ptr_range().start.cast::<u32>(),
-                input
-                    .as_ptr_range()
-                    .end
-                    .offset_from(input.as_ptr_range().start) as usize,
+                DIGEST_SIZE_U32_WORDS * N * M,
             )
         }
+    }
+
+    pub fn from_ref<'a>(src: &'a [[u32; DIGEST_SIZE_U32_WORDS]; N]) -> &'a Self {
+        unsafe { core::mem::transmute(src) }
+    }
+
+    pub fn compare_single(a: &Self, b: &Self) -> bool {
+        let mut equal = true;
+        unsafe {
+            for j in 0..N {
+                let a = a.cap.get_unchecked(j);
+                let b = b.cap.get_unchecked(j);
+                for k in 0..DIGEST_SIZE_U32_WORDS {
+                    equal &= *a.get_unchecked(k) == *b.get_unchecked(k);
+                }
+            }
+        }
+
+        equal
+    }
+
+    pub fn compare_single_with_flattened<const M: usize>(a: &Self, b: &[[u32; M]; N]) -> bool {
+        assert_eq!(M, DIGEST_SIZE_U32_WORDS); // NOTE: using concrete constant here instead of generic M triggers cycle error
+        let mut equal = true;
+        unsafe {
+            for j in 0..N {
+                let a = a.cap.get_unchecked(j);
+                let b = b.get_unchecked(j);
+                for k in 0..DIGEST_SIZE_U32_WORDS {
+                    equal &= *a.get_unchecked(k) == *b.get_unchecked(k);
+                }
+            }
+        }
+
+        equal
     }
 
     pub fn compare<const M: usize>(a: &[Self; M], b: &[Self; M]) -> bool {

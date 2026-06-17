@@ -62,7 +62,7 @@ verifier_binaries = []
 # Will evaluate quotient on main domain for debug
 debug_satisfiable = ["prover_examples/debug_satisfiable"]
 # Will perform satisfiability tests on witness
-precheck_satisfied = ["prover_examples/precheck_satisfied"]
+gkr_self_checks = ["prover_examples/gkr_self_checks"]
 # debug = ["prover_examples/precheck_satisfied", "prover_examples/debug_satisfiable"]
 # default = ["verifier_80", "prover"]
 default = ["prover"]

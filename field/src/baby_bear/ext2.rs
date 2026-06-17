@@ -289,15 +289,15 @@ impl Field for BabyBearExt2 {
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_by_two(&'_ mut self) -> &'_ mut Self {
-        self.c0.mul_by_two();
-        self.c1.mul_by_two();
+        self.c0.double_impl();
+        self.c1.double_impl();
         self
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline)]
     fn div_by_two(&'_ mut self) -> &'_ mut Self {
-        self.c0.div_by_two();
-        self.c1.div_by_two();
+        self.c0.mul_assign_impl(&BabyBearField::HALF);
+        self.c1.mul_assign_impl(&BabyBearField::HALF);
         self
     }
 }
@@ -438,6 +438,14 @@ impl FieldExtension<BabyBearField> for BabyBearExt2 {
     fn mul_assign_by_base(&mut self, elem: &BabyBearField) -> &mut Self {
         self.c0.mul_assign(elem);
         self.c1.mul_assign(elem);
+        self
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_product_with_base(&mut self, ext: &Self, base: &BabyBearField) -> &mut Self {
+        self.c0.add_assign_product(&ext.c0, base);
+        self.c1.add_assign_product(&ext.c1, base);
+
         self
     }
 

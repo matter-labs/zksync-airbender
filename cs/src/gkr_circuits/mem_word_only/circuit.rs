@@ -1,8 +1,7 @@
 use super::*;
-use crate::constraint::Constraint;
-use crate::constraint::Term;
 use crate::cs::circuit_trait::*;
 use crate::oracle::Placeholder;
+use crate::structured_expr::Expr;
 use crate::tables::TableDriver;
 use crate::types::*;
 use crate::witness_placer::*;
@@ -171,46 +170,55 @@ fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
 
     let cleanaddr = {
         // first we gotta enforce the register address
-        let load = Constraint::from(is_load);
-        let store = Constraint::from(is_store);
-        let [readaddr_lo, readaddr_hi] = memread_addr.map(Term::from);
-        let [writeaddr_lo, writeaddr_hi] = memwrite_addr.map(Term::from);
-        cs.add_constraint(
-            store.clone() * (readaddr_lo - Term::from(inputs.decoder_data.rs2_index))
-                + load.clone() * (writeaddr_lo - Term::from(inputs.decoder_data.rd_index)),
+        let load = Expr::<F>::from(is_load);
+        let store = Expr::<F>::from(is_store);
+        let [readaddr_lo, readaddr_hi] = memread_addr.map(Expr::var);
+        let [writeaddr_lo, writeaddr_hi] = memwrite_addr.map(Expr::var);
+        cs.add_constraint_expr(
+            store.clone() * (readaddr_lo.clone() - Expr::var(inputs.decoder_data.rs2_index))
+                + load.clone() * (writeaddr_lo.clone() - Expr::var(inputs.decoder_data.rd_index)),
         );
-        cs.add_constraint(store.clone() * readaddr_hi + load.clone() * writeaddr_hi);
+        cs.add_constraint_expr(
+            store.clone() * readaddr_hi.clone() + load.clone() * writeaddr_hi.clone(),
+        );
 
         // now we can enforce the ram address
-        let [rs1_lo, rs1_hi] = rs1.map(Term::from);
-        let [imm_lo, imm_hi] = inputs.decoder_data.imm.map(Term::from);
+        let [rs1_lo, rs1_hi] = rs1.map(Expr::var);
+        let [imm_lo, imm_hi] = inputs.decoder_data.imm.map(Expr::var);
         let cleanaddr_lo = load.clone() * readaddr_lo + store.clone() * writeaddr_lo;
         let cleanaddr_hi = load * readaddr_hi + store * writeaddr_hi;
-        let shift16_inv = Term::from_field(F::from_u32(1 << 16).unwrap().inverse().unwrap());
-        let of_lo = shift16_inv.clone() * (rs1_lo + imm_lo - cleanaddr_lo.clone());
-        let of_hi = shift16_inv * (of_lo.clone() + rs1_hi + imm_hi - cleanaddr_hi.clone());
+        let shift16_inv = F::from_u32(1 << 16).unwrap().inverse().unwrap();
+        let of_lo = (rs1_lo + imm_lo - cleanaddr_lo.clone()) * shift16_inv;
+        let of_hi = (of_lo.clone() + rs1_hi + imm_hi - cleanaddr_hi.clone()) * shift16_inv;
         // push them to the next layer and constraint there
         assert_eq!(of_lo.degree(), 2);
         assert_eq!(of_hi.degree(), 2);
 
         let layer_2_copied_of_lo =
-            Term::from(cs.add_intermediate_named_variable_from_constraint(of_lo, "addr: ofL (L2)"));
+            cs.add_intermediate_named_variable_from_expr(of_lo, "addr: ofL (L2)");
         let layer_2_copied_of_hi =
-            Term::from(cs.add_intermediate_named_variable_from_constraint(of_hi, "addr: ofH (L2)"));
-        cs.add_constraint(layer_2_copied_of_lo.clone() * (Term::from(1) - layer_2_copied_of_lo)); // booleanity of overflow (low)
-        cs.add_constraint(layer_2_copied_of_hi.clone() * (Term::from(1) - layer_2_copied_of_hi)); // booleanity of overflow (high)
+            cs.add_intermediate_named_variable_from_expr(of_hi, "addr: ofH (L2)");
+        let layer_2_copied_of_lo = Expr::var(layer_2_copied_of_lo);
+        let layer_2_copied_of_hi = Expr::var(layer_2_copied_of_hi);
+        // booleanity of overflow (low)
+        cs.add_constraint_expr(
+            layer_2_copied_of_lo.clone() * (Expr::<F>::one() - layer_2_copied_of_lo),
+        );
+        // booleanity of overflow (high)
+        cs.add_constraint_expr(
+            layer_2_copied_of_hi.clone() * (Expr::<F>::one() - layer_2_copied_of_hi),
+        );
         [cleanaddr_lo, cleanaddr_hi]
     };
     let (is_rom_base_layer, rom_addr_constraint) = {
         let is_rom = cs.add_named_boolean_variable("flag: are we in rom addr range?");
-        let rom = Term::from(is_rom);
         // whether it's a ROM access or not is decided by comparing high part
         // of the address with 2^ROM_SECOND_WORD_BITS constant via subtraction with carry
         // effectively
         let [cleanaddr_lo, cleanaddr_hi] = cleanaddr;
         {
             // explicit wit.gen
-            let cleanaddr_hi = cleanaddr_hi.clone();
+            let cleanaddr_hi = cleanaddr_hi.clone().to_max_quadratic_constraint();
             let value_fn = move |placer: &mut CS::WitnessPlacer| {
                 let cleanaddr_hi = cleanaddr_hi.evaluate_with_placer(placer);
                 let extrabits = cleanaddr_hi
@@ -221,21 +229,23 @@ fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
             };
             cs.set_values(value_fn);
         }
-        let shift16 = Term::from(1 << 16);
-        let rom_bound_high = Term::from(1 << common_constants::ROM_SECOND_WORD_BITS);
+        let shift16 = F::from_u32_with_reduction(1 << 16);
+        let rom_bound_high =
+            F::from_u32_with_reduction(1 << common_constants::ROM_SECOND_WORD_BITS);
         // addr_hi < `1 << common_constants::ROM_SECOND_WORD_BITS` via subtraction, and `rom` is carry
-        let residue = shift16 * rom + cleanaddr_hi.clone() - rom_bound_high;
+        let residue = Expr::<F>::from(is_rom) * shift16 + cleanaddr_hi.clone()
+            - Expr::constant(rom_bound_high);
         assert_eq!(residue.degree(), 2);
         let layer_2_copied_residue =
-            cs.add_intermediate_named_variable_from_constraint(residue, "residue (L2)");
+            cs.add_intermediate_named_variable_from_expr(residue, "residue (L2)");
         // it's enough to check that subtraction result is range checked
         cs.require_invariant_from_lookup_input(
             LookupInput::from(layer_2_copied_residue),
             Invariant::RangeChecked { width: 16 },
         );
         // trap store*rom
-        cs.add_constraint(Constraint::from(is_rom) * Constraint::from(is_store));
-        (is_rom, cleanaddr_lo + shift16 * cleanaddr_hi)
+        cs.add_constraint_expr(Expr::<F>::from(is_rom) * Expr::from(is_store));
+        (is_rom, cleanaddr_lo + cleanaddr_hi * shift16)
     };
 
     // now we may proceed with our "write" calculations
@@ -249,60 +259,48 @@ fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     //          memread | else
     // NB: we just hide it all in one lookup like we did for the subword circuit
     {
-        let [memread_lo, memread_hi] = memread.map(Constraint::from);
-        let [memwrite_lo, memwrite_hi] = memwrite.map(Constraint::from);
-        let rom = Constraint::from(is_rom_base_layer);
-        let not_rom = Constraint::from(is_rom_base_layer.toggle());
+        let [memread_lo, memread_hi] = memread.map(Expr::var);
+        let [memwrite_lo, memwrite_hi] = memwrite.map(Expr::var);
+        let rom = Expr::<F>::from(is_rom_base_layer);
+        let not_rom = Expr::<F>::from(is_rom_base_layer.toggle());
 
-        let layer_2_copied_is_rom =
-            Term::from(cs.add_intermediate_named_variable_from_constraint(rom, "ROM (L2)"));
+        let layer_2_copied_is_rom = cs.add_intermediate_named_variable_from_expr(rom, "ROM (L2)");
         let layer_3_selected_input = {
             assert_eq!(rom_addr_constraint.degree(), 2);
             let layer_2_copied_rom_addr =
-                Term::from(cs.add_intermediate_named_variable_from_constraint(
-                    rom_addr_constraint,
-                    "romaddr (L2)",
-                ));
-            let input = layer_2_copied_is_rom * layer_2_copied_rom_addr;
-            cs.add_intermediate_named_variable_from_constraint(input, "final lookup input (L3)")
+                cs.add_intermediate_named_variable_from_expr(rom_addr_constraint, "romaddr (L2)");
+            let input = Expr::var(layer_2_copied_is_rom) * Expr::var(layer_2_copied_rom_addr);
+            cs.add_intermediate_named_variable_from_expr(input, "final lookup input (L3)")
         };
         let layer_3_selected_output1 = {
             let output1 = memwrite_lo - not_rom.clone() * memread_lo;
-            let L2_output1 = Constraint::from(cs.add_intermediate_named_variable_from_constraint(
-                output1,
-                "final lookup output1 (L2)",
-            ));
-            cs.add_intermediate_named_variable_from_constraint(
-                L2_output1,
+            let L2_output1 =
+                cs.add_intermediate_named_variable_from_expr(output1, "final lookup output1 (L2)");
+            cs.add_intermediate_named_variable_from_expr(
+                Expr::var(L2_output1),
                 "final lookup output1 (L3)",
             )
         };
         let layer_3_selected_output2 = {
             let output2 = memwrite_hi - not_rom * memread_hi;
             let layer_2_copied_output2 =
-                Constraint::from(cs.add_intermediate_named_variable_from_constraint(
-                    output2,
-                    "final lookup output2 (L2)",
-                ));
-            cs.add_intermediate_named_variable_from_constraint(
-                layer_2_copied_output2,
+                cs.add_intermediate_named_variable_from_expr(output2, "final lookup output2 (L2)");
+            cs.add_intermediate_named_variable_from_expr(
+                Expr::var(layer_2_copied_output2),
                 "final lookup output2 (L3)",
             )
         };
         let layer_3_selected_table_id = {
-            let romread_table = Term::from(TableType::AlignedRomRead.to_num());
-            let layer_2_copied_execute =
-                Constraint::from(cs.add_intermediate_named_variable_from_constraint(
-                    Constraint::from(inputs.execute),
-                    "execute (L2)",
-                ));
+            let layer_2_copied_execute = cs.add_intermediate_named_variable_from_expr(
+                Expr::var(inputs.execute),
+                "execute (L2)",
+            );
             // NB: to avoid scenarios where romread!=0 but we're in padding so ROM==1 and memwrite==0,
             // we patch this to zero table
-            let table_id = layer_2_copied_execute * layer_2_copied_is_rom * romread_table;
-            cs.add_intermediate_named_variable_from_constraint(
-                table_id,
-                "final lookup table_id (L3)",
-            )
+            let table_id = Expr::var(layer_2_copied_execute)
+                * Expr::var(layer_2_copied_is_rom)
+                * Expr::<F>::from(TableType::AlignedRomRead);
+            cs.add_intermediate_named_variable_from_expr(table_id, "final lookup table_id (L3)")
         };
         let tuple = [
             LookupInput::from(layer_3_selected_input),
@@ -337,11 +335,80 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
+    use crate::cs::circuit_impl::BasicAssembly;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
     use crate::gkr_compiler::{
         compile_unrolled_circuit_state_transition_into_gkr, dump_ssa_witness_eval_form,
     };
+    use crate::structured_expr::StructuredStatement;
     use crate::utils::serialize_to_file;
+
+    type F = ::field::Mersenne31Field;
+
+    fn named_variable(
+        output: &crate::cs::circuit_output::CircuitOutput<F>,
+        expected_name: &str,
+    ) -> Variable {
+        output
+            .variable_names
+            .iter()
+            .find_map(|(variable, name)| (name == expected_name).then_some(*variable))
+            .expect("named variable must exist")
+    }
+
+    fn contains_shifted_address_limb(expr: &Expr<F>) -> bool {
+        let shift16 = F::from_u32_with_reduction(1 << 16);
+
+        match expr {
+            Expr::Product(factors) => {
+                let has_shift = factors
+                    .iter()
+                    .any(|factor| matches!(factor, Expr::Constant(value) if *value == shift16));
+                let has_selected_limb = factors
+                    .iter()
+                    .any(|factor| matches!(factor, Expr::Sum(terms) if terms.len() >= 2));
+
+                has_shift && has_selected_limb || factors.iter().any(contains_shifted_address_limb)
+            }
+            Expr::Sum(terms) => terms.iter().any(contains_shifted_address_limb),
+            Expr::Constant(_) | Expr::Var(_) => false,
+        }
+    }
+
+    fn is_product_of_two_variables(expr: &Expr<F>) -> bool {
+        matches!(
+            expr,
+            Expr::Product(factors)
+                if factors.len() == 2 && factors.iter().all(|factor| matches!(factor, Expr::Var(_)))
+        )
+    }
+
+    #[test]
+    fn mem_word_only_records_structured_rom_lookup_path() {
+        let mut cs = BasicAssembly::<F>::new();
+        mem_word_only_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
+        let (output, _) = cs.finalize();
+
+        let romaddr = named_variable(&output, "romaddr (L2)");
+        let final_lookup_input = named_variable(&output, "final lookup input (L3)");
+
+        assert!(output
+            .structured_statements
+            .iter()
+            .any(|statement| matches!(
+                statement,
+                StructuredStatement::Define { dst, expr }
+                    if *dst == romaddr && contains_shifted_address_limb(expr)
+            )));
+        assert!(output
+            .structured_statements
+            .iter()
+            .any(|statement| matches!(
+                statement,
+                StructuredStatement::Define { dst, expr }
+                    if *dst == final_lookup_input && is_product_of_two_variables(expr)
+            )));
+    }
 
     #[test]
     fn compile_mem_word_only_circuit_into_gkr() {
@@ -369,7 +436,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/mem_word_only_preprocessed_layout_gkr.json",
+            "compiled_circuits/mem_word_only_layout_gkr.json",
         );
     }
 
@@ -426,7 +493,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/mem_word_only_preprocessed_layout_no_caches_gkr.json",
+            "compiled_circuits/mem_word_only_layout_no_caches_gkr.json",
         );
     }
 }

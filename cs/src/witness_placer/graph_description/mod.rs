@@ -501,7 +501,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
             if self.variables_considered_assigned.contains(&variable) {
                 // Some external source is responsible for it
                 unconditionally_resolved_variables.insert(variable);
-                assert!(el.is_none());
+                // assert!(el.is_none());
                 continue;
             }
 
@@ -652,11 +652,19 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
 
                 for (variable, expr) in details.outputs.iter() {
                     // There can be some re-assignments, but all those should be conditional only at worst
-                    assert!(
-                        unresolved_variables.contains(variable),
-                        "Variable {:?} should not be considered resolved yet",
-                        variable
-                    );
+
+                    if unresolved_variables.contains(variable) == false {
+                        // we allow re-assignments in rare cases
+                        if self.variables_considered_assigned.contains(variable) {
+                            // we allow re-assignments like this
+                        } else {
+                            panic!(
+                                "Variable {:?} should not be considered resolved yet",
+                                variable
+                            );
+                        }
+                        // assert!(self.variables_considered_assigned.contains(variable), "reassignment is only allowed into variables that are considered known, but {:?} is not", variable);
+                    }
 
                     // println!("Will resolve variable {:?}", variable);
 

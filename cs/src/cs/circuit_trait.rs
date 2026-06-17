@@ -1,12 +1,12 @@
 use super::*;
 
 use crate::constraint::Constraint;
-use crate::constraint::Term;
 use crate::cs::circuit::LookupQueryTableType;
 use crate::cs::circuit::RegisterAccessRequest;
 use crate::cs::circuit::RegisterAndIndirectAccesses;
 use crate::cs::circuit_output::CircuitOutput;
 use crate::oracle::Placeholder;
+use crate::structured_expr::Expr;
 use crate::types::{Boolean, Num};
 use crate::witness_placer::*;
 use field::PrimeField;
@@ -166,6 +166,10 @@ pub trait Circuit<F: PrimeField>: Sized {
         &mut self,
         constraint: Constraint<F>,
     );
+    fn add_constraint_expr(&mut self, expr: Expr<F>);
+    fn add_constraint_allow_explicit_linear_expr(&mut self, expr: Expr<F>);
+    fn add_constraint_allow_explicit_linear_prevent_optimizations_expr(&mut self, expr: Expr<F>);
+    fn define_variable_from_expr(&mut self, dst: Variable, expr: Expr<F>);
     fn add_constraint_into_intermediate_variable(
         &mut self,
         constraint: Constraint<F>,
@@ -245,12 +249,15 @@ pub trait Circuit<F: PrimeField>: Sized {
         constraint: Constraint<F>,
         name: &str,
     ) -> Variable;
+    fn add_variable_from_expr(&mut self, expr: Expr<F>) -> Variable;
+    fn add_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable;
 
     fn add_intermediate_named_variable_from_constraint(
         &mut self,
         constraint: Constraint<F>,
         name: &str,
     ) -> Variable;
+    fn add_intermediate_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable;
 
     #[track_caller]
     fn add_variable_from_constraint_without_witness_evaluation(
@@ -265,6 +272,9 @@ pub trait Circuit<F: PrimeField>: Sized {
     ) -> Variable;
 
     #[track_caller]
+    fn add_variable_from_expr_allow_explicit_linear(&mut self, expr: Expr<F>) -> Variable;
+
+    #[track_caller]
     fn add_variable_from_constraint_allow_explicit_linear_without_witness_evaluation(
         &mut self,
         constraint: Constraint<F>,
@@ -272,344 +282,91 @@ pub trait Circuit<F: PrimeField>: Sized {
 
     #[track_caller]
     fn choose(&mut self, flag: Boolean, if_true_val: Num<F>, if_false_val: Num<F>) -> Num<F> {
-        match (if_true_val, if_false_val) {
-            (Num::Var(a), Num::Var(b)) => {
-                if a == b {
-                    return if_true_val.clone();
-                }
-                match flag {
-                    Boolean::Constant(flag) => {
-                        if flag {
-                            if_true_val
-                        } else {
-                            if_false_val
-                        }
-                    }
-                    Boolean::Is(cond) => {
-                        // if_true_val = a, if_false_val = b
-                        // new_var = flag * a + (1 - flag) * b = flag * (a - b) + b
-                        let mut cnstr: Constraint<F> =
-                            { Term::from(cond) * (Term::from(a) - Term::from(b)) + Term::from(b) };
-                        let new_var = self.add_variable();
-                        cnstr -= Term::from(new_var);
-
-                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            let mask = placer.get_boolean(cond);
-                            let selection_result = WitnessComputationalField::select(
-                                &mask,
-                                &placer.get_field(a),
-                                &placer.get_field(b),
-                            );
-                            placer.assign_field(new_var, &selection_result);
-                        };
-                        self.set_values(value_fn);
-
-                        self.add_constraint(cnstr);
-                        Num::Var(new_var)
-                    }
-
-                    Boolean::Not(cond) => {
-                        // new_var = flag * b + (1 - flag) * a
-                        let new_var = self.add_variable();
-
-                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            let mask = placer.get_boolean(cond).negate();
-                            let selection_result = WitnessComputationalField::select(
-                                &mask,
-                                &placer.get_field(a),
-                                &placer.get_field(b),
-                            );
-                            placer.assign_field(new_var, &selection_result);
-                        };
-                        self.set_values(value_fn);
-
-                        self.add_constraint(
-                            Constraint::from(new_var)
-                                - (Term::from(cond) * Term::from(b)
-                                    + (Term::from(1) - Term::from(cond)) * Term::from(a)),
-                        );
-                        Num::Var(new_var)
-
-                        // // new_var = flag * b + (1 - flag) * a = flag * (b - a) + a
-                        // let cnstr: Constraint<F> =
-                        //     { Term::from(cond) * (Term::from(b) - Term::from(a)) + Term::from(a) };
-                        // let new_var = self.add_variable_from_constraint(cnstr);
-                        // Num::Var(new_var)
-                    }
-                }
-            }
-            (Num::Var(a), Num::Constant(constant)) => {
-                match flag {
-                    Boolean::Constant(flag) => {
-                        if flag {
-                            return Num::Var(a.clone());
-                        } else {
-                            return Num::Constant(constant);
-                        }
-                    }
-                    Boolean::Is(cond) => {
-                        // new_var = flag * a + (1 - flag) * constant = flag * (if_true - constant) + constant
-                        let mut cnstr: Constraint<F> = {
-                            Term::from(cond) * (Term::from(a) - Term::from_field(constant))
-                                + Term::from_field(constant)
-                        };
-                        let new_var = self.add_variable();
-                        cnstr -= Term::from(new_var);
-
-                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            let mask = placer.get_boolean(cond);
-                            let b = WitnessComputationalField::constant(constant);
-                            let selection_result =
-                                WitnessComputationalField::select(&mask, &placer.get_field(a), &b);
-                            placer.assign_field(new_var, &selection_result);
-                        };
-                        self.set_values(value_fn);
-
-                        self.add_constraint(cnstr);
-                        Num::Var(new_var)
-                    }
-
-                    Boolean::Not(cond) => {
-                        // new_var = flag * constant + (1 - flag) * a = flag * (constant - a) + a
-                        let mut cnstr: Constraint<F> = {
-                            Term::from(cond) * (Term::from_field(constant) - Term::from(a))
-                                + Term::from(a)
-                        };
-                        let new_var = self.add_variable();
-                        cnstr -= Term::from(new_var);
-
-                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            let mask = placer.get_boolean(cond);
-                            let b = WitnessComputationalField::constant(constant);
-                            let selection_result =
-                                WitnessComputationalField::select(&mask, &b, &placer.get_field(a));
-                            placer.assign_field(new_var, &selection_result);
-                        };
-                        self.set_values(value_fn);
-
-                        self.add_constraint(cnstr);
-                        Num::Var(new_var)
-                    }
-                }
-            }
-
-            (Num::Constant(..), Num::Var(..)) => {
-                self.choose(flag.toggle(), if_false_val, if_true_val)
-            }
-            (Num::Constant(a), Num::Constant(b)) => {
-                if a == b {
-                    return Num::Constant(a);
-                }
-                match flag {
-                    Boolean::Constant(flag) => {
-                        let result_value = if flag { a } else { b };
-
-                        Num::Constant(result_value)
-                    }
-                    Boolean::Is(cond) => {
-                        // a * condition + b*(1-condition) = c ->
-                        // (a - b) *condition - c + b = 0
-                        let mut cnstr: Constraint<F> = {
-                            Term::from(cond) * (Term::from_field(a) - Term::from_field(b))
-                                + Term::from_field(b)
-                        };
-                        let new_var = self.add_variable();
-                        cnstr -= Term::from(new_var);
-
-                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            let mask = placer.get_boolean(cond);
-                            let a = WitnessComputationalField::constant(a);
-                            let b = WitnessComputationalField::constant(b);
-                            let selection_result = WitnessComputationalField::select(&mask, &a, &b);
-                            placer.assign_field(new_var, &selection_result);
-                        };
-                        self.set_values(value_fn);
-
-                        self.add_constraint_allow_explicit_linear(cnstr);
-                        Num::Var(new_var)
-                    }
-                    Boolean::Not(cond) => {
-                        // b * condition + a*(1-condition) = c ->
-                        // (b - a) * condition - c + a = 0
-                        let mut cnstr: Constraint<F> = {
-                            Term::from(cond) * (Term::from_field(b) - Term::from_field(a))
-                                + Term::from_field(a)
-                        };
-                        let new_var = self.add_variable();
-                        cnstr -= Term::from(new_var);
-
-                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            let mask = placer.get_boolean(cond);
-                            let a = WitnessComputationalField::constant(a);
-                            let b = WitnessComputationalField::constant(b);
-                            let selection_result = WitnessComputationalField::select(&mask, &b, &a);
-                            placer.assign_field(new_var, &selection_result);
-                        };
-                        self.set_values(value_fn);
-
-                        self.add_constraint_allow_explicit_linear(cnstr);
-                        Num::Var(new_var)
-                    }
-                }
-            }
+        if if_true_val == if_false_val {
+            return if_true_val;
         }
-    }
 
-    #[track_caller]
-    fn choose_from_orthogonal_variants(
-        &mut self,
-        flags: &[Boolean],
-        variants: &[Num<F>],
-    ) -> Num<F> {
-        todo!();
+        if let Boolean::Constant(flag) = flag {
+            return if flag { if_true_val } else { if_false_val };
+        }
 
-        // assert!(flags.len() > 0);
-        // assert_eq!(flags.len(), variants.len());
-        // return spec_choose_from_orthogonal_variants(self, flags, variants);
-    }
+        let new_var = self.add_variable();
+        let flag_expr = Expr::<F>::from(flag);
+        let expr = flag_expr.clone() * (Expr::from(if_true_val) - Expr::from(if_false_val))
+            + Expr::from(if_false_val);
 
-    #[track_caller]
-    fn choose_from_orthogonal_variants_for_linear_terms(
-        &mut self,
-        flags: &[Boolean],
-        variants: &[Constraint<F>],
-    ) -> Num<F> {
-        todo!();
+        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+            let mask = match flag {
+                Boolean::Is(flag) => placer.get_boolean(flag),
+                Boolean::Not(flag) => placer.get_boolean(flag).negate(),
+                Boolean::Constant(_) => unreachable!(),
+            };
+            let if_true_value = match if_true_val {
+                Num::Var(variable) => placer.get_field(variable),
+                Num::Constant(value) => WitnessComputationalField::constant(value),
+            };
+            let if_false_value = match if_false_val {
+                Num::Var(variable) => placer.get_field(variable),
+                Num::Constant(value) => WitnessComputationalField::constant(value),
+            };
+            let selection_result =
+                WitnessComputationalField::select(&mask, &if_true_value, &if_false_value);
+            placer.assign_field(new_var, &selection_result);
+        };
+        self.set_values(value_fn);
 
-        // assert!(flags.len() > 0);
-        // assert_eq!(flags.len(), variants.len());
-        // return spec_choose_from_orthogonal_variants_for_linear_terms(self, flags, variants);
+        self.define_variable_from_expr(new_var, expr);
+        Num::Var(new_var)
     }
 
     fn is_zero(&mut self, var: Num<F>) -> Boolean {
         self.equals_to(var, Num::Constant(F::ZERO))
     }
 
-    // more generic version of is_zero_reg, only works with limbs
-    fn is_zero_sum(&mut self, sum: Constraint<F>) -> Boolean {
-        assert!(sum.degree() <= 1);
-        let is_zero_flag = self.add_variable();
-        let not_zero_flag = Constraint::from(1) - Term::from(is_zero_flag);
-        let inv = self.add_variable();
+    fn equals_to(&mut self, a: Num<F>, b: Num<F>) -> Boolean {
+        // Identical operands are equal by construction. Handling this before
+        // emitting constraints also avoids creating an empty `(x - x)` relation.
+        if a == b {
+            return Boolean::Constant(true);
+        }
 
-        let sum_clone = sum.clone();
+        // Both sides constant: fold at circuit-construction time.
+        if let (Num::Constant(a), Num::Constant(b)) = (a, b) {
+            return Boolean::Constant(a == b);
+        }
+
+        // Otherwise the standard zero-flag + inverse trick:
+        //   (a - b) * zero_flag         = 0
+        //   (a - b) * var_inv + zero_flag - 1 = 0
+        let var_inv = self.add_variable();
+        let zero_flag = self.add_boolean_variable();
+        let zero_flag_var = zero_flag.get_variable().unwrap();
+
         let value_fn = move |placer: &mut Self::WitnessPlacer| {
-            let mut sum_value =
-                <Self::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(F::ZERO);
-            for term in &sum_clone.terms {
-                match term {
-                    Term::Constant(c) => {
-                        let c_value =
-                            <Self::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(*c);
-                        sum_value.add_assign(&c_value);
-                    }
-                    Term::Expression {
-                        coeff,
-                        inner,
-                        degree,
-                    } => {
-                        assert!(*coeff == F::ONE && *degree == 1);
-                        let inner_value = placer.get_field(inner[0]);
-                        sum_value.add_assign(&inner_value);
-                    }
-                }
-            }
-            let inv_value = sum_value.inverse_or_zero();
-            let zflag_value = sum_value.is_zero();
-            placer.assign_field(inv, &inv_value);
-            placer.assign_mask(is_zero_flag, &zflag_value);
+            let mut diff = match a {
+                Num::Var(v) => placer.get_field(v),
+                Num::Constant(c) => <Self::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(c),
+            };
+            let rhs = match b {
+                Num::Var(v) => placer.get_field(v),
+                Num::Constant(c) => <Self::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(c),
+            };
+            diff.sub_assign(&rhs);
+            let is_zero = diff.is_zero();
+            let inverse_witness = diff.inverse_or_zero();
+            placer.assign_mask(zero_flag_var, &is_zero);
+            placer.assign_field(var_inv, &inverse_witness);
         };
         self.set_values(value_fn);
 
-        self.add_constraint(Constraint::from(inv) * sum.clone() - not_zero_flag.clone());
-        self.add_constraint((Constraint::from(1) - not_zero_flag) * sum);
-        Boolean::Is(is_zero_flag)
-    }
+        let diff_expr = Expr::<F>::from(a) - Expr::<F>::from(b);
+        self.add_constraint_expr(diff_expr.clone() * Expr::<F>::from(zero_flag_var));
+        self.add_constraint_expr(
+            diff_expr * Expr::<F>::from(var_inv) + Expr::<F>::from(zero_flag_var)
+                - Expr::<F>::one(),
+        );
 
-    fn equals_to(&mut self, a: Num<F>, b: Num<F>) -> Boolean {
-        match (a, b) {
-            (Num::Var(a), Num::Var(b)) => {
-                // (var - var2) * zero_flag = 0;
-                // (var - var2) * var_inv = 1 - zero_flag;
-                let var_inv = self.add_variable();
-                let zero_flag = self.add_boolean_variable();
-                let zero_flag_var = zero_flag.get_variable().unwrap();
-
-                let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                    let mut a = placer.get_field(a);
-                    let b = placer.get_field(b);
-                    a.sub_assign(&b);
-                    let is_zero = a.is_zero();
-                    let inverse_witness = a.inverse_or_zero();
-                    placer.assign_mask(zero_flag_var, &is_zero);
-                    placer.assign_field(var_inv, &inverse_witness);
-                };
-                self.set_values(value_fn);
-                self.add_constraint((Term::from(a) - Term::from(b)) * Term::from(zero_flag));
-                self.add_constraint(
-                    (Term::from(a) - Term::from(b)) * Term::from(var_inv) + Term::from(zero_flag)
-                        - Term::from(1),
-                );
-
-                zero_flag
-            }
-            (Num::Var(a), Num::Constant(b)) => {
-                // (var - cnst) * zero_flag = 0;
-                // (var - cnst) * var_inv = 1 - zero_flag;
-                let var_inv = self.add_variable();
-                let zero_flag = self.add_boolean_variable();
-                let zero_flag_var = zero_flag.get_variable().unwrap();
-
-                let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                    let mut a = placer.get_field(a);
-                    let b = WitnessComputationalField::constant(b);
-                    a.sub_assign(&b);
-                    let is_zero = a.is_zero();
-                    let inverse_witness = a.inverse_or_zero();
-                    placer.assign_mask(zero_flag_var, &is_zero);
-                    placer.assign_field(var_inv, &inverse_witness);
-                };
-                self.set_values(value_fn);
-                self.add_constraint((Term::from(a) - Term::from_field(b)) * Term::from(zero_flag));
-                self.add_constraint(
-                    (Term::from(a) - Term::from_field(b)) * Term::from(var_inv)
-                        + Term::from(zero_flag)
-                        - Term::from(1),
-                );
-
-                zero_flag
-            }
-            (Num::Constant(a), Num::Var(b)) => {
-                // (var - cnst) * zero_flag = 0;
-                // (var - cnst) * var_inv = 1 - zero_flag;
-                let var_inv = self.add_variable();
-                let zero_flag = self.add_boolean_variable();
-                let zero_flag_var = zero_flag.get_variable().unwrap();
-
-                let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                    let b = placer.get_field(b);
-                    let mut a = <Self::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(a);
-                    a.sub_assign(&b);
-                    let is_zero = a.is_zero();
-                    let inverse_witness = a.inverse_or_zero();
-                    placer.assign_mask(zero_flag_var, &is_zero);
-                    placer.assign_field(var_inv, &inverse_witness);
-                };
-                self.set_values(value_fn);
-                self.add_constraint((Term::from_field(a) - Term::from(b)) * Term::from(zero_flag));
-                self.add_constraint(
-                    (Term::from_field(a) - Term::from(b)) * Term::from(var_inv)
-                        + Term::from(zero_flag)
-                        - Term::from(1),
-                );
-
-                zero_flag
-            }
-            (Num::Constant(a), Num::Constant(b)) => {
-                let is_equal = a == b;
-                Boolean::Constant(is_equal)
-            }
-        }
+        zero_flag
     }
 
     #[track_caller]
@@ -732,7 +489,5 @@ pub trait Circuit<F: PrimeField>: Sized {
         table_type: LookupQueryTableType<F>,
     );
 
-    // fn set_log(&mut self, opt_ctx: &OptimizationContext<F, Self>, name: &'static str);
-    // fn view_log(&self, name: &'static str);
     fn is_satisfied(&mut self) -> bool;
 }

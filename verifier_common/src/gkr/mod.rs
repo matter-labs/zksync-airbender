@@ -1,7 +1,6 @@
 use crate::lazy_vec::LazyVec;
 use crate::structs::TranscriptState;
 use blake2s_u32::{AlignedArray64, BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
-use cs::definitions::GKRAddress;
 use field::{Field, FieldExtension, PrimeField};
 use non_determinism_source::NonDeterminismSource;
 use transcript::Blake2sTranscript;
@@ -173,6 +172,7 @@ pub fn make_initial_transcript<
     const PADDING_WORDS: usize,
 >(
     external_challenges: &prover::definitions::GKRExternalChallenges<F, E>,
+    nd_source: &mut I,
 ) -> (
     InitialGKRTranscript<
         E,
@@ -222,16 +222,16 @@ pub fn make_initial_transcript<
 
     unsafe {
         let initial_transcript_state = InitialGKRTranscript {
-            inits_and_teardowns_top_bits: core::array::from_fn(|_| I::read_word()),
+            inits_and_teardowns_top_bits: core::array::from_fn(|_| nd_source.read_word()),
             external_challenges_flattened: external_challenges.flatten_into_fixed_size_buffer(),
             setup_caps: core::array::from_fn(|_| {
-                core::array::from_fn(|_| core::array::from_fn(|_| I::read_word()))
+                core::array::from_fn(|_| core::array::from_fn(|_| nd_source.read_word()))
             }),
             memory_caps: core::array::from_fn(|_| {
-                core::array::from_fn(|_| core::array::from_fn(|_| I::read_word()))
+                core::array::from_fn(|_| core::array::from_fn(|_| nd_source.read_word()))
             }),
             witness_caps: core::array::from_fn(|_| {
-                core::array::from_fn(|_| core::array::from_fn(|_| I::read_word()))
+                core::array::from_fn(|_| core::array::from_fn(|_| nd_source.read_word()))
             }),
             padding: [0u32; PADDING_WORDS],
             _marker: core::marker::PhantomData,
@@ -263,13 +263,11 @@ pub fn make_initial_transcript<
     }
 }
 
-pub struct GKRVerifierOutput<'a, E: Field, const ROUNDS: usize, const ADDRS: usize> {
-    pub base_layer_addrs: &'a [GKRAddress],
+pub struct GKRVerifierOutput<E: Field, const ROUNDS: usize, const ADDRS: usize> {
     pub evaluation_point: [E; ROUNDS],
     pub evaluation_point_len: usize,
     pub permutation_read_product: E,
     pub permutation_write_product: E,
-    pub additional_base_layer_openings: &'a [GKRAddress],
     pub whir_batching_challenge: E,
     pub base_layer_claims: LazyVec<E, ADDRS>,
 }

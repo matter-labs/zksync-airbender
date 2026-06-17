@@ -1,9 +1,20 @@
 use std::io::Write;
 
-use verifier_common::test_circuits::{CircuitData, CIRCUITS};
-use verifier_generator::gkr::GKRGeneratedFiles;
+use prover::field::baby_bear::base::BabyBearField;
+use verifier_common::test_circuits::{CircuitData, SecurityLevel, CIRCUITS};
 use verifier_generator::field_wrapper::FieldWrapper;
+use verifier_generator::gkr::GKRGeneratedFiles;
 use verifier_generator::{gkr, utils, whir, DefaultBabyBearField};
+
+#[cfg(not(any(feature = "security_80", feature = "security_100")))]
+compile_error!("at least one of `security_80` or `security_100` features must be enabled");
+
+const LEVELS_TO_GENERATE: &[SecurityLevel] = &[
+    #[cfg(feature = "security_80")]
+    SecurityLevel::Sec80,
+    #[cfg(feature = "security_100")]
+    SecurityLevel::Sec100,
+];
 
 fn write_and_fmt(path: &str, content: &proc_macro2::TokenStream) {
     let mut dst = std::fs::File::create(path).unwrap();
@@ -18,7 +29,11 @@ fn write_and_fmt(path: &str, content: &proc_macro2::TokenStream) {
 fn generate_common<MW: FieldWrapper>() {
     let max_fold_steps = CIRCUITS
         .iter()
-        .flat_map(|c| &c.whir_schedule().whir_steps_schedule)
+        .flat_map(|c| {
+            LEVELS_TO_GENERATE
+                .iter()
+                .flat_map(move |&level| c.whir_schedule_for(level).whir_steps_schedule.iter())
+        })
         .copied()
         .max()
         .unwrap();
@@ -58,15 +73,20 @@ fn generate_common<MW: FieldWrapper>() {
     write_and_fmt(&format!("{}/mod.rs", common_dir), &common);
 }
 
-fn generate_gkr_verifier<MW: FieldWrapper>(circuit: &CircuitData, dir: &str) -> GKRGeneratedFiles {
+fn generate_gkr_verifier<MW: FieldWrapper<BaseField = BabyBearField>>(
+    circuit: &CircuitData,
+    level: SecurityLevel,
+    dir: &str,
+) -> GKRGeneratedFiles {
     let compiled_circuit = circuit.compiled_circuit();
-    let proof = circuit.proof();
+    assert_eq!(compiled_circuit.trace_len, 1 << circuit.trace_len_log_2);
 
-    let files = gkr::generate_gkr_inlined::<MW, _, _, _>(
+    let files = gkr::generate_gkr_inlined::<MW>(
         &compiled_circuit,
-        &proof,
-        prover::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
-        circuit.whir_schedule(),
+        circuit
+            .prover_config_for(level)
+            .sumcheck_explicit_output_size_log_2,
+        circuit.whir_schedule_for(level),
     );
 
     write_and_fmt(&format!("{}/constants.rs", dir), &files.constants);
@@ -77,10 +97,11 @@ fn generate_gkr_verifier<MW: FieldWrapper>(circuit: &CircuitData, dir: &str) -> 
 
 fn generate_whir_verifier<MW: FieldWrapper>(
     circuit: &CircuitData,
+    level: SecurityLevel,
     dir: &str,
     gkr_files: &GKRGeneratedFiles,
 ) {
-    let whir_schedule = circuit.whir_schedule();
+    let whir_schedule = circuit.whir_schedule_for(level);
 
     let whir_initial = whir::generate_whir_initial_round::<MW>(
         whir_schedule,
@@ -134,24 +155,27 @@ fn ensure_common() {
     });
 }
 
-fn generate_verifier_for_circuit<MW: FieldWrapper>(circuit: &CircuitData) {
+fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
+    circuit: &CircuitData,
+    level: SecurityLevel,
+) {
     ensure_common();
 
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
     let field_use_stmts = MW::field_use_statements();
 
-    let dir = circuit.generated_dir();
+    let dir = format!("{}/{}", circuit.generated_dir(), level.dir_suffix());
     std::fs::create_dir_all(&dir).unwrap();
 
-    let gkr_files = generate_gkr_verifier::<MW>(circuit, &dir);
-    generate_whir_verifier::<MW>(circuit, &dir, &gkr_files);
+    let gkr_files = generate_gkr_verifier::<MW>(circuit, level, &dir);
+    generate_whir_verifier::<MW>(circuit, level, &dir, &gkr_files);
 
     let mod_rs = quote::quote! {
         pub mod constants;
         pub mod gkr;
         pub mod whir;
-        #[path = "../common/mod.rs"]
+        #[path = "../../common/mod.rs"]
         pub mod common;
 
         use ::verifier_common::GKRExternalChallenges;
@@ -161,6 +185,7 @@ fn generate_verifier_for_circuit<MW: FieldWrapper>(circuit: &CircuitData) {
 
         pub fn verify<I: NonDeterminismSource, E: ErrorCreator>(
             external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
+            nd_source: &mut I,
         ) -> Result<constants::ConcreteVerifierOutput, E::Error> {
             ::verifier_common::verify_impl::<
             I,
@@ -177,19 +202,21 @@ fn generate_verifier_for_circuit<MW: FieldWrapper>(circuit: &CircuitData) {
             { constants::GKR_ROUNDS },
             { constants::GKR_ADDRS },
             gkr::VerifierImplementation,
-        >(external_challenges)
+        >(external_challenges, nd_source)
         }
     };
     write_and_fmt(&format!("{}/mod.rs", dir), &mod_rs);
 }
 
 macro_rules! generate_circuit_tests {
-    ($($name:ident: $schedule:ident: $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
         $(
             #[test]
             fn $name() {
                 let circuit = CIRCUITS.iter().find(|c| c.name == stringify!($name)).unwrap();
-                generate_verifier_for_circuit::<DefaultBabyBearField>(circuit);
+                for level in LEVELS_TO_GENERATE {
+                    generate_verifier_for_circuit::<DefaultBabyBearField>(circuit, *level);
+                }
             }
         )*
     };

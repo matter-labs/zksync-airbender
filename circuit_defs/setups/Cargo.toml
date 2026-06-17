@@ -12,8 +12,11 @@ categories.workspace = true
 [dependencies]
 prover = { workspace = true, features = ["prover"] }
 riscv_transpiler = { workspace = true }
+common_constants = { workspace = true }
 circuit_common = { workspace = true }
+verifier_common = { workspace = true, features = ["proof_utils"] }
 
+blake2_g_function = { workspace = true }
 blake2_with_compression = { workspace = true }
 bigint_with_control = { workspace = true }
 keccak_special5 = { workspace = true }

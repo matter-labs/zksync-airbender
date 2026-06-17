@@ -6,16 +6,13 @@ use crate::cs::circuit::*;
 use crate::cs::circuit_output::CircuitOutput;
 use crate::cs::circuit_trait::*;
 use crate::oracle::*;
-use crate::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator;
-use crate::witness_placer::*;
-use std::collections::BTreeMap;
-// use crate::devices::optimization_context::OptCtxIndexers;
-// use crate::devices::optimization_context::OptimizationContext;
-// use crate::tables::LookupWrapper;
-// use crate::tables::TableType;
+use crate::structured_expr::{Expr, StructuredStatement};
 use crate::tables::TableDriver;
 use crate::types::*;
+use crate::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator;
+use crate::witness_placer::*;
 use field::PrimeField;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::vec;
@@ -33,6 +30,7 @@ pub struct BasicAssembly<
 > {
     no_index_assigned: u64,
     constraint_storage: Vec<(Constraint<F>, bool)>,
+    structured_statements: Vec<StructuredStatement<F>>,
     lookup_storage: Vec<LookupQuery<F>>,
     pub memory_queries: Vec<MemoryAccess>,
     boolean_variables: Vec<Variable>,
@@ -51,7 +49,6 @@ pub struct BasicAssembly<
     pub variable_names: HashMap<Variable, String>,
     variables_from_constraints: BTreeMap<Variable, Constraint<F>>,
     circuit_family_bitmask: Vec<Variable>,
-    // logger: Vec<(&'static str, u64, OptCtxIndexers)>,
 }
 
 impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bool> Circuit<F>
@@ -64,6 +61,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         Self {
             no_index_assigned: 0,
             constraint_storage: vec![],
+            structured_statements: vec![],
             lookup_storage: vec![],
             memory_queries: vec![],
             boolean_variables: vec![],
@@ -154,6 +152,24 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         new_var
     }
 
+    #[track_caller]
+    fn add_variable_from_expr(&mut self, expr: Expr<F>) -> Variable {
+        let location = std::panic::Location::caller();
+        let name = format!("Variable at {}::{}", location.file(), location.line());
+        self.add_named_variable_from_expr(expr, &name)
+    }
+
+    fn add_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable {
+        let expr = expr.canonicalize();
+        expr.validate_degree_at_most(4);
+        let constraint = expr.to_max_quadratic_constraint();
+        let new_var = self.add_named_variable_from_constraint(constraint, name);
+        self.structured_statements
+            .push(StructuredStatement::Define { dst: new_var, expr });
+
+        new_var
+    }
+
     fn add_intermediate_named_variable_from_constraint(
         &mut self,
         mut constraint: Constraint<F>,
@@ -195,6 +211,17 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         new_var
     }
 
+    fn add_intermediate_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable {
+        let expr = expr.canonicalize();
+        expr.validate_degree_at_most(4);
+        let constraint = expr.to_max_quadratic_constraint();
+        let new_var = self.add_intermediate_named_variable_from_constraint(constraint, name);
+        self.structured_statements
+            .push(StructuredStatement::Define { dst: new_var, expr });
+
+        new_var
+    }
+
     #[track_caller]
     fn add_variable_from_constraint_without_witness_evaluation(
         &mut self,
@@ -232,6 +259,18 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
         constraint -= Term::from(new_var);
         self.add_constraint_allow_explicit_linear(constraint);
+
+        new_var
+    }
+
+    #[track_caller]
+    fn add_variable_from_expr_allow_explicit_linear(&mut self, expr: Expr<F>) -> Variable {
+        let expr = expr.canonicalize();
+        expr.validate_degree_at_most(4);
+        let constraint = expr.to_max_quadratic_constraint();
+        let new_var = self.add_variable_from_constraint_allow_explicit_linear(constraint);
+        self.structured_statements
+            .push(StructuredStatement::Define { dst: new_var, expr });
 
         new_var
     }
@@ -346,10 +385,67 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         self.constraint_storage.push((constraint, true));
     }
 
+    #[track_caller]
+    fn add_constraint_expr(&mut self, expr: Expr<F>) {
+        let expr = expr.canonicalize();
+        expr.validate_degree_at_most(4);
+        let constraint = expr.to_max_quadratic_constraint();
+        self.add_constraint(constraint);
+        self.structured_statements
+            .push(StructuredStatement::AssertZero {
+                expr,
+                prevent_optimizations: false,
+            });
+    }
+
+    #[track_caller]
+    fn add_constraint_allow_explicit_linear_expr(&mut self, expr: Expr<F>) {
+        let expr = expr.canonicalize();
+        expr.validate_degree_at_most(4);
+        let constraint = expr.to_max_quadratic_constraint();
+        self.add_constraint_allow_explicit_linear(constraint);
+        self.structured_statements
+            .push(StructuredStatement::AssertZero {
+                expr,
+                prevent_optimizations: false,
+            });
+    }
+
+    #[track_caller]
+    fn add_constraint_allow_explicit_linear_prevent_optimizations_expr(&mut self, expr: Expr<F>) {
+        let expr = expr.canonicalize();
+        expr.validate_degree_at_most(4);
+        let constraint = expr.to_max_quadratic_constraint();
+        self.add_constraint_allow_explicit_linear_prevent_optimizations(constraint);
+        self.structured_statements
+            .push(StructuredStatement::AssertZero {
+                expr,
+                prevent_optimizations: true,
+            });
+    }
+
+    #[track_caller]
+    fn define_variable_from_expr(&mut self, dst: Variable, expr: Expr<F>) {
+        let expr = expr.canonicalize();
+        expr.validate_degree_at_most(4);
+        let mut constraint = expr.to_max_quadratic_constraint();
+        constraint -= Term::from(dst);
+        constraint.normalize();
+
+        match constraint.degree() {
+            1 => self.add_constraint_allow_explicit_linear(constraint),
+            2 => self.add_constraint(constraint),
+            degree => panic!("variable definition constraint has unsupported degree {degree}"),
+        }
+
+        self.structured_statements
+            .push(StructuredStatement::Define { dst, expr });
+    }
+
     fn add_constraint_into_intermediate_variable(
         &mut self,
-        constraint: Constraint<F>,
-        intermediate_var: Variable,
+        _constraint: Constraint<F>,
+        _intermediate_var: Variable,
     ) {
         todo!();
     }
@@ -727,9 +823,6 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                 self.memory_queries.push(access.clone());
                 access
             }
-            _ => {
-                todo!();
-            }
         }
     }
 
@@ -737,7 +830,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         &mut self,
         request: RegisterAccessRequest,
         name: &str,
-        local_timestamp_in_cycle: u32,
+        _local_timestamp_in_cycle: u32,
     ) -> RegisterAndIndirectAccesses {
         assert!(request.register_index > 0);
         assert!(request.register_index < 32);
@@ -745,16 +838,6 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         let Some(_delegation_circuit_state) = self.delegation_circuit_state else {
             panic!("Delegation circuit state is not initialized");
         };
-
-        // we always maintain sort
-        if let Some(last) = self.register_and_indirect_memory_accesses.last() {
-            assert!(
-                last.register_index < request.register_index,
-                "register accesses must be requested sorted"
-            );
-        } else {
-            // nothing
-        }
 
         let register_index = request.register_index as usize;
 
@@ -781,15 +864,38 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                 )),
             );
 
-            let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                let value =
-                    placer.get_oracle_u32(Placeholder::DelegationRegisterReadValue(register_index));
-                placer.assign_u32_from_u16_parts([read_low, read_high], &value);
-            };
-            self.set_values(value_fn);
+            if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    placer.assume_assigned(read_low);
+                    placer.assume_assigned(read_high);
+                };
+                self.set_values(value_fn);
+            } else {
+                let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    let value = placer
+                        .get_oracle_u32(Placeholder::DelegationRegisterReadValue(register_index));
+                    placer.assign_u32_from_u16_parts([read_low, read_high], &value);
+                };
+                self.set_values(value_fn);
+            }
 
             let write_low = self.add_named_variable(&format!("{} write[0]", name));
             let write_high = self.add_named_variable(&format!("{} write[0]", name));
+
+            if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    placer.assume_assigned(write_low);
+                    placer.assume_assigned(write_high);
+                };
+                self.set_values(value_fn);
+            } else {
+                let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    let value = placer
+                        .get_oracle_u32(Placeholder::DelegationRegisterWriteValue(register_index));
+                    placer.assign_u32_from_u16_parts([write_low, write_high], &value);
+                };
+                self.set_values(value_fn);
+            }
 
             RegisterAccessType::Write {
                 read_value: [read_low, read_high],
@@ -814,12 +920,20 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                 )),
             );
 
-            let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                let value =
-                    placer.get_oracle_u32(Placeholder::DelegationRegisterReadValue(register_index));
-                placer.assign_u32_from_u16_parts([read_low, read_high], &value);
-            };
-            self.set_values(value_fn);
+            if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    placer.assume_assigned(read_low);
+                    placer.assume_assigned(read_high);
+                };
+                self.set_values(value_fn);
+            } else {
+                let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    let value = placer
+                        .get_oracle_u32(Placeholder::DelegationRegisterReadValue(register_index));
+                    placer.assign_u32_from_u16_parts([read_low, read_high], &value);
+                };
+                self.set_values(value_fn);
+            }
 
             RegisterAccessType::Read {
                 read_value: [read_low, read_high],
@@ -874,15 +988,22 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     );
 
                     // it was not used in other accesses, so it needs an oracle value
-                    let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                        let value = placer.get_oracle_u16(
-                            Placeholder::DelegationIndirectAccessVariableOffset {
-                                variable_index: idx,
-                            },
-                        );
-                        placer.assign_u16(var, &value);
-                    };
-                    self.set_values(value_fn);
+                    if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                            placer.assume_assigned(var);
+                        };
+                        self.set_values(value_fn);
+                    } else {
+                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                            let value = placer.get_oracle_u16(
+                                Placeholder::DelegationIndirectAccessVariableOffset {
+                                    variable_index: idx,
+                                },
+                            );
+                            placer.assign_u16(var, &value);
+                        };
+                        self.set_values(value_fn);
+                    }
                 }
 
                 Some((
@@ -928,14 +1049,23 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     )),
                 );
 
-                let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                    let value = placer.get_oracle_u32(Placeholder::DelegationIndirectReadValue {
-                        register_index,
-                        word_index: indirect_access_idx,
-                    });
-                    placer.assign_u32_from_u16_parts([read_low, read_high], &value);
-                };
-                self.set_values(value_fn);
+                if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                    let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                        placer.assume_assigned(read_low);
+                        placer.assume_assigned(read_high);
+                    };
+                    self.set_values(value_fn);
+                } else {
+                    let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                        let value =
+                            placer.get_oracle_u32(Placeholder::DelegationIndirectReadValue {
+                                register_index,
+                                word_index: indirect_access_idx,
+                            });
+                        placer.assign_u32_from_u16_parts([read_low, read_high], &value);
+                    };
+                    self.set_values(value_fn);
+                }
 
                 let write_low = self.add_named_variable(&format!(
                     "{} indirect access {} write[0]",
@@ -1013,6 +1143,9 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
         self.register_and_indirect_memory_accesses
             .push(access.clone());
+        // we always maintain sort
+        self.register_and_indirect_memory_accesses
+            .sort_by(|a, b| a.register_index.cmp(&b.register_index));
 
         access
     }
@@ -1259,6 +1392,18 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             execute,
             Invariant::Substituted((Placeholder::ExecuteOpcodeFamilyCycle, 0)),
         );
+        if Self::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+            let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                let value = placer.get_oracle_boolean(Placeholder::ExecuteOpcodeFamilyCycle);
+                placer.assign_mask(execute, &value);
+            };
+            self.set_values(value_fn);
+        } else {
+            let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                placer.assume_assigned(execute);
+            };
+            self.set_values(value_fn);
+        }
         use crate::constraint::Term;
         self.add_constraint((Term::from(execute) - Term::from(1u32)) * Term::from(execute));
 
@@ -1436,61 +1581,6 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         (execute, invocation_timestamp)
     }
 
-    // fn set_log(&mut self, opt_ctx: &OptimizationContext<F, Self>, name: &'static str) {
-    //     if ENABLE_LOGGING {
-    //         self.logger
-    //             .push((name, self.no_index_assigned, opt_ctx.save_indexers()));
-    //     }
-    // }
-
-    // fn view_log(&self, name: &'static str) {
-    //     if ENABLE_LOGGING {
-    //         // first the chronological order
-    //         let mut logger = self.logger.clone();
-    //         let total_vars = logger.last().unwrap().1;
-    //         for i in (1..logger.len()).rev() {
-    //             logger[i].1 -= logger[i - 1].1;
-    //         }
-    //         println!();
-    //         println!("PERFORMANCE FOR {name} IN ORDER OF EXECUTION (# of vars)");
-    //         for &(name, vars, indexers) in &logger {
-    //             let OptCtxIndexers {
-    //                 register_allocation_indexer,
-    //                 add_sub_indexer,
-    //                 u16_to_u8x2_decomposition_indexer,
-    //                 u16_range_check_indexer,
-    //                 mul_div_indexer,
-    //                 lookup_indexer,
-    //                 lookup_outputs_indexer,
-    //                 zero_indexer,
-    //             } = indexers;
-    //             if name == "EXECUTOR" || name == "DECODER" || name == "OPT_CONTEXT" {
-    //                 println!("{name:.<20}{vars:.>3}");
-    //             } else {
-    //                 println!("{name:.<20}{vars:.>3} ({add_sub_indexer} addsub, {u16_to_u8x2_decomposition_indexer} u16tou8, {u16_range_check_indexer} u16, {mul_div_indexer} muldiv, {zero_indexer} iszero, {lookup_indexer} lookup, {lookup_outputs_indexer} lookup output, {register_allocation_indexer} reg)");
-    //             }
-    //         }
-    //         println!("TOTAL {total_vars:.>3}");
-
-    //         // now the sorting / relative order
-    //         println!();
-    //         logger.sort_by_key(|tuple| tuple.1);
-    //         let percentages = logger
-    //             .iter()
-    //             .map(|&(_, vars, _)| vars as f32 * 100. / total_vars as f32)
-    //             .collect::<Vec<f32>>();
-    //         assert!(percentages.iter().sum::<f32>() > 99.9);
-    //         println!("RELATIVE PERFORMANCE FOR {name}");
-    //         for (&(name, vars, _), &perc) in logger.iter().zip(&percentages) {
-    //             let big = "#".repeat(perc as usize);
-    //             let small = ".".repeat((perc * 10.) as usize % 10);
-    //             let combined = big + &small;
-    //             println!("{name:>20} {perc:4.1}% ({vars:2}) {combined:50}");
-    //         }
-    //         println!("");
-    //     }
-    // }
-
     fn finalize(mut self) -> (CircuitOutput<F>, Option<W>) {
         // Out default behavior is to enforce 8-bit range-checks in the same way as generic lookups.
         // Later on the compiler will place the variables, but we will add corresponding lookup queries
@@ -1537,6 +1627,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         let BasicAssembly {
             no_index_assigned,
             constraint_storage,
+            structured_statements,
             lookup_storage,
             boolean_variables,
             rangechecked_expressions,
@@ -1558,6 +1649,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             table_driver,
             num_of_variables: no_index_assigned as usize,
             constraints: constraint_storage,
+            structured_statements,
             layers_mapping,
             lookups: lookup_storage,
             range_check_expressions: rangechecked_expressions,

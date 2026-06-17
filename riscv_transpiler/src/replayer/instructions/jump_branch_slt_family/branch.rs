@@ -3,7 +3,7 @@ use super::*;
 #[inline(always)]
 pub(crate) fn branch<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {

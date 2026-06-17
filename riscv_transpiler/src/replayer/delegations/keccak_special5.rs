@@ -143,9 +143,7 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
             let mut x10_timestamp = state.registers[10].timestamp;
             let mut x11_timestamp = state.registers[11].timestamp;
 
-            for call_round in 0..NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 {
-                let last_round = call_round == NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1;
-
+            for _call_round in 0..NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 {
                 let mut witness = KeccakSpecial5DelegationWitness::empty();
                 witness.write_timestamp = current_timestamp | DELEGATION_INVOCATION_OFFET;
 

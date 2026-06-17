@@ -20,6 +20,12 @@ pub mod quartic;
 
 pub mod baby_bear;
 
+// #[cfg(test)]
+mod tests;
+
+#[cfg(feature = "verifier_stats")]
+pub mod stats;
+
 #[cfg(feature = "proc_macro_ops")]
 mod proc_macro_ops;
 
@@ -31,10 +37,10 @@ pub use self::field::*;
 
 const _: () = const {
     #[cfg(all(
-        any(feature = "use_division", feature = "modular_ops"),
+        any(feature = "modular_fma", feature = "modular_ops"),
         not(target_arch = "riscv32")
     ))]
-    compile_error!("`use_division` and `modular ops` features are intended for simulated (provable) machines and should not be activated otherwise");
+    compile_error!("`modular_fma` and `modular ops` features are intended for simulated (provable) machines and should not be activated otherwise");
 
     ()
 };

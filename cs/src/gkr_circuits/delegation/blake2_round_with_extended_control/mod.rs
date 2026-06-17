@@ -1,9 +1,9 @@
 use super::*;
 use crate::cs::circuit::*;
-use crate::cs::utils::collapse_max_quadratic_constraint_into;
-use crate::cs::utils::mask_by_boolean_into_accumulator_constraint;
+use crate::cs::utils::collapse_max_quadratic_expr_into;
 use crate::gkr_circuits::LookupInput;
 use crate::gkr_circuits::Variable;
+use crate::structured_expr::Expr;
 use crate::types::Boolean;
 use crate::types::Num;
 use crate::witness_placer::*;
@@ -14,7 +14,7 @@ use blake2s_u32::EXTENDED_CONFIGURED_IV;
 use blake2s_u32::SIGMAS;
 use common_constants::delegation_types::blake2s_with_control::*;
 
-mod g_function;
+pub(crate) mod g_function;
 
 const TOTAL_TABLE_WIDTH: usize = 3;
 
@@ -272,9 +272,9 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         };
         cs.set_values(value_fn);
     }
-    cs.add_constraint(
-        (Term::from(round_bitmask[6]) * Term::from(reduce_rounds)) + Term::from(round_bitmask[9])
-            - Term::from(perform_final_xor),
+    cs.add_constraint_expr(
+        Expr::from(round_bitmask[6]) * Expr::from(reduce_rounds) + Expr::from(round_bitmask[9])
+            - Expr::var(perform_final_xor),
     );
     // let perform_final_xor = Boolean::or(
     //     &round_bitmask[9],
@@ -344,15 +344,14 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         let existing = &mut input_extended_state[word_idx];
         let initialization_word = EXTENDED_CONFIGURED_IV[word_idx];
         for i in 0..2 {
-            let mut constraint = Constraint::empty();
             // if it's not the first round - keep existing
-            constraint = constraint
-                + (Term::from(1u32) - Term::from(first_round_var)) * Term::from(existing[i]);
+            let keep_existing =
+                (Expr::<F>::one() - Expr::var(first_round_var)) * Expr::var(existing[i]);
             // otherwise - from constants
-            constraint = constraint
-                + Term::from(first_round_var)
-                    * Term::from((initialization_word >> (16 * i)) as u32 & 0xffff);
-            let selected = cs.add_variable_from_constraint(constraint);
+            let use_initialization = Expr::var(first_round_var)
+                * Expr::from((initialization_word >> (16 * i)) as u32 & 0xffff);
+            let expr = keep_existing + use_initialization;
+            let selected = cs.add_variable_from_expr(expr);
             existing[i] = selected;
         }
     }
@@ -361,20 +360,21 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         let existing = &mut input_extended_state[word_idx];
         let initialization_word = COMPRESSION_MODE_EXTENDED_CONFIGURED_IV[word_idx];
         for i in 0..2 {
-            let mut constraint = Constraint::empty();
             // if it's not the first round - keep existing
-            constraint = constraint
-                + (Term::from(1u32) - Term::from(first_round_var)) * Term::from(existing[i]);
+            let keep_existing =
+                (Expr::<F>::one() - Expr::var(first_round_var)) * Expr::var(existing[i]);
             // if not - two options
             // if it's a normal mode - then we take from existing extended(!) state
-            constraint =
-                constraint + Term::from(first_round_in_normal_mode_var) * Term::from(existing[i]);
+            let keep_existing_in_normal_mode =
+                Expr::var(first_round_in_normal_mode_var) * Expr::var(existing[i]);
             // otherwise - from constants
-            constraint = constraint
-                + Term::from(first_round_var)
-                    * Term::from(compression_mode_var)
-                    * Term::from((initialization_word >> (16 * i)) as u32 & 0xffff);
-            let selected = cs.add_variable_from_constraint(constraint);
+            let use_initialization_in_compression_mode = Expr::var(first_round_var)
+                * Expr::var(compression_mode_var)
+                * Expr::from((initialization_word >> (16 * i)) as u32 & 0xffff);
+            let expr = keep_existing
+                + keep_existing_in_normal_mode
+                + use_initialization_in_compression_mode;
+            let selected = cs.add_variable_from_expr(expr);
             existing[i] = selected;
         }
     }
@@ -425,16 +425,16 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         let existing = &mut input_words[word_idx];
 
         for i in 0..2 {
-            let mut constraint = Constraint::empty();
             // if it's not the first round - keep existing
-            constraint = constraint
-                + (Term::from(1u32) - Term::from(compression_mode)) * Term::from(existing[i]);
+            let keep_existing =
+                (Expr::<F>::one() - Expr::from(compression_mode)) * Expr::var(existing[i]);
             // if not - take from either existing or state part
-            constraint = constraint
-                + Term::from(compression_mode_existing_is_right) * Term::from(path_data[i]);
-            constraint = constraint
-                + Term::from(compression_mode_existing_is_left) * Term::from(state_word[i]);
-            let selected = cs.add_variable_from_constraint(constraint);
+            let use_path_when_right =
+                Expr::from(compression_mode_existing_is_right) * Expr::var(path_data[i]);
+            let use_state_when_left =
+                Expr::from(compression_mode_existing_is_left) * Expr::var(state_word[i]);
+            let expr = keep_existing + use_path_when_right + use_state_when_left;
+            let selected = cs.add_variable_from_expr(expr);
             existing[i] = selected;
         }
     }
@@ -445,16 +445,16 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
         let existing = &mut input_words[word_idx];
         for i in 0..2 {
-            let mut constraint = Constraint::empty();
             // if it's not the first round - keep existing
-            constraint = constraint
-                + (Term::from(1u32) - Term::from(compression_mode)) * Term::from(existing[i]);
+            let keep_existing =
+                (Expr::<F>::one() - Expr::from(compression_mode)) * Expr::var(existing[i]);
             // if not - take from either existing or state part
-            constraint = constraint
-                + Term::from(compression_mode_existing_is_right) * Term::from(state_word[i]);
-            constraint = constraint
-                + Term::from(compression_mode_existing_is_left) * Term::from(path_data[i]);
-            let selected = cs.add_variable_from_constraint(constraint);
+            let use_state_when_right =
+                Expr::from(compression_mode_existing_is_right) * Expr::var(state_word[i]);
+            let use_path_when_left =
+                Expr::from(compression_mode_existing_is_left) * Expr::var(path_data[i]);
+            let expr = keep_existing + use_state_when_right + use_path_when_left;
+            let selected = cs.add_variable_from_expr(expr);
             existing[i] = selected;
         }
     }
@@ -476,24 +476,16 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     let mut selected_permutation = vec![];
     for message_word in 0..BLAKE2S_BLOCK_SIZE_U32_WORDS {
         // our permutation is fixed, so we just need to make a constraint
-        let mut constraint_0 = Constraint::empty();
-        let mut constraint_1 = Constraint::empty();
+        let mut expr_0 = Expr::zero();
+        let mut expr_1 = Expr::zero();
         for round_index in 0..BLAKE2S_MAX_ROUNDS {
             let selector = round_bitmask[round_index];
             let inputs = input_words[SIGMAS[round_index][message_word]];
-            constraint_0 = mask_by_boolean_into_accumulator_constraint(
-                &selector,
-                &Num::Var(inputs[0]),
-                constraint_0,
-            );
-            constraint_1 = mask_by_boolean_into_accumulator_constraint(
-                &selector,
-                &Num::Var(inputs[1]),
-                constraint_1,
-            );
+            expr_0 = expr_0 + Expr::var(inputs[0]).mask(selector);
+            expr_1 = expr_1 + Expr::var(inputs[1]).mask(selector);
         }
-        let low = cs.add_variable_from_constraint(constraint_0);
-        let high = cs.add_variable_from_constraint(constraint_1);
+        let low = cs.add_variable_from_expr(expr_0);
+        let high = cs.add_variable_from_expr(expr_1);
 
         selected_permutation.push([low, high]);
     }
@@ -518,10 +510,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     let mut a_row = a_row.map(|el| {
         el.map(|el| {
             assert_eq!(el.len(), 1);
-            let mut constraint = Constraint::<F>::empty();
-            constraint += Term::from(el[0].1);
-
-            constraint
+            Expr::<F>::var(el[0].1)
         })
     });
     let mut b_row: [_; 4] = state[4..8].to_vec().try_into().unwrap();
@@ -529,10 +518,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     let mut c_row = c_row.map(|el| {
         el.map(|el| {
             assert_eq!(el.len(), 1);
-            let mut constraint = Constraint::<F>::empty();
-            constraint += Term::from(el[0].1);
-
-            constraint
+            Expr::<F>::var(el[0].1)
         })
     });
     let mut d_row: [_; 4] = state[12..16].to_vec().try_into().unwrap();
@@ -621,26 +607,26 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         placer.assign_u16(x12_write_vars[0], &zero);
     };
     cs.set_values(value_fn);
-    let constraint = Constraint::<F>::empty() + Term::from(x12_write_vars[0]);
-    cs.add_constraint_allow_explicit_linear_prevent_optimizations(constraint);
+    cs.add_constraint_allow_explicit_linear_prevent_optimizations_expr(Expr::var(
+        x12_write_vars[0],
+    ));
 
     // now set updated value for high bits and constraint it
-    let mut constraint = Constraint::<F>::empty();
+    let mut expr = Expr::zero();
     let mut shift = 1;
     for bit in control_bitmask.iter() {
-        constraint = constraint + Term::from(shift) * Term::from(bit.get_variable().unwrap());
+        expr = expr + Expr::var(bit.get_variable().unwrap()) * F::from_u32_unchecked(shift);
         shift <<= 1;
     }
     shift <<= 1; // for the shift bit
     for bit in round_bitmask.iter().take(BLAKE2S_MAX_ROUNDS - 1) {
-        constraint = constraint + Term::from(shift) * Term::from(bit.get_variable().unwrap());
+        expr = expr + Expr::var(bit.get_variable().unwrap()) * F::from_u32_unchecked(shift);
         shift <<= 1;
     }
     assert_eq!(shift, 1u32 << BLAKE2S_NUM_CONTROL_REGISTER_BITS);
 
-    collapse_max_quadratic_constraint_into(cs, constraint.clone(), x12_write_vars[1]);
-    constraint -= Term::from(x12_write_vars[1]);
-    cs.add_constraint_allow_explicit_linear(constraint);
+    collapse_max_quadratic_expr_into(cs, expr.clone(), x12_write_vars[1]);
+    cs.define_variable_from_expr(x12_write_vars[1], expr);
 
     // we unconditionally set values for extended state
     let mut it = output_placeholder_extended_state.iter_mut();
@@ -648,58 +634,34 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     for src in a_row.into_iter() {
         let dst = it.next().unwrap();
         for (src, dst) in src.into_iter().zip(dst.iter_mut()) {
-            let mut constraint = src;
-            // set value
-            collapse_max_quadratic_constraint_into(cs, constraint.clone(), *dst);
-            // add constraint
-            constraint -= Term::from(*dst);
-            cs.add_constraint_allow_explicit_linear(constraint);
+            collapse_max_quadratic_expr_into(cs, src.clone(), *dst);
+            cs.define_variable_from_expr(*dst, src);
         }
     }
 
     for src in b_row.iter().cloned() {
         let dst = it.next().unwrap();
         for (src, dst) in src.into_iter().zip(dst.iter_mut()) {
-            let mut constraint = Constraint::empty();
-            let mut shift = 0;
-            for (width, var) in src.into_iter() {
-                constraint += Term::from((F::from_u32_unchecked(1u32 << shift), var));
-                shift += width;
-            }
-            // set value
-            collapse_max_quadratic_constraint_into(cs, constraint.clone(), *dst);
-            // add constraint
-            constraint -= Term::from(*dst);
-            cs.add_constraint_allow_explicit_linear(constraint);
+            let expr = compose_chunks_expr(src);
+            collapse_max_quadratic_expr_into(cs, expr.clone(), *dst);
+            cs.define_variable_from_expr(*dst, expr);
         }
     }
 
     for src in c_row.into_iter() {
         let dst = it.next().unwrap();
         for (src, dst) in src.into_iter().zip(dst.iter_mut()) {
-            let mut constraint = src;
-            // set value
-            collapse_max_quadratic_constraint_into(cs, constraint.clone(), *dst);
-            // add constraint
-            constraint -= Term::from(*dst);
-            cs.add_constraint_allow_explicit_linear(constraint);
+            collapse_max_quadratic_expr_into(cs, src.clone(), *dst);
+            cs.define_variable_from_expr(*dst, src);
         }
     }
 
     for src in d_row.iter().cloned() {
         let dst = it.next().unwrap();
         for (src, dst) in src.into_iter().zip(dst.iter_mut()) {
-            let mut constraint = Constraint::empty();
-            let mut shift = 0;
-            for (width, var) in src.into_iter() {
-                constraint += Term::from((F::from_u32_unchecked(1u32 << shift), var));
-                shift += width;
-            }
-            // set value
-            collapse_max_quadratic_constraint_into(cs, constraint.clone(), *dst);
-            // add constraint
-            constraint -= Term::from(*dst);
-            cs.add_constraint_allow_explicit_linear(constraint);
+            let expr = compose_chunks_expr(src);
+            collapse_max_quadratic_expr_into(cs, expr.clone(), *dst);
+            cs.define_variable_from_expr(*dst, expr);
         }
     }
 
@@ -790,14 +752,12 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
                 TableType::Xor7,
             );
 
-            let mut a_high_constraint = a_high_constraint.clone();
-            a_high_constraint.scale(F::TWO);
-            a_high_constraint += extra_bit.get_terms();
+            let a_high_expr = a_high_constraint.clone() * F::TWO + Expr::from(extra_bit);
 
             let [xor_result_high] = cs.get_variables_from_lookup_constrained::<2, 1>(
                 &[
                     LookupInput::Variable(xor_result_high),
-                    LookupInput::from(a_high_constraint),
+                    LookupInput::from(a_high_expr),
                 ],
                 TableType::Xor9,
             );
@@ -805,17 +765,11 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
             // and if we do request final XOR-ing, then we use those value to construct and output, otherwise - use initial values
 
             let dst = output[i];
-            let mut constraint = Constraint::empty();
-            constraint += Term::from(xor_result_low);
-            constraint += Term::from((F::from_u32_unchecked(1u32 << 7), xor_result_high));
-            constraint = constraint * Term::from(perform_final_xor);
-            constraint = constraint
-                + (Term::from(1u32) - Term::from(perform_final_xor)) * Term::from(read_values[i]);
-            // set value
-            collapse_max_quadratic_constraint_into(cs, constraint.clone(), dst);
-            // add constraint
-            constraint -= Term::from(dst);
-            cs.add_constraint(constraint);
+            let final_xor_expr = compose_chunks_expr([(7, xor_result_low), (9, xor_result_high)]);
+            let expr = final_xor_expr * Expr::var(perform_final_xor)
+                + (Expr::<F>::one() - Expr::var(perform_final_xor)) * Expr::var(read_values[i]);
+            collapse_max_quadratic_expr_into(cs, expr.clone(), dst);
+            cs.define_variable_from_expr(dst, expr);
         }
     }
 
@@ -874,30 +828,22 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
                 TableType::Xor,
             );
 
-            let mut constraint = Constraint::empty();
-            constraint += extra_bit.get_terms();
-            constraint += Term::from((F::TWO, xor_result_high));
+            let high_expr = Expr::<F>::from(extra_bit) + Expr::var(xor_result_high) * F::TWO;
 
             let [xor_result_high] = cs.get_variables_from_lookup_constrained::<2, 1>(
                 &[
                     LookupInput::Variable(d_high_var),
-                    LookupInput::from(constraint),
+                    LookupInput::from(high_expr),
                 ],
                 TableType::Xor,
             );
 
             let dst = output[i];
-            let mut constraint = Constraint::empty();
-            constraint += Term::from(xor_result_low);
-            constraint += Term::from((F::from_u32_unchecked(1u32 << 8), xor_result_high));
-            constraint = constraint * Term::from(perform_final_xor);
-            constraint = constraint
-                + (Term::from(1u32) - Term::from(perform_final_xor)) * Term::from(read_values[i]);
-            // set value
-            collapse_max_quadratic_constraint_into(cs, constraint.clone(), dst);
-            // add constraint
-            constraint -= Term::from(dst);
-            cs.add_constraint(constraint);
+            let final_xor_expr = compose_chunks_expr([(8, xor_result_low), (8, xor_result_high)]);
+            let expr = final_xor_expr * Expr::var(perform_final_xor)
+                + (Expr::<F>::one() - Expr::var(perform_final_xor)) * Expr::var(read_values[i]);
+            collapse_max_quadratic_expr_into(cs, expr.clone(), dst);
+            cs.define_variable_from_expr(dst, expr);
         }
     }
 
@@ -916,7 +862,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
 pub(crate) fn chunk_16_bit_input<F: PrimeField, CS: Circuit<F>, const LOW_CHUNK_BITS: usize>(
     cs: &mut CS,
     input: Variable,
-) -> (Variable, Constraint<F>) {
+) -> (Variable, Expr<F>) {
     let low_chunk = cs.add_variable();
 
     let value_fn = move |placer: &mut CS::WitnessPlacer| {
@@ -928,16 +874,26 @@ pub(crate) fn chunk_16_bit_input<F: PrimeField, CS: Circuit<F>, const LOW_CHUNK_
 
     cs.set_values(value_fn);
 
-    let mut constraint = Constraint::<F>::empty();
-    constraint += Term::from(input);
-    constraint -= Term::from(low_chunk);
-    constraint.scale(
-        F::from_u32_unchecked(1 << LOW_CHUNK_BITS)
+    let expr = (Expr::<F>::var(input) - Expr::var(low_chunk))
+        * F::from_u32_unchecked(1 << LOW_CHUNK_BITS)
             .inverse()
-            .unwrap(),
-    );
+            .unwrap();
 
-    (low_chunk, constraint)
+    (low_chunk, expr)
+}
+
+/// Composes little-endian bit chunks into one structured limb expression.
+fn compose_chunks_expr<F: PrimeField>(
+    chunks: impl IntoIterator<Item = (usize, Variable)>,
+) -> Expr<F> {
+    let mut expr = Expr::zero();
+    let mut shift = 0;
+    for (width, var) in chunks {
+        expr = expr + Expr::var(var) * F::from_u32_unchecked(1u32 << shift);
+        shift += width;
+    }
+
+    expr
 }
 
 pub(crate) fn split_top_bit<F: PrimeField, CS: Circuit<F>, const LOW_CHUNK_BITS: usize>(
@@ -961,14 +917,10 @@ pub(crate) fn split_top_bit<F: PrimeField, CS: Circuit<F>, const LOW_CHUNK_BITS:
 
     cs.set_values(value_fn);
 
-    let mut constraint = Constraint::<F>::empty();
-    constraint += Term::from(input);
-    constraint -= Term::from(low_chunk);
-    constraint -= Term::from((
-        F::from_u32_unchecked(1 << LOW_CHUNK_BITS),
-        bit.get_variable().unwrap(),
-    ));
-    cs.add_constraint_allow_explicit_linear(constraint);
+    let expr = Expr::var(input)
+        - Expr::var(low_chunk)
+        - Expr::from(bit) * F::from_u32_unchecked(1 << LOW_CHUNK_BITS);
+    cs.add_constraint_allow_explicit_linear_expr(expr);
 
     (low_chunk, bit)
 }

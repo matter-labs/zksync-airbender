@@ -1,5 +1,6 @@
 use super::queries::*;
 use super::*;
+use crate::gkr::prover::WhirSchedule;
 use crate::merkle_trees::MerkleTreeCapVarLength;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -98,6 +99,7 @@ pub struct WhirPolyCommitProof<
     pub sumcheck_polys: Vec<[E; 3]>,
     pub pow_nonces: Vec<u64>,
     pub final_monomials: Vec<E>,
+    pub whir_schedule: WhirSchedule,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
