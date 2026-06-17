@@ -202,6 +202,7 @@ const _: () = const {
 };
 
 #[repr(u8)]
+#[derive(Clone, Copy)]
 pub enum CounterType {
     AddSubLui = 0,
     BranchSlt,

@@ -1563,19 +1563,19 @@ impl<I: ContextImpl> JittedCode<I> {
                         ; lea Rd(SCRATCH_REGISTER), [Rd(address) + imm]
                     );
                     let value = load(&mut ops, rs2);
-                    // RDX is potentially taken by value, so can not use it. But RAX is available
+                    // RDX may hold `value`; RAX and RBP are free here (RBP is no longer a
+                    // frame pointer, so it can be clobbered), so use them as scratch for the
+                    // old value / old timestamp instead of pushing/popping RDX.
                     touch_register_and_increment_timestamp!(ops, rs1);
                     touch_register_and_increment_timestamp!(ops, rs2);
                     dynasm!(ops
                         // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
                         ; mov eax, DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into RAX
                         ; mov DWORD [rsi + Rq(SCRATCH_REGISTER)], Rd(value) // store new value
-                        ; push rdx
-                        ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 2 * Rq(SCRATCH_REGISTER)] // read timestamp
+                        ; mov rbp, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 2 * Rq(SCRATCH_REGISTER)] // read timestamp
                         ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
                         ; mov [rdi + r9 * 4], eax // write old value into trace
-                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
-                        ; pop rdx
+                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rbp // write timestamp value into trace
                     );
                     bump_timestamp!(ops, 2);
                     record_circuit_type(&mut ops, CounterType::MemWord, 1);
@@ -2280,6 +2280,12 @@ fn view_assembly(assembly: &[u8], start: usize) {
         }
     }
 }
+
+// Lazy (batched) timestamp path. Declared here, AFTER every `macro_rules!` above,
+// so the child module inherits those macros by textual scope and reaches the
+// private helper fns/consts of this module via `super`.
+#[path = "impls_lazy_ts.rs"]
+mod impls_lazy_ts;
 
 fn view_rv32_assembly(assembly: &[u32], start: usize) {
     let assembly =
