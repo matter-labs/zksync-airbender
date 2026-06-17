@@ -22,7 +22,8 @@ unsafe impl<I: ContextImpl> Sync for JittedCode<I> {}
 
 // Register use and mapping
 
-// - x10-x15 (RV) are stored in r10-r15 (X86)
+// - The 7 hottest RV registers live in host x86 GPRs (see `rv_to_gpr`):
+//     a0..a4 (x10..x14) -> r10..r14, a6 (x16) -> r15, t3 (x28) -> rbx
 // - RDI holds a pointer to backing array for snapshot itself, with elements being Register struct (TODO: decide if we want aligned or not timestamps. Most likely yes)
 // - RSI will contain a pointer to the special structure that begins with backing array for memory, followed by backing array for word timestamps
 // - r8 holds a timestamp (0 mod 4 in the cycle)
@@ -31,12 +32,11 @@ unsafe impl<I: ContextImpl> Sync for JittedCode<I> {}
 // For registers with no dedicated x86 register,
 // register writes go via rax and reads via rdx
 // rcx also doesn't contain a register because it must be used for bitshifts
-//
-// x10 - x15 are assigned to r10 - r15
-// rbx is for x9
 
-// Registers that are placed not in the GPR are instead placed into 128-bit vector registers, and loaded using PEXTRD and stored using PINSRD.
-// In total we still use upper bound of 8 vector registers xmm0-xmm7.
+// x0 is hardwired zero and is never materialized in a vector lane. The remaining
+// 24 registers are packed densely (see `RV_REG_TO_XMM_SLOT`) into 128-bit vector
+// registers xmm0..=xmm5, loaded using PEXTRD and stored using PINSRD, and spilled
+// to / reloaded from the dense `xmm_register_spill` region with 6 128-bit moves.
 
 // On the stack we will have a structure that will allows us to pass in a single pointer all the global machine state.
 
@@ -202,24 +202,26 @@ macro_rules! save_machine_state {
         dynasm!($ops
             // offset is an offset of our MachineState from RSP
 
-            // First write all registers that are mapped into XMMs
-            ; movdqu [rdx + 0], xmm0
-            ; movdqu [rdx + 16], xmm1
-            ; movdqu [rdx + 32], xmm2 // x8 fits here
-            // ; movdqu [rdx + 48], xmm3
-            ; movdqu [rdx + 64], xmm4
-            ; movdqu [rdx + 80], xmm5
-            ; movdqu [rdx + 96], xmm6
-            ; movdqu [rdx + 112], xmm7
+            // Spill the 24 vector-resident registers (densely packed in xmm0..=xmm5)
+            // into the dense spill region. x0 is not in the vector file, so the
+            // 24 registers fit in 6 stores rather than the previous 7.
+            ; movdqu [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 0], xmm0
+            ; movdqu [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 16], xmm1
+            ; movdqu [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 32], xmm2
+            ; movdqu [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 48], xmm3
+            ; movdqu [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 64], xmm4
+            ; movdqu [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 80], xmm5
 
-            // Save RV registers that are mapped into X86 GPRs (x9-x15)
-            ; mov [rdx + (9 * 4 as i32)], ebx // x9 -> RBX
-            ; mov [rdx + (10 * 4 as i32)], r10d // x10 -> R10
-            ; mov [rdx + (11 * 4 as i32)], r11d // x11 -> R11
-            ; mov [rdx + (12 * 4 as i32)], r12d // x12 -> R12
-            ; mov [rdx + (13 * 4 as i32)], r13d // x13 -> R13
-            ; mov [rdx + (14 * 4 as i32)], r14d // x14 -> R14
-            ; mov [rdx + (15 * 4 as i32)], r15d // x15 -> R15
+            // Save RV registers mapped into x86 GPRs to their compact GPR slots
+            // (see GPR_SLOT_TO_RV). Slot 0 is x0, which stays 0 from
+            // initialization and is never written here.
+            ; mov [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (1 * 4)], r10d // a0, slot 1
+            ; mov [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (2 * 4)], r11d // a1, slot 2
+            ; mov [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (3 * 4)], r12d // a2, slot 3
+            ; mov [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (4 * 4)], r13d // a3, slot 4
+            ; mov [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (5 * 4)], r14d // a4, slot 5
+            ; mov [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (6 * 4)], r15d // a6, slot 6
+            ; mov [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (7 * 4)], ebx  // t3, slot 7
 
             // put current timestamp (without assumptions about mod 4)
             ; mov [rdx + (MachineState::TIMESTAMP_OFFSET as i32)], r8
@@ -254,23 +256,22 @@ macro_rules! update_machine_state_post_call {
             // load updated timestamp (also without assumptions)
             ; mov r8, [rdx + (MachineState::TIMESTAMP_OFFSET as i32)]
 
-            // Restore RV registers that are mapped into X86 GPRs (x9-x15)
-            ; mov ebx, [rdx + (9 * 4 as i32)]  // x9 -> RBX
-            ; mov r10d, [rdx + (10 * 4 as i32)]  // x10 -> R10
-            ; mov r11d, [rdx + (11 * 4 as i32)]  // x11 -> R11
-            ; mov r12d, [rdx + (12 * 4 as i32)]  // x12 -> R12
-            ; mov r13d, [rdx + (13 * 4 as i32)]  // x13 -> R13
-            ; mov r14d, [rdx + (14 * 4 as i32)]  // x14 -> R14
-            ; mov r15d, [rdx + (15 * 4 as i32)]  // x15 -> R15
+            // Restore RV registers mapped into x86 GPRs from their compact GPR slots.
+            ; mov r10d, [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (1 * 4)]  // a0, slot 1
+            ; mov r11d, [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (2 * 4)]  // a1, slot 2
+            ; mov r12d, [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (3 * 4)]  // a2, slot 3
+            ; mov r13d, [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (4 * 4)]  // a3, slot 4
+            ; mov r14d, [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (5 * 4)]  // a4, slot 5
+            ; mov r15d, [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (6 * 4)]  // a6, slot 6
+            ; mov ebx,  [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (7 * 4)]  // t3, slot 7
 
-            ; movdqu xmm0, [rdx + 0]
-            ; movdqu xmm1, [rdx + 16]
-            ; movdqu xmm2, [rdx + 32]
-            // ; movdqu xmm3, [rdx + 48]
-            ; movdqu xmm4, [rdx + 64]
-            ; movdqu xmm5, [rdx + 80]
-            ; movdqu xmm6, [rdx + 96]
-            ; movdqu xmm7, [rdx + 112]
+            // Reload the 24 vector-resident registers from the dense spill region.
+            ; movdqu xmm0, [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 0]
+            ; movdqu xmm1, [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 16]
+            ; movdqu xmm2, [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 32]
+            ; movdqu xmm3, [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 48]
+            ; movdqu xmm4, [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 64]
+            ; movdqu xmm5, [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 80]
             // NOTE: circuit-family counters (xmm8..=xmm12) are not reloaded here; they are
             // not spilled by the matching save_machine_state! and survive the call.
             // NOTE: the flattened non-determinism responses pointer is kept in its own
@@ -281,35 +282,57 @@ macro_rules! update_machine_state_post_call {
 
 const SCRATCH_REGISTER: u8 = x64::Rq::RCX as u8;
 
+// The 7 hottest RISC-V registers (by dynamic access frequency on the reference
+// block) are mapped to host x86 GPRs. x10..x14 keep their natural r10..r14
+// homes; a6 (x16) and t3 (x28) take r15/rbx, displacing the colder s1 (x9) and
+// a5 (x15) which now live in vector lanes. Keep this set in sync with
+// `RV_REG_TO_XMM_SLOT` (asserted below).
 fn rv_to_gpr(x: u32) -> Option<u8> {
     use x64::Rq::*;
     assert!(x < 32);
 
     Some(
         (match x {
-            9 => RBX,
-            10 => R10,
-            11 => R11,
-            12 => R12,
-            13 => R13,
-            14 => R14,
-            15 => R15,
+            10 => R10, // a0
+            11 => R11, // a1
+            12 => R12, // a2
+            13 => R13, // a3
+            14 => R14, // a4
+            16 => R15, // a6
+            28 => RBX, // t3
             _ => return None,
         }) as u8,
     )
 }
 
+// The host-GPR set must be exactly the registers that `RV_REG_TO_XMM_SLOT`
+// marks as not-in-a-vector-lane (besides x0).
+const _: () = {
+    let mut x = 1u8;
+    while x < 32 {
+        let in_gpr = matches!(x, 10 | 11 | 12 | 13 | 14 | 16 | 28);
+        let in_xmm = RV_REG_TO_XMM_SLOT[x as usize] != RV_XMM_SLOT_NONE;
+        assert!(in_gpr ^ in_xmm); // exactly one of the two for every x in 1..32
+        x += 1;
+    }
+};
+
 fn destination_gpr(x: u32) -> u8 {
     rv_to_gpr(x).unwrap_or(x64::Rq::RAX as u8)
 }
 
-const RV_REGISTERS_NUM_XMMS: u8 = 8;
+const RV_REGISTERS_NUM_XMMS: u8 = NUM_RV_REGISTER_XMMS;
 
+// Maps a vector-resident RISC-V register to its (xmm index, lane) via the dense
+// `RV_REG_TO_XMM_SLOT` packing. x0 and host-GPR-mapped registers must never be
+// passed here (callers special-case x0 and check `rv_to_gpr` first).
 fn rv_reg_to_xmm_reg(x: u8) -> (u8, u8) {
     assert!(x != 0);
     assert!(x < 32);
-    let imm = x & 0b11;
-    let xmm_register = x >> 2;
+    let slot = RV_REG_TO_XMM_SLOT[x as usize];
+    assert!(slot != RV_XMM_SLOT_NONE);
+    let xmm_register = slot / 4;
+    let imm = slot % 4;
     assert!(xmm_register < RV_REGISTERS_NUM_XMMS);
 
     (xmm_register, imm)

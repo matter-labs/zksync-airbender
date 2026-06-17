@@ -13,9 +13,9 @@ pub(crate) fn blake_implementation(
     // Implementer here is responsible for ALL the bookkeeping, and eventually MUST update trace piece chunk via context, and and update machine state to reflect filled part of trace chunk
     assert!((trace_piece.len as usize) < TRACE_CHUNK_LEN);
     debug_assert_eq!(machine_state.timestamp % 4, 3);
-    let state_ptr = machine_state.registers[10];
-    let input_ptr = machine_state.registers[11];
-    let x12 = machine_state.registers[12];
+    let state_ptr = machine_state.get_register(10);
+    let input_ptr = machine_state.get_register(11);
+    let x12 = machine_state.get_register(12);
     assert!(state_ptr as usize >= common_constants::rom::ROM_BYTE_SIZE);
     assert!(input_ptr as usize >= common_constants::rom::ROM_BYTE_SIZE);
     assert_eq!(state_ptr % 128, 0, "`state` pointer is unaligned");
@@ -65,7 +65,7 @@ pub(crate) fn blake_implementation(
     machine_state.register_timestamps[10] = write_ts;
     machine_state.register_timestamps[11] = write_ts;
     machine_state.register_timestamps[12] = write_ts;
-    machine_state.registers[12] = final_x12;
+    *machine_state.get_register_mut(12) = final_x12;
 
     // touch x0
     machine_state.register_timestamps[0] = write_ts - 1;

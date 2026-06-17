@@ -12,9 +12,9 @@ pub fn bigint_implementation(
     // Implementer here is responsible for ALL the bookkeeping, and eventually MUST update trace piece chunk via context, and and update machine state to reflect filled part of trace chunk
     assert!((trace_piece.len as usize) < TRACE_CHUNK_LEN);
     debug_assert_eq!(machine_state.timestamp % 4, 3);
-    let a_ptr = machine_state.registers[10];
-    let b_ptr = machine_state.registers[11];
-    let x12 = machine_state.registers[12];
+    let a_ptr = machine_state.get_register(10);
+    let b_ptr = machine_state.get_register(11);
+    let x12 = machine_state.get_register(12);
     assert!(a_ptr as usize >= common_constants::rom::ROM_BYTE_SIZE);
     assert!(b_ptr as usize >= common_constants::rom::ROM_BYTE_SIZE);
     assert_eq!(a_ptr % 32, 0, "`a` pointer is unaligned");
@@ -94,7 +94,7 @@ pub fn bigint_implementation(
     // write back the value
     *a = result;
 
-    machine_state.registers[12] = of as u32;
+    *machine_state.get_register_mut(12) = of as u32;
 
     assert!((trace_piece.len as usize) < MAX_TRACE_CHUNK_LEN);
     let should_flush = ((trace_piece.len as usize) >= TRACE_CHUNK_LEN) as u64;

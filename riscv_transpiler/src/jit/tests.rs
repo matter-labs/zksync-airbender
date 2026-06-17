@@ -251,7 +251,7 @@ fn test_jit_full_block() {
     let mut source = QuasiUARTSource::new_with_reads(witness);
     let (state, _) = JittedCode::<_>::run_alternative_simulator(&text, &mut source, &binary, None);
     println!("PC = 0x{:08x}", state.pc);
-    dbg!(state.registers);
+    dbg!(state.materialized_registers());
 }
 
 #[test]
@@ -273,7 +273,7 @@ fn test_jit_full_block_with_flattened_responder() {
         .collect();
     let (state, _) = JittedCode::run_with_flattened_context(&text, &witness[..], &binary, None);
     println!("PC = 0x{:08x}", state.pc);
-    dbg!(state.registers);
+    dbg!(state.materialized_registers());
 }
 
 /// Static + dynamic bytecode instrumentation for the full zkSync OS block.
@@ -585,10 +585,11 @@ fn run_and_compare() {
         );
 
         let mut equal_state = true;
+        let jit_regs = jit_state.materialized_registers();
         for (reg_idx, ((reference, jit_value), jit_ts)) in reference_state
             .registers
             .iter()
-            .zip(jit_state.registers.iter())
+            .zip(jit_regs.iter())
             .zip(jit_state.register_timestamps.iter())
             .enumerate()
         {
@@ -800,10 +801,11 @@ fn run_recursion_and_compare() {
         );
 
         let mut equal_state = true;
+        let jit_regs = jit_state.materialized_registers();
         for (reg_idx, ((reference, jit_value), jit_ts)) in reference_state
             .registers
             .iter()
-            .zip(jit_state.registers.iter())
+            .zip(jit_regs.iter())
             .zip(jit_state.register_timestamps.iter())
             .enumerate()
         {
@@ -894,7 +896,7 @@ fn run_recursion_and_compare() {
                 "Last opcode = 0x{:08x}",
                 text[((jit_state.pc as usize) - 4) / 4]
             );
-            dbg!(&jit_state.registers);
+            dbg!(&jit_state.materialized_registers());
             panic!("State diverged");
         }
 
@@ -942,7 +944,7 @@ fn test_perf_with_trace_keeping() {
     simulator.run(&mut context, &mut memory, initial_chunk, &binary);
 
     // println!("PC = 0x{:08x}", state.pc);
-    // dbg!(state.registers);
+    // dbg!(state.materialized_registers());
 }
 
 #[test]
@@ -1024,5 +1026,5 @@ fn test_replayer_over_jit() {
     }
 
     // println!("PC = 0x{:08x}", state.pc);
-    // dbg!(state.registers);
+    // dbg!(state.materialized_registers());
 }
