@@ -11,8 +11,10 @@
 //! The arithmetic/copy family (`LinearBaseFieldRelation`, `MaxQuadratic`,
 //! `CopyInBaseField`, `CopyInExtensionField`), the full lookup family (the two
 //! single-output materializations plus every two-output num/den pair gate — see
-//! [`lookup`]), and the grand-product / memory-tuple / mask / inits-teardowns
-//! family (see [`memory`]) are implemented. The `NoFieldGKRRelation` match is now
+//! [`lookup`]), the grand-product / memory-tuple / mask / inits-teardowns
+//! family (see [`memory`]), and the enforce/constraint family
+//! (`EnforceSingleMaxQuadraticConstraint`, `EnforceConstraintsMaxQuadratic` — see
+//! [`constraint`]) are implemented. The `NoFieldGKRRelation` match is now
 //! exhaustive. The only remaining `Err(...)` path is the confirmed-dead
 //! `U32SpaceGeneric` address form inside [`memory::lower_memory_tuple`], which is
 //! NEVER panicked on — it returns `Err` (Task 14 audits its absence from golden
@@ -32,6 +34,7 @@
 //! but not yet surfaced on `DagCircuit`/`DagLayer` (see the report's concern).
 
 mod arithmetic;
+mod constraint;
 mod lookup;
 mod memory;
 
@@ -467,12 +470,15 @@ fn lower_relation(
             out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
         }
 
-        // ── Enforce / constraint family — Task 11, not this task ────────────
-        R::EnforceSingleMaxQuadraticConstraint { .. }
-        | R::EnforceConstraintsMaxQuadratic { .. } => Err(format!(
-            "dag_ir: constraint relation {:?} not yet lowered (Task 11)",
-            rel
-        )),
+        // ── Enforce / constraint family (Task 10) ────────────────────────────
+        R::EnforceSingleMaxQuadraticConstraint { input, .. } => {
+            constraint::lower_single_constraint(arena, out, input, group, relation_index);
+            Ok(())
+        }
+        R::EnforceConstraintsMaxQuadratic { input } => {
+            constraint::lower_batched_constraint(arena, out, input, group, relation_index);
+            Ok(())
+        }
     }
 }
 
@@ -1519,6 +1525,209 @@ mod tests {
             assert!(
                 matches!(expr(&layer, outs[0].1), Expr::Mul(_)),
                 "{name} is a grand-product Mul"
+            );
+        }
+    }
+
+    // ── Constraint / enforce lowering (Task 10) ──────────────────────────────
+
+    /// True if any source is a `Challenge(ConstraintAggregation, ..)`.
+    fn has_constraint_aggregation(layer: &DagLayer) -> bool {
+        layer.sources.iter().any(|s| {
+            matches!(&s.kind, SourceKind::Challenge { reference }
+                if reference.key == ChallengeKey::ConstraintAggregation)
+        })
+    }
+
+    /// Return the single `Root::Constraint` expr, asserting no Output roots exist.
+    fn single_constraint(layer: &DagLayer) -> ExprId {
+        let constraints: Vec<&Root> = layer
+            .roots
+            .iter()
+            .filter(|r| matches!(r, Root::Constraint { .. }))
+            .collect();
+        assert_eq!(constraints.len(), 1, "expected exactly one Constraint root");
+        assert!(
+            layer.roots.iter().all(|r| matches!(r, Root::Constraint { .. })),
+            "no Output roots should be present for a constraint relation"
+        );
+        let Root::Constraint { expr } = constraints[0] else {
+            unreachable!()
+        };
+        *expr
+    }
+
+    #[test]
+    fn enforce_single_max_quadratic_produces_one_constraint_no_output() {
+        // 1·x0·x1 + 2·x0 → Constraint root with quadratic+linear AddMul tree.
+        let rel = NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint {
+            input: NoFieldMaxQuadraticGKRRelation {
+                quadratic_terms: vec![(blw(0), vec![(1u32, blw(1))].into_boxed_slice())]
+                    .into_boxed_slice(),
+                linear_terms: vec![(2u32, blw(0))].into_boxed_slice(),
+                constant: 0,
+            },
+            expression: NoFieldStructuredExpression::Constant(0),
+        };
+        let layer = lower_single(rel);
+
+        // Exactly one Constraint root, zero Output roots.
+        let e = single_constraint(&layer);
+
+        // RootOrigin recorded: slot is Constraint(0).
+        assert_eq!(
+            layer.origins.get(&RootId(0)),
+            Some(&RootOrigin {
+                group: RootGroup::Gates,
+                relation_index: 0,
+                slot: RootSlot::Constraint(0),
+            })
+        );
+
+        // No sink was allocated (sinks vec is empty).
+        assert!(
+            layer.sinks.is_empty(),
+            "Constraint root must not create a sink"
+        );
+
+        // The top-level expr is an Add (quadratic + linear terms).
+        assert!(
+            matches!(layer.exprs[e.0 as usize], Expr::Add(_)),
+            "single constraint expr top level is Add, got {:?}",
+            layer.exprs[e.0 as usize]
+        );
+        // No ConstraintAggregation challenge — single constraint uses no rho.
+        assert!(
+            !has_constraint_aggregation(&layer),
+            "single constraint does not use the rho challenge"
+        );
+    }
+
+    #[test]
+    fn enforce_single_max_quadratic_constant_only_is_bare_source() {
+        // Constant-only (non-zero) → a single Constant Source.
+        let rel = NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint {
+            input: NoFieldMaxQuadraticGKRRelation {
+                quadratic_terms: vec![].into_boxed_slice(),
+                linear_terms: vec![].into_boxed_slice(),
+                constant: 5,
+            },
+            expression: NoFieldStructuredExpression::Constant(0),
+        };
+        let layer = lower_single(rel);
+        let e = single_constraint(&layer);
+        // Must be a bare Constant(5) source.
+        assert!(
+            matches!(&layer.exprs[e.0 as usize], Expr::Source(sid)
+                if matches!(&layer.sources[sid.0 as usize].kind,
+                    SourceKind::Constant { value: 5 })),
+            "constant-only single constraint is a bare Constant source"
+        );
+    }
+
+    #[test]
+    fn enforce_constraints_max_quadratic_produces_one_constraint_no_output() {
+        // Batched: one quadratic term with one (c=1, p=1) power.
+        let rel = NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
+            input: crate::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation {
+                quadratic_terms: vec![
+                    ((blw(0), blw(1)), vec![(1u32, 1usize)].into_boxed_slice()),
+                ]
+                .into_boxed_slice(),
+                linear_terms: vec![].into_boxed_slice(),
+                constants: vec![].into_boxed_slice(),
+            },
+        };
+        let layer = lower_single(rel);
+
+        // Exactly one Constraint root, zero Output roots.
+        let _e = single_constraint(&layer);
+
+        // RootOrigin slot is Constraint(0).
+        assert_eq!(
+            layer.origins.get(&RootId(0)).map(|o| o.slot.clone()),
+            Some(RootSlot::Constraint(0))
+        );
+
+        // No sink allocated.
+        assert!(layer.sinks.is_empty(), "batched constraint must not create a sink");
+
+        // ConstraintAggregation challenge present (rho^1 = One).
+        assert!(
+            has_constraint_aggregation(&layer),
+            "batched constraint must intern a ConstraintAggregation challenge"
+        );
+    }
+
+    #[test]
+    fn enforce_constraints_max_quadratic_contains_rho_challenge() {
+        // Batched: linear term at power 2 → rho^2 = Static(2).
+        use crate::gkr_compiler::dag_ir::ChallengePower;
+        let rel = NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
+            input: crate::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation {
+                quadratic_terms: vec![].into_boxed_slice(),
+                linear_terms: vec![
+                    (blw(0), vec![(3u32, 2usize)].into_boxed_slice()),
+                ]
+                .into_boxed_slice(),
+                constants: vec![(5u32, 1usize)].into_boxed_slice(),
+            },
+        };
+        let layer = lower_single(rel);
+        single_constraint(&layer);
+
+        // rho^1 (One) present for the constant term.
+        assert!(
+            layer.sources.iter().any(|s| matches!(&s.kind,
+                SourceKind::Challenge { reference }
+                    if reference.key == ChallengeKey::ConstraintAggregation
+                        && reference.power == ChallengePower::One)),
+            "constant term at p=1 → Challenge(ConstraintAggregation, One)"
+        );
+        // rho^2 (Static(2)) present for the linear term.
+        assert!(
+            layer.sources.iter().any(|s| matches!(&s.kind,
+                SourceKind::Challenge { reference }
+                    if reference.key == ChallengeKey::ConstraintAggregation
+                        && reference.power == ChallengePower::Static(2))),
+            "linear term at p=2 → Challenge(ConstraintAggregation, Static(2))"
+        );
+    }
+
+    #[test]
+    fn enforce_constraints_max_quadratic_empty_is_constant_zero() {
+        // Empty relation: all three slices are empty → Constant(0).
+        let rel = NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
+            input: crate::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation {
+                quadratic_terms: vec![].into_boxed_slice(),
+                linear_terms: vec![].into_boxed_slice(),
+                constants: vec![].into_boxed_slice(),
+            },
+        };
+        let layer = lower_single(rel);
+        let e = single_constraint(&layer);
+        assert!(
+            matches!(&layer.exprs[e.0 as usize], Expr::Source(sid)
+                if matches!(&layer.sources[sid.0 as usize].kind,
+                    SourceKind::Constant { value: 0 })),
+            "empty batched constraint is Constant(0)"
+        );
+        assert!(!has_constraint_aggregation(&layer), "empty → no rho source");
+    }
+
+    #[test]
+    fn constraint_variant_smoke_lower_without_err() {
+        // Both constraint variants in sample_relations lower without Err.
+        for (name, rel) in sample_relations() {
+            if name != "EnforceSingleMaxQuadraticConstraint"
+                && name != "EnforceConstraintsMaxQuadratic"
+            {
+                continue;
+            }
+            let artifact = single_relation_artifact(rel);
+            assert!(
+                lower_dag(&artifact).is_ok(),
+                "{name} must lower without Err"
             );
         }
     }
