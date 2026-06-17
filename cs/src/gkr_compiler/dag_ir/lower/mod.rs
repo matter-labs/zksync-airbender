@@ -9,12 +9,14 @@
 //!
 //! # Staged lowering
 //! The arithmetic/copy family (`LinearBaseFieldRelation`, `MaxQuadratic`,
-//! `CopyInBaseField`, `CopyInExtensionField`) and the full lookup family (the two
+//! `CopyInBaseField`, `CopyInExtensionField`), the full lookup family (the two
 //! single-output materializations plus every two-output num/den pair gate — see
-//! [`lookup`]) are implemented. The remaining grand-product / memory-tuple /
-//! inits-teardowns / enforce arms still return `Err(...)` — NEVER panic — so
-//! staged synthetic tests for implemented families pass and not-yet-lowered
-//! families fail cleanly. Tasks 9–11 extend the match.
+//! [`lookup`]), and the grand-product / memory-tuple / mask / inits-teardowns
+//! family (see [`memory`]) are implemented. The `NoFieldGKRRelation` match is now
+//! exhaustive. The only remaining `Err(...)` path is the confirmed-dead
+//! `U32SpaceGeneric` address form inside [`memory::lower_memory_tuple`], which is
+//! NEVER panicked on — it returns `Err` (Task 14 audits its absence from golden
+//! artifacts).
 //!
 //! # The cross-layer field subtlety
 //! An `Output` root's sink field is taken from the RELATION, not from field
@@ -31,6 +33,7 @@
 
 mod arithmetic;
 mod lookup;
+mod memory;
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -200,7 +203,9 @@ impl LayerOut {
 /// Lower one relation into the shared arena + layer accumulator.
 ///
 /// `group`/`relation_index` identify the gate's position so the emitted root's
-/// `RootOrigin` is recorded. Unimplemented arms return `Err(...)`.
+/// `RootOrigin` is recorded. `trace_len`/`inits_word_bits` are circuit globals the
+/// inits/teardowns top-bits constant needs (see [`memory::lower_inits_or_teardowns`]).
+/// Unimplemented arms return `Err(...)`.
 fn lower_relation(
     arena: &mut ArenaBuilder,
     out: &mut LayerOut,
@@ -208,6 +213,8 @@ fn lower_relation(
     group: RootGroup,
     relation_index: usize,
     minus_one: u32,
+    trace_len: usize,
+    inits_word_bits: Option<u32>,
 ) -> Result<(), String> {
     use NoFieldGKRRelation as R;
     match rel {
@@ -400,9 +407,71 @@ fn lower_relation(
             out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
         }
 
-        other => Err(format!(
-            "dag_ir: relation {:?} not yet lowered (Task N)",
-            other
+        // ── Grand-product / product / mask family (all single Ext output) ───
+        R::InitialGrandProductFromCaches { input, output } => {
+            // read(a) · read(b) over prior (Ext) cache/inner reads.
+            let expr = memory::product_of_reads(arena, input[0], input[1]);
+            out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
+        }
+        R::InitialGrandProductWithoutCaches { input, output } => {
+            // lower_memory_tuple(a) · lower_memory_tuple(b).
+            let expr = memory::product_of_tuples(arena, &input[0], &input[1], minus_one)?;
+            out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
+        }
+        R::UnbalancedGrandProductWithCache {
+            scalar,
+            input,
+            output,
+        } => {
+            // read(scalar) · read(input).
+            let expr = memory::product_of_reads(arena, *scalar, *input);
+            out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
+        }
+        R::TrivialProduct { input, output } => {
+            // read(a) · read(b).
+            let expr = memory::product_of_reads(arena, input[0], input[1]);
+            out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
+        }
+        R::MaterializeGrandProductTermExpression { input, output } => {
+            // lower_memory_tuple(input).
+            let expr = memory::lower_memory_tuple(arena, input, minus_one)?;
+            out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
+        }
+        R::MaskIntoIdentityProduct {
+            input,
+            mask,
+            output,
+        } => {
+            // 1 + mask·(input − 1)   (= input·mask + (1 − mask)).
+            let expr = memory::mask_into_identity(arena, *input, *mask, minus_one);
+            out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
+        }
+
+        // ── Inits / teardowns: product of two RAM tuples (single Ext output) ─
+        R::InitsOrTeardownsInitialPair {
+            timestamp_and_value,
+            setup: _,
+            output,
+            set_idxes,
+        } => {
+            // The setup [InitsAndTeardownsLow, InitsAndTeardownsHigh] are encoded
+            // as VirtualSetup sources inside the tuple builder, matching the
+            // companion "Inits And Teardowns".
+            let expr = memory::lower_inits_or_teardowns(
+                arena,
+                timestamp_and_value,
+                *set_idxes,
+                trace_len,
+                inits_word_bits,
+            );
+            out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
+        }
+
+        // ── Enforce / constraint family — Task 11, not this task ────────────
+        R::EnforceSingleMaxQuadraticConstraint { .. }
+        | R::EnforceConstraintsMaxQuadratic { .. } => Err(format!(
+            "dag_ir: constraint relation {:?} not yet lowered (Task 11)",
+            rel
         )),
     }
 }
@@ -420,9 +489,13 @@ fn lower_layer<F: PrimeField + PartialEq>(
     let mut arena = ArenaBuilder::new();
     let mut out = LayerOut::new();
 
-    // Reduced base-field `−1`, used to encode lookup-numerator subtractions as
-    // `a + (−1)·b` (there is no `Sub`/`Neg` node).
+    // Reduced base-field `−1`, used to encode subtractions as `a + (−1)·b` (there
+    // is no `Sub`/`Neg` node) — lookup numerators, `IsRegister`, and the mask gate.
     let minus_one = F::CHARACTERISTICS - 1;
+
+    // Circuit globals the inits/teardowns top-bits constant resolves from.
+    let trace_len = artifact.trace_len;
+    let inits_word_bits = artifact.memory_layout.inits_and_teardowns_word_bits;
 
     let lower_group = |arena: &mut ArenaBuilder,
                        out: &mut LayerOut,
@@ -437,6 +510,8 @@ fn lower_layer<F: PrimeField + PartialEq>(
                 group.clone(),
                 relation_index,
                 minus_one,
+                trace_len,
+                inits_word_bits,
             )?;
         }
         Ok(())
@@ -646,26 +721,41 @@ mod tests {
         );
     }
 
-    // ── Not-yet-lowered families return Err (no panic) ──────────────────────
+    // ── Confirmed-dead U32SpaceGeneric address form returns Err (no panic) ──
 
     #[test]
-    fn unimplemented_relation_returns_err_not_panic() {
-        // Pick a still-unimplemented variant (grand-product family); it must not
-        // be lowered yet. All lookup variants are now lowered (Task 8).
-        let (_name, rel) = sample_relations()
-            .into_iter()
-            .find(|(name, _)| *name == "TrivialProduct")
-            .expect("sample relation must exist");
+    fn u32_space_generic_address_returns_err_not_panic() {
+        // The only remaining Err path: a memory tuple whose address is the
+        // confirmed-dead U32SpaceGeneric form must return Err, never panic.
+        use crate::gkr_compiler::{
+            CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
+            NoFieldSpecialMemoryContributionRelation,
+        };
+        use crate::definitions::gkr::RamWordRepresentation;
+        let generic = NoFieldSpecialMemoryContributionRelation {
+            address_space: CompiledAddressSpaceRelationStrict::Constant(0),
+            address: CompiledAddressStrict::U32SpaceGeneric([
+                (vec![(1u64, 0usize)].into_boxed_slice(), 0u64),
+                (vec![(1u64, 1usize)].into_boxed_slice(), 0u64),
+            ]),
+            timestamp: CompiledMemoryTimestamp::Zero,
+            value: RamWordRepresentation::Zero,
+            timestamp_offset: 0,
+        };
+        let rel = NoFieldGKRRelation::MaterializeGrandProductTermExpression {
+            input: generic,
+            output: inner0(),
+        };
         let artifact = single_relation_artifact(rel);
         let result = lower_dag(&artifact);
         assert!(
             result.is_err(),
-            "a not-yet-lowered relation must return Err, not panic"
+            "U32SpaceGeneric must return Err, not panic"
         );
         let msg = result.unwrap_err();
         assert!(
-            msg.contains("not yet lowered"),
-            "error message should explain the staging: {msg}"
+            msg.contains("U32SpaceGeneric"),
+            "error message should name the dead path: {msg}"
         );
     }
 
@@ -1064,6 +1154,371 @@ mod tests {
             assert!(
                 lower_dag(&artifact).is_ok(),
                 "{name} must lower without Err"
+            );
+        }
+    }
+
+    // ── Memory / grand-product / mask / inits-teardowns lowering (Task 9) ────
+
+    use crate::definitions::gkr::RamWordRepresentation;
+    use crate::definitions::VirtualSetupPoly;
+    use crate::gkr_compiler::dag_ir::{ChallengePower, PermutationSlot};
+    use crate::gkr_compiler::test_support::sample_relation_cases;
+    use crate::gkr_compiler::{
+        CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
+        InitsOrTeardownsTimestampAndValue, NoFieldSpecialMemoryContributionRelation,
+    };
+
+    fn blm(i: usize) -> GKRAddress {
+        GKRAddress::BaseLayerMemory(i)
+    }
+
+    /// True if any source is the additive permutation challenge (`beta_perm`).
+    fn has_permutation_additive(layer: &DagLayer) -> bool {
+        layer.sources.iter().any(|s| {
+            matches!(&s.kind, SourceKind::Challenge { reference }
+                if reference.key == ChallengeKey::PermutationAdditive)
+        })
+    }
+
+    /// True if a permutation-linearization challenge for `slot` is present.
+    fn has_perm_slot(layer: &DagLayer, slot: PermutationSlot) -> bool {
+        layer.sources.iter().any(|s| {
+            matches!(&s.kind, SourceKind::Challenge { reference }
+                if reference.key == ChallengeKey::PermutationLinearization(slot.clone())
+                    && reference.power == ChallengePower::One)
+        })
+    }
+
+    /// `set` of every `BaseLayerMemory` column read in the layer.
+    fn memory_reads(layer: &DagLayer) -> std::collections::BTreeSet<usize> {
+        layer
+            .sources
+            .iter()
+            .filter_map(|s| match &s.kind {
+                SourceKind::Read {
+                    place: ReadPlace::BaseLayerMemory { column },
+                } => Some(*column),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// True if any `VirtualSetup` source of `kind` is present.
+    fn has_virtual_setup(layer: &DagLayer, kind: VirtualSetupKind) -> bool {
+        layer.sources.iter().any(|s| {
+            matches!(&s.kind, SourceKind::VirtualSetup { kind: k } if *k == kind)
+        })
+    }
+
+    /// Wrap a memory descriptor in a single-output `MaterializeGrandProductTermExpression`.
+    fn materialize_tuple(desc: NoFieldSpecialMemoryContributionRelation) -> NoFieldGKRRelation {
+        NoFieldGKRRelation::MaterializeGrandProductTermExpression {
+            input: desc,
+            output: inner0(),
+        }
+    }
+
+    // -- grand-product / product arms: single Ext Mul output --
+
+    #[test]
+    fn initial_grand_product_from_caches_is_ext_mul() {
+        let rel = NoFieldGKRRelation::InitialGrandProductFromCaches {
+            input: [
+                GKRAddress::Cached { layer: 0, offset: 0 },
+                GKRAddress::Cached { layer: 0, offset: 1 },
+            ],
+            output: inner0(),
+        };
+        let layer = lower_single(rel);
+        let (field, e) = single_output(&layer);
+        assert_eq!(*field, FieldKind::Ext, "grand product is Ext");
+        assert!(matches!(expr(&layer, e), Expr::Mul(_)), "read(a)·read(b) is a Mul");
+    }
+
+    #[test]
+    fn unbalanced_grand_product_with_cache_is_ext_mul() {
+        let rel = NoFieldGKRRelation::UnbalancedGrandProductWithCache {
+            scalar: GKRAddress::Cached { layer: 0, offset: 0 },
+            input: GKRAddress::Cached { layer: 0, offset: 1 },
+            output: inner0(),
+        };
+        let layer = lower_single(rel);
+        let (field, e) = single_output(&layer);
+        assert_eq!(*field, FieldKind::Ext);
+        assert!(matches!(expr(&layer, e), Expr::Mul(_)), "read(s)·read(t) is a Mul");
+    }
+
+    #[test]
+    fn trivial_product_is_ext_mul() {
+        let rel = NoFieldGKRRelation::TrivialProduct {
+            input: [blw(0), blw(1)],
+            output: inner0(),
+        };
+        let layer = lower_single(rel);
+        let (field, e) = single_output(&layer);
+        assert_eq!(*field, FieldKind::Ext);
+        assert!(matches!(expr(&layer, e), Expr::Mul(_)), "read·read is a Mul");
+    }
+
+    #[test]
+    fn initial_grand_product_without_caches_is_mul_of_two_tuples() {
+        // Two memory tuples, each an affine Add over a permutation-additive
+        // challenge; the product is the top-level Mul.
+        let desc = NoFieldSpecialMemoryContributionRelation {
+            address_space: CompiledAddressSpaceRelationStrict::Constant(1),
+            address: CompiledAddressStrict::U32Space([0, 1]),
+            timestamp: CompiledMemoryTimestamp::Zero,
+            value: RamWordRepresentation::Zero,
+            timestamp_offset: 0,
+        };
+        let rel = NoFieldGKRRelation::InitialGrandProductWithoutCaches {
+            input: [desc.clone(), desc],
+            output: inner0(),
+        };
+        let layer = lower_single(rel);
+        let (field, e) = single_output(&layer);
+        assert_eq!(*field, FieldKind::Ext);
+        assert!(matches!(expr(&layer, e), Expr::Mul(_)), "tuple·tuple is a Mul");
+        // The tuple carries the additive permutation challenge and the addr slots.
+        assert!(has_permutation_additive(&layer), "tuple shifted by beta_perm");
+        assert!(has_perm_slot(&layer, PermutationSlot::AddressLow));
+        assert!(has_perm_slot(&layer, PermutationSlot::AddressHigh));
+    }
+
+    #[test]
+    fn mask_into_identity_is_one_plus_mask_times_input_minus_one() {
+        // 1 + mask·(input − 1): top-level Add of [Constant(1), Mul(mask, Add(input, -1))].
+        let rel = NoFieldGKRRelation::MaskIntoIdentityProduct {
+            input: blw(0),
+            mask: blw(1),
+            output: inner0(),
+        };
+        let layer = lower_single(rel);
+        let (field, e) = single_output(&layer);
+        assert_eq!(*field, FieldKind::Ext);
+        // Top level is an Add: a constant `1` plus a product term.
+        let Expr::Add(terms) = expr(&layer, e) else {
+            panic!("mask gate top level must be Add, got {:?}", expr(&layer, e));
+        };
+        assert_eq!(terms.len(), 2, "1 + (mask·(input−1))");
+        let has_const_one = terms.iter().any(|t| {
+            matches!(expr(&layer, *t), Expr::Source(sid)
+                if matches!(&layer.sources[sid.0 as usize].kind,
+                    SourceKind::Constant { value: 1 }))
+        });
+        let has_mul = terms.iter().any(|t| matches!(expr(&layer, *t), Expr::Mul(_)));
+        assert!(has_const_one && has_mul, "expected Constant(1) + Mul term");
+    }
+
+    // -- memory-tuple descriptor shapes (via sample_relation_cases) --
+
+    #[test]
+    fn memory_tuple_is_register_uses_one_minus_bit() {
+        // IsRegister(0) → 1 − mem[0], i.e. an Add of [Constant(1), Mul(-1, mem[0])].
+        let is_register = NoFieldSpecialMemoryContributionRelation {
+            address_space: CompiledAddressSpaceRelationStrict::IsRegister(0),
+            address: CompiledAddressStrict::U16Space(1),
+            timestamp: CompiledMemoryTimestamp::Zero,
+            value: RamWordRepresentation::Zero,
+            timestamp_offset: 0,
+        };
+        let layer = lower_single(materialize_tuple(is_register));
+        // The `1 − bit` register indicator interns a Constant(1) and a (-1)·mem[0]
+        // product. Both must be present as sub-exprs somewhere in the tuple.
+        let has_one = layer.sources.iter().any(|s| {
+            matches!(&s.kind, SourceKind::Constant { value: 1 })
+        });
+        assert!(has_one, "IsRegister contributes a Constant(1) for `1 − bit`");
+        // mem[0] is the address-space indicator bit.
+        assert!(memory_reads(&layer).contains(&0), "reads the indicator bit mem[0]");
+        // The address U16Space(1) reads mem[1] scaled by ch(AddressLow).
+        assert!(memory_reads(&layer).contains(&1));
+        assert!(has_perm_slot(&layer, PermutationSlot::AddressLow));
+    }
+
+    #[test]
+    fn memory_tuple_is_ram_uses_bare_bit() {
+        // IsRam(0) → mem[0] (no `1 −` wrapper around the indicator).
+        let is_ram = NoFieldSpecialMemoryContributionRelation {
+            address_space: CompiledAddressSpaceRelationStrict::IsRam(0),
+            address: CompiledAddressStrict::U16Space(1),
+            timestamp: CompiledMemoryTimestamp::Zero,
+            value: RamWordRepresentation::Zero,
+            timestamp_offset: 0,
+        };
+        let layer = lower_single(materialize_tuple(is_ram));
+        // The indicator bit mem[0] is read directly. IsRam does NOT introduce the
+        // `1 −` Constant that IsRegister does (only the Constant address space /
+        // RAM const could) — here address space is IsRam and address is U16Space,
+        // so no `Constant(1)` from the address-space term.
+        assert!(memory_reads(&layer).contains(&0), "reads the indicator bit mem[0]");
+        let has_one = layer.sources.iter().any(|s| {
+            matches!(&s.kind, SourceKind::Constant { value: 1 })
+        });
+        assert!(!has_one, "IsRam contributes the bare bit, no `1 −` Constant");
+    }
+
+    #[test]
+    fn memory_tuple_special_indirect_low_recomposes_low_address() {
+        // U32SpaceSpecialIndirect: low limb = mem[low_base] + coeff·mem[dynamic]
+        // (low_offset 0), high = mem[high]. coeff = 1 here, dynamic col = 1.
+        let special = NoFieldSpecialMemoryContributionRelation {
+            address_space: CompiledAddressSpaceRelationStrict::Constant(0),
+            address: CompiledAddressStrict::U32SpaceSpecialIndirect {
+                low_base: 0,
+                low_dynamic_offset: Some((3, 1)),
+                low_offset: 0,
+                high: 2,
+            },
+            timestamp: CompiledMemoryTimestamp::Zero,
+            value: RamWordRepresentation::Zero,
+            timestamp_offset: 0,
+        };
+        let layer = lower_single(materialize_tuple(special));
+        // low_base mem[0], dynamic mem[1], high mem[2] all read.
+        let reads = memory_reads(&layer);
+        assert!(reads.contains(&0) && reads.contains(&1) && reads.contains(&2));
+        // coeff 3 appears as a Constant scaling the dynamic read.
+        let has_coeff = layer.sources.iter().any(|s| {
+            matches!(&s.kind, SourceKind::Constant { value: 3 })
+        });
+        assert!(has_coeff, "dynamic offset coeff `3` is a Constant factor");
+        assert!(has_perm_slot(&layer, PermutationSlot::AddressLow));
+        assert!(has_perm_slot(&layer, PermutationSlot::AddressHigh));
+    }
+
+    #[test]
+    fn memory_tuple_u8_limbs_recomposes_each_value_limb() {
+        // U8Limbs([b0,b1,b2,b3]) → value_low = mem[b0] + 2^8·mem[b1],
+        // value_high = mem[b2] + 2^8·mem[b3]. The byte shift 2^8 is a Constant.
+        let u8_limbs = NoFieldSpecialMemoryContributionRelation {
+            address_space: CompiledAddressSpaceRelationStrict::Constant(0),
+            address: CompiledAddressStrict::U16Space(0),
+            timestamp: CompiledMemoryTimestamp::Zero,
+            value: RamWordRepresentation::U8Limbs([10, 11, 12, 13]),
+            timestamp_offset: 0,
+        };
+        let layer = lower_single(materialize_tuple(u8_limbs));
+        let reads = memory_reads(&layer);
+        for col in [10, 11, 12, 13] {
+            assert!(reads.contains(&col), "byte column {col} read");
+        }
+        let has_byte_shift = layer.sources.iter().any(|s| {
+            matches!(&s.kind, SourceKind::Constant { value: 256 })
+        });
+        assert!(has_byte_shift, "U8 recomposition multiplies high byte by 2^8 = 256");
+        assert!(has_perm_slot(&layer, PermutationSlot::ValueLow));
+        assert!(has_perm_slot(&layer, PermutationSlot::ValueHigh));
+    }
+
+    #[test]
+    fn memory_tuple_timestamp_offset_is_added_to_low_limb() {
+        // Normal timestamp with a non-zero offset: low limb is mem[ts0] + offset.
+        let desc = NoFieldSpecialMemoryContributionRelation {
+            address_space: CompiledAddressSpaceRelationStrict::Constant(0),
+            address: CompiledAddressStrict::U16Space(0),
+            timestamp: CompiledMemoryTimestamp::Normal([5, 6]),
+            value: RamWordRepresentation::Zero,
+            timestamp_offset: 7,
+        };
+        let layer = lower_single(materialize_tuple(desc));
+        let reads = memory_reads(&layer);
+        assert!(reads.contains(&5) && reads.contains(&6), "ts limbs read");
+        let has_offset = layer.sources.iter().any(|s| {
+            matches!(&s.kind, SourceKind::Constant { value: 7 })
+        });
+        assert!(has_offset, "timestamp_offset 7 is added to the low limb");
+        assert!(has_perm_slot(&layer, PermutationSlot::TimestampLow));
+        assert!(has_perm_slot(&layer, PermutationSlot::TimestampHigh));
+    }
+
+    // -- inits / teardowns: init (zeroed ts/value) vs teardown (limb reads) --
+
+    #[test]
+    fn inits_pair_is_ext_mul_of_two_virtual_setup_tuples_no_mem_reads() {
+        // Init: zeroed timestamp/value → NO base-memory reads at all; address is
+        // the inits/teardowns virtual setups. Output is an Ext Mul of two tuples.
+        let rel = NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+            timestamp_and_value: InitsOrTeardownsTimestampAndValue::Init,
+            setup: [
+                GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
+                GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
+            ],
+            output: inner0(),
+            set_idxes: [0, 1],
+        };
+        let layer = lower_single(rel);
+        let (field, e) = single_output(&layer);
+        assert_eq!(*field, FieldKind::Ext);
+        assert!(matches!(expr(&layer, e), Expr::Mul(_)), "init tuple·tuple is a Mul");
+        assert!(
+            memory_reads(&layer).is_empty(),
+            "init has zeroed ts/value → no base-memory reads"
+        );
+        assert!(has_virtual_setup(&layer, VirtualSetupKind::InitsAndTeardownsLow));
+        assert!(has_virtual_setup(&layer, VirtualSetupKind::InitsAndTeardownsHigh));
+        assert!(has_permutation_additive(&layer));
+        assert!(has_perm_slot(&layer, PermutationSlot::AddressLow));
+        assert!(has_perm_slot(&layer, PermutationSlot::AddressHigh));
+        // Init carries NO timestamp/value slots.
+        assert!(!has_perm_slot(&layer, PermutationSlot::TimestampLow));
+        assert!(!has_perm_slot(&layer, PermutationSlot::ValueLow));
+    }
+
+    #[test]
+    fn teardown_pair_reads_timestamp_and_value_limbs() {
+        // Teardown: timestamp/value limb indexes are read from base memory, and
+        // the timestamp/value challenge slots appear.
+        let rel = NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+            timestamp_and_value: InitsOrTeardownsTimestampAndValue::Teardown {
+                lhs_timestamp: [0, 1],
+                lhs_value: [2, 3],
+                rhs_timestamp: [4, 5],
+                rhs_value: [6, 7],
+            },
+            setup: [
+                GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
+                GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
+            ],
+            output: inner0(),
+            set_idxes: [0, 1],
+        };
+        let layer = lower_single(rel);
+        let (field, e) = single_output(&layer);
+        assert_eq!(*field, FieldKind::Ext);
+        assert!(matches!(expr(&layer, e), Expr::Mul(_)));
+        // All eight ts/value limb columns are read from base memory.
+        let reads = memory_reads(&layer);
+        for col in 0..8 {
+            assert!(reads.contains(&col), "teardown reads ts/value limb mem[{col}]");
+        }
+        assert!(has_perm_slot(&layer, PermutationSlot::TimestampLow));
+        assert!(has_perm_slot(&layer, PermutationSlot::TimestampHigh));
+        assert!(has_perm_slot(&layer, PermutationSlot::ValueLow));
+        assert!(has_perm_slot(&layer, PermutationSlot::ValueHigh));
+        // Still uses the inits/teardowns address virtual setups.
+        assert!(has_virtual_setup(&layer, VirtualSetupKind::InitsAndTeardownsLow));
+        assert!(has_virtual_setup(&layer, VirtualSetupKind::InitsAndTeardownsHigh));
+    }
+
+    // -- smoke: every memory/inits subcase in sample_relation_cases lowers --
+
+    #[test]
+    fn memory_and_inits_sample_cases_lower_to_single_ext_output() {
+        for (name, rel) in sample_relation_cases() {
+            let is_mem = name.starts_with("MemoryTuple")
+                || name.starts_with("InitsOrTeardownsInitialPair");
+            if !is_mem {
+                continue;
+            }
+            let layer = lower_single(rel);
+            let outs = outputs(&layer);
+            assert_eq!(outs.len(), 1, "{name} is single-output");
+            assert_eq!(outs[0].0, FieldKind::Ext, "{name} output is Ext");
+            assert!(
+                matches!(expr(&layer, outs[0].1), Expr::Mul(_)),
+                "{name} is a grand-product Mul"
             );
         }
     }
