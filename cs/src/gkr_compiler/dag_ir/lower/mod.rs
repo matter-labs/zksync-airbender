@@ -418,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn copy_ext_lowers_to_ext_source_and_records_read_field() {
+    fn copy_ext_lowers_to_ext_source() {
         let rel = NoFieldGKRRelation::CopyInExtensionField {
             input: blw(0),
             output: inner0(),
