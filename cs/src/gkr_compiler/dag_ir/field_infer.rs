@@ -73,11 +73,7 @@ pub fn source_field(
                     let sink_info = &sinks[sink.0 as usize];
                     Ok(sink_info.field.clone())
                 }
-                Root::Constraint { .. } => {
-                    // Spec says Prior should only reference Output roots.
-                    // Treat as Base to avoid panicking; callers should not build this.
-                    Ok(FieldKind::Base)
-                }
+                Root::Constraint { .. } => unreachable!("Prior must reference an Output root, not a Constraint root"),
             }
         }
 
@@ -201,6 +197,16 @@ mod tests {
         assert_eq!(read_place_field(&ReadPlace::Scratch { slot: 0 }), Some(FieldKind::Base));
     }
 
+    #[test]
+    fn read_place_base_layer_witness_is_base() {
+        assert_eq!(read_place_field(&ReadPlace::BaseLayerWitness { column: 0 }), Some(FieldKind::Base));
+    }
+
+    #[test]
+    fn read_place_setup_is_base() {
+        assert_eq!(read_place_field(&ReadPlace::Setup { column: 0 }), Some(FieldKind::Base));
+    }
+
     // ── source_field: cross-layer reads return Err ────────────────────────────
 
     #[test]
@@ -288,5 +294,11 @@ mod tests {
 
         let result = expr_field(&exprs, &sources, ExprId(2), &[], &[]);
         assert_eq!(result, Ok(FieldKind::Base));
+    }
+
+    #[test]
+    fn source_field_read_scratch_is_base() {
+        let kind = SourceKind::Read { place: ReadPlace::Scratch { slot: 0 } };
+        assert_eq!(source_field(&kind, &[], &[]), Ok(FieldKind::Base));
     }
 }
