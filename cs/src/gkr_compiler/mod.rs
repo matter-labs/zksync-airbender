@@ -28,6 +28,7 @@ pub(crate) struct ShuffleRamTimestampComparisonPartialData {
     pub(crate) local_timestamp_in_cycle: usize,
 }
 
+#[path = "retired/codegen_ir.rs"]
 pub mod codegen_ir;
 pub use codegen_ir::{lower, to_json_string, CodegenCircuit};
 pub mod dag_ir;
