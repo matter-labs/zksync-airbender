@@ -76,6 +76,8 @@ pub struct Resolvers<'a> {
 /// Materialization-only roots (i.e. roots whose `RootId` does not appear in
 /// `layer.batching.roots`) are evaluated eagerly in ascending `RootId` order
 /// before the target root, so `Prior(id)` can look up their result.
+///
+/// `Prior(id)` is only valid when `id` is a materialization-only root (not in `batching.roots`); evaluating a root that `Prior`-references a batching root will panic.
 pub fn eval_layer_root(layer: &DagLayer, root: RootId, row: usize, r: &Resolvers<'_>) -> Ext {
     // Build the set of "claim-bearing" roots (those in batching order).
     let batching_set: std::collections::HashSet<RootId> =
@@ -193,7 +195,7 @@ mod tests {
     use super::*;
     use crate::gkr_compiler::dag_ir::{
         ArenaBuilder, BatchingOrder, ChallengeKey, ChallengeRef, ChallengePower, DagLayer, Expr,
-        ExprId, FieldKind, LookupValueKind, ReadPlace, Root, RootId, SinkId, SinkInfo, SinkKind,
+        ExprId, FieldKind, LookupValueKind, ReadPlace, Root, RootId, SinkId, SinkKind,
         SourceKind, VirtualSetupKind,
     };
 
