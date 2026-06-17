@@ -3,3 +3,6 @@ pub use model::*;
 
 pub mod field_infer;
 pub use field_infer::*;
+
+pub mod arena;
+pub use arena::*;
