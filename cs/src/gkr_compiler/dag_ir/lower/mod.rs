@@ -8,11 +8,13 @@
 //! sumcheck batching expects.
 //!
 //! # Staged lowering
-//! Only the arithmetic/copy family is implemented in this scaffold
-//! (`LinearBaseFieldRelation`, `MaxQuadratic`, `CopyInBaseField`,
-//! `CopyInExtensionField`). EVERY other arm returns `Err(...)` — NEVER panics —
-//! so staged synthetic tests for implemented families pass and not-yet-lowered
-//! families fail cleanly. Tasks 8–11 extend the match.
+//! The arithmetic/copy family (`LinearBaseFieldRelation`, `MaxQuadratic`,
+//! `CopyInBaseField`, `CopyInExtensionField`) and the full lookup family (the two
+//! single-output materializations plus every two-output num/den pair gate — see
+//! [`lookup`]) are implemented. The remaining grand-product / memory-tuple /
+//! inits-teardowns / enforce arms still return `Err(...)` — NEVER panic — so
+//! staged synthetic tests for implemented families pass and not-yet-lowered
+//! families fail cleanly. Tasks 9–11 extend the match.
 //!
 //! # The cross-layer field subtlety
 //! An `Output` root's sink field is taken from the RELATION, not from field
@@ -28,6 +30,7 @@
 //! but not yet surfaced on `DagCircuit`/`DagLayer` (see the report's concern).
 
 mod arithmetic;
+mod lookup;
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -156,6 +159,42 @@ impl LayerOut {
         );
         Ok(())
     }
+
+    /// Emit TWO adjacent `Output` roots — num (slot `Output(0)`) then den (slot
+    /// `Output(1)`) — for a two-output lookup gate, writing to `output[0]` and
+    /// `output[1]` with `field`. The roots are adjacent in emission order so they
+    /// receive consecutive batching powers.
+    fn emit_output_pair(
+        &mut self,
+        num: ExprId,
+        den: ExprId,
+        output: [GKRAddress; 2],
+        field: FieldKind,
+        group: RootGroup,
+        relation_index: usize,
+    ) -> Result<(), String> {
+        for (slot, (expr, addr)) in [(num, output[0]), (den, output[1])].into_iter().enumerate() {
+            let sink_id = SinkId(self.sinks.len() as u32);
+            self.sinks.push(SinkInfo {
+                kind: output_sink_kind(addr)?,
+                field: field.clone(),
+            });
+            let root_id = RootId(self.roots.len() as u32);
+            self.roots.push(Root::Output {
+                expr,
+                sink: sink_id,
+            });
+            self.origins.insert(
+                root_id,
+                RootOrigin {
+                    group: group.clone(),
+                    relation_index,
+                    slot: RootSlot::Output(slot),
+                },
+            );
+        }
+        Ok(())
+    }
 }
 
 /// Lower one relation into the shared arena + layer accumulator.
@@ -168,6 +207,7 @@ fn lower_relation(
     rel: &NoFieldGKRRelation,
     group: RootGroup,
     relation_index: usize,
+    minus_one: u32,
 ) -> Result<(), String> {
     use NoFieldGKRRelation as R;
     match rel {
@@ -193,6 +233,173 @@ fn lower_relation(
             let (expr, field) = arithmetic::lower_copy(arena, *input, FieldKind::Ext);
             out.emit_output(expr, *output, field, group, relation_index)
         }
+
+        // ── Single-output lookup materializations ───────────────────────────
+        R::MaterializeSingleLookupInput {
+            input,
+            output,
+            range_check_width,
+        } => {
+            // single_column_lookup is a base-valued LookupValue.
+            let expr = lookup::single_column_lookup(arena, input, *range_check_width);
+            out.emit_output(expr, *output, FieldKind::Base, group, relation_index)
+        }
+        R::MaterializedVectorLookupInput { input, output } => {
+            // folded_lookup is extension-valued (alpha powers are challenges).
+            let expr = lookup::folded_lookup(arena, input);
+            out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
+        }
+
+        // ── Two-output PAIR family: 1/(b+γ) + 1/(d+γ) ───────────────────────
+        R::LookupPairFromBaseInputs {
+            input,
+            output,
+            range_check_width,
+        } => {
+            let b = lookup::single_column_lookup(arena, &input[0], *range_check_width);
+            let d = lookup::single_column_lookup(arena, &input[1], *range_check_width);
+            let (num, den) = lookup::pair(arena, b, d);
+            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
+        }
+        R::LookupPairFromMaterializedBaseInputs { input, output } => {
+            let b = lookup::read(arena, input[0]);
+            let d = lookup::read(arena, input[1]);
+            let (num, den) = lookup::pair(arena, b, d);
+            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
+        }
+        R::LookupPairFromVectorInputs { input, output } => {
+            let b = lookup::folded_lookup(arena, &input[0]);
+            let d = lookup::folded_lookup(arena, &input[1]);
+            let (num, den) = lookup::pair(arena, b, d);
+            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
+        }
+        R::LookupPairFromMaterializedVectorInputs { input, output }
+        | R::LookupPairFromCachedVectorInputs { input, output } => {
+            let b = lookup::read(arena, input[0]);
+            let d = lookup::read(arena, input[1]);
+            let (num, den) = lookup::pair(arena, b, d);
+            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
+        }
+
+        // ── Two-output LOOKUP-MINUS-SETUP: 1/(b+γ) − c/(d+γ) ────────────────
+        R::LookupFromMaterializedBaseInputWithSetup {
+            input,
+            setup,
+            output,
+        }
+        | R::LookupFromMaterializedVectorInputWithSetup {
+            input,
+            setup,
+            output,
+        } => {
+            // b = Read(input); c = multiplicity Read(setup[0]); d = setup Read(setup[1]).
+            let b = lookup::read(arena, *input);
+            let c = lookup::read(arena, setup[0]);
+            let d = lookup::read(arena, setup[1]);
+            let (num, den) = lookup::minus_multiplicity(arena, b, c, d, minus_one);
+            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
+        }
+        R::LookupFromVectorInputWithSetup {
+            input,
+            setup,
+            output,
+        } => {
+            // b = folded_lookup(input); c = multiplicity Read(setup.0);
+            // d = alpha-folded setup columns.
+            let b = lookup::folded_lookup(arena, input);
+            let c = lookup::read(arena, setup.0);
+            let d = lookup::folded_setup(arena, &setup.1);
+            let (num, den) = lookup::minus_multiplicity(arena, b, c, d, minus_one);
+            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
+        }
+
+        // ── Two-output DENS-AND-SETUP: a/(b+γ) − c/(d+γ) ────────────────────
+        R::LookupWithCachedDensAndSetup {
+            input,
+            setup,
+            output,
+        } => {
+            // a = Read(input[0]); b = Read(input[1]);
+            // c = Read(setup[0]); d = Read(setup[1]).
+            let a = lookup::read(arena, input[0]);
+            let b = lookup::read(arena, input[1]);
+            let c = lookup::read(arena, setup[0]);
+            let d = lookup::read(arena, setup[1]);
+            let (num, den) = lookup::dens_and_setup(arena, a, b, c, d, minus_one);
+            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
+        }
+        R::LookupWithDensAndSetupExpressions {
+            input,
+            setup,
+            output,
+        } => {
+            // a = Read(input.0) (mask); b = folded_lookup(input.1);
+            // c = Read(setup.0) (multiplicity); d = alpha-folded setup columns.
+            let a = lookup::read(arena, input.0);
+            let b = lookup::folded_lookup(arena, &input.1);
+            let c = lookup::read(arena, setup.0);
+            let d = lookup::folded_setup(arena, &setup.1);
+            let (num, den) = lookup::dens_and_setup(arena, a, b, c, d, minus_one);
+            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
+        }
+        R::LookupWithDensAndCachedSetup {
+            input,
+            setup,
+            output,
+        } => {
+            // a = Read(input.0) (mask); b = folded_lookup(input.1);
+            // c = Read(setup.0) (multiplicity); d = Read(setup.1) (cached setup).
+            let a = lookup::read(arena, input.0);
+            let b = lookup::folded_lookup(arena, &input.1);
+            let c = lookup::read(arena, setup.0);
+            let d = lookup::read(arena, setup.1);
+            let (num, den) = lookup::dens_and_setup(arena, a, b, c, d, minus_one);
+            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
+        }
+
+        // ── Two-output UNBALANCED: a/b + 1/(d+γ) ────────────────────────────
+        R::LookupUnbalancedPairWithMaterializedBaseInputs {
+            input,
+            remainder,
+            output,
+        }
+        | R::LookupUnbalancedPairWithMaterializedVectorInputs {
+            input,
+            remainder,
+            output,
+        } => {
+            // a = Read(input[0]); b = Read(input[1]) (prior pair); d = Read(remainder).
+            let a = lookup::read(arena, input[0]);
+            let b = lookup::read(arena, input[1]);
+            let d = lookup::read(arena, *remainder);
+            let (num, den) = lookup::unbalanced(arena, a, b, d);
+            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
+        }
+        R::LookupUnbalancedPairWithVectorInputs {
+            input,
+            remainder,
+            output,
+        } => {
+            // a = Read(input[0]); b = Read(input[1]) (prior pair);
+            // d = folded_lookup(remainder).
+            let a = lookup::read(arena, input[0]);
+            let b = lookup::read(arena, input[1]);
+            let d = lookup::folded_lookup(arena, remainder);
+            let (num, den) = lookup::unbalanced(arena, a, b, d);
+            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
+        }
+
+        // ── Two-output RATIONAL-PAIR aggregate: a/b + c/d ───────────────────
+        R::AggregateLookupRationalPair { input, output } => {
+            // input[0] = [a_num, b_den]; input[1] = [c_num, d_den].
+            let a = lookup::read(arena, input[0][0]);
+            let b = lookup::read(arena, input[0][1]);
+            let c = lookup::read(arena, input[1][0]);
+            let d = lookup::read(arena, input[1][1]);
+            let (num, den) = lookup::rational_pair(arena, a, b, c, d);
+            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
+        }
+
         other => Err(format!(
             "dag_ir: relation {:?} not yet lowered (Task N)",
             other
@@ -213,6 +420,10 @@ fn lower_layer<F: PrimeField + PartialEq>(
     let mut arena = ArenaBuilder::new();
     let mut out = LayerOut::new();
 
+    // Reduced base-field `−1`, used to encode lookup-numerator subtractions as
+    // `a + (−1)·b` (there is no `Sub`/`Neg` node).
+    let minus_one = F::CHARACTERISTICS - 1;
+
     let lower_group = |arena: &mut ArenaBuilder,
                        out: &mut LayerOut,
                        group: RootGroup,
@@ -225,6 +436,7 @@ fn lower_layer<F: PrimeField + PartialEq>(
                 &gate.enforced_relation,
                 group.clone(),
                 relation_index,
+                minus_one,
             )?;
         }
         Ok(())
@@ -438,10 +650,11 @@ mod tests {
 
     #[test]
     fn unimplemented_relation_returns_err_not_panic() {
-        // Pick a lookup variant from the sample relations; it must not be lowered yet.
+        // Pick a still-unimplemented variant (grand-product family); it must not
+        // be lowered yet. All lookup variants are now lowered (Task 8).
         let (_name, rel) = sample_relations()
             .into_iter()
-            .find(|(name, _)| *name == "LookupPairFromMaterializedBaseInputs")
+            .find(|(name, _)| *name == "TrivialProduct")
             .expect("sample relation must exist");
         let artifact = single_relation_artifact(rel);
         let result = lower_dag(&artifact);
@@ -454,5 +667,404 @@ mod tests {
             msg.contains("not yet lowered"),
             "error message should explain the staging: {msg}"
         );
+    }
+
+    // ── Lookup lowering (Task 8) ────────────────────────────────────────────
+
+    use crate::definitions::gkr::{
+        NoFieldSingleColumnLookupRelation, NoFieldVectorLookupRelation,
+    };
+    use crate::gkr_compiler::dag_ir::{
+        ChallengeKey, LookupValueKind, SourceKind,
+    };
+
+    /// Trivial single-input linear query `1·x_addr`.
+    fn lin(addr: GKRAddress) -> NoFieldLinearRelation {
+        NoFieldLinearRelation::from_single_input(addr)
+    }
+
+    fn scl(set: usize) -> NoFieldSingleColumnLookupRelation {
+        NoFieldSingleColumnLookupRelation {
+            input: lin(blw(0)),
+            lookup_set_index: set,
+        }
+    }
+
+    fn vl(set: usize, n_cols: usize) -> NoFieldVectorLookupRelation {
+        NoFieldVectorLookupRelation {
+            columns: (0..n_cols).map(|i| lin(blw(i))).collect::<Vec<_>>().into_boxed_slice(),
+            lookup_set_index: set,
+        }
+    }
+
+    fn inner1() -> GKRAddress {
+        GKRAddress::InnerLayer { layer: 1, offset: 1 }
+    }
+
+    /// All `Output` roots' (field, expr), in root order.
+    fn outputs(layer: &DagLayer) -> Vec<(FieldKind, ExprId)> {
+        layer
+            .roots
+            .iter()
+            .filter_map(|r| match r {
+                Root::Output { expr, sink } => {
+                    Some((layer.sinks[sink.0 as usize].field.clone(), *expr))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Every `LookupValue` source's `set_index`, in source order.
+    fn lookup_set_indices(layer: &DagLayer) -> Vec<usize> {
+        layer
+            .sources
+            .iter()
+            .filter_map(|s| match &s.kind {
+                SourceKind::LookupValue { set_index, .. } => Some(*set_index),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// True if any source is a lookup-multiplicative challenge of power `j`.
+    fn has_alpha_pow(layer: &DagLayer, j: u32) -> bool {
+        use crate::gkr_compiler::dag_ir::ChallengePower;
+        layer.sources.iter().any(|s| {
+            matches!(&s.kind, SourceKind::Challenge { reference }
+                if reference.key == ChallengeKey::LookupMultiplicative
+                    && reference.power == ChallengePower::Static(j))
+        })
+    }
+
+    /// True if any source is the lookup-additive (gamma) challenge.
+    fn has_gamma(layer: &DagLayer) -> bool {
+        layer.sources.iter().any(|s| {
+            matches!(&s.kind, SourceKind::Challenge { reference }
+                if reference.key == ChallengeKey::LookupAdditive)
+        })
+    }
+
+    fn expr<'a>(layer: &'a DagLayer, id: ExprId) -> &'a Expr {
+        &layer.exprs[id.0 as usize]
+    }
+
+    // -- single-output materializations --
+
+    #[test]
+    fn materialize_single_lookup_is_one_base_range_check_output() {
+        let rel = NoFieldGKRRelation::MaterializeSingleLookupInput {
+            input: scl(3),
+            output: inner0(),
+            range_check_width: 16,
+        };
+        let layer = lower_single(rel);
+        let outs = outputs(&layer);
+        assert_eq!(outs.len(), 1, "MaterializeSingleLookupInput is single-output");
+        assert_eq!(outs[0].0, FieldKind::Base, "single-column lookup is Base");
+        // The output expr resolves (through CSE) to a RangeCheck16Index LookupValue.
+        let kinds: Vec<_> = layer
+            .sources
+            .iter()
+            .filter_map(|s| match &s.kind {
+                SourceKind::LookupValue { kind, .. } => Some(kind.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            kinds.contains(&LookupValueKind::RangeCheck16Index),
+            "width 16 selects RangeCheck16Index, got {kinds:?}"
+        );
+        assert_eq!(lookup_set_indices(&layer), vec![3], "set_index carried");
+    }
+
+    #[test]
+    fn materialize_single_lookup_timestamp_width_picks_timestamp_index() {
+        let rel = NoFieldGKRRelation::MaterializeSingleLookupInput {
+            input: scl(7),
+            output: inner0(),
+            range_check_width: 19,
+        };
+        let layer = lower_single(rel);
+        let kinds: Vec<_> = layer
+            .sources
+            .iter()
+            .filter_map(|s| match &s.kind {
+                SourceKind::LookupValue { kind, .. } => Some(kind.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            kinds.contains(&LookupValueKind::TimestampIndex),
+            "non-16 width selects TimestampIndex, got {kinds:?}"
+        );
+        assert_eq!(lookup_set_indices(&layer), vec![7]);
+    }
+
+    #[test]
+    fn materialized_vector_lookup_is_one_ext_output_folded() {
+        // 3 columns → terms for col0 (no alpha), col1·alpha^1, col2·alpha^2.
+        let rel = NoFieldGKRRelation::MaterializedVectorLookupInput {
+            input: vl(5, 3),
+            output: inner0(),
+        };
+        let layer = lower_single(rel);
+        let outs = outputs(&layer);
+        assert_eq!(outs.len(), 1, "MaterializedVectorLookupInput is single-output");
+        assert_eq!(outs[0].0, FieldKind::Ext, "folded vector lookup is Ext");
+        // Top-level expr is an Add of the per-column terms.
+        assert!(
+            matches!(expr(&layer, outs[0].1), Expr::Add(_)),
+            "folded_lookup top-level is an Add"
+        );
+        // alpha^1 and alpha^2 present; alpha^0 (col 0) carries no factor.
+        assert!(has_alpha_pow(&layer, 1) && has_alpha_pow(&layer, 2));
+        assert!(!has_alpha_pow(&layer, 0), "column 0 carries no alpha factor");
+        // Every emitted LookupValue carries set_index 5 (one per column).
+        assert_eq!(lookup_set_indices(&layer), vec![5, 5, 5]);
+    }
+
+    // -- two-output families: shared structural checks --
+
+    /// Assert exactly two adjacent Output roots, both Ext, num = Add, den = Mul,
+    /// and (if `expect_lookup_set` is `Some(set)`) every LookupValue set_index == set.
+    fn assert_two_output_num_add_den_mul(
+        layer: &DagLayer,
+        expect_lookup_set: Option<usize>,
+    ) {
+        let outs = outputs(layer);
+        assert_eq!(outs.len(), 2, "pair gate emits exactly two Output roots");
+        for (f, _) in &outs {
+            assert_eq!(*f, FieldKind::Ext, "two-output lookup roots are Ext");
+        }
+        // Roots are adjacent (ids 0 and 1) with slots Output(0)/Output(1).
+        assert_eq!(
+            layer.origins.get(&RootId(0)).map(|o| o.slot.clone()),
+            Some(RootSlot::Output(0))
+        );
+        assert_eq!(
+            layer.origins.get(&RootId(1)).map(|o| o.slot.clone()),
+            Some(RootSlot::Output(1))
+        );
+        // num is an Add, den is a Mul.
+        assert!(
+            matches!(expr(layer, outs[0].1), Expr::Add(_)),
+            "num is an Add, got {:?}",
+            expr(layer, outs[0].1)
+        );
+        assert!(
+            matches!(expr(layer, outs[1].1), Expr::Mul(_)),
+            "den is a Mul, got {:?}",
+            expr(layer, outs[1].1)
+        );
+        assert!(has_gamma(layer), "shifted by gamma");
+        if let Some(set) = expect_lookup_set {
+            for s in lookup_set_indices(layer) {
+                assert_eq!(s, set, "all LookupValue.set_index == relation set_index");
+            }
+        }
+    }
+
+    fn two_out() -> [GKRAddress; 2] {
+        [inner0(), inner1()]
+    }
+
+    #[test]
+    fn pair_from_base_inputs() {
+        let rel = NoFieldGKRRelation::LookupPairFromBaseInputs {
+            input: [scl(2), scl(2)],
+            output: two_out(),
+            range_check_width: 16,
+        };
+        let layer = lower_single(rel);
+        assert_two_output_num_add_den_mul(&layer, Some(2));
+    }
+
+    #[test]
+    fn pair_from_materialized_base_inputs() {
+        let rel = NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs {
+            input: [blw(0), blw(1)],
+            output: two_out(),
+        };
+        let layer = lower_single(rel);
+        // No inline LookupValue (operands are materialized Reads), so no set_index.
+        assert_two_output_num_add_den_mul(&layer, None);
+        assert!(lookup_set_indices(&layer).is_empty());
+    }
+
+    #[test]
+    fn pair_from_vector_inputs() {
+        let rel = NoFieldGKRRelation::LookupPairFromVectorInputs {
+            input: [vl(4, 2), vl(4, 2)],
+            output: two_out(),
+        };
+        let layer = lower_single(rel);
+        assert_two_output_num_add_den_mul(&layer, Some(4));
+    }
+
+    #[test]
+    fn pair_from_materialized_vector_inputs() {
+        let rel = NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs {
+            input: [blw(0), blw(1)],
+            output: two_out(),
+        };
+        let layer = lower_single(rel);
+        assert_two_output_num_add_den_mul(&layer, None);
+    }
+
+    #[test]
+    fn pair_from_cached_vector_inputs() {
+        let rel = NoFieldGKRRelation::LookupPairFromCachedVectorInputs {
+            input: [GKRAddress::Cached { layer: 0, offset: 0 }, GKRAddress::Cached { layer: 0, offset: 1 }],
+            output: two_out(),
+        };
+        let layer = lower_single(rel);
+        assert_two_output_num_add_den_mul(&layer, None);
+    }
+
+    #[test]
+    fn from_materialized_base_input_with_setup() {
+        let rel = NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup {
+            input: blw(0),
+            setup: [blw(1), GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits)],
+            output: two_out(),
+        };
+        let layer = lower_single(rel);
+        assert_two_output_num_add_den_mul(&layer, None);
+    }
+
+    #[test]
+    fn from_materialized_vector_input_with_setup() {
+        let rel = NoFieldGKRRelation::LookupFromMaterializedVectorInputWithSetup {
+            input: blw(0),
+            setup: [blw(1), GKRAddress::Cached { layer: 0, offset: 0 }],
+            output: two_out(),
+        };
+        let layer = lower_single(rel);
+        assert_two_output_num_add_den_mul(&layer, None);
+    }
+
+    #[test]
+    fn from_vector_input_with_setup() {
+        let rel = NoFieldGKRRelation::LookupFromVectorInputWithSetup {
+            input: vl(8, 2),
+            setup: (blw(0), vec![blw(1), blw(2)].into_boxed_slice()),
+            output: two_out(),
+        };
+        let layer = lower_single(rel);
+        assert_two_output_num_add_den_mul(&layer, Some(8));
+        // setup folded → alpha^1 present (2 setup cols).
+        assert!(has_alpha_pow(&layer, 1));
+    }
+
+    #[test]
+    fn with_cached_dens_and_setup() {
+        let rel = NoFieldGKRRelation::LookupWithCachedDensAndSetup {
+            input: [blw(0), GKRAddress::Cached { layer: 0, offset: 0 }],
+            setup: [blw(1), GKRAddress::Cached { layer: 0, offset: 1 }],
+            output: two_out(),
+        };
+        let layer = lower_single(rel);
+        assert_two_output_num_add_den_mul(&layer, None);
+    }
+
+    #[test]
+    fn with_dens_and_setup_expressions() {
+        let rel = NoFieldGKRRelation::LookupWithDensAndSetupExpressions {
+            input: (blw(0), vl(6, 2)),
+            setup: (blw(1), vec![blw(2), blw(3)].into_boxed_slice()),
+            output: two_out(),
+        };
+        let layer = lower_single(rel);
+        assert_two_output_num_add_den_mul(&layer, Some(6));
+    }
+
+    #[test]
+    fn with_dens_and_cached_setup() {
+        let rel = NoFieldGKRRelation::LookupWithDensAndCachedSetup {
+            input: (blw(0), vl(9, 2)),
+            setup: (blw(1), GKRAddress::Cached { layer: 0, offset: 0 }),
+            output: two_out(),
+        };
+        let layer = lower_single(rel);
+        assert_two_output_num_add_den_mul(&layer, Some(9));
+    }
+
+    #[test]
+    fn unbalanced_pair_with_materialized_base_inputs() {
+        let rel = NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
+            input: [blw(0), blw(1)],
+            remainder: blw(2),
+            output: two_out(),
+        };
+        let layer = lower_single(rel);
+        assert_two_output_num_add_den_mul(&layer, None);
+    }
+
+    #[test]
+    fn unbalanced_pair_with_vector_inputs() {
+        let rel = NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs {
+            input: [blw(0), blw(1)],
+            remainder: vl(11, 2),
+            output: two_out(),
+        };
+        let layer = lower_single(rel);
+        assert_two_output_num_add_den_mul(&layer, Some(11));
+    }
+
+    #[test]
+    fn unbalanced_pair_with_materialized_vector_inputs() {
+        let rel = NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs {
+            input: [blw(0), blw(1)],
+            remainder: blw(2),
+            output: two_out(),
+        };
+        let layer = lower_single(rel);
+        assert_two_output_num_add_den_mul(&layer, None);
+    }
+
+    #[test]
+    fn aggregate_lookup_rational_pair_num_add_den_mul_no_gamma() {
+        // a/b + c/d: num = a·d + c·b (Add of Muls), den = b·d (Mul). No gamma.
+        let rel = NoFieldGKRRelation::AggregateLookupRationalPair {
+            input: [[blw(0), blw(1)], [blw(2), blw(3)]],
+            output: two_out(),
+        };
+        let layer = lower_single(rel);
+        let outs = outputs(&layer);
+        assert_eq!(outs.len(), 2);
+        for (f, _) in &outs {
+            assert_eq!(*f, FieldKind::Ext);
+        }
+        assert!(matches!(expr(&layer, outs[0].1), Expr::Add(_)), "num is Add(a·d, c·b)");
+        assert!(matches!(expr(&layer, outs[1].1), Expr::Mul(_)), "den is Mul(b, d)");
+        assert!(!has_gamma(&layer), "rational-pair aggregate has no gamma shift");
+        // num's Add terms are both Muls.
+        if let Expr::Add(terms) = expr(&layer, outs[0].1) {
+            assert_eq!(terms.len(), 2);
+            for t in terms {
+                assert!(matches!(expr(&layer, *t), Expr::Mul(_)), "num terms are products");
+            }
+        }
+    }
+
+    /// Smoke: every lookup variant from `sample_relations` lowers (no Err).
+    /// Covers the two single-output lookup materializations plus every two-output
+    /// lookup family (names starting with `Lookup`).
+    #[test]
+    fn all_lookup_variants_lower_without_err() {
+        for (name, rel) in sample_relations() {
+            let is_lookup = name.starts_with("Lookup")
+                || name == "MaterializeSingleLookupInput"
+                || name == "MaterializedVectorLookupInput";
+            if !is_lookup {
+                continue;
+            }
+            let artifact = single_relation_artifact(rel);
+            assert!(
+                lower_dag(&artifact).is_ok(),
+                "{name} must lower without Err"
+            );
+        }
     }
 }
