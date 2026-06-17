@@ -276,26 +276,39 @@ const EXPECTED_SUPPORTED: &[&str] = &[
 /// `NoFieldGKRCacheRelation` discriminant names. Assert the observed set equals
 /// `EXPECTED_FROM_FIXTURES` exactly (fail on drift in either direction).
 ///
-/// Any file that fails to deserialize is silently skipped (stale layouts) unless
-/// every file is stale, in which case the test panics to prevent silent gaps.
+/// Every enumerated fixture file must deserialize successfully — a stale or
+/// missing file is a hard test failure (not a silent skip).  This prevents a
+/// newly-introduced relation family from vacuously passing if it only appears in
+/// a fixture that was silently skipped.
 #[test]
 fn fixture_family_coverage() {
     let dir = compiled_circuit_dir();
     let mut observed: BTreeSet<&'static str> = BTreeSet::new();
     let mut loaded_count = 0usize;
-
-    for filename in LAYOUT_GKR_FIXTURES
+    let all_fixtures: Vec<&&str> = LAYOUT_GKR_FIXTURES
         .iter()
         .chain(LAYOUT_NO_CACHES_GKR_FIXTURES.iter())
-    {
+        .collect();
+    let files_found = all_fixtures.len();
+
+    for filename in &all_fixtures {
         let path = dir.join(filename);
-        let Some(artifact) = load_fixture(&path) else {
-            // Stale layout — skip but count so we can assert at least some loaded.
-            continue;
-        };
+        let artifact = load_fixture(&path).unwrap_or_else(|| {
+            panic!(
+                "fixture_family_coverage: failed to load or deserialize fixture {:?} \
+                 (stale layout is a hard test failure — regenerate the fixture)",
+                path.display()
+            )
+        });
         loaded_count += 1;
         collect_families(&artifact, &mut observed);
     }
+
+    assert_eq!(
+        loaded_count, files_found,
+        "fixture_family_coverage: loaded {loaded_count} of {files_found} fixtures — \
+         every enumerated fixture must load successfully"
+    );
 
     assert!(
         loaded_count > 0,
@@ -402,9 +415,13 @@ fn u32_space_generic_audit() {
         .chain(LAYOUT_NO_CACHES_GKR_FIXTURES.iter())
     {
         let path = dir.join(filename);
-        let Some(artifact) = load_fixture(&path) else {
-            continue;
-        };
+        let artifact = load_fixture(&path).unwrap_or_else(|| {
+            panic!(
+                "u32_space_generic_audit: failed to load fixture {:?} \
+                 (stale layout is a hard test failure)",
+                path.display()
+            )
+        });
         loaded_count += 1;
 
         // Walk every memory tuple that appears in the artifact.

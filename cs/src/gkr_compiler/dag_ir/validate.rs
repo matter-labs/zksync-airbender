@@ -263,13 +263,18 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
         // ── Per-source field-kind invariants ─────────────────────────────────
         check_source_field_kinds(layer, li)?;
 
-        // ── Prior resolves to a declared Output root ──────────────────────────
+        // ── Prior resolves to a declared materialization-only (cache) Output root
         // This MUST run before `check_acyclic` so that the DFS `successors`
         // helper can safely index `layer.roots[id.0 as usize]` without
         // panicking on an out-of-range id.  A `Prior` pointing at a
         // `Constraint` root is also rejected here: `source_field` in
         // `field_infer.rs` hits `unreachable!()` on that case, so we gate it
         // cleanly before the field-inference pass ever runs.
+        //
+        // F1: Also require that the Output's sink is `Cache` (materialization-
+        // only).  `eval_layer_root` only materializes non-batching roots; a
+        // non-cache Output IS in the batching set and is therefore never placed
+        // into the `materialized` map — the `Prior` would panic at eval time.
         for (si, src) in layer.sources.iter().enumerate() {
             if let SourceKind::Prior { id } = &src.kind {
                 if id.0 as usize >= layer.roots.len() {
@@ -280,13 +285,66 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
                 }
                 // Per the IR contract, Prior is only valid against a
                 // materialization-only Output root (never a Constraint root).
-                if !matches!(layer.roots[id.0 as usize], Root::Output { .. }) {
+                match &layer.roots[id.0 as usize] {
+                    Root::Constraint { .. } => {
+                        return Err(format!(
+                            "layer {li} source {si}: Prior {:?} must reference an Output root, \
+                             not a Constraint root",
+                            id
+                        ));
+                    }
+                    Root::Output { sink, .. } => {
+                        // F1: the Output must be cache-sink (materialization-only).
+                        // A non-cache Output is claim-bearing (in the batching set)
+                        // and is never materialized by eval_layer_root; referencing
+                        // it via Prior would panic at runtime.
+                        if sink.0 as usize >= layer.sinks.len() {
+                            return Err(format!(
+                                "layer {li} source {si}: Prior {:?} target root references \
+                                 undeclared sink {:?}",
+                                id, sink
+                            ));
+                        }
+                        if !matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. }) {
+                            return Err(format!(
+                                "layer {li} source {si}: Prior {:?} must reference a \
+                                 materialization-only (Cache-sink) Output root, not a \
+                                 claim-bearing Output root",
+                                id
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── F2: Caches-lead ordering ──────────────────────────────────────────
+        // `eval_layer_root` materializes non-batching roots in ascending index
+        // order and stops at the target root index (eval.rs pre-pass).  This
+        // means a `Prior` referencing a root with index >= the referencing
+        // root's index is never materialized and would panic.  The lowering
+        // guarantees cache roots occupy LEADING indices; we enforce the same
+        // invariant here so that any hand-crafted or future-lowered `DagCircuit`
+        // satisfies eval's precondition: all cache roots must precede all
+        // non-cache roots.
+        let mut seen_non_cache = false;
+        for (ri, root) in layer.roots.iter().enumerate() {
+            let is_cache = if let Root::Output { sink, .. } = root {
+                (sink.0 as usize) < layer.sinks.len()
+                    && matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. })
+            } else {
+                false
+            };
+            if is_cache {
+                if seen_non_cache {
                     return Err(format!(
-                        "layer {li} source {si}: Prior {:?} must reference an Output root, \
-                         not a Constraint root",
-                        id
+                        "layer {li} root {ri}: cache (materialization-only) root must \
+                         appear before all claim-bearing roots (caches-lead ordering \
+                         required by eval_layer_root's materialization pre-pass)",
                     ));
                 }
+            } else {
+                seen_non_cache = true;
             }
         }
 
@@ -365,7 +423,7 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
                 Root::Output { expr, sink } => {
                     let expr_f = resolve_expr_field(*expr, layer, &cross_layer)
                         .map_err(|e| format!("layer {li} root {ri} (Output): {e}"))?;
-                    let sink_f = layer.sinks[sink.0 as usize].field.clone();
+                    let sink_f = layer.sinks[sink.0 as usize].field;
                     if expr_f != sink_f {
                         return Err(format!(
                             "layer {li} root {ri}: Output expr field {:?} != sink field {:?}",
@@ -384,7 +442,7 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
         // ── Publish this layer's sink fields for later layers ─────────────────
         for sink in &layer.sinks {
             if let Some(place) = sink_read_place(&sink.kind) {
-                cross_layer.insert(place, sink.field.clone());
+                cross_layer.insert(place, sink.field);
             }
         }
     }
@@ -612,6 +670,17 @@ pub fn check_batching_parity<F: PrimeField + PartialEq>(
         }
 
         for (pos, (root_id, slot)) in actual.iter().zip(expected.iter()).enumerate() {
+            // F3: bounds-check before raw indexing — check_batching_parity's public
+            // signature accepts an arbitrary DagCircuit, so malformed ids must
+            // return Err rather than panic.
+            if root_id.0 as usize >= dl.roots.len() {
+                return Err(format!(
+                    "layer {li} pos {pos}: batching root_id {:?} is out of range \
+                     (roots.len() = {})",
+                    root_id,
+                    dl.roots.len()
+                ));
+            }
             let root = &dl.roots[root_id.0 as usize];
             let origin = dl.origins.get(root_id).ok_or_else(|| {
                 format!("layer {li} pos {pos}: claim-bearing root {root_id:?} has no RootOrigin")
@@ -638,6 +707,16 @@ pub fn check_batching_parity<F: PrimeField + PartialEq>(
                             "layer {li} pos {pos}: retired output addr {addr:?} has no sink mapping"
                         )
                     })?;
+                    // F3: bounds-check sink_id before indexing.
+                    if sink_id.0 as usize >= dl.sinks.len() {
+                        return Err(format!(
+                            "layer {li} pos {pos}: Output root {:?} references sink {:?} \
+                             out of range (sinks.len() = {})",
+                            root_id,
+                            sink_id,
+                            dl.sinks.len()
+                        ));
+                    }
                     let got_sink = &dl.sinks[sink_id.0 as usize].kind;
                     if *got_sink != want_sink {
                         return Err(format!(
@@ -964,56 +1043,66 @@ mod tests {
 
     #[test]
     fn rejects_prior_root_cycle() {
-        // Two roots whose exprs Prior-reference each other:
-        //   root 0 expr = Source(Prior(root 1))
-        //   root 1 expr = Source(Prior(root 0))
+        // Two cache-sink roots whose exprs Prior-reference each other (a cycle):
+        //   root 0 (Cache{0,0}): expr = Source(Prior(root 1))
+        //   root 1 (Cache{0,1}): expr = Source(Prior(root 0))
+        //   root 2 (claim-bearing, Inner): constant expr
+        //
+        // Both root 0 and root 1 are Cache-sink (materialization-only), so the
+        // F1 (non-cache Prior target) check passes and the cycle check fires.
+        // The caches-lead invariant is satisfied: roots 0 and 1 (cache) precede
+        // root 2 (non-cache).
         let sources = vec![
             SourceInfo {
-                kind: SourceKind::Prior { id: RootId(1) },
+                kind: SourceKind::Prior { id: RootId(1) }, // root 0 → Prior(root 1)
             },
             SourceInfo {
-                kind: SourceKind::Prior { id: RootId(0) },
+                kind: SourceKind::Prior { id: RootId(0) }, // root 1 → Prior(root 0)
+            },
+            SourceInfo {
+                kind: SourceKind::Constant { value: 1 }, // root 2 (claim-bearing)
             },
         ];
-        let exprs = vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1))];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),
+            Expr::Source(SourceId(1)),
+            Expr::Source(SourceId(2)),
+        ];
         let sinks = vec![
+            SinkInfo {
+                kind: SinkKind::Cache { layer: 0, offset: 0 },
+                field: FieldKind::Base,
+            },
+            SinkInfo {
+                kind: SinkKind::Cache { layer: 0, offset: 1 },
+                field: FieldKind::Base,
+            },
             SinkInfo {
                 kind: SinkKind::Inner { layer: 0, offset: 0 },
                 field: FieldKind::Base,
             },
-            SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 1 },
-                field: FieldKind::Base,
-            },
         ];
         let roots = vec![
-            Root::Output {
-                expr: ExprId(0),
-                sink: SinkId(0),
-            },
-            Root::Output {
-                expr: ExprId(1),
-                sink: SinkId(1),
-            },
+            Root::Output { expr: ExprId(0), sink: SinkId(0) }, // cache root 0
+            Root::Output { expr: ExprId(1), sink: SinkId(1) }, // cache root 1
+            Root::Output { expr: ExprId(2), sink: SinkId(2) }, // claim-bearing root 2
         ];
         let mut origins = BTreeMap::new();
-        for (i, slot) in [(0u32, 0usize), (1, 1)] {
-            origins.insert(
-                RootId(i),
-                RootOrigin {
-                    group: RootGroup::Gates,
-                    relation_index: slot,
-                    slot: RootSlot::Output(0),
-                },
-            );
-        }
+        origins.insert(
+            RootId(2),
+            RootOrigin {
+                group: RootGroup::Gates,
+                relation_index: 0,
+                slot: RootSlot::Output(0),
+            },
+        );
         let layer = DagLayer {
             sources,
             exprs,
             roots,
             sinks,
             batching: BatchingOrder {
-                roots: vec![RootId(0), RootId(1)],
+                roots: vec![RootId(2)], // only the claim-bearing root
             },
             origins,
         };
@@ -1365,6 +1454,184 @@ mod tests {
         assert!(
             msg.contains("Constraint root"),
             "error should mention Constraint root, got: {msg}"
+        );
+    }
+
+    // ── F1: Prior → non-cache Output root must be rejected ───────────────────
+
+    /// A `Prior` that points at a claim-bearing (non-cache) `Output` root must
+    /// produce `Err`.  Previously this passed `validate` but would panic at
+    /// eval time because `eval_layer_root` only materializes cache (non-batching)
+    /// roots; a non-cache Output is in the batching set and never placed into
+    /// the `materialized` map.
+    #[test]
+    fn rejects_prior_to_non_cache_output() {
+        // Layer:
+        //   root 0 (cache):       Output { expr 0, sink 0 (Cache{0,0}) }
+        //   root 1 (claim-bearing): Output { expr 1, sink 1 (Inner{0,1}) }
+        //
+        //   source 0: Constant(5)           → feeds root 0's expr
+        //   source 1: Prior { id: RootId(1) } → ILLEGAL: root 1 is NOT a cache root
+        //   source 2: Constant(3)           → feeds root 2's expr (see below)
+        //   root 2 (claim-bearing): Output { expr 2, sink 2 (Inner{0,2}) }
+        //   expr 2: Source(SourceId(1)) [the Prior] — this is the root that uses the bad Prior
+        //
+        // Actually let's keep it simpler:
+        //   root 0 (Inner-sink Output, claim-bearing): expr = Constant(5), sink = Inner{0,0}
+        //   root 1 (claim-bearing, uses Prior(0)):    expr = Prior(0), sink = Inner{0,1}
+        //
+        // source 0: Constant(5)
+        // source 1: Prior { id: RootId(0) }   ← RootId(0) is Inner-sink, NOT cache
+        // expr 0: Source(0)  → feeds root 0
+        // expr 1: Source(1)  → feeds root 1
+        let sources = vec![
+            SourceInfo { kind: SourceKind::Constant { value: 5 } },
+            SourceInfo { kind: SourceKind::Prior { id: RootId(0) } }, // invalid: root 0 is not Cache
+        ];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),
+            Expr::Source(SourceId(1)),
+        ];
+        let sinks = vec![
+            SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset: 0 },
+                field: FieldKind::Base,
+            },
+            SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset: 1 },
+                field: FieldKind::Base,
+            },
+        ];
+        let roots = vec![
+            Root::Output { expr: ExprId(0), sink: SinkId(0) }, // claim-bearing (non-cache)
+            Root::Output { expr: ExprId(1), sink: SinkId(1) }, // claim-bearing
+        ];
+        let mut origins = BTreeMap::new();
+        origins.insert(
+            RootId(0),
+            RootOrigin {
+                group: RootGroup::Gates,
+                relation_index: 0,
+                slot: RootSlot::Output(0),
+            },
+        );
+        origins.insert(
+            RootId(1),
+            RootOrigin {
+                group: RootGroup::Gates,
+                relation_index: 1,
+                slot: RootSlot::Output(0),
+            },
+        );
+        let layer = DagLayer {
+            sources,
+            exprs,
+            roots,
+            sinks,
+            batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
+            origins,
+        };
+        let result = validate(&circuit_of(layer));
+        assert!(
+            result.is_err(),
+            "Prior pointing at a non-cache Output root must be rejected with Err, not panic"
+        );
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("materialization-only") || msg.contains("Cache-sink"),
+            "error should mention that the target must be a Cache-sink root, got: {msg}"
+        );
+    }
+
+    // ── F2: caches-not-leading ordering must be rejected ─────────────────────
+
+    /// A layer where a cache root appears AFTER a claim-bearing root must be
+    /// rejected.  The `eval_layer_root` pre-pass only materializes roots with
+    /// index < the target root index; a cache root appearing after a
+    /// claim-bearing root would never be materialized before a `Prior` that
+    /// references it.
+    #[test]
+    fn rejects_caches_not_leading() {
+        // Layer:
+        //   root 0 (claim-bearing): Output { expr 0, sink 0 (Inner{0,0}) }
+        //   root 1 (cache):         Output { expr 0, sink 1 (Cache{0,0}) }
+        //
+        // root 1 is a cache root but appears at index 1 (after the claim-bearing
+        // root at index 0) — violates caches-lead.
+        let sources = vec![SourceInfo {
+            kind: SourceKind::Constant { value: 1 },
+        }];
+        let exprs = vec![Expr::Source(SourceId(0))];
+        let sinks = vec![
+            SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset: 0 },
+                field: FieldKind::Base,
+            },
+            SinkInfo {
+                kind: SinkKind::Cache { layer: 0, offset: 0 },
+                field: FieldKind::Base,
+            },
+        ];
+        let roots = vec![
+            Root::Output { expr: ExprId(0), sink: SinkId(0) }, // claim-bearing at index 0
+            Root::Output { expr: ExprId(0), sink: SinkId(1) }, // cache at index 1 — ILLEGAL
+        ];
+        let mut origins = BTreeMap::new();
+        origins.insert(
+            RootId(0),
+            RootOrigin {
+                group: RootGroup::Gates,
+                relation_index: 0,
+                slot: RootSlot::Output(0),
+            },
+        );
+        let layer = DagLayer {
+            sources,
+            exprs,
+            roots,
+            sinks,
+            // Only the claim-bearing root is in batching.
+            batching: BatchingOrder { roots: vec![RootId(0)] },
+            origins,
+        };
+        let result = validate(&circuit_of(layer));
+        assert!(
+            result.is_err(),
+            "cache root appearing after a claim-bearing root must be rejected with Err"
+        );
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("caches-lead") || msg.contains("materialization-only"),
+            "error should mention the caches-lead ordering requirement, got: {msg}"
+        );
+    }
+
+    // ── F3: check_batching_parity must bounds-check root/sink ids ────────────
+
+    /// `check_batching_parity` with a batching root_id that is out of range for
+    /// `dl.roots` must return `Err`, not panic.
+    #[test]
+    fn parity_rejects_out_of_range_root_id() {
+        let artifact = build_add_sub_artifact();
+        let mut dag = lower_dag(&artifact).expect("lower_dag must succeed");
+        let retired = retired_lower::<ConcreteField>(&artifact).expect("retired lower must succeed");
+        // Corrupt the batching order in the first layer that has at least one
+        // batched root: replace the first root_id with a clearly out-of-range id.
+        let target_layer = dag
+            .layers
+            .iter_mut()
+            .find(|l| !l.batching.roots.is_empty())
+            .expect("fixture must have at least one layer with batched roots");
+        target_layer.batching.roots[0] = RootId(u32::MAX);
+        let result = check_batching_parity::<ConcreteField>(&dag, &retired);
+        assert!(
+            result.is_err(),
+            "out-of-range root_id in batching must return Err (not panic)"
+        );
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("out of range"),
+            "error should mention out of range, got: {msg}"
         );
     }
 }

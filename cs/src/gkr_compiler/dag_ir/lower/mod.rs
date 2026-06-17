@@ -906,7 +906,7 @@ mod tests {
             .iter()
             .filter_map(|r| match r {
                 Root::Output { expr, sink } => {
-                    Some((layer.sinks[sink.0 as usize].field.clone(), *expr))
+                    Some((layer.sinks[sink.0 as usize].field, *expr))
                 }
                 _ => None,
             })

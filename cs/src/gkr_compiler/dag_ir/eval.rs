@@ -77,7 +77,17 @@ pub struct Resolvers<'a> {
 /// `layer.batching.roots`) are evaluated eagerly in ascending `RootId` order
 /// before the target root, so `Prior(id)` can look up their result.
 ///
-/// `Prior(id)` is only valid when `id` is a materialization-only root (not in `batching.roots`); evaluating a root that `Prior`-references a batching root will panic.
+/// **Precondition — caches-lead ordering**: all materialization-only (cache)
+/// roots MUST occupy leading indices in `layer.roots` (i.e. every cache root
+/// has a smaller `RootId` than every claim-bearing root).  The pre-pass only
+/// materializes roots with index < the target root's index, so a `Prior`
+/// referencing a root with index >= the referencing root's index is never
+/// materialized and will panic.  `validate` enforces this invariant; hand-
+/// crafted layers must satisfy it too.
+///
+/// `Prior(id)` is only valid when `id` is a materialization-only root (not in
+/// `batching.roots`); evaluating a root that `Prior`-references a batching root
+/// will panic.
 pub fn eval_layer_root(layer: &DagLayer, root: RootId, row: usize, r: &Resolvers<'_>) -> Ext {
     // Build the set of "claim-bearing" roots (those in batching order).
     let batching_set: std::collections::HashSet<RootId> =
@@ -178,9 +188,21 @@ fn eval_source(
             let q_val = eval_expr(*query, layer, row, r, materialized, cache);
             lift(r.lookup.lookup(lk, *set_index, q_val, row))
         }
-        SourceKind::Prior { id } => *materialized
-            .get(id)
-            .unwrap_or_else(|| panic!("Prior({:?}) referenced before materialization", id)),
+        SourceKind::Prior { id } => {
+            // Defense-in-depth: the `Prior` target must have been materialized
+            // before this point (caches-lead ordering + pre-pass guarantee).
+            // `validate` enforces this at construction time; the assert fires in
+            // debug builds if a hand-crafted layer violates the precondition.
+            debug_assert!(
+                materialized.contains_key(id),
+                "Prior({:?}) referenced before materialization — \
+                 caches-lead ordering precondition violated",
+                id
+            );
+            *materialized
+                .get(id)
+                .unwrap_or_else(|| panic!("Prior({:?}) referenced before materialization", id))
+        }
     }
 }
 

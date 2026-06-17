@@ -71,7 +71,7 @@ pub fn source_field(
             match root {
                 Root::Output { sink, .. } => {
                     let sink_info = &sinks[sink.0 as usize];
-                    Ok(sink_info.field.clone())
+                    Ok(sink_info.field)
                 }
                 Root::Constraint { .. } => unreachable!("Prior must reference an Output root, not a Constraint root"),
             }

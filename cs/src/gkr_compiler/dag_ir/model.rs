@@ -28,7 +28,7 @@ pub struct SinkId(pub u32);
 
 // ── Field kind ───────────────────────────────────────────────────────────────
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum FieldKind {
     Base,
     Ext,
