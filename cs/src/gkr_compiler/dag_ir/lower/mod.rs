@@ -62,9 +62,9 @@ use crate::gkr_compiler::{
 };
 
 use super::{
-    ArenaBuilder, BatchingOrder, DagCircuit, DagGlobals, DagLayer, ExprId, FieldKind, ReadPlace,
-    Root, RootGroup, RootId, RootOrigin, RootSlot, SinkId, SinkInfo, SinkKind, SourceKind,
-    VirtualSetupKind,
+    ArenaBuilder, BatchingOrder, DagCircuit, DagGlobals, DagLayer, ExprId, FieldKind, RangeWidth,
+    ReadPlace, ResolutionStrategy, Root, RootGroup, RootId, RootOrigin, RootSlot, SinkId, SinkInfo,
+    SinkKind, SourceKind, VirtualSetupKind,
 };
 
 /// Map a `GKRAddress` to the DAG-IR `SourceKind` for an input read.
@@ -129,11 +129,12 @@ fn output_sink_kind(addr: GKRAddress) -> Result<SinkKind, String> {
     }
 }
 
-/// Per-layer accumulator: roots, sinks, and origins.
+/// Per-layer accumulator: roots, sinks, origins, and resolution hints.
 struct LayerOut {
     roots: Vec<Root>,
     sinks: Vec<SinkInfo>,
     origins: BTreeMap<RootId, RootOrigin>,
+    resolutions: BTreeMap<ExprId, ResolutionStrategy>,
 }
 
 impl LayerOut {
@@ -142,6 +143,7 @@ impl LayerOut {
             roots: Vec::new(),
             sinks: Vec::new(),
             origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
         }
     }
 
@@ -246,6 +248,34 @@ impl LayerOut {
         }
         Ok(())
     }
+
+    /// Insert a resolution, erroring if `leaf` is already keyed to a DIFFERENT
+    /// strategy (a CSE-identity invariant: identical fold ⇒ identical peek).
+    /// Idempotent for an equal re-insert.
+    fn insert_resolution(&mut self, leaf: ExprId, strat: ResolutionStrategy) -> Result<(), String> {
+        if let Some(existing) = self.resolutions.get(&leaf) {
+            if existing != &strat {
+                return Err(format!(
+                    "dag_ir: resolution CSE collision at {:?}: {:?} vs {:?}",
+                    leaf, existing, strat
+                ));
+            }
+            return Ok(());
+        }
+        self.resolutions.insert(leaf, strat);
+        Ok(())
+    }
+
+    /// Record a single-column lookup leaf's forward-peek strategy.
+    /// `range_check_width == 16` selects the rc16 mapping; anything else is timestamp.
+    fn record_single(&mut self, leaf: ExprId, set_index: usize, range_check_width: u32) -> Result<(), String> {
+        let width = if range_check_width == 16 {
+            RangeWidth::Bits16
+        } else {
+            RangeWidth::Timestamp
+        };
+        self.insert_resolution(leaf, ResolutionStrategy::PeekSingleColumn { set_index, width })
+    }
 }
 
 /// Lower one relation into the shared arena + layer accumulator.
@@ -253,6 +283,7 @@ impl LayerOut {
 /// `group`/`relation_index` identify the gate's position so the emitted root's
 /// `RootOrigin` is recorded. `trace_len`/`inits_word_bits` are circuit globals the
 /// inits/teardowns top-bits constant needs (see [`memory::lower_inits_or_teardowns`]).
+/// `_decoder_predicate` is threaded for Tasks 3-4 (unused here).
 /// Unimplemented arms return `Err(...)`.
 fn lower_relation(
     arena: &mut ArenaBuilder,
@@ -263,6 +294,7 @@ fn lower_relation(
     minus_one: u32,
     trace_len: usize,
     inits_word_bits: Option<u32>,
+    _decoder_predicate: Option<&ReadPlace>,
 ) -> Result<(), String> {
     use NoFieldGKRRelation as R;
     match rel {
@@ -294,6 +326,7 @@ fn lower_relation(
         } => {
             // single_column_lookup is a base-valued LookupValue.
             let expr = lookup::single_column_lookup(arena, input, *range_check_width);
+            out.record_single(expr, input.lookup_set_index, *range_check_width)?;
             out.emit_output(expr, *output, FieldKind::Base, group, relation_index)
         }
         R::MaterializedVectorLookupInput { input, output } => {
@@ -310,6 +343,8 @@ fn lower_relation(
         } => {
             let b = lookup::single_column_lookup(arena, &input[0], *range_check_width);
             let d = lookup::single_column_lookup(arena, &input[1], *range_check_width);
+            out.record_single(b, input[0].lookup_set_index, *range_check_width)?;
+            out.record_single(d, input[1].lookup_set_index, *range_check_width)?;
             let (num, den) = lookup::pair(arena, b, d);
             out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
         }
@@ -545,6 +580,7 @@ fn lower_cache(
     addr: GKRAddress,
     rel: &NoFieldGKRCacheRelation,
     minus_one: u32,
+    _decoder_predicate: Option<&ReadPlace>,
 ) -> Result<RootId, String> {
     use NoFieldGKRCacheRelation as C;
     let (expr, field) = match rel {
@@ -554,6 +590,7 @@ fn lower_cache(
         } => {
             let expr =
                 lookup::single_column_lookup(arena, relation, *range_check_width as u32);
+            out.record_single(expr, relation.lookup_set_index, *range_check_width as u32)?;
             (expr, FieldKind::Base)
         }
         C::VectorizedLookup(vl) => (lookup::folded_lookup(arena, vl), FieldKind::Ext),
@@ -586,6 +623,16 @@ fn lower_layer<F: PrimeField + PartialEq>(
     let trace_len = artifact.trace_len;
     let inits_word_bits = artifact.memory_layout.inits_and_teardowns_word_bits;
 
+    // Decoder predicate is the circuit global `machine_state.execute`. None when the
+    // circuit has no machine state (then no decoder lookup exists either). Tasks 3-4 use it.
+    // OWNED here; threaded downward as `Option<&ReadPlace>` because `ReadPlace` is
+    // `Clone` not `Copy` — passing it by value to many call sites would move it.
+    let decoder_predicate: Option<ReadPlace> = artifact
+        .memory_layout
+        .machine_state
+        .as_ref()
+        .map(|t| ReadPlace::BaseLayerMemory { column: t.execute });
+
     // ── Materialize caches FIRST ─────────────────────────────────────────────
     // Cache roots occupy the leading RootId slots so the cache-address → RootId
     // alias map is populated before any gate is lowered. They are
@@ -593,7 +640,8 @@ fn lower_layer<F: PrimeField + PartialEq>(
     let mut cache_roots: BTreeSet<RootId> = BTreeSet::new();
     let mut cache_aliases: HashMap<GKRAddress, RootId> = HashMap::new();
     for (addr, rel) in layer.cached_relations.iter() {
-        let root_id = lower_cache(&mut arena, &mut out, *addr, rel, minus_one)?;
+        let root_id =
+            lower_cache(&mut arena, &mut out, *addr, rel, minus_one, decoder_predicate.as_ref())?;
         cache_roots.insert(root_id);
         cache_aliases.insert(*addr, root_id);
     }
@@ -615,6 +663,7 @@ fn lower_layer<F: PrimeField + PartialEq>(
                 minus_one,
                 trace_len,
                 inits_word_bits,
+                decoder_predicate.as_ref(),
             )?;
         }
         Ok(())
@@ -645,7 +694,7 @@ fn lower_layer<F: PrimeField + PartialEq>(
         sinks: out.sinks,
         batching,
         origins: out.origins,
-        resolutions: BTreeMap::new(),
+        resolutions: out.resolutions,
     })
 }
 

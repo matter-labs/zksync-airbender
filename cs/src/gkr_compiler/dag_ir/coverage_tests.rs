@@ -478,6 +478,28 @@ fn u32_space_generic_audit() {
     );
 }
 
+// ── Task 2: PeekSingleColumn resolution coverage ────────────────────────────
+
+#[test]
+fn resolutions_peek_single_column_present_for_timestamp() {
+    use crate::gkr_compiler::dag_ir::{lower_dag, RangeWidth, ResolutionStrategy};
+
+    let path = compiled_circuit_dir().join("jump_branch_slt_layout_gkr.json");
+    let artifact = load_fixture(&path).expect("fixture must load");
+    let circuit = lower_dag(&artifact).expect("lower_dag must succeed");
+
+    let timestamp_peeks = circuit
+        .layers
+        .iter()
+        .flat_map(|l| l.resolutions.values())
+        .filter(|s| matches!(s, ResolutionStrategy::PeekSingleColumn { width: RangeWidth::Timestamp, .. }))
+        .count();
+    assert!(
+        timestamp_peeks > 0,
+        "timestamp single-column lookups must emit PeekSingleColumn{{Timestamp}} resolutions"
+    );
+}
+
 /// Assert no memory-tuple in `rel` uses `U32SpaceGeneric`.
 fn check_relation_no_u32_generic(fixture_name: &str, rel: &NoFieldGKRRelation) {
     use crate::gkr_compiler::CompiledAddressStrict;
