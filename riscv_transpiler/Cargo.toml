@@ -29,6 +29,12 @@ capstone = {version = "0.13", optional = true }
 [features]
 jit = ["dynasmrt", "capstone"]
 flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object"]
+# Register-allocation experiment selector for the timestamp-tracking JIT:
+#   default (off): 4 RISC-V values in host GPRs (a0..a3), their timestamps in the 4
+#                  freed GPRs (r14/r15/rbx/rbp) via move-eliminated `mov`.
+#   ts_in_xmm     : 8 RISC-V values in host GPRs (a0..a4/a6/t3/a5), their timestamps
+#                  live in XMM lanes (xmm6/7/13/14) via `pinsrq`.
+ts_in_xmm = []
 default = ["jit"]
 
 [dev-dependencies]

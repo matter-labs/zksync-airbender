@@ -204,26 +204,15 @@ impl Deferred {
         if !self.dirty {
             return;
         }
-        let rts = MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
         for r in 0..32usize {
             let k = self.last_touch[r];
             if k == REG_UNTOUCHED {
                 continue;
             }
-            // OPTION 1: the 4 value-mapped regs keep their timestamp in a host GPR
-            // (mov/lea straight into it, off the store port); everything else writes the
-            // register_timestamps[] slot.
-            if let Some(gpr) = reg_ts_gpr(r as u32) {
-                if k == 0 {
-                    dynasm!(ops ; mov Rq(gpr), r8);
-                } else {
-                    dynasm!(ops ; lea Rq(gpr), [r8 + k]);
-                }
-            } else if k == 0 {
-                dynasm!(ops ; mov [rsp + 8 * (r as i32) + rts], r8);
-            } else {
-                dynasm!(ops ; lea rax, [r8 + k] ; mov [rsp + 8 * (r as i32) + rts], rax);
-            }
+            // The mapped value-registers keep their timestamp off-memory (in a host GPR
+            // or an XMM lane, depending on the `ts_in_xmm` experiment); everything else
+            // writes the register_timestamps[] slot. RAX is dead here (scratch for k!=0).
+            flush_reg_timestamp(ops, r as u32, k);
         }
         if self.pending != 0 {
             dynasm!(ops

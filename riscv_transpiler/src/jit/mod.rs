@@ -60,14 +60,24 @@ pub const MAX_NUM_COUNTERS: usize = 16;
 // `save_machine_state!` / `update_machine_state_post_call!`.
 
 // Number of RISC-V registers that live in host x86 GPRs (x0 + the vector-resident
-// registers make up the rest). RBP was freed from the memory opcodes, so it now
-// holds an 8th host-GPR-mapped register (a5/x15).
-// OPTION 1 experiment: only HALF the registers (4) keep their VALUE in a host GPR;
-// the other 4 host GPRs are repurposed to hold the TIMESTAMPS of those 4 (see
-// `reg_ts_gpr` in impls.rs), so a timestamp write is a move-eliminated `mov ts_gpr, r8`.
+// registers make up the rest).
+//
+// Two register-allocation experiments, selected at compile time (see the `ts_in_xmm`
+// Cargo feature):
+//   * default (OPTION 1): only 4 registers (a0..a3) keep their VALUE in a host GPR; the
+//     other 4 host GPRs (r14/r15/rbx/rbp) hold the TIMESTAMPS of those 4 (see
+//     `reg_ts_gpr` in impls.rs) via a move-eliminated `mov ts_gpr, r8`.
+//   * `ts_in_xmm` (OPTION 2): 8 registers keep their VALUE in host GPRs; their timestamps
+//     live in XMM lanes (see `reg_ts_xmm` in impls.rs) via `pinsrq`.
+#[cfg(not(feature = "ts_in_xmm"))]
 pub const NUM_RV_REGISTERS_IN_GPRS: usize = 4;
-// Number of RISC-V registers kept in vector lanes (32 - 1 (x0) - 4 (host GPRs)).
+#[cfg(feature = "ts_in_xmm")]
+pub const NUM_RV_REGISTERS_IN_GPRS: usize = 8;
+// Number of RISC-V registers kept in vector lanes (32 - 1 (x0) - host GPRs).
+#[cfg(not(feature = "ts_in_xmm"))]
 pub const NUM_XMM_RESIDENT_REGISTERS: usize = 27;
+#[cfg(feature = "ts_in_xmm")]
+pub const NUM_XMM_RESIDENT_REGISTERS: usize = 23;
 // Number of vector registers used to hold those (4 lanes each; round up).
 pub const NUM_RV_REGISTER_XMMS: u8 = (NUM_XMM_RESIDENT_REGISTERS as u8 + 3) / 4;
 // Sentinel meaning "this RISC-V register is not in a vector lane" (i.e. it is x0
@@ -76,9 +86,15 @@ pub const RV_XMM_SLOT_NONE: u8 = 0xFF;
 
 // Dense spill slot index (0..24) -> RISC-V register number. The 24 vector-resident
 // registers, in ascending register order; slot `s` lives in xmm`(s/4)` lane `s%4`.
+#[cfg(not(feature = "ts_in_xmm"))]
 pub const XMM_SLOT_TO_RV: [u8; NUM_XMM_RESIDENT_REGISTERS] = [
-    1, 2, 3, 4, 5, 6, 7, 8, 9, // x1..x9
+    1, 2, 3, 4, 5, 6, 7, 8, 9, // x1..x9 (a0..a3 are host-GPR-mapped)
     14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, // x14..x31
+];
+#[cfg(feature = "ts_in_xmm")]
+pub const XMM_SLOT_TO_RV: [u8; NUM_XMM_RESIDENT_REGISTERS] = [
+    1, 2, 3, 4, 5, 6, 7, 8, 9, // x1..x9 (a5/x15 is host-GPR-mapped, not here)
+    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29, 30, 31, // x17..x31 (skipping x28=t3)
 ];
 
 // RISC-V register number -> dense spill slot, or `RV_XMM_SLOT_NONE` for x0 and the
@@ -127,12 +143,25 @@ pub const XMM_SPILL_ARRAY_LEN: usize = NUM_RV_REGISTER_XMMS as usize * 4;
 // the host-GPR-mapped registers. The JIT save/restore (`save_machine_state!` /
 // `update_machine_state_post_call!`) writes/reads each host GPR at the matching
 // slot offset, so this order must match those macros.
+#[cfg(not(feature = "ts_in_xmm"))]
 pub const GPR_SLOT_TO_RV: [u8; NUM_GPR_SLOT_REGISTERS] = [
     0,  // slot 0: x0 (zero / padding)
     10, // slot 1: a0 -> r10 (value)
     11, // slot 2: a1 -> r11 (value)
     12, // slot 3: a2 -> r12 (value)
     13, // slot 4: a3 -> r13 (value)
+];
+#[cfg(feature = "ts_in_xmm")]
+pub const GPR_SLOT_TO_RV: [u8; NUM_GPR_SLOT_REGISTERS] = [
+    0,  // slot 0: x0 (zero / padding)
+    10, // slot 1: a0 -> r10
+    11, // slot 2: a1 -> r11
+    12, // slot 3: a2 -> r12
+    13, // slot 4: a3 -> r13
+    14, // slot 5: a4 -> r14
+    16, // slot 6: a6 -> r15
+    28, // slot 7: t3 -> rbx
+    15, // slot 8: a5 -> rbp
 ];
 
 // RISC-V register number -> compact GPR slot, or `RV_XMM_SLOT_NONE` for the
