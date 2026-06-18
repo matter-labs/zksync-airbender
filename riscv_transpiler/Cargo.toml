@@ -30,11 +30,17 @@ capstone = {version = "0.13", optional = true }
 jit = ["dynasmrt", "capstone"]
 flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object"]
 # Register-allocation experiment selector for the timestamp-tracking JIT:
-#   default (off): 4 RISC-V values in host GPRs (a0..a3), their timestamps in the 4
-#                  freed GPRs (r14/r15/rbx/rbp) via move-eliminated `mov`.
-#   ts_in_xmm     : 8 RISC-V values in host GPRs (a0..a4/a6/t3/a5), their timestamps
+#   default (off): 8 RISC-V values in host GPRs (a0..a4/a6/t3/a5), their timestamps
 #                  live in XMM lanes (xmm6/7/13/14) via `pinsrq`.
-ts_in_xmm = []
+#   ts_in_gpr     : 4 RISC-V values in host GPRs (a0..a3), their timestamps in the 4
+#                  freed GPRs (r14/r15/rbx/rbp) via move-eliminated `mov`.
+ts_in_gpr = []
+# Draft experiment: replace the 3 per-cycle register-timestamp writes with ONE store
+# into a (32 x 33 x 33) u64 array in MachineState, indexed by the instruction's
+# (rs1, rs2, rd) triple (rs2=32 for loads, rd=32 for stores). Register timestamps are
+# meant to be reconstructed later by scanning the array (not implemented yet — perf draft).
+# Applies to the EAGER path only.
+packed_ts = []
 default = ["jit"]
 
 [dev-dependencies]

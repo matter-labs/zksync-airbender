@@ -210,7 +210,7 @@ impl Deferred {
                 continue;
             }
             // The mapped value-registers keep their timestamp off-memory (in a host GPR
-            // or an XMM lane, depending on the `ts_in_xmm` experiment); everything else
+            // or an XMM lane, depending on the `ts_in_gpr` experiment); everything else
             // writes the register_timestamps[] slot. RAX is dead here (scratch for k!=0).
             flush_reg_timestamp(ops, r as u32, k);
         }
@@ -571,7 +571,7 @@ impl<I: ContextImpl> JittedCode<I> {
         dynasm!(ops
             ; sub rsp, (MachineState::SIZE as i32)
         );
-        for q in 0..MachineState::SIZE_IN_QWORDS {
+        for q in 0..MachineState::ZERO_INIT_QWORDS {
             dynasm!(ops ; mov QWORD [rsp + 8 * q as i32], 0);
         }
         dynasm!(ops
