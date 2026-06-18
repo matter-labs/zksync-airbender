@@ -11,13 +11,12 @@ categories.workspace = true
 
 [dependencies]
 prover = { workspace = true, features = ["prover"] }
+riscv_transpiler = { workspace = true }
+common_constants = { workspace = true }
+circuit_common = { workspace = true }
+verifier_common = { workspace = true, features = ["proof_utils"] }
 
-risc_v_cycles = { workspace = true }
-reduced_risc_v_machine = { workspace = true }
-reduced_risc_v_log_23_machine = { workspace = true }
-machine_without_signed_mul_div = { workspace = true }
-final_reduced_risc_v_machine = { workspace = true }
-
+blake2_g_function = { workspace = true }
 blake2_with_compression = { workspace = true }
 bigint_with_control = { workspace = true }
 keccak_special5 = { workspace = true }
@@ -27,10 +26,10 @@ inits_and_teardowns = { workspace = true }
 jump_branch_slt = { workspace = true }
 load_store_subword_only = { workspace = true }
 load_store_word_only = { workspace = true }
-mul_div = { workspace = true }
+# mul_div = { workspace = true }
 mul_div_unsigned = { workspace = true }
-shift_binary_csr = { workspace = true }
-unified_reduced_machine = { workspace = true }
+shift_binary = { workspace = true }
+# unified_reduced_machine = { workspace = true }
 
 serde = { workspace = true }
 serde_json = "*"
@@ -38,10 +37,12 @@ serde-big-array = "*"
 proc-macro2 = { version = "1" }
 syn = { version = "2" }
 quote = { version = "1" }
-verifier_common = { workspace = true, features = ["proof_utils"] }
 sha3 = { workspace = true }
 hex = "*"
 
 [features]
 defaut = ["witness_eval_fn"]
-witness_eval_fn = ["add_sub_lui_auipc_mop/witness_eval_fn", "jump_branch_slt/witness_eval_fn", "load_store_subword_only/witness_eval_fn", "load_store_word_only/witness_eval_fn", "mul_div/witness_eval_fn", "mul_div_unsigned/witness_eval_fn", "shift_binary_csr/witness_eval_fn", "unified_reduced_machine/witness_eval_fn"]
+witness_eval_fn = ["add_sub_lui_auipc_mop/witness_eval_fn", "jump_branch_slt/witness_eval_fn", "load_store_subword_only/witness_eval_fn", "load_store_word_only/witness_eval_fn", "mul_div_unsigned/witness_eval_fn", "shift_binary/witness_eval_fn"]
+
+[dev-dependencies]
+test_utils = { workspace = true }

@@ -1,3 +1,5 @@
+use crate::definitions::sumcheck_kernel::fixed_over_extension::ExtensionFieldInOutFixedSizesEvaluationKernelCore;
+
 use super::*;
 
 #[derive(Debug)]
@@ -26,6 +28,25 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E> for Loo
         }
     }
 
+    fn terms(
+        &self,
+        _challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+    ) -> Vec<BatchedGKRTermDescription<F, E>> {
+        // a/b + c/d = (a*d + c*b) / (b*d)
+        let [[a, b], [c, d]] = self.inputs;
+
+        let mut num_term = BatchedGKRTermDescription::default();
+        num_term.add_ext_by_ext(a, d, E::ONE);
+        num_term.add_ext_by_ext(b, c, E::ONE);
+        num_term.set_extension_output(self.outputs[0]);
+
+        let mut den_term = BatchedGKRTermDescription::default();
+        den_term.add_ext_by_ext(b, d, E::ONE);
+        den_term.set_extension_output(self.outputs[1]);
+
+        vec![num_term, den_term]
+    }
+
     fn evaluate_forward_over_storage(
         &self,
         storage: &mut GKRStorage<F, E>,
@@ -45,7 +66,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E> for Loo
         );
     }
 
-    fn evaluate_over_storage(
+    fn evaluate_over_storage<const N: usize>(
         &self,
         storage: &mut GKRStorage<F, E>,
         step: usize,
@@ -53,7 +74,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E> for Loo
         folding_challenges: &[E],
         accumulator: &mut [[E; 2]],
         total_sumcheck_rounds: usize,
-        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
         worker: &Worker,
     ) {
         assert_eq!(
@@ -84,13 +105,13 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E> for Loo
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct LookupAdditionGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
     _marker: core::marker::PhantomData<(F, E)>,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
-    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 4, 2>
+    ExtensionFieldInOutFixedSizesEvaluationKernelCore<F, E, 4, 2>
     for LookupAdditionGKRRelationKernel<F, E>
 {
     #[inline(always)]
@@ -107,4 +128,22 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
         den.mul_assign(&d);
         [num, den]
     }
+
+    #[inline(always)]
+    fn pointwise_eval_quadratic_term_only(
+        &self,
+        input: &[ExtensionFieldRepresentation<F, E>; 4],
+    ) -> [E; 2] {
+        self.pointwise_eval(input)
+    }
+
+    fn pointwise_eval_by_ref(&self, _input: [&ExtensionFieldRepresentation<F, E>; 4]) -> [E; 2] {
+        todo!()
+    }
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, 4, 2>
+    for LookupAdditionGKRRelationKernel<F, E>
+{
 }

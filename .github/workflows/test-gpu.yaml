@@ -13,21 +13,24 @@ permissions:
 
 jobs:
   zksync-airbender-build:
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ matterlabs-ci-runner-highmem ]
     strategy:
+      fail-fast: false
       matrix:
-        cuda: [ "12.9.1-devel-ubuntu22.04", "13.0.0-devel-ubuntu24.04" ]
-        package: [ "zksmith" ]
+        # matterlabs-ci-gpu-runner currently has CUDA 12.2 driver support only, so
+        # CUDA 13-compiled binaries are not runnable there.
+        cuda: [ "12.9.1-devel-ubuntu22.04" ]
+        security: [ "security_80", "security_100" ]
     container:
       image: nvidia/cuda:${{ matrix.cuda }}
     env:
-      RUST_TOOLCHAIN: nightly-2025-08-26
+      RUST_TOOLCHAIN: nightly-2026-02-10
     steps:
       - name: Prepare environment
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          apt update && apt install -y cmake git jq libssl-dev pkg-config wget curl
+          apt update && apt install -y cmake git libssl-dev pkg-config wget curl
           echo "/usr/local/nvidia/bin:/usr/local/cuda/bin" >> $GITHUB_PATH
 
       - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
@@ -49,32 +52,31 @@ jobs:
         run: |
           nvcc --version
 
-
-      - name: Build tests and copy binary to a separate dir
+      - name: Build CLI and copy binary to a separate dir
         shell: bash
         run: |
           mkdir artifacts
-          CUDAARCHS=80 CARGO_TARGET_DIR=./build \
-          cargo +$RUST_TOOLCHAIN test -p ${{ matrix.package }} --no-run --release --target x86_64-unknown-linux-gnu --message-format=json -q \
-          | jq -r 'select(.executable != null) | .executable' \
-          | while read binary; do
-            cp "$binary" artifacts/${{ matrix.package }}
-          done
+          # Build for A100 (sm_80), L4 (sm_89), and H100 (sm_90).
+          CUDAARCHS="80;89;90" \
+          cargo +$RUST_TOOLCHAIN build -p cli --no-default-features --features gpu,${{ matrix.security }} --release --target x86_64-unknown-linux-gnu
+          cp target/x86_64-unknown-linux-gnu/release/cli artifacts/cli
 
-      - name: Upload test binary
+      - name: Upload CLI binary
         uses: actions/upload-artifact@v4
         with:
-          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.package }}-test-binary
-          path: artifacts/${{ matrix.package }}
+          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.security }}-cli
+          path: artifacts/cli
           if-no-files-found: error
 
   zksync-airbender-test:
     runs-on: [ matterlabs-ci-gpu-runner ]
     strategy:
+      fail-fast: false
       matrix:
+        # Keep this aligned with the build matrix because runner driver support is
+        # currently limited to CUDA 12.2 (CUDA 13 artifacts fail at runtime).
         cuda: [ "12.9.1-devel-ubuntu22.04" ]
-        # TODO: CUDA 13.0.0 is not yet supported by matterlabs-ci-gpu-runner.
-        package: [ "zksmith" ]
+        security: [ "security_80", "security_100" ]
 
     needs: zksync-airbender-build
     steps:
@@ -88,13 +90,61 @@ jobs:
         run: |
           nvidia-smi
 
-      - name: Download test binary
+      - name: Configure low VRAM mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          gpu_info="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader)"
+          min_full_vram_mib=32768
+          low_vram_mode=0
+          while IFS=',' read -r memory; do
+            memory_mib="$(echo "$memory" | tr -dc '0-9')"
+            if [[ "$memory_mib" -lt "$min_full_vram_mib" ]]; then
+              low_vram_mode=1
+              break
+            fi
+          done <<< "$gpu_info"
+          if [[ "$low_vram_mode" -eq 1 ]]; then
+            echo "ZKSYNC_AIRBENDER_LOW_VRAM_MODE=1" >> "$GITHUB_ENV"
+            echo "Enabled low VRAM mode"
+          else
+            echo "Low VRAM mode is not required"
+          fi
+
+      - name: Download CLI binary
         uses: actions/download-artifact@v4
         with:
-          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.package }}-test-binary
-          path: zksync-airbender-test-binary/
+          name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.security }}-cli
+          path: zksync-airbender-cli/
 
-      - name: Run test binary
+      - name: Prove recursion unified on GPU
         run: |
-          chmod +x zksync-airbender-test-binary/${{ matrix.package }}
-          zksync-airbender-test-binary/${{ matrix.package }} --nocapture
+          chmod +x zksync-airbender-cli/cli
+          zksync-airbender-cli/cli prove \
+            --bin examples/hashed_fibonacci/app.bin \
+            --input-file examples/hashed_fibonacci/input.txt \
+            --target recursion-unified \
+            --backend gpu \
+            --output-dir output \
+            --output-file proof.json
+
+      - name: Verify recursion unified proof
+        run: |
+          zksync-airbender-cli/cli verify \
+            --proof output/proof.json \
+            --bin examples/hashed_fibonacci/app.bin
+
+  # Keep branch protection tied to one stable GPU check name even if we
+  # split GPU coverage across multiple jobs or matrix entries later on.
+  gpu-checks:
+    name: gpu-checks
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - zksync-airbender-build
+      - zksync-airbender-test
+    steps:
+      - name: Decide on GPU checks
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
+        with:
+          jobs: ${{ toJSON(needs) }}

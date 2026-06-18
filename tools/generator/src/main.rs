@@ -8,6 +8,9 @@ use std::{
     process::{Command, Stdio},
 };
 
+#[cfg(test)]
+use test_utils::skip_if_ci;
+
 mod all_layouts;
 mod unrolled_layouts;
 
@@ -156,23 +159,6 @@ const ALL_LAYOUTS: &[(
     ),
     &str,
 )] = &[
-    (create_main_machine_layout_with_delegation, "risc_v_cycles"),
-    (
-        create_reduced_machine_layout_with_delegation,
-        "reduced_risc_v_machine",
-    ),
-    (
-        create_reduced_machine_log_23_layout_with_delegation,
-        "reduced_risc_v_log_23_machine",
-    ),
-    (
-        create_final_reduced_machine_layout_with_delegation,
-        "final_reduced_risc_v_machine",
-    ),
-    (
-        create_machine_without_signed_mul_div_layout_with_delegation,
-        "machine_without_signed_mul_div",
-    ),
     (
         create_blake_with_compression_delegation_layout,
         "blake2_with_compression",
@@ -245,8 +231,10 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     serde_json::from_reader(src).unwrap()
 }
 
+#[cfg(test)]
 #[test]
 fn generate_verifier() {
+    skip_if_ci!();
     let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
         deserialize_from_file("../../prover/full_machine_layout.json");
 

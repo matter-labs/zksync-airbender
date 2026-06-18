@@ -24,7 +24,6 @@ pub fn compute_column_major_lde_from_main_domain<
 >(
     source_domain: Arc<Box<[E]>>,
     twiddles: &Twiddles<F, A>,
-    // lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
 ) -> Vec<ColumnMajorCosetBoundTracePart<F, E>> {
     let mut result = Vec::with_capacity(lde_factor);
@@ -51,7 +50,6 @@ pub(crate) fn compute_column_major_lde_from_main_domain_inner<
 >(
     source_domain: &[E],
     twiddles: &Twiddles<F, A>,
-    // lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
 ) -> Vec<(Box<[E]>, F)> {
     assert!(lde_factor.is_power_of_two());
@@ -118,7 +116,6 @@ pub(crate) fn compute_column_major_lde_from_main_domain_and_output_monomial_form
 >(
     source_domain: &[E],
     twiddles: &Twiddles<F, A>,
-    // lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
 ) -> (Vec<(Box<[E]>, F)>, Vec<E>) {
     assert!(lde_factor.is_power_of_two());
@@ -195,6 +192,7 @@ pub(crate) fn compute_column_major_lde_from_monomial_form<
     monomial_form_normal_order: &[E],
     twiddles: &Twiddles<F, A>,
     lde_factor: usize,
+    worker: Option<&Worker>,
 ) -> Vec<(Box<[E]>, F)> {
     assert!(lde_factor.is_power_of_two());
 
@@ -207,15 +205,14 @@ pub(crate) fn compute_column_major_lde_from_monomial_form<
         materialize_powers_serial_starting_with_one::<F, Global>(next_root, lde_factor);
     assert_eq!(root_powers[0], F::ONE);
 
-    let mut result = Vec::with_capacity(lde_factor);
-
     assert!(twiddles.forward_twiddles.len() >= (1 << (trace_len_log2 - 1)));
 
     let selected_twiddles = &twiddles.forward_twiddles[..(1 << (trace_len_log2 - 1))];
 
     #[cfg(feature = "timing_logs")]
     let now = std::time::Instant::now();
-    for i in 0..lde_factor {
+
+    let compute_coset = |i: usize| -> (Box<[E]>, F) {
         let mut evals = monomial_form_normal_order.to_vec();
         let offset = root_powers[i];
         if i != 0 {
@@ -227,8 +224,36 @@ pub(crate) fn compute_column_major_lde_from_monomial_form<
             trace_len_log2,
             selected_twiddles,
         );
-        result.push((evals.into_boxed_slice(), offset));
-    }
+        (evals.into_boxed_slice(), offset)
+    };
+
+    let result = if let Some(worker) = worker {
+        let mut result: Vec<(Box<[E]>, F)> = Vec::with_capacity(lde_factor);
+        unsafe { result.set_len(lde_factor) };
+        let base_ptr = result.as_mut_ptr();
+        worker.scope(lde_factor, |scope, geometry| {
+            (0..geometry.len())
+                .map(|chunk_idx| {
+                    let start = geometry.get_chunk_start_pos(chunk_idx);
+                    let size = geometry.get_chunk_size(chunk_idx);
+                    let dst = unsafe { base_ptr.add(start) } as usize;
+                    (start, size, dst, chunk_idx == geometry.len() - 1)
+                })
+                .for_each(|(chunk_start, chunk_size, dst, is_last)| {
+                    Worker::smart_spawn(scope, is_last, move |_| {
+                        let mut dst = dst as *mut (Box<[E]>, F);
+                        for i in chunk_start..(chunk_start + chunk_size) {
+                            unsafe { dst.write(compute_coset(i)) };
+                            dst = unsafe { dst.add(1) };
+                        }
+                    });
+                });
+        });
+        result
+    } else {
+        (0..lde_factor).map(compute_coset).collect()
+    };
+
     #[cfg(feature = "timing_logs")]
     dbg!(now.elapsed());
 
@@ -302,6 +327,10 @@ fn lde_multiple_polys_parallel_from_hypercubes<F: PrimeField + TwoAdicField>(
         cosets.push(Vec::with_capacity(evals.len()));
     }
 
+    if evals.len() == 0 {
+        return cosets;
+    }
+
     unsafe {
         worker.scope(evals.len(), |scope, geometry| {
             for thread_idx in 0..geometry.len() {
@@ -324,7 +353,7 @@ fn lde_multiple_polys_parallel_from_hypercubes<F: PrimeField + TwoAdicField>(
 
                         // RS
                         let cosets = compute_column_major_lde_from_monomial_form(
-                            &input, twiddles, lde_factor,
+                            &input, twiddles, lde_factor, None,
                         );
                         for (coset_idx, (coset, offset)) in cosets.into_iter().enumerate() {
                             let trace_part = ColumnMajorCosetBoundTracePart {
@@ -359,6 +388,29 @@ pub fn commit_trace_part<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeC
 where
     [(); F::DEGREE]: Sized,
 {
+    if input_on_hypercube.is_empty() {
+        let mut cosets = Vec::with_capacity(lde_factor);
+        let next_root = domain_generator_for_size::<F>(((1 << trace_len_log2) * lde_factor) as u64);
+        let root_powers =
+            materialize_powers_serial_starting_with_one::<F, Global>(next_root, lde_factor);
+        assert_eq!(root_powers[0], F::ONE);
+        for i in 0..lde_factor {
+            let offset = root_powers[i];
+            let trace_part = ColumnMajorBaseOracleForCoset {
+                original_values_normal_order: Vec::new(),
+                offset,
+                trace_len_log2,
+            };
+            cosets.push(trace_part);
+        }
+        return ColumnMajorBaseOracleForLDE {
+            cosets,
+            tree: T::dummy(),
+            values_per_leaf: 1 << whir_first_fold_step_log2,
+            trace_len_log2,
+        };
+    }
+
     let values_per_leaf = 1 << whir_first_fold_step_log2;
     use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
     let evals = lde_multiple_polys_parallel_from_hypercubes(
@@ -433,7 +485,7 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let mem = commit_trace_part(
+    let mem: ColumnMajorBaseOracleForLDE<F, T> = commit_trace_part(
         &mem_inputs,
         twiddles,
         lde_factor,
@@ -448,7 +500,7 @@ where
         .iter()
         .map(|el| &el[..])
         .collect();
-    let wit = commit_trace_part(
+    let wit: ColumnMajorBaseOracleForLDE<F, T> = commit_trace_part(
         &wit_inputs,
         twiddles,
         lde_factor,
@@ -459,4 +511,67 @@ where
     );
 
     (mem, wit)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use field::baby_bear::base::BabyBearField;
+    use field::baby_bear::ext4::BabyBearExt4;
+    use rand::RngCore;
+
+    type F = BabyBearField;
+    type E = BabyBearExt4;
+
+    fn random_monomial_form(size: usize) -> Vec<E> {
+        let mut rng = rand::rng();
+        (0..size)
+            .map(|_| {
+                let coeffs = [(); 4].map(|_| F::from_u32_with_reduction(rng.next_u32()));
+                <E as FieldExtension<F>>::from_coeffs(coeffs)
+            })
+            .collect()
+    }
+
+    fn run_serial_vs_parallel(poly_size_log2: usize, lde_factor: usize) {
+        let worker = Worker::new_with_num_threads(4);
+        let poly_size = 1 << poly_size_log2;
+        let twiddles = fft::Twiddles::<F, Global>::new(poly_size, &worker);
+        let coeffs = random_monomial_form(poly_size);
+
+        let serial = compute_column_major_lde_from_monomial_form::<F, E, Global>(
+            &coeffs, &twiddles, lde_factor, None,
+        );
+        let parallel = compute_column_major_lde_from_monomial_form::<F, E, Global>(
+            &coeffs,
+            &twiddles,
+            lde_factor,
+            Some(&worker),
+        );
+
+        assert_eq!(serial.len(), parallel.len());
+        for (i, (s, p)) in serial.iter().zip(parallel.iter()).enumerate() {
+            assert_eq!(s.1, p.1, "offset mismatch at coset {i}");
+            assert_eq!(s.0[..], p.0[..], "evals mismatch at coset {i}");
+        }
+    }
+
+    #[test]
+    fn test_lde_serial_vs_parallel_lde2() {
+        run_serial_vs_parallel(10, 2);
+        run_serial_vs_parallel(14, 2);
+        run_serial_vs_parallel(18, 2);
+    }
+
+    #[test]
+    fn test_lde_serial_vs_parallel_lde4() {
+        run_serial_vs_parallel(10, 4);
+        run_serial_vs_parallel(14, 4);
+    }
+
+    #[test]
+    fn test_lde_serial_vs_parallel_lde8() {
+        run_serial_vs_parallel(10, 8);
+        run_serial_vs_parallel(14, 8);
+    }
 }

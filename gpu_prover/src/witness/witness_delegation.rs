@@ -4,7 +4,6 @@ use crate::circuit_type::DelegationCircuitType;
 use crate::device_structures::{DeviceMatrixImpl, DeviceMatrixMutImpl};
 use crate::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::memory::memory_get_info;
 use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
@@ -12,7 +11,6 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
-use std::ptr::{null, null_mut};
 
 cuda_kernel_signature_arguments_and_function!(
     GenerateWitnessValues<T>,
@@ -112,54 +110,4 @@ pub(crate) fn generate_witness_values_delegation<T: GenerateWitnessDelegation>(
         count,
     );
     GenerateWitnessValuesFunction(T::SIGNATURE).launch(&config, &args)
-}
-
-fn touch_kernel<T: GenerateWitnessDelegation>() -> CudaResult<()> {
-    use era_cudart::result::CudaResultWrap;
-    use era_cudart_sys::*;
-    let instant = std::time::Instant::now();
-    let func = GenerateWitnessValuesFunction(T::SIGNATURE).as_ptr();
-    let (free, _) = memory_get_info()?;
-    dbg!(free);
-    dbg!(instant.elapsed());
-    unsafe {
-        cudaFuncSetCacheConfig(func, CudaFuncCache::PreferL1).wrap()?;
-        dbg!(instant.elapsed());
-        let (free, _) = memory_get_info()?;
-        dbg!(free);
-        dbg!(instant.elapsed());
-        cudaFuncSetAttribute(func, CudaFuncAttribute::PreferredSharedMemoryCarveout, 0).wrap()?;
-        dbg!(instant.elapsed());
-        let (free, _) = memory_get_info()?;
-        dbg!(free);
-        dbg!(instant.elapsed());
-        let stream = CudaStream::DEFAULT;
-        let config = CudaLaunchConfig::basic(1, 1, &stream);
-        let args = GenerateWitnessValuesArguments::new(
-            DelegationTraceRaw {
-                cycles_count: 0,
-                tracing_data: null(),
-            },
-            null(),
-            null_mut(),
-            null_mut(),
-            null_mut(),
-            0,
-            0,
-        );
-        GenerateWitnessValuesFunction(T::SIGNATURE).launch(&config, &args)?;
-        stream.synchronize()?;
-        dbg!(instant.elapsed());
-    }
-    let (free, _) = memory_get_info()?;
-    dbg!(free);
-    dbg!(instant.elapsed());
-    Ok(())
-}
-
-pub(crate) fn touch_kernels() -> CudaResult<()> {
-    touch_kernel::<BigintDelegationWitness>()?;
-    touch_kernel::<Blake2sRoundFunctionDelegationWitness>()?;
-    touch_kernel::<KeccakSpecial5DelegationWitness>()?;
-    Ok(())
 }

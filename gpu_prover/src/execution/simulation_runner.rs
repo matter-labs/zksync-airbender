@@ -251,7 +251,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             return;
         }
         let trace = self.trace.take().unwrap();
-        let result = WorkerResult::SnapshotProduced(snapshot_index);
+        let result = WorkerResult::SnapshotProduced;
         self.results.as_ref().unwrap().send(result).unwrap();
         let counters_diff = machine_state
             .counters
@@ -260,7 +260,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             .map(|(a, b)| a - b)
             .collect_array::<MAX_NUM_COUNTERS>()
             .unwrap();
-        let expected_cycles = counters_diff.iter().take(6).sum::<u32>() as usize;
+        let expected_cycles = counters_diff.iter().take(6).sum::<u64>() as usize;
         assert_eq!(expected_cycles, cycles_count);
         let trace_ranges = self
             .tracing_data_producers

@@ -339,8 +339,16 @@ impl<'a, T> Iterator for GeometryAwareChunksRev<'a, T> {
 }
 
 impl Worker {
+    /// Workers can be used in context where too much threads can cause overflow,
+    /// e.g. in the context of airbender we have several places that assert
+    /// `(worker.num_cores as u64) * (trace_len as u64) < (1u64 << 32)` for that
+    /// reason. Given that maximum trace length is 2^24, we can pick a safe upper
+    /// bound that would be safe to use.
+    pub const MAX_WORKER_SIZE: usize = 192;
+
     pub fn new() -> Self {
-        let num_cores = num_cpus::get();
+        // Bound the builder by the maximum number of threads that is safe to use.
+        let num_cores = std::cmp::min(num_cpus::get(), Self::MAX_WORKER_SIZE);
 
         Self::new_with_num_threads(num_cores)
     }
@@ -350,6 +358,13 @@ impl Worker {
     }
 
     pub fn new_with_num_threads(num_threads: usize) -> Self {
+        assert!(num_threads > 0, "Worker must have at least one thread");
+        assert!(
+            num_threads <= Self::MAX_WORKER_SIZE,
+            "Worker cannot have more than {} threads",
+            Self::MAX_WORKER_SIZE
+        );
+
         let pool = ThreadPoolBuilder::new()
             .num_threads(num_threads)
             .stack_size(REQUIRED_STACK_SIZE)
@@ -458,6 +473,36 @@ impl Worker {
     {
         let work_geometry = self.get_geometry(work_size);
         self.pool.in_place_scope(|scope| f(scope, work_geometry))
+    }
+
+    /// Like [`scope`], but returns a single-chunk geometry when `work_size < threshold`,
+    /// causing `smart_spawn` to run the body on the calling thread with no spawning overhead.
+    #[track_caller]
+    pub fn scope_with_threshold<'a, F, R>(&self, work_size: usize, threshold: usize, f: F) -> R
+    where
+        F: FnOnce(&rayon::Scope<'a>, WorkerGeometry) -> R,
+    {
+        let work_geometry = self.get_geometry_with_threshold(work_size, threshold);
+        self.pool.in_place_scope(|scope| f(scope, work_geometry))
+    }
+
+    /// Returns a single-chunk geometry when `work_size < threshold`; otherwise behaves
+    /// identically to [`get_geometry`].
+    #[track_caller]
+    pub fn get_geometry_with_threshold(
+        &self,
+        work_size: usize,
+        threshold: usize,
+    ) -> WorkerGeometry {
+        if work_size < threshold {
+            WorkerGeometry {
+                num_chunks: 1,
+                ordinary_chunk_size: work_size,
+                remainder: 0,
+            }
+        } else {
+            self.get_geometry(work_size)
+        }
     }
 
     pub fn smart_spawn<'scope, BODY>(scope: &rayon::Scope<'scope>, is_last_thread: bool, body: BODY)

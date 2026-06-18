@@ -11,7 +11,12 @@ const PRECOMPILE_CHI1: u32 = 5;
 const PRECOMPILE_CHI2: u32 = 6;
 
 #[inline(never)]
-pub(crate) fn keccak_special5_call<C: Counters, S: Snapshotter<C>, R: RAM>(
+pub(crate) fn keccak_special5_call<
+    C: Counters,
+    S: Snapshotter<C>,
+    R: RAM,
+    E: ExecutionObserver<C>,
+>(
     state: &mut State<C>,
     ram: &mut R,
     snapshotter: &mut S,
@@ -92,13 +97,18 @@ pub(crate) fn keccak_special5_call<C: Counters, S: Snapshotter<C>, R: RAM>(
     state
         .counters
         .bump_keccak_special5(common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600);
+    E::on_delegation(
+        state,
+        KECCAK_SPECIAL5_CSR_REGISTER,
+        common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 as u64,
+    );
     state.pc = state.pc.wrapping_add(
         (core::mem::size_of::<u32>() * common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600)
             as u32,
     );
     state
         .counters
-        .log_multiple_circuit_family_calls::<SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX>(
+        .log_multiple_circuit_family_calls::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
             common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600,
         );
 }
@@ -198,7 +208,7 @@ pub(crate) const fn keccak_special5_impl_extract_indices(
     };
 
     const PERMUTATIONS_ADJUSTED_AS_ARRAYS: [[usize; 25]; 25] =
-        { unsafe { core::mem::transmute(PERMUTATIONS_ADJUSTED) } };
+        unsafe { core::mem::transmute(PERMUTATIONS_ADJUSTED) };
 
     match precompile {
         PRECOMPILE_IOTA_COLUMNXOR => {
@@ -234,7 +244,7 @@ pub(crate) const fn keccak_special5_impl_extract_indices(
             [idx0, idx5, idx10, idx15, idx20, 25]
         }
         PRECOMPILE_CHI1 => {
-            let pi = &PERMUTATIONS_ADJUSTED_AS_ARRAYS[(round + 1)]; // indices after applying round permutation
+            let pi = &PERMUTATIONS_ADJUSTED_AS_ARRAYS[round + 1]; // indices after applying round permutation
             let idx = iteration * 5;
             let _idx0 = pi[idx];
             let idx1 = pi[idx + 1];
@@ -244,7 +254,7 @@ pub(crate) const fn keccak_special5_impl_extract_indices(
             [idx1, idx2, idx3, idx4, 25, 26]
         }
         PRECOMPILE_CHI2 => {
-            let pi = &PERMUTATIONS_ADJUSTED_AS_ARRAYS[(round + 1)]; // indices after applying round permutation
+            let pi = &PERMUTATIONS_ADJUSTED_AS_ARRAYS[round + 1]; // indices after applying round permutation
             let idx = iteration * 5;
             let idx0 = pi[idx];
             let _idx1 = pi[idx + 1];

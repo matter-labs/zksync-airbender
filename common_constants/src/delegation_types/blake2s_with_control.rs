@@ -2,7 +2,7 @@ pub const BLAKE2S_MAX_ROUNDS: usize = 10;
 pub const BLAKE2S_NUM_CONTROL_BITS: usize = 3;
 pub const BLAKE2S_NUM_CONTROL_REGISTER_BITS: usize = BLAKE2S_MAX_ROUNDS + BLAKE2S_NUM_CONTROL_BITS;
 
-pub const BLAKE2S_DELEGATION_CSR_REGISTER: u32 = super::NON_DETERMINISM_CSR + 7;
+pub const BLAKE2S_DELEGATION_CSR_REGISTER: u32 = super::super::NON_DETERMINISM_CSR + 7;
 // pub const BLAKE2S_DELEGATION_CSR_INVOCATION_STR: &str =
 //     const_format::concatcp!("csrrw x0, ", BLAKE2S_DELEGATION_CSR_REGISTER, ", x0");
 
@@ -32,6 +32,9 @@ pub unsafe fn blake_csr_trigger_delegation_reduced_rounds(
     input_ptr: *const u32,
     mut mask: u32,
 ) {
+    #[cfg(feature = "verifier_stats")]
+    crate::stats::GKR_VERIFY_STATS.with_borrow_mut(|s| s.blake2s_hashes += 1);
+
     unsafe {
         core::arch::asm!(
             "csrrw x0, 0x7C7, x0",
@@ -58,6 +61,9 @@ pub unsafe fn blake_csr_trigger_delegation_full_rounds(
     input_ptr: *const u32,
     mut mask: u32,
 ) {
+    #[cfg(feature = "verifier_stats")]
+    crate::stats::GKR_VERIFY_STATS.with_borrow_mut(|s| s.blake2s_hashes += 1);
+
     unsafe {
         core::arch::asm!(
             "csrrw x0, 0x7C7, x0",

@@ -61,10 +61,34 @@ struct KeccakSpecial5AbiDescription {
 
 template <typename DESCRIPTION> struct DelegationWitness {
   const TimestampScalar write_timestamp;
-  const RegisterOrIndirectReadWriteData reg_accesses[DESCRIPTION::REG_ACCESSES];
-  const RegisterOrIndirectReadData indirect_reads[DESCRIPTION::INDIRECT_READS];
-  const RegisterOrIndirectReadWriteData indirect_writes[DESCRIPTION::INDIRECT_WRITES];
-  const u16 variables_offsets[DESCRIPTION::VARIABLE_OFFSETS];
+  // instead of
+  // const RegisterOrIndirectReadWriteData reg_accesses[DESCRIPTION::REG_ACCESSES];
+  // const RegisterOrIndirectReadData indirect_reads[DESCRIPTION::INDIRECT_READS];
+  // const RegisterOrIndirectReadWriteData indirect_writes[DESCRIPTION::INDIRECT_WRITES];
+  // const u16 variables_offsets[DESCRIPTION::VARIABLE_OFFSETS];
+  // we implement this as a single byte array to avoid compilation errors when some of the arrays would be zero-size
+  const u8 contents[DESCRIPTION::REG_ACCESSES * sizeof(RegisterOrIndirectReadWriteData) + DESCRIPTION::INDIRECT_READS * sizeof(RegisterOrIndirectReadData) +
+                    DESCRIPTION::INDIRECT_WRITES * sizeof(RegisterOrIndirectReadWriteData) + DESCRIPTION::VARIABLE_OFFSETS * sizeof(u16)];
+
+  DEVICE_FORCEINLINE const RegisterOrIndirectReadWriteData *reg_accesses() const { return reinterpret_cast<const RegisterOrIndirectReadWriteData *>(contents); }
+
+  DEVICE_FORCEINLINE const RegisterOrIndirectReadData *indirect_reads() const {
+    constexpr size_t offset = DESCRIPTION::REG_ACCESSES * sizeof(RegisterOrIndirectReadWriteData);
+    return reinterpret_cast<const RegisterOrIndirectReadData *>(contents + offset);
+  }
+
+  DEVICE_FORCEINLINE const RegisterOrIndirectReadWriteData *indirect_writes() const {
+    constexpr size_t offset =
+        DESCRIPTION::REG_ACCESSES * sizeof(RegisterOrIndirectReadWriteData) + DESCRIPTION::INDIRECT_READS * sizeof(RegisterOrIndirectReadData);
+    return reinterpret_cast<const RegisterOrIndirectReadWriteData *>(contents + offset);
+  }
+
+  DEVICE_FORCEINLINE const u16 *variables_offsets() const {
+    constexpr size_t offset = DESCRIPTION::REG_ACCESSES * sizeof(RegisterOrIndirectReadWriteData) +
+                              DESCRIPTION::INDIRECT_READS * sizeof(RegisterOrIndirectReadData) +
+                              DESCRIPTION::INDIRECT_WRITES * sizeof(RegisterOrIndirectReadWriteData);
+    return reinterpret_cast<const u16 *>(contents + offset);
+  }
 };
 
 template <typename DESCRIPTION> struct DelegationTrace {
@@ -79,20 +103,20 @@ template <typename DESCRIPTION> struct DelegationTrace {
     const auto cycle_data = tracing_data + trace_row;
     switch (placeholder.tag) {
     case DelegationRegisterReadValue: {
-      return cycle_data->reg_accesses[reg_offset].read_value;
+      return cycle_data->reg_accesses()[reg_offset].read_value;
     }
     case DelegationRegisterWriteValue: {
-      return cycle_data->reg_accesses[reg_offset].write_value;
+      return cycle_data->reg_accesses()[reg_offset].write_value;
     }
     case DelegationIndirectReadValue: {
-      return DESCRIPTION::use_read_indirects(register_index) ? cycle_data->indirect_reads[word_index].read_value
-                                                             : cycle_data->indirect_writes[word_index].read_value;
+      return DESCRIPTION::use_read_indirects(register_index) ? cycle_data->indirect_reads()[word_index].read_value
+                                                             : cycle_data->indirect_writes()[word_index].read_value;
     }
     case DelegationIndirectWriteValue: {
       if (DESCRIPTION::use_read_indirects(register_index)) {
         __trap();
       }
-      return cycle_data->indirect_writes[word_index].write_value;
+      return cycle_data->indirect_writes()[word_index].write_value;
     }
     default:
       __trap();
@@ -110,7 +134,7 @@ template <typename DESCRIPTION> struct DelegationTrace {
     case DelegationIndirectAccessVariableOffset: {
       const u32 variable_index = placeholder.payload[0];
       const auto cycle_data = tracing_data + trace_row;
-      return cycle_data->variables_offsets[variable_index];
+      return cycle_data->variables_offsets()[variable_index];
     }
     default:
       __trap();
@@ -138,11 +162,11 @@ template <typename DESCRIPTION> struct DelegationTrace {
     case DelegationWriteTimestamp:
       return TimestampData::from_scalar(cycle_data->write_timestamp);
     case DelegationRegisterReadTimestamp: {
-      return cycle_data->reg_accesses[reg_offset].timestamp;
+      return cycle_data->reg_accesses()[reg_offset].timestamp;
     }
     case DelegationIndirectReadTimestamp: {
-      return DESCRIPTION::use_read_indirects(register_index) ? cycle_data->indirect_reads[word_index].timestamp
-                                                             : cycle_data->indirect_writes[word_index].timestamp;
+      return DESCRIPTION::use_read_indirects(register_index) ? cycle_data->indirect_reads()[word_index].timestamp
+                                                             : cycle_data->indirect_writes()[word_index].timestamp;
     }
     default:
       __trap();

@@ -1,6 +1,5 @@
-use crate::ir::DelegationType;
-use crate::ir::Instruction;
-use crate::ir::InstructionName;
+use crate::ir::simple_instruction_set::*;
+use crate::ir::*;
 use crate::vm::Counters;
 use crate::vm::InstructionTape;
 use crate::vm::NonDeterminismCSRSource;
@@ -8,9 +7,10 @@ use crate::vm::State;
 use crate::vm::{RamPeek, RAM};
 use crate::witness::WitnessTracer;
 use common_constants::circuit_families::*;
+use common_constants::TimestampData;
 use common_constants::TimestampScalar;
 use common_constants::TIMESTAMP_STEP;
-use risc_v_simulator::machine_mode_only_unrolled::TimestampData;
+use field::PrimeField;
 
 mod delegations;
 mod instructions;
@@ -68,7 +68,7 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
         debug_assert_eq!(*address % 4, 0);
         if *address < 1 << (16 + ROM_BOUND_SECOND_WORD_BITS) {
             // NOTE: we no longer mask an address, just a value as it's only initialized to
-            // 0 via inits, and can not be writen over by circuits
+            // 0 via inits, and can not be written over by circuits
             // *address = 0u32;
             *value = 0u32;
         }
@@ -121,7 +121,7 @@ pub struct ReplayerVM<C: Counters> {
 }
 
 impl<C: Counters> ReplayerVM<C> {
-    pub fn replay_basic_unrolled<R: RAM, ND: NonDeterminismCSRSource>(
+    pub fn replay_basic_unrolled<R: RAM, ND: NonDeterminismCSRSource, F: PrimeField>(
         state: &mut State<C>,
         ram: &mut R,
         instruction_tape: &impl InstructionTape,
@@ -130,10 +130,17 @@ impl<C: Counters> ReplayerVM<C> {
         tracer: &mut impl WitnessTracer,
     ) {
         let final_ts = state.timestamp + (TIMESTAMP_STEP * (cycle_bound as u64));
-        Self::replay_by_timestamp_bound(state, ram, instruction_tape, nd, final_ts, tracer);
+        Self::replay_by_timestamp_bound::<R, ND, F>(
+            state,
+            ram,
+            instruction_tape,
+            nd,
+            final_ts,
+            tracer,
+        );
     }
 
-    pub fn replay_by_timestamp_bound<R: RAM, ND: NonDeterminismCSRSource>(
+    pub fn replay_by_timestamp_bound<R: RAM, ND: NonDeterminismCSRSource, F: PrimeField>(
         state: &mut State<C>,
         ram: &mut R,
         instruction_tape: &impl InstructionTape,
@@ -142,83 +149,112 @@ impl<C: Counters> ReplayerVM<C> {
         tracer: &mut impl WitnessTracer,
     ) {
         while state.timestamp < timestamp_bound {
-            unsafe {
-                let pc = state.pc;
-                use crate::replayer::instructions::*;
-                let instr = instruction_tape.read_instruction(pc);
-                match instr.name {
-                    InstructionName::Illegal => illegal::<C, R>(state, ram, instr, tracer),
-                    InstructionName::Lui => lui_auipc::lui::<C, R>(state, ram, instr, tracer),
-                    InstructionName::Auipc => lui_auipc::auipc::<C, R>(state, ram, instr, tracer),
-
-                    InstructionName::Jal => jal_jalr::jal::<C, R>(state, ram, instr, tracer),
-                    InstructionName::Jalr => jal_jalr::jalr::<C, R>(state, ram, instr, tracer),
-
-                    InstructionName::Slt => slt::slt::<C, R, false>(state, ram, instr, tracer),
-                    InstructionName::Slti => slt::slt::<C, R, true>(state, ram, instr, tracer),
-
-                    InstructionName::Sltu => slt::sltu::<C, R, false>(state, ram, instr, tracer),
-                    InstructionName::Sltiu => slt::sltu::<C, R, true>(state, ram, instr, tracer),
-
-                    InstructionName::Branch => branch::branch::<C, R>(state, ram, instr, tracer),
-
-                    InstructionName::Sw => memory::sw::<C, R>(state, ram, instr, tracer),
-                    InstructionName::Lw => memory::lw::<C, R>(state, ram, instr, tracer),
-
-                    InstructionName::Sh => memory::sh::<C, R>(state, ram, instr, tracer),
-                    InstructionName::Lhu => memory::lh::<C, R, false>(state, ram, instr, tracer),
-                    InstructionName::Lh => memory::lh::<C, R, true>(state, ram, instr, tracer),
-
-                    InstructionName::Sb => memory::sb::<C, R>(state, ram, instr, tracer),
-                    InstructionName::Lbu => memory::lb::<C, R, false>(state, ram, instr, tracer),
-                    InstructionName::Lb => memory::lb::<C, R, true>(state, ram, instr, tracer),
-
-                    InstructionName::Add => {
-                        add_sub::add_op::<C, R, false>(state, ram, instr, tracer)
-                    }
-                    InstructionName::Addi => {
-                        add_sub::add_op::<C, R, true>(state, ram, instr, tracer)
-                    }
-                    InstructionName::Sub => add_sub::sub_op::<C, R>(state, ram, instr, tracer),
-                    InstructionName::Xor => binary::xor::<C, R, false>(state, ram, instr, tracer),
-                    InstructionName::Xori => binary::xor::<C, R, true>(state, ram, instr, tracer),
-                    InstructionName::And => binary::and::<C, R, false>(state, ram, instr, tracer),
-                    InstructionName::Andi => binary::and::<C, R, true>(state, ram, instr, tracer),
-                    InstructionName::Or => binary::or::<C, R, false>(state, ram, instr, tracer),
-                    InstructionName::Ori => binary::or::<C, R, true>(state, ram, instr, tracer),
-                    InstructionName::Sll => shifts::sll::<C, R, false>(state, ram, instr, tracer),
-                    InstructionName::Slli => shifts::sll::<C, R, true>(state, ram, instr, tracer),
-                    InstructionName::Srl => shifts::srl::<C, R, false>(state, ram, instr, tracer),
-                    InstructionName::Srli => shifts::srl::<C, R, true>(state, ram, instr, tracer),
-                    InstructionName::Sra => shifts::sra::<C, R, false>(state, ram, instr, tracer),
-                    InstructionName::Srai => shifts::sra::<C, R, true>(state, ram, instr, tracer),
-                    InstructionName::Mul => mul_div::mul::<C, R>(state, ram, instr, tracer),
-                    InstructionName::Mulhu => mul_div::mulhu::<C, R>(state, ram, instr, tracer),
-                    InstructionName::Divu => mul_div::divu::<C, R>(state, ram, instr, tracer),
-                    InstructionName::Remu => mul_div::remu::<C, R>(state, ram, instr, tracer),
-
-                    InstructionName::ZimopAdd => mop::mop_addmod::<C, R>(state, ram, instr, tracer),
-                    InstructionName::ZimopSub => mop::mop_submod::<C, R>(state, ram, instr, tracer),
-                    InstructionName::ZimopMul => mop::mop_mulmod::<C, R>(state, ram, instr, tracer),
-
-                    InstructionName::ZicsrNonDeterminismRead => {
-                        zicsr::nd_read::<C, R, ND>(state, ram, instr, tracer, nd)
-                    }
-                    InstructionName::ZicsrNonDeterminismWrite => {
-                        zicsr::nd_write::<C, R>(state, ram, instr, tracer)
-                    }
-                    InstructionName::ZicsrDelegation => {
-                        zicsr::call_delegation::<C, R>(state, ram, instr, tracer)
-                    }
-                    a @ _ => {
-                        panic!("Unknown instruction {:?}", a);
-                    }
-                    _ => core::hint::unreachable_unchecked(),
+            let pc = state.pc;
+            use crate::replayer::instructions::*;
+            let instr = instruction_tape.read_instruction(pc);
+            match instr.name {
+                InstructionName::Illegal => illegal::<C, R>(state, ram, instr, tracer),
+                InstructionName::Nop => {
+                    add_sub_family::nop_op::<C, R>(state, ram, instr, tracer)
                 }
-                state.timestamp += TIMESTAMP_STEP;
-                if state.pc == pc {
-                    return;
+                InstructionName::Add => {
+                    add_sub_family::add_sub::add_op::<C, R>(state, ram, instr, tracer)
                 }
+                InstructionName::Sub => {
+                    add_sub_family::add_sub::sub_op::<C, R>(state, ram, instr, tracer)
+                }
+                InstructionName::Auipc => {
+                    add_sub_family::auipc::auipc::<C, R>(state, ram, instr, tracer)
+                }
+                InstructionName::ZimopAdd => {
+                    add_sub_family::mop::mop_addmod::<C, R, F>(state, ram, instr, tracer)
+                }
+                InstructionName::ZimopSub => {
+                    add_sub_family::mop::mop_submod::<C, R, F>(state, ram, instr, tracer)
+                }
+                InstructionName::ZimopMul => {
+                    add_sub_family::mop::mop_mulmod::<C, R, F>(state, ram, instr, tracer)
+                }
+                InstructionName::ZimopFMA => {
+                    add_sub_family::mop::mop_fmamod::<C, R, F>(state, ram, instr, tracer)
+                }
+                InstructionName::ZicsrNonDeterminismRead => {
+                    add_sub_family::non_determinism::nd_read::<C, R, ND>(
+                        state, ram, instr, tracer, nd,
+                    )
+                }
+                InstructionName::ZicsrNonDeterminismWrite => {
+                    add_sub_family::non_determinism::nd_write::<C, R>(state, ram, instr, tracer)
+                }
+                InstructionName::ZicsrDelegation => {
+                    add_sub_family::delegation::call_delegation::<C, R>(
+                        state, ram, instr, tracer,
+                    )
+                }
+
+                InstructionName::Jal => {
+                    jump_branch_slt_family::jal_jalr::jal::<C, R>(state, ram, instr, tracer)
+                }
+                InstructionName::Jalr => {
+                    jump_branch_slt_family::jal_jalr::jalr::<C, R>(state, ram, instr, tracer)
+                }
+                InstructionName::Slt => {
+                    jump_branch_slt_family::slt::slt::<C, R>(state, ram, instr, tracer)
+                }
+                InstructionName::Sltu => {
+                    jump_branch_slt_family::slt::sltu::<C, R>(state, ram, instr, tracer)
+                }
+                InstructionName::Branch => {
+                    jump_branch_slt_family::branch::branch::<C, R>(state, ram, instr, tracer)
+                }
+
+                InstructionName::Sw => memory::sw::<C, R>(state, ram, instr, tracer),
+                InstructionName::Lw => memory::lw::<C, R>(state, ram, instr, tracer),
+
+                InstructionName::Sh => memory::sh::<C, R>(state, ram, instr, tracer),
+                InstructionName::Lhu => memory::lh::<C, R, false>(state, ram, instr, tracer),
+                InstructionName::Lh => memory::lh::<C, R, true>(state, ram, instr, tracer),
+
+                InstructionName::Sb => memory::sb::<C, R>(state, ram, instr, tracer),
+                InstructionName::Lbu => memory::lb::<C, R, false>(state, ram, instr, tracer),
+                InstructionName::Lb => memory::lb::<C, R, true>(state, ram, instr, tracer),
+
+                InstructionName::Xor => {
+                    binary_shifts_family::binary_ops::xor::<C, R>(state, ram, instr, tracer)
+                }
+                InstructionName::And => {
+                    binary_shifts_family::binary_ops::and::<C, R>(state, ram, instr, tracer)
+                }
+                InstructionName::Or => {
+                    binary_shifts_family::binary_ops::or::<C, R>(state, ram, instr, tracer)
+                }
+                InstructionName::Sll => {
+                    binary_shifts_family::shifts::sll::<C, R>(state, ram, instr, tracer)
+                }
+                InstructionName::Srl => {
+                    binary_shifts_family::shifts::srl::<C, R>(state, ram, instr, tracer)
+                }
+                InstructionName::Sra => {
+                    binary_shifts_family::shifts::sra::<C, R>(state, ram, instr, tracer)
+                }
+
+                InstructionName::Mul => mul_div::mul::<C, R>(state, ram, instr, tracer),
+                InstructionName::Mulhu => mul_div::mulhu::<C, R>(state, ram, instr, tracer),
+                InstructionName::Divu => mul_div::divu::<C, R>(state, ram, instr, tracer),
+                InstructionName::Remu => mul_div::remu::<C, R>(state, ram, instr, tracer),
+
+                InstructionName::ZicsrMarkerCsr => panic!(
+                    "detected transpiler marker CSR during replay; programs containing development cycle markers must not be proved"
+                ),
+
+                a @ _ => {
+                    panic!("Unknown instruction {:?}", a);
+                }
+                // _ => unsafe { core::hint::unreachable_unchecked() },
+            }
+            state.timestamp += TIMESTAMP_STEP;
+            if state.pc == pc {
+                return;
             }
         }
     }
@@ -226,15 +262,15 @@ impl<C: Counters> ReplayerVM<C> {
 
 #[cfg(test)]
 mod test {
-    use common_constants::INITIAL_TIMESTAMP;
-    use risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
-
-    use crate::ir::preprocess_bytecode;
+    use crate::ir::simple_instruction_set::*;
     use crate::ir::FullUnsignedMachineDecoderConfig;
     use crate::vm::test::read_binary;
     use crate::vm::Counters;
     use crate::vm::*;
     use crate::witness::NonMemDestinationHolder;
+    use crate::witness::*;
+    use common_constants::INITIAL_TIMESTAMP;
+    use field::Mersenne31Field;
 
     use super::*;
     use std::path::Path;
@@ -501,11 +537,12 @@ mod test {
     // }
 
     #[test]
+    #[serial_test::serial]
     fn test_replay_keccak_f1600() {
         let (_, binary) = read_binary(&Path::new("examples/keccak_f1600/app.bin"));
         let (_, text) = read_binary(&Path::new("examples/keccak_f1600/app.text"));
         let instructions: Vec<Instruction> =
-            preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text);
+            preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
         let mut ram = RamWithRomRegion::<5>::from_rom_content(&binary, 1 << 30);
         let cycles_bound = 1 << 30;
@@ -518,7 +555,7 @@ mod test {
         > = SimpleSnapshotter::new_with_cycle_limit(cycles_bound, state);
 
         let now = std::time::Instant::now();
-        VM::<CountersT>::run_basic_unrolled::<_, _, _>(
+        VM::<CountersT>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
             &mut state,
             &mut ram,
             &mut snapshotter,
@@ -546,7 +583,7 @@ mod test {
             buffers: &mut buffers[..],
         };
         let now = std::time::Instant::now();
-        ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
+        ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _, Mersenne31Field>(
             &mut state,
             &mut ram,
             &tape,

@@ -10,6 +10,11 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+common_constants = { workspace = true }
 field = { workspace = true }
 fft = { workspace = true }
 worker = { workspace = true }
+cs = { workspace = true, features = ["compiler"] }
+witness_eval_generator = { workspace = true }
+serde = { workspace = true }
+serde_json = "*"

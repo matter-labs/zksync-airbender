@@ -1,6 +1,6 @@
-use crate::gkr::{
-    prover::{apply_row_wise, split_destinations},
-    sumcheck::access_and_fold::ExtensionFieldPoly,
+use crate::{
+    definitions::sumcheck_kernel::fixed_over_mixed_input::MixedFieldsInOutFixedSizesEvaluationKernelCore,
+    gkr::{prover::apply_row_wise, sumcheck::access_and_fold::ExtensionFieldPoly},
 };
 
 use super::*;
@@ -15,7 +15,8 @@ pub trait MixedFieldsInOutFixedSizesEvaluationKernel<
     const IN_BASE: usize,
     const IN_EXT: usize,
     const OUT: usize,
->: Send + Sync
+>:
+    Send + Sync + MixedFieldsInOutFixedSizesEvaluationKernelCore<F, E, IN_BASE, IN_EXT, OUT>
 {
     #[inline(always)]
     fn evaluate_forward<
@@ -27,6 +28,7 @@ pub trait MixedFieldsInOutFixedSizesEvaluationKernel<
         sources: &[SB; IN_BASE],
         ext_sources: &[SE; IN_EXT],
     ) -> [E; OUT] {
+        assert!(IN_BASE > 0);
         assert!(IN_BASE + IN_EXT > 0);
         assert!(OUT > 0);
         let sources = sources.each_ref().map(|el| el.get_at_index(index));
@@ -49,6 +51,7 @@ pub trait MixedFieldsInOutFixedSizesEvaluationKernel<
         output_sources: &[SOUT; OUT],
         batch_challenges: &[E; OUT],
     ) -> [E; 2] {
+        assert!(IN_BASE > 0);
         assert!(IN_BASE + IN_EXT > 0);
         assert!(OUT > 0);
         unsafe {
@@ -72,7 +75,7 @@ pub trait MixedFieldsInOutFixedSizesEvaluationKernel<
                 let ext_sources = ext_sources
                     .each_ref()
                     .map(|el| el.get_f1_minus_f0_only(index));
-                let evals = self.pointwise_eval(&sources, &ext_sources, ctx);
+                let evals = self.pointwise_eval_quadratic_term_only(&sources, &ext_sources, ctx);
                 let mut eval = batch_challenges[0];
                 eval.mul_assign(&evals[0]);
                 for i in 1..OUT {
@@ -100,10 +103,11 @@ pub trait MixedFieldsInOutFixedSizesEvaluationKernel<
         ext_sources: &[SE; IN_EXT],
         batch_challenges: &[E; OUT],
     ) -> [E; 2] {
+        assert!(IN_BASE > 0);
         assert!(IN_BASE + IN_EXT > 0);
         assert!(OUT > 0);
         unsafe {
-            let ctx = sources.get_unchecked(0).get_collapse_context();
+            let ctx = sources[0].get_collapse_context();
 
             let mut result = [const { MaybeUninit::uninit() }; 2];
             let mut p0s = [const { MaybeUninit::uninit() }; IN_BASE];
@@ -126,8 +130,9 @@ pub trait MixedFieldsInOutFixedSizesEvaluationKernel<
             let ext_p0s = ext_p0s.map(|el| el.assume_init());
             let ext_p1s = ext_p1s.map(|el| el.assume_init());
 
-            for (j, (p_b, p_ext)) in [(&p0s, &ext_p0s), (&p1s, &ext_p1s)].into_iter().enumerate() {
-                let evals = self.pointwise_eval(p_b, p_ext, ctx);
+            // all terms
+            {
+                let evals = self.pointwise_eval(&p0s, &ext_p0s, ctx);
                 let mut eval = batch_challenges[0];
                 eval.mul_assign(&evals[0]);
                 for i in 1..OUT {
@@ -135,91 +140,28 @@ pub trait MixedFieldsInOutFixedSizesEvaluationKernel<
                     t.mul_assign(&evals[i]);
                     eval.add_assign(&t);
                 }
-                result[j].write(eval);
+                result[0].write(eval);
+            }
+
+            // quadratic only, unless we want plain evaluations
+            {
+                let evals = if EXPLICIT_FORM {
+                    self.pointwise_eval(&p1s, &ext_p1s, ctx)
+                } else {
+                    self.pointwise_eval_quadratic_term_only(&p1s, &ext_p1s, ctx)
+                };
+                let mut eval = batch_challenges[0];
+                eval.mul_assign(&evals[0]);
+                for i in 1..OUT {
+                    let mut t = batch_challenges[i];
+                    t.mul_assign(&evals[i]);
+                    eval.add_assign(&t);
+                }
+                result[1].write(eval);
             }
 
             result.map(|el| el.assume_init())
         }
-    }
-
-    fn pointwise_eval<RB: EvaluationRepresentation<F, E>>(
-        &self,
-        input: &[RB; IN_BASE],
-        ext_input: &[ExtensionFieldRepresentation<F, E>; IN_EXT],
-        ctx: &RB::CollapseContext,
-    ) -> [E; OUT];
-
-    #[inline(always)]
-    fn pointwise_eval_forward(
-        &self,
-        input: &[BaseFieldRepresentation<F>; IN_BASE],
-        ext_input: &[ExtensionFieldRepresentation<F, E>; IN_EXT],
-    ) -> [E; OUT] {
-        self.pointwise_eval(input, ext_input, &())
-    }
-}
-
-#[inline(always)]
-fn evaluate_mixed_field_in_out_fixed_sizes_evaluation_kernel<
-    F: PrimeField,
-    E: FieldExtension<F> + Field,
-    const IN_BASE: usize,
-    const IN_EXT: usize,
-    const OUT: usize,
-    K: MixedFieldsInOutFixedSizesEvaluationKernel<F, E, IN_BASE, IN_EXT, OUT>,
-    RB: EvaluationRepresentation<F, E>,
-    SB: EvaluationFormStorage<F, E, RB>,
-    SE: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
-    const EXPLICIT_FORM: bool,
->(
-    kernel: &K,
-    index: usize,
-    sources: &[SB],
-    ext_sources: &[SE],
-    batch_challenges: &[E],
-) -> [E; 2] {
-    debug_assert_eq!(sources.len(), IN_BASE);
-    debug_assert_eq!(ext_sources.len(), IN_EXT);
-    debug_assert_eq!(batch_challenges.len(), OUT);
-    unsafe {
-        let inputs = sources.as_array().unwrap_unchecked();
-        let inputs_ext = ext_sources.as_array().unwrap_unchecked();
-        let challenges = batch_challenges.as_array().unwrap_unchecked();
-        K::evaluate::<RB, SB, SE, EXPLICIT_FORM>(kernel, index, inputs, inputs_ext, challenges)
-    }
-}
-
-#[inline(always)]
-fn evaluate_mixed_field_in_out_fixed_sizes_evaluation_kernel_first_round<
-    F: PrimeField,
-    E: FieldExtension<F> + Field,
-    const IN_BASE: usize,
-    const IN_EXT: usize,
-    const OUT: usize,
-    K: MixedFieldsInOutFixedSizesEvaluationKernel<F, E, IN_BASE, IN_EXT, OUT>,
-    SB: EvaluationFormStorage<F, E, BaseFieldRepresentation<F>>,
-    SE: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
-    SOUT: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
->(
-    kernel: &K,
-    index: usize,
-    sources: &[SB],
-    ext_sources: &[SE],
-    outputs: &[SOUT],
-    batch_challenges: &[E],
-) -> [E; 2] {
-    debug_assert_eq!(sources.len(), IN_BASE);
-    debug_assert_eq!(ext_sources.len(), IN_EXT);
-    debug_assert_eq!(outputs.len(), OUT);
-    debug_assert_eq!(batch_challenges.len(), OUT);
-    unsafe {
-        let inputs = sources.as_array().unwrap_unchecked();
-        let inputs_ext = ext_sources.as_array().unwrap_unchecked();
-        let outputs = outputs.as_array().unwrap_unchecked();
-        let challenges = batch_challenges.as_array().unwrap_unchecked();
-        K::evaluate_first_round::<SB, SE, SOUT>(
-            kernel, index, inputs, inputs_ext, outputs, challenges,
-        )
     }
 }
 
@@ -296,6 +238,7 @@ pub fn evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs<
     const IN_EXT: usize,
     const OUT: usize,
     K: MixedFieldsInOutFixedSizesEvaluationKernel<F, E, IN_BASE, IN_EXT, OUT>,
+    const N: usize,
 >(
     kernel: &K,
     inputs: &GKRInputs,
@@ -305,7 +248,7 @@ pub fn evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs<
     folding_challenges: &[E],
     accumulator: &mut [[E; 2]],
     total_sumcheck_rounds: usize,
-    last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+    last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
     worker: &Worker,
 ) {
     assert!(total_sumcheck_rounds >= 4);
@@ -353,6 +296,16 @@ pub fn evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs<
                             }
                         },
                     );
+
+                    // for base in inputs.iter() {
+                    //     dbg!(base.current_values());
+                    // }
+                    // for ext in ext_inputs.iter() {
+                    //     dbg!(ext.current_values());
+                    // }
+                    // for out in outputs.iter() {
+                    //     dbg!(out.current_values());
+                    // }
                 } else {
                     assert_eq!(sources.base_field_inputs.len(), IN_BASE);
                     assert_eq!(sources.extension_field_inputs.len(), IN_EXT);
@@ -397,6 +350,13 @@ pub fn evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs<
                     let ext_inputs = sources.extension_field_inputs.as_array().unwrap_unchecked();
                     let challenges = batch_challenges.as_array().unwrap_unchecked();
 
+                    // for base in inputs.iter() {
+                    //     dbg!(base.current_values());
+                    // }
+                    // for ext in ext_inputs.iter() {
+                    //     dbg!(ext.current_values());
+                    // }
+
                     apply_row_wise::<F, _>(
                         vec![],
                         vec![accumulator],
@@ -419,6 +379,13 @@ pub fn evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs<
                             }
                         },
                     );
+
+                    // for base in inputs.iter() {
+                    //     dbg!(base.current_values());
+                    // }
+                    // for ext in ext_inputs.iter() {
+                    //     dbg!(ext.current_values());
+                    // }
                 }
             }
             2 => {
@@ -432,6 +399,13 @@ pub fn evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs<
                     let ext_inputs = sources.extension_field_inputs.as_array().unwrap_unchecked();
                     let challenges = batch_challenges.as_array().unwrap_unchecked();
 
+                    // for base in inputs.iter() {
+                    //     dbg!(base.current_values());
+                    // }
+                    // for ext in ext_inputs.iter() {
+                    //     dbg!(ext.current_values());
+                    // }
+
                     apply_row_wise::<F, _>(
                         vec![],
                         vec![accumulator],
@@ -454,6 +428,13 @@ pub fn evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs<
                             }
                         },
                     );
+
+                    // for base in inputs.iter() {
+                    //     dbg!(base.current_values());
+                    // }
+                    // for ext in ext_inputs.iter() {
+                    //     dbg!(ext.current_values());
+                    // }
                 }
             }
             i if i + 1 == total_sumcheck_rounds => {
@@ -491,8 +472,14 @@ pub fn evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs<
                             }
                         },
                     );
-                }
 
+                    // for base in inputs.iter() {
+                    //     dbg!(base.current_values());
+                    // }
+                    // for ext in ext_inputs.iter() {
+                    //     dbg!(ext.current_values());
+                    // }
+                }
                 // Fill the storage
                 sources.collect_last_values(inputs, last_evaluations);
             }
@@ -530,6 +517,13 @@ pub fn evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs<
                             }
                         },
                     );
+
+                    // for base in inputs.iter() {
+                    //     dbg!(base.current_values());
+                    // }
+                    // for ext in ext_inputs.iter() {
+                    //     dbg!(ext.current_values());
+                    // }
                 }
             }
         }

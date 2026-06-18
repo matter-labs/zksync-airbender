@@ -17,6 +17,39 @@ pub fn distribute_powers_serial<F: Field, E: FieldExtension<F>>(
     }
 }
 
+pub fn distribute_powers_parallel<F: Field, E: FieldExtension<F>>(
+    input: &mut [E],
+    element_initial: F,
+    element_step: F,
+    worker: &Worker,
+) {
+    const PAR_THRESHOLD: usize = 1024;
+    if input.len() < PAR_THRESHOLD {
+        distribute_powers_serial(input, element_initial, element_step);
+        return;
+    }
+    worker.scope(input.len(), |scope, geometry| {
+        let num_chunks = geometry.len();
+        let ordinary_step = element_step.pow(geometry.ordinary_chunk_size as u32);
+        let mut current = element_initial;
+        let mut chunk_starts: Vec<F> = Vec::with_capacity(num_chunks);
+        for _ in 0..num_chunks {
+            chunk_starts.push(current);
+            current.mul_assign(&ordinary_step);
+        }
+
+        input
+            .chunks_for_geometry_mut(geometry)
+            .enumerate()
+            .for_each(|(idx, chunk)| {
+                let chunk_start = chunk_starts[idx];
+                Worker::smart_spawn(scope, idx == num_chunks - 1, move |_| {
+                    distribute_powers_serial(chunk, chunk_start, element_step);
+                });
+            });
+    });
+}
+
 fn materialize_powers_serial_impl<F: Field, A: GoodAllocator>(
     base: F,
     size: usize,
@@ -270,6 +303,59 @@ pub fn batch_inverse_inplace_parallel<F: Field>(
             });
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
+    use rand::{rngs::ThreadRng, RngCore};
+    use worker::Worker;
+
+    type F = BabyBearField;
+    type E = BabyBearExt4;
+
+    fn random_in_ext(rng: &mut ThreadRng) -> E
+    where
+        [(); <E as FieldExtension<F>>::DEGREE]: Sized,
+    {
+        let coefs = [(); <E as FieldExtension<F>>::DEGREE]
+            .map(|_| F::from_u32_with_reduction(rng.next_u32()));
+        <E as FieldExtension<F>>::from_coeffs(coefs)
+    }
+
+    fn run_test(size: usize, initial: F, step: F) {
+        let mut rng = rand::rng();
+        let input: Vec<E> = (0..size).map(|_| random_in_ext(&mut rng)).collect();
+
+        let worker = Worker::new_with_num_threads(4);
+
+        let mut serial = input.clone();
+        distribute_powers_serial(&mut serial, initial, step);
+
+        let mut parallel = input.clone();
+        distribute_powers_parallel(&mut parallel, initial, step, &worker);
+
+        assert_eq!(serial, parallel, "mismatch for size={size}");
+    }
+
+    #[test]
+    fn test_distribute_powers() {
+        let step = F::from_nonreduced_u32(13);
+        run_test(2048, F::ONE, step);
+
+        let step = F::from_nonreduced_u32(7);
+        let initial = F::from_nonreduced_u32(3);
+        run_test(16, initial, step);
+        run_test(256, initial, step);
+        run_test(1023, initial, step);
+
+        let step = F::from_nonreduced_u32(7);
+        let initial = F::from_nonreduced_u32(3);
+        run_test(1024, initial, step);
+        run_test(4096, initial, step);
+        run_test(1 << 16, initial, step);
+    }
 }
 
 // RoundFunction knows nothing about rate and capacity, it only operates on the state as a wholw

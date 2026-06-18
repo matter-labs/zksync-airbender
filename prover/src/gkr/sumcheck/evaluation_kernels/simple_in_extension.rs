@@ -1,6 +1,6 @@
-use crate::gkr::{
-    prover::{apply_row_wise, split_destinations},
-    sumcheck::access_and_fold::ExtensionFieldPoly,
+use crate::{
+    definitions::sumcheck_kernel::fixed_over_extension::ExtensionFieldInOutFixedSizesEvaluationKernelCore,
+    gkr::{prover::apply_row_wise, sumcheck::access_and_fold::ExtensionFieldPoly},
 };
 
 use super::*;
@@ -11,7 +11,8 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
     E: FieldExtension<F> + Field,
     const IN: usize,
     const OUT: usize,
->: Send + Sync
+>:
+    Send + Sync + ExtensionFieldInOutFixedSizesEvaluationKernelCore<F, E, IN, OUT> + core::fmt::Debug
 {
     #[inline(always)]
     fn evaluate_forward<S: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>>(
@@ -56,7 +57,7 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
             }
             {
                 let sources = sources.each_ref().map(|el| el.get_f1_minus_f0_only(index));
-                let evals = self.pointwise_eval(&sources);
+                let evals = self.pointwise_eval_quadratic_term_only(&sources);
                 let mut eval = batch_challenges[0];
                 eval.mul_assign(&evals[0]);
                 for i in 1..OUT {
@@ -95,8 +96,9 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
             let p0s = p0s.map(|el| el.assume_init());
             let p1s = p1s.map(|el| el.assume_init());
 
-            for (j, p) in [&p0s, &p1s].into_iter().enumerate() {
-                let evals = self.pointwise_eval(p);
+            // all terms
+            {
+                let evals = self.pointwise_eval(&p0s);
                 let mut eval = batch_challenges[0];
                 eval.mul_assign(&evals[0]);
                 for i in 1..OUT {
@@ -104,69 +106,28 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
                     t.mul_assign(&evals[i]);
                     eval.add_assign(&t);
                 }
-                result[j].write(eval);
+                result[0].write(eval);
+            }
+
+            // quadratic only, unless we want plain evaluations
+            {
+                let evals = if EXPLICIT_FORM {
+                    self.pointwise_eval(&p1s)
+                } else {
+                    self.pointwise_eval_quadratic_term_only(&p1s)
+                };
+                let mut eval = batch_challenges[0];
+                eval.mul_assign(&evals[0]);
+                for i in 1..OUT {
+                    let mut t = batch_challenges[i];
+                    t.mul_assign(&evals[i]);
+                    eval.add_assign(&t);
+                }
+                result[1].write(eval);
             }
 
             result.map(|el| el.assume_init())
         }
-    }
-
-    fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; IN]) -> [E; OUT];
-
-    #[inline(always)]
-    fn pointwise_eval_forward(&self, input: &[ExtensionFieldRepresentation<F, E>; IN]) -> [E; OUT] {
-        self.pointwise_eval(input)
-    }
-}
-
-#[inline(always)]
-fn evaluate_extension_field_in_out_fixed_sizes_evaluation_kernel<
-    F: PrimeField,
-    E: FieldExtension<F> + Field,
-    const IN: usize,
-    const OUT: usize,
-    K: ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, IN, OUT>,
-    S: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
-    const EXPLICIT_FORM: bool,
->(
-    kernel: &K,
-    index: usize,
-    sources: &[S],
-    batch_challenges: &[E],
-) -> [E; 2] {
-    debug_assert_eq!(sources.len(), IN);
-    debug_assert_eq!(batch_challenges.len(), OUT);
-    unsafe {
-        let inputs = sources.as_array().unwrap_unchecked();
-        let challenges = batch_challenges.as_array().unwrap_unchecked();
-        K::evaluate::<S, EXPLICIT_FORM>(kernel, index, inputs, challenges)
-    }
-}
-
-#[inline(always)]
-fn evaluate_extension_field_in_out_fixed_sizes_evaluation_kernel_first_round<
-    F: PrimeField,
-    E: FieldExtension<F> + Field,
-    const IN: usize,
-    const OUT: usize,
-    K: ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, IN, OUT>,
-    S: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
-    SOUT: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>,
->(
-    kernel: &K,
-    index: usize,
-    sources: &[S],
-    outputs: &[SOUT],
-    batch_challenges: &[E],
-) -> [E; 2] {
-    debug_assert_eq!(sources.len(), IN);
-    debug_assert_eq!(outputs.len(), OUT);
-    debug_assert_eq!(batch_challenges.len(), OUT);
-    unsafe {
-        let inputs = sources.as_array().unwrap_unchecked();
-        let outputs = outputs.as_array().unwrap_unchecked();
-        let challenges = batch_challenges.as_array().unwrap_unchecked();
-        K::evaluate_first_round::<S, SOUT>(kernel, index, inputs, outputs, challenges)
     }
 }
 
@@ -239,6 +200,7 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
     const IN: usize,
     const OUT: usize,
     K: ExtensionFieldInOutFixedSizesEvaluationKernel<F, E, IN, OUT>,
+    const N: usize,
 >(
     kernel: &K,
     inputs: &GKRInputs,
@@ -248,9 +210,10 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
     folding_challenges: &[E],
     accumulator: &mut [[E; 2]],
     total_sumcheck_rounds: usize,
-    last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+    last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
     worker: &Worker,
 ) {
+    // println!("Evaluating kernel {:?}", kernel);
     let work_size = accumulator.len();
     assert!(work_size.is_power_of_two());
     unsafe {

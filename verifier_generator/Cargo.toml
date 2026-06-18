@@ -10,10 +10,23 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+cs = { workspace = true, features = ["compiler"] }
 prover = { workspace = true, features = ["prover"] }
+verifier_common = { workspace = true }
 serde.workspace = true
 syn = { version = "2", features = ["extra-traits", "printing", "full"]}
 quote = { version = "1" }
 proc-macro2 = "1"
-proc-macro-error2 = "*"
 serde_json = "*"
+
+[features]
+default = ["security_80"]
+no_caches = ["verifier_common/no_caches"]
+security_80 = ["verifier_common/security_80"]
+security_100 = ["verifier_common/security_100"]
+
+[dev-dependencies]
+test_utils = { workspace = true }
+serial_test = "3"
+rayon = "1"
+verifier_common = { workspace = true, features = ["proof_utils"] }

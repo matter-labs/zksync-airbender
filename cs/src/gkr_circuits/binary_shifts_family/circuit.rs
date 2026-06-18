@@ -1,0 +1,524 @@
+use super::*;
+use crate::cs::circuit_trait::*;
+use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables;
+use crate::oracle::Placeholder;
+use crate::structured_expr::Expr;
+use crate::tables::TableDriver;
+use crate::types::*;
+use field::PrimeField;
+
+const TABLES_TOTAL_WIDTH: usize = 8;
+
+// NOTE: this circuit should specify non-dummy CSR table in proving/setup. while compilation in tests
+// takes case of properly computing offsets by using dummy table
+
+fn byte_pair_expr<F: PrimeField>(low: Variable, high: Variable) -> Expr<F> {
+    Expr::var(low) + Expr::var(high) * F::from_u32_with_reduction(1 << 8)
+}
+
+pub fn shift_binop_tables() -> Vec<TableType> {
+    vec![
+        TableType::ZeroEntry, // we need it, as we use conditional lookup enforcements
+        TableType::TruncateShiftAmountAndRangeCheck8,
+        TableType::GetSignExtensionByte,
+        TableType::ShiftImplementationOverBytes,
+        TableType::Xor,
+        TableType::And,
+        TableType::Or,
+    ]
+}
+
+pub fn shift_binop_table_addition_fn<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
+    for el in shift_binop_tables() {
+        cs.materialize_table::<TABLES_TOTAL_WIDTH>(el);
+    }
+}
+
+pub fn shift_binop_table_driver_fn<F: PrimeField>(table_driver: &mut TableDriver<F>) {
+    for el in shift_binop_tables() {
+        table_driver.materialize_table::<TABLES_TOTAL_WIDTH>(el);
+    }
+}
+
+fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
+    cs: &mut CS,
+    inputs: OpcodeFamilyCircuitState<F>,
+    decoder: ShiftBinaryFamilyCircuitMask,
+) {
+    // NOTE: by preprocessing if we have rd == 0 in any of the opcodes below, then
+    // we have rs1 = x0, rs2 = x0 and imm = 0, and it's preprocessed into plain addition,
+    // so we do NOT need to mask rd value
+
+    if let Some(circuit_family_extra_mask) =
+        cs.get_value(inputs.decoder_data.circuit_family_extra_mask)
+    {
+        println!(
+            "circuit_family_extra_mask = 0b{:08b}",
+            circuit_family_extra_mask.as_u32_reduced()
+        );
+    }
+
+    // read inputs and prepare outputs
+    let rs1_access = cs.request_mem_access(
+        MemoryAccessRequest::RegisterRead {
+            reg_idx: inputs.decoder_data.rs1_index,
+            read_value_placeholder: Placeholder::ShuffleRamReadValue(0),
+            split_as_u8: true,
+        },
+        "rs1",
+        0,
+    );
+
+    let rs2_access = cs.request_mem_access(
+        MemoryAccessRequest::RegisterRead {
+            reg_idx: inputs.decoder_data.rs2_index,
+            read_value_placeholder: Placeholder::ShuffleRamReadValue(1),
+            split_as_u8: true,
+        },
+        "rs2",
+        1,
+    );
+
+    let rd_access = cs.request_mem_access(
+        MemoryAccessRequest::RegisterReadWrite {
+            reg_idx: inputs.decoder_data.rd_index,
+            read_value_placeholder: Placeholder::ShuffleRamReadValue(2),
+            write_value_placeholder: Placeholder::ShuffleRamWriteValue(2),
+            split_read_as_u8: false,
+            split_write_as_u8: false,
+        },
+        "rd",
+        2,
+    );
+
+    let MemoryAccess::RegisterOnly(rs1_access) = rs1_access else {
+        unreachable!()
+    };
+    let MemoryAccess::RegisterOnly(rs2_access) = rs2_access else {
+        unreachable!()
+    };
+    let MemoryAccess::RegisterOnly(rd_access) = rd_access else {
+        unreachable!()
+    };
+
+    let WordRepresentation::U8Limbs(rs1_limbs) = rs1_access.read_value else {
+        unreachable!()
+    };
+    let WordRepresentation::U8Limbs(rs2_limbs) = rs2_access.read_value else {
+        unreachable!()
+    };
+    let WordRepresentation::U16Limbs(rd_write_limbs) = rd_access.write_value else {
+        unreachable!()
+    };
+
+    // if let Some(rs1_reg) = Register(rs1_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
+    //     println!("RS1 value = 0x{:08x}", rs1_reg);
+    // }
+
+    // if let Some(rs2_reg) = Register(rs2_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
+    //     println!("RS2 value = 0x{:08x}", rs2_reg);
+    // }
+
+    // if let Some(imm) =
+    //     Register::<F>(inputs.decoder_data.imm.map(|el| Num::Var(el))).get_value_unsigned(cs)
+    // {
+    //     println!("IMM value = 0x{:08x}", imm);
+    // }
+
+    // strategies:
+    // - for binary ops we have funct3 that encodes table type, and the only thing we need to deal with is
+    // immediate. Instead of preprocessing it as u32, we only sign-extend it into u16, and encode it as 2 lowest bytes.
+    // Then we use one lookup to get sign-extension of the higher byte (either 0 or 0xff), and use unchecked addition
+    // of the immediate with rs2 value
+    // - for shifts we take lowest 2 bytes of rs2 and feed it into table to truncate shift amount and ensure correct byte
+    // decomposition. Then we use 2 tables: each takes as an input 8-bit chunk of the word, shift amount (5 bits), and funct3, and output
+    // contributions to every other output word 8-bit chunk. One table is for the highest byte (for SRA), and another one for all other bytes
+
+    // scratch space
+    // - for binary ops we need just 5: one for sign-extension of the immediate, and 4 for outputs
+    // - for shift we need 17: 4x4 for output contributions, and one for truncated shift amount
+
+    let scratch_space: [Variable; 17] =
+        std::array::from_fn(|i| cs.add_named_variable(&format!("scratch space {}", i)));
+
+    let [binary_ops_imm_sign_ext, binop_output_0, binop_output_1, binop_output_2, binop_output_3, ..] =
+        scratch_space;
+    let binary_ops_outputs = [
+        binop_output_0,
+        binop_output_1,
+        binop_output_2,
+        binop_output_3,
+    ];
+
+    let truncated_shift_amount = scratch_space[0];
+    let shift_outputs: [Variable; 16] = scratch_space[1..].try_into().unwrap();
+    let shift_output_chunks = shift_outputs.as_chunks::<4>().0;
+
+    let is_binary_op = decoder.perform_binary_op();
+    let is_shift = decoder.perform_shift();
+
+    let shift_amount_expr =
+        Expr::var(truncated_shift_amount) + Expr::var(inputs.decoder_data.imm[0]);
+
+    // Here we only assign witness
+
+    // first binary ops
+    {
+        peek_lookup_values_unconstrained_into_variables(
+            cs,
+            &[LookupInput::from(inputs.decoder_data.imm[1])],
+            &[binary_ops_imm_sign_ext],
+            LookupInput::from(
+                F::from_u32(TableType::GetSignExtensionByte as u32).expect("must fit"),
+            ),
+            is_binary_op,
+        );
+
+        for i in 0..4 {
+            let a = rs1_limbs[i];
+            let b = rs2_limbs[i];
+            let imm = if i >= 2 {
+                binary_ops_imm_sign_ext
+            } else {
+                inputs.decoder_data.imm[i]
+            };
+            let out = binary_ops_outputs[i];
+
+            peek_lookup_values_unconstrained_into_variables(
+                cs,
+                &[
+                    LookupInput::from(a),
+                    LookupInput::from(Expr::var(b) + Expr::var(imm)),
+                ],
+                &[out],
+                LookupInput::from(inputs.decoder_data.funct3.expect("is present")),
+                is_binary_op,
+            );
+        }
+    }
+
+    // then shifts
+    {
+        peek_lookup_values_unconstrained_into_variables(
+            cs,
+            &[
+                LookupInput::from(rs2_limbs[0]),
+                LookupInput::from(rs2_limbs[1]),
+            ],
+            &[truncated_shift_amount],
+            LookupInput::from(
+                F::from_u32(TableType::TruncateShiftAmountAndRangeCheck8 as u32).expect("must fit"),
+            ),
+            is_shift,
+        );
+        for i in 0..4 {
+            let a = rs1_limbs[i];
+            let outs = shift_output_chunks[i];
+            let table_id = TableType::ShiftImplementationOverBytes;
+            let byte_index = i;
+
+            peek_lookup_values_unconstrained_into_variables(
+                cs,
+                &[
+                    LookupInput::from(F::from_u32_unchecked(byte_index as u32)),
+                    LookupInput::from(a),
+                    LookupInput::from(shift_amount_expr.clone()),
+                    LookupInput::from(inputs.decoder_data.funct3.expect("is present")),
+                ],
+                &outs,
+                LookupInput::from(F::from_u32(table_id as u32).expect("must fit")),
+                is_shift,
+            );
+        }
+    }
+
+    // and to enforce lookups we will perform selections (via constraints that push to the next layer),
+    // where they will be used as lookups. Most of selections are quadratic anyway.
+
+    // constraint for shift amount or immediate sign extension
+    {
+        let input_0 = Expr::var(inputs.decoder_data.imm[1]).mask(is_binary_op)
+            + Expr::var(rs2_limbs[0]).mask(is_shift);
+        let input_0 = cs.add_intermediate_named_variable_from_expr(
+            input_0,
+            "input 0 for binary sign ext/trucate shift",
+        );
+
+        let input_1 = Expr::var(binary_ops_imm_sign_ext).mask(is_binary_op)
+            + Expr::var(rs2_limbs[1]).mask(is_shift);
+        let input_1 = cs.add_intermediate_named_variable_from_expr(
+            input_1,
+            "input 1 for binary sign ext/trucate shift",
+        );
+
+        let input_2 = Expr::var(truncated_shift_amount).mask(is_shift);
+        let input_2 = cs.add_intermediate_named_variable_from_expr(
+            input_2,
+            "input 2 for binary sign ext/trucate shift",
+        );
+
+        let table_id = Expr::<F>::from(TableType::TruncateShiftAmountAndRangeCheck8).mask(is_shift)
+            + Expr::<F>::from(TableType::GetSignExtensionByte).mask(is_binary_op);
+        let table_id = cs.add_intermediate_named_variable_from_expr(
+            table_id,
+            "table ID for binary sign ext/trucate shift",
+        );
+
+        cs.enforce_lookup_tuple_for_variable_table(
+            &[
+                LookupInput::from(input_0),
+                LookupInput::from(input_1),
+                LookupInput::from(input_2),
+            ],
+            table_id,
+        );
+    }
+    // and value-related lookups
+    {
+        for i in 0..4 {
+            let byte_index = i;
+
+            let binary_op_imm = if i >= 2 {
+                binary_ops_imm_sign_ext
+            } else {
+                inputs.decoder_data.imm[i]
+            };
+
+            let shift_outputs = shift_output_chunks[i];
+
+            let input_exprs: [Expr<F>; TABLES_TOTAL_WIDTH] = [
+                // rs1 byte for the binary op, or byte index for shift
+                Expr::var(rs1_limbs[i]).mask(is_binary_op)
+                    + Expr::from(byte_index as u32).mask(is_shift),
+                // rs2 byte or imm extension for binary op, or rs1 byte for shift
+                (Expr::var(rs2_limbs[i]) + Expr::var(binary_op_imm)).mask(is_binary_op)
+                    + Expr::var(rs1_limbs[i]).mask(is_shift),
+                // output for the binary op, or shift amount for shift
+                Expr::var(binary_ops_outputs[i]).mask(is_binary_op)
+                    + shift_amount_expr.clone().mask(is_shift),
+                // only shift is used for inputs below. funct3 here
+                Expr::var(inputs.decoder_data.funct3.expect("is present")).mask(is_shift),
+                // and outputs of shifts here
+                Expr::var(shift_outputs[0]).mask(is_shift),
+                Expr::var(shift_outputs[1]).mask(is_shift),
+                Expr::var(shift_outputs[2]).mask(is_shift),
+                Expr::var(shift_outputs[3]).mask(is_shift),
+            ];
+
+            let input_vars: [Variable; TABLES_TOTAL_WIDTH] = input_exprs
+                .into_iter()
+                .enumerate()
+                .map(|(idx, el)| {
+                    cs.add_intermediate_named_variable_from_expr(
+                        el,
+                        &format!("lookup input {} for main part of ops for byte {}", idx, i),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap();
+
+            let lookup_inputs = input_vars.map(|el| LookupInput::from(el));
+
+            let table_id = {
+                let shift_table_id = TableType::ShiftImplementationOverBytes;
+                let table_id = Expr::<F>::from(shift_table_id).mask(is_shift)
+                    + Expr::var(inputs.decoder_data.funct3.expect("must be present"))
+                        .mask(is_binary_op);
+                let table_id = cs.add_intermediate_named_variable_from_expr(
+                    table_id,
+                    "table ID for binary/shift main ops",
+                );
+
+                table_id
+            };
+
+            cs.enforce_lookup_tuple_for_variable_table(&lookup_inputs, table_id);
+        }
+    }
+
+    // select and write to RD - easiest part
+
+    // The shift result is assembled from four table contributions. Keep those
+    // contributions grouped before applying the opcode mask so the metadata
+    // carries the intended word-shape rather than four unrelated masked terms.
+    let shift_low_expr = Expr::sum(
+        shift_output_chunks
+            .iter()
+            .map(|shift_outputs| byte_pair_expr(shift_outputs[0], shift_outputs[1]))
+            .collect(),
+    );
+    let low_expr = byte_pair_expr(binary_ops_outputs[0], binary_ops_outputs[1]).mask(is_binary_op)
+        + shift_low_expr.mask(is_shift)
+        - Expr::var(rd_write_limbs[0]);
+    cs.add_constraint_expr(low_expr);
+
+    let shift_high_expr = Expr::sum(
+        shift_output_chunks
+            .iter()
+            .map(|shift_outputs| byte_pair_expr(shift_outputs[2], shift_outputs[3]))
+            .collect(),
+    );
+    let high_expr = byte_pair_expr(binary_ops_outputs[2], binary_ops_outputs[3]).mask(is_binary_op)
+        + shift_high_expr.mask(is_shift)
+        - Expr::var(rd_write_limbs[1]);
+    cs.add_constraint_expr(high_expr);
+
+    if let Some(rd_reg) = Register(rd_write_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
+        println!("RD value = 0x{:08x}", rd_reg);
+    }
+
+    // bump PC
+    use crate::gkr_circuits::utils::calculate_pc_next_no_overflows_with_range_checks;
+    calculate_pc_next_no_overflows_with_range_checks(
+        cs,
+        inputs.cycle_start_state.pc,
+        inputs.cycle_end_state.pc,
+    );
+}
+
+pub fn shift_binop_circuit_with_preprocessed_bytecode_for_gkr<F: PrimeField, CS: Circuit<F>>(
+    cs: &mut CS,
+) {
+    let (input, bitmask) = cs.allocate_machine_state(true, false, SHIFT_BINARY_FAMILY_NUM_FLAGS);
+    let bitmask: [_; SHIFT_BINARY_FAMILY_NUM_FLAGS] = bitmask.try_into().unwrap();
+    let bitmask = bitmask.map(|el| Boolean::Is(el));
+    let decoder = ShiftBinaryFamilyCircuitMask::from_mask(bitmask);
+    apply_shift_binop_inner(cs, input, decoder);
+}
+
+#[cfg(test)]
+mod test {
+    use field::Field;
+    use test_utils::skip_if_ci;
+
+    use super::*;
+    use crate::cs::circuit_impl::BasicAssembly;
+    use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_gkr;
+    use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
+    use crate::gkr_compiler::dump_ssa_witness_eval_form;
+    use crate::structured_expr::StructuredStatement;
+    use crate::utils::serialize_to_file;
+
+    type F = ::field::Mersenne31Field;
+
+    fn is_scaled_byte_variable(expr: &Expr<F>) -> bool {
+        let byte_shift = F::from_u32_with_reduction(1 << 8);
+
+        match expr {
+            Expr::Product(factors) if factors.len() == 2 => {
+                factors
+                    .iter()
+                    .any(|factor| matches!(factor, Expr::Constant(value) if *value == byte_shift))
+                    && factors.iter().any(|factor| matches!(factor, Expr::Var(_)))
+            }
+            _ => false,
+        }
+    }
+
+    fn is_byte_pair_expr(expr: &Expr<F>) -> bool {
+        match expr {
+            Expr::Sum(terms) if terms.len() == 2 => {
+                terms.iter().any(|term| matches!(term, Expr::Var(_)))
+                    && terms.iter().any(is_scaled_byte_variable)
+            }
+            _ => false,
+        }
+    }
+
+    fn contains_masked_byte_pair(expr: &Expr<F>) -> bool {
+        match expr {
+            Expr::Product(factors)
+                if factors.len() == 2
+                    && factors.iter().any(is_byte_pair_expr)
+                    && factors.iter().any(|factor| matches!(factor, Expr::Var(_))) =>
+            {
+                true
+            }
+            Expr::Sum(terms) | Expr::Product(terms) => terms.iter().any(contains_masked_byte_pair),
+            Expr::Constant(_) | Expr::Var(_) => false,
+        }
+    }
+
+    fn contains_negated_variable(expr: &Expr<F>) -> bool {
+        match expr {
+            Expr::Product(factors) if factors.len() == 2 => {
+                factors
+                    .iter()
+                    .any(|factor| matches!(factor, Expr::Constant(value) if *value == F::MINUS_ONE))
+                    && factors.iter().any(|factor| matches!(factor, Expr::Var(_)))
+            }
+            Expr::Sum(terms) | Expr::Product(terms) => terms.iter().any(contains_negated_variable),
+            Expr::Constant(_) | Expr::Var(_) => false,
+        }
+    }
+
+    #[test]
+    fn shift_binop_circuit_records_structured_output_selection() {
+        let mut cs = BasicAssembly::<F>::new();
+        shift_binop_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
+        let (output, _) = cs.finalize();
+
+        assert!(output
+            .structured_statements
+            .iter()
+            .any(|statement| matches!(
+                statement,
+                StructuredStatement::AssertZero {
+                    expr,
+                    prevent_optimizations: false,
+                } if contains_masked_byte_pair(expr) && contains_negated_variable(expr)
+            )));
+    }
+
+    #[test]
+    fn compile_shift_binop_into_gkr() {
+        skip_if_ci!();
+        use field::baby_bear::base::BabyBearField;
+
+        let gkr_compiled = compile_unrolled_circuit_state_transition_into_gkr::<BabyBearField>(
+            &|cs| shift_binop_table_addition_fn(cs),
+            &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
+            common_constants::ROM_WORD_SIZE,
+            24,
+        );
+
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/shift_binop_layout_gkr.json",
+        );
+    }
+
+    #[test]
+    fn compile_shift_binop_gkr_witness_graph() {
+        skip_if_ci!();
+        use field::baby_bear::base::BabyBearField;
+
+        let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
+            &|cs| shift_binop_table_addition_fn(cs),
+            &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        );
+        serialize_to_file(&ssa_forms, "compiled_circuits/shift_binop_ssa_gkr.json");
+    }
+
+    #[test]
+    fn compile_shift_binop_into_no_caches_gkr() {
+        skip_if_ci!();
+        use field::baby_bear::base::BabyBearField;
+
+        let gkr_compiled =
+            compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<
+                BabyBearField,
+            >(
+                &|cs| shift_binop_table_addition_fn(cs),
+                &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
+                common_constants::ROM_WORD_SIZE,
+                24,
+            );
+
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/shift_binop_layout_no_caches_gkr.json",
+        );
+    }
+}

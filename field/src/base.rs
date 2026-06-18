@@ -24,7 +24,7 @@ impl Mersenne31Field {
     pub const ORDER: u32 = (1 << 31) - 1;
     pub const MSBITMASK: u32 = 1 << 31;
 
-    #[cfg(not(feature = "use_division"))]
+    #[cfg(not(feature = "modular_ops"))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn new(value: u32) -> Self {
         debug_assert!((value >> 31) == 0);
@@ -32,7 +32,7 @@ impl Mersenne31Field {
         Self(value)
     }
 
-    #[cfg(feature = "use_division")]
+    #[cfg(feature = "modular_ops")]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn new(value: u32) -> Self {
         debug_assert!(value < Self::ORDER);
@@ -40,7 +40,7 @@ impl Mersenne31Field {
         Self(value)
     }
 
-    #[cfg(not(feature = "use_division"))]
+    #[cfg(not(feature = "modular_ops"))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn to_reduced_u32(&self) -> u32 {
         // our canonical representation is 0..=modulus (31 bits full range), but not larger
@@ -57,7 +57,7 @@ impl Mersenne31Field {
         // c
     }
 
-    #[cfg(feature = "use_division")]
+    #[cfg(feature = "modular_ops")]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn to_reduced_u32(&self) -> u32 {
         self.0
@@ -166,7 +166,7 @@ impl Debug for Mersenne31Field {
 }
 
 impl Mersenne31Field {
-    #[cfg(not(feature = "use_division"))]
+    #[cfg(not(feature = "modular_ops"))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn is_zero_impl(&self) -> bool {
         // two representations
@@ -175,7 +175,7 @@ impl Mersenne31Field {
         // self.to_reduced_u32() == 0
     }
 
-    #[cfg(feature = "use_division")]
+    #[cfg(feature = "modular_ops")]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn is_zero_impl(&self) -> bool {
         self.0 == 0
@@ -269,66 +269,13 @@ impl Mersenne31Field {
         self
     }
 
-    // #[cfg(all(feature = "use_division", feature = "use_mulmod_csr"))]
-    // #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    // pub(crate) const fn mul_assign_impl(&'_ mut self, other: &Self) -> &'_ mut Self {
-    //     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    //     const fn ct_impl(a: u32, b: u32) -> u32 {
-    //         let product = (a as u64) * (b as u64);
-    //         let product_low = (product as u32) & ((1 << 31) - 1);
-    //         let product_high = (product >> 31) as u32;
-    //         reduce_with_division(product_low + product_high)
-    //     }
-
-    //     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    //     #[cfg(target_arch = "riscv32")]
-    //     fn rt_impl(a: u32, b: u32) -> u32 {
-    //         let mut result;
-    //         unsafe {
-    //             core::arch::asm!(
-    //                 "csrrw x0, 0x7c2, {inp1}",
-    //                 "csrrw {rd}, 0x7c2, {inp2}",
-    //                 inp1 = in(reg) a,
-    //                 inp2 = in(reg) b,
-    //                 rd = out(reg) result,
-    //                 options(nomem, nostack, preserves_flags)
-    //             )
-    //         }
-
-    //         result
-    //     }
-
-    //     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    //     #[cfg(not(target_arch = "riscv32"))]
-    //     fn rt_impl(a: u32, b: u32) -> u32 {
-    //         let product = (a as u64) * (b as u64);
-    //         let product_low = (product as u32) & ((1 << 31) - 1);
-    //         let product_high = (product >> 31) as u32;
-    //         reduce_with_division(product_low + product_high)
-    //     }
-
-    //     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    //     const fn impl_inner(a: u32, b: u32) -> u32 {
-    //         core::intrinsics::const_eval_select(
-    //             (a,b,),
-    //             ct_impl,
-    //             rt_impl,
-    //         )
-    //     }
-
-    //     *self = Self(impl_inner(self.0, other.0));
-
-    //     self
-
-    // }
-
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn square_impl(&'_ mut self) -> &'_ mut Self {
         let t = *self;
         self.mul_assign_impl(&t)
     }
 
-    #[cfg(not(feature = "use_division"))]
+    #[cfg(not(feature = "modular_ops"))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn negate_impl(&'_ mut self) -> &'_ mut Self {
         // we can just jump between implementations of 0
@@ -341,14 +288,6 @@ impl Mersenne31Field {
         // self
     }
 
-    #[cfg(all(feature = "use_division", not(feature = "modular_ops")))]
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    pub(crate) const fn negate_impl(&'_ mut self) -> &'_ mut Self {
-        *self = Self(ops::reduce_with_division(Self::ORDER.wrapping_sub(self.0)));
-
-        self
-    }
-
     #[cfg(feature = "modular_ops")]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn negate_impl(&'_ mut self) -> &'_ mut Self {
@@ -357,7 +296,7 @@ impl Mersenne31Field {
         self
     }
 
-    #[cfg(not(feature = "use_division"))]
+    #[cfg(not(feature = "modular_ops"))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn double_impl(&'_ mut self) -> &'_ mut Self {
         let mut sum = self.0 << 1;
@@ -370,7 +309,7 @@ impl Mersenne31Field {
         self
     }
 
-    #[cfg(feature = "use_division")]
+    #[cfg(feature = "modular_ops")]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn double_impl(&'_ mut self) -> &'_ mut Self {
         let t = *self;
@@ -388,6 +327,10 @@ impl Mersenne31Field {
 impl Field for Mersenne31Field {
     const ZERO: Self = Self(0);
     const ONE: Self = Self(1);
+    const MINUS_ONE: Self = Self(Self::ORDER - 1);
+    const TWO: Self = Self(2);
+
+    type CharField = Self;
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_zero(&self) -> bool {
@@ -488,11 +431,12 @@ impl Sub for Mersenne31Field {
 }
 
 impl PrimeField for Mersenne31Field {
-    const TWO: Self = Self(2);
-    const MINUS_ONE: Self = Self(Self::ORDER - 1);
     const NUM_BYTES_IN_REPR: usize = 4;
     const CHAR_BITS: usize = 31;
     const CHARACTERISTICS: u32 = Self::ORDER;
+
+    const IS_MONT_REPR: bool = false;
+    const MONT_K: u32 = 1;
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn as_u32(self) -> u32 {
@@ -526,6 +470,10 @@ impl PrimeField for Mersenne31Field {
     fn from_reduced_raw_repr(value: u32) -> Self {
         Self(value)
     }
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn from_raw_repr_with_reduction(value: u32) -> Self {
+        Self::from_nonreduced_u32(value)
+    }
     #[track_caller]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn as_boolean(&self) -> bool {
@@ -547,10 +495,6 @@ impl PrimeField for Mersenne31Field {
         Self(flag as u32)
     }
 
-    fn to_le_bytes(self) -> [u8; Self::NUM_BYTES_IN_REPR] {
-        self.0.to_le_bytes()
-    }
-
     fn increment_unchecked(&'_ mut self) {
         self.0 += 1;
     }
@@ -562,5 +506,122 @@ impl BaseField<2> for Mersenne31Field {
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_by_non_residue(elem: &mut Self) {
         Self::mul_by_non_residue_impl(elem);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::field::Field;
+    use proptest::prelude::*;
+
+    fn arb_mersenne31() -> impl Strategy<Value = u32> {
+        0..Mersenne31Field::ORDER
+    }
+
+    proptest! {
+        #[test]
+        fn add_commutative(a in arb_mersenne31(), b in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let fb = Mersenne31Field::new(b);
+            let mut ab = fa; ab.add_assign(&fb);
+            let mut ba = fb; ba.add_assign(&fa);
+            prop_assert_eq!(ab, ba);
+        }
+
+        #[test]
+        fn add_associative(a in arb_mersenne31(), b in arb_mersenne31(), c in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let fb = Mersenne31Field::new(b);
+            let fc = Mersenne31Field::new(c);
+            let mut ab = fa; ab.add_assign(&fb);
+            let mut abc_left = ab; abc_left.add_assign(&fc);
+            let mut bc = fb; bc.add_assign(&fc);
+            let mut abc_right = fa; abc_right.add_assign(&bc);
+            prop_assert_eq!(abc_left, abc_right);
+        }
+
+        #[test]
+        fn add_identity(a in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let mut r = fa;
+            r.add_assign(&Mersenne31Field::ZERO);
+            prop_assert_eq!(r, fa);
+        }
+
+        #[test]
+        fn add_inverse(a in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let mut neg = fa; neg.negate();
+            let mut sum = fa; sum.add_assign(&neg);
+            prop_assert_eq!(sum, Mersenne31Field::ZERO);
+        }
+
+        #[test]
+        fn mul_commutative(a in arb_mersenne31(), b in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let fb = Mersenne31Field::new(b);
+            let mut ab = fa; ab.mul_assign(&fb);
+            let mut ba = fb; ba.mul_assign(&fa);
+            prop_assert_eq!(ab, ba);
+        }
+
+        #[test]
+        fn mul_associative(a in arb_mersenne31(), b in arb_mersenne31(), c in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let fb = Mersenne31Field::new(b);
+            let fc = Mersenne31Field::new(c);
+            let mut ab = fa; ab.mul_assign(&fb);
+            let mut abc_left = ab; abc_left.mul_assign(&fc);
+            let mut bc = fb; bc.mul_assign(&fc);
+            let mut abc_right = fa; abc_right.mul_assign(&bc);
+            prop_assert_eq!(abc_left, abc_right);
+        }
+
+        #[test]
+        fn mul_identity(a in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let mut r = fa;
+            r.mul_assign(&Mersenne31Field::ONE);
+            prop_assert_eq!(r, fa);
+        }
+
+        #[test]
+        fn mul_inverse(a in 1..Mersenne31Field::ORDER) {
+            let fa = Mersenne31Field::new(a);
+            let inv = fa.inverse().unwrap();
+            let mut product = fa;
+            product.mul_assign(&inv);
+            prop_assert_eq!(product, Mersenne31Field::ONE);
+        }
+
+        #[test]
+        fn distributive(a in arb_mersenne31(), b in arb_mersenne31(), c in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let fb = Mersenne31Field::new(b);
+            let fc = Mersenne31Field::new(c);
+            let mut bc = fb; bc.add_assign(&fc);
+            let mut left = fa; left.mul_assign(&bc);
+            let mut ab = fa; ab.mul_assign(&fb);
+            let mut ac = fa; ac.mul_assign(&fc);
+            let mut right = ab; right.add_assign(&ac);
+            prop_assert_eq!(left, right);
+        }
+
+        #[test]
+        fn double_is_add_self(a in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let mut doubled = fa; doubled.double();
+            let mut added = fa; added.add_assign(&fa);
+            prop_assert_eq!(doubled, added);
+        }
+
+        #[test]
+        fn square_is_mul_self(a in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let mut squared = fa; squared.square();
+            let mut mulled = fa; mulled.mul_assign(&fa);
+            prop_assert_eq!(squared, mulled);
+        }
     }
 }

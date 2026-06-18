@@ -1,13 +1,9 @@
 use crate::bincode_serialize_to_file;
-use crate::cs::cs::oracle::ExecutorFamilyDecoderData;
-use crate::cs::machine::ops::unrolled::*;
-use crate::u32_from_field_elems;
-use crate::NonDeterminismCSRSource;
 use crate::DUMP_WITNESS_VAR;
+use crate::MEMORY_DELEGATION_POW_BITS;
 use common_constants::TimestampScalar;
 use common_constants::INITIAL_TIMESTAMP;
 use common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
-use common_constants::TIMESTAMP_STEP;
 use prover::check_satisfied;
 use prover::cs::utils::split_timestamp;
 use prover::definitions::*;
@@ -17,28 +13,11 @@ use prover::get_aux_boundary_data;
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::prover_stages::unrolled_prover::UnrolledModeProof;
 use prover::prover_stages::Proof;
-use prover::risc_v_simulator;
-use prover::tracers::delegation::DelegationWitness;
-use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
-use prover::tracers::unrolled::tracer::MemTracingFamilyChunk;
-use prover::tracers::unrolled::tracer::NonMemTracingFamilyChunk;
-use prover::unrolled::evaluate_init_and_teardown_witness;
-use prover::unrolled::MemoryCircuitOracle;
-use prover::unrolled::NonMemoryCircuitOracle;
 use prover::unrolled::UnifiedRiscvCircuitOracle;
 use prover::worker;
-use prover::ExecutorFamilyWitnessEvaluationAuxData;
-use prover::ShuffleRamSetupAndTeardown;
-use prover::VectorMemoryImplWithRom;
-use prover::WitnessEvaluationData;
-use prover::WitnessEvaluationDataForExecutionFamily;
 use prover::DEFAULT_TRACE_PADDING_MULTIPLE;
-use risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
-use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
-use risc_v_simulator::cycle::MachineConfig;
-use risc_v_simulator::delegations::DelegationsCSRProcessor;
-use risc_v_simulator::machine_mode_only_unrolled::DelegationCSRProcessor;
+use riscv_transpiler::cycle::MachineConfig;
 use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
@@ -46,15 +25,10 @@ use riscv_transpiler::witness::DelegationAbiDescription;
 use setups::DelegationCircuitPrecomputations;
 use setups::UnrolledCircuitPrecomputations;
 use setups::UnrolledCircuitWitnessEvalFn;
-use std::alloc::Global;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use trace_and_split::commit_memory_tree_for_delegation_circuit_with_gpu_tracer;
 use trace_and_split::commit_memory_tree_for_delegation_circuit_with_replayer_format;
-use trace_and_split::commit_memory_tree_for_inits_and_teardowns_unrolled_circuit;
 use trace_and_split::commit_memory_tree_for_unified_circuits;
-use trace_and_split::commit_memory_tree_for_unrolled_mem_circuits;
-use trace_and_split::commit_memory_tree_for_unrolled_nonmem_circuits;
 use trace_and_split::fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits;
 use trace_and_split::FinalRegisterValue;
 use trace_and_split::ENTRY_POINT;
@@ -77,6 +51,7 @@ pub fn prove_unified_execution_with_replayer<
     Vec<(u32, Vec<Proof>)>,
     [FinalRegisterValue; 32],
     (u32, TimestampScalar),
+    u64,
 ) {
     use prover::unrolled::run_unified_machine;
 
@@ -101,7 +76,7 @@ pub fn prove_unified_execution_with_replayer<
     let (
         final_pc,
         final_timestamp,
-        cycles_used,
+        _cycles_used,
         unified_circuits,
         (blake_circuits, bigint_circuits, keccak_circuits),
         register_final_state,
@@ -127,8 +102,6 @@ pub fn prove_unified_execution_with_replayer<
         .map(|el| el.parse::<u32>().unwrap_or(0) == 1)
         .unwrap_or(false);
 
-    #[cfg(feature = "timing_logs")]
-    let now = std::time::Instant::now();
     let mut memory_trees = vec![];
 
     // restructure inits/teardowns
@@ -139,7 +112,7 @@ pub fn prove_unified_execution_with_replayer<
             .shuffle_ram_inits_and_teardowns
             .len();
 
-    let total_input_len: usize = shuffle_ram_touched_addresses
+    let _total_input_len: usize = shuffle_ram_touched_addresses
         .iter()
         .map(|el| el.len())
         .sum();
@@ -197,14 +170,8 @@ pub fn prove_unified_execution_with_replayer<
         memory_trees.push((REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32, family_caps));
     }
 
-    // #[cfg(feature = "timing_logs")]
-    // println!(
-    //     "=== Commitment for {} RISC-V circuits memory trees took {:?}",
-    //     main_circuits_witness.len(),
-    //     now.elapsed()
-    // );
-
     // same for delegation circuits
+    #[cfg(feature = "timing_logs")]
     let now = std::time::Instant::now();
     let mut delegation_memory_trees = vec![];
     {
@@ -354,8 +321,33 @@ pub fn prove_unified_execution_with_replayer<
     #[cfg(feature = "debug_logs")]
     println!("FS transformation memory seed is {:?}", all_challenges_seed);
 
-    let external_challenges =
-        ExternalChallenges::draw_from_transcript_seed_with_state_permutation(all_challenges_seed);
+    let pow_challenge = if MEMORY_DELEGATION_POW_BITS > 0 {
+        #[cfg(feature = "debug_logs")]
+        println!("Searching for PoW for {} bits", MEMORY_DELEGATION_POW_BITS);
+        #[cfg(feature = "timing_logs")]
+        let now = std::time::Instant::now();
+        let pow_challenge = Transcript::search_pow(
+            &all_challenges_seed,
+            MEMORY_DELEGATION_POW_BITS as u32,
+            worker,
+        )
+        .1;
+        #[cfg(feature = "timing_logs")]
+        println!(
+            "PoW for {} took {:?}",
+            MEMORY_DELEGATION_POW_BITS,
+            now.elapsed()
+        );
+        pow_challenge
+    } else {
+        0
+    };
+
+    let external_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
+        all_challenges_seed,
+        MEMORY_DELEGATION_POW_BITS,
+        pow_challenge,
+    );
 
     #[cfg(feature = "debug_logs")]
     println!("External challenges = {:?}", external_challenges);
@@ -398,8 +390,6 @@ pub fn prove_unified_execution_with_replayer<
     //     main_circuits_witness.len()
     // );
 
-    let total_proving_start = std::time::Instant::now();
-
     // now prove one by one
     let mut main_proofs = BTreeMap::new();
     {
@@ -439,6 +429,7 @@ pub fn prove_unified_execution_with_replayer<
                 &inits_and_teardowns[idx - num_trivial].lazy_init_data
             };
 
+            #[cfg(feature = "timing_logs")]
             let now = std::time::Instant::now();
             let witness_trace = prover::unrolled::evaluate_witness_for_unified_executor::<_, A>(
                 &precomputation.compiled_circuit,
@@ -473,7 +464,7 @@ pub fn prove_unified_execution_with_replayer<
             );
 
             let now = std::time::Instant::now();
-            let (prover_data, proof) =
+            let (_, proof) =
                 prover::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits::<
                     DEFAULT_TRACE_PADDING_MULTIPLE,
                     A,
@@ -490,8 +481,7 @@ pub fn prove_unified_execution_with_replayer<
                     None,
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
-                    crate::NUM_QUERIES,
-                    verifier_common::POW_BITS as u32,
+                    &crate::SECURITY_CONFIG.for_prover(),
                     &worker,
                 );
             println!("Proving time for unified circuit is {:?}", now.elapsed());
@@ -658,6 +648,7 @@ pub fn prove_unified_execution_with_replayer<
         delegation_proofs,
         register_final_state,
         (final_pc, final_timestamp),
+        pow_challenge,
     )
 }
 
@@ -782,8 +773,7 @@ fn prove_delegation_circuit_with_replayer_format<
             Some(delegation_type as u16),
             prec.lde_factor,
             prec.tree_cap_size,
-            crate::NUM_QUERIES,
-            verifier_common::POW_BITS as u32,
+            &crate::SECURITY_CONFIG.for_prover(),
             worker,
         );
         #[cfg(feature = "timing_logs")]

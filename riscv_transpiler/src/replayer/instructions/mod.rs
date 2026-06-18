@@ -1,21 +1,11 @@
 use super::*;
+use crate::witness::*;
 
-use risc_v_simulator::machine_mode_only_unrolled::{
-    LoadOpcodeTracingData, MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingData,
-    NonMemoryOpcodeTracingDataWithTimestamp, StoreOpcodeTracingData,
-};
-
-pub mod add_sub;
-pub mod binary;
-pub mod branch;
-pub mod jal_jalr;
-pub mod lui_auipc;
+pub mod add_sub_family;
+pub mod binary_shifts_family;
+pub mod jump_branch_slt_family;
 pub mod memory;
-pub mod mop;
 pub mod mul_div;
-pub mod shifts;
-pub mod slt;
-pub mod zicsr;
 
 #[inline(always)]
 pub(crate) fn read_register_with_ts<C: Counters, const TIMESTAMP_OFFSET: TimestampScalar>(
@@ -61,6 +51,28 @@ pub(crate) fn write_register_with_ts<C: Counters, const TIMESTAMP_OFFSET: Timest
         let ts = reg.timestamp;
         reg.timestamp = state.timestamp | TIMESTAMP_OFFSET;
         reg.value = *value;
+
+        (existing_value, ts)
+    }
+}
+
+#[inline(always)]
+pub(crate) fn write_register_with_ts_for_pure_opcode<
+    C: Counters,
+    const TIMESTAMP_OFFSET: TimestampScalar,
+>(
+    state: &mut State<C>,
+    reg_idx: u8,
+    value: u32,
+) -> (u32, TimestampScalar) {
+    debug_assert_ne!(reg_idx, 0);
+    unsafe {
+        let reg = state.registers.get_unchecked_mut(reg_idx as usize);
+        debug_assert!(reg.timestamp < (state.timestamp | TIMESTAMP_OFFSET));
+        let existing_value = reg.value;
+        let ts = reg.timestamp;
+        reg.timestamp = state.timestamp | TIMESTAMP_OFFSET;
+        reg.value = value;
 
         (existing_value, ts)
     }

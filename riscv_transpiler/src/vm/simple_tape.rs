@@ -1,4 +1,5 @@
-use crate::{ir::Instruction, vm::InstructionTape};
+use crate::vm::Instruction;
+use crate::vm::InstructionTape;
 
 pub struct SimpleTape {
     instructions: Box<[Instruction]>,

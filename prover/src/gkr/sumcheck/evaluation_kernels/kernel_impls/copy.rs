@@ -1,3 +1,8 @@
+use crate::definitions::sumcheck_kernel::{
+    fixed_over_base::BaseFieldInOutFixedSizesEvaluationKernelCore,
+    fixed_over_extension::ExtensionFieldInOutFixedSizesEvaluationKernelCore,
+};
+
 use super::*;
 
 #[derive(Debug)]
@@ -21,13 +26,23 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
     }
 
     fn get_inputs(&self) -> GKRInputs {
-        debug_assert!(self.validate());
+        assert!(self.validate());
         GKRInputs {
             inputs_in_base: vec![self.input],
             inputs_in_extension: Vec::new(),
             outputs_in_base: vec![self.output],
             outputs_in_extension: Vec::new(),
         }
+    }
+
+    fn terms(
+        &self,
+        _challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+    ) -> Vec<BatchedGKRTermDescription<F, E>> {
+        let mut term = BatchedGKRTermDescription::default();
+        term.add_linear_with_base(self.input, E::ONE);
+        term.set_base_output(self.output);
+        vec![term]
     }
 
     fn evaluate_forward_over_storage(
@@ -49,7 +64,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         );
     }
 
-    fn evaluate_over_storage(
+    fn evaluate_over_storage<const N: usize>(
         &self,
         storage: &mut GKRStorage<F, E>,
         step: usize,
@@ -57,7 +72,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         folding_challenges: &[E],
         accumulator: &mut [[E; 2]],
         total_sumcheck_rounds: usize,
-        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
         worker: &Worker,
     ) {
         assert_eq!(
@@ -94,6 +109,34 @@ pub struct BaseFieldCopyGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + 
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
+    BaseFieldInOutFixedSizesEvaluationKernelCore<F, E, 1, 1>
+    for BaseFieldCopyGKRRelationKernel<F, E>
+{
+    #[inline(always)]
+    fn pointwise_eval<R: EvaluationRepresentation<F, E>>(&self, input: &[R; 1]) -> [R; 1] {
+        *input
+    }
+
+    #[inline(always)]
+    fn pointwise_eval_quadratic_term_only<R: EvaluationRepresentation<F, E>>(
+        &self,
+        _input: &[R; 1],
+    ) -> [R; 1] {
+        unreachable!("not used by this kernel")
+    }
+
+    #[inline(always)]
+    fn pointwise_eval_forward(&self, _input: &[BaseFieldRepresentation<F>; 1]) -> [F; 1] {
+        unreachable!("not used by this kernel")
+    }
+
+    #[inline(always)]
+    fn pointwise_eval_by_ref<R: EvaluationRepresentation<F, E>>(&self, input: [&R; 1]) -> [R; 1] {
+        input.map(|el| *el)
+    }
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
     BaseFieldInOutFixedSizesEvaluationKernel<F, E, 1, 1> for BaseFieldCopyGKRRelationKernel<F, E>
 {
     #[inline(always)]
@@ -109,7 +152,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     ) -> [E; 2] {
         let output_f0 = output_sources[0]
             .get_f0_only(index)
-            .collapse_for_batch_eval(&(), &batch_challenges[0]);
+            .collapse_into_ext_with_challenge(&(), &batch_challenges[0]);
 
         // result[1] = 0 because the quadratic coefficient is 0 for a linear function
         [output_f0, E::ZERO]
@@ -131,8 +174,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             // For explicit form (final round), return [kernel(f0), kernel(f1)]
             // For Copy, kernel is identity, so this is just [f0, f1]
             let [f0, f1] = sources[0].get_two_points::<true>(index);
-            let f0_val = f0.collapse_for_batch_eval(collapse_ctx, &batch_challenges[0]);
-            let f1_val = f1.collapse_for_batch_eval(collapse_ctx, &batch_challenges[0]);
+            let f0_val = f0.collapse_into_ext_with_challenge(collapse_ctx, &batch_challenges[0]);
+            let f1_val = f1.collapse_into_ext_with_challenge(collapse_ctx, &batch_challenges[0]);
             [f0_val, f1_val]
         } else {
             // For non-explicit form (intermediate rounds), return [f0, 0]
@@ -140,20 +183,15 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             if S::SHOULD_ACCESS_TO_PREPARE_FOR_NEXT_STEP {
                 let [f0, _] = sources[0].get_two_points::<EXPLICIT_FORM>(index);
 
-                let f0 = f0.collapse_for_batch_eval(collapse_ctx, &batch_challenges[0]);
+                let f0 = f0.collapse_into_ext_with_challenge(collapse_ctx, &batch_challenges[0]);
                 [f0, E::ZERO]
             } else {
                 let f0 = sources[0]
                     .get_f0_only(index)
-                    .collapse_for_batch_eval(collapse_ctx, &batch_challenges[0]);
+                    .collapse_into_ext_with_challenge(collapse_ctx, &batch_challenges[0]);
                 [f0, E::ZERO]
             }
         }
-    }
-
-    #[inline(always)]
-    fn pointwise_eval<R: EvaluationRepresentation<F, E>>(&self, _input: &[R; 1]) -> [R; 1] {
-        unreachable!("not used by this kernel")
     }
 }
 
@@ -178,13 +216,23 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
     }
 
     fn get_inputs(&self) -> GKRInputs {
-        debug_assert!(self.validate());
+        assert!(self.validate());
         GKRInputs {
             inputs_in_base: Vec::new(),
             inputs_in_extension: vec![self.input],
             outputs_in_base: Vec::new(),
             outputs_in_extension: vec![self.output],
         }
+    }
+
+    fn terms(
+        &self,
+        _challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+    ) -> Vec<BatchedGKRTermDescription<F, E>> {
+        let mut term = BatchedGKRTermDescription::default();
+        term.add_linear_with_ext(self.input, E::ONE);
+        term.set_extension_output(self.output);
+        vec![term]
     }
 
     fn evaluate_forward_over_storage(
@@ -206,7 +254,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         );
     }
 
-    fn evaluate_over_storage(
+    fn evaluate_over_storage<const N: usize>(
         &self,
         storage: &mut GKRStorage<F, E>,
         step: usize,
@@ -214,7 +262,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         folding_challenges: &[E],
         accumulator: &mut [[E; 2]],
         total_sumcheck_rounds: usize,
-        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
         worker: &Worker,
     ) {
         assert_eq!(
@@ -245,9 +293,36 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ExtensionCopyGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
     _marker: core::marker::PhantomData<(F, E)>,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    ExtensionFieldInOutFixedSizesEvaluationKernelCore<F, E, 1, 1>
+    for ExtensionCopyGKRRelationKernel<F, E>
+{
+    #[inline(always)]
+    fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; 1]) -> [E; 1] {
+        [input[0].into_value()]
+    }
+
+    #[inline(always)]
+    fn pointwise_eval_quadratic_term_only(
+        &self,
+        _input: &[ExtensionFieldRepresentation<F, E>; 1],
+    ) -> [E; 1] {
+        unreachable!("not used by this kernel")
+    }
+
+    #[inline(always)]
+    fn pointwise_eval_forward(&self, _input: &[ExtensionFieldRepresentation<F, E>; 1]) -> [E; 1] {
+        unreachable!("not used by this kernel")
+    }
+
+    fn pointwise_eval_by_ref(&self, _input: [&ExtensionFieldRepresentation<F, E>; 1]) -> [E; 1] {
+        todo!()
+    }
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
@@ -310,10 +385,5 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
                 [eval_c0, E::ZERO]
             }
         }
-    }
-
-    #[inline(always)]
-    fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; 1]) -> [E; 1] {
-        [input[0].into_value()]
     }
 }

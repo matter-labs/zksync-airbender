@@ -1,9 +1,11 @@
-use common_constants::{bigint_with_control::*, blake2s_with_control::*, keccak_special5::*};
-use cs::cs::oracle::Oracle;
-use cs::cs::placeholder::Placeholder;
+use common_constants::{
+    bigint_with_control::*, blake2s_g_function::*, blake2s_with_control::*, keccak_special5::*,
+};
 use cs::definitions::TimestampScalar;
+use cs::oracle::*;
 use field::PrimeField;
 use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
+use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
 use riscv_transpiler::witness::*;
@@ -21,6 +23,8 @@ pub struct DelegationOracle<
         &'a [DelegationWitness<REG_ACCESSES, INDIRECT_READS, INDIRECT_WRITES, VARIABLE_OFFSETS>],
     pub marker: core::marker::PhantomData<D>,
 }
+
+pub trait DelegationOracleMarker<'a> {}
 
 pub type BigintDelegationOracle<'a> = DelegationOracle<
     'a,
@@ -46,6 +50,20 @@ pub type KeccakDelegationOracle<'a> = DelegationOracle<
     KECCAK_SPECIAL5_X11_NUM_WRITES,
     KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS,
 >;
+pub type Blake2sGFunctionDelegationOracle<'a> = DelegationOracle<
+    'a,
+    Blake2sGFunctionAbiDescription,
+    NUM_BLAKE2S_G_FUNCTION_REGISTER_ACCESSES,
+    BLAKE2S_G_FUNCTION_X11_NUM_READS,
+    BLAKE2S_G_FUNCTION_X10_NUM_WRITES,
+    NUM_BLAKE2S_G_FUNCTION_VARIABLE_OFFSETS,
+>;
+
+impl<'a> DelegationOracleMarker<'a> for BigintDelegationOracle<'a> {}
+
+impl<'a> DelegationOracleMarker<'a> for Blake2sDelegationOracle<'a> {}
+
+impl<'a> DelegationOracleMarker<'a> for KeccakDelegationOracle<'a> {}
 
 impl<
         'a,
@@ -229,5 +247,12 @@ impl<
                 );
             }
         }
+    }
+
+    fn get_executor_family_data(
+        &self,
+        _trace_row: usize,
+    ) -> cs::gkr_circuits::ExecutorFamilyDecoderData {
+        unreachable!()
     }
 }

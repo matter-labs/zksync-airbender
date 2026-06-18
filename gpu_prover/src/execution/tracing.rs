@@ -18,11 +18,11 @@ use cs::definitions::{
     SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX,
 };
 use itertools::Itertools;
-use prover::risc_v_simulator::machine_mode_only_unrolled::{
+use riscv_transpiler::jit::{CounterType, MAX_NUM_COUNTERS};
+use riscv_transpiler::machine_mode_only_unrolled::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,
 };
-use riscv_transpiler::jit::{CounterType, MAX_NUM_COUNTERS};
 use riscv_transpiler::vm::{
     Counters, DelegationsAndFamiliesCounters, DelegationsAndUnifiedCounters,
 };
@@ -41,7 +41,7 @@ pub(crate) trait TracingType {
     type Ranges: DataTraceRanges;
     type Producers: TracingDataProducers<Ranges = Self::Ranges>;
     type Tracer: Tracer<Ranges = Self::Ranges>;
-    type Counters: Counters + From<[u32; MAX_NUM_COUNTERS]>;
+    type Counters: Counters + From<[u64; MAX_NUM_COUNTERS]>;
 }
 
 pub(crate) struct SplitTracingType;
@@ -470,8 +470,8 @@ pub(crate) trait TracingDataProducers {
     fn process_snapshot(
         &mut self,
         snapshot_index: usize,
-        initial_counters: &[u32; MAX_NUM_COUNTERS],
-        final_counters: &[u32; MAX_NUM_COUNTERS],
+        initial_counters: &[u64; MAX_NUM_COUNTERS],
+        final_counters: &[u64; MAX_NUM_COUNTERS],
     ) -> Self::Ranges;
 
     fn finalize(self);
@@ -580,8 +580,8 @@ impl TracingDataProducers for SplitTracingDataProducers {
     fn process_snapshot(
         &mut self,
         snapshot_index: usize,
-        initial_counters: &[u32; MAX_NUM_COUNTERS],
-        final_counters: &[u32; MAX_NUM_COUNTERS],
+        initial_counters: &[u64; MAX_NUM_COUNTERS],
+        final_counters: &[u64; MAX_NUM_COUNTERS],
     ) -> Self::Ranges {
         let mut trace_ranges = SplitDataTraceRanges::default();
         for i in 0..CounterType::FormalEnd as u8 {
@@ -712,8 +712,8 @@ impl TracingDataProducers for UnifiedTracingDataProducers {
     fn process_snapshot(
         &mut self,
         snapshot_index: usize,
-        initial_counters: &[u32; MAX_NUM_COUNTERS],
-        final_counters: &[u32; MAX_NUM_COUNTERS],
+        initial_counters: &[u64; MAX_NUM_COUNTERS],
+        final_counters: &[u64; MAX_NUM_COUNTERS],
     ) -> Self::Ranges {
         let mut trace_ranges = UnifiedDataTraceRanges::default();
         let mut cycles_initial_count = 0;

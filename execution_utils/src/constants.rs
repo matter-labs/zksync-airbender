@@ -4,4 +4,13 @@ pub const CAP_SIZE: usize = 64;
 pub const NUM_COSETS: usize = 2;
 
 use verifier_common::prover::definitions::MerkleTreeCap;
-include!("../../circuit_defs/setups/generated/all_delegation_circuits_params.rs");
+
+#[allow(dead_code)]
+mod all_delegation_circuits_params {
+    use super::MerkleTreeCap;
+
+    include!("../../circuit_defs/setups/generated/all_delegation_circuits_params.rs");
+}
+
+#[allow(unused_imports)]
+pub use all_delegation_circuits_params::*;

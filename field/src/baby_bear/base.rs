@@ -30,8 +30,9 @@ impl BabyBearField {
         let r2 = (r * r) % (Self::ORDER as u64);
         r2 as u32
     };
-    const NON_RES: Self = Self::new(11);
-    const HALF: Self = const { Self::new(2).inverse_impl().unwrap() };
+    pub(crate) const NON_RES: Self = Self::new(11);
+    pub(crate) const NON_RES_DOUBLED: Self = Self::new(22);
+    pub const HALF: Self = const { Self::new(2).inverse_impl().unwrap() };
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn new(value: u32) -> Self {
@@ -91,12 +92,15 @@ impl core::hash::Hash for BabyBearField {
 }
 
 impl Ord for BabyBearField {
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.to_u32().cmp(&other.to_u32())
+        // we are always canonical, no reductions needed
+        Ord::cmp(&self.0, &other.0)
     }
 }
 
 impl PartialOrd for BabyBearField {
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
@@ -137,8 +141,8 @@ impl BabyBearField {
     }
 
     pub(crate) const fn inverse_impl(&self) -> Option<Self> {
-        // a^(p-2) - it's anyway expensive operation, but on platform with
-        // field ops it is still faster than binary GCD
+        // a^(p-2) — Fermat's little theorem. Faster than binary GCD on platforms
+        // with native modular multiplication.
 
         if self.is_zero_impl() {
             return None;
@@ -160,59 +164,25 @@ impl BabyBearField {
             result
         }
 
-        // 0x77ffffff = 0b111_0111_1111_1111_1111_1111_1111_1111
+        // p - 2 = 0x77ffffff = 0b1110 followed by 27 ones (31 bits).
+        // Addition chain (29 sqr + 8 mul = 37 ops):
+        //   Build x^7, x^56, x^63, x^119 = 0b1110111 (top 7 bits of p-2).
+        //   Then 4× [sqr^6, mul x^63] appends six 1-bits per round, filling
+        //   the remaining 24 bits to land on 31.
+        let x2 = square_by_value(*self);
+        let x3 = mul_by_value(x2, *self);
+        let x7 = mul_by_value(square_by_value(x3), *self); // x^6 · x
+        let mut x56 = x7;
+        x56.exp_power_of_2_impl(3); // x^7 << 3
+        let x63 = mul_by_value(x56, x7); // x^56 · x^7 = x^63
+        let mut result = mul_by_value(x63, x56); // x^63 · x^56 = x^119
 
-        // even though it's not the shortest, we just make it simple for now
-        // 10
-        let p_10 = square_by_value(*self);
-        let p_11 = mul_by_value(p_10, *self);
-        let p_110 = square_by_value(p_11);
-        let p_111 = mul_by_value(p_110, *self);
-        let p_1110 = square_by_value(p_111);
-        let p_1111 = mul_by_value(p_1110, *self);
-
-        let mut result = p_1110;
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        // 1110_000
-        result.mul_assign_impl(&p_111);
-        // now by 4
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.mul_assign_impl(&p_1111);
-
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.mul_assign_impl(&p_1111);
-
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.mul_assign_impl(&p_1111);
-
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.mul_assign_impl(&p_1111);
-
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.mul_assign_impl(&p_1111);
-
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.square_impl();
-        result.mul_assign_impl(&p_1111);
+        let mut i = 0;
+        while i < 4 {
+            result.exp_power_of_2_impl(6);
+            result.mul_assign_impl(&x63);
+            i += 1;
+        }
 
         Some(result)
     }
@@ -257,6 +227,7 @@ impl BabyBearField {
         self.mul_assign_impl(&t)
     }
 
+    #[cfg(not(feature = "modular_ops"))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) const fn negate_impl(&'_ mut self) -> &'_ mut Self {
         if self.0 != 0 {
@@ -288,6 +259,10 @@ impl BabyBearField {
 impl Field for BabyBearField {
     const ZERO: Self = Self(0);
     const ONE: Self = Self(Self::MONT_R);
+    const TWO: Self = Self::new(2);
+    const MINUS_ONE: Self = Self::new(Self::ORDER - 1);
+
+    type CharField = Self;
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_zero(&self) -> bool {
@@ -300,63 +275,93 @@ impl Field for BabyBearField {
     }
 
     fn inverse(&self) -> Option<Self> {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fbase_muls += 37);
         self.inverse_impl()
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fbase_adds += 1);
         self.add_assign_impl(other)
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn sub_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fbase_adds += 1);
         self.sub_assign_impl(other)
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fbase_muls += 1);
         self.mul_assign_impl(other)
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn square(&'_ mut self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fbase_muls += 1);
         self.square_impl()
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn negate(&'_ mut self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fbase_adds += 1);
         self.negate_impl()
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn double(&'_ mut self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fbase_adds += 1);
         self.double_impl()
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline)]
     fn exp_power_of_2(&mut self, power_log: usize) {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fbase_muls += power_log);
         self.exp_power_of_2_impl(power_log);
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline)]
     fn mul_by_two(&'_ mut self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fbase_adds += 1);
         self.double_impl();
         self
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline)]
     fn div_by_two(&'_ mut self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| s.fbase_muls += 1);
         self.mul_assign_impl(&Self::HALF)
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn fused_mul_add_assign(&'_ mut self, a: &Self, b: &Self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| {
+            s.fbase_muls += 1;
+            s.fbase_adds += 1;
+        });
         self.0 = ops::fma_mod(self.0, a.0, b.0);
         self
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign_product(&'_ mut self, a: &Self, b: &Self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        crate::stats::FIELD_STATS.with_borrow_mut(|s| {
+            s.fbase_muls += 1;
+            s.fbase_adds += 1;
+        });
         self.0 = ops::fma_mod(a.0, b.0, self.0);
         self
     }
@@ -386,11 +391,12 @@ impl Sub for BabyBearField {
 }
 
 impl PrimeField for BabyBearField {
-    const TWO: Self = Self::new(2);
-    const MINUS_ONE: Self = Self::new(Self::ORDER - 1);
     const NUM_BYTES_IN_REPR: usize = 4;
     const CHAR_BITS: usize = 31;
     const CHARACTERISTICS: u32 = Self::ORDER;
+
+    const IS_MONT_REPR: bool = true;
+    const MONT_K: u32 = BabyBearField::MONT_K;
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn as_u32(self) -> u32 {
@@ -424,6 +430,18 @@ impl PrimeField for BabyBearField {
     fn from_reduced_raw_repr(value: u32) -> Self {
         Self(value)
     }
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn from_raw_repr_with_reduction(value: u32) -> Self {
+        // at most two subtractions needed
+        let mut c = value;
+        if c >= Self::ORDER {
+            c -= Self::ORDER;
+        }
+        if c >= Self::ORDER {
+            c -= Self::ORDER;
+        }
+        Self(c)
+    }
     #[track_caller]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn as_boolean(&self) -> bool {
@@ -440,10 +458,6 @@ impl PrimeField for BabyBearField {
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_boolean(flag: bool) -> Self {
         Self(if flag { Self::MONT_R } else { 0 })
-    }
-
-    fn to_le_bytes(self) -> [u8; Self::NUM_BYTES_IN_REPR] {
-        self.0.to_le_bytes()
     }
 
     fn increment_unchecked(&'_ mut self) {
@@ -510,25 +524,199 @@ impl crate::TwoAdicField for BabyBearField {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::field::Field;
+    use proptest::prelude::*;
 
-    #[test]
-    fn calculator() {
-        let one = BabyBearField::ONE;
-        // one = 268435454
-        dbg!(one);
-        dbg!(one.0);
-
-        dbg!(BabyBearField::TWO_ADICITY_GENERATORS);
-        dbg!(BabyBearField::TWO_ADICITY_GENERATORS_INVERSED);
+    fn arb_babybear() -> impl Strategy<Value = u32> {
+        0..BabyBearField::ORDER
     }
 
     #[test]
     fn test_inversion_chain() {
         let el = BabyBearField::new(42);
         let pow = BabyBearField::CHARACTERISTICS - 2;
-        dbg!(pow);
         let naive_inverse = el.pow(pow);
         let faster_inverse = el.inverse_impl().unwrap();
         assert_eq!(naive_inverse, faster_inverse);
+    }
+
+    // --- Field axiom tests ---
+
+    proptest! {
+        #[test]
+        fn add_commutative(a in arb_babybear(), b in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let fb = BabyBearField::new(b);
+            let mut ab = fa; ab.add_assign(&fb);
+            let mut ba = fb; ba.add_assign(&fa);
+            prop_assert_eq!(ab, ba);
+        }
+
+        #[test]
+        fn add_associative(a in arb_babybear(), b in arb_babybear(), c in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let fb = BabyBearField::new(b);
+            let fc = BabyBearField::new(c);
+            let mut ab = fa; ab.add_assign(&fb);
+            let mut abc_left = ab; abc_left.add_assign(&fc);
+            let mut bc = fb; bc.add_assign(&fc);
+            let mut abc_right = fa; abc_right.add_assign(&bc);
+            prop_assert_eq!(abc_left, abc_right);
+        }
+
+        #[test]
+        fn add_identity(a in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let mut r = fa;
+            r.add_assign(&BabyBearField::ZERO);
+            prop_assert_eq!(r, fa);
+        }
+
+        #[test]
+        fn add_inverse(a in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let mut neg = fa; neg.negate();
+            let mut sum = fa; sum.add_assign(&neg);
+            prop_assert_eq!(sum, BabyBearField::ZERO);
+        }
+
+        #[test]
+        fn mul_commutative(a in arb_babybear(), b in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let fb = BabyBearField::new(b);
+            let mut ab = fa; ab.mul_assign(&fb);
+            let mut ba = fb; ba.mul_assign(&fa);
+            prop_assert_eq!(ab, ba);
+        }
+
+        #[test]
+        fn mul_associative(a in arb_babybear(), b in arb_babybear(), c in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let fb = BabyBearField::new(b);
+            let fc = BabyBearField::new(c);
+            let mut ab = fa; ab.mul_assign(&fb);
+            let mut abc_left = ab; abc_left.mul_assign(&fc);
+            let mut bc = fb; bc.mul_assign(&fc);
+            let mut abc_right = fa; abc_right.mul_assign(&bc);
+            prop_assert_eq!(abc_left, abc_right);
+        }
+
+        #[test]
+        fn mul_identity(a in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let mut r = fa;
+            r.mul_assign(&BabyBearField::ONE);
+            prop_assert_eq!(r, fa);
+        }
+
+        #[test]
+        fn mul_inverse(a in 1..BabyBearField::ORDER) {
+            let fa = BabyBearField::new(a);
+            let inv = fa.inverse().unwrap();
+            let mut product = fa;
+            product.mul_assign(&inv);
+            prop_assert_eq!(product, BabyBearField::ONE);
+        }
+
+        #[test]
+        fn inverse_matches_fermat(a in 1..BabyBearField::ORDER) {
+            let fa = BabyBearField::new(a);
+            let chain = fa.inverse().unwrap();
+            let fermat = fa.pow(BabyBearField::CHARACTERISTICS - 2);
+            prop_assert_eq!(chain, fermat);
+        }
+
+        #[test]
+        fn distributive(a in arb_babybear(), b in arb_babybear(), c in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let fb = BabyBearField::new(b);
+            let fc = BabyBearField::new(c);
+            let mut bc = fb; bc.add_assign(&fc);
+            let mut left = fa; left.mul_assign(&bc);
+            let mut ab = fa; ab.mul_assign(&fb);
+            let mut ac = fa; ac.mul_assign(&fc);
+            let mut right = ab; right.add_assign(&ac);
+            prop_assert_eq!(left, right);
+        }
+
+        #[test]
+        fn sub_is_add_neg(a in arb_babybear(), b in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let fb = BabyBearField::new(b);
+            let mut via_sub = fa; via_sub.sub_assign(&fb);
+            let mut neg_b = fb; neg_b.negate();
+            let mut via_add = fa; via_add.add_assign(&neg_b);
+            prop_assert_eq!(via_sub, via_add);
+        }
+
+        #[test]
+        fn double_is_add_self(a in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let mut doubled = fa; doubled.double();
+            let mut added = fa; added.add_assign(&fa);
+            prop_assert_eq!(doubled, added);
+        }
+
+        #[test]
+        fn square_is_mul_self(a in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let mut squared = fa; squared.square();
+            let mut mulled = fa; mulled.mul_assign(&fa);
+            prop_assert_eq!(squared, mulled);
+        }
+    }
+
+    // --- Const value and generator tests ---
+
+    #[test]
+    fn two_adicity_generators_are_valid() {
+        for k in 1..=27 {
+            let g = BabyBearField::TWO_ADICITY_GENERATORS[k];
+            let mut powered = g;
+            for _ in 0..k {
+                powered.square();
+            }
+            assert_eq!(powered, BabyBearField::ONE, "generator[{k}]^(2^{k}) != 1");
+
+            let mut half_powered = g;
+            for _ in 0..k - 1 {
+                half_powered.square();
+            }
+            assert_ne!(
+                half_powered,
+                BabyBearField::ONE,
+                "generator[{k}] has order < 2^{k}"
+            );
+        }
+    }
+
+    #[test]
+    fn two_adicity_generators_inversed_are_correct() {
+        for k in 0..=27 {
+            let g = BabyBearField::TWO_ADICITY_GENERATORS[k];
+            let g_inv = BabyBearField::TWO_ADICITY_GENERATORS_INVERSED[k];
+            let mut product = g;
+            product.mul_assign(&g_inv);
+            assert_eq!(
+                product,
+                BabyBearField::ONE,
+                "generator[{k}] * inverse[{k}] != 1"
+            );
+        }
+    }
+
+    #[test]
+    fn const_values_are_correct() {
+        assert_eq!(BabyBearField::NON_RES.to_u32(), 11);
+
+        let mut two_halves = BabyBearField::HALF;
+        two_halves.double();
+        assert_eq!(two_halves, BabyBearField::ONE);
+
+        assert_eq!(BabyBearField::TWO.to_u32(), 2);
+
+        let mut should_be_zero = BabyBearField::MINUS_ONE;
+        should_be_zero.add_assign(&BabyBearField::ONE);
+        assert_eq!(should_be_zero, BabyBearField::ZERO);
     }
 }

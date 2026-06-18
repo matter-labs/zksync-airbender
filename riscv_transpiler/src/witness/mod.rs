@@ -1,13 +1,13 @@
+pub mod data_structs;
 pub mod delegation;
 
-use common_constants::{bigint_with_control::*, blake2s_with_control::*, keccak_special5::*};
+use common_constants::{
+    bigint_with_control::*, blake2s_g_function::*, blake2s_with_control::*, keccak_special5::*,
+};
 use std::mem::MaybeUninit;
 
+pub use self::data_structs::*;
 pub use self::delegation::{DelegationAbiDescription, DelegationWitness};
-use risc_v_simulator::machine_mode_only_unrolled::{
-    MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
-    UnifiedOpcodeTracingDataWithTimestamp,
-};
 
 pub trait WitnessTracer {
     fn needs_tracing_data_for_circuit_family<const FAMILY: u8>(&self) -> bool;
@@ -193,6 +193,14 @@ pub type KeccakDelegationDestinationHolder<'a> = DelegationDestinationHolder<
     NUM_KECCAK_SPECIAL5_INDIRECT_READS,
     KECCAK_SPECIAL5_X11_NUM_WRITES,
     KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS,
+>;
+pub type BlakeGFunctionDelegationDestinationHolder<'a> = DelegationDestinationHolder<
+    'a,
+    { common_constants::blake2s_g_function::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16 },
+    NUM_BLAKE2S_G_FUNCTION_REGISTER_ACCESSES,
+    BLAKE2S_G_FUNCTION_X11_NUM_READS,
+    BLAKE2S_G_FUNCTION_X10_NUM_WRITES,
+    NUM_BLAKE2S_G_FUNCTION_VARIABLE_OFFSETS,
 >;
 
 pub struct UninitDelegationDestinationHolder<
@@ -662,7 +670,7 @@ impl<'a> WitnessTracer for UninitUnifiedDestinationHolder<'a> {
                     .as_mut_ptr()
                     .as_mut_unchecked()
                     .write(UnifiedOpcodeTracingDataWithTimestamp::NonMem(data));
-                // For some reason truncating the buffer doesn't work - livetime analysis complains
+                // For some reason truncating the buffer doesn't work - lifetime analysis complains
                 *first = core::mem::transmute(first.get_unchecked_mut(1..));
                 if first.is_empty() {
                     self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
@@ -685,7 +693,7 @@ impl<'a> WitnessTracer for UninitUnifiedDestinationHolder<'a> {
                     .as_mut_ptr()
                     .as_mut_unchecked()
                     .write(UnifiedOpcodeTracingDataWithTimestamp::Mem(data));
-                // For some reason truncating the buffer doesn't work - livetime analysis complains
+                // For some reason truncating the buffer doesn't work - lifetime analysis complains
                 *first = core::mem::transmute(first.get_unchecked_mut(1..));
                 if first.is_empty() {
                     self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));

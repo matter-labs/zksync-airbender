@@ -2,7 +2,7 @@ use crate::witness::delegation::bigint::BigintDelegationWitness;
 
 use super::*;
 use crate::vm::delegations::bigint::bigint_impl;
-use common_constants::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER;
+use common_constants::*;
 use ruint::aliases::U256;
 
 // NOTE: in forward execution we read through x11 and dump witness, and then dump writes via x10,
@@ -79,7 +79,7 @@ pub(crate) fn bigint_call<C: Counters, R: RAM>(
     tracer: &mut impl WitnessTracer,
 ) {
     let needs_cycle_data =
-        tracer.needs_tracing_data_for_circuit_family::<SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX>();
+        tracer.needs_tracing_data_for_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
     let needs_delegation_data = tracer.needs_tracing_data_for_delegation_type::<{common_constants::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16}>();
 
     if needs_cycle_data == false && needs_delegation_data == false {
@@ -92,9 +92,9 @@ pub(crate) fn bigint_call<C: Counters, R: RAM>(
         // touch x0
         state.registers[0].timestamp = state.timestamp | 2;
 
-        let (x10, x10_ts) = read_register_with_ts::<C, 3>(state, 10);
-        let (x11, x11_ts) = read_register_with_ts::<C, 3>(state, 11);
-        let (x12, x12_ts) = write_register_with_ts::<C, 3>(state, 12, &mut expected_of);
+        let (_x10, _x10_ts) = read_register_with_ts::<C, 3>(state, 10);
+        let (_x11, _x11_ts) = read_register_with_ts::<C, 3>(state, 11);
+        let (_x12, _x12_ts) = write_register_with_ts::<C, 3>(state, 12, &mut expected_of);
 
         // timestamp is advanced post-cycle
 
@@ -106,6 +106,7 @@ pub(crate) fn bigint_call<C: Counters, R: RAM>(
         let next_pc = state.pc.wrapping_add(4);
         // touch x0
         let x0_timestamp = state.registers[0].timestamp;
+        // NOTE: we only touch x0 as rs1, and as rd
         state.registers[0].timestamp = state.timestamp | 2;
         let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
             opcode_data: NonMemoryOpcodeTracingData {
@@ -118,11 +119,12 @@ pub(crate) fn bigint_call<C: Counters, R: RAM>(
                 delegation_type: BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
             },
             rs1_read_timestamp: TimestampData::from_scalar(x0_timestamp),
-            rs2_read_timestamp: TimestampData::from_scalar(state.timestamp),
-            rd_read_timestamp: TimestampData::from_scalar(state.timestamp | 1),
+            rs2_read_timestamp: TimestampData::from_scalar(0),
+            rd_read_timestamp: TimestampData::from_scalar(state.timestamp),
             cycle_timestamp: TimestampData::from_scalar(state.timestamp),
         };
-        tracer.write_non_memory_family_data::<SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX>(traced_data);
+        tracer
+            .write_non_memory_family_data::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(traced_data);
         state.pc = next_pc;
     } else {
         // just touch
@@ -133,7 +135,7 @@ pub(crate) fn bigint_call<C: Counters, R: RAM>(
     // and bigint is only called one by one, so it is simple
     if needs_delegation_data {
         let mut witness = BigintDelegationWitness::empty();
-        let write_ts = state.timestamp | 3;
+        let write_ts = state.timestamp | DELEGATION_INVOCATION_OFFET;
         witness.write_timestamp = write_ts;
 
         let (x10, x10_ts) = read_register_with_ts::<C, 3>(state, 10);
@@ -188,9 +190,9 @@ pub(crate) fn bigint_call<C: Counters, R: RAM>(
         let (ts, mut expected_of) = ram.read_word(0, state.timestamp | 3);
         assert_eq!(ts, 0);
 
-        let (x10, x10_ts) = read_register_with_ts::<C, 3>(state, 10);
-        let (x11, x11_ts) = read_register_with_ts::<C, 3>(state, 11);
-        let (x12, x12_ts) = write_register_with_ts::<C, 3>(state, 12, &mut expected_of);
+        let (_x10, _x10_ts) = read_register_with_ts::<C, 3>(state, 10);
+        let (_x11, _x11_ts) = read_register_with_ts::<C, 3>(state, 11);
+        let (_x12, _x12_ts) = write_register_with_ts::<C, 3>(state, 12, &mut expected_of);
 
         // timestamp is advanced post-cycle
     }

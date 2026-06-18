@@ -6,11 +6,11 @@ use crate::gkr::sumcheck::{
     output_univariate_monomial_form_max_quadratic,
 };
 use cs::definitions::GKRAddress;
+use field::FixedArrayConvertible;
 use field::{Field, FieldExtension, PrimeField};
+use rand::RngCore;
 use std::collections::BTreeMap;
 use worker::Worker;
-
-use rand::RngCore;
 
 pub(super) fn random_poly_in_ext<F, E>(size: usize) -> Vec<E>
 where
@@ -22,11 +22,10 @@ where
 
     (0..size)
         .map(|_| {
-            let coefs: Vec<F> = [rng.next_u32(); E::DEGREE]
-                .into_iter()
-                .map(|value| F::from_u32_with_reduction(value))
-                .collect();
-            E::from_coeffs_in_base(&coefs)
+            let coeffs = [rng.next_u32(); E::DEGREE].map(|value| F::from_u32_with_reduction(value));
+            <E as FieldExtension<F>>::from_coeffs(<E as FieldExtension<F>>::Coeffs::from_array(
+                coeffs,
+            ))
         })
         .collect()
 }
@@ -104,7 +103,7 @@ where
 {
     let previous_round_challenges = random_poly_in_ext(folding_steps);
 
-    let eq_precomputed = make_eq_poly_in_full::<E>(&previous_round_challenges);
+    let eq_precomputed = make_eq_poly_in_full_serial::<E>(&previous_round_challenges);
     let eq_last = eq_precomputed.last().unwrap();
 
     // Compute claim as sum over all outputs
@@ -120,7 +119,7 @@ where
 
     // Compute expected random evaluations
     let folding_challenges: Vec<E> = random_poly_in_ext(folding_steps);
-    let eq_for_evals = make_eq_poly_in_full::<E>(&folding_challenges);
+    let eq_for_evals = make_eq_poly_in_full_serial::<E>(&folding_challenges);
 
     let mut expected = BTreeMap::new();
     for (addr, poly) in input_polys {
@@ -277,7 +276,7 @@ pub(super) fn run_sumcheck_test<
     let mut claim = initial_claim;
     let batch_challenges = vec![E::from_base(F::ONE); kernel.num_challenges()];
     let mut folding_challenges = vec![];
-    let eq_reduced_precomputed = make_eq_poly_reduced::<E>(previous_round_challenges);
+    let eq_reduced_precomputed = make_eq_poly_reduced::<E>(previous_round_challenges, &worker);
     let eq_reduced_len = eq_reduced_precomputed.len();
     let mut last_evaluations = BTreeMap::new();
     let mut last_eq_poly_prefactor_contribution = E::ONE;
@@ -302,6 +301,7 @@ pub(super) fn run_sumcheck_test<
             let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
                 &accumulator,
                 eq,
+                &worker,
             );
 
             println!("Step {}: accumulator = {:?}", step, accumulator);

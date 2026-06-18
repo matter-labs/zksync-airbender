@@ -17,13 +17,13 @@ use crate::unified_circuit::{
     compute_unified_setup_for_machine_configuration,
     flatten_proof_into_responses_for_unified_recursion,
 };
-use ::prover::risc_v_simulator::{
-    abstractions::non_determinism::QuasiUARTSource,
-    cycle::{IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfigWithDelegation},
-};
 use gpu_prover::execution::prover::ProveResult;
 use log::info;
 use riscv_transpiler::common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
+use riscv_transpiler::{
+    abstractions::non_determinism::QuasiUARTSource,
+    cycle::{IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfigWithDelegation},
+};
 use std::collections::BTreeMap;
 use std::{io::Read, path::Path};
 
@@ -38,6 +38,7 @@ impl From<ProveResult> for UnrolledProgramProof {
             register_final_values: value.register_final_values,
             recursion_chain_preimage: None,
             recursion_chain_hash: None,
+            pow_challenge: value.pow_challenge,
         }
     }
 }
@@ -84,25 +85,50 @@ pub struct UnrolledProver {
     pub prover: ExecutionProver,
 }
 
+#[cfg(feature = "security_80")]
 pub const RECURSION_UNROLLED_BIN: &[u8] =
     include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
+#[cfg(feature = "security_80")]
 pub const RECURSION_UNROLLED_TXT: &[u8] =
     include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.text");
+#[cfg(feature = "security_80")]
 pub const RECURSION_UNIFIED_BIN: &[u8] =
     include_bytes!("../../tools/verifier/recursion_in_unified_layer.bin");
+#[cfg(feature = "security_80")]
 pub const RECURSION_UNIFIED_TXT: &[u8] =
     include_bytes!("../../tools/verifier/recursion_in_unified_layer.text");
+
+#[cfg(feature = "security_100")]
+pub const RECURSION_UNROLLED_BIN: &[u8] =
+    include_bytes!("../../tools/verifier/recursion_in_unrolled_layer_security_100_bits.bin");
+#[cfg(feature = "security_100")]
+pub const RECURSION_UNROLLED_TXT: &[u8] =
+    include_bytes!("../../tools/verifier/recursion_in_unrolled_layer_security_100_bits.text");
+#[cfg(feature = "security_100")]
+pub const RECURSION_UNIFIED_BIN: &[u8] =
+    include_bytes!("../../tools/verifier/recursion_in_unified_layer_security_100_bits.bin");
+#[cfg(feature = "security_100")]
+pub const RECURSION_UNIFIED_TXT: &[u8] =
+    include_bytes!("../../tools/verifier/recursion_in_unified_layer_security_100_bits.text");
+
+#[cfg(feature = "security_80")]
+const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 1;
+#[cfg(feature = "security_100")]
+const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 2;
+
+fn unified_recursion_has_converged(family_proof_count: usize) -> bool {
+    // Unified recursion converges once proof shape reaches target size.
+    family_proof_count == UNIFIED_RECURSION_TARGET_FAMILY_PROOFS
+}
 
 impl UnrolledProver {
     pub fn new(
         path_without_bin: &String,
-        replay_worker_threads_count: usize,
+        prover_configuration: ExecutionProverConfiguration,
         max_level: UnrolledProverLevel,
     ) -> Self {
+        let mut prover = ExecutionProver::with_configuration(prover_configuration);
         let mut level_data = BTreeMap::new();
-        let mut configuration = ExecutionProverConfiguration::default();
-        configuration.replay_worker_threads_count = replay_worker_threads_count;
-        let mut prover = ExecutionProver::with_configuration(configuration);
 
         {
             let bin_path = format!("{}.bin", path_without_bin);
@@ -348,7 +374,7 @@ impl UnrolledProver {
                 proof.debug_info()
             );
             let (family_proof_count, _, _) = proof.get_proof_counts();
-            if family_proof_count == 1 {
+            if unified_recursion_has_converged(family_proof_count) {
                 break;
             }
             unified_recursion_layer += 1;

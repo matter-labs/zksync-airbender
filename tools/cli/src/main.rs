@@ -3,38 +3,28 @@
 #![feature(generic_const_exprs)]
 
 use base64::Engine;
-use blake2s_u32::Blake2sState;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use cli_lib::prover_utils::{
-    create_final_proofs_from_program_proof, create_proofs, generate_oracle_data_from_metadata,
-    serialize_to_file, u32_from_hex_string, ProvingLimit, DEFAULT_CYCLES,
+    default_backend_for_build, deserialize_from_file, serialize_to_file, u32_from_hex_string,
+    CpuConfig, GpuConfig, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
+    ProofTarget, ProverBackend,
 };
-
-use cli_lib::vk::generate_vk;
-use execution_utils::{
-    generate_constants_for_binary, Machine, ProgramProof, RecursionStrategy,
-    VerifierCircuitsIdentifiers,
-};
+use execution_utils::setups::read_binary;
 use reqwest::blocking::Client;
+use riscv_transpiler::ir::{
+    preprocess_bytecode, DecodingOptions, FullUnsignedMachineDecoderConfig,
+    ReducedMachineDecoderConfig,
+};
+use riscv_transpiler::vm::{DelegationsCounters, RamWithRomRegion, SimpleTape, State, VM};
+use serde::Serialize;
 use serde_json::Value;
 use std::path::Path;
-use std::{fs, io::Write, iter};
+use std::{fs, iter};
 
-use prover::{
-    merkle_trees::{MerkleTreeCapVarLength, MerkleTreeConstructor},
-    prover_stages::Proof,
-    risc_v_simulator::{
-        abstractions::non_determinism::QuasiUARTSource,
-        cycle::{IMStandardIsaConfig, IWithoutByteAccessIsaConfigWithDelegation},
-        runner::run_simple_with_entry_point_and_non_determimism_source_for_config,
-        sim::SimulatorConfig,
-    },
-};
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 
-fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::fs::File::open(filename).unwrap();
-    serde_json::from_reader(src).unwrap()
-}
+const DEFAULT_CYCLES: usize = 32_000_000;
+const DEFAULT_RUN_RAM_BOUND_BYTES: usize = 1 << 30;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -43,11 +33,12 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(Clone, Debug, clap::ValueEnum, Parser)]
+#[derive(Clone, Debug, ValueEnum, Parser)]
 enum InputType {
     Hex,
     ProverInputJson,
 }
+
 impl Default for InputType {
     fn default() -> Self {
         InputType::Hex
@@ -56,178 +47,155 @@ impl Default for InputType {
 
 #[derive(Clone, Debug, Parser, Default)]
 struct InputConfig {
-    // Either load data from the input file
     #[arg(long)]
     input_file: Option<String>,
 
-    /// Type of input - hex string or prover_input json (only for input_file).
     #[arg(long, value_enum, default_value = "hex")]
     input_type: InputType,
 
-    // Loads data from the RPC - if set, you also have to set input_batch
     #[arg(long)]
     input_rpc: Option<String>,
     #[arg(long)]
     input_batch: Option<u64>,
 }
 
+#[derive(Clone, Debug, ValueEnum)]
+enum RunMachine {
+    FullUnsigned,
+    Reduced,
+}
+
 #[derive(Subcommand)]
 enum Commands {
+    /// Generate proof artifact for a single input.
     Prove {
-        /// Path to binary
         #[arg(short, long)]
         bin: String,
-        // Either load data from the input file or from RPC
+        #[arg(long)]
+        text: Option<String>,
         #[clap(flatten)]
         input: InputConfig,
         #[arg(long, default_value = "output")]
         output_dir: String,
-        #[arg(long, value_enum, default_value = "standard")]
-        machine: Machine,
-        // If proving for recursion - you must also pass the previous metadata info.
-        #[arg(long)]
-        prev_metadata: Option<String>,
-        /// Number of riscV cycles to run. 32_000_000 if not set.
-        #[arg(long)]
-        cycles: Option<usize>,
+        #[arg(long, default_value = "proof.json")]
+        output_file: String,
+        #[arg(long, value_enum, default_value = "recursion-unified")]
+        target: ProofTarget,
+        #[arg(long, value_enum)]
+        backend: Option<ProverBackend>,
+        #[arg(long, default_value_t = 0)]
+        batch_id: u64,
 
-        /// If set, run the recursion, until a given moment.
+        #[arg(long, default_value_t = 1 << 31)]
+        cpu_cycles_bound: usize,
+        #[arg(long, default_value_t = 1 << 30)]
+        cpu_ram_bound: usize,
         #[arg(long)]
-        until: Option<ProvingLimit>,
-        #[arg(long, value_enum, default_value = "use-reduced-log23-machine")]
-        mode: RecursionStrategy,
+        cpu_worker_threads: Option<usize>,
 
-        /// If set, the temporary data (e.g. intermediate proofs) will be stored in the given directory.
-        #[arg(long)]
-        tmp_dir: Option<String>,
-        /// If true, use GPU for proving.
-        #[arg(long)]
-        gpu: bool,
+        #[arg(long, default_value_t = 8)]
+        gpu_replay_threads: usize,
     },
-    /// Prove data from multiple files in one go.
-    /// Mostly used for performance testing, so it has limited set of options for now.
-    MultiProve {
+    /// Generate proof artifacts for many input files.
+    ProveBatch {
         #[arg(short, long)]
         bin: String,
+        #[arg(long)]
+        text: Option<String>,
         #[arg(long)]
         input_file: Vec<String>,
-    },
-    /// Run the 'final' step of proving (for example on the output from ZKSmith)
-    ProveFinal {
-        // Either load data from the input file or from RPC
-        #[clap(flatten)]
-        input: InputConfig,
+        #[arg(long, value_enum, default_value = "hex")]
+        input_type: InputType,
         #[arg(long, default_value = "output")]
         output_dir: String,
-        #[arg(long, value_enum, default_value = "use-reduced-log23-machine")]
-        mode: RecursionStrategy,
-        /// If true, use GPU for proving.
+        #[arg(long, value_enum, default_value = "recursion-unified")]
+        target: ProofTarget,
+        #[arg(long, value_enum)]
+        backend: Option<ProverBackend>,
+        #[arg(long, default_value_t = 0)]
+        batch_id_base: u64,
+
+        #[arg(long, default_value_t = 1 << 31)]
+        cpu_cycles_bound: usize,
+        #[arg(long, default_value_t = 1 << 30)]
+        cpu_ram_bound: usize,
         #[arg(long)]
-        gpu: bool,
+        cpu_worker_threads: Option<usize>,
+
+        #[arg(long, default_value_t = 8)]
+        gpu_replay_threads: usize,
     },
-    /// Verifies a single proof.
-    Verify {
-        /// Path to proof file.
+    /// Continue staged proving from an existing proof artifact.
+    ContinueProof {
         #[arg(short, long)]
         proof: String,
-    },
-    /// Verifies whole run (potentially multiple proofs)
-    VerifyAll {
         #[arg(short, long)]
-        metadata: Option<String>,
-
-        #[arg(short, long)]
-        program_proof: Option<String>,
+        bin: String,
+        #[arg(long)]
+        text: Option<String>,
+        #[arg(long, default_value = "output")]
+        output_dir: String,
+        #[arg(long, default_value = "proof.json")]
+        output_file: String,
+        #[arg(long, value_enum, default_value = "recursion-unified")]
+        target: ProofTarget,
+        #[arg(long, default_value_t = 1 << 31)]
+        cpu_cycles_bound: usize,
+        #[arg(long, default_value_t = 1 << 30)]
+        cpu_ram_bound: usize,
+        #[arg(long)]
+        cpu_worker_threads: Option<usize>,
     },
+    /// Verify a single proof artifact.
+    Verify {
+        #[arg(short, long)]
+        proof: String,
+        #[arg(short, long)]
+        bin: String,
+        #[arg(long)]
+        text: Option<String>,
+    },
+    /// Run binary via the transpiler VM.
     Run {
         #[arg(short, long)]
         bin: String,
-        // Either load data from the input file or from RPC
+        #[arg(long)]
+        text: Option<String>,
         #[clap(flatten)]
         input: InputConfig,
-        /// Number of riscV cycles to run. 32_000_000 if not set.
         #[arg(long)]
         cycles: Option<usize>,
-        /// If present - compare the register values with results.
         #[arg(long, num_args = 1.., value_delimiter = ',')]
         expected_results: Option<Vec<u32>>,
+        #[arg(long, value_enum, default_value = "full-unsigned")]
+        machine: RunMachine,
+    },
+}
 
-        #[arg(long, value_enum, default_value = "standard")]
-        machine: Machine,
-    },
+#[derive(Debug, Serialize)]
+struct BatchSummary {
+    items: Vec<BatchSummaryItem>,
+}
 
-    /// Generates verification key hash, for a given binary.
-    /// This way you can compare it with the one inside the proof, to make sure that
-    /// the proof is really checking the execution of a given code.
-    GenerateVk {
-        #[arg(short, long)]
-        bin: String,
-        #[arg(long)]
-        machine: Option<Machine>,
-        #[arg(long)]
-        output: Option<String>,
-    },
-
-    Flatten {
-        #[arg(long)]
-        input_file: String,
-        #[arg(long)]
-        output_file: String,
-    },
-    FlattenAll {
-        #[arg(long)]
-        input_metadata: String,
-        #[arg(long)]
-        output_file: String,
-    },
-    /// Combines two proofs into a single one.
-    /// This is used to combine the proof from the previous block with the current one.
-    /// Both proofs must have the same recursion chain hash.
-    FlattenTwo {
-        #[arg(long)]
-        first_metadata: String,
-        #[arg(long)]
-        second_metadata: String,
-        #[arg(long)]
-        output_file: String,
-    },
-    /// Generate End params and AUX values for a given binary and verification path.
-    // These can be considered quasi 'verification' keys - as they tie the final proof
-    // to the original bytecode (and verifications).
-    GenerateConstants {
-        #[arg(short, long)]
-        bin: String,
-        /// If true, use the universal verifier (used by the cli tool).
-        /// If false, use separate verifiers.
-        #[arg(long)]
-        universal_verifier: bool,
-        /// If true recompute all the verification keys.
-        /// If false, use the ones from the vk.json files.
-        #[arg(long)]
-        recompute: bool,
-        #[arg(long, value_enum, default_value = "use-reduced-log23-machine")]
-        mode: RecursionStrategy,
-    },
+#[derive(Debug, Serialize)]
+struct BatchSummaryItem {
+    input_file: String,
+    output_file: String,
+    batch_id: u64,
+    total_ms: u64,
 }
 
 fn fetch_data_from_json_rpc(url: &str) -> Result<Option<String>, reqwest::Error> {
     let client = Client::new();
-
     let response = client.post(url).send()?.json::<Value>()?;
 
     match &response["result"] {
         Value::String(data) => {
-            let tmp_data = data.strip_prefix("0x").unwrap_or(&data);
+            let tmp_data = data.strip_prefix("0x").unwrap_or(data);
             Ok(Some(tmp_data.to_string()))
         }
         _ => Ok(None),
     }
-}
-
-fn fetch_data_from_url(url: &str) -> Result<Option<String>, reqwest::Error> {
-    let client = Client::new();
-    let response = client.get(url).send()?.text()?;
-    Ok(Some(response))
 }
 
 fn fetch_input_data(input: &InputConfig) -> Result<Option<Vec<u32>>, reqwest::Error> {
@@ -237,21 +205,27 @@ fn fetch_input_data(input: &InputConfig) -> Result<Option<Vec<u32>>, reqwest::Er
             input.input_type.clone(),
         )
     } else if let Some(url) = &input.input_rpc {
-        (fetch_data_from_json_rpc(&url)?, InputType::ProverInputJson)
+        (fetch_data_from_json_rpc(url)?, InputType::ProverInputJson)
     } else {
         return Ok(None);
     };
 
+    parse_input_data(data, input_type)
+}
+
+fn parse_input_data(
+    data: Option<String>,
+    input_type: InputType,
+) -> Result<Option<Vec<u32>>, reqwest::Error> {
     match input_type {
         InputType::Hex => Ok(data.map(|d| u32_from_hex_string(&d))),
         InputType::ProverInputJson => {
             if let Some(data) = data {
-                // decode data as Json and then get the 'prover_input' field
                 let json: Value = serde_json::from_str(&data).expect("Failed to parse JSON");
                 let prover_input = json["prover_input"].as_str().unwrap_or_default();
 
                 let decoded = base64::engine::general_purpose::STANDARD
-                    .decode(&prover_input)
+                    .decode(prover_input)
                     .expect("Failed to decode base64 input");
 
                 let prover_input: Vec<u32> = decoded
@@ -266,19 +240,35 @@ fn fetch_input_data(input: &InputConfig) -> Result<Option<Vec<u32>>, reqwest::Er
     }
 }
 
-fn fetch_final_input_json(input: &InputConfig) -> Result<Option<String>, reqwest::Error> {
-    if let Some(input_file) = &input.input_file {
-        Ok(Some(
-            fs::read_to_string(input_file).unwrap().trim().to_string(),
-        ))
-    } else if let Some(url) = &input.input_rpc {
-        let batch = input
-            .input_batch
-            .expect("input_batch must be set if input_rpc is set");
-        fetch_data_from_url(format!("{}/downloads/{}", url, batch).as_str())
-    } else {
-        Ok(None)
+fn make_prover_config(
+    target: ProofTarget,
+    backend: Option<ProverBackend>,
+    cpu_cycles_bound: usize,
+    cpu_ram_bound: usize,
+    cpu_worker_threads: Option<usize>,
+    gpu_replay_threads: usize,
+) -> ProgramProverConfig {
+    ProgramProverConfig {
+        target,
+        backend: backend.unwrap_or_else(default_backend_for_build),
+        cpu: CpuConfig {
+            cycles_bound: cpu_cycles_bound,
+            ram_bound: cpu_ram_bound,
+            worker_threads: cpu_worker_threads,
+        },
+        gpu: GpuConfig {
+            replay_worker_threads_count: gpu_replay_threads,
+        },
     }
+}
+
+fn write_artifact(artifact: &ProofArtifact, output_dir: &str, output_file: &str) {
+    let output_path = Path::new(output_dir).join(output_file);
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).expect("Failed to create output directory");
+    }
+    serialize_to_file(artifact, &output_path);
+    println!("Proof artifact written to {}", output_path.display());
 }
 
 fn main() {
@@ -287,443 +277,198 @@ fn main() {
         .format_module_path(false)
         .format_target(false)
         .init();
+
     let cli = Cli::parse();
-    match &cli.command {
+
+    match cli.command {
         Commands::Prove {
             bin,
+            text,
             input,
             output_dir,
-            machine,
-            prev_metadata,
-            cycles,
-            until,
-            mode,
-            tmp_dir,
-            gpu,
+            output_file,
+            target,
+            backend,
+            batch_id,
+            cpu_cycles_bound,
+            cpu_ram_bound,
+            cpu_worker_threads,
+            gpu_replay_threads,
         } => {
-            let input_data = fetch_input_data(input).expect("Failed to fetch");
-            create_proofs(
-                bin,
-                output_dir,
-                input_data,
-                prev_metadata,
-                machine,
-                cycles,
-                until,
-                *mode,
-                tmp_dir,
-                gpu.clone(),
+            let input_words = fetch_input_data(&input)
+                .expect("Failed to fetch input")
+                .unwrap_or_default();
+
+            let source = ProgramSource::from_paths(bin, text);
+            let prover_config = make_prover_config(
+                target,
+                backend,
+                cpu_cycles_bound,
+                cpu_ram_bound,
+                cpu_worker_threads,
+                gpu_replay_threads,
             );
+
+            let prover = ProgramProver::new(source, prover_config)
+                .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
+            let artifact = prover
+                .prove_words(batch_id, input_words)
+                .unwrap_or_else(|e| panic!("Proving failed: {}", e));
+
+            write_artifact(&artifact, &output_dir, &output_file);
         }
-        Commands::MultiProve { bin, input_file } => {
-            let mut all_inputs = vec![];
-            for input in input_file {
-                let input_data = fs::read_to_string(input).unwrap().trim().to_string();
-                let input_u32 = u32_from_hex_string(&input_data);
-                all_inputs.push(input_u32);
-            }
-            #[cfg(feature = "gpu")]
-            cli_lib::prover_utils::multi_prove(bin, all_inputs);
-            #[cfg(not(feature = "gpu"))]
-            {
-                let _ = bin;
-                panic!("MultiProve is only available with GPU feature enabled.");
-            }
-        }
-        Commands::ProveFinal {
-            input,
+        Commands::ProveBatch {
+            bin,
+            text,
+            input_file,
+            input_type,
             output_dir,
-            mode,
-            gpu,
+            target,
+            backend,
+            batch_id_base,
+            cpu_cycles_bound,
+            cpu_ram_bound,
+            cpu_worker_threads,
+            gpu_replay_threads,
         } => {
-            let input = fetch_final_input_json(input).expect("Failed to fetch");
-
-            let input_program_proof: ProgramProof = serde_json::from_str(&input.unwrap())
-                .expect("Failed to parse input_hex into ProgramProof");
-
-            let program_proof =
-                create_final_proofs_from_program_proof(input_program_proof, *mode, *gpu);
-
-            serialize_to_file(
-                &program_proof,
-                &Path::new(output_dir).join("final_program_proof.json"),
+            let source = ProgramSource::from_paths(bin, text);
+            let prover_config = make_prover_config(
+                target,
+                backend,
+                cpu_cycles_bound,
+                cpu_ram_bound,
+                cpu_worker_threads,
+                gpu_replay_threads,
             );
-        }
-        Commands::Verify { proof } => {
-            #[cfg(feature = "include_verifiers")]
-            verify_proof(proof);
-            #[cfg(not(feature = "include_verifiers"))]
-            {
-                let _ = proof;
-                panic!("Not enabled - please compile with `include_verifiers` feature.")
+
+            let prover = ProgramProver::new(source, prover_config)
+                .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
+
+            fs::create_dir_all(&output_dir).expect("Failed to create output directory");
+
+            let mut summary = BatchSummary { items: Vec::new() };
+
+            for (idx, input_path) in input_file.iter().enumerate() {
+                let input_data = fs::read_to_string(input_path)
+                    .unwrap_or_else(|e| panic!("Failed to read {}: {}", input_path, e));
+
+                let parsed_words =
+                    parse_input_data(Some(input_data.trim().to_string()), input_type.clone())
+                        .expect("Failed to parse input")
+                        .unwrap_or_default();
+
+                let batch_id = batch_id_base + idx as u64;
+                let artifact = prover
+                    .prove_words(batch_id, parsed_words)
+                    .unwrap_or_else(|e| panic!("Proving failed for {}: {}", input_path, e));
+
+                let output_file = format!("proof_{}.json", idx);
+                let output_path = Path::new(&output_dir).join(&output_file);
+                serialize_to_file(&artifact, &output_path);
+
+                summary.items.push(BatchSummaryItem {
+                    input_file: input_path.clone(),
+                    output_file,
+                    batch_id,
+                    total_ms: artifact.timings_ms.total_ms,
+                });
             }
+
+            let summary_path = Path::new(&output_dir).join("batch_summary.json");
+            serialize_to_file(&summary, &summary_path);
+            println!("Batch summary written to {}", summary_path.display());
         }
-        Commands::VerifyAll {
-            metadata,
-            program_proof,
+        Commands::ContinueProof {
+            proof,
+            bin,
+            text,
+            output_dir,
+            output_file,
+            target,
+            cpu_cycles_bound,
+            cpu_ram_bound,
+            cpu_worker_threads,
         } => {
-            #[cfg(feature = "include_verifiers")]
-            {
-                if let Some(metadata) = metadata {
-                    verify_all(metadata);
-                } else if let Some(program_proof) = program_proof {
-                    verify_all_program_proof(program_proof);
-                } else {
-                    panic!("Please either provide --metadata or --program_proof");
-                }
-            }
-            #[cfg(not(feature = "include_verifiers"))]
-            {
-                let _ = metadata;
-                let _ = program_proof;
-                panic!("Not enabled - please compile with `include_verifiers` feature.")
-            }
+            let input_artifact: ProofArtifact = deserialize_from_file(&proof);
+            let source = ProgramSource::from_paths(bin, text);
+            let prover_config = make_prover_config(
+                target,
+                Some(ProverBackend::Cpu),
+                cpu_cycles_bound,
+                cpu_ram_bound,
+                cpu_worker_threads,
+                8,
+            );
+
+            let prover = ProgramProver::new(source, prover_config)
+                .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
+            let artifact = prover
+                .continue_artifact(input_artifact)
+                .unwrap_or_else(|e| panic!("Continuation failed: {}", e));
+
+            write_artifact(&artifact, &output_dir, &output_file);
+        }
+        Commands::Verify { proof, bin, text } => {
+            let artifact: ProofArtifact = deserialize_from_file(&proof);
+            let source = ProgramSource::from_paths(bin, text);
+            let output = cli_lib::prover_utils::verify_artifact(&artifact, &source)
+                .unwrap_or_else(|e| panic!("Verification failed: {}", e));
+            println!("PROOF IS VALID. output={:?}", output);
         }
         Commands::Run {
             bin,
-            cycles,
+            text,
             input,
+            cycles,
             expected_results,
             machine,
         } => {
-            let input_data = fetch_input_data(input).expect("Failed to fetch");
-
-            run_binary(bin, cycles, input_data, expected_results, machine);
-        }
-        Commands::GenerateVk {
-            bin,
-            machine,
-            output,
-        } => generate_vk(bin, machine, output),
-        Commands::Flatten {
-            input_file,
-            output_file,
-        } => flatten_file(input_file, output_file),
-        Commands::FlattenAll {
-            input_metadata,
-            output_file,
-        } => flatten_all(input_metadata, output_file),
-        Commands::FlattenTwo {
-            first_metadata,
-            second_metadata,
-            output_file,
-        } => flatten_two(first_metadata, second_metadata, output_file),
-        Commands::GenerateConstants {
-            bin,
-            universal_verifier,
-            recompute,
-            mode,
-        } => {
-            let base_layer_bin = std::fs::read(bin).expect("Failed to read base layer binary file");
-
-            let (end_params, aux_values) = generate_constants_for_binary(
-                &base_layer_bin,
-                *mode,
-                *universal_verifier,
-                *recompute,
+            let input_words = fetch_input_data(&input)
+                .expect("Failed to fetch input")
+                .unwrap_or_default();
+            let source = ProgramSource::from_paths(bin, text);
+            run_binary(
+                &source,
+                cycles.unwrap_or(DEFAULT_CYCLES),
+                input_words,
+                expected_results,
+                machine,
             );
-
-            println!("End params: {:?}", end_params);
-            println!("Aux values: {:?}", aux_values);
         }
     }
-}
-
-/// Computes a single hash for multiple trees.
-pub fn merkle_trees_to_hash<T: MerkleTreeConstructor>(trees: &Vec<T>) -> String {
-    let caps = trees.iter().map(|x| x.get_cap()).collect::<Vec<_>>();
-    merkle_caps_to_hash(&caps)
-}
-
-/// Computes a single hash for multiple tree caps.
-pub fn merkle_caps_to_hash(caps: &Vec<MerkleTreeCapVarLength>) -> String {
-    let mut all_leaves = vec![];
-    for cap in caps {
-        all_leaves.append(&mut cap.cap.clone());
-    }
-    let mut hasher = Blake2sState::new();
-    for entry in all_leaves {
-        let mut result = [0u32; 16];
-        // yes, this is very lazy - as we just copy 8 uint32, and the remaining 8 are zero.
-        result[..8].copy_from_slice(&entry);
-        hasher.absorb::<true>(&result);
-    }
-    let empty = [0u32; 16];
-    let mut dst = [0u32; 8];
-    hasher.absorb_final_block::<true>(&empty, 0, &mut dst);
-
-    dst.iter()
-        .map(|value| format!("{:08x}", value))
-        .collect::<Vec<_>>()
-        .join("")
-}
-
-#[derive(Debug)]
-pub enum CircuitType {
-    RiscV,
-    RiscVReduced,
-    DelegatedExtendedBlake,
-}
-
-pub fn proof_name_to_circuit_type(file_name: &str) -> CircuitType {
-    if file_name.starts_with("delegation_proof_1991_") {
-        CircuitType::DelegatedExtendedBlake
-    } else if file_name.starts_with("proof_") {
-        CircuitType::RiscV
-    } else if file_name.starts_with("reduced_proof_") {
-        CircuitType::RiscVReduced
-    } else {
-        panic!("Failed to map file {} to a proof type.", file_name);
-    }
-}
-
-#[cfg(feature = "include_verifiers")]
-fn verify_proof(proof_path: &String) {
-    use cli_lib::prover_utils::get_end_params_output_suffix_from_proof;
-
-    println!("Verifying proof from {}", proof_path);
-    let proof: Proof = deserialize_from_file(proof_path);
-
-    let end_params_output = get_end_params_output_suffix_from_proof(&proof);
-    println!("Final params hash: {:?}", end_params_output);
-
-    let verification_key = merkle_caps_to_hash(&proof.setup_tree_caps);
-    println!("Proof verification key is {}", verification_key);
-
-    let circuit_type = proof_name_to_circuit_type(
-        std::path::Path::new(proof_path)
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap(),
-    );
-
-    println!("Circuit type detected as {:?}", circuit_type);
-
-    let shuffle_ram_inits_and_teardowns: bool = match circuit_type {
-        CircuitType::RiscV => true,
-        CircuitType::RiscVReduced => true,
-        CircuitType::DelegatedExtendedBlake => false,
-    };
-
-    let mut oracle_data = vec![];
-
-    oracle_data.extend(
-        verifier_common::proof_flattener::flatten_proof_for_skeleton(
-            &proof,
-            if shuffle_ram_inits_and_teardowns {
-                1
-            } else {
-                0
-            },
-        ),
-    );
-    for query in proof.queries.iter() {
-        oracle_data.extend(verifier_common::proof_flattener::flatten_query(query));
-    }
-
-    let it = oracle_data.into_iter();
-
-    verifier_common::prover::nd_source_std::set_iterator(it);
-
-    match circuit_type {
-        CircuitType::RiscV => unsafe {
-            risc_v_cycles_verifier::verify(
-                std::mem::MaybeUninit::uninit().assume_init_mut(),
-                &mut verifier_common::ProofPublicInputs::uninit(),
-            )
-        },
-        CircuitType::RiscVReduced => unsafe {
-            reduced_risc_v_machine_verifier::verify(
-                std::mem::MaybeUninit::uninit().assume_init_mut(),
-                &mut verifier_common::ProofPublicInputs::uninit(),
-            )
-        },
-        CircuitType::DelegatedExtendedBlake => {
-            unsafe {
-                blake2_with_compression_verifier::verify(
-                    std::mem::MaybeUninit::uninit().assume_init_mut(),
-                    &mut verifier_common::ProofPublicInputs::uninit(),
-                )
-            };
-        }
-    }
-    println!("PROOF IS VALID");
-}
-
-fn flatten_file(input_file: &String, output_file: &String) {
-    let proof: Proof = deserialize_from_file(input_file);
-    //let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
-    //        deserialize_from_file("../../prover/delegation_layout");
-    let shuffle_ram_inits_and_teardowns_len = 1;
-
-    let mut data = vec![VerifierCircuitsIdentifiers::RiscV as u32];
-    // FIXME: this should detect the type of the proof.
-    data.extend(
-        verifier_common::proof_flattener::flatten_proof_for_skeleton(
-            &proof,
-            shuffle_ram_inits_and_teardowns_len,
-        ),
-    );
-
-    for query in proof.queries.iter() {
-        data.extend(verifier_common::proof_flattener::flatten_query(query));
-    }
-
-    u32_to_file(output_file, &data);
-
-    let foo = u32_from_file(output_file);
-    assert_eq!(foo, data);
-}
-
-fn flatten_all(input_metadata: &String, output_file: &String) {
-    let (metadata, mut oracle) = generate_oracle_data_from_metadata(input_metadata);
-
-    if metadata.basic_proof_count > 0 {
-        oracle.insert(0, VerifierCircuitsIdentifiers::BaseLayer as u32);
-    } else if metadata.reduced_proof_count > 0 {
-        oracle.insert(0, VerifierCircuitsIdentifiers::RecursionLayer as u32);
-    } else {
-        panic!("No proofs");
-    };
-
-    u32_to_file(output_file, &oracle);
-}
-
-fn flatten_two(first_metadata: &String, second_metadata: &String, output_file: &String) {
-    let (metadata, mut oracle) = generate_oracle_data_from_metadata(first_metadata);
-    let (metadata2, oracle2) = generate_oracle_data_from_metadata(second_metadata);
-
-    oracle.extend(oracle2);
-    assert!(metadata.reduced_proof_count > 0);
-    assert!(metadata2.reduced_proof_count > 0);
-
-    oracle.insert(
-        0,
-        VerifierCircuitsIdentifiers::CombinedRecursionLayers as u32,
-    );
-
-    u32_to_file(output_file, &oracle);
-}
-
-#[cfg(feature = "include_verifiers")]
-fn verify_all(metadata_path: &String) {
-    let (metadata, oracle_data) = generate_oracle_data_from_metadata(metadata_path);
-    let it = oracle_data.into_iter();
-
-    verifier_common::prover::nd_source_std::set_iterator(it);
-
-    if metadata.basic_proof_count > 0 {
-        assert_eq!(metadata.reduced_proof_count, 0);
-        let output = full_statement_verifier::verify_base_layer();
-        println!("Output is: {:?}", output);
-    } else if metadata.reduced_proof_count > 0 {
-        println!("Running continue recursive");
-        assert!(metadata.reduced_proof_count > 0);
-        let output = full_statement_verifier::verify_recursion_layer();
-        println!("Output is: {:?}", output);
-    } else if metadata.reduced_log_23_proof_count > 0 {
-        todo!("not implemented yet");
-    } else {
-        panic!("No proofs");
-    };
-    assert!(
-        verifier_common::prover::nd_source_std::try_read_word().is_none(),
-        "Expected that all words from CSR were consumed"
-    );
-}
-
-#[cfg(feature = "include_verifiers")]
-fn verify_all_program_proof(program_proof_path: &String) {
-    use execution_utils::generate_oracle_data_from_metadata_and_proof_list;
-
-    let input_program_proof: ProgramProof = deserialize_from_file(&program_proof_path);
-    //serde_json::from_str(&input.unwrap()).expect("Failed to parse input_hex into ProgramProof");
-    let (metadata, proof_list) = input_program_proof.to_metadata_and_proof_list();
-
-    let oracle_data = generate_oracle_data_from_metadata_and_proof_list(&metadata, &proof_list);
-    let it = oracle_data.into_iter();
-
-    verifier_common::prover::nd_source_std::set_iterator(it);
-
-    // Assume that program proof has only recursion proofs.
-    println!("Running continue recursive");
-    assert!(metadata.reduced_proof_count > 0);
-    let output = full_statement_verifier::verify_recursion_layer();
-    println!("Output is: {:?}", output);
-
-    assert!(
-        verifier_common::prover::nd_source_std::try_read_word().is_none(),
-        "Expected that all words from CSR were consumed"
-    );
-}
-
-fn u32_from_file(input_file: &String) -> Vec<u32> {
-    let hex_string = fs::read_to_string(input_file).unwrap().trim().to_string();
-
-    u32_from_hex_string(&hex_string)
-}
-
-fn u32_to_file(output_file: &String, numbers: &[u32]) {
-    // Open the file for writing
-    let mut file = fs::File::create(output_file).expect("Failed to create file");
-
-    // Write each u32 as an 8-character hexadecimal string without newlines
-    for &num in numbers {
-        write!(file, "{:08X}", num).expect("Failed to write to file");
-    }
-
-    println!("Successfully wrote to file: {}", output_file);
 }
 
 fn run_binary(
-    bin_path: &String,
-    cycles: &Option<usize>,
-    input_data: Option<Vec<u32>>,
-    expected_results: &Option<Vec<u32>>,
-    machine: &Machine,
+    source: &ProgramSource,
+    cycles: usize,
+    input_data: Vec<u32>,
+    expected_results: Option<Vec<u32>>,
+    machine: RunMachine,
 ) {
-    let config = SimulatorConfig {
-        bin: prover::risc_v_simulator::sim::BinarySource::Path(bin_path.into()),
-        cycles: cycles.unwrap_or(DEFAULT_CYCLES),
-        entry_point: 0,
-        diagnostics: None,
+    let (_, binary_image) = read_binary(Path::new(&source.bin_path));
+    let (_, text_section) = read_binary(Path::new(&source.text_path));
+
+    let (registers, finished) = match machine {
+        RunMachine::FullUnsigned => run_binary_with_decoder::<FullUnsignedMachineDecoderConfig>(
+            &binary_image,
+            &text_section,
+            cycles,
+            input_data,
+        ),
+        RunMachine::Reduced => run_binary_with_decoder::<ReducedMachineDecoderConfig>(
+            &binary_image,
+            &text_section,
+            cycles,
+            input_data,
+        ),
     };
-    let mut non_determinism_source = QuasiUARTSource::default();
-    if let Some(input_data) = input_data {
-        for entry in input_data {
-            non_determinism_source.oracle.push_back(entry);
-        }
+
+    if !finished {
+        println!(
+            "Program did not finish within {} cycles; reporting current register state",
+            cycles
+        );
     }
-
-    let registers = match machine {
-        Machine::Standard => {
-            let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
-                _,
-                IMStandardIsaConfig,
-            >(config, non_determinism_source);
-
-            result.state.registers
-        }
-        Machine::Reduced => {
-            let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
-                _,
-                IWithoutByteAccessIsaConfigWithDelegation,
-            >(config, non_determinism_source);
-
-            result.state.registers
-        }
-        Machine::ReducedLog23 => {
-            let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
-                _,
-                IWithoutByteAccessIsaConfigWithDelegation,
-            >(config, non_determinism_source);
-
-            result.state.registers
-        }
-    };
-
-    // our convention is to return 32 bytes placed into registers x10-x17
 
     let result = registers[10..26]
         .iter()
@@ -731,9 +476,8 @@ fn run_binary(
         .collect::<Vec<_>>()
         .join(", ");
     println!("Result: {}", result);
+
     if let Some(expected_results) = expected_results {
-        // let's compare registers to expected results.
-        // expected results can be shorter - so pad with zeros.
         for (i, (a, b)) in registers[10..18]
             .iter()
             .zip(expected_results.iter().chain(iter::repeat(&0)))
@@ -741,10 +485,44 @@ fn run_binary(
         {
             if a != b {
                 panic!(
-                    "Expected results differ on {}: register: {} expected: {}",
-                    i, a, b
+                    "Expected result mismatch at x{}: got {}, expected {}",
+                    10 + i,
+                    a,
+                    b
                 );
             }
         }
     }
+}
+
+fn run_binary_with_decoder<D: DecodingOptions>(
+    binary_image: &[u32],
+    text_section: &[u32],
+    cycles: usize,
+    input_data: Vec<u32>,
+) -> ([u32; 32], bool) {
+    // The CLI now mirrors the active proving path: ROM comes from `.bin`, while
+    // instruction decoding comes from the paired `.text` section.
+    let instructions = preprocess_bytecode::<D>(text_section);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram =
+        RamWithRomRegion::<{ prover::common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
+            binary_image,
+            DEFAULT_RUN_RAM_BOUND_BYTES,
+        );
+
+    // We only need final registers for `cli run`, so counters are enough and
+    // the no-op snapshotter keeps the execution path lightweight.
+    let mut state = State::initial_with_counters(DelegationsCounters::default());
+    let mut non_determinism_source = QuasiUARTSource::new_with_reads(input_data);
+    let finished = VM::<DelegationsCounters>::run_basic_unrolled(
+        &mut state,
+        &mut ram,
+        &mut (),
+        &tape,
+        cycles,
+        &mut non_determinism_source,
+    );
+
+    (state.registers.map(|register| register.value), finished)
 }

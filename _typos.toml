@@ -2,6 +2,12 @@
 extend-exclude = [
     "*.json",
     "*.lock",
+    "*.bin",
+    "*.elf",
+    "*.pdf",
+    "*.png",
+    "*.text",
+    "*.bak",
     "*.svg",
     ".git/",
     "SECURITY.md"
@@ -17,3 +23,10 @@ Sie = "Sie"
 tou = "tou"
 leafs = "leafs"
 LEAFS = "LEAFS"
+INOT = "INOT"
+inot = "inot"
+ot = "ot"
+
+[type.asm.extend-words]
+Wich = "Wich"
+TRE = "TRE"

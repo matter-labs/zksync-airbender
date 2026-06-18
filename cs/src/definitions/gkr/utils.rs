@@ -11,8 +11,10 @@ impl NoFieldLinearRelation {
         self.linear_terms.len() == 1 && self.linear_terms[0].0 == 1 && self.constant == 0
     }
     pub fn from_single_input(input: GKRAddress) -> Self {
+        let mut linear_terms = Vec::with_capacity(1);
+        linear_terms.push((1, input));
         Self {
-            linear_terms: vec![(1, input)].into_boxed_slice(),
+            linear_terms: linear_terms.into_boxed_slice(),
             constant: 0,
         }
     }

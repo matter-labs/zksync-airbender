@@ -1,6 +1,6 @@
 use std::alloc::Allocator;
 
-use crate::jit::{CounterType, MAX_NUM_COUNTERS, MAX_TRACE_CHUNK_LEN};
+use crate::jit::{CounterType, MachineCounters, MAX_TRACE_CHUNK_LEN};
 
 use super::*;
 
@@ -11,6 +11,7 @@ pub struct DelegationsCounters {
     pub blake_calls: usize,
     pub bigint_calls: usize,
     pub keccak_calls: usize,
+    pub blake_g_function_calls: usize,
 }
 
 impl Counters for DelegationsCounters {
@@ -27,6 +28,10 @@ impl Counters for DelegationsCounters {
         self.keccak_calls += by;
     }
     #[inline(always)]
+    fn bump_blake2_g_function(&mut self, by: usize) {
+        self.blake_g_function_calls += by;
+    }
+    #[inline(always)]
     fn log_circuit_family<const FAMILY: u8>(&mut self) {}
     #[inline(always)]
     fn log_multiple_circuit_family_calls<const FAMILY: u8>(&mut self, _num_calls: usize) {}
@@ -40,7 +45,7 @@ impl Counters for DelegationsCounters {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DelegationsAndFamiliesCounters {
     pub add_sub_family: usize,
-    pub binary_shift_csr_family: usize,
+    pub binary_shift_family: usize,
     pub slt_branch_family: usize,
     pub mul_div_family: usize,
     pub word_size_mem_family: usize,
@@ -48,6 +53,7 @@ pub struct DelegationsAndFamiliesCounters {
     pub blake_calls: usize,
     pub bigint_calls: usize,
     pub keccak_calls: usize,
+    pub blake_g_function_calls: usize,
 }
 
 impl Counters for DelegationsAndFamiliesCounters {
@@ -64,13 +70,17 @@ impl Counters for DelegationsAndFamiliesCounters {
         self.keccak_calls += by;
     }
     #[inline(always)]
+    fn bump_blake2_g_function(&mut self, by: usize) {
+        self.blake_g_function_calls += by;
+    }
+    #[inline(always)]
     fn log_circuit_family<const FAMILY: u8>(&mut self) {
         if const { FAMILY == ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX } {
             self.add_sub_family += 1;
         } else if const { FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX } {
             self.slt_branch_family += 1;
-        } else if const { FAMILY == SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX } {
-            self.binary_shift_csr_family += 1;
+        } else if const { FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX } {
+            self.binary_shift_family += 1;
         } else if const { FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX } {
             self.mul_div_family += 1;
         } else if const { FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX } {
@@ -87,8 +97,8 @@ impl Counters for DelegationsAndFamiliesCounters {
             self.add_sub_family += num_calls;
         } else if const { FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX } {
             self.slt_branch_family += num_calls;
-        } else if const { FAMILY == SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX } {
-            self.binary_shift_csr_family += num_calls;
+        } else if const { FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX } {
+            self.binary_shift_family += num_calls;
         } else if const { FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX } {
             self.mul_div_family += num_calls;
         } else if const { FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX } {
@@ -105,8 +115,8 @@ impl Counters for DelegationsAndFamiliesCounters {
             self.add_sub_family
         } else if const { FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX } {
             self.slt_branch_family
-        } else if const { FAMILY == SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX } {
-            self.binary_shift_csr_family
+        } else if const { FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX } {
+            self.binary_shift_family
         } else if const { FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX } {
             self.mul_div_family
         } else if const { FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX } {
@@ -119,18 +129,20 @@ impl Counters for DelegationsAndFamiliesCounters {
     }
 }
 
-impl From<[u32; MAX_NUM_COUNTERS]> for DelegationsAndFamiliesCounters {
-    fn from(counters: [u32; MAX_NUM_COUNTERS]) -> Self {
+impl From<MachineCounters> for DelegationsAndFamiliesCounters {
+    fn from(counters: MachineCounters) -> Self {
         Self {
             add_sub_family: counters[CounterType::AddSubLui as u8 as usize] as usize,
             slt_branch_family: counters[CounterType::BranchSlt as u8 as usize] as usize,
-            binary_shift_csr_family: counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize,
+            binary_shift_family: counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize,
             mul_div_family: counters[CounterType::MulDiv as u8 as usize] as usize,
             word_size_mem_family: counters[CounterType::MemWord as u8 as usize] as usize,
             subword_size_mem_family: counters[CounterType::MemSubword as u8 as usize] as usize,
             blake_calls: counters[CounterType::BlakeDelegation as u8 as usize] as usize,
             bigint_calls: counters[CounterType::BigintDelegation as u8 as usize] as usize,
             keccak_calls: counters[CounterType::KeccakDelegation as u8 as usize] as usize,
+            blake_g_function_calls: counters[CounterType::BlakeGFunctionDelegation as u8 as usize]
+                as usize,
         }
     }
 }
@@ -142,6 +154,7 @@ pub struct DelegationsAndUnifiedCounters {
     pub blake_calls: usize,
     pub bigint_calls: usize,
     pub keccak_calls: usize,
+    pub blake_g_function_calls: usize,
     pub cycles: usize,
 }
 
@@ -159,12 +172,16 @@ impl Counters for DelegationsAndUnifiedCounters {
         self.keccak_calls += by;
     }
     #[inline(always)]
+    fn bump_blake2_g_function(&mut self, by: usize) {
+        self.blake_g_function_calls += by;
+    }
+    #[inline(always)]
     fn log_circuit_family<const FAMILY: u8>(&mut self) {
         if const { FAMILY == ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX } {
             self.cycles += 1;
         } else if const { FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX } {
             self.cycles += 1;
-        } else if const { FAMILY == SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX } {
+        } else if const { FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX } {
             self.cycles += 1;
         } else if const { FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX } {
             self.cycles += 1;
@@ -182,7 +199,7 @@ impl Counters for DelegationsAndUnifiedCounters {
             self.cycles += num_calls;
         } else if const { FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX } {
             self.cycles += num_calls;
-        } else if const { FAMILY == SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX } {
+        } else if const { FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX } {
             self.cycles += num_calls;
         } else if const { FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX } {
             self.cycles += num_calls;
@@ -204,17 +221,17 @@ impl Counters for DelegationsAndUnifiedCounters {
     }
 }
 
-impl From<[u32; MAX_NUM_COUNTERS]> for DelegationsAndUnifiedCounters {
-    fn from(counters: [u32; MAX_NUM_COUNTERS]) -> Self {
+impl From<MachineCounters> for DelegationsAndUnifiedCounters {
+    fn from(counters: MachineCounters) -> Self {
         let add_sub_family = counters[CounterType::AddSubLui as u8 as usize] as usize;
         let slt_branch_family = counters[CounterType::BranchSlt as u8 as usize] as usize;
-        let binary_shift_csr_family = counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize;
+        let binary_shift_family = counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize;
         let mul_div_family = counters[CounterType::MulDiv as u8 as usize] as usize;
         let word_size_mem_family = counters[CounterType::MemWord as u8 as usize] as usize;
         let subword_size_mem_family = counters[CounterType::MemSubword as u8 as usize] as usize;
         let cycles = add_sub_family
             + slt_branch_family
-            + binary_shift_csr_family
+            + binary_shift_family
             + mul_div_family
             + word_size_mem_family
             + subword_size_mem_family;
@@ -223,6 +240,8 @@ impl From<[u32; MAX_NUM_COUNTERS]> for DelegationsAndUnifiedCounters {
             blake_calls: counters[CounterType::BlakeDelegation as u8 as usize] as usize,
             bigint_calls: counters[CounterType::BigintDelegation as u8 as usize] as usize,
             keccak_calls: counters[CounterType::KeccakDelegation as u8 as usize] as usize,
+            blake_g_function_calls: counters[CounterType::BlakeGFunctionDelegation as u8 as usize]
+                as usize,
             cycles,
         }
     }
@@ -280,6 +299,7 @@ impl<T: Sized, const I: usize, const O: usize> SpecBiVec<T, I, O> {
     fn new() -> Self {
         assert!(O > 0);
         assert!(I > 0);
+        #[cfg(not(target_arch = "wasm32"))]
         assert!(O * I <= 1 << 36);
         let mut buffers: [Vec<T>; O] = std::array::from_fn(|_| Vec::new());
         buffers[0] = Vec::with_capacity(I);
@@ -428,7 +448,7 @@ impl<C: Counters, const ROM_BOUND_SECOND_WORD_BITS: usize, MB: ReplayBuffer<(u32
     #[inline(always)]
     fn append_memory_read(
         &mut self,
-        address: u32,
+        _address: u32,
         read_value: u32,
         read_timestamp: TimestampScalar,
         _write_timestamp: TimestampScalar,

@@ -19,7 +19,7 @@ pub fn output_univariate_monomial_form_max_quadratic<
     constant_coefficient_from_partial_sum: E,
     quadratic_coefficient_from_partial_sum: E,
 ) -> [E; 4] {
-    // part of the EQ poly that matches the coordiante being folded is (1 - prev_round) * (1 - X) + X * prev_round = X * (prev_round * 2 - 1) + (1 - prev_round)
+    // part of the EQ poly that matches the coordinate being folded is (1 - prev_round) * (1 - X) + X * prev_round = X * (prev_round * 2 - 1) + (1 - prev_round)
 
     let c = quadratic_coefficient_from_partial_sum;
     let e = constant_coefficient_from_partial_sum;

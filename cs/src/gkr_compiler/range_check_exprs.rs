@@ -1,20 +1,18 @@
+use super::*;
 use crate::constraint::Constraint;
 use crate::constraint::Term;
 use crate::cs::circuit::LookupQueryTableType;
 use crate::cs::circuit::RangeCheckQuery;
-use crate::cs::circuit::ShuffleRamMemQuery;
+use crate::cs::circuit_trait::MemoryAccess;
+use crate::definitions::LookupInput;
 use crate::definitions::Variable;
 use crate::definitions::LARGE_RANGE_CHECK_TABLE_WIDTH;
 use crate::definitions::SMALL_RANGE_CHECK_TABLE_WIDTH;
-use crate::one_row_compiler::compile_layout::ShuffleRamTimestampComparisonPartialData;
-use crate::one_row_compiler::LookupInput;
 use crate::tables::TableType;
-
-use super::*;
 
 pub(crate) fn compile_timestamp_comparison_range_checks<F: PrimeField>(
     dst: &mut Vec<LookupInput<F>>,
-    shuffle_ram_augmented_sets: &[(ShuffleRamMemQuery, ShuffleRamTimestampComparisonPartialData)],
+    shuffle_ram_augmented_sets: &[(MemoryAccess, ShuffleRamTimestampComparisonPartialData)],
     write_timestamp_base: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
 ) {
     // timestamps deserve separate range checks for shuffle RAM in the main circuit,
@@ -66,7 +64,7 @@ pub(crate) fn split_range_check_exprs_from_compiler<F: PrimeField>(
     range_check_expressions: &[RangeCheckQuery<F>],
 ) -> (
     Vec<LookupInput<F>>,
-    Vec<(Vec<LookupInput<F>>, LookupQueryTableType)>,
+    Vec<(Vec<LookupInput<F>>, LookupQueryTableType<F>)>,
 ) {
     for range_check in range_check_expressions.iter() {
         let RangeCheckQuery { input, width } = range_check;
@@ -102,14 +100,14 @@ pub(crate) fn split_range_check_exprs_from_compiler<F: PrimeField>(
             };
             inputs.push(input.input.clone());
         }
-        range_checks_8_as_generic_lookup.push((inputs, lookup_query_type))
+        range_checks_8_as_generic_lookup.push((inputs, lookup_query_type.clone()));
     }
     if remainder > 0 {
         let input = range_check_8_iter.next().unwrap();
         let LookupInput::Variable(..) = &input.input else {
             unimplemented!()
         };
-        range_checks_8_as_generic_lookup.push((vec![input.input.clone()], lookup_query_type))
+        range_checks_8_as_generic_lookup.push((vec![input.input.clone()], lookup_query_type));
     }
     assert!(range_check_8_iter.next().is_none());
 

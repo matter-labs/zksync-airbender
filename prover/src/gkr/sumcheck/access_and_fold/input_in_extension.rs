@@ -51,6 +51,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> ExtensionFieldPolyInitialSourc
     pub(crate) fn current_values(&'_ self) -> &'_ [E] {
         unsafe { core::slice::from_raw_parts(self.start, self.next_layer_size * 2) }
     }
+
+    pub(crate) fn empty() -> Self {
+        Self {
+            start: null_mut(),
+            next_layer_size: 0,
+            _marker: core::marker::PhantomData,
+        }
+    }
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
@@ -59,13 +67,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
 {
     const SHOULD_ACCESS_TO_PREPARE_FOR_NEXT_STEP: bool = false;
 
-    fn dummy() -> Self {
-        Self {
-            start: null_mut(),
-            next_layer_size: 0,
-            _marker: core::marker::PhantomData,
-        }
-    }
     #[inline(always)]
     fn get_collapse_context(
         &self,
@@ -75,7 +76,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     }
     #[inline(always)]
     fn get_at_index(&self, index: usize) -> ExtensionFieldRepresentation<F, E> {
-        debug_assert!(index < self.next_layer_size * 2);
+        assert!(index < self.next_layer_size * 2);
         unsafe {
             let f0 = self.start.add(index).read();
             ExtensionFieldRepresentation {
@@ -87,7 +88,12 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     #[inline(always)]
     fn get_f0_and_f1(&self, index: usize) -> [ExtensionFieldRepresentation<F, E>; 2] {
         // just read and do NOT cache f1 - f0
-        debug_assert!(index < self.next_layer_size);
+        assert!(
+            index < self.next_layer_size,
+            "tried to access index {} for poly of size {}",
+            index,
+            self.next_layer_size * 2
+        );
         [
             self.get_at_index(index),
             self.get_at_index(self.next_layer_size + index),
@@ -122,6 +128,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
         self.continuous_buffer.as_mut_ptr().cast()
     }
 
+    #[track_caller]
     pub fn pointer_for_sumcheck_continuation(&mut self, step: usize) -> (*mut E, *mut E) {
         unsafe {
             assert!(step >= 2);
@@ -177,6 +184,18 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> ExtensionFieldPolyContinuingSo
             core::slice::from_raw_parts(self.this_layer_start.cast_const(), self.this_layer_size)
         }
     }
+
+    pub(crate) fn empty_with_folding_context(folding_challenge: E) -> Self {
+        Self {
+            previous_layer_start: null_mut(),
+            this_layer_start: null_mut(),
+            this_layer_size: 0,
+            next_layer_size: 0,
+            folding_challenge,
+            first_access: false,
+            _marker: core::marker::PhantomData,
+        }
+    }
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
@@ -185,17 +204,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
 {
     const SHOULD_ACCESS_TO_PREPARE_FOR_NEXT_STEP: bool = true;
 
-    fn dummy() -> Self {
-        Self {
-            previous_layer_start: null_mut(),
-            this_layer_start: null_mut(),
-            this_layer_size: 0,
-            next_layer_size: 0,
-            folding_challenge: E::ZERO,
-            first_access: false,
-            _marker: core::marker::PhantomData,
-        }
-    }
     #[inline(always)]
     fn get_collapse_context(
         &self,
@@ -205,7 +213,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     }
     #[inline(always)]
     fn get_at_index(&self, index: usize) -> ExtensionFieldRepresentation<F, E> {
-        debug_assert!(index < self.next_layer_size * 2);
+        assert!(index < self.next_layer_size * 2);
+        assert!(index < self.this_layer_size);
         unsafe {
             if self.first_access {
                 // recompute corresponding input from the previous layer
@@ -243,76 +252,16 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     #[inline(always)]
     fn get_f0_and_f1(&self, index: usize) -> [ExtensionFieldRepresentation<F, E>; 2] {
         // just read and do NOT cache f1 - f0
-        debug_assert!(index < self.next_layer_size);
-        unsafe {
-            if self.first_access {
-                // recompute corresponding input from the previous layer
+        assert!(
+            index < self.next_layer_size,
+            "tried to access index {} for poly of size {}",
+            index,
+            self.next_layer_size * 2
+        );
 
-                // these fold to f0 of this layer
-                let f00 = self.previous_layer_start.add(index).read();
-                let f01 = self
-                    .previous_layer_start
-                    .add(self.this_layer_size + index)
-                    .read();
-
-                // these fold to f1 of this layer
-                let f10 = self
-                    .previous_layer_start
-                    .add(self.next_layer_size + index)
-                    .read();
-                let f11 = self
-                    .previous_layer_start
-                    .add(self.this_layer_size + self.next_layer_size + index)
-                    .read();
-
-                let f0_c0 = f00;
-                let mut f0_c1 = f01;
-                f0_c1.sub_assign(&f00);
-                let mut f0 = self.folding_challenge;
-                f0.mul_assign(&f0_c1);
-                f0.add_assign(&f0_c0);
-
-                let f1_c0 = f10;
-                let mut f1_c1 = f11;
-                f1_c1.sub_assign(&f10);
-                let mut f1 = self.folding_challenge;
-                f1.mul_assign(&f1_c1);
-                f1.add_assign(&f1_c0);
-
-                // write down
-                self.this_layer_start.add(index).write(f0);
-                self.this_layer_start
-                    .add(self.next_layer_size + index)
-                    .write(f1);
-
-                [
-                    ExtensionFieldRepresentation {
-                        value: f0,
-                        _marker: core::marker::PhantomData,
-                    },
-                    ExtensionFieldRepresentation {
-                        value: f1,
-                        _marker: core::marker::PhantomData,
-                    },
-                ]
-            } else {
-                let f0 = self.this_layer_start.add(index).read();
-                let f1 = self
-                    .this_layer_start
-                    .add(self.next_layer_size + index)
-                    .read();
-
-                [
-                    ExtensionFieldRepresentation {
-                        value: f0,
-                        _marker: core::marker::PhantomData,
-                    },
-                    ExtensionFieldRepresentation {
-                        value: f1,
-                        _marker: core::marker::PhantomData,
-                    },
-                ]
-            }
-        }
+        [
+            self.get_at_index(index),
+            self.get_at_index(self.next_layer_size + index),
+        ]
     }
 }

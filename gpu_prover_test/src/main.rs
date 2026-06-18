@@ -5,6 +5,8 @@ fn main() {}
 
 #[cfg(test)]
 mod tests {
+    #![expect(unused_variables)] // TODO: Remove unused variables
+
     use execution_utils::setups::prover::prover_stages::unrolled_prover::UnrolledModeProof;
     use execution_utils::setups::prover::prover_stages::Proof;
     use execution_utils::setups::prover::worker::Worker;
@@ -23,8 +25,8 @@ mod tests {
     };
     use gpu_prover::machine_type::MachineType;
     use log::info;
-    use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-    use risc_v_simulator::cycle::{
+    use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+    use riscv_transpiler::cycle::{
         IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfigWithDelegation,
     };
     use std::fs::File;
@@ -70,7 +72,13 @@ mod tests {
             >(&padded_binary_u32);
         serde_json::to_writer_pretty(File::create("layouts.json").unwrap(), &compiled_layouts)
             .unwrap();
-        let mut prover = ExecutionProver::with_configuration(Default::default());
+        let configuration = ExecutionProverConfiguration {
+            replay_worker_threads_count: 4,
+            host_allocators_per_job_count: 64,
+            host_allocators_per_device_count: 128,
+            ..Default::default()
+        };
+        let mut prover = ExecutionProver::with_configuration(configuration);
         prover.add_binary(
             0,
             ExecutionKind::Unrolled,
@@ -92,6 +100,7 @@ mod tests {
             register_final_values: result.register_final_values,
             recursion_chain_preimage: None,
             recursion_chain_hash: None,
+            pow_challenge: result.pow_challenge,
         };
         serde_json::to_writer_pretty(File::create("gpu_proof.json").unwrap(), &proof).unwrap();
     }
@@ -116,9 +125,15 @@ mod tests {
             .map(|el| u32::from_be_bytes(*el))
             .collect();
         let app_path = "../riscv_transpiler/examples/zksync_os/app";
+        let configuration = ExecutionProverConfiguration {
+            replay_worker_threads_count: 4,
+            host_allocators_per_job_count: 64,
+            host_allocators_per_device_count: 128,
+            ..Default::default()
+        };
         let prover = UnrolledProver::new(
             &app_path.to_string(),
-            8,
+            configuration,
             UnrolledProverLevel::RecursionUnified,
         );
         let source = QuasiUARTSource::new_with_reads(witness);
@@ -182,6 +197,7 @@ mod tests {
             register_final_values: result.register_final_values,
             recursion_chain_preimage: None,
             recursion_chain_hash: None,
+            pow_challenge: result.pow_challenge,
         };
         serde_json::to_writer_pretty(File::create("gpu_proof.json").unwrap(), &gpu_proof).unwrap();
 
@@ -195,7 +211,7 @@ mod tests {
         // compare_program_proofs(&cpu_proof, &gpu_proof);
     }
 
-    #[cfg(feature = "verifier_80")]
+    #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     #[test]
     fn verify_base_proof() {
         let setup: UnrolledProgramSetup =
@@ -302,6 +318,7 @@ mod tests {
             register_final_values: result.register_final_values,
             recursion_chain_preimage: None,
             recursion_chain_hash: None,
+            pow_challenge: result.pow_challenge,
         };
         // make a hash chain
         let (hash_chain, preimage) =
@@ -330,7 +347,7 @@ mod tests {
         // compare_program_proofs(&cpu_proof, &gpu_proof);
     }
 
-    #[cfg(feature = "verifier_80")]
+    #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     #[test]
     fn verify_recursion_over_base_proof() {
         let setup: UnrolledProgramSetup =
@@ -439,6 +456,7 @@ mod tests {
             register_final_values: result.register_final_values,
             recursion_chain_preimage: None,
             recursion_chain_hash: None,
+            pow_challenge: result.pow_challenge,
         };
         // make a hash chain
         let (hash_chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
@@ -479,7 +497,7 @@ mod tests {
         compare_program_proofs(&cpu_proof, &gpu_proof);
     }
 
-    #[cfg(feature = "verifier_80")]
+    #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     #[test]
     fn verify_recursion_over_recursion_proof() {
         let setup: UnrolledProgramSetup =
@@ -585,6 +603,7 @@ mod tests {
             register_final_values: result.register_final_values,
             recursion_chain_preimage: None,
             recursion_chain_hash: None,
+            pow_challenge: result.pow_challenge,
         };
         // make a hash chain
         let (hash_chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
@@ -625,7 +644,7 @@ mod tests {
         compare_program_proofs(&cpu_proof, &gpu_proof);
     }
 
-    #[cfg(feature = "verifier_80")]
+    #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     #[test]
     fn verify_final_recursion_proof() {
         let setup: UnrolledProgramSetup =
@@ -729,7 +748,7 @@ mod tests {
             last_fri_step_plain_leaf_values,
             final_monomial_form,
             queries,
-            pow_nonce: _,
+            pow_challenges: _,
             delegation_type,
             aux_boundary_values,
         } = a;
@@ -793,7 +812,7 @@ mod tests {
             last_fri_step_plain_leaf_values,
             final_monomial_form,
             queries,
-            pow_nonce: _,
+            pow_challenges: _,
             circuit_sequence,
             delegation_type,
         } = a;

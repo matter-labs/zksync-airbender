@@ -1,7 +1,6 @@
 use crate::tracers::delegation::DelegationWitness;
-use cs::cs::oracle::Oracle;
-use cs::cs::placeholder::Placeholder;
 use cs::definitions::TimestampScalar;
+use cs::oracle::*;
 use fft::GoodAllocator;
 use field::PrimeField;
 use std::alloc::Global;

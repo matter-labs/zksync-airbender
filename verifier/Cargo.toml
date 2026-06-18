@@ -12,29 +12,37 @@ categories.workspace = true
 [dependencies]
 field = { workspace = true }
 unroll = { workspace = true }
-verifier_common = { workspace = true , default-features = false}
+verifier_common = { workspace = true , default-features = false }
 
 [features]
 security_80 = ["verifier_common/security_80"]
 security_100 = ["verifier_common/security_100"]
 blake2_with_compression = ["verifier_common/blake2_with_compression"]
+blake2_g_function = ["verifier_common/blake2_g_function"]
+mop_extension = ["verifier_common/mop_extension"]
+special_opcodes_extension = ["verifier_common/special_opcodes_extension"]
 modular_ops = ["verifier_common/modular_ops"]
-modular_ext4_ops = ["verifier_common/modular_ext4_ops"]
+modular_fma = ["verifier_common/modular_fma"]
 verifier_program = ["modular_ops"]
-# verifier_program = ["modular_ops", "modular_ext4_ops"]
 proof_utils = ["verifier_common/proof_utils"]
+no_caches = ["verifier_common/no_caches"]
+verifier_stats = ["verifier_common/verifier_stats"]
 
 # If enabled, allows passing custom values into CSR.
 replace_csr = ["verifier_common/replace_csr"]
 
-default = ["security_80", "blake2_with_compression"]
+default = ["security_80"]
 
 [dev-dependencies]
+test_utils = { workspace = true }
 serde = "1"
 serde_json = "*"
 prover = {workspace = true, default-features = true}
 proc-macro2 = { version = "1" }
-syn = { version = "2" }
 quote = { version = "1" }
 verifier_common = { workspace = true, features = ["proof_utils", "replace_csr"] }
-risc_v_simulator = { workspace = true, features = ["delegation"] }
+riscv_transpiler = { workspace = true, features = ["flamegraph"] }
+common_constants = { workspace = true }
+verifier_generator = { workspace = true }
+rayon = "1.11.0"
+paste = "1"

@@ -1,16 +1,17 @@
+use crate::constraint::Constraint;
+use crate::definitions::{GKRAddress, Variable, VirtualSetupPoly};
+use crate::gkr_compiler::{GKRGate, LookupType, NoFieldGKRCacheRelation, NoFieldGKRRelation};
 use field::PrimeField;
-
-use crate::definitions::{GKRAddress, Variable};
-use crate::gkr_compiler::{
-    GKRGate, GKRRelation, LookupType, NoFieldGKRCacheRelation, NoFieldGKRRelation,
-};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::{collections::BTreeMap, hash::Hash};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CopyNode {
-    FromBase(GKRAddress),
-    FromIntermediate(GKRAddress),
+    FromBaseLayerInBase(GKRAddress),
+    FromBaseLayerInExtension(GKRAddress),
+    FromIntermediateInBase(GKRAddress),
+    FromIntermediateInExtension(GKRAddress),
 }
 
 impl GKRGate for CopyNode {
@@ -18,33 +19,52 @@ impl GKRGate for CopyNode {
 
     fn short_name(&self) -> String {
         match self {
-            Self::FromBase(var) => {
-                format!("Copy of {:?}", var)
+            Self::FromBaseLayerInBase(var) | Self::FromIntermediateInBase(var) => {
+                format!("Copy of {:?} in base field", var)
             }
-            Self::FromIntermediate(var) => {
-                format!("Copy of {:?}", var)
+            Self::FromBaseLayerInExtension(var) | Self::FromIntermediateInExtension(var) => {
+                format!("Copy of {:?} in extension field", var)
             }
         }
     }
 
+    #[track_caller]
     fn add_at_layer(
         &self,
         graph: &mut impl GraphHolder,
         output_layer: usize,
     ) -> (Self::Output, NoFieldGKRRelation) {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
-        let input = match self {
-            Self::FromBase(input) => *input,
-            Self::FromIntermediate(input) => *input,
-        };
-        let rel = NoFieldGKRRelation::Copy { input, output };
-        graph.add_enforced_relation(rel.clone(), output_layer);
+        match self {
+            Self::FromBaseLayerInBase(input) | Self::FromIntermediateInBase(input) => {
+                println!("Copying variable {:?} -> {:?} in base field", input, output);
+                let rel = NoFieldGKRRelation::CopyInBaseField {
+                    input: *input,
+                    output,
+                };
+                graph.add_enforced_relation(rel.clone(), output_layer);
 
-        (output, rel)
+                (output, rel)
+            }
+            Self::FromBaseLayerInExtension(input) | Self::FromIntermediateInExtension(input) => {
+                println!(
+                    "Copying variable {:?} -> {:?} in extension field",
+                    input, output
+                );
+                let rel = NoFieldGKRRelation::CopyInExtensionField {
+                    input: *input,
+                    output,
+                };
+                graph.add_enforced_relation(rel.clone(), output_layer);
+
+                (output, rel)
+            }
+        }
     }
 }
 
 pub struct GKRGraph {
+    pub(crate) caching_is_allowed: bool,
     pub(crate) mapping: BTreeMap<GKRAddress, usize>,
     pub(crate) rev_mapping: BTreeMap<usize, GKRAddress>,
     pub(crate) base_layer_memory: BTreeMap<Variable, GKRAddress>,
@@ -54,16 +74,17 @@ pub struct GKRGraph {
     pub(crate) setups: Vec<GKRAddress>,
     pub(crate) cached_relations: BTreeMap<usize, Vec<NoFieldGKRCacheRelation>>,
     pub(crate) enforced_relations: BTreeMap<usize, Vec<NoFieldGKRRelation>>,
-    pub(crate) range_check_16_setup_column: GKRAddress,
-    pub(crate) timestamp_check_16_setup_column: GKRAddress,
     pub(crate) generic_lookup_setup_width: usize,
     pub(crate) copies: Vec<BTreeMap<GKRAddress, GKRAddress>>,
     pub(crate) intermediate_layers_offsets: BTreeMap<usize, usize>,
+    pub(crate) intermediate_layers: BTreeMap<Variable, GKRAddress>,
+    pub(crate) intermediate_layers_rev: BTreeMap<GKRAddress, Variable>,
 }
 
 impl GKRGraph {
-    pub fn new(generic_lookup_setup_width: usize) -> Self {
+    pub fn new(generic_lookup_setup_width: usize, caching_is_allowed: bool) -> Self {
         let mut new = Self {
+            caching_is_allowed,
             mapping: BTreeMap::new(),
             rev_mapping: BTreeMap::new(),
             base_layer_memory: BTreeMap::new(),
@@ -73,16 +94,16 @@ impl GKRGraph {
             setups: vec![],
             cached_relations: BTreeMap::new(),
             enforced_relations: BTreeMap::new(),
-            range_check_16_setup_column: GKRAddress::Setup(0),
-            timestamp_check_16_setup_column: GKRAddress::Setup(1),
             generic_lookup_setup_width,
             copies: vec![],
             intermediate_layers_offsets: BTreeMap::new(),
+            intermediate_layers: BTreeMap::new(),
+            intermediate_layers_rev: BTreeMap::new(),
         };
 
         // add setups as already resolved
         for i in 0..generic_lookup_setup_width {
-            let pos = GKRAddress::Setup(2 + i);
+            let pos = GKRAddress::Setup(i);
             new.setups.push(pos);
         }
 
@@ -135,9 +156,11 @@ impl GKRGraph {
         &mut self,
         variables: [Variable; N],
         all_variables_to_place: &mut BTreeSet<Variable>,
+        layers_mapping: &HashMap<Variable, usize>,
     ) -> [GKRAddress; N] {
         let mut columns = [GKRAddress::placeholder(); N];
         for (i, variable) in variables.into_iter().enumerate() {
+            assert_eq!(*layers_mapping.get(&variable).expect("is known"), 0);
             let offset = self.base_layer_memory.len();
             let place = GKRAddress::BaseLayerMemory(offset);
             columns[i] = place;
@@ -161,9 +184,11 @@ impl GKRGraph {
         &mut self,
         variables: [Variable; N],
         all_variables_to_place: &mut BTreeSet<Variable>,
+        layers_mapping: &HashMap<Variable, usize>,
     ) -> [GKRAddress; N] {
         let mut columns = [GKRAddress::placeholder(); N];
         for (i, variable) in variables.into_iter().enumerate() {
+            assert_eq!(*layers_mapping.get(&variable).expect("is known"), 0);
             let offset = self.base_layer_witness.len();
             let place = GKRAddress::BaseLayerWitness(offset);
             columns[i] = place;
@@ -183,6 +208,44 @@ impl GKRGraph {
     }
 
     #[track_caller]
+    pub(crate) fn place_intermediate_variable_from_constraint_at_layer<F: PrimeField>(
+        &mut self,
+        intermediate_layer: usize,
+        variable: Variable,
+        all_variables_to_place: &mut BTreeSet<Variable>,
+        layers_mapping: &HashMap<Variable, usize>,
+        defining_constraint: Constraint<F>,
+    ) -> GKRAddress {
+        assert_eq!(
+            *layers_mapping.get(&variable).expect("is known"),
+            intermediate_layer
+        );
+        let offset = self
+            .intermediate_layers_offsets
+            .entry(intermediate_layer)
+            .or_insert(0);
+        let place = GKRAddress::InnerLayer {
+            layer: intermediate_layer,
+            offset: *offset,
+        };
+        *offset += 1;
+        self.intermediate_layers.insert(variable, place);
+        self.intermediate_layers_rev.insert(place, variable);
+        assert!(
+            all_variables_to_place.remove(&variable),
+            "variable {:?} was already placed",
+            variable
+        );
+        // add gate
+        use crate::gkr_compiler::no_field_gkr_max_quadratic_from_constraint;
+        let relation =
+            no_field_gkr_max_quadratic_from_constraint(&*self, defining_constraint, place);
+        self.add_enforced_relation(relation, intermediate_layer);
+
+        place
+    }
+
+    #[track_caller]
     pub(crate) fn get_fixed_layout_pos(&self, variable: &Variable) -> Option<GKRAddress> {
         if let Some(pos) = self.base_layer_memory.get(variable) {
             return Some(*pos);
@@ -192,12 +255,25 @@ impl GKRGraph {
             return Some(*pos);
         }
 
+        if let Some(pos) = self.intermediate_layers.get(variable) {
+            return Some(*pos);
+        }
+
         None
     }
 }
 
 impl GraphHolder for GKRGraph {
+    fn can_use_caching(&self) -> bool {
+        self.caching_is_allowed
+    }
+
+    #[track_caller]
     fn get_address_for_variable(&self, variable: Variable) -> GKRAddress {
+        assert!(
+            variable.is_placeholder() == false,
+            "trying to place a placeholder variable"
+        );
         let Some(pos) = self.get_fixed_layout_pos(&variable) else {
             panic!("Variable {:?} is not placed", variable);
         };
@@ -205,16 +281,21 @@ impl GraphHolder for GKRGraph {
         pos
     }
 
-    fn setup_addresses(&self, lookup_type: LookupType) -> &[GKRAddress] {
+    fn setup_addresses(&self, lookup_type: LookupType) -> Box<[GKRAddress]> {
         match lookup_type {
-            LookupType::RangeCheck16 => std::slice::from_ref(&self.range_check_16_setup_column),
-            LookupType::TimestampRangeCheck => {
-                std::slice::from_ref(&self.timestamp_check_16_setup_column)
+            LookupType::RangeCheck16 => {
+                vec![GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits)]
+                    .into_boxed_slice()
             }
-            LookupType::Generic => &self.setups[..],
+            LookupType::TimestampRangeCheck => vec![GKRAddress::VirtualSetup(
+                VirtualSetupPoly::RangeCheckTimestamp,
+            )]
+            .into_boxed_slice(),
+            LookupType::Generic => self.setups.clone().into_boxed_slice(),
         }
     }
 
+    #[track_caller]
     fn add_intermediate_variable_at_layer(&mut self, output_layer: usize) -> GKRAddress {
         let entry = self
             .intermediate_layers_offsets
@@ -223,25 +304,37 @@ impl GraphHolder for GKRGraph {
         let offset = *entry;
         *entry += 1;
 
-        GKRAddress::InnerLayer {
+        let intermediate = GKRAddress::InnerLayer {
             layer: output_layer,
             offset,
-        }
+        };
+
+        // println!(
+        //     "Created intermediate layer variable {:?} for {:?}",
+        //     intermediate,
+        //     core::panic::Location::caller()
+        // );
+
+        intermediate
     }
 
     fn add_enforced_relation(&mut self, relation: NoFieldGKRRelation, output_layer: usize) {
-        let entry = self
-            .enforced_relations
-            .entry(output_layer)
-            .or_insert(vec![]);
+        assert!(output_layer > 0);
+        let input_layer = output_layer - 1;
+        let entry = self.enforced_relations.entry(input_layer).or_insert(vec![]);
         entry.push(relation);
     }
 
+    #[track_caller]
     fn add_cached_relation(
         &mut self,
         relation: NoFieldGKRCacheRelation,
         output_layer: usize,
     ) -> GKRAddress {
+        if self.caching_is_allowed == false {
+            panic!("Current graph doesn't allow cache relations");
+        }
+
         if let Some(idx) = self.search_cached_relation(&relation, output_layer) {
             GKRAddress::Cached {
                 layer: output_layer,
@@ -252,26 +345,44 @@ impl GraphHolder for GKRGraph {
             let offset = entry.len();
             entry.push(relation);
 
-            GKRAddress::Cached {
+            let rel = GKRAddress::Cached {
                 layer: output_layer,
                 offset,
-            }
+            };
+
+            // println!(
+            //     "Adding cache relation {:?} at {:?}",
+            //     rel,
+            //     core::panic::Location::caller()
+            // );
+
+            rel
         }
     }
 
     fn copy_base_layer_variable(&mut self, variable: Variable) -> GKRAddress {
         let pos = self.get_address_for_variable(variable);
-        let node = CopyNode::FromBase(pos);
+        let node = CopyNode::FromBaseLayerInBase(pos);
         let (out, _) = node.add_at_layer(self, 1);
 
         out
     }
 
-    fn copy_intermediate_layer_variable(&mut self, pos: GKRAddress) -> GKRAddress {
+    fn copy_intermediate_layer_base_field_variable(&mut self, pos: GKRAddress) -> GKRAddress {
         let GKRAddress::InnerLayer { layer, .. } = pos else {
             unreachable!()
         };
-        let node = CopyNode::FromIntermediate(pos);
+        let node = CopyNode::FromIntermediateInBase(pos);
+        let (out, _) = node.add_at_layer(self, layer + 1);
+
+        out
+    }
+
+    fn copy_intermediate_layer_extension_field_variable(&mut self, pos: GKRAddress) -> GKRAddress {
+        let GKRAddress::InnerLayer { layer, .. } = pos else {
+            unreachable!()
+        };
+        let node = CopyNode::FromIntermediateInExtension(pos);
         let (out, _) = node.add_at_layer(self, layer + 1);
 
         out
@@ -284,14 +395,21 @@ impl GraphHolder for GKRGraph {
 pub struct NodeIndex(usize);
 
 pub trait GraphHolder {
+    // Whether caching relations are allowed
+    fn can_use_caching(&self) -> bool;
+
     // Get placement data for base layer
     fn get_address_for_variable(&self, variable: Variable) -> GKRAddress;
     // Some setup data
-    fn setup_addresses(&self, lookup_type: LookupType) -> &[GKRAddress];
+    fn setup_addresses(&self, lookup_type: LookupType) -> Box<[GKRAddress]>;
 
     // copy variables across layers
     fn copy_base_layer_variable(&mut self, variable: Variable) -> GKRAddress;
-    fn copy_intermediate_layer_variable(&mut self, variable: GKRAddress) -> GKRAddress;
+    fn copy_intermediate_layer_base_field_variable(&mut self, variable: GKRAddress) -> GKRAddress;
+    fn copy_intermediate_layer_extension_field_variable(
+        &mut self,
+        variable: GKRAddress,
+    ) -> GKRAddress;
 
     // add cached relations
     fn add_cached_relation(

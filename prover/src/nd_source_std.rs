@@ -1,8 +1,10 @@
+use core::cell::RefCell;
 use non_determinism_source::NonDeterminismSource;
-use std::cell::RefCell;
+
+extern crate alloc;
 
 thread_local! {
-    static SOURCE_ITERATOR: RefCell<Option<Box<dyn Iterator<Item = u32> + Send + Sync + 'static>>> = RefCell::new(None);
+    static SOURCE_ITERATOR: RefCell<Option<alloc::boxed::Box<dyn Iterator<Item = u32> + Send + Sync + 'static>>> = RefCell::new(None);
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -10,11 +12,11 @@ pub struct ThreadLocalBasedSource;
 
 impl NonDeterminismSource for ThreadLocalBasedSource {
     #[inline(always)]
-    fn read_word() -> u32 {
+    fn read_word(&mut self) -> u32 {
         read_word()
     }
     #[inline(always)]
-    fn read_reduced_field_element(modulus: u32) -> u32 {
+    fn read_reduced_field_element(&mut self, modulus: u32) -> u32 {
         read_field_element(modulus)
     }
 }
@@ -25,7 +27,7 @@ pub fn set_iterator(iterator: impl Iterator<Item = u32> + Send + Sync + 'static)
             assert!(it.next().is_none());
         }
 
-        *el = Some(Box::new(iterator))
+        *el = Some(alloc::boxed::Box::new(iterator))
     });
 }
 
@@ -40,6 +42,9 @@ pub fn try_read_word() -> Option<u32> {
 }
 
 fn read_word() -> u32 {
+    #[cfg(feature = "verifier_stats")]
+    non_determinism_source::stats::NDS_STATS
+        .with_borrow_mut(|s| s.read_bytes += core::mem::size_of::<u32>());
     try_read_word().expect("next word from thread local source")
 }
 

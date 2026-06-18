@@ -1,24 +1,22 @@
 use super::*;
 
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
-use crate::witness_proxy::WitnessProxy;
+use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
-use cs::cs::oracle::Oracle;
 use cs::definitions::gkr::NoFieldLinearRelation;
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::GKRCircuitArtifact;
+use cs::oracle::Oracle;
 use cs::utils::split_timestamp;
 use field::PrimeField;
 use worker::WorkerGeometry;
 
-// mod init_and_teardown;
+mod init_and_teardown;
 mod memory;
 // mod unified;
-mod witness;
+pub(crate) mod witness;
 
-// pub use self::init_and_teardown::{
-//     evaluate_init_and_teardown_memory_witness, evaluate_init_and_teardown_witness,
-// };
+pub use self::init_and_teardown::evaluate_init_and_teardown_memory_witness;
 pub use self::memory::evaluate_gkr_memory_witness_for_executor_family;
 // pub use self::unified::{
 //     evaluate_memory_witness_for_unified_executor, evaluate_witness_for_unified_executor,
@@ -99,6 +97,7 @@ pub(crate) fn evaluate_linear_relation<'a, F: PrimeField, O: Oracle<F> + 'a>(
         let el = match *addr {
             GKRAddress::BaseLayerMemory(offset) => proxy.get_memory_place(offset),
             GKRAddress::BaseLayerWitness(offset) => proxy.get_witness_place(offset),
+            GKRAddress::ScratchSpace(offset) => proxy.get_scratch_place(offset),
             _ => {
                 unreachable!()
             }

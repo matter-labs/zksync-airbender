@@ -390,8 +390,8 @@ template <class R> struct WitnessProxy {
   if (VAR(S).inner) {                                                                                                                                          \
     T                                                                                                                                                          \
   }
-#define SET_MEMORY_PLACE(IDX, V) p.template set_memory_place(IDX, VAR(V));
-#define SET_WITNESS_PLACE(IDX, V) p.template set_witness_place(IDX, VAR(V));
+#define SET_MEMORY_PLACE(IDX, V) p.set_memory_place(IDX, VAR(V));
+#define SET_WITNESS_PLACE(IDX, V) p.set_witness_place(IDX, VAR(V));
 #define SET_SCRATCH_PLACE(IDX, V) p.set_scratch_place(IDX, VAR(V));
 
 #define FN_BEGIN(N) template <class R> DEVICE_FORCEINLINE void fn_##N(const WitnessProxy<R> p) {
@@ -399,17 +399,19 @@ template <class R> struct WitnessProxy {
 
 #define FN_CALL(N) fn_##N(p);
 
+// NOLINTBEGIN
 // clang-format off
-#define INCLUDE_PREFIX ../../../../circuit_defs/ // whitespace! NOLINT
-#define UNROLLED_INCLUDE_PREFIX ../../../../circuit_defs/unrolled_circuits/ // whitespace! NOLINT
-#define INCLUDE_SUFFIX /generated/witness_generation_fn.cuh
+#define INCLUDE_PREFIX ../../../../circuit_defs
+#define UNROLLED_INCLUDE_PREFIX ../../../../circuit_defs/unrolled_circuits
+#define INCLUDE_SUFFIX generated/witness_generation_fn.cuh
+#define PATH_CAT(a, b, c) a/b/c
 // clang-format on
+// NOLINTEND
 #define STRINGIFY(X) STRINGIFY2(X)
 #define STRINGIFY2(X) #X
-#define IDENT(x) x
-#define CAT_3(x, y, z) IDENT(x) IDENT(y) IDENT(z)
-#define CIRCUIT_INCLUDE(NAME) STRINGIFY(CAT_3(INCLUDE_PREFIX, NAME, INCLUDE_SUFFIX))
-#define UNROLLED_CIRCUIT_INCLUDE(NAME) STRINGIFY(CAT_3(UNROLLED_INCLUDE_PREFIX, NAME, INCLUDE_SUFFIX))
+#define CIRCUIT_INCLUDE(NAME) STRINGIFY(PATH_CAT(INCLUDE_PREFIX, NAME, INCLUDE_SUFFIX))
+#define UNROLLED_CIRCUIT_INCLUDE(NAME) STRINGIFY(PATH_CAT(UNROLLED_INCLUDE_PREFIX, NAME, INCLUDE_SUFFIX))
+
 #define KERNEL_NAME(NAME) ab_generate_witness_values_##NAME##_kernel
 #define KERNEL(NAME, ORACLE)                                                                                                                                   \
   EXTERN __global__ void KERNEL_NAME(NAME)(const __grid_constant__ ORACLE oracle, const wrapped_f *const __restrict__ generic_lookup_tables,                   \

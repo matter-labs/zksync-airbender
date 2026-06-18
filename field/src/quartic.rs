@@ -118,6 +118,16 @@ impl Field for Mersenne31Quartic {
         c1: Mersenne31Complex::ZERO,
     };
 
+    const MINUS_ONE: Self = Self {
+        c0: Mersenne31Complex::MINUS_ONE,
+        c1: Mersenne31Complex::ZERO,
+    };
+
+    const TWO: Self = Self {
+        c0: Mersenne31Complex::TWO,
+        c1: Mersenne31Complex::ZERO,
+    };
+
     type CharField = Mersenne31Complex;
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
@@ -246,11 +256,7 @@ impl Field for Mersenne31Quartic {
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn fused_mul_add_assign(&'_ mut self, a: &Self, b: &Self) -> &'_ mut Self {
-        #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
         fma_implementation(self, a, b);
-
-        #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-        fma_implementation_via_delegation(self, a, b);
 
         self
     }
@@ -285,48 +291,23 @@ impl core::fmt::Display for Mersenne31Quartic {
 impl FieldExtension<Mersenne31Complex> for Mersenne31Quartic {
     const DEGREE: usize = 2;
 
+    type Coeffs = [Mersenne31Complex; 2];
+
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn mul_assign_by_base(&mut self, elem: &Mersenne31Complex) -> &mut Self {
-        self.c0.mul_assign(elem);
-        self.c1.mul_assign(elem);
-        self
+    fn into_coeffs(self) -> Self::Coeffs {
+        [self.c0, self.c1]
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_base_coeffs_array(coefs: &[Mersenne31Complex; 2]) -> Self {
-        Self {
-            c0: coefs[0],
-            c1: coefs[1],
-        }
-    }
-
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn into_coeffs_in_base(self) -> [Mersenne31Complex; 2] {
-        let Self { c0, c1 } = self;
-
-        [c0, c1]
-    }
-
-    fn from_coeffs_in_base(coeffs: &[Mersenne31Complex]) -> Self {
-        debug_assert_eq!(coeffs.len(), 2);
-        let c0 = coeffs[0];
-        let c1 = coeffs[1];
-
+    fn from_coeffs(coeffs: Self::Coeffs) -> Self {
+        let [c0, c1] = coeffs;
         Self { c0, c1 }
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_coeffs_in_base_ref(_coeffs: &[&Mersenne31Complex]) -> Self {
-        todo!();
-    }
-
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_coeffs_in_base_iter<I: Iterator<Item = Mersenne31Complex>>(_coefs_iter: I) -> Self {
-        todo!();
-    }
-
-    fn coeffs_in_base(&self) -> &[Mersenne31Complex] {
-        todo!();
+    fn from_coeffs_ref(coeffs: &Self::Coeffs) -> Self {
+        let [c0, c1] = *coeffs;
+        Self { c0, c1 }
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
@@ -342,78 +323,66 @@ impl FieldExtension<Mersenne31Complex> for Mersenne31Quartic {
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn mul_assign_by_base(&mut self, elem: &Mersenne31Complex) -> &mut Self {
+        self.c0.mul_assign(elem);
+        self.c1.mul_assign(elem);
+        self
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_product_with_base(&mut self, ext: &Self, base: &Mersenne31Complex) -> &mut Self {
+        let mut t = *ext;
+        t.mul_assign_by_base(base);
+        self.add_assign(&t);
+
+        self
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base(elem: Mersenne31Complex) -> Self {
         Self {
             c0: elem,
             c1: Mersenne31Complex::ZERO,
         }
     }
-
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn get_coef_mut(&mut self, _idx: usize) -> &mut Mersenne31Complex {
-        todo!();
-    }
 }
 
 impl FieldExtension<Mersenne31Field> for Mersenne31Quartic {
     const DEGREE: usize = 4;
 
+    type Coeffs = [Mersenne31Field; 4];
+
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn mul_assign_by_base(&mut self, elem: &Mersenne31Field) -> &mut Self {
-        self.c0.mul_assign_by_base(elem);
-        self.c1.mul_assign_by_base(elem);
-
-        self
-    }
-
-    #[cfg_attr(not(feature = "no_inline"), inline)]
-    fn into_coeffs_in_base(self) -> [Mersenne31Field; 4] {
-        let Mersenne31Quartic { c0, c1 } = self;
-        let [c2, c3] = c1.into_coeffs_in_base();
-        let [c0, c1] = c0.into_coeffs_in_base();
-
-        [c0, c1, c2, c3]
+    fn into_coeffs(self) -> Self::Coeffs {
+        [self.c0.c0, self.c0.c1, self.c1.c0, self.c1.c1]
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_base_coeffs_array(coefs: &[Mersenne31Field; 4]) -> Self {
+    fn from_coeffs(coeffs: Self::Coeffs) -> Self {
         Self {
             c0: Mersenne31Complex {
-                c0: coefs[0],
-                c1: coefs[1],
+                c0: coeffs[0],
+                c1: coeffs[1],
             },
             c1: Mersenne31Complex {
-                c0: coefs[2],
-                c1: coefs[3],
-            },
-        }
-    }
-
-    fn from_coeffs_in_base(coefs: &[Mersenne31Field]) -> Self {
-        Self {
-            c0: Mersenne31Complex {
-                c0: coefs[0],
-                c1: coefs[1],
-            },
-            c1: Mersenne31Complex {
-                c0: coefs[2],
-                c1: coefs[3],
+                c0: coeffs[2],
+                c1: coeffs[3],
             },
         }
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_coeffs_in_base_ref(_coeffs: &[&Mersenne31Field]) -> Self {
-        todo!();
-    }
-
-    #[cfg_attr(not(feature = "no_inline"), inline(always))]
-    fn from_coeffs_in_base_iter<I: Iterator<Item = Mersenne31Field>>(_coefs_iter: I) -> Self {
-        todo!()
-    }
-
-    fn coeffs_in_base(&self) -> &[Mersenne31Field] {
-        todo!();
+    fn from_coeffs_ref(coeffs: &Self::Coeffs) -> Self {
+        Self {
+            c0: Mersenne31Complex {
+                c0: coeffs[0],
+                c1: coeffs[1],
+            },
+            c1: Mersenne31Complex {
+                c0: coeffs[2],
+                c1: coeffs[3],
+            },
+        }
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
@@ -428,6 +397,24 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Quartic {
         self
     }
 
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn mul_assign_by_base(&mut self, elem: &Mersenne31Field) -> &mut Self {
+        self.c0.mul_assign_by_base(elem);
+        self.c1.mul_assign_by_base(elem);
+
+        self
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_product_with_base(&mut self, ext: &Self, base: &Mersenne31Field) -> &mut Self {
+        let mut t = *ext;
+        t.mul_assign_by_base(base);
+        self.add_assign(&t);
+
+        self
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_base(elem: Mersenne31Field) -> Self {
         let c0 = Mersenne31Complex::from_base(elem);
         Self {
@@ -435,160 +422,45 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Quartic {
             c1: Mersenne31Complex::ZERO,
         }
     }
-
-    fn get_coef_mut(&mut self, _idx: usize) -> &mut Mersenne31Field {
-        todo!();
-    }
 }
 
-#[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
 fn fma_implementation(dst: &mut Mersenne31Quartic, a: &Mersenne31Quartic, b: &Mersenne31Quartic) {
     dst.mul_assign(a);
     dst.add_assign(b);
 }
 
-#[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-#[cfg_attr(not(feature = "no_inline"), inline(always))]
-fn fma_implementation_via_delegation(
-    dst: &mut Mersenne31Quartic,
-    a: &Mersenne31Quartic,
-    b: &Mersenne31Quartic,
-) {
-    // NOTE: no guaranteed reduction here, so we will need to be careful to fully reduce
-    // for comparisons after such functions
-
-    unsafe {
-        core::arch::asm!(
-            "csrrw x0, 0x7c8, x0",
-            in("x10") (dst as *mut Mersenne31Quartic as *mut Mersenne31Field).addr(),
-            in("x11") (a as *const Mersenne31Quartic as *const Mersenne31Field).addr(),
-            in("x12") (b as *const Mersenne31Quartic as *const Mersenne31Field).addr(),
-            options(nostack, preserves_flags)
-        )
-    }
-}
-
-// We need these for precompile to work with data in RAM and not ROM
-#[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-pub static mut ZERO_STATIC: core::mem::MaybeUninit<Mersenne31Quartic> =
-    core::mem::MaybeUninit::uninit();
-
-#[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-pub static mut ONE_STATIC: core::mem::MaybeUninit<Mersenne31Quartic> =
-    core::mem::MaybeUninit::uninit();
-
-#[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-pub static mut MINUS_ONE_STATIC: core::mem::MaybeUninit<Mersenne31Quartic> =
-    core::mem::MaybeUninit::uninit();
-
 impl Mersenne31Quartic {
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub const USE_SPEC_MUL_BY_BASE_VIA_MUL_BY_SELF: bool = false;
 
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub const PREFER_FMA: bool = false;
 
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub const CAN_PROJECT_FROM_BASE: bool = const {
         core::mem::align_of::<Self>() == core::mem::align_of::<Mersenne31Field>()
             && core::mem::size_of::<Self>() == core::mem::size_of::<Mersenne31Field>() * 4
     };
 
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub const USE_SPEC_MUL_BY_BASE_VIA_MUL_BY_SELF: bool = true;
-
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub const PREFER_FMA: bool = true;
-
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub const CAN_PROJECT_FROM_BASE: bool = true;
-
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub fn pow_with_fma(&self, exp: u32) -> Self {
         // no difference here
         self.pow(exp)
     }
 
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub fn pow_with_fma(&self, mut exp: u32) -> Self {
-        unsafe {
-            let mut base = *self;
-            let mut result = Self::ONE;
-            while exp > 0 {
-                if exp % 2 == 1 {
-                    result.fused_mul_add_assign(&base, ZERO_STATIC.assume_init_ref());
-                }
-
-                exp >>= 1;
-                // we can not provide two references here to the same value, so make a copy
-                let current_base = core::hint::black_box(base);
-                base.fused_mul_add_assign(&current_base, ZERO_STATIC.assume_init_ref());
-            }
-
-            result
-        }
-    }
-
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub fn add_assign_with_fma(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.add_assign(other)
     }
 
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub fn add_assign_with_fma(&'_ mut self, other: &Self) -> &'_ mut Self {
-        unsafe { self.fused_mul_add_assign(ONE_STATIC.assume_init_ref(), other) }
-    }
-
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub fn negate_self_and_add_other_with_fma(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.negate();
         self.add_assign(other)
     }
 
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub fn negate_self_and_add_other_with_fma(&'_ mut self, other: &Self) -> &'_ mut Self {
-        unsafe { self.fused_mul_add_assign(MINUS_ONE_STATIC.assume_init_ref(), other) }
-    }
-
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub fn mul_assign_with_fma(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.mul_assign(other)
     }
 
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub fn mul_assign_with_fma(&'_ mut self, other: &Self) -> &'_ mut Self {
-        unsafe { self.fused_mul_add_assign(other, ZERO_STATIC.assume_init_ref()) }
-    }
-
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub fn square_with_fma(&'_ mut self) -> &'_ mut Self {
         self.square()
     }
 
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub fn square_with_fma(&'_ mut self) -> &'_ mut Self {
-        unsafe {
-            let self_copy = core::hint::black_box(*self);
-            self.fused_mul_add_assign(&self_copy, ZERO_STATIC.assume_init_ref())
-        }
-    }
-
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub fn init_ext4_fma_ops() {}
-
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub fn init_ext4_fma_ops() {
-        // NOTE: even though in Rust constant is just an inline constant, and taking a reference
-        // to such value will give a reference to the temporary copy and so it's fine for our
-        // ROM + RAM model, we anyway can use statics to avoid making temporary copies
-
-        unsafe {
-            ZERO_STATIC.as_mut_ptr().write(Mersenne31Quartic::ZERO);
-            ONE_STATIC.as_mut_ptr().write(Mersenne31Quartic::ONE);
-            let mut minus_one = Self::ONE;
-            minus_one.negate();
-            MINUS_ONE_STATIC.as_mut_ptr().write(minus_one);
-        }
-    }
 }

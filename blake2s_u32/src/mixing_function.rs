@@ -4,7 +4,7 @@ use crate::asm_utils::rotate_right;
 use crate::*;
 
 #[inline(always)]
-pub(crate) fn g_function(
+pub fn g_function(
     v: &mut [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
     a: usize,
     b: usize,
@@ -21,6 +21,18 @@ pub(crate) fn g_function(
     v[d] = rotate_right::<8>(v[d] ^ v[a]);
     v[c] = v[c].wrapping_add(v[d]);
     v[b] = rotate_right::<7>(v[b] ^ v[c]);
+}
+
+#[inline(always)]
+pub fn g_function_raw(a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, x: u32, y: u32) {
+    *a = (*a).wrapping_add(*b).wrapping_add(x);
+    *d = rotate_right::<16>((*d) ^ (*a));
+    *c = (*c).wrapping_add(*d);
+    *b = rotate_right::<12>((*b) ^ (*c));
+    *a = (*a).wrapping_add(*b).wrapping_add(y);
+    *d = rotate_right::<8>((*d) ^ (*a));
+    *c = (*c).wrapping_add(*d);
+    *b = rotate_right::<7>((*b) ^ (*c));
 }
 
 #[inline(always)]
@@ -113,6 +125,9 @@ pub fn round_function_reduced_rounds(
     state: &mut [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS],
     message_block: &[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
 ) {
+    #[cfg(feature = "verifier_stats")]
+    common_constants::stats::GKR_VERIFY_STATS.with_borrow_mut(|s| s.blake2s_hashes += 1);
+
     // reduced rounds
     for i in 0..7 {
         let sigma = &SIGMAS[i];
@@ -126,6 +141,9 @@ pub fn round_function_full_rounds(
     state: &mut [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS],
     message_block: &[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
 ) {
+    #[cfg(feature = "verifier_stats")]
+    common_constants::stats::GKR_VERIFY_STATS.with_borrow_mut(|s| s.blake2s_hashes += 1);
+
     // full rounds
     for i in 0..10 {
         let sigma = &SIGMAS[i];

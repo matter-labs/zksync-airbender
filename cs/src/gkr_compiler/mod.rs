@@ -2,9 +2,12 @@
 // weight function to define optimization goal, but we can not avoid placing all memory related variables
 // into the base layer.
 
-use crate::cs::circuit::CircuitOutput;
 use crate::definitions::gkr::GKRMemoryLayout;
 use crate::definitions::gkr::GKRWitnessLayout;
+use crate::definitions::gkr::NoFieldLinearRelation;
+use crate::definitions::gkr::NoFieldSingleColumnLookupRelation;
+use crate::definitions::gkr::NoFieldVectorLookupRelation;
+use crate::definitions::gkr::RamWordRepresentation;
 use crate::definitions::Degree1Constraint;
 use crate::definitions::Degree2Constraint;
 use crate::definitions::GKRAddress;
@@ -13,17 +16,24 @@ use crate::definitions::REGISTER_SIZE;
 use crate::gkr_compiler::graph::GraphHolder;
 pub use crate::gkr_compiler::layout::GKRAuxLayoutData;
 pub use crate::gkr_compiler::layout::GKRLayerDescription;
-use crate::one_row_compiler::gkr::NoFieldLinearRelation;
-use crate::one_row_compiler::gkr::NoFieldSingleColumnLookupRelation;
-use crate::one_row_compiler::gkr::NoFieldVectorLookupRelation;
+use crate::structured_expr::StructuredStatement;
 use common_constants::*;
 use field::PrimeField;
 use std::collections::*;
 
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct ShuffleRamTimestampComparisonPartialData {
+    pub(crate) intermediate_borrow: Variable,
+    pub(crate) read_timestamp: [Variable; 2],
+    pub(crate) local_timestamp_in_cycle: usize,
+}
+
 mod compiled_constraint;
+mod delegation_circuit;
+pub(crate) mod delegation_mem_accesses;
 mod family_circuit;
 mod graph;
-// mod graphviz;
+mod inits_and_teardowns;
 mod layout;
 mod lookup;
 pub(crate) mod lookup_nodes;
@@ -32,7 +42,8 @@ mod range_check_exprs;
 mod utils;
 
 pub use self::compiled_constraint::*;
-pub use self::lookup::*;
+pub use self::inits_and_teardowns::*;
+pub(crate) use self::lookup::*;
 pub(crate) use self::utils::*;
 
 #[derive(
@@ -44,21 +55,14 @@ pub enum LookupType {
     Generic,
 }
 
-#[derive(
-    Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-pub enum OutputType {
-    PermutationProduct,
-    Lookup16Bits,
-    LookupTimestamps,
-    GenericLookup,
-}
+pub use crate::definitions::OutputType;
 
 #[derive(Default)]
 pub struct GKRCompiler<F: PrimeField> {
     _marker: std::marker::PhantomData<F>,
 }
 
+#[serde_with::serde_as]
 #[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub struct GKRCircuitArtifact<F: PrimeField> {
     pub trace_len: usize,
@@ -72,15 +76,26 @@ pub struct GKRCircuitArtifact<F: PrimeField> {
     pub memory_layout: GKRMemoryLayout,
     pub witness_layout: GKRWitnessLayout,
     pub scratch_space_size: usize,
+    pub num_generic_lookups: usize,
     pub placement_data: BTreeMap<Variable, GKRAddress>,
     pub generic_lookup_tables_width: usize,
     pub decode_table_columns_mask: Vec<bool>,
     pub tables_ids_in_generic_lookups: bool,
 
+    // for satisfiability checks
     pub degree_2_constraints: Vec<Degree2Constraint<F>>,
     pub degree_1_constraints: Vec<Degree1Constraint<F>>,
+    pub structured_statements: Vec<StructuredStatement<F>>,
+
+    // for witness evaluation and multiplicity counting
+    pub generic_lookups: Vec<NoFieldVectorLookupRelation>,
+    pub range_check_16_lookup_expressions: Vec<NoFieldSingleColumnLookupRelation>,
+    pub timestamp_range_check_lookup_expressions: Vec<NoFieldSingleColumnLookupRelation>,
 
     pub variable_names: BTreeMap<Variable, String>,
+    #[serde_as(as = "Vec<(_, _)>")]
+    pub scratch_space_mapping: BTreeMap<GKRAddress, usize>,
+    pub scratch_space_mapping_rev: BTreeMap<usize, GKRAddress>,
 
     pub aux_layout_data: GKRAuxLayoutData,
     _marker: core::marker::PhantomData<F>,
@@ -120,9 +135,9 @@ pub struct NoFieldPureQuadraticGKRRelation {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoFieldMaxQuadraticGKRRelation {
-    pub quadratic_terms: Box<[(GKRAddress, Box<[(u64, GKRAddress)]>)]>,
-    pub linear_terms: Box<[Box<[(u64, GKRAddress)]>]>,
-    pub constants: Box<[u64]>,
+    pub quadratic_terms: Box<[(GKRAddress, Box<[(u32, GKRAddress)]>)]>,
+    pub linear_terms: Box<[(u32, GKRAddress)]>,
+    pub constant: u32,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -158,28 +173,31 @@ pub enum CompiledAddress {
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CompiledAddressSpaceRelationStrict {
     Constant(u32),
-    Is(usize),
-    Not(usize),
+    IsRegister(usize), // must contribute 0 (register) if "true", 1 (RAM) otherwise
+    IsRam(usize),      // must contribute 0 (register) if "false", 1 (RAM) otherwise
 }
 
 impl CompiledAddressSpaceRelationStrict {
     pub(crate) fn dependency(&self) -> Option<GKRAddress> {
         match self {
             Self::Constant(..) => None,
-            Self::Is(offset) | Self::Not(offset) => Some(GKRAddress::BaseLayerMemory(*offset)),
+            Self::IsRegister(offset) | Self::IsRam(offset) => {
+                Some(GKRAddress::BaseLayerMemory(*offset))
+            }
         }
     }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CompiledAddressStrict {
+    ConstantU16(u16),
     Constant(u32),
     U16Space(usize),
     U32Space([usize; 2]),
     U32SpaceSpecialIndirect {
         low_base: usize,
-        low_dynamic_offset: Option<usize>,
-        low_offset: u64,
+        low_dynamic_offset: Option<(u16, usize)>,
+        low_offset: u32,
         high: usize,
     },
     U32SpaceGeneric([(Box<[(u64, usize)]>, u64); 2]),
@@ -188,6 +206,7 @@ pub enum CompiledAddressStrict {
 impl CompiledAddressStrict {
     pub(crate) fn dependencies(&self) -> Vec<GKRAddress> {
         match self {
+            Self::ConstantU16(..) => vec![],
             Self::Constant(..) => vec![],
             Self::U16Space(offset) => vec![GKRAddress::BaseLayerMemory(*offset)],
             Self::U32Space(offsets) => vec![
@@ -204,7 +223,7 @@ impl CompiledAddressStrict {
                 let mut result = Vec::with_capacity(3);
                 result.push(GKRAddress::BaseLayerMemory(*low_base));
                 result.push(GKRAddress::BaseLayerMemory(*high));
-                if let Some(low_dynamic_offset) = low_dynamic_offset {
+                if let Some((_, low_dynamic_offset)) = low_dynamic_offset {
                     result.push(GKRAddress::BaseLayerMemory(*low_dynamic_offset));
                 }
 
@@ -215,11 +234,17 @@ impl CompiledAddressStrict {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum CompiledMemoryTimestamp {
+    Zero,
+    Normal([usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM]),
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoFieldSpecialMemoryContributionRelation {
     pub address_space: CompiledAddressSpaceRelationStrict,
     pub address: CompiledAddressStrict,
-    pub timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
-    pub value: [usize; REGISTER_SIZE],
+    pub timestamp: CompiledMemoryTimestamp,
+    pub value: RamWordRepresentation,
     pub timestamp_offset: u32,
 }
 
@@ -230,8 +255,24 @@ impl NoFieldSpecialMemoryContributionRelation {
             result.push(a);
         }
         result.extend(self.address.dependencies());
-        result.extend(self.timestamp.map(|el| GKRAddress::BaseLayerMemory(el)));
-        result.extend(self.value.map(|el| GKRAddress::BaseLayerMemory(el)));
+        match self.timestamp {
+            CompiledMemoryTimestamp::Zero => {}
+            CompiledMemoryTimestamp::Normal(ts) => {
+                result.extend(ts.map(|el| GKRAddress::BaseLayerMemory(el)));
+            }
+        }
+
+        match self.value {
+            RamWordRepresentation::Zero => {
+                // nothing more
+            }
+            RamWordRepresentation::U16Limbs(els) => {
+                result.extend(els.map(|el| GKRAddress::BaseLayerMemory(el)));
+            }
+            RamWordRepresentation::U8Limbs(els) => {
+                result.extend(els.map(|el| GKRAddress::BaseLayerMemory(el)));
+            }
+        }
 
         result
     }
@@ -258,16 +299,30 @@ pub struct NoFieldMaxQuadraticConstraintsGKRRelation {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum InitsOrTeardownsTimestampAndValue {
+    Init, // zeroes
+    Teardown {
+        lhs_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+        lhs_value: [usize; 2],
+        rhs_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+        rhs_value: [usize; 2],
+    },
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum NoFieldGKRRelation {
-    // FormalBaseLayerInput(GKRAddress),
-    // PureQuadratic {
-    //     input: NoFieldPureQuadraticGKRRelation,
-    //     output: GKRAddress,
-    // },
-    // MaxQuadratic {
-    //     input: NoFieldMaxQuadraticGKRRelation,
-    //     output: GKRAddress,
-    // },
+    LinearBaseFieldRelation {
+        input: NoFieldLinearRelation,
+        output: GKRAddress,
+    },
+    MaxQuadratic {
+        input: NoFieldMaxQuadraticGKRRelation,
+        output: GKRAddress,
+    },
+
+    EnforceSingleMaxQuadraticConstraint {
+        input: NoFieldMaxQuadraticGKRRelation,
+    },
 
     // Enforces a randomized set of constraints in a form of c1 + alpha * c2 + ...
     // Sorted as: each quadratic term is recorded once (they are in base field), and powers of alpha are recorded
@@ -279,11 +334,14 @@ pub enum NoFieldGKRRelation {
     // LookupAggregationPostTrivialNumerator(NoFieldLookupPostTrivialNumeratorRelation),
 
     // Copy across GKR layers, relation is a(x) = \sum_y eq(x, y) a(y) formally
-    Copy {
+    CopyInBaseField {
         input: GKRAddress,
         output: GKRAddress,
     },
-
+    CopyInExtensionField {
+        input: GKRAddress,
+        output: GKRAddress,
+    },
     // Memory-like argument related
 
     // Computes (memory tuple) * (memory tuple)
@@ -291,10 +349,20 @@ pub enum NoFieldGKRRelation {
         input: [GKRAddress; 2],
         output: GKRAddress,
     },
+    // Computes (memory tuple) * (memory tuple) without intermediate cache relations
+    InitialGrandProductWithoutCaches {
+        input: [NoFieldSpecialMemoryContributionRelation; 2],
+        output: GKRAddress,
+    },
     // Computes (memory tuple) * (single scalar in extension)
     UnbalancedGrandProductWithCache {
         scalar: GKRAddress,
         input: GKRAddress,
+        output: GKRAddress,
+    },
+    // Materialize memory expression
+    MaterializeGrandProductTermExpression {
+        input: NoFieldSpecialMemoryContributionRelation,
         output: GKRAddress,
     },
     // Computes (single scalar in extension) * (single scalar in extension)
@@ -314,21 +382,24 @@ pub enum NoFieldGKRRelation {
     MaterializeSingleLookupInput {
         input: NoFieldSingleColumnLookupRelation,
         output: GKRAddress,
+        range_check_width: u32,
     },
     // Computes linear relation for vector lookup and places it into variable in extension field
     MaterializedVectorLookupInput {
         input: NoFieldVectorLookupRelation,
         output: GKRAddress,
     },
-    // // Expects both inputs to come from caches, and o
-    // LookupPairFromCaches {
-    //     input: [[GKRAddress; 2]; 2],
-    //     output: [GKRAddress; 2],
-    // },
+
     // Expects denominators to be cached, and computes a/b - c/d -> (num, den)
     LookupWithCachedDensAndSetup {
         input: [GKRAddress; 2],
         setup: [GKRAddress; 2],
+        output: [GKRAddress; 2],
+    },
+    // Expects denominators to be cached, and computes a/b - c/d -> (num, den)
+    LookupWithDensAndSetupExpressions {
+        input: (GKRAddress, NoFieldVectorLookupRelation),
+        setup: (GKRAddress, Box<[GKRAddress]>),
         output: [GKRAddress; 2],
     },
 
@@ -339,6 +410,7 @@ pub enum NoFieldGKRRelation {
     LookupPairFromBaseInputs {
         input: [NoFieldSingleColumnLookupRelation; 2],
         output: [GKRAddress; 2],
+        range_check_width: u32,
     },
 
     // 1/(a+gamma) + 1/(b + gamma) where a, b are in base field and materialized
@@ -347,27 +419,28 @@ pub enum NoFieldGKRRelation {
         output: [GKRAddress; 2],
     },
 
-    // a/b + 1/(c + gamma) where `c`` is in the base field
-    LookupUnbalancedPairWithBaseInputs {
-        input: [GKRAddress; 2],
-        remainder: NoFieldSingleColumnLookupRelation,
-        output: [GKRAddress; 2],
-    },
-    // 1/(a+gamma) + multiplicity/(setup + gamma) where a is in base field
-    LookupFromBaseInputsWithSetup {
-        input: NoFieldSingleColumnLookupRelation,
-        setup: [GKRAddress; 2],
-        output: [GKRAddress; 2],
-    },
+    // // a/b + 1/(c + gamma) where `c`` is in the base field and not cached
+    // LookupUnbalancedPairWithBaseInputs {
+    //     input: [GKRAddress; 2],
+    //     remainder: NoFieldSingleColumnLookupRelation,
+    //     output: [GKRAddress; 2],
+    // },
 
-    // 1/(a+gamma) + multiplicity/(setup + gamma) where a is in base field and materialized
+    // // 1/(a+gamma) + multiplicity/(setup + gamma) where a is in base field and not cached
+    // LookupFromBaseInputsWithSetup {
+    //     input: NoFieldSingleColumnLookupRelation,
+    //     setup: [GKRAddress; 2],
+    //     output: [GKRAddress; 2],
+    // },
+
+    // 1/(a+gamma) + multiplicity/(setup + gamma) where a is in base field and materialized or cached
     LookupFromMaterializedBaseInputWithSetup {
         input: GKRAddress,
         setup: [GKRAddress; 2],
         output: [GKRAddress; 2],
     },
 
-    // a/b + 1/(c + gamma) where `c`` is in the base field and is materialized
+    // a/b + 1/(c + gamma) where `c`` is in the base field and is materialized or cached
     LookupUnbalancedPairWithMaterializedBaseInputs {
         input: [GKRAddress; 2],
         remainder: GKRAddress,
@@ -383,24 +456,77 @@ pub enum NoFieldGKRRelation {
         output: [GKRAddress; 2],
     },
 
-    // LookupNumeratorFromVectorInputs([NoFieldVectorLookupRelation; 2]),
-    // LookupDenominatorFromVectorInputs([NoFieldVectorLookupRelation; 2]),
+    // 1/(a+gamma) + 1/(b + gamma) where a, b are in in extension already due to vector nature (no caching)
+    LookupPairFromMaterializedVectorInputs {
+        input: [GKRAddress; 2],
+        output: [GKRAddress; 2],
+    },
+
+    // 1/(a+gamma) + multiplicity/(setup + gamma) where a is in extension field
+    LookupFromVectorInputWithSetup {
+        input: NoFieldVectorLookupRelation,
+        setup: (GKRAddress, Box<[GKRAddress]>),
+        output: [GKRAddress; 2],
+    },
+
+    // 1/(a+gamma) + multiplicity/(setup + gamma) where a is in extension field and materialized or cached
+    LookupFromMaterializedVectorInputWithSetup {
+        input: GKRAddress,
+        setup: [GKRAddress; 2],
+        output: [GKRAddress; 2],
+    },
+
+    // 1/(a+gamma) + 1/(b + gamma) where a, b are in in extension already due to vector nature (no caching)
+    LookupPairFromCachedVectorInputs {
+        input: [GKRAddress; 2],
+        output: [GKRAddress; 2],
+    },
+
+    // a/b + 1/(c + gamma) where `c`` is in the extension field
+    LookupUnbalancedPairWithVectorInputs {
+        input: [GKRAddress; 2],
+        remainder: NoFieldVectorLookupRelation,
+        output: [GKRAddress; 2],
+    },
+
+    // a/b + 1/(c + gamma) where `c`` is in the extension field and is materialized or cached
+    LookupUnbalancedPairWithMaterializedVectorInputs {
+        input: [GKRAddress; 2],
+        remainder: GKRAddress,
+        output: [GKRAddress; 2],
+    },
 
     // a/b + c/d -> (num, den)
-    LookupPair {
+    AggregateLookupRationalPair {
         input: [[GKRAddress; 2]; 2],
         output: [GKRAddress; 2],
     },
-    // LookupNumeratorContinueAggregation([GKRAddress; 2]),
-    // LookupDenominatorContinueAggregation([GKRAddress; 2]),
+
+    InitsOrTeardownsInitialPair {
+        timestamp_and_value: InitsOrTeardownsTimestampAndValue,
+        setup: [GKRAddress; 2], // virtual
+        output: GKRAddress,
+        set_idxes: [usize; 2], // defines upper bits of address
+    },
 }
 
 impl NoFieldGKRRelation {
     pub fn cached_addresses(&self) -> Vec<GKRAddress> {
         match self {
             // Self::FormalBaseLayerInput(..) => vec![],
+            Self::LinearBaseFieldRelation { .. } => vec![],
+            Self::MaxQuadratic { input, output } => vec![],
             Self::EnforceConstraintsMaxQuadratic { input } => vec![],
-            Self::Copy { input, output } => {
+            Self::CopyInBaseField { input, output } => {
+                assert!(output.is_cache() == false);
+
+                if input.is_cache() {
+                    vec![*input]
+                } else {
+                    vec![]
+                }
+            }
+            Self::CopyInExtensionField { input, output } => {
                 assert!(output.is_cache() == false);
 
                 if input.is_cache() {
@@ -415,6 +541,9 @@ impl NoFieldGKRRelation {
                 assert!(output.is_cache() == false);
 
                 input.to_vec()
+            }
+            Self::InitialGrandProductWithoutCaches { input, output } => {
+                vec![]
             }
             Self::UnbalancedGrandProductWithCache {
                 scalar,
@@ -441,7 +570,7 @@ impl NoFieldGKRRelation {
             } => {
                 vec![]
             }
-            Self::MaterializeSingleLookupInput { input, output } => {
+            Self::MaterializeSingleLookupInput { input, output, .. } => {
                 vec![]
             }
             Self::MaterializedVectorLookupInput { input, output } => {
@@ -459,7 +588,10 @@ impl NoFieldGKRRelation {
 
                 vec![input[1], setup[1]]
             }
-            Self::LookupPairFromBaseInputs { input, output } => {
+            Self::LookupWithDensAndSetupExpressions { .. } => {
+                vec![]
+            }
+            Self::LookupPairFromBaseInputs { input, output, .. } => {
                 vec![]
             }
             Self::LookupPairFromMaterializedBaseInputs { input, output } => {
@@ -472,27 +604,31 @@ impl NoFieldGKRRelation {
 
                 all_cached
             }
-            Self::LookupUnbalancedPairWithBaseInputs {
-                input,
-                remainder,
-                output,
-            } => {
-                vec![]
-            }
+            // Self::LookupUnbalancedPairWithBaseInputs {
+            //     input,
+            //     remainder,
+            //     output,
+            // } => {
+            //     vec![]
+            // }
             Self::LookupUnbalancedPairWithMaterializedBaseInputs {
                 input,
                 remainder,
                 output,
             } => {
-                vec![]
+                if remainder.is_cache() {
+                    vec![*remainder]
+                } else {
+                    vec![]
+                }
             }
-            Self::LookupFromBaseInputsWithSetup {
-                input,
-                setup,
-                output,
-            } => {
-                vec![]
-            }
+            // Self::LookupFromBaseInputsWithSetup {
+            //     input,
+            //     setup,
+            //     output,
+            // } => {
+            //     vec![]
+            // }
             Self::LookupFromMaterializedBaseInputWithSetup {
                 input,
                 setup,
@@ -507,23 +643,96 @@ impl NoFieldGKRRelation {
             Self::LookupPairFromVectorInputs { input, output } => {
                 vec![]
             }
-            Self::LookupPair { input, output } => {
+            Self::LookupPairFromMaterializedVectorInputs { input, output } => {
+                let mut result = vec![];
+                for inp in input {
+                    if inp.is_cache() {
+                        result.push(inp);
+                    }
+                }
+
+                input.to_vec()
+            }
+            Self::LookupPairFromCachedVectorInputs { input, output } => {
+                assert!(input[0].is_cache());
+                assert!(input[1].is_cache());
+
+                input.to_vec()
+            }
+            Self::LookupUnbalancedPairWithMaterializedVectorInputs {
+                input,
+                remainder,
+                output,
+            } => {
+                assert!(input[0].is_cache() == false);
+                assert!(input[1].is_cache() == false);
+
+                if remainder.is_cache() {
+                    vec![*remainder]
+                } else {
+                    vec![]
+                }
+            }
+            Self::LookupFromMaterializedVectorInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                let mut caches = vec![];
+                if input.is_cache() {
+                    caches.push(*input);
+                }
+                assert!(setup[0].is_cache() == false);
+                if setup[1].is_cache() {
+                    caches.push(setup[1]);
+                }
+                caches
+            }
+            Self::AggregateLookupRationalPair { input, output } => {
                 vec![]
+            }
+            Self::LookupUnbalancedPairWithVectorInputs { .. } => {
+                vec![]
+            }
+            Self::LookupFromVectorInputWithSetup { .. } => {
+                vec![]
+            }
+            Self::MaterializeGrandProductTermExpression { .. } => {
+                vec![]
+            }
+            Self::EnforceSingleMaxQuadraticConstraint { .. } => {
+                vec![]
+            }
+            Self::InitsOrTeardownsInitialPair { .. } => {
+                vec![]
+            }
+            a @ _ => {
+                panic!("{:?} is not yet supported", a);
             }
         }
     }
 
-    pub fn expected_input_claims(&self) -> Vec<GKRAddress> {
-        // they are also the outputs
-
-        todo!()
-    }
-
-    pub fn created_claims(&self) -> Vec<GKRAddress> {
+    /// Dump inputs for data flow. Sumcheck will make new claims evaluations of these
+    /// inputs at random point
+    pub fn dump_inputs(&self, result: &mut BTreeSet<GKRAddress>) {
         match self {
-            // Self::FormalBaseLayerInput(..) => vec![],
+            Self::LinearBaseFieldRelation { input, output } => {
+                for (_, el) in input.linear_terms.iter() {
+                    result.insert(*el);
+                }
+            }
+            Self::MaxQuadratic { input, output } => {
+                for (a, other) in input.quadratic_terms.iter() {
+                    result.insert(*a);
+                    for (_, b) in other.iter() {
+                        result.insert(*b);
+                    }
+                }
+                for (_, a) in input.linear_terms.iter() {
+                    result.insert(*a);
+                }
+            }
             Self::EnforceConstraintsMaxQuadratic { input } => {
-                let mut result = BTreeSet::new();
                 for ((a, b), _) in input.quadratic_terms.iter() {
                     result.insert(*a);
                     result.insert(*b);
@@ -531,109 +740,116 @@ impl NoFieldGKRRelation {
                 for (el, _) in input.linear_terms.iter() {
                     result.insert(*el);
                 }
-                result.into_iter().collect()
             }
-            Self::Copy { input, output } => {
-                vec![*input]
+            Self::CopyInBaseField { input, .. } | Self::CopyInExtensionField { input, .. } => {
+                result.insert(*input);
             }
             Self::InitialGrandProductFromCaches { input, output } => {
-                vec![]
+                result.insert(input[0]);
+                result.insert(input[1]);
+            }
+            Self::InitialGrandProductWithoutCaches { input, output } => {
+                input[0].dump_inputs(result);
+                input[1].dump_inputs(result);
             }
             Self::UnbalancedGrandProductWithCache {
                 scalar,
                 input,
                 output,
             } => {
-                vec![*scalar]
+                result.insert(*scalar);
+                result.insert(*input);
             }
-            Self::TrivialProduct { input, output } => input.to_vec(),
+            Self::TrivialProduct { input, output } => {
+                result.insert(input[0]);
+                result.insert(input[1]);
+            }
             Self::MaskIntoIdentityProduct {
                 input,
                 mask,
                 output,
             } => {
-                vec![*input, *mask]
+                result.insert(*input);
+                result.insert(*mask);
             }
-            Self::MaterializeSingleLookupInput { input, output } => {
-                let mut result = BTreeSet::new();
+            Self::MaterializeSingleLookupInput { input, output, .. } => {
                 for (_, el) in input.input.linear_terms.iter() {
                     result.insert(*el);
                 }
-                result.into_iter().collect()
             }
             Self::MaterializedVectorLookupInput { input, output } => {
-                let mut result = BTreeSet::new();
                 for el in input.columns.iter() {
                     for (_, el) in el.linear_terms.iter() {
                         result.insert(*el);
                     }
                 }
-                result.into_iter().collect()
             }
             Self::LookupWithCachedDensAndSetup {
                 input,
                 setup,
                 output,
             } => {
-                vec![]
+                result.insert(input[0]);
+                result.insert(input[1]);
+                result.insert(setup[0]);
+                result.insert(setup[1]);
             }
-            Self::LookupPairFromBaseInputs { input, output } => {
-                let mut result = BTreeSet::new();
+            Self::LookupPairFromBaseInputs { input, output, .. } => {
                 for el in input.iter() {
                     for (_, el) in el.input.linear_terms.iter() {
                         result.insert(*el);
                     }
                 }
-                result.into_iter().collect()
             }
             Self::LookupPairFromMaterializedBaseInputs { input, output } => {
-                vec![]
+                result.insert(input[0]);
+                result.insert(input[1]);
             }
-            Self::LookupUnbalancedPairWithBaseInputs {
-                input,
-                remainder,
-                output,
-            } => {
-                let mut result = BTreeSet::new();
-                for (_, el) in remainder.input.linear_terms.iter() {
-                    result.insert(*el);
-                }
-                let mut result: Vec<GKRAddress> = result.into_iter().collect();
-                result.extend_from_slice(input);
-                result
-            }
+            // Self::LookupUnbalancedPairWithBaseInputs {
+            //     input,
+            //     remainder,
+            //     output,
+            // } => {
+            //     let mut result = BTreeSet::new();
+            //     for (_, el) in remainder.input.linear_terms.iter() {
+            //         result.insert(*el);
+            //     }
+            //     let mut result: Vec<GKRAddress> = result.into_iter().collect();
+            //     result.extend_from_slice(input);
+            //     result
+            // }
             Self::LookupUnbalancedPairWithMaterializedBaseInputs {
                 input,
                 remainder,
                 output,
             } => {
-                let mut result: Vec<GKRAddress> = vec![];
-                result.extend_from_slice(input);
-                result.push(*remainder);
-                result
+                result.insert(input[0]);
+                result.insert(input[1]);
+                result.insert(*remainder);
             }
-            Self::LookupFromBaseInputsWithSetup {
-                input,
-                setup,
-                output,
-            } => {
-                let mut result = BTreeSet::new();
-                for (_, el) in input.input.linear_terms.iter() {
-                    result.insert(*el);
-                }
-                let mut result: Vec<GKRAddress> = result.into_iter().collect();
-                result.extend_from_slice(setup);
-                result
-            }
+            // Self::LookupFromBaseInputsWithSetup {
+            //     input,
+            //     setup,
+            //     output,
+            // } => {
+            //     let mut result = BTreeSet::new();
+            //     for (_, el) in input.input.linear_terms.iter() {
+            //         result.insert(*el);
+            //     }
+            //     let mut result: Vec<GKRAddress> = result.into_iter().collect();
+            //     result.extend_from_slice(setup);
+            //     result
+            // }
             Self::LookupFromMaterializedBaseInputWithSetup {
                 input,
                 setup,
                 output,
             } => {
-                vec![]
+                result.insert(*input);
+                result.insert(setup[0]);
+                result.insert(setup[1]);
             }
             Self::LookupPairFromVectorInputs { input, output } => {
-                let mut result = BTreeSet::new();
                 for input in input.iter() {
                     for el in input.columns.iter() {
                         for (_, el) in el.linear_terms.iter() {
@@ -641,16 +857,172 @@ impl NoFieldGKRRelation {
                         }
                     }
                 }
-                result.into_iter().collect()
             }
-            Self::LookupPair { input, output } => input.iter().flatten().copied().collect(),
+            Self::LookupPairFromMaterializedVectorInputs { input, output } => {
+                result.insert(input[0]);
+                result.insert(input[1]);
+            }
+            Self::LookupPairFromCachedVectorInputs { input, output } => {
+                result.insert(input[0]);
+                result.insert(input[1]);
+            }
+            Self::LookupFromMaterializedVectorInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                result.insert(*input);
+                result.insert(setup[0]);
+                result.insert(setup[1]);
+            }
+            Self::AggregateLookupRationalPair { input, output } => {
+                result.insert(input[0][0]);
+                result.insert(input[0][1]);
+                result.insert(input[1][0]);
+                result.insert(input[1][1]);
+            }
+            a @ _ => {
+                panic!("Not yet implemented for relation {:?}", a);
+            }
+        }
+    }
+
+    /// Dump outputs for data flow. Sumcheck will use claims about evaluations of these
+    /// polys at random point as the starting point
+    pub fn dump_outputs(&self, result: &mut BTreeSet<GKRAddress>) {
+        match self {
+            Self::LinearBaseFieldRelation { input, output } => {
+                result.insert(*output);
+            }
+            Self::MaxQuadratic { input, output } => {
+                result.insert(*output);
+            }
+            Self::EnforceConstraintsMaxQuadratic { input } => {
+                // nothing
+            }
+            Self::CopyInBaseField { output, .. } | Self::CopyInExtensionField { output, .. } => {
+                result.insert(*output);
+            }
+            Self::InitialGrandProductFromCaches { input, output } => {
+                result.insert(*output);
+            }
+            Self::InitialGrandProductWithoutCaches { input, output } => {
+                result.insert(*output);
+            }
+            Self::UnbalancedGrandProductWithCache {
+                scalar,
+                input,
+                output,
+            } => {
+                result.insert(*output);
+            }
+            Self::TrivialProduct { input, output } => {
+                result.insert(*output);
+            }
+            Self::MaskIntoIdentityProduct {
+                input,
+                mask,
+                output,
+            } => {
+                result.insert(*output);
+            }
+            Self::MaterializeSingleLookupInput { input, output, .. } => {
+                result.insert(*output);
+            }
+            Self::MaterializedVectorLookupInput { input, output } => {
+                result.insert(*output);
+            }
+            Self::LookupWithCachedDensAndSetup {
+                input,
+                setup,
+                output,
+            } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            Self::LookupPairFromBaseInputs { input, output, .. } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            Self::LookupPairFromMaterializedBaseInputs { input, output } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            // Self::LookupUnbalancedPairWithBaseInputs {
+            //     input,
+            //     remainder,
+            //     output,
+            // } => {
+            //     let mut result = BTreeSet::new();
+            //     for (_, el) in remainder.input.linear_terms.iter() {
+            //         result.insert(*el);
+            //     }
+            //     let mut result: Vec<GKRAddress> = result.into_iter().collect();
+            //     result.extend_from_slice(input);
+            //     result
+            // }
+            Self::LookupUnbalancedPairWithMaterializedBaseInputs {
+                input,
+                remainder,
+                output,
+            } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            // Self::LookupFromBaseInputsWithSetup {
+            //     input,
+            //     setup,
+            //     output,
+            // } => {
+            //     let mut result = BTreeSet::new();
+            //     for (_, el) in input.input.linear_terms.iter() {
+            //         result.insert(*el);
+            //     }
+            //     let mut result: Vec<GKRAddress> = result.into_iter().collect();
+            //     result.extend_from_slice(setup);
+            //     result
+            // }
+            Self::LookupFromMaterializedBaseInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            Self::LookupPairFromVectorInputs { input, output } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            Self::LookupPairFromMaterializedVectorInputs { input, output } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            Self::LookupPairFromCachedVectorInputs { input, output } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            Self::LookupFromMaterializedVectorInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            Self::AggregateLookupRationalPair { input, output } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            a @ _ => {
+                panic!("Not yet implemented for relation {:?}", a);
+            }
         }
     }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum NoFieldGKRCacheRelation {
-    LongLinear,
     SingleColumnLookup {
         relation: NoFieldSingleColumnLookupRelation,
         range_check_width: usize,
@@ -663,9 +1035,6 @@ pub enum NoFieldGKRCacheRelation {
 impl NoFieldGKRCacheRelation {
     pub fn dependencies(&self) -> Vec<GKRAddress> {
         match self {
-            Self::LongLinear => {
-                vec![]
-            }
             Self::SingleColumnLookup { relation, .. } => {
                 let mut result = vec![];
                 for (_, pos) in relation.input.linear_terms.iter() {
@@ -706,4 +1075,141 @@ pub trait GKRGate {
         graph: &mut impl GraphHolder,
         output_layer: usize,
     ) -> (Self::Output, NoFieldGKRRelation);
+}
+
+pub fn compile_unrolled_circuit_state_transition_into_gkr<F: PrimeField>(
+    table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
+    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
+    max_bytecode_size_in_words: usize,
+    trace_len_log2: usize,
+) -> GKRCircuitArtifact<F> {
+    use crate::cs::circuit_impl::BasicAssembly;
+    use crate::cs::circuit_trait::Circuit;
+    use crate::gkr_compiler::GKRCompiler;
+
+    let mut cs = BasicAssembly::<F>::new();
+    (table_addition_fn)(&mut cs);
+    (circuit_fn)(&mut cs);
+
+    let (cs_output, _) = cs.finalize();
+
+    let compiler = GKRCompiler::default();
+    let compiled = compiler.compile_family_circuit(
+        cs_output,
+        max_bytecode_size_in_words,
+        0,
+        trace_len_log2,
+        true,
+    );
+
+    compiled
+}
+
+pub fn compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches<F: PrimeField>(
+    table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
+    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
+    max_bytecode_size_in_words: usize,
+    trace_len_log2: usize,
+) -> GKRCircuitArtifact<F> {
+    use crate::cs::circuit_impl::BasicAssembly;
+    use crate::cs::circuit_trait::Circuit;
+    use crate::gkr_compiler::GKRCompiler;
+
+    let mut cs = BasicAssembly::<F>::new();
+    (table_addition_fn)(&mut cs);
+    (circuit_fn)(&mut cs);
+
+    let (cs_output, _) = cs.finalize();
+
+    let compiler = GKRCompiler::default();
+    let compiled = compiler.compile_family_circuit(
+        cs_output,
+        max_bytecode_size_in_words,
+        0,
+        trace_len_log2,
+        false,
+    );
+
+    compiled
+}
+
+pub fn compile_delegation_circuit_into_gkr<F: PrimeField>(
+    table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
+    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
+    trace_len_log2: usize,
+) -> GKRCircuitArtifact<F> {
+    use crate::cs::circuit_impl::BasicAssembly;
+    use crate::cs::circuit_trait::Circuit;
+    use crate::gkr_compiler::GKRCompiler;
+
+    let mut cs = BasicAssembly::<F>::new();
+    (table_addition_fn)(&mut cs);
+    (circuit_fn)(&mut cs);
+
+    let (cs_output, _) = cs.finalize();
+
+    let compiler = GKRCompiler::default();
+    let compiled = compiler.compile_delegation_circuit(cs_output, trace_len_log2, true);
+
+    compiled
+}
+
+pub fn compile_delegation_circuit_into_gkr_without_caches<F: PrimeField>(
+    table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
+    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
+    trace_len_log2: usize,
+) -> GKRCircuitArtifact<F> {
+    use crate::cs::circuit_impl::BasicAssembly;
+    use crate::cs::circuit_trait::Circuit;
+    use crate::gkr_compiler::GKRCompiler;
+
+    let mut cs = BasicAssembly::<F>::new();
+    (table_addition_fn)(&mut cs);
+    (circuit_fn)(&mut cs);
+
+    let (cs_output, _) = cs.finalize();
+
+    let compiler = GKRCompiler::default();
+    let compiled = compiler.compile_delegation_circuit(cs_output, trace_len_log2, false);
+
+    compiled
+}
+
+use crate::witness_placer::graph_description::WitnessGraphCreator;
+
+pub fn dump_wintess_graph<F: PrimeField>(
+    table_addition_fn: &dyn Fn(
+        &mut crate::cs::circuit_impl::BasicAssembly<F, WitnessGraphCreator<F>>,
+    ) -> (),
+    circuit_fn: &dyn Fn(
+        &mut crate::cs::circuit_impl::BasicAssembly<F, WitnessGraphCreator<F>>,
+    ) -> (),
+) -> WitnessGraphCreator<F> {
+    use crate::cs::circuit_impl::BasicAssembly;
+    use crate::cs::circuit_trait::Circuit;
+
+    let mut cs = BasicAssembly::<F, WitnessGraphCreator<F>>::new();
+    cs.witness_placer = Some(WitnessGraphCreator::<F>::new());
+    (table_addition_fn)(&mut cs);
+    (circuit_fn)(&mut cs);
+
+    let (artifact, mut witness_placer) = cs.finalize();
+    if let Some(witness_placer) = witness_placer.as_mut() {
+        witness_placer.variable_names = artifact.variable_names.clone();
+    }
+
+    witness_placer.unwrap()
+}
+
+pub fn dump_ssa_witness_eval_form<F: PrimeField>(
+    table_addition_fn: &dyn Fn(
+        &mut crate::cs::circuit_impl::BasicAssembly<F, WitnessGraphCreator<F>>,
+    ) -> (),
+    circuit_fn: &dyn Fn(
+        &mut crate::cs::circuit_impl::BasicAssembly<F, WitnessGraphCreator<F>>,
+    ) -> (),
+) -> Vec<Vec<crate::witness_placer::graph_description::RawExpression<F>>> {
+    let graph = dump_wintess_graph(table_addition_fn, circuit_fn);
+    let (_resolution_order, ssa_forms) = graph.compute_resolution_order();
+    ssa_forms
 }

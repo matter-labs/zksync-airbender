@@ -11,7 +11,7 @@ categories.workspace = true
 
 [dependencies]
 unroll.workspace = true
-common_constants.workspace = true
+common_constants = { workspace = true }
 
 [dev-dependencies]
 blake2 = "*"
@@ -23,5 +23,8 @@ harness = false
 
 [features]
 blake2_with_compression = []
-
+blake2_g_function = []
+verifier_stats = ["common_constants/verifier_stats"]
+mop_extension = []
+special_opcodes_extension = []
 default = []

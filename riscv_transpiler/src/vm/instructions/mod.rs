@@ -1,16 +1,10 @@
 use super::*;
 
-pub mod add_sub;
-pub mod binary;
-pub mod branch;
-pub mod jal_jalr;
-pub mod lui_auipc;
+pub mod add_sub_family;
+pub mod binary_shifts_family;
+pub mod jump_branch_slt_family;
 pub mod memory;
-pub mod mop;
 pub mod mul_div;
-pub mod shifts;
-pub mod slt;
-pub mod zicsr;
 
 #[inline(always)]
 pub(crate) fn touch_x0<C: Counters, const TIMESTAMP_OFFSET: TimestampScalar>(state: &mut State<C>) {
@@ -31,6 +25,24 @@ pub(crate) fn read_register<C: Counters, const TIMESTAMP_OFFSET: TimestampScalar
         debug_assert!(reg.timestamp < (state.timestamp | TIMESTAMP_OFFSET));
         reg.timestamp = state.timestamp | TIMESTAMP_OFFSET;
         reg.value
+    }
+}
+
+#[inline(always)]
+pub(crate) fn write_register_for_pure_opcode<
+    C: Counters,
+    const TIMESTAMP_OFFSET: TimestampScalar,
+>(
+    state: &mut State<C>,
+    reg_idx: u8,
+    value: u32,
+) {
+    debug_assert_ne!(reg_idx, 0);
+    unsafe {
+        let reg = state.registers.get_unchecked_mut(reg_idx as usize);
+        debug_assert!(reg.timestamp < (state.timestamp | TIMESTAMP_OFFSET));
+        reg.timestamp = state.timestamp | TIMESTAMP_OFFSET;
+        reg.value = value;
     }
 }
 
@@ -62,21 +74,30 @@ pub(crate) fn increment_family_counter<C: Counters, const FAMILY: u8>(state: &mu
 }
 
 #[inline(always)]
-pub(crate) fn increment_family_counter_by<C: Counters, const FAMILY: u8>(
+pub(crate) fn illegal<C: Counters, S: Snapshotter<C>, R: RAM>(
     state: &mut State<C>,
-    by: usize,
+    _ram: &mut R,
+    _snapshotter: &mut S,
+    _instr: Instruction,
 ) {
-    state
-        .counters
-        .log_multiple_circuit_family_calls::<FAMILY>(by);
+    panic!("Illegal instruction encounteted at PC = 0x{:08x}", state.pc);
 }
 
 #[inline(always)]
-pub(crate) fn illegal<C: Counters, S: Snapshotter<C>, R: RAM>(
+pub(crate) fn marker<C: Counters, S: Snapshotter<C>, R: RAM, E: ExecutionObserver<C>>(
     state: &mut State<C>,
-    ram: &mut R,
-    snapshotter: &mut S,
+    _ram: &mut R,
+    _snapshotter: &mut S,
     instr: Instruction,
 ) {
-    panic!("Illegal instruction encounteted at PC = 0x{:08x}", state.pc);
+    let _rs1_value = read_register::<C, 0>(state, instr.rs1);
+    touch_x0::<C, 1>(state);
+    write_register_for_pure_opcode::<C, 2>(state, instr.rd, 0);
+
+    // Emit the observation before the instruction advances the cycle-family
+    // counters or the outer execution loop bumps the timestamp.
+    E::on_marker(state);
+
+    default_increase_pc::<C>(state);
+    // NOTE: it's only for tests, so we do not touch any instruction counter
 }

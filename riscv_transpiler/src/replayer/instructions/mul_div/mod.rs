@@ -3,14 +3,14 @@ use super::*;
 #[inline(always)]
 pub(crate) fn mul<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
     let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
-    let mut rd = (rs1_value as i32).wrapping_mul(rs2_value as i32) as u32;
-    let (rd_old_value, rd_ts) = write_register_with_ts::<C, 2>(state, instr.rd, &mut rd);
+    let rd = (rs1_value as i32).wrapping_mul(rs2_value as i32) as u32;
+    let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
 
     if tracer.needs_tracing_data_for_circuit_family::<MUL_DIV_CIRCUIT_FAMILY_IDX>() {
         let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
@@ -36,14 +36,14 @@ pub(crate) fn mul<C: Counters, R: RAM>(
 #[inline(always)]
 pub(crate) fn mulhu<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
     let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
-    let mut rd = rs1_value.widening_mul(rs2_value).1;
-    let (rd_old_value, rd_ts) = write_register_with_ts::<C, 2>(state, instr.rd, &mut rd);
+    let rd = rs1_value.carrying_mul(rs2_value, 0u32).1;
+    let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
 
     if tracer.needs_tracing_data_for_circuit_family::<MUL_DIV_CIRCUIT_FAMILY_IDX>() {
         let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
@@ -69,18 +69,18 @@ pub(crate) fn mulhu<C: Counters, R: RAM>(
 #[inline(always)]
 pub(crate) fn divu<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
     let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
-    let mut rd = if rs2_value == 0 {
+    let rd = if rs2_value == 0 {
         0xffffffff
     } else {
         rs1_value / rs2_value
     };
-    let (rd_old_value, rd_ts) = write_register_with_ts::<C, 2>(state, instr.rd, &mut rd);
+    let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
 
     if tracer.needs_tracing_data_for_circuit_family::<MUL_DIV_CIRCUIT_FAMILY_IDX>() {
         let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
@@ -106,18 +106,18 @@ pub(crate) fn divu<C: Counters, R: RAM>(
 #[inline(always)]
 pub(crate) fn remu<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
     let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
-    let mut rd = if rs2_value == 0 {
+    let rd = if rs2_value == 0 {
         rs1_value
     } else {
         rs1_value % rs2_value
     };
-    let (rd_old_value, rd_ts) = write_register_with_ts::<C, 2>(state, instr.rd, &mut rd);
+    let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
 
     if tracer.needs_tracing_data_for_circuit_family::<MUL_DIV_CIRCUIT_FAMILY_IDX>() {
         let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {

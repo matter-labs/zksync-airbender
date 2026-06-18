@@ -111,7 +111,7 @@ fn test_batched_kernels() {
     // Compute combined claim
     let prev_challenges: Vec<E> = random_poly_in_ext::<F, E>(FOLDING_STEPS);
     let folding_challenges_precomputed: Vec<E> = random_poly_in_ext::<F, E>(FOLDING_STEPS);
-    let eq_precomputed = make_eq_poly_in_full::<E>(&prev_challenges);
+    let eq_precomputed = make_eq_poly_in_full_serial::<E>(&prev_challenges);
     let eq_last = eq_precomputed.last().unwrap();
 
     let output_polys = [&copy_output, &product_output, &lookup_num, &lookup_den];
@@ -128,7 +128,7 @@ fn test_batched_kernels() {
     let worker = Worker::new_with_num_threads(1);
     let mut claim = combined_claim;
     let mut folding_challenges = vec![];
-    let eq_reduced = make_eq_poly_reduced::<E>(&prev_challenges);
+    let eq_reduced = make_eq_poly_reduced::<E>(&prev_challenges, &worker);
     let mut last_evaluations = BTreeMap::new();
     let mut eq_prefactor = E::ONE;
 
@@ -180,6 +180,7 @@ fn test_batched_kernels() {
             let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
                 &accumulator,
                 eq,
+                &worker,
             );
 
             let mut normalized = claim;
@@ -218,6 +219,7 @@ fn test_batched_kernels() {
             // Verify final evaluations
             let eq_for_evals = make_eq_poly_in_full::<E>(
                 &[&folding_challenges[..], &[folding_challenge]].concat(),
+                &worker,
             );
             let eq_eval_last = eq_for_evals.last().unwrap();
             let input_polys: Vec<(GKRAddress, &[E])> = vec![

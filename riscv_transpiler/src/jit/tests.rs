@@ -1,14 +1,92 @@
-use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+use crate::abstractions::non_determinism::QuasiUARTSource;
 
 use super::*;
+use crate::ir::{
+    simple_instruction_set::{preprocess_bytecode, Instruction},
+    FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
+};
 use crate::{
     jit::minimal_tracer::{ChunkPostSnapshot, PreallocatedSnapshots},
     replayer::ReplayerVM,
     vm::test::*,
 };
+use field::Mersenne31Field;
 use std::{alloc::Global, io::Read, path::Path};
 
+#[cfg(test)]
+use test_utils::skip_if_ci;
+
+fn assemble_single_instruction(instruction: &str) -> u32 {
+    let mut labels = std::collections::HashMap::new();
+    lib_rv32_asm::assemble_ir(instruction, &mut labels, 0)
+        .expect("single-instruction assembly should succeed")
+        .expect("single-instruction assembly should emit one opcode")
+}
+
+fn run_jit_program(program: &[u32]) {
+    JittedCode::<_>::run_alternative_simulator(program, &mut (), &[], None);
+}
+
+/// Assert that a JIT-triggered runtime panic occurs by re-running the current
+/// test in a subprocess.
+///
+/// We can not use `#[should_panic]` or `catch_unwind` here because the panic is
+/// raised from an `extern "sysv64"` callback reached from JIT-generated code.
+/// Rust treats that path as non-unwinding, so the process aborts instead of
+/// producing a catchable unwind.
+fn assert_jit_runtime_panic(test_name: &str, fixture_env_var: &str, instruction: &str) {
+    let output = std::process::Command::new(
+        std::env::current_exe().expect("test binary path should be available"),
+    )
+    .env(fixture_env_var, instruction)
+    .arg("--exact")
+    .arg(test_name)
+    .arg("--nocapture")
+    .output()
+    .expect("subprocess should launch");
+
+    assert!(
+        !output.status.success(),
+        "expected subprocess for `{instruction}` to abort, but it exited successfully",
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined_output = format!("{stdout}\n{stderr}");
+    assert!(
+        combined_output.contains("Runtime explicitly panicked"),
+        "expected runtime panic output for `{instruction}`, got:\n{combined_output}",
+    );
+}
+
 #[test]
+#[serial_test::serial]
+fn test_jit_unsupported_instructions_trap_at_runtime() {
+    let fixture_env_var = "RISCV_TRANSPILER_UNSUPPORTED_INSTRUCTION_FIXTURE";
+    let unsupported_instructions = [
+        "mulhsu x0, x1, x2",
+        "div x0, x1, x2",
+        "rem x0, x1, x2",
+        "ecall",
+        "ebreak",
+        "fence",
+    ];
+
+    if let Ok(instruction) = std::env::var(fixture_env_var) {
+        run_jit_program(&[assemble_single_instruction(&instruction)]);
+    } else {
+        for instruction in unsupported_instructions {
+            assert_jit_runtime_panic(
+                "jit::tests::test_jit_unsupported_instructions_trap_at_runtime",
+                fixture_env_var,
+                instruction,
+            );
+        }
+    }
+}
+
+#[test]
+#[serial_test::serial]
 fn test_jit_simple_fibonacci() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
@@ -26,6 +104,7 @@ fn test_jit_simple_fibonacci() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_jit_recursive_verifier() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
@@ -40,21 +119,20 @@ fn test_jit_recursive_verifier() {
     let mut responses = std::fs::File::open("examples/recursive_verifier/responses.bin").unwrap();
     let mut buff = vec![];
     responses.read_to_end(&mut buff).unwrap();
-    let resposnes: Vec<u32> = buff
+    let responses: Vec<u32> = buff
         .as_chunks::<4>()
         .0
         .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
-    let mut source = QuasiUARTSource::new_with_reads(resposnes);
+    let mut source = QuasiUARTSource::new_with_reads(responses);
 
     JittedCode::<_>::run_alternative_simulator(&text, &mut source, &binary, None);
 }
 
 #[test]
+#[serial_test::serial]
 fn test_ensure_proof_correctness() {
-    use crate::ir::*;
-
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
@@ -68,15 +146,16 @@ fn test_ensure_proof_correctness() {
     let mut responses = std::fs::File::open("examples/recursive_verifier/responses.bin").unwrap();
     let mut buff = vec![];
     responses.read_to_end(&mut buff).unwrap();
-    let resposnes: Vec<u32> = buff
+    let responses: Vec<u32> = buff
         .as_chunks::<4>()
         .0
         .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
-    let mut source = QuasiUARTSource::new_with_reads(resposnes);
+    let mut source = QuasiUARTSource::new_with_reads(responses);
 
-    let instructions: Vec<Instruction> = preprocess_bytecode::<ReducedMachineDecoderConfig>(&text);
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text);
     let tape = SimpleTape::new(&instructions);
     let mut ram =
         RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
@@ -88,8 +167,8 @@ fn test_ensure_proof_correctness() {
 
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
 
-    let now = std::time::Instant::now();
-    VM::run_basic_unrolled::<_, _, _>(
+    let _now = std::time::Instant::now();
+    VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
         &mut state,
         &mut ram,
         &mut (),
@@ -100,6 +179,7 @@ fn test_ensure_proof_correctness() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_few_instr() {
     use std::collections::HashMap;
 
@@ -137,6 +217,7 @@ fn test_few_instr() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_jit_full_block() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
@@ -169,10 +250,8 @@ fn run_reference_for_num_cycles(
     State<DelegationsAndFamiliesCounters>,
     RamWithRomRegion<{ common_constants::rom::ROM_SECOND_WORD_BITS }>,
 ) {
-    use crate::ir::*;
-
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(text);
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(text);
     let tape = SimpleTape::new(&instructions);
     let mut ram =
         RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
@@ -182,7 +261,7 @@ fn run_reference_for_num_cycles(
 
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
 
-    VM::run_by_timestamp_bound::<_, _, _>(
+    VM::<DelegationsAndFamiliesCounters>::run_by_timestamp_bound::<_, _, _, Mersenne31Field>(
         &mut state,
         &mut ram,
         &mut (),
@@ -208,12 +287,10 @@ fn run_reference_for_num_cycles_with_snapshots(
         { common_constants::rom::ROM_SECOND_WORD_BITS },
     >,
 ) {
-    use crate::ir::*;
-
     let instructions = if reduced_isa {
-        preprocess_bytecode::<ReducedMachineDecoderConfig>(text)
+        preprocess_bytecode::<ReducedMachineDecoderConfig, true>(text)
     } else {
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(text)
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(text)
     };
     let tape = SimpleTape::new(&instructions);
     let mut ram =
@@ -225,7 +302,7 @@ fn run_reference_for_num_cycles_with_snapshots(
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
     let mut snapshotter = SimpleSnapshotter::<_, {common_constants::rom::ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(1 << 31, state);
 
-    VM::run_by_timestamp_bound::<_, _, _>(
+    VM::<DelegationsAndFamiliesCounters>::run_by_timestamp_bound::<_, _, _, Mersenne31Field>(
         &mut state,
         &mut ram,
         &mut snapshotter,
@@ -239,9 +316,8 @@ fn run_reference_for_num_cycles_with_snapshots(
 }
 
 #[test]
+#[serial_test::serial]
 fn test_reference_block_exec() {
-    use crate::ir::*;
-
     let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
     let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
 
@@ -256,7 +332,7 @@ fn test_reference_block_exec() {
     let mut source = QuasiUARTSource::new_with_reads(witness);
 
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text);
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
     let tape = SimpleTape::new(&instructions);
     let mut ram =
         RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
@@ -270,7 +346,7 @@ fn test_reference_block_exec() {
     let mut snapshotter = SimpleSnapshotter::<_, { common_constants::rom::ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(cycles_bound, state);
 
     let now = std::time::Instant::now();
-    VM::run_basic_unrolled::<_, _, _>(
+    VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
         &mut state,
         &mut ram,
         &mut snapshotter,
@@ -285,6 +361,7 @@ fn test_reference_block_exec() {
 }
 
 #[test]
+#[serial_test::serial]
 fn run_and_compare() {
     let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
     let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
@@ -355,39 +432,39 @@ fn run_and_compare() {
         // println!("Final instr = 0x{:08x}", text[(reference_state.pc as usize/4) - 1]);
 
         assert_eq!(
-            reference_state.counters.add_sub_family as u32,
+            reference_state.counters.add_sub_family as u64,
             jit_state.counters[CounterType::AddSubLui as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.slt_branch_family as u32,
+            reference_state.counters.slt_branch_family as u64,
             jit_state.counters[CounterType::BranchSlt as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.binary_shift_csr_family as u32,
+            reference_state.counters.binary_shift_family as u64,
             jit_state.counters[CounterType::ShiftBinaryCsr as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.mul_div_family as u32,
+            reference_state.counters.mul_div_family as u64,
             jit_state.counters[CounterType::MulDiv as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.word_size_mem_family as u32,
+            reference_state.counters.word_size_mem_family as u64,
             jit_state.counters[CounterType::MemWord as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.subword_size_mem_family as u32,
+            reference_state.counters.subword_size_mem_family as u64,
             jit_state.counters[CounterType::MemSubword as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.blake_calls as u32,
+            reference_state.counters.blake_calls as u64,
             jit_state.counters[CounterType::BlakeDelegation as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.bigint_calls as u32,
+            reference_state.counters.bigint_calls as u64,
             jit_state.counters[CounterType::BigintDelegation as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.keccak_calls as u32,
+            reference_state.counters.keccak_calls as u64,
             jit_state.counters[CounterType::KeccakDelegation as u8 as usize]
         );
 
@@ -490,8 +567,12 @@ fn run_and_compare() {
     }
 }
 
+#[cfg(test)]
+#[ignore = "long-running manual consistency test"]
 #[test]
+#[serial_test::serial]
 fn run_recursion_and_compare() {
+    skip_if_ci!();
     let (_, binary) = read_binary(&Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.bin",
     ));
@@ -502,13 +583,13 @@ fn run_recursion_and_compare() {
     let mut responses = std::fs::File::open("examples/recursive_verifier/responses.bin").unwrap();
     let mut buff = vec![];
     responses.read_to_end(&mut buff).unwrap();
-    let resposnes: Vec<u32> = buff
+    let responses: Vec<u32> = buff
         .as_chunks::<4>()
         .0
         .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
-    let mut source = QuasiUARTSource::new_with_reads(resposnes);
+    let mut source = QuasiUARTSource::new_with_reads(responses);
 
     let step = 1 << 16;
     let initial_step = 836694;
@@ -566,39 +647,39 @@ fn run_recursion_and_compare() {
         // println!("Final instr = 0x{:08x}", text[(reference_state.pc as usize/4) - 1]);
 
         assert_eq!(
-            reference_state.counters.add_sub_family as u32,
+            reference_state.counters.add_sub_family as u64,
             jit_state.counters[CounterType::AddSubLui as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.slt_branch_family as u32,
+            reference_state.counters.slt_branch_family as u64,
             jit_state.counters[CounterType::BranchSlt as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.binary_shift_csr_family as u32,
+            reference_state.counters.binary_shift_family as u64,
             jit_state.counters[CounterType::ShiftBinaryCsr as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.mul_div_family as u32,
+            reference_state.counters.mul_div_family as u64,
             jit_state.counters[CounterType::MulDiv as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.word_size_mem_family as u32,
+            reference_state.counters.word_size_mem_family as u64,
             jit_state.counters[CounterType::MemWord as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.subword_size_mem_family as u32,
+            reference_state.counters.subword_size_mem_family as u64,
             jit_state.counters[CounterType::MemSubword as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.blake_calls as u32,
+            reference_state.counters.blake_calls as u64,
             jit_state.counters[CounterType::BlakeDelegation as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.bigint_calls as u32,
+            reference_state.counters.bigint_calls as u64,
             jit_state.counters[CounterType::BigintDelegation as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.keccak_calls as u32,
+            reference_state.counters.keccak_calls as u64,
             jit_state.counters[CounterType::KeccakDelegation as u8 as usize]
         );
 
@@ -707,8 +788,12 @@ fn run_recursion_and_compare() {
     }
 }
 
+#[cfg(test)]
+#[ignore = "manual profiling smoke test"]
 #[test]
+#[serial_test::serial]
 fn test_perf_with_trace_keeping() {
+    skip_if_ci!();
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
@@ -744,8 +829,8 @@ fn test_perf_with_trace_keeping() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_replayer_over_jit() {
-    use crate::ir::*;
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
@@ -774,7 +859,7 @@ fn test_replayer_over_jit() {
     };
 
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text);
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
     let tape = SimpleTape::new(&instructions);
 
     println!("Running");
@@ -798,7 +883,7 @@ fn test_replayer_over_jit() {
         let mut state = jit_state.as_replayer_state();
         let final_timestamp = state_with_counters.timestamp;
 
-        let _ = ReplayerVM::replay_by_timestamp_bound(
+        let _ = ReplayerVM::replay_by_timestamp_bound::<_, _, Mersenne31Field>(
             &mut state,
             &mut replaying_ram,
             &tape,

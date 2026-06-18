@@ -1,27 +1,7 @@
 #![no_std]
-#![allow(incomplete_features)]
-#![feature(allocator_api)]
-#![feature(generic_const_exprs)]
 #![no_main]
 
 use riscv_common::{csr_read_word, zksync_os_finish_success};
-
-extern "C" {
-    // Boundaries of the heap
-    static mut _sheap: usize;
-    static mut _eheap: usize;
-
-    // Boundaries of the stack
-    static mut _sstack: usize;
-    static mut _estack: usize;
-
-    // Boundaries of the data region - to init .data section. Yet unused
-    static mut _sdata: usize;
-    static mut _edata: usize;
-    static mut _sidata: usize;
-}
-
-core::arch::global_asm!(include_str!("../../scripts/asm/asm_reduced.S"));
 
 #[no_mangle]
 extern "C" fn eh_personality() {}
@@ -32,86 +12,7 @@ unsafe extern "C" fn start_rust() -> ! {
     main()
 }
 
-#[export_name = "_setup_interrupts"]
-pub unsafe fn custom_setup_interrupts() {
-    extern "C" {
-        fn _machine_start_trap();
-    }
-
-    // xtvec::write(_machine_start_trap as *const () as usize, xTrapMode::Direct);
-}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct MachineTrapFrame {
-    pub registers: [u32; 32],
-}
-
-/// Exception (trap) handler in rust.
-/// Called from the asm/asm.S
-#[link_section = ".trap.rust"]
-#[export_name = "_machine_start_trap_rust"]
-pub extern "C" fn machine_start_trap_rust(_trap_frame: *mut MachineTrapFrame) -> usize {
-    {
-        unsafe { core::hint::unreachable_unchecked() }
-    }
-}
-
 const MODULUS: u32 = 1_000_000_000;
-
-// We have to be sure that the memory that we pass to the delegation is properly aligned.
-#[repr(align(65536))]
-struct Aligner;
-
-pub const CONFIGURED_IV: [u32; 8] = [
-    0x6A09E667 ^ 0x01010000 ^ 32,
-    0xBB67AE85,
-    0x3C6EF372,
-    0xA54FF53A,
-    0x510E527F,
-    0x9B05688C,
-    0x1F83D9AB,
-    0x5BE0CD19,
-];
-
-// Blake magic.
-pub const EXTENDED_IV: [u32; 16] = [
-    0x6A09E667 ^ 0x01010000 ^ 32,
-    0xBB67AE85,
-    0x3C6EF372,
-    0xA54FF53A,
-    0x510E527F,
-    0x9B05688C,
-    0x1F83D9AB,
-    0x5BE0CD19,
-    0x6A09E667,
-    0xBB67AE85,
-    0x3C6EF372,
-    0xA54FF53A,
-    0x510E527F,
-    0x9B05688C,
-    0x1F83D9AB,
-    0x5BE0CD19,
-];
-
-#[repr(align(64))]
-struct SmallAligner;
-
-#[repr(C)]
-struct AlignedArray64<T, const N: usize> {
-    _aligner: SmallAligner,
-    pub data: [T; N],
-}
-
-#[repr(C)]
-struct BlakeState {
-    pub _aligner: Aligner,
-    pub state: [u32; 8],
-    pub ext_state: [u32; 16],
-    pub input_buffer: AlignedArray64<u32, 16>,
-    pub round_bitmask: u32,
-    pub t: u32, // we limit ourselves to <4Gb inputs
-}
 
 unsafe fn workload() -> ! {
     // Read the n number from the input.
@@ -128,92 +29,16 @@ unsafe fn workload() -> ! {
 
     let mut hashed_b = b;
 
+    let mut hasher = blake2s_u32::DelegatedBlake2sState::new();
+
     for _i in 0..h {
-        let mut state = BlakeState {
-            _aligner: Aligner,
-            // The order here is extremely important - as it has to match
-            // the expected 'ABI' of the delegation circuit.
-            // When we later call the csr_trigger_delegation, it will look at all the fields
-            // below.
-            state: CONFIGURED_IV,
-            ext_state: EXTENDED_IV,
-            input_buffer: AlignedArray64{
-                _aligner: SmallAligner,
-                data: [0u32; 16],
-            },
-            round_bitmask: 0,
-            t: 0,
-        };
+        let last_round = _i == h - 1;
+        hasher.input_buffer.fill(0);
+        hasher.input_buffer[0] = hashed_b;
 
-        // let's hash the n-th fibonacci number.
-        // The size will be u32 - so 4 bytes.
-        state.t = 4u32;
+        hasher.run_round_function::<false>(1, last_round);
 
-        // our data - no alignment requirements
-        let mut input_buffer = AlignedArray64{
-            _aligner: SmallAligner,
-            data: [0u32; 16],
-        };
-        input_buffer.data[0] = hashed_b;
-
-        const NORMAL_MODE_FULL_ROUNDS_CONTROL_REGISTER: u32 = 0b000;
-        const NORMAL_MODE_REDUCED_ROUNDS_CONTROL_REGISTER: u32 = 0b001;
-        const BLAKE2S_NUM_CONTROL_BITS: u32 = 3;
-
-        // This is some Blake initialization magic.
-        state.ext_state[12] = state.t ^ EXTENDED_IV[12];
-        state.ext_state[14] = 0xffffffff ^ EXTENDED_IV[14];
-
-        // Now we have to call the 'precompile' - blake requires us to actually call it 10 times.
-        let control_bitmask = (NORMAL_MODE_FULL_ROUNDS_CONTROL_REGISTER
-                    | (1 << BLAKE2S_NUM_CONTROL_BITS))
-                    << 16;
-        // We are passing the pointer to the state, but the code inside is actually reading
-        // other fields from the BlakeState too (including input_buffer and round bitmask).
-        // That's why we're in the 'unsafe' block.
-        common_constants::blake_csr_trigger_delegation_full_rounds(
-            ((&mut state) as *mut BlakeState).cast::<u32>(),
-            input_buffer.data.as_ptr(),
-            control_bitmask
-        );
-
-        hashed_b = state.state[0];
-    }
-
-    {
-        // meaningless test of compression mode
-
-        let mut state = BlakeState {
-            _aligner: Aligner,
-            // The order here is extremely important - as it has to match
-            // the expected 'ABI' of the delegation circuit.
-            // When we later call the csr_trigger_delegation, it will look at all the fields
-            // below.
-            state: CONFIGURED_IV,
-            ext_state: EXTENDED_IV,
-            input_buffer: AlignedArray64{
-                _aligner: SmallAligner,
-                data: [0u32; 16],
-            },
-            round_bitmask: 0,
-            t: 0,
-        };
-
-        const COMPRESSION_MODE_FULL_ROUNDS_CONTROL_REGISTER: u32 = 0b100;
-        const BLAKE2S_NUM_CONTROL_BITS: u32 = 3;
-
-        let control_bitmask = (COMPRESSION_MODE_FULL_ROUNDS_CONTROL_REGISTER
-            | (1 << BLAKE2S_NUM_CONTROL_BITS))
-            << 16;
-        // We are passing the pointer to the state, but the code inside is actually reading
-        // other fields from the BlakeState too (including input_buffer and round bitmask).
-        // That's why we're in the 'unsafe' block.
-        common_constants::blake_csr_trigger_delegation_full_rounds(
-            ((&mut state) as *mut BlakeState).cast::<u32>(),
-            state.input_buffer.data.as_ptr(),
-            control_bitmask
-        );
-
+        hashed_b = hasher.read_state_for_output_ref()[0];
     }
 
     // If you want to verify the blake correctness, you have to remember about little endianness here.
@@ -232,5 +57,6 @@ unsafe fn workload() -> ! {
 
 #[inline(never)]
 fn main() -> ! {
+    riscv_common::boot_sequence::init();
     unsafe { workload() }
 }

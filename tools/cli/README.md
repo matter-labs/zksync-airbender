@@ -1,117 +1,160 @@
-# CLI tool
+# CLI Tool
 
-With this CLI you can run riscV code, generate the proofs and verify them.
+`cli` generates and verifies program proof artifacts, and runs binaries through the transpiler VM.
 
-TL;DR:
+## Build
 
-The command below, will run basic proving + recursion + final proofs, until a single FRI (warning: it requires 128GB of RAM).
+Default build (`security_80`, verification included):
 
-```
-cargo run --release -- prove --bin YOUR_BINARY --input-file YOUR_INPUTS --output-dir /tmp/output --until final-proof
-```
-
-## Other options
-
-You can also:
-* just run your program
-* create a single (basic proof)
-* create a proof until recursion (then 128GB of RAM are not needed)
-* verify proofs
-* create a SNARK (WIP)
-
-## Running riscV binary.
-
-You can run the riscV binary on the emulator, to see the expected outputs and number of used cycles.
-
-```
-cargo run  run  --bin ../../examples/basic_fibonacci/app.bin 
+```bash
+cargo build -p cli
 ```
 
-By default it will run for up to 1_000_000 cycles, but you can specify `--cycles` to set number of cycles manually.
+Build with `security_100`:
 
-### Options
-
-**machine** - most of the computation can be done on the 'standard' machine. But for some heavily optimized computations (like verifications), we have a 'mini' machine, that supports a subset of the operations (and some special ones too). You can control it via `--machine=mini` flag. Such bytecodes will be compiled with +zimop flag.
-
-
-## Basic proof generation
-To generate the proof, simply run the command below. It will run your binary, and put the FRI files into the outputs/ dir.
-
-
-```
-cargo run --release prove  --bin ../../examples/basic_fibonacci/app.bin --output_dir output/
+```bash
+cargo build -p cli --no-default-features --features security_100
 ```
 
-where the .bin file is the riscV compiled file. You can see more instructions on how to create such file in the basic_fibonacci dir.
+Build with GPU proving support:
 
-**Compilation times** - you might want to use `--profile cli` to minimise the compilation time, as --release might take a long time to compile the veirfication code, and --dev might be generating a proof for a really long time.
-
-### Proofs
-You will get one or more proofs as the result - depending on the length of your program (proofs in format `proof_XX.json`) and the amount of delegations (precompiles) that you used (proofs in format `delegation_PRECOMPILE-ID_XX.json`)
-
-
-## Proof verification
-You can verify a single FRI proof, by running:
-
-```
-cargo run verify --proof output/proof_0.json
+```bash
+cargo build -p cli --features gpu
 ```
 
-You can verify all the proofs that your program generated, by running:
+## Commands
 
-```
-cargo run verify-all --metadata output/metadata.json
-```
+- `prove`
+- `prove-batch`
+- `continue-proof`
+- `verify`
+- `run`
 
-This will verify all the basic proofs, and also verify that the final results (data stored in the registers) is valid.
+## Program Input Files
 
-## Proof verification from ProgramProof
+- `--bin <path>` is required for `prove` and `run`.
+- `--text <path>` is optional. If omitted, `.text` is derived from `--bin`.
 
-You can also verify the JSON with ProgramProof (that has all the proofs inlined inside JSON).
+## Prove
 
-Just run:
-```
-cli verify-all --program-proof /data/1.json
-```
+Base layer proof on CPU:
 
-## Passing inputs to the program
-
-Most of the programs will have to read data (via CRS register a.k.a oracle).
-The CLI handles it via `--input-file` flag, where you can pass the location of the input file (in hex text format).
-
-For example, you can use it with `dynamic fibonacci` to compute (and later prove) the n-th fibonacci number.
-
-```
-cargo run run --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input.txt
+```bash
+cargo run --release -p cli -- prove \
+  --bin examples/basic_fibonacci/app.bin \
+  --target base \
+  --backend cpu \
+  --output-dir output \
+  --output-file proof.json
 ```
 
-You can also fetch the data directly from the sequencer (for example anvil-zksync), by passing the RPC url and batch number:
+Recursion-unified proof on CPU (`recursion-unified` is the default target):
 
-```
-cargo run  -- run --bin /home/cyfra/matter/zksync-os/zksync_os/app.bin --input-rpc http://localhost:8011 --input-batch 1
-```
-
-## Verification keys
-
-When you receive the proof, you should also check that it is proving the execution of **your** program. This is done via verification key.
-
-You can run:
-
-```
-cargo run generate-vk --bin ../../examples/dynamic_fibonacci/app.bin
+```bash
+cargo run --release -p cli -- prove \
+  --bin examples/basic_fibonacci/app.bin \
+  --backend cpu \
+  --output-dir output \
+  --output-file proof.json
 ```
 
-To see the verification key for your binary, and then you can compare it with the one that is printed during proof verification.
+Base layer proof on GPU:
 
-**WARNING** verification key depends on multiple factors: your binary, riscV circuit and delegation circuits. Any change to those, and the verification key will change.
+```bash
+cargo run --release -p cli --features gpu -- prove \
+  --bin examples/basic_fibonacci/app.bin \
+  --target base \
+  --backend gpu \
+  --output-dir output \
+  --output-file proof.json
+```
 
-## Recursion
+## Verify
 
-You can use the '--until' flag in the 'prove' command to have the system run it for you automatically.
+```bash
+cargo run --release -p cli -- \
+  verify \
+  --proof output/proof.json \
+  --bin examples/basic_fibonacci/app.bin
+```
 
-* `--until final-recursion` -- will do recursion, using delegations, requires less ram, but the final result might contain multiple files
-* `--until final-proof` - will do recursion, until a single file is left (requires 128GB of RAM)
-* `--until snark` - will create a SNARK proof - still WIP
+Verification checks:
 
-Please see recursion.sh file in the main repo, if you want to do recursion manually.
+- security level compatibility (`artifact.security_level` vs build features),
+- program hash binding (`program_bin_keccak`, `program_text_keccak`),
+- recursion chain hash consistency (for recursion targets),
+- proof validity in the selected layer.
 
+## Continue Proof
+
+Use staged proving when you want to keep the base proof artifact, validate it,
+and only then continue into recursion:
+
+```bash
+cargo run --release -p cli -- prove \
+  --bin examples/basic_fibonacci/app.bin \
+  --target base \
+  --output-dir output \
+  --output-file base.json
+
+cargo run --release -p cli -- verify \
+  --proof output/base.json \
+  --bin examples/basic_fibonacci/app.bin
+
+cargo run --release -p cli -- continue-proof \
+  --proof output/base.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --target recursion-unified \
+  --output-dir output \
+  --output-file recursion_unified.json
+
+cargo run --release -p cli -- verify \
+  --proof output/recursion_unified.json \
+  --bin examples/basic_fibonacci/app.bin
+```
+
+## Prove Batch
+
+```bash
+cargo run --release -p cli -- prove-batch \
+  --bin examples/basic_fibonacci/app.bin \
+  --input-file input/a.hex \
+  --input-file input/b.hex \
+  --input-type hex \
+  --output-dir output
+```
+
+## Run
+
+```bash
+cargo run --release -p cli -- run --bin examples/basic_fibonacci/app.bin --expected-results 144
+```
+
+`run` machine options:
+
+- `full-unsigned` (default)
+- `reduced`
+
+## Input Data
+
+`prove` and `run` support:
+
+- `--input-file <path>`
+- `--input-type hex|prover-input-json`
+- `--input-rpc <url>`
+
+## Proof Artifact Format
+
+`prove` writes a JSON artifact with:
+
+- `schema_version`
+- `security_level`
+- `target`
+- `backend`
+- `batch_id`
+- `cycles`
+- `program_bin_keccak`
+- `program_text_keccak`
+- `timings_ms`
+- `proof_counts`
+- `proof` (`UnrolledProgramProof`)

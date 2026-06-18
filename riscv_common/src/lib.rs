@@ -1,4 +1,9 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
+
+mod memcpy;
+
+#[cfg(test)]
+mod tests;
 
 #[cfg(all(target_arch = "riscv32", feature = "boot_sequence"))]
 pub mod boot_sequence;

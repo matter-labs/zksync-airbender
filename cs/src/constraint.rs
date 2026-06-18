@@ -1,8 +1,10 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
-use crate::cs::circuit::Circuit;
-use crate::definitions::*;
+use crate::cs::circuit_trait::Circuit;
+use crate::cs::utils::PreprocessedConstraintForEval;
 use crate::types::{Boolean, Num};
+use crate::witness_placer::{WitnessPlacer, WitnessTypeSet};
+use crate::{cs, definitions::*};
 use field::PrimeField;
 
 pub const TERM_INNER_CAPACITY: usize = 4;
@@ -334,6 +336,15 @@ pub struct Constraint<F: PrimeField> {
     pub terms: Vec<Term<F>>,
 }
 
+impl<F: PrimeField> std::fmt::Display for Constraint<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for term in self.terms.iter() {
+            write!(f, "{term}")?;
+        }
+        writeln!(f, "")
+    }
+}
+
 impl<F: PrimeField> From<Variable> for Constraint<F> {
     fn from(value: Variable) -> Self {
         let term = Term::<F>::from(value);
@@ -556,6 +567,18 @@ impl<F: PrimeField> Constraint<F> {
         }
     }
 
+    pub fn stable_variable_set(&self) -> BTreeSet<Variable> {
+        let mut tmp = HashSet::new();
+        self.dump_variables(&mut tmp);
+        let mut stable_set = BTreeSet::new();
+        for el in tmp.into_iter() {
+            assert!(el.is_placeholder() == false);
+            stable_set.insert(el);
+        }
+
+        stable_set
+    }
+
     pub fn express_variable(&self, variable: Variable) -> Self {
         assert!(self.contains_var(&variable));
         assert!(self.degree_for_var(&variable) == 1);
@@ -649,6 +672,13 @@ impl<F: PrimeField> Constraint<F> {
 
         Some(result)
     }
+
+    pub fn evaluate_with_placer<W: WitnessPlacer<F>>(&self, placer: &mut W) -> W::Field {
+        // cs::utils::collapse_max_quadratic_constraint_into
+        // cs::lookup_utils::peek_lookup_values_unconstrained_into_variables(cs, inputs, outputs, table);
+        let preprocessed_constraint = PreprocessedConstraintForEval::from_constraint(self.clone());
+        preprocessed_constraint.evaluate_with_placer(placer)
+    }
 }
 
 //CONSTRAINT -> CONSTRAINT OPS
@@ -686,6 +716,17 @@ impl<F: PrimeField> std::ops::Sub for Constraint<F> {
         //     ans.sub_assign(term);
         // });
         ans
+    }
+}
+
+impl<F: PrimeField> std::ops::SubAssign<Constraint<F>> for Constraint<F> {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.terms.extend(rhs.terms.into_iter().map(|mut el| {
+            el.scale(&F::MINUS_ONE);
+
+            el
+        }));
+        self.normalize();
     }
 }
 

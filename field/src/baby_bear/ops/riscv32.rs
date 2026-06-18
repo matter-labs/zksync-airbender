@@ -1,8 +1,10 @@
 // risc-v target specific implementation
 
+use common_constants::*;
+
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
 const fn reduce_with_division_ct(value: u32) -> u32 {
-    value % crate::baby_bear::BabyBearField::ORDER
+    value % crate::baby_bear::base::BabyBearField::ORDER
 }
 
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
@@ -21,10 +23,11 @@ fn add_mod_rt_riscv(a: u32, b: u32) -> u32 {
     let mut output;
     unsafe {
         core::arch::asm!(
-            "mop.rr.0 {rd}, {a}, {b}",
+            "mop.rr.{idx} {rd}, {a}, {b}",
             a = in(reg) a,
             b = in(reg) b,
             rd = lateout(reg) output,
+            idx = const MOP_ADD_MOD,
             options(nomem, nostack, preserves_flags)
         );
     }
@@ -40,7 +43,7 @@ pub(crate) const fn sub_mod(a: u32, b: u32) -> u32 {
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
 const fn sub_mod_ct(a: u32, b: u32) -> u32 {
     reduce_with_division_ct(
-        crate::baby_bear::BabyBearField::ORDER
+        crate::baby_bear::base::BabyBearField::ORDER
             .wrapping_add(a)
             .wrapping_sub(b),
     )
@@ -52,10 +55,11 @@ fn sub_mod_rt_riscv(a: u32, b: u32) -> u32 {
     let mut output;
     unsafe {
         core::arch::asm!(
-            "mop.rr.1 {rd}, {a}, {b}",
+            "mop.rr.{idx} {rd}, {a}, {b}",
             a = in(reg) a,
             b = in(reg) b,
             rd = lateout(reg) output,
+            idx = const MOP_SUB_MOD,
             options(nomem, nostack, preserves_flags)
         );
     }
@@ -71,10 +75,16 @@ pub(crate) const fn mul_mod(a: u32, b: u32) -> u32 {
 
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
 const fn mul_mod_ct(a: u32, b: u32) -> u32 {
-    let product = (a as u64) * (b as u64);
-    let product_low = (product as u32) & ((1 << 31) - 1);
-    let product_high = (product >> 31) as u32;
-    reduce_with_division_ct(product_low.wrapping_add(product_high))
+    use crate::baby_bear::base::BabyBearField;
+    let product = (a as u64).wrapping_mul(b as u64);
+    let m = (product as u32).wrapping_mul(BabyBearField::MONT_K);
+    let adjusted = product.wrapping_add((m as u64).wrapping_mul(BabyBearField::ORDER as u64));
+    let result = (adjusted >> 32) as u32;
+    if result >= BabyBearField::ORDER {
+        result - BabyBearField::ORDER
+    } else {
+        result
+    }
 }
 
 #[cfg(feature = "modular_ops")]
@@ -83,10 +93,11 @@ fn mul_mod_rt_riscv(a: u32, b: u32) -> u32 {
     let mut output;
     unsafe {
         core::arch::asm!(
-            "mop.rr.2 {rd}, {a}, {b}",
+            "mop.rr.{idx} {rd}, {a}, {b}",
             a = in(reg) a,
             b = in(reg) b,
             rd = lateout(reg) output,
+            idx = const MOP_MUL_MOD,
             options(nomem, nostack, preserves_flags)
         );
     }
@@ -94,8 +105,39 @@ fn mul_mod_rt_riscv(a: u32, b: u32) -> u32 {
     output
 }
 
+#[cfg(not(feature = "modular_fma"))]
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
 pub(crate) const fn fma_mod(a: u32, b: u32, c: u32) -> u32 {
     let t = mul_mod(a, b);
     add_mod(c, t)
+}
+
+#[cfg(feature = "modular_fma")]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
+pub(crate) const fn fma_mod(a: u32, b: u32, c: u32) -> u32 {
+    core::intrinsics::const_eval_select((a, b, c), fma_mod_ct, fma_mod_rt_riscv)
+}
+
+#[cfg(feature = "modular_fma")]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
+pub(crate) const fn fma_mod_ct(a: u32, b: u32, c: u32) -> u32 {
+    let t = mul_mod(a, b);
+    add_mod(c, t)
+}
+
+#[cfg(feature = "modular_fma")]
+#[cfg_attr(not(feature = "no_inline"), inline(always))]
+pub(crate) fn fma_mod_rt_riscv(a: u32, b: u32, mut c: u32) -> u32 {
+    unsafe {
+        core::arch::asm!(
+            "mop.rr.{idx} {c}, {a}, {b}",
+            a = in(reg) a,
+            b = in(reg) b,
+            c = inlateout(reg) c,
+            idx = const MOP_FMA_MOD,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+
+    c
 }

@@ -21,10 +21,16 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-      - name: Compile 
+          rustup target add riscv32im-unknown-none-elf
+          rustup component add llvm-tools
+      - name: Install cargo-binutils
+        run: cargo install cargo-binutils --locked
+      - name: Compile
         run: cargo build --verbose
-      # - name: tests
-      #   run: cargo test --profile cli -- --nocapture
+      - name: Unit tests (CI)
+        env:
+          CI: "true"
+        run: cargo test --profile cli -- --nocapture
 
   formatting:
     name: cargo fmt
@@ -41,94 +47,9 @@ jobs:
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
 
-  simulator_isa_tests:
-    name: ISA tests for simulator
-    runs-on: [matterlabs-ci-runner-highmem]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-      - name: Setup
-        run: |
-          rustup set profile minimal
-      - name: tests 
-        working-directory: ./risc_v_simulator
-        run: cargo test --release --features=delegation
-        # run: cargo test --release
-      # - name: tests
-      #   run: cargo test --profile cli -- --nocapture
-
-  # isa_tests:
-  #   name: ISA tests
-  #   runs-on: [matterlabs-ci-runner-highmem]
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - uses: actions-rust-lang/setup-rust-toolchain@v1
-  #       with:
-  #         rustflags: ""
-  #     - name: Setup
-  #       run: |
-  #         rustup set profile minimal
-  #     - name: tests 
-  #       working-directory: ./circuit_defs/opcode_tests
-  #       run: cargo test --profile test-release --lib --package opcode_tests
-  #       # run: cargo test --release
-  #     # - name: tests
-  #     #   run: cargo test --profile cli -- --nocapture
-
-  full_recursion_fast:
-    # full recursion using a pre-compiled binaries.
-    name: full_recursion_fast
-    runs-on: [matterlabs-ci-runner-c3d]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-
-      - name: Display CPU Info
-        run: |
-          echo "Checking CPU capabilities..."
-          lscpu | grep avx512 || echo "AVX-512 not supported on this runner"
-    
-      - name: Setup
-        run: |
-          rustup set profile minimal
-      - name: Run Blake(fibonacci) and prove
-        working-directory: execution_utils
-        run: cargo test --release -- --nocapture --exact test_prove_fib 
-        # run: cargo test --release -- --nocapture --ignored test_prove_fib 
-      - name: Run base layer recursive verifier over Blake(fibonacci) and prove
-        working-directory: execution_utils
-        run: cargo test --release -- --nocapture --exact test_prove_recursion_over_base
-        # run: cargo test --release -- --nocapture --ignored test_prove_recursion_over_base
-      - name: Run recursive layer verifier over base layer verifier and prove
-        working-directory: execution_utils
-        run: cargo test --release -- --nocapture --exact test_prove_recursion_over_recursion 
-        # run: cargo test --release -- --nocapture --ignored test_prove_recursion_over_recursion 
-
-  risc_v_test_delegations:
-    name: risc_v_tests_delegations
-    runs-on: [matterlabs-ci-runner]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-      - name: Setup
-        run: |
-          rustup set profile minimal
-      - name: Compile 
-        working-directory: ./risc_v_simulator
-        run: cargo build --features delegation --verbose 
-      - name: test
-        working-directory: ./risc_v_simulator
-        run: cargo test --features delegation 
-
   circuits_generated:
     name: circuits_generated
-    runs-on: [matterlabs-ci-runner-highmem]
+    runs-on: [matterlabs-ci-runner-c3d]
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -150,306 +71,100 @@ jobs:
             echo "No files were modified."
           fi
 
-  # verifier_binaries_generated:
-  #   name: verifier_binaries_generated
-  #   runs-on: [matterlabs-ci-runner-highmem]
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - uses: actions-rust-lang/setup-rust-toolchain@v1
-  #       with:
-  #         rustflags: ""
-  #     - name: Setup
-  #       run: |
-  #         rustup set profile minimal
-  #         rustup target add riscv32i-unknown-none-elf
-  #         cargo install cargo-binutils
-  #         rustup component add llvm-tools-preview
-  #         rustup component add rust-src
-  #     - name: Regenerate verifiers
-  #       working-directory: ./tools/verifier
-  #       run: ./build.sh
-  #     - name: Check if anything has changed
-  #       run: |
-  #         MODIFIED_FILES=$(git status --porcelain)
-  #         if [ -n "$MODIFIED_FILES" ]; then
-  #           echo "The following files were modified - did you run ./tools/verifier/build.sh? "
-  #           echo "$MODIFIED_FILES"
-  #           exit 1
-  #         else
-  #           echo "No files were modified."
-  #         fi
-
-  build_cli_with_verify: 
+  check_verifiers:
+    name: check_verifiers
     runs-on: [matterlabs-ci-runner-c3d]
-    name: build_cli_with_verify
+    steps:
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+
+      - name: Build fresh verifiers
+        run: |
+          tools/reproduce/reproduce.sh
+
+      - name: Fail if any files were modified
+        run: |
+          git status --porcelain
+          git diff --name-only
+          if [ -n "$(git diff --name-only)" ]; then
+            echo "❌ The following files were modified. Did you run tools/reproduce/reproduce.sh?:"
+            git diff --name-only
+            exit 1
+          fi
+
+  build_cli:
+    name: build_cli (${{ matrix.security_label }})
+    runs-on: [matterlabs-ci-runner-c3d]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - security_label: security_80
+            artifact_name: cli_80
+            build_command: cargo build --release -p cli
+          - security_label: security_100
+            artifact_name: cli_100
+            build_command: cargo build --release -p cli --no-default-features --features security_100
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
       - name: Setup
-        run: |
-          rustup set profile minimal
+        run: rustup set profile minimal
       - name: Compile
-        run: cargo build --profile cli -p cli --features include_verifiers
+        run: ${{ matrix.build_command }}
       - uses: actions/upload-artifact@v4
         with:
-          name: cli_with_verify
-          path: target/cli/cli
+          name: ${{ matrix.artifact_name }}
+          path: |
+            target/release/cli
+            examples/basic_fibonacci/app.bin
+            examples/basic_fibonacci/app.text
 
-  build_cli_no_verifiers: 
-    runs-on: [matterlabs-ci-runner-highmem]
-    name: build_cli_no_verifiers
+  cli_smoke_verify:
+    name: cli_smoke_verify (${{ matrix.security_label }})
+    runs-on: [matterlabs-ci-runner-c3d]
+    needs: [build_cli]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - security_label: security_80
+            artifact_name: cli_80
+          - security_label: security_100
+            artifact_name: cli_100
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions/download-artifact@v4
         with:
-          rustflags: ""
+          name: ${{ matrix.artifact_name }}
       - name: Setup
         run: |
-          rustup set profile minimal
-      - name: Compile
-        run: cargo build --release -p cli --no-default-features
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cli
-          path: target/release/cli
+          chmod +x ./target/release/cli
+          mkdir -p output
+      - name: Prove base
+        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file base.json
+      - name: Verify base
+        run: ./target/release/cli verify --proof output/base.json --bin examples/basic_fibonacci/app.bin
+      - name: Continue to recursion unified
+        run: ./target/release/cli continue-proof --proof output/base.json --bin examples/basic_fibonacci/app.bin --target recursion-unified --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file recursion_unified.json
+      - name: Verify recursion unified
+        run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
 
-
-  build_cli_no_verifiers_512: 
-    runs-on: [matterlabs-ci-runner-c3d]
-    name: build_cli_no_verifiers_512
+  # Keep branch protection tied to one stable check name even as the
+  # underlying CI fan-out changes over time.
+  pr-checks:
+    name: pr-checks
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - tests
+      - formatting
+      - circuits_generated
+      - check_verifiers
+      - build_cli
+      - cli_smoke_verify
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Decide on PR checks
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
         with:
-          rustflags: ""
-      - name: Setup
-        run: |
-          rustup set profile minimal
-      - name: Compile
-        run: RUSTFLAGS="-C target-feature=+avx512f" cargo build --release -p cli --no-default-features
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cli_512
-          path: target/release/cli
-
-  build_verifier: 
-    runs-on: [matterlabs-ci-runner-c3d]
-    name: build_verifier
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-      - name: Setup
-        working-directory: tools/verifier
-        run: |
-          rustup set profile minimal
-          rustup target add riscv32i-unknown-none-elf
-          cargo install cargo-binutils
-          rustup component add llvm-tools-preview
-          rustup component add rust-src
-      - name: ObjCopy
-        working-directory: tools/verifier
-        run: cargo objcopy --release  -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  -- -O binary app.bin
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: verifier
-          path: tools/verifier/app.bin
-
-  
-
-  basic_example:
-    name: basic_example
-    runs-on: [matterlabs-ci-runner-highmem]
-    needs: [build_cli_with_verify]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v4
-        with:
-          name: cli_with_verify
-      - name: Setup
-        run: chmod +x ./cli && mkdir output
-      - name: Run
-        run: ./cli run --bin examples/basic_fibonacci/app.bin --expected-results 144
-      - name: Prove
-        run: ./cli prove --bin examples/basic_fibonacci/app.bin
-      - name: Verify
-        run: ./cli verify --proof output/proof_0.json
-      - name: Verify all
-        run: ./cli verify-all --metadata output/metadata.json
-
-
-  large_example:
-    name: large_example
-    runs-on: [matterlabs-ci-runner-highmem]
-    needs: [build_cli_with_verify]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v4
-        with:
-          name: cli_with_verify
-      - name: Setup
-        run: chmod +x ./cli && mkdir output
-      - name: Run
-        run: ./cli run --bin examples/dynamic_fibonacci/app.bin --input-file examples/dynamic_fibonacci/input.txt --cycles 10000000 --expected-results 3291,500000
-      - name: Prove
-        run: ./cli prove --bin examples/dynamic_fibonacci/app.bin --input-file examples/dynamic_fibonacci/input.txt
-      - name: Verify 0      
-        run: ./cli verify --proof output/proof_0.json
-      - name: Verify 1
-        run: ./cli verify --proof output/proof_1.json
-      - name: Verify all      
-        run:  ./cli verify-all --metadata output/metadata.json
-
-
-  delegation_example:
-    name: delegation_example
-    runs-on: [matterlabs-ci-runner-highmem]
-    needs: [build_cli_with_verify]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v4
-        with:
-          name: cli_with_verify
-      - name: Setup
-        run: chmod +x ./cli && mkdir output
-      - name: Run delegation
-        run: ./cli run --bin examples/hashed_fibonacci/app.bin --input-file examples/hashed_fibonacci/input.txt --expected-results 1597,15,2242890078
-      - name: Prove delegation
-        run: ./cli prove --bin examples/hashed_fibonacci/app.bin --input-file examples/hashed_fibonacci/input.txt
-      - name: Verify
-        run: ./cli verify --proof output/proof_0.json
-      - name: Verify delegation
-        run: ./cli verify --proof output/delegation_proof_1991_0.json
-      - name: Verify all
-        run: ./cli verify-all --metadata output/metadata.json
-
-  verification_example:
-    name: verification_example
-    runs-on: [matterlabs-ci-runner-highmem]
-    needs: [build_cli_with_verify, build_verifier]
-
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v4
-        with:
-          name: cli_with_verify
-      - uses: actions/download-artifact@v4
-        with:
-          name: verifier      
-      - name: Setup
-        run: chmod +x ./cli && mkdir output
-      
-      - name: Create basic fibonacci proof
-        run: ./cli prove --bin examples/basic_fibonacci/app.bin
-      - name: Flatten basic fibonacci proof
-        run: ./cli flatten --input-file  output/proof_0.json --output-file output/proof_flatten0.json
-
-      - name: Run verification in riscV
-        run: ./cli run --bin app.bin --input-file  output/proof_flatten0.json --cycles 10000000 --machine reduced --expected-results 1,2,3,0,0,0,0,0
-      - name: Create recursion output dir
-        run: mkdir recursion_proofs
-
-      - name: Prove verification in riscV
-        run: ./cli prove --machine reduced --bin app.bin --input-file  output/proof_flatten0.json --output-dir recursion_proofs/
-      # now verify the recursion proofs..
-      - name: Verify recursion delegation
-        run: ./cli verify --proof recursion_proofs/delegation_proof_1991_0.json
-      - name: Verify recursion basic
-        run: ./cli verify --proof recursion_proofs/reduced_proof_0.json
-  
-
-  # Test incremental proofs.
-  oh_bender:
-    name: oh_bender_incremental_proofs
-    runs-on: [matterlabs-ci-runner-c3d]
-    needs: [build_cli_no_verifiers_512, build_verifier]
-
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v4
-        with:
-          name: cli_512
-      - uses: actions/download-artifact@v4
-        with:
-          name: verifier
-
-      - name: Display structure of downloaded files
-        run: ls -R
-      - name: Set permissions
-        run: chmod +x ./cli
-
-      - name: Create output
-        run: mkdir output
-
-
-      - name: Create basic fibonacci proof
-        run: ./cli prove --bin examples/basic_fibonacci/app.bin  --until final-recursion --output-dir output
-      - name: Flatten 2 basic fibonacci proofs
-        run: ./cli flatten-two --first-metadata  output/metadata.json --second-metadata output/metadata.json --output-file output/proof_merged_flatten.json
-      - name: Run
-        run: ./cli run --bin app.bin --input-file  output/proof_merged_flatten.json --cycles 20000000 --machine reduced --expected-results  1454345518,1110133826,1035806769,2339543873,3120453366,2871045712,1011786604,901067344
-
-  
-  full_recursion:
-    name: full_recursion
-    runs-on: [matterlabs-ci-runner-c3d]
-    needs: [build_cli_no_verifiers_512, build_verifier]
-
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v4
-        with:
-          name: cli_512
-      - uses: actions/download-artifact@v4
-        with:
-          name: verifier
-
-      - name: Display structure of downloaded files
-        run: ls -R
-      - name: Set permissions
-        run: chmod +x ./cli
-
-      - name: Create output
-        run: mkdir output
-
-
-      - name: Create basic fibonacci proof
-        run: ./cli prove --bin examples/basic_fibonacci/app.bin
-
-      - name: Recursion 0 - create output dir
-        run: mkdir recursion_proofs_0
-      - name: Recursion 0 - Flatten 
-        run: ./cli flatten-all --input-metadata output/metadata.json --output-file output/proof_flatten0.json
-      - name: Recursion 0 - Run
-        run: ./cli run --bin app.bin --input-file  output/proof_flatten0.json --cycles 10000000 --machine reduced --expected-results 144,0,0,0,0,0,0,0
-      - name: Recursion 0 - Prove
-        run: ./cli prove --machine reduced --bin app.bin --input-file  output/proof_flatten0.json --output-dir recursion_proofs_0/ --prev-metadata output/metadata.json
-      #- name: Recursion 0 - Verify (on cpu)
-      #  run: ./cli verify-all --metadata recursion_proofs_0/metadata.json
-
-      - name: Recursion 1 - create output dir
-        run: mkdir recursion_proofs_1
-      - name: Recursion 1 - Flatten 
-        run: ./cli flatten-all --input-metadata recursion_proofs_0/metadata.json --output-file output/proof_flatten1.json
-      - name: Recursion 1 - Run
-        run: ./cli run --bin app.bin --input-file  output/proof_flatten1.json --cycles 32000000 --machine reduced --expected-results 144,0,0,0,0,0,0,0
-      - name: Recursion 1 - Prove
-        run: ./cli prove --machine reduced --bin app.bin --input-file  output/proof_flatten1.json --output-dir recursion_proofs_1/ --prev-metadata recursion_proofs_0/metadata.json
-      #- name: Recursion 1 - Verify (on cpu)
-      #  run: ./cli verify-all --metadata recursion_proofs_1/metadata.json
-
-
-      - name: Recursion 2 - create output dir
-        run: mkdir recursion_proofs_2
-      - name: Recursion 2 - Flatten 
-        run: ./cli flatten-all --input-metadata recursion_proofs_1/metadata.json --output-file output/proof_flatten2.json
-      - name: Recursion 2 - Run
-        run: ./cli run --bin app.bin --input-file  output/proof_flatten2.json --cycles 50000000 --machine reduced --expected-results 144,0,0,0,0,0,0,0
-      - name: Recursion 2 - Prove
-        run: ./cli prove --machine reduced --bin app.bin --input-file  output/proof_flatten2.json --output-dir recursion_proofs_2/ --prev-metadata recursion_proofs_0/metadata.json
-      #- name: Recursion 2 - Verify (on cpu)
-      #  run: ./cli verify-all --metadata recursion_proofs_2/metadata.json
+          jobs: ${{ toJSON(needs) }}

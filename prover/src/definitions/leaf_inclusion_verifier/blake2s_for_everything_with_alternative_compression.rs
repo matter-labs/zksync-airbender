@@ -31,6 +31,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifierWithAlternativeCompre
         depth: usize,
         leaf_encoding: &AlignedSlice64<u32>,
         merkle_cap: &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
+        nd_source: &mut I,
     ) -> bool {
         self.hasher.reset();
 
@@ -106,7 +107,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifierWithAlternativeCompre
             let dst = self.hasher.get_witness_buffer();
             for i in 0..8 {
                 // BLAKE2S_DIGEST_SIZE_U32_WORDS
-                dst[i] = I::read_word();
+                dst[i] = nd_source.read_word();
             }
             self.hasher
                 .compress_node::<USE_REDUCED_BLAKE2_ROUNDS>(input_is_right);

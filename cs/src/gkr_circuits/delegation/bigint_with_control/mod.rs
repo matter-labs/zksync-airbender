@@ -1,0 +1,938 @@
+use std::collections::BTreeMap;
+
+use super::*;
+use crate::cs::circuit::*;
+use crate::cs::circuit_trait::Invariant;
+use crate::cs::utils::collapse_max_quadratic_expr_into;
+use crate::definitions::REGISTER_SIZE;
+use crate::gkr_circuits::*;
+use crate::structured_expr::Expr;
+use crate::types::Boolean;
+use crate::types::Num;
+use crate::witness_placer::*;
+
+const TOTAL_TABLE_WIDTH: usize = 2;
+
+pub fn all_table_types() -> Vec<TableType> {
+    vec![
+        TableType::U16GetLowByte,
+        TableType::RangeCheck9x9,
+        TableType::RangeCheck10x10,
+        TableType::RangeCheck11,
+        TableType::RangeCheck12,
+        TableType::RangeCheck13,
+    ]
+}
+
+pub fn bigint_with_extended_control_delegation_circuit_create_table_driver<F: PrimeField>(
+) -> TableDriver<F> {
+    let mut table_driver = TableDriver::new();
+    bigint_with_extended_control_delegation_circuit_table_driver_fn(&mut table_driver);
+
+    table_driver
+}
+
+pub fn bigint_with_extended_control_delegation_circuit_table_driver_fn<F: PrimeField>(
+    table_driver: &mut TableDriver<F>,
+) {
+    for el in all_table_types() {
+        table_driver.materialize_table::<TOTAL_TABLE_WIDTH>(el);
+    }
+}
+
+pub fn bigint_with_extended_control_delegation_circuit_table_addition_fn<
+    F: PrimeField,
+    CS: Circuit<F>,
+>(
+    cs: &mut CS,
+) {
+    for el in all_table_types() {
+        cs.materialize_table::<TOTAL_TABLE_WIDTH>(el);
+    }
+}
+
+pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
+    cs: &mut CS,
+) -> (Vec<[Variable; 2]>, [Variable; REGISTER_SIZE]) {
+    let (_execute, _invication_ts) =
+        cs.allocate_delegation_state(BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16);
+
+    let dst_accesses = (0..8)
+        .into_iter()
+        .map(|access_idx| IndirectAccessOffset {
+            variable_dependent: None,
+            offset_constant: (access_idx * core::mem::size_of::<u32>()) as u32,
+            assume_no_alignment_overflow: true,
+            is_write_access: true,
+        })
+        .collect();
+
+    let x10_request = RegisterAccessRequest {
+        register_index: 10,
+        register_write: false,
+        indirects_alignment_log2: 5, // 32 bytes
+        indirect_accesses: dst_accesses,
+    };
+
+    let src_accesses = (0..8)
+        .into_iter()
+        .map(|access_idx| IndirectAccessOffset {
+            variable_dependent: None,
+            offset_constant: (access_idx * core::mem::size_of::<u32>()) as u32,
+            assume_no_alignment_overflow: true,
+            is_write_access: false,
+        })
+        .collect();
+
+    let x11_request = RegisterAccessRequest {
+        register_index: 11,
+        register_write: false,
+        indirects_alignment_log2: 5, // 32 bytes
+        indirect_accesses: src_accesses,
+    };
+
+    let x12_request = RegisterAccessRequest {
+        register_index: 12,
+        register_write: true,
+        indirects_alignment_log2: 0, // no indirects
+        indirect_accesses: vec![],
+    };
+
+    let x10_and_indirects = cs.request_register_and_indirect_memory_accesses(
+        x10_request,
+        "state read/write from x10",
+        2,
+    );
+    let x11_and_indirects =
+        cs.request_register_and_indirect_memory_accesses(x11_request, "input read from x11", 2);
+    let x12_and_indirects = cs.request_register_and_indirect_memory_accesses(
+        x12_request,
+        "control read/write from x12",
+        2,
+    );
+
+    assert_eq!(x10_and_indirects.indirect_accesses.len(), 8);
+    assert_eq!(x11_and_indirects.indirect_accesses.len(), 8);
+    assert!(x12_and_indirects.indirect_accesses.is_empty());
+
+    let mut a_words = vec![];
+    let mut output_placeholder_state = vec![];
+    for i in 0..8 {
+        let IndirectAccessType::Write {
+            read_value,
+            write_value,
+            ..
+        } = x10_and_indirects.indirect_accesses[i]
+        else {
+            panic!()
+        };
+
+        a_words.push(read_value);
+        output_placeholder_state.push(write_value);
+    }
+
+    let mut b_words = vec![];
+    for i in 0..8 {
+        let IndirectAccessType::Read { read_value, .. } = x11_and_indirects.indirect_accesses[i]
+        else {
+            panic!()
+        };
+
+        b_words.push(read_value);
+    }
+
+    let control_mask = {
+        let RegisterAccessType::Write { read_value, .. } = x12_and_indirects.register_access else {
+            panic!()
+        };
+
+        read_value
+    };
+
+    assert_eq!(a_words.len(), 8);
+    assert_eq!(b_words.len(), 8);
+
+    let a_words: [_; 8] = a_words.try_into().unwrap();
+    let b_words: [_; 8] = b_words.try_into().unwrap();
+
+    {
+        for (i, input) in a_words.iter().enumerate() {
+            let register = Register::<F>(input.map(|el| Num::Var(el)));
+            if let Some(value) = register.get_value_unsigned(&*cs) {
+                println!("`a` U256 element word {} = 0x{:08x}", i, value);
+            }
+        }
+
+        for (i, input) in b_words.iter().enumerate() {
+            let register = Register::<F>(input.map(|el| Num::Var(el)));
+            if let Some(value) = register.get_value_unsigned(&*cs) {
+                println!("`b` U256 element word {} = 0x{:08x}", i, value);
+            }
+        }
+
+        let register = Register::<F>(control_mask.map(|el| Num::Var(el)));
+        if let Some(value) = register.get_value_unsigned(&*cs) {
+            println!("Control bitmask = 0b{:b}", value);
+        }
+    }
+
+    // we can immediately boolean decompose control register into bitmask and ignore high
+
+    let control_bitmask = Boolean::split_into_bitmask::<F, CS, BIGINT_NUM_CONTROL_BITS>(
+        cs,
+        Num::Var(control_mask[0]),
+    );
+
+    {
+        for (i, el) in control_bitmask.iter().enumerate() {
+            if let Some(value) = el.get_value(&*cs) {
+                println!("Control bitmask element {} = {}", i, value);
+            }
+        }
+    }
+
+    // We will check for a proper bitmask, for all terms EXCEPT carry, as it can be encountered
+    // in combination with add/sub
+
+    let mut bitmask_sum = Expr::<F>::zero();
+    for (idx, bit) in control_bitmask.iter().enumerate() {
+        if idx != CARRY_BIT_IDX {
+            bitmask_sum = bitmask_sum + Expr::from(*bit);
+        }
+    }
+    cs.add_constraint_expr(bitmask_sum.clone() * (bitmask_sum - Expr::one()));
+
+    let perform_add = control_bitmask[ADD_OP_BIT_IDX];
+    let perform_sub = control_bitmask[SUB_OP_BIT_IDX];
+    let perform_sub_negate = control_bitmask[SUB_AND_NEGATE_OP_BIT_IDX];
+    let perform_mul_low = control_bitmask[MUL_LOW_OP_BIT_IDX];
+    let perform_mul_high = control_bitmask[MUL_HIGH_OP_BIT_IDX];
+    let perform_eq = control_bitmask[EQ_OP_BIT_IDX];
+    let carry_or_borrow = control_bitmask[CARRY_BIT_IDX];
+    let perform_memcopy = control_bitmask[MEMCOPY_BIT_IDX];
+
+    {
+        if let Some(value) = perform_add.get_value(&*cs) {
+            if value {
+                println!("Perform ADD");
+            }
+        }
+        if let Some(value) = perform_sub.get_value(&*cs) {
+            if value {
+                println!("Perform SUB");
+            }
+        }
+        if let Some(value) = perform_sub_negate.get_value(&*cs) {
+            if value {
+                println!("Perform SUB_NEGATE");
+            }
+        }
+        if let Some(value) = perform_mul_low.get_value(&*cs) {
+            if value {
+                println!("Perform MUL_LOW");
+            }
+        }
+        if let Some(value) = perform_mul_high.get_value(&*cs) {
+            if value {
+                println!("Perform MUL_HIGH");
+            }
+        }
+        if let Some(value) = perform_eq.get_value(&*cs) {
+            if value {
+                println!("Perform EQ");
+            }
+        }
+        if let Some(value) = perform_memcopy.get_value(&*cs) {
+            if value {
+                println!("Perform MEMCOPY");
+            }
+        }
+    }
+
+    let perform_add_boolean = perform_add;
+    let perform_sub_boolean = perform_sub;
+    let perform_sub_negate_boolean = perform_sub_negate;
+    let perform_mul_low_boolean = perform_mul_low;
+    let perform_mul_high_boolean = perform_mul_high;
+    let perform_eq_boolean = perform_eq;
+    let carry_or_borrow_boolean = carry_or_borrow;
+    let perform_memcopy_boolean = perform_memcopy;
+
+    let perform_add = perform_add.get_variable().unwrap();
+    let perform_sub = perform_sub.get_variable().unwrap();
+    let perform_sub_negate = perform_sub_negate.get_variable().unwrap();
+    let perform_eq = perform_eq.get_variable().unwrap();
+    let carry_or_borrow = carry_or_borrow.get_variable().unwrap();
+    let perform_memcopy = perform_memcopy.get_variable().unwrap();
+
+    // We have two choices for the strategy:
+    // - separately implement addition/subtraction and multiplication. It's easy and dealing with carry bit is simple
+    // - try to perform some convoluted FMA
+
+    // For now we stick with the first option
+
+    // first operations that only require addition/subtraction. For that we need for the relation of the form
+    // `A` + `B` = `C` + 2^256 * overflow to designate a/b/c
+    // if we add: `A` = a, `B` = b + carry, `C` = result
+    // if we sub: 2^256 * of + a - b = result, so result + b = a + 2^256 * of, `C` = a, `B` = b + carry, `A` = result
+    // if we sub-negate (opposite order): 2^256 * of + b - a = result, so result + a = b + 2^256 * of, `C` = b, `B` = a + carry, `A` = result
+    // if we perform equality check - we do just a subtraction and look at the carry and perform zero-comparisons
+    // if we execute memcopy, then `A` = 0, `B` = b + carry, `C` = result
+
+    // We will also reuse zero-comparisons for overflowing multiplication check later on
+
+    let a_limbs: [Variable; 16] = a_words
+        .iter()
+        .flatten()
+        .copied()
+        .collect::<Vec<Variable>>()
+        .try_into()
+        .unwrap();
+    let b_limbs: [Variable; 16] = b_words
+        .iter()
+        .flatten()
+        .copied()
+        .collect::<Vec<Variable>>()
+        .try_into()
+        .unwrap();
+
+    // NOTE: no range checks here, we will merge it with multiplication low
+    let additive_ops_result: [Variable; 16] = std::array::from_fn(|_| cs.add_variable());
+
+    let intermediate_carry_booleans: [Boolean; 16] =
+        std::array::from_fn(|_| cs.add_boolean_variable());
+    let intermediate_carry_variables =
+        intermediate_carry_booleans.map(|el| el.get_variable().unwrap());
+
+    let result_of_boolean = intermediate_carry_booleans[15];
+    let result_of_variable = result_of_boolean.get_variable().unwrap();
+    // perform witness generation. We will at once generate value for the final result and intermediate variables
+    // for constraints below
+
+    let value_fn = move |placer: &mut CS::WitnessPlacer| {
+        let a_limbs = a_limbs.map(|el| placer.get_u16(el));
+        let b_limbs = b_limbs.map(|el| placer.get_u16(el));
+
+        let perform_add = placer.get_boolean(perform_add);
+        let perform_sub = placer.get_boolean(perform_sub);
+        let perform_sub_negate = placer.get_boolean(perform_sub_negate);
+        let perform_eq = placer.get_boolean(perform_eq);
+        let perform_memcopy = placer.get_boolean(perform_memcopy);
+
+        let carry_or_borrow = placer.get_boolean(carry_or_borrow);
+
+        let zero = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0);
+        let constant_false = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
+
+        let mut base_el: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16; 16] =
+            std::array::from_fn(|_| zero.clone());
+        let mut to_add: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16; 16] =
+            std::array::from_fn(|_| zero.clone());
+        let mut to_sub: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16; 16] =
+            std::array::from_fn(|_| zero.clone());
+
+        let mut carry_or_borrow_selected = constant_false.clone();
+        {
+            let use_carry_or_borrow = perform_add
+                .or(&perform_sub)
+                .or(&perform_sub_negate)
+                .or(&perform_memcopy);
+            carry_or_borrow_selected.assign_masked(&use_carry_or_borrow, &carry_or_borrow);
+        }
+
+        for i in 0..16 {
+            let assign_a = perform_add.or(&perform_sub).or(&perform_eq);
+            base_el[i].assign_masked(&assign_a, &a_limbs[i]);
+            base_el[i].assign_masked(&perform_sub_negate, &b_limbs[i]);
+            // and if we do memcopy, then it's 0
+        }
+
+        for i in 0..16 {
+            let assign_b = perform_add.or(&perform_memcopy);
+            to_add[i].assign_masked(&assign_b, &b_limbs[i]);
+        }
+
+        for i in 0..16 {
+            to_sub[i].assign_masked(&perform_sub_negate, &a_limbs[i]);
+
+            let assign_b = perform_sub.or(&perform_eq);
+            to_sub[i].assign_masked(&assign_b, &b_limbs[i]);
+        }
+
+        let mut carry_to_propagate = carry_or_borrow_selected.clone();
+
+        // well, just unrolled long addition and subtraction
+        let addition_result_limbs: [_; 16] = std::array::from_fn(|i| {
+            let (t, of) = base_el[i].overflowing_add_with_carry(&to_add[i], &carry_to_propagate);
+            carry_to_propagate = of.clone();
+
+            (t, of)
+        });
+
+        let mut borrow_to_propagate = carry_or_borrow_selected.clone();
+        let subtraction_result_limbs: [_; 16] = std::array::from_fn(|i| {
+            let (t, of) = base_el[i].overflowing_sub_with_borrow(&to_sub[i], &borrow_to_propagate);
+            borrow_to_propagate = of.clone();
+
+            (t, of)
+        });
+
+        let assign_addition_result = perform_add.or(&perform_memcopy);
+        let assign_subtraction_result = perform_sub.or(&perform_sub_negate).or(&perform_eq);
+
+        // NOTE: we can not use fully conditional form here, instead we take baseline 0 and select on top
+
+        for i in 0..16 {
+            // Trivial values are 0
+            let mut value =
+                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0);
+            let mut intermediate_carry_value =
+                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
+            // add
+            value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
+                &assign_addition_result,
+                &addition_result_limbs[i].0,
+                &value,
+            );
+            intermediate_carry_value =
+                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                    &assign_addition_result,
+                    &addition_result_limbs[i].1,
+                    &intermediate_carry_value,
+                );
+            // sub
+            value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
+                &assign_subtraction_result,
+                &subtraction_result_limbs[i].0,
+                &value,
+            );
+            intermediate_carry_value =
+                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                    &assign_subtraction_result,
+                    &subtraction_result_limbs[i].1,
+                    &intermediate_carry_value,
+                );
+            // rest
+            value = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
+                &assign_subtraction_result,
+                &subtraction_result_limbs[i].0,
+                &value,
+            );
+            intermediate_carry_value =
+                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                    &assign_subtraction_result,
+                    &subtraction_result_limbs[i].1,
+                    &intermediate_carry_value,
+                );
+
+            placer.assign_u16(additive_ops_result[i], &value);
+            placer.assign_mask(intermediate_carry_variables[i], &intermediate_carry_value);
+        }
+    };
+
+    cs.set_values(value_fn);
+
+    {
+        for (i, input) in additive_ops_result.as_chunks::<2>().0.iter().enumerate() {
+            let register = Register::<F>(input.map(|el| Num::Var(el)));
+            if let Some(value) = register.get_value_unsigned(&*cs) {
+                println!("Prepared result U256 element word {} = 0x{:08x}", i, value);
+            }
+        }
+
+        if let Some(value) = result_of_boolean.get_value(&*cs) {
+            println!("Of = {}", value);
+        }
+    }
+
+    // We do not need to make any explicit selections and instead can keep A/B/C as quadratic constraints
+    // to enforce linear addition constraint
+
+    // constraint values shuffle
+
+    let mut previous_of = None;
+    // now enforce long addition - we should allocate intermediate carries and then use pre-existing one for the result
+    for limb_idx in 0..16 {
+        let of_for_limb = intermediate_carry_variables[limb_idx];
+        // now select and add from constraint
+
+        // selection of virtual A limb
+        let selected_a = Expr::var(a_limbs[limb_idx]).mask(perform_add_boolean)
+            + Expr::var(additive_ops_result[limb_idx]).mask(perform_sub_boolean)
+            + Expr::var(a_limbs[limb_idx]).mask(perform_sub_negate_boolean)
+            + Expr::var(additive_ops_result[limb_idx]).mask(perform_eq_boolean);
+        // and nothing for memcopy
+
+        // selection of virtual B limb
+        let selected_b_without_memcopy = Expr::var(b_limbs[limb_idx]).mask(perform_add_boolean)
+            + Expr::var(b_limbs[limb_idx]).mask(perform_sub_boolean)
+            + Expr::var(additive_ops_result[limb_idx]).mask(perform_sub_negate_boolean)
+            + Expr::var(b_limbs[limb_idx]).mask(perform_eq_boolean);
+        // memcopy is present here
+        let selected_b =
+            selected_b_without_memcopy + Expr::var(b_limbs[limb_idx]).mask(perform_memcopy_boolean);
+
+        // selection of virtual C limb
+        let selected_c_without_memcopy = Expr::var(additive_ops_result[limb_idx])
+            .mask(perform_add_boolean)
+            + Expr::var(a_limbs[limb_idx]).mask(perform_sub_boolean)
+            + Expr::var(b_limbs[limb_idx]).mask(perform_sub_negate_boolean)
+            + Expr::var(a_limbs[limb_idx]).mask(perform_eq_boolean);
+        // memcopy is present here
+        let selected_c = selected_c_without_memcopy
+            + Expr::var(additive_ops_result[limb_idx]).mask(perform_memcopy_boolean);
+
+        // and propagate carries
+        let carry_expr = if limb_idx == 0 {
+            // we only "use" carry or borrow in case of add/sub/sub_neg, but it is still degree 2
+
+            // we always add it along with "b" term
+            let carry_or_borrow = Expr::from(carry_or_borrow_boolean);
+            let carry_without_memcopy = carry_or_borrow.clone().mask(perform_add_boolean)
+                + carry_or_borrow.clone().mask(perform_sub_boolean)
+                + carry_or_borrow.clone().mask(perform_sub_negate_boolean);
+            // memcopy is present here
+            carry_without_memcopy + carry_or_borrow.mask(perform_memcopy_boolean)
+        } else {
+            let previous_carry = previous_of.take().unwrap();
+            Expr::var(previous_carry)
+        };
+
+        cs.add_constraint_expr(
+            selected_a + selected_b - selected_c + carry_expr
+                - Expr::var(of_for_limb) * F::from_u32_unchecked(1 << 16),
+        );
+
+        previous_of = Some(of_for_limb);
+    }
+
+    // addition is done, and we need to keep the zero-check in mind to finish equality operation later on
+
+    // for multiplication we will want to allocate 8-bit chunks anyway. Unfortunately there is no simple consistent way to work
+    // with e.g 24-bit intermediate product results. So we make a decomposition and continue from there
+
+    let mut a_bytes = Vec::with_capacity(32);
+    let mut b_bytes = Vec::with_capacity(32);
+
+    for (src, dst) in [(&a_limbs, &mut a_bytes), (&b_limbs, &mut b_bytes)] {
+        for el in src.iter() {
+            let [l] = cs.get_variables_from_lookup_constrained::<1, 1>(
+                &[LookupInput::from(*el)],
+                TableType::U16GetLowByte,
+            );
+            dst.push(Expr::var(l));
+            let high_expr =
+                (Expr::var(*el) - Expr::var(l)) * F::from_u32_unchecked(1 << 8).inverse().unwrap();
+            dst.push(high_expr);
+        }
+    }
+
+    // {
+    //     for (i, el) in a_bytes.iter().enumerate() {
+    //         if let Some(value) = cs.get_value(*el) {
+    //             println!("`a` element byte {} = 0x{:02x}", i, value.as_u32_reduced() as u8);
+    //         }
+    //     }
+
+    //     for (i, el) in b_bytes.iter().enumerate() {
+    //         if let Some(value) = cs.get_value(*el) {
+    //             println!("`b` element byte {} = 0x{:02x}", i, value.as_u32_reduced() as u8);
+    //         }
+    //     }
+    // }
+
+    let add_sub_operation_result = additive_ops_result;
+    let eq_operation_result = a_limbs;
+    let eq_operation_words_for_zero_check = additive_ops_result;
+
+    // We will put all byte-products into 16-bit destination word, and dynamically keep track of the range and issue the corresponding range checks for intermediate overflows
+
+    // Note that we need to make explicit 16-bit result words, so we will make intermediate product as variable,
+    // then split an explicit lowest 16 bits, range check upper bits linear term, and carry such linear term further
+
+    // We will encounter intermediate products from 25 to 29 bits,
+    // so we will need rangecheck tables from 9 to 13 bits
+
+    let mut range_checks_buffer: BTreeMap<u32, Vec<Expr<F>>> = BTreeMap::new();
+
+    // we will make full product below, but we will merge range checks for result of add/sub/etc and of product_low
+
+    let product_low: [Variable; 16] = std::array::from_fn(|_| cs.add_variable()); // no range check, we will merge it below
+    let product_high: [Variable; 16] =
+        std::array::from_fn(|_| cs.add_variable_with_range_check(16).get_variable());
+
+    let full_product: [Variable; 32] = product_low
+        .into_iter()
+        .chain(product_high.into_iter())
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+
+    let mut carry_expr = Expr::<F>::zero();
+    let mut carry_range = 0u64;
+    for (i, product_word) in full_product.iter().enumerate() {
+        let mut product_expr = carry_expr.clone();
+        let mut product_range = carry_range;
+        for a_byte_idx in 0..32 {
+            for b_byte_idx in 0..32 {
+                if a_byte_idx + b_byte_idx == 2 * i {
+                    product_expr =
+                        product_expr + (a_bytes[a_byte_idx].clone() * b_bytes[b_byte_idx].clone());
+                    product_range += 255u64 * 255u64;
+                } else if a_byte_idx + b_byte_idx == 2 * i + 1 {
+                    let t = (a_bytes[a_byte_idx].clone() * b_bytes[b_byte_idx].clone())
+                        * F::from_u32_unchecked(1 << 8);
+                    product_expr = product_expr + t;
+                    product_range += (255u64 * 255u64) << 8;
+                }
+            }
+        }
+        assert!(product_range < F::CHARACTERISTICS as u64);
+        assert!(product_range.next_power_of_two() <= F::CHARACTERISTICS as u64);
+
+        if i == full_product.len() - 1 {
+            assert!(product_range < 1 << 16);
+            // no further overflow is possible, and we should collapse directly
+            collapse_max_quadratic_expr_into(cs, product_expr.clone(), *product_word);
+            cs.define_variable_from_expr(*product_word, product_expr);
+        } else {
+            let product_intermediate = cs.add_variable_from_expr(product_expr);
+            // now split it - we only need to assign a witness to already range-checked product word,
+            // and perform extra range check for carry constraint
+
+            let product_word = *product_word;
+
+            let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                let full_value_low = placer
+                    .get_field(product_intermediate)
+                    .as_integer()
+                    .truncate();
+                placer.assign_u16(product_word, &full_value_low);
+            };
+            cs.set_values(value_fn);
+
+            carry_range = product_range >> 16;
+            carry_expr = (Expr::var(product_intermediate) - Expr::var(product_word))
+                * F::from_u32_unchecked(1 << 16).inverse().unwrap();
+
+            // {
+            //     if let Some(value) = cs.get_value(product_intermediate) {
+            //         println!("Intermediate product {} value = 0x{:016x}", i, value.as_u32_reduced());
+            //     }
+
+            //     if let Some(value) = cs.get_value(*product_word) {
+            //         println!("Result product word {} value = 0x{:016x}", i, value.as_u32_reduced());
+            //     }
+            // }
+
+            let carry_bits = carry_range.next_power_of_two().trailing_zeros();
+            range_checks_buffer
+                .entry(carry_bits)
+                .or_default()
+                .push(carry_expr.clone());
+        }
+    }
+
+    {
+        for (i, input) in product_low.as_chunks::<2>().0.iter().enumerate() {
+            let register = Register::<F>(input.map(|el| Num::Var(el)));
+            if let Some(value) = register.get_value_unsigned(&*cs) {
+                println!("Product low U256 element word {} = 0x{:08x}", i, value);
+            }
+        }
+
+        for (i, input) in product_high.as_chunks::<2>().0.iter().enumerate() {
+            let register = Register::<F>(input.map(|el| Num::Var(el)));
+            if let Some(value) = register.get_value_unsigned(&*cs) {
+                println!("Product high U256 element word {} = 0x{:08x}", i, value);
+            }
+        }
+    }
+
+    // merge range checks between additive results and multiplicative result low,
+    // and we can push it into intermediate layer
+    {
+        for (i, (a, b)) in additive_ops_result
+            .into_iter()
+            .zip(product_low.into_iter())
+            .enumerate()
+        {
+            let expr = Expr::var(a).mask(perform_add_boolean)
+                + Expr::var(a).mask(perform_sub_boolean)
+                + Expr::var(a).mask(perform_sub_negate_boolean)
+                + Expr::var(a).mask(perform_eq_boolean)
+                + Expr::var(a).mask(perform_memcopy_boolean)
+                + Expr::var(b).mask(perform_mul_low_boolean)
+                + Expr::var(b).mask(perform_mul_high_boolean);
+
+            let t = cs.add_intermediate_named_variable_from_expr(
+                expr,
+                &format!("range check selection for limb {}", i),
+            );
+            cs.require_invariant(t, Invariant::RangeChecked { width: 16 });
+        }
+    }
+
+    // for width 9 and 10 we can use two checks at once,
+    // for higher widths - only one check at once
+
+    for (width, checks) in range_checks_buffer.into_iter() {
+        assert!(width >= 9, "width {} is unexpected", width);
+        assert!(width <= 13, "width {} is unexpected", width);
+
+        if width <= 10 {
+            let table_type = match width {
+                9 => TableType::RangeCheck9x9,
+                10 => TableType::RangeCheck10x10,
+                _ => unreachable!(),
+            };
+            let (chunks, remainder) = checks.as_chunks::<2>();
+            let mut it = chunks.iter();
+            for [a, b] in &mut it {
+                let a = LookupInput::from(a.clone());
+                let b = LookupInput::from(b.clone());
+                cs.enforce_lookup_tuple_for_fixed_table(&[a, b], table_type, false);
+            }
+            if remainder.len() > 0 {
+                let a = &remainder[0];
+                let a = LookupInput::from(a.clone());
+                cs.enforce_lookup_tuple_for_fixed_table(
+                    &[a, LookupInput::empty()],
+                    table_type,
+                    false,
+                );
+            }
+        } else {
+            let table_type = match width {
+                11 => TableType::RangeCheck11,
+                12 => TableType::RangeCheck12,
+                13 => TableType::RangeCheck13,
+                _ => unreachable!(),
+            };
+            for a in checks.iter() {
+                let a = LookupInput::from(a.clone());
+                cs.enforce_lookup_tuple_for_fixed_table(&[a], table_type, false);
+            }
+        }
+    }
+
+    // now multiplication is fully constrained, so we can select the outputs, and write them directly into memory
+
+    let all_flags = [
+        perform_add_boolean,
+        perform_sub_boolean,
+        perform_sub_negate_boolean,
+        perform_eq_boolean,
+        perform_mul_low_boolean,
+        perform_mul_high_boolean,
+        perform_memcopy_boolean,
+    ];
+    let all_results = [
+        add_sub_operation_result,
+        add_sub_operation_result,
+        add_sub_operation_result,
+        eq_operation_result,
+        product_low,
+        product_high,
+        add_sub_operation_result,
+    ];
+
+    let output_vars = output_placeholder_state.iter().flatten();
+
+    for (idx, output_var) in output_vars.enumerate() {
+        let mut expr = Expr::<F>::zero();
+        for (flag, result) in all_flags.iter().zip(all_results.iter()) {
+            let limb = result[idx];
+            expr = expr + Expr::var(limb).mask(*flag);
+        }
+        collapse_max_quadratic_expr_into(cs, expr.clone(), *output_var);
+        cs.define_variable_from_expr(*output_var, expr);
+    }
+
+    // and now we can resolve updated flag
+
+    // Select values over which we will perform zero-check
+    // - for equality operation it's taken from additive ops
+    // - for mul-low operation those are high words
+
+    // NOTE: we will add all words, that are range checked. It's addition result is less than
+    // 2^16 * 16 words, so we ensure that field is large enough and save variables
+    assert!(F::CHARACTERISTICS >= (1 << 16) * 16);
+
+    // here it's a little involved, because we will need to manually create witness and copy it over
+    // layers.
+
+    let zero_check_input_in_intermediate_layer = {
+        let mut accumulation_expr = Expr::<F>::zero();
+        for (comparison_output, product_high) in eq_operation_words_for_zero_check
+            .into_iter()
+            .zip(product_high.into_iter())
+        {
+            accumulation_expr = accumulation_expr
+                + Expr::var(comparison_output).mask(perform_eq_boolean)
+                + Expr::var(product_high).mask(perform_mul_low_boolean);
+        }
+
+        cs.add_intermediate_named_variable_from_expr(accumulation_expr, "sum for zero-check")
+    };
+
+    let all_zeroes = {
+        // var * zero_flag = 0;
+        // var * var_inv = 1 - zero_flag;
+        let var_inv = cs.add_variable();
+        let zero_flag = cs.add_boolean_variable();
+        let zero_flag_var = zero_flag.get_variable().unwrap();
+
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let a = placer.get_field(zero_check_input_in_intermediate_layer);
+            let is_zero = a.is_zero();
+            let inverse_witness = a.inverse_or_zero();
+            placer.assign_mask(zero_flag_var, &is_zero);
+            placer.assign_field(var_inv, &inverse_witness);
+        };
+        cs.set_values(value_fn);
+
+        // now we need to copy first, and then add constraint
+
+        let var_inv_copied = cs.add_intermediate_named_variable_from_expr(
+            Expr::var(var_inv),
+            "inv var for zero check copy",
+        );
+        let zero_flag_var_copied = cs.add_intermediate_named_variable_from_expr(
+            Expr::var(zero_flag_var),
+            "is zero var for zero check copy",
+        );
+
+        cs.add_constraint_expr(
+            Expr::var(zero_check_input_in_intermediate_layer) * Expr::var(zero_flag_var_copied),
+        );
+        cs.add_constraint_expr(
+            Expr::var(zero_check_input_in_intermediate_layer) * Expr::var(var_inv_copied)
+                + Expr::var(zero_flag_var_copied)
+                - Expr::one(),
+        );
+
+        zero_flag
+    };
+
+    let values_are_equal_for_perform_eq =
+        Boolean::and(&all_zeroes, &result_of_boolean.toggle(), cs);
+    let perform_eq_bit = Boolean::and(&perform_eq_boolean, &values_are_equal_for_perform_eq, cs);
+
+    // now we need to resolve a condition
+    // - for all add/sub ops our return register is just an overflow
+    // - for equality - it's zero check && overflow is zero
+    // - for mul-low - it's zero check negated
+
+    let RegisterAccessType::Write {
+        write_value: x12_write_vars,
+        ..
+    } = x12_and_indirects.register_access
+    else {
+        panic!()
+    };
+
+    let mut expr = Expr::var(result_of_variable).mask(perform_add_boolean)
+        + Expr::var(result_of_variable).mask(perform_sub_boolean)
+        + Expr::var(result_of_variable).mask(perform_sub_negate_boolean)
+        + Expr::from(perform_eq_bit).mask(perform_eq_boolean)
+        + Expr::from(all_zeroes.toggle()).mask(perform_mul_low_boolean);
+    // memcopy is same as addition
+    expr = expr + Expr::var(result_of_variable).mask(perform_memcopy_boolean);
+    collapse_max_quadratic_expr_into(cs, expr.clone(), x12_write_vars[0]);
+    cs.define_variable_from_expr(x12_write_vars[0], expr);
+
+    // set value for high bits and constraint it
+    let x12_write_vars_high = x12_write_vars[1];
+    let value_fn = move |placer: &mut CS::WitnessPlacer| {
+        let zero = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0);
+        placer.assign_u16(x12_write_vars_high, &zero);
+    };
+    cs.set_values(value_fn);
+
+    cs.add_constraint_allow_explicit_linear_prevent_optimizations_expr(Expr::var(
+        x12_write_vars[1],
+    ));
+
+    {
+        for (i, input) in output_placeholder_state.iter().enumerate() {
+            let register = Register::<F>(input.map(|el| Num::Var(el)));
+            if let Some(value) = register.get_value_unsigned(&*cs) {
+                println!("Output element {} = 0x{:08x}", i, value);
+            }
+        }
+
+        let x12_output = Register::<F>(x12_write_vars.map(|el| Num::Var(el)));
+        if let Some(value) = x12_output.get_value_unsigned(&*cs) {
+            println!("x12 output = 0x{:08x}", value);
+        }
+    }
+
+    (output_placeholder_state, x12_write_vars)
+}
+
+#[cfg(test)]
+mod test {
+    use test_utils::skip_if_ci;
+
+    use super::*;
+    use crate::gkr_compiler::compile_delegation_circuit_into_gkr;
+    use crate::gkr_compiler::compile_delegation_circuit_into_gkr_without_caches;
+    use crate::gkr_compiler::dump_ssa_witness_eval_form;
+    use crate::utils::serialize_to_file;
+
+    #[test]
+    fn compile_bigint_with_extended_control_into_gkr() {
+        skip_if_ci!();
+        use ::field::baby_bear::base::BabyBearField;
+
+        let gkr_compiled = compile_delegation_circuit_into_gkr::<BabyBearField>(
+            &|cs| bigint_with_extended_control_delegation_circuit_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_bigint_with_extended_control_delegation_circuit(cs);
+            },
+            22,
+        );
+
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/bigint_with_extended_control_layout_gkr.json",
+        );
+    }
+
+    #[test]
+    fn compile_bigint_with_extended_control_witness_graph() {
+        skip_if_ci!();
+        use ::field::baby_bear::base::BabyBearField;
+
+        let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
+            &|cs| bigint_with_extended_control_delegation_circuit_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_bigint_with_extended_control_delegation_circuit(cs);
+            },
+        );
+        serialize_to_file(
+            &ssa_forms,
+            "compiled_circuits/bigint_with_extended_control_ssa_gkr.json",
+        );
+    }
+
+    #[test]
+    fn compile_bigint_with_extended_control_into_no_caches_gkr() {
+        skip_if_ci!();
+        use ::field::baby_bear::base::BabyBearField;
+
+        let gkr_compiled = compile_delegation_circuit_into_gkr_without_caches::<BabyBearField>(
+            &|cs| bigint_with_extended_control_delegation_circuit_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_bigint_with_extended_control_delegation_circuit(cs);
+            },
+            22,
+        );
+
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json",
+        );
+    }
+}

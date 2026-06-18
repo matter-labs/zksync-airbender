@@ -40,6 +40,19 @@ pub struct BaseFieldPolySource<F: PrimeField> {
     next_layer_size: usize,
 }
 
+impl<F: PrimeField> BaseFieldPolySource<F> {
+    pub(crate) fn current_values(&'_ self) -> &'_ [F] {
+        unsafe { core::slice::from_raw_parts(self.start, self.next_layer_size * 2) }
+    }
+
+    pub(crate) fn empty() -> Self {
+        Self {
+            start: null_mut(),
+            next_layer_size: 0,
+        }
+    }
+}
+
 unsafe impl<F: PrimeField> Send for BaseFieldPolySource<F> {}
 unsafe impl<F: PrimeField> Sync for BaseFieldPolySource<F> {}
 
@@ -48,12 +61,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
 {
     const SHOULD_ACCESS_TO_PREPARE_FOR_NEXT_STEP: bool = false;
 
-    fn dummy() -> Self {
-        Self {
-            start: null_mut(),
-            next_layer_size: 0,
-        }
-    }
     #[inline(always)]
     fn get_collapse_context(
         &self,
@@ -62,7 +69,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     }
     #[inline(always)]
     fn get_at_index(&self, index: usize) -> BaseFieldRepresentation<F> {
-        debug_assert!(index < self.next_layer_size * 2);
+        assert!(index < self.next_layer_size * 2);
         unsafe {
             let f0 = self.start.add(index).read();
 
@@ -71,7 +78,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     }
     #[inline(always)]
     fn get_f0_and_f1(&self, index: usize) -> [BaseFieldRepresentation<F>; 2] {
-        debug_assert!(index < self.next_layer_size);
+        assert!(index < self.next_layer_size);
         [
             EvaluationFormStorage::<F, E, _>::get_at_index(self, index),
             EvaluationFormStorage::<F, E, _>::get_at_index(self, self.next_layer_size + index),
@@ -85,6 +92,38 @@ pub struct BaseFieldPolySourceAfterOneFolding<F: PrimeField, E: FieldExtension<F
     pub(crate) next_layer_size: usize,
     pub(crate) base_input_start: *const F,
     pub(crate) first_folding_challenge_and_squared: (E, E),
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolySourceAfterOneFolding<F, E> {
+    pub(crate) fn current_values(&self) -> Vec<E> {
+        let mut result_evals = Vec::with_capacity(self.base_layer_half_size);
+        unsafe {
+            let evals =
+                core::slice::from_raw_parts(self.base_input_start, self.base_layer_half_size * 2);
+            let (f0s, f1s) = evals.split_at(self.base_layer_half_size);
+            for (f0, f1) in f0s.iter().zip(f1s.iter()) {
+                let mut diff = *f1;
+                diff.sub_assign(f0);
+                let mut result = self.first_folding_challenge_and_squared.0;
+                result.mul_assign_by_base(&diff);
+                result.add_assign_base(f0);
+                result_evals.push(result);
+            }
+        }
+
+        result_evals
+    }
+
+    pub(crate) fn empty_with_folding_context(folding_challenge: E) -> Self {
+        let mut challenge_squared = folding_challenge;
+        challenge_squared.square();
+        Self {
+            base_input_start: null_mut(),
+            first_folding_challenge_and_squared: (folding_challenge, challenge_squared),
+            base_layer_half_size: 0,
+            next_layer_size: 0,
+        }
+    }
 }
 
 unsafe impl<F: PrimeField, E: FieldExtension<F> + Field> Send
@@ -102,14 +141,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
 {
     const SHOULD_ACCESS_TO_PREPARE_FOR_NEXT_STEP: bool = false;
 
-    fn dummy() -> Self {
-        Self {
-            base_input_start: null_mut(),
-            first_folding_challenge_and_squared: (E::ZERO, E::ZERO),
-            base_layer_half_size: 0,
-            next_layer_size: 0,
-        }
-    }
     #[inline(always)]
     fn get_collapse_context(
         &self,
@@ -119,45 +150,28 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     }
     #[inline(always)]
     fn get_at_index(&self, index: usize) -> BaseFieldFoldedOnceRepresentation<F> {
-        debug_assert!(index < self.next_layer_size * 2);
-        todo!();
-    }
-    #[inline(always)]
-    fn get_f0_and_f1(&self, index: usize) -> [BaseFieldFoldedOnceRepresentation<F>; 2] {
-        // our representation is "lazy" - it is a poly over `r` with coefficients f'(X) = (f(0, X), f(1, X) - f(0, X)).
-        // Now we need to output:
-        // - f'(0, Y) = (f(0, 0, Y), f(1, 0, Y) - f(0, 0, Y))
-        // - f'(1, Y) = (f(0, 1, Y), f(1, 1, Y) - f(0, 1, Y))
-        // we take a decision to trade memory consumption for speed, and so we access input array at 4 values and recompute
-        debug_assert!(index < self.next_layer_size);
+        assert!(index < self.base_layer_half_size);
         unsafe {
             // we take computation
-            let f00 = self.base_input_start.add(index).read();
-            let f01 = self
+            let f0 = self.base_input_start.add(index).read();
+            let f1 = self
                 .base_input_start
                 .add(self.base_layer_half_size + index)
                 .read();
-            let f10 = self
-                .base_input_start
-                .add(self.next_layer_size + index)
-                .read();
-            let f11 = self
-                .base_input_start
-                .add(self.base_layer_half_size + self.next_layer_size + index)
-                .read();
-            let f0_c0 = f00;
-            let mut f0_c1 = f01;
-            f0_c1.sub_assign(&f00);
+            let c0 = f0;
+            let mut c1 = f1;
+            c1.sub_assign(&f0);
 
-            let f1_c0 = f10;
-            let mut f1_c1 = f11;
-            f1_c1.sub_assign(&f10);
-
-            [
-                BaseFieldFoldedOnceRepresentation::new(f0_c0, f0_c1),
-                BaseFieldFoldedOnceRepresentation::new(f1_c0, f1_c1),
-            ]
+            BaseFieldFoldedOnceRepresentation::new(c0, c1)
         }
+    }
+    #[inline(always)]
+    fn get_f0_and_f1(&self, index: usize) -> [BaseFieldFoldedOnceRepresentation<F>; 2] {
+        assert!(index < self.next_layer_size);
+        [
+            EvaluationFormStorage::<F, E, _>::get_at_index(self, index),
+            EvaluationFormStorage::<F, E, _>::get_at_index(self, self.next_layer_size + index),
+        ]
     }
 }
 
@@ -211,7 +225,59 @@ pub struct BaseFieldPolySourceAfterTwoFoldings<F: PrimeField, E: FieldExtension<
     pub(crate) next_layer_size: usize,
     pub(crate) first_folding_challenge: E,
     pub(crate) second_folding_challenge: E,
+    pub(crate) combined_challenges: E, // r1 * r2, precomputed to avoid E×E at get_at_index time
     pub(crate) first_access: bool,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolySourceAfterTwoFoldings<F, E> {
+    pub(crate) fn current_values(&self) -> Vec<E> {
+        let mut result_evals = Vec::with_capacity(self.base_layer_half_size);
+        unsafe {
+            let evals =
+                core::slice::from_raw_parts(self.base_input_start, self.base_layer_half_size * 2);
+            for i in 0..self.base_quarter_size {
+                let mut diff = evals[i + self.base_layer_half_size];
+                diff.sub_assign(&evals[i]);
+                let mut f0 = self.first_folding_challenge;
+                f0.mul_assign_by_base(&diff);
+                f0.add_assign_base(&evals[i]);
+
+                let mut diff = evals[i + self.base_quarter_size + self.base_layer_half_size];
+                diff.sub_assign(&evals[i + self.base_quarter_size]);
+                let mut f1 = self.first_folding_challenge;
+                f1.mul_assign_by_base(&diff);
+                f1.add_assign_base(&evals[i + self.base_quarter_size]);
+
+                let mut diff = f1;
+                diff.sub_assign(&f0);
+                let mut result = diff;
+                result.mul_assign(&self.second_folding_challenge);
+                result.add_assign(&f0);
+                result_evals.push(result);
+            }
+        }
+
+        result_evals
+    }
+
+    pub(crate) fn empty_with_folding_context(
+        first_folding_challenge: E,
+        second_folding_challenge: E,
+    ) -> Self {
+        let mut combined_challenges = first_folding_challenge;
+        combined_challenges.mul_assign(&second_folding_challenge);
+        Self {
+            base_input_start: null_mut(),
+            this_layer_cache_start: null_mut(),
+            base_layer_half_size: 0,
+            base_quarter_size: 0,
+            next_layer_size: 0,
+            first_folding_challenge,
+            second_folding_challenge,
+            combined_challenges,
+            first_access: false,
+        }
+    }
 }
 
 unsafe impl<F: PrimeField, E: FieldExtension<F> + Field> Send
@@ -229,18 +295,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
 {
     const SHOULD_ACCESS_TO_PREPARE_FOR_NEXT_STEP: bool = true;
 
-    fn dummy() -> Self {
-        Self {
-            base_input_start: null_mut(),
-            this_layer_cache_start: null_mut(),
-            base_layer_half_size: 0,
-            base_quarter_size: 0,
-            next_layer_size: 0,
-            first_folding_challenge: E::ZERO,
-            second_folding_challenge: E::ZERO,
-            first_access: false,
-        }
-    }
     #[inline(always)]
     fn get_collapse_context(
         &self,
@@ -251,27 +305,19 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
 
     #[inline(always)]
     fn get_at_index(&self, index: usize) -> ExtensionFieldRepresentation<F, E> {
-        debug_assert!(index < self.next_layer_size * 2);
+        assert!(index < self.next_layer_size * 2);
         // fold two times
         unsafe {
             if self.first_access {
-                // recompute corresponding input from the previous layer
-
-                // TODO: can compute faster
+                // Use the multilinear expansion to avoid an E×E multiplication:
+                //   f(r1, r2) = f00 + r1*(f01-f00) + r2*(f10-f00) + r1*r2*(f00-f01-f10+f11)
+                // All four coefficients are base-field values, so all multiplications are E×F.
 
                 let f00 = self.base_input_start.add(index).read();
                 let f01 = self
                     .base_input_start
                     .add(self.base_layer_half_size + index)
                     .read();
-
-                let f0_c0 = f00;
-                let mut f0_c1 = f01;
-                f0_c1.sub_assign(&f00);
-                let mut f0 = self.first_folding_challenge;
-                f0.mul_assign_by_base(&f0_c1);
-                f0.add_assign_base(&f0_c0);
-
                 let f10 = self
                     .base_input_start
                     .add(self.base_quarter_size + index)
@@ -281,20 +327,32 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
                     .add(self.base_layer_half_size + self.base_quarter_size + index)
                     .read();
 
-                let f1_c0 = f10;
-                let mut f1_c1 = f11;
-                f1_c1.sub_assign(&f10);
-                let mut f1 = self.first_folding_challenge;
-                f1.mul_assign_by_base(&f1_c1);
-                f1.add_assign_base(&f1_c0);
+                // c01 = f01 - f00
+                let mut c01 = f01;
+                c01.sub_assign(&f00);
+                // c10 = f10 - f00
+                let mut c10 = f10;
+                c10.sub_assign(&f00);
+                // c11 = f00 - f01 - f10 + f11
+                let mut c11 = f00;
+                c11.sub_assign(&f01);
+                c11.sub_assign(&f10);
+                c11.add_assign(&f11);
 
-                // and again
+                // result = f00 + r1*c01 + r2*c10 + (r1*r2)*c11  — all E×F
+                let mut term_r1 = self.first_folding_challenge;
+                term_r1.mul_assign_by_base(&c01);
 
-                let mut t = f1;
-                t.sub_assign(&f0);
-                let mut result = self.second_folding_challenge;
-                result.mul_assign(&t);
-                result.add_assign(&f0);
+                let mut term_r2 = self.second_folding_challenge;
+                term_r2.mul_assign_by_base(&c10);
+
+                let mut term_r1r2 = self.combined_challenges;
+                term_r1r2.mul_assign_by_base(&c11);
+
+                let mut result = term_r1;
+                result.add_assign(&term_r2);
+                result.add_assign(&term_r1r2);
+                result.add_assign_base(&f00);
 
                 // write down
                 self.this_layer_cache_start.add(index).write(result);
@@ -317,7 +375,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     #[inline(always)]
     fn get_f0_and_f1(&self, index: usize) -> [ExtensionFieldRepresentation<F, E>; 2] {
         // just read and do NOT cache f1 - f0
-        debug_assert!(index < self.next_layer_size);
+        assert!(index < self.next_layer_size);
         [
             self.get_at_index(index),
             self.get_at_index(self.next_layer_size + index),

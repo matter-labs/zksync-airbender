@@ -1,98 +1,24 @@
 use super::*;
 
-pub fn create_sra_sign_filler_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let keys = key_for_continuous_log2_range(1 + 1 + 5);
-    const TABLE_NAME: &'static str = "SRA sign bits filler table";
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        1,
-        |keys| {
-            let a = keys[0].as_u32_reduced();
-            let input_sign = a & 1 > 0;
-            let is_sra = (a >> 1) & 1 > 0;
-            let shift_amount = a >> 2;
-            assert!(shift_amount < 32);
+fn shift_amount_index_fn<F: PrimeField>(keys: &[F]) -> usize {
+    let a = keys[0].as_u32_reduced();
+    let b = keys[1].as_u32_reduced();
 
-            if input_sign == false || is_sra == false {
-                // either it's positive, or we are not doing SRA (and it's actually the only case when shift amount can be >= 32
-                // in practice, but we have to fill the table)
-                let result = [F::ZERO; 3];
+    assert!(a < (1u32 << 8));
+    assert!(b < (1u32 << 8));
 
-                (a as usize, result)
-            } else {
-                if shift_amount == 0 {
-                    // special case
-                    let result = [F::ZERO; 3];
-
-                    (a as usize, result)
-                } else {
-                    let (mask, _) = u32::MAX.overflowing_shl(32 - (shift_amount as u32));
-
-                    let mut result = [F::ZERO; 3];
-                    result[0] = F::from_u32_unchecked(mask as u16 as u32);
-                    result[1] = F::from_u32_unchecked((mask >> 16) as u16 as u32);
-
-                    (a as usize, result)
-                }
-            }
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
+    ((a << 8) | b) as usize
 }
 
-pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    // take 16 bits of input half-word || shift || is_right
-
-    let keys = key_for_continuous_log2_range(16 + 5 + 1);
-
-    let table_name = "Shift implementation table".to_string();
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        table_name,
-        1,
-        |keys| {
-            let a = keys[0].as_u32_reduced();
-            let input_word = a as u16;
-            let shift_amount = ((a >> 16) & 0b1_1111) as u32;
-            let is_right_shift = (a >> (16 + 5)) > 0;
-
-            let (in_place, overflow) = if is_right_shift {
-                let input = (input_word as u32) << 16;
-                let t = input >> shift_amount;
-                let in_place = (t >> 16) as u16;
-                let overflow = t as u16;
-
-                (in_place, overflow)
-            } else {
-                let input = input_word as u32;
-                let t = input << shift_amount;
-                let in_place = t as u16;
-                let overflow = (t >> 16) as u16;
-
-                (in_place, overflow)
-            };
-
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u32_unchecked(in_place as u32);
-            result[1] = F::from_u32_unchecked(overflow as u32);
-
-            (a as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn create_truncate_shift_amount_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    let mut keys = Vec::with_capacity(1 << (8 + 1));
+pub fn create_truncate_shift_amount_and_range_check_8_table<F: PrimeField>(
+    id: u32,
+) -> LookupTable<F> {
+    let mut keys = Vec::with_capacity(1 << (8 + 8));
     for first in 0..(1 << 8) {
-        for second in 0..(1 << 1) {
+        for second in 0..(1 << 8) {
             let key = [
                 F::from_u32_unchecked(first as u32),
                 F::from_u32_unchecked(second as u32),
-                F::ZERO,
             ];
             keys.push(key)
         }
@@ -102,144 +28,107 @@ pub fn create_truncate_shift_amount_table<F: PrimeField>(id: u32) -> LookupTable
         &keys,
         table_name,
         2,
+        1,
         |keys| {
             let a = keys[0].as_u32_reduced();
             let b = keys[1].as_u32_reduced();
             assert!(a < 1 << 8);
+            assert!(b < 1 << 8);
 
-            let is_right_shift = b != 0;
             let shift_amount = a & 0b1_1111;
-            let shift_amount = if is_right_shift {
-                shift_amount
-            } else {
-                32 - shift_amount
-            };
 
-            let mut result = [F::ZERO; 3];
-            result[0] = F::from_u32_unchecked(shift_amount as u32);
+            let mut result = ArrayVec::new();
+            result.push(F::from_u32_unchecked(shift_amount));
 
-            (((a << 1) | b) as usize, result)
+            (shift_amount_index_fn::<F>(keys), result)
         },
-        Some(|keys| {
-            let a = keys[0].as_u32_reduced();
-            let b = keys[1].as_u32_reduced();
-
-            assert!(a < (1u32 << 8));
-            assert!(b < (1u32 << 1));
-
-            ((a << 1) | b) as usize
-        }),
+        Some(shift_amount_index_fn::<F>),
         id,
     )
 }
 
-pub fn create_shift_amount_truncation_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    const TABLE_WIDTH: usize = 16;
-
-    let keys = key_for_continuous_log2_range(TABLE_WIDTH);
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        format!("Shift amount truncation table"),
-        1,
-        |keys| {
-            let a = keys[0].as_u32_reduced();
-            assert!(a < (1 << TABLE_WIDTH));
-
-            let shift_amount = a & 0b11111;
-
-            let result = [F::from_u32_unchecked(shift_amount as u32), F::ZERO, F::ZERO];
-            (a as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
+fn shift_implementation_index_fn<F: PrimeField>(keys: &[F]) -> usize {
+    let byte_index = keys[0].as_u32_reduced();
+    assert!(byte_index < 1 << 2);
+    let input_byte = keys[1].as_u32_reduced();
+    assert!(input_byte < 1 << 8);
+    let shift_amount = keys[2].as_u32_reduced();
+    assert!(shift_amount < 1 << 5);
+    let funct3 = keys[3].as_u32_reduced();
+    assert!(funct3 < 1 << 3);
+    ((byte_index << (8 + 5 + 3)) | (input_byte << (5 + 3)) | (shift_amount << 3) | funct3) as usize
 }
 
-pub fn create_logical_shift_16_bit_table<
-    F: PrimeField,
-    const INPUT_IS_HIGH: bool,
-    const IS_RIGHT_SHIFT: bool,
->(
-    id: u32,
-) -> LookupTable<F, 3> {
-    const TABLE_WIDTH: usize = 16 + 5;
+pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<F> {
+    // byte || shift amount || funct3 || byte index
 
-    let keys = key_for_continuous_log2_range(TABLE_WIDTH);
+    let mut keys = Vec::with_capacity(1 << (8 + 5 + 3 + 2));
 
+    for input_byte_idx in 0..(1 << 2) {
+        for byte in 0..(1 << 8) {
+            for shift in 0..(1 << 5) {
+                for funct3 in 0..(1 << 3) {
+                    let key = [
+                        F::from_u32_unchecked(input_byte_idx as u32),
+                        F::from_u32_unchecked(byte as u32),
+                        F::from_u32_unchecked(shift as u32),
+                        F::from_u32_unchecked(funct3 as u32),
+                    ];
+                    keys.push(key)
+                }
+            }
+        }
+    }
+
+    let table_name = "Shift implementation over bytes table".to_string();
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
-        format!(
-            "Logical shift table: high input word = {}, is right shift = {}",
-            INPUT_IS_HIGH, IS_RIGHT_SHIFT
-        ),
-        1,
+        table_name,
+        4,
+        4,
         |keys| {
-            let a = keys[0].as_u32_reduced();
-            assert!(a < (1 << TABLE_WIDTH));
+            let byte_index = keys[0].as_u32_reduced();
+            assert!(byte_index < 1 << 2);
+            let input_byte = keys[1].as_u32_reduced();
+            assert!(input_byte < 1 << 8);
+            let shift_amount = keys[2].as_u32_reduced();
+            assert!(shift_amount < 1 << 5);
+            let funct3 = keys[3].as_u32_reduced();
+            assert!(funct3 < 1 << 3);
+            let funct3 = funct3 as u8;
 
-            let word = (a & 0xffff) as u32;
-            let shift_amount = a >> 16;
+            let mut out_value = 0u32;
+            let input_value = input_byte << (byte_index * 8);
 
-            let reconstructed = if INPUT_IS_HIGH { word << 16 } else { word };
-
-            let shift_result = if IS_RIGHT_SHIFT {
-                reconstructed >> shift_amount
-            } else {
-                reconstructed << shift_amount
+            use crate::gkr_circuits::binary_shifts_family::{
+                FORMAL_ROL_FUNCT3, FORMAL_ROR_FUNCT3, FORMAL_SLL_FUNCT3, FORMAL_SRA_FUNCT3,
+                FORMAL_SRL_FUNCT3,
             };
 
-            let low_result = shift_result & 0xffff;
-            let high_result = shift_result >> 16;
+            match funct3 {
+                FORMAL_SLL_FUNCT3 => {
+                    out_value = input_value << shift_amount;
+                }
+                FORMAL_SRL_FUNCT3 => {
+                    out_value = input_value >> shift_amount;
+                }
+                FORMAL_SRA_FUNCT3 => {
+                    // NOTE: same expression for both highest and not byte,
+                    // as if byte is not highest then top bit is not set and SRA is equal to SRL
+                    out_value = ((input_value as i32) >> shift_amount) as u32;
+                }
+                _ => {}
+            }
 
-            let result = [
-                F::from_u32_unchecked(low_result as u32),
-                F::from_u32_unchecked(high_result as u32),
-                F::ZERO,
-            ];
-            (a as usize, result)
+            let out_bytes = out_value.to_le_bytes();
+            let mut result = ArrayVec::new();
+            for b in out_bytes.into_iter() {
+                result.push(F::from_u32_unchecked(b as u32));
+            }
+
+            (shift_implementation_index_fn::<F>(keys), result)
         },
-        Some(first_key_index_gen_fn::<F, 3>),
-        id,
-    )
-}
-
-pub fn create_sra_16_filler_mask_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
-    const TABLE_WIDTH: usize = 16 + 5;
-
-    let keys = key_for_continuous_log2_range(TABLE_WIDTH);
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        format!("SRA filler bits table"),
-        1,
-        |keys| {
-            let a = keys[0].as_u32_reduced();
-            assert!(a < (1 << TABLE_WIDTH));
-
-            let word = (a & 0xffff) as u32;
-            let shift_amount = ((a >> 16) & 0b11111) as u32;
-            let sign_bit = (word >> 15) != 0;
-
-            // we have top word
-            let mask = if sign_bit {
-                // if we e.g. shift by 5 bits, and top bit is 1, then
-                // highest top 5 bits need to be filled, and the rest - empty
-
-                u32::MAX.unbounded_shl(32 - shift_amount)
-            } else {
-                0u32
-            };
-
-            let low_result = mask & 0xffff;
-            let high_result = mask >> 16;
-
-            let result = [
-                F::from_u32_unchecked(low_result as u32),
-                F::from_u32_unchecked(high_result as u32),
-                F::ZERO,
-            ];
-            (a as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F, 3>),
+        Some(shift_implementation_index_fn::<F>),
         id,
     )
 }

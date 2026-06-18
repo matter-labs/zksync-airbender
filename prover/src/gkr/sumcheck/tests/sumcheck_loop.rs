@@ -4,10 +4,12 @@ use std::mem::MaybeUninit;
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRLayerDescription, GateArtifacts, NoFieldGKRRelation};
 use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic, PrimeField};
+use transcript::Seed;
 use worker::Worker;
 
 use super::utils::*;
 use crate::gkr::prover::sumcheck_loop::evaluate_sumcheck_for_layer;
+use crate::gkr::prover::GKRExternalChallenges;
 use crate::gkr::sumcheck::eq_poly::*;
 
 type F = Mersenne31Field;
@@ -54,11 +56,11 @@ fn test_sumcheck_loop_product() {
         }],
         gates_with_external_connections: vec![],
         cached_relations: BTreeMap::new(),
-        additional_base_layer_openings: vec![],
+        intermediate_layer_width: None,
     };
 
     let prev_challenges: Vec<E> = random_poly_in_ext::<F, E>(FOLDING_STEPS);
-    let eq_precomputed = make_eq_poly_in_full::<E>(&prev_challenges);
+    let eq_precomputed = make_eq_poly_in_full::<E>(&prev_challenges, &worker);
     let eq_last = eq_precomputed.last().unwrap();
 
     let output_claim = evaluate_with_precomputed_eq_ext::<E>(&output, eq_last);
@@ -71,8 +73,11 @@ fn test_sumcheck_loop_product() {
     let mut claim_points: BTreeMap<usize, Vec<E>> = BTreeMap::new();
     claim_points.insert(1, prev_challenges.clone());
 
+    let lookup_multiplicative_part = E::from_base(F::from_u64_with_reduction(0xff));
     let lookup_additive_part = E::from_base(F::from_u64_with_reduction(42));
-    let constraints_batch_challenge = E::from_base(F::from_u64_with_reduction(127));
+
+    let mut batching_challenge = E::from_base(F::from_u64_with_reduction(0xff));
+    let mut seed = Seed::default();
 
     evaluate_sumcheck_for_layer::<F, E>(
         0,
@@ -80,11 +85,15 @@ fn test_sumcheck_loop_product() {
         &mut claim_points,
         &mut claims_storage,
         &mut storage,
-        unsafe { MaybeUninit::uninit().assume_init_ref() }, // unused
+        &mut batching_challenge,
         unsafe { MaybeUninit::uninit().assume_init_ref() }, // unused
         POLY_SIZE,
+        lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge,
+        &[],
+        0,
+        &GKRExternalChallenges::default(),
+        &mut seed,
         &worker,
     );
 
@@ -116,7 +125,7 @@ fn test_sumcheck_loop_product() {
         "Should have correct number of challenges"
     );
 
-    let eq_for_claims = make_eq_poly_in_full::<E>(layer_0_challenges);
+    let eq_for_claims = make_eq_poly_in_full::<E>(layer_0_challenges, &worker);
     let eq_claims_last = eq_for_claims.last().unwrap();
 
     let expected_a = evaluate_with_precomputed_eq_ext::<E>(&a, eq_claims_last);
@@ -186,7 +195,7 @@ fn test_sumcheck_loop_multiple_gates() {
         gates: vec![
             GateArtifacts {
                 output_layer: 1,
-                enforced_relation: NoFieldGKRRelation::Copy {
+                enforced_relation: NoFieldGKRRelation::CopyInExtensionField {
                     input: addr_copy_in,
                     output: addr_copy_out,
                 },
@@ -201,11 +210,11 @@ fn test_sumcheck_loop_multiple_gates() {
         ],
         gates_with_external_connections: vec![],
         cached_relations: BTreeMap::new(),
-        additional_base_layer_openings: vec![],
+        intermediate_layer_width: None,
     };
 
     let prev_challenges: Vec<E> = random_poly_in_ext::<F, E>(FOLDING_STEPS);
-    let eq_precomputed = make_eq_poly_in_full::<E>(&prev_challenges);
+    let eq_precomputed = make_eq_poly_in_full::<E>(&prev_challenges, &worker);
     let eq_last = eq_precomputed.last().unwrap();
 
     let copy_claim = evaluate_with_precomputed_eq_ext::<E>(&copy_out, eq_last);
@@ -220,8 +229,11 @@ fn test_sumcheck_loop_multiple_gates() {
     let mut claim_points: BTreeMap<usize, Vec<E>> = BTreeMap::new();
     claim_points.insert(1, prev_challenges.clone());
 
+    let lookup_multiplicative_part = E::from_base(F::from_u64_with_reduction(0xff));
     let lookup_additive_part = E::from_base(F::from_u64_with_reduction(42));
-    let constraints_batch_challenge = E::from_base(F::from_u64_with_reduction(127));
+
+    let mut batching_challenge = E::from_base(F::from_u64_with_reduction(0xff));
+    let mut seed = Seed::default();
 
     evaluate_sumcheck_for_layer::<F, E>(
         0,
@@ -229,11 +241,15 @@ fn test_sumcheck_loop_multiple_gates() {
         &mut claim_points,
         &mut claims_storage,
         &mut storage,
-        unsafe { MaybeUninit::uninit().assume_init_ref() }, // unused
+        &mut batching_challenge,
         unsafe { MaybeUninit::uninit().assume_init_ref() }, // unused
         POLY_SIZE,
+        lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge,
+        &[],
+        0,
+        &GKRExternalChallenges::default(),
+        &mut seed,
         &worker,
     );
 
@@ -245,7 +261,7 @@ fn test_sumcheck_loop_multiple_gates() {
     assert!(layer_0_claims.contains_key(&addr_prod_a));
     assert!(layer_0_claims.contains_key(&addr_prod_b));
 
-    let eq_for_claims = make_eq_poly_in_full::<E>(layer_0_challenges);
+    let eq_for_claims = make_eq_poly_in_full::<E>(layer_0_challenges, &worker);
     let eq_claims_last = eq_for_claims.last().unwrap();
 
     let expected_copy = evaluate_with_precomputed_eq_ext::<E>(&copy_in, eq_claims_last);

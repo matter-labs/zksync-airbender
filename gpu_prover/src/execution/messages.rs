@@ -33,7 +33,7 @@ pub struct SimulationResult {
 }
 
 pub enum WorkerResult<A: GoodAllocator> {
-    SnapshotProduced(usize),
+    SnapshotProduced,
     InitsAndTeardownsData(InitsAndTeardownsData<A>),
     TracingData(TracingData<A>),
     SimulationResult(SimulationResult),
@@ -133,13 +133,6 @@ pub enum GpuWorkResult<A: GoodAllocator> {
 }
 
 impl<A: GoodAllocator> GpuWorkResult<A> {
-    pub fn batch_id(&self) -> u64 {
-        match self {
-            GpuWorkResult::MemoryCommitment(result) => result.batch_id,
-            GpuWorkResult::Proof(result) => result.batch_id,
-        }
-    }
-
     pub fn circuit_type(&self) -> CircuitType {
         match self {
             GpuWorkResult::MemoryCommitment(result) => result.circuit_type,
@@ -151,20 +144,6 @@ impl<A: GoodAllocator> GpuWorkResult<A> {
         match self {
             GpuWorkResult::MemoryCommitment(result) => result.sequence_id,
             GpuWorkResult::Proof(result) => result.sequence_id,
-        }
-    }
-
-    pub fn inits_and_teardowns(&self) -> &Option<ShuffleRamInitsAndTeardownsHost<A>> {
-        match self {
-            GpuWorkResult::MemoryCommitment(result) => &result.inits_and_teardowns,
-            GpuWorkResult::Proof(result) => &result.inits_and_teardowns,
-        }
-    }
-
-    pub fn tracing_data(&self) -> &Option<TracingDataHost<A>> {
-        match self {
-            GpuWorkResult::MemoryCommitment(result) => &result.tracing_data,
-            GpuWorkResult::Proof(result) => &result.tracing_data,
         }
     }
 }

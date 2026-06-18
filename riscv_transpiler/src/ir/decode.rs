@@ -106,3 +106,39 @@ pub const fn get_formal_rs1(src: u32) -> u32 {
 pub const fn get_formal_rs2(src: u32) -> u32 {
     get_bits_and_align_right(src, 20, 5)
 }
+
+#[must_use]
+#[inline(always)]
+pub const fn funct3_bits(src: u32) -> u8 {
+    ((src >> 12) & 0b111) as u8
+}
+
+#[must_use]
+#[inline(always)]
+pub const fn funct7_bits(src: u32) -> u8 {
+    ((src >> 25) & 0b1111111) as u8
+}
+
+#[must_use]
+#[inline(always)]
+pub const fn get_opcode_bits(src: u32) -> u8 {
+    (src & 0b01111111) as u8 // opcode is always lowest 7 bits
+}
+
+#[must_use]
+#[inline(always)]
+pub const fn get_rd_bits(src: u32) -> u8 {
+    ((src >> 7) & 0b00011111) as u8
+}
+
+#[must_use]
+#[inline(always)]
+pub const fn get_formal_rs1_bits(src: u32) -> u8 {
+    ((src >> 15) & 0b00011111) as u8
+}
+
+#[must_use]
+#[inline(always)]
+pub const fn get_formal_rs2_bits(src: u32) -> u8 {
+    ((src >> 20) & 0b00011111) as u8
+}

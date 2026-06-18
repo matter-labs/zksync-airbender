@@ -1,14 +1,15 @@
 use super::*;
+use crate::utils::encoding_tuple_into_lookup_index;
 use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
-use cs::cs::oracle::Oracle;
 use cs::gkr_compiler::GKRCircuitArtifact;
+use cs::oracle::Oracle;
 use cs::tables::TableDriver;
 use fft::GoodAllocator;
 use field::PrimeField;
 use worker::Worker;
 use worker::WorkerGeometry;
 
-struct QuasiCell<T: Sized>(Box<[*mut T]>);
+pub(crate) struct QuasiCell<T: Sized>(pub(crate) Box<[*mut T]>);
 unsafe impl Send for QuasiCell<u32> {}
 unsafe impl Send for QuasiCell<u16> {}
 
@@ -16,6 +17,7 @@ unsafe impl Send for QuasiCell<u16> {}
 pub struct GKRFullWitnessTrace<F: PrimeField, A: Allocator + Clone, B: Allocator + Clone> {
     pub column_major_memory_trace: Vec<Vec<F, A>, B>,
     pub column_major_witness_trace: Vec<Vec<F, A>, B>,
+    pub column_major_scratch_space_trace: Vec<Vec<F, A>, B>,
     // we will use it for stage 2 - we can map (for free) every lookup tuple into the
     // corresponding index of the lookup tables (and more precisely - in the concatenation of all the tables)
     pub generic_lookup_mapping: Vec<Vec<u32, A>, B>,
@@ -45,6 +47,7 @@ impl<F: PrimeField, A: Allocator + Clone, B: Allocator + Clone> GKRFullWitnessTr
         trace_len: usize,
         num_memory_columns: usize,
         num_witness_columns: usize,
+        scratch_space_size: usize,
         num_generic_lookups: usize,
         num_range_check_16_lookups: usize,
         num_timestamp_range_check_lookups: usize,
@@ -63,6 +66,12 @@ impl<F: PrimeField, A: Allocator + Clone, B: Allocator + Clone> GKRFullWitnessTr
         let column_major_witness_trace = make_vec_vec(
             trace_len,
             num_witness_columns,
+            inner_allocator.clone(),
+            outer_allocator.clone(),
+        );
+        let column_major_scratch_space_trace = make_vec_vec(
+            trace_len,
+            scratch_space_size,
             inner_allocator.clone(),
             outer_allocator.clone(),
         );
@@ -89,6 +98,7 @@ impl<F: PrimeField, A: Allocator + Clone, B: Allocator + Clone> GKRFullWitnessTr
         Self {
             column_major_memory_trace,
             column_major_witness_trace,
+            column_major_scratch_space_trace,
             generic_lookup_mapping,
             range_check_16_lookup_mapping,
             timestamp_range_check_lookup_mapping,
@@ -100,7 +110,6 @@ impl<F: PrimeField, A: Allocator + Clone, B: Allocator + Clone> GKRFullWitnessTr
         oracle: &'a O,
         geometry: WorkerGeometry,
         table_driver: &'a TableDriver<F>,
-        scratch_space_size: usize,
         trace_len: usize,
     ) -> (
         Vec<ColumnMajorWitnessProxy<'a, O, F>>,
@@ -120,6 +129,12 @@ impl<F: PrimeField, A: Allocator + Clone, B: Allocator + Clone> GKRFullWitnessTr
 
         let mut column_major_memory_trace_start_ptrs: Vec<_> = self
             .column_major_memory_trace
+            .iter_mut()
+            .map(|el| el.as_mut_ptr())
+            .collect();
+
+        let mut column_major_scratch_space_start_ptrs: Vec<_> = self
+            .column_major_scratch_space_trace
             .iter_mut()
             .map(|el| el.as_mut_ptr())
             .collect();
@@ -151,7 +166,9 @@ impl<F: PrimeField, A: Allocator + Clone, B: Allocator + Clone> GKRFullWitnessTr
                 memory_rows_starts: column_major_memory_trace_start_ptrs
                     .clone()
                     .into_boxed_slice(),
-                scratch_space: vec![F::ZERO; scratch_space_size].into_boxed_slice(),
+                scratch_space: column_major_scratch_space_start_ptrs
+                    .clone()
+                    .into_boxed_slice(),
                 table_driver,
                 multiplicity_counting_scratch: &mut [],
                 lookup_mapping_rows_starts: generic_lookup_mapping_start_ptrs
@@ -183,6 +200,12 @@ impl<F: PrimeField, A: Allocator + Clone, B: Allocator + Clone> GKRFullWitnessTr
                     *el = el.add(chunk_size);
                 }
             }
+            for el in column_major_scratch_space_start_ptrs.iter_mut() {
+                unsafe {
+                    *el = el.add(chunk_size);
+                }
+            }
+
             for el in generic_lookup_mapping_start_ptrs.iter_mut() {
                 unsafe {
                     *el = el.add(chunk_size);
@@ -228,6 +251,12 @@ impl<F: PrimeField, A: Allocator + Clone, B: Allocator + Clone> GKRFullWitnessTr
                 // el.resize(trace_len, F::ZERO);
             }
 
+            for el in self.column_major_scratch_space_trace.iter_mut() {
+                debug_assert!(el.is_empty());
+                el.set_len(trace_len);
+                // el.set_len(num_cycles);
+                // el.resize(trace_len, 0);
+            }
             for el in self.generic_lookup_mapping.iter_mut() {
                 debug_assert!(el.is_empty());
                 el.set_len(trace_len);
@@ -251,18 +280,33 @@ impl<F: PrimeField, A: Allocator + Clone, B: Allocator + Clone> GKRFullWitnessTr
 
             // and witness should skip multiplicities
             for (idx, el) in self.column_major_witness_trace.iter_mut().enumerate() {
-                if idx
-                    == compiled_circuit
-                        .witness_layout
-                        .multiplicities_columns_for_range_check_16
-                    || idx
+                let is_range_check_16_multiplicity = compiled_circuit
+                    .witness_layout
+                    .multiplicities_columns_for_range_check_16
+                    .is_empty()
+                    == false
+                    && idx
+                        == compiled_circuit
+                            .witness_layout
+                            .multiplicities_columns_for_range_check_16
+                            .start;
+                let is_timestamp_range_check_multiplicity = compiled_circuit
+                    .witness_layout
+                    .multiplicities_columns_for_timestamp_range_check
+                    .is_empty()
+                    == false
+                    && idx
                         == compiled_circuit
                             .witness_layout
                             .multiplicities_columns_for_timestamp_range_check
-                    || compiled_circuit
-                        .witness_layout
-                        .multiplicities_columns_for_generic_lookup
-                        .contains(&idx)
+                            .start;
+                let is_generic_lookup_multiplicity = compiled_circuit
+                    .witness_layout
+                    .multiplicities_columns_for_generic_lookup
+                    .contains(&idx);
+                if is_range_check_16_multiplicity
+                    || is_timestamp_range_check_multiplicity
+                    || is_generic_lookup_multiplicity
                 {
                     el.resize(trace_len, F::ZERO);
                 } else {
@@ -304,16 +348,12 @@ pub fn evaluate_gkr_witness_for_executor_family<
 
     let num_memory_columns = compiled_circuit.memory_layout.total_width;
     let num_witness_columns = compiled_circuit.witness_layout.total_width;
-    let mut num_generic_lookups = compiled_circuit.witness_layout.generic_lookups.len();
+    let mut num_generic_lookups = compiled_circuit.generic_lookups.len();
     if compiled_circuit.has_decoder_lookup {
         num_generic_lookups += 1;
     }
-    let num_range_check_16_lookups = compiled_circuit
-        .witness_layout
-        .range_check_16_lookup_expressions
-        .len();
+    let num_range_check_16_lookups = compiled_circuit.range_check_16_lookup_expressions.len();
     let num_timestamp_range_check_lookups = compiled_circuit
-        .witness_layout
         .timestamp_range_check_lookup_expressions
         .len();
 
@@ -329,6 +369,7 @@ pub fn evaluate_gkr_witness_for_executor_family<
         trace_len,
         num_memory_columns,
         num_witness_columns,
+        compiled_circuit.scratch_space_size,
         num_generic_lookups,
         num_range_check_16_lookups,
         num_timestamp_range_check_lookups,
@@ -349,11 +390,6 @@ pub fn evaluate_gkr_witness_for_executor_family<
 
     let generic_lookup_multiplicities_total_len = compiled_circuit.total_tables_size;
 
-    assert_eq!(
-        compiled_circuit.offset_for_decoder_table,
-        table_driver.total_tables_len
-    );
-
     let geometry = worker.get_geometry(num_cycles);
     let mut range_16_multiplicity_subcounters = vec![vec![]; geometry.len()];
     let mut timestamp_range_check_multiplicity_subcounters = vec![vec![]; geometry.len()];
@@ -365,14 +401,8 @@ pub fn evaluate_gkr_witness_for_executor_family<
     // NOTE: we walk over full trace length (as we have to compute multiplicities even on padding rows)
     unsafe {
         worker.scope(trace_len, |scope, geometry| {
-            let (proxies, range_check_16_mappings, timestamp_range_check_mappings) = full_trace
-                .make_proxies_for_geometry(
-                    oracle,
-                    geometry,
-                    &table_driver,
-                    compiled_circuit.scratch_space_size,
-                    trace_len,
-                );
+            let (proxies, range_check_16_mappings, timestamp_range_check_mappings) =
+                full_trace.make_proxies_for_geometry(oracle, geometry, &table_driver, trace_len);
 
             let mut range_16_multiplicity_subcounters_chunks = range_16_multiplicity_subcounters
                 .as_chunks_mut::<1>()
@@ -428,6 +458,7 @@ pub fn evaluate_gkr_witness_for_executor_family<
                         vec![0u32; 1 << TIMESTAMP_COLUMNS_NUM_BITS];
                     let mut generic_lookup_multiplicities =
                         vec![0u32; generic_lookup_multiplicities_total_len];
+                    proxy.multiplicity_counting_scratch = &mut generic_lookup_multiplicities;
 
                     gkr_evaluate_witness_for_executor_family_inner(
                         &mut proxy,
@@ -438,7 +469,6 @@ pub fn evaluate_gkr_witness_for_executor_family<
                         compiled_circuit,
                         &mut range_check_16_multiplicities,
                         &mut timestamp_range_check_multiplicities,
-                        &mut generic_lookup_multiplicities,
                         trace_len,
                     );
 
@@ -459,6 +489,22 @@ pub fn evaluate_gkr_witness_for_executor_family<
     full_trace.set_initialized_and_pad(num_cycles, trace_len, compiled_circuit);
 
     // copy back multiplicities
+    if compiled_circuit
+        .witness_layout
+        .multiplicities_columns_for_range_check_16
+        .is_empty()
+    {
+        // effectively skip
+        range_16_multiplicity_subcounters.clear();
+    }
+    if compiled_circuit
+        .witness_layout
+        .multiplicities_columns_for_generic_lookup
+        .is_empty()
+    {
+        // effectively skip
+        general_purpose_multiplicity_subcounters.clear();
+    }
 
     unsafe {
         gkr_postprocess_multiplicities(
@@ -491,7 +537,6 @@ unsafe fn gkr_evaluate_witness_for_executor_family_inner<'a, F: PrimeField, O: O
     compiled_circuit: &GKRCircuitArtifact<F>,
     range_check_16_multiplicieties: &mut [u32],
     timestamp_range_check_multiplicieties: &mut [u32],
-    generic_lookup_multiplicieties: &mut [u32],
     trace_len: usize,
 ) {
     for absolute_row_idx in range {
@@ -500,11 +545,7 @@ unsafe fn gkr_evaluate_witness_for_executor_family_inner<'a, F: PrimeField, O: O
         #[cfg(feature = "profiling")]
         let t = std::time::Instant::now();
 
-        gkr_evaluate_witness_static_work_for_executor_family(
-            proxy,
-            compiled_circuit,
-            generic_lookup_multiplicieties,
-        );
+        gkr_evaluate_witness_static_work_for_executor_family(proxy, compiled_circuit);
 
         #[cfg(feature = "profiling")]
         PROFILING_TABLE.with_borrow_mut(|el| {
@@ -526,7 +567,7 @@ unsafe fn gkr_evaluate_witness_for_executor_family_inner<'a, F: PrimeField, O: O
         // our witness evaluation would count multiplicities that result in explicit lookups, so we need only
         // to count ones that are from special range-checks
 
-        gkr_count_special_multiplicities_for_executor_family(
+        gkr_count_special_multiplicities(
             proxy,
             range_check_16_chunk,
             timestamp_range_check_chunk,
@@ -555,24 +596,15 @@ pub(crate) unsafe fn gkr_evaluate_witness_static_work_for_executor_family<
 >(
     proxy: &mut ColumnMajorWitnessProxy<'a, O, F>,
     compiled_circuit: &GKRCircuitArtifact<F>,
-    generic_lookup_multiplicieties: &mut [u32],
 ) {
     use crate::gkr::witness_gen::family_circuits::memory::*;
 
-    gkr_process_machine_state_assuming_preprocessed_decoder::<F, O, true>(
-        proxy,
-        compiled_circuit,
-        generic_lookup_multiplicieties,
-    );
+    gkr_process_machine_state_assuming_preprocessed_decoder::<F, O, true>(proxy, compiled_circuit);
 
     gkr_process_shuffle_ram_accesses_in_executor_family::<F, O, true>(proxy, compiled_circuit);
 }
 
-pub(crate) unsafe fn gkr_count_special_multiplicities_for_executor_family<
-    'a,
-    F: PrimeField,
-    O: Oracle<F> + 'a,
->(
+pub(crate) unsafe fn gkr_count_special_multiplicities<'a, F: PrimeField, O: Oracle<F> + 'a>(
     proxy: &mut ColumnMajorWitnessProxy<'a, O, F>,
     range_check_16_chunk: &mut Box<[*mut u16]>,
     timestamp_range_check_chunk: &mut Box<[*mut u32]>,
@@ -587,7 +619,6 @@ pub(crate) unsafe fn gkr_count_special_multiplicities_for_executor_family<
     let t = std::time::Instant::now();
 
     for (idx, range_check_expression) in compiled_circuit
-        .witness_layout
         .range_check_16_lookup_expressions
         .iter()
         .enumerate()
@@ -595,10 +626,10 @@ pub(crate) unsafe fn gkr_count_special_multiplicities_for_executor_family<
         let value = evaluate_linear_relation(&range_check_expression.input, &*proxy);
         assert!(
             value.as_u32_reduced() <= u16::MAX as u32,
-            "invalid value {:?} in range check 16 expression {:?} at row {}",
-            absolute_row_idx,
+            "invalid value {} in range check 16 expression {:?} at row {}",
+            value,
             range_check_expression,
-            value
+            absolute_row_idx
         );
         let index = value.as_u32_reduced() as usize;
         debug_assert!(idx < range_check_16_chunk.len());
@@ -608,33 +639,10 @@ pub(crate) unsafe fn gkr_count_special_multiplicities_for_executor_family<
         *range_check_16_multiplicieties.get_unchecked_mut(index) += 1;
     }
 
-    // // special case for lazy init values
-    // for shuffle_ram_inits_and_teardowns in compiled_circuit
-    //     .memory_layout
-    //     .shuffle_ram_inits_and_teardowns
-    //     .iter()
-    // {
-    //     let start = shuffle_ram_inits_and_teardowns
-    //         .lazy_init_addresses_columns
-    //         .start();
-    //     for offset in start..(start + 2) {
-    //         let value = *memory_trace_view_row.get_unchecked(offset);
-    //         assert!(
-    //             value.to_reduced_u32() <= u16::MAX as u32,
-    //             "invalid value {:?} in range check 16 in lazy init addresses at row {}",
-    //             absolute_row_idx,
-    //             value
-    //         );
-    //         let index = value.to_reduced_u32() as usize;
-    //         *range_check_16_multiplicieties.get_unchecked_mut(index) += 1;
-    //     }
-    // }
-
     // now timestamp related relations - all are non-trivial
 
-    let timestamp_range_check_relations = &compiled_circuit
-        .witness_layout
-        .timestamp_range_check_lookup_expressions;
+    let timestamp_range_check_relations =
+        &compiled_circuit.timestamp_range_check_lookup_expressions;
     assert!(timestamp_range_check_relations.len() % 2 == 0);
 
     for (idx, range_check_expression) in timestamp_range_check_relations.iter().enumerate() {
@@ -660,7 +668,7 @@ pub(crate) unsafe fn gkr_count_special_multiplicities_for_executor_family<
     });
 }
 
-unsafe fn gkr_postprocess_multiplicities<
+pub(crate) unsafe fn gkr_postprocess_multiplicities<
     F: PrimeField,
     A: Allocator + Clone,
     B: Allocator + Clone,
@@ -693,7 +701,8 @@ unsafe fn gkr_postprocess_multiplicities<
         unsafe {
             let offset = compiled_circuit
                 .witness_layout
-                .multiplicities_columns_for_range_check_16;
+                .multiplicities_columns_for_range_check_16
+                .start;
             let dst = &mut exec_trace.column_major_witness_trace[offset];
             assert_eq!(dst.len(), trace_len);
             assert!(trace_len >= 1 << 16);
@@ -736,7 +745,8 @@ unsafe fn gkr_postprocess_multiplicities<
         unsafe {
             let offset = compiled_circuit
                 .witness_layout
-                .multiplicities_columns_for_timestamp_range_check;
+                .multiplicities_columns_for_timestamp_range_check
+                .start;
             let dst = &mut exec_trace.column_major_witness_trace[offset];
             assert_eq!(dst.len(), trace_len);
             assert!(trace_len >= 1 << TIMESTAMP_COLUMNS_NUM_BITS);
@@ -829,7 +839,6 @@ unsafe fn gkr_postprocess_multiplicities<
                         for i in 0..chunk_size {
                             let absolute_row_idx = chunk_start + i;
 
-                            use crate::utils::encoding_tuple_into_lookup_index;
                             let encoding_index = encoding_tuple_into_lookup_index(
                                 0 as u32,
                                 absolute_row_idx as u32,

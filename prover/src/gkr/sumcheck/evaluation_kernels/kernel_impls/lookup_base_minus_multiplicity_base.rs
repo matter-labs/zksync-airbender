@@ -1,6 +1,8 @@
 use cs::definitions::GKRAddress;
 use worker::Worker;
 
+use crate::definitions::sumcheck_kernel::fixed_over_mixed_input::MixedFieldsInOutFixedSizesEvaluationKernelCore;
+
 use super::*;
 
 #[derive(Debug)]
@@ -29,6 +31,36 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         }
     }
 
+    fn terms(
+        &self,
+        challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+    ) -> Vec<BatchedGKRTermDescription<F, E>> {
+        // 1/(b + gamma) - c/(d + gamma) -> ((d + gamma) - c*(b + gamma)), (b+gamma)*(d+gamma)
+        let [c, d] = self.setup;
+        let b = self.input;
+
+        let b = (
+            BTreeMap::from_iter([(b, E::ONE)]),
+            challenge_constants.lookup_challenges_additive_part,
+        );
+        let d = (
+            BTreeMap::from_iter([(d, E::ONE)]),
+            challenge_constants.lookup_challenges_additive_part,
+        );
+        let c = (BTreeMap::from_iter([(c, E::MINUS_ONE)]), E::ZERO);
+
+        let mut num_term = BatchedGKRTermDescription::default();
+        num_term.add_linear_base_terms(d.clone());
+        num_term.add_product_of_linear_base_terms(c, b.clone());
+        num_term.set_extension_output(self.outputs[0]);
+
+        let mut den_term = BatchedGKRTermDescription::default();
+        den_term.add_product_of_linear_base_terms(b, d);
+        den_term.set_extension_output(self.outputs[1]);
+
+        vec![num_term, den_term]
+    }
+
     fn evaluate_forward_over_storage(
         &self,
         storage: &mut GKRStorage<F, E>,
@@ -36,10 +68,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         trace_len: usize,
         worker: &Worker,
     ) {
-        let kernel = LookupBaseMinusMultiplicityByBaseGKRRelationKernel::<F, E> {
-            lookup_additive_challenge: self.lookup_additive_challenge,
-            _marker: core::marker::PhantomData,
-        };
+        let kernel = LookupBaseMinusMultiplicityByBaseGKRRelationKernel::<F, E>::new(
+            self.lookup_additive_challenge,
+        );
         let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
         forward_evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs(
             &kernel,
@@ -51,7 +82,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         );
     }
 
-    fn evaluate_over_storage(
+    fn evaluate_over_storage<const N: usize>(
         &self,
         storage: &mut GKRStorage<F, E>,
         step: usize,
@@ -59,17 +90,16 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         folding_challenges: &[E],
         accumulator: &mut [[E; 2]],
         total_sumcheck_rounds: usize,
-        last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
         worker: &Worker,
     ) {
         assert_eq!(
             batch_challenges.len(),
             <Self as BatchedGKRKernel<F, E>>::num_challenges(self)
         );
-        let kernel = LookupBaseMinusMultiplicityByBaseGKRRelationKernel::<F, E> {
-            lookup_additive_challenge: self.lookup_additive_challenge,
-            _marker: core::marker::PhantomData,
-        };
+        let kernel = LookupBaseMinusMultiplicityByBaseGKRRelationKernel::<F, E>::new(
+            self.lookup_additive_challenge,
+        );
         let inputs = <Self as BatchedGKRKernel<F, E>>::get_inputs(self);
 
         // println!(
@@ -100,6 +130,51 @@ pub struct LookupBaseMinusMultiplicityByBaseGKRRelationKernel<
 > {
     pub lookup_additive_challenge: E,
     _marker: core::marker::PhantomData<(F, E)>,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    LookupBaseMinusMultiplicityByBaseGKRRelationKernel<F, E>
+{
+    pub(crate) fn new(lookup_additive_challenge: E) -> Self {
+        Self {
+            lookup_additive_challenge,
+            _marker: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field>
+    MixedFieldsInOutFixedSizesEvaluationKernelCore<F, E, 3, 0, 2>
+    for LookupBaseMinusMultiplicityByBaseGKRRelationKernel<F, E>
+{
+    #[inline(always)]
+    fn pointwise_eval<RB: EvaluationRepresentation<F, E>>(
+        &self,
+        input: &[RB; 3],
+        _ext_input: &[ExtensionFieldRepresentation<F, E>; 0],
+        ctx: &RB::CollapseContext,
+    ) -> [E; 2] {
+        pointwise_eval_impl(input, ctx, &self.lookup_additive_challenge)
+    }
+
+    #[inline(always)]
+    fn pointwise_eval_quadratic_term_only<RB: EvaluationRepresentation<F, E>>(
+        &self,
+        input: &[RB; 3],
+        _ext_input: &[ExtensionFieldRepresentation<F, E>; 0],
+        ctx: &RB::CollapseContext,
+    ) -> [E; 2] {
+        pointwise_eval_quadratic_only_impl(input, ctx)
+    }
+
+    fn pointwise_eval_by_ref<RB: EvaluationRepresentation<F, E>>(
+        &self,
+        _input: [&RB; 3],
+        _ext_input: [&ExtensionFieldRepresentation<F, E>; 0],
+        _ctx: &RB::CollapseContext,
+    ) -> [E; 2] {
+        todo!()
+    }
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
@@ -137,7 +212,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             .each_ref()
             .map(|el| el.get_f0_only(index).into_value());
         let [mut eval_1_term_0, mut eval_1_term_1] =
-            pointwise_eval_impl(&[b1, c1, d1], &(), &self.lookup_additive_challenge);
+            pointwise_eval_quadratic_only_impl::<F, E, _>(&[b1, c1, d1], &());
 
         eval_0_term_0.mul_assign(&batch_challenges[0]);
         eval_0_term_1.mul_assign(&batch_challenges[1]);
@@ -192,11 +267,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             let [d0, d1] = sources[2].get_two_points::<false>(index);
             let [mut eval_0_term_0, mut eval_0_term_1] =
                 pointwise_eval_impl(&[b0, c0, d0], ctx, &self.lookup_additive_challenge);
-            let [mut eval_1_term_0, mut eval_1_term_1] = pointwise_eval_quadratic_only_impl(
-                &[b1, c1, d1],
-                ctx,
-                &self.lookup_additive_challenge,
-            );
+            let [mut eval_1_term_0, mut eval_1_term_1] =
+                pointwise_eval_quadratic_only_impl(&[b1, c1, d1], ctx);
 
             eval_0_term_0.mul_assign(&batch_challenges[0]);
             eval_0_term_1.mul_assign(&batch_challenges[1]);
@@ -210,25 +282,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             [eval_0_term_0, eval_1_term_0]
         }
     }
-
-    #[inline(always)]
-    fn pointwise_eval_forward(
-        &self,
-        input: &[BaseFieldRepresentation<F>; 3],
-        _ext_input: &[ExtensionFieldRepresentation<F, E>; 0],
-    ) -> [E; 2] {
-        pointwise_eval_impl(input, &(), &self.lookup_additive_challenge)
-    }
-
-    #[inline(always)]
-    fn pointwise_eval<RB: EvaluationRepresentation<F, E>>(
-        &self,
-        _input: &[RB; 3],
-        _ext_input: &[ExtensionFieldRepresentation<F, E>; 0],
-        _ctx: &RB::CollapseContext,
-    ) -> [E; 2] {
-        unreachable!("not used by this kernel");
-    }
 }
 
 #[inline(always)]
@@ -241,7 +294,7 @@ fn pointwise_eval_impl<
     ctx: &RB::CollapseContext,
     lookup_additive_challenge: &E,
 ) -> [E; 2] {
-    // 1/b - c/d -> (d - c*b), bd
+    // 1/(b + gamma) - c/(d + gamma) -> ((d + gamma) - c*(b + gamma)), (b+gamma)*(d+gamma)
     let [b, c, d] = input;
     let b = b.add_with_ext::<true>(lookup_additive_challenge, ctx);
     let d = d.add_with_ext::<true>(lookup_additive_challenge, ctx);
@@ -263,18 +316,13 @@ fn pointwise_eval_quadratic_only_impl<
 >(
     input: &[RB; 3],
     ctx: &RB::CollapseContext,
-    lookup_additive_challenge: &E,
 ) -> [E; 2] {
-    // 1/b - c/d -> (- c*b), bd
+    // only quadratic terms for: 1/(b + gamma) - c/(d + gamma) -> (-c * b), (b * d)
     let [b, c, d] = input;
-    let b = b.add_with_ext::<true>(lookup_additive_challenge, ctx);
-    let d = d.add_with_ext::<true>(lookup_additive_challenge, ctx);
-    let cb = c.mul_by_ext::<true>(&b, ctx);
-    let mut num = cb;
+    let b_ext = b.mul_by_ext::<true>(&E::ONE, ctx);
+    let mut num = c.mul_by_ext::<true>(&b_ext, ctx);
     num.negate();
-
-    let mut den = b;
-    den.mul_assign(&d);
+    let den = d.mul_by_ext::<true>(&b_ext, ctx);
 
     [num, den]
 }

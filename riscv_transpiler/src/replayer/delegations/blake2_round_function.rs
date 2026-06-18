@@ -1,7 +1,6 @@
 use std::mem::MaybeUninit;
 
 use super::*;
-use crate::vm::delegations::blake2_round_function::blake2_round_function_impl;
 use crate::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use blake2s_u32::state_with_extended_control_flags::*;
 use blake2s_u32::*;
@@ -10,50 +9,6 @@ use common_constants::*;
 // NOTE: in forward execution we read through x11 and dump witness, and then dump writes via x10,
 // so in the function below we will just read via x11 and x10
 
-#[inline(always)]
-fn read_words<R: RAM, const N: usize>(
-    offset: u32,
-    ram: &mut R,
-    timestamp: TimestampScalar,
-    witness: &mut [RegisterOrIndirectReadData; N],
-) -> [u32; N] {
-    unsafe {
-        let mut result = [MaybeUninit::uninit(); N];
-        let mut addr = offset;
-        for (dst, wit) in result.iter_mut().zip(witness.iter_mut()) {
-            let (read_ts, value) = ram.read_word(addr, timestamp);
-            wit.read_value = value;
-            wit.timestamp = TimestampData::from_scalar(read_ts);
-            addr += core::mem::size_of::<u32>() as u32;
-            dst.write(value);
-        }
-
-        result.map(|el| el.assume_init())
-    }
-}
-
-#[inline(always)]
-fn read_words_for_update<R: RAM, const N: usize>(
-    offset: u32,
-    ram: &mut R,
-    timestamp: TimestampScalar,
-    witness: &mut [RegisterOrIndirectReadWriteData; N],
-) -> [u32; N] {
-    unsafe {
-        let mut result = [MaybeUninit::uninit(); N];
-        let mut addr = offset;
-        for (dst, wit) in result.iter_mut().zip(witness.iter_mut()) {
-            let (read_ts, value) = ram.read_word(addr, timestamp);
-            wit.read_value = value;
-            wit.timestamp = TimestampData::from_scalar(read_ts);
-            addr += core::mem::size_of::<u32>() as u32;
-            dst.write(value);
-        }
-
-        result.map(|el| el.assume_init())
-    }
-}
-
 #[inline(never)]
 pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
     state: &mut State<C>,
@@ -61,7 +16,7 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
     tracer: &mut impl WitnessTracer,
 ) {
     let needs_cycle_data =
-        tracer.needs_tracing_data_for_circuit_family::<SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX>();
+        tracer.needs_tracing_data_for_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
     let needs_delegation_data = tracer.needs_tracing_data_for_delegation_type::<{common_constants::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER as u16}>();
 
     let x10 = state.registers[10].value;
@@ -145,6 +100,7 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                 let next_pc = state.pc.wrapping_add(4);
                 // touch x0
                 let x0_timestamp = state.registers[0].timestamp;
+                // NOTE: we only touch x0 as rs1, and as rd
                 state.registers[0].timestamp = state.timestamp | 2;
                 let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
                     opcode_data: NonMemoryOpcodeTracingData {
@@ -157,11 +113,11 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                         delegation_type: BLAKE2S_DELEGATION_CSR_REGISTER as u16,
                     },
                     rs1_read_timestamp: TimestampData::from_scalar(x0_timestamp),
-                    rs2_read_timestamp: TimestampData::from_scalar(state.timestamp),
-                    rd_read_timestamp: TimestampData::from_scalar(state.timestamp | 1),
+                    rs2_read_timestamp: TimestampData::from_scalar(0),
+                    rd_read_timestamp: TimestampData::from_scalar(state.timestamp),
                     cycle_timestamp: TimestampData::from_scalar(state.timestamp),
                 };
-                tracer.write_non_memory_family_data::<SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX>(
+                tracer.write_non_memory_family_data::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
                     traced_data,
                 );
                 state.pc = next_pc;
@@ -258,7 +214,7 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                 };
 
                 let mut witness = Blake2sRoundFunctionDelegationWitness::empty();
-                witness.write_timestamp = current_timestamp | 3;
+                witness.write_timestamp = current_timestamp | DELEGATION_INVOCATION_OFFET;
 
                 witness.reg_accesses[0] = RegisterOrIndirectReadWriteData {
                     read_value: x10,

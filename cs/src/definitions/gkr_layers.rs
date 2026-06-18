@@ -1,18 +1,41 @@
+/// Output type categories for GKR circuit layers.
+#[derive(
+    Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+pub enum OutputType {
+    PermutationProduct = 0,
+    Lookup16Bits,
+    LookupTimestamps,
+    GenericLookup,
+}
+
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
+pub enum VirtualSetupPoly {
+    RangeCheck16Bits,
+    RangeCheckTimestamp,
+    InitsAndTeardownsLow,
+    InitsAndTeardownsHigh,
+}
+
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[repr(u32)]
 pub enum GKRAddress {
     BaseLayerWitness(usize),
     BaseLayerMemory(usize),
     InnerLayer { layer: usize, offset: usize },
     Setup(usize),
-    OptimizedOut(usize),
+    VirtualSetup(VirtualSetupPoly),
+    ScratchSpace(usize),
     Cached { layer: usize, offset: usize },
 }
 
 impl GKRAddress {
     pub const fn placeholder() -> Self {
-        Self::OptimizedOut(0)
+        Self::Setup(usize::MAX)
     }
 
     pub const fn is_cache(&self) -> bool {
@@ -30,8 +53,11 @@ impl GKRAddress {
             Self::BaseLayerMemory(offset) => *offset,
             Self::Setup(offset) => *offset,
             Self::InnerLayer { offset, .. } => *offset,
-            Self::OptimizedOut(offset) => *offset,
+            Self::ScratchSpace(offset) => *offset,
             Self::Cached { offset, .. } => *offset,
+            Self::VirtualSetup(..) => {
+                unreachable!()
+            }
         }
     }
 
@@ -45,11 +71,14 @@ impl GKRAddress {
     #[track_caller]
     pub fn assert_as_dependency_for_layer(&self, output_layer: usize) {
         match self {
-            Self::BaseLayerWitness(..) | Self::BaseLayerMemory(..) | Self::Setup(..) => {
+            Self::BaseLayerWitness(..)
+            | Self::BaseLayerMemory(..)
+            | Self::Setup(..)
+            | Self::VirtualSetup(..) => {
                 assert_eq!(output_layer, 1)
             }
             Self::InnerLayer { layer, .. } => assert_eq!(output_layer, *layer + 1),
-            Self::OptimizedOut(..) => unreachable!(),
+            Self::ScratchSpace(..) => unreachable!(),
             Self::Cached { layer, .. } => assert_eq!(output_layer, *layer + 1),
         }
     }
@@ -64,7 +93,7 @@ impl GKRAddress {
                     self, output_layer
                 );
             }
-            Self::Setup(..) | Self::OptimizedOut(..) => {
+            Self::Setup(..) | Self::ScratchSpace(..) | Self::VirtualSetup(..) => {
                 unreachable!();
             }
             Self::InnerLayer { layer, .. } => {

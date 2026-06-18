@@ -1,3 +1,5 @@
+use crate::definitions::MAX_TABLE_WIDTH;
+use arrayvec::ArrayVec;
 use core::panic;
 use derivative::Derivative;
 use field::PrimeField;
@@ -7,26 +9,26 @@ use std::sync::{LazyLock, Mutex};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
-    vec,
 };
 use type_map::concurrent::TypeMap;
 
 mod binops;
-mod branch_opcode_related;
-mod jump_opcode_related;
+mod blake_g_function_precompile_related;
+mod integer_ops;
+mod jump_branch_opcode_related;
 mod keccak_precompile_related;
 mod memory_opcode_related;
-mod range_checks_and_decompositions;
+mod quote;
 mod rom_related;
 mod shift_opcode_related;
 mod zero_entry;
 
 pub use self::binops::*;
-pub use self::branch_opcode_related::*;
-pub use self::jump_opcode_related::*;
+pub use self::blake_g_function_precompile_related::*;
+pub use self::integer_ops::*;
+pub use self::jump_branch_opcode_related::*;
 pub use self::keccak_precompile_related::*;
 pub use self::memory_opcode_related::*;
-pub use self::range_checks_and_decompositions::*;
 pub use self::rom_related::*;
 pub use self::shift_opcode_related::*;
 pub use self::zero_entry::*;
@@ -39,9 +41,9 @@ const TOTAL_NUM_OF_TABLES: usize = TableType::DynamicPlaceholder as u32 as usize
 // so it's always fixed size, but "unused" values are 0s
 
 // keys -> index in table and values
-pub type PureTableGenerationFn<F: PrimeField, const N: usize> = fn(&[F; N]) -> (usize, [F; N]);
-pub type TableGenerationClosure<F: PrimeField, const N: usize> = std::sync::Arc<
-    dyn Fn(&[F; N]) -> (usize, [F; N])
+pub type PureTableGenerationFn<F: PrimeField> = fn(&[F]) -> (usize, ArrayVec<F, MAX_TABLE_WIDTH>);
+pub type TableGenerationClosure<F: PrimeField> = std::sync::Arc<
+    dyn Fn(&[F]) -> (usize, ArrayVec<F, MAX_TABLE_WIDTH>)
         + 'static
         + Send
         + Sync
@@ -51,68 +53,69 @@ pub type TableGenerationClosure<F: PrimeField, const N: usize> = std::sync::Arc<
 
 #[derive(Derivative)]
 #[derivative(Clone)]
-pub enum ValueLookupFn<F: PrimeField, const N: usize> {
+pub enum ValueLookupFn<F: PrimeField> {
     None,
-    Pure(fn(&[F]) -> [F; N]),
-    ReuseGenerationFn(PureTableGenerationFn<F, N>),
-    Closure(TableGenerationClosure<F, N>),
+    Pure(fn(&[F]) -> ArrayVec<F, MAX_TABLE_WIDTH>),
+    ReuseGenerationFn(PureTableGenerationFn<F>),
+    Closure(TableGenerationClosure<F>),
 }
 
 #[derive(Derivative)]
 #[derivative(Clone)]
-pub enum IndexLookupFn<F: PrimeField, const N: usize> {
+pub enum IndexLookupFn<F: PrimeField> {
     None,
-    Pure(fn(&[F; N]) -> usize),
-    ReuseGenerationFn(PureTableGenerationFn<F, N>),
-    ReuseGenerationClosure(TableGenerationClosure<F, N>),
-    Closure(std::sync::Arc<dyn Fn(&[F; N]) -> usize + 'static + Send + Sync>),
+    Pure(fn(&[F]) -> usize),
+    ReuseGenerationFn(PureTableGenerationFn<F>),
+    ReuseGenerationClosure(TableGenerationClosure<F>),
+    Closure(std::sync::Arc<dyn Fn(&[F]) -> usize + 'static + Send + Sync>),
 }
 
 pub const TABLE_TYPES_UPPER_BOUNDS: usize = TOTAL_NUM_OF_TABLES;
 
 #[derive(Derivative)]
 #[derivative(Clone, Debug)]
-pub struct LookupTable<F: PrimeField, const N: usize> {
+pub struct LookupTable<F: PrimeField> {
     pub name: String,
-
+    pub num_key_columns: usize,
+    pub num_value_columns: usize,
     // NOTE: for small fields and not too large N hashmaps are the most efficient here
 
     // to lookup value from key
     #[derivative(Debug = "ignore")]
-    pub lookup_data: Arc<HashMap<LookupKey<F, N>, LookupValue<F, N>>>,
+    pub lookup_data: Arc<HashMap<LookupKey<F>, LookupValue<F>>>,
     // to lookup table index from full row
     #[derivative(Debug = "ignore")]
-    pub content_data: Arc<HashMap<DataKey<F, N>, usize>>,
+    pub content_data: Arc<HashMap<ArrayVec<F, MAX_TABLE_WIDTH>, usize>>,
     // for setup - plain content of the table
     #[derivative(Debug = "ignore")]
-    pub data: Arc<Vec<[F; N]>>,
+    pub data: Arc<Vec<ArrayVec<F, MAX_TABLE_WIDTH>>>,
     #[derivative(Debug = "ignore")]
-    pub quick_value_lookup_fn: ValueLookupFn<F, N>,
+    pub quick_value_lookup_fn: ValueLookupFn<F>,
     #[derivative(Debug = "ignore")]
-    pub quick_index_lookup_fn: IndexLookupFn<F, N>,
-
-    pub num_key_columns: usize,
-    pub num_value_columns: usize,
+    pub quick_index_lookup_fn: IndexLookupFn<F>,
 
     pub id: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct LookupKey<F: PrimeField, const N: usize>([F; N]);
+pub struct LookupKey<F: PrimeField>(ArrayVec<F, MAX_TABLE_WIDTH>);
 
-pub type LookupValue<F, const N: usize> = LookupKey<F, N>;
+pub type LookupValue<F> = LookupKey<F>;
 
-impl<F: PrimeField, const N: usize> LookupKey<F, N> {
+impl<F: PrimeField> LookupKey<F> {
     fn from_keys(keys: &[F]) -> Self {
-        let mut new = [F::ZERO; N];
-        new[..keys.len()].copy_from_slice(keys);
+        let mut new = ArrayVec::new();
+        new.try_extend_from_slice(keys).expect("length fits");
 
         Self(new)
     }
 }
 
-impl<F: PrimeField, const N: usize> PartialOrd for LookupKey<F, N> {
+impl<F: PrimeField> PartialOrd for LookupKey<F> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self.0.len() != other.0.len() {
+            return Some(std::cmp::Ordering::Less);
+        }
         for (a, b) in self.0.iter().zip(other.0.iter()) {
             match a.as_u32_reduced().cmp(&b.as_u32_reduced()) {
                 std::cmp::Ordering::Equal => {
@@ -127,9 +130,11 @@ impl<F: PrimeField, const N: usize> PartialOrd for LookupKey<F, N> {
         panic!("most likely duplicate entries in the table");
     }
 }
-impl<F: PrimeField, const N: usize> Ord for LookupKey<F, N> {
+impl<F: PrimeField> Ord for LookupKey<F> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        debug_assert_eq!(self.0.len(), other.0.len());
+        if self.0.len() != other.0.len() {
+            return std::cmp::Ordering::Less;
+        }
         for (a, b) in self.0.iter().zip(other.0.iter()) {
             match a.as_u32_reduced().cmp(&b.as_u32_reduced()) {
                 std::cmp::Ordering::Equal => {
@@ -145,50 +150,13 @@ impl<F: PrimeField, const N: usize> Ord for LookupKey<F, N> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DataKey<F: PrimeField, const N: usize>([F; N]);
-
-impl<F: PrimeField, const N: usize> PartialOrd for DataKey<F, N> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        for (a, b) in self.0.iter().zip(other.0.iter()) {
-            match a.as_u32_reduced().cmp(&b.as_u32_reduced()) {
-                std::cmp::Ordering::Equal => {
-                    continue;
-                }
-                ordering @ _ => {
-                    return Some(ordering);
-                }
-            }
-        }
-
-        panic!("most likely duplicate entries in the table");
-    }
-}
-impl<F: PrimeField, const N: usize> Ord for DataKey<F, N> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        debug_assert_eq!(self.0.len(), other.0.len());
-        for (a, b) in self.0.iter().zip(other.0.iter()) {
-            match a.as_u32_reduced().cmp(&b.as_u32_reduced()) {
-                std::cmp::Ordering::Equal => {
-                    continue;
-                }
-                ordering @ _ => {
-                    return ordering;
-                }
-            }
-        }
-
-        std::cmp::Ordering::Equal
-    }
-}
-
-impl<F: PrimeField, const N: usize> LookupTable<F, N> {
+impl<F: PrimeField> LookupTable<F> {
     #[allow(unused)]
-    fn check_well_formed(data: &[[F; N]]) -> bool {
+    fn check_well_formed(data: &[ArrayVec<F, MAX_TABLE_WIDTH>]) -> bool {
         // just use hash table to check that entries are unique
         let mut tmp = HashSet::new();
         for el in data.iter() {
-            let is_unique = tmp.insert(*el);
+            let is_unique = tmp.insert(el.clone());
             if is_unique == false {
                 return false;
             }
@@ -206,40 +174,50 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
         self.content_data.len()
     }
 
-    pub(crate) fn create_table_from_key_and_pure_generation_fn(
-        keys: &Vec<[F; N]>,
+    pub(crate) fn create_table_from_key_and_pure_generation_fn<
+        K: AsRef<[F]> + Send + Sync + 'static,
+    >(
+        keys: &Vec<K>,
         name: String,
         num_key_columns: usize,
-        table_gen_func: PureTableGenerationFn<F, N>,
-        index_gen_fn: Option<fn(&[F; N]) -> usize>,
+        num_value_columns: usize,
+        table_gen_func: PureTableGenerationFn<F>,
+        index_gen_fn: Option<fn(&[F]) -> usize>,
         id: u32,
     ) -> Self {
-        assert!(num_key_columns <= N);
-        let num_value_columns = N - num_key_columns;
+        assert!(num_key_columns + num_value_columns + 1 <= MAX_TABLE_WIDTH);
 
         let mut content = Vec::with_capacity(keys.len());
         if keys.len() < 1 << 14 {
             for key in keys.iter() {
-                let (_index, values) = table_gen_func(&key);
-                let mut row = [F::ZERO; N];
-                row[..num_key_columns].copy_from_slice(&key[..num_key_columns]);
-                row[num_key_columns..].copy_from_slice(&values[..num_value_columns]);
+                let (_index, values) = table_gen_func(key.as_ref());
+                assert_eq!(key.as_ref().len(), num_key_columns);
+                assert_eq!(values.len(), num_value_columns);
+                let mut row = ArrayVec::<F, MAX_TABLE_WIDTH>::new();
+                row.try_extend_from_slice(&key.as_ref()[..num_key_columns])
+                    .expect("keys must fit");
+                row.try_extend_from_slice(&values[..num_value_columns])
+                    .expect("values must fit");
                 content.push(row);
             }
         } else {
             keys.par_iter()
-                .map(|key| {
-                    let (_index, values) = table_gen_func(&key);
-                    let mut row = [F::ZERO; N];
-                    row[..num_key_columns].copy_from_slice(&key[..num_key_columns]);
-                    row[num_key_columns..].copy_from_slice(&values[..num_value_columns]);
+                .map(|key: &K| {
+                    let (_index, values) = table_gen_func(key.as_ref());
+                    assert_eq!(key.as_ref().len(), num_key_columns);
+                    assert_eq!(values.len(), num_value_columns);
+                    let mut row = ArrayVec::<F, MAX_TABLE_WIDTH>::new();
+                    row.try_extend_from_slice(&key.as_ref()[..num_key_columns])
+                        .expect("keys must fit");
+                    row.try_extend_from_slice(&values[..num_value_columns])
+                        .expect("values must fit");
                     row
                 })
                 .collect_into_vec(&mut content);
         }
 
         let (lookup_data, content_data) =
-            Self::compute_default_lookup_impls(&content, num_key_columns);
+            Self::compute_default_lookup_impls(&content, num_key_columns, num_value_columns);
 
         let index_gen_fn = if let Some(index_gen_fn) = index_gen_fn {
             IndexLookupFn::Pure(index_gen_fn)
@@ -261,7 +239,8 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
     }
 
     pub(crate) fn create_table_from_key_and_key_generation_closure<
-        FN: Fn(&[F; N]) -> (usize, [F; N])
+        K: AsRef<[F]> + Send + Sync + 'static,
+        FN: Fn(&[F]) -> (usize, ArrayVec<F, MAX_TABLE_WIDTH>)
             + 'static
             + Send
             + Sync
@@ -269,39 +248,47 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
             + std::panic::UnwindSafe
             + std::panic::RefUnwindSafe,
     >(
-        keys: &Vec<[F; N]>,
+        keys: &Vec<K>,
         name: String,
         num_key_columns: usize,
+        num_value_columns: usize,
         table_gen_closure: FN,
-        index_gen_fn: Option<fn(&[F; N]) -> usize>,
+        index_gen_fn: Option<fn(&[F]) -> usize>,
         id: u32,
     ) -> Self {
-        assert!(num_key_columns <= N);
-        let num_value_columns = N - num_key_columns;
+        assert!(num_key_columns + num_value_columns + 1 <= MAX_TABLE_WIDTH);
 
         let mut content = Vec::with_capacity(keys.len());
         if keys.len() < 1 << 14 {
             for key in keys.iter() {
-                let (_index, values) = table_gen_closure(&key);
-                let mut row = [F::ZERO; N];
-                row[..num_key_columns].copy_from_slice(&key[..num_key_columns]);
-                row[num_key_columns..].copy_from_slice(&values[..num_value_columns]);
+                let (_index, values) = table_gen_closure(key.as_ref());
+                assert_eq!(key.as_ref().len(), num_key_columns);
+                assert_eq!(values.len(), num_value_columns);
+                let mut row = ArrayVec::<F, MAX_TABLE_WIDTH>::new();
+                row.try_extend_from_slice(&key.as_ref()[..num_key_columns])
+                    .expect("keys must fit");
+                row.try_extend_from_slice(&values[..num_value_columns])
+                    .expect("values must fit");
                 content.push(row);
             }
         } else {
             keys.par_iter()
-                .map(|key| {
-                    let (_index, values) = table_gen_closure(&key);
-                    let mut row = [F::ZERO; N];
-                    row[..num_key_columns].copy_from_slice(&key[..num_key_columns]);
-                    row[num_key_columns..].copy_from_slice(&values[..num_value_columns]);
+                .map(|key: &K| {
+                    let (_index, values) = table_gen_closure(key.as_ref());
+                    assert_eq!(key.as_ref().len(), num_key_columns);
+                    assert_eq!(values.len(), num_value_columns);
+                    let mut row = ArrayVec::<F, MAX_TABLE_WIDTH>::new();
+                    row.try_extend_from_slice(&key.as_ref()[..num_key_columns])
+                        .expect("keys must fit");
+                    row.try_extend_from_slice(&values[..num_value_columns])
+                        .expect("values must fit");
                     row
                 })
                 .collect_into_vec(&mut content);
         }
 
         let (lookup_data, content_data) =
-            Self::compute_default_lookup_impls(&content, num_key_columns);
+            Self::compute_default_lookup_impls(&content, num_key_columns, num_value_columns);
 
         let index_gen_fn = if let Some(index_gen_fn) = index_gen_fn {
             IndexLookupFn::Pure(index_gen_fn)
@@ -323,18 +310,19 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
     }
 
     fn compute_default_lookup_impls(
-        data: &Vec<[F; N]>,
+        data: &Vec<ArrayVec<F, MAX_TABLE_WIDTH>>,
         num_key_columns: usize,
+        num_value_columns: usize,
     ) -> (
-        HashMap<LookupKey<F, N>, LookupValue<F, N>>,
-        HashMap<DataKey<F, N>, usize>,
+        HashMap<LookupKey<F>, LookupValue<F>>,
+        HashMap<ArrayVec<F, MAX_TABLE_WIDTH>, usize>,
     ) {
-        let lookup_data: HashMap<LookupKey<F, N>, LookupValue<F, N>> =
-            Self::compute_lookup_data(data, num_key_columns);
+        let lookup_data: HashMap<LookupKey<F>, LookupValue<F>> =
+            Self::compute_lookup_data(data, num_key_columns, num_value_columns);
         let content_data: HashMap<_, _> = data
             .par_iter()
             .enumerate()
-            .map(|(idx, el)| (DataKey(*el), idx))
+            .map(|(idx, el)| (el.clone(), idx))
             .collect();
 
         (lookup_data, content_data)
@@ -344,10 +332,11 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
     /// We treat first num_key_columns elements from each data item
     /// as key, and the rest as value.
     fn compute_lookup_data(
-        data: &Vec<[F; N]>,
+        data: &Vec<ArrayVec<F, MAX_TABLE_WIDTH>>,
         num_key_columns: usize,
-    ) -> HashMap<LookupKey<F, N>, LookupValue<F, N>> {
-        assert!(num_key_columns <= N);
+        num_value_columns: usize,
+    ) -> HashMap<LookupKey<F>, LookupValue<F>> {
+        assert!(num_key_columns + num_value_columns + 1 <= MAX_TABLE_WIDTH);
         let result: HashMap<_, _> = data
             .par_iter()
             .map(|row| {
@@ -361,7 +350,7 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
             data.len(),
             "Can't compute lookup cache if using only {} first columns out of {} as logical key",
             num_key_columns,
-            N
+            num_key_columns + num_value_columns,
         );
         result
     }
@@ -369,39 +358,85 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
     #[track_caller]
     #[inline(always)]
     pub fn lookup_value<const VALUES: usize>(&self, keys: &[F]) -> [F; VALUES] {
-        assert!(keys.len() < N);
-        assert!(VALUES < N);
-        assert_eq!(keys.len(), N - VALUES);
+        // Originally this path required an exact key arity match:
+        // assert_eq!(keys.len(), self.num_key_columns);
+        //
+        // We now allow callers of dynamic-sized lookups to pass trailing zero
+        // slack columns, and truncate them before dispatching into the selected
+        // table shape.
+        assert!(
+            keys.len() >= self.num_key_columns,
+            "lookup for table {} received {} key columns, but requires at least {}",
+            self.name(),
+            keys.len(),
+            self.num_key_columns
+        );
+        assert!(
+            keys[self.num_key_columns..].iter().all(|el| *el == F::ZERO),
+            "lookup for table {} received non-zero extra key columns beyond {}",
+            self.name(),
+            self.num_key_columns
+        );
+        let keys = &keys[..self.num_key_columns];
+        assert!(VALUES < MAX_TABLE_WIDTH);
         // NOTE that lookup function return padded values in generation functions
         match &self.quick_value_lookup_fn {
             ValueLookupFn::None => {
                 let keys = LookupKey::from_keys(keys);
-                let Some(value) = self.lookup_data.get(&keys).cloned() else {
+                let Some(values) = self.lookup_data.get(&keys).cloned() else {
                     panic!(
                         "There is no value for key {:?} for table {}",
                         keys,
                         self.name()
                     );
                 };
+                // Originally this path required an exact value arity match:
+                // assert_eq!(values.0.len(), VALUES);
+                //
+                // Dynamic-sized lookups may target narrower or wider tables. We
+                // allow missing outputs to be padded with zeroes, and only allow
+                // extra returned outputs if they are also zero-valued slack.
+                assert!(
+                    values.0.len() <= VALUES
+                        || values.0[VALUES..].iter().all(|el| *el == F::ZERO),
+                    "lookup for table {} returned {} values, but caller expects {}; extra returned values must be zero",
+                    self.name(),
+                    values.0.len(),
+                    VALUES
+                );
 
-                std::array::from_fn(|i| value.0[i])
+                std::array::from_fn(|i| values.0.get(i).copied().unwrap_or(F::ZERO))
             }
             ValueLookupFn::Pure(..) => {
                 unimplemented!()
             }
             ValueLookupFn::ReuseGenerationFn(gen_fn) => {
-                let mut input = [F::ZERO; N];
-                input[..keys.len()].copy_from_slice(keys);
-                let (_, values) = (gen_fn)(&input);
+                let (_, values) = (gen_fn)(keys);
+                // Originally this path required an exact value arity match:
+                // assert_eq!(values.len(), VALUES);
+                assert!(
+                    values.len() <= VALUES || values[VALUES..].iter().all(|el| *el == F::ZERO),
+                    "lookup for table {} returned {} values, but caller expects {}; extra returned values must be zero",
+                    self.name(),
+                    values.len(),
+                    VALUES
+                );
 
-                std::array::from_fn(|i| values[i])
+                std::array::from_fn(|i| values.get(i).copied().unwrap_or(F::ZERO))
             }
             ValueLookupFn::Closure(gen_closure) => {
-                let mut input = [F::ZERO; N];
-                input[..keys.len()].copy_from_slice(keys);
-                let (_, values) = (gen_closure)(&input);
+                let (_, values) = (gen_closure)(keys);
+                // Originally this path required an exact value arity match:
+                // assert_eq!(values.len(), VALUES);
+                assert!(
+                    values.len() <= VALUES || values[VALUES..].iter().all(|el| *el == F::ZERO),
+                    "lookup for table {} returned {} values, but caller expects {}; extra returned values must be zero",
+                    self.name(),
+                    values.len(),
+                    VALUES
+                );
 
-                std::array::from_fn(|i| values[i])
+                std::array::from_fn(|i| values.get(i).copied().unwrap_or(F::ZERO))
             }
         }
     }
@@ -412,14 +447,32 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
         &self,
         keys: &[F],
     ) -> (usize, [F; VALUES]) {
-        assert!(keys.len() < N);
-        assert!(VALUES < N);
-        assert_eq!(keys.len(), N - VALUES);
+        // Originally this path required an exact key arity match:
+        // assert_eq!(keys.len(), self.num_key_columns);
+        //
+        // We now allow callers of dynamic-sized lookups to pass trailing zero
+        // slack columns, and truncate them before dispatching into the selected
+        // table shape.
+        assert!(
+            keys.len() >= self.num_key_columns,
+            "lookup for table {} received {} key columns, but requires at least {}",
+            self.name(),
+            keys.len(),
+            self.num_key_columns
+        );
+        assert!(
+            keys[self.num_key_columns..].iter().all(|el| *el == F::ZERO),
+            "lookup for table {} received non-zero extra key columns beyond {}",
+            self.name(),
+            self.num_key_columns
+        );
+        let keys = &keys[..self.num_key_columns];
+        assert!(VALUES < MAX_TABLE_WIDTH);
         // NOTE that lookup function return padded values in generation functions
         match &self.quick_value_lookup_fn {
             ValueLookupFn::None => {
                 let keys = LookupKey::from_keys(keys);
-                let Some(_value) = self.lookup_data.get(&keys).cloned() else {
+                let Some(_values) = self.lookup_data.get(&keys).cloned() else {
                     panic!(
                         "There is no value for key {:?} for table {}",
                         keys,
@@ -435,18 +488,38 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
                 unimplemented!()
             }
             ValueLookupFn::ReuseGenerationFn(gen_fn) => {
-                let mut input = [F::ZERO; N];
-                input[..keys.len()].copy_from_slice(keys);
-                let (index, values) = (gen_fn)(&input);
+                let (index, values) = (gen_fn)(keys);
+                // Originally this path required an exact value arity match:
+                // assert_eq!(values.len(), VALUES);
+                assert!(
+                    values.len() <= VALUES || values[VALUES..].iter().all(|el| *el == F::ZERO),
+                    "lookup for table {} returned {} values, but caller expects {}; extra returned values must be zero",
+                    self.name(),
+                    values.len(),
+                    VALUES
+                );
 
-                (index, std::array::from_fn(|i| values[i]))
+                (
+                    index,
+                    std::array::from_fn(|i| values.get(i).copied().unwrap_or(F::ZERO)),
+                )
             }
             ValueLookupFn::Closure(gen_closure) => {
-                let mut input = [F::ZERO; N];
-                input[..keys.len()].copy_from_slice(keys);
-                let (index, values) = (gen_closure)(&input);
+                let (index, values) = (gen_closure)(keys);
+                // Originally this path required an exact value arity match:
+                // assert_eq!(values.len(), VALUES);
+                assert!(
+                    values.len() <= VALUES || values[VALUES..].iter().all(|el| *el == F::ZERO),
+                    "lookup for table {} returned {} values, but caller expects {}; extra returned values must be zero",
+                    self.name(),
+                    values.len(),
+                    VALUES
+                );
 
-                (index, std::array::from_fn(|i| values[i]))
+                (
+                    index,
+                    std::array::from_fn(|i| values.get(i).copied().unwrap_or(F::ZERO)),
+                )
             }
         }
     }
@@ -454,16 +527,33 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
     #[track_caller]
     #[inline(always)]
     pub fn lookup_row(&self, key: &[F]) -> usize {
-        assert_eq!(key.len(), N);
+        let key = if key.len() >= self.width() {
+            for el in key[self.width()..].iter() {
+                assert!(el.is_zero());
+            }
+            &key[..self.width()]
+        } else {
+            // key is shorter than the table, that may happen in special case of zero entry
+            // table, and so we hardcode it blindly
+            assert_eq!(self.table_size(), 1);
+            for el in key.iter() {
+                assert!(el.is_zero());
+            }
+
+            return 0;
+        };
+
         match &self.quick_index_lookup_fn {
             IndexLookupFn::None => {
-                let keys = unsafe { key.as_ptr().cast::<[F; N]>().read() };
-                let key = DataKey(keys);
-                self.content_data.get(&key).copied().unwrap()
+                let mut keys = ArrayVec::<F, MAX_TABLE_WIDTH>::new();
+                keys.try_extend_from_slice(key).expect("must fit");
+                self.content_data
+                    .get(&keys)
+                    .copied()
+                    .expect("element must be present in the table")
             }
             IndexLookupFn::Pure(index_fn) => {
-                let keys = unsafe { key.as_ptr().cast::<[F; N]>().as_ref_unchecked() };
-                let index = (index_fn)(&keys);
+                let index = (index_fn)(key);
                 assert!(
                     index < self.table_size(),
                     "index {} is beyond table size {} for table {}",
@@ -475,13 +565,12 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
                 index
             }
             IndexLookupFn::ReuseGenerationFn(gen_fn) => {
-                let keys = unsafe { key.as_ptr().cast::<[F; N]>().as_ref_unchecked() };
                 // NOTE: generation functions do not use padding places, so we can feed as-is
-                let (index, values) = (gen_fn)(keys);
+                let (index, values) = (gen_fn)(key);
                 // can self-check
                 assert_eq!(
                     &values[..self.num_value_columns],
-                    &key[self.num_key_columns..]
+                    &key[self.num_key_columns..][..self.num_key_columns]
                 );
                 assert!(
                     index < self.table_size(),
@@ -494,13 +583,12 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
                 index
             }
             IndexLookupFn::ReuseGenerationClosure(gen_closure) => {
-                let keys = unsafe { key.as_ptr().cast::<[F; N]>().as_ref_unchecked() };
                 // NOTE: generation functions do not use padding places, so we can feed as-is
-                let (index, values) = (gen_closure)(&keys);
+                let (index, values) = (gen_closure)(key);
                 // can self-check
                 assert_eq!(
                     &values[..self.num_value_columns],
-                    &key[self.num_key_columns..]
+                    &key[self.num_key_columns..][..self.num_key_columns]
                 );
                 assert!(
                     index < self.table_size(),
@@ -526,39 +614,63 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
         self.num_key_columns
     }
 
+    pub fn width(&self) -> usize {
+        self.num_key_columns + self.num_value_columns
+    }
+
     pub fn data_at_row(&self, row: usize) -> &[F] {
         &self.data[row][..]
     }
 
-    pub fn dump_into<const M: usize>(&self, dst: &mut Vec<[F; M]>, id: Option<u32>) {
-        let required_len = N + id.is_some() as usize;
-        assert!(M >= required_len);
+    pub fn dump_into(
+        &self,
+        dst: &mut Vec<ArrayVec<F, MAX_TABLE_WIDTH>>,
+        id: Option<u32>,
+        total_width_including_id: usize,
+    ) {
+        assert!(total_width_including_id > 0);
+        assert!(
+            self.width() < total_width_including_id,
+            "trying to dump table `{}` of width {} into trace of width {} (with table ID)",
+            self.name,
+            self.width(),
+            total_width_including_id
+        );
+        let required_len = self.width() + id.is_some() as usize;
+        assert!(required_len <= total_width_including_id);
+        assert!(required_len <= MAX_TABLE_WIDTH);
+        let padding_width = if id.is_some() {
+            total_width_including_id - 1
+        } else {
+            total_width_including_id
+        };
         for row in self.data.iter() {
-            let mut assembled_row = [F::ZERO; M];
-            assembled_row[..N].copy_from_slice(&row[..]);
+            let mut assembled_row = row.clone();
+            assert_eq!(row.len(), self.width());
+            assert!(self.width() <= padding_width);
+            for _ in self.width()..padding_width {
+                assembled_row.push(F::ZERO);
+            }
             if let Some(id) = id {
-                assembled_row[N] = F::from_u32_unchecked(id as u32);
+                assembled_row.push(F::from_u32_unchecked(id as u32));
             }
             dst.push(assembled_row);
         }
     }
 
-    pub fn dump_limited_columns<const M: usize>(&self, dst: &mut Vec<[F; M]>) {
-        assert!(M <= N);
-        for row in self.data.iter() {
-            let mut assembled_row = [F::ZERO; M];
-            assembled_row[..].copy_from_slice(&row[..M]);
-            dst.push(assembled_row);
-        }
-    }
+    // pub fn dump_limited_columns<const M: usize>(&self, dst: &mut Vec<[F; M]>) {
+    //     for row in self.data.iter() {
+    //         let mut assembled_row = [F::ZERO; M];
+    //         assembled_row[..].copy_from_slice(&row[..M]);
+    //         dst.push(assembled_row);
+    //     }
+    // }
 }
 
 #[derive(Clone, Debug)]
 pub enum LookupWrapper<F: PrimeField> {
     Uninitialized,
-    Dimensional1(LookupTable<F, 1>),
-    Dimensional2(LookupTable<F, 2>),
-    Dimensional3(LookupTable<F, 3>),
+    Initialized(LookupTable<F>),
 }
 impl<F: PrimeField> LookupWrapper<F> {
     pub fn is_initialized(&self) -> bool {
@@ -570,18 +682,14 @@ impl<F: PrimeField> LookupWrapper<F> {
 
     pub fn width(&self) -> usize {
         match self {
-            Self::Dimensional1(..) => 1,
-            Self::Dimensional2(..) => 2,
-            Self::Dimensional3(..) => 3,
+            Self::Initialized(table) => table.width(),
             Self::Uninitialized => 0,
         }
     }
 
     pub fn get_table_id(&self) -> u32 {
         match self {
-            LookupWrapper::Dimensional1(table) => table.id,
-            LookupWrapper::Dimensional2(table) => table.id,
-            LookupWrapper::Dimensional3(table) => table.id,
+            LookupWrapper::Initialized(table) => table.id,
             Self::Uninitialized => {
                 panic!("Trying to lookup into uninitialized table wrapper");
             }
@@ -592,9 +700,7 @@ impl<F: PrimeField> LookupWrapper<F> {
     #[inline]
     pub fn lookup_value<const VALUES: usize>(&self, keys: &[F]) -> [F; VALUES] {
         match self {
-            Self::Dimensional1(inner) => inner.lookup_value(keys),
-            Self::Dimensional2(inner) => inner.lookup_value(keys),
-            Self::Dimensional3(inner) => inner.lookup_value(keys),
+            Self::Initialized(inner) => inner.lookup_value::<VALUES>(keys),
             Self::Uninitialized => {
                 panic!("Trying to lookup into uninitialized table wrapper");
             }
@@ -608,9 +714,7 @@ impl<F: PrimeField> LookupWrapper<F> {
         keys: &[F],
     ) -> (usize, [F; VALUES]) {
         match self {
-            Self::Dimensional1(inner) => inner.lookup_values_and_get_index(keys),
-            Self::Dimensional2(inner) => inner.lookup_values_and_get_index(keys),
-            Self::Dimensional3(inner) => inner.lookup_values_and_get_index(keys),
+            Self::Initialized(inner) => inner.lookup_values_and_get_index::<VALUES>(keys),
             Self::Uninitialized => {
                 panic!("Table is not initialized");
             }
@@ -621,9 +725,7 @@ impl<F: PrimeField> LookupWrapper<F> {
     #[inline]
     pub fn lookup_row(&self, row: &[F]) -> usize {
         match self {
-            Self::Dimensional1(inner) => inner.lookup_row(row),
-            Self::Dimensional2(inner) => inner.lookup_row(row),
-            Self::Dimensional3(inner) => inner.lookup_row(row),
+            Self::Initialized(inner) => inner.lookup_row(row),
             Self::Uninitialized => {
                 panic!("Trying to lookup into uninitialized table wrapper");
             }
@@ -632,325 +734,208 @@ impl<F: PrimeField> LookupWrapper<F> {
 
     pub fn get_size(&self) -> usize {
         match self {
-            Self::Dimensional1(inner) => inner.table_size(),
-            Self::Dimensional2(inner) => inner.table_size(),
-            Self::Dimensional3(inner) => inner.table_size(),
+            Self::Initialized(inner) => inner.table_size(),
             Self::Uninitialized => 0,
         }
     }
 
-    pub fn data_at_row(&self, row: usize) -> &[F] {
-        match self {
-            Self::Dimensional1(inner) => inner.data_at_row(row),
-            Self::Dimensional2(inner) => inner.data_at_row(row),
-            Self::Dimensional3(inner) => inner.data_at_row(row),
-            Self::Uninitialized => &[],
-        }
-    }
+    // pub fn data_at_row(&self, row: usize) -> &[F] {
+    //     match self {
+    //         Self::Initialized(inner) => inner.data_at_row(row),
+    //         Self::Uninitialized => &[],
+    //     }
+    // }
 
-    pub fn dump_into<const N: usize>(&self, dst: &mut Vec<[F; N]>, id: Option<u32>) {
+    pub fn dump_into(
+        &self,
+        dst: &mut Vec<ArrayVec<F, MAX_TABLE_WIDTH>>,
+        id: Option<u32>,
+        total_width_including_id: usize,
+    ) {
         match self {
-            Self::Dimensional1(inner) => inner.dump_into::<N>(dst, id),
-            Self::Dimensional2(inner) => inner.dump_into::<N>(dst, id),
-            Self::Dimensional3(inner) => inner.dump_into::<N>(dst, id),
+            Self::Initialized(inner) => inner.dump_into(dst, id, total_width_including_id),
             Self::Uninitialized => {}
         }
     }
 
-    pub fn dump_limited_columns<const N: usize>(&self, dst: &mut Vec<[F; N]>) {
-        match self {
-            Self::Dimensional1(inner) => inner.dump_limited_columns::<N>(dst),
-            Self::Dimensional2(inner) => inner.dump_limited_columns::<N>(dst),
-            Self::Dimensional3(inner) => inner.dump_limited_columns::<N>(dst),
-            Self::Uninitialized => {}
-        }
-    }
+    // pub fn dump_limited_columns<const N: usize>(&self, dst: &mut Vec<ArrayVec<F, MAX_TABLE_WIDTH>>) {
+    //     match self {
+    //         Self::Initialized(inner) => inner.dump_limited_columns::<N>(dst),
+    //         Self::Uninitialized => {}
+    //     }
+    // }
 }
 
 // -------------------------------------Tables Realization------------------------------------
 // -------------------------------------------------------------------------------------------
 
-impl quote::ToTokens for TableType {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        use quote::quote;
-        let stream = match self {
-            TableType::And => quote! { TableType::And },
-            TableType::Xor => quote! { TableType::Xor },
-            TableType::Or => quote! { TableType::Or },
-            TableType::RangeCheck8x8 => quote! { TableType::RangeCheck8x8 },
-            // TableType::RangeCheckLarge => quote! { TableType::RangeCheckLarge },
-            TableType::PowersOf2 => quote! { TableType::PowersOf2 },
-            TableType::OpTypeBitmask => quote! { TableType::OpTypeBitmask },
-            TableType::InsnEncodingChecker => quote! { TableType::InsnEncodingChecker },
-            TableType::CsrBitmask => quote! { TableType::CsrBitmask },
-            TableType::ZeroEntry => quote! { TableType::ZeroEntry },
-            TableType::AndNot => quote! { TableType::AndNot },
-            TableType::QuickDecodeDecompositionCheck4x4x4 => {
-                quote! { TableType::QuickDecodeDecompositionCheck4x4x4 }
-            }
-            TableType::QuickDecodeDecompositionCheck7x3x6 => {
-                quote! { TableType::QuickDecodeDecompositionCheck7x3x6 }
-            }
-            TableType::MRetProcessLow => quote! { TableType::MRetProcessLow },
-            TableType::MRetClearHigh => quote! { TableType::MRetClearHigh },
-            TableType::TrapProcessLow => quote! { TableType::TrapProcessLow },
-            TableType::U16GetSignAndHighByte => quote! { TableType::U16GetSignAndHighByte },
-            TableType::JumpCleanupOffset => quote! { TableType::JumpCleanupOffset },
-            TableType::MemoryOffsetGetBits => quote! { TableType::MemoryOffsetGetBits },
-            TableType::MemoryLoadGetSigns => quote! { TableType::MemoryLoadGetSigns },
-            TableType::SRASignFiller => quote! { TableType::SRASignFiller },
-            TableType::ConditionalOpAllConditionsResolver => {
-                quote! { TableType::ConditionalOpAllConditionsResolver }
-            }
-            TableType::RomAddressSpaceSeparator => quote! { TableType::RomAddressSpaceSeparator },
-            TableType::RomRead => quote! { TableType::RomRead },
-            TableType::SpecialCSRProperties => quote! { TableType::SpecialCSRProperties },
-            TableType::Xor3 => quote! { TableType::Xor3 },
-            TableType::Xor4 => quote! { TableType::Xor4 },
-            TableType::Xor7 => quote! { TableType::Xor7 },
-            TableType::Xor9 => quote! { TableType::Xor9 },
-            TableType::Xor12 => quote! { TableType::Xor12 },
-            TableType::U16SplitAsBytes => quote! { TableType::U16SplitAsBytes },
-            TableType::RangeCheck9x9 => quote! { TableType::RangeCheck9x9 },
-            TableType::RangeCheck10x10 => quote! { TableType::RangeCheck10x10 },
-            TableType::RangeCheck11 => quote! { TableType::RangeCheck11 },
-            TableType::RangeCheck12 => quote! { TableType::RangeCheck12 },
-            TableType::RangeCheck13 => quote! { TableType::RangeCheck13 },
-            TableType::ShiftImplementation => quote! { TableType::ShiftImplementation },
-            TableType::U16SelectByteAndGetByteSign => {
-                quote! { TableType::U16SelectByteAndGetByteSign }
-            }
-            TableType::ConditionalOpUnsignedConditionsResolver => {
-                todo!()
-            }
-            TableType::StoreByteSourceContribution => {
-                quote! { TableType::StoreByteSourceContribution }
-            }
-            TableType::StoreByteExistingContribution => {
-                quote! { TableType::StoreByteExistingContribution }
-            }
-            TableType::ExtendLoadedValue => quote! { TableType::ExtendLoadedValue },
-            TableType::TruncateShift => quote! { TableType::TruncateShift },
-            TableType::AlignedRomRead => quote! { TableType::AlignedRomRead },
-            TableType::ConditionalJmpBranchSlt => {
-                quote! { TableType::ConditionalJmpBranchSlt }
-            }
-            TableType::SllWith16BitInputLow => {
-                quote! { TableType::SllWith16BitInputLow }
-            }
-            TableType::SllWith16BitInputHigh => {
-                quote! { TableType::SllWith16BitInputHigh }
-            }
-            TableType::SrlWith16BitInputLow => {
-                quote! { TableType::SrlWith16BitInputLow }
-            }
-            TableType::SrlWith16BitInputHigh => {
-                quote! { TableType::SrlWith16BitInputHigh }
-            }
-            TableType::Sra16BitInputSignFill => {
-                quote! { TableType::Sra16BitInputSignFill }
-            }
-            TableType::RangeCheck16WithZeroPads => {
-                quote! { TableType::RangeCheck16WithZeroPads }
-            }
-            TableType::TruncateShiftAmount => {
-                quote! { TableType::TruncateShiftAmount }
-            }
-            TableType::MemStoreClearOriginalRamValueLimb => {
-                quote! { TableType::MemStoreClearOriginalRamValueLimb }
-            }
-            TableType::MemStoreClearWrittenValueLimb => {
-                quote! { TableType::MemStoreClearWrittenValueLimb }
-            }
-            TableType::MemoryGetOffsetAndMaskWithTrap => {
-                quote! { TableType::MemoryGetOffsetAndMaskWithTrap }
-            }
-            TableType::MemoryLoadHalfwordOrByte => quote! { TableType::MemoryLoadHalfwordOrByte },
-            TableType::KeccakPermutationIndices12 => quote!(TableType::KeccakPermutationIndices12),
-            TableType::KeccakPermutationIndices34 => quote!(TableType::KeccakPermutationIndices34),
-            TableType::KeccakPermutationIndices56 => quote!(TableType::KeccakPermutationIndices56),
-            TableType::XorSpecialIota => quote!(TableType::XorSpecialIota),
-            TableType::AndN => quote!(TableType::AndN),
-            TableType::RotL => quote!(TableType::RotL),
-            TableType::Decoder => quote!(TableType::Decoder),
-            TableType::DynamicPlaceholder => {
-                unimplemented!("should not appear in final circuits")
-            }
-        };
-
-        tokens.extend(stream);
-    }
-}
-
 impl TableType {
     pub fn to_table_id(&self) -> u32 {
         *self as u32
     }
-}
 
-impl TableType {
-    pub fn generate_table<F: PrimeField>(self) -> LookupWrapper<F> {
+    pub fn to_num<F: PrimeField>(&self) -> crate::types::Num<F> {
+        crate::types::Num::Constant(F::from_u32(*self as u32).expect("must fit"))
+    }
+
+    pub fn generate_table<F: PrimeField, const TOTAL_WIDTH: usize>(self) -> LookupWrapper<F> {
         let id = self.to_table_id();
         match self {
-            TableType::And => LookupWrapper::Dimensional3(create_and_table(id)),
-            TableType::Xor => LookupWrapper::Dimensional3(create_xor_table::<F, 8>(id)),
-            TableType::Or => LookupWrapper::Dimensional3(create_or_table(id)),
-            TableType::RangeCheck8x8 => LookupWrapper::Dimensional3(
-                create_formal_width_3_range_check_table_for_two_tuple::<F, 8>(id),
+            TableType::ZeroEntry => {
+                // LookupWrapper::Initialized(create_zero_entry_table::<F, TOTAL_WIDTH>(id))
+                // WE DON'T WANT TO RESTRICT OURSELVES TO SPECIFIC NUMBER OF OUTPUTS
+                LookupWrapper::Initialized(create_zero_entry_table::<F, 0>(id))
+            }
+            TableType::RegIsZero => LookupWrapper::Initialized(create_reg_is_zero_table::<F>(id)),
+            TableType::U16GetSign => LookupWrapper::Initialized(create_u16_get_sign_table::<F>(id)),
+            TableType::TruncateShiftAmountAndRangeCheck8 => LookupWrapper::Initialized(
+                create_truncate_shift_amount_and_range_check_8_table::<F>(id),
             ),
-            // TableType::RangeCheckLarge => {
-            //     LookupWrapper::Dimensional1(create_range_check_table::<F, 16>(id))
-            // }
-            // TableType::PowersOf2 => LookupWrapper::Dimensional3(create_pow2_table::<F, 5>(id)),
-            TableType::OpTypeBitmask => {
-                panic!("Machine must defined it's own way to create supporting decoder table")
+            TableType::GetSignExtensionByte => {
+                LookupWrapper::Initialized(create_sign_extension_byte_table::<F>(id))
             }
-            TableType::InsnEncodingChecker => {
-                panic!("deprecated")
-            }
-            TableType::CsrBitmask => {
-                panic!("Machine must defined it's own way to define CSR support")
-                // LookupWrapper::Dimensional3(create_csr_bitmask_table(id))
-            }
-            TableType::ZeroEntry => LookupWrapper::Dimensional3(create_zero_entry_table(id)),
-            TableType::AndNot => LookupWrapper::Dimensional3(create_and_not_table(id)),
-            TableType::QuickDecodeDecompositionCheck4x4x4 => {
-                LookupWrapper::Dimensional3(create_quick_decoder_decomposition_table_4x4x4(id))
-            }
-            TableType::QuickDecodeDecompositionCheck7x3x6 => {
-                LookupWrapper::Dimensional3(create_quick_decoder_decomposition_table_7x3x6(id))
-            }
-            TableType::MRetProcessLow => {
-                unimplemented!()
-                // LookupWrapper::Dimensional3(create_mret_process_low_table(id))
-            }
-            TableType::MRetClearHigh => {
-                unimplemented!()
-                // LookupWrapper::Dimensional3(create_mret_clear_high_table(id))
-            }
-            TableType::TrapProcessLow => {
-                unimplemented!()
-                // LookupWrapper::Dimensional3(create_trap_process_low_table(id))
-            }
-            TableType::U16GetSignAndHighByte => {
-                LookupWrapper::Dimensional3(create_u16_get_sign_and_high_byte_table(id))
+            TableType::And => LookupWrapper::Initialized(create_and_table::<F>(id)),
+            TableType::Xor => LookupWrapper::Initialized(create_xor_table::<F, 8>(id)),
+            TableType::Or => LookupWrapper::Initialized(create_or_table::<F>(id)),
+            TableType::ConditionalJmpBranchSlt => {
+                LookupWrapper::Initialized(create_conditional_op_resolution_table(id))
             }
             TableType::JumpCleanupOffset => {
-                LookupWrapper::Dimensional3(create_jump_cleanup_offset_table(id))
+                LookupWrapper::Initialized(create_jump_cleanup_offset_table(id))
             }
-            TableType::MemoryOffsetGetBits => {
-                LookupWrapper::Dimensional3(create_memory_offset_lowest_bits_table(id))
+            TableType::ShiftImplementationOverBytes => {
+                LookupWrapper::Initialized(create_shift_implementation_table::<F>(id))
             }
-            TableType::MemoryLoadGetSigns => {
-                LookupWrapper::Dimensional3(create_memory_load_signs_table(id))
+            // TableType::AndNot => LookupWrapper::Dimensional3(create_and_not_table(id)),
+            // TableType::QuickDecodeDecompositionCheck4x4x4 => {
+            //     LookupWrapper::Dimensional3(create_quick_decoder_decomposition_table_4x4x4(id))
+            // }
+            // TableType::QuickDecodeDecompositionCheck7x3x6 => {
+            //     LookupWrapper::Dimensional3(create_quick_decoder_decomposition_table_7x3x6(id))
+            // }
+            // TableType::U16GetSignAndHighByte => {
+            //     LookupWrapper::Dimensional3(create_u16_get_sign_and_high_byte_table(id))
+            // }
+
+            // TableType::MemoryOffsetGetBits => {
+            //     LookupWrapper::Dimensional3(create_memory_offset_lowest_bits_table(id))
+            // }
+            // TableType::MemoryLoadGetSigns => {
+            //     LookupWrapper::Dimensional3(create_memory_load_signs_table(id))
+            // }
+            // TableType::SRASignFiller => {
+            //     LookupWrapper::Dimensional3(create_sra_sign_filler_table(id))
+            // }
+            // TableType::ConditionalOpAllConditionsResolver => {
+            //     LookupWrapper::Dimensional3(create_conditional_op_resolution_table(id))
+            // }
+            // TableType::RomAddressSpaceSeparator => {
+            //     unimplemented!("must manually generate a table to customize number of bits");
+            //     // LookupWrapper::Dimensional3(create_rom_separator_table::<
+            //     //     F,
+            //     //     ROM_ADDRESS_SPACE_SECOND_WORD_BITS,
+            //     // >(id))
+            // }
+            // TableType::SpecialCSRProperties => {
+            //     unimplemented!("must be created in a special manner");
+            // }
+            TableType::Xor3 => LookupWrapper::Initialized(create_xor_table::<F, 3>(id)),
+            TableType::Xor4 => LookupWrapper::Initialized(create_xor_table::<F, 4>(id)),
+            TableType::Xor7 => LookupWrapper::Initialized(create_xor_table::<F, 7>(id)),
+            TableType::Xor9 => LookupWrapper::Initialized(create_xor_table::<F, 9>(id)),
+            // TableType::Xor12 => LookupWrapper::Dimensional3(create_xor_table::<F, 12>(id)),
+            // TableType::U16SplitAsBytes => {
+            //     LookupWrapper::Dimensional3(create_u16_split_into_bytes_table(id))
+            // }
+            TableType::RangeCheck8x8 => {
+                LookupWrapper::Initialized(create_range_check_table_for_two_tuple::<F, 8>(id))
             }
-            TableType::SRASignFiller => {
-                LookupWrapper::Dimensional3(create_sra_sign_filler_table(id))
+            TableType::RangeCheck9x9 => {
+                LookupWrapper::Initialized(create_range_check_table_for_two_tuple::<F, 9>(id))
             }
-            TableType::ConditionalOpAllConditionsResolver => {
-                LookupWrapper::Dimensional3(create_conditional_op_resolution_table(id))
+            TableType::RangeCheck10x10 => {
+                LookupWrapper::Initialized(create_range_check_table_for_two_tuple::<F, 10>(id))
             }
-            TableType::RomAddressSpaceSeparator => {
-                unimplemented!("must manually generate a table to customize number of bits");
-                // LookupWrapper::Dimensional3(create_rom_separator_table::<
-                //     F,
-                //     ROM_ADDRESS_SPACE_SECOND_WORD_BITS,
-                // >(id))
+            TableType::RangeCheck11 => {
+                LookupWrapper::Initialized(create_range_check_table_for_single_entry::<F, 11>(id))
             }
-            TableType::SpecialCSRProperties => {
-                unimplemented!("must be created in a special manner");
+            TableType::RangeCheck12 => {
+                LookupWrapper::Initialized(create_range_check_table_for_single_entry::<F, 12>(id))
             }
-            TableType::Xor3 => LookupWrapper::Dimensional3(create_xor_table::<F, 3>(id)),
-            TableType::Xor4 => LookupWrapper::Dimensional3(create_xor_table::<F, 4>(id)),
-            TableType::Xor7 => LookupWrapper::Dimensional3(create_xor_table::<F, 7>(id)),
-            TableType::Xor9 => LookupWrapper::Dimensional3(create_xor_table::<F, 9>(id)),
-            TableType::Xor12 => LookupWrapper::Dimensional3(create_xor_table::<F, 12>(id)),
-            TableType::U16SplitAsBytes => {
-                LookupWrapper::Dimensional3(create_u16_split_into_bytes_table(id))
+            TableType::RangeCheck13 => {
+                LookupWrapper::Initialized(create_range_check_table_for_single_entry::<F, 13>(id))
             }
-            TableType::RangeCheck9x9 => LookupWrapper::Dimensional3(
-                create_formal_width_3_range_check_table_for_two_tuple::<F, 9>(id),
+            TableType::U16GetLowByte => {
+                LookupWrapper::Initialized(create_u16_get_low_byte_table::<F>(id))
+            }
+            // TableType::ShiftImplementation => {
+            //     LookupWrapper::Dimensional3(create_shift_implementation_table::<F>(id))
+            // }
+            // TableType::U16SelectByteAndGetByteSign => {
+            //     LookupWrapper::Dimensional3(create_select_byte_and_get_sign_table::<F>(id))
+            // }
+            TableType::BlakeGFunctionControlLookup => LookupWrapper::Initialized(
+                create_blake_g_function_control_and_offsets_table::<F>(id),
             ),
-            TableType::RangeCheck10x10 => LookupWrapper::Dimensional3(
-                create_formal_width_3_range_check_table_for_two_tuple::<F, 10>(id),
-            ),
-            TableType::RangeCheck11 => LookupWrapper::Dimensional3(
-                create_formal_width_3_range_check_table_for_single_entry::<F, 11>(id),
-            ),
-            TableType::RangeCheck12 => LookupWrapper::Dimensional3(
-                create_formal_width_3_range_check_table_for_single_entry::<F, 12>(id),
-            ),
-            TableType::RangeCheck13 => LookupWrapper::Dimensional3(
-                create_formal_width_3_range_check_table_for_single_entry::<F, 13>(id),
-            ),
-            TableType::ShiftImplementation => {
-                LookupWrapper::Dimensional3(create_shift_implementation_table::<F>(id))
-            }
-            TableType::U16SelectByteAndGetByteSign => {
-                LookupWrapper::Dimensional3(create_select_byte_and_get_sign_table::<F>(id))
-            }
-            TableType::ExtendLoadedValue => {
-                LookupWrapper::Dimensional3(create_mem_load_extend_table::<F>(id))
-            }
             TableType::StoreByteSourceContribution => {
-                LookupWrapper::Dimensional3(create_store_byte_source_contribution_table::<F>(id))
+                LookupWrapper::Initialized(create_store_byte_source_contribution_table::<F>(id))
             }
             TableType::StoreByteExistingContribution => {
-                LookupWrapper::Dimensional3(create_store_byte_existing_contribution_table::<F>(id))
+                LookupWrapper::Initialized(create_store_byte_existing_contribution_table::<F>(id))
             }
-            TableType::TruncateShift => {
-                LookupWrapper::Dimensional3(create_truncate_shift_amount_table::<F>(id))
+            TableType::LoadHalfwordSignextend => {
+                LookupWrapper::Initialized(create_load_halfword_signextend_table::<F>(id))
             }
-            TableType::ConditionalJmpBranchSlt => LookupWrapper::Dimensional3(
-                create_conditional_jmp_branch_slt_family_resolution_table(id),
-            ),
-            TableType::MemoryGetOffsetAndMaskWithTrap => {
-                LookupWrapper::Dimensional3(create_memory_offset_mask_with_trap_table(id))
+            TableType::LoadByteSignextend => {
+                LookupWrapper::Initialized(create_load_byte_signextend_table::<F>(id))
             }
-            TableType::MemoryLoadHalfwordOrByte => {
-                LookupWrapper::Dimensional3(create_memory_load_halfword_or_byte_table(id))
-            }
-            TableType::MemStoreClearOriginalRamValueLimb => LookupWrapper::Dimensional3(
-                create_memory_store_halfword_or_byte_clear_source_limb_table::<F>(id),
-            ),
-            TableType::MemStoreClearWrittenValueLimb => LookupWrapper::Dimensional3(
-                create_memory_store_halfword_or_byte_clear_written_limb_table::<F>(id),
-            ),
-            TableType::TruncateShiftAmount => {
-                LookupWrapper::Dimensional3(create_shift_amount_truncation_table::<F>(id))
-            }
-            TableType::SllWith16BitInputLow => LookupWrapper::Dimensional3(
-                create_logical_shift_16_bit_table::<F, false, false>(id),
-            ),
-            TableType::SllWith16BitInputHigh => {
-                LookupWrapper::Dimensional3(create_logical_shift_16_bit_table::<F, true, false>(id))
-            }
-            TableType::SrlWith16BitInputLow => {
-                LookupWrapper::Dimensional3(create_logical_shift_16_bit_table::<F, false, true>(id))
-            }
-            TableType::SrlWith16BitInputHigh => {
-                LookupWrapper::Dimensional3(create_logical_shift_16_bit_table::<F, true, true>(id))
-            }
-            TableType::Sra16BitInputSignFill => {
-                LookupWrapper::Dimensional3(create_sra_16_filler_mask_table::<F>(id))
-            }
-            TableType::RangeCheck16WithZeroPads => LookupWrapper::Dimensional3(
-                create_formal_width_3_range_check_table_for_single_entry::<F, 16>(id),
-            ),
-            TableType::KeccakPermutationIndices12 => {
-                LookupWrapper::Dimensional3(create_keccak_permutation_indices_table::<F, 0, 1>(id))
-            }
-            TableType::KeccakPermutationIndices34 => {
-                LookupWrapper::Dimensional3(create_keccak_permutation_indices_table::<F, 2, 3>(id))
-            }
-            TableType::KeccakPermutationIndices56 => {
-                LookupWrapper::Dimensional3(create_keccak_permutation_indices_table::<F, 4, 5>(id))
+            // TableType::TruncateShift => {
+            //     LookupWrapper::Dimensional3(create_truncate_shift_amount_table::<F>(id))
+            // }
+            // TableType::ConditionalJmpBranchSlt => LookupWrapper::Dimensional3(
+            //     create_conditional_jmp_branch_slt_family_resolution_table(id),
+            // ),
+            // TableType::MemoryGetOffsetAndMaskWithTrap => {
+            //     LookupWrapper::Dimensional3(create_memory_offset_mask_with_trap_table(id))
+            // }
+            // TableType::MemoryLoadHalfwordOrByte => {
+            //     LookupWrapper::Dimensional3(create_memory_load_halfword_or_byte_table(id))
+            // }
+            // TableType::MemStoreClearOriginalRamValueLimb => LookupWrapper::Dimensional3(
+            //     create_memory_store_halfword_or_byte_clear_source_limb_table::<F>(id),
+            // ),
+            // TableType::MemStoreClearWrittenValueLimb => LookupWrapper::Dimensional3(
+            //     create_memory_store_halfword_or_byte_clear_written_limb_table::<F>(id),
+            // ),
+            // TableType::TruncateShiftAmount => {
+            //     LookupWrapper::Dimensional3(create_shift_amount_truncation_table::<F>(id))
+            // }
+            // TableType::SllWith16BitInputLow => LookupWrapper::Dimensional3(
+            //     create_logical_shift_16_bit_table::<F, false, false>(id),
+            // ),
+            // TableType::SllWith16BitInputHigh => {
+            //     LookupWrapper::Dimensional3(create_logical_shift_16_bit_table::<F, true, false>(id))
+            // }
+            // TableType::SrlWith16BitInputLow => {
+            //     LookupWrapper::Dimensional3(create_logical_shift_16_bit_table::<F, false, true>(id))
+            // }
+            // TableType::SrlWith16BitInputHigh => {
+            //     LookupWrapper::Dimensional3(create_logical_shift_16_bit_table::<F, true, true>(id))
+            // }
+            // TableType::Sra16BitInputSignFill => {
+            //     LookupWrapper::Dimensional3(create_sra_16_filler_mask_table::<F>(id))
+            // }
+            // TableType::RangeCheck16WithZeroPads => LookupWrapper::Dimensional3(
+            //     create_formal_width_3_range_check_table_for_single_entry::<F, 16>(id),
+            // ),
+            TableType::KeccakPermutationIndices => {
+                LookupWrapper::Initialized(create_keccak_permutation_indices_table::<F>(id))
             }
             TableType::XorSpecialIota => {
-                LookupWrapper::Dimensional3(create_xor_special_keccak_iota_table::<F>(id))
+                LookupWrapper::Initialized(create_xor_special_keccak_iota_table::<F>(id))
             }
-            TableType::AndN => LookupWrapper::Dimensional3(create_andn_table::<F>(id)),
-            TableType::RotL => LookupWrapper::Dimensional3(create_rotl_table::<F>(id)),
+            TableType::AndN => LookupWrapper::Initialized(create_andn_table::<F>(id)),
+            TableType::RotL => LookupWrapper::Initialized(create_rotl_table::<F>(id)),
             a @ _ => {
                 todo!("Support {:?}", a);
             }
@@ -967,7 +952,7 @@ impl TableType {
 }
 
 #[inline(always)]
-pub(crate) fn first_key_index_gen_fn<F: PrimeField, const N: usize>(keys: &[F; N]) -> usize {
+pub(crate) fn first_key_index_gen_fn<F: PrimeField>(keys: &[F]) -> usize {
     keys[0].as_u32_reduced() as usize
 }
 
@@ -980,6 +965,18 @@ fn u8_chunks_index_gen_fn<F: PrimeField, const N: usize>(keys: &[F; N]) -> usize
     assert!(b <= u8::MAX as u32);
 
     index_for_binary_key(a, b)
+}
+
+#[inline(always)]
+fn bit_chunks_slice_index_gen_fn<F: PrimeField, const WIDTH: usize>(keys: &[F]) -> usize {
+    assert!(keys.len() >= 2);
+    let a = keys[0].as_u32_reduced();
+    let b = keys[1].as_u32_reduced();
+
+    assert!(a < 1u32 << WIDTH);
+    assert!(b < 1u32 << WIDTH);
+
+    index_for_binary_key_for_width::<WIDTH>(a, b)
 }
 
 #[inline(always)]
@@ -1151,15 +1148,19 @@ impl<F: PrimeField> TableDriver<F> {
         self.update_table_offsets();
     }
 
-    pub fn materialize_table(&mut self, table_type: TableType) {
+    pub fn max_table_width(&self) -> usize {
+        self.tables.iter().map(|el| el.width()).max().unwrap_or(0)
+    }
+
+    pub fn materialize_table<const TOTAL_WIDTH: usize>(&mut self, table_type: TableType) {
         static CACHE: LazyLock<Mutex<TypeMap>> = LazyLock::new(|| Mutex::new(TypeMap::default()));
         let mut guard = CACHE.lock().unwrap();
         let map = guard
             .entry()
-            .or_insert_with(HashMap::<TableType, LookupWrapper<F>>::new);
+            .or_insert_with(HashMap::<(TableType, usize), LookupWrapper<F>>::new);
         let wrapper = map
-            .entry(table_type)
-            .or_insert_with(|| table_type.generate_table::<F>());
+            .entry((table_type, TOTAL_WIDTH))
+            .or_insert_with(|| table_type.generate_table::<F, TOTAL_WIDTH>());
         let table = wrapper.clone();
         self.add_table_with_content(table_type, table);
     }
@@ -1173,12 +1174,7 @@ impl<F: PrimeField> TableDriver<F> {
             "table with id = {:?} is not initialized",
             id
         );
-        // debug_assert!(
-        //     table.is_initialized(),
-        //     "table with id = {:?} is not initialized",
-        //     id
-        // );
-        let values = table.lookup_value::<N>(keys);
+        let values = table.lookup_value(keys);
 
         values
     }
@@ -1197,12 +1193,7 @@ impl<F: PrimeField> TableDriver<F> {
             "table with id = {:?} is not initialized",
             id
         );
-        // debug_assert!(
-        //     table.is_initialized(),
-        //     "table with id = {:?} is not initialized",
-        //     id
-        // );
-        let (mut index, values) = table.lookup_values_and_get_index::<N>(keys);
+        let (mut index, values) = table.lookup_values_and_get_index(keys);
         index += offset;
 
         (index, values)
@@ -1222,21 +1213,16 @@ impl<F: PrimeField> TableDriver<F> {
             "table with id = {:?} is not initialized",
             id
         );
-        // debug_assert!(
-        //     table.is_initialized(),
-        //     "table with id = {:?} is not initialized",
-        //     id
-        // );
         let mut index = table.lookup_row(keys);
         index += offset;
 
         index
     }
 
-    // #[inline(always)]
-    // pub fn lookup_row(&self, row: &[F], id: u32) -> bool {
-    //     self.tables[id as usize].lookup_row(row).is_some()
-    // }
+    // // #[inline(always)]
+    // // pub fn lookup_row(&self, row: &[F], id: u32) -> bool {
+    // //     self.tables[id as usize].lookup_row(row).is_some()
+    // // }
 
     #[inline(always)]
     pub fn get_start_table_offset(&self, id: u32) -> usize {
@@ -1247,105 +1233,117 @@ impl<F: PrimeField> TableDriver<F> {
         self.offsets_for_multiplicities
     }
 
-    #[inline(always)]
-    pub fn get_table(&self, table_type: TableType) -> &LookupWrapper<F> {
-        &self.tables[table_type.to_table_id() as usize]
-    }
+    // #[inline(always)]
+    // pub fn get_table(&self, table_type: TableType) -> &LookupWrapper<F> {
+    //     &self.tables[table_type.to_table_id() as usize]
+    // }
 
-    #[inline(always)]
-    pub fn get_table_by_id(&self, id: u32) -> &LookupWrapper<F> {
-        &self.tables[id as usize]
-    }
+    // #[inline(always)]
+    // pub fn get_table_by_id(&self, id: u32) -> &LookupWrapper<F> {
+    //     &self.tables[id as usize]
+    // }
 
-    pub fn dump_tables(&self) -> Vec<[F; 4]> {
+    pub fn dump_tables(
+        &self,
+        total_width_including_id: usize,
+    ) -> Vec<ArrayVec<F, MAX_TABLE_WIDTH>> {
+        let max_width_without_id = self.max_table_width();
+        if max_width_without_id >= total_width_including_id {
+            for t in self.tables.iter() {
+                if let LookupWrapper::Initialized(t) = t {
+                    println!("Table `{}` has width {} (without ID)", &t.name, t.width());
+                }
+            }
+            panic!("trying to dump tables with max width {} (without ID) into total of {} columns (with ID)", max_width_without_id, total_width_including_id);
+        }
         let mut result = Vec::with_capacity(self.total_tables_len);
         for table in self.tables.iter() {
             if table.get_size() == 0 {
                 continue;
             }
             let id = table.get_table_id();
-            table.dump_into(&mut result, Some(id));
+            table.dump_into(&mut result, Some(id), total_width_including_id);
         }
 
         result
     }
 }
 
-#[cfg(test)]
-mod test {
-    use field::Mersenne31Field;
-    use rand::Rng;
-    use rand::SeedableRng;
-    use std::collections::BTreeMap;
-    use std::collections::HashMap;
+// #[cfg(test)]
+// mod test {
+//     use field::Mersenne31Field;
+//     use rand::Rng;
+//     use rand::SeedableRng;
+//     use std::collections::BTreeMap;
+//     use std::collections::HashMap;
 
-    use super::*;
+//     use super::*;
 
-    #[test]
-    fn bench_btree_lookup() {
-        let table = TableType::Xor.generate_table::<Mersenne31Field>();
-        let num_queries = 1 << 23;
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-        let queries: Vec<[Mersenne31Field; 2]> = (0..num_queries)
-            .map(|_| {
-                let a: u8 = rng.random();
-                let b: u8 = rng.random();
+//     #[test]
+//     fn bench_btree_lookup() {
+//         let table = TableType::Xor.generate_table::<Mersenne31Field>();
+//         let num_queries = 1 << 23;
+//         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+//         let queries: Vec<[Mersenne31Field; 2]> = (0..num_queries)
+//             .map(|_| {
+//                 let a: u8 = rng.random();
+//                 let b: u8 = rng.random();
 
-                [Mersenne31Field(a as u32), Mersenne31Field(b as u32)]
-            })
-            .collect();
+//                 [Mersenne31Field(a as u32), Mersenne31Field(b as u32)]
+//             })
+//             .collect();
 
-        let current_time = std::time::Instant::now();
-        for input in queries.iter() {
-            let _ = table.lookup_value::<1>(input);
-        }
-        dbg!(current_time.elapsed());
+//         let current_time = std::time::Instant::now();
+//         for input in queries.iter() {
+//             let _ = table.lookup_value::<1>(input);
+//         }
+//         dbg!(current_time.elapsed());
 
-        // simulate as hashmap
-        let mut map = HashMap::new();
-        let LookupWrapper::Dimensional3(table) = &table else {
-            unreachable!()
-        };
+//         // simulate as hashmap
+//         let mut map = HashMap::new();
+//         let LookupWrapper::Dimensional3(table) = &table else {
+//             unreachable!()
+//         };
 
-        for (k, v) in table.lookup_data.iter() {
-            map.insert(k.clone(), v.clone());
-        }
+//         for (k, v) in table.lookup_data.iter() {
+//             map.insert(k.clone(), v.clone());
+//         }
 
-        let hashmap_time = std::time::Instant::now();
-        for input in queries.iter() {
-            let key = LookupKey::<Mersenne31Field, 3>::from_keys(input);
-            let _ = map.get(&key);
-        }
-        dbg!(hashmap_time.elapsed());
+//         let hashmap_time = std::time::Instant::now();
+//         for input in queries.iter() {
+//             let key = LookupKey::<Mersenne31Field, 3>::from_keys(input);
+//             let _ = map.get(&key);
+//         }
+//         dbg!(hashmap_time.elapsed());
 
-        // simulate as btree without indirection
-        let mut btree = BTreeMap::new();
+//         // simulate as btree without indirection
+//         let mut btree = BTreeMap::new();
 
-        for (k, v) in table.lookup_data.iter() {
-            btree.insert(k.clone(), v.clone());
-        }
+//         for (k, v) in table.lookup_data.iter() {
+//             btree.insert(k.clone(), v.clone());
+//         }
 
-        let btree_time = std::time::Instant::now();
-        for input in queries.iter() {
-            let key = LookupKey::<Mersenne31Field, 3>::from_keys(input);
-            let _ = btree.get(&key);
-        }
-        dbg!(btree_time.elapsed());
+//         let btree_time = std::time::Instant::now();
+//         for input in queries.iter() {
+//             let key = LookupKey::<Mersenne31Field, 3>::from_keys(input);
+//             let _ = btree.get(&key);
+//         }
+//         dbg!(btree_time.elapsed());
 
-        // simulate as ordered vector
-        let mut ordered_vector = Vec::new();
+//         // simulate as ordered vector
+//         let mut ordered_vector = Vec::new();
 
-        for (k, v) in table.lookup_data.iter() {
-            ordered_vector.push((k.clone(), v.clone()));
-        }
+//         for (k, v) in table.lookup_data.iter() {
+//             ordered_vector.push((k.clone(), v.clone()));
+//         }
 
-        ordered_vector.sort_by(|a, b| a.0.cmp(&b.0));
+//         ordered_vector.sort_by(|a, b| a.0.cmp(&b.0));
 
-        let vec_time = std::time::Instant::now();
-        for input in queries.iter() {
-            let key = LookupKey::<Mersenne31Field, 3>::from_keys(input);
-            let _ = ordered_vector.binary_search_by_key(&key, |(a, _)| a.clone());
-        }
-        dbg!(vec_time.elapsed());
-    }
-}
+//         let vec_time = std::time::Instant::now();
+//         for input in queries.iter() {
+//             let key = LookupKey::<Mersenne31Field, 3>::from_keys(input);
+//             let _ = ordered_vector.binary_search_by_key(&key, |(a, _)| a.clone());
+//         }
+//         dbg!(vec_time.elapsed());
+//     }
+// }

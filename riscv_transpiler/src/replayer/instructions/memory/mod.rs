@@ -1,6 +1,4 @@
-use risc_v_simulator::machine_mode_only_unrolled::{
-    MEM_LOAD_TRACE_DATA_MARKER, MEM_STORE_TRACE_DATA_MARKER,
-};
+use crate::witness::{MEM_LOAD_TRACE_DATA_MARKER, MEM_STORE_TRACE_DATA_MARKER};
 
 use super::*;
 
@@ -53,8 +51,8 @@ pub(crate) fn lw<C: Counters, R: RAM>(
     // NOTE: value here is either ROM or RAM, but timestamp is already consistent with masking of ROM access
     // into read 0 from address 0
     let (ram_timestamp, ram_old_value) = ram.read_word(address, state.timestamp | 1);
-    let mut rd = ram_old_value;
-    let (rd_old_value, rd_ts) = write_register_with_ts::<C, 2>(state, instr.rd, &mut rd);
+    let rd = ram_old_value;
+    let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
 
     if tracer.needs_tracing_data_for_circuit_family::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>() {
         // NOTE: we may access ROM, that is modeled as accessing address 0,
@@ -196,8 +194,8 @@ pub(crate) fn lh<C: Counters, R: RAM, const SIGN_EXTEND: bool>(
     } else {
         value = (value as u16) as u32;
     }
-    let mut rd = value;
-    let (rd_old_value, rd_ts) = write_register_with_ts::<C, 2>(state, instr.rd, &mut rd);
+    let rd = value;
+    let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
 
     if tracer.needs_tracing_data_for_circuit_family::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>()
     {
@@ -244,8 +242,8 @@ pub(crate) fn lb<C: Counters, R: RAM, const SIGN_EXTEND: bool>(
     } else {
         value = (value as u8) as u32;
     }
-    let mut rd = value;
-    let (rd_old_value, rd_ts) = write_register_with_ts::<C, 2>(state, instr.rd, &mut rd);
+    let rd = value;
+    let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
 
     if tracer.needs_tracing_data_for_circuit_family::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>()
     {

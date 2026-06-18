@@ -1,10 +1,8 @@
 use super::*;
-use crate::prover_stages::query_producer::BitSource;
-use crate::{
-    definitions::{Transcript, DIGEST_SIZE_U32_WORDS},
-    gkr::whir::WhirCommitment,
-};
+use crate::query_utils::BitSource;
+use crate::{definitions::Transcript, gkr::whir::WhirCommitment};
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
+use field::FixedArrayConvertible;
 use transcript::Seed;
 
 pub fn flatten_field_els_into<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut Vec<u32>)
@@ -12,7 +10,9 @@ where
     [(); E::DEGREE]: Sized,
 {
     for el in src.iter() {
-        let coeffs = E::into_coeffs_in_base(*el).map(|el: F| el.as_u32_raw_repr_reduced());
+        let coeffs = E::into_coeffs(*el)
+            .into_array::<{ E::DEGREE }>()
+            .map(|el: F| el.as_u32_raw_repr_reduced());
         dst.extend(coeffs);
     }
 }
@@ -27,6 +27,7 @@ where
     Transcript::commit_with_seed(seed, &transcript_input);
 }
 
+#[track_caller]
 pub fn draw_random_field_els<F: PrimeField, E: FieldExtension<F>>(
     seed: &mut Seed,
     num_challenges: usize,
@@ -42,10 +43,14 @@ where
         .as_chunks::<{ E::DEGREE }>()
         .0
         .into_iter()
-        .map(|el| E::from_base_coeffs_array(&el.map(|el| F::from_u32_with_reduction(el))))
+        .map(|el| {
+            let array = el.map(|el| F::from_raw_repr_with_reduction(el));
+            let coeffs = E::Coeffs::from_array(array);
+            E::from_coeffs(coeffs)
+        })
         .collect();
 
-    assert!(all_challenges.len() > num_challenges);
+    assert!(all_challenges.len() >= num_challenges);
     all_challenges.truncate(num_challenges);
 
     all_challenges
@@ -55,7 +60,8 @@ pub fn add_whir_commitment_to_transcript<F: PrimeField, T: ColumnMajorMerkleTree
     seed: &mut Seed,
     commitment: &WhirCommitment<F, T>,
 ) {
-    let mut transcript_input = Vec::with_capacity(commitment.cap.cap.len() * DIGEST_SIZE_U32_WORDS);
+    let mut transcript_input =
+        Vec::with_capacity(commitment.cap.cap.len() * BLAKE2S_DIGEST_SIZE_U32_WORDS);
     commitment.cap.add_into_buffer(&mut transcript_input);
 
     Transcript::commit_with_seed(seed, &transcript_input);

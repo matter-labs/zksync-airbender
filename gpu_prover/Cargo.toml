@@ -23,7 +23,7 @@ prover = { workspace = true }
 riscv_transpiler = { workspace = true, features = ["jit"] }
 setups = { workspace = true }
 trace_and_split = { workspace = true }
-verifier_common = { workspace = true }
+verifier_common = { workspace = true, features = ["proof_utils"] }
 worker = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
@@ -40,6 +40,7 @@ type-map = "0.5"
 
 [features]
 default = ["security_80"]
+deterministic_pow = ["prover/deterministic_pow"]
 log_gpu_mem_usage = []
 log_gpu_stages_timings = []
 security_80 = ["verifier_common/security_80"]
@@ -51,7 +52,6 @@ prover = { workspace = true, features = ["test"] }
 rand = { workspace = true }
 riscv_common = { workspace = true }
 setups = { workspace = true, features = ["witness_eval_fn"] }
-trace_holder = { workspace = true }
 env_logger = "0.11"
 era_criterion_cuda = "0.2"
 criterion = "0.5"

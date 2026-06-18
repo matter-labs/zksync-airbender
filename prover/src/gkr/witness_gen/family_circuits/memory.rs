@@ -56,7 +56,7 @@ impl<F: PrimeField, A: Allocator + Clone, B: Allocator + Clone> GKRMemoryOnlyWit
             let proxy = ColumnMajorWitnessProxy {
                 witness_rows_starts: vec![].into_boxed_slice(),
                 memory_rows_starts: start_pointers.clone().into_boxed_slice(),
-                scratch_space: vec![F::ZERO; scratch_space_size].into_boxed_slice(),
+                scratch_space: vec![].into_boxed_slice(),
                 table_driver,
                 multiplicity_counting_scratch: &mut [],
                 lookup_mapping_rows_starts: vec![].into_boxed_slice(),
@@ -127,7 +127,7 @@ pub fn evaluate_gkr_memory_witness_for_executor_family<
                 let mut chunk = chunk;
                 for _i in 0..chunk_size {
                     unsafe {
-                        evaluate_memory_witness_for_executor_family_inner::<F, O, false>(
+                        evaluate_memory_witness_for_executor_family_inner::<F, O>(
                             &mut chunk,
                             &compiled_circuit,
                         );
@@ -174,7 +174,6 @@ pub(crate) unsafe fn gkr_process_machine_state_assuming_preprocessed_decoder<
 >(
     proxy: &mut ColumnMajorWitnessProxy<'a, O, F>,
     compiled_circuit: &GKRCircuitArtifact<F>,
-    generic_lookup_multiplicities: &mut [u32],
 ) {
     #[cfg(feature = "profiling")]
     let t = std::time::Instant::now();
@@ -225,28 +224,34 @@ pub(crate) unsafe fn gkr_process_machine_state_assuming_preprocessed_decoder<
         .oracle
         .get_executor_family_data(proxy.absolute_row_idx);
 
-    // rare case when it's in memory
-    for (i, el) in decoder_input.circuit_family_mask_bits.iter().enumerate() {
-        if let GKRAddress::BaseLayerMemory(circuit_family_extra_mask) = *el {
-            let bit = (decoder_data.opcode_family_bits & (1 << i)) > 0;
-            proxy.write_boolean_value_into_columns::<true>(circuit_family_extra_mask, bit);
+    assert!(decoder_input.decoder_witness_is_in_memory == false);
+
+    // all decoder values that can be in memory
+    {
+        if let GKRAddress::BaseLayerMemory(offset) = decoder_input.rs2_index {
+            proxy.write_u16_value_into_columns::<true>(offset, decoder_data.rs2_index);
+        }
+        if let GKRAddress::BaseLayerMemory(offset) = decoder_input.rd_index {
+            proxy.write_u8_value_into_columns::<true>(offset, decoder_data.rd_index);
+        }
+        // rare case when it's in memory
+        for (i, el) in decoder_input.circuit_family_mask_bits.iter().enumerate() {
+            if let GKRAddress::BaseLayerMemory(circuit_family_extra_mask) = *el {
+                let bit = (decoder_data.opcode_family_bits & (1 << i)) > 0;
+                proxy.write_boolean_value_into_columns::<true>(circuit_family_extra_mask, bit);
+            }
         }
     }
 
     if COMPUTE_WITNESS {
-        let decoder_data = proxy
-            .oracle
-            .get_executor_family_data(proxy.absolute_row_idx);
+        // same decoder values that can be in witness
 
-        // and maybe some decoder values, that wouldn't end up as RS2/RD indexes and so on
         if let GKRAddress::BaseLayerWitness(offset) = decoder_input.rs2_index {
-            proxy.write_u8_value_into_columns::<false>(offset, decoder_data.rs2_index);
+            proxy.write_u16_value_into_columns::<false>(offset, decoder_data.rs2_index);
         }
-
         if let GKRAddress::BaseLayerWitness(offset) = decoder_input.rd_index {
             proxy.write_u8_value_into_columns::<false>(offset, decoder_data.rd_index);
         }
-
         for (i, el) in decoder_input.circuit_family_mask_bits.iter().enumerate() {
             if let GKRAddress::BaseLayerWitness(circuit_family_extra_mask) = *el {
                 let bit = (decoder_data.opcode_family_bits & (1 << i)) > 0;
@@ -256,28 +261,29 @@ pub(crate) unsafe fn gkr_process_machine_state_assuming_preprocessed_decoder<
 
         if decoder_input.decoder_witness_is_in_memory == false {
             // these variables are for sure in witness
-
-            proxy.write_boolean_value_into_columns::<false>(
-                decoder_input.rd_is_zero,
-                decoder_data.rd_is_zero,
-            );
-
             proxy.write_u32_value_into_columns::<false>(decoder_input.imm, decoder_data.imm);
             if let Some(funct3) = decoder_input.funct3 {
-                proxy.write_u8_value_into_columns::<false>(funct3, decoder_data.funct3);
+                if let Some(funct3_value) = decoder_data.funct3 {
+                    proxy.write_u8_value_into_columns::<false>(funct3, funct3_value);
+                } else {
+                    // it should be unsupported and not executed
+                    assert!(execute == false, "missing funct3 on the executed row");
+                    proxy.write_u8_value_into_columns::<false>(funct3, 0);
+                }
             }
 
             // and count multiplicity right away
             if execute {
                 assert!(initial_pc % 4 == 0);
                 let idx = (initial_pc / 4) as usize;
+                let idx_with_decoder_offset = idx + compiled_circuit.offset_for_decoder_table;
                 // count for mapping purposes
                 proxy
                     .lookup_mapping_rows_starts
                     .last_mut()
                     .expect("must exist")
-                    .write((idx + compiled_circuit.offset_for_decoder_table) as u32);
-                generic_lookup_multiplicities[idx + compiled_circuit.offset_for_decoder_table] += 1;
+                    .write(idx_with_decoder_offset as u32);
+                proxy.multiplicity_counting_scratch[idx_with_decoder_offset] += 1;
             }
         } else {
             todo!();
@@ -318,43 +324,52 @@ pub(crate) unsafe fn gkr_process_shuffle_ram_accesses_in_executor_family<
     // We also must write down read timestamps, as those are pure witness values from the prover
     for (access_idx, mem_query) in compiled_circuit
         .memory_layout
-        .shuffle_ram_access_sets
+        .ram_access_sets
         .iter()
         .enumerate()
     {
         match mem_query.get_address() {
+            RamAddress::ConstantRegister(..) => {}
             RamAddress::RegisterOnly(RegisterOnlyAccessAddress { register_index }) => {
-                proxy.write_u8_placeholder_into_columns::<true>(
+                proxy.write_u16_placeholder_into_columns::<true>(
                     register_index,
                     Placeholder::ShuffleRamAddress(access_idx),
                 );
             }
             RamAddress::RegisterOrRam(RegisterOrRamAccessAddress {
-                is_register,
+                address_space,
                 address,
             }) => {
-                match is_register {
-                    IsRegisterAddress::Is(is_register) => {
-                        proxy.write_boolean_placeholder_into_columns::<true>(
-                            is_register,
-                            Placeholder::ShuffleRamIsRegisterAccess(access_idx),
-                        );
-                    }
-                    IsRegisterAddress::Not(is_register) => {
+                match address_space {
+                    RegisterOrRamAddressSpace::RegisterAddressSpace(column) => {
+                        // if value in this column is `1`, it means "register address space"
+                        assert_eq!(AddressSpaceType::Register as u8, 0);
                         let is_register_flag = Oracle::<F>::get_boolean_witness_from_placeholder(
                             proxy.oracle,
                             Placeholder::ShuffleRamIsRegisterAccess(access_idx),
                             proxy.absolute_row_idx,
                         );
-                        let not_register = !is_register_flag;
-
-                        proxy.write_boolean_value_into_columns::<true>(is_register, not_register);
+                        proxy.write_boolean_value_into_columns::<true>(column, is_register_flag);
+                    }
+                    RegisterOrRamAddressSpace::RamAddressSpace(column) => {
+                        // if value in this column is `1`, it means "RAM address space"
+                        assert_eq!(AddressSpaceType::RAM as u8, 1);
+                        let is_register_flag = Oracle::<F>::get_boolean_witness_from_placeholder(
+                            proxy.oracle,
+                            Placeholder::ShuffleRamIsRegisterAccess(access_idx),
+                            proxy.absolute_row_idx,
+                        );
+                        let write_value = !is_register_flag;
+                        proxy.write_boolean_value_into_columns::<true>(column, write_value);
                     }
                 }
                 proxy.write_u32_placeholder_into_columns::<true>(
                     address,
                     Placeholder::ShuffleRamAddress(access_idx),
                 );
+            }
+            RamAddress::IndirectRam(IndirectRamAccessAddress { .. }) => {
+                todo!()
             }
         }
 
@@ -364,21 +379,43 @@ pub(crate) unsafe fn gkr_process_shuffle_ram_accesses_in_executor_family<
         );
         proxy.write_timestamp_value_into_columns(mem_query.get_read_timestamp_columns(), read_ts);
 
-        proxy.write_u32_placeholder_into_columns::<true>(
-            mem_query.get_read_value_columns(),
-            Placeholder::ShuffleRamReadValue(access_idx),
-        );
+        match mem_query.get_read_value_columns() {
+            RamWordRepresentation::Zero => {}
+            RamWordRepresentation::U16Limbs(read_value) => {
+                proxy.write_u32_placeholder_into_columns::<true>(
+                    read_value,
+                    Placeholder::ShuffleRamReadValue(access_idx),
+                );
+            }
+            RamWordRepresentation::U8Limbs(read_value) => {
+                proxy.write_u32_placeholder_as_u8_chunks_into_columns::<true>(
+                    read_value,
+                    Placeholder::ShuffleRamReadValue(access_idx),
+                );
+            }
+        }
 
         if let RamQuery::Write(query) = mem_query {
             // also do write
-            proxy.write_u32_placeholder_into_columns::<true>(
-                query.write_value,
-                Placeholder::ShuffleRamWriteValue(access_idx),
-            );
+            match query.write_value {
+                RamWordRepresentation::Zero => {}
+                RamWordRepresentation::U16Limbs(write_value) => {
+                    proxy.write_u32_placeholder_into_columns::<true>(
+                        write_value,
+                        Placeholder::ShuffleRamWriteValue(access_idx),
+                    );
+                }
+                RamWordRepresentation::U8Limbs(write_value) => {
+                    proxy.write_u32_placeholder_as_u8_chunks_into_columns::<true>(
+                        write_value,
+                        Placeholder::ShuffleRamWriteValue(access_idx),
+                    );
+                }
+            }
         }
 
         if COMPUTE_WITNESS {
-            let write_ts = cycle_ts + (access_idx as TimestampScalar);
+            let write_ts = cycle_ts + (mem_query.local_timestamp_in_cycle() as TimestampScalar);
 
             let read_ts_split = split_timestamp(read_ts);
             let write_ts_split = split_timestamp(write_ts);
@@ -419,16 +456,11 @@ pub(crate) unsafe fn evaluate_memory_witness_for_executor_family_inner<
     'a,
     F: PrimeField,
     O: Oracle<F> + 'a,
-    const COMPUTE_WITNESS: bool,
 >(
     proxy: &mut ColumnMajorWitnessProxy<'a, O, F>,
     compiled_circuit: &GKRCircuitArtifact<F>,
 ) {
-    gkr_process_machine_state_assuming_preprocessed_decoder::<F, O, false>(
-        proxy,
-        compiled_circuit,
-        &mut [],
-    );
+    gkr_process_machine_state_assuming_preprocessed_decoder::<F, O, false>(proxy, compiled_circuit);
 
     gkr_process_shuffle_ram_accesses_in_executor_family::<F, O, false>(proxy, compiled_circuit);
 

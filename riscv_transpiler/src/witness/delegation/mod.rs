@@ -1,11 +1,10 @@
+use crate::witness::{RegisterOrIndirectReadData, RegisterOrIndirectReadWriteData};
 use common_constants::TimestampScalar;
 use core::fmt::Debug;
-use risc_v_simulator::abstractions::tracer::{
-    RegisterOrIndirectReadData, RegisterOrIndirectReadWriteData,
-};
 use std::ops::Range;
 
 pub mod bigint;
+pub mod blake2_g_function;
 pub mod blake2_round_function;
 pub mod keccak_special5;
 
