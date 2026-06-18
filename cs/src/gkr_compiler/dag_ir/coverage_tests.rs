@@ -502,6 +502,12 @@ fn resolutions_peek_single_column_present_for_timestamp() {
 
 // ── Task 3: PeekDecoder + PeekAggregate resolution coverage ─────────────────
 
+// Empirically verified (2026-06-18): add_sub_lui_auipc_mop_layout_gkr.json
+// emits PeekDecoder=1, PeekAggregate=0. The circuit's only generic vector
+// lookup is the decoder cache leaf (set_index == DECODER_LOOKUP_FORMAL_SET_INDEX),
+// so there are no non-decoder VectorizedLookup entries that would produce a
+// PeekAggregate resolution. The PeekAggregate branch is exercised by
+// resolutions_peek_aggregate_present_for_shift_binop below.
 #[test]
 fn resolutions_peek_decoder_present_for_add_sub() {
     use crate::gkr_compiler::dag_ir::{lower_dag, FillSource, ReadPlace, ResolutionStrategy};

@@ -2147,4 +2147,47 @@ mod tests {
         );
         assert!(res.is_err(), "decoder mask ≠ machine_state.execute must be rejected");
     }
+
+    /// `LookupWithCachedDensAndSetup` is the LIVE cached-consumer path: the
+    /// decoder fold is held in `cached_relations[input[1]]` as a
+    /// `VectorizedLookup` with `lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX`,
+    /// and `input[0]` is the mask. Verify that a wrong mask is rejected even
+    /// through this cached lookup path (no inline `NoFieldVectorLookupRelation`).
+    #[test]
+    fn check_decoder_masks_rejects_wrong_mask_cached() {
+        use crate::definitions::gkr::{NoFieldVectorLookupRelation, DECODER_LOOKUP_FORMAL_SET_INDEX};
+
+        // Cache address that will hold the decoder VectorizedLookup.
+        let cache_addr = GKRAddress::Cached { layer: 0, offset: 0 };
+
+        // The cached relation: a VectorizedLookup keyed to the decoder set index.
+        let decoder_vl = NoFieldGKRCacheRelation::VectorizedLookup(NoFieldVectorLookupRelation {
+            columns: Box::new([]),
+            lookup_set_index: DECODER_LOOKUP_FORMAL_SET_INDEX,
+        });
+
+        let mut cached_relations: BTreeMap<GKRAddress, NoFieldGKRCacheRelation> = BTreeMap::new();
+        cached_relations.insert(cache_addr, decoder_vl);
+
+        // The gate: input[1] = cache_addr (decoder), input[0] = wrong mask (col 99).
+        let rel = NoFieldGKRRelation::LookupWithCachedDensAndSetup {
+            input: [GKRAddress::BaseLayerMemory(99), cache_addr], // mask 99 ≠ execute 7
+            setup: [GKRAddress::Setup(0), GKRAddress::Setup(1)],
+            output: [
+                GKRAddress::InnerLayer { layer: 0, offset: 0 },
+                GKRAddress::InnerLayer { layer: 0, offset: 1 },
+            ],
+        };
+
+        let relations = [rel];
+        let res = check_decoder_masks(
+            relations.iter(),
+            &cached_relations,
+            Some(GKRAddress::BaseLayerMemory(7)), // expected execute column = 7
+        );
+        assert!(
+            res.is_err(),
+            "cached-consumer path: decoder mask (col 99) ≠ machine_state.execute (col 7) must be rejected"
+        );
+    }
 }
