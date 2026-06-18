@@ -46,6 +46,7 @@ mod strategy;
 #[allow(dead_code)]
 pub use ntt::{
     bitreversed_monomials_to_natural_evals, bitreversed_monomials_to_natural_evals_multi_coset,
+    bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range,
     natural_evals_to_bitreversed_monomials,
 };
 #[cfg(test)]

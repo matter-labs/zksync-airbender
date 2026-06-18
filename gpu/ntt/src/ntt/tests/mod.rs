@@ -761,17 +761,32 @@ compact_parity_test!(compact_monomials_to_evals_log_n_20, 20);
 #[cfg(not(no_cuda))]
 #[allow(dead_code)]
 fn run_multi_coset_monomials_to_evals_parity(log_n: usize, num_cosets: usize) {
+    let log_lde_factor = num_cosets.trailing_zeros() as usize;
+    assert_eq!(1usize << log_lde_factor, num_cosets);
+    run_multi_coset_monomials_to_evals_parity_for_range(log_n, log_lde_factor, 0, num_cosets);
+}
+
+#[cfg(not(no_cuda))]
+#[allow(dead_code)]
+fn run_multi_coset_monomials_to_evals_parity_for_range(
+    log_n: usize,
+    log_lde_factor: usize,
+    coset_index_base: usize,
+    num_cosets: usize,
+) {
     use super::ntt::{
         monomials_to_evals_2_pass_compact_initial, monomials_to_evals_compact_1_pass,
     };
     use super::{
         bitreversed_monomials_to_natural_evals, bitreversed_monomials_to_natural_evals_multi_coset,
+        bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range,
     };
     use crate::ntt_twiddles::OMEGA_LOG_ORDER;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
 
-    let log_lde_factor = num_cosets.trailing_zeros() as usize;
-    assert_eq!(1usize << log_lde_factor, num_cosets);
+    assert!(num_cosets.is_power_of_two());
+    assert!(coset_index_base == 0 || coset_index_base.is_power_of_two());
+    assert!(coset_index_base + num_cosets <= (1usize << log_lde_factor));
     const NUM_COLS: usize = 4;
 
     let context = make_context();
@@ -804,19 +819,37 @@ fn run_multi_coset_monomials_to_evals_parity(log_n: usize, num_cosets: usize) {
         } else {
             None
         };
-        bitreversed_monomials_to_natural_evals_multi_coset(
-            &inputs_matrix,
-            &mut candidate_device[..],
-            log_n,
-            log_lde_factor,
-            NUM_COLS,
-            false,
-            context.device_context(),
-            scratch_opt,
-            stream,
-            device_props,
-        )
-        .unwrap();
+        if coset_index_base == 0 && num_cosets == (1usize << log_lde_factor) {
+            bitreversed_monomials_to_natural_evals_multi_coset(
+                &inputs_matrix,
+                &mut candidate_device[..],
+                log_n,
+                log_lde_factor,
+                NUM_COLS,
+                false,
+                context.device_context(),
+                scratch_opt,
+                stream,
+                device_props,
+            )
+            .unwrap();
+        } else {
+            bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range(
+                &inputs_matrix,
+                &mut candidate_device[..],
+                log_n,
+                log_lde_factor,
+                num_cosets,
+                coset_index_base,
+                NUM_COLS,
+                false,
+                context.device_context(),
+                scratch_opt,
+                stream,
+                device_props,
+            )
+            .unwrap();
+        }
     }
 
     {
@@ -829,8 +862,9 @@ fn run_multi_coset_monomials_to_evals_parity(log_n: usize, num_cosets: usize) {
         // log_n > 13 (no DIT) the existing single-coset entry stays independent.
         let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
         let reference_slice = &mut reference_device[..];
-        for coset_index in 0..num_cosets {
-            let chunk_start = coset_index * cols_size;
+        for coset_offset in 0..num_cosets {
+            let coset_index = coset_index_base + coset_offset;
+            let chunk_start = coset_offset * cols_size;
             let chunk_end = chunk_start + cols_size;
             let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], stride, 0, n);
             let mut ref_chunk = DeviceMatrixChunkMut::new(
@@ -892,14 +926,14 @@ fn run_multi_coset_monomials_to_evals_parity(log_n: usize, num_cosets: usize) {
     memory_copy_async(&mut reference_host, &reference_device, stream).unwrap();
     stream.synchronize().unwrap();
 
-    for coset_index in 0..num_cosets {
+    for coset_offset in 0..num_cosets {
         for col in 0..NUM_COLS {
-            let base = coset_index * cols_size + col * stride;
+            let base = coset_offset * cols_size + col * stride;
             for k in 0..n {
                 assert_eq!(
                     candidate_host[base + k],
                     reference_host[base + k],
-                    "log_n={log_n}, num_cosets={num_cosets}, coset={coset_index}, col={col}, k={k}"
+                    "log_n={log_n}, log_lde_factor={log_lde_factor}, num_cosets={num_cosets}, coset_index_base={coset_index_base}, coset_offset={coset_offset}, col={col}, k={k}"
                 );
             }
         }
@@ -917,8 +951,38 @@ macro_rules! multi_coset_parity_test {
     };
 }
 
+macro_rules! multi_coset_range_parity_test {
+    ($name:ident, $log_n:expr, $log_lde_factor:expr, $coset_index_base:expr, $num_cosets:expr) => {
+        #[test]
+        #[cfg(not(no_cuda))]
+        #[serial]
+        fn $name() {
+            run_multi_coset_monomials_to_evals_parity_for_range(
+                $log_n,
+                $log_lde_factor,
+                $coset_index_base,
+                $num_cosets,
+            );
+        }
+    };
+}
+
 // Compact 1-pass range: kernel batches all cosets into one launch.
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_4_cosets_4, 4, 4);
+multi_coset_range_parity_test!(
+    multi_coset_monomials_to_evals_log_n_8_cosets_4_base_4,
+    8,
+    4,
+    4,
+    4
+);
+multi_coset_range_parity_test!(
+    multi_coset_monomials_to_evals_log_n_8_cosets_23_base_4,
+    23,
+    4,
+    4,
+    4
+);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_7_cosets_8, 7, 8);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_32, 8, 32);
 // Multi-coset parity over the small-`log_n` range (2..8): the candidate runs

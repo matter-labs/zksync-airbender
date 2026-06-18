@@ -1214,14 +1214,16 @@ pub fn monomials_to_evals_2_pass(
 
 /// Multi-coset variant of `bitreversed_monomials_to_natural_evals`.
 ///
-/// Runs the same forward NTT across the full power-of-two LDE — all
-/// `num_cosets = 1 << log_lde_factor` cosets, starting at coset 0 (the coset
-/// range is always full and pow2-aligned, derived from `log_lde_factor`; there
-/// is no caller-controlled coset subrange). For the compact 1-pass range
-/// (`log_n <= 12`) all cosets are batched into one launch via `gridDim.x`,
-/// eliminating the per-coset launch overhead that previously dominated
-/// small-`log_n` work. For larger `log_n` (2-pass-compact-initial, 3-pass
-/// forward) cosets are batched up to the L2-pressure cap from the strategy.
+/// Runs the same forward NTT across the full power-of-two LDE: all
+/// `num_cosets = 1 << log_lde_factor` cosets, starting at coset 0. Use
+/// [`bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range`] to
+/// process a caller-selected power-of-two coset subrange.
+///
+/// For the compact 1-pass range (`log_n <= 12`) all cosets are batched into one
+/// launch via `gridDim.x`, eliminating the per-coset launch overhead that
+/// previously dominated small-`log_n` work. For larger `log_n`
+/// (2-pass-compact-initial, 3-pass forward) cosets are batched up to the
+/// L2-pressure cap from the strategy.
 ///
 /// Output layout: coset-major outer, column-major inner. Coset k's columns
 /// occupy `outputs[(k * num_cols_per_coset_stride + col) * trace_len ..]` for
@@ -1243,13 +1245,100 @@ pub fn bitreversed_monomials_to_natural_evals_multi_coset(
     stream: &CudaStream,
     device_properties: &DeviceProperties,
 ) -> CudaResult<()> {
+    let num_cosets = 1usize << log_lde_factor;
+    bitreversed_monomials_to_natural_evals_multi_coset_impl(
+        inputs_matrix,
+        outputs,
+        log_n,
+        log_lde_factor,
+        num_cosets,
+        0,
+        num_cols_per_coset_stride,
+        transposed_monomials,
+        ntt_ctx,
+        d_table_scratch,
+        stream,
+        device_properties,
+    )
+}
+
+/// Multi-coset forward NTT over a caller-selected coset range.
+///
+/// `log_lde_factor` still describes the full LDE domain and therefore the
+/// coset-factor shift. `num_cosets` is the number of local cosets written to
+/// `outputs`, while `coset_index_base` is the global coset index used for the
+/// first local coset's coset factor. Both caller-controlled values must be
+/// powers of two, and the selected range must fit within the full LDE coset
+/// domain.
+#[allow(dead_code)]
+pub fn bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range(
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs: &mut DeviceSlice<BF>,
+    log_n: usize,
+    log_lde_factor: usize,
+    num_cosets: usize,
+    coset_index_base: usize,
+    num_cols_per_coset_stride: usize,
+    transposed_monomials: bool,
+    ntt_ctx: &crate::ntt_twiddles::DeviceContext,
+    d_table_scratch: Option<&mut DeviceSlice<BF>>,
+    stream: &CudaStream,
+    device_properties: &DeviceProperties,
+) -> CudaResult<()> {
+    assert!(
+        num_cosets.is_power_of_two(),
+        "num_cosets must be a power of 2 (got {num_cosets})"
+    );
+    // assert!(
+    //     (coset_index_base == 0) || coset_index_base.is_power_of_two(),
+    //     "coset_index_base must be a power of 2 (got {coset_index_base})"
+    // );
+    bitreversed_monomials_to_natural_evals_multi_coset_impl(
+        inputs_matrix,
+        outputs,
+        log_n,
+        log_lde_factor,
+        num_cosets,
+        coset_index_base,
+        num_cols_per_coset_stride,
+        transposed_monomials,
+        ntt_ctx,
+        d_table_scratch,
+        stream,
+        device_properties,
+    )
+}
+
+fn bitreversed_monomials_to_natural_evals_multi_coset_impl(
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs: &mut DeviceSlice<BF>,
+    log_n: usize,
+    log_lde_factor: usize,
+    num_cosets: usize,
+    coset_index_base: usize,
+    num_cols_per_coset_stride: usize,
+    transposed_monomials: bool,
+    ntt_ctx: &crate::ntt_twiddles::DeviceContext,
+    d_table_scratch: Option<&mut DeviceSlice<BF>>,
+    stream: &CudaStream,
+    device_properties: &DeviceProperties,
+) -> CudaResult<()> {
     assert!(
         log_n + log_lde_factor <= OMEGA_LOG_ORDER as usize,
         "log_n ({log_n}) + log_lde_factor ({log_lde_factor}) > OMEGA_LOG_ORDER ({OMEGA_LOG_ORDER})",
     );
-    // Coset range is always the full power-of-two LDE: structurally pow2, base 0.
-    let num_cosets = 1usize << log_lde_factor;
-    let coset_index_base = 0usize;
+    assert!(
+        num_cosets.is_power_of_two(),
+        "num_cosets must be a power of 2 (got {num_cosets})"
+    );
+    let full_num_cosets = 1usize << log_lde_factor;
+    let coset_index_end = coset_index_base
+        .checked_add(num_cosets)
+        .expect("coset_index_base + num_cosets overflow");
+    assert!(
+        coset_index_end <= full_num_cosets,
+        "coset range [{coset_index_base}, {coset_index_end}) exceeds full LDE coset count {full_num_cosets}",
+    );
     let trace_len = 1usize << log_n;
     let num_cols = inputs_matrix.cols();
     assert!(
