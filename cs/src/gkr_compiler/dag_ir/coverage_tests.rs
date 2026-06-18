@@ -500,6 +500,81 @@ fn resolutions_peek_single_column_present_for_timestamp() {
     );
 }
 
+// ── Task 3: PeekDecoder + PeekAggregate resolution coverage ─────────────────
+
+#[test]
+fn resolutions_peek_decoder_present_for_add_sub() {
+    use crate::gkr_compiler::dag_ir::{lower_dag, FillSource, ReadPlace, ResolutionStrategy};
+
+    // add_sub has machine_state and its decoder lookup is a VectorizedLookup cache
+    // with set_index == DECODER_LOOKUP_FORMAL_SET_INDEX → PeekDecoder.
+    let path = compiled_circuit_dir().join("add_sub_lui_auipc_mop_layout_gkr.json");
+    let artifact = load_fixture(&path).expect("fixture must load");
+    let circuit = lower_dag(&artifact).expect("lower_dag must succeed");
+
+    let all: Vec<&ResolutionStrategy> =
+        circuit.layers.iter().flat_map(|l| l.resolutions.values()).collect();
+
+    let decoder = all.iter().find_map(|s| match s {
+        ResolutionStrategy::PeekDecoder { predicate, fill } => Some((predicate, fill)),
+        _ => None,
+    });
+    let (predicate, fill) = decoder.expect("add_sub must emit a PeekDecoder");
+    assert!(matches!(predicate, ReadPlace::BaseLayerMemory { .. }), "decoder predicate is a base-layer read");
+    assert!(matches!(fill, FillSource::DecoderLookupFill));
+}
+
+#[test]
+fn resolutions_peek_aggregate_present_for_shift_binop() {
+    use crate::gkr_compiler::dag_ir::{lower_dag, ResolutionStrategy};
+
+    // shift_binop has non-decoder VectorizedLookup cache entries (set_index 0-4) →
+    // PeekAggregate. add_sub only has the decoder VectorizedLookup; shift_binop is
+    // the minimal with-caches fixture that exercises the aggregate branch.
+    let path = compiled_circuit_dir().join("shift_binop_layout_gkr.json");
+    let artifact = load_fixture(&path).expect("fixture must load");
+    let circuit = lower_dag(&artifact).expect("lower_dag must succeed");
+
+    assert!(
+        circuit
+            .layers
+            .iter()
+            .flat_map(|l| l.resolutions.values())
+            .any(|s| matches!(s, ResolutionStrategy::PeekAggregate { .. })),
+        "shift_binop must emit at least one PeekAggregate (non-decoder generic vector lookup)"
+    );
+}
+
+#[test]
+fn resolutions_peek_decoder_predicate_matches_global_execute() {
+    use crate::gkr_compiler::dag_ir::{lower_dag, ReadPlace, ResolutionStrategy};
+
+    let path = compiled_circuit_dir().join("add_sub_lui_auipc_mop_layout_gkr.json");
+    let artifact = load_fixture(&path).expect("fixture must load");
+    let execute = artifact
+        .memory_layout
+        .machine_state
+        .as_ref()
+        .expect("add_sub has machine_state")
+        .execute;
+    let circuit = lower_dag(&artifact).expect("lower_dag must succeed (guard passes)");
+
+    let predicate = circuit
+        .layers
+        .iter()
+        .flat_map(|l| l.resolutions.values())
+        .find_map(|s| match s {
+            ResolutionStrategy::PeekDecoder { predicate, .. } => Some(predicate.clone()),
+            _ => None,
+        })
+        .expect("add_sub must emit a PeekDecoder");
+    assert_eq!(
+        predicate,
+        ReadPlace::BaseLayerMemory { column: execute },
+        "PeekDecoder predicate must equal the global machine_state.execute"
+    );
+}
+
 /// Assert no memory-tuple in `rel` uses `U32SpaceGeneric`.
 fn check_relation_no_u32_generic(fixture_name: &str, rel: &NoFieldGKRRelation) {
     use crate::gkr_compiler::CompiledAddressStrict;

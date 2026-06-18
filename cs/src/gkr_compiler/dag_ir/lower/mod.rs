@@ -57,14 +57,15 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use field::PrimeField;
 
 use crate::definitions::{GKRAddress, VirtualSetupPoly};
+use crate::definitions::gkr::DECODER_LOOKUP_FORMAL_SET_INDEX;
 use crate::gkr_compiler::{
     GKRCircuitArtifact, GateArtifacts, NoFieldGKRCacheRelation, NoFieldGKRRelation,
 };
 
 use super::{
-    ArenaBuilder, BatchingOrder, DagCircuit, DagGlobals, DagLayer, ExprId, FieldKind, RangeWidth,
-    ReadPlace, ResolutionStrategy, Root, RootGroup, RootId, RootOrigin, RootSlot, SinkId, SinkInfo,
-    SinkKind, SourceKind, VirtualSetupKind,
+    ArenaBuilder, BatchingOrder, DagCircuit, DagGlobals, DagLayer, ExprId, FieldKind, FillSource,
+    RangeWidth, ReadPlace, ResolutionStrategy, Root, RootGroup, RootId, RootOrigin, RootSlot,
+    SinkId, SinkInfo, SinkKind, SourceKind, VirtualSetupKind,
 };
 
 /// Map a `GKRAddress` to the DAG-IR `SourceKind` for an input read.
@@ -276,6 +277,32 @@ impl LayerOut {
         };
         self.insert_resolution(leaf, ResolutionStrategy::PeekSingleColumn { set_index, width })
     }
+
+    /// Record a generic-vector / decoder lookup leaf's forward-peek strategy.
+    /// `set_index == DECODER_LOOKUP_FORMAL_SET_INDEX` ⇒ decoder (needs the predicate).
+    /// `num_columns == 0` is a degenerate fold (a `Constant(0)` leaf) — no peek.
+    fn record_vector(
+        &mut self,
+        leaf: ExprId,
+        set_index: usize,
+        num_columns: usize,
+        decoder_predicate: Option<&ReadPlace>,
+    ) -> Result<(), String> {
+        if num_columns == 0 {
+            return Ok(());
+        }
+        let strat = if set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
+            let predicate = decoder_predicate
+                .ok_or_else(|| {
+                    "dag_ir: decoder lookup fold but circuit has no machine_state predicate".to_string()
+                })?
+                .clone();
+            ResolutionStrategy::PeekDecoder { predicate, fill: FillSource::DecoderLookupFill }
+        } else {
+            ResolutionStrategy::PeekAggregate { set_index }
+        };
+        self.insert_resolution(leaf, strat)
+    }
 }
 
 /// Lower one relation into the shared arena + layer accumulator.
@@ -283,8 +310,6 @@ impl LayerOut {
 /// `group`/`relation_index` identify the gate's position so the emitted root's
 /// `RootOrigin` is recorded. `trace_len`/`inits_word_bits` are circuit globals the
 /// inits/teardowns top-bits constant needs (see [`memory::lower_inits_or_teardowns`]).
-/// `_decoder_predicate` is threaded for Tasks 3-4 (unused here).
-/// Unimplemented arms return `Err(...)`.
 fn lower_relation(
     arena: &mut ArenaBuilder,
     out: &mut LayerOut,
@@ -294,7 +319,7 @@ fn lower_relation(
     minus_one: u32,
     trace_len: usize,
     inits_word_bits: Option<u32>,
-    _decoder_predicate: Option<&ReadPlace>,
+    decoder_predicate: Option<&ReadPlace>,
 ) -> Result<(), String> {
     use NoFieldGKRRelation as R;
     match rel {
@@ -332,6 +357,7 @@ fn lower_relation(
         R::MaterializedVectorLookupInput { input, output } => {
             // folded_lookup is extension-valued (alpha powers are challenges).
             let expr = lookup::folded_lookup(arena, input);
+            out.record_vector(expr, input.lookup_set_index, input.columns.len(), decoder_predicate)?;
             out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
         }
 
@@ -357,6 +383,8 @@ fn lower_relation(
         R::LookupPairFromVectorInputs { input, output } => {
             let b = lookup::folded_lookup(arena, &input[0]);
             let d = lookup::folded_lookup(arena, &input[1]);
+            out.record_vector(b, input[0].lookup_set_index, input[0].columns.len(), decoder_predicate)?;
+            out.record_vector(d, input[1].lookup_set_index, input[1].columns.len(), decoder_predicate)?;
             let (num, den) = lookup::pair(arena, b, d);
             out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
         }
@@ -394,6 +422,7 @@ fn lower_relation(
             // b = folded_lookup(input); c = multiplicity Read(setup.0);
             // d = alpha-folded setup columns.
             let b = lookup::folded_lookup(arena, input);
+            out.record_vector(b, input.lookup_set_index, input.columns.len(), decoder_predicate)?;
             let c = lookup::read(arena, setup.0);
             let d = lookup::folded_setup(arena, &setup.1);
             let (num, den) = lookup::minus_multiplicity(arena, b, c, d, minus_one);
@@ -424,6 +453,7 @@ fn lower_relation(
             // c = Read(setup.0) (multiplicity); d = alpha-folded setup columns.
             let a = lookup::read(arena, input.0);
             let b = lookup::folded_lookup(arena, &input.1);
+            out.record_vector(b, input.1.lookup_set_index, input.1.columns.len(), decoder_predicate)?;
             let c = lookup::read(arena, setup.0);
             let d = lookup::folded_setup(arena, &setup.1);
             let (num, den) = lookup::dens_and_setup(arena, a, b, c, d, minus_one);
@@ -438,6 +468,7 @@ fn lower_relation(
             // c = Read(setup.0) (multiplicity); d = Read(setup.1) (cached setup).
             let a = lookup::read(arena, input.0);
             let b = lookup::folded_lookup(arena, &input.1);
+            out.record_vector(b, input.1.lookup_set_index, input.1.columns.len(), decoder_predicate)?;
             let c = lookup::read(arena, setup.0);
             let d = lookup::read(arena, setup.1);
             let (num, den) = lookup::dens_and_setup(arena, a, b, c, d, minus_one);
@@ -472,6 +503,7 @@ fn lower_relation(
             let a = lookup::read(arena, input[0]);
             let b = lookup::read(arena, input[1]);
             let d = lookup::folded_lookup(arena, remainder);
+            out.record_vector(d, remainder.lookup_set_index, remainder.columns.len(), decoder_predicate)?;
             let (num, den) = lookup::unbalanced(arena, a, b, d);
             out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
         }
@@ -580,7 +612,7 @@ fn lower_cache(
     addr: GKRAddress,
     rel: &NoFieldGKRCacheRelation,
     minus_one: u32,
-    _decoder_predicate: Option<&ReadPlace>,
+    decoder_predicate: Option<&ReadPlace>,
 ) -> Result<RootId, String> {
     use NoFieldGKRCacheRelation as C;
     let (expr, field) = match rel {
@@ -593,11 +625,55 @@ fn lower_cache(
             out.record_single(expr, relation.lookup_set_index, *range_check_width as u32)?;
             (expr, FieldKind::Base)
         }
-        C::VectorizedLookup(vl) => (lookup::folded_lookup(arena, vl), FieldKind::Ext),
+        C::VectorizedLookup(vl) => {
+            let expr = lookup::folded_lookup(arena, vl);
+            out.record_vector(expr, vl.lookup_set_index, vl.columns.len(), decoder_predicate)?;
+            (expr, FieldKind::Ext)
+        }
         C::VectorizedLookupSetup(cols) => (lookup::folded_setup(arena, cols), FieldKind::Ext),
         C::MemoryTuple(mt) => (memory::lower_memory_tuple(arena, mt, minus_one)?, FieldKind::Ext),
     };
     out.emit_cache(expr, addr, field)
+}
+
+/// Every decoder-lookup consumer must use the global `machine_state.execute` as
+/// its mask. `expected_mask == None` ⇒ the circuit has no machine state, so ANY
+/// decoder consumer is an error. Inline consumers carry the decoder fold in
+/// `input.1` (mask = `input.0`); the cached consumer reads a decoder
+/// `VectorizedLookup` cache leaf via `input[1]` (mask = `input[0]`).
+fn check_decoder_masks<'a>(
+    relations: impl Iterator<Item = &'a NoFieldGKRRelation>,
+    cached_relations: &BTreeMap<GKRAddress, NoFieldGKRCacheRelation>,
+    expected_mask: Option<GKRAddress>,
+) -> Result<(), String> {
+    use NoFieldGKRCacheRelation as C;
+    use NoFieldGKRRelation as R;
+    let assert_mask = |mask: GKRAddress| -> Result<(), String> {
+        match expected_mask {
+            Some(exp) if exp == mask => Ok(()),
+            Some(exp) => Err(format!("dag_ir: decoder mask {:?} != machine_state.execute {:?}", mask, exp)),
+            None => Err(format!("dag_ir: decoder consumer with mask {:?} but no machine_state", mask)),
+        }
+    };
+    for rel in relations {
+        match rel {
+            R::LookupWithDensAndSetupExpressions { input, .. }
+            | R::LookupWithDensAndCachedSetup { input, .. } => {
+                if input.1.lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
+                    assert_mask(input.0)?;
+                }
+            }
+            R::LookupWithCachedDensAndSetup { input, .. } => {
+                if let Some(C::VectorizedLookup(vl)) = cached_relations.get(&input[1]) {
+                    if vl.lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
+                        assert_mask(input[0])?;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// Lower one `GKRLayerDescription` into a `DagLayer`.
@@ -632,6 +708,21 @@ fn lower_layer<F: PrimeField + PartialEq>(
         .machine_state
         .as_ref()
         .map(|t| ReadPlace::BaseLayerMemory { column: t.execute });
+
+    let expected_decoder_mask: Option<GKRAddress> = artifact
+        .memory_layout
+        .machine_state
+        .as_ref()
+        .map(|t| GKRAddress::BaseLayerMemory(t.execute));
+    check_decoder_masks(
+        layer
+            .gates
+            .iter()
+            .chain(layer.gates_with_external_connections.iter())
+            .map(|g| &g.enforced_relation),
+        &layer.cached_relations,
+        expected_decoder_mask,
+    )?;
 
     // ── Materialize caches FIRST ─────────────────────────────────────────────
     // Cache roots occupy the leading RootId slots so the cache-address → RootId
@@ -2031,5 +2122,29 @@ mod tests {
             found_prior_to_cache,
             "a same-layer cache read must alias the cache root via Prior"
         );
+    }
+
+    #[test]
+    fn check_decoder_masks_rejects_wrong_mask() {
+        use crate::definitions::gkr::{NoFieldVectorLookupRelation, DECODER_LOOKUP_FORMAL_SET_INDEX};
+        let vec_rel = NoFieldVectorLookupRelation {
+            columns: Box::new([]), // content irrelevant to the guard; only set_index matters
+            lookup_set_index: DECODER_LOOKUP_FORMAL_SET_INDEX,
+        };
+        let rel = NoFieldGKRRelation::LookupWithDensAndCachedSetup {
+            input: (GKRAddress::BaseLayerMemory(99), vec_rel), // mask 99 ≠ execute 7
+            setup: (GKRAddress::Setup(0), GKRAddress::Setup(1)),
+            output: [
+                GKRAddress::InnerLayer { layer: 0, offset: 0 },
+                GKRAddress::InnerLayer { layer: 0, offset: 1 },
+            ],
+        };
+        let relations = [rel];
+        let res = check_decoder_masks(
+            relations.iter(),
+            &BTreeMap::new(),
+            Some(GKRAddress::BaseLayerMemory(7)),
+        );
+        assert!(res.is_err(), "decoder mask ≠ machine_state.execute must be rejected");
     }
 }
