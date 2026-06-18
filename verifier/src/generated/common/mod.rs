@@ -519,81 +519,6 @@ pub fn materialize_gamma_powers<const N: usize>(gamma: BabyBearExt4) -> [BabyBea
     unsafe { powers.into_array() }
 }
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
-pub fn evals_to_multilinear_coeffs<const N: usize>(
-    data: &mut [BabyBearExt4],
-    mut root_inv: BabyBearField,
-    high_powers_offsets: &[BabyBearField],
-    num_folding_rounds: usize,
-    buf_a: &mut LazyVec<BabyBearExt4, N>,
-    buf_b: &mut LazyVec<BabyBearExt4, N>,
-) {
-    let n = 1usize << num_folding_rounds;
-    debug_assert_eq!(data.len(), n);
-    debug_assert!(n <= N);
-    if num_folding_rounds == 0 {
-        return;
-    }
-    let mut stage = 0;
-    while stage < num_folding_rounds {
-        let src_ptr: *const BabyBearExt4 = if stage == 0 {
-            data.as_ptr()
-        } else if stage % 2 == 1 {
-            buf_a.as_ptr()
-        } else {
-            buf_b.as_ptr()
-        };
-        let dst_ptr: *mut BabyBearExt4 = if stage + 1 == num_folding_rounds {
-            data.as_mut_ptr()
-        } else if stage % 2 == 0 {
-            buf_a.as_mut_ptr()
-        } else {
-            buf_b.as_mut_ptr()
-        };
-        let num_existing = 1usize << stage;
-        let block_len = n >> stage;
-        let half = block_len / 2;
-        let mut idx = 0;
-        while idx < num_existing {
-            let base = idx * block_len;
-            let out_base = idx * half;
-            let linear_base = (idx | num_existing) * half;
-            let mut set_idx = 0;
-            while set_idx < half {
-                let a = unsafe { *src_ptr.add(base + 2 * set_idx) };
-                let b = unsafe { *src_ptr.add(base + 2 * set_idx + 1) };
-                let root = if set_idx == 0 {
-                    root_inv
-                } else {
-                    let hp_offset = unsafe { *high_powers_offsets.get_unchecked(set_idx) };
-                    let mut r = root_inv;
-                    field_ops::mul_assign(&mut r, &hp_offset);
-                    r
-                };
-                let mut c_even = a;
-                field_ops::add_assign(&mut c_even, &b);
-                field_ops::mul_assign_by_base(&mut c_even, &BabyBearField::HALF);
-                let mut c_odd = a;
-                field_ops::sub_assign(&mut c_odd, &b);
-                field_ops::mul_assign_by_base(&mut c_odd, &root);
-                field_ops::mul_assign_by_base(&mut c_odd, &BabyBearField::HALF);
-                unsafe {
-                    dst_ptr.add(out_base + set_idx).write(c_even);
-                }
-                unsafe {
-                    dst_ptr.add(linear_base + set_idx).write(c_odd);
-                }
-                set_idx += 1;
-            }
-            idx += 1;
-        }
-        if stage + 1 < num_folding_rounds {
-            field_ops::square(&mut root_inv);
-        }
-        stage += 1;
-    }
-}
-#[inline(always)]
 pub fn precompute_monomial_tensor<const N: usize>(
     challenges: &[BabyBearExt4],
     weights: &mut LazyVec<BabyBearExt4, N>,
@@ -630,6 +555,7 @@ pub fn eval_multilinear_with_monomial_tensor(
     weights: &[BabyBearExt4],
 ) -> BabyBearExt4 {
     debug_assert_eq!(coeffs.len(), weights.len());
+    debug_assert!(unsafe { *weights.get_unchecked(0) } == BabyBearExt4::ONE);
     let n = coeffs.len();
     let mut result = unsafe { *coeffs.get_unchecked(0) };
     let mut i = 1;

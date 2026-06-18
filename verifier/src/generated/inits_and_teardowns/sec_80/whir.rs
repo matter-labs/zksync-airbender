@@ -1,8 +1,7 @@
 use super::common::{
     compute_tree_index, draw_single_field_el, eval_multilinear_with_monomial_tensor,
-    evals_to_multilinear_coeffs, fold_whir_accumulator, materialize_gamma_powers,
-    precompute_monomial_tensor, process_oracle_query, push_whir_pow_entry, read_reduced_field_el,
-    verify_whir_sumcheck_step,
+    fold_whir_accumulator, materialize_gamma_powers, precompute_monomial_tensor,
+    process_oracle_query, push_whir_pow_entry, read_reduced_field_el, verify_whir_sumcheck_step,
 };
 use super::constants::*;
 use core::mem::MaybeUninit;
@@ -20,13 +19,11 @@ use verifier_common::structs::{CommitBuf, TranscriptState};
 use verifier_common::whir::{
     draw_query_indices, read_and_verify_pow, read_commit_return_merkle_cap,
 };
-const INITIAL_VALUES_PER_LEAF: usize = 2usize;
 const INITIAL_QUERY_INDEX_BITS: usize = 24usize;
 const INITIAL_NUM_QUERIES: usize = 63usize;
 const INITIAL_POW_BITS: u32 = 28u32;
 const INITIAL_DRAW_WORDS: usize = 56usize;
 const INITIAL_RS_DOMAIN_LOG2: usize = 25usize;
-const HASH_BUF_SIZE: usize = 128usize;
 const NUM_COSETS: usize = 2usize;
 const NUM_COSETS_LOG2: usize = 1usize;
 const COSET_TREE_SIZE: usize = 8388608usize;
@@ -103,8 +100,6 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         let extended_generator = BabyBearField::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
         let extended_generator_inv =
             BabyBearField::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
-        let mut high_powers_offsets = LazyVec::<BabyBearField, MAX_HIGH_POWERS>::new();
-        compute_high_powers_offsets(WHIR_FOLD_STEPS[0], &mut high_powers_offsets);
         let mut q = 0;
         while q < INITIAL_NUM_QUERIES {
             field_ops::mul_assign(
@@ -158,9 +153,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         Ok((claim, intermediate_cap))
     }
 }
-use super::common::{
-    compute_high_powers_offsets, ext_from_raw_word_slice, EXT_DEGREE, MAX_HIGH_POWERS,
-};
+use super::common::{ext_from_raw_word_slice, EXT_DEGREE};
 use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 pub const NUM_INTERNAL_ROUNDS: usize = 4usize;
 const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] =

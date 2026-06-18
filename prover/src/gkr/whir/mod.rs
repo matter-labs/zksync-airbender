@@ -1510,7 +1510,7 @@ where
     let coset_generator_inv = coset_generator.inverse().unwrap();
 
     for (mut column, offset) in cosets.into_iter() {
-        assert!(column.len() > 0);
+        assert_eq!(column.len(), trace_len);
 
         if num_folding_rounds > 0 {
             let offset_inv = offset.inverse().unwrap();
@@ -1525,8 +1525,9 @@ where
                 v
             };
 
-            // SAFETY: each thread writes to disjoint leaf indices; offsets stride
-            // across the column so no two threads touch the same element.
+            debug_assert!(offsets
+                .iter()
+                .all(|&offset| offset % num_leaves == 0 && offset < trace_len));
             let base_ptr = column.as_mut_ptr() as usize;
             worker.scope(num_leaves, |scope, geometry| {
                 for chunk_idx in 0..geometry.len() {
@@ -1617,7 +1618,7 @@ where
     let mut t = Vec::with_capacity(cosets.len());
     let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
     for (column, offset) in cosets.into_iter() {
-        assert!(column.len() > 0);
+        assert!(!column.is_empty());
         let el = ColumnMajorExtensionOracleForCoset {
             values_normal_order: ColumnMajorCosetBoundTracePart {
                 column: Arc::new(column),

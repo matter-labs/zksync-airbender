@@ -142,15 +142,18 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
         whir_schedule.base_lde_factor,
     );
 
-    let oracle_leaf_words: Vec<usize> = oracles
-        .iter()
-        .map(|(_, o)| o.num_columns * params.values_per_leaf)
-        .collect();
-    let max_leaf_words = oracle_leaf_words.iter().copied().max().unwrap_or(0);
-    let block_words = prover::transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
-    let hash_buf_padded = max_leaf_words.div_ceil(block_words) * block_words;
+    // The initial round only supports single-step folding (fold_steps == 1).
+    // `read_and_batch_leaf` accumulates each base-layer leaf into exactly two
+    // values (acc0, acc1), so the k=1 butterfly below is the only correct fold;
+    // supporting k > 1 here would require reworking that batching to produce
+    // `values_per_leaf` accumulators. Fail loudly at generation time rather than
+    // emit a verifier that silently mis-folds.
+    assert_eq!(
+        params.fold_steps, 1,
+        "WHIR initial-round fold_steps must be 1 (got {}); k>1 initial folding is unsupported",
+        params.fold_steps,
+    );
 
-    let values_per_leaf = params.values_per_leaf;
     let query_index_bits = params.query_index_bits;
     let initial_num_queries = params.num_queries;
     let initial_pow_bits = params.pow_bits;
@@ -162,11 +165,6 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
 
     let mul_delin = MW::mul_assign(quote! { t }, quote! { current_delinearization_challenge });
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
-    let add_correction_by_challenge = MW::add_assign_product(
-        quote! { claim_correction },
-        quote! { folded },
-        quote! { current_delinearization_challenge },
-    );
 
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
     let mul_ood_delin = MW::mul_assign(
@@ -180,58 +178,25 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
     let batch_mul_eval = MW::mul_assign(quote! { term }, quote! { eval });
     let add_claim_eval = MW::add_assign(quote! { claim }, quote! { term });
 
-    let fold_setup: TokenStream;
-    let fold_computation: TokenStream;
-    if params.fold_steps == 1 {
-        let add_sum_b = MW::add_assign(quote! { sum }, quote! { acc1 });
-        let sub_diff_b = MW::sub_assign(quote! { diff }, quote! { acc1 });
-        let mul_alpha_r = MW::mul_assign_by_base(quote! { alpha_r }, quote! { base_root_inv });
-        let mul_scaled_diff = MW::mul_assign(quote! { scaled_diff }, quote! { alpha_r });
-        let add_folded = MW::add_assign(quote! { folded }, quote! { scaled_diff });
-        let mul_folded_half =
-            MW::mul_assign_by_base(quote! { folded }, quote! { #field_struct::HALF });
-        fold_setup = quote! {};
-        fold_computation = quote! {
-            // k=1 fast path: folded = HALF * ((a + b) + alpha * base_root_inv * (a - b))
-            let mut sum = acc0;
-            #add_sum_b;
-            let mut diff = acc0;
-            #sub_diff_b;
-            let mut alpha_r = unsafe { *folding_challenges.get_unchecked(0) };
-            #mul_alpha_r;
-            let mut scaled_diff = diff;
-            #mul_scaled_diff;
-            let mut folded = sum;
-            #add_folded;
-            #mul_folded_half;
-        };
-    } else {
-        fold_setup = quote! {
-            let mut monomial_weights = LazyVec::<#quartic_struct, INITIAL_VALUES_PER_LEAF>::new();
-            precompute_monomial_tensor(
-                folding_challenges.as_slice(),
-                &mut monomial_weights,
-            );
-
-            let mut coef_buf_a = LazyVec::<#quartic_struct, INITIAL_VALUES_PER_LEAF>::new();
-            let mut coef_buf_b = LazyVec::<#quartic_struct, INITIAL_VALUES_PER_LEAF>::new();
-        };
-        fold_computation = quote! {
-            let mut batched_evals = [acc0, acc1];
-            evals_to_multilinear_coeffs(
-                &mut batched_evals,
-                base_root_inv,
-                high_powers_offsets.as_slice(),
-                WHIR_FOLD_STEPS[0],
-                &mut coef_buf_a,
-                &mut coef_buf_b,
-            );
-            let folded = eval_multilinear_with_monomial_tensor(
-                &batched_evals,
-                monomial_weights.as_slice(),
-            );
-        };
-    }
+    let add_sum_b = MW::add_assign(quote! { sum }, quote! { acc1 });
+    let sub_diff_b = MW::sub_assign(quote! { diff }, quote! { acc1 });
+    let mul_alpha_r = MW::mul_assign_by_base(quote! { alpha_r }, quote! { base_root_inv });
+    let mul_scaled_diff = MW::mul_assign(quote! { scaled_diff }, quote! { alpha_r });
+    let add_folded = MW::add_assign(quote! { folded }, quote! { scaled_diff });
+    let mul_folded_half = MW::mul_assign_by_base(quote! { folded }, quote! { #field_struct::HALF });
+    let fold_computation = quote! {
+        let mut sum = acc0;
+        #add_sum_b;
+        let mut diff = acc0;
+        #sub_diff_b;
+        let mut alpha_r = unsafe { *folding_challenges.get_unchecked(0) };
+        #mul_alpha_r;
+        let mut scaled_diff = diff;
+        #mul_scaled_diff;
+        let mut folded = sum;
+        #add_folded;
+        #mul_folded_half;
+    };
 
     // Build unrolled per-oracle query calls with const-generic LEAF_WORDS
     let mut unrolled_oracle_queries = TokenStream::new();
@@ -267,7 +232,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
         quote! { fold_coset, }
     } else {
         quote! {
-            evals_to_multilinear_coeffs, precompute_monomial_tensor,
+            precompute_monomial_tensor,
             eval_multilinear_with_monomial_tensor,
         }
     };
@@ -299,13 +264,11 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
         use ::verifier_common::structs::{CommitBuf, TranscriptState};
         use super::constants::*;
 
-        const INITIAL_VALUES_PER_LEAF: usize = #values_per_leaf;
         const INITIAL_QUERY_INDEX_BITS: usize = #query_index_bits;
         const INITIAL_NUM_QUERIES: usize = #initial_num_queries;
         const INITIAL_POW_BITS: u32 = #initial_pow_bits;
         const INITIAL_DRAW_WORDS: usize = #draw_words;
         const INITIAL_RS_DOMAIN_LOG2: usize = #rs_domain_log2;
-        const HASH_BUF_SIZE: usize = #hash_buf_padded;
         const NUM_COSETS: usize = #num_cosets;
         const NUM_COSETS_LOG2: usize = #num_cosets_log2;
         const COSET_TREE_SIZE: usize = #coset_tree_size;
@@ -398,10 +361,6 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
 
                 let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
                 let extended_generator_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
-                let mut high_powers_offsets = LazyVec::<#field_struct, MAX_HIGH_POWERS>::new();
-                compute_high_powers_offsets(WHIR_FOLD_STEPS[0], &mut high_powers_offsets);
-
-                #fold_setup
 
                 let mut q = 0;
                 while q < INITIAL_NUM_QUERIES {
@@ -427,8 +386,6 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                         <#quartic_struct>::from_base(query_point_base),
                         current_delinearization_challenge,
                     );
-
-                    // #add_correction_by_challenge; // not beneficial
 
                     let mut t = folded;
                     #mul_delin;
@@ -504,11 +461,6 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
     let mul_delin = MW::mul_assign(quote! { t }, quote! { current_delinearization_challenge });
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
-    let add_correction_by_challenge = MW::add_assign_product(
-        quote! { claim_correction },
-        quote! { folded },
-        quote! { current_delinearization_challenge },
-    );
 
     let mul_ood_delin = MW::mul_assign(
         quote! { claim_correction },
@@ -554,11 +506,24 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
         }
     };
 
+    // `compute_high_powers_offsets` / `MAX_HIGH_POWERS` are only used by the
+    // evaluation-form fold (`fold_coset`); the coefficient form evaluates the
+    // monomial tensor directly and imports neither.
+    let internal_common_imports = if cfg!(feature = "eval_leaves") {
+        quote! {
+            use super::common::{
+                compute_high_powers_offsets, ext_from_raw_word_slice,
+                MAX_HIGH_POWERS, EXT_DEGREE,
+            };
+        }
+    } else {
+        quote! {
+            use super::common::{ext_from_raw_word_slice, EXT_DEGREE};
+        }
+    };
+
     quote! {
-        use super::common::{
-            compute_high_powers_offsets, ext_from_raw_word_slice,
-            MAX_HIGH_POWERS, EXT_DEGREE,
-        };
+        #internal_common_imports
         use ::verifier_common::whir::{
             hash_leaf_data_into_state, verify_merkle_path,
         };
@@ -691,8 +656,6 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                         <#quartic_struct>::from_base(query_point_base),
                         current_delinearization_challenge,
                     );
-
-                    // #add_correction_by_challenge; // not beneficial
 
                     let mut t = folded;
                     #mul_delin;
