@@ -219,23 +219,24 @@ impl<T> TraceHolder<T> {
         }
     }
 
-    // /// Mutable shared-borrow of the full `CosetsHolder::Full` backing, intended
-    // /// for callers that fill all cosets in one shot (multi-coset NTT writing
-    // /// directly into the cosets backing). Asserts `!self.cosets_materialized`;
-    // /// the caller is responsible for calling `mark_cosets_materialized` once the
-    // /// fill completes.
-    // pub(crate) fn get_uninit_consolidated_cosets_mut(&mut self) -> &mut DeviceSlice<T> {
-    //     assert!(
-    //         !self.cosets_materialized,
-    //         "get_uninit_consolidated_cosets_mut: cosets already materialized"
-    //     );
-    //     match &mut self.cosets {
-    //         CosetsHolder::Full(backing) => backing,
-    //         CosetsHolder::None(_) => {
-    //             panic!("cosets not allocated — call ensure_cosets_materialized first")
-    //         }
-    //     }
-    // }
+    /// Mutable shared-borrow of the full `CosetsHolder::Full` backing, intended
+    /// for callers that fill all cosets in one shot (multi-coset NTT writing
+    /// directly into the cosets backing). Asserts `!self.cosets_materialized`;
+    /// the caller is responsible for calling `mark_cosets_materialized` once the
+    /// fill completes.
+    #[allow(dead_code)]
+    pub(crate) fn get_uninit_consolidated_cosets_mut(&mut self) -> &mut DeviceSlice<T> {
+        assert!(
+            !self.cosets_materialized,
+            "get_uninit_consolidated_cosets_mut: cosets already materialized"
+        );
+        match &mut self.cosets {
+            CosetsHolder::Full(backing) => backing,
+            CosetsHolder::None(_) => {
+                panic!("cosets not allocated — call ensure_cosets_materialized first")
+            }
+        }
+    }
 
     pub(crate) fn get_evaluations(&self) -> &DeviceSlice<T> {
         self.get_coset_evaluations(0)
@@ -1322,7 +1323,7 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
     let l2_bytes = device_properties.l2_cache_size_bytes;
     let single_bf_col_bytes = std::mem::size_of::<BF>() << log_trace_len;
     let single_coset_bytes = src_cols_per_coset * single_bf_col_bytes;
-    // Deactivate chunking for log_trace_len < 18 because it doesn't seem to play well
+    // Deactivate chunking for log_trace_len < 18 because it doesn't play well
     // with the small dit kernels.
     // TODO: investigate
     let cosets_in_tile_chunk = if l2_bytes >= single_coset_bytes && log_trace_len >= 18 {
