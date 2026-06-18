@@ -1322,7 +1322,10 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
     let l2_bytes = device_properties.l2_cache_size_bytes;
     let single_bf_col_bytes = std::mem::size_of::<BF>() << log_trace_len;
     let single_coset_bytes = src_cols_per_coset * single_bf_col_bytes;
-    let cosets_in_tile_chunk = if l2_bytes >= single_coset_bytes {
+    // Deactivate chunking for log_trace_len < 18 because it doesn't seem to play well
+    // with the small dit kernels.
+    // TODO: investigate
+    let cosets_in_tile_chunk = if l2_bytes >= single_coset_bytes && log_trace_len >= 18 {
         let nearest = l2_bytes / single_coset_bytes;
         if nearest.is_power_of_two() {
             nearest
@@ -1340,8 +1343,7 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
     let mut ntt_output_matrix = DeviceMatrixMut::new(ntt_output, trace_len);
 
     for coset_index_base in (0..total_cosets).step_by(cosets_in_tile_chunk) {
-        let cosets_in_tile =
-            std::cmp::min(cosets_in_tile_chunk, total_cosets - coset_index_base);
+        let cosets_in_tile = std::cmp::min(cosets_in_tile_chunk, total_cosets - coset_index_base);
         // The NTT and hashing APIs don't internally apply an offset for coset_index_base,
         // so for them we have to manually select the start in ntt_output.
         let offset = src_cols_per_coset * trace_len * coset_index_base;
