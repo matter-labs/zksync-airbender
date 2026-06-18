@@ -1,0 +1,14 @@
+[profile.default]
+src = "."
+out = ".foundry/out"
+cache_path = ".foundry/cache"
+via_ir = true
+optimizer = true
+optimizer_runs = 10000000
+
+# Inherits the default profile and disables the Yul Rematerialiser step
+# ('m' removed from the optimization sequence). Saves ~5.7k init gas on
+# solc by stopping the recomputation of subexpressions like p12/p34 at
+# each use site under stack pressure. Costs ~+6 gas/sumcheck-round.
+[profile.no_rematerializer.optimizer_details.yulDetails]
+optimizerSteps = "dfDvulfnTUtnIfxa[r]EscLMVcul [j]Trpeulxa[r]cLvifMCTUca[r]LSsTFOtfDnca[r]IulcscCTUtvifMx[scCTUt] TOntnfDIulvifMj[jul] VcTOcul j[jul]:fDnTOcuO"
