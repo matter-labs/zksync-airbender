@@ -38,11 +38,13 @@ use std::collections::{HashMap, HashSet};
 
 use field::PrimeField;
 
+use crate::definitions::gkr::DECODER_LOOKUP_FORMAL_SET_INDEX;
 use crate::gkr_compiler::codegen_ir::CodegenCircuit;
 
 use super::{
-    expr_field, source_field, DagCircuit, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root,
-    RootGroup, RootId, RootSlot, SinkKind, SourceKind,
+    expr_field, source_field, ChallengeKey, ChallengePower, DagCircuit, DagLayer, Expr, ExprId,
+    FieldKind, LookupValueKind, RangeWidth, ReadPlace, ResolutionStrategy, Root, RootGroup,
+    RootId, RootSlot, SinkKind, SourceId, SourceKind,
 };
 
 // ── Cross-layer sink-field map ────────────────────────────────────────────────
@@ -248,6 +250,367 @@ fn check_acyclic(layer: &DagLayer, li: usize) -> Result<(), String> {
     Ok(())
 }
 
+// ── Resolution-table helpers ──────────────────────────────────────────────────
+
+/// Validate the `resolutions` side-table (M2 forward-peek hints). Fires only on
+/// present entries; an empty map is always valid (absent ⇒ recompute).
+fn check_resolutions(layer: &DagLayer, li: usize) -> Result<(), String> {
+    if layer.resolutions.is_empty() {
+        return Ok(());
+    }
+    // Note: arena flattening can cause fold-leaf ExprIds to become orphaned from
+    // the expr tree (Add([fold_leaf, gamma]) flattens to Add([lv0, alpha*lv1, gamma])),
+    // so a reachability DFS is not a valid invariant here. We check in-range only.
+    for (&leaf, strat) in &layer.resolutions {
+        if leaf.0 as usize >= layer.exprs.len() {
+            return Err(format!(
+                "layer {li}: resolution keys out-of-range expr {:?}",
+                leaf
+            ));
+        }
+        match strat {
+            ResolutionStrategy::PeekSingleColumn { set_index, width } => {
+                let SourceKind::LookupValue { kind, set_index: si, .. } =
+                    source_of(leaf, layer)
+                else {
+                    return Err(format!(
+                        "layer {li}: PeekSingleColumn leaf {:?} is not a LookupValue source",
+                        leaf
+                    ));
+                };
+                if si != *set_index {
+                    return Err(format!(
+                        "layer {li}: PeekSingleColumn leaf {:?} set {si} != strategy set {set_index}",
+                        leaf
+                    ));
+                }
+                let ok = matches!(
+                    (&kind, width),
+                    (LookupValueKind::RangeCheck16Index, RangeWidth::Bits16)
+                        | (LookupValueKind::TimestampIndex, RangeWidth::Timestamp)
+                );
+                if !ok {
+                    return Err(format!(
+                        "layer {li}: PeekSingleColumn leaf {:?} kind/width mismatch",
+                        leaf
+                    ));
+                }
+            }
+            ResolutionStrategy::PeekAggregate { set_index } => {
+                if *set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
+                    return Err(format!(
+                        "layer {li}: PeekAggregate must not use the decoder set on {:?}",
+                        leaf
+                    ));
+                }
+                check_folded_lookup_shape(leaf, layer, li, *set_index)?;
+            }
+            ResolutionStrategy::PeekDecoder { predicate, fill } => {
+                if !matches!(predicate, ReadPlace::BaseLayerMemory { .. }) {
+                    return Err(format!(
+                        "layer {li}: PeekDecoder predicate must be a base-layer read on {:?}",
+                        leaf
+                    ));
+                }
+                let _ = fill; // FillSource has a single variant; nothing to cross-check statically.
+                check_folded_lookup_shape(leaf, layer, li, DECODER_LOOKUP_FORMAL_SET_INDEX)?;
+            }
+            ResolutionStrategy::PeekSetup => {
+                check_folded_setup_shape(leaf, layer, li)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Validate `leaf` is EXACTLY the `folded_lookup` shape for `expected_set`:
+/// 1 column ⇒ bare `Source(LookupValue{GenericColumn{0}})`;
+/// >1 columns ⇒ `Add` of one UNSCALED column-0 lookup plus, per j≥1, a 2-factor
+/// `Mul([Challenge{LookupMultiplicative,Static(j)}, LookupValue{GenericColumn{j}}])`.
+/// Columns must be exactly {0..n-1}; column 0 unscaled; all sets == expected_set.
+fn check_folded_lookup_shape(
+    leaf: ExprId,
+    layer: &DagLayer,
+    li: usize,
+    expected_set: usize,
+) -> Result<(), String> {
+    // (column, alpha_power): power None = the unscaled column-0 term.
+    let mut terms: Vec<(usize, Option<u32>)> = Vec::new();
+    let generic_col = |src_id: SourceId| -> Result<usize, String> {
+        match &layer.sources[src_id.0 as usize].kind {
+            SourceKind::LookupValue {
+                kind: LookupValueKind::GenericColumn { column },
+                set_index,
+                ..
+            } => {
+                if *set_index != expected_set {
+                    return Err(format!(
+                        "layer {li}: folded lookup {:?} set {set_index} != {expected_set}",
+                        leaf
+                    ));
+                }
+                Ok(*column)
+            }
+            other => Err(format!(
+                "layer {li}: folded lookup {:?} expected GenericColumn, got {:?}",
+                leaf, other
+            )),
+        }
+    };
+    match &layer.exprs[leaf.0 as usize] {
+        Expr::Source(src_id) => terms.push((generic_col(*src_id)?, None)),
+        Expr::Add(add_terms) => {
+            for &t in add_terms {
+                match &layer.exprs[t.0 as usize] {
+                    Expr::Source(src_id) => terms.push((generic_col(*src_id)?, None)),
+                    Expr::Mul(factors) => {
+                        if factors.len() != 2 {
+                            return Err(format!(
+                                "layer {li}: folded lookup {:?} term is not a 2-factor Mul",
+                                leaf
+                            ));
+                        }
+                        let (mut power, mut column) = (None, None);
+                        for &f in factors {
+                            let Expr::Source(s) = &layer.exprs[f.0 as usize] else {
+                                return Err(format!(
+                                    "layer {li}: folded lookup {:?} Mul factor is not a source",
+                                    leaf
+                                ));
+                            };
+                            match &layer.sources[s.0 as usize].kind {
+                                SourceKind::Challenge { reference } => {
+                                    if reference.key != ChallengeKey::LookupMultiplicative {
+                                        return Err(format!(
+                                            "layer {li}: folded lookup {:?} wrong challenge key",
+                                            leaf
+                                        ));
+                                    }
+                                    match reference.power {
+                                        ChallengePower::Static(p) => power = Some(p),
+                                        ChallengePower::One => {
+                                            return Err(format!(
+                                                "layer {li}: folded lookup {:?} scaled term must use Static(j)",
+                                                leaf
+                                            ))
+                                        }
+                                    }
+                                }
+                                SourceKind::LookupValue {
+                                    kind: LookupValueKind::GenericColumn { column: c },
+                                    set_index,
+                                    ..
+                                } => {
+                                    if *set_index != expected_set {
+                                        return Err(format!(
+                                            "layer {li}: folded lookup {:?} set {set_index} != {expected_set}",
+                                            leaf
+                                        ));
+                                    }
+                                    column = Some(*c);
+                                }
+                                other => {
+                                    return Err(format!(
+                                        "layer {li}: folded lookup {:?} unexpected Mul factor {:?}",
+                                        leaf, other
+                                    ))
+                                }
+                            }
+                        }
+                        match (power, column) {
+                            (Some(p), Some(c)) => terms.push((c, Some(p))),
+                            _ => {
+                                return Err(format!(
+                                    "layer {li}: folded lookup {:?} Mul missing challenge or lookup",
+                                    leaf
+                                ))
+                            }
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "layer {li}: folded lookup {:?} unexpected Add term {:?}",
+                            leaf, other
+                        ))
+                    }
+                }
+            }
+        }
+        other => {
+            return Err(format!(
+                "layer {li}: folded lookup {:?} is neither Source nor Add ({:?})",
+                leaf, other
+            ))
+        }
+    }
+    terms.sort_by_key(|&(c, _)| c);
+    if terms.is_empty() {
+        return Err(format!(
+            "layer {li}: folded lookup {:?} has no columns",
+            leaf
+        ));
+    }
+    for (i, &(col, power)) in terms.iter().enumerate() {
+        if col != i {
+            return Err(format!(
+                "layer {li}: folded lookup {:?} columns not contiguous from 0: {:?}",
+                leaf, terms
+            ));
+        }
+        match (i, power) {
+            (0, None) => {}                       // column 0 unscaled
+            (_, Some(p)) if p as usize == i => {} // column j scaled by alpha^j
+            _ => {
+                return Err(format!(
+                    "layer {li}: folded lookup {:?} column {i} has wrong scaling {:?}",
+                    leaf, power
+                ))
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Validate `leaf` is EXACTLY the `folded_setup` shape:
+/// `Σ_j alpha^j · Read(Setup{..})`, column 0 unscaled, j≥1 scaled by `alpha^j`.
+fn check_folded_setup_shape(leaf: ExprId, layer: &DagLayer, li: usize) -> Result<(), String> {
+    let mut powers: Vec<Option<u32>> = Vec::new(); // None = the unscaled (power-0) term
+    let is_setup = |src_id: SourceId| -> Result<(), String> {
+        match &layer.sources[src_id.0 as usize].kind {
+            SourceKind::Read { place: ReadPlace::Setup { .. } } => Ok(()),
+            other => Err(format!(
+                "layer {li}: folded setup {:?} expected Read(Setup), got {:?}",
+                leaf, other
+            )),
+        }
+    };
+    match &layer.exprs[leaf.0 as usize] {
+        Expr::Source(src_id) => {
+            is_setup(*src_id)?;
+            powers.push(None);
+        }
+        Expr::Add(add_terms) => {
+            for &t in add_terms {
+                match &layer.exprs[t.0 as usize] {
+                    Expr::Source(src_id) => {
+                        is_setup(*src_id)?;
+                        powers.push(None);
+                    }
+                    Expr::Mul(factors) => {
+                        if factors.len() != 2 {
+                            return Err(format!(
+                                "layer {li}: folded setup {:?} term is not a 2-factor Mul",
+                                leaf
+                            ));
+                        }
+                        let (mut power, mut saw_setup) = (None, false);
+                        for &f in factors {
+                            let Expr::Source(s) = &layer.exprs[f.0 as usize] else {
+                                return Err(format!(
+                                    "layer {li}: folded setup {:?} Mul factor is not a source",
+                                    leaf
+                                ));
+                            };
+                            match &layer.sources[s.0 as usize].kind {
+                                SourceKind::Challenge { reference } => {
+                                    if reference.key != ChallengeKey::LookupMultiplicative {
+                                        return Err(format!(
+                                            "layer {li}: folded setup {:?} wrong challenge key",
+                                            leaf
+                                        ));
+                                    }
+                                    match reference.power {
+                                        ChallengePower::Static(p) => power = Some(p),
+                                        ChallengePower::One => {
+                                            return Err(format!(
+                                                "layer {li}: folded setup {:?} scaled term must use Static(j)",
+                                                leaf
+                                            ))
+                                        }
+                                    }
+                                }
+                                SourceKind::Read { place: ReadPlace::Setup { .. } } => {
+                                    saw_setup = true;
+                                }
+                                other => {
+                                    return Err(format!(
+                                        "layer {li}: folded setup {:?} unexpected Mul factor {:?}",
+                                        leaf, other
+                                    ))
+                                }
+                            }
+                        }
+                        match (power, saw_setup) {
+                            (Some(p), true) => powers.push(Some(p)),
+                            _ => {
+                                return Err(format!(
+                                    "layer {li}: folded setup {:?} Mul missing challenge or Setup read",
+                                    leaf
+                                ))
+                            }
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "layer {li}: folded setup {:?} unexpected Add term {:?}",
+                            leaf, other
+                        ))
+                    }
+                }
+            }
+        }
+        other => {
+            return Err(format!(
+                "layer {li}: folded setup {:?} is neither Source nor Add ({:?})",
+                leaf, other
+            ))
+        }
+    }
+    if powers.is_empty() {
+        return Err(format!(
+            "layer {li}: folded setup {:?} has no columns",
+            leaf
+        ));
+    }
+    let (mut seen_zero, mut scaled) = (false, Vec::new());
+    for p in powers {
+        match p {
+            None if seen_zero => {
+                return Err(format!(
+                    "layer {li}: folded setup {:?} has two unscaled terms",
+                    leaf
+                ))
+            }
+            None => seen_zero = true,
+            Some(p) => scaled.push(p),
+        }
+    }
+    if !seen_zero {
+        return Err(format!(
+            "layer {li}: folded setup {:?} missing unscaled column-0 term",
+            leaf
+        ));
+    }
+    scaled.sort_unstable();
+    if scaled.iter().enumerate().any(|(i, &p)| p as usize != i + 1) {
+        return Err(format!(
+            "layer {li}: folded setup {:?} alpha powers not {{1..n-1}}: {:?}",
+            leaf, scaled
+        ));
+    }
+    Ok(())
+}
+
+/// Read the `SourceKind` of a leaf that is a bare `Expr::Source`, else a sentinel
+/// `Constant` (used only by the shape checks above).
+fn source_of(leaf: ExprId, layer: &DagLayer) -> SourceKind {
+    if let Expr::Source(src_id) = &layer.exprs[leaf.0 as usize] {
+        layer.sources[src_id.0 as usize].kind.clone()
+    } else {
+        SourceKind::Constant { value: 0 }
+    }
+}
+
 // ── Top-level structural validator ────────────────────────────────────────────
 
 /// Structurally validate a [`DagCircuit`] against the spec §7 invariants.
@@ -350,6 +713,7 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
 
         // ── Acyclicity over the full dependency graph ─────────────────────────
         check_acyclic(layer, li)?;
+        check_resolutions(layer, li)?;
 
         // ── Batching-membership: claim-bearing exactly once, caches absent ────
         // Classify each root: cache-sink Output = materialization-only; every
@@ -1645,5 +2009,119 @@ mod tests {
             msg.contains("out of range"),
             "error should mention out of range, got: {msg}"
         );
+    }
+
+    // ── Resolution side-table helpers ─────────────────────────────────────────
+
+    fn layer_with_single_generic_lookup(set_index: usize) -> DagLayer {
+        // A real 2-column folded lookup over an Ext sink:
+        //   sources: 0=Constant(0) (query), 1=lv0, 2=alpha^1, 3=lv1
+        //   exprs:   0=Source(0)=query, 1=Source(1)=lv0, 2=Source(2)=alpha^1,
+        //            3=Source(3)=lv1, 4=Mul([2,3]), 5=Add([1,4])  <- fold leaf
+        let query = ExprId(0);
+        let lv = |column: usize| SourceInfo {
+            kind: SourceKind::LookupValue {
+                kind: LookupValueKind::GenericColumn { column },
+                set_index,
+                query,
+            },
+        };
+        let alpha1 = SourceInfo {
+            kind: SourceKind::Challenge {
+                reference: ChallengeRef {
+                    key: ChallengeKey::LookupMultiplicative,
+                    power: ChallengePower::Static(1),
+                },
+            },
+        };
+        DagLayer {
+            sources: vec![
+                SourceInfo { kind: SourceKind::Constant { value: 0 } },
+                lv(0),
+                alpha1,
+                lv(1),
+            ],
+            exprs: vec![
+                Expr::Source(SourceId(0)),             // 0: query const
+                Expr::Source(SourceId(1)),             // 1: lv0 (column 0, unscaled)
+                Expr::Source(SourceId(2)),             // 2: alpha^1
+                Expr::Source(SourceId(3)),             // 3: lv1 (column 1)
+                Expr::Mul(vec![ExprId(2), ExprId(3)]), // 4: alpha^1 * lv1
+                Expr::Add(vec![ExprId(1), ExprId(4)]), // 5: fold leaf
+            ],
+            roots: vec![Root::Output { expr: ExprId(5), sink: SinkId(0) }],
+            sinks: vec![SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset: 0 },
+                field: FieldKind::Ext,
+            }],
+            batching: BatchingOrder { roots: vec![RootId(0)] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        }
+    }
+
+    fn generic_lookup_leaf_expr(_layer: &DagLayer) -> ExprId {
+        ExprId(5) // the Add fold leaf built above
+    }
+
+    // ── Resolution side-table tests ───────────────────────────────────────────
+
+    #[test]
+    fn resolutions_rejects_out_of_range_leaf() {
+        // Key a resolution at an ExprId that is beyond the layer's expr vec.
+        // The in-range check must reject it.
+        // Note: a "reachable but not root-reachable" check cannot be used here
+        // because ArenaBuilder.add() flattens Add children, causing legitimate
+        // fold leaves (e.g. from folded_lookup) to become orphaned in the expr
+        // tree when used in pair/shift formulas. The in-range check is sufficient.
+        let mut layer = layer_with_single_generic_lookup(0);
+        let out_of_range = ExprId(layer.exprs.len() as u32); // beyond the vec
+        layer.resolutions.insert(out_of_range, ResolutionStrategy::PeekSetup);
+        let c = circuit_of(layer);
+        assert!(validate(&c).is_err(), "out-of-range resolution leaf must be rejected");
+    }
+
+    #[test]
+    fn resolutions_rejects_set_index_mismatch() {
+        // Build a layer whose single Output root is a folded GenericColumn lookup with
+        // set_index = 7, but tag it PeekAggregate { set_index: 9 }.
+        let layer = layer_with_single_generic_lookup(/* set_index */ 7);
+        let leaf = generic_lookup_leaf_expr(&layer); // the folded-lookup ExprId
+        let mut bad = layer.clone();
+        bad.resolutions.insert(leaf, ResolutionStrategy::PeekAggregate { set_index: 9 });
+        let c = circuit_of(bad);
+        assert!(validate(&c).is_err(), "set_index mismatch must be rejected");
+    }
+
+    #[test]
+    fn resolutions_accepts_well_formed_generic() {
+        let layer = layer_with_single_generic_lookup(7);
+        let leaf = generic_lookup_leaf_expr(&layer);
+        let mut good = layer.clone();
+        good.resolutions.insert(leaf, ResolutionStrategy::PeekAggregate { set_index: 7 });
+        let c = circuit_of(good);
+        assert!(
+            validate(&c).is_ok(),
+            "well-formed PeekAggregate must validate: {:?}",
+            validate(&c)
+        );
+    }
+
+    #[test]
+    fn resolutions_rejects_extra_term_in_fold() {
+        // The strict shape check must reject a fold with a stray non-fold term
+        // (the false-negative the loose source-scan would have accepted).
+        let mut layer = layer_with_single_generic_lookup(7);
+        let c_src = SourceId(layer.sources.len() as u32);
+        layer.sources.push(SourceInfo { kind: SourceKind::Constant { value: 1 } });
+        let c_expr = ExprId(layer.exprs.len() as u32);
+        layer.exprs.push(Expr::Source(c_src));
+        // Rebuild the leaf Add (ExprId 5) to include the stray Constant term.
+        layer.exprs[5] = Expr::Add(vec![ExprId(1), ExprId(4), c_expr]);
+        layer
+            .resolutions
+            .insert(ExprId(5), ResolutionStrategy::PeekAggregate { set_index: 7 });
+        let c = circuit_of(layer);
+        assert!(validate(&c).is_err(), "a fold with an extra Constant term must be rejected");
     }
 }
