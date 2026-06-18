@@ -59,13 +59,17 @@ pub const MAX_NUM_COUNTERS: usize = 16;
 // in 6 vector registers instead of 7, saving one 128-bit store/load in
 // `save_machine_state!` / `update_machine_state_post_call!`.
 
-// Number of RISC-V registers that live in host x86 GPRs (x0 + 24 vector-resident
-// registers make up the other 25).
-pub const NUM_RV_REGISTERS_IN_GPRS: usize = 7;
-// Number of RISC-V registers kept in vector lanes (32 - 1 (x0) - 7 (host GPRs)).
-pub const NUM_XMM_RESIDENT_REGISTERS: usize = 24;
-// Number of vector registers used to hold those 24 (4 lanes each).
-pub const NUM_RV_REGISTER_XMMS: u8 = (NUM_XMM_RESIDENT_REGISTERS as u8) / 4;
+// Number of RISC-V registers that live in host x86 GPRs (x0 + the vector-resident
+// registers make up the rest). RBP was freed from the memory opcodes, so it now
+// holds an 8th host-GPR-mapped register (a5/x15).
+// OPTION 1 experiment: only HALF the registers (4) keep their VALUE in a host GPR;
+// the other 4 host GPRs are repurposed to hold the TIMESTAMPS of those 4 (see
+// `reg_ts_gpr` in impls.rs), so a timestamp write is a move-eliminated `mov ts_gpr, r8`.
+pub const NUM_RV_REGISTERS_IN_GPRS: usize = 4;
+// Number of RISC-V registers kept in vector lanes (32 - 1 (x0) - 4 (host GPRs)).
+pub const NUM_XMM_RESIDENT_REGISTERS: usize = 27;
+// Number of vector registers used to hold those (4 lanes each; round up).
+pub const NUM_RV_REGISTER_XMMS: u8 = (NUM_XMM_RESIDENT_REGISTERS as u8 + 3) / 4;
 // Sentinel meaning "this RISC-V register is not in a vector lane" (i.e. it is x0
 // or one of the host-GPR-mapped registers).
 pub const RV_XMM_SLOT_NONE: u8 = 0xFF;
@@ -73,11 +77,8 @@ pub const RV_XMM_SLOT_NONE: u8 = 0xFF;
 // Dense spill slot index (0..24) -> RISC-V register number. The 24 vector-resident
 // registers, in ascending register order; slot `s` lives in xmm`(s/4)` lane `s%4`.
 pub const XMM_SLOT_TO_RV: [u8; NUM_XMM_RESIDENT_REGISTERS] = [
-    1, 2, 3, 4, 5, 6, 7, 8, 9, // xmm0 (slots 0..4) + xmm1 (slots 4..8) + xmm2 lane 0
-    15, 17, 18, 19, // xmm2 lanes 1..4 + xmm3 lane 0..
-    20, 21, 22, 23, // xmm3 lanes 1..4
-    24, 25, 26, 27, // xmm4
-    29, 30, 31, // xmm5 lanes 1..4 (slot 21..24)
+    1, 2, 3, 4, 5, 6, 7, 8, 9, // x1..x9
+    14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, // x14..x31
 ];
 
 // RISC-V register number -> dense spill slot, or `RV_XMM_SLOT_NONE` for x0 and the
@@ -115,19 +116,23 @@ const _: () = {
 // following 128-bit `xmm_register_spill` region stays 16-byte aligned.
 pub const NUM_GPR_SLOT_REGISTERS: usize = NUM_RV_REGISTERS_IN_GPRS + 1;
 
+// Physical array sizes. `gpr_registers` is padded up to a multiple of 4 u32s (16
+// bytes) so the following spill region stays 16-byte aligned. `xmm_register_spill`
+// must hold a full 6 vector registers' worth (the save/restore do 6 fixed `movdqu`),
+// i.e. NUM_RV_REGISTER_XMMS*4 slots, even if fewer registers are actually mapped.
+pub const GPR_REGISTERS_ARRAY_LEN: usize = NUM_GPR_SLOT_REGISTERS.next_multiple_of(4);
+pub const XMM_SPILL_ARRAY_LEN: usize = NUM_RV_REGISTER_XMMS as usize * 4;
+
 // Compact GPR slot index -> RISC-V register number. Slot 0 is x0; slots 1.. are
 // the host-GPR-mapped registers. The JIT save/restore (`save_machine_state!` /
 // `update_machine_state_post_call!`) writes/reads each host GPR at the matching
 // slot offset, so this order must match those macros.
 pub const GPR_SLOT_TO_RV: [u8; NUM_GPR_SLOT_REGISTERS] = [
     0,  // slot 0: x0 (zero / padding)
-    10, // slot 1: a0 -> r10
-    11, // slot 2: a1 -> r11
-    12, // slot 3: a2 -> r12
-    13, // slot 4: a3 -> r13
-    14, // slot 5: a4 -> r14
-    16, // slot 6: a6 -> r15
-    28, // slot 7: t3 -> rbx
+    10, // slot 1: a0 -> r10 (value)
+    11, // slot 2: a1 -> r11 (value)
+    12, // slot 3: a2 -> r12 (value)
+    13, // slot 4: a3 -> r13 (value)
 ];
 
 // RISC-V register number -> compact GPR slot, or `RV_XMM_SLOT_NONE` for the
@@ -230,11 +235,11 @@ pub struct MachineState {
     // `get_register_mut`/`materialized_registers`, which route every register to
     // its correct backing store. Placed first (offset 0, 32 bytes) so the
     // following spill region is 16-byte aligned.
-    gpr_registers: [u32; NUM_GPR_SLOT_REGISTERS],
+    gpr_registers: [u32; GPR_REGISTERS_ARRAY_LEN],
     // Dense spill of the 24 vector-resident registers, in `XMM_SLOT_TO_RV`
     // order. 16-byte aligned, so the 6 128-bit spill/reload moves are aligned.
     // Private for the same reason as `gpr_registers`.
-    xmm_register_spill: [u32; NUM_XMM_RESIDENT_REGISTERS],
+    xmm_register_spill: [u32; XMM_SPILL_ARRAY_LEN],
     pub register_timestamps: [TimestampScalar; 32],
     pub counters: MachineCounters,
     pub pc: u32,
@@ -266,8 +271,8 @@ impl MachineState {
 
     pub fn initial() -> Self {
         Self {
-            gpr_registers: [0; NUM_GPR_SLOT_REGISTERS],
-            xmm_register_spill: [0; NUM_XMM_RESIDENT_REGISTERS],
+            gpr_registers: [0; GPR_REGISTERS_ARRAY_LEN],
+            xmm_register_spill: [0; XMM_SPILL_ARRAY_LEN],
             register_timestamps: [0; 32],
             counters: MachineCounters::new(),
             pc: 0,

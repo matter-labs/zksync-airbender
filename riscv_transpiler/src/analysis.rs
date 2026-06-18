@@ -96,8 +96,24 @@ fn is_alu_producer(name: InstructionName) -> bool {
     use InstructionName::*;
     matches!(
         name,
-        Add | Sub | Slt | Sltu | And | Or | Xor | Sll | Srl | Sra | Auipc | Mul | Mulh | Mulhsu
-            | Mulhu | Div | Divu | Rem | Remu
+        Add | Sub
+            | Slt
+            | Sltu
+            | And
+            | Or
+            | Xor
+            | Sll
+            | Srl
+            | Sra
+            | Auipc
+            | Mul
+            | Mulh
+            | Mulhsu
+            | Mulhu
+            | Div
+            | Divu
+            | Rem
+            | Remu
     )
 }
 
@@ -351,7 +367,12 @@ pub fn analyze_static_bytecode(program: &[Instruction]) -> StaticBytecodeStats {
         let (a, b) = (&w[0], &w[1]);
         use InstructionName::*;
         // lui + addi -> 32-bit constant materialization
-        if a.name == Add && a.rs1 == 0 && a.rs2 == 0 && a.rd != 0 && b.name == Add && b.rs2 == 0
+        if a.name == Add
+            && a.rs1 == 0
+            && a.rs2 == 0
+            && a.rd != 0
+            && b.name == Add
+            && b.rs2 == 0
             && b.rs1 == a.rd
         {
             lui_addi += 1;
@@ -361,7 +382,11 @@ pub fn analyze_static_bytecode(program: &[Instruction]) -> StaticBytecodeStats {
             auipc_use += 1;
         }
         // slli + add -> shifted-index address computation
-        if a.name == Sll && a.rs2 == 0 && a.rd != 0 && b.name == Add && b.rs2 != 0
+        if a.name == Sll
+            && a.rs2 == 0
+            && a.rd != 0
+            && b.name == Add
+            && b.rs2 != 0
             && (b.rs1 == a.rd || b.rs2 == a.rd)
         {
             slli_add += 1;
@@ -441,7 +466,10 @@ impl fmt::Display for DynamicExecutionStats {
             "executed instructions={} (control-flow={}, halted={})",
             self.executed_instructions, self.control_flow_executed, self.halted
         )?;
-        writeln!(f, "\n-- most-used GPRs (execution-weighted, x0 excluded) --")?;
+        writeln!(
+            f,
+            "\n-- most-used GPRs (execution-weighted, x0 excluded) --"
+        )?;
         self.gpr.fmt_table(f)?;
         writeln!(
             f,
@@ -471,15 +499,14 @@ where
     use common_constants::TIMESTAMP_STEP;
     use field::Mersenne31Field;
 
-    use crate::vm::{
-        DelegationsAndFamiliesCounters, RamWithRomRegion, SimpleTape, State, VM,
-    };
+    use crate::vm::{DelegationsAndFamiliesCounters, RamWithRomRegion, SimpleTape, State, VM};
 
     let tape = SimpleTape::new(program);
-    let mut ram = RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
-        rom_image,
-        1 << 30,
-    );
+    let mut ram =
+        RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
+            rom_image,
+            1 << 30,
+        );
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
 
     let mut gpr = GprUsage::new();
@@ -509,7 +536,11 @@ where
         }
 
         VM::<DelegationsAndFamiliesCounters>::run_step::<(), _, ND, Mersenne31Field>(
-            &mut state, &mut ram, &mut (), &tape, nd,
+            &mut state,
+            &mut ram,
+            &mut (),
+            &tape,
+            nd,
         );
         state.timestamp += TIMESTAMP_STEP;
 

@@ -40,9 +40,39 @@ fn instruction_writes(instr: &Instruction) -> Option<u8> {
     use InstructionName::*;
     let writes = matches!(
         instr.name,
-        Add | Sub | Slt | Sltu | And | Or | Xor | Sll | Srl | Sra | Mul | Mulh | Mulhsu | Mulhu
-            | Div | Divu | Rem | Remu | Rol | Ror | ZimopAdd | ZimopSub | ZimopMul | ZimopFMA
-            | ZimopTriAdd | ZimopIXorRot | Auipc | Jal | Jalr | Lw | Lhu | Lbu | Lh | Lb
+        Add | Sub
+            | Slt
+            | Sltu
+            | And
+            | Or
+            | Xor
+            | Sll
+            | Srl
+            | Sra
+            | Mul
+            | Mulh
+            | Mulhsu
+            | Mulhu
+            | Div
+            | Divu
+            | Rem
+            | Remu
+            | Rol
+            | Ror
+            | ZimopAdd
+            | ZimopSub
+            | ZimopMul
+            | ZimopFMA
+            | ZimopTriAdd
+            | ZimopIXorRot
+            | Auipc
+            | Jal
+            | Jalr
+            | Lw
+            | Lhu
+            | Lbu
+            | Lh
+            | Lb
             | ZicsrNonDeterminismRead
     );
     if writes && instr.rd != 0 {
@@ -55,7 +85,12 @@ fn instruction_writes(instr: &Instruction) -> Option<u8> {
 /// Best-effort compile-time value of register `reg` just before `before_idx`,
 /// following `LUI`/`AUIPC` and a bounded `ADDI` chain. Returns `None` if the value
 /// is not a straight-line constant (e.g. produced by a load or across control flow).
-fn const_reg_value(program: &[Instruction], before_idx: usize, reg: u8, depth: usize) -> Option<u32> {
+fn const_reg_value(
+    program: &[Instruction],
+    before_idx: usize,
+    reg: u8,
+    depth: usize,
+) -> Option<u32> {
     if reg == 0 {
         return Some(0); // x0 is hardwired zero
     }
@@ -148,15 +183,20 @@ impl ControlFlowArtifact {
         timestamp_bound: TimestampScalar,
     ) {
         let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
-        let mut ram = RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
-            rom_image,
-            1 << 30,
-        );
+        let mut ram =
+            RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
+                rom_image,
+                1 << 30,
+            );
         while state.timestamp < timestamp_bound {
             let pc = state.pc;
             let is_jalr = tape.read_instruction(pc).name == InstructionName::Jalr;
             VM::<DelegationsAndFamiliesCounters>::run_step::<(), _, ND, Mersenne31Field>(
-                &mut state, &mut ram, &mut (), tape, nd,
+                &mut state,
+                &mut ram,
+                &mut (),
+                tape,
+                nd,
             );
             state.timestamp += TIMESTAMP_STEP;
             if is_jalr {
@@ -279,11 +319,7 @@ impl ControlFlowArtifact {
 impl std::fmt::Display for ControlFlowArtifact {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "=== control-flow artifact ===")?;
-        writeln!(
-            f,
-            "program_len={} runs={}",
-            self.program_len, self.runs
-        )?;
+        writeln!(f, "program_len={} runs={}", self.program_len, self.runs)?;
         writeln!(
             f,
             "static targets: JAL sites={}, BRANCH sites={}",

@@ -202,29 +202,30 @@ macro_rules! save_machine_state {
         dynasm!($ops
             // offset is an offset of our MachineState from RSP
 
-            // Spill the 24 vector-resident registers (densely packed in xmm0..=xmm5)
-            // into the dense spill region. x0 is not in the vector file, so the
-            // 24 registers fit in 6 stores rather than the previous 7.
+            // Spill the 27 vector-resident registers (densely packed in xmm0..=xmm6)
+            // into the dense spill region. OPTION 1: only 4 registers keep their value
+            // in a host GPR, so 27 live in vector lanes -> 7 stores.
             ; movdqu [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 0], xmm0
             ; movdqu [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 16], xmm1
             ; movdqu [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 32], xmm2
             ; movdqu [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 48], xmm3
             ; movdqu [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 64], xmm4
             ; movdqu [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 80], xmm5
+            ; movdqu [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 96], xmm6
 
-            // Save RV registers mapped into x86 GPRs to their compact GPR slots
+            // Save the 4 value-mapped RV registers to their compact GPR slots
             // (see GPR_SLOT_TO_RV). Slot 0 is x0, which stays 0 from
             // initialization and is never written here.
             ; mov [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (1 * 4)], r10d // a0, slot 1
             ; mov [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (2 * 4)], r11d // a1, slot 2
             ; mov [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (3 * 4)], r12d // a2, slot 3
             ; mov [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (4 * 4)], r13d // a3, slot 4
-            ; mov [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (5 * 4)], r14d // a4, slot 5
-            ; mov [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (6 * 4)], r15d // a6, slot 6
-            ; mov [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (7 * 4)], ebx  // t3, slot 7
 
             // put current timestamp (without assumptions about mod 4)
             ; mov [rdx + (MachineState::TIMESTAMP_OFFSET as i32)], r8
+            // Spill the value-mapped registers' timestamps (live in R14/R15/RBX/RBP)
+            // into register_timestamps[], so snapshots and external callees see them.
+            ;; spill_ts_gpr(&mut $ops)
             // NOTE: the circuit-family counters (xmm8..=xmm12) are NOT spilled here.
             // External callees reached through before_call! (delegations, non-determinism)
             // do not read or modify counters, and do not clobber xmm8..=xmm12, so the live
@@ -256,22 +257,23 @@ macro_rules! update_machine_state_post_call {
             // load updated timestamp (also without assumptions)
             ; mov r8, [rdx + (MachineState::TIMESTAMP_OFFSET as i32)]
 
-            // Restore RV registers mapped into x86 GPRs from their compact GPR slots.
+            // Restore the 4 value-mapped RV registers from their compact GPR slots.
             ; mov r10d, [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (1 * 4)]  // a0, slot 1
             ; mov r11d, [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (2 * 4)]  // a1, slot 2
             ; mov r12d, [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (3 * 4)]  // a2, slot 3
             ; mov r13d, [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (4 * 4)]  // a3, slot 4
-            ; mov r14d, [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (5 * 4)]  // a4, slot 5
-            ; mov r15d, [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (6 * 4)]  // a6, slot 6
-            ; mov ebx,  [rdx + (MachineState::GPR_REGISTERS_OFFSET as i32) + (7 * 4)]  // t3, slot 7
 
-            // Reload the 24 vector-resident registers from the dense spill region.
+            // Reload the 27 vector-resident registers from the dense spill region.
             ; movdqu xmm0, [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 0]
             ; movdqu xmm1, [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 16]
             ; movdqu xmm2, [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 32]
             ; movdqu xmm3, [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 48]
             ; movdqu xmm4, [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 64]
             ; movdqu xmm5, [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 80]
+            ; movdqu xmm6, [rdx + (MachineState::XMM_SPILL_OFFSET as i32) + 96]
+            // Reload the value-mapped registers' timestamps into R14/R15/RBX/RBP (an
+            // external callee, e.g. a delegation, may have modified ts[10..12]).
+            ;; reload_ts_gpr(&mut $ops)
             // NOTE: circuit-family counters (xmm8..=xmm12) are not reloaded here; they are
             // not spilled by the matching save_machine_state! and survive the call.
             // NOTE: the flattened non-determinism responses pointer is kept in its own
@@ -282,10 +284,10 @@ macro_rules! update_machine_state_post_call {
 
 const SCRATCH_REGISTER: u8 = x64::Rq::RCX as u8;
 
-// The 7 hottest RISC-V registers (by dynamic access frequency on the reference
-// block) are mapped to host x86 GPRs. x10..x14 keep their natural r10..r14
-// homes; a6 (x16) and t3 (x28) take r15/rbx, displacing the colder s1 (x9) and
-// a5 (x15) which now live in vector lanes. Keep this set in sync with
+// OPTION 1: only the 4 hottest RISC-V registers (a0..a3 = x10..x13) keep their VALUE
+// in a host x86 GPR (r10..r13). The other 4 host GPRs (r14/r15/rbx/rbp) are repurposed
+// to hold those 4 registers' TIMESTAMPS (see `reg_ts_gpr`). The colder a4/a5/a6/t3 that
+// previously lived in GPRs now live in vector lanes. Keep this set in sync with
 // `RV_REG_TO_XMM_SLOT` (asserted below).
 fn rv_to_gpr(x: u32) -> Option<u8> {
     use x64::Rq::*;
@@ -293,13 +295,10 @@ fn rv_to_gpr(x: u32) -> Option<u8> {
 
     Some(
         (match x {
-            10 => R10, // a0
-            11 => R11, // a1
-            12 => R12, // a2
-            13 => R13, // a3
-            14 => R14, // a4
-            16 => R15, // a6
-            28 => RBX, // t3
+            10 => R10, // a0 (value)
+            11 => R11, // a1 (value)
+            12 => R12, // a2 (value)
+            13 => R13, // a3 (value)
             _ => return None,
         }) as u8,
     )
@@ -310,7 +309,7 @@ fn rv_to_gpr(x: u32) -> Option<u8> {
 const _: () = {
     let mut x = 1u8;
     while x < 32 {
-        let in_gpr = matches!(x, 10 | 11 | 12 | 13 | 14 | 16 | 28);
+        let in_gpr = matches!(x, 10 | 11 | 12 | 13);
         let in_xmm = RV_REG_TO_XMM_SLOT[x as usize] != RV_XMM_SLOT_NONE;
         assert!(in_gpr ^ in_xmm); // exactly one of the two for every x in 1..32
         x += 1;
@@ -319,6 +318,88 @@ const _: () = {
 
 fn destination_gpr(x: u32) -> u8 {
     rv_to_gpr(x).unwrap_or(x64::Rq::RAX as u8)
+}
+
+// OPTION 1 experiment: timestamps of the 4 value-mapped registers (a0..a3 = x10..x13)
+// live in the 4 freed host GPRs (r14/r15/rbx/rbp) instead of being written to
+// MachineState memory on every touch. A timestamp touch then becomes `mov ts_gpr, r8`
+// (move-eliminated at rename — off every execution port incl. the store port p4)
+// instead of `mov [mem], r8`. They are spilled to / reloaded from
+// `register_timestamps[]` only at snapshots and external calls (save_machine_state! /
+// update_machine_state_post_call!). A/B via RISCV_TS_IN_GPR=0.
+// (rv reg, host GPR encoding) — must match `reg_ts_gpr`.
+const REG_TS_GPR: [(u32, u8); 4] = [
+    (10, x64::Rq::R14 as u8),
+    (11, x64::Rq::R15 as u8),
+    (12, x64::Rq::RBX as u8),
+    (13, x64::Rq::RBP as u8),
+];
+
+// Whether option 1 (timestamps-in-GPR) is enabled. Cached; set RISCV_TS_IN_GPR=0 to
+// disable for A/B (those timestamps then go to memory; the freed GPRs sit idle). This
+// isolates the ts-GPR effect from the value-coverage loss of the 4-GPR mapping.
+pub(crate) fn ts_in_gpr() -> bool {
+    use std::sync::OnceLock;
+    static E: OnceLock<bool> = OnceLock::new();
+    *E.get_or_init(|| std::env::var_os("RISCV_TS_IN_GPR").map_or(true, |v| v != "0"))
+}
+
+pub(crate) fn reg_ts_gpr(r: u32) -> Option<u8> {
+    if !ts_in_gpr() {
+        return None;
+    }
+    let mut i = 0;
+    while i < REG_TS_GPR.len() {
+        if REG_TS_GPR[i].0 == r {
+            return Some(REG_TS_GPR[i].1);
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Emit "store register `r`'s timestamp (currently in r8)". Routes the 4 value-mapped
+/// regs to their dedicated host GPR (`mov ts_gpr, r8` — move-eliminated at rename, off
+/// every execution port incl. the store port p4); everything else (incl. x0) writes the
+/// `register_timestamps[r]` memory slot as before.
+pub(crate) fn write_reg_timestamp(ops: &mut x64::Assembler, r: u32) {
+    if let Some(gpr) = reg_ts_gpr(r) {
+        dynasm!(ops ; mov Rq(gpr), r8);
+    } else {
+        let rts = MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
+        dynasm!(ops ; mov [rsp + 8 * (r as i32) + rts], r8);
+    }
+}
+
+/// Spill the live timestamp GPRs (R14/R15/RBX/RBP) into `register_timestamps[10..13]`.
+/// Assumes the MachineState pointer is in RDX (as in `save_machine_state!`). Must run
+/// before any snapshot or external call that reads/uses the timestamp array.
+fn spill_ts_gpr(ops: &mut x64::Assembler) {
+    if !ts_in_gpr() {
+        return;
+    }
+    let rts = MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
+    dynasm!(ops
+        ; mov [rdx + rts + 8 * 10], r14 // ts[10]
+        ; mov [rdx + rts + 8 * 11], r15 // ts[11]
+        ; mov [rdx + rts + 8 * 12], rbx // ts[12]
+        ; mov [rdx + rts + 8 * 13], rbp // ts[13]
+    );
+}
+
+/// Reload the timestamp GPRs from `register_timestamps[10..13]` (an external call may
+/// have modified ts[10..12]). Assumes the MachineState pointer is in RDX.
+fn reload_ts_gpr(ops: &mut x64::Assembler) {
+    if !ts_in_gpr() {
+        return;
+    }
+    let rts = MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
+    dynasm!(ops
+        ; mov r14, [rdx + rts + 8 * 10]
+        ; mov r15, [rdx + rts + 8 * 11]
+        ; mov rbx, [rdx + rts + 8 * 12]
+        ; mov rbp, [rdx + rts + 8 * 13]
+    );
 }
 
 const RV_REGISTERS_NUM_XMMS: u8 = NUM_RV_REGISTER_XMMS;
@@ -560,28 +641,22 @@ fn record_circuit_type(ops: &mut x64::Assembler, circuit_type: CounterType, by: 
 
 macro_rules! pre_bump_timestamp_and_touch {
     ($ops:ident, $d:expr, $r:expr) => {
-        dynasm!($ops
-            ; add r8, $d
-            ; mov [rsp + 8*($r as i32) + (MachineState::REGISTER_TIMESTAMPS_OFFSET as i32)], r8
-        );
+        dynasm!($ops ; add r8, $d);
+        write_reg_timestamp(&mut $ops, $r as u32);
     };
 }
 
 macro_rules! touch_register_and_increment_timestamp {
     ($ops:ident, $r:expr) => {
-        dynasm!($ops
-            ; mov [rsp + 8*($r as i32) + (MachineState::REGISTER_TIMESTAMPS_OFFSET as i32)], r8
-            ; inc r8
-        );
+        write_reg_timestamp(&mut $ops, $r as u32);
+        dynasm!($ops ; inc r8);
     };
 }
 
 macro_rules! touch_register_and_bump_timestamp {
     ($ops:ident, $r:expr, $d:expr) => {
-        dynasm!($ops
-            ; mov [rsp + 8*($r as i32) + (MachineState::REGISTER_TIMESTAMPS_OFFSET as i32)], r8
-            ; add r8, $d
-        );
+        write_reg_timestamp(&mut $ops, $r as u32);
+        dynasm!($ops ; add r8, $d);
     };
 }
 
@@ -658,7 +733,10 @@ impl<I: ContextImpl> JittedCode<I> {
             ; ->start:
             ;; prologue!(ops)
             ; vzeroall
+            // OPTION 1: r10..r13 hold values (a0..a3, init 0); r14/r15/rbx/rbp hold the
+            // timestamps of those 4 (init 0 = untouched). All start zeroed.
             ; xor rbx, rbx
+            ; xor rbp, rbp
             ; xor r10, r10
             ; xor r11, r11
             ; xor r12, r12
@@ -1029,10 +1107,10 @@ impl<I: ContextImpl> JittedCode<I> {
                         dynasm!(ops
                             ; movsx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
                             ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; mov rbp, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // read timestamp
+                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                            ; mov Rq(SCRATCH_REGISTER), [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
                             ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
-                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write value into trace
-                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rbp // write old value into trace
+                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
                         );
                         bump_timestamp!(ops, 1);
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
@@ -1049,10 +1127,10 @@ impl<I: ContextImpl> JittedCode<I> {
                         dynasm!(ops
                             ; movzx Rd(out), BYTE [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
                             ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; mov rbp, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // for read timestamp
+                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                            ; mov Rq(SCRATCH_REGISTER), [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
                             ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
-                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write value into trace
-                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rbp // write old value into trace
+                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
                         );
                         bump_timestamp!(ops, 1);
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
@@ -1070,10 +1148,10 @@ impl<I: ContextImpl> JittedCode<I> {
                         dynasm!(ops
                             ; movsx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, sign-extend
                             ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; mov rbp, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // for read timestamp
+                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                            ; mov Rq(SCRATCH_REGISTER), [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
                             ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
-                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write value into trace
-                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rbp // write old value into trace
+                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
                         );
                         bump_timestamp!(ops, 1);
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
@@ -1091,10 +1169,10 @@ impl<I: ContextImpl> JittedCode<I> {
                         dynasm!(ops
                             ; movzx Rd(out), WORD [rsi + Rq(SCRATCH_REGISTER)] // load value into destination, zero-extend
                             ; mov Rd(SCRATCH_REGISTER), DWORD [rsi + 4 * rdx] // load old word(!) value into scratch
-                            ; mov rbp, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // for read timestamp
+                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write old word value into trace
+                            ; mov Rq(SCRATCH_REGISTER), [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx] // read old timestamp (reuse scratch; frees RBP)
                             ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rdx], r8 // update timestamp
-                            ; mov [rdi + r9 * 4], Rd(SCRATCH_REGISTER) // write value into trace
-                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rbp // write old value into trace
+                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], Rq(SCRATCH_REGISTER) // write old timestamp into trace
                         );
                         bump_timestamp!(ops, 1);
                         record_circuit_type(&mut ops, CounterType::MemSubword, 1);
@@ -1508,20 +1586,21 @@ impl<I: ContextImpl> JittedCode<I> {
                         ; mov rax, Rq(SCRATCH_REGISTER) // put word(!) index in to RAX
                         ; shr rax, 2
                     );
-                    let value = load(&mut ops, rs2);
-                    // RDX is potentially taken by value, so can not use it
                     touch_register_and_increment_timestamp!(ops, rs1);
                     touch_register_and_increment_timestamp!(ops, rs2);
+                    // Read + trace the old word value BEFORE loading the new value, so we
+                    // never need 4 scratch registers at once (and avoid RBP). RDX is free
+                    // here (value not loaded yet).
                     dynasm!(ops
-                        // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
-                        ; mov ebp, DWORD [rsi + 4 * rax] // load old word(!) value into RAX
-                        ; mov BYTE [rsi + Rq(SCRATCH_REGISTER)], Rb(value) // store new value - just enough bytes
-                        ; push rdx
-                        ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax] // read timestamp
+                        ; mov edx, DWORD [rsi + 4 * rax] // load old word(!) value
+                        ; mov [rdi + r9 * 4], edx // write old value into trace
+                    );
+                    let value = load(&mut ops, rs2);
+                    dynasm!(ops
+                        ; mov BYTE [rsi + Rq(SCRATCH_REGISTER)], Rb(value) // store new value (frees its register)
+                        ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax] // read timestamp (RDX free; frees RBP)
                         ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax], r8 // update timestamp
-                        ; mov [rdi + r9 * 4], ebp // write old value into trace
                         ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
-                        ; pop rdx
                     );
                     bump_timestamp!(ops, 2);
                     record_circuit_type(&mut ops, CounterType::MemSubword, 1);
@@ -1536,20 +1615,19 @@ impl<I: ContextImpl> JittedCode<I> {
                         ; mov rax, Rq(SCRATCH_REGISTER) // put word(!) index in to RAX
                         ; shr rax, 2
                     );
-                    let value = load(&mut ops, rs2);
-                    // RDX is potentially taken by value, so can not use it
                     touch_register_and_increment_timestamp!(ops, rs1);
                     touch_register_and_increment_timestamp!(ops, rs2);
+                    // Read + trace the old word value BEFORE loading the new value (see Sb).
                     dynasm!(ops
-                        // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
-                        ; mov ebp, DWORD [rsi + 4 * rax] // load old word(!) value into RAX
-                        ; mov WORD [rsi + Rq(SCRATCH_REGISTER)], Rw(value) // store new value - just enough bytes
-                        ; push rdx
-                        ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax] // read timestamp
+                        ; mov edx, DWORD [rsi + 4 * rax] // load old word(!) value
+                        ; mov [rdi + r9 * 4], edx // write old value into trace
+                    );
+                    let value = load(&mut ops, rs2);
+                    dynasm!(ops
+                        ; mov WORD [rsi + Rq(SCRATCH_REGISTER)], Rw(value) // store new value (frees its register)
+                        ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax] // read timestamp (RDX free; frees RBP)
                         ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax], r8 // update timestamp
-                        ; mov [rdi + r9 * 4], ebp // write old value into trace
                         ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
-                        ; pop rdx
                     );
                     bump_timestamp!(ops, 2);
                     record_circuit_type(&mut ops, CounterType::MemSubword, 1);
@@ -1571,11 +1649,11 @@ impl<I: ContextImpl> JittedCode<I> {
                     dynasm!(ops
                         // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
                         ; mov eax, DWORD [rsi + Rq(SCRATCH_REGISTER)] // load old value into RAX
-                        ; mov DWORD [rsi + Rq(SCRATCH_REGISTER)], Rd(value) // store new value
-                        ; mov rbp, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 2 * Rq(SCRATCH_REGISTER)] // read timestamp
+                        ; mov DWORD [rsi + Rq(SCRATCH_REGISTER)], Rd(value) // store new value (frees its register)
+                        ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 2 * Rq(SCRATCH_REGISTER)] // read timestamp (RDX free now; frees RBP)
                         ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 2 * Rq(SCRATCH_REGISTER)], r8 // update timestamp
                         ; mov [rdi + r9 * 4], eax // write old value into trace
-                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rbp // write timestamp value into trace
+                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
                     );
                     bump_timestamp!(ops, 2);
                     record_circuit_type(&mut ops, CounterType::MemWord, 1);

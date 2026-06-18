@@ -316,7 +316,11 @@ fn test_fusion_opportunity() {
             exec[idx] += 1;
         }
         VM::<DelegationsAndFamiliesCounters>::run_step::<(), _, _, Mersenne31Field>(
-            &mut state, &mut ram, &mut (), &tape, &mut nd,
+            &mut state,
+            &mut ram,
+            &mut (),
+            &tape,
+            &mut nd,
         );
         state.timestamp += TIMESTAMP_STEP;
         if state.pc == pc {
@@ -351,7 +355,13 @@ fn test_fusion_opportunity() {
         if a.name == Auipc && is_mem(b) && b.rs1 == a.rd && a.rd != 0 {
             auipc_mem += w;
         }
-        if a.name == Sll && a.rs2 == 0 && b.name == Add && b.rs2 != 0 && (b.rs1 == a.rd || b.rs2 == a.rd) && a.rd != 0 {
+        if a.name == Sll
+            && a.rs2 == 0
+            && b.name == Add
+            && b.rs2 != 0
+            && (b.rs1 == a.rd || b.rs2 == a.rd)
+            && a.rd != 0
+        {
             slli_add += w;
         }
         if a.name == b.name
@@ -363,19 +373,18 @@ fn test_fusion_opportunity() {
         }
         // widening multiply: mul + mulhu with the same inputs (one x86 `mul`).
         let same_inputs = a.rs1 == b.rs1 && a.rs2 == b.rs2 && a.rs2 != 0;
-        if same_inputs
-            && ((a.name == Mul && b.name == Mulhu) || (a.name == Mulhu && b.name == Mul))
+        if same_inputs && ((a.name == Mul && b.name == Mulhu) || (a.name == Mulhu && b.name == Mul))
         {
             widen_mul += w;
         }
         // combined division: divu + remu with the same inputs (one x86 `div`).
-        if same_inputs
-            && ((a.name == Divu && b.name == Remu) || (a.name == Remu && b.name == Divu))
+        if same_inputs && ((a.name == Divu && b.name == Remu) || (a.name == Remu && b.name == Divu))
         {
             comb_div += w;
         }
         // bit extract: SRLI then ANDI on the result.
-        if a.name == Srl && a.rs2 == 0 && b.name == And && b.rs2 == 0 && b.rs1 == a.rd && a.rd != 0 {
+        if a.name == Srl && a.rs2 == 0 && b.name == And && b.rs2 == 0 && b.rs1 == a.rd && a.rd != 0
+        {
             srli_andi += w;
         }
         // bit test: SRLI then SLT/SLTU consuming the result.
@@ -420,17 +429,60 @@ fn test_fusion_opportunity() {
     }
 
     let pct = |x: u64| (x as f64) * 100.0 / (total as f64);
-    println!("=== fusion opportunity (executed instructions = {}) ===", total);
-    println!("LUI+ADDI      : {:>12} pairs  ({:.2}% of executed)", lui_addi, pct(lui_addi));
-    println!("AUIPC+JALR    : {:>12} pairs  ({:.2}%)", auipc_jalr, pct(auipc_jalr));
-    println!("AUIPC+mem     : {:>12} pairs  ({:.2}%)", auipc_mem, pct(auipc_mem));
-    println!("SLLI+ADD      : {:>12} pairs  ({:.2}%)", slli_add, pct(slli_add));
-    println!("seq word LW/SW: {:>12} pairs  ({:.2}%)", seq_word_mem, pct(seq_word_mem));
-    println!("widening mul  : {:>12} pairs  ({:.2}%)", widen_mul, pct(widen_mul));
-    println!("combined div  : {:>12} pairs  ({:.2}%)", comb_div, pct(comb_div));
-    println!("SRLI+ANDI     : {:>12} pairs  ({:.2}%)", srli_andi, pct(srli_andi));
-    println!("SRLI+SLT/SLTU : {:>12} pairs  ({:.2}%)", srli_lt, pct(srli_lt));
-    println!("rotation(3op) : {:>12} sites  ({:.2}%)", rotation, pct(rotation));
+    println!(
+        "=== fusion opportunity (executed instructions = {}) ===",
+        total
+    );
+    println!(
+        "LUI+ADDI      : {:>12} pairs  ({:.2}% of executed)",
+        lui_addi,
+        pct(lui_addi)
+    );
+    println!(
+        "AUIPC+JALR    : {:>12} pairs  ({:.2}%)",
+        auipc_jalr,
+        pct(auipc_jalr)
+    );
+    println!(
+        "AUIPC+mem     : {:>12} pairs  ({:.2}%)",
+        auipc_mem,
+        pct(auipc_mem)
+    );
+    println!(
+        "SLLI+ADD      : {:>12} pairs  ({:.2}%)",
+        slli_add,
+        pct(slli_add)
+    );
+    println!(
+        "seq word LW/SW: {:>12} pairs  ({:.2}%)",
+        seq_word_mem,
+        pct(seq_word_mem)
+    );
+    println!(
+        "widening mul  : {:>12} pairs  ({:.2}%)",
+        widen_mul,
+        pct(widen_mul)
+    );
+    println!(
+        "combined div  : {:>12} pairs  ({:.2}%)",
+        comb_div,
+        pct(comb_div)
+    );
+    println!(
+        "SRLI+ANDI     : {:>12} pairs  ({:.2}%)",
+        srli_andi,
+        pct(srli_andi)
+    );
+    println!(
+        "SRLI+SLT/SLTU : {:>12} pairs  ({:.2}%)",
+        srli_lt,
+        pct(srli_lt)
+    );
+    println!(
+        "rotation(3op) : {:>12} sites  ({:.2}%)",
+        rotation,
+        pct(rotation)
+    );
     let any = lui_addi + auipc_jalr + auipc_mem + slli_add + seq_word_mem;
     println!("sum (orig 5, upper bound): {} ({:.2}%)", any, pct(any));
 
@@ -446,7 +498,8 @@ fn test_fusion_opportunity() {
         if matches!(a.name, Lw | Sw) && j + 1 < instructions.len() {
             let b = &instructions[j + 1];
             let stride = b.imm.wrapping_sub(a.imm);
-            if b.name == a.name && b.rs1 == a.rs1 && (stride == 4 || stride == 4u32.wrapping_neg()) {
+            if b.name == a.name && b.rs1 == a.rs1 && (stride == 4 || stride == 4u32.wrapping_neg())
+            {
                 let mut l = 2usize;
                 while j + l < instructions.len() {
                     let p = &instructions[j + l - 1];
@@ -469,13 +522,118 @@ fn test_fusion_opportunity() {
         }
         j += 1;
     }
+    // XMM-resident register reuse within pure-ALU runs (opportunity for caching a
+    // value in a GPR to skip a repeated pextrd/pinsrd). A control-flow or memory/
+    // delegation/ND instruction clobbers the scratch GPRs, so the cache cannot
+    // persist across it — windows are bounded by such boundaries.
+    let xmm_resident = |r: u32| {
+        r != 0 && crate::jit::RV_REG_TO_XMM_SLOT[r as usize] != crate::jit::RV_XMM_SLOT_NONE
+    };
+    let touched = |ins: &Instruction| -> Vec<u32> {
+        use InstructionName::*;
+        let (rd, rs1, rs2) = (ins.rd as u32, ins.rs1 as u32, ins.rs2 as u32);
+        let mut v: Vec<u32> = match ins.name {
+            Branch | Sb | Sh | Sw => vec![rs1, rs2],
+            Lb | Lbu | Lh | Lhu | Lw => vec![rs1, rd],
+            Jal | Auipc | ZicsrNonDeterminismRead => vec![rd],
+            Jalr => vec![rs1, rd],
+            ZicsrNonDeterminismWrite => vec![rs1],
+            Nop | ZicsrDelegation => vec![],
+            _ => {
+                if rs2 != 0 {
+                    vec![rs1, rs2, rd]
+                } else {
+                    vec![rs1, rd]
+                }
+            }
+        };
+        v.retain(|&r| xmm_resident(r));
+        v
+    };
+    let is_boundary_name = |n: InstructionName| {
+        use InstructionName::*;
+        matches!(
+            n,
+            Jal | Jalr
+                | Branch
+                | Lb
+                | Lbu
+                | Lh
+                | Lhu
+                | Lw
+                | Sb
+                | Sh
+                | Sw
+                | ZicsrNonDeterminismRead
+                | ZicsrNonDeterminismWrite
+                | ZicsrDelegation
+        )
+    };
+    let (mut total_xmm, mut reuse_w2, mut reuse_w4) = (0u64, 0u64, 0u64);
+    let mut hist: Vec<Vec<u32>> = Vec::new(); // recent pure instrs' XMM touches
+    for i in 0..instructions.len() {
+        let ins = &instructions[i];
+        if is_boundary_name(ins.name) {
+            hist.clear();
+            continue;
+        }
+        let w = exec[i];
+        let t = touched(ins);
+        if w > 0 {
+            for &r in &t {
+                total_xmm += w;
+                if hist.last().map_or(false, |h| h.contains(&r)) {
+                    reuse_w2 += w;
+                }
+                if hist.iter().rev().take(3).any(|h| h.contains(&r)) {
+                    reuse_w4 += w;
+                }
+            }
+        }
+        hist.push(t);
+        if hist.len() > 3 {
+            hist.remove(0);
+        }
+    }
+    println!("\n=== XMM-resident register reuse within pure-ALU runs ===");
+    println!(
+        "total XMM accesses (pure runs) = {} ({:.2}% of executed)",
+        total_xmm,
+        pct(total_xmm)
+    );
+    println!(
+        "reuse window 2 (prev instr): {} ({:.2}% of XMM accesses, {:.2}% of executed)",
+        reuse_w2,
+        (reuse_w2 as f64) * 100.0 / (total_xmm.max(1) as f64),
+        pct(reuse_w2)
+    );
+    println!(
+        "reuse window 4 (prev 3):     {} ({:.2}% of XMM accesses, {:.2}% of executed)",
+        reuse_w4,
+        (reuse_w4 as f64) * 100.0 / (total_xmm.max(1) as f64),
+        pct(reuse_w4)
+    );
+
     println!("\n=== seq word LW/SW run-length distribution (execution-weighted) ===");
-    println!("run-executions={}  words-in-runs={} ({:.2}% of executed)  avg run len={:.2}",
-        run_execs, words_in_runs, pct(words_in_runs),
-        if run_execs > 0 { words_in_runs as f64 / run_execs as f64 } else { 0.0 });
+    println!(
+        "run-executions={}  words-in-runs={} ({:.2}% of executed)  avg run len={:.2}",
+        run_execs,
+        words_in_runs,
+        pct(words_in_runs),
+        if run_execs > 0 {
+            words_in_runs as f64 / run_execs as f64
+        } else {
+            0.0
+        }
+    );
     for (l, w) in &by_len {
-        println!("  len {:>2}: {:>12} run-execs ({:>5.2}% of run-execs, {:>5.2}% of all words)",
-            l, w, (*w as f64) * 100.0 / (run_execs.max(1) as f64), pct(*w * (*l as u64)));
+        println!(
+            "  len {:>2}: {:>12} run-execs ({:>5.2}% of run-execs, {:>5.2}% of all words)",
+            l,
+            w,
+            (*w as f64) * 100.0 / (run_execs.max(1) as f64),
+            pct(*w * (*l as u64))
+        );
     }
 }
 
@@ -576,13 +734,8 @@ fn test_jit_full_block_with_flattened_responder_lazy() {
         u64::MAX / 2,
     );
 
-    let (state, _) = JittedCode::run_with_flattened_context_lazy(
-        &text,
-        &witness[..],
-        &binary,
-        None,
-        &artifact,
-    );
+    let (state, _) =
+        JittedCode::run_with_flattened_context_lazy(&text, &witness[..], &binary, None, &artifact);
     println!("PC = 0x{:08x}", state.pc);
 }
 
@@ -618,8 +771,7 @@ fn test_bytecode_analysis_full_block() {
     println!("{}", analyze_static_bytecode(&instructions));
 
     let mut source = QuasiUARTSource::new_with_reads(witness);
-    let stats =
-        analyze_dynamic_execution(&instructions, &binary, &mut source, u64::MAX / 2);
+    let stats = analyze_dynamic_execution(&instructions, &binary, &mut source, u64::MAX / 2);
     println!("{}", stats);
 }
 
@@ -654,8 +806,7 @@ fn test_build_cfg_artifact_full_block() {
     // improve dynamic JALR target coverage. We only have one witness fixture.
     let nd_sources = vec![QuasiUARTSource::new_with_reads(witness)];
 
-    let artifact =
-        build_control_flow_artifact(&instructions, &binary, nd_sources, u64::MAX / 2);
+    let artifact = build_control_flow_artifact(&instructions, &binary, nd_sources, u64::MAX / 2);
     println!("{}", artifact);
 
     // Serialize to disk and verify the round-trip.
@@ -663,7 +814,10 @@ fn test_build_cfg_artifact_full_block() {
     artifact.save_to_file(&path).expect("save artifact");
     println!("artifact written to {}", path.display());
     let reloaded = ControlFlowArtifact::load_from_file(&path).expect("load artifact");
-    assert_eq!(artifact, reloaded, "artifact serialization round-trip mismatch");
+    assert_eq!(
+        artifact, reloaded,
+        "artifact serialization round-trip mismatch"
+    );
     println!("round-trip OK");
 }
 
@@ -784,6 +938,169 @@ fn test_reference_block_exec() {
 
     println!("PC = 0x{:08x}", state.pc);
     dbg!(state.registers.map(|el| el.value));
+}
+
+/// Measure the distribution of register-timestamp "staleness" over the full block,
+/// to decide whether register timestamps can be stored as a u32 (relative/delta)
+/// instead of u64.
+///
+/// Key quantity: `staleness = global_ts - register_last_touch_ts`. If the max
+/// staleness over the whole run is < 2^32, then every register's timestamp is always
+/// within a u32 of the running timestamp, so a delta-from-base encoding is always
+/// safe (absolute timestamps are 38-bit and do overflow u32 over a long run).
+///
+/// Run with: cargo test --features jit --release --lib measure_register_timestamp_deltas -- --ignored --nocapture
+#[test]
+#[ignore]
+#[serial_test::serial]
+fn measure_register_timestamp_deltas() {
+    use common_constants::TIMESTAMP_STEP;
+
+    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+
+    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
+    let witness: Vec<_> = witness
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|el| u32::from_be_bytes(*el))
+        .collect();
+    let mut source = QuasiUARTSource::new_with_reads(witness);
+
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram =
+        RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
+            &binary,
+            1 << 30,
+        );
+
+    let cycles_bound = 1usize << 31;
+    let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
+    let mut snapshotter = SimpleSnapshotter::<_, { common_constants::rom::ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(cycles_bound, state);
+
+    // Per-register measurement state.
+    let mut prev_ts = [0u64; 32]; // last observed (nonzero) timestamp
+    let mut max_gap = [0u64; 32]; // max gap between consecutive touches
+    let mut touch_count = [0u64; 32];
+    let mut max_live_staleness = 0u64; // max over cycles of (global - oldest touched reg ts)
+    let mut staleness_hist = [0u64; 40]; // bucket by bit-width of live staleness
+    let mut total_cycles = 0u64;
+
+    for _cycle in 0..cycles_bound {
+        let pc = state.pc;
+        VM::<DelegationsAndFamiliesCounters>::run_step::<_, _, _, Mersenne31Field>(
+            &mut state,
+            &mut ram,
+            &mut snapshotter,
+            &tape,
+            &mut source,
+        );
+        state.timestamp += TIMESTAMP_STEP;
+        total_cycles += 1;
+
+        let mut min_touched = u64::MAX;
+        for r in 1..32 {
+            let ts = state.registers[r].timestamp;
+            if ts != prev_ts[r] {
+                if prev_ts[r] != 0 {
+                    let gap = ts - prev_ts[r];
+                    if gap > max_gap[r] {
+                        max_gap[r] = gap;
+                    }
+                }
+                prev_ts[r] = ts;
+                touch_count[r] += 1;
+            }
+            if ts != 0 && ts < min_touched {
+                min_touched = ts;
+            }
+        }
+        if min_touched != u64::MAX {
+            let stale = state.timestamp - min_touched;
+            if stale > max_live_staleness {
+                max_live_staleness = stale;
+            }
+            let bits = (64 - stale.max(1).leading_zeros()) as usize;
+            staleness_hist[bits.min(39)] += 1;
+        }
+
+        if state.pc == pc {
+            snapshotter.take_final_snapshot(&state);
+            break;
+        }
+        if snapshotter.take_snapshot_if_needed(&state) {
+            break;
+        }
+    }
+
+    let bits = |v: u64| 64 - v.max(1).leading_zeros();
+    let global_max_gap = max_gap.iter().copied().max().unwrap();
+    // final staleness (touched-once-then-read-at-end case)
+    let mut max_final_staleness = 0u64;
+    for r in 1..32 {
+        if prev_ts[r] != 0 {
+            max_final_staleness = max_final_staleness.max(state.timestamp - prev_ts[r]);
+        }
+    }
+
+    println!("\n===== REGISTER TIMESTAMP DELTA ANALYSIS (full block) =====");
+    println!("total cycles                 : {}", total_cycles);
+    println!(
+        "final global ts              : {} ({} bits)",
+        state.timestamp,
+        bits(state.timestamp)
+    );
+    println!(
+        "max consecutive-touch gap    : {} ({} bits)",
+        global_max_gap,
+        bits(global_max_gap)
+    );
+    println!(
+        "max LIVE staleness           : {} ({} bits)  <-- the binding number",
+        max_live_staleness,
+        bits(max_live_staleness)
+    );
+    println!(
+        "max FINAL staleness          : {} ({} bits)",
+        max_final_staleness,
+        bits(max_final_staleness)
+    );
+    let key = max_live_staleness.max(max_final_staleness);
+    println!(
+        "=> register ts as u32 delta SAFE: {}  (key={} < 2^32={})",
+        key < (1u64 << 32),
+        key,
+        1u64 << 32
+    );
+    println!(
+        "   would fit u16 ({}), u24 ({}), 19-bit col ({})",
+        key < (1 << 16),
+        key < (1 << 24),
+        key < (1 << 19)
+    );
+    println!("\nlive-staleness histogram (by bit-width, cycle count):");
+    for (b, c) in staleness_hist.iter().enumerate() {
+        if *c > 0 {
+            println!("  {:2} bits: {}", b, c);
+        }
+    }
+    println!("\nper-register (skipping x0):");
+    for r in 1..32 {
+        if touch_count[r] > 0 {
+            println!(
+                "  x{:02}: touches={:>10}, max_gap={:>12} ({} bits), final_staleness={}",
+                r,
+                touch_count[r],
+                max_gap[r],
+                bits(max_gap[r]),
+                state.timestamp - prev_ts[r]
+            );
+        }
+    }
 }
 
 #[test]
@@ -1024,23 +1341,33 @@ fn run_and_compare_lazy() {
     );
     println!("{}", artifact);
 
-    let source = QuasiUARTSource::new_with_reads(witness);
+    lazy_bitexact_check(&text, &binary, &witness, &artifact, 762314752);
+}
 
-    let num_steps: u32 = 762314752;
+/// Shared: run the lazy path for `artifact` at `num_steps` and assert bit-exactness
+/// (registers, memory, counters, snapshot tail) against the reference VM.
+fn lazy_bitexact_check(
+    text: &[u32],
+    binary: &[u32],
+    witness: &[u32],
+    artifact: &crate::control_flow_artifact::ControlFlowArtifact,
+    num_steps: u32,
+) {
+    let source = QuasiUARTSource::new_with_reads(witness.to_vec());
 
     let (jit_state, jit_memory, jit_last_trace_chunk) =
         JittedCode::run_alternative_simulator_with_last_snapshot_lazy(
-            &text,
+            text,
             &mut source.clone(),
-            &binary,
+            binary,
             Some(num_steps),
-            &artifact,
+            artifact,
         );
 
     let (reference_state, reference_ram, reference_snapshotter) =
         run_reference_for_num_cycles_with_snapshots(
-            &binary,
-            &text,
+            binary,
+            text,
             source.clone(),
             jit_state.timestamp,
             false,
@@ -1053,20 +1380,43 @@ fn run_and_compare_lazy() {
     assert_eq!(reference_state.pc, jit_state.pc, "PC diverged");
 
     let counter_pairs = [
-        (reference_state.counters.add_sub_family, CounterType::AddSubLui),
-        (reference_state.counters.slt_branch_family, CounterType::BranchSlt),
-        (reference_state.counters.binary_shift_family, CounterType::ShiftBinaryCsr),
+        (
+            reference_state.counters.add_sub_family,
+            CounterType::AddSubLui,
+        ),
+        (
+            reference_state.counters.slt_branch_family,
+            CounterType::BranchSlt,
+        ),
+        (
+            reference_state.counters.binary_shift_family,
+            CounterType::ShiftBinaryCsr,
+        ),
         (reference_state.counters.mul_div_family, CounterType::MulDiv),
-        (reference_state.counters.word_size_mem_family, CounterType::MemWord),
-        (reference_state.counters.subword_size_mem_family, CounterType::MemSubword),
-        (reference_state.counters.blake_calls, CounterType::BlakeDelegation),
-        (reference_state.counters.bigint_calls, CounterType::BigintDelegation),
-        (reference_state.counters.keccak_calls, CounterType::KeccakDelegation),
+        (
+            reference_state.counters.word_size_mem_family,
+            CounterType::MemWord,
+        ),
+        (
+            reference_state.counters.subword_size_mem_family,
+            CounterType::MemSubword,
+        ),
+        (
+            reference_state.counters.blake_calls,
+            CounterType::BlakeDelegation,
+        ),
+        (
+            reference_state.counters.bigint_calls,
+            CounterType::BigintDelegation,
+        ),
+        (
+            reference_state.counters.keccak_calls,
+            CounterType::KeccakDelegation,
+        ),
     ];
     for (reference, ct) in counter_pairs {
         assert_eq!(
-            reference as u64,
-            jit_state.counters[ct as u8 as usize],
+            reference as u64, jit_state.counters[ct as u8 as usize],
             "counter {:?} diverged",
             ct as u8
         );
@@ -1125,12 +1475,14 @@ fn run_and_compare_lazy() {
             [(reference_snapshotter.reads_buffer.len() - length)..];
         assert_eq!(last_reference.len(), length);
         let mut num_diffs = 0;
-        for (idx, (((reference_value, (reference_ts_low, reference_ts_high)), jit_value), jit_ts)) in
-            last_reference
-                .iter()
-                .zip(jit_snapshot_values.iter())
-                .zip(jit_snapshot_tses.iter())
-                .enumerate()
+        for (
+            idx,
+            (((reference_value, (reference_ts_low, reference_ts_high)), jit_value), jit_ts),
+        ) in last_reference
+            .iter()
+            .zip(jit_snapshot_values.iter())
+            .zip(jit_snapshot_tses.iter())
+            .enumerate()
         {
             if *reference_value != *jit_value {
                 println!(
@@ -1159,6 +1511,87 @@ fn run_and_compare_lazy() {
         panic!("State diverged");
     }
     println!("Lazy path bit-exact for {} cycles", num_steps);
+}
+
+/// STAGE B fallback test: drop every observed dynamic JALR target that is ONLY known
+/// via the dynamic artifact (i.e. not covered by static analysis or the ABI return-site
+/// heuristic). Those PCs are then no longer known batched entries, so when their JALR
+/// fires at runtime the dispatch falls into the eager copy, which runs per-instruction
+/// and re-enters batched at its next JAL/Branch. This forces batched<->eager ping-pong
+/// in both directions; the run must remain bit-exact.
+#[test]
+#[serial_test::serial]
+fn run_and_compare_lazy_jalr_fallback() {
+    use crate::control_flow_artifact::build_control_flow_artifact;
+    use std::collections::BTreeSet;
+
+    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
+    let witness: Vec<u32> = witness
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|el| u32::from_be_bytes(*el))
+        .collect();
+
+    let instructions_for_artifact: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
+    let mut artifact = build_control_flow_artifact(
+        &instructions_for_artifact,
+        &binary,
+        vec![QuasiUARTSource::new_with_reads(witness.clone())],
+        u64::MAX / 2,
+    );
+
+    // Entries known WITHOUT the dynamic artifact: pc 0, JAL/BRANCH targets, branch
+    // fall-through, static JALR targets, and ABI return sites (call_site + 4 for every
+    // rd==x1 JAL/JALR). Mirrors compute_known_entries minus the dynamic targets.
+    let mut non_dynamic_known: BTreeSet<u32> = BTreeSet::new();
+    non_dynamic_known.insert(0);
+    non_dynamic_known.extend(artifact.jal_targets.values().copied());
+    for (site, t) in &artifact.branch_targets {
+        non_dynamic_known.insert(*t);
+        non_dynamic_known.insert(site.wrapping_add(4));
+    }
+    for ts in artifact.jalr_static_targets.values() {
+        non_dynamic_known.extend(ts.iter().copied());
+    }
+    for (i, instr) in instructions_for_artifact.iter().enumerate() {
+        if instr.rd == 1 && matches!(instr.name, InstructionName::Jal | InstructionName::Jalr) {
+            non_dynamic_known.insert((i as u32) * 4 + 4);
+        }
+    }
+
+    // Drop dynamic targets that are ONLY reachable via the dynamic artifact, so hitting
+    // them at runtime is guaranteed to take the eager fallback.
+    let mut dropped_targets = 0usize;
+    let mut dropped_transfers = 0u64;
+    for (_site, targets) in artifact.jalr_dynamic_targets.iter_mut() {
+        let before = targets.len();
+        let mut removed_here = 0u64;
+        targets.retain(|t, count| {
+            if non_dynamic_known.contains(t) {
+                true
+            } else {
+                removed_here += *count;
+                false
+            }
+        });
+        dropped_targets += before - targets.len();
+        dropped_transfers += removed_here;
+    }
+    println!(
+        "Dropped {} dynamic JALR targets ({} runtime transfers) -> these now fall back to eager",
+        dropped_targets, dropped_transfers
+    );
+    assert!(
+        dropped_targets > 0 && dropped_transfers > 0,
+        "expected dynamic-only JALR targets to drop (so fallback is actually exercised)"
+    );
+
+    lazy_bitexact_check(&text, &binary, &witness, &artifact, 762314752);
 }
 
 #[cfg(test)]
