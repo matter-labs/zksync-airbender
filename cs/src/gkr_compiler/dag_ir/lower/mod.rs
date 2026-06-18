@@ -645,6 +645,7 @@ fn lower_layer<F: PrimeField + PartialEq>(
         sinks: out.sinks,
         batching,
         origins: out.origins,
+        resolutions: BTreeMap::new(),
     })
 }
 

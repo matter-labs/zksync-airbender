@@ -264,6 +264,7 @@ fn dag_ir_oracle_matches_prover_reference_on_three_roots() {
         sinks: Vec::new(),
         batching,
         origins: std::collections::BTreeMap::new(),
+        resolutions: std::collections::BTreeMap::new(),
     };
 
     // ── Bind resolvers to the SAME RefCtx ──

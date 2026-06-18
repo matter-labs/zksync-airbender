@@ -275,6 +275,7 @@ mod tests {
             sinks: Vec::new(),
             batching: BatchingOrder { roots: batching_roots },
             origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
         }
     }
 

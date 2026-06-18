@@ -830,6 +830,7 @@ mod tests {
                 roots: vec![RootId(0)],
             },
             origins,
+            resolutions: BTreeMap::new(),
         }
     }
 
@@ -912,6 +913,7 @@ mod tests {
                 roots: vec![RootId(0), RootId(1)],
             },
             origins,
+            resolutions: BTreeMap::new(),
         };
         let err = validate(&circuit_of(layer))
             .expect_err("cache root in batching order must be rejected");
@@ -992,6 +994,7 @@ mod tests {
                 roots: vec![RootId(0)],
             },
             origins,
+            resolutions: BTreeMap::new(),
         };
         let err = validate(&circuit_of(layer)).expect_err("expr cycle must be rejected");
         assert!(err.contains("cycle"), "unexpected error: {err}");
@@ -1035,6 +1038,7 @@ mod tests {
                 roots: vec![RootId(0)],
             },
             origins,
+            resolutions: BTreeMap::new(),
         };
         let err =
             validate(&circuit_of(layer)).expect_err("LookupValue.query cycle must be rejected");
@@ -1105,6 +1109,7 @@ mod tests {
                 roots: vec![RootId(2)], // only the claim-bearing root
             },
             origins,
+            resolutions: BTreeMap::new(),
         };
         let err = validate(&circuit_of(layer)).expect_err("Prior→root cycle must be rejected");
         assert!(err.contains("cycle"), "unexpected error: {err}");
@@ -1154,6 +1159,7 @@ mod tests {
                     roots: vec![RootId(0)],
                 },
                 origins,
+                resolutions: BTreeMap::new(),
             }
         };
         let layer1 = {
@@ -1189,6 +1195,7 @@ mod tests {
                     roots: vec![RootId(0)],
                 },
                 origins,
+                resolutions: BTreeMap::new(),
             }
         };
         let c = DagCircuit {
@@ -1242,6 +1249,7 @@ mod tests {
                     roots: vec![RootId(0)],
                 },
                 origins,
+                resolutions: BTreeMap::new(),
             }
         };
         let layer1 = {
@@ -1277,6 +1285,7 @@ mod tests {
                     roots: vec![RootId(0)],
                 },
                 origins,
+                resolutions: BTreeMap::new(),
             }
         };
         let c = DagCircuit {
@@ -1444,6 +1453,7 @@ mod tests {
                 roots: vec![RootId(0), RootId(1)],
             },
             origins,
+            resolutions: BTreeMap::new(),
         };
         let result = validate(&circuit_of(layer));
         assert!(
@@ -1530,6 +1540,7 @@ mod tests {
             sinks,
             batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
             origins,
+            resolutions: BTreeMap::new(),
         };
         let result = validate(&circuit_of(layer));
         assert!(
@@ -1593,6 +1604,7 @@ mod tests {
             // Only the claim-bearing root is in batching.
             batching: BatchingOrder { roots: vec![RootId(0)] },
             origins,
+            resolutions: BTreeMap::new(),
         };
         let result = validate(&circuit_of(layer));
         assert!(
