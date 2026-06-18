@@ -303,6 +303,15 @@ impl LayerOut {
         };
         self.insert_resolution(leaf, strat)
     }
+
+    /// Record a folded-setup leaf's forward-peek strategy (row-indexed, zero-padded).
+    /// `num_columns == 0` is a degenerate fold — no peek.
+    fn record_setup(&mut self, leaf: ExprId, num_columns: usize) -> Result<(), String> {
+        if num_columns == 0 {
+            return Ok(());
+        }
+        self.insert_resolution(leaf, ResolutionStrategy::PeekSetup)
+    }
 }
 
 /// Lower one relation into the shared arena + layer accumulator.
@@ -425,6 +434,7 @@ fn lower_relation(
             out.record_vector(b, input.lookup_set_index, input.columns.len(), decoder_predicate)?;
             let c = lookup::read(arena, setup.0);
             let d = lookup::folded_setup(arena, &setup.1);
+            out.record_setup(d, setup.1.len())?;
             let (num, den) = lookup::minus_multiplicity(arena, b, c, d, minus_one);
             out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
         }
@@ -456,6 +466,7 @@ fn lower_relation(
             out.record_vector(b, input.1.lookup_set_index, input.1.columns.len(), decoder_predicate)?;
             let c = lookup::read(arena, setup.0);
             let d = lookup::folded_setup(arena, &setup.1);
+            out.record_setup(d, setup.1.len())?;
             let (num, den) = lookup::dens_and_setup(arena, a, b, c, d, minus_one);
             out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
         }
@@ -630,7 +641,11 @@ fn lower_cache(
             out.record_vector(expr, vl.lookup_set_index, vl.columns.len(), decoder_predicate)?;
             (expr, FieldKind::Ext)
         }
-        C::VectorizedLookupSetup(cols) => (lookup::folded_setup(arena, cols), FieldKind::Ext),
+        C::VectorizedLookupSetup(cols) => {
+            let expr = lookup::folded_setup(arena, cols);
+            out.record_setup(expr, cols.len())?;
+            (expr, FieldKind::Ext)
+        }
         C::MemoryTuple(mt) => (memory::lower_memory_tuple(arena, mt, minus_one)?, FieldKind::Ext),
     };
     out.emit_cache(expr, addr, field)

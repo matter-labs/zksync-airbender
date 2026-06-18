@@ -581,6 +581,23 @@ fn resolutions_peek_decoder_predicate_matches_global_execute() {
     );
 }
 
+#[test]
+fn resolutions_peek_setup_present_for_add_sub() {
+    use crate::gkr_compiler::dag_ir::{lower_dag, ResolutionStrategy};
+
+    let path = compiled_circuit_dir().join("add_sub_lui_auipc_mop_layout_gkr.json");
+    let artifact = load_fixture(&path).expect("fixture must load");
+    let circuit = lower_dag(&artifact).expect("lower_dag must succeed");
+
+    let setup_peeks = circuit
+        .layers
+        .iter()
+        .flat_map(|l| l.resolutions.values())
+        .filter(|s| matches!(s, ResolutionStrategy::PeekSetup))
+        .count();
+    assert!(setup_peeks > 0, "the minus-setup leg must emit PeekSetup resolutions");
+}
+
 /// Assert no memory-tuple in `rel` uses `U32SpaceGeneric`.
 fn check_relation_no_u32_generic(fixture_name: &str, rel: &NoFieldGKRRelation) {
     use crate::gkr_compiler::CompiledAddressStrict;
