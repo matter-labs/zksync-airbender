@@ -170,6 +170,35 @@ enum Node {
     Root(u32),
 }
 
+/// Return the direct successors of `node` in the per-layer dependency graph,
+/// following three edge kinds:
+/// - `Expr::Add/Mul → operand Expr`
+/// - `Expr::Source(LookupValue{query}) → query Expr`
+/// - `Expr::Source(Prior{id}) → that root` and `Root → its expr`
+fn successors(node: Node, layer: &DagLayer) -> Vec<Node> {
+    match node {
+        Node::Expr(e) => match &layer.exprs[e as usize] {
+            Expr::Source(src_id) => {
+                match &layer.sources[src_id.0 as usize].kind {
+                    SourceKind::LookupValue { query, .. } => vec![Node::Expr(query.0)],
+                    SourceKind::Prior { id } => vec![Node::Root(id.0)],
+                    _ => vec![],
+                }
+            }
+            Expr::Add(args) | Expr::Mul(args) => {
+                args.iter().map(|a| Node::Expr(a.0)).collect()
+            }
+        },
+        Node::Root(r) => {
+            let expr = match &layer.roots[r as usize] {
+                Root::Output { expr, .. } => *expr,
+                Root::Constraint { expr } => *expr,
+            };
+            vec![Node::Expr(expr.0)]
+        }
+    }
+}
+
 /// Detect any cycle reachable through the three edge kinds:
 /// - `Expr::Add/Mul → operand Expr`
 /// - `Expr::Source(LookupValue{query}) → query Expr`
@@ -179,33 +208,6 @@ enum Node {
 /// (review 2/M2), so this is a hard rejection.
 fn check_acyclic(layer: &DagLayer, li: usize) -> Result<(), String> {
     let mut color: HashMap<Node, Color> = HashMap::new();
-
-    // Iterative DFS with an explicit stack to avoid blowing the Rust stack on
-    // deep DAGs. Each stack frame carries the node and an index into its
-    // successor list (lazily materialized).
-    fn successors(node: Node, layer: &DagLayer) -> Vec<Node> {
-        match node {
-            Node::Expr(e) => match &layer.exprs[e as usize] {
-                Expr::Source(src_id) => {
-                    match &layer.sources[src_id.0 as usize].kind {
-                        SourceKind::LookupValue { query, .. } => vec![Node::Expr(query.0)],
-                        SourceKind::Prior { id } => vec![Node::Root(id.0)],
-                        _ => vec![],
-                    }
-                }
-                Expr::Add(args) | Expr::Mul(args) => {
-                    args.iter().map(|a| Node::Expr(a.0)).collect()
-                }
-            },
-            Node::Root(r) => {
-                let expr = match &layer.roots[r as usize] {
-                    Root::Output { expr, .. } => *expr,
-                    Root::Constraint { expr } => *expr,
-                };
-                vec![Node::Expr(expr.0)]
-            }
-        }
-    }
 
     // Visit every expr and every root as a DFS root so disconnected components
     // are covered.
@@ -252,20 +254,50 @@ fn check_acyclic(layer: &DagLayer, li: usize) -> Result<(), String> {
 
 // ── Resolution-table helpers ──────────────────────────────────────────────────
 
+/// Collect every `ExprId` reachable from the layer's ROOTS, following the same
+/// edges as `check_acyclic`'s `successors` (Add/Mul operands, `LookupValue.query`,
+/// `Prior → Root → expr`). Seeded from `layer.roots` ONLY — NOT from all exprs
+/// (unlike `check_acyclic`) — so it is a true root-reachability oracle.
+fn collect_root_reachable_exprs(layer: &DagLayer) -> std::collections::HashSet<u32> {
+    let mut visited: std::collections::HashSet<Node> = std::collections::HashSet::new();
+    let mut stack: Vec<Node> = (0..layer.roots.len()).map(|i| Node::Root(i as u32)).collect();
+    while let Some(node) = stack.pop() {
+        if !visited.insert(node) {
+            continue;
+        }
+        for next in successors(node, layer) {
+            if !visited.contains(&next) {
+                stack.push(next);
+            }
+        }
+    }
+    visited
+        .into_iter()
+        .filter_map(|n| match n {
+            Node::Expr(e) => Some(e),
+            Node::Root(_) => None,
+        })
+        .collect()
+}
+
 /// Validate the `resolutions` side-table (M2 forward-peek hints). Fires only on
 /// present entries; an empty map is always valid (absent ⇒ recompute).
 fn check_resolutions(layer: &DagLayer, li: usize) -> Result<(), String> {
     if layer.resolutions.is_empty() {
         return Ok(());
     }
-    // Note: arena flattening can cause fold-leaf ExprIds to become orphaned from
-    // the expr tree (Add([fold_leaf, gamma]) flattens to Add([lv0, alpha*lv1, gamma])),
-    // so a reachability DFS is not a valid invariant here. We check in-range only.
+    let reachable = collect_root_reachable_exprs(layer);
     for (&leaf, strat) in &layer.resolutions {
         if leaf.0 as usize >= layer.exprs.len() {
             return Err(format!(
                 "layer {li}: resolution keys out-of-range expr {:?}",
                 leaf
+            ));
+        }
+        if !reachable.contains(&leaf.0) {
+            return Err(format!(
+                "layer {li}: resolution leaf {:?} ({:?}) is not reachable from any root",
+                leaf, strat
             ));
         }
         match strat {
@@ -2123,5 +2155,30 @@ mod tests {
             .insert(ExprId(5), ResolutionStrategy::PeekAggregate { set_index: 7 });
         let c = circuit_of(layer);
         assert!(validate(&c).is_err(), "a fold with an extra Constant term must be rejected");
+    }
+
+    #[test]
+    fn resolutions_rejects_unreachable_leaf() {
+        // Valid single-fold layer (root = the fold at ExprId(5)), then append a
+        // SECOND well-formed 2-column fold that NO root references.
+        let mut layer = layer_with_single_generic_lookup(7);
+        let q = ExprId(0); // reuse the existing query-const expr
+        let sbase = layer.sources.len() as u32;
+        layer.sources.push(SourceInfo { kind: SourceKind::LookupValue {
+            kind: LookupValueKind::GenericColumn { column: 0 }, set_index: 7, query: q } });
+        layer.sources.push(SourceInfo { kind: SourceKind::Challenge { reference: ChallengeRef {
+            key: ChallengeKey::LookupMultiplicative, power: ChallengePower::Static(1) } } });
+        layer.sources.push(SourceInfo { kind: SourceKind::LookupValue {
+            kind: LookupValueKind::GenericColumn { column: 1 }, set_index: 7, query: q } });
+        let ebase = layer.exprs.len() as u32;
+        layer.exprs.push(Expr::Source(SourceId(sbase)));                       // lv0
+        layer.exprs.push(Expr::Source(SourceId(sbase + 1)));                   // alpha^1
+        layer.exprs.push(Expr::Source(SourceId(sbase + 2)));                   // lv1
+        layer.exprs.push(Expr::Mul(vec![ExprId(ebase + 1), ExprId(ebase + 2)])); // alpha*lv1
+        layer.exprs.push(Expr::Add(vec![ExprId(ebase), ExprId(ebase + 3)]));     // orphaned fold leaf
+        let orphan = ExprId(ebase + 4);
+        layer.resolutions.insert(orphan, ResolutionStrategy::PeekAggregate { set_index: 7 });
+        let c = circuit_of(layer);
+        assert!(validate(&c).is_err(), "a well-formed but root-unreachable fold leaf must be rejected");
     }
 }

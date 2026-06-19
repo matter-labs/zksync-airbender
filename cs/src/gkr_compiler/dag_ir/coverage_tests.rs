@@ -628,3 +628,14 @@ fn assert_no_u32_space_generic(
          this is the confirmed-dead path and should never appear in committed artifacts"
     );
 }
+
+// ── Task 8: no-caches validate() gate ───────────────────────────────────────
+
+#[test]
+fn resolutions_validate_clean_no_caches_add_sub() {
+    use crate::gkr_compiler::dag_ir::{lower_dag, validate};
+    let path = compiled_circuit_dir().join("add_sub_lui_auipc_mop_layout_no_caches_gkr.json");
+    let artifact = load_fixture(&path).expect("fixture must load");
+    let circuit = lower_dag(&artifact).expect("lower_dag must succeed");
+    validate(&circuit).expect("no-caches add_sub must validate with reachability on");
+}
