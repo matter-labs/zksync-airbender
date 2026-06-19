@@ -639,3 +639,42 @@ fn resolutions_validate_clean_no_caches_add_sub() {
     let circuit = lower_dag(&artifact).expect("lower_dag must succeed");
     validate(&circuit).expect("no-caches add_sub must validate with reachability on");
 }
+
+// ── Task 6: golden-fixture coverage lock ────────────────────────────────────
+
+/// Regression-lock test: lowers every golden fixture, runs the static
+/// validator (full invariant: shape + range + ROOT-REACHABLE), and asserts
+/// the populated resolutions tables are non-trivial.
+///
+/// This test is expected to PASS on the first run — it is a pure lock test
+/// built on behavior already completed by Tasks 2-5 + the arena fence.  If it
+/// FAILS with a `validate failed` panic it indicates a real generator/validator
+/// disagreement on a fixture not covered by the earlier targeted tests.
+#[test]
+fn resolutions_validate_clean_over_all_fixtures() {
+    use crate::gkr_compiler::dag_ir::{lower_dag, validate, ResolutionStrategy};
+
+    let mut total = 0usize;
+    let mut decoder_seen = false;
+    for name in LAYOUT_GKR_FIXTURES.iter().chain(LAYOUT_NO_CACHES_GKR_FIXTURES.iter()) {
+        let path = compiled_circuit_dir().join(name);
+        let Some(artifact) = load_fixture(&path) else { continue }; // skip absent/stale fixtures
+        let circuit = lower_dag(&artifact).unwrap_or_else(|e| panic!("{name}: lower_dag failed: {e}"));
+
+        // Every populated resolutions table must pass the static validator.
+        validate(&circuit).unwrap_or_else(|e| panic!("{name}: validate failed: {e}"));
+
+        for layer in &circuit.layers {
+            total += layer.resolutions.len();
+            if layer
+                .resolutions
+                .values()
+                .any(|s| matches!(s, ResolutionStrategy::PeekDecoder { .. }))
+            {
+                decoder_seen = true;
+            }
+        }
+    }
+    assert!(total > 0, "golden fixtures must populate some resolutions");
+    assert!(decoder_seen, "at least one golden fixture must emit a PeekDecoder");
+}
