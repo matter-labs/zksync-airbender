@@ -62,6 +62,8 @@ pub(crate) fn blake_implementation(
 
     let write_ts = machine_state.timestamp;
 
+    // Precompile post-cycle register-timestamp effects: a0/a1/a2 -> write_ts (3 mod 4),
+    // x0 -> write_ts - 1 (2 mod 4). Merged via `register_timestamps_array` under packed_ts.
     machine_state.register_timestamps[10] = write_ts;
     machine_state.register_timestamps[11] = write_ts;
     machine_state.register_timestamps[12] = write_ts;

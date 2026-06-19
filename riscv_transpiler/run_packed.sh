@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Benchmark the EAGER path with the two timestamp-bookkeeping schemes, back-to-back
+# Benchmark the EAGER path with the two register-timestamp schemes, back-to-back
 # (interleaved) on the reference block:
-#   base   (default)   : per cycle, write each touched register's timestamp (to GPR/XMM/
-#                        memory) and advance r8 per sub-slot.
-#   packed (packed_ts) : per cycle, write ONE timestamp (the cycle's 0-mod-4 base) into the
-#                        (32 x 33 x 33) array, and bump r8 once.
+#   packed (default)  : write ONE timestamp (the cycle's 0-mod-4 base) into the
+#                       (32 x 33 x 33) array and bump r8 once; reconstruct offline.
+#   xmm    (xmm_ts)   : keep the 8 mapped registers' timestamps live in XMM lanes
+#                       (`pinsrq`) and advance r8 per sub-slot.
 #
 # Each config is built ONCE into its own test binary; the binaries are then run directly
 # and interleaved (no per-rep recompile, robust to thermal/load drift).
@@ -24,12 +24,12 @@ build_bin() { # $1=features ; echoes path of the freshly built test binary
   echo "$out" | grep -oE '[^ (]*deps/riscv_transpiler-[a-f0-9]+' | head -1
 }
 
-echo "Building base eager (default)..." >&2
-B="$(build_bin "jit")"            || exit 1
-cp "$B" /tmp/jit_eager_base       || { echo "copy base failed ($B)" >&2; exit 1; }
-echo "Building packed eager (packed_ts)..." >&2
-P="$(build_bin "jit packed_ts")"  || exit 1
+echo "Building packed eager (default)..." >&2
+P="$(build_bin "jit")"            || exit 1
 cp "$P" /tmp/jit_eager_packed     || { echo "copy packed failed ($P)" >&2; exit 1; }
+echo "Building xmm eager (xmm_ts)..." >&2
+X="$(build_bin "jit xmm_ts")"     || exit 1
+cp "$X" /tmp/jit_eager_xmm        || { echo "copy xmm failed ($X)" >&2; exit 1; }
 
 freq() { # $1=binary ; echoes the MHz number
   "$1" "$T" --exact "$T" --nocapture 2>/dev/null \
@@ -38,9 +38,9 @@ freq() { # $1=binary ; echoes the MHz number
 
 echo
 echo "test=$T   reps=$REPS"
-printf '%-4s %-20s %-20s\n' "rep" "base(3-write)" "packed(1-store)"
+printf '%-4s %-20s %-20s\n' "rep" "packed(default)" "xmm(xmm_ts)"
 for i in $(seq 1 "$REPS"); do
-  b="$(freq /tmp/jit_eager_base)"
   p="$(freq /tmp/jit_eager_packed)"
-  printf '%-4s %-20s %-20s\n' "$i" "${b:-FAIL}" "${p:-FAIL}"
+  x="$(freq /tmp/jit_eager_xmm)"
+  printf '%-4s %-20s %-20s\n' "$i" "${p:-FAIL}" "${x:-FAIL}"
 done

@@ -201,7 +201,7 @@ macro_rules! save_machine_state {
     ($ops:ident) => {
         // Spill the vector-resident registers and the value-mapped host GPRs into the
         // MachineState (pointer in RDX). The exact set differs by register-allocation
-        // experiment (see the `ts_in_gpr` feature), so it lives in cfg'd helpers.
+        // experiment (see the `xmm_ts` feature), so it lives in cfg'd helpers.
         save_value_xmms(&mut $ops);
         save_value_gprs(&mut $ops);
         dynasm!($ops
@@ -245,7 +245,7 @@ macro_rules! update_machine_state_post_call {
             ; mov r8, [rdx + (MachineState::TIMESTAMP_OFFSET as i32)]
         );
         // Restore the value-mapped host GPRs and vector-resident registers (the set
-        // differs by experiment; see the `ts_in_gpr` feature).
+        // differs by experiment; see the `xmm_ts` feature).
         restore_value_gprs(&mut $ops);
         restore_value_xmms(&mut $ops);
         // Reload the value-mapped registers' timestamps (an external callee, e.g. a
@@ -262,13 +262,7 @@ macro_rules! update_machine_state_post_call {
 
 const SCRATCH_REGISTER: u8 = x64::Rq::RCX as u8;
 
-// RISC-V registers whose VALUE lives in a host x86 GPR. Two experiments selected by the
-// `ts_in_gpr` Cargo feature:
-//   * default (OPTION 2): 8 registers (a0..a4, a6, t3, a5) are GPR-mapped and their
-//     timestamps live in XMM lanes (see `reg_ts_xmm`).
-//   * `ts_in_gpr` (OPTION 1): only the 4 hottest (a0..a3 = x10..x13) are GPR-mapped; the
-//     4 freed host GPRs (r14/r15/rbx/rbp) instead hold those 4 registers' TIMESTAMPS
-//     (see `reg_ts_gpr`). a4/a5/a6/t3 live in vector lanes.
+// RISC-V registers whose VALUE lives in a host x86 GPR: a0..a4, a6, t3, a5 (8 registers).
 // Keep this set in sync with `RV_REG_TO_XMM_SLOT` (asserted below).
 fn rv_to_gpr(x: u32) -> Option<u8> {
     use x64::Rq::*;
@@ -276,17 +270,13 @@ fn rv_to_gpr(x: u32) -> Option<u8> {
 
     Some(
         (match x {
-            10 => R10, // a0 (value)
-            11 => R11, // a1 (value)
-            12 => R12, // a2 (value)
-            13 => R13, // a3 (value)
-            #[cfg(not(feature = "ts_in_gpr"))]
+            10 => R10, // a0
+            11 => R11, // a1
+            12 => R12, // a2
+            13 => R13, // a3
             14 => R14, // a4
-            #[cfg(not(feature = "ts_in_gpr"))]
             15 => RBP, // a5
-            #[cfg(not(feature = "ts_in_gpr"))]
             16 => R15, // a6
-            #[cfg(not(feature = "ts_in_gpr"))]
             28 => RBX, // t3
             _ => return None,
         }) as u8,
@@ -298,9 +288,6 @@ fn rv_to_gpr(x: u32) -> Option<u8> {
 const _: () = {
     let mut x = 1u8;
     while x < 32 {
-        #[cfg(feature = "ts_in_gpr")]
-        let in_gpr = matches!(x, 10 | 11 | 12 | 13);
-        #[cfg(not(feature = "ts_in_gpr"))]
         let in_gpr = matches!(x, 10 | 11 | 12 | 13 | 14 | 15 | 16 | 28);
         let in_xmm = RV_REG_TO_XMM_SLOT[x as usize] != RV_XMM_SLOT_NONE;
         assert!(in_gpr ^ in_xmm); // exactly one of the two for every x in 1..32
@@ -315,56 +302,25 @@ fn destination_gpr(x: u32) -> u8 {
 // ===========================================================================
 // Register-timestamp storage for the value-mapped host GPRs (see `rv_to_gpr`).
 //
-// Both experiments keep those registers' timestamps OFF the MachineState memory array
-// on every touch, and spill/reload them only at snapshots and external calls
-// (save_machine_state! / update_machine_state_post_call!). They expose the same three
-// entry points used by the cfg-agnostic emitters: `write_reg_timestamp` (hot-path touch),
-// `spill_register_timestamps`, and `reload_register_timestamps`.
+// Default (packed): `write_reg_timestamp` is a no-op; instead the cycle's base timestamp is
+// written once per instruction into the (32x33x33) `packed_timestamps` array
+// (`packed_ts_store`), and register timestamps are reconstructed offline
+// (`MachineState::reconstruct_register_timestamps`). With the `xmm_ts` feature the 8 mapped
+// registers' timestamps are kept live in XMM lanes (`pinsrq`) instead, spilled/reloaded at
+// snapshots and external calls. Both expose the same entry points used by the cfg-agnostic
+// emitters: `write_reg_timestamp`, `flush_reg_timestamp`, `spill_register_timestamps`,
+// `reload_register_timestamps`.
 // ===========================================================================
 
-// ---- default (OPTION 1): timestamps in the 4 freed GPRs (r14/r15/rbx/rbp) ----
-// A touch is a move-eliminated `mov ts_gpr, r8` (off every execution port). A/B against
-// memory storage via RISCV_TS_IN_GPR=0.
-#[cfg(feature = "ts_in_gpr")]
-const REG_TS_GPR: [(u32, u8); 4] = [
-    (10, x64::Rq::R14 as u8),
-    (11, x64::Rq::R15 as u8),
-    (12, x64::Rq::RBX as u8),
-    (13, x64::Rq::RBP as u8),
-];
-
-#[cfg(feature = "ts_in_gpr")]
-pub(crate) fn ts_in_gpr() -> bool {
-    use std::sync::OnceLock;
-    static E: OnceLock<bool> = OnceLock::new();
-    *E.get_or_init(|| std::env::var_os("RISCV_TS_IN_GPR").map_or(true, |v| v != "0"))
-}
-
-#[cfg(feature = "ts_in_gpr")]
-pub(crate) fn reg_ts_gpr(r: u32) -> Option<u8> {
-    if !ts_in_gpr() {
-        return None;
-    }
-    let mut i = 0;
-    while i < REG_TS_GPR.len() {
-        if REG_TS_GPR[i].0 == r {
-            return Some(REG_TS_GPR[i].1);
-        }
-        i += 1;
-    }
-    None
-}
-
-// packed_ts draft: per-register timestamp writes are eliminated entirely; a single store
-// per instruction is emitted in the eager loop instead (see `packed_ts_store`).
-#[cfg(feature = "packed_ts")]
+// ---- default (packed): per-register timestamp writes are eliminated entirely ----
+#[cfg(not(feature = "xmm_ts"))]
 pub(crate) fn write_reg_timestamp(_ops: &mut x64::Assembler, _r: u32) {}
 
 /// packed_ts draft: emit the single per-cycle timestamp store. The slot index
 /// `33*33*rs1 + 33*rs2 + rd` is a compile-time constant (rs1/rs2/rd are decoded), so this
 /// is one `mov [rsp + const], r8` with no runtime index math. rs2 is forced to 32 for
 /// loads and rd to 32 for stores, per the experiment's addressing.
-#[cfg(feature = "packed_ts")]
+#[cfg(not(feature = "xmm_ts"))]
 pub(crate) fn packed_ts_store(
     ops: &mut x64::Assembler,
     name: InstructionName,
@@ -374,11 +330,23 @@ pub(crate) fn packed_ts_store(
 ) {
     use InstructionName as Op;
     let p_rs2 = if matches!(name, Op::Lb | Op::Lbu | Op::Lh | Op::Lhu | Op::Lw) {
-        32
+        32 // load: rs2 axis is the memory access, not a register
     } else {
         rs2 as usize
     };
+    // The rd axis must name the register the eager model touches at sub-slot +2:
+    //   * stores: memory (sentinel 32);
+    //   * branches: the decoded `rd` is the funct3 selector, not a register — the eager
+    //     model touches x0 at +2, so use 0;
+    //   * ND-write: rd==0 and the eager model writes x0 at +2 (`pre_bump(1,0)`), so keep
+    //     the natural rd=0 (the rs2 axis also names x0 at +1, dominated by +2);
+    //   * JALR with rd==0: eager touches x0 only at +1 (via the rs2 axis), NOT at +2, so
+    //     steer the rd axis to the sentinel 32 to avoid a spurious x0@+2.
     let p_rd = if matches!(name, Op::Sb | Op::Sh | Op::Sw) {
+        32
+    } else if matches!(name, Op::Branch) {
+        0
+    } else if rd == 0 && matches!(name, Op::Jalr) {
         32
     } else {
         rd as usize
@@ -389,49 +357,19 @@ pub(crate) fn packed_ts_store(
     dynasm!(ops ; mov [rsp + off], r8);
 }
 
-#[cfg(all(not(feature = "packed_ts"), feature = "ts_in_gpr"))]
-pub(crate) fn write_reg_timestamp(ops: &mut x64::Assembler, r: u32) {
-    if let Some(gpr) = reg_ts_gpr(r) {
-        dynasm!(ops ; mov Rq(gpr), r8);
-    } else {
-        let rts = MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
-        dynasm!(ops ; mov [rsp + 8 * (r as i32) + rts], r8);
-    }
-}
+// packed: register timestamps live only in the packed array (reconstructed offline);
+// nothing to spill/reload at call boundaries.
+#[cfg(not(feature = "xmm_ts"))]
+fn spill_register_timestamps(_ops: &mut x64::Assembler) {}
 
-#[cfg(feature = "ts_in_gpr")]
-fn spill_register_timestamps(ops: &mut x64::Assembler) {
-    if !ts_in_gpr() {
-        return;
-    }
-    let rts = MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
-    dynasm!(ops
-        ; mov [rdx + rts + 8 * 10], r14 // ts[10]
-        ; mov [rdx + rts + 8 * 11], r15 // ts[11]
-        ; mov [rdx + rts + 8 * 12], rbx // ts[12]
-        ; mov [rdx + rts + 8 * 13], rbp // ts[13]
-    );
-}
+#[cfg(not(feature = "xmm_ts"))]
+fn reload_register_timestamps(_ops: &mut x64::Assembler) {}
 
-#[cfg(feature = "ts_in_gpr")]
-fn reload_register_timestamps(ops: &mut x64::Assembler) {
-    if !ts_in_gpr() {
-        return;
-    }
-    let rts = MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
-    dynasm!(ops
-        ; mov r14, [rdx + rts + 8 * 10]
-        ; mov r15, [rdx + rts + 8 * 11]
-        ; mov rbx, [rdx + rts + 8 * 12]
-        ; mov rbp, [rdx + rts + 8 * 13]
-    );
-}
-
-// ---- ts_in_xmm (OPTION 2): timestamps of the 8 mapped regs in XMM lanes ----
+// ---- xmm_ts: timestamps of the 8 mapped regs live in XMM lanes ----
 // xmm6/7/13/14 hold 2 u64 each (x10/11->xmm6, x12/13->xmm7, x14/15->xmm13, x16/28->xmm14).
 // A touch is `pinsrq xmm, r8, lane` (off the store port p4, onto the shuffle/FP side).
 // A/B against memory storage via RISCV_TS_IN_XMM=0.
-#[cfg(not(feature = "ts_in_gpr"))]
+#[cfg(feature = "xmm_ts")]
 const REG_TS_XMM: [(u32, u8, u8); 8] = [
     (10, 6, 0),
     (11, 6, 1),
@@ -443,14 +381,14 @@ const REG_TS_XMM: [(u32, u8, u8); 8] = [
     (28, 14, 1),
 ];
 
-#[cfg(not(feature = "ts_in_gpr"))]
+#[cfg(feature = "xmm_ts")]
 pub(crate) fn ts_in_xmm_enabled() -> bool {
     use std::sync::OnceLock;
     static E: OnceLock<bool> = OnceLock::new();
     *E.get_or_init(|| std::env::var_os("RISCV_TS_IN_XMM").map_or(true, |v| v != "0"))
 }
 
-#[cfg(not(feature = "ts_in_gpr"))]
+#[cfg(feature = "xmm_ts")]
 pub(crate) fn reg_ts_xmm(r: u32) -> Option<(u8, u8)> {
     if !ts_in_xmm_enabled() {
         return None;
@@ -465,7 +403,7 @@ pub(crate) fn reg_ts_xmm(r: u32) -> Option<(u8, u8)> {
     None
 }
 
-#[cfg(all(not(feature = "packed_ts"), not(feature = "ts_in_gpr")))]
+#[cfg(feature = "xmm_ts")]
 pub(crate) fn write_reg_timestamp(ops: &mut x64::Assembler, r: u32) {
     if let Some((xmm, lane)) = reg_ts_xmm(r) {
         dynasm!(ops ; pinsrq Rx(xmm), r8, lane as i8);
@@ -475,7 +413,7 @@ pub(crate) fn write_reg_timestamp(ops: &mut x64::Assembler, r: u32) {
     }
 }
 
-#[cfg(not(feature = "ts_in_gpr"))]
+#[cfg(feature = "xmm_ts")]
 fn spill_register_timestamps(ops: &mut x64::Assembler) {
     if !ts_in_xmm_enabled() {
         return;
@@ -490,7 +428,7 @@ fn spill_register_timestamps(ops: &mut x64::Assembler) {
     );
 }
 
-#[cfg(not(feature = "ts_in_gpr"))]
+#[cfg(feature = "xmm_ts")]
 fn reload_register_timestamps(ops: &mut x64::Assembler) {
     if !ts_in_xmm_enabled() {
         return;
@@ -509,22 +447,11 @@ fn reload_register_timestamps(ops: &mut x64::Assembler) {
 /// which is `r8 + k` (the region base plus the deferred sub-slot offset `k`). Routes to
 /// the off-memory location (GPR or XMM lane) when `r` is mapped, else to memory. Uses RAX
 /// as scratch when `k != 0` — the caller (flush) must ensure RAX is dead.
-#[cfg(feature = "ts_in_gpr")]
-pub(crate) fn flush_reg_timestamp(ops: &mut x64::Assembler, r: u32, k: i32) {
-    let rts = MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
-    if let Some(gpr) = reg_ts_gpr(r) {
-        if k == 0 {
-            dynasm!(ops ; mov Rq(gpr), r8);
-        } else {
-            dynasm!(ops ; lea Rq(gpr), [r8 + k]);
-        }
-    } else if k == 0 {
-        dynasm!(ops ; mov [rsp + 8 * (r as i32) + rts], r8);
-    } else {
-        dynasm!(ops ; lea rax, [r8 + k] ; mov [rsp + 8 * (r as i32) + rts], rax);
-    }
-}
-#[cfg(not(feature = "ts_in_gpr"))]
+// packed: the lazy path is not used in packed builds; provide a no-op so it compiles.
+#[cfg(not(feature = "xmm_ts"))]
+pub(crate) fn flush_reg_timestamp(_ops: &mut x64::Assembler, _r: u32, _k: i32) {}
+
+#[cfg(feature = "xmm_ts")]
 pub(crate) fn flush_reg_timestamp(ops: &mut x64::Assembler, r: u32, k: i32) {
     let rts = MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
     if let Some((xmm, lane)) = reg_ts_xmm(r) {
@@ -541,56 +468,7 @@ pub(crate) fn flush_reg_timestamp(ops: &mut x64::Assembler, r: u32, k: i32) {
 }
 
 // ---- value save/restore for the mapped host GPRs and the vector-resident registers ----
-// (Differs by experiment: the `ts_in_gpr` maps 4 values + spills 7 vector regs; default
-// maps 8 values + spills 6 vector regs. The MachineState pointer is in RDX.)
-#[cfg(feature = "ts_in_gpr")]
-fn save_value_xmms(ops: &mut x64::Assembler) {
-    let off = MachineState::XMM_SPILL_OFFSET as i32;
-    dynasm!(ops
-        ; movdqu [rdx + off + 0], xmm0
-        ; movdqu [rdx + off + 16], xmm1
-        ; movdqu [rdx + off + 32], xmm2
-        ; movdqu [rdx + off + 48], xmm3
-        ; movdqu [rdx + off + 64], xmm4
-        ; movdqu [rdx + off + 80], xmm5
-        ; movdqu [rdx + off + 96], xmm6
-    );
-}
-#[cfg(feature = "ts_in_gpr")]
-fn restore_value_xmms(ops: &mut x64::Assembler) {
-    let off = MachineState::XMM_SPILL_OFFSET as i32;
-    dynasm!(ops
-        ; movdqu xmm0, [rdx + off + 0]
-        ; movdqu xmm1, [rdx + off + 16]
-        ; movdqu xmm2, [rdx + off + 32]
-        ; movdqu xmm3, [rdx + off + 48]
-        ; movdqu xmm4, [rdx + off + 64]
-        ; movdqu xmm5, [rdx + off + 80]
-        ; movdqu xmm6, [rdx + off + 96]
-    );
-}
-#[cfg(feature = "ts_in_gpr")]
-fn save_value_gprs(ops: &mut x64::Assembler) {
-    let off = MachineState::GPR_REGISTERS_OFFSET as i32;
-    dynasm!(ops
-        ; mov [rdx + off + (1 * 4)], r10d // a0, slot 1
-        ; mov [rdx + off + (2 * 4)], r11d // a1, slot 2
-        ; mov [rdx + off + (3 * 4)], r12d // a2, slot 3
-        ; mov [rdx + off + (4 * 4)], r13d // a3, slot 4
-    );
-}
-#[cfg(feature = "ts_in_gpr")]
-fn restore_value_gprs(ops: &mut x64::Assembler) {
-    let off = MachineState::GPR_REGISTERS_OFFSET as i32;
-    dynasm!(ops
-        ; mov r10d, [rdx + off + (1 * 4)]
-        ; mov r11d, [rdx + off + (2 * 4)]
-        ; mov r12d, [rdx + off + (3 * 4)]
-        ; mov r13d, [rdx + off + (4 * 4)]
-    );
-}
-
-#[cfg(not(feature = "ts_in_gpr"))]
+// (8 value GPRs + 6 vector-register movdqu. The MachineState pointer is in RDX.)
 fn save_value_xmms(ops: &mut x64::Assembler) {
     let off = MachineState::XMM_SPILL_OFFSET as i32;
     dynasm!(ops
@@ -602,7 +480,6 @@ fn save_value_xmms(ops: &mut x64::Assembler) {
         ; movdqu [rdx + off + 80], xmm5
     );
 }
-#[cfg(not(feature = "ts_in_gpr"))]
 fn restore_value_xmms(ops: &mut x64::Assembler) {
     let off = MachineState::XMM_SPILL_OFFSET as i32;
     dynasm!(ops
@@ -614,7 +491,6 @@ fn restore_value_xmms(ops: &mut x64::Assembler) {
         ; movdqu xmm5, [rdx + off + 80]
     );
 }
-#[cfg(not(feature = "ts_in_gpr"))]
 fn save_value_gprs(ops: &mut x64::Assembler) {
     let off = MachineState::GPR_REGISTERS_OFFSET as i32;
     dynasm!(ops
@@ -628,7 +504,6 @@ fn save_value_gprs(ops: &mut x64::Assembler) {
         ; mov [rdx + off + (8 * 4)], ebp  // a5, slot 8
     );
 }
-#[cfg(not(feature = "ts_in_gpr"))]
 fn restore_value_gprs(ops: &mut x64::Assembler) {
     let off = MachineState::GPR_REGISTERS_OFFSET as i32;
     dynasm!(ops
@@ -880,14 +755,16 @@ fn record_circuit_type(ops: &mut x64::Assembler, circuit_type: CounterType, by: 
     }
 }
 
-// NOTE on `packed_ts`: the per-sub-slot r8 advances below are gated off. In that build the
-// running timestamp is advanced by a single `add r8, TIMESTAMP_STEP` per cycle in the eager
-// loop (and delegations keep their explicit base+3 contract there), matching the "write only
-// the cycle's initial (0 mod 4) timestamp, bump once" scheme. `write_reg_timestamp` is a
-// no-op under packed_ts, so the touch macros collapse to nothing.
+// NOTE on `packed_ts`: `write_reg_timestamp` is a no-op (register timestamps come from the
+// packed array) and the per-sub-slot r8 advances below are gated off. The running timestamp
+// is instead advanced once per cycle in the eager loop: a single `add r8, TIMESTAMP_STEP`
+// for every opcode except loads/stores, which first bump r8 to their memory sub-slot
+// (base+1 for a load read, base+2 for a store) to stamp the memory cell, then complete to
+// base+4. Delegations keep their explicit base+3 handler contract in their own arm. Only
+// the cycle's 0-mod-4 base is written into the packed array (once, at the loop top).
 macro_rules! pre_bump_timestamp_and_touch {
     ($ops:ident, $d:expr, $r:expr) => {
-        #[cfg(not(feature = "packed_ts"))]
+        #[cfg(feature = "xmm_ts")]
         dynasm!($ops ; add r8, $d);
         write_reg_timestamp(&mut $ops, $r as u32);
     };
@@ -896,7 +773,7 @@ macro_rules! pre_bump_timestamp_and_touch {
 macro_rules! touch_register_and_increment_timestamp {
     ($ops:ident, $r:expr) => {
         write_reg_timestamp(&mut $ops, $r as u32);
-        #[cfg(not(feature = "packed_ts"))]
+        #[cfg(feature = "xmm_ts")]
         dynasm!($ops ; inc r8);
     };
 }
@@ -904,14 +781,14 @@ macro_rules! touch_register_and_increment_timestamp {
 macro_rules! touch_register_and_bump_timestamp {
     ($ops:ident, $r:expr, $d:expr) => {
         write_reg_timestamp(&mut $ops, $r as u32);
-        #[cfg(not(feature = "packed_ts"))]
+        #[cfg(feature = "xmm_ts")]
         dynasm!($ops ; add r8, $d);
     };
 }
 
 macro_rules! bump_timestamp {
     ($ops:ident, $d:expr) => {
-        #[cfg(not(feature = "packed_ts"))]
+        #[cfg(feature = "xmm_ts")]
         dynasm!($ops
             ; add r8, $d
         );
@@ -1008,6 +885,19 @@ impl<I: ContextImpl> JittedCode<I> {
                 ; mov QWORD [rsp + 8 * i as i32], 0
             );
         }
+        // packed_ts: zero the large packed-timestamps tail with a small runtime loop
+        // (unrolling ~35k stores would bloat the JIT). Uses rax (pointer) and rcx (count),
+        // both free here. Untouched slots must read 0 for the offline reconstruction.
+        #[cfg(not(feature = "xmm_ts"))]
+        dynasm!(ops
+            ; lea rax, [rsp + (MachineState::PACKED_TS_OFFSET as i32)]
+            ; mov ecx, PACKED_TS_LEN as i32
+            ; packed_ts_zero:
+            ; mov QWORD [rax], 0
+            ; add rax, 8
+            ; dec ecx
+            ; jnz <packed_ts_zero
+        );
 
         // we expect trace chunk in RDI, and memory in RSI, and context pointer in RDX,
         // so we need to copy context pointer into our structure
@@ -1092,17 +982,23 @@ impl<I: ContextImpl> JittedCode<I> {
             let rs2 = instr.rs2 as u32;
             let imm = instr.imm as i32;
 
-            // packed_ts draft: write only the cycle's initial (0 mod 4) timestamp once,
-            // and bump r8 by a single TIMESTAMP_STEP for the cycle (the per-sub-slot
-            // advances in the touch/bump macros are gated off). Delegations are
-            // multi-cycle and keep their explicit r8 handling in their own arm, so they
-            // are skipped here. Register timestamps would be reconstructed later by
-            // scanning the array (not implemented in this draft).
-            #[cfg(feature = "packed_ts")]
+            // packed_ts: write the cycle's initial (0 mod 4) base timestamp once into the
+            // slot for this instruction's (rs1, rs2, rd) triple, then advance r8 a single
+            // time (the touch/bump macros are no-ops here). Loads/stores only advance to
+            // their memory sub-slot now (so the in-arm memory-cell stamp is base+1 / base+2)
+            // and complete to base+4 after stamping (see the issue_snapshot blocks);
+            // delegations advance to base+3 in their own arm.
+            #[cfg(not(feature = "xmm_ts"))]
             {
                 packed_ts_store(&mut ops, instr.name, rs1, rs2, rd);
-                if !matches!(instr.name, Op::ZicsrDelegation) {
-                    dynasm!(ops ; add r8, TIMESTAMP_STEP as i32);
+                let pre_bump: i32 = match instr.name {
+                    Op::Lb | Op::Lbu | Op::Lh | Op::Lhu | Op::Lw => 1,
+                    Op::Sb | Op::Sh | Op::Sw => 2,
+                    Op::ZicsrDelegation => 0,
+                    _ => TIMESTAMP_STEP as i32,
+                };
+                if pre_bump != 0 {
+                    dynasm!(ops ; add r8, pre_bump);
                 }
             }
 
@@ -1532,6 +1428,11 @@ impl<I: ContextImpl> JittedCode<I> {
 
                 // NOTE: ONLY issue snapshotting after store!
                 if issue_snapshot {
+                    // packed_ts: in this block issue_snapshot <=> a load; r8 is at its
+                    // memory sub-slot (base+1) after stamping — complete to base+4 (0 mod 4)
+                    // before the snapshot/trace save so the saved timestamp matches.
+                    #[cfg(not(feature = "xmm_ts"))]
+                    dynasm!(ops ; add r8, 3);
                     let pc_for_trace = pc + 4;
                     increment_trace!(ops, pc_for_trace);
                 }
@@ -2084,9 +1985,9 @@ impl<I: ContextImpl> JittedCode<I> {
                     assert_eq!(rd, 0);
                     pre_bump_timestamp_and_touch!(ops, 2, 0); // touch x0 at 0/1/2 formally
                     bump_timestamp!(ops, 1); // 3 mod 4
-                    // packed_ts: the macros above are no-ops; advance r8 to base+3 here so
-                    // the delegation handler sees its expected (3 mod 4) timestamp.
-                    #[cfg(feature = "packed_ts")]
+                                             // packed_ts: the macros above are no-ops; advance r8 to base+3 so the
+                                             // delegation handler sees its expected (3 mod 4) timestamp.
+                    #[cfg(not(feature = "xmm_ts"))]
                     dynasm!(ops ; add r8, 3);
 
                     let pc_for_trace = pc + ((4 * cycles_taken) as u32);
@@ -2112,9 +2013,10 @@ impl<I: ContextImpl> JittedCode<I> {
 
                     // delegation implementations are themselves responsible to call trace finalizers
                     bump_timestamp!(ops, 1); // 0 mod 4
-                    // packed_ts: macro above is a no-op; advance r8 by one step (handler
-                    // already advanced MachineState.timestamp and after_call reloaded it).
-                    #[cfg(feature = "packed_ts")]
+                                             // packed_ts: macro above is a no-op; the handler advanced
+                                             // MachineState.timestamp and after_call reloaded r8, so step once more
+                                             // to reach the next cycle's base (0 mod 4).
+                    #[cfg(not(feature = "xmm_ts"))]
                     dynasm!(ops ; add r8, 1);
 
                     // NOTE: no other snapshot check is required - we do the check above
@@ -2134,6 +2036,13 @@ impl<I: ContextImpl> JittedCode<I> {
 
             // NOTE: again, all snapshotting should only happen after stores (mainly due to CSSRW for non-determinism)
             if issue_snapshot {
+                // packed_ts: stores are at their memory sub-slot (base+2) after stamping —
+                // complete to base+4 before the save. ND read/write already pre-bumped the
+                // full step, so only stores need this.
+                #[cfg(not(feature = "xmm_ts"))]
+                if matches!(instr.name, Op::Sb | Op::Sh | Op::Sw) {
+                    dynasm!(ops ; add r8, 2);
+                }
                 let pc_for_trace = pc + 4;
                 increment_trace!(ops, pc_for_trace);
             }

@@ -30,13 +30,15 @@ pub fn keccak_unrolled_implementation(
 
     // and full machine state also moves!
 
-    // x0 touch at the very end
-    machine_state.register_timestamps[0] +=
-        ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP;
     // timestamp itself
     machine_state.timestamp +=
         ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP;
     // pc is not needed
+
+    // x0 post-cycle touch at (last cycle base + 2): clear the low 2 bits of the (now 3 mod 4)
+    // timestamp to get the last base, then set 2 mod 4. Works for both eager (equals the old
+    // `register_timestamps[0] += (N-1)*STEP`) and packed_ts (no per-cycle x0 write existed).
+    machine_state.register_timestamps[0] = (machine_state.timestamp & !(TIMESTAMP_STEP - 1)) + 2;
 
     machine_state.register_timestamps[10] = machine_state.timestamp;
     machine_state.register_timestamps[11] = machine_state.timestamp;

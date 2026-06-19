@@ -24,6 +24,9 @@ pub fn bigint_implementation(
 
     let write_ts = machine_state.timestamp;
 
+    // Precompile post-cycle register-timestamp effect (a0/a1/a2 = x10/x11/x12 -> 3 mod 4).
+    // Under packed_ts this is the only writer of register_timestamps (per-cycle writes are
+    // off); the offline scan merges it via `register_timestamps_array`.
     machine_state.register_timestamps[10] = write_ts;
     machine_state.register_timestamps[11] = write_ts;
     machine_state.register_timestamps[12] = write_ts;

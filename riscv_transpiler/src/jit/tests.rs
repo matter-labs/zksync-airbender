@@ -5,11 +5,10 @@ use crate::ir::{
     simple_instruction_set::{preprocess_bytecode, Instruction, InstructionName},
     FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
-use crate::{
-    jit::minimal_tracer::{ChunkPostSnapshot, PreallocatedSnapshots},
-    replayer::ReplayerVM,
-    vm::test::*,
-};
+use crate::{jit::minimal_tracer::PreallocatedSnapshots, vm::test::*};
+// Used only by `test_replayer_over_jit` (gated to the `xmm_ts` mechanism).
+#[cfg(feature = "xmm_ts")]
+use crate::{jit::minimal_tracer::ChunkPostSnapshot, replayer::ReplayerVM};
 use field::Mersenne31Field;
 use std::{alloc::Global, io::Read, path::Path};
 
@@ -274,6 +273,202 @@ fn test_jit_full_block_with_flattened_responder() {
     let (state, _) = JittedCode::run_with_flattened_context(&text, &witness[..], &binary, None);
     println!("PC = 0x{:08x}", state.pc);
     dbg!(state.materialized_registers());
+}
+
+fn dump_replayer_state(s: &State<DelegationsAndFamiliesCounters>) -> String {
+    let mut out = String::new();
+    for (i, r) in s.registers.iter().enumerate() {
+        out.push_str(&format!("x{:02} value={} ts={}\n", i, r.value, r.timestamp));
+    }
+    out.push_str(&format!("pc={} timestamp={}\n", s.pc, s.timestamp));
+    let c = &s.counters;
+    out.push_str(&format!(
+        "counters add_sub={} slt_branch={} shift={} mul_div={} mem_word={} mem_subword={} blake={} bigint={} keccak={} blake_g={}\n",
+        c.add_sub_family, c.slt_branch_family, c.binary_shift_family, c.mul_div_family,
+        c.word_size_mem_family, c.subword_size_mem_family, c.blake_calls, c.bigint_calls,
+        c.keccak_calls, c.blake_g_function_calls,
+    ));
+    out
+}
+
+/// Exhaustive packed_ts verification against the authoritative non-assembly reference VM.
+/// Runs the JIT to completion, reconstructs the final state via `as_replayer_state` (which
+/// under `packed_ts` scans the (32x33x33) buffer and merges the delegation post-cycle
+/// effects from `register_timestamps`), then runs the reference VM to the same final
+/// timestamp and asserts equality of EVERY register value + timestamp and EVERY memory
+/// word value + timestamp. Meaningful under `--features "jit packed_ts"`; also passes
+/// without it (then `as_replayer_state` reads the field directly).
+///   cargo test --features "jit packed_ts" --release --lib packed_ts_vs_reference -- --exact jit::tests::packed_ts_vs_reference --nocapture
+#[test]
+#[serial_test::serial]
+fn packed_ts_vs_reference() {
+    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
+    let witness: Vec<u32> = witness
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|el| u32::from_be_bytes(*el))
+        .collect();
+
+    let source = QuasiUARTSource::new_with_reads(witness);
+    // Bound comfortably above the full block (~558M cycles); execution halts on its own.
+    let num_steps: u32 = 762314752;
+
+    let (jit_state, jit_memory, _chunk) = JittedCode::run_alternative_simulator_with_last_snapshot(
+        &text,
+        &mut source.clone(),
+        &binary,
+        Some(num_steps),
+    );
+    let reconstructed = jit_state.as_replayer_state();
+
+    let (reference_state, reference_ram, _snap) = run_reference_for_num_cycles_with_snapshots(
+        &binary,
+        &text,
+        source.clone(),
+        jit_state.timestamp,
+        false,
+    );
+
+    let mut diffs = 0usize;
+    if reconstructed.pc != reference_state.pc {
+        println!(
+            "PC: recon 0x{:08x} ref 0x{:08x}",
+            reconstructed.pc, reference_state.pc
+        );
+        diffs += 1;
+    }
+    if reconstructed.timestamp != reference_state.timestamp {
+        println!(
+            "TIMESTAMP: recon {} ref {}",
+            reconstructed.timestamp, reference_state.timestamp
+        );
+        diffs += 1;
+    }
+    for i in 0..32 {
+        let (rc, rf) = (reconstructed.registers[i], reference_state.registers[i]);
+        if rc.value != rf.value {
+            println!("x{:02} VALUE: recon {} ref {}", i, rc.value, rf.value);
+            diffs += 1;
+        }
+        if rc.timestamp != rf.timestamp {
+            println!(
+                "x{:02} TIMESTAMP: recon {} ref {}",
+                i, rc.timestamp, rf.timestamp
+            );
+            diffs += 1;
+        }
+    }
+    assert_eq!(reference_ram.backing.len(), jit_memory.memory.len());
+    for (word_idx, ((reference_value, jit_value), jit_ts)) in reference_ram
+        .backing
+        .iter()
+        .zip(jit_memory.memory.iter())
+        .zip(jit_memory.timestamps.iter())
+        .enumerate()
+    {
+        if reference_value.value != *jit_value {
+            println!(
+                "MEM[{}] VALUE: ref {} jit {}",
+                word_idx, reference_value.value, jit_value
+            );
+            diffs += 1;
+        }
+        if reference_value.timestamp != *jit_ts {
+            println!(
+                "MEM[{}] TIMESTAMP: ref {} jit {}",
+                word_idx, reference_value.timestamp, jit_ts
+            );
+            diffs += 1;
+        }
+        if diffs >= 60 {
+            println!("... (stopping diff report)");
+            break;
+        }
+    }
+    assert_eq!(
+        diffs, 0,
+        "reconstructed state diverged from the reference VM"
+    );
+    println!(
+        "packed_ts_vs_reference: reconstructed state MATCHES reference (32 regs + {} mem words) at cycle ts={}",
+        jit_memory.memory.len(),
+        jit_state.timestamp
+    );
+}
+
+/// packed_ts verification. Runs the full block and computes the final replayer State
+/// (`as_replayer_state`, which under `packed_ts` reconstructs register timestamps by
+/// scanning the (32x33x33) buffer; otherwise reads `register_timestamps`).
+///
+///   * built WITHOUT `packed_ts`: writes the eager State to a temp file (the baseline).
+///   * built WITH    `packed_ts`: reads that baseline and compares; prints the first
+///     differing lines and panics on mismatch.
+///
+/// Procedure:
+///   cargo test --features jit            --release --lib packed_ts_state_roundtrip -- --exact jit::tests::packed_ts_state_roundtrip --nocapture
+///   cargo test --features "jit packed_ts" --release --lib packed_ts_state_roundtrip -- --exact jit::tests::packed_ts_state_roundtrip --nocapture
+#[test]
+#[serial_test::serial]
+fn packed_ts_state_roundtrip() {
+    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
+    let witness: Vec<u32> = witness
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|el| u32::from_be_bytes(*el))
+        .collect();
+
+    let (state, _) = JittedCode::run_with_flattened_context(&text, &witness[..], &binary, None);
+    let replayer = state.as_replayer_state();
+    let dump = dump_replayer_state(&replayer);
+
+    let path = std::env::temp_dir().join("packed_ts_state_baseline.txt");
+
+    #[cfg(feature = "xmm_ts")]
+    {
+        std::fs::write(&path, dump.as_bytes()).expect("write baseline");
+        println!(
+            "[baseline] wrote eager replayer State to {} ({} bytes)",
+            path.display(),
+            dump.len()
+        );
+    }
+    #[cfg(not(feature = "xmm_ts"))]
+    {
+        let baseline = std::fs::read_to_string(&path).expect(
+            "baseline missing — run this test WITHOUT the packed_ts feature first to write it",
+        );
+        if baseline == dump {
+            println!("[packed_ts] reconstructed State MATCHES the eager baseline");
+        } else {
+            let mut diffs = 0;
+            for (i, (a, b)) in baseline.lines().zip(dump.lines()).enumerate() {
+                if a != b {
+                    println!("DIFF line {}:\n  eager : {}\n  packed: {}", i, a, b);
+                    diffs += 1;
+                    if diffs >= 40 {
+                        println!("... (more diffs)");
+                        break;
+                    }
+                }
+            }
+            if baseline.lines().count() != dump.lines().count() {
+                println!(
+                    "line count differs: eager={} packed={}",
+                    baseline.lines().count(),
+                    dump.lines().count()
+                );
+            }
+            panic!("packed_ts reconstructed State diverged from eager baseline");
+        }
+    }
 }
 
 /// Execution-weighted opportunity for op-fusion on the full block. Runs the
@@ -1213,11 +1408,12 @@ fn run_and_compare() {
 
         let mut equal_state = true;
         let jit_regs = jit_state.materialized_registers();
+        let jit_reg_ts = jit_state.register_timestamps_array();
         for (reg_idx, ((reference, jit_value), jit_ts)) in reference_state
             .registers
             .iter()
             .zip(jit_regs.iter())
-            .zip(jit_state.register_timestamps.iter())
+            .zip(jit_reg_ts.iter())
             .enumerate()
         {
             if reference.value != *jit_value {
@@ -1314,6 +1510,11 @@ fn run_and_compare() {
 /// Bit-exact comparison of the LAZY (batched-timestamp) JIT path against the
 /// reference VM, at a single representative cycle bound (fast to iterate). Builds
 /// the control-flow artifact from the witness, then runs the lazy constructor.
+///
+/// The lazy path tracks register timestamps via `flush_reg_timestamp`, which only exists
+/// under the `xmm_ts` mechanism; the default packed scheme instruments the eager loop only,
+/// so this test is meaningful (and run) only with `--features xmm_ts`.
+#[cfg(feature = "xmm_ts")]
 #[test]
 #[serial_test::serial]
 fn run_and_compare_lazy() {
@@ -1345,7 +1546,9 @@ fn run_and_compare_lazy() {
 }
 
 /// Shared: run the lazy path for `artifact` at `num_steps` and assert bit-exactness
-/// (registers, memory, counters, snapshot tail) against the reference VM.
+/// (registers, memory, counters, snapshot tail) against the reference VM. Lazy timestamps
+/// require the `xmm_ts` mechanism (see `run_and_compare_lazy`).
+#[cfg(feature = "xmm_ts")]
 fn lazy_bitexact_check(
     text: &[u32],
     binary: &[u32],
@@ -1424,11 +1627,12 @@ fn lazy_bitexact_check(
 
     let mut equal_state = true;
     let jit_regs = jit_state.materialized_registers();
+    let jit_reg_ts = jit_state.register_timestamps_array();
     for (reg_idx, ((reference, jit_value), jit_ts)) in reference_state
         .registers
         .iter()
         .zip(jit_regs.iter())
-        .zip(jit_state.register_timestamps.iter())
+        .zip(jit_reg_ts.iter())
         .enumerate()
     {
         if reference.value != *jit_value {
@@ -1518,7 +1722,9 @@ fn lazy_bitexact_check(
 /// heuristic). Those PCs are then no longer known batched entries, so when their JALR
 /// fires at runtime the dispatch falls into the eager copy, which runs per-instruction
 /// and re-enters batched at its next JAL/Branch. This forces batched<->eager ping-pong
-/// in both directions; the run must remain bit-exact.
+/// in both directions; the run must remain bit-exact. Lazy timestamps require the `xmm_ts`
+// mechanism (see `run_and_compare_lazy`).
+#[cfg(feature = "xmm_ts")]
 #[test]
 #[serial_test::serial]
 fn run_and_compare_lazy_jalr_fallback() {
@@ -1712,11 +1918,12 @@ fn run_recursion_and_compare() {
 
         let mut equal_state = true;
         let jit_regs = jit_state.materialized_registers();
+        let jit_reg_ts = jit_state.register_timestamps_array();
         for (reg_idx, ((reference, jit_value), jit_ts)) in reference_state
             .registers
             .iter()
             .zip(jit_regs.iter())
-            .zip(jit_state.register_timestamps.iter())
+            .zip(jit_reg_ts.iter())
             .enumerate()
         {
             if reference.value != *jit_value {
@@ -1857,6 +2064,12 @@ fn test_perf_with_trace_keeping() {
     // dbg!(state.materialized_registers());
 }
 
+// Reconstructs register timestamps from INTERMEDIATE per-chunk snapshots via
+// `as_replayer_state`. That requires the per-snapshot register-timestamp data that only the
+// `xmm_ts` mechanism writes into each snapshot's MachineState; the default packed scheme
+// would need a per-snapshot copy of the packed array (deferred). (Has a known pre-existing
+// divergence at snapshot 321 even under xmm_ts — not gated on.)
+#[cfg(feature = "xmm_ts")]
 #[test]
 #[serial_test::serial]
 fn test_replayer_over_jit() {
