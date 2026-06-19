@@ -291,6 +291,12 @@ impl LayerOut {
         if num_columns == 0 {
             return Ok(());
         }
+        // PeekDecoder is only ever emitted for a decoder-set fold that was
+        // reached via a masked consumer (LookupWithDensAndSetupExpressions /
+        // LookupWithDensAndCachedSetup). The mask is enforced upstream by
+        // check_decoder_masks, so an unmasked decoder fold cannot occur on the
+        // real pipeline — any decoder consumer that bypasses the mask guard
+        // is a generator bug caught before this point.
         let strat = if set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
             let predicate = decoder_predicate
                 .ok_or_else(|| {
@@ -2204,5 +2210,22 @@ mod tests {
             res.is_err(),
             "cached-consumer path: decoder mask (col 99) ≠ machine_state.execute (col 7) must be rejected"
         );
+    }
+
+    // ── B1: insert_resolution CSE-collision ───────────────────────────────────
+
+    /// Inserting the same leaf with a DIFFERENT strategy must return Err("CSE collision");
+    /// re-inserting with the SAME strategy is idempotent (Ok).
+    #[test]
+    fn insert_resolution_rejects_cse_collision() {
+        let mut out = LayerOut::new();
+        // First insert: Ok.
+        out.insert_resolution(ExprId(0), ResolutionStrategy::PeekSetup).expect("first insert must succeed");
+        // Idempotent re-insert of the same strategy: Ok.
+        out.insert_resolution(ExprId(0), ResolutionStrategy::PeekSetup).expect("idempotent re-insert must succeed");
+        // Different strategy at the same leaf: CSE collision → Err.
+        let err = out.insert_resolution(ExprId(0), ResolutionStrategy::PeekAggregate { set_index: 3 })
+            .expect_err("conflicting strategy must be rejected");
+        assert!(err.contains("CSE collision"), "error must mention CSE collision, got: {err}");
     }
 }

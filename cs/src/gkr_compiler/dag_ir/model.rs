@@ -233,7 +233,8 @@ pub enum RangeWidth {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum FillSource {
     /// The setup-time `decoder_lookup_fill_value`
-    /// (`alpha^(width-1)·Decoder` when `tables_ids_in_generic_lookups`, else `E::ZERO`).
+    /// (`alpha^(w-1)·Decoder` where w is the decoder lookup's column width,
+    /// when `tables_ids_in_generic_lookups`; else `E::ZERO`).
     DecoderLookupFill,
 }
 

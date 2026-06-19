@@ -655,7 +655,11 @@ fn resolutions_validate_clean_over_all_fixtures() {
     use crate::gkr_compiler::dag_ir::{lower_dag, validate, ResolutionStrategy};
 
     let mut total = 0usize;
+    let mut processed = 0usize;
     let mut decoder_seen = false;
+    let mut setup_seen = false;
+    let mut single_seen = false;
+    let mut aggregate_seen = false;
     for name in LAYOUT_GKR_FIXTURES.iter().chain(LAYOUT_NO_CACHES_GKR_FIXTURES.iter()) {
         let path = compiled_circuit_dir().join(name);
         let Some(artifact) = load_fixture(&path) else { continue }; // skip absent/stale fixtures
@@ -664,17 +668,28 @@ fn resolutions_validate_clean_over_all_fixtures() {
         // Every populated resolutions table must pass the static validator.
         validate(&circuit).unwrap_or_else(|e| panic!("{name}: validate failed: {e}"));
 
+        processed += 1;
         for layer in &circuit.layers {
             total += layer.resolutions.len();
-            if layer
-                .resolutions
-                .values()
-                .any(|s| matches!(s, ResolutionStrategy::PeekDecoder { .. }))
-            {
-                decoder_seen = true;
+            for s in layer.resolutions.values() {
+                match s {
+                    ResolutionStrategy::PeekDecoder { .. } => decoder_seen = true,
+                    ResolutionStrategy::PeekSetup => setup_seen = true,
+                    ResolutionStrategy::PeekSingleColumn { .. } => single_seen = true,
+                    ResolutionStrategy::PeekAggregate { .. } => aggregate_seen = true,
+                }
             }
         }
     }
+    assert_eq!(
+        processed,
+        LAYOUT_GKR_FIXTURES.len() + LAYOUT_NO_CACHES_GKR_FIXTURES.len(),
+        "all enumerated fixtures must be present and load successfully (processed {processed} of {})",
+        LAYOUT_GKR_FIXTURES.len() + LAYOUT_NO_CACHES_GKR_FIXTURES.len()
+    );
     assert!(total > 0, "golden fixtures must populate some resolutions");
     assert!(decoder_seen, "at least one golden fixture must emit a PeekDecoder");
+    assert!(setup_seen, "at least one golden fixture must emit a PeekSetup");
+    assert!(single_seen, "at least one golden fixture must emit a PeekSingleColumn");
+    assert!(aggregate_seen, "at least one golden fixture must emit a PeekAggregate");
 }

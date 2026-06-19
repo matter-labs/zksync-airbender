@@ -338,6 +338,11 @@ fn check_resolutions(layer: &DagLayer, li: usize) -> Result<(), String> {
                 check_folded_lookup_shape(leaf, layer, li, *set_index)?;
             }
             ResolutionStrategy::PeekDecoder { predicate, fill } => {
+                // The predicate is checked only as "a base-layer read" and is NOT
+                // independently verifiable as == machine_state.execute at validate() time
+                // (the IR carries no machine_state). That equality is guaranteed by the
+                // generator's check_decoder_masks guard + the
+                // resolutions_peek_decoder_predicate_matches_global_execute coverage test.
                 if !matches!(predicate, ReadPlace::BaseLayerMemory { .. }) {
                     return Err(format!(
                         "layer {li}: PeekDecoder predicate must be a base-layer read on {:?}",
@@ -490,14 +495,12 @@ fn check_folded_lookup_shape(
             ));
         }
         match (i, power) {
-            (0, None) => {}                       // column 0 unscaled
-            (_, Some(p)) if p as usize == i => {} // column j scaled by alpha^j
-            _ => {
-                return Err(format!(
-                    "layer {li}: folded lookup {:?} column {i} has wrong scaling {:?}",
-                    leaf, power
-                ))
-            }
+            (0, None) => {}                                  // column 0 must be unscaled (alpha^0 = 1, emitted as a bare Source)
+            (_, Some(p)) if i >= 1 && p as usize == i => {} // column j>=1 scaled by alpha^j
+            _ => return Err(format!(
+                "layer {li}: folded lookup {:?} column {i} has wrong scaling {:?}",
+                leaf, power
+            )),
         }
     }
     Ok(())
@@ -505,6 +508,11 @@ fn check_folded_lookup_shape(
 
 /// Validate `leaf` is EXACTLY the `folded_setup` shape:
 /// `Σ_j alpha^j · Read(Setup{..})`, column 0 unscaled, j≥1 scaled by `alpha^j`.
+///
+/// Validates the alpha-power STRUCTURE (powers exactly {0..n-1}, column 0
+/// unscaled, all leaves Setup reads) but deliberately does NOT bind each setup
+/// column to its power, because `PeekSetup` is row-indexed and carries no
+/// column metadata.
 fn check_folded_setup_shape(leaf: ExprId, layer: &DagLayer, li: usize) -> Result<(), String> {
     let mut powers: Vec<Option<u32>> = Vec::new(); // None = the unscaled (power-0) term
     let is_setup = |src_id: SourceId| -> Result<(), String> {
@@ -1183,11 +1191,12 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
+    use crate::definitions::gkr::DECODER_LOOKUP_FORMAL_SET_INDEX;
     use crate::gkr_compiler::codegen_ir::lower as retired_lower;
     use crate::gkr_compiler::dag_ir::{
         lower_dag, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, DagGlobals, DagLayer,
-        Expr, ExprId, FieldKind, LookupValueKind, ReadPlace, Root, RootGroup, RootId, RootOrigin,
-        RootSlot, SinkId, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
+        Expr, ExprId, FieldKind, FillSource, LookupValueKind, ReadPlace, Root, RootGroup, RootId,
+        RootOrigin, RootSlot, SinkId, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
     };
     use crate::gkr_compiler::test_support::{build_add_sub_artifact, ConcreteField};
 
@@ -2096,6 +2105,43 @@ mod tests {
         ExprId(5) // the Add fold leaf built above
     }
 
+    /// A 2-column setup fold used for B2 tests.
+    ///
+    /// sources: 0=Read(Setup{col:0}), 1=alpha^1 (Challenge{LookupMultiplicative,Static(1)}), 2=Read(Setup{col:1})
+    /// exprs: 0=Source(0), 1=Source(1), 2=Source(2), 3=Mul([1,2]), 4=Add([0,3])
+    /// root: Output{expr=ExprId(4), sink=SinkId(0)} → SinkKind::Inner{layer:0,offset:0}, FieldKind::Ext
+    fn layer_with_single_setup_fold() -> DagLayer {
+        DagLayer {
+            sources: vec![
+                SourceInfo { kind: SourceKind::Read { place: ReadPlace::Setup { column: 0 } } }, // 0
+                SourceInfo {
+                    kind: SourceKind::Challenge {
+                        reference: ChallengeRef {
+                            key: ChallengeKey::LookupMultiplicative,
+                            power: ChallengePower::Static(1),
+                        },
+                    },
+                }, // 1: alpha^1
+                SourceInfo { kind: SourceKind::Read { place: ReadPlace::Setup { column: 1 } } }, // 2
+            ],
+            exprs: vec![
+                Expr::Source(SourceId(0)),             // 0: Setup col 0 (unscaled)
+                Expr::Source(SourceId(1)),             // 1: alpha^1
+                Expr::Source(SourceId(2)),             // 2: Setup col 1
+                Expr::Mul(vec![ExprId(1), ExprId(2)]), // 3: alpha^1 * Setup{1}
+                Expr::Add(vec![ExprId(0), ExprId(3)]), // 4: fold leaf
+            ],
+            roots: vec![Root::Output { expr: ExprId(4), sink: SinkId(0) }],
+            sinks: vec![SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset: 0 },
+                field: FieldKind::Ext,
+            }],
+            batching: BatchingOrder { roots: vec![RootId(0)] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        }
+    }
+
     // ── Resolution side-table tests ───────────────────────────────────────────
 
     #[test]
@@ -2106,7 +2152,8 @@ mod tests {
         let out_of_range = ExprId(layer.exprs.len() as u32); // beyond the vec
         layer.resolutions.insert(out_of_range, ResolutionStrategy::PeekSetup);
         let c = circuit_of(layer);
-        assert!(validate(&c).is_err(), "out-of-range resolution leaf must be rejected");
+        let e = validate(&c).expect_err("out-of-range resolution leaf must be rejected");
+        assert!(e.contains("out-of-range"), "error must mention out-of-range, got: {e}");
     }
 
     #[test]
@@ -2118,7 +2165,8 @@ mod tests {
         let mut bad = layer.clone();
         bad.resolutions.insert(leaf, ResolutionStrategy::PeekAggregate { set_index: 9 });
         let c = circuit_of(bad);
-        assert!(validate(&c).is_err(), "set_index mismatch must be rejected");
+        let e = validate(&c).expect_err("set_index mismatch must be rejected");
+        assert!(e.contains("set 7 != 9"), "error must mention set mismatch, got: {e}");
     }
 
     #[test]
@@ -2150,7 +2198,13 @@ mod tests {
             .resolutions
             .insert(ExprId(5), ResolutionStrategy::PeekAggregate { set_index: 7 });
         let c = circuit_of(layer);
-        assert!(validate(&c).is_err(), "a fold with an extra Constant term must be rejected");
+        let e = validate(&c).expect_err("a fold with an extra Constant term must be rejected");
+        // The stray Constant source goes through the Source arm → generic_col rejects it
+        // as "expected GenericColumn, got Constant". Any shape-rejection error is fine.
+        assert!(
+            e.contains("expected GenericColumn") || e.contains("unexpected Add term"),
+            "error must mention shape rejection, got: {e}"
+        );
     }
 
     #[test]
@@ -2175,6 +2229,164 @@ mod tests {
         let orphan = ExprId(ebase + 4);
         layer.resolutions.insert(orphan, ResolutionStrategy::PeekAggregate { set_index: 7 });
         let c = circuit_of(layer);
-        assert!(validate(&c).is_err(), "a well-formed but root-unreachable fold leaf must be rejected");
+        let e = validate(&c).expect_err("a well-formed but root-unreachable fold leaf must be rejected");
+        assert!(e.contains("not reachable"), "error must mention not reachable, got: {e}");
+    }
+
+    // ── B2: check_folded_setup_shape negative test ────────────────────────────
+
+    /// Positive control: a well-formed 2-column setup fold at ExprId(4) must validate.
+    /// Negative: replacing Setup source 0 with a BaseLayerMemory read must reject.
+    #[test]
+    fn resolutions_rejects_malformed_setup_fold() {
+        // Positive control.
+        let mut good = layer_with_single_setup_fold();
+        good.resolutions.insert(ExprId(4), ResolutionStrategy::PeekSetup);
+        assert!(
+            validate(&circuit_of(good)).is_ok(),
+            "well-formed setup fold must validate"
+        );
+
+        // Negative: replace source 0 (Setup{col:0}) with a BaseLayerMemory read.
+        let mut bad = layer_with_single_setup_fold();
+        bad.sources[0] = SourceInfo {
+            kind: SourceKind::Read { place: ReadPlace::BaseLayerMemory { column: 0 } },
+        };
+        bad.resolutions.insert(ExprId(4), ResolutionStrategy::PeekSetup);
+        let e = validate(&circuit_of(bad))
+            .expect_err("non-Setup read in setup fold must be rejected");
+        assert!(
+            e.contains("folded setup") && (e.contains("expected Read(Setup)") || e.contains("Setup")),
+            "error must mention setup shape, got: {e}"
+        );
+    }
+
+    // ── B3: decoder-set / predicate negatives ─────────────────────────────────
+
+    /// PeekAggregate must not use DECODER_LOOKUP_FORMAL_SET_INDEX.
+    #[test]
+    fn resolutions_rejects_decoder_set_as_peek_aggregate() {
+        let layer = layer_with_single_generic_lookup(DECODER_LOOKUP_FORMAL_SET_INDEX);
+        let leaf = generic_lookup_leaf_expr(&layer);
+        let mut bad = layer.clone();
+        bad.resolutions.insert(leaf, ResolutionStrategy::PeekAggregate { set_index: DECODER_LOOKUP_FORMAL_SET_INDEX });
+        let e = validate(&circuit_of(bad))
+            .expect_err("PeekAggregate with decoder set must be rejected");
+        assert!(
+            e.contains("decoder set") || e.contains("PeekAggregate must not"),
+            "error must mention decoder set, got: {e}"
+        );
+    }
+
+    /// PeekDecoder predicate must be a BaseLayerMemory read; a Setup predicate must be rejected.
+    #[test]
+    fn resolutions_rejects_non_base_layer_predicate() {
+        // Use set_index=7 (non-decoder); the predicate check fires before the
+        // set_index shape check, so we get the predicate error first.
+        let layer = layer_with_single_generic_lookup(7);
+        let leaf = generic_lookup_leaf_expr(&layer);
+        let mut bad = layer.clone();
+        bad.resolutions.insert(
+            leaf,
+            ResolutionStrategy::PeekDecoder {
+                predicate: ReadPlace::Setup { column: 0 }, // non-BaseLayerMemory → invalid
+                fill: FillSource::DecoderLookupFill,
+            },
+        );
+        let e = validate(&circuit_of(bad))
+            .expect_err("non-BaseLayerMemory predicate must be rejected");
+        assert!(
+            e.contains("base-layer read") || e.contains("predicate"),
+            "error must mention predicate, got: {e}"
+        );
+    }
+
+    // ── A1: TDD — column-0 scaled by alpha^0 must be rejected ────────────────
+    //
+    // Column-0 of a folded lookup must be an UNSCALED bare Source (alpha^0 = 1
+    // is an identity, not a real scaling; emitting Mul([alpha^0, lv0]) is a
+    // generator bug). The guard `(0, None) => {}` accepts only an unscaled
+    // column-0 term; a Mul([alpha^0, lv0]) produces `(0, Some(0))` which the
+    // tightened guard `(_, Some(p)) if i >= 1 && p as usize == i` now rejects.
+    #[test]
+    fn resolutions_rejects_alpha0_scaled_column0() {
+        // Build a 2-column folded lookup for set_index=7 where column-0 is
+        // wrapped as Mul([alpha^0, lv0]) instead of a bare Source.
+        //
+        // Sources:
+        //  0: Constant(0)  (query)
+        //  1: lv0  GenericColumn{0}, set=7
+        //  2: alpha^1  Challenge{LookupMultiplicative, Static(1)}
+        //  3: lv1  GenericColumn{1}, set=7
+        //  4: alpha^0  Challenge{LookupMultiplicative, Static(0)}  <- NEW
+        //
+        // Exprs:
+        //  0: Source(0)  = query
+        //  1: Source(1)  = lv0
+        //  2: Source(2)  = alpha^1
+        //  3: Source(3)  = lv1
+        //  4: Mul([2,3]) = alpha^1 * lv1
+        //  5: Source(4)  = alpha^0
+        //  6: Mul([5,1]) = alpha^0 * lv0  <- the invalid "scaled" column-0 Mul
+        //  7: Add([6,4]) = fold leaf (alpha^0*lv0 + alpha^1*lv1)
+        let query = ExprId(0);
+        let lv = |column: usize| SourceInfo {
+            kind: SourceKind::LookupValue {
+                kind: LookupValueKind::GenericColumn { column },
+                set_index: 7,
+                query,
+            },
+        };
+        let alpha1 = SourceInfo {
+            kind: SourceKind::Challenge {
+                reference: ChallengeRef {
+                    key: ChallengeKey::LookupMultiplicative,
+                    power: ChallengePower::Static(1),
+                },
+            },
+        };
+        let alpha0 = SourceInfo {
+            kind: SourceKind::Challenge {
+                reference: ChallengeRef {
+                    key: ChallengeKey::LookupMultiplicative,
+                    power: ChallengePower::Static(0), // alpha^0 — the bad scaling
+                },
+            },
+        };
+        let mut layer = DagLayer {
+            sources: vec![
+                SourceInfo { kind: SourceKind::Constant { value: 0 } }, // 0: query
+                lv(0),   // 1: lv0
+                alpha1,  // 2: alpha^1
+                lv(1),   // 3: lv1
+                alpha0,  // 4: alpha^0  <- NEW
+            ],
+            exprs: vec![
+                Expr::Source(SourceId(0)),             // 0: query
+                Expr::Source(SourceId(1)),             // 1: lv0
+                Expr::Source(SourceId(2)),             // 2: alpha^1
+                Expr::Source(SourceId(3)),             // 3: lv1
+                Expr::Mul(vec![ExprId(2), ExprId(3)]), // 4: alpha^1 * lv1
+                Expr::Source(SourceId(4)),             // 5: alpha^0
+                Expr::Mul(vec![ExprId(5), ExprId(1)]), // 6: alpha^0 * lv0 (invalid)
+                Expr::Add(vec![ExprId(6), ExprId(4)]), // 7: fold leaf
+            ],
+            roots: vec![Root::Output { expr: ExprId(7), sink: SinkId(0) }],
+            sinks: vec![SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset: 0 },
+                field: FieldKind::Ext,
+            }],
+            batching: BatchingOrder { roots: vec![RootId(0)] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        };
+        // Tag the fold leaf ExprId(7) as PeekAggregate{set_index:7}.
+        layer.resolutions.insert(ExprId(7), ResolutionStrategy::PeekAggregate { set_index: 7 });
+        let c = circuit_of(layer);
+        let e = validate(&c).expect_err("alpha^0-scaled column-0 must be rejected");
+        assert!(
+            e.contains("wrong scaling"),
+            "error should mention wrong scaling, got: {e}"
+        );
     }
 }
