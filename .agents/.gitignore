@@ -1,5 +1,7 @@
 # Agent-generated artifacts (plans, specs, audits, reviews) — see ../AGENTS.md "Agent Artifact Locations".
 # Paths are relative to this .agents/ directory.
+/.bus/
 /plans/
 /specs/
 /audits/
+.bus/
