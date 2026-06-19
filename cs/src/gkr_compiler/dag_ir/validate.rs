@@ -2101,11 +2101,7 @@ mod tests {
     #[test]
     fn resolutions_rejects_out_of_range_leaf() {
         // Key a resolution at an ExprId that is beyond the layer's expr vec.
-        // The in-range check must reject it.
-        // Note: a "reachable but not root-reachable" check cannot be used here
-        // because ArenaBuilder.add() flattens Add children, causing legitimate
-        // fold leaves (e.g. from folded_lookup) to become orphaned in the expr
-        // tree when used in pair/shift formulas. The in-range check is sufficient.
+        // The in-range check must reject it before reachability is tested.
         let mut layer = layer_with_single_generic_lookup(0);
         let out_of_range = ExprId(layer.exprs.len() as u32); // beyond the vec
         layer.resolutions.insert(out_of_range, ResolutionStrategy::PeekSetup);
