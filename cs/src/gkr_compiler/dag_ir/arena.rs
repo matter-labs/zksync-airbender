@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::definitions::GKRAddress;
 
@@ -25,6 +25,12 @@ pub struct ArenaBuilder {
     expr_map: HashMap<Expr, ExprId>,
 
     cache_aliases: HashMap<GKRAddress, RootId>,
+
+    /// Set of `ExprId`s that `canonicalize` must NOT flatten into their parent
+    /// `Add`/`Mul`. Used for multi-column fold-leaf `Add` nodes whose `ExprId`
+    /// is recorded in the `resolutions` side-table; they must survive as single
+    /// operands in root-reachable expressions so the validator can find them.
+    fenced: HashSet<ExprId>,
 }
 
 impl ArenaBuilder {
@@ -35,6 +41,7 @@ impl ArenaBuilder {
             exprs: Vec::new(),
             expr_map: HashMap::new(),
             cache_aliases: HashMap::new(),
+            fenced: HashSet::new(),
         }
     }
 
@@ -73,7 +80,10 @@ impl ArenaBuilder {
     /// Intern an `Expr::Add`.
     ///
     /// Canonicalization steps (applied in order):
-    /// 1. Flatten: any child that is itself an `Add` is replaced by its operands.
+    /// 1. Flatten: any child that is itself an `Add` is replaced by its operands,
+    ///    **unless** the child is fenced (see [`fenced_add`]). A fenced child is
+    ///    kept as a single operand, so a canonical `Add` MAY contain an `Add`
+    ///    child at the lookup/setup fold-leaf boundary.
     /// 2. Sort operands ascending by `ExprId`.
     /// 3. Keep repeated operands (no dedup).
     pub fn add(&mut self, terms: Vec<ExprId>) -> ExprId {
@@ -84,9 +94,21 @@ impl ArenaBuilder {
     /// Intern an `Expr::Mul`.
     ///
     /// Same canonicalization rules as `add`, but flattens nested `Mul` children.
+    /// A fenced `Mul` child (see [`fenced_add`]) would similarly survive, though
+    /// `fenced_add` only fences `Add` nodes in practice.
     pub fn mul(&mut self, factors: Vec<ExprId>) -> ExprId {
         let canonical = self.canonicalize(factors, /* is_add */ false);
         self.intern_expr(Expr::Mul(canonical))
+    }
+
+    /// Like [`add`], but marks the resulting `Add` non-flattenable: a later `add`
+    /// that takes this id as an operand keeps it as a single operand instead of
+    /// flattening its children. Used for lookup/setup fold leaves whose `ExprId`
+    /// is recorded in `resolutions` and must survive into root-reachable nodes.
+    pub(super) fn fenced_add(&mut self, terms: Vec<ExprId>) -> ExprId {
+        let id = self.add(terms);
+        self.fenced.insert(id);
+        id
     }
 
     // ── accessors ────────────────────────────────────────────────────────────
@@ -118,15 +140,21 @@ impl ArenaBuilder {
     ///
     /// Because each child was itself interned-and-canonicalized, it is already
     /// flat; one level of recursion is sufficient.
+    ///
+    /// **Exception**: a *fenced* child (marked via [`fenced_add`]) is never
+    /// flattened — it survives as a single operand. This is the deliberate
+    /// lookup/setup fold-leaf boundary; a canonical `Add`/`Mul` MAY contain a
+    /// same-kind child at that boundary.
     fn canonicalize(&self, operands: Vec<ExprId>, is_add: bool) -> Vec<ExprId> {
         let mut flat: Vec<ExprId> = Vec::with_capacity(operands.len());
         for id in operands {
             let expr = &self.exprs[id.0 as usize];
-            let should_flatten = if is_add {
+            let same_kind = if is_add {
                 matches!(expr, Expr::Add(_))
             } else {
                 matches!(expr, Expr::Mul(_))
             };
+            let should_flatten = same_kind && !self.fenced.contains(&id);
             if should_flatten {
                 match expr {
                     Expr::Add(children) | Expr::Mul(children) => {
@@ -256,6 +284,29 @@ mod tests {
         // Should stay as Add([a, bc_mul]) — two operands.
         match &arena.exprs()[result.0 as usize] {
             Expr::Add(ops) => assert_eq!(ops.len(), 2, "add should not flatten a Mul child"),
+            other => panic!("expected Add, got {:?}", other),
+        }
+    }
+
+    /// A fenced `Add` child must NOT be flattened by a subsequent `add`.
+    ///
+    /// `fenced_add([y, z])` returns an `Add([y,z])` marked non-flattenable.
+    /// `add([x, fenced])` must produce `Add([x, fenced])` — two operands — instead
+    /// of the normal `Add([x, y, z])` that unfenced flattening would yield.
+    #[test]
+    fn fenced_add_child_is_not_flattened() {
+        let mut a = ArenaBuilder::new();
+        let x = a.intern_source(SourceKind::Constant { value: 1 });
+        let y = a.intern_source(SourceKind::Constant { value: 2 });
+        let z = a.intern_source(SourceKind::Constant { value: 3 });
+        let (ex, ey, ez) = (a.source_expr(x), a.source_expr(y), a.source_expr(z));
+        let bc = a.fenced_add(vec![ey, ez]); // fenced Add([y, z])
+        let nested = a.add(vec![ex, bc]);    // add([x, fenced]) must NOT flatten bc
+        match &a.exprs()[nested.0 as usize] {
+            Expr::Add(ops) => {
+                assert_eq!(ops.len(), 2, "fenced child must survive as one operand, got {:?}", ops);
+                assert!(ops.contains(&bc), "the fenced node itself must be a direct operand, got {:?}", ops);
+            }
             other => panic!("expected Add, got {:?}", other),
         }
     }

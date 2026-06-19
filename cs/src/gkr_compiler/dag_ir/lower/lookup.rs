@@ -142,7 +142,9 @@ pub(super) fn folded_lookup(arena: &mut ArenaBuilder, rel: &NoFieldVectorLookupR
             arena.source_expr(zero)
         }
         1 => terms[0],
-        _ => arena.add(terms),
+        // Multi-column fold: fence this Add so its ExprId survives as a single
+        // operand in root-reachable nodes and is findable by the resolutions validator.
+        _ => arena.fenced_add(terms),
     }
 }
 
@@ -167,7 +169,9 @@ pub(super) fn folded_setup(arena: &mut ArenaBuilder, setup_cols: &[GKRAddress]) 
             arena.source_expr(zero)
         }
         1 => terms[0],
-        _ => arena.add(terms),
+        // Multi-column fold: fence this Add so its ExprId survives as a single
+        // operand in root-reachable nodes and is findable by the resolutions validator.
+        _ => arena.fenced_add(terms),
     }
 }
 
