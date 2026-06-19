@@ -328,6 +328,16 @@ pub(crate) fn packed_ts_store(
     rs2: u32,
     rd: u32,
 ) {
+    let off = packed_ts_off(name, rs1, rs2, rd);
+    dynasm!(ops ; mov [rsp + off], r8);
+}
+
+/// Byte offset (from RSP, which points at MachineState during JITted execution) of the
+/// `packed_timestamps` slot written by `packed_ts_store` for instruction `(name, rs1, rs2,
+/// rd)`. Factored out so the fused word-mem-run emitter can write the per-element slot
+/// directly with an arbitrary timestamp value (not just live `r8`).
+#[cfg(not(feature = "xmm_ts"))]
+pub(crate) fn packed_ts_off(name: InstructionName, rs1: u32, rs2: u32, rd: u32) -> i32 {
     use InstructionName as Op;
     let p_rs2 = if matches!(name, Op::Lb | Op::Lbu | Op::Lh | Op::Lhu | Op::Lw) {
         32 // load: rs2 axis is the memory access, not a register
@@ -353,8 +363,7 @@ pub(crate) fn packed_ts_store(
     };
     let idx = 33 * 33 * (rs1 as usize) + 33 * p_rs2 + p_rd;
     debug_assert!(idx < PACKED_TS_LEN);
-    let off = MachineState::PACKED_TS_OFFSET as i32 + (idx as i32) * 8;
-    dynasm!(ops ; mov [rsp + off], r8);
+    MachineState::PACKED_TS_OFFSET as i32 + (idx as i32) * 8
 }
 
 // packed: register timestamps live only in the packed array (reconstructed offline);
@@ -849,6 +858,229 @@ macro_rules! emit_early_exit {
     };
 }
 
+// === Fused word load/store runs (feature `mem_merge`, packed-timestamp path only) ========
+//
+// A run of `g` consecutive RISC-V word accesses (all Lw or all Sw) that share the base
+// register `rs1` and ascend by an immediate stride of exactly +4 touch `g` *contiguous*
+// memory words. Their four per-access store streams are therefore contiguous and can be
+// written with wide vector moves (`movdqu`/`movq`) instead of `g` scalar stores each:
+//   * memory value      (loads: the read; stores: the new value)  -> 4*g contiguous RAM bytes
+//   * memory timestamp  (the cycle value written into the cell)    -> 8*g contiguous RAM bytes
+//   * trace value       (loads: read value; stores: OLD value)     -> 4*g contiguous chunk bytes
+//   * trace timestamp   (the OLD memory timestamp)                 -> 8*g contiguous chunk bytes
+// The base address is computed once. The per-element packed-timestamp slot store and the
+// register-file update stay scalar (distinct stack slots / scattered destination registers).
+//
+// Bit-exactness vs the scalar path: cycle j (j in 0..g) has base T0+4*j (T0 = `r8` at entry);
+// a load stamps its memory word at T0+4*j+1, a store at T0+4*j+2; the packed slot for element
+// j records T0+4*j; the trace records the value/timestamp present *before* the access. The
+// caller advances r9 by g and performs ONE trace-chunk-full check for the whole run.
+//
+// BLINDLY ASSUMES no control-flow target lands strictly inside the run (the caller binds the
+// inner instruction labels to the run head defensively, so a stray jump cannot crash the JIT).
+//
+// `window` (max group size, one of 2/4/8) comes from RISCV_MERGE_WINDOW (default 8).
+#[cfg(all(feature = "mem_merge", not(feature = "xmm_ts")))]
+pub(crate) fn merge_window() -> usize {
+    use std::sync::OnceLock;
+    static W: OnceLock<usize> = OnceLock::new();
+    *W.get_or_init(|| {
+        let w = std::env::var("RISCV_MERGE_WINDOW")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(8);
+        match w {
+            2 | 4 | 8 => w,
+            _ => 8,
+        }
+    })
+}
+
+/// Largest fusable group size (a power of two in {1,2,4,8}, capped by `window`) of the run of
+/// consecutive same-opcode, same-base word accesses with immediate stride exactly +4 starting
+/// at `i`. Returns 1 when nothing fuses.
+#[cfg(all(feature = "mem_merge", not(feature = "xmm_ts")))]
+fn merged_word_run_g(
+    program: &[Instruction],
+    is_static_target: &[bool],
+    i: usize,
+    window: usize,
+) -> usize {
+    use InstructionName as Op;
+    let a = &program[i];
+    if window < 2 || !matches!(a.name, Op::Lw | Op::Sw) {
+        return 1;
+    }
+    let op = a.name;
+    let base = a.rs1;
+    let is_load = matches!(op, Op::Lw);
+    let mut run = 1usize;
+    while run < window && i + run < program.len() {
+        let prev = &program[i + run - 1];
+        let nxt = &program[i + run];
+        // A load that overwrites the base register changes the address seen by every later
+        // access; the address is precomputed once, so such a load must end the run.
+        if is_load && prev.rd == base {
+            break;
+        }
+        // A static (JAL/Branch) target could land here; the inner instructions are not
+        // independently addressable, so the run cannot fold across it.
+        if is_static_target[i + run] {
+            break;
+        }
+        if nxt.name != op || nxt.rs1 != base {
+            break;
+        }
+        if (nxt.imm as i32).wrapping_sub(prev.imm as i32) != 4 {
+            break;
+        }
+        run += 1;
+    }
+    let mut g = 1usize;
+    while g * 2 <= run && g * 2 <= window {
+        g *= 2;
+    }
+    g
+}
+
+/// Emit a fused run of `g` (a power of two in {2,4,8}) consecutive word loads or stores. Does
+/// NOT touch r9; the caller advances r9 by g and does the chunk-full check. Advances r8 by 4*g.
+#[cfg(all(feature = "mem_merge", not(feature = "xmm_ts")))]
+fn emit_merged_word_run(
+    ops: &mut x64::Assembler,
+    program: &[Instruction],
+    start: usize,
+    g: usize,
+) {
+    use InstructionName as Op;
+    let first = &program[start];
+    let is_load = matches!(first.name, Op::Lw);
+    let rs1 = first.rs1 as u32;
+    let imm0 = first.imm as i32;
+    let tso = MemoryHolder::TIMESTAMPS_OFFSET as i32;
+    let trtso = TraceChunk::TIMESTAMPS_OFFSET as i32;
+
+    // Vector scratch (all free in the packed, non-xmm_ts mode): xmm6/7/13/14.
+    let xv = 6u8; // values
+    let xt = 7u8; // old-timestamps copy
+    let xb = 13u8; // broadcast of T0 (=r8) into both qwords
+    let xc = 14u8; // computed new memory timestamps
+
+    // Base byte address of word 0 into RCX (32-bit, wraps like RISC-V). Computed once.
+    let base = load(ops, rs1);
+    dynasm!(ops ; lea Rd(SCRATCH_REGISTER), [Rd(base) + imm0]);
+
+    // (1) Copy the words currently in RAM into the trace value column. For loads this is the
+    //     read value; for stores it is the OLD value (the write happens in step 3, after).
+    let vbytes = 4 * g as i32;
+    let mut off = 0i32;
+    while off < vbytes {
+        if vbytes - off >= 16 {
+            dynasm!(ops
+                ; movdqu Rx(xv), [rsi + Rq(SCRATCH_REGISTER) + off]
+                ; movdqu [rdi + r9 * 4 + off], Rx(xv)
+            );
+            off += 16;
+        } else {
+            dynasm!(ops
+                ; movq Rx(xv), [rsi + Rq(SCRATCH_REGISTER) + off]
+                ; movq [rdi + r9 * 4 + off], Rx(xv)
+            );
+            off += 8;
+        }
+    }
+
+    // (2) Copy the OLD memory timestamps into the trace timestamp column (8*g bytes, always a
+    //     multiple of 16 since g is a power of two >= 2).
+    let tbytes = 8 * g as i32;
+    let mut off = 0i32;
+    while off < tbytes {
+        dynasm!(ops
+            ; movdqu Rx(xt), [rsi + 2 * Rq(SCRATCH_REGISTER) + (tso + off)]
+            ; movdqu [rdi + r9 * 8 + (trtso + off)], Rx(xt)
+        );
+        off += 16;
+    }
+
+    // (3) Stores only: gather the new values (from the rs2 registers) and write them back to
+    //     RAM (wide). Must come AFTER step (1) read the old values.
+    if !is_load {
+        let mut off = 0i32;
+        let mut j = 0usize;
+        while j < g {
+            let chunk = core::cmp::min(4, g - j);
+            for k in 0..chunk {
+                let rs2 = program[start + j + k].rs2 as u32;
+                load_into(ops, rs2, x64::Rq::RAX as u8);
+                dynasm!(ops ; pinsrd Rx(xv), eax, k as i8);
+            }
+            if chunk == 4 {
+                dynasm!(ops ; movdqu [rsi + Rq(SCRATCH_REGISTER) + off], Rx(xv));
+                off += 16;
+            } else {
+                // chunk == 2 (only when g == 2)
+                dynasm!(ops ; movq [rsi + Rq(SCRATCH_REGISTER) + off], Rx(xv));
+                off += 8;
+            }
+            j += chunk;
+        }
+    }
+
+    // (4) Write the new memory timestamps: word w gets T0 + 4*w + delta (delta = 1 for loads,
+    //     2 for stores). Build [T0+.., T0+..] two qwords at a time from a precomputed offset
+    //     table plus a broadcast of T0. Must come AFTER step (2) read the old timestamps.
+    dynasm!(ops
+        ; movq Rx(xb), r8
+        ; punpcklqdq Rx(xb), Rx(xb)
+    );
+    if is_load {
+        dynasm!(ops ; lea rax, [->ts_word_off_load]);
+    } else {
+        dynasm!(ops ; lea rax, [->ts_word_off_store]);
+    }
+    let mut w = 0usize;
+    let mut toff = 0i32;
+    while w < g {
+        dynasm!(ops
+            ; movdqu Rx(xc), [rax + (8 * w) as i32]
+            ; paddq Rx(xc), Rx(xb)
+            ; movdqu [rsi + 2 * Rq(SCRATCH_REGISTER) + (tso + toff)], Rx(xc)
+        );
+        w += 2;
+        toff += 16;
+    }
+
+    // (5) Loads only: distribute the read values to their destination registers (scalar reload
+    //     from RAM; the value column may span more than one xmm for g==8).
+    if is_load {
+        for j in 0..g {
+            let rd = program[start + j].rd as u32;
+            let out = destination_gpr(rd);
+            dynasm!(ops ; mov Rd(out), [rsi + Rq(SCRATCH_REGISTER) + (4 * j as i32)]);
+            store_result(ops, rd);
+        }
+    }
+
+    // (6) Per-element packed-timestamp slot store (distinct slots -> stays scalar). Element j
+    //     records T0 + 4*j; r8 still holds T0 here.
+    for j in 0..g {
+        let instr = &program[start + j];
+        let off = packed_ts_off(instr.name, instr.rs1 as u32, instr.rs2 as u32, instr.rd as u32);
+        if j == 0 {
+            dynasm!(ops ; mov [rsp + off], r8);
+        } else {
+            dynasm!(ops
+                ; lea rax, [r8 + (4 * j as i32)]
+                ; mov [rsp + off], rax
+            );
+        }
+    }
+
+    // (7) Counters and the running timestamp. MemWord += g (identical to g separate +1s).
+    record_circuit_type(ops, CounterType::MemWord, g as u16);
+    dynasm!(ops ; add r8, (4 * g) as i32);
+}
+
 impl<I: ContextImpl> JittedCode<I> {
     pub fn preprocess_bytecode(program: &[Instruction], cycles_bound: Option<u32>) -> Self {
         let mut ops = x64::Assembler::new().unwrap();
@@ -941,6 +1173,30 @@ impl<I: ContextImpl> JittedCode<I> {
         // Records the position of each RISC-V instruction relative to the start
         let mut jump_offsets = vec![0; program.len()];
         let mut initialized_jump_offsets = HashSet::new();
+
+        // Static (JAL / Branch) control-flow targets. A fused word-mem run must not extend
+        // across one (a transfer could land strictly inside the run, whose inner instructions
+        // are not independently addressable). JALR targets are dynamic and are *blindly assumed*
+        // never to land inside a run (return sites always follow a transfer, so they are run
+        // heads). Index 0 is the entry point.
+        #[cfg(all(feature = "mem_merge", not(feature = "xmm_ts")))]
+        let is_static_target: Vec<bool> = {
+            use InstructionName as Op;
+            let mut t = vec![false; program.len()];
+            t[0] = true;
+            for (i, instr) in program.iter().enumerate() {
+                if matches!(instr.name, Op::Jal | Op::Branch) {
+                    let target = (i as i64) * 4 + (instr.imm as i32) as i64;
+                    if target >= 0 && target % 4 == 0 {
+                        let ti = (target / 4) as usize;
+                        if ti < t.len() {
+                            t[ti] = true;
+                        }
+                    }
+                }
+            }
+            t
+        };
         // We don't enforce a single "final PC" sentinel; each exit path stores its own PC.
 
         // println!("Will preprocess {} opcodes", program.len());
@@ -971,6 +1227,33 @@ impl<I: ContextImpl> JittedCode<I> {
             }
 
             // print_registers!(ops, pc, instr);
+
+            // Fuse a run of consecutive same-base word loads/stores (immediate stride +4) into
+            // wide vector memory/trace stores (feature `mem_merge`, packed path). The emitter
+            // does all packed/timestamp/trace/counter bookkeeping for the whole run, so it
+            // bypasses the per-instruction prologue and dispatch below.
+            #[cfg(all(feature = "mem_merge", not(feature = "xmm_ts")))]
+            {
+                if matches!(instr.name, InstructionName::Lw | InstructionName::Sw) {
+                    let g = merged_word_run_g(program, &is_static_target, i, merge_window());
+                    if g >= 2 {
+                        // Defensively bind the inner instruction labels / jump offsets to the
+                        // run head (the no-inner-target assumption means they're never used; this
+                        // only prevents an unresolved-label panic if it were ever violated).
+                        for k in 1..g {
+                            dynasm!(ops ; => instruction_labels[i + k]);
+                            jump_offsets[i + k] = ops.offset().0;
+                            initialized_jump_offsets.insert(i + k);
+                        }
+                        emit_merged_word_run(&mut ops, program, i, g);
+                        dynasm!(ops ; add r9, g as i32);
+                        let pc_for_trace = pc + 4 * g as u32;
+                        check_to_save_trace!(ops, pc_for_trace);
+                        i += g;
+                        continue;
+                    }
+                }
+            }
 
             use InstructionName as Op;
 
@@ -2104,6 +2387,34 @@ impl<I: ContextImpl> JittedCode<I> {
             ; ->cve_one_q1:
             ; .bytes 0u64.to_le_bytes()
             ; .bytes 1u64.to_le_bytes()
+        );
+
+        // Per-word memory-timestamp sub-slot offsets for the fused word-mem-run emitter
+        // (`emit_merged_word_run`): word w of a run gets memory timestamp T0 + (4*w + delta),
+        // delta = 1 for loads, 2 for stores. These hold the (4*w + delta) addends as u64 so a
+        // 128-bit load of two adjacent entries plus a broadcast `paddq` of T0 builds two
+        // consecutive new timestamps. Sized for the largest window (8 words).
+        #[cfg(all(feature = "mem_merge", not(feature = "xmm_ts")))]
+        dynasm!(ops
+            ; .align 16
+            ; ->ts_word_off_load:
+            ; .bytes 1u64.to_le_bytes()
+            ; .bytes 5u64.to_le_bytes()
+            ; .bytes 9u64.to_le_bytes()
+            ; .bytes 13u64.to_le_bytes()
+            ; .bytes 17u64.to_le_bytes()
+            ; .bytes 21u64.to_le_bytes()
+            ; .bytes 25u64.to_le_bytes()
+            ; .bytes 29u64.to_le_bytes()
+            ; ->ts_word_off_store:
+            ; .bytes 2u64.to_le_bytes()
+            ; .bytes 6u64.to_le_bytes()
+            ; .bytes 10u64.to_le_bytes()
+            ; .bytes 14u64.to_le_bytes()
+            ; .bytes 18u64.to_le_bytes()
+            ; .bytes 22u64.to_le_bytes()
+            ; .bytes 26u64.to_le_bytes()
+            ; .bytes 30u64.to_le_bytes()
         );
 
         let receive_trace_fn = Context::<I>::receive_trace;
