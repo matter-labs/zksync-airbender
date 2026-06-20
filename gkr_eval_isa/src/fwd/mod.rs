@@ -5,5 +5,6 @@ pub mod compile;
 pub mod context;
 pub mod encode;
 pub mod error;
+pub mod interp;
 pub mod isa;
 pub mod source;
