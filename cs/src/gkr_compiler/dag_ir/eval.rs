@@ -118,6 +118,30 @@ pub fn eval_layer_root(layer: &DagLayer, root: RootId, row: usize, r: &Resolvers
     eval_root_expr(dag_root, layer, row, r, &materialized, &mut expr_cache)
 }
 
+/// Evaluate an arbitrary `expr` of `layer` at `row`, materializing all cache
+/// (materialization-only) roots first so `Prior(id)` reads resolve. Used by the
+/// forward-VM CPU interpreter to re-resolve a pruned resolution fold through the
+/// authoritative evaluator (SP1). SP2 replaces this with real peek-array bindings.
+///
+/// SP1-only oracle helper: it assumes the existing cache-lead / topological
+/// invariant (`validate`) and **eagerly materializes every non-batching root in
+/// ascending `RootId`** — it is NOT a minimal-dependency arbitrary-subexpression
+/// evaluator. Do not use it on the hot path.
+pub fn eval_layer_expr(layer: &DagLayer, expr: ExprId, row: usize, r: &Resolvers<'_>) -> Ext {
+    let batching_set: std::collections::HashSet<RootId> =
+        layer.batching.roots.iter().copied().collect();
+    let mut materialized: HashMap<RootId, Ext> = HashMap::new();
+    let mut expr_cache: HashMap<ExprId, Ext> = HashMap::new();
+    for (idx, dag_root) in layer.roots.iter().enumerate() {
+        let rid = RootId(idx as u32);
+        if !batching_set.contains(&rid) {
+            let val = eval_root_expr(dag_root, layer, row, r, &materialized, &mut expr_cache);
+            materialized.insert(rid, val);
+        }
+    }
+    eval_expr(expr, layer, row, r, &materialized, &mut expr_cache)
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 fn eval_root_expr(
@@ -420,5 +444,62 @@ mod tests {
         };
 
         assert_eq!(result, expected, "Prior resolution mismatch");
+    }
+
+    // ── Test: eval_layer_expr evaluates arbitrary expr with all caches materialized ──
+
+    /// Same layer as `prior_reads_materialized_root`:
+    ///   root 0 (materialization-only): Output(Constant(5))
+    ///   root 1 (claim-bearing):        Output(Prior(RootId(0)) + Constant(3))
+    ///
+    /// But we call `eval_layer_expr` targeting the inner `c5` expr directly
+    /// (the cache root's expr, ExprId(0)).
+    /// Expected: lift(5)
+    #[test]
+    fn eval_layer_expr_materializes_all_caches_and_evaluates_arbitrary_expr() {
+        let mut arena = ArenaBuilder::new();
+
+        // Constant(5)
+        let c5_src = arena.intern_source(SourceKind::Constant { value: 5 });
+        let c5 = arena.source_expr(c5_src);
+
+        // Prior(RootId(0))
+        let prior_src = arena.intern_source(SourceKind::Prior { id: RootId(0) });
+        let prior = arena.source_expr(prior_src);
+
+        // Constant(3)
+        let c3_src = arena.intern_source(SourceKind::Constant { value: 3 });
+        let c3 = arena.source_expr(c3_src);
+
+        // prior + 3
+        let sum = arena.add(vec![prior, c3]);
+
+        let roots = vec![
+            Root::Output { expr: c5, sink: SinkId(0) },   // RootId(0) — materialization-only
+            Root::Output { expr: sum, sink: SinkId(1) },  // RootId(1) — claim-bearing
+        ];
+        // Only root 1 is in batching; root 0 is materialization-only.
+        let layer = layer_from_arena(&arena, roots, vec![RootId(1)]);
+
+        let r = Resolvers {
+            read: &ConstReadResolver(Ext::ZERO),
+            lookup: &ConstLookupResolver(Bf::ZERO),
+            virtual_setup: &ConstVirtualSetupResolver(Bf::ZERO),
+            challenge: &ConstChallengeResolver(Ext::ZERO),
+        };
+
+        // Evaluate the cache root's expr directly — should yield lift(5)
+        let result = eval_layer_expr(&layer, c5, 0, &r);
+        let expected = lift(Bf::from_u32_with_reduction(5));
+        assert_eq!(result, expected, "eval_layer_expr: cache expr mismatch");
+
+        // Also verify it can evaluate the sum expr — should yield lift(8)
+        let result_sum = eval_layer_expr(&layer, sum, 0, &r);
+        let expected_sum = {
+            let mut e = lift(Bf::from_u32_with_reduction(5));
+            e.add_assign(&lift(Bf::from_u32_with_reduction(3)));
+            e
+        };
+        assert_eq!(result_sum, expected_sum, "eval_layer_expr: sum expr mismatch");
     }
 }
