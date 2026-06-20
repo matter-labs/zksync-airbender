@@ -57,6 +57,7 @@ pub struct CompileTrace {
     pub reached_lookup_leaves: Vec<ExprId>,   // LookupValue leaves emitted-code reached (must be covered)
     pub pruned_resolution_exprs: Vec<ExprId>, // exprs pruned because they carry a ResolutionStrategy
     pub max_live_cells: usize,
+    pub nested_subexprs: usize,               // compound children lowered to a cell (§11 general fallback)
 }
 
 #[derive(Clone, Debug)]

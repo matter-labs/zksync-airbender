@@ -4,6 +4,7 @@ pub mod resolution;
 pub mod schedule;
 
 use self::arith::{compile_expr, source_to_operand};
+use self::schedule::CellAllocator;
 use super::binding::BackingKey;
 use super::context::{
     build_forward_actions, CompileTrace, CompiledLayer, DagForwardContext, ForwardAction,
@@ -68,8 +69,27 @@ pub fn compile_layer(
                 // that all elide to identity → zero instructions emitted).
                 let len_before = program.instrs.len();
 
-                // Lower the expr into the accumulator.
-                compile_expr(layer, expr, &mut ctx, &mut trace, &mut program.instrs)?;
+                // The root's result field is its sink's field — pass it as the
+                // `expected` hint so a fully-cross-layer expr (whose `expr_field` is
+                // `Err` everywhere) labels its reads with the correct field, keeping
+                // the validator's field-transition tracker consistent (Task 13).
+                let sink = &layer.sinks[sink_id.0 as usize];
+                let expected = operand_field_of(sink);
+
+                // Lower the expr into the accumulator. A fresh `CellAllocator`
+                // sized by the budget backs the general nested-subexpression
+                // fallback (Task 13): each Compute root starts with an empty cell
+                // file (no inter-root cell residency in SP1).
+                let mut alloc = CellAllocator::new(budget);
+                compile_expr(
+                    layer,
+                    expr,
+                    &mut ctx,
+                    &mut trace,
+                    &mut program.instrs,
+                    &mut alloc,
+                    expected,
+                )?;
 
                 // If lowering emitted no instructions, the root is degenerate
                 // (post-elision empty): materializing now would push a stale
@@ -78,13 +98,12 @@ pub fn compile_layer(
                     return Err(CompileError::DegenerateRoot(rid));
                 }
 
-                let sink = &layer.sinks[sink_id.0 as usize];
                 let (key, col) = sink_to_backing(sink, artifact_layer.layer);
                 let slot = ctx.backings.intern(key)?;
 
                 program.instrs.push(Instr::Mov {
                     dir: MovDir::DstFromAcc,
-                    field: operand_field_of(sink),
+                    field: expected,
                     dst: Some(DstLine::GlobalMaterialize { slot, col }),
                     src: None,
                 });

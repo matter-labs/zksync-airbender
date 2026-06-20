@@ -38,16 +38,26 @@ fn to_operand_field(f: FieldKind) -> OperandField {
 /// The operand field of a child expression for instruction-field selection.
 ///
 /// SP1 convention: `expr_field` returns `Err(ReadPlace)` for a prior-layer
-/// `Read{LayerOutput|CacheOutput}` because that field lives in a *prior* layer's
-/// sinks, which `compile_layer` does not thread. The Task 7 interpreter resolves
-/// every operand to `Ext` and IGNORES the field bit for value computation, so a
-/// mislabel here does NOT affect SP1 parity (Task 13). On `Err` we treat the
-/// operand as `Base` (its value is still lifted correctly at runtime). See the
-/// report's "cross-layer-field convention" + forward-dep note for Tasks 12/13.
-fn child_operand_field(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> OperandField {
+/// `Read{LayerOutput|CacheOutput}` (and any expr built only from such reads)
+/// because that field lives in a *prior* layer's sinks, which `compile_layer` does
+/// not thread. The interpreter resolves every operand to `Ext` and IGNORES the
+/// field bit for value computation, so a mislabel here does NOT affect SP1 parity.
+///
+/// On `Err` we fall back to `expected` — the enclosing root's result/sink field
+/// (Task 13). This matters when an ENTIRE root expr is cross-layer (so `expr_field`
+/// is `Err` for every node): the lowered acc would otherwise stay Base-labeled and
+/// the validator's field-transition tracker would reject the final Ext materialize.
+/// The result field of a fully-cross-layer root equals its sink field, so labeling
+/// those reads with the sink field is exactly correct, not just convenient. Where
+/// the field IS known (`Ok`), `expected` is ignored.
+fn child_operand_field(
+    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    id: ExprId,
+    expected: OperandField,
+) -> OperandField {
     match expr_field(&layer.exprs, &layer.sources, id, &layer.roots, &layer.sinks) {
         Ok(f) => to_operand_field(f),
-        Err(_) => OperandField::Base, // SP1 convention: cross-layer read, value lifted at runtime
+        Err(_) => expected, // SP1 cross-layer convention: take the enclosing result field
     }
 }
 
@@ -143,40 +153,114 @@ pub fn source_to_operand(
 ///   whose children are ALL products lowers to an FMA stream instead. Empty Add/Mul
 ///   emit nothing (NOP `+0` / `×1`); unary → just the init MOV. `Constant{1}`
 ///   factors are elided from a MUL.
+///
+/// `alloc` (Task 13) is a real per-layer `CellAllocator` sized by the budget: it
+/// backs the GENERAL nested-subexpression fallback (`lower_operand`), where a
+/// reduction child / FMA factor that is itself a compound `Add`/`Mul` (e.g. a
+/// product-of-sums or a degree-≥3 addend) is recursively lowered into a fresh
+/// smem cell and referenced as an `Smem` operand (§11). The proven Tasks 9–11
+/// patterns (source children, FMA, α-fold, field-homogeneous groups, negate,
+/// over-cap split) remain the primary path; the cell fallback only fires for
+/// children that are neither a source nor resolution-pruned.
 pub fn compile_expr(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     expr_id: ExprId,
     ctx: &mut DagForwardContext,
     trace: &mut CompileTrace,
     out: &mut Vec<Instr>,
+    alloc: &mut CellAllocator,
+    expected: OperandField,
 ) -> Result<(), CompileError> {
     // §9: a resolution-carrying expr collapses to a single Special operand, even at
-    // the top of a root expr → init the acc from it and stop.
+    // the top of a root expr → init the acc from it and stop. The Special's field is
+    // the resolved fold's field (PeekAggregate/PeekDecoder/PeekSetup are Ext,
+    // PeekSingleColumn is Base): label the init MOV accordingly so the field-
+    // transition tracker agrees with an Ext-typed materialize (§9/§12).
     if let ResolveOutcome::Special(desc) =
         resolve_or_descend(layer, expr_id, &mut ctx.specials)
     {
         trace.pruned_resolution_exprs.push(expr_id);
-        emit_init(out, OperandLine::Special { desc });
+        let field = child_operand_field(layer, expr_id, expected);
+        emit_init_field(out, OperandLine::Special { desc }, field);
         return Ok(());
     }
 
     match &layer.exprs[expr_id.0 as usize] {
         Expr::Source(_) => {
+            let field = child_operand_field(layer, expr_id, expected);
             let op = source_to_operand(layer, expr_id, ctx, trace)?;
-            emit_init(out, op);
+            emit_init_field(out, op, field);
             Ok(())
         }
-        Expr::Add(children) => compile_add(layer, children.clone(), ctx, trace, out),
-        Expr::Mul(children) => compile_mul(layer, children.clone(), ctx, trace, out),
+        Expr::Add(children) => compile_add(layer, children.clone(), ctx, trace, out, alloc, expected),
+        Expr::Mul(children) => compile_mul(layer, children.clone(), ctx, trace, out, alloc, expected),
     }
 }
 
-/// `MOV AccFromSrc <op>` — accumulator init (§5). Field follows the source (the
-/// interpreter ignores the MOV field for value, but we label it for the validator).
+/// Resolve `expr_id` to one `OperandLine`, lowering a compound subexpression into a
+/// fresh smem cell when it is neither a source nor resolution-pruned (§9, §11).
+///
+/// Returns `(operand, owned_cell)`: when `owned_cell` is `Some(cell)`, the caller
+/// MUST `alloc.free(cell)` once the operand has been consumed (after the fold that
+/// reads it). The general mechanism (Task 13):
+///
+///   - try `source_to_operand` (a source or a resolution-carrying fold) — no acc
+///     disturbance, no cell;
+///   - otherwise `compile_expr` the compound subtree into the acc, then evict the
+///     acc into a freshly-allocated cell (`MOV DstFromAcc Smem{cell}`) and return
+///     that cell as the operand.
+///
+/// Because lowering a compound child clobbers the accumulator, callers materialize
+/// EVERY operand via `lower_operand` BEFORE initing the acc for the enclosing
+/// reduction (see `compile_reduction`).
+fn lower_operand(
+    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    expr_id: ExprId,
+    ctx: &mut DagForwardContext,
+    trace: &mut CompileTrace,
+    out: &mut Vec<Instr>,
+    alloc: &mut CellAllocator,
+    expected: OperandField,
+) -> Result<(OperandLine, Option<u16>), CompileError> {
+    // A source or a resolution-pruned fold lowers directly to one operand line.
+    // `resolve_or_descend` (inside `source_to_operand`) prunes a resolved parent to
+    // a Special without descending, so we never spuriously cell-lower a fold.
+    if matches!(
+        resolve_or_descend(layer, expr_id, &mut ctx.specials),
+        ResolveOutcome::Special(_)
+    ) || matches!(&layer.exprs[expr_id.0 as usize], Expr::Source(_))
+    {
+        let op = source_to_operand(layer, expr_id, ctx, trace)?;
+        return Ok((op, None));
+    }
+
+    // Compound child: recursively lower into the acc, then evict to a fresh cell.
+    // The child's evict width follows its own field (cross-layer `Err` → `expected`).
+    let field = child_operand_field(layer, expr_id, expected);
+    compile_expr(layer, expr_id, ctx, trace, out, alloc, field)?;
+    let cell = alloc.alloc(field)?;
+    evict_acc_to_cell(out, field, cell);
+    trace.max_live_cells = trace.max_live_cells.max(alloc.max_live());
+    trace.nested_subexprs += 1;
+    Ok((OperandLine::Smem { cell }, Some(cell)))
+}
+
+/// `MOV AccFromSrc <op>` — accumulator init (§5), labeling the acc field `Base`.
+/// Used where the init term is intentionally Base and a later mixed op promotes the
+/// acc to Ext (the α-fold / FMA `col0` idiom). The interpreter ignores the MOV field
+/// for value; the label only feeds the validator's field-transition tracker.
 fn emit_init(out: &mut Vec<Instr>, op: OperandLine) {
+    emit_init_field(out, op, OperandField::Base);
+}
+
+/// `MOV AccFromSrc <op>` labeling the acc field explicitly (§5/§12). When a
+/// reduction's first term is genuinely Ext (e.g. an Ext challenge or a prior Ext
+/// cache read), the acc must start Ext so the validator's field-transition tracker
+/// agrees with an Ext-typed materialize at the end (`check_field_transitions`).
+fn emit_init_field(out: &mut Vec<Instr>, op: OperandLine, field: OperandField) {
     out.push(Instr::Mov {
         dir: MovDir::AccFromSrc,
-        field: OperandField::Base, // §5: init field labeled Base; promoted by later mixed ops
+        field,
         dst: None,
         src: Some(op),
     });
@@ -190,6 +274,8 @@ fn compile_add(
     ctx: &mut DagForwardContext,
     trace: &mut CompileTrace,
     out: &mut Vec<Instr>,
+    alloc: &mut CellAllocator,
+    expected: OperandField,
 ) -> Result<(), CompileError> {
     // §5: empty Add is a NOP (+0) — emit nothing.
     if children.is_empty() {
@@ -200,18 +286,18 @@ fn compile_add(
     if children.len() >= 1 && children.iter().all(|&c| is_mul(layer, c)) {
         // Special-case the α-fold: first term is a bare column (single unscaled
         // factor) — but that surfaces as a non-Mul child, handled below, not here.
-        if let Some(()) = try_compile_fma(layer, &children, ctx, trace, out)? {
+        if let Some(()) = try_compile_fma(layer, &children, ctx, trace, out, alloc, expected)? {
             return Ok(());
         }
     }
 
     // α-fold: first child a single unscaled column, the rest col×challenge products.
-    if let Some(()) = try_compile_alpha_fold(layer, &children, ctx, trace, out)? {
+    if let Some(()) = try_compile_alpha_fold(layer, &children, ctx, trace, out, alloc, expected)? {
         return Ok(());
     }
 
     // Generic additive reduction grouped by operand field.
-    compile_reduction(layer, &children, ctx, trace, out, /* is_add */ true)
+    compile_reduction(layer, &children, ctx, trace, out, /* is_add */ true, alloc, expected)
 }
 
 // ── Mul lowering ───────────────────────────────────────────────────────────────
@@ -222,6 +308,8 @@ fn compile_mul(
     ctx: &mut DagForwardContext,
     trace: &mut CompileTrace,
     out: &mut Vec<Instr>,
+    alloc: &mut CellAllocator,
+    expected: OperandField,
 ) -> Result<(), CompileError> {
     // §6 strength: drop `Constant{1}` factors.
     let factors: Vec<ExprId> = children
@@ -266,7 +354,7 @@ fn compile_mul(
     // reduction: `compile_reduction` resolves each ExprId, classifies it as Base
     // or Ext via `child_operand_field`, and emits separate `Instr::Mul{field:Base}`
     // and `Instr::Mul{field:Ext}` groups (§5). This is the proven Task 9 path.
-    compile_reduction(layer, &surviving, ctx, trace, out, /* is_add */ false)?;
+    compile_reduction(layer, &surviving, ctx, trace, out, /* is_add */ false, alloc, expected)?;
 
     // If sign was flipped by an odd number of −1 factors, apply a unary negate.
     if negate {
@@ -300,23 +388,41 @@ fn compile_reduction(
     trace: &mut CompileTrace,
     out: &mut Vec<Instr>,
     is_add: bool,
+    alloc: &mut CellAllocator,
+    expected: OperandField,
 ) -> Result<(), CompileError> {
     debug_assert!(!children.is_empty());
 
-    // init from child0
-    let init_op = source_to_operand(layer, children[0], ctx, trace)?;
-    emit_init(out, init_op);
+    // Pre-materialize EVERY child to an `OperandLine` BEFORE touching the acc:
+    // a compound child is lowered into a fresh smem cell (general §11 fallback),
+    // and that lowering clobbers the acc — so all operands must be resolved up
+    // front. A source/resolution-pruned child resolves directly (no cell). Cells
+    // are freed after the reduction's last fold reads them.
+    let mut ops: Vec<(OperandField, OperandLine)> = Vec::with_capacity(children.len());
+    let mut owned_cells: Vec<u16> = Vec::new();
+    for &c in children {
+        let field = child_operand_field(layer, c, expected);
+        let (op, cell) = lower_operand(layer, c, ctx, trace, out, alloc, expected)?;
+        if let Some(cell) = cell {
+            owned_cells.push(cell);
+        }
+        ops.push((field, op));
+    }
 
-    if children.len() == 1 {
+    // init from child0, labeling the acc field with child0's actual field so the
+    // validator's field-transition tracker agrees with the materialize at the end
+    // (§5/§12). A later mixed op still promotes Base→Ext as needed.
+    emit_init_field(out, ops[0].1, ops[0].0);
+
+    if ops.len() == 1 {
+        free_all(alloc, &owned_cells);
         return Ok(()); // unary → just the MOV
     }
 
     // Partition the remaining children into Base and Ext operand groups.
     let mut base_ops: Vec<OperandLine> = Vec::new();
     let mut ext_ops: Vec<OperandLine> = Vec::new();
-    for &c in &children[1..] {
-        let field = child_operand_field(layer, c);
-        let op = source_to_operand(layer, c, ctx, trace)?;
+    for &(field, op) in &ops[1..] {
         match field {
             OperandField::Base => base_ops.push(op),
             OperandField::Ext => ext_ops.push(op),
@@ -327,16 +433,24 @@ fn compile_reduction(
     // Each group is a single ADD/MUL when it fits the arity cap (the proven Tasks
     // 9/10 path); an over-long group is split into ≤MAX_ARITY chunks combined via
     // the evict-to-cell primitive (§11) so `encode` never sees an over-cap arity.
-    for (field, ops) in [
+    for (field, group) in [
         (OperandField::Base, base_ops),
         (OperandField::Ext, ext_ops),
     ] {
-        if ops.is_empty() {
+        if group.is_empty() {
             continue;
         }
-        emit_reduction_group(out, trace, field, ops, is_add)?;
+        emit_reduction_group(out, trace, field, group, is_add, alloc)?;
     }
+    free_all(alloc, &owned_cells);
     Ok(())
+}
+
+/// Free every cell that backed a lowered compound operand, in reverse alloc order.
+fn free_all(alloc: &mut CellAllocator, cells: &[u16]) {
+    for &c in cells.iter().rev() {
+        alloc.free(c);
+    }
 }
 
 /// Emit ONE field-homogeneous reduction group, folding `ops` into the running
@@ -359,6 +473,7 @@ fn emit_reduction_group(
     field: OperandField,
     ops: Vec<OperandLine>,
     is_add: bool,
+    alloc: &mut CellAllocator,
 ) -> Result<(), CompileError> {
     if ops.len() <= MAX_ARITY {
         // Unsplit fast path — identical to the prior Tasks 9/10 emission.
@@ -368,8 +483,9 @@ fn emit_reduction_group(
 
     // Over-cap: split into chunks bounded by the arity cap. The evict cell holds the
     // running partial between chunks; its width follows the group field (Ext → 4).
+    // The evict cell is drawn from the SHARED allocator so it never collides with a
+    // cell still holding a lowered compound operand of this very reduction (§11).
     let sizes = split_reduction(ops.len(), /* budget */ 4);
-    let mut alloc = CellAllocator::new(4);
     let mut idx = 0usize;
     let mut chunks = sizes.into_iter();
 
@@ -439,6 +555,8 @@ fn try_compile_fma(
     ctx: &mut DagForwardContext,
     trace: &mut CompileTrace,
     out: &mut Vec<Instr>,
+    alloc: &mut CellAllocator,
+    expected: OperandField,
 ) -> Result<Option<()>, CompileError> {
     // Each child must be a binary product `Mul([f0, f1])` after `1`-elision.
     let mut pairs: Vec<(ExprId, ExprId)> = Vec::with_capacity(children.len());
@@ -449,18 +567,38 @@ fn try_compile_fma(
         pairs.push(factors);
     }
 
-    // Init from the first product: MOV lhs0; MUL rhs0.
-    let (lhs0, rhs0) = pairs[0];
-    let lhs0_op = source_to_operand(layer, lhs0, ctx, trace)?;
-    emit_init(out, lhs0_op);
-    let rhs0_field = child_operand_field(layer, rhs0);
-    let rhs0_op = source_to_operand(layer, rhs0, ctx, trace)?;
+    // Pre-materialize EVERY factor's operand BEFORE touching the acc (a compound
+    // factor — e.g. a product-of-sums — lowers to a cell, which clobbers the acc).
+    // Capture each factor's field + operand line; collect the field labels first so
+    // the immutable `layer` borrow in `child_operand_field` does not overlap the
+    // `&mut ctx` borrow in `lower_operand`.
+    let mut lo: Vec<(OperandField, OperandLine, OperandField, OperandLine)> =
+        Vec::with_capacity(pairs.len());
+    let mut owned_cells: Vec<u16> = Vec::new();
+    for &(lhs, rhs) in &pairs {
+        let lf = child_operand_field(layer, lhs, expected);
+        let rf = child_operand_field(layer, rhs, expected);
+        let (lhs_op, lc) = lower_operand(layer, lhs, ctx, trace, out, alloc, lf)?;
+        if let Some(c) = lc {
+            owned_cells.push(c);
+        }
+        let (rhs_op, rc) = lower_operand(layer, rhs, ctx, trace, out, alloc, rf)?;
+        if let Some(c) = rc {
+            owned_cells.push(c);
+        }
+        lo.push((lf, lhs_op, rf, rhs_op));
+    }
+
+    // Init from the first product: MOV lhs0 (labeled with lhs0's field); MUL rhs0.
+    let (lf0, lhs0_op, rf0, rhs0_op) = lo[0];
+    emit_init_field(out, lhs0_op, lf0);
     out.push(Instr::Mul {
-        field: rhs0_field,
+        field: rf0,
         operands: vec![rhs0_op],
     });
 
-    if pairs.len() == 1 {
+    if lo.len() == 1 {
+        free_all(alloc, &owned_cells);
         return Ok(Some(()));
     }
 
@@ -469,11 +607,7 @@ fn try_compile_fma(
     // never emitted (H5). Emit one FMA per field-pair group.
     use std::collections::BTreeMap;
     let mut groups: BTreeMap<(u8, u8), Vec<(OperandLine, OperandLine)>> = BTreeMap::new();
-    for &(lhs, rhs) in &pairs[1..] {
-        let lf = child_operand_field(layer, lhs);
-        let rf = child_operand_field(layer, rhs);
-        let lhs_op = source_to_operand(layer, lhs, ctx, trace)?;
-        let rhs_op = source_to_operand(layer, rhs, ctx, trace)?;
+    for &(lf, lhs_op, rf, rhs_op) in &lo[1..] {
         let ((cf_l, cf_r), (op_l, op_r)) =
             canonical_fma_pair(lf, rf, lhs_op, rhs_op);
         groups
@@ -490,6 +624,7 @@ fn try_compile_fma(
             pairs: gpairs,
         });
     }
+    free_all(alloc, &owned_cells);
     Ok(Some(()))
 }
 
@@ -503,6 +638,8 @@ fn try_compile_alpha_fold(
     ctx: &mut DagForwardContext,
     trace: &mut CompileTrace,
     out: &mut Vec<Instr>,
+    alloc: &mut CellAllocator,
+    expected: OperandField,
 ) -> Result<Option<()>, CompileError> {
     if children.len() < 2 {
         return Ok(None);
@@ -520,18 +657,39 @@ fn try_compile_alpha_fold(
         pairs.push(factors);
     }
 
-    // init MOV col0
-    let col0_op = source_to_operand(layer, children[0], ctx, trace)?;
-    emit_init(out, col0_op);
+    // Pre-materialize child0 + every (col, α) factor before initing the acc (a
+    // compound factor lowers to a cell and clobbers the acc).
+    let col0_field = child_operand_field(layer, children[0], expected);
+    let (col0_op, col0_cell) =
+        lower_operand(layer, children[0], ctx, trace, out, alloc, col0_field)?;
+    let mut owned_cells: Vec<u16> = Vec::new();
+    if let Some(c) = col0_cell {
+        owned_cells.push(c);
+    }
+    let mut lo: Vec<(OperandField, OperandLine, OperandField, OperandLine)> =
+        Vec::with_capacity(pairs.len());
+    for &(lhs, rhs) in &pairs {
+        let lf = child_operand_field(layer, lhs, expected);
+        let rf = child_operand_field(layer, rhs, expected);
+        let (lhs_op, lc) = lower_operand(layer, lhs, ctx, trace, out, alloc, lf)?;
+        if let Some(c) = lc {
+            owned_cells.push(c);
+        }
+        let (rhs_op, rc) = lower_operand(layer, rhs, ctx, trace, out, alloc, rf)?;
+        if let Some(c) = rc {
+            owned_cells.push(c);
+        }
+        lo.push((lf, lhs_op, rf, rhs_op));
+    }
+
+    // init MOV col0 (the α⁰=1 column), labeling with col0's field so the acc field
+    // tracks correctly when col0 is a cross-layer Ext read.
+    emit_init_field(out, col0_op, col0_field);
 
     // group the remaining (col, α) pairs by canonical (lhs_field, rhs_field).
     use std::collections::BTreeMap;
     let mut groups: BTreeMap<(u8, u8), Vec<(OperandLine, OperandLine)>> = BTreeMap::new();
-    for &(lhs, rhs) in &pairs {
-        let lf = child_operand_field(layer, lhs);
-        let rf = child_operand_field(layer, rhs);
-        let lhs_op = source_to_operand(layer, lhs, ctx, trace)?;
-        let rhs_op = source_to_operand(layer, rhs, ctx, trace)?;
+    for &(lf, lhs_op, rf, rhs_op) in &lo {
         let ((cf_l, cf_r), (op_l, op_r)) = canonical_fma_pair(lf, rf, lhs_op, rhs_op);
         groups
             .entry((cf_l as u8, cf_r as u8))
@@ -546,6 +704,7 @@ fn try_compile_alpha_fold(
             pairs: gpairs,
         });
     }
+    free_all(alloc, &owned_cells);
     Ok(Some(()))
 }
 
@@ -655,7 +814,9 @@ mod tests {
         let mut ctx = DagForwardContext::default();
         let mut trace = CompileTrace::default();
         let mut out = Vec::new();
-        compile_expr(layer, expr, &mut ctx, &mut trace, &mut out).expect("compile_expr");
+        let mut alloc = CellAllocator::new(1024);
+        compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base)
+            .expect("compile_expr");
         out
     }
 
