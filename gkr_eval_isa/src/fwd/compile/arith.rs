@@ -341,13 +341,12 @@ fn compile_mul(
     let negate = neg_one_count % 2 == 1;
 
     if surviving.is_empty() {
-        // All factors were −1; the product is just ±1 as a negate or identity.
-        // In practice dag_ir never produces a pure product of −1s without other
-        // factors; emit a unary negate if odd count, otherwise NOP.
-        if negate {
-            emit_unary_negate(out);
-        }
-        return Ok(());
+        // All factors were −1: the product is a constant ±1. The spec's strength
+        // model guarantees this never appears in a real dag_ir reduction. Reject
+        // fail-loud instead of emitting a bare `emit_unary_negate` with no preceding
+        // init MOV (which would materialize 0, not −1, silently miscompiling) or
+        // silently emitting nothing (even count → identity would skip the root guard).
+        return Err(CompileError::DegenerateConstProduct);
     }
 
     // Route surviving (non-`−1`) factors through Task 9's field-homogeneous
@@ -820,6 +819,15 @@ mod tests {
         out
     }
 
+    fn try_run(layer: &DagLayer, expr: ExprId) -> Result<Vec<Instr>, CompileError> {
+        let mut ctx = DagForwardContext::default();
+        let mut trace = CompileTrace::default();
+        let mut out = Vec::new();
+        let mut alloc = CellAllocator::new(1024);
+        compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base)?;
+        Ok(out)
+    }
+
     // A base-storage column read → Global operand.
     fn read_base(arena: &mut ArenaBuilder, col: usize) -> ExprId {
         let s = arena.intern_source(SourceKind::Read {
@@ -1096,6 +1104,41 @@ mod tests {
         // split. Without it, encode would return Err(ArityOutOfRange(199)).
         let program = crate::fwd::isa::Program { instrs };
         crate::fwd::encode::encode(&program).expect("split program must encode within arity cap");
+    }
+
+    // ── Mul([−1]) (single −1 factor) → Err(DegenerateConstProduct) ──────────────
+    //
+    // Before the fix, the odd-count surviving.is_empty() branch called
+    // emit_unary_negate with NO preceding init MOV, materializing 0 not −1.
+    // The DegenerateRoot guard in compile_layer missed it because instructions WERE
+    // emitted. compile_mul must reject this case fail-loud.
+    #[test]
+    fn mul_only_neg_one_single_rejected() {
+        let mut arena = ArenaBuilder::new();
+        let neg_one_src = arena.intern_source(SourceKind::Constant { value: BABYBEAR_NEG_ONE });
+        let neg_one = arena.source_expr(neg_one_src);
+        let mul = arena.mul(vec![neg_one]); // Mul([−1]): single −1 factor, odd count
+        let layer = layer_of(&arena);
+        let err = try_run(&layer, mul).unwrap_err();
+        assert_eq!(err, CompileError::DegenerateConstProduct);
+    }
+
+    // ── Mul([−1, −1]) (even count of −1) → Err(DegenerateConstProduct) ──────────
+    //
+    // Even count: product is +1 (NOP). The surviving.is_empty() branch previously
+    // emitted nothing, and compile_layer's len_before guard might still catch it when
+    // the Mul is a root. But compile_mul is also called for sub-expressions where no
+    // such guard exists. Reject both parities fail-loud.
+    #[test]
+    fn mul_only_neg_one_even_count_rejected() {
+        let mut arena = ArenaBuilder::new();
+        let neg_one_src = arena.intern_source(SourceKind::Constant { value: BABYBEAR_NEG_ONE });
+        let neg_one_a = arena.source_expr(neg_one_src);
+        let neg_one_b = arena.source_expr(neg_one_src);
+        let mul = arena.mul(vec![neg_one_a, neg_one_b]); // Mul([−1, −1]): even count
+        let layer = layer_of(&arena);
+        let err = try_run(&layer, mul).unwrap_err();
+        assert_eq!(err, CompileError::DegenerateConstProduct);
     }
 
     // ── α-fold → [Mov col0, Fma{lhs=Base,rhs=Ext} [(col1,α1),…]] ──────────────

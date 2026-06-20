@@ -30,6 +30,7 @@ pub enum CompileError {
     OutputUnresolved(RootId),
     UncoveredLookupLeaf(u32),     // ExprId.0
     DegenerateRoot(RootId),       // standalone empty Add/Mul root (bare 0/1 output)
+    DegenerateConstProduct,       // product of only −1 factors (constant ±1, never real)
     PromoteRejected,
     FieldMismatch(String),
     ExtCellMisaligned(u16),
