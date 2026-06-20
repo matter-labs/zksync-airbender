@@ -61,13 +61,21 @@ pub fn compile_layer(
                     return Err(CompileError::DegenerateRoot(rid));
                 }
 
+                // Record the instruction count before lowering so we can detect
+                // post-elision degeneracy (e.g. Mul of only `Constant{1}` factors
+                // that all elide to identity → zero instructions emitted).
+                let len_before = program.instrs.len();
+
                 // Lower the expr into the accumulator.
                 compile_expr(layer, expr, &mut ctx, &mut trace, &mut program.instrs)?;
 
-                // A Compute root whose lowering emitted NOTHING (e.g. an all-`1`
-                // Mul reduced to empty) is degenerate — never leave it unmaterialized.
-                // (is_empty_reduction catches the structural case; this guards the
-                // post-elision case, e.g. Mul of only `Constant{1}` factors.)
+                // If lowering emitted no instructions, the root is degenerate
+                // (post-elision empty): materializing now would push a stale
+                // accumulator value. Reject it — §5 / §6 DegenerateRoot.
+                if program.instrs.len() == len_before {
+                    return Err(CompileError::DegenerateRoot(rid));
+                }
+
                 let sink = &layer.sinks[sink_id.0 as usize];
                 let (key, col) = sink_to_backing(sink, artifact_layer.layer);
                 let slot = ctx.backings.intern(key)?;
@@ -211,6 +219,32 @@ mod tests {
             vec![(RootId(0), RootOutput::Cell(OutputCell::Global { slot, col: 5 }))]
         );
         assert!(compiled.skipped.is_empty());
+    }
+
+    // A post-elision degenerate root is rejected: top expr is Mul([Constant{1}]),
+    // which is structurally non-empty (1 child) so is_empty_reduction returns false,
+    // but compile_expr emits zero instructions after eliding the Constant{1} factor.
+    // The len_before guard must catch this and return DegenerateRoot.
+    #[test]
+    fn degenerate_post_elision_mul_one_root_rejected() {
+        let mut arena = ArenaBuilder::new();
+        let one_src = arena.intern_source(SourceKind::Constant { value: 1 });
+        let one = arena.source_expr(one_src);
+        let mul_one = arena.mul(vec![one]); // Mul([Constant{1}]) — non-empty structurally
+        let layer = DagLayer {
+            sources: arena.sources().to_vec(),
+            exprs: arena.exprs().to_vec(),
+            roots: vec![Root::Output { expr: mul_one, sink: SinkId(0) }],
+            sinks: vec![SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset: 0 },
+                field: FieldKind::Base,
+            }],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        };
+        let err = compile_layer(&layer, &artifact_layer(0), &BTreeMap::new(), 16).unwrap_err();
+        assert_eq!(err, CompileError::DegenerateRoot(RootId(0)));
     }
 
     // A degenerate root (top expr is an empty Mul) is rejected.
