@@ -12,7 +12,6 @@
 use super::super::context::{CompileTrace, DagForwardContext};
 use super::super::error::CompileError;
 use super::super::isa::{Instr, LdcSub, MovDir, OperandField, OperandLine, Sign, Special};
-use super::negate::canonicalize_product;
 use super::resolution::{resolve_or_descend, ResolveOutcome};
 use cs::gkr_compiler::dag_ir::{
     expr_field, Expr, ExprId, FieldKind, SourceKind,
@@ -91,8 +90,8 @@ pub fn source_to_operand(
         }
         SourceKind::Constant { value } => {
             // Strength-reduction: recognize the field value −1 (= P−1) and emit
-            // Special(NegOne) so `canonicalize_product` can hoist it to a unary
-            // negate rather than a multiplicand (spec §6, Task 10).
+            // Special(NegOne). This is used by the interpreter and as a sentinel
+            // when resolving operand lines (spec §6, Task 10).
             if *value == BABYBEAR_NEG_ONE {
                 return Ok(OperandLine::Ldc {
                     sub: LdcSub::Special,
@@ -232,21 +231,26 @@ fn compile_mul(
         return Ok(());
     }
 
-    // Resolve each factor to an OperandLine so we can inspect for Special(NegOne).
-    let mut operands: Vec<OperandLine> = Vec::with_capacity(factors.len());
-    for &f in &factors {
-        operands.push(source_to_operand(layer, f, ctx, trace)?);
-    }
-
     // Task 10 — negate canonicalization (spec §6):
-    // Pull any Special(NegOne) out of the factor list; the parity of their count
-    // decides whether a unary negate follows the multiply.
-    let (negate, remaining) = canonicalize_product(&operands);
+    // Strip any `−1` factors at the ExprId level; the parity of their count decides
+    // whether a unary negate follows the multiply. We detect `−1` directly on the
+    // source kind so that the surviving factor list retains its ExprId identity,
+    // which lets `compile_reduction` re-resolve each factor and correctly assign
+    // its operand field (Base vs Ext), restoring the field-homogeneous MUL grouping
+    // that Task 9 established (§5).
+    let mut neg_one_count = 0usize;
+    let mut surviving: Vec<ExprId> = Vec::with_capacity(factors.len());
+    for &f in &factors {
+        if is_neg_one_factor(layer, f) {
+            neg_one_count += 1;
+        } else {
+            surviving.push(f);
+        }
+    }
+    let negate = neg_one_count % 2 == 1;
 
-    if remaining.is_empty() {
+    if surviving.is_empty() {
         // All factors were −1; the product is just ±1 as a negate or identity.
-        // Emit a unary negate or nothing (identity ×1 → NOP handled above for
-        // ExprId factors, but −1^even = +1 which we treat as degenerate here).
         // In practice dag_ir never produces a pure product of −1s without other
         // factors; emit a unary negate if odd count, otherwise NOP.
         if negate {
@@ -255,10 +259,11 @@ fn compile_mul(
         return Ok(());
     }
 
-    // Emit the remaining factors as a field-grouped MUL.
-    // We have pre-computed OperandLines; we cannot call compile_reduction (which
-    // re-resolves via source_to_operand). Build the field-grouped reduction inline.
-    emit_mul_from_operands(&remaining, out);
+    // Route surviving (non-`−1`) factors through Task 9's field-homogeneous
+    // reduction: `compile_reduction` resolves each ExprId, classifies it as Base
+    // or Ext via `child_operand_field`, and emits separate `Instr::Mul{field:Base}`
+    // and `Instr::Mul{field:Ext}` groups (§5). This is the proven Task 9 path.
+    compile_reduction(layer, &surviving, ctx, trace, out, /* is_add */ false)?;
 
     // If sign was flipped by an odd number of −1 factors, apply a unary negate.
     if negate {
@@ -266,43 +271,6 @@ fn compile_mul(
     }
 
     Ok(())
-}
-
-/// Emit `MUL` instructions grouped by operand field over a pre-resolved operand
-/// slice. Base group emitted first (base-as-long-as-possible, §5); then Ext group.
-/// The first operand initializes the accumulator via `emit_init`; subsequent
-/// operands accumulate via `Instr::Mul`.
-///
-/// This replaces the ExprId-based `compile_reduction` path for `compile_mul` after
-/// Task 10's pre-resolution of factors (which is required for the −1 inspection).
-fn emit_mul_from_operands(operands: &[OperandLine], out: &mut Vec<Instr>) {
-    debug_assert!(!operands.is_empty());
-
-    // init from operands[0]
-    emit_init(out, operands[0]);
-
-    if operands.len() == 1 {
-        return; // unary → just the MOV
-    }
-
-    // Partition the remaining operands into Base and Ext groups.
-    // SP1 convention: Smem/Global/Const/Special operands are treated as Base here
-    // (the field type of a pre-resolved OperandLine is not carried on the line
-    // itself — it is known only at the instruction level from the surrounding
-    // compile context; for the Task 10 reduction we emit all into Base group as
-    // a conservative default consistent with the SP1 "interpreter ignores field bit"
-    // convention documented in `child_operand_field`).
-    //
-    // A full field-grouped implementation (Base vs Ext) would require threading
-    // the per-factor ExprId alongside the OperandLine; this is deferred to the
-    // slot scheduler (§11). SP1 parity is unaffected (Task 13 / Task 7 verified).
-    let rest = &operands[1..];
-    if !rest.is_empty() {
-        out.push(Instr::Mul {
-            field: OperandField::Base,
-            operands: rest.to_vec(),
-        });
-    }
 }
 
 /// Emit a unary negate: `MUL` with sole operand `Special(NegOne)` (spec §6).
@@ -526,6 +494,19 @@ fn is_mul(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> bool {
     matches!(&layer.exprs[id.0 as usize], Expr::Mul(_))
 }
 
+/// True if `id` is a `Source` whose value is the field element `−1` (= P−1 =
+/// `BABYBEAR_NEG_ONE`). These factors are stripped from Mul children before
+/// field-grouped reduction; their count's parity decides the unary negate.
+fn is_neg_one_factor(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> bool {
+    let Expr::Source(src) = &layer.exprs[id.0 as usize] else {
+        return false;
+    };
+    matches!(
+        &layer.sources[src.0 as usize].kind,
+        SourceKind::Constant { value } if *value == BABYBEAR_NEG_ONE
+    )
+}
+
 /// `Some((f0, f1))` if `id` is a `Mul` that, after eliding `Constant{1}` factors,
 /// has exactly two factors. `None` otherwise (the FMA path bails to the generic
 /// reduction so we never invent FMA pairs for non-binary products).
@@ -725,6 +706,75 @@ mod tests {
         let layer = layer_of(&arena);
         let instrs = run(&layer, mul);
         assert_eq!(instrs, vec![mov_acc(OperandLine::Global { slot: 0, col: 0 })]);
+    }
+
+    // ── Mul(base_col, challenge) → [Mov base_col, Mul{Ext} [challenge]] ─────────
+    //
+    // Regression for the Task 10 regression: compile_mul must emit a separate
+    // `Instr::Mul{field:Ext}` for the Ext-typed challenge factor — NOT a single
+    // `Instr::Mul{field:Base}` over both operands. Verifies §5 field-homogeneous
+    // MUL grouping is preserved after negate-canonicalization was introduced.
+    #[test]
+    fn mul_base_times_ext_groups_by_field() {
+        let mut arena = ArenaBuilder::new();
+        let a = read_base(&mut arena, 0); // Base-typed column
+        let c = challenge(&mut arena, ChallengePower::One); // Ext-typed challenge
+        let mul = arena.mul(vec![a, c]);
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, mul);
+        // Expected: MOV from Base col, then MUL{Ext} for the challenge.
+        // A `MUL{field:Base}` over both is the bug this test catches.
+        assert_eq!(
+            instrs,
+            vec![
+                mov_acc(OperandLine::Global { slot: 0, col: 0 }),
+                Instr::Mul {
+                    field: OperandField::Ext,
+                    operands: vec![OperandLine::Ldc {
+                        sub: LdcSub::ConstChallenge,
+                        idx: 0,
+                    }],
+                },
+            ]
+        );
+    }
+
+    // ── Mul(−1, base_col, challenge) → [Mov base_col, Mul{Ext} [challenge],
+    //    Mul{Base} [Special(NegOne)]] — negate + field grouping combined ─────────
+    //
+    // Regression: negate canonicalization must strip the −1 factor BEFORE routing
+    // through compile_reduction so field grouping still applies to survivors.
+    #[test]
+    fn mul_neg_one_base_ext_negate_and_groups_by_field() {
+        let mut arena = ArenaBuilder::new();
+        let neg_one_src = arena.intern_source(SourceKind::Constant { value: BABYBEAR_NEG_ONE });
+        let neg_one = arena.source_expr(neg_one_src);
+        let a = read_base(&mut arena, 0); // Base
+        let c = challenge(&mut arena, ChallengePower::One); // Ext
+        let mul = arena.mul(vec![neg_one, a, c]);
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, mul);
+        // Expected: MOV Base col, MUL{Ext} challenge, then unary negate MUL{Base}[NegOne].
+        assert_eq!(
+            instrs,
+            vec![
+                mov_acc(OperandLine::Global { slot: 0, col: 0 }),
+                Instr::Mul {
+                    field: OperandField::Ext,
+                    operands: vec![OperandLine::Ldc {
+                        sub: LdcSub::ConstChallenge,
+                        idx: 0,
+                    }],
+                },
+                Instr::Mul {
+                    field: OperandField::Base,
+                    operands: vec![OperandLine::Ldc {
+                        sub: LdcSub::Special,
+                        idx: Special::NegOne as u16,
+                    }],
+                },
+            ]
+        );
     }
 
     // ── α-fold → [Mov col0, Fma{lhs=Base,rhs=Ext} [(col1,α1),…]] ──────────────
