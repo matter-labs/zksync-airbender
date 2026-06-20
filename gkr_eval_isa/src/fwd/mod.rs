@@ -3,3 +3,4 @@
 pub mod encode;
 pub mod error;
 pub mod isa;
+pub mod source;
