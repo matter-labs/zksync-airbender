@@ -92,7 +92,7 @@ mod tests {
     use cs::gkr_compiler::GKRCircuitArtifact;
     use field::baby_bear::base::BabyBearField;
 
-    use crate::fwd::compile::compile_layer;
+    use crate::fwd::compile::{build_cross_layer_field_map, compile_layer};
 
     fn compiled_circuit_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cs/compiled_circuits")
@@ -128,8 +128,10 @@ mod tests {
 
         let dag_layer = &dag.layers[0];
         let art_layer = &artifact.layers[0];
-        let compiled = compile_layer(dag_layer, art_layer, &BTreeMap::new(), BUDGET)
-            .expect("compile_layer failed");
+        let cross_layer_fields = build_cross_layer_field_map(&dag);
+        let compiled =
+            compile_layer(dag_layer, art_layer, &BTreeMap::new(), &cross_layer_fields, BUDGET)
+                .expect("compile_layer failed");
 
         let stats = &compiled.stats;
 

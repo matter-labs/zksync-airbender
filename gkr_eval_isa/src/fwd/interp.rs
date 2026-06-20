@@ -286,6 +286,7 @@ mod tests {
             backings,
             actions: std::collections::HashMap::new(),
             cache_loc: std::collections::HashMap::new(),
+            cross_layer_fields: std::collections::HashMap::new(),
         };
         CompiledLayer {
             program,
@@ -524,6 +525,7 @@ mod tests {
             backings,
             actions: std::collections::HashMap::new(),
             cache_loc: std::collections::HashMap::new(),
+            cross_layer_fields: std::collections::HashMap::new(),
         };
 
         let program = Program {

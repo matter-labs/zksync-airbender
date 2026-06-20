@@ -4,6 +4,7 @@ pub mod resolution;
 pub mod schedule;
 
 use self::arith::{compile_expr, source_to_operand};
+pub use self::arith::build_cross_layer_field_map;
 use self::schedule::CellAllocator;
 use super::binding::BackingKey;
 use super::context::{
@@ -13,10 +14,12 @@ use super::context::{
 use super::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 use super::error::CompileError;
 use super::isa::{DstLine, Instr, MovDir, OperandField, Program};
-use cs::gkr_compiler::dag_ir::{DagLayer, Expr, ExprId, Root, RootId, SinkInfo, SinkKind};
+use cs::gkr_compiler::dag_ir::{
+    DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, RootId, SinkInfo, SinkKind,
+};
 use cs::gkr_compiler::GKRLayerDescription;
 use cs::definitions::GKRAddress;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Compile one `dag_ir` layer to a forward program (spec §10, §11).
 ///
@@ -34,10 +37,15 @@ pub fn compile_layer(
     layer: &DagLayer,
     artifact_layer: &GKRLayerDescription,
     scratch_mapping: &BTreeMap<GKRAddress, usize>,
+    cross_layer_fields: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
 ) -> Result<CompiledLayer, CompileError> {
     let mut ctx = DagForwardContext::default();
     ctx.actions = build_forward_actions(layer, artifact_layer, scratch_mapping)?;
+    // Cross-layer field map (codex Imp2): clone the circuit-wide map so
+    // `child_operand_field` labels each cross-layer read with its TRUE producing-sink
+    // field. Small — one entry per cross-layer-readable sink.
+    ctx.cross_layer_fields = cross_layer_fields.clone();
 
     let mut program = Program::default();
     let mut trace = CompileTrace::default();
@@ -239,7 +247,8 @@ mod tests {
         };
 
         let compiled =
-            compile_layer(&layer, &artifact_layer(7), &BTreeMap::new(), 16).unwrap();
+            compile_layer(&layer, &artifact_layer(7), &BTreeMap::new(), &HashMap::new(), 16)
+                .unwrap();
 
         // Last instruction materializes the cache via GlobalMaterialize.
         let last = compiled.program.instrs.last().unwrap();
@@ -287,7 +296,8 @@ mod tests {
             origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
-        let err = compile_layer(&layer, &artifact_layer(0), &BTreeMap::new(), 16).unwrap_err();
+        let err = compile_layer(&layer, &artifact_layer(0), &BTreeMap::new(), &HashMap::new(), 16)
+            .unwrap_err();
         assert_eq!(err, CompileError::DegenerateRoot(RootId(0)));
     }
 
@@ -308,7 +318,8 @@ mod tests {
             origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
-        let err = compile_layer(&layer, &artifact_layer(0), &BTreeMap::new(), 16).unwrap_err();
+        let err = compile_layer(&layer, &artifact_layer(0), &BTreeMap::new(), &HashMap::new(), 16)
+            .unwrap_err();
         assert_eq!(err, CompileError::DegenerateRoot(RootId(0)));
     }
 }

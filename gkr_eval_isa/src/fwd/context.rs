@@ -5,7 +5,7 @@ use super::error::CompileError;
 use super::isa::{DstLine, OperandLine, Program};
 use super::source::{ChallengeBanks, ConstBank, SpecialTable};
 use super::stats::CompileStats;
-use cs::gkr_compiler::dag_ir::{DagLayer, Ext, ExprId, Root, RootGroup, RootId};
+use cs::gkr_compiler::dag_ir::{DagLayer, Ext, ExprId, FieldKind, ReadPlace, Root, RootGroup, RootId};
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRLayerDescription, NoFieldGKRRelation};
 use std::collections::{BTreeMap, HashMap};
@@ -28,6 +28,13 @@ pub struct DagForwardContext {
     /// `SourceKind::Prior{id}` re-reads `cache_loc[id]` by default; the scheduler MAY instead
     /// keep a heavily-reused cache resident in an smem cell (an OPTIONAL optimization).
     pub cache_loc: HashMap<RootId, (u8, u16)>,
+    /// Cross-layer field map (codex Imp2): each prior-layer `ReadPlace::{LayerOutput,
+    /// CacheOutput}` → the TRUE field of its producing sink. `child_operand_field`
+    /// consults this to label a cross-layer read with its producing-sink field rather
+    /// than the enclosing reduction's field. Built once per circuit by
+    /// `build_cross_layer_field_map` and cloned into the ctx at the top of
+    /// `compile_layer`. Empty by default (single-layer tests have no cross-layer reads).
+    pub cross_layer_fields: HashMap<ReadPlace, FieldKind>,
 }
 
 /// What the interpreter produces per row: each materialized root's value.

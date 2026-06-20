@@ -17,8 +17,9 @@ use super::super::isa::{
 use super::schedule::{split_reduction, CellAllocator};
 use super::resolution::{resolve_or_descend, ResolveOutcome};
 use cs::gkr_compiler::dag_ir::{
-    expr_field, Expr, ExprId, FieldKind, SourceKind,
+    expr_field, Expr, ExprId, FieldKind, ReadPlace, SinkKind, SourceKind,
 };
+use std::collections::HashMap;
 
 /// BabyBear modulus P = 2^31 − 2^27 + 1 = 0x78000001.
 /// Field −1 is the canonical representative of P−1 (the additive inverse of 1).
@@ -35,29 +36,120 @@ fn to_operand_field(f: FieldKind) -> OperandField {
     }
 }
 
+/// A cross-layer field map: each prior-layer-produced `ReadPlace` → the TRUE field
+/// of its producing sink. Built once per circuit (`build_cross_layer_field_map`) and
+/// threaded through compilation so a cross-layer `Read{LayerOutput|CacheOutput}` is
+/// labeled with the field of the LAYER THAT PRODUCED IT, not the enclosing sink.
+///
+/// Without it, `child_operand_field` would fall back to the enclosing reduction's
+/// `expected` field for every cross-layer read (codex Imp2): correct for a FULLY-
+/// cross-layer expr (whose result field == sink field), but WRONG for a MIXED expr
+/// like `base_cross_layer_read + ext_challenge`, where the Base read would be
+/// mislabeled Ext (the Ext sink field). The interpreter ignores the field bit for
+/// value, so this is value-neutral, but the LABEL feeds the GPU ABI and the
+/// validator — so it must be the read's true producing-sink field.
+///
+/// Walks EVERY layer's `sinks`; `Inner{layer,offset}`/`Cache{layer,offset}` sinks are
+/// the only kinds re-read cross-layer (via `ReadPlace::LayerOutput`/`CacheOutput`).
+/// `Export`/`Scratch` are ignored — they are not read via those `ReadPlace` variants
+/// (`read_place_field` already classifies `Scratch` reads as `Base`).
+pub fn build_cross_layer_field_map(
+    circuit: &cs::gkr_compiler::dag_ir::DagCircuit,
+) -> HashMap<ReadPlace, FieldKind> {
+    let mut map = HashMap::new();
+    for dag_layer in &circuit.layers {
+        for sink in &dag_layer.sinks {
+            match sink.kind {
+                SinkKind::Inner { layer, offset } => {
+                    map.insert(ReadPlace::LayerOutput { layer, offset }, sink.field);
+                }
+                SinkKind::Cache { layer, offset } => {
+                    map.insert(ReadPlace::CacheOutput { layer, offset }, sink.field);
+                }
+                SinkKind::Export { .. } | SinkKind::Scratch { .. } => {}
+            }
+        }
+    }
+    map
+}
+
 /// The operand field of a child expression for instruction-field selection.
 ///
 /// SP1 convention: `expr_field` returns `Err(ReadPlace)` for a prior-layer
-/// `Read{LayerOutput|CacheOutput}` (and any expr built only from such reads)
-/// because that field lives in a *prior* layer's sinks, which `compile_layer` does
-/// not thread. The interpreter resolves every operand to `Ext` and IGNORES the
-/// field bit for value computation, so a mislabel here does NOT affect SP1 parity.
+/// `Read{LayerOutput|CacheOutput}` (and any expr that has such a read as a leaf)
+/// because the field lives in a *prior* layer's sinks, which `expr_field` alone
+/// cannot resolve. The interpreter resolves every operand to `Ext` and IGNORES the
+/// field bit for value computation, so a mislabel here does NOT affect SP1 parity —
+/// but it does feed the GPU ABI and the validator's field-transition tracker, so the
+/// LABEL must be the expr's TRUE field.
 ///
-/// On `Err` we fall back to `expected` — the enclosing root's result/sink field
-/// (Task 13). This matters when an ENTIRE root expr is cross-layer (so `expr_field`
-/// is `Err` for every node): the lowered acc would otherwise stay Base-labeled and
-/// the validator's field-transition tracker would reject the final Ext materialize.
-/// The result field of a fully-cross-layer root equals its sink field, so labeling
-/// those reads with the sink field is exactly correct, not just convenient. Where
-/// the field IS known (`Ok`), `expected` is ignored.
+/// On `Err` we recompute the field with `expr_field_with_map`, a map-aware mirror of
+/// `expr_field` that resolves each cross-layer-read LEAF via the cross-layer field
+/// `map` (built from EVERY layer's sinks by `build_cross_layer_field_map`) and joins
+/// up the tree. This is exactly correct for both cases the short-circuiting
+/// `expr_field` cannot distinguish:
+///   - a BARE cross-layer read → its producing sink's field (codex Imp2: a Base read
+///     in a mixed sibling group is now labeled Base, not the enclosing Ext);
+///   - a COMPOUND subexpr with a cross-layer-read leaf → the join of all leaves, so a
+///     `base_cross_layer_read + ext_challenge` lowered into a cell evicts as Ext (the
+///     value the local lowering actually produces), not the leaf's producing-sink
+///     field — which would otherwise mislabel the evict and trip the validator.
+/// If any leaf is absent from the map (defensive — should not happen for a valid
+/// circuit), `expr_field_with_map` returns `None` and we fall back to `expected`.
+/// Where the field IS already known (`Ok`), `expected` and `map` are ignored.
 fn child_operand_field(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     id: ExprId,
     expected: OperandField,
+    map: &HashMap<ReadPlace, FieldKind>,
 ) -> OperandField {
     match expr_field(&layer.exprs, &layer.sources, id, &layer.roots, &layer.sinks) {
         Ok(f) => to_operand_field(f),
-        Err(_) => expected, // SP1 cross-layer convention: take the enclosing result field
+        Err(_) => match expr_field_with_map(layer, id, map) {
+            // The expr's TRUE field, resolving cross-layer leaves via the map.
+            Some(f) => to_operand_field(f),
+            // Defensive fallback: take the enclosing result field (legacy SP1 path).
+            None => expected,
+        },
+    }
+}
+
+/// Map-aware mirror of `dag_ir::expr_field`: recompute an expr's field, resolving each
+/// cross-layer-read leaf (`Read{LayerOutput|CacheOutput}` → `expr_field` `Err`) via the
+/// cross-layer field `map`. Returns `None` if any such leaf is absent from the map
+/// (defensive). Only invoked on the `Err` branch, where a plain `expr_field` failed.
+fn expr_field_with_map(
+    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    id: ExprId,
+    map: &HashMap<ReadPlace, FieldKind>,
+) -> Option<FieldKind> {
+    match &layer.exprs[id.0 as usize] {
+        Expr::Source(_) => {
+            // A determinable source resolves through the standard inference; an
+            // `Err(place)` is a cross-layer read whose field we look up in the map.
+            match expr_field(&layer.exprs, &layer.sources, id, &layer.roots, &layer.sinks) {
+                Ok(f) => Some(f),
+                Err(place) => map.get(&place).copied(),
+            }
+        }
+        Expr::Add(children) | Expr::Mul(children) => {
+            // Join children's fields; any Ext leaf (e.g. a challenge) promotes the
+            // whole compound to Ext, matching what the local lowering produces.
+            let mut acc = FieldKind::Base;
+            for &c in children {
+                let f = expr_field_with_map(layer, c, map)?;
+                acc = join_field(acc, f);
+            }
+            Some(acc)
+        }
+    }
+}
+
+/// Lattice join mirroring `dag_ir::join`: `Base ⊔ Base = Base`, anything with `Ext` → `Ext`.
+fn join_field(a: FieldKind, b: FieldKind) -> FieldKind {
+    match (a, b) {
+        (FieldKind::Base, FieldKind::Base) => FieldKind::Base,
+        _ => FieldKind::Ext,
     }
 }
 
@@ -180,14 +272,14 @@ pub fn compile_expr(
         resolve_or_descend(layer, expr_id, &mut ctx.specials)
     {
         trace.pruned_resolution_exprs.push(expr_id);
-        let field = child_operand_field(layer, expr_id, expected);
+        let field = child_operand_field(layer, expr_id, expected, &ctx.cross_layer_fields);
         emit_init_field(out, OperandLine::Special { desc }, field);
         return Ok(());
     }
 
     match &layer.exprs[expr_id.0 as usize] {
         Expr::Source(_) => {
-            let field = child_operand_field(layer, expr_id, expected);
+            let field = child_operand_field(layer, expr_id, expected, &ctx.cross_layer_fields);
             let op = source_to_operand(layer, expr_id, ctx, trace)?;
             emit_init_field(out, op, field);
             Ok(())
@@ -240,8 +332,9 @@ fn lower_operand(
     }
 
     // Compound child: recursively lower into the acc, then evict to a fresh cell.
-    // The child's evict width follows its own field (cross-layer `Err` → `expected`).
-    let field = child_operand_field(layer, expr_id, expected);
+    // The child's evict width follows its own field (cross-layer read → its producing
+    // sink's field via the map; absent → `expected`).
+    let field = child_operand_field(layer, expr_id, expected, &ctx.cross_layer_fields);
     compile_expr(layer, expr_id, ctx, trace, out, alloc, field)?;
     let cell = alloc.alloc(field)?;
     evict_acc_to_cell(out, field, cell);
@@ -405,7 +498,7 @@ fn compile_reduction(
     let mut ops: Vec<(OperandField, OperandLine)> = Vec::with_capacity(children.len());
     let mut owned_cells: Vec<u16> = Vec::new();
     for &c in children {
-        let field = child_operand_field(layer, c, expected);
+        let field = child_operand_field(layer, c, expected, &ctx.cross_layer_fields);
         let (op, cell) = lower_operand(layer, c, ctx, trace, out, alloc, expected)?;
         if let Some(cell) = cell {
             owned_cells.push(cell);
@@ -580,8 +673,8 @@ fn try_compile_fma(
         Vec::with_capacity(pairs.len());
     let mut owned_cells: Vec<u16> = Vec::new();
     for &(lhs, rhs) in &pairs {
-        let lf = child_operand_field(layer, lhs, expected);
-        let rf = child_operand_field(layer, rhs, expected);
+        let lf = child_operand_field(layer, lhs, expected, &ctx.cross_layer_fields);
+        let rf = child_operand_field(layer, rhs, expected, &ctx.cross_layer_fields);
         let (lhs_op, lc) = lower_operand(layer, lhs, ctx, trace, out, alloc, lf)?;
         if let Some(c) = lc {
             owned_cells.push(c);
@@ -658,7 +751,7 @@ fn try_compile_alpha_fold(
 
     // Pre-materialize child0 + every (col, α) factor before initing the acc (a
     // compound factor lowers to a cell and clobbers the acc).
-    let col0_field = child_operand_field(layer, children[0], expected);
+    let col0_field = child_operand_field(layer, children[0], expected, &ctx.cross_layer_fields);
     let (col0_op, col0_cell) =
         lower_operand(layer, children[0], ctx, trace, out, alloc, col0_field)?;
     let mut owned_cells: Vec<u16> = Vec::new();
@@ -668,8 +761,8 @@ fn try_compile_alpha_fold(
     let mut lo: Vec<(OperandField, OperandLine, OperandField, OperandLine)> =
         Vec::with_capacity(pairs.len());
     for &(lhs, rhs) in &pairs {
-        let lf = child_operand_field(layer, lhs, expected);
-        let rf = child_operand_field(layer, rhs, expected);
+        let lf = child_operand_field(layer, lhs, expected, &ctx.cross_layer_fields);
+        let rf = child_operand_field(layer, rhs, expected, &ctx.cross_layer_fields);
         let (lhs_op, lc) = lower_operand(layer, lhs, ctx, trace, out, alloc, lf)?;
         if let Some(c) = lc {
             owned_cells.push(c);
@@ -1281,5 +1374,189 @@ mod tests {
             "expected exactly 1 SpecialDescriptor after lower_operand; got {}",
             ctx.specials.len()
         );
+    }
+
+    // ── codex Imp2: cross-layer field map ─────────────────────────────────────
+
+    use cs::gkr_compiler::dag_ir::{
+        DagCircuit, DagGlobals, FieldKind, Root, SinkId, SinkInfo, SinkKind,
+    };
+    use std::collections::HashMap;
+
+    // A cross-layer LayerOutput read → Global operand.
+    fn read_layer_output(arena: &mut ArenaBuilder, layer: usize, offset: usize) -> ExprId {
+        let s = arena.intern_source(SourceKind::Read {
+            place: ReadPlace::LayerOutput { layer, offset },
+        });
+        arena.source_expr(s)
+    }
+
+    // Compile one expr WITH a cross-layer field map injected into the ctx, mirroring
+    // what `compile_layer` does. `expected` is the enclosing sink's field.
+    fn run_with_map(
+        layer: &DagLayer,
+        expr: ExprId,
+        map: HashMap<ReadPlace, FieldKind>,
+        expected: OperandField,
+    ) -> Vec<Instr> {
+        let mut ctx = DagForwardContext::default();
+        ctx.cross_layer_fields = map;
+        let mut trace = CompileTrace::default();
+        let mut out = Vec::new();
+        let mut alloc = CellAllocator::new(1024);
+        compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, expected)
+            .expect("compile_expr");
+        out
+    }
+
+    // (a) build_cross_layer_field_map over a 2-layer circuit maps LayerOutput{0,0}
+    //     and CacheOutput{0,1} to layer-0's declared sink fields.
+    #[test]
+    fn cross_layer_field_map_records_producing_sink_field() {
+        // Layer 0 produces two sinks: an Inner{layer:0,offset:0} (Base) read later as
+        // LayerOutput{0,0}, and a Cache{layer:0,offset:1} (Ext) read as CacheOutput{0,1}.
+        let layer0 = DagLayer {
+            sources: vec![],
+            exprs: vec![],
+            roots: vec![],
+            sinks: vec![
+                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base },
+                SinkInfo { kind: SinkKind::Cache { layer: 0, offset: 1 }, field: FieldKind::Ext },
+                // Export/Scratch are NOT read cross-layer → excluded from the map.
+                SinkInfo { kind: SinkKind::Export { slot: 7 }, field: FieldKind::Ext },
+                SinkInfo { kind: SinkKind::Scratch { slot: 3 }, field: FieldKind::Base },
+            ],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        };
+        let layer1 = DagLayer {
+            sources: vec![],
+            exprs: vec![],
+            roots: vec![],
+            sinks: vec![],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        };
+        let circuit = DagCircuit {
+            layers: vec![layer0, layer1],
+            globals: DagGlobals { trace_len: 1, scratch: BTreeMap::new() },
+        };
+
+        let map = build_cross_layer_field_map(&circuit);
+        assert_eq!(
+            map.get(&ReadPlace::LayerOutput { layer: 0, offset: 0 }),
+            Some(&FieldKind::Base),
+            "LayerOutput{{0,0}} must map to layer-0 Inner sink field Base"
+        );
+        assert_eq!(
+            map.get(&ReadPlace::CacheOutput { layer: 0, offset: 1 }),
+            Some(&FieldKind::Ext),
+            "CacheOutput{{0,1}} must map to layer-0 Cache sink field Ext"
+        );
+        // Export/Scratch sinks contribute nothing → map has exactly the two reads.
+        assert_eq!(map.len(), 2, "only Inner/Cache sinks enter the map");
+    }
+
+    // (b) A layer-1 root `Add([cross_layer_base_read, ext_challenge])` labels the
+    //     cross-layer read's INIT MOV as Base — NOT the enclosing Ext sink field.
+    //     This is the codex Imp2 fix: WITHOUT the map (empty), `child_operand_field`
+    //     falls back to `expected` (Ext) and the init MOV would be Ext (mislabel).
+    #[test]
+    fn mixed_cross_layer_base_read_labeled_base_not_ext() {
+        let mut arena = ArenaBuilder::new();
+        // child0: a cross-layer Base read (LayerOutput{0,0}); child1: an Ext challenge.
+        let base_read = read_layer_output(&mut arena, 0, 0); // ExprId 0
+        let chal = challenge(&mut arena, ChallengePower::One); // ExprId 1
+        let add = arena.add(vec![base_read, chal]);
+        let layer = layer_of(&arena);
+
+        // The producing sink (layer-0 Inner{0,0}) is Base.
+        let mut map = HashMap::new();
+        map.insert(ReadPlace::LayerOutput { layer: 0, offset: 0 }, FieldKind::Base);
+
+        // Enclosing sink is Ext (the Add joins to Ext via the challenge).
+        let instrs = run_with_map(&layer, add, map, OperandField::Ext);
+
+        // The init MOV (child0, the cross-layer read) MUST be labeled Base.
+        let init = &instrs[0];
+        match init {
+            Instr::Mov { dir: MovDir::AccFromSrc, field, .. } => {
+                assert_eq!(
+                    *field,
+                    OperandField::Base,
+                    "cross-layer Base read init MOV must be labeled Base, got {:?}",
+                    field
+                );
+            }
+            other => panic!("expected an init MOV AccFromSrc, got {:?}", other),
+        }
+        // The Ext challenge promotes the acc via a separate Ext ADD group (§5).
+        assert!(
+            instrs.iter().any(|i| matches!(i, Instr::Add { field: OperandField::Ext, .. })),
+            "expected an Ext ADD group for the challenge"
+        );
+    }
+
+    // (b′) The SAME root WITHOUT the map (empty) regresses to the codex Imp2 bug:
+    //     the cross-layer read takes `expected` (Ext) → init MOV mislabeled Ext.
+    //     Locks in that the map is what flips the label to Base.
+    #[test]
+    fn mixed_cross_layer_base_read_mislabeled_ext_without_map() {
+        let mut arena = ArenaBuilder::new();
+        let base_read = read_layer_output(&mut arena, 0, 0);
+        let chal = challenge(&mut arena, ChallengePower::One);
+        let add = arena.add(vec![base_read, chal]);
+        let layer = layer_of(&arena);
+
+        // Empty map → child_operand_field falls back to `expected` = Ext.
+        let instrs = run_with_map(&layer, add, HashMap::new(), OperandField::Ext);
+        match &instrs[0] {
+            Instr::Mov { dir: MovDir::AccFromSrc, field, .. } => {
+                assert_eq!(
+                    *field,
+                    OperandField::Ext,
+                    "without the map the cross-layer read takes the enclosing Ext (the Imp2 bug)"
+                );
+            }
+            other => panic!("expected an init MOV AccFromSrc, got {:?}", other),
+        }
+    }
+
+    // A COMPOUND cross-layer child (`base_cross_layer_read + ext_challenge` nested as
+    // a factor of an enclosing product) evicts to a cell labeled by its LOCAL field
+    // join (Ext), NOT the leaf's producing-sink field (Base). Guards the regression
+    // surfaced by the gate: a single map lookup of the short-circuited leaf would
+    // mislabel the evict Base and trip the validator's narrowing check.
+    #[test]
+    fn compound_cross_layer_child_evicts_as_local_join_field() {
+        let mut arena = ArenaBuilder::new();
+        // inner = (LayerOutput{0,0} [Base] + challenge [Ext])  → local join Ext
+        let base_read = read_layer_output(&mut arena, 0, 0);
+        let chal = challenge(&mut arena, ChallengePower::One);
+        let inner = arena.add(vec![base_read, chal]);
+        // outer = inner * another_base_read  → forces `inner` to lower into a cell
+        let other = read_base(&mut arena, 5);
+        let outer = arena.mul(vec![inner, other]);
+        let layer = layer_of(&arena);
+
+        let mut map = HashMap::new();
+        map.insert(ReadPlace::LayerOutput { layer: 0, offset: 0 }, FieldKind::Base);
+
+        let instrs = run_with_map(&layer, outer, map, OperandField::Ext);
+        // The compound child `inner` is evicted to a cell via MOV DstFromAcc → Smem.
+        // That evict MUST be labeled Ext (the local join), not Base.
+        let evict = instrs.iter().find(|i| {
+            matches!(i, Instr::Mov { dir: MovDir::DstFromAcc, dst: Some(DstLine::Smem { .. }), .. })
+        });
+        match evict {
+            Some(Instr::Mov { field, .. }) => assert_eq!(
+                *field,
+                OperandField::Ext,
+                "compound cross-layer child must evict as its local join field Ext"
+            ),
+            _ => panic!("expected an evict MOV DstFromAcc → Smem for the compound child"),
+        }
     }
 }

@@ -25,7 +25,7 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
 use field::{Field, FieldExtension, PrimeField};
 
-use gkr_eval_isa::fwd::compile::compile_layer;
+use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, compile_layer};
 use gkr_eval_isa::fwd::context::RootOutput;
 use gkr_eval_isa::fwd::encode::{decode, encode};
 use gkr_eval_isa::fwd::interp::interpret_layer_row;
@@ -175,12 +175,18 @@ fn check_fixture(name: &str, artifact: &GKRCircuitArtifact<BabyBearField>) -> us
         "[{name}] dag/artifact layer count mismatch"
     );
 
+    // Cross-layer field map (codex Imp2): built ONCE over the whole circuit, then
+    // threaded into every per-layer `compile_layer` so cross-layer reads are labeled
+    // with their TRUE producing-sink field.
+    let cross_layer_fields = build_cross_layer_field_map(&dag);
+
     for (l, dag_layer) in dag.layers.iter().enumerate() {
         let art_layer = &artifact.layers[l];
         let compiled = compile_layer(
             dag_layer,
             art_layer,
             &artifact.scratch_space_mapping,
+            &cross_layer_fields,
             BUDGET,
         )
         .unwrap_or_else(|e| {
