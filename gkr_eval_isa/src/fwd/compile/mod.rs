@@ -1,4 +1,5 @@
 pub mod arith;
+pub mod negate;
 pub mod resolution;
 
 use self::arith::{compile_expr, source_to_operand};

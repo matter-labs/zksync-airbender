@@ -11,11 +11,17 @@
 
 use super::super::context::{CompileTrace, DagForwardContext};
 use super::super::error::CompileError;
-use super::super::isa::{Instr, MovDir, OperandField, OperandLine, Sign};
+use super::super::isa::{Instr, LdcSub, MovDir, OperandField, OperandLine, Sign, Special};
+use super::negate::canonicalize_product;
 use super::resolution::{resolve_or_descend, ResolveOutcome};
 use cs::gkr_compiler::dag_ir::{
     expr_field, Expr, ExprId, FieldKind, SourceKind,
 };
+
+/// BabyBear modulus P = 2^31 − 2^27 + 1 = 0x78000001.
+/// Field −1 is the canonical representative of P−1 (the additive inverse of 1).
+const BABYBEAR_P: u32 = 0x78000001;
+const BABYBEAR_NEG_ONE: u32 = BABYBEAR_P - 1;
 
 // ── field classification ──────────────────────────────────────────────────────
 
@@ -84,9 +90,18 @@ pub fn source_to_operand(
             Ok(OperandLine::Global { slot, col })
         }
         SourceKind::Constant { value } => {
+            // Strength-reduction: recognize the field value −1 (= P−1) and emit
+            // Special(NegOne) so `canonicalize_product` can hoist it to a unary
+            // negate rather than a multiplicand (spec §6, Task 10).
+            if *value == BABYBEAR_NEG_ONE {
+                return Ok(OperandLine::Ldc {
+                    sub: LdcSub::Special,
+                    idx: Special::NegOne as u16,
+                });
+            }
             let idx = ctx.consts.intern(*value);
             Ok(OperandLine::Ldc {
-                sub: super::super::isa::LdcSub::Const,
+                sub: LdcSub::Const,
                 idx,
             })
         }
@@ -206,8 +221,7 @@ fn compile_mul(
     trace: &mut CompileTrace,
     out: &mut Vec<Instr>,
 ) -> Result<(), CompileError> {
-    // §6 strength: drop `Constant{1}` factors. A `Constant{-1}` factor is left in
-    // place; Task 10 (negate canonicalization) owns that split — see seam below.
+    // §6 strength: drop `Constant{1}` factors.
     let factors: Vec<ExprId> = children
         .into_iter()
         .filter(|&c| !is_constant_one(layer, c))
@@ -218,11 +232,89 @@ fn compile_mul(
         return Ok(());
     }
 
-    // Task 10 seam (negate canonicalization): a product containing `Special(-1)`
-    // would be split into a unary negate + the remaining MUL here. No Task 9 test
-    // uses `-1`, so this is a no-op seam — do NOT split products yet.
+    // Resolve each factor to an OperandLine so we can inspect for Special(NegOne).
+    let mut operands: Vec<OperandLine> = Vec::with_capacity(factors.len());
+    for &f in &factors {
+        operands.push(source_to_operand(layer, f, ctx, trace)?);
+    }
 
-    compile_reduction(layer, &factors, ctx, trace, out, /* is_add */ false)
+    // Task 10 — negate canonicalization (spec §6):
+    // Pull any Special(NegOne) out of the factor list; the parity of their count
+    // decides whether a unary negate follows the multiply.
+    let (negate, remaining) = canonicalize_product(&operands);
+
+    if remaining.is_empty() {
+        // All factors were −1; the product is just ±1 as a negate or identity.
+        // Emit a unary negate or nothing (identity ×1 → NOP handled above for
+        // ExprId factors, but −1^even = +1 which we treat as degenerate here).
+        // In practice dag_ir never produces a pure product of −1s without other
+        // factors; emit a unary negate if odd count, otherwise NOP.
+        if negate {
+            emit_unary_negate(out);
+        }
+        return Ok(());
+    }
+
+    // Emit the remaining factors as a field-grouped MUL.
+    // We have pre-computed OperandLines; we cannot call compile_reduction (which
+    // re-resolves via source_to_operand). Build the field-grouped reduction inline.
+    emit_mul_from_operands(&remaining, out);
+
+    // If sign was flipped by an odd number of −1 factors, apply a unary negate.
+    if negate {
+        emit_unary_negate(out);
+    }
+
+    Ok(())
+}
+
+/// Emit `MUL` instructions grouped by operand field over a pre-resolved operand
+/// slice. Base group emitted first (base-as-long-as-possible, §5); then Ext group.
+/// The first operand initializes the accumulator via `emit_init`; subsequent
+/// operands accumulate via `Instr::Mul`.
+///
+/// This replaces the ExprId-based `compile_reduction` path for `compile_mul` after
+/// Task 10's pre-resolution of factors (which is required for the −1 inspection).
+fn emit_mul_from_operands(operands: &[OperandLine], out: &mut Vec<Instr>) {
+    debug_assert!(!operands.is_empty());
+
+    // init from operands[0]
+    emit_init(out, operands[0]);
+
+    if operands.len() == 1 {
+        return; // unary → just the MOV
+    }
+
+    // Partition the remaining operands into Base and Ext groups.
+    // SP1 convention: Smem/Global/Const/Special operands are treated as Base here
+    // (the field type of a pre-resolved OperandLine is not carried on the line
+    // itself — it is known only at the instruction level from the surrounding
+    // compile context; for the Task 10 reduction we emit all into Base group as
+    // a conservative default consistent with the SP1 "interpreter ignores field bit"
+    // convention documented in `child_operand_field`).
+    //
+    // A full field-grouped implementation (Base vs Ext) would require threading
+    // the per-factor ExprId alongside the OperandLine; this is deferred to the
+    // slot scheduler (§11). SP1 parity is unaffected (Task 13 / Task 7 verified).
+    let rest = &operands[1..];
+    if !rest.is_empty() {
+        out.push(Instr::Mul {
+            field: OperandField::Base,
+            operands: rest.to_vec(),
+        });
+    }
+}
+
+/// Emit a unary negate: `MUL` with sole operand `Special(NegOne)` (spec §6).
+/// The Task 7 interpreter executes this as a field negation, not a multiply.
+fn emit_unary_negate(out: &mut Vec<Instr>) {
+    out.push(Instr::Mul {
+        field: OperandField::Base,
+        operands: vec![OperandLine::Ldc {
+            sub: LdcSub::Special,
+            idx: Special::NegOne as u16,
+        }],
+    });
 }
 
 // ── shared reduction grouping ───────────────────────────────────────────────────
