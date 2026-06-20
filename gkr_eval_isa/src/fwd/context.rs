@@ -4,6 +4,7 @@ use super::binding::BackingTable;
 use super::error::CompileError;
 use super::isa::{DstLine, OperandLine, Program};
 use super::source::{ChallengeBanks, ConstBank, SpecialTable};
+use super::stats::CompileStats;
 use cs::gkr_compiler::dag_ir::{DagLayer, Ext, ExprId, Root, RootGroup, RootId};
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRLayerDescription, NoFieldGKRRelation};
@@ -68,6 +69,7 @@ pub struct CompiledLayer {
     pub skipped: Vec<RootId>,                    // SkipScratchPrefill roots
     pub trace: CompileTrace,
     pub budget: usize,
+    pub stats: CompileStats,
 }
 
 /// Classify every `Root::Output` of a layer (spec §10). No closures — real metadata.

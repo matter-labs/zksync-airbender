@@ -8,4 +8,5 @@ pub mod error;
 pub mod interp;
 pub mod isa;
 pub mod source;
+pub mod stats;
 pub mod validate;

@@ -193,6 +193,7 @@ mod tests {
     use super::*;
     use crate::fwd::binding::{BackingKey, BackingTable};
     use crate::fwd::context::{CompiledLayer, CompileTrace, DagForwardContext, OutputCell, RootOutput, RowOutputs};
+    use crate::fwd::stats::CompileStats;
     use crate::fwd::error::InterpError;
     use crate::fwd::isa::*;
     use crate::fwd::source::{ConstBank, SpecialTable};
@@ -293,6 +294,7 @@ mod tests {
             skipped: vec![],
             trace: CompileTrace::default(),
             budget: 4,
+            stats: CompileStats::default(),
         }
     }
 
@@ -552,6 +554,7 @@ mod tests {
             skipped: vec![],
             trace: CompileTrace::default(),
             budget: 4,
+            stats: CompileStats::default(),
         };
 
         let layer = empty_layer();

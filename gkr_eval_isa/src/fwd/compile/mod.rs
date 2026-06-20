@@ -10,6 +10,7 @@ use super::context::{
     build_forward_actions, CompileTrace, CompiledLayer, DagForwardContext, ForwardAction,
     OutputCell, RootOutput,
 };
+use super::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 use super::error::CompileError;
 use super::isa::{DstLine, Instr, MovDir, OperandField, Program};
 use cs::gkr_compiler::dag_ir::{DagLayer, Expr, ExprId, Root, RootId, SinkInfo, SinkKind};
@@ -128,6 +129,27 @@ pub fn compile_layer(
     }
 
     trace.max_live_cells = trace.max_live_cells.max(0);
+
+    // Build per-layer stats from the compiled program and context (spec §11).
+    let mut stats = CompileStats::default();
+    stats.program_lanes = program.instrs.len();
+    for instr in &program.instrs {
+        match instr {
+            Instr::Mov { .. } => stats.op_counts[OP_MOV] += 1,
+            Instr::Add { .. } => stats.op_counts[OP_ADD] += 1,
+            Instr::Mul { .. } => stats.op_counts[OP_MUL] += 1,
+            Instr::Fma { .. } => stats.op_counts[OP_FMA] += 1,
+        }
+    }
+    // special_gathers = number of resolved-fold Specials emitted (SpecialTable length).
+    stats.special_gathers = ctx.specials.len();
+    // max_live_cells from the compiler's high-water mark across all roots.
+    stats.max_live_cells = trace.max_live_cells;
+    // Remaining counters (inline_reads, cell_reads, cell_loads, cell_stores,
+    // evicts, reloads, recomputes, split_count, avg_chunk) require per-instruction
+    // fine-grained tracking not yet wired in SP1. Left at 0.
+    // SP1: not yet counted.
+
     Ok(CompiledLayer {
         program,
         ctx,
@@ -135,6 +157,7 @@ pub fn compile_layer(
         skipped,
         trace,
         budget,
+        stats,
     })
 }
 

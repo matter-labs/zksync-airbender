@@ -413,6 +413,7 @@ pub fn validate_compiled(compiled: &CompiledLayer, layer: &DagLayer) -> Result<(
 mod tests {
     use super::*;
     use super::super::context::{CompileTrace, DagForwardContext, ForwardAction, RootOutput, OutputCell};
+    use super::super::stats::CompileStats;
     use super::super::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program, Special};
     use cs::gkr_compiler::dag_ir::{
         BatchingOrder, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, RootId,
@@ -480,6 +481,7 @@ mod tests {
             skipped: vec![],
             trace: CompileTrace::default(),
             budget: 16,
+            stats: CompileStats::default(),
         }
     }
 
@@ -519,6 +521,7 @@ mod tests {
                 skipped: vec![],
                 trace: CompileTrace::default(),
                 budget: 16,
+                stats: CompileStats::default(),
             }
         };
 
@@ -566,6 +569,7 @@ mod tests {
             skipped: vec![],
             trace: CompileTrace::default(),
             budget: 16,
+            stats: CompileStats::default(),
         };
 
         assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
@@ -655,6 +659,7 @@ mod tests {
             skipped: vec![],
             trace: CompileTrace::default(),
             budget: 16,
+            stats: CompileStats::default(),
         };
 
         // Must not spuriously reject due to dag_ir field re-derivation.
