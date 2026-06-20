@@ -225,10 +225,15 @@ fn lower_operand(
     // A source or a resolution-pruned fold lowers directly to one operand line.
     // `resolve_or_descend` (inside `source_to_operand`) prunes a resolved parent to
     // a Special without descending, so we never spuriously cell-lower a fold.
-    if matches!(
-        resolve_or_descend(layer, expr_id, &mut ctx.specials),
-        ResolveOutcome::Special(_)
-    ) || matches!(&layer.exprs[expr_id.0 as usize], Expr::Source(_))
+    //
+    // Use the non-mutating `contains_key` probe here rather than calling
+    // `resolve_or_descend` again: that call would push a SpecialDescriptor as a side
+    // effect, and `source_to_operand` (below) calls `resolve_or_descend` once more —
+    // doubling the descriptor for every resolution-pruned expr and halving descriptor
+    // headroom. `contains_key` is the exact condition `resolve_or_descend` tests via
+    // `.get()`, so it is semantically equivalent and side-effect-free.
+    if layer.resolutions.contains_key(&expr_id)
+        || matches!(&layer.exprs[expr_id.0 as usize], Expr::Source(_))
     {
         let op = source_to_operand(layer, expr_id, ctx, trace)?;
         return Ok((op, None));
@@ -804,7 +809,7 @@ mod tests {
     use crate::fwd::isa::{Instr, LdcSub, MovDir, OperandField, OperandLine, Sign};
     use cs::gkr_compiler::dag_ir::{
         ArenaBuilder, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, DagLayer, ExprId,
-        ReadPlace, SourceKind,
+        ReadPlace, ResolutionStrategy, SourceKind,
     };
     use std::collections::BTreeMap;
 
@@ -1228,6 +1233,53 @@ mod tests {
                     ],
                 },
             ]
+        );
+    }
+
+    // ── resolution probe in lower_operand emits exactly ONE descriptor ────────────
+    //
+    // Before the fix, lower_operand called resolve_or_descend (mutating) as a probe,
+    // then source_to_operand called resolve_or_descend again — pushing TWO descriptors
+    // for each resolution-pruned expr. After the fix, the probe is replaced with the
+    // non-mutating `layer.resolutions.contains_key(&expr_id)`, so source_to_operand's
+    // single call is the only push, yielding exactly one descriptor.
+    #[test]
+    fn resolution_probe_emits_single_descriptor() {
+        let mut arena = ArenaBuilder::new();
+        // Create a non-Source expr (Mul([a, b])) so it's not caught by the Source
+        // branch — only the resolution branch fires.
+        let a = read_base(&mut arena, 0);
+        let b = read_base(&mut arena, 1);
+        let fold = arena.mul(vec![a, b]); // a non-Source expr that will be resolved
+
+        // Attach a PeekSetup resolution to the Mul expr.
+        let mut resolutions = BTreeMap::new();
+        resolutions.insert(fold, ResolutionStrategy::PeekSetup);
+
+        let layer = DagLayer {
+            sources: arena.sources().to_vec(),
+            exprs: arena.exprs().to_vec(),
+            roots: vec![],
+            sinks: vec![],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions,
+        };
+
+        let mut ctx = DagForwardContext::default();
+        let mut trace = CompileTrace::default();
+        let mut out = Vec::new();
+        let mut alloc = CellAllocator::new(1024);
+
+        // lower_operand on the resolution-pruned expr should emit exactly one descriptor.
+        lower_operand(&layer, fold, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base)
+            .expect("lower_operand");
+
+        assert_eq!(
+            ctx.specials.len(),
+            1,
+            "expected exactly 1 SpecialDescriptor after lower_operand; got {}",
+            ctx.specials.len()
         );
     }
 }
