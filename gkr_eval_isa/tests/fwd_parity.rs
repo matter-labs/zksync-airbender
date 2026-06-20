@@ -204,16 +204,18 @@ fn check_fixture(name: &str, artifact: &GKRCircuitArtifact<BabyBearField>) {
         // Every SkipScratchPrefill root must be in `skipped` and emit no value.
         // (Handled implicitly: such roots are absent from `root_outputs`.)
 
-        // Parity at sampled rows for every materialized root.
+        // Parity at sampled rows for every materialized root. `interpret_layer_row`
+        // already produces `by_root` for ALL roots in one pass, so we call it ONCE
+        // per row and compare every root against the oracle (avoids an O(roots)
+        // re-interpretation per root).
         let by_root: BTreeMap<RootId, RootOutput> =
             compiled.root_outputs.iter().cloned().collect();
 
-        for (rid, _out) in &compiled.root_outputs {
-            for &row in &rows {
-                let got = interpret_layer_row(&compiled, dag_layer, &r, row)
-                    .unwrap_or_else(|e| {
-                        panic!("[{name}] layer {l} root {rid:?} row {row}: interp failed: {e:?}");
-                    });
+        for &row in &rows {
+            let got = interpret_layer_row(&compiled, dag_layer, &r, row).unwrap_or_else(|e| {
+                panic!("[{name}] layer {l} row {row}: interp failed: {e:?}");
+            });
+            for (rid, _out) in &compiled.root_outputs {
                 let want = eval_layer_root(dag_layer, *rid, row, &r);
                 let have = got.by_root[rid];
                 assert_eq!(
@@ -281,7 +283,9 @@ fn run_fixtures(fixtures: &[&str]) {
         let path = dir.join(f);
         let artifact = load_fixture(&path)
             .unwrap_or_else(|| panic!("failed to load/deserialize fixture {f} at {path:?}"));
+        let t0 = std::time::Instant::now();
         check_fixture(f, &artifact);
+        eprintln!("[fwd_parity] {f} OK in {:?}", t0.elapsed());
         checked += 1;
     }
     assert_eq!(checked, fixtures.len(), "not all fixtures checked");
@@ -301,18 +305,16 @@ fn parity_add_sub() {
 
 // ── full gate over all 22 fixtures ──────────────────────────────────────────────
 //
-// These run the WHOLE corpus (all layers × sampled rows) and are the SP1 gate.
-// They are `#[ignore]`d only while the fix-forward is staged commit-by-commit;
-// once green for the full corpus the ignore is removed (final commit).
+// These run the WHOLE corpus (all layers × sampled rows) and ARE the SP1 gate:
+// every fixture layer compiles, validates, encode/decode-roundtrips, and the CPU
+// interpreter matches `eval_layer_root` bit-for-bit at the sampled rows.
 
 #[test]
-#[ignore = "widening staged across fix-forward commits; un-ignored when all 22 pass"]
 fn parity_all_layout_gkr() {
     run_fixtures(LAYOUT_GKR_FIXTURES);
 }
 
 #[test]
-#[ignore = "widening staged across fix-forward commits; un-ignored when all 22 pass"]
 fn parity_all_layout_no_caches_gkr() {
     run_fixtures(LAYOUT_NO_CACHES_GKR_FIXTURES);
 }
