@@ -1,6 +1,7 @@
 pub mod arith;
 pub mod negate;
 pub mod resolution;
+pub mod schedule;
 
 use self::arith::{compile_expr, source_to_operand};
 use super::binding::BackingKey;

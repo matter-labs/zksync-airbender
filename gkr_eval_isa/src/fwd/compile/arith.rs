@@ -11,7 +11,10 @@
 
 use super::super::context::{CompileTrace, DagForwardContext};
 use super::super::error::CompileError;
-use super::super::isa::{Instr, LdcSub, MovDir, OperandField, OperandLine, Sign, Special};
+use super::super::isa::{
+    DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Sign, Special, MAX_ARITY,
+};
+use super::schedule::{split_reduction, CellAllocator};
 use super::resolution::{resolve_or_descend, ResolveOutcome};
 use cs::gkr_compiler::dag_ir::{
     expr_field, Expr, ExprId, FieldKind, SourceKind,
@@ -321,6 +324,9 @@ fn compile_reduction(
     }
 
     // Emit the Base group first (base-as-long-as-possible, §5), then the Ext group.
+    // Each group is a single ADD/MUL when it fits the arity cap (the proven Tasks
+    // 9/10 path); an over-long group is split into ≤MAX_ARITY chunks combined via
+    // the evict-to-cell primitive (§11) so `encode` never sees an over-cap arity.
     for (field, ops) in [
         (OperandField::Base, base_ops),
         (OperandField::Ext, ext_ops),
@@ -328,17 +334,97 @@ fn compile_reduction(
         if ops.is_empty() {
             continue;
         }
-        if is_add {
-            out.push(Instr::Add {
-                field,
-                sign: Sign::Plus,
-                operands: ops,
-            });
-        } else {
-            out.push(Instr::Mul { field, operands: ops });
-        }
+        emit_reduction_group(out, trace, field, ops, is_add)?;
     }
     Ok(())
+}
+
+/// Emit ONE field-homogeneous reduction group, folding `ops` into the running
+/// accumulator. When `ops.len() <= MAX_ARITY` this is a single ADD/MUL — byte-for-
+/// byte the Tasks 9/10 emission. When it exceeds the cap, the group is split into
+/// `split_reduction` chunks and combined with the evict-to-cell primitive (§11):
+///
+///   chunk0:           fold into acc            (acc already holds the running value)
+///   each later chunk: evict acc → fresh cell
+///                     re-init acc from chunk[0], fold chunk[1..]
+///                     fold the evict cell back in (ADD/MUL Smem{cell})
+///                     free the cell
+///
+/// `is_add` selects ADD (sign +) vs MUL. The accumulator's running value is
+/// preserved across the split because chunk0 folds into it and every later chunk's
+/// partial is combined back through the evict cell.
+fn emit_reduction_group(
+    out: &mut Vec<Instr>,
+    trace: &mut CompileTrace,
+    field: OperandField,
+    ops: Vec<OperandLine>,
+    is_add: bool,
+) -> Result<(), CompileError> {
+    if ops.len() <= MAX_ARITY {
+        // Unsplit fast path — identical to the prior Tasks 9/10 emission.
+        push_fold(out, field, ops, is_add);
+        return Ok(());
+    }
+
+    // Over-cap: split into chunks bounded by the arity cap. The evict cell holds the
+    // running partial between chunks; its width follows the group field (Ext → 4).
+    let sizes = split_reduction(ops.len(), /* budget */ 4);
+    let mut alloc = CellAllocator::new(4);
+    let mut idx = 0usize;
+    let mut chunks = sizes.into_iter();
+
+    // chunk0 folds into the acc, which already holds the reduction's running value.
+    let first = chunks.next().expect("split_reduction yields >=1 chunk for arity>0");
+    push_fold(out, field, ops[idx..idx + first].to_vec(), is_add);
+    idx += first;
+
+    for size in chunks {
+        // Evict the running acc to a fresh cell, then recompute the next chunk in
+        // the acc and fold the evicted partial back in.
+        let cell = alloc.alloc(field)?;
+        evict_acc_to_cell(out, field, cell);
+
+        let chunk = &ops[idx..idx + size];
+        idx += size;
+        // Re-init the acc from the chunk's first operand, fold the chunk's rest.
+        emit_init(out, chunk[0]);
+        if chunk.len() > 1 {
+            push_fold(out, field, chunk[1..].to_vec(), is_add);
+        }
+        // Fold the evicted partial back in (ADD/MUL referencing the cell).
+        push_fold(out, field, vec![OperandLine::Smem { cell }], is_add);
+        alloc.free(cell);
+    }
+
+    trace.max_live_cells = trace.max_live_cells.max(alloc.max_live());
+    Ok(())
+}
+
+/// Emit a single field-homogeneous fold of `ops` into the acc: ADD (sign +) when
+/// `is_add`, else MUL. Caller guarantees `ops.len() <= MAX_ARITY` and non-empty.
+fn push_fold(out: &mut Vec<Instr>, field: OperandField, ops: Vec<OperandLine>, is_add: bool) {
+    if is_add {
+        out.push(Instr::Add {
+            field,
+            sign: Sign::Plus,
+            operands: ops,
+        });
+    } else {
+        out.push(Instr::Mul { field, operands: ops });
+    }
+}
+
+/// The evict primitive: `MOV DstFromAcc Smem{cell}` writes the current accumulator
+/// to an smem cell so it can be referenced as an `OperandLine::Smem` operand later
+/// (spec §11; Task 13 reuses this for nested subexpressions). `field` labels the
+/// MOV for the validator; the interpreter ignores the MOV field for value.
+fn evict_acc_to_cell(out: &mut Vec<Instr>, field: OperandField, cell: u16) {
+    out.push(Instr::Mov {
+        dir: MovDir::DstFromAcc,
+        field,
+        dst: Some(DstLine::Smem { cell }),
+        src: None,
+    });
 }
 
 // ── FMA (product-sum) ────────────────────────────────────────────────────────────
@@ -775,6 +861,80 @@ mod tests {
                 },
             ]
         );
+    }
+
+    // ── Over-long Base ADD reduction splits with evict-to-cell ────────────────
+    //
+    // A flat Add of 200 base columns exceeds the 7-bit arity cap (127) in a single
+    // ADD instruction, which `encode` rejects. compile_reduction must split the
+    // Base group via split_reduction + the evict-to-cell primitive so NO emitted
+    // ADD carries more than MAX_ARITY operands, while every term is still folded in.
+    #[test]
+    fn long_add_reduction_splits_below_arity_cap() {
+        const N: usize = 200;
+        let mut arena = ArenaBuilder::new();
+        let cols: Vec<ExprId> = (0..N).map(|i| read_base(&mut arena, i)).collect();
+        let add = arena.add(cols);
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, add);
+
+        // No single ADD may exceed the arity cap.
+        for instr in &instrs {
+            if let Instr::Add { operands, .. } = instr {
+                assert!(
+                    operands.len() <= MAX_ARITY,
+                    "ADD with arity {} exceeds MAX_ARITY {}",
+                    operands.len(),
+                    MAX_ARITY
+                );
+            }
+        }
+
+        // The split must use the evict-to-cell primitive: at least one
+        // `MOV DstFromAcc -> Smem` (evict) and at least one ADD over a Smem operand
+        // (fold the evicted partial back in).
+        let has_evict = instrs.iter().any(|i| {
+            matches!(
+                i,
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    dst: Some(DstLine::Smem { .. }),
+                    ..
+                }
+            )
+        });
+        assert!(has_evict, "expected an evict MOV DstFromAcc -> Smem");
+        let folds_cell = instrs.iter().any(|i| matches!(
+            i,
+            Instr::Add { operands, .. }
+                if operands.iter().any(|o| matches!(o, OperandLine::Smem { .. }))
+        ));
+        assert!(folds_cell, "expected an ADD folding a Smem partial back in");
+
+        // Every distinct base column 0..N must appear as an ADD/MOV operand exactly
+        // once (no term dropped, none duplicated) — Smem partials excepted.
+        use std::collections::BTreeSet;
+        let mut seen: BTreeSet<u16> = BTreeSet::new();
+        let mut record = |op: &OperandLine| {
+            if let OperandLine::Global { col, .. } = op {
+                assert!(seen.insert(*col), "column {} folded twice", col);
+            }
+        };
+        for instr in &instrs {
+            match instr {
+                Instr::Mov { src: Some(op), .. } => record(op),
+                Instr::Add { operands, .. } => operands.iter().for_each(&mut record),
+                _ => {}
+            }
+        }
+        let expected: BTreeSet<u16> = (0..N as u16).collect();
+        assert_eq!(seen, expected, "every base column must be folded exactly once");
+
+        // End-to-end: the split program clears the encoder's arity cap-guard
+        // (`pack_arith_header` rejects arity > MAX_ARITY) — the motivation for the
+        // split. Without it, encode would return Err(ArityOutOfRange(199)).
+        let program = crate::fwd::isa::Program { instrs };
+        crate::fwd::encode::encode(&program).expect("split program must encode within arity cap");
     }
 
     // ── α-fold → [Mov col0, Fma{lhs=Base,rhs=Ext} [(col1,α1),…]] ──────────────
