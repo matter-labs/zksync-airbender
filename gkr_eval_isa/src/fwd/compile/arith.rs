@@ -616,12 +616,7 @@ fn try_compile_fma(
     }
 
     for ((lf, rf), gpairs) in groups {
-        out.push(Instr::Fma {
-            field_lhs: field_from_u8(lf),
-            field_rhs: field_from_u8(rf),
-            sign: Sign::Plus,
-            pairs: gpairs,
-        });
+        push_fma_chunked(out, field_from_u8(lf), field_from_u8(rf), gpairs);
     }
     free_all(alloc, &owned_cells);
     Ok(Some(()))
@@ -696,12 +691,7 @@ fn try_compile_alpha_fold(
             .push((op_l, op_r));
     }
     for ((lf, rf), gpairs) in groups {
-        out.push(Instr::Fma {
-            field_lhs: field_from_u8(lf),
-            field_rhs: field_from_u8(rf),
-            sign: Sign::Plus,
-            pairs: gpairs,
-        });
+        push_fma_chunked(out, field_from_u8(lf), field_from_u8(rf), gpairs);
     }
     free_all(alloc, &owned_cells);
     Ok(Some(()))
@@ -729,6 +719,28 @@ fn field_from_u8(v: u8) -> OperandField {
         OperandField::Base
     } else {
         OperandField::Ext
+    }
+}
+
+/// Emit one or more `Instr::Fma` instructions that together accumulate all `pairs`
+/// for the given `(field_lhs, field_rhs)` group. Chunks `pairs` into slices of at
+/// most `MAX_ARITY` to satisfy the encoder's 7-bit arity cap. Multiple Fma
+/// instructions over the same group are value-correct: FMA accumulates into the acc,
+/// so appending chunks is equivalent to a single large Fma (Split-before-encoding,
+/// mirroring what `emit_reduction_group` does for ADD/MUL).
+fn push_fma_chunked(
+    out: &mut Vec<Instr>,
+    field_lhs: OperandField,
+    field_rhs: OperandField,
+    pairs: Vec<(OperandLine, OperandLine)>,
+) {
+    for chunk in pairs.chunks(MAX_ARITY) {
+        out.push(Instr::Fma {
+            field_lhs,
+            field_rhs,
+            sign: Sign::Plus,
+            pairs: chunk.to_vec(),
+        });
     }
 }
 
@@ -1139,6 +1151,46 @@ mod tests {
         let layer = layer_of(&arena);
         let err = try_run(&layer, mul).unwrap_err();
         assert_eq!(err, CompileError::DegenerateConstProduct);
+    }
+
+    // ── FMA group >127 pairs splits into multiple Fma each ≤ MAX_ARITY ───────────
+    //
+    // 130 binary products Mul(col_i, col_j) — all (Base,Base) → single group of 130
+    // pairs. Before the fix, one Instr::Fma with 129 pairs was emitted (arity 129 >
+    // MAX_ARITY=127), which encode rejects. After the fix, pairs are chunked ≤127.
+    #[test]
+    fn fma_over_max_arity_splits() {
+        const N: usize = 130; // > MAX_ARITY (127)
+        let mut arena = ArenaBuilder::new();
+        // Allocate 2*N columns; pair up col_(2i) × col_(2i+1).
+        let cols: Vec<ExprId> = (0..2 * N).map(|i| read_base(&mut arena, i)).collect();
+        let products: Vec<ExprId> = (0..N)
+            .map(|i| arena.mul(vec![cols[2 * i], cols[2 * i + 1]]))
+            .collect();
+        let add = arena.add(products);
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, add);
+
+        // Every Fma must have pairs.len() ≤ MAX_ARITY.
+        for instr in &instrs {
+            if let Instr::Fma { pairs, .. } = instr {
+                assert!(
+                    pairs.len() <= MAX_ARITY,
+                    "Fma with {} pairs exceeds MAX_ARITY {}",
+                    pairs.len(),
+                    MAX_ARITY
+                );
+            }
+        }
+
+        // There must be at least 2 Fma instructions (the N=130 pairs can't fit in 1).
+        let fma_count = instrs.iter().filter(|i| matches!(i, Instr::Fma { .. })).count();
+        assert!(fma_count >= 2, "expected multiple Fma after split, got {}", fma_count);
+
+        // The split program must encode cleanly (arity cap guard).
+        let program = crate::fwd::isa::Program { instrs };
+        crate::fwd::encode::encode(&program)
+            .expect("split FMA program must encode within arity cap");
     }
 
     // ── α-fold → [Mov col0, Fma{lhs=Base,rhs=Ext} [(col1,α1),…]] ──────────────
