@@ -152,9 +152,11 @@ fn sample_rows(n: usize) -> Vec<usize> {
     rows
 }
 
-/// Run the full parity gate over a single fixture artifact, returning `Ok(())`
-/// or a human-readable failure string (panics inside are also fine for a test).
-fn check_fixture(name: &str, artifact: &GKRCircuitArtifact<BabyBearField>) {
+/// Run the full parity gate over a single fixture artifact.
+/// Returns the number of `interp == eval_layer_root` comparisons actually performed
+/// (one per root × sampled row). Callers use this to guard against vacuous passes.
+fn check_fixture(name: &str, artifact: &GKRCircuitArtifact<BabyBearField>) -> usize {
+    let mut comparisons = 0usize;
     let dag: DagCircuit = lower_dag(artifact).unwrap_or_else(|e| {
         panic!("[{name}] lower_dag failed: {e}");
     });
@@ -223,6 +225,7 @@ fn check_fixture(name: &str, artifact: &GKRCircuitArtifact<BabyBearField>) {
                     "[{name}] layer {l} root {rid:?} row {row}: \
                      interp != eval_layer_root oracle"
                 );
+                comparisons += 1;
             }
         }
 
@@ -241,6 +244,7 @@ fn check_fixture(name: &str, artifact: &GKRCircuitArtifact<BabyBearField>) {
             );
         }
     }
+    comparisons
 }
 
 // ── Fixture lists (mirror cs::…::coverage_tests) ────────────────────────────────
@@ -279,16 +283,22 @@ const LAYOUT_NO_CACHES_GKR_FIXTURES: &[&str] = &[
 fn run_fixtures(fixtures: &[&str]) {
     let dir = compiled_circuit_dir();
     let mut checked = 0usize;
+    let mut total_comparisons = 0usize;
     for &f in fixtures {
         let path = dir.join(f);
         let artifact = load_fixture(&path)
             .unwrap_or_else(|| panic!("failed to load/deserialize fixture {f} at {path:?}"));
         let t0 = std::time::Instant::now();
-        check_fixture(f, &artifact);
-        eprintln!("[fwd_parity] {f} OK in {:?}", t0.elapsed());
+        let comparisons = check_fixture(f, &artifact);
+        eprintln!("[fwd_parity] {f} OK in {:?} ({comparisons} root comparisons)", t0.elapsed());
+        total_comparisons += comparisons;
         checked += 1;
     }
     assert_eq!(checked, fixtures.len(), "not all fixtures checked");
+    assert!(
+        total_comparisons > 0,
+        "parity gate compared 0 roots — vacuous pass (root_outputs/sample_rows empty?)"
+    );
 }
 
 // ── add_sub fixtures (Commit 1) ─────────────────────────────────────────────────

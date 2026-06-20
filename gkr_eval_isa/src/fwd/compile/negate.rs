@@ -10,6 +10,16 @@
 //!
 //! `assert_no_zero_operand` enforces the strength invariant that `Special(Zero)`
 //! never appears as an arithmetic operand.
+//!
+//! # SP1 wiring status
+//!
+//! **None of the public items in this module are called by the SP1 compile path.**
+//! `compile_mul` (in `mul.rs`) strips `-1` factors at the `ExprId` level before
+//! reaching the instruction-emission stage, so `canonicalize_product` is not
+//! invoked there. Likewise, the sign-vs-negate cost decision (`choose_sign_vs_negate`,
+//! `Costs`, `Strategy`) and the zero-operand strength guard (`assert_no_zero_operand`)
+//! are retained, unit-tested, and targeted for **SP3 wiring and on-device
+//! measurement** — they are intentional forward work, not accidentally-dead code.
 
 use super::super::error::CompileError;
 use super::super::isa::{LdcSub, OperandLine, Special};
