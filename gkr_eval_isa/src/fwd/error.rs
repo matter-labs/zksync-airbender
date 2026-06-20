@@ -8,6 +8,9 @@ pub enum EncodeError {
     SlotOutOfRange(u8), ColOutOfRange(u16), CellOutOfRange(u16),
     LdcIdxOutOfRange(u16), DescOutOfRange(u16), ArityOutOfRange(usize),
     ExtCellMisaligned(u16),
+    /// FMA with `field_lhs=Ext, field_rhs=Base` (EB order) is non-canonical;
+    /// the compiler must emit the canonical `BE` form instead.
+    NonCanonicalFmaOrder,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

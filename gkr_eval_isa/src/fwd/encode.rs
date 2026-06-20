@@ -114,6 +114,9 @@ pub fn encode(p: &Program) -> Result<Vec<u16>, EncodeError> {
                 for o in operands { out.push(pack_operand(*o)?); }
             }
             Instr::Fma { field_lhs, field_rhs, sign, pairs } => {
+                if *field_lhs == OperandField::Ext && *field_rhs == OperandField::Base {
+                    return Err(EncodeError::NonCanonicalFmaOrder);
+                }
                 out.push(pack_arith_header(Opcode::Fma, pairs.len(), *field_lhs, *field_rhs, *sign)?);
                 for (l, r) in pairs { out.push(pack_operand(*l)?); out.push(pack_operand(*r)?); }
             }
@@ -202,5 +205,24 @@ mod header_tests {
     #[test] fn rejects_mul_sign() { let h = (Opcode::Mul as u16) | (1 << 2) | (1 << 12); assert_eq!(decode(&[h, 0]), Err(DecodeError::NonCanonicalSign)); }
     #[test] fn rejects_zero_arity() { assert_eq!(decode(&[Opcode::Add as u16]), Err(DecodeError::ZeroArity)); }
     #[test] fn rejects_eb_fma() { let h = (Opcode::Fma as u16) | (1 << 2) | (1 << 9); /* f0=Ext,f1=Base */ assert_eq!(decode(&[h, 0, 0]), Err(DecodeError::NonCanonicalField)); }
+    #[test] fn encode_rejects_eb_fma_order() {
+        // EB (Ext,Base) is the non-canonical duplicate of canonical BE (Base,Ext).
+        // encode must reject it so the compiler can never produce a bytestream decode refuses.
+        let eb_fma = Instr::Fma {
+            field_lhs: OperandField::Ext,
+            field_rhs: OperandField::Base,
+            sign: Sign::Plus,
+            pairs: vec![(OperandLine::Global { slot: 0, col: 0 }, OperandLine::Global { slot: 0, col: 1 })],
+        };
+        assert_eq!(
+            encode(&Program { instrs: vec![eb_fma] }),
+            Err(EncodeError::NonCanonicalFmaOrder),
+        );
+        // Canonical BE (Base,Ext) must still encode Ok and round-trip.
+        let p = sample();
+        assert!(p.instrs.iter().any(|i| matches!(i, Instr::Fma { field_lhs: OperandField::Base, field_rhs: OperandField::Ext, .. })),
+            "sample() must include a canonical BE FMA for this assertion to be meaningful");
+        assert_eq!(decode(&encode(&p).unwrap()).unwrap(), p);
+    }
     #[test] fn rejects_truncated() { let h = pack_arith_header(Opcode::Add, 2, OperandField::Base, OperandField::Base, Sign::Plus).unwrap(); assert_eq!(decode(&[h, 0]), Err(DecodeError::Truncated)); }
 }
