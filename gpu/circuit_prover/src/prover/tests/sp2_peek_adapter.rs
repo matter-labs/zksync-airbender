@@ -122,8 +122,6 @@ pub(super) struct RealData {
     pub decoder_fill: E4, // == decoder_lookup_fill_value (resolves FillSource::DecoderLookupFill)
     #[allow(dead_code)]
     pub decoder_set_index: usize, // the LAST generic mapping (per codex: not usize::MAX)
-    #[allow(dead_code)]
-    pub decoder_predicate_address: GKRAddress,
     // storage + program + challenges:
     pub gkr_storage: GKRStorage<BF, E4>, // layer-0 base mem/witness + setup + virtual-setup columns
     pub challenges: GKRExternalChallenges<BF, E4>,
@@ -663,12 +661,7 @@ fn build_real_data(recipe: CircuitRecipe) -> RealData {
     );
     let preprocessed_len = preprocessed_generic_lookup.len();
 
-    // ----- decoder predicate address + set index (mirror forward_loop) -----
-    let decoder_predicate_address = circuit
-        .memory_layout
-        .machine_state
-        .map(|t| GKRAddress::BaseLayerMemory(t.execute))
-        .unwrap_or(GKRAddress::BaseLayerMemory(usize::MAX));
+    // ----- decoder set index (mirror forward_loop) -----
     // The decoder lookup uses the LAST generic mapping (vector_lookup.rs:34
     // `generic_lookup_mapping.last()`), i.e. the generic set after the plain
     // generic sets. (Empty mapping ⇒ no decoder set; report 0.)
@@ -695,7 +688,6 @@ fn build_real_data(recipe: CircuitRecipe) -> RealData {
         preprocessed_len,
         decoder_fill,
         decoder_set_index,
-        decoder_predicate_address,
         gkr_storage,
         challenges: external_challenges,
         lookup_alpha,
@@ -1100,6 +1092,7 @@ fn sample_or_all_rows(data: &RealData) -> Vec<usize> {
 
 #[test]
 fn g2_vm_with_peeks_matches_identity_fold_root_parity_layer0() {
+    let mut comparisons = 0usize; // non-vacuity guard (matches G1's `n > 0` discipline)
     for data in [build_add_sub_real_data(), build_unsigned_mul_div_real_data()] {
         let peek = ProverPeekResolver { data: &data };
         let ors = OracleResolvers::new(&data);
@@ -1113,10 +1106,12 @@ fn g2_vm_with_peeks_matches_identity_fold_root_parity_layer0() {
             for (rid, vm_val) in &vm.by_root {
                 let oracle_val = cs::gkr_compiler::dag_ir::eval_layer_root(layer, *rid, row, &oracle);
                 assert_eq!(*vm_val, oracle_val, "root {rid:?} row {row}: VM-with-peeks != identity-fold");
+                comparisons += 1;
             }
             assert!(id.took_violation().is_none());
         }
     }
+    assert!(comparisons > 0, "G2 compared no roots across either circuit");
 }
 
 #[test]
