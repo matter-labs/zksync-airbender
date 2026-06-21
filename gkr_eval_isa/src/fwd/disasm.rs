@@ -23,6 +23,32 @@ fn field_tag(f: &OperandField) -> &'static str {
     }
 }
 
+/// BabyBear prime (the forward VM is BabyBear-specific). Used only to render a
+/// base-field constant near `P` as its small signed representative.
+const BABYBEAR_P: u32 = 2013265921; // 15 * 2^27 + 1 = 0x78000001
+
+/// Render a base-field constant value: small positives as-is, and a value in the
+/// top half of `[0, P)` as its signed representative too (e.g. `2013265920(=-1)`,
+/// `2013200385(=-65536)`) so masks / small negatives are legible.
+fn fmt_const(v: u32) -> String {
+    if v > BABYBEAR_P / 2 {
+        format!("{v}(={})", v as i64 - BABYBEAR_P as i64)
+    } else {
+        format!("{v}")
+    }
+}
+
+/// Decode a `LdcSub::Special` payload index to the `Special` enum it names
+/// (`{Zero=0, One=1, NegOne=2}`); only `NegOne` (`-1`) is emitted in v1.
+fn fmt_special_lit(idx: u16) -> String {
+    match idx {
+        0 => "lit(0)".to_string(),
+        1 => "lit(1)".to_string(),
+        2 => "lit(-1)".to_string(),
+        n => format!("lit(special#{n})"),
+    }
+}
+
 /// Format one operand line, resolving indices to readable names via the context's
 /// banks/tables.
 fn fmt_operand(op: &OperandLine, ctx: &DagForwardContext) -> String {
@@ -34,7 +60,7 @@ fn fmt_operand(op: &OperandLine, ctx: &DagForwardContext) -> String {
         OperandLine::Smem { cell } => format!("$cell{cell}"),
         OperandLine::Ldc { sub, idx } => match sub {
             LdcSub::Const => match ctx.consts.get(*idx) {
-                Some(v) => format!("#{v}"),
+                Some(v) => format!("#{}", fmt_const(v)),
                 None => format!("#const?{idx}"),
             },
             LdcSub::ConstChallenge => match ctx.challenges.get(LdcSub::ConstChallenge, *idx) {
@@ -45,7 +71,7 @@ fn fmt_operand(op: &OperandLine, ctx: &DagForwardContext) -> String {
                 Some(r) => format!("chalA({r:?})"),
                 None => format!("chalA?{idx}"),
             },
-            LdcSub::Special => format!("lit(special#{idx})"),
+            LdcSub::Special => fmt_special_lit(*idx),
         },
         OperandLine::Special { desc } => match ctx.specials.get(*desc) {
             Some(d) => format!("PEEK[{desc}]={:?}@e{}", d.strategy, d.origin_expr.0),
