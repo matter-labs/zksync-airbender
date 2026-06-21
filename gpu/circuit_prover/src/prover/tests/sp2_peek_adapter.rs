@@ -37,8 +37,8 @@ use cs::gkr_circuits::{
 };
 use cs::gkr_compiler::dag_ir::{
     eval_layer_expr, lower_dag, ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver,
-    DagCircuit, DagLayer, ExprId, Ext, LookupResolver, PermutationSlot, ReadPlace, ReadResolver,
-    Resolvers, VirtualSetupKind, VirtualSetupResolver,
+    DagCircuit, DagLayer, ExprId, Ext, LookupResolver, PermutationSlot, RangeWidth, ReadPlace,
+    ReadResolver, Resolvers, VirtualSetupKind, VirtualSetupResolver,
 };
 use cs::gkr_compiler::{GKRCircuitArtifact, NoFieldGKRCacheRelation, NoFieldGKRRelation};
 use field::{Field, FieldExtension, PrimeField};
@@ -854,4 +854,126 @@ fn both_real_data_builds_succeed() {
         has_aggregate,
         "unsigned_mul_div layer-0 must have a PeekAggregate descriptor"
     );
+}
+
+// ── Task 6: ProverPeekResolver — SP2 prover-backed peek ─────────────────────
+
+use gkr_eval_isa::fwd::peek::{base_coeff_pure, PeekError, PeekResolver};
+use cs::gkr_compiler::dag_ir::FillSource;
+
+/// Resolves `SpecialDescriptor` peek strategies against PRISTINE snapshots in
+/// [`RealData`] (F1: never re-derives from a drained trace). Implements all four
+/// strategies specified by SP2.
+///
+/// - `PeekSingleColumn`: reads `range16_map` (Bits16) or `timestamp_map`
+///   (Timestamp), bounds-checks against the declared width (F5: 19-bit, not 32).
+/// - `PeekAggregate`: reads `generic_map[set_index][row]` then indexes into
+///   `preprocessed_generic_lookup`.
+/// - `PeekSetup`: returns `preprocessed_generic_lookup[row]`, zero-padded past
+///   end (mirrors production `vector_lookup.rs:57-59`).
+/// - `PeekDecoder`: reads the DESCRIPTOR's own `predicate` + `fill` (F4), applies
+///   `base_coeff_pure` to the predicate's extension value, then uses
+///   `as_boolean()` (production `vector_lookup.rs:49`) to branch on fill vs
+///   `generic_map[decoder_set_index][row]`.
+pub(super) struct ProverPeekResolver<'a> {
+    pub data: &'a RealData,
+}
+
+impl PeekResolver for ProverPeekResolver<'_> {
+    fn peek(
+        &self,
+        desc: &SpecialDescriptor,
+        row: usize,
+        r: &Resolvers<'_>,
+    ) -> Result<Ext, PeekError> {
+        let d = self.data;
+        match &desc.strategy {
+            SpecialStrategy::PeekSingleColumn { set_index, width } => {
+                let (raw, limit): (u32, u64) = match width {
+                    RangeWidth::Bits16 => {
+                        let col = d.range16_map.get(*set_index).ok_or(
+                            PeekError::SetIndexOutOfRange { set_index: *set_index },
+                        )?;
+                        let v = *col.get(row).ok_or(PeekError::IndexOutOfRange {
+                            index: row,
+                            len: col.len(),
+                        })? as u32;
+                        (v, 1u64 << 16)
+                    }
+                    RangeWidth::Timestamp => {
+                        let col = d.timestamp_map.get(*set_index).ok_or(
+                            PeekError::SetIndexOutOfRange { set_index: *set_index },
+                        )?;
+                        let v = *col.get(row).ok_or(PeekError::IndexOutOfRange {
+                            index: row,
+                            len: col.len(),
+                        })?;
+                        // F5: 19 bits (TIMESTAMP_COLUMNS_NUM_BITS), NOT 32.
+                        (v, 1u64 << TIMESTAMP_COLUMNS_NUM_BITS)
+                    }
+                };
+                if (raw as u64) >= limit {
+                    return Err(PeekError::WidthOverflow { value: raw, width: *width });
+                }
+                Ok(lift(BF::from_u32_with_reduction(raw)))
+            }
+            SpecialStrategy::PeekAggregate { set_index } => {
+                let col = d.generic_map.get(*set_index).ok_or(
+                    PeekError::SetIndexOutOfRange { set_index: *set_index },
+                )?;
+                let idx = *col.get(row).ok_or(PeekError::IndexOutOfRange {
+                    index: row,
+                    len: col.len(),
+                })? as usize;
+                d.preprocessed_generic_lookup
+                    .get(idx)
+                    .copied()
+                    .ok_or(PeekError::IndexOutOfRange { index: idx, len: d.preprocessed_generic_lookup.len() })
+            }
+            SpecialStrategy::PeekSetup => {
+                // Zero-pad past len: mirrors production vector_lookup.rs:57-59.
+                Ok(d.preprocessed_generic_lookup.get(row).copied().unwrap_or(E4::ZERO))
+            }
+            SpecialStrategy::PeekDecoder { predicate, fill } => {
+                // F4: bind the DESCRIPTOR's own predicate + fill, not adapter globals.
+                // Read predicate via the passed ReadResolver → Ext.
+                let mask_ext = r.read.read(predicate, row);
+                // Predicate is a base column; take its base coefficient.
+                let mask_bf = base_coeff_pure(mask_ext)
+                    .ok_or(PeekError::NonBaseQueryFold)?;
+                // Production spelling: decoder_predicate[row].as_boolean() (vector_lookup.rs:49).
+                let fill_val = match fill {
+                    FillSource::DecoderLookupFill => d.decoder_fill,
+                };
+                if !mask_bf.as_boolean() {
+                    Ok(fill_val)
+                } else {
+                    let col = d.generic_map.get(d.decoder_set_index).ok_or(
+                        PeekError::SetIndexOutOfRange { set_index: d.decoder_set_index },
+                    )?;
+                    let idx = *col.get(row).ok_or(PeekError::IndexOutOfRange {
+                        index: row,
+                        len: col.len(),
+                    })? as usize;
+                    d.preprocessed_generic_lookup
+                        .get(idx)
+                        .copied()
+                        .ok_or(PeekError::IndexOutOfRange { index: idx, len: d.preprocessed_generic_lookup.len() })
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn adapter_resolves_one_peek_per_present_strategy_on_real_add_sub() {
+    let data = build_add_sub_real_data();
+    let peek = ProverPeekResolver { data: &data };
+    let descs: Vec<_> = data.compiled_layer0.ctx.specials.iter().collect();
+    assert!(!descs.is_empty(), "add_sub layer0 must emit peek descriptors");
+    let ors = OracleResolvers::new(&data);
+    let r = ors.real();
+    for d in descs {
+        peek.peek(d, 0, &r).expect("peek resolves"); // value correctness is Task 7's G1
+    }
 }
