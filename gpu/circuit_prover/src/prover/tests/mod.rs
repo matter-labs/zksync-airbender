@@ -95,6 +95,7 @@ mod asserts;
 mod basic_unrolled_parity;
 mod commit_memory;
 mod delegation_asserts;
+mod disasm;
 mod expected_specs;
 mod fixtures;
 mod generated_forward_layer0_real_witness;

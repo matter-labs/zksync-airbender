@@ -3,6 +3,7 @@
 pub mod binding;
 pub mod compile;
 pub mod context;
+pub mod disasm;
 pub mod encode;
 pub mod error;
 pub mod interp;

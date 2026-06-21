@@ -62,8 +62,8 @@ use gkr_eval_isa::fwd::source::{SpecialDescriptor, SpecialStrategy};
 // → 20 is the smallest legal size (matches `generated_forward_layer0_real_witness.rs`).
 // unsigned_mul_div adds ~270k table rows → `total_tables_size ≈ 1.32M > 1<<20`, so it
 // needs `trace_len >= that`, i.e. trace_len_log2 = 21 (the committed layout uses 24).
-const ADD_SUB_TRACE_LEN_LOG2: usize = 20;
-const MUL_DIV_TRACE_LEN_LOG2: usize = 21;
+pub(super) const ADD_SUB_TRACE_LEN_LOG2: usize = 20;
+pub(super) const MUL_DIV_TRACE_LEN_LOG2: usize = 21;
 
 // ── unsigned_mul_div local witness module ───────────────────────────────────
 // The add_sub fixture module lives in `fixtures.rs`; this task may only commit
@@ -700,7 +700,7 @@ fn build_real_data(recipe: CircuitRecipe) -> RealData {
 }
 
 /// Compile the add_sub_lui_auipc_mop GKR artifact (proven reference recipe).
-fn compile_add_sub_circuit(trace_len_log2: usize) -> GKRCircuitArtifact<BF> {
+pub(super) fn compile_add_sub_circuit(trace_len_log2: usize) -> GKRCircuitArtifact<BF> {
     compile_unrolled_circuit_state_transition_into_gkr::<BF>(
         &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
         &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
@@ -711,7 +711,7 @@ fn compile_add_sub_circuit(trace_len_log2: usize) -> GKRCircuitArtifact<BF> {
 
 /// Compile the unsigned_mul_div GKR artifact (the aggregate circuit). The two
 /// circuit builders are generic over `const SUPPORT_SIGNED: bool`; unsigned ⇒ false.
-fn compile_unsigned_mul_div_circuit(trace_len_log2: usize) -> GKRCircuitArtifact<BF> {
+pub(super) fn compile_unsigned_mul_div_circuit(trace_len_log2: usize) -> GKRCircuitArtifact<BF> {
     compile_unrolled_circuit_state_transition_into_gkr::<BF>(
         &|cs| mul_div_table_addition_fn::<_, _, false>(cs),
         &|cs| mul_div_circuit_with_preprocessed_bytecode_for_gkr::<_, _, false>(cs),
