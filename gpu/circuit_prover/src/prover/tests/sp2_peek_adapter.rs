@@ -800,6 +800,27 @@ fn replay_for_family<'b>(
 
 // ── the make-or-break gate: challenge-fold ───────────────────────────────────
 
+/// Wraps a real `ChallengeResolver` but corrupts the multiplicative lookup
+/// challenge `alpha^j -> alpha^(j+1)` (one extra `*alpha`). Used ONLY by the RED
+/// guard below to prove the challenge-fold gate is non-tautological: under this
+/// corruption the oracle fold MUST diverge from `prover_query_fold`.
+struct ShiftedAlphaChallengeResolver<'a> {
+    inner: &'a dyn ChallengeResolver,
+    lookup_alpha: E4,
+}
+impl ChallengeResolver for ShiftedAlphaChallengeResolver<'_> {
+    fn challenge(&self, r: &ChallengeRef) -> Ext {
+        let v = self.inner.challenge(r);
+        if matches!(r.key, ChallengeKey::LookupMultiplicative) {
+            let mut shifted = v;
+            shifted.mul_assign(&self.lookup_alpha); // alpha^j -> alpha^(j+1)
+            shifted
+        } else {
+            v
+        }
+    }
+}
+
 #[test]
 fn challenge_fold_oracle_matches_prover_query_fold_on_real_unsigned_mul_div() {
     // Pins ProverChallengeResolver: eval_layer_expr(aggregate origin, identity-lookup,
@@ -822,6 +843,49 @@ fn challenge_fold_oracle_matches_prover_query_fold_on_real_unsigned_mul_div() {
     assert_eq!(
         fold, prover_fold,
         "challenge/read resolvers must reproduce the prover's query fold"
+    );
+}
+
+/// RED guard (committed, reproducible) for the make-or-break gate above: corrupting
+/// the `ChallengeRef -> alpha^j` mapping (shift `alpha^j -> alpha^(j+1)` on the
+/// multiplicative lookup challenge) MUST break the `oracle == prover_query_fold`
+/// equality. This proves the positive gate is a genuine differential and not
+/// tautological — if it still matched under corruption, the gate would have no teeth.
+#[test]
+fn challenge_fold_red_shifted_alpha_power_breaks_match_on_real_unsigned_mul_div() {
+    let data = build_unsigned_mul_div_real_data();
+    let (origin_expr, set_index, sample_row) = data.first_aggregate_origin();
+
+    // Same real read/virtual-setup/identity-lookup as the positive gate, but the
+    // challenge resolver is wrapped to shift the multiplicative lookup powers.
+    let real_chal = ProverChallengeResolver {
+        lookup_alpha: data.lookup_alpha,
+        lookup_additive_part: data.lookup_additive_part,
+        external_challenges: &data.challenges,
+    };
+    let shifted = ShiftedAlphaChallengeResolver {
+        inner: &real_chal,
+        lookup_alpha: data.lookup_alpha,
+    };
+    let read = ProverReadResolver {
+        gkr_storage: &data.gkr_storage,
+    };
+    let vs = ProverVirtualSetupResolver {
+        gkr_storage: &data.gkr_storage,
+    };
+    let id = gkr_eval_isa::fwd::peek::IdentityLookupResolver::new();
+    let corrupted = Resolvers {
+        read: &read,
+        lookup: &id,
+        virtual_setup: &vs,
+        challenge: &shifted,
+    };
+
+    let corrupted_fold = eval_layer_expr(&data.dag.layers[0], origin_expr, sample_row, &corrupted);
+    let prover_fold = data.prover_query_fold(set_index, sample_row);
+    assert_ne!(
+        corrupted_fold, prover_fold,
+        "shifting alpha^j -> alpha^(j+1) must break the fold; if it still matched, the gate would be tautological"
     );
 }
 
