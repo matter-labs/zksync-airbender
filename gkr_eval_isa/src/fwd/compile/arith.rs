@@ -375,6 +375,14 @@ fn compile_add(
     alloc: &mut CellAllocator,
     expected: OperandField,
 ) -> Result<(), CompileError> {
+    // §6 strength: drop additive `Constant{0}` terms (additive identity), mirroring
+    // compile_mul's `Constant{1}` elision. Removes the no-op `ADD #0` lanes the dag
+    // carries (e.g. the permutation-additive seed of every memory fold). A sum of
+    // only zeros collapses to empty here and emits nothing — the post-elision
+    // `DegenerateRoot` guard in `compile_layer` then catches a bare-0 root.
+    let children: Vec<ExprId> =
+        children.into_iter().filter(|&c| !is_constant_zero(layer, c)).collect();
+
     // §5: empty Add is a NOP (+0) — emit nothing.
     if children.is_empty() {
         return Ok(());
@@ -855,6 +863,16 @@ fn is_constant_one(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> bo
     )
 }
 
+fn is_constant_zero(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> bool {
+    let Expr::Source(src) = &layer.exprs[id.0 as usize] else {
+        return false;
+    };
+    matches!(
+        &layer.sources[src.0 as usize].kind,
+        SourceKind::Constant { value: 0 }
+    )
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1053,6 +1071,23 @@ mod tests {
             "a·b + c·d + e1 + e2 is FMA-emittable, but the compiler emitted no FMA \
              (it materialized each product into a cell instead). Program:\n{instrs:#?}"
         );
+    }
+
+    // ── Add(a, const_0) → [Mov a] (the additive `0` elided) ──────────────────
+    //
+    // Symmetric to `mul_by_one_elides`: an additive `Constant{0}` term is identity
+    // and must be dropped, not emitted as a no-op `ADD #0`. add_sub L0 carried 6 of
+    // these (the permutation-additive seed of each memory fold).
+    #[test]
+    fn add_zero_elides() {
+        let mut arena = ArenaBuilder::new();
+        let a = read_base(&mut arena, 0);
+        let zero_src = arena.intern_source(SourceKind::Constant { value: 0 });
+        let zero = arena.source_expr(zero_src);
+        let add = arena.add(vec![a, zero]);
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, add);
+        assert_eq!(instrs, vec![mov_acc(OperandLine::Global { slot: 0, col: 0 })]);
     }
 
     // ── Mul(a, const_1) → [Mov a] (the `1` factor elided) ─────────────────────
