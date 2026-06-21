@@ -102,6 +102,7 @@ mod inits_and_teardowns;
 mod memory_workflow;
 mod poly_helpers;
 mod smoke;
+mod sp2_peek_adapter;
 mod stagewise;
 mod whir_oracle_parity;
 mod workflow_parity;
