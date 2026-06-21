@@ -31,9 +31,11 @@ pub enum MovDir { AccFromSrc = 0, DstFromAcc = 1, DstFromSrc = 2 } // 3 reserved
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LdcSub { Const = 0, ConstChallenge = 1, ArgChallenge = 2, Special = 3 }
 
-/// `LdcSub::Special` payloads. Only `NegOne` is ever emitted in v1 (negate);
-/// `Zero`/`One` are never produced (zero-arity Add/Mul are NOPs, §Global-Constraints) —
-/// kept for wire completeness and rejected by validation if seen in an emitted operand.
+/// `LdcSub::Special` payloads — the special field elements, encoded inline instead
+/// of via the const bank (so they never occupy GPU `__constant__` storage). `NegOne`
+/// (negate / additive −1) and `One` (additive 1) ARE emitted; `Zero` is never emitted
+/// — additive 0 is identity and multiplicative 0 is an annihilator, so it is always
+/// elided, and validation rejects a `Zero` operand if one ever leaks through.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Special { Zero = 0, One = 1, NegOne = 2 }
 

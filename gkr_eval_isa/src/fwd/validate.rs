@@ -354,8 +354,11 @@ fn max_smem_cell(program: &Program) -> usize {
 
 // ── Check 7: canonical operands ───────────────────────────────────────────────
 
-/// No `Special(0)` / `Special(1)`; no `EB`-order FMA; `0`/`1` never as arithmetic
-/// operands. (EB-order is also caught by `encode` and check 3; assert structurally.)
+/// No `Special(0)`; no `EB`-order FMA. `0` is an additive identity / multiplicative
+/// annihilator and must be ELIDED, never emitted as an operand. `Special(1)` (additive
+/// 1) and `Special(-1)` (the negate) ARE valid arithmetic operands — encoded inline
+/// instead of via the const bank. (EB-order is also caught by `encode` and check 3;
+/// assert structurally.)
 fn check_canonical_operands(compiled: &CompiledLayer) -> Result<(), CompileError> {
     for instr in &compiled.program.instrs {
         match instr {
@@ -371,11 +374,10 @@ fn check_canonical_operands(compiled: &CompiledLayer) -> Result<(), CompileError
         // Check all operand lines.
         for op in instr_operands(instr) {
             if let OperandLine::Ldc { sub: LdcSub::Special, idx } = op {
-                if *idx == Special::Zero as u16 || *idx == Special::One as u16 {
-                    return Err(CompileError::FieldMismatch(format!(
-                        "Special({}): only NegOne is a valid arithmetic operand",
-                        idx
-                    )));
+                if *idx == Special::Zero as u16 {
+                    return Err(CompileError::FieldMismatch(
+                        "Special(Zero) must be elided, not emitted as an operand".to_string(),
+                    ));
                 }
             }
         }
@@ -797,22 +799,35 @@ mod tests {
         assert!(matches!(result, Err(CompileError::FieldMismatch(_))), "got: {:?}", result);
     }
 
-    /// `Special(1)` (One) as an arithmetic operand → rejected.
+    /// `Special(1)` (One) IS a valid arithmetic operand — additive 1, encoded inline
+    /// instead of via the const bank (mul-by-1 is elided upstream).
     #[test]
-    fn special_one_operand_rejected() {
+    fn special_one_operand_ok() {
         let layer = simple_compute_layer();
         let mut compiled = clean_compiled(&layer);
         compiled.program.instrs = vec![
-            Instr::Mul {
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
                 field: OperandField::Base,
+                dst: None,
+                src: Some(OperandLine::Global { slot: 0, col: 0 }),
+            },
+            Instr::Add {
+                field: OperandField::Base,
+                sign: super::super::isa::Sign::Plus,
                 operands: vec![
                     OperandLine::Ldc { sub: LdcSub::Special, idx: Special::One as u16 },
                 ],
             },
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                field: OperandField::Base,
+                dst: Some(DstLine::GlobalMaterialize { slot: 0, col: 1 }),
+                src: None,
+            },
         ];
 
-        let result = validate_compiled(&compiled, &layer);
-        assert!(matches!(result, Err(CompileError::FieldMismatch(_))), "got: {:?}", result);
+        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
     }
 
     /// `Special(NegOne)` (−1) as a unary MUL operand → Ok (the only valid Special).

@@ -194,20 +194,23 @@ pub fn source_to_operand(
             Ok(OperandLine::Global { slot, col })
         }
         SourceKind::Constant { value } => {
-            // Strength-reduction: recognize the field value −1 (= P−1) and emit
-            // Special(NegOne). This is used by the interpreter and as a sentinel
-            // when resolving operand lines (spec §6, Task 10).
-            if *value == BABYBEAR_NEG_ONE {
-                return Ok(OperandLine::Ldc {
-                    sub: LdcSub::Special,
-                    idx: Special::NegOne as u16,
-                });
+            // Strength-reduction: the special field elements `1` and `−1` (= P−1)
+            // get their dedicated `Special` literals rather than a `ConstBank` slot,
+            // so they never occupy GPU `__constant__` storage and can't slip through
+            // as ordinary constants. Mul-by-`1` and additive-`0` are already elided
+            // upstream (`compile_mul` / `compile_add`), so a surviving `1` here is a
+            // genuine additive term and `0` must never reach this arm — the
+            // `ConstBank::intern` guard fails loud if it does.
+            match *value {
+                1 => Ok(OperandLine::Ldc { sub: LdcSub::Special, idx: Special::One as u16 }),
+                v if v == BABYBEAR_NEG_ONE => {
+                    Ok(OperandLine::Ldc { sub: LdcSub::Special, idx: Special::NegOne as u16 })
+                }
+                v => {
+                    let idx = ctx.consts.intern(v);
+                    Ok(OperandLine::Ldc { sub: LdcSub::Const, idx })
+                }
             }
-            let idx = ctx.consts.intern(*value);
-            Ok(OperandLine::Ldc {
-                sub: LdcSub::Const,
-                idx,
-            })
         }
         SourceKind::Challenge { reference } => {
             let (sub, idx) = ctx.challenges.intern(reference);
@@ -375,13 +378,16 @@ fn compile_add(
     alloc: &mut CellAllocator,
     expected: OperandField,
 ) -> Result<(), CompileError> {
-    // §6 strength: drop additive `Constant{0}` terms (additive identity), mirroring
-    // compile_mul's `Constant{1}` elision. Removes the no-op `ADD #0` lanes the dag
-    // carries (e.g. the permutation-additive seed of every memory fold). A sum of
-    // only zeros collapses to empty here and emits nothing — the post-elision
-    // `DegenerateRoot` guard in `compile_layer` then catches a bare-0 root.
+    // §6 strength: drop additive zero terms (additive identity), mirroring
+    // compile_mul's `Constant{1}` elision. This is `is_zero_expr`, so it also drops
+    // a zero-VALUED product (`Mul` with a `0` factor — an annihilator), which would
+    // otherwise lower its `Constant{0}` factor into the const bank as a silent `#0`.
+    // Removes the no-op `ADD #0` lanes the dag carries (the permutation-additive
+    // seed of every memory fold). A sum of only zeros collapses to empty here and
+    // emits nothing — the post-elision `DegenerateRoot` guard in `compile_layer`
+    // then catches a bare-0 root.
     let children: Vec<ExprId> =
-        children.into_iter().filter(|&c| !is_constant_zero(layer, c)).collect();
+        children.into_iter().filter(|&c| !is_zero_expr(layer, c)).collect();
 
     // §5: empty Add is a NOP (+0) — emit nothing.
     if children.is_empty() {
@@ -873,13 +879,25 @@ fn is_constant_zero(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> b
     )
 }
 
+/// True if `id` evaluates to the field element 0: a `Constant{0}` source, or a
+/// `Mul` with any zero factor (annihilator), recursively. Such a term contributes
+/// nothing to a sum and is dropped by `compile_add` — `0` has no operand encoding
+/// (`Special::Zero` is not emittable, §6), so it must never reach lowering.
+fn is_zero_expr(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> bool {
+    match &layer.exprs[id.0 as usize] {
+        Expr::Source(_) => is_constant_zero(layer, id),
+        Expr::Mul(factors) => factors.iter().any(|&f| is_zero_expr(layer, f)),
+        Expr::Add(_) => false,
+    }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::fwd::context::{CompileTrace, DagForwardContext};
-    use crate::fwd::isa::{Instr, LdcSub, MovDir, OperandField, OperandLine, Sign};
+    use crate::fwd::isa::{Instr, LdcSub, MovDir, OperandField, OperandLine, Sign, Special};
     use cs::gkr_compiler::dag_ir::{
         ArenaBuilder, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, DagLayer, ExprId,
         ReadPlace, ResolutionStrategy, SourceKind,
@@ -1088,6 +1106,64 @@ mod tests {
         let layer = layer_of(&arena);
         let instrs = run(&layer, add);
         assert_eq!(instrs, vec![mov_acc(OperandLine::Global { slot: 0, col: 0 })]);
+    }
+
+    // ── Add(a, const_1) → [Mov a, Add lit(One)]: 1 goes to the Special literal ─
+    //
+    // The special field element `1` is encoded inline as `Special::One`, NOT
+    // interned into the const bank (no GPU `__constant__` slot, can't slip through
+    // as a plain const). The operand being `Ldc{Special, One}` rather than
+    // `Ldc{Const, _}` proves it never hit the bank.
+    #[test]
+    fn additive_one_uses_special_not_const_bank() {
+        let mut arena = ArenaBuilder::new();
+        let a = read_base(&mut arena, 0);
+        let one_src = arena.intern_source(SourceKind::Constant { value: 1 });
+        let one = arena.source_expr(one_src);
+        let add = arena.add(vec![a, one]);
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, add);
+        assert_eq!(
+            instrs,
+            vec![
+                mov_acc(OperandLine::Global { slot: 0, col: 0 }),
+                Instr::Add {
+                    field: OperandField::Base,
+                    sign: Sign::Plus,
+                    operands: vec![OperandLine::Ldc { sub: LdcSub::Special, idx: Special::One as u16 }],
+                },
+            ]
+        );
+    }
+
+    // ── Add(Mul(a,b), Mul(c,0)) → [Mov a, Mul b]: the zero product is dropped ───
+    //
+    // `c * 0` is a multiplicative annihilator (== 0); it must be dropped from the
+    // sum, not lowered (its `Constant{0}` factor would otherwise leak into the
+    // const bank as a silent `#0`). Only `a*b` survives.
+    #[test]
+    fn zero_product_term_dropped_from_sum() {
+        let mut arena = ArenaBuilder::new();
+        let a = read_base(&mut arena, 0);
+        let b = read_base(&mut arena, 1);
+        let c = read_base(&mut arena, 2);
+        let zero_src = arena.intern_source(SourceKind::Constant { value: 0 });
+        let zero = arena.source_expr(zero_src);
+        let ab = arena.mul(vec![a, b]);
+        let cz = arena.mul(vec![c, zero]); // c * 0 == 0
+        let add = arena.add(vec![ab, cz]); // a*b + c*0  ==  a*b
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, add);
+        assert_eq!(
+            instrs,
+            vec![
+                mov_acc(OperandLine::Global { slot: 0, col: 0 }),
+                Instr::Mul {
+                    field: OperandField::Base,
+                    operands: vec![OperandLine::Global { slot: 0, col: 1 }],
+                },
+            ]
+        );
     }
 
     // ── Mul(a, const_1) → [Mov a] (the `1` factor elided) ─────────────────────

@@ -4,10 +4,23 @@ use super::isa::LdcSub;
 use cs::gkr_compiler::dag_ir::{ChallengeKey, ChallengeRef, ExprId, FillSource, RangeWidth, ReadPlace, ResolutionStrategy};
 use std::collections::HashMap;
 
+/// BabyBear `−1` (= P−1). The forward VM is BabyBear-specific.
+const BABYBEAR_NEG_ONE: u32 = 0x78000001 - 1;
+
 #[derive(Clone, Debug, Default)]
 pub struct ConstBank { values: Vec<u32>, index: HashMap<u32, u16> }
 impl ConstBank {
     pub fn intern(&mut self, value: u32) -> u16 {
+        // Invariant: the special field elements {0, 1, −1} never occupy a const
+        // slot — they have dedicated `Special` literals (`Zero`/`One`/`NegOne`) or
+        // are elided as identities/annihilators. A value here means a missed
+        // canonicalization upstream; fail loud rather than let a special slip
+        // through as a plain GPU `__constant__` (spec §6/§8).
+        assert!(
+            value != 0 && value != 1 && value != BABYBEAR_NEG_ONE,
+            "ConstBank must not intern a special field element (0/1/−1); got {value} \
+             — missed canonicalization to a Special literal or elision"
+        );
         if let Some(&i) = self.index.get(&value) { return i; }
         let i = self.values.len() as u16; self.values.push(value); self.index.insert(value, i); i
     }
