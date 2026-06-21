@@ -515,20 +515,32 @@ fn compile_reduction(
         ops.push((field, op));
     }
 
-    // init from child0, labeling the acc field with child0's actual field so the
-    // validator's field-transition tracker agrees with the materialize at the end
-    // (§5/§12). A later mixed op still promotes Base→Ext as needed.
-    emit_init_field(out, ops[0].1, ops[0].0);
+    // Base-as-long-as-possible (§5): seed the acc from a BASE operand when the
+    // reduction has one, so every base fold runs while the acc is still
+    // base-width and only the Ext group promotes it once. Seeding from an Ext
+    // operand (e.g. an Ext challenge) when base children exist would force the
+    // base folds into an Ext-width acc — a mixed op where a base op would do.
+    // +/× are commutative, so the seed term may be any child. Label the init
+    // MOV with the seed's actual field so the validator's field-transition
+    // tracker agrees with the materialize at the end (§5/§12).
+    let init_idx = ops
+        .iter()
+        .position(|(f, _)| *f == OperandField::Base)
+        .unwrap_or(0);
+    emit_init_field(out, ops[init_idx].1, ops[init_idx].0);
 
     if ops.len() == 1 {
         free_all(alloc, &owned_cells);
         return Ok(()); // unary → just the MOV
     }
 
-    // Partition the remaining children into Base and Ext operand groups.
+    // Partition the remaining children (all but the seed) into Base/Ext groups.
     let mut base_ops: Vec<OperandLine> = Vec::new();
     let mut ext_ops: Vec<OperandLine> = Vec::new();
-    for &(field, op) in &ops[1..] {
+    for (i, &(field, op)) in ops.iter().enumerate() {
+        if i == init_idx {
+            continue;
+        }
         match field {
             OperandField::Base => base_ops.push(op),
             OperandField::Ext => ext_ops.push(op),
@@ -724,13 +736,20 @@ fn try_compile_fma(
     // Seed the accumulator; `fma_lo` is the product range still to fold as FMA.
     let fma_lo: &[(OperandField, OperandLine, OperandField, OperandLine)] =
         if !addend_ops.is_empty() {
-            // Init from addend0, then fold remaining addends as field-grouped ADDs
-            // (Base group then Ext group — base as long as possible, §5). Every
-            // product then folds in as an FMA pair.
-            emit_init_field(out, addend_ops[0].1, addend_ops[0].0);
+            // Seed from a BASE addend when one exists (base as long as possible,
+            // §5), then fold the remaining addends as field-grouped ADDs (Base
+            // group then Ext group). Every product then folds in as an FMA pair.
+            let seed = addend_ops
+                .iter()
+                .position(|(f, _)| *f == OperandField::Base)
+                .unwrap_or(0);
+            emit_init_field(out, addend_ops[seed].1, addend_ops[seed].0);
             let mut base_ops: Vec<OperandLine> = Vec::new();
             let mut ext_ops: Vec<OperandLine> = Vec::new();
-            for &(f, op) in &addend_ops[1..] {
+            for (i, &(f, op)) in addend_ops.iter().enumerate() {
+                if i == seed {
+                    continue;
+                }
                 match f {
                     OperandField::Base => base_ops.push(op),
                     OperandField::Ext => ext_ops.push(op),
@@ -1021,6 +1040,40 @@ mod tests {
                     }],
                 },
             ]
+        );
+    }
+
+    // ── #5b: base-as-long-as-possible seed ────────────────────────────────────
+    // When an EXT child has the lower ExprId (sorts first) but a BASE child is
+    // present, the reduction must STILL seed the acc from the base operand so
+    // the base accumulation runs base-width; the ext term then promotes via a
+    // trailing ADD.e. Seeding from the ext child (the old `ops[0]` behavior)
+    // would force the base fold into an ext-width acc — a mixed op where a base
+    // op would do (§5).
+    #[test]
+    fn reduction_seeds_base_when_ext_sorts_first() {
+        let mut arena = ArenaBuilder::new();
+        let c = challenge(&mut arena, ChallengePower::One); // ExprId 0 (ext) — sorts first
+        let a = read_base(&mut arena, 7); // ExprId 1 (base)
+        let add = arena.add(vec![c, a]);
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, add);
+        // Seed is the BASE read, labeled Base — NOT the ext challenge.
+        assert_eq!(
+            instrs[0],
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                field: OperandField::Base,
+                dst: None,
+                src: Some(OperandLine::Global { slot: 0, col: 7 }),
+            },
+            "reduction must seed from the base operand even when the ext term sorts first",
+        );
+        // The ext challenge folds in as a promoting ADD.e (acc Base→Ext).
+        assert!(
+            matches!(instrs[1], Instr::Add { field: OperandField::Ext, .. }),
+            "ext term must fold as ADD.e after the base seed, got {:?}",
+            instrs[1],
         );
     }
 
