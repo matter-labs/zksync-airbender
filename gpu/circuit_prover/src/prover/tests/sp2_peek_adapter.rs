@@ -977,3 +977,17 @@ fn adapter_resolves_one_peek_per_present_strategy_on_real_add_sub() {
         peek.peek(d, 0, &r).expect("peek resolves"); // value correctness is Task 7's G1
     }
 }
+
+#[test]
+fn g1_peek_eq_fold_all_rows_add_sub_layer0() {
+    let data = build_add_sub_real_data();
+    let peek = ProverPeekResolver { data: &data };
+    let ors = OracleResolvers::new(&data);
+    let r = ors.real();
+    let rows: Vec<usize> = (0..data.trace_len).collect(); // ALL rows (Global Constraint)
+    let n = gkr_eval_isa::fwd::peek::validate_special_bindings(
+        &data.compiled_layer0, &data.dag.layers[0], &rows, &r, &peek,
+    ).expect("every referenced descriptor: peek == query-fold on every row");
+    assert!(n > 0, "expected at least one descriptor×row comparison");
+    println!("G1 add_sub L0: {n} peek==fold comparisons over {} rows", data.trace_len);
+}
