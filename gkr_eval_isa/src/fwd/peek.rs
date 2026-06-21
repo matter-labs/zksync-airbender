@@ -202,7 +202,6 @@ pub fn validate_special_bindings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::{referenced_descriptors, validate_special_bindings};
     use crate::fwd::context::CompiledLayer;
     use crate::fwd::isa::{Instr, OperandLine, Program};
     use crate::fwd::source::{SpecialDescriptor, SpecialStrategy};
@@ -390,12 +389,23 @@ mod tests {
         minimal_compiled_with_specials(program, root_outputs, specials)
     }
 
-    /// Build a CompiledLayer with one descriptor whose origin_expr is a DAG Constant(v),
-    /// and one instruction referencing desc 0. Returns (CompiledLayer, DagLayer with constant expr).
-    fn compiled_peek_setup_desc0_origin_const(v: u32) -> CompiledLayer {
+    /// Build a CompiledLayer (with one instr referencing `Special { desc: 0 }`) and the matching
+    /// `DagLayer` whose `ExprId(0)` is `Constant { value: v }`.  Both share the same constant value
+    /// so a future `…_const(42)` cannot silently desync the fold.
+    fn compiled_peek_setup_desc0_origin_const(v: u32) -> (CompiledLayer, DagLayer) {
         let mut arena = ArenaBuilder::new();
         let const_src = arena.intern_source(SourceKind::Constant { value: v });
         let const_expr = arena.source_expr(const_src);
+
+        let layer = DagLayer {
+            sources: arena.sources().to_vec(),
+            exprs: arena.exprs().to_vec(),
+            roots: vec![],
+            sinks: vec![],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        };
 
         let mut specials = SpecialTable::default();
         specials.push(SpecialDescriptor {
@@ -409,20 +419,17 @@ mod tests {
                 operands: vec![OperandLine::Special { desc: 0 }],
             }],
         };
-        // We need to also return the layer, but the test function only returns CompiledLayer.
-        // Store the const_expr as ExprId(0) — ArenaBuilder always produces ExprId(0) for first expr.
-        // The stub_layer_resolvers_rows will build a matching layer.
-        minimal_compiled_with_specials(program, vec![], specials)
+        (minimal_compiled_with_specials(program, vec![], specials), layer)
     }
 
-    /// Returns (layer, resolvers, rows) for the const-fold tests.
-    /// The layer contains a single Constant source at ExprId(0).
-    fn stub_layer_resolvers_rows<'a>() -> (DagLayer, (impl cs::gkr_compiler::dag_ir::ReadResolver, impl cs::gkr_compiler::dag_ir::LookupResolver, impl cs::gkr_compiler::dag_ir::ChallengeResolver), Vec<usize>) {
-        // Build a DagLayer with one Constant(7) source so ExprId(0) = Constant(7).
-        // NOTE: This ExprId matches what compiled_peek_setup_desc0_origin_const stores.
+    /// Build a CompiledLayer identical to `compiled_peek_setup_desc0_origin_const` except that
+    /// the reference to `Special { desc: 0 }` lives only in `root_outputs` as an `Alias`, not in
+    /// any program instruction.  Returns (CompiledLayer, DagLayer) with the same constant value.
+    fn compiled_alias_only_special_desc0_origin_const(v: u32) -> (CompiledLayer, DagLayer) {
         let mut arena = ArenaBuilder::new();
-        let const_src = arena.intern_source(SourceKind::Constant { value: 7 });
-        let _const_expr = arena.source_expr(const_src);
+        let const_src = arena.intern_source(SourceKind::Constant { value: v });
+        let const_expr = arena.source_expr(const_src);
+
         let layer = DagLayer {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
@@ -432,8 +439,20 @@ mod tests {
             origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
-        let rows = vec![0usize];
-        (layer, (ZeroReadResolver, ZeroLookupResolverSp2, ZeroChallengeResolver), rows)
+
+        let mut specials = SpecialTable::default();
+        specials.push(SpecialDescriptor {
+            strategy: SpecialStrategy::PeekSetup,
+            origin_expr: const_expr,
+        });
+        let program = Program { instrs: vec![] };
+        let root_outputs = vec![(RootId(0), RootOutput::Alias(OperandLine::Special { desc: 0 }))];
+        (minimal_compiled_with_specials(program, root_outputs, specials), layer)
+    }
+
+    /// Returns the zero resolvers and a single-element rows slice for const-fold tests.
+    fn stub_resolvers_rows() -> (impl cs::gkr_compiler::dag_ir::ReadResolver, impl cs::gkr_compiler::dag_ir::LookupResolver, impl cs::gkr_compiler::dag_ir::ChallengeResolver, Vec<usize>) {
+        (ZeroReadResolver, ZeroLookupResolverSp2, ZeroChallengeResolver, vec![0usize])
     }
 
     // ── SP2 tests ─────────────────────────────────────────────────────────────
@@ -456,7 +475,8 @@ mod tests {
     #[test]
     fn validate_flags_out_of_range_reference() {
         let compiled = compiled_with_one_descriptor_and_reference(5);
-        let (layer, (read, lookup, challenge), rows) = stub_layer_resolvers_rows();
+        let layer = empty_dag_layer();
+        let (read, lookup, challenge, rows) = stub_resolvers_rows();
         let r = make_resolvers_sp2(&read, &lookup, &challenge);
         let err = validate_special_bindings(&compiled, &layer, &rows, &r, &StubPeek(Ext::ZERO)).unwrap_err();
         assert_eq!(err, PeekError::DescriptorOutOfRange { desc: 5, table_len: 1 });
@@ -465,7 +485,8 @@ mod tests {
     #[test]
     fn validate_flags_orphan_descriptor() {
         let compiled = compiled_with_two_descriptors_one_referenced();
-        let (layer, (read, lookup, challenge), rows) = stub_layer_resolvers_rows();
+        let layer = empty_dag_layer();
+        let (read, lookup, challenge, rows) = stub_resolvers_rows();
         let r = make_resolvers_sp2(&read, &lookup, &challenge);
         let err = validate_special_bindings(&compiled, &layer, &rows, &r, &StubPeek(Ext::ZERO)).unwrap_err();
         assert_eq!(err, PeekError::OrphanDescriptor { desc: 1 });
@@ -473,8 +494,8 @@ mod tests {
 
     #[test]
     fn validate_reports_mismatch_when_peek_ne_fold() {
-        let compiled = compiled_peek_setup_desc0_origin_const(7);
-        let (layer, (read, lookup, challenge), rows) = stub_layer_resolvers_rows();
+        let (compiled, layer) = compiled_peek_setup_desc0_origin_const(7);
+        let (read, lookup, challenge, rows) = stub_resolvers_rows();
         let r = make_resolvers_sp2(&read, &lookup, &challenge);
         let wrong = lift(Bf::from_u32_with_reduction(999));
         let err = validate_special_bindings(&compiled, &layer, &rows, &r, &StubPeek(wrong)).unwrap_err();
@@ -484,11 +505,25 @@ mod tests {
 
     #[test]
     fn validate_passes_when_peek_eq_fold_all_rows() {
-        let compiled = compiled_peek_setup_desc0_origin_const(7);
-        let (layer, (read, lookup, challenge), rows) = stub_layer_resolvers_rows();
+        let (compiled, layer) = compiled_peek_setup_desc0_origin_const(7);
+        let (read, lookup, challenge, rows) = stub_resolvers_rows();
         let r = make_resolvers_sp2(&read, &lookup, &challenge);
         let right = lift(Bf::from_u32_with_reduction(7));
         let n = validate_special_bindings(&compiled, &layer, &rows, &r, &StubPeek(right)).unwrap();
         assert_eq!(n, rows.len()); // 1 descriptor × rows
+    }
+
+    /// F3 alias-Special path: descriptor 0 is referenced ONLY via RootOutput::Alias, not via any
+    /// program instruction.  validate_special_bindings must not report it as OrphanDescriptor.
+    #[test]
+    fn validate_covers_alias_only_special() {
+        let (compiled, layer) = compiled_alias_only_special_desc0_origin_const(7);
+        let (read, lookup, challenge, rows) = stub_resolvers_rows();
+        let r = make_resolvers_sp2(&read, &lookup, &challenge);
+        // StubPeek returns the correct fold value so the differential passes.
+        let right = lift(Bf::from_u32_with_reduction(7));
+        let n = validate_special_bindings(&compiled, &layer, &rows, &r, &StubPeek(right))
+            .expect("alias-only Special must pass validation, not be reported OrphanDescriptor");
+        assert_eq!(n, rows.len()); // 1 descriptor × 1 row
     }
 }
