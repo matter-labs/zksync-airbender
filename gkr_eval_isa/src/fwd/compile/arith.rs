@@ -380,21 +380,16 @@ fn compile_add(
         return Ok(());
     }
 
-    // H6: an Add whose children are ALL products lowers to an FMA stream.
-    if children.len() >= 1 && children.iter().all(|&c| is_mul(layer, c)) {
-        // Special-case the α-fold: first term is a bare column (single unscaled
-        // factor) — but that surfaces as a non-Mul child, handled below, not here.
-        if let Some(()) = try_compile_fma(layer, &children, ctx, trace, out, alloc, expected)? {
-            return Ok(());
-        }
-    }
-
-    // α-fold: first child a single unscaled column, the rest col×challenge products.
-    if let Some(()) = try_compile_alpha_fold(layer, &children, ctx, trace, out, alloc, expected)? {
+    // H6: an Add fuses its product children ("mads") into FMA pairs; the plain
+    // additive children seed the accumulator (init/ADD). By commutativity the two
+    // groups split freely. `try_compile_fma` returns None — falling through to the
+    // generic reduction — only when the Add has no product child (a pure additive
+    // sum). Subsumes the α-fold case (a single leading bare column is one addend).
+    if let Some(()) = try_compile_fma(layer, &children, ctx, trace, out, alloc, expected)? {
         return Ok(());
     }
 
-    // Generic additive reduction grouped by operand field.
+    // Generic additive reduction grouped by operand field (pure additive sum).
     compile_reduction(layer, &children, ctx, trace, out, /* is_add */ true, alloc, expected)
 }
 
@@ -642,10 +637,22 @@ fn evict_acc_to_cell(out: &mut Vec<Instr>, field: OperandField, cell: u16) {
 
 // ── FMA (product-sum) ────────────────────────────────────────────────────────────
 
-/// Lower an Add-of-products to `MOV lhs0; MUL rhs0; FMA[remaining pairs grouped by
-/// (lhs_field, rhs_field)]` (§6, H6). Returns `Ok(Some(()))` if it applied,
-/// `Ok(None)` if any product is not a clean binary `(lhs, rhs)` pair (caller falls
-/// back to the generic reduction).
+/// Lower an Add to `init/ADD (the additive terms) ; FMA[products grouped by
+/// (lhs_field, rhs_field)]` (§6, H6). By commutativity an Add splits freely into
+/// its binary-product children (the "mads") and its plain additive children:
+/// - With ≥1 addend, the addends seed the accumulator (an init MOV from addend0,
+///   then one field-grouped ADD per remaining Base/Ext group), and EVERY product
+///   folds in as an FMA pair.
+/// - With no addends, the accumulator is seeded from the first product
+///   (`MOV lhs0; MUL rhs0`) and the remaining products fold in as FMA pairs — the
+///   proven all-products form.
+///
+/// This subsumes the lookup α-fold (a single leading unscaled column is just one
+/// addend → `MOV col0; FMA[(col1,α1),…]`).
+///
+/// Returns `Ok(Some(()))` if it applied, `Ok(None)` when the Add has NO binary
+/// product child (a pure additive reduction — the caller falls back to the
+/// generic field-grouped reduction).
 fn try_compile_fma(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     children: &[ExprId],
@@ -655,24 +662,38 @@ fn try_compile_fma(
     alloc: &mut CellAllocator,
     expected: OperandField,
 ) -> Result<Option<()>, CompileError> {
-    // Each child must be a binary product `Mul([f0, f1])` after `1`-elision.
-    let mut pairs: Vec<(ExprId, ExprId)> = Vec::with_capacity(children.len());
+    // Partition (preserving order): binary products become FMA pairs; every other
+    // child is an additive term that seeds the accumulator.
+    let mut products: Vec<(ExprId, ExprId)> = Vec::with_capacity(children.len());
+    let mut addends: Vec<ExprId> = Vec::new();
     for &c in children {
-        let Some(factors) = binary_mul_factors(layer, c) else {
-            return Ok(None);
-        };
-        pairs.push(factors);
+        match binary_mul_factors(layer, c) {
+            Some(factors) => products.push(factors),
+            None => addends.push(c),
+        }
+    }
+    // No product → not an FMA opportunity; let the generic reduction handle it.
+    if products.is_empty() {
+        return Ok(None);
     }
 
-    // Pre-materialize EVERY factor's operand BEFORE touching the acc (a compound
-    // factor — e.g. a product-of-sums — lowers to a cell, which clobbers the acc).
-    // Capture each factor's field + operand line; collect the field labels first so
-    // the immutable `layer` borrow in `child_operand_field` does not overlap the
-    // `&mut ctx` borrow in `lower_operand`.
-    let mut lo: Vec<(OperandField, OperandLine, OperandField, OperandLine)> =
-        Vec::with_capacity(pairs.len());
+    // Pre-materialize EVERY operand BEFORE touching the acc (a compound child —
+    // e.g. a product-of-sums — lowers to a cell, which clobbers the acc). Collect
+    // each operand's field label via `child_operand_field` BEFORE the `&mut ctx`
+    // borrow in `lower_operand` so the immutable `layer` borrow does not overlap.
     let mut owned_cells: Vec<u16> = Vec::new();
-    for &(lhs, rhs) in &pairs {
+    let mut addend_ops: Vec<(OperandField, OperandLine)> = Vec::with_capacity(addends.len());
+    for &c in &addends {
+        let f = child_operand_field(layer, c, expected, &ctx.cross_layer_fields);
+        let (op, cell) = lower_operand(layer, c, ctx, trace, out, alloc, f)?;
+        if let Some(cell) = cell {
+            owned_cells.push(cell);
+        }
+        addend_ops.push((f, op));
+    }
+    let mut lo: Vec<(OperandField, OperandLine, OperandField, OperandLine)> =
+        Vec::with_capacity(products.len());
+    for &(lhs, rhs) in &products {
         let lf = child_operand_field(layer, lhs, expected, &ctx.cross_layer_fields);
         let rf = child_operand_field(layer, rhs, expected, &ctx.cross_layer_fields);
         let (lhs_op, lc) = lower_operand(layer, lhs, ctx, trace, out, alloc, lf)?;
@@ -686,102 +707,47 @@ fn try_compile_fma(
         lo.push((lf, lhs_op, rf, rhs_op));
     }
 
-    // Init from the first product: MOV lhs0 (labeled with lhs0's field); MUL rhs0.
-    let (lf0, lhs0_op, rf0, rhs0_op) = lo[0];
-    emit_init_field(out, lhs0_op, lf0);
-    out.push(Instr::Mul {
-        field: rf0,
-        operands: vec![rhs0_op],
-    });
-
-    if lo.len() == 1 {
-        free_all(alloc, &owned_cells);
-        return Ok(Some(()));
-    }
-
-    // Group the remaining (lhs, rhs) pairs by canonical (lhs_field, rhs_field).
-    // Canonical mixed order is (Base, Ext): swap the commutative factors so EB is
-    // never emitted (H5). Emit one FMA per field-pair group.
-    use std::collections::BTreeMap;
-    let mut groups: BTreeMap<(u8, u8), Vec<(OperandLine, OperandLine)>> = BTreeMap::new();
-    for &(lf, lhs_op, rf, rhs_op) in &lo[1..] {
-        let ((cf_l, cf_r), (op_l, op_r)) =
-            canonical_fma_pair(lf, rf, lhs_op, rhs_op);
-        groups
-            .entry((cf_l as u8, cf_r as u8))
-            .or_default()
-            .push((op_l, op_r));
-    }
-
-    for ((lf, rf), gpairs) in groups {
-        push_fma_chunked(out, field_from_u8(lf), field_from_u8(rf), gpairs);
-    }
-    free_all(alloc, &owned_cells);
-    Ok(Some(()))
-}
-
-/// The lookup α-fold special case: first child a single unscaled column,
-/// remaining children `col×challenge` products. Lowers to
-/// `MOV col0; FMA{Base,Ext}[(col1,α1),…]` (§6 worked example).
-/// Returns `Ok(Some(()))` if it applied.
-fn try_compile_alpha_fold(
-    layer: &cs::gkr_compiler::dag_ir::DagLayer,
-    children: &[ExprId],
-    ctx: &mut DagForwardContext,
-    trace: &mut CompileTrace,
-    out: &mut Vec<Instr>,
-    alloc: &mut CellAllocator,
-    expected: OperandField,
-) -> Result<Option<()>, CompileError> {
-    if children.len() < 2 {
-        return Ok(None);
-    }
-    // child0 must be a bare source (the unscaled α⁰=1 column), NOT a product.
-    if !matches!(&layer.exprs[children[0].0 as usize], Expr::Source(_)) {
-        return Ok(None);
-    }
-    // every remaining child must be a binary product.
-    let mut pairs: Vec<(ExprId, ExprId)> = Vec::with_capacity(children.len() - 1);
-    for &c in &children[1..] {
-        let Some(factors) = binary_mul_factors(layer, c) else {
-            return Ok(None);
+    // Seed the accumulator; `fma_lo` is the product range still to fold as FMA.
+    let fma_lo: &[(OperandField, OperandLine, OperandField, OperandLine)] =
+        if !addend_ops.is_empty() {
+            // Init from addend0, then fold remaining addends as field-grouped ADDs
+            // (Base group then Ext group — base as long as possible, §5). Every
+            // product then folds in as an FMA pair.
+            emit_init_field(out, addend_ops[0].1, addend_ops[0].0);
+            let mut base_ops: Vec<OperandLine> = Vec::new();
+            let mut ext_ops: Vec<OperandLine> = Vec::new();
+            for &(f, op) in &addend_ops[1..] {
+                match f {
+                    OperandField::Base => base_ops.push(op),
+                    OperandField::Ext => ext_ops.push(op),
+                }
+            }
+            for (f, group) in [(OperandField::Base, base_ops), (OperandField::Ext, ext_ops)] {
+                if group.is_empty() {
+                    continue;
+                }
+                emit_reduction_group(out, trace, f, group, /* is_add */ true, alloc)?;
+            }
+            &lo[..]
+        } else {
+            // No addends: seed from the first product (MOV lhs0; MUL rhs0); FMA the
+            // rest — the proven all-products form.
+            let (lf0, lhs0_op, rf0, rhs0_op) = lo[0];
+            emit_init_field(out, lhs0_op, lf0);
+            out.push(Instr::Mul { field: rf0, operands: vec![rhs0_op] });
+            if lo.len() == 1 {
+                free_all(alloc, &owned_cells);
+                return Ok(Some(()));
+            }
+            &lo[1..]
         };
-        pairs.push(factors);
-    }
 
-    // Pre-materialize child0 + every (col, α) factor before initing the acc (a
-    // compound factor lowers to a cell and clobbers the acc).
-    let col0_field = child_operand_field(layer, children[0], expected, &ctx.cross_layer_fields);
-    let (col0_op, col0_cell) =
-        lower_operand(layer, children[0], ctx, trace, out, alloc, col0_field)?;
-    let mut owned_cells: Vec<u16> = Vec::new();
-    if let Some(c) = col0_cell {
-        owned_cells.push(c);
-    }
-    let mut lo: Vec<(OperandField, OperandLine, OperandField, OperandLine)> =
-        Vec::with_capacity(pairs.len());
-    for &(lhs, rhs) in &pairs {
-        let lf = child_operand_field(layer, lhs, expected, &ctx.cross_layer_fields);
-        let rf = child_operand_field(layer, rhs, expected, &ctx.cross_layer_fields);
-        let (lhs_op, lc) = lower_operand(layer, lhs, ctx, trace, out, alloc, lf)?;
-        if let Some(c) = lc {
-            owned_cells.push(c);
-        }
-        let (rhs_op, rc) = lower_operand(layer, rhs, ctx, trace, out, alloc, rf)?;
-        if let Some(c) = rc {
-            owned_cells.push(c);
-        }
-        lo.push((lf, lhs_op, rf, rhs_op));
-    }
-
-    // init MOV col0 (the α⁰=1 column), labeling with col0's field so the acc field
-    // tracks correctly when col0 is a cross-layer Ext read.
-    emit_init_field(out, col0_op, col0_field);
-
-    // group the remaining (col, α) pairs by canonical (lhs_field, rhs_field).
+    // Group the FMA pairs by canonical (lhs_field, rhs_field). Canonical mixed
+    // order is (Base, Ext): swap the commutative factors so EB is never emitted
+    // (H5). Emit one (arity-chunked) FMA per field-pair group.
     use std::collections::BTreeMap;
     let mut groups: BTreeMap<(u8, u8), Vec<(OperandLine, OperandLine)>> = BTreeMap::new();
-    for &(lf, lhs_op, rf, rhs_op) in &lo {
+    for &(lf, lhs_op, rf, rhs_op) in fma_lo {
         let ((cf_l, cf_r), (op_l, op_r)) = canonical_fma_pair(lf, rf, lhs_op, rhs_op);
         groups
             .entry((cf_l as u8, cf_r as u8))
@@ -843,10 +809,6 @@ fn push_fma_chunked(
 }
 
 // ── small structural predicates ──────────────────────────────────────────────────
-
-fn is_mul(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> bool {
-    matches!(&layer.exprs[id.0 as usize], Expr::Mul(_))
-}
 
 /// True if `id` is a `Source` whose value is the field element `−1` (= P−1 =
 /// `BABYBEAR_NEG_ONE`). These factors are stripped from Mul children before
@@ -1057,6 +1019,39 @@ mod tests {
                     )],
                 },
             ]
+        );
+    }
+
+    // ── Add(Mul(a,b), Mul(c,d), e1, e2) MUST still emit FMA ───────────────────
+    //
+    // A sum that MIXES products (mads) with plain additive terms is FMA-emittable:
+    // by commutativity it decomposes to an init/ADD over the addends followed by
+    // FMAs over the products. This is the shape of every real GKR memory/lookup
+    // fold (e.g. add_sub's cache roots: `χ_add + 0 + Σ_j mem_j·χ_j`). The two
+    // additive challenge terms guarantee this is neither all-products (the H6 FMA
+    // guard) nor a single-leading-term α-fold — so it exercises the mixed path.
+    //
+    // Gap regression: the value-only parity gates cannot catch a MISSED fusion
+    // (materialize-each-product-to-a-cell is value-correct), so this asserts the
+    // emitted SHAPE directly: the compiler must in fact emit ≥1 Instr::Fma.
+    #[test]
+    fn add_of_products_mixed_with_addends_is_fma() {
+        let mut arena = ArenaBuilder::new();
+        let a = read_base(&mut arena, 0);
+        let b = read_base(&mut arena, 1);
+        let c = read_base(&mut arena, 2);
+        let d = read_base(&mut arena, 3);
+        let e1 = challenge(&mut arena, ChallengePower::One);
+        let e2 = challenge(&mut arena, ChallengePower::Static(1));
+        let ab = arena.mul(vec![a, b]);
+        let cd = arena.mul(vec![c, d]);
+        let add = arena.add(vec![ab, cd, e1, e2]); // a·b + c·d + e1 + e2
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, add);
+        assert!(
+            instrs.iter().any(|i| matches!(i, Instr::Fma { .. })),
+            "a·b + c·d + e1 + e2 is FMA-emittable, but the compiler emitted no FMA \
+             (it materialized each product into a cell instead). Program:\n{instrs:#?}"
         );
     }
 
