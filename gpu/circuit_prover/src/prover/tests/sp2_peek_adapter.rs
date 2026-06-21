@@ -1064,8 +1064,12 @@ fn g1_peek_setup_zero_padding_edge() {
     let ors = OracleResolvers::new(&data);
     let r = ors.real();
     let pad_row = data.preprocessed_len;
-    if pad_row < data.trace_len {
-        let d = data.first_peek_setup_descriptor().expect("a PeekSetup descriptor");
-        assert_eq!(peek.peek(d, pad_row, &r).unwrap(), E4::ZERO);
-    }
+    assert!(
+        pad_row < data.trace_len,
+        "unsigned_mul_div preprocessed_len={pad_row} must be < trace_len={} for a padding region to exist",
+        data.trace_len
+    );
+    println!("PeekSetup padding edge: pad_row={pad_row}, trace_len={}", data.trace_len);
+    let d = data.first_peek_setup_descriptor().expect("a PeekSetup descriptor");
+    assert_eq!(peek.peek(d, pad_row, &r).unwrap(), E4::ZERO);
 }
