@@ -15,10 +15,38 @@ fn lift(b: Bf) -> Ext {
     <Ext as FieldExtension<Bf>>::from_base(b)
 }
 
+/// How the interpreter resolves a `Special { desc }` operand.
+enum SpecialMode<'p> {
+    /// SP1: re-run the authoritative fold (circular; synthetic/debug only).
+    Fold,
+    /// SP2: read the real peek binding.
+    Peek(&'p dyn crate::fwd::peek::PeekResolver),
+}
+
 pub fn interpret_layer_row(
     compiled: &CompiledLayer,
     layer: &DagLayer,
     r: &Resolvers<'_>,
+    row: usize,
+) -> Result<RowOutputs, InterpError> {
+    interpret_layer_row_impl(compiled, layer, r, &SpecialMode::Fold, row)
+}
+
+pub fn interpret_layer_row_with_peeks(
+    compiled: &CompiledLayer,
+    layer: &DagLayer,
+    r: &Resolvers<'_>,
+    peek: &dyn crate::fwd::peek::PeekResolver,
+    row: usize,
+) -> Result<RowOutputs, InterpError> {
+    interpret_layer_row_impl(compiled, layer, r, &SpecialMode::Peek(peek), row)
+}
+
+fn interpret_layer_row_impl(
+    compiled: &CompiledLayer,
+    layer: &DagLayer,
+    r: &Resolvers<'_>,
+    mode: &SpecialMode<'_>,
     row: usize,
 ) -> Result<RowOutputs, InterpError> {
     let ctx = &compiled.ctx;
@@ -30,19 +58,19 @@ pub fn interpret_layer_row(
         match instr {
             Instr::Mov { dir, field: _, dst, src } => match dir {
                 MovDir::AccFromSrc => {
-                    acc = resolve(&src.unwrap(), &cells, &globals, ctx, r, row, layer)?;
+                    acc = resolve(&src.unwrap(), &cells, &globals, ctx, r, row, layer, mode)?;
                 }
                 MovDir::DstFromAcc => {
                     write_dst(&dst.unwrap(), acc, &mut cells, &mut globals);
                 }
                 MovDir::DstFromSrc => {
-                    let v = resolve(&src.unwrap(), &cells, &globals, ctx, r, row, layer)?;
+                    let v = resolve(&src.unwrap(), &cells, &globals, ctx, r, row, layer, mode)?;
                     write_dst(&dst.unwrap(), v, &mut cells, &mut globals);
                 }
             },
             Instr::Add { sign, operands, .. } => {
                 for o in operands {
-                    let v = resolve(o, &cells, &globals, ctx, r, row, layer)?;
+                    let v = resolve(o, &cells, &globals, ctx, r, row, layer, mode)?;
                     match sign {
                         Sign::Plus => { acc.add_assign(&v); }
                         Sign::Minus => { acc.sub_assign(&v); }
@@ -62,14 +90,14 @@ pub fn interpret_layer_row(
                     }
                 }
                 for o in operands {
-                    let v = resolve(o, &cells, &globals, ctx, r, row, layer)?;
+                    let v = resolve(o, &cells, &globals, ctx, r, row, layer, mode)?;
                     acc.mul_assign(&v);
                 }
             }
             Instr::Fma { sign, pairs, .. } => {
                 for (l, rhs) in pairs {
-                    let mut prod = resolve(l, &cells, &globals, ctx, r, row, layer)?;
-                    prod.mul_assign(&resolve(rhs, &cells, &globals, ctx, r, row, layer)?);
+                    let mut prod = resolve(l, &cells, &globals, ctx, r, row, layer, mode)?;
+                    prod.mul_assign(&resolve(rhs, &cells, &globals, ctx, r, row, layer, mode)?);
                     match sign {
                         Sign::Plus => { acc.add_assign(&prod); }
                         Sign::Minus => { acc.sub_assign(&prod); }
@@ -88,7 +116,7 @@ pub fn interpret_layer_row(
             }
             // CopyAlias: resolved OUTSIDE the ISA stream (zero lanes).
             RootOutput::Alias(op) => {
-                resolve(op, &cells, &globals, ctx, r, row, layer)?
+                resolve(op, &cells, &globals, ctx, r, row, layer, mode)?
             }
         };
         by_root.insert(*rid, v);
@@ -106,6 +134,7 @@ fn resolve(
     r: &Resolvers<'_>,
     row: usize,
     layer: &DagLayer,
+    mode: &SpecialMode<'_>,
 ) -> Result<Ext, InterpError> {
     match *o {
         OperandLine::Global { slot, col } => {
@@ -149,7 +178,10 @@ fn resolve(
                 .specials
                 .get(desc)
                 .ok_or(InterpError::UnknownSpecial(desc))?;
-            Ok(eval_layer_expr(layer, d.origin_expr, row, r))
+            match mode {
+                SpecialMode::Fold => Ok(eval_layer_expr(layer, d.origin_expr, row, r)),
+                SpecialMode::Peek(p) => p.peek(d, row, r).map_err(InterpError::Peek),
+            }
         }
     }
 }
@@ -619,6 +651,78 @@ mod tests {
         let out = interpret_layer_row(&compiled, &layer, &r, 0).unwrap();
         let expected = lift(Bf::from_u32_with_reduction(7));
         assert_eq!(out.by_root[&RootId(0)], expected, "smem roundtrip mismatch");
+    }
+
+    // ── Test 8: with_peeks uses PeekResolver for Special operands ────────────
+
+    /// Build a CompiledLayer: program MOV acc ← Special{desc:0}; root 0 = Smem{0} (acc saved).
+    /// The descriptor side-table has one entry (PeekSetup, origin_expr = ExprId(0)).
+    fn compiled_mov_acc_from_special_desc0() -> (CompiledLayer, DagLayer) {
+        use crate::fwd::source::{SpecialDescriptor, SpecialStrategy};
+        use cs::gkr_compiler::dag_ir::ExprId;
+
+        let mut specials = crate::fwd::source::SpecialTable::default();
+        specials.push(SpecialDescriptor { strategy: SpecialStrategy::PeekSetup, origin_expr: ExprId(0) });
+
+        let program = Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(OperandLine::Special { desc: 0 }),
+                },
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: OperandField::Base,
+                    dst: Some(DstLine::Smem { cell: 0 }),
+                    src: None,
+                },
+            ],
+        };
+
+        let mut backings = crate::fwd::binding::BackingTable::default();
+        backings.intern(crate::fwd::binding::BackingKey::BaseLayerMemory).unwrap();
+        let ctx = crate::fwd::context::DagForwardContext {
+            specials,
+            consts: crate::fwd::source::ConstBank::default(),
+            challenges: crate::fwd::source::ChallengeBanks::default(),
+            backings,
+            actions: std::collections::HashMap::new(),
+            cache_loc: std::collections::HashMap::new(),
+            cross_layer_fields: std::collections::HashMap::new(),
+        };
+        let compiled = CompiledLayer {
+            program,
+            ctx,
+            root_outputs: vec![(RootId(0), RootOutput::Cell(OutputCell::Smem(0)))],
+            skipped: vec![],
+            trace: CompileTrace::default(),
+            budget: 4,
+            stats: CompileStats::default(),
+        };
+        (compiled, empty_layer())
+    }
+
+    #[test]
+    fn with_peeks_uses_peek_resolver_for_special_operand() {
+        // A program: MOV acc <- Special{desc:0}; (acc is the root output).
+        // SP1 interpret_layer_row would resolve via eval_layer_expr; with_peeks must use the peek.
+        use crate::fwd::peek::{PeekError, PeekResolver};
+        use crate::fwd::source::SpecialDescriptor;
+        struct FixedPeek(Ext);
+        impl PeekResolver for FixedPeek {
+            fn peek(&self, _d: &SpecialDescriptor, _row: usize, _r: &Resolvers<'_>) -> Result<Ext, PeekError> {
+                Ok(self.0)
+            }
+        }
+        let (compiled, layer) = compiled_mov_acc_from_special_desc0();
+        let read = ColPlusRowReadResolver;
+        let challenge = FixedChallengeResolver(Ext::ZERO);
+        let r = make_resolvers(&read, &challenge);
+        let sentinel = lift(Bf::from_u32_with_reduction(123456 % ((1u64 << 31) as u32 - 1) as u32));
+        let out = interpret_layer_row_with_peeks(&compiled, &layer, &r, &FixedPeek(sentinel), 0).unwrap();
+        assert_eq!(*out.by_root.values().next().unwrap(), sentinel);
     }
 
     // ── Test 7: root_outputs mapping returns correct value in RowOutputs ─────
