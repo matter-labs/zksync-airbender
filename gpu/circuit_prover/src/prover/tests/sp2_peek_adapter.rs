@@ -1055,6 +1055,70 @@ fn g1_all_four_strategies_covered_layer0() {
             "all four strategies must be validated on real data at layer 0: {seen:?}");
 }
 
+// ── Task 9: G2 — VM-with-peeks vs identity-fold root parity (layer 0) ────────
+
+/// Rows for the G2 composition gate.
+///
+/// All-row is the strongest form and HAS been run green over both circuits
+/// (`finished in 2171.53s`, ~36 min, single-threaded). But all-row is too slow
+/// for a routine `cargo test` gate, so by default this returns a DETERMINISTIC
+/// representative sample (head + tail + even stride + the PeekSetup padding
+/// boundary) and logs the count. Sampling is sanctioned for G2 specifically
+/// because G1 (Tasks 7-8) already proved the leaf binding `peek == fold` over
+/// EVERY row; G2 only needs the composition (`interp + per-root oracle`), which
+/// a spread sample exercises. Set `G2_ALL_ROWS=1` to force exhaustive all-row
+/// coverage (the out-of-band exhaustive pass). Never silent: both paths log.
+fn sample_or_all_rows(data: &RealData) -> Vec<usize> {
+    const SAMPLE_ALL_BELOW: usize = 1 << 16; // small traces: just do all rows
+    const HEAD: usize = 1024;
+    const TAIL: usize = 1024;
+    const STRIDE_POINTS: usize = 2048;
+
+    let n = data.trace_len;
+    if std::env::var_os("G2_ALL_ROWS").is_some() || n <= SAMPLE_ALL_BELOW {
+        println!("G2 exhaustive: all {n} rows");
+        return (0..n).collect();
+    }
+
+    let mut rows: Vec<usize> = Vec::new();
+    rows.extend(0..HEAD.min(n)); // first HEAD rows
+    rows.extend(n.saturating_sub(TAIL)..n); // last TAIL rows
+    let stride = (n / STRIDE_POINTS).max(1);
+    rows.extend((0..n).step_by(stride)); // even spread across the trace
+    // Exercise the PeekSetup zero-fill boundary inside the composed VM too:
+    let p = data.preprocessed_len;
+    for r in [p.saturating_sub(1), p, p + 1] {
+        if r < n {
+            rows.push(r);
+        }
+    }
+    rows.sort_unstable();
+    rows.dedup();
+    println!("G2 sampled {}/{n} rows (set G2_ALL_ROWS=1 for exhaustive)", rows.len());
+    rows
+}
+
+#[test]
+fn g2_vm_with_peeks_matches_identity_fold_root_parity_layer0() {
+    for data in [build_add_sub_real_data(), build_unsigned_mul_div_real_data()] {
+        let peek = ProverPeekResolver { data: &data };
+        let ors = OracleResolvers::new(&data);
+        let r = ors.real();
+        let rows: Vec<usize> = sample_or_all_rows(&data); // all-row preferred; logs if sampled
+        let layer = &data.dag.layers[0];
+        for &row in &rows {
+            let vm = gkr_eval_isa::fwd::interp::interpret_layer_row_with_peeks(&data.compiled_layer0, layer, &r, &peek, row).unwrap();
+            let id = gkr_eval_isa::fwd::peek::IdentityLookupResolver::new();
+            let oracle = ors.with_lookup(&id);
+            for (rid, vm_val) in &vm.by_root {
+                let oracle_val = cs::gkr_compiler::dag_ir::eval_layer_root(layer, *rid, row, &oracle);
+                assert_eq!(*vm_val, oracle_val, "root {rid:?} row {row}: VM-with-peeks != identity-fold");
+            }
+            assert!(id.took_violation().is_none());
+        }
+    }
+}
+
 #[test]
 fn g1_peek_setup_zero_padding_edge() {
     // A row >= preprocessed_generic_lookup.len() must peek E4::ZERO for PeekSetup,
