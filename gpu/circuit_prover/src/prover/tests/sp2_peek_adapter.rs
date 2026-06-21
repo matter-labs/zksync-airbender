@@ -991,3 +991,81 @@ fn g1_peek_eq_fold_all_rows_add_sub_layer0() {
     assert!(n > 0, "expected at least one descriptor×row comparison");
     println!("G1 add_sub L0: {n} peek==fold comparisons over {} rows", data.trace_len);
 }
+
+// ── StrategyKinds: absorb which peek strategies are referenced at a layer ────
+
+/// Tracks which of the four peek strategies appear in a compiled layer's
+/// special-descriptors table. Used by the union-coverage assertion in
+/// `g1_all_four_strategies_covered_layer0` to confirm that the add_sub +
+/// unsigned_mul_div union covers all four strategies at layer 0.
+#[derive(Default, Debug)]
+struct StrategyKinds {
+    single: bool,
+    aggregate: bool,
+    setup: bool,
+    decoder: bool,
+}
+
+impl StrategyKinds {
+    /// Set the flag for each `SpecialStrategy` variant seen in `compiled.ctx.specials`.
+    fn absorb(&mut self, compiled: &CompiledLayer) {
+        for d in compiled.ctx.specials.iter() {
+            match &d.strategy {
+                SpecialStrategy::PeekSingleColumn { .. } => self.single = true,
+                SpecialStrategy::PeekAggregate { .. }   => self.aggregate = true,
+                SpecialStrategy::PeekSetup              => self.setup = true,
+                SpecialStrategy::PeekDecoder { .. }     => self.decoder = true,
+            }
+        }
+    }
+}
+
+// ── RealData::first_peek_setup_descriptor ────────────────────────────────────
+
+impl RealData {
+    /// Locate the FIRST `PeekSetup` descriptor in the compiled layer-0 side
+    /// table and return a reference to it. Mirrors `first_aggregate_origin()`
+    /// but returns the whole `SpecialDescriptor` (the padding-edge test needs
+    /// the descriptor to call `peek.peek(d, …)`).
+    pub(super) fn first_peek_setup_descriptor(&self) -> Option<&SpecialDescriptor> {
+        self.compiled_layer0
+            .ctx
+            .specials
+            .iter()
+            .find(|d| matches!(d.strategy, SpecialStrategy::PeekSetup))
+    }
+}
+
+// ── Task 8: all-four-strategy coverage + PeekSetup padding edge ─────────────
+
+#[test]
+fn g1_all_four_strategies_covered_layer0() {
+    let mut seen = StrategyKinds::default();
+    for data in [build_add_sub_real_data(), build_unsigned_mul_div_real_data()] {
+        let peek = ProverPeekResolver { data: &data };
+        let ors = OracleResolvers::new(&data);
+        let r = ors.real();
+        let rows: Vec<usize> = (0..data.trace_len).collect();
+        gkr_eval_isa::fwd::peek::validate_special_bindings(
+            &data.compiled_layer0, &data.dag.layers[0], &rows, &r, &peek,
+        ).unwrap();
+        seen.absorb(&data.compiled_layer0); // count strategies referenced at layer 0
+    }
+    assert!(seen.single && seen.aggregate && seen.setup && seen.decoder,
+            "all four strategies must be validated on real data at layer 0: {seen:?}");
+}
+
+#[test]
+fn g1_peek_setup_zero_padding_edge() {
+    // A row >= preprocessed_generic_lookup.len() must peek E4::ZERO for PeekSetup,
+    // matching production VectorizedLookupSetup zero-fill (forward_loop/mod.rs:100-105).
+    let data = build_unsigned_mul_div_real_data();
+    let peek = ProverPeekResolver { data: &data };
+    let ors = OracleResolvers::new(&data);
+    let r = ors.real();
+    let pad_row = data.preprocessed_len;
+    if pad_row < data.trace_len {
+        let d = data.first_peek_setup_descriptor().expect("a PeekSetup descriptor");
+        assert_eq!(peek.peek(d, pad_row, &r).unwrap(), E4::ZERO);
+    }
+}
