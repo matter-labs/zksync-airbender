@@ -110,12 +110,45 @@ pub fn compile_layer(
                 let (key, col) = sink_to_backing(sink, artifact_layer.layer);
                 let slot = ctx.backings.intern(key)?;
 
-                program.instrs.push(Instr::Mov {
-                    dir: MovDir::DstFromAcc,
-                    field: expected,
-                    dst: Some(DstLine::GlobalMaterialize { slot, col }),
-                    src: None,
-                });
+                // Passthrough fusion: when the root lowered to exactly one
+                // `MOV AccFromSrc src` (a source/PEEK that needs no arithmetic),
+                // rewrite the init+materialize pair into a single direct
+                // `MOV DstFromSrc dst <- src`, dropping the accumulator round-trip.
+                // A PEEK gather is not storage-addressable, so it cannot be a
+                // `CopyAlias` and would otherwise cost two MOVs. Safe: a single-
+                // source root that validates today already has src field == sink
+                // field (else the `DstFromAcc` field-transition check would reject
+                // it), so the fused MOV's field is self-consistent.
+                let fused = if program.instrs.len() == len_before + 1 {
+                    match program.instrs[len_before] {
+                        Instr::Mov {
+                            dir: MovDir::AccFromSrc,
+                            field,
+                            src: Some(src),
+                            ..
+                        } => {
+                            program.instrs[len_before] = Instr::Mov {
+                                dir: MovDir::DstFromSrc,
+                                field,
+                                dst: Some(DstLine::GlobalMaterialize { slot, col }),
+                                src: Some(src),
+                            };
+                            true
+                        }
+                        _ => false,
+                    }
+                } else {
+                    false
+                };
+
+                if !fused {
+                    program.instrs.push(Instr::Mov {
+                        dir: MovDir::DstFromAcc,
+                        field: expected,
+                        dst: Some(DstLine::GlobalMaterialize { slot, col }),
+                        src: None,
+                    });
+                }
 
                 // A cache root (no origin) records its location for same-layer Prior reads.
                 if !layer.origins.contains_key(&rid) {
@@ -272,6 +305,51 @@ mod tests {
             vec![(RootId(0), RootOutput::Cell(OutputCell::Global { slot, col: 5 }))]
         );
         assert!(compiled.skipped.is_empty());
+    }
+
+    // #6: a passthrough Compute root whose body lowers to a single `MOV AccFromSrc`
+    // (here a bare source read into a cache backing) fuses its init+materialize
+    // into ONE `MOV DstFromSrc dst <- src`, dropping the accumulator round-trip.
+    // (With empty `cached_relations` the root is Compute, not a `CopyAlias`.)
+    #[test]
+    fn passthrough_source_root_fuses_to_dst_from_src() {
+        let mut arena = ArenaBuilder::new();
+        let s = arena.intern_source(SourceKind::Read {
+            place: ReadPlace::BaseLayerMemory { column: 0 },
+        });
+        let a = arena.source_expr(s);
+        let layer = DagLayer {
+            sources: arena.sources().to_vec(),
+            exprs: arena.exprs().to_vec(),
+            roots: vec![Root::Output { expr: a, sink: SinkId(0) }],
+            sinks: vec![SinkInfo {
+                kind: SinkKind::Cache { layer: 3, offset: 5 },
+                field: FieldKind::Base,
+            }],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        };
+        let compiled =
+            compile_layer(&layer, &artifact_layer(7), &BTreeMap::new(), &HashMap::new(), 16)
+                .unwrap();
+        // Exactly ONE instruction — the fused direct move, not an AccFromSrc +
+        // DstFromAcc pair.
+        assert_eq!(
+            compiled.program.instrs.len(),
+            1,
+            "passthrough root must compile to a single fused MOV, got {:?}",
+            compiled.program.instrs
+        );
+        match &compiled.program.instrs[0] {
+            Instr::Mov {
+                dir: MovDir::DstFromSrc,
+                dst: Some(DstLine::GlobalMaterialize { col, .. }),
+                src: Some(_),
+                ..
+            } => assert_eq!(*col, 5),
+            other => panic!("expected fused MOV DstFromSrc, got {:?}", other),
+        }
     }
 
     // A post-elision degenerate root is rejected: top expr is Mul([Constant{1}]),
