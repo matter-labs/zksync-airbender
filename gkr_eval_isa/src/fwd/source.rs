@@ -63,6 +63,7 @@ impl SpecialTable {
     pub fn push(&mut self, d: SpecialDescriptor) -> u16 { let i = self.descs.len() as u16; self.descs.push(d); i }
     pub fn get(&self, desc: u16) -> Option<&SpecialDescriptor> { self.descs.get(desc as usize) }
     pub fn len(&self) -> usize { self.descs.len() }
+    pub fn iter(&self) -> impl Iterator<Item = &SpecialDescriptor> { self.descs.iter() }
 }
 
 pub fn lower_resolution(strategy: &ResolutionStrategy, origin_expr: ExprId) -> SpecialDescriptor {
