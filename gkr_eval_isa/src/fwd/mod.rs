@@ -7,6 +7,7 @@ pub mod encode;
 pub mod error;
 pub mod interp;
 pub mod isa;
+pub mod peek;
 pub mod source;
 pub mod stats;
 pub mod validate;
