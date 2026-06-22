@@ -934,24 +934,6 @@ fn is_neg_one_factor(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> 
     )
 }
 
-/// `Some((negated, f0, f1))` if `id` is a `Mul` that, after eliding `Constant{1}`
-/// factors AND peeling `-1` factors, has exactly two surviving (non-`±1`) factors.
-/// `negated` is the parity of the peeled `-1` count (odd → the product is negated).
-/// `None` otherwise (the FMA path bails to the generic reduction so we never invent
-/// FMA pairs for non-binary products). A negated binary product folds into a
-/// `Sign::Minus` FMA pair — zero extra instructions, vs. a separate unary negate (#7).
-fn binary_mul_factors(
-    layer: &cs::gkr_compiler::dag_ir::DagLayer,
-    id: ExprId,
-) -> Option<(bool, ExprId, ExprId)> {
-    let (neg, kept) = mul_surviving_factors(layer, id)?;
-    if kept.len() == 2 {
-        Some((neg, kept[0], kept[1]))
-    } else {
-        None
-    }
-}
-
 /// Decompose a `Mul` into `(negated_parity, surviving_factors)`: elide `Constant{1}`
 /// factors, peel `-1` factors (tracking the odd/even parity of their count), and
 /// return the remaining non-`±1` factors. `None` if `id` is not a `Mul`.
