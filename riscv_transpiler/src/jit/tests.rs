@@ -271,12 +271,8 @@ fn test_jit_zimop_ixor_rot() {
         };
         let expected = (v2 ^ rs1_value).rotate_right(rot);
 
-        let (state, _mem) = JittedCode::<_>::run_alternative_simulator_from_instructions(
-            &prog,
-            &mut (),
-            &[],
-            None,
-        );
+        let (state, _mem) =
+            JittedCode::<_>::run_alternative_simulator_from_instructions(&prog, &mut (), &[], None);
         let got = state.materialized_registers()[rd as usize];
         assert_eq!(
             got, expected,
@@ -339,18 +335,112 @@ fn test_jit_zimop_tri_add() {
         };
         let expected = val_of(rs1).wrapping_add(val_of(rs2)).wrapping_add(v_rd);
 
-        let (state, _mem) = JittedCode::<_>::run_alternative_simulator_from_instructions(
-            &prog,
-            &mut (),
-            &[],
-            None,
-        );
+        let (state, _mem) =
+            JittedCode::<_>::run_alternative_simulator_from_instructions(&prog, &mut (), &[], None);
         let got = state.materialized_registers()[rd as usize];
         assert_eq!(
             got, expected,
             "ZimopTriAdd mismatch: rs1=x{rs1} rs2=x{rs2} rd=x{rd} v1={v1:#010x} v2={v2:#010x} v_rd={v_rd:#010x} -> got {got:#010x}, expected {expected:#010x}"
         );
     }
+}
+
+/// The MOP prime-field opcodes (ZimopAdd/Sub/Mul/FMA) computed by the env-selected field
+/// emitter (M31 default, BabyBear via `RISCV_MOP_FIELD`) must match the reference `field` crate
+/// exactly. The default decoder config never emits these as a field choice, so build instruction
+/// streams directly, run the JIT under each field, and compare to `from_raw_repr_with_reduction`
+/// + the field op + `as_u32_raw_repr_reduced`. Covers GPR-mapped / XMM-resident placements,
+/// rs2 == x0 (the M31 add fast path), and inputs above the modulus (exercising reduction).
+#[test]
+#[serial_test::serial]
+fn test_jit_zimop_field_ops() {
+    use InstructionName::{Add, Jal, ZimopAdd, ZimopFMA, ZimopMul, ZimopSub};
+
+    fn field_expected<F: field::PrimeField>(op: InstructionName, a: u32, b: u32, c: u32) -> u32 {
+        use field::Field;
+        let fa = F::from_raw_repr_with_reduction(a);
+        let fb = F::from_raw_repr_with_reduction(b);
+        let mut res = match op {
+            ZimopAdd => {
+                let mut x = fa;
+                x.add_assign(&fb);
+                x
+            }
+            ZimopSub => {
+                let mut x = fa;
+                x.sub_assign(&fb);
+                x
+            }
+            ZimopMul => {
+                let mut x = fa;
+                x.mul_assign(&fb);
+                x
+            }
+            ZimopFMA => {
+                let mut x = F::from_raw_repr_with_reduction(c);
+                x.add_assign_product(&fa, &fb);
+                x
+            }
+            _ => unreachable!(),
+        };
+        res.as_u32_raw_repr_reduced()
+    }
+
+    // Distinct (rs1, rs2, rd) so no aliasing; covers all-GPR-mapped, all-XMM-resident, mixed, and
+    // rs2 == x0 (the M31 add fast path). (Each case rebuilds a JIT — keep the matrix modest.)
+    let placements: &[(u8, u8, u8)] = &[(10, 11, 12), (5, 6, 7), (5, 11, 6), (11, 0, 12)];
+    // (v1 -> rs1, v2 -> rs2, v_rd -> rd's old value); above the moduli to force reduction, plus 0.
+    let values: &[(u32, u32, u32)] = &[
+        (0x7fff_fffe, 0x7fff_ffff, 0x8000_0000),
+        (0x7800_0000, 0x7800_0001, 0xffff_ffff),
+        (0xdead_beef, 0x1234_5678, 0xcafe_babe),
+        (0, 0, 0),
+    ];
+    let ops = [ZimopAdd, ZimopSub, ZimopMul, ZimopFMA];
+
+    for field_env in ["m31", "babybear"] {
+        std::env::set_var("RISCV_MOP_FIELD", field_env);
+        for &op in &ops {
+            for &(rs1, rs2, rd) in placements {
+                for &(v1, v2, v_rd) in values {
+                    let mut prog: Vec<Instruction> = Vec::new();
+                    let mut set = |p: &mut Vec<Instruction>, reg: u8, val: u32| {
+                        if reg != 0 {
+                            p.push(Instruction::new(Add, 0, 0, reg, val));
+                        }
+                    };
+                    set(&mut prog, rs1, v1);
+                    set(&mut prog, rs2, v2);
+                    set(&mut prog, rd, v_rd);
+                    prog.push(Instruction::new(op, rs1, rs2, rd, 0));
+                    prog.push(Instruction::new(Jal, 0, 0, 0, 0)); // exit
+
+                    // raw register values seen by the opcode (rs2 == x0 reads 0).
+                    let a = v1;
+                    let b = if rs2 == 0 { 0 } else { v2 };
+                    let c = v_rd;
+                    let expected = match field_env {
+                        "m31" => field_expected::<field::Mersenne31Field>(op, a, b, c),
+                        _ => field_expected::<field::baby_bear::base::BabyBearField>(op, a, b, c),
+                    };
+
+                    let (state, _mem) =
+                        JittedCode::<_>::run_alternative_simulator_from_instructions(
+                            &prog,
+                            &mut (),
+                            &[],
+                            None,
+                        );
+                    let got = state.materialized_registers()[rd as usize];
+                    assert_eq!(
+                        got, expected,
+                        "{field_env} {op:?}: rs1=x{rs1}({a:#010x}) rs2=x{rs2}({b:#010x}) rd=x{rd}({c:#010x}) -> got {got:#010x}, expected {expected:#010x}"
+                    );
+                }
+            }
+        }
+    }
+    std::env::remove_var("RISCV_MOP_FIELD"); // restore default (M31) for other tests
 }
 
 #[test]
