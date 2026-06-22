@@ -70,7 +70,7 @@ where
 
     let claim = collector.compute_combined_claim(output_claims);
 
-    let (mut folding_challenges, internal_round_coefficients, last_evaluations, final_accumulator) =
+    let (mut folding_challenges, internal_round_coefficients, last_evaluations, final_claim) =
         run_sumcheck_loop::<F, E, 4, false>(
             &collector,
             claim,
@@ -83,21 +83,8 @@ where
             seed,
         );
 
-    #[cfg(feature = "gkr_self_checks")]
-    {
-        // As in the same-size case, the last round emits a univariate monomial, so
-        // `final_accumulator` is now `[G(0), G2]` rather than the explicit endpoints
-        // `[G(0), G(1)]`. Both share the constant term `G(0)`, which we check; the per-round
-        // and per-poly checks cover the rest.
-        let recomputed = collector.compute_last_step_accumulator_from_evals(
-            &BatchedGKRTermDescriptionConstants::<F, E>::default(),
-            &last_evaluations,
-        );
-        assert_eq!(
-            recomputed[0], final_accumulator[0],
-            "last_evaluations inconsistent with final accumulator constant term G(0)"
-        );
-    }
+    assert_eq!(folding_challenges.len(), folding_steps);
+    assert_eq!(internal_round_coefficients.len(), folding_steps);
 
     // The last folding challenge drawn inside the loop is the challenge for the last *output*
     // coordinate (`r_before_last`). It fixes that coordinate of the `[E;4]` bilinear
@@ -109,7 +96,9 @@ where
         trace_len_after_reduction.trailing_zeros() as usize,
         folding_challenges.len()
     );
-    let r_before_last = *folding_challenges.last().expect("at least one folding round");
+    let r_before_last = *folding_challenges
+        .last()
+        .expect("at least one folding round");
 
     // `[E;4]` layout: [v0, v1, v2, v3] split as (x_last=0: v0,v1 | x_last=1: v2,v3), so the
     // LSB=0 component is (v0 @ x_last=0, v2 @ x_last=1) and LSB=1 is (v1, v3). Interpolating
@@ -123,11 +112,26 @@ where
         })
         .collect();
 
+    #[cfg(feature = "gkr_self_checks")]
+    {
+        // We use old evaluation function, but format the data to match the expectations
+        let augmented_claims: BTreeMap<_, [E; 4]> = lsb_lines
+            .iter()
+            .map(|(addr, v)| (*addr, [v[0], v[1], E::ZERO, E::ZERO]))
+            .collect();
+        let recomputed = collector.compute_last_step_accumulator_from_evals(
+            &BatchedGKRTermDescriptionConstants::<F, E>::default(),
+            &augmented_claims,
+        );
+        assert_eq!(
+            recomputed[0], final_claim,
+            "final_claim inconsistent with recomputed gate kernels"
+        );
+    }
+
     // Send the LSB lines in the proof and commit them before drawing the LSB challenge.
-    let final_step_evaluations: BTreeMap<GKRAddress, Vec<E>> = lsb_lines
-        .iter()
-        .map(|(k, v)| (*k, v.to_vec()))
-        .collect();
+    let final_step_evaluations: BTreeMap<GKRAddress, Vec<E>> =
+        lsb_lines.iter().map(|(k, v)| (*k, v.to_vec())).collect();
 
     let transcript_inputs: Vec<E> = lsb_lines.values().flatten().copied().collect();
     commit_field_els(seed, &transcript_inputs);
@@ -145,9 +149,7 @@ where
     // coordinate at `r_last`.
     let new_claims: BTreeMap<_, _> = lsb_lines
         .iter()
-        .map(|(addr, [lsb0, lsb1])| {
-            (*addr, interpolate_linear::<F, E>(*lsb0, *lsb1, &r_last))
-        })
+        .map(|(addr, [lsb0, lsb1])| (*addr, interpolate_linear::<F, E>(*lsb0, *lsb1, &r_last)))
         .collect();
 
     #[cfg(feature = "gkr_self_checks")]
@@ -246,7 +248,7 @@ where
         _marker: core::marker::PhantomData,
     };
 
-    let (mut folding_challenges, internal_round_coefficients, last_evaluations, final_accumulator) =
+    let (folding_challenges, internal_round_coefficients, last_evaluations, final_claim) =
         run_sumcheck_loop::<F, E, 2, true>(
             &collector,
             claim,
@@ -259,22 +261,8 @@ where
             seed,
         );
 
-    #[cfg(feature = "gkr_self_checks")]
-    {
-        // The last round now emits a univariate monomial, so `final_accumulator` holds the
-        // monomial form `[G(0), G2]` (constant + quadratic/at-infinity coeff) rather than the
-        // old explicit endpoints `[G(0), G(1)]`. `compute_last_step_accumulator_from_evals`
-        // still reconstructs the endpoints from `last_evaluations`; both forms share the
-        // constant term `G(0)`, which we check here. The per-round `s(0) + s(1) == claim`
-        // check (inside `run_sumcheck_loop`) and the per-poly at-point checks below cover the
-        // rest of the consistency.
-        let recomputed = collector
-            .compute_last_step_accumulator_from_evals(&challenge_constants, &last_evaluations);
-        assert_eq!(
-            recomputed[0], final_accumulator[0],
-            "last_evaluations inconsistent with final accumulator constant term G(0)"
-        );
-    }
+    assert_eq!(folding_challenges.len(), folding_steps);
+    assert_eq!(internal_round_coefficients.len(), folding_steps);
 
     // After sumcheck completes, the last folding challenge (drawn inside the loop together
     // with the final univariate monomial) fixes the final coordinate. We reduce each input
@@ -285,12 +273,31 @@ where
         folding_challenges.len(),
         trace_len.trailing_zeros() as usize
     );
-    let last_r = *folding_challenges.last().expect("at least one folding round");
+    let last_r = *folding_challenges
+        .last()
+        .expect("at least one folding round");
 
     let mut new_claims: BTreeMap<_, _> = last_evaluations
         .iter()
         .map(|(addr, &[f0, f1])| (*addr, interpolate_linear::<F, E>(f0, f1, &last_r)))
         .collect();
+
+    #[cfg(feature = "gkr_self_checks")]
+    {
+        // We use old function to perform evaluate of gates at-point, but we will just ignore the second evaluation point.
+        // Final claim represents something like eq(prev_round_challenges, folding_challenges) * a(folding_challenges) * b(folding_challenges)
+        // for same sized kernels, and eq(prev_round_challenges, folding_challenges, 0) * a(folding_challenges, 1) for dimension reducing kernels
+        let augmented_claims: BTreeMap<_, [E; 2]> = new_claims
+            .iter()
+            .map(|(addr, v)| (*addr, [*v, E::ZERO]))
+            .collect();
+        let recomputed = collector
+            .compute_last_step_accumulator_from_evals(&challenge_constants, &augmented_claims);
+        assert_eq!(
+            recomputed[0], final_claim,
+            "last_evaluations inconsistent with final accumulator constant term G(0)"
+        );
+    }
 
     // Snapshot the at-point evaluations to send in the proof before the cached-relation
     // handling extends `new_claims` with extra explicitly-computed dependencies.
@@ -465,7 +472,7 @@ fn run_sumcheck_loop<
     folding_steps: usize,
     worker: &Worker,
     seed: &mut Seed,
-) -> (Vec<E>, Vec<[E; 4]>, BTreeMap<GKRAddress, [E; N]>, [E; 2])
+) -> (Vec<E>, Vec<[E; 4]>, BTreeMap<GKRAddress, [E; N]>, E)
 where
     [(); E::DEGREE]: Sized,
 {
@@ -573,11 +580,15 @@ where
         folding_challenges.push(folding_challenge);
     }
 
+    // normalize the claim to avoid prefactors sneaking in for our self-check outside
+    let mut normalized_claim = claim;
+    normalized_claim.mul_assign(&eq_prefactor.inverse().expect("eq prefactor non-zero"));
+
     (
         folding_challenges,
         intermediate_coeffs,
         last_evaluations,
-        accumulator_buffer[0],
+        normalized_claim,
     )
 }
 
