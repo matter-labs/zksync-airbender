@@ -216,8 +216,15 @@ mod tests {
     }
 
     // Immutable per-stage baselines — never overwrite; later stages add their own const and assert `<`.
+    // S1 = pre-residency emission (every same-layer `Prior` read re-read DRAM).
     pub const ADD_SUB_S1_DRAM_READS: usize = 85;
     pub const MUL_DIV_S1_DRAM_READS: usize = 110;
+    // S2 = residency-aware emission (#4/#8): a heavily-reused cache root is kept
+    // resident in an smem cell, so its same-layer `Prior` readers read the cell
+    // (`OperandLine::Smem`) instead of re-reading the DRAM backing. Both circuits
+    // shed 8 DRAM reads. The cache's Global backing is still written (never dropped).
+    pub const ADD_SUB_S2_DRAM_READS: usize = 77;
+    pub const MUL_DIV_S2_DRAM_READS: usize = 102;
 
     fn dram_reads_of(name: &str) -> usize {
         let artifact = load_fixture(name).expect("fixture");
@@ -228,11 +235,29 @@ mod tests {
         compiled.stats.dram_reads
     }
 
+    // Step 1 (Task 10 brief): residency must cut add_sub L0 `dram_reads` below the
+    // S1 baseline. Asserts the hard cap (residents + temps ≤ BUDGET) as well.
     #[test]
-    fn s1_dram_reads_baselines() {
+    fn add_sub_layer0_dram_reads_drop_with_residency() {
+        let artifact = match load_fixture("add_sub_lui_auipc_mop_layout_gkr") { Some(a) => a, None => return };
+        let dag = lower_dag(&artifact).unwrap(); validate(&dag).unwrap();
+        let cross = build_cross_layer_field_map(&dag);
+        let compiled = compile_layer(&dag.layers[0], &artifact.layers[0], &artifact.scratch_space_mapping, &cross, BUDGET).unwrap();
+        assert!(compiled.stats.dram_reads < ADD_SUB_S1_DRAM_READS, "residency must cut dram_reads below S1 baseline {}, got {}", ADD_SUB_S1_DRAM_READS, compiled.stats.dram_reads);
+        assert!(compiled.stats.max_live_cells <= BUDGET, "hard cap incl. residents + temps");
+    }
+
+    // S2 baselines (codex Mod7): assert each circuit hits its S2 const AND is strictly
+    // below its S1 baseline. The S1 consts are kept (not overwritten) for the `<` guard.
+    #[test]
+    fn s2_dram_reads_baselines() {
         if load_fixture("add_sub_lui_auipc_mop_layout_gkr").is_none() { return; }
-        assert_eq!(dram_reads_of("add_sub_lui_auipc_mop_layout_gkr"), ADD_SUB_S1_DRAM_READS, "add_sub S1 dram_reads changed");
-        assert_eq!(dram_reads_of("unsigned_mul_div_layout_gkr"), MUL_DIV_S1_DRAM_READS, "unsigned_mul_div S1 dram_reads changed");
+        let add_sub = dram_reads_of("add_sub_lui_auipc_mop_layout_gkr");
+        assert_eq!(add_sub, ADD_SUB_S2_DRAM_READS, "add_sub S2 dram_reads changed");
+        assert!(add_sub < ADD_SUB_S1_DRAM_READS, "add_sub S2 must be below S1 {ADD_SUB_S1_DRAM_READS}, got {add_sub}");
+        let mul_div = dram_reads_of("unsigned_mul_div_layout_gkr");
+        assert_eq!(mul_div, MUL_DIV_S2_DRAM_READS, "unsigned_mul_div S2 dram_reads changed");
+        assert!(mul_div < MUL_DIV_S1_DRAM_READS, "unsigned_mul_div S2 must be below S1 {MUL_DIV_S1_DRAM_READS}, got {mul_div}");
     }
 
     #[test]

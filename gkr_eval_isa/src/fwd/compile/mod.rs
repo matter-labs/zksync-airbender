@@ -8,7 +8,7 @@ pub mod schedule;
 use self::analyze::{analyze_layer, materialize_descriptors};
 use self::arith::{compile_expr, source_to_operand, LoweringEnv};
 pub use self::arith::build_cross_layer_field_map;
-use self::residency::{RefEvent, RefString, ResidencyState};
+use self::residency::{Loc, RefEvent, RefString, ResidencyState};
 use self::schedule::CellAllocator;
 use super::binding::BackingKey;
 use super::context::{
@@ -215,6 +215,36 @@ pub fn compile_layer(
                     false
                 };
 
+                let is_cache_root = !layer.origins.contains_key(&rid);
+
+                // Residency (#8): keep a heavily-reused cache root resident in an smem
+                // cell so its same-layer `Prior` readers read the cell (no DRAM re-read).
+                // Only NON-fused cache roots qualify — a fused passthrough never lands
+                // in the acc (the value is a bare source already cheap to re-read), and
+                // its single MOV writes straight to Global. The resident store
+                // (`MOV DstFromAcc Smem{c}`) runs BEFORE the Global materialize, so the
+                // acc still carries the root's value for both writes. The Global backing
+                // is ALWAYS also written (cross-layer reads + the cache backing are
+                // never dropped — codex re-review Imp1).
+                if !fused && is_cache_root {
+                    let producer = expr;
+                    let candidate = graph
+                        .info
+                        .get(&producer)
+                        .map(|i| i.is_candidate)
+                        .unwrap_or(false);
+                    if candidate {
+                        if let Loc::Smem(cell) = residency.admit(producer, point)? {
+                            program.instrs.push(Instr::Mov {
+                                dir: MovDir::DstFromAcc,
+                                field: expected,
+                                dst: Some(DstLine::Smem { cell }),
+                                src: None,
+                            });
+                        }
+                    }
+                }
+
                 if !fused {
                     program.instrs.push(Instr::Mov {
                         dir: MovDir::DstFromAcc,
@@ -225,7 +255,7 @@ pub fn compile_layer(
                 }
 
                 // A cache root (no origin) records its location for same-layer Prior reads.
-                if !layer.origins.contains_key(&rid) {
+                if is_cache_root {
                     ctx.cache_loc.insert(rid, (slot, col));
                 }
                 root_outputs
