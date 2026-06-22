@@ -14,12 +14,43 @@ use super::super::error::CompileError;
 use super::super::isa::{
     DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Sign, Special, MAX_ARITY,
 };
+use super::residency::{Loc, ResidencyState};
 use super::schedule::{split_reduction, CellAllocator};
-use super::resolution::{resolve_or_descend, ResolveOutcome};
 use cs::gkr_compiler::dag_ir::{
-    expr_field, Expr, ExprId, FieldKind, ReadPlace, SinkKind, SourceKind,
+    expr_field, Expr, ExprId, FieldKind, ReadPlace, RootId, SinkKind, SourceKind,
 };
 use std::collections::HashMap;
+
+/// Borrowed lowering/emit context (codex Imp1) threaded through
+/// `compile_expr → lower_operand → source_to_operand` during Stage-2 emission.
+///
+/// It carries the Task-7 `materialize_descriptors` map (`desc_by_expr`, interned
+/// ONCE per reached resolution leaf) and the per-layer `ResidencyState` (a read-side
+/// snapshot of which values are smem-resident). Resolution handling during emit
+/// consults `desc_by_expr` rather than calling `resolve_or_descend` (which would push
+/// a fresh duplicate descriptor per use and re-orphan the Task-7 dedup); residency
+/// redirects a same-layer reused operand from `Global` to `Smem` when planned.
+///
+/// `&mut DagForwardContext` is kept a SEPARATE parameter (codex Q4) so the immutable
+/// borrows here never conflict with the `ctx` mutation in the lowering callees.
+#[derive(Clone, Copy)]
+pub(crate) struct LoweringEnv<'a> {
+    /// Task-7 descriptor map: reached resolution-leaf `ExprId` → its interned
+    /// `ctx.specials` index. During emit, a resolution-carrying expr resolves to
+    /// `OperandLine::Special{ desc_by_expr[&id] }` — never via `resolve_or_descend`.
+    pub desc_by_expr: &'a HashMap<ExprId, u16>,
+    /// Per-layer residency snapshot. A same-layer `Prior(rid)` (or a CSE'd compound)
+    /// resolves to the resident `Smem{cell}` when `residency.location` says so, else
+    /// to its DRAM backing. Read-side only.
+    pub residency: &'a ResidencyState,
+    /// `RootId → producer ExprId` for cache roots (no origin). A `Prior{id}` read maps
+    /// `id` to its producer expr to query residency (`ValueInfo` is keyed by ExprId).
+    pub cache_root_expr: &'a HashMap<RootId, ExprId>,
+    /// The current reference-string event index (used as the residency query point).
+    /// `location` is point-insensitive (it reads the current resident snapshot), so
+    /// this is passed for API symmetry only.
+    pub point: usize,
+}
 
 /// BabyBear modulus P = 2^31 − 2^27 + 1 = 0x78000001.
 /// Field −1 is the canonical representative of P−1 (the additive inverse of 1).
@@ -160,19 +191,25 @@ fn join_field(a: FieldKind, b: FieldKind) -> FieldKind {
 /// FIRST consult `resolve_or_descend`: a resolution-carrying expr collapses to one
 /// `Special` and is NOT descended into (§9). Otherwise the expr must be a
 /// `Expr::Source` and lowers per its `SourceKind`.
-pub fn source_to_operand(
+pub(crate) fn source_to_operand(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     expr_id: ExprId,
     ctx: &mut DagForwardContext,
     trace: &mut CompileTrace,
+    env: LoweringEnv,
 ) -> Result<OperandLine, CompileError> {
-    // §9: a resolved fold expr prunes to one Special; do not descend.
-    match resolve_or_descend(layer, expr_id, &mut ctx.specials) {
-        ResolveOutcome::Special(desc) => {
-            trace.pruned_resolution_exprs.push(expr_id);
-            return Ok(OperandLine::Special { desc });
-        }
-        ResolveOutcome::Descend => {}
+    // §9: a resolved fold expr prunes to one Special; do not descend. During S2 emit
+    // the descriptor was already interned ONCE by `materialize_descriptors` — look it
+    // up in `env.desc_by_expr` instead of calling `resolve_or_descend` (codex Imp1).
+    if layer.resolutions.contains_key(&expr_id) {
+        trace.pruned_resolution_exprs.push(expr_id);
+        let desc = *env.desc_by_expr.get(&expr_id).ok_or_else(|| {
+            CompileError::FieldMismatch(format!(
+                "resolution leaf {} not interned by materialize_descriptors",
+                expr_id.0
+            ))
+        })?;
+        return Ok(OperandLine::Special { desc });
     }
 
     let Expr::Source(src_id) = &layer.exprs[expr_id.0 as usize] else {
@@ -217,6 +254,16 @@ pub fn source_to_operand(
             Ok(OperandLine::Ldc { sub, idx })
         }
         SourceKind::Prior { id } => {
+            // Residency (#8): a same-layer `Prior(rid)` resolves to the cache root's
+            // resident smem cell when the planner kept it resident, ELSE re-reads the
+            // `cache_loc` DRAM backing. The cache backing is never dropped — residency
+            // is purely a READ-side choice (codex re-review Imp1). A cache root always
+            // has a real DRAM backing, so `location` never returns `Recompute` here.
+            if let Some(&producer) = env.cache_root_expr.get(id) {
+                if let Loc::Smem(cell) = env.residency.location(producer, env.point) {
+                    return Ok(OperandLine::Smem { cell });
+                }
+            }
             // Caches lead: the driver populated `cache_loc[id]` before this read
             // (§5/§8). Re-read the cache backing.
             let (slot, col) = *ctx
@@ -257,7 +304,7 @@ pub fn source_to_operand(
 /// patterns (source children, FMA, α-fold, field-homogeneous groups, negate,
 /// over-cap split) remain the primary path; the cell fallback only fires for
 /// children that are neither a source nor resolution-pruned.
-pub fn compile_expr(
+pub(crate) fn compile_expr(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     expr_id: ExprId,
     ctx: &mut DagForwardContext,
@@ -265,16 +312,22 @@ pub fn compile_expr(
     out: &mut Vec<Instr>,
     alloc: &mut CellAllocator,
     expected: OperandField,
+    env: LoweringEnv,
 ) -> Result<(), CompileError> {
     // §9: a resolution-carrying expr collapses to a single Special operand, even at
     // the top of a root expr → init the acc from it and stop. The Special's field is
     // the resolved fold's field (PeekAggregate/PeekDecoder/PeekSetup are Ext,
     // PeekSingleColumn is Base): label the init MOV accordingly so the field-
-    // transition tracker agrees with an Ext-typed materialize (§9/§12).
-    if let ResolveOutcome::Special(desc) =
-        resolve_or_descend(layer, expr_id, &mut ctx.specials)
-    {
+    // transition tracker agrees with an Ext-typed materialize (§9/§12). The descriptor
+    // was interned ONCE by `materialize_descriptors` — look it up (codex Imp1).
+    if layer.resolutions.contains_key(&expr_id) {
         trace.pruned_resolution_exprs.push(expr_id);
+        let desc = *env.desc_by_expr.get(&expr_id).ok_or_else(|| {
+            CompileError::FieldMismatch(format!(
+                "resolution leaf {} not interned by materialize_descriptors",
+                expr_id.0
+            ))
+        })?;
         let field = child_operand_field(layer, expr_id, expected, &ctx.cross_layer_fields);
         emit_init_field(out, OperandLine::Special { desc }, field);
         return Ok(());
@@ -283,12 +336,12 @@ pub fn compile_expr(
     match &layer.exprs[expr_id.0 as usize] {
         Expr::Source(_) => {
             let field = child_operand_field(layer, expr_id, expected, &ctx.cross_layer_fields);
-            let op = source_to_operand(layer, expr_id, ctx, trace)?;
+            let op = source_to_operand(layer, expr_id, ctx, trace, env)?;
             emit_init_field(out, op, field);
             Ok(())
         }
-        Expr::Add(children) => compile_add(layer, children.clone(), ctx, trace, out, alloc, expected),
-        Expr::Mul(children) => compile_mul(layer, children.clone(), ctx, trace, out, alloc, expected),
+        Expr::Add(children) => compile_add(layer, children.clone(), ctx, trace, out, alloc, expected, env),
+        Expr::Mul(children) => compile_mul(layer, children.clone(), ctx, trace, out, alloc, expected, env),
     }
 }
 
@@ -316,6 +369,7 @@ fn lower_operand(
     out: &mut Vec<Instr>,
     alloc: &mut CellAllocator,
     expected: OperandField,
+    env: LoweringEnv,
 ) -> Result<(OperandLine, Option<u16>), CompileError> {
     // A source or a resolution-pruned fold lowers directly to one operand line.
     // `resolve_or_descend` (inside `source_to_operand`) prunes a resolved parent to
@@ -330,15 +384,23 @@ fn lower_operand(
     if layer.resolutions.contains_key(&expr_id)
         || matches!(&layer.exprs[expr_id.0 as usize], Expr::Source(_))
     {
-        let op = source_to_operand(layer, expr_id, ctx, trace)?;
+        let op = source_to_operand(layer, expr_id, ctx, trace, env)?;
         return Ok((op, None));
+    }
+
+    // CSE (#4): a shared compound subexpr the planner kept resident is read from its
+    // resident smem cell rather than re-lowered. The resident cell is owned by the
+    // `ResidencyState`, NOT this caller — return `None` for the owned-cell so it never
+    // enters the caller's transient `free_all` (codex Mod3).
+    if let Loc::Smem(cell) = env.residency.location(expr_id, env.point) {
+        return Ok((OperandLine::Smem { cell }, None));
     }
 
     // Compound child: recursively lower into the acc, then evict to a fresh cell.
     // The child's evict width follows its own field (cross-layer read → its producing
     // sink's field via the map; absent → `expected`).
     let field = child_operand_field(layer, expr_id, expected, &ctx.cross_layer_fields);
-    compile_expr(layer, expr_id, ctx, trace, out, alloc, field)?;
+    compile_expr(layer, expr_id, ctx, trace, out, alloc, field, env)?;
     let cell = alloc.alloc(field)?;
     evict_acc_to_cell(out, field, cell);
     trace.max_live_cells = trace.max_live_cells.max(alloc.max_live());
@@ -377,6 +439,7 @@ fn compile_add(
     out: &mut Vec<Instr>,
     alloc: &mut CellAllocator,
     expected: OperandField,
+    env: LoweringEnv,
 ) -> Result<(), CompileError> {
     // §6 strength: drop additive zero terms (additive identity), mirroring
     // compile_mul's `Constant{1}` elision. This is `is_zero_expr`, so it also drops
@@ -399,12 +462,12 @@ fn compile_add(
     // groups split freely. `try_compile_fma` returns None — falling through to the
     // generic reduction — only when the Add has no product child (a pure additive
     // sum). Subsumes the α-fold case (a single leading bare column is one addend).
-    if let Some(()) = try_compile_fma(layer, &children, ctx, trace, out, alloc, expected)? {
+    if let Some(()) = try_compile_fma(layer, &children, ctx, trace, out, alloc, expected, env)? {
         return Ok(());
     }
 
     // Generic additive reduction grouped by operand field (pure additive sum).
-    compile_reduction(layer, &children, ctx, trace, out, /* is_add */ true, /* negate */ false, alloc, expected)
+    compile_reduction(layer, &children, ctx, trace, out, /* is_add */ true, /* negate */ false, alloc, expected, env)
 }
 
 // ── Mul lowering ───────────────────────────────────────────────────────────────
@@ -417,6 +480,7 @@ fn compile_mul(
     out: &mut Vec<Instr>,
     alloc: &mut CellAllocator,
     expected: OperandField,
+    env: LoweringEnv,
 ) -> Result<(), CompileError> {
     // §6 strength: drop `Constant{1}` factors.
     let factors: Vec<ExprId> = children
@@ -462,7 +526,7 @@ fn compile_mul(
     // and `Instr::Mul{field:Ext}` groups (§5). This is the proven Task 9 path.
     // Pass `negate` so compile_reduction can insert the unary negate in the base
     // phase (before the first ext-promoting MUL) when a base phase exists (Task 5).
-    compile_reduction(layer, &surviving, ctx, trace, out, /* is_add */ false, negate, alloc, expected)?;
+    compile_reduction(layer, &surviving, ctx, trace, out, /* is_add */ false, negate, alloc, expected, env)?;
 
     Ok(())
 }
@@ -503,6 +567,7 @@ fn compile_reduction(
     negate: bool,
     alloc: &mut CellAllocator,
     expected: OperandField,
+    env: LoweringEnv,
 ) -> Result<(), CompileError> {
     debug_assert!(!children.is_empty());
 
@@ -531,7 +596,7 @@ fn compile_reduction(
             (c, Sign::Plus)
         };
         let field = child_operand_field(layer, to_lower, expected, &ctx.cross_layer_fields);
-        let (op, cell) = lower_operand(layer, to_lower, ctx, trace, out, alloc, expected)?;
+        let (op, cell) = lower_operand(layer, to_lower, ctx, trace, out, alloc, expected, env)?;
         if let Some(cell) = cell {
             owned_cells.push(cell);
         }
@@ -781,6 +846,7 @@ fn try_compile_fma(
     out: &mut Vec<Instr>,
     alloc: &mut CellAllocator,
     expected: OperandField,
+    env: LoweringEnv,
 ) -> Result<Option<()>, CompileError> {
     // Partition (preserving order): a (possibly negated) binary product becomes a
     // signed FMA pair; every other child is an additive term that seeds/folds the
@@ -809,7 +875,7 @@ fn try_compile_fma(
         Vec::with_capacity(addends.len());
     for &(sign, c) in &addends {
         let f = child_operand_field(layer, c, expected, &ctx.cross_layer_fields);
-        let (op, cell) = lower_operand(layer, c, ctx, trace, out, alloc, f)?;
+        let (op, cell) = lower_operand(layer, c, ctx, trace, out, alloc, f, env)?;
         if let Some(cell) = cell {
             owned_cells.push(cell);
         }
@@ -820,11 +886,11 @@ fn try_compile_fma(
     for &(sign, lhs, rhs) in &products {
         let lf = child_operand_field(layer, lhs, expected, &ctx.cross_layer_fields);
         let rf = child_operand_field(layer, rhs, expected, &ctx.cross_layer_fields);
-        let (lhs_op, lc) = lower_operand(layer, lhs, ctx, trace, out, alloc, lf)?;
+        let (lhs_op, lc) = lower_operand(layer, lhs, ctx, trace, out, alloc, lf, env)?;
         if let Some(c) = lc {
             owned_cells.push(c);
         }
-        let (rhs_op, rc) = lower_operand(layer, rhs, ctx, trace, out, alloc, rf)?;
+        let (rhs_op, rc) = lower_operand(layer, rhs, ctx, trace, out, alloc, rf, env)?;
         if let Some(c) = rc {
             owned_cells.push(c);
         }
@@ -1094,9 +1160,9 @@ mod tests {
     use crate::fwd::isa::{Instr, LdcSub, MovDir, OperandField, OperandLine, Sign, Special};
     use cs::gkr_compiler::dag_ir::{
         ArenaBuilder, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, DagLayer, ExprId,
-        ReadPlace, ResolutionStrategy, SourceKind,
+        ReadPlace, ResolutionStrategy, RootId, SourceKind,
     };
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, HashMap};
 
     // Build a DagLayer from an arena with no roots/sinks (structural lowering only).
     fn layer_of(arena: &ArenaBuilder) -> DagLayer {
@@ -1111,12 +1177,38 @@ mod tests {
         }
     }
 
+    use super::super::analyze::{analyze_layer, materialize_descriptors};
+    use super::super::residency::{RefString, ResidencyState};
+
+    /// A test-only emit environment with an EMPTY descriptor map and a no-residency
+    /// planner (nothing admitted). It interns the layer's reached resolution
+    /// descriptors so the `desc_by_expr` lookup never fails for resolution-carrying
+    /// exprs in the test fixtures. Returns owned pieces the caller keeps alive while
+    /// borrowing `LoweringEnv`.
+    fn empty_env_parts(
+        layer: &DagLayer,
+        ctx: &mut DagForwardContext,
+    ) -> (HashMap<ExprId, u16>, HashMap<RootId, ExprId>, ResidencyState) {
+        let graph = analyze_layer(layer, ctx);
+        let desc_by_expr = materialize_descriptors(&graph.descriptors, layer, ctx);
+        let cache_root_expr: HashMap<RootId, ExprId> = HashMap::new();
+        let residency = ResidencyState::new(&RefString::default(), &graph.info, 1024);
+        (desc_by_expr, cache_root_expr, residency)
+    }
+
     fn run(layer: &DagLayer, expr: ExprId) -> Vec<Instr> {
         let mut ctx = DagForwardContext::default();
         let mut trace = CompileTrace::default();
         let mut out = Vec::new();
         let mut alloc = CellAllocator::new(1024);
-        compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base)
+        let (desc_by_expr, cache_root_expr, residency) = empty_env_parts(layer, &mut ctx);
+        let env = LoweringEnv {
+            desc_by_expr: &desc_by_expr,
+            residency: &residency,
+            cache_root_expr: &cache_root_expr,
+            point: 0,
+        };
+        compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base, env)
             .expect("compile_expr");
         out
     }
@@ -1126,7 +1218,14 @@ mod tests {
         let mut trace = CompileTrace::default();
         let mut out = Vec::new();
         let mut alloc = CellAllocator::new(1024);
-        compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base)?;
+        let (desc_by_expr, cache_root_expr, residency) = empty_env_parts(layer, &mut ctx);
+        let env = LoweringEnv {
+            desc_by_expr: &desc_by_expr,
+            residency: &residency,
+            cache_root_expr: &cache_root_expr,
+            point: 0,
+        };
+        compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base, env)?;
         Ok(out)
     }
 
@@ -1668,18 +1767,19 @@ mod tests {
         );
     }
 
-    // ── resolution probe in lower_operand emits exactly ONE descriptor ────────────
+    // ── resolution-pruned operand reuses the pre-interned descriptor (no dup) ──────
     //
-    // Before the fix, lower_operand called resolve_or_descend (mutating) as a probe,
-    // then source_to_operand called resolve_or_descend again — pushing TWO descriptors
-    // for each resolution-pruned expr. After the fix, the probe is replaced with the
-    // non-mutating `layer.resolutions.contains_key(&expr_id)`, so source_to_operand's
-    // single call is the only push, yielding exactly one descriptor.
+    // Codex Imp1: during S2 emit the descriptor was already interned ONCE by
+    // `materialize_descriptors` into `env.desc_by_expr`. `lower_operand` (via
+    // `source_to_operand`) must LOOK IT UP, not call `resolve_or_descend` again —
+    // which would push a duplicate. The test fixture is built with the layer's
+    // descriptors already materialized (count 1); `lower_operand` must NOT grow it.
     #[test]
-    fn resolution_probe_emits_single_descriptor() {
+    fn resolution_pruned_operand_reuses_interned_descriptor() {
         let mut arena = ArenaBuilder::new();
         // Create a non-Source expr (Mul([a, b])) so it's not caught by the Source
-        // branch — only the resolution branch fires.
+        // branch — only the resolution branch fires. Make it a root so analysis
+        // actually reaches it and plans the descriptor.
         let a = read_base(&mut arena, 0);
         let b = read_base(&mut arena, 1);
         let fold = arena.mul(vec![a, b]); // a non-Source expr that will be resolved
@@ -1691,8 +1791,11 @@ mod tests {
         let layer = DagLayer {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
-            roots: vec![],
-            sinks: vec![],
+            roots: vec![Root::Output { expr: fold, sink: SinkId(0) }],
+            sinks: vec![SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset: 0 },
+                field: FieldKind::Base,
+            }],
             batching: BatchingOrder { roots: vec![] },
             origins: BTreeMap::new(),
             resolutions,
@@ -1702,15 +1805,24 @@ mod tests {
         let mut trace = CompileTrace::default();
         let mut out = Vec::new();
         let mut alloc = CellAllocator::new(1024);
+        // Pre-intern the layer's descriptors ONCE (the materialize_descriptors pass).
+        let (desc_by_expr, cache_root_expr, residency) = empty_env_parts(&layer, &mut ctx);
+        assert_eq!(ctx.specials.len(), 1, "materialize_descriptors interns exactly one");
+        let env = LoweringEnv {
+            desc_by_expr: &desc_by_expr,
+            residency: &residency,
+            cache_root_expr: &cache_root_expr,
+            point: 0,
+        };
 
-        // lower_operand on the resolution-pruned expr should emit exactly one descriptor.
-        lower_operand(&layer, fold, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base)
+        // lower_operand on the resolution-pruned expr must reuse the descriptor.
+        lower_operand(&layer, fold, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base, env)
             .expect("lower_operand");
 
         assert_eq!(
             ctx.specials.len(),
             1,
-            "expected exactly 1 SpecialDescriptor after lower_operand; got {}",
+            "lower_operand must reuse the interned descriptor, not push a duplicate; got {}",
             ctx.specials.len()
         );
     }
@@ -1720,7 +1832,6 @@ mod tests {
     use cs::gkr_compiler::dag_ir::{
         DagCircuit, DagGlobals, FieldKind, Root, SinkId, SinkInfo, SinkKind,
     };
-    use std::collections::HashMap;
 
     // A cross-layer LayerOutput read → Global operand.
     fn read_layer_output(arena: &mut ArenaBuilder, layer: usize, offset: usize) -> ExprId {
@@ -1743,7 +1854,14 @@ mod tests {
         let mut trace = CompileTrace::default();
         let mut out = Vec::new();
         let mut alloc = CellAllocator::new(1024);
-        compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, expected)
+        let (desc_by_expr, cache_root_expr, residency) = empty_env_parts(layer, &mut ctx);
+        let env = LoweringEnv {
+            desc_by_expr: &desc_by_expr,
+            residency: &residency,
+            cache_root_expr: &cache_root_expr,
+            point: 0,
+        };
+        compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, expected, env)
             .expect("compile_expr");
         out
     }

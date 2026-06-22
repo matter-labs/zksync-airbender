@@ -5,8 +5,10 @@ pub mod residency;
 pub mod resolution;
 pub mod schedule;
 
-use self::arith::{compile_expr, source_to_operand};
+use self::analyze::{analyze_layer, materialize_descriptors};
+use self::arith::{compile_expr, source_to_operand, LoweringEnv};
 pub use self::arith::build_cross_layer_field_map;
+use self::residency::{RefEvent, RefString, ResidencyState};
 use self::schedule::CellAllocator;
 use super::binding::BackingKey;
 use super::context::{
@@ -86,10 +88,32 @@ pub fn compile_layer(
     // field. Small — one entry per cross-layer-readable sink.
     ctx.cross_layer_fields = cross_layer_fields.clone();
 
+    // ── Stage-2 residency pre-pass (#4, #8) ──────────────────────────────────────
+    // 1) PURE value-graph analysis (refcounts, fields, miss penalties, reached
+    //    resolution descriptors). Reads ctx but never mutates it.
+    let graph = analyze_layer(layer, &ctx);
+    // 2) Intern each reached resolution descriptor into `ctx.specials` EXACTLY ONCE
+    //    (Task 7). The emitter looks these up via `desc_by_expr` and NEVER calls
+    //    `resolve_or_descend` again — so `special_gathers == distinct descriptors`.
+    let desc_by_expr = materialize_descriptors(&graph.descriptors, layer, &mut ctx);
+    // 3) `RootId → producer ExprId` for cache roots (no origin). A `Prior{id}` read
+    //    maps `id` to its producer expr to query residency (info is keyed by ExprId).
+    let cache_root_expr = cache_root_expr_map(layer);
+    // 4) The index-order reference string: a `Produce` when a cache root materializes,
+    //    a `Use` at each `Prior` read of a cache (and a candidate non-cache compound's
+    //    later reuse). Drives Belady next-use distances.
+    let refs = build_ref_string(layer, &cache_root_expr, &graph);
+    // 5) ONE per-layer residency planner (replaces the per-root CellAllocator) — a
+    //    layer-wide high-water of residents + lowering temps that must stay ≤ BUDGET.
+    let mut residency = ResidencyState::new(&refs, &graph.info, budget);
+
     let mut program = Program::default();
     let mut trace = CompileTrace::default();
     let mut root_outputs: Vec<(RootId, RootOutput)> = Vec::new();
     let mut skipped: Vec<RootId> = Vec::new();
+    // Reference-string event cursor: advanced as the root walk consumes events so the
+    // residency `point` at each emit matches the pre-pass `RefString` ordering.
+    let mut point: usize = 0;
 
     for (idx, root) in layer.roots.iter().enumerate() {
         let rid = RootId(idx as u32);
@@ -124,20 +148,31 @@ pub fn compile_layer(
                 let sink = &layer.sinks[sink_id.0 as usize];
                 let expected = operand_field_of(sink);
 
-                // Lower the expr into the accumulator. A fresh `CellAllocator`
-                // sized by the budget backs the general nested-subexpression
-                // fallback (Task 13): each Compute root starts with an empty cell
-                // file (no inter-root cell residency in SP1).
+                // Lower the expr into the accumulator. A fresh transient
+                // `CellAllocator` backs the general nested-subexpression fallback
+                // (`lower_operand`): transient lowering cells are distinct from the
+                // resident CSE/cache cells owned by the layer-wide `ResidencyState`
+                // (codex Mod3). The residency planner redirects reused same-layer
+                // reads (`Prior`/CSE) to resident `Smem` cells via `env`.
                 let mut alloc = CellAllocator::new(budget);
-                compile_expr(
-                    layer,
-                    expr,
-                    &mut ctx,
-                    &mut trace,
-                    &mut program.instrs,
-                    &mut alloc,
-                    expected,
-                )?;
+                {
+                    let env = LoweringEnv {
+                        desc_by_expr: &desc_by_expr,
+                        residency: &residency,
+                        cache_root_expr: &cache_root_expr,
+                        point,
+                    };
+                    compile_expr(
+                        layer,
+                        expr,
+                        &mut ctx,
+                        &mut trace,
+                        &mut program.instrs,
+                        &mut alloc,
+                        expected,
+                        env,
+                    )?;
+                }
 
                 // If lowering emitted no instructions, the root is degenerate
                 // (post-elision empty): materializing now would push a stale
@@ -199,13 +234,23 @@ pub fn compile_layer(
             ForwardAction::CopyAlias { .. } => {
                 // §10: a view-alias produces NO kernel bytecode. Lower the root's
                 // single source expr to an OperandLine for the action executor.
-                let op = source_to_operand(layer, expr, &mut ctx, &mut trace)?;
+                let env = LoweringEnv {
+                    desc_by_expr: &desc_by_expr,
+                    residency: &residency,
+                    cache_root_expr: &cache_root_expr,
+                    point,
+                };
+                let op = source_to_operand(layer, expr, &mut ctx, &mut trace, env)?;
                 root_outputs.push((rid, RootOutput::Alias(op)));
             }
             ForwardAction::SkipScratchPrefill => {
                 skipped.push(rid);
             }
         }
+        // Advance the residency query cursor one step per root. `location` is
+        // point-insensitive, so only Belady eviction tiebreaks consult it under cap
+        // pressure; with no eviction (the gated circuits fit BUDGET) this is inert.
+        point += 1;
     }
 
     trace.max_live_cells = trace.max_live_cells.max(0);
@@ -280,6 +325,85 @@ pub fn compile_layer(
         budget,
         stats,
     })
+}
+
+/// Build `RootId → producer ExprId` for every CACHE root (a `Root::Output` with no
+/// origin). Mirrors the internal map `analyze_layer` uses, exported here so the
+/// emitter can map a `SourceKind::Prior{id}` (a `RootId`) to the cache root's output
+/// expr — the key `ValueInfo`/residency are keyed by (an `ExprId`).
+fn cache_root_expr_map(layer: &DagLayer) -> HashMap<RootId, ExprId> {
+    let mut map = HashMap::new();
+    for (idx, root) in layer.roots.iter().enumerate() {
+        if let Root::Output { expr, .. } = root {
+            let rid = RootId(idx as u32);
+            if !layer.origins.contains_key(&rid) {
+                map.insert(rid, *expr);
+            }
+        }
+    }
+    map
+}
+
+/// Build the index-order reference string for residency planning.
+///
+/// Walks `layer.roots` in index order. For each CACHE root (no origin) that is a
+/// residency candidate, emits a `Produce(producer_expr)` at the root's production
+/// point; for each `SourceKind::Prior{id}` read encountered in any root's expr tree,
+/// emits a `Use(producer_expr)` at the using root's point. The events drive the
+/// Belady next-use distances in `ResidencyState`. The emit-side `point` cursor is
+/// advanced in the same root order so query points line up.
+fn build_ref_string(
+    layer: &DagLayer,
+    cache_root_expr: &HashMap<RootId, ExprId>,
+    graph: &self::analyze::ValueGraph,
+) -> RefString {
+    let mut events: Vec<RefEvent> = Vec::new();
+    for (idx, root) in layer.roots.iter().enumerate() {
+        let rid = RootId(idx as u32);
+        // Produce: a candidate cache root makes its value available here.
+        if let Some(&producer) = cache_root_expr.get(&rid) {
+            let candidate = graph.info.get(&producer).map(|i| i.is_candidate).unwrap_or(false);
+            if candidate {
+                events.push(RefEvent::Produce(producer));
+            }
+        }
+        // Use: every `Prior{id}` read in this root's expr tree is a use of the cache
+        // root's producer expr at this point.
+        if let Root::Output { expr, .. } | Root::Constraint { expr } = root {
+            collect_prior_uses(layer, *expr, cache_root_expr, &mut events);
+        }
+    }
+    RefString { events }
+}
+
+/// DFS an expr tree, pushing a `Use(producer_expr)` for each `SourceKind::Prior{id}`
+/// that maps to a known cache root. Resolution-pruned exprs are terminals (not
+/// descended), matching `analyze_layer`'s pruning.
+fn collect_prior_uses(
+    layer: &DagLayer,
+    expr_id: ExprId,
+    cache_root_expr: &HashMap<RootId, ExprId>,
+    events: &mut Vec<RefEvent>,
+) {
+    if layer.resolutions.contains_key(&expr_id) {
+        return;
+    }
+    match &layer.exprs[expr_id.0 as usize] {
+        Expr::Source(src_id) => {
+            if let cs::gkr_compiler::dag_ir::SourceKind::Prior { id } =
+                &layer.sources[src_id.0 as usize].kind
+            {
+                if let Some(&producer) = cache_root_expr.get(id) {
+                    events.push(RefEvent::Use(producer));
+                }
+            }
+        }
+        Expr::Add(children) | Expr::Mul(children) => {
+            for &c in children {
+                collect_prior_uses(layer, c, cache_root_expr, events);
+            }
+        }
+    }
 }
 
 /// Map a sink to the backing `(key, col)` its value materializes into.
