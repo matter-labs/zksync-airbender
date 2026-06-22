@@ -126,10 +126,10 @@ mod tests {
     /// - `report(&stats)` contains the per-layer header substring
     #[test]
     fn add_sub_layer0_stats() {
-        let artifact = match load_fixture("add_sub") {
+        let artifact = match load_fixture("add_sub_lui_auipc_mop_layout_gkr") {
             Some(a) => a,
             None => {
-                eprintln!("add_sub fixture not found — skipping stats gate");
+                eprintln!("add_sub_lui_auipc_mop_layout_gkr fixture not found — skipping stats gate");
                 return;
             }
         };
@@ -176,6 +176,43 @@ mod tests {
         let r = report(stats);
         assert!(r.contains("layer stats:"),
             "report missing 'layer stats:' header: {}", r);
+    }
+
+    fn count_global_reads(instr: &crate::fwd::isa::Instr) -> usize {
+        use crate::fwd::isa::{Instr, OperandLine};
+        let mut n = 0;
+        let mut tally = |op: &OperandLine| if matches!(op, OperandLine::Global { .. }) { n += 1 };
+        match instr {
+            Instr::Add { operands, .. } | Instr::Mul { operands, .. } => operands.iter().for_each(&mut tally),
+            Instr::Fma { pairs, .. } => pairs.iter().for_each(|(l, r)| { tally(l); tally(r); }),
+            Instr::Mov { src: Some(op), .. } => tally(op),
+            Instr::Mov { src: None, .. } => {}
+        }
+        n
+    }
+
+    #[test]
+    fn add_sub_layer0_dram_reads_counted() {
+        let artifact = match load_fixture("add_sub_lui_auipc_mop_layout_gkr") { Some(a) => a, None => return };
+        let dag = lower_dag(&artifact).expect("lower_dag");
+        validate(&dag).expect("validate");
+        let cross = build_cross_layer_field_map(&dag);
+        let compiled = compile_layer(&dag.layers[0], &artifact.layers[0], &BTreeMap::new(), &cross, BUDGET).expect("compile");
+        let s = &compiled.stats;
+        // add_sub L0 reads real BaseLayerMemory/Witness/Setup/VirtualSetup columns + Prior caches.
+        assert!(s.dram_reads > 0, "expected dram_reads > 0, got {}", s.dram_reads);
+        // Sanity: every Global operand in the program is counted exactly once.
+        let mut manual = 0usize;
+        for instr in &compiled.program.instrs {
+            manual += count_global_reads(instr); // helper below, test-local
+        }
+        // Alias operands (zero-lane CopyAlias) are DRAM reads too when Global.
+        for (_, out) in &compiled.root_outputs {
+            if let crate::fwd::context::RootOutput::Alias(crate::fwd::isa::OperandLine::Global { .. }) = out {
+                manual += 1;
+            }
+        }
+        assert_eq!(s.dram_reads, manual, "dram_reads {} != manual global-read count {} (instrs + alias globals)", s.dram_reads, manual);
     }
 
     #[test]

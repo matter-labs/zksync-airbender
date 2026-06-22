@@ -13,13 +13,50 @@ use super::context::{
 };
 use super::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 use super::error::CompileError;
-use super::isa::{DstLine, Instr, MovDir, OperandField, Program};
+use super::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program};
 use cs::gkr_compiler::dag_ir::{
     DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, RootId, SinkInfo, SinkKind,
 };
 use cs::gkr_compiler::GKRLayerDescription;
 use cs::definitions::GKRAddress;
 use std::collections::{BTreeMap, HashMap};
+
+/// Classification of a read operand for traffic-counter tallying (spec §11).
+pub(crate) enum OperandClass {
+    /// `OperandLine::Global` — a DRAM read (backing slot+col).
+    Dram,
+    /// `OperandLine::Ldc` with `sub != LdcSub::Special` — a load-constant read.
+    Ldc,
+    /// `OperandLine::Ldc` with `sub == LdcSub::Special` — an inline ±1/0 literal;
+    /// near-free, counted in neither `dram_reads` nor `ldc_reads`.
+    SpecialLit,
+    /// `OperandLine::Special{desc}` — a resolved-fold special-source gather.
+    SpecialGather,
+    /// `OperandLine::Smem` — a register-file (smem) cell read.
+    Smem,
+}
+
+/// Classify a single read operand into its traffic category.
+pub(crate) fn classify_operand(op: &OperandLine) -> OperandClass {
+    match op {
+        OperandLine::Global { .. } => OperandClass::Dram,
+        OperandLine::Smem { .. } => OperandClass::Smem,
+        OperandLine::Ldc { sub: LdcSub::Special, .. } => OperandClass::SpecialLit,
+        OperandLine::Ldc { .. } => OperandClass::Ldc,
+        OperandLine::Special { .. } => OperandClass::SpecialGather,
+    }
+}
+
+/// Tally the traffic class of a single read operand into `stats`.
+fn tally_operand(op: &OperandLine, stats: &mut CompileStats) {
+    match classify_operand(op) {
+        OperandClass::Dram => stats.dram_reads += 1,
+        OperandClass::Ldc => stats.ldc_reads += 1,
+        OperandClass::SpecialLit => {} // inline literal — near-free, not counted
+        OperandClass::SpecialGather => stats.special_reads += 1,
+        OperandClass::Smem => stats.cell_reads += 1,
+    }
+}
 
 /// Compile one `dag_ir` layer to a forward program (spec §10, §11).
 ///
@@ -176,19 +213,60 @@ pub fn compile_layer(
     stats.program_lanes = program.instrs.len();
     for instr in &program.instrs {
         match instr {
-            Instr::Mov { .. } => stats.op_counts[OP_MOV] += 1,
-            Instr::Add { .. } => stats.op_counts[OP_ADD] += 1,
-            Instr::Mul { .. } => stats.op_counts[OP_MUL] += 1,
-            Instr::Fma { .. } => stats.op_counts[OP_FMA] += 1,
+            Instr::Mov { dir, dst, src, .. } => {
+                stats.op_counts[OP_MOV] += 1;
+                // Tally the read operand (src), if any.
+                if let Some(op) = src {
+                    tally_operand(op, &mut stats);
+                }
+                // Count cell-targeting MOV destinations as cell_stores.
+                // `GlobalMaterialize` is an output WRITE (DstLine, not OperandLine)
+                // and must never be counted as a dram_read.
+                // S1 note: cell_loads is left at 0 — its doc semantics overlap
+                // cell_stores for the DstFromAcc→Smem evict path, and there is no
+                // separate reload path yet. Do not double-count a single MOV into
+                // both cell_loads and cell_stores.
+                if matches!(dir, MovDir::DstFromAcc | MovDir::DstFromSrc) {
+                    if matches!(dst, Some(DstLine::Smem { .. })) {
+                        stats.cell_stores += 1;
+                    }
+                }
+            }
+            Instr::Add { operands, .. } => {
+                stats.op_counts[OP_ADD] += 1;
+                for op in operands {
+                    tally_operand(op, &mut stats);
+                }
+            }
+            Instr::Mul { operands, .. } => {
+                stats.op_counts[OP_MUL] += 1;
+                for op in operands {
+                    tally_operand(op, &mut stats);
+                }
+            }
+            Instr::Fma { pairs, .. } => {
+                stats.op_counts[OP_FMA] += 1;
+                for (l, r) in pairs {
+                    tally_operand(l, &mut stats);
+                    tally_operand(r, &mut stats);
+                }
+            }
+        }
+    }
+    // Alias operands (CopyAlias roots, zero program lanes) still read their source.
+    // Count Global aliases as dram_reads; other classes tallied the same way.
+    for (_, out) in &root_outputs {
+        if let RootOutput::Alias(op) = out {
+            tally_operand(op, &mut stats);
         }
     }
     // special_gathers = number of resolved-fold Specials emitted (SpecialTable length).
     stats.special_gathers = ctx.specials.len();
     // max_live_cells from the compiler's high-water mark across all roots.
     stats.max_live_cells = trace.max_live_cells;
-    // Remaining counters (inline_reads, cell_reads, cell_loads, cell_stores,
-    // evicts, reloads, recomputes, split_count, avg_chunk) require per-instruction
-    // fine-grained tracking not yet wired in SP1. Left at 0.
+    // Remaining counters (inline_reads, evicts, reloads, recomputes, split_count,
+    // avg_chunk) require per-instruction fine-grained tracking not yet wired in SP1.
+    // cell_loads: left at 0 in S1 — see cell_stores note above.
     // SP1: not yet counted.
 
     Ok(CompiledLayer {
