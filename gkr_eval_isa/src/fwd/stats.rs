@@ -215,6 +215,26 @@ mod tests {
         assert_eq!(s.dram_reads, manual, "dram_reads {} != manual global-read count {} (instrs + alias globals)", s.dram_reads, manual);
     }
 
+    // Immutable per-stage baselines — never overwrite; later stages add their own const and assert `<`.
+    pub const ADD_SUB_S1_DRAM_READS: usize = 85;
+    pub const MUL_DIV_S1_DRAM_READS: usize = 110;
+
+    fn dram_reads_of(name: &str) -> usize {
+        let artifact = load_fixture(name).expect("fixture");
+        let dag = lower_dag(&artifact).unwrap();
+        validate(&dag).unwrap();
+        let cross = build_cross_layer_field_map(&dag);
+        let compiled = compile_layer(&dag.layers[0], &artifact.layers[0], &artifact.scratch_space_mapping, &cross, BUDGET).unwrap();
+        compiled.stats.dram_reads
+    }
+
+    #[test]
+    fn s1_dram_reads_baselines() {
+        if load_fixture("add_sub_lui_auipc_mop_layout_gkr").is_none() { return; }
+        assert_eq!(dram_reads_of("add_sub_lui_auipc_mop_layout_gkr"), ADD_SUB_S1_DRAM_READS, "add_sub S1 dram_reads changed");
+        assert_eq!(dram_reads_of("unsigned_mul_div_layout_gkr"), MUL_DIV_S1_DRAM_READS, "unsigned_mul_div S1 dram_reads changed");
+    }
+
     #[test]
     fn report_renders_dram_ldc_and_special_read_counters() {
         let mut s = CompileStats::default();
