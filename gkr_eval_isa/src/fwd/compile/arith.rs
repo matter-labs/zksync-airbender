@@ -404,7 +404,7 @@ fn compile_add(
     }
 
     // Generic additive reduction grouped by operand field (pure additive sum).
-    compile_reduction(layer, &children, ctx, trace, out, /* is_add */ true, alloc, expected)
+    compile_reduction(layer, &children, ctx, trace, out, /* is_add */ true, /* negate */ false, alloc, expected)
 }
 
 // ── Mul lowering ───────────────────────────────────────────────────────────────
@@ -460,12 +460,9 @@ fn compile_mul(
     // reduction: `compile_reduction` resolves each ExprId, classifies it as Base
     // or Ext via `child_operand_field`, and emits separate `Instr::Mul{field:Base}`
     // and `Instr::Mul{field:Ext}` groups (§5). This is the proven Task 9 path.
-    compile_reduction(layer, &surviving, ctx, trace, out, /* is_add */ false, alloc, expected)?;
-
-    // If sign was flipped by an odd number of −1 factors, apply a unary negate.
-    if negate {
-        emit_unary_negate(out);
-    }
+    // Pass `negate` so compile_reduction can insert the unary negate in the base
+    // phase (before the first ext-promoting MUL) when a base phase exists (Task 5).
+    compile_reduction(layer, &surviving, ctx, trace, out, /* is_add */ false, negate, alloc, expected)?;
 
     Ok(())
 }
@@ -487,6 +484,15 @@ fn emit_unary_negate(out: &mut Vec<Instr>) {
 /// Init `MOV AccFromSrc child0`, then ONE ADD (or MUL) per operand-field group over
 /// the remaining children. Field-homogeneous: a Base group and an Ext group, each a
 /// separate instruction — never one op mixing fields (§5).
+///
+/// `negate` is meaningful ONLY for the MUL path (`is_add == false`); the ADD path
+/// always passes `false`. When `negate` is true (Task 5):
+/// - If the seed is Base (a base phase exists): emit the unary negate AFTER the
+///   base-field groups and BEFORE the ext-field groups — the acc is still 1-wide
+///   when the negate fires, so no unnecessary promotion happens.
+/// - If the seed is Ext (no base phase — all factors are Ext): emit the negate
+///   AFTER all groups (trailing) — the unavoidable case.
+/// - `ops.len() == 1` (seed only): emit the negate AFTER the init MOV.
 fn compile_reduction(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     children: &[ExprId],
@@ -494,6 +500,7 @@ fn compile_reduction(
     trace: &mut CompileTrace,
     out: &mut Vec<Instr>,
     is_add: bool,
+    negate: bool,
     alloc: &mut CellAllocator,
     expected: OperandField,
 ) -> Result<(), CompileError> {
@@ -554,8 +561,15 @@ fn compile_reduction(
     emit_init_field(out, ops[init_idx].1, ops[init_idx].0);
 
     if ops.len() == 1 {
+        // Seed-only (unary): just the init MOV, then the negate if requested.
+        // For the MUL path a negate here runs on a base-width acc (the seed is
+        // necessarily Base when it's the only factor, since compile_mul seeded
+        // base-first; if it's Ext, the negate is still correct — unavoidable).
+        if negate {
+            emit_unary_negate(out);
+        }
         free_all(alloc, &owned_cells);
-        return Ok(()); // unary → just the MOV
+        return Ok(());
     }
 
     // Partition the remaining children (all but the seed) into `(field, sign)` groups.
@@ -579,9 +593,32 @@ fn compile_reduction(
     // Each group is a single ADD/MUL when it fits the arity cap (the proven Tasks
     // 9/10 path); an over-long group is split into ≤MAX_ARITY chunks combined via
     // the evict-to-cell primitive (§11) so `encode` never sees an over-cap arity.
+    //
+    // Task 5 (negate, MUL path only): when `negate` is true and the seed is Base
+    // (a base phase exists), insert the unary negate AFTER the base-field groups
+    // and BEFORE the ext-field groups — the acc is still 1-wide here so the negate
+    // is cheaper and avoids widening the acc before necessary.
+    // When the seed is Ext (no base phase), the negate trails after all groups.
+    let seed_is_base = ops[init_idx].0 == OperandField::Base;
+
+    // Base-phase groups.
     for (field, sign, group) in [
         (OperandField::Base, Sign::Plus, base_plus),
         (OperandField::Base, Sign::Minus, base_minus),
+    ] {
+        if group.is_empty() {
+            continue;
+        }
+        emit_reduction_group(out, trace, field, group, is_add, sign, alloc)?;
+    }
+
+    // Insert negate between base and ext phases when a base phase exists.
+    if negate && seed_is_base {
+        emit_unary_negate(out);
+    }
+
+    // Ext-phase groups.
+    for (field, sign, group) in [
         (OperandField::Ext, Sign::Plus, ext_plus),
         (OperandField::Ext, Sign::Minus, ext_minus),
     ] {
@@ -590,6 +627,12 @@ fn compile_reduction(
         }
         emit_reduction_group(out, trace, field, group, is_add, sign, alloc)?;
     }
+
+    // Trailing negate when no base phase existed (all-Ext seed — unavoidable).
+    if negate && !seed_is_base {
+        emit_unary_negate(out);
+    }
+
     free_all(alloc, &owned_cells);
     Ok(())
 }
@@ -1377,11 +1420,15 @@ mod tests {
         );
     }
 
-    // ── Mul(−1, base_col, challenge) → [Mov base_col, Mul{Ext} [challenge],
-    //    Mul{Base} [Special(NegOne)]] — negate + field grouping combined ─────────
+    // ── Mul(−1, base_col, challenge) → [Mov base_col, Mul{Base} [Special(NegOne)],
+    //    Mul{Ext} [challenge]] — negate runs in the base phase (Task 5) ──────────
     //
     // Regression: negate canonicalization must strip the −1 factor BEFORE routing
     // through compile_reduction so field grouping still applies to survivors.
+    // Task 5: for a mixed base×ext product the standalone negate is inserted AFTER
+    // the base-field groups and BEFORE the ext-field groups — base-as-long-as-possible.
+    // The acc is still base-width when the negate fires, so the 1-wide negate is
+    // semantically identical but avoids promoting the acc unnecessarily early.
     #[test]
     fn mul_neg_one_base_ext_negate_and_groups_by_field() {
         let mut arena = ArenaBuilder::new();
@@ -1392,23 +1439,24 @@ mod tests {
         let mul = arena.mul(vec![neg_one, a, c]);
         let layer = layer_of(&arena);
         let instrs = run(&layer, mul);
-        // Expected: MOV Base col, MUL{Ext} challenge, then unary negate MUL{Base}[NegOne].
+        // Expected (Task 5): MOV Base col, unary negate MUL{Base}[NegOne], MUL{Ext} challenge.
+        // The negate fires while the acc is still base-width; the ext MUL promotes it.
         assert_eq!(
             instrs,
             vec![
                 mov_acc(OperandLine::Global { slot: 0, col: 0 }),
                 Instr::Mul {
-                    field: OperandField::Ext,
-                    operands: vec![OperandLine::Ldc {
-                        sub: LdcSub::ConstChallenge,
-                        idx: 0,
-                    }],
-                },
-                Instr::Mul {
                     field: OperandField::Base,
                     operands: vec![OperandLine::Ldc {
                         sub: LdcSub::Special,
                         idx: Special::NegOne as u16,
+                    }],
+                },
+                Instr::Mul {
+                    field: OperandField::Ext,
+                    operands: vec![OperandLine::Ldc {
+                        sub: LdcSub::ConstChallenge,
+                        idx: 0,
                     }],
                 },
             ]
@@ -1830,6 +1878,35 @@ mod tests {
                 "compound cross-layer child must evict as its local join field Ext"
             ),
             _ => panic!("expected an evict MOV DstFromAcc → Smem for the compound child"),
+        }
+    }
+
+    // ── Task 5: standalone negate of a mixed base×ext product runs in the base phase
+    //
+    // `(-1)·(w_base · c_ext)` is a standalone product (NOT an addend of a sum).
+    // The unary `MUL [Special(NegOne)]` must be emitted BEFORE the ext-promoting MUL
+    // — i.e. while the acc is still base-width — because `compile_reduction` now
+    // inserts the negate between the base-field groups and the ext-field groups.
+    // If the negate ran AFTER the ext MUL (the old trailing position), `n > e`.
+    #[test]
+    fn standalone_negate_runs_in_base_phase() {
+        let mut arena = ArenaBuilder::new();
+        let w = read_base(&mut arena, 0);
+        let cx = challenge(&mut arena, ChallengePower::One); // ext
+        let neg1 = arena.intern_source(SourceKind::Constant { value: BABYBEAR_NEG_ONE });
+        let neg1e = arena.source_expr(neg1);
+        let prod = arena.mul(vec![neg1e, w, cx]);
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, prod);
+        // Find the negate position and the ext MUL position; negate must come first (base phase).
+        let neg_pos = instrs.iter().position(|i| matches!(i,
+            Instr::Mul { operands, .. } if operands.len()==1
+                && matches!(operands[0], OperandLine::Ldc { sub: LdcSub::Special, idx } if idx == Special::NegOne as u16)));
+        let ext_mul_pos = instrs.iter().position(|i| matches!(i, Instr::Mul { field: OperandField::Ext, .. }));
+        if let (Some(n), Some(e)) = (neg_pos, ext_mul_pos) {
+            assert!(n < e, "negate (idx {n}) must precede the ext MUL (idx {e}) — base-as-long-as-possible: {instrs:?}");
+        } else {
+            panic!("expected both a unary negate and an ext MUL: {instrs:?}");
         }
     }
 
