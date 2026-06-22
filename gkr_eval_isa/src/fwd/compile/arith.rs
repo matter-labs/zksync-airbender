@@ -559,6 +559,13 @@ fn compile_reduction(
         .or_else(|| ops.iter().position(|(f, _, _)| *f == OperandField::Base))
         .unwrap_or(0);
     emit_init_field(out, ops[init_idx].1, ops[init_idx].0);
+    // If the chosen seed is negated — only when NO Plus term existed (every term in
+    // this signed additive group is negated) — compensate now: `MOV AccFromSrc` cannot
+    // negate, so negate the freshly-seeded acc before folding the remaining groups (#7).
+    // (The MUL path never reaches this: compile_mul peels `-1`s, so its ops are all Plus.)
+    if ops[init_idx].2 == Sign::Minus {
+        emit_unary_negate(out);
+    }
 
     if ops.len() == 1 {
         // Seed-only (unary): just the init MOV, then the negate if requested.
@@ -841,6 +848,11 @@ fn try_compile_fma(
                 .or_else(|| addend_ops.iter().position(|(f, _, _)| *f == OperandField::Base))
                 .unwrap_or(0);
             emit_init_field(out, addend_ops[seed].1, addend_ops[seed].0);
+            // Negated-seed compensation (#7): if every addend was negated the seed is
+            // Minus; negate the acc right after the init since the init MOV cannot.
+            if addend_ops[seed].2 == Sign::Minus {
+                emit_unary_negate(out);
+            }
             let mut base_plus: Vec<OperandLine> = Vec::new();
             let mut base_minus: Vec<OperandLine> = Vec::new();
             let mut ext_plus: Vec<OperandLine> = Vec::new();
@@ -875,9 +887,15 @@ fn try_compile_fma(
             // circuits) fall back to the first product. This is the proven
             // all-products form when no negate is present.
             let seed = lo.iter().position(|(s, ..)| *s == Sign::Plus).unwrap_or(0);
-            let (_, lf0, lhs0_op, rf0, rhs0_op) = lo[seed];
+            let (seed_sign, lf0, lhs0_op, rf0, rhs0_op) = lo[seed];
             emit_init_field(out, lhs0_op, lf0);
             out.push(Instr::Mul { field: rf0, operands: vec![rhs0_op] });
+            // Negated-seed compensation (#7): if every product was negated the seed
+            // product is Minus; negate the acc after seeding (MOV+MUL) since neither
+            // the init MOV nor the seed MUL carries the sign.
+            if seed_sign == Sign::Minus {
+                emit_unary_negate(out);
+            }
             if lo.len() == 1 {
                 free_all(alloc, &owned_cells);
                 return Ok(Some(()));
@@ -1951,5 +1969,92 @@ mod tests {
             "no standalone negate for a negated addend: {instrs:?}");
         assert!(instrs.iter().any(|i| matches!(i, Instr::Add { sign: Sign::Minus, .. })),
             "expected a Sign::Minus ADD group: {instrs:?}");
+    }
+
+    // ── #7 (codex review): when EVERY additive term is negated there is no Plus seed,
+    // and `MOV AccFromSrc` cannot negate — the seed sign must be compensated with a
+    // standalone unary negate right after the init, else the seed term loses its sign.
+
+    /// Helper: a standalone unary negate `MUL [Special(NegOne)]` is present.
+    fn has_standalone_negate(instrs: &[Instr]) -> bool {
+        instrs.iter().any(|i| matches!(i,
+            Instr::Mul { operands, .. } if operands.len() == 1
+                && matches!(operands[0], OperandLine::Ldc { sub: LdcSub::Special, idx } if idx == Special::NegOne as u16)))
+    }
+
+    #[test]
+    fn all_negated_additive_seed_compensated() {
+        // Add([(-1)·a, (-1)·b]) → value -a-b. Pure additive (no product) routes through
+        // compile_reduction; the Minus seed `a` must be negated, then `b` folds as ADD Minus.
+        let mut arena = ArenaBuilder::new();
+        let a = read_base(&mut arena, 0);
+        let b = read_base(&mut arena, 1);
+        let neg1 = arena.intern_source(SourceKind::Constant { value: BABYBEAR_NEG_ONE });
+        let neg1e = arena.source_expr(neg1);
+        let nega = arena.mul(vec![neg1e, a]); // (-1)·a
+        let negb = arena.mul(vec![neg1e, b]); // (-1)·b
+        let add = arena.add(vec![nega, negb]);
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, add);
+        assert!(has_standalone_negate(&instrs),
+            "all-negated additive seed must be compensated with a unary negate (else acc = a, not -a): {instrs:?}");
+        assert!(instrs.iter().any(|i| matches!(i, Instr::Add { sign: Sign::Minus, .. })),
+            "the remaining negated addend folds as a Sign::Minus ADD: {instrs:?}");
+    }
+
+    #[test]
+    fn sole_negated_addend_compensated() {
+        // Add([(-1)·a]) → value -a. Single negated term: the seed-only path must still
+        // emit the compensating unary negate after the init MOV.
+        let mut arena = ArenaBuilder::new();
+        let a = read_base(&mut arena, 0);
+        let neg1 = arena.intern_source(SourceKind::Constant { value: BABYBEAR_NEG_ONE });
+        let neg1e = arena.source_expr(neg1);
+        let nega = arena.mul(vec![neg1e, a]); // (-1)·a
+        let add = arena.add(vec![nega]);
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, add);
+        assert!(has_standalone_negate(&instrs),
+            "a sole negated additive term must be negated, not seeded as +a: {instrs:?}");
+    }
+
+    #[test]
+    fn negated_addend_with_product_compensates_seed() {
+        // Add([(-1)·a, b·cx]) → value -a + b·cx. The FMA path seeds from the only addend
+        // `a` (Minus, no Plus addend); it must be negated, then the product folds as a Plus FMA.
+        let mut arena = ArenaBuilder::new();
+        let a = read_base(&mut arena, 0);
+        let b = read_base(&mut arena, 1);
+        let cx = challenge(&mut arena, ChallengePower::One); // ext
+        let neg1 = arena.intern_source(SourceKind::Constant { value: BABYBEAR_NEG_ONE });
+        let neg1e = arena.source_expr(neg1);
+        let nega = arena.mul(vec![neg1e, a]); // (-1)·a  (single surviving factor → addend)
+        let prod = arena.mul(vec![b, cx]);    // b·cx    (binary product)
+        let add = arena.add(vec![nega, prod]);
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, add);
+        assert!(has_standalone_negate(&instrs),
+            "the negated addend seed must be compensated (else acc = a + b·cx): {instrs:?}");
+        assert!(instrs.iter().any(|i| matches!(i, Instr::Fma { sign: Sign::Plus, .. })),
+            "the positive product folds as a Sign::Plus FMA: {instrs:?}");
+    }
+
+    #[test]
+    fn all_negated_products_compensate_seed() {
+        // Add([(-1)·(a·cx), (-1)·(b·cx)]) → value -(a·cx) - (b·cx). No addends: the
+        // all-products seed is a Minus product; it must be negated after MOV+MUL.
+        let mut arena = ArenaBuilder::new();
+        let a = read_base(&mut arena, 0);
+        let b = read_base(&mut arena, 1);
+        let cx = challenge(&mut arena, ChallengePower::One); // ext
+        let neg1 = arena.intern_source(SourceKind::Constant { value: BABYBEAR_NEG_ONE });
+        let neg1e = arena.source_expr(neg1);
+        let p1 = arena.mul(vec![neg1e, a, cx]); // (-1)·a·cx  (negated binary product)
+        let p2 = arena.mul(vec![neg1e, b, cx]); // (-1)·b·cx  (negated binary product)
+        let add = arena.add(vec![p1, p2]);
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, add);
+        assert!(has_standalone_negate(&instrs),
+            "the all-negated all-products seed must be compensated (else acc = +a·cx ...): {instrs:?}");
     }
 }
