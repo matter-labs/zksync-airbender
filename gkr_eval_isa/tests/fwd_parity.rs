@@ -27,6 +27,7 @@ use field::{Field, FieldExtension, PrimeField};
 
 use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, compile_layer};
 use gkr_eval_isa::fwd::context::RootOutput;
+use gkr_eval_isa::fwd::error::CompileError;
 use gkr_eval_isa::fwd::encode::{decode, encode};
 use gkr_eval_isa::fwd::interp::interpret_layer_row;
 use gkr_eval_isa::fwd::validate::validate_compiled;
@@ -155,7 +156,7 @@ fn sample_rows(n: usize) -> Vec<usize> {
 /// Run the full parity gate over a single fixture artifact.
 /// Returns the number of `interp == eval_layer_root` comparisons actually performed
 /// (one per root × sampled row). Callers use this to guard against vacuous passes.
-fn check_fixture(name: &str, artifact: &GKRCircuitArtifact<BabyBearField>) -> usize {
+fn check_fixture(name: &str, artifact: &GKRCircuitArtifact<BabyBearField>, budget: usize) -> usize {
     let mut comparisons = 0usize;
     let dag: DagCircuit = lower_dag(artifact).unwrap_or_else(|e| {
         panic!("[{name}] lower_dag failed: {e}");
@@ -182,16 +183,28 @@ fn check_fixture(name: &str, artifact: &GKRCircuitArtifact<BabyBearField>) -> us
 
     for (l, dag_layer) in dag.layers.iter().enumerate() {
         let art_layer = &artifact.layers[l];
-        let compiled = compile_layer(
+        let compiled = match compile_layer(
             dag_layer,
             art_layer,
             &artifact.scratch_space_mapping,
             &cross_layer_fields,
-            BUDGET,
-        )
-        .unwrap_or_else(|e| {
-            panic!("[{name}] layer {l}: compile_layer failed: {e:?}");
-        });
+            budget,
+        ) {
+            Ok(c) => c,
+            // Below the irreducible floor at this budget — an expected, clean outcome
+            // when sweeping small budgets. Skip this layer's checks at this budget;
+            // it is NOT a failure (a too-small budget is an unsupported config, not a
+            // miscompilation). Any OTHER error IS a failure.
+            Err(CompileError::BudgetBelowFloor { floor, budget: b }) => {
+                eprintln!(
+                    "[{name}] layer {l}: below floor at budget {b} (needs ≥ {floor}) — skipped"
+                );
+                continue;
+            }
+            Err(e) => {
+                panic!("[{name}] layer {l}: compile_layer failed at budget {budget}: {e:?}");
+            }
+        };
 
         validate_compiled(&compiled, dag_layer).unwrap_or_else(|e| {
             panic!("[{name}] layer {l}: validate_compiled failed: {e:?}");
@@ -295,7 +308,10 @@ fn run_fixtures(fixtures: &[&str]) {
         let artifact = load_fixture(&path)
             .unwrap_or_else(|| panic!("failed to load/deserialize fixture {f} at {path:?}"));
         let t0 = std::time::Instant::now();
-        let comparisons = check_fixture(f, &artifact);
+        // BUDGET = 1024 is the EXTREME all-resident case: nothing is ever evicted or
+        // recomputed (stresses the no-reload path). Realistic small-budget coverage
+        // is in `parity_budget_sweep_small`.
+        let comparisons = check_fixture(f, &artifact, BUDGET);
         eprintln!("[fwd_parity] {f} OK in {:?} ({comparisons} root comparisons)", t0.elapsed());
         total_comparisons += comparisons;
         checked += 1;
@@ -333,4 +349,131 @@ fn parity_all_layout_gkr() {
 #[test]
 fn parity_all_layout_no_caches_gkr() {
     run_fixtures(LAYOUT_NO_CACHES_GKR_FIXTURES);
+}
+
+// ── budget sweep — realistic SMALL budgets (the eviction regime) ────────────────
+//
+// BUDGET = 1024 (the gates above) is the EXTREME all-resident case: nothing is ever
+// evicted or recomputed. Real hardware budgets are a warp's worth of smem cells —
+// small multiples of 4. This sweeps from 8 upward: at each FEASIBLE budget the
+// residency planner must EVICT residents and redirect reads (Prior→Smem and back,
+// CSE, evict/reload), and the CPU interpreter must STILL match the
+// budget-INDEPENDENT `eval_layer_root` oracle bit-for-bit. A budget below a layer's
+// irreducible floor yields a clean `BudgetBelowFloor` (skipped), never a panic.
+//
+// This is the first end-to-end validation of the S2 eviction path: every gate
+// before this ran only at 1024, where eviction never fires.
+
+const SWEEP_BUDGETS: &[usize] = &[8, 12, 16, 24, 32, 48, 64, 128, 256];
+
+const SWEEP_FIXTURES: &[&str] = &[
+    "add_sub_lui_auipc_mop_layout_gkr.json",
+    "unsigned_mul_div_layout_gkr.json",
+];
+
+#[test]
+fn parity_budget_sweep_small() {
+    let dir = compiled_circuit_dir();
+    let mut total = 0usize;
+    // Comparisons performed at a budget strictly below 1024 — proves the eviction
+    // regime was actually exercised, not just the all-resident extreme.
+    let mut sub1024_comparisons = 0usize;
+    let mut smallest_feasible: Option<usize> = None;
+
+    for &f in SWEEP_FIXTURES {
+        let path = dir.join(f);
+        let artifact =
+            load_fixture(&path).unwrap_or_else(|| panic!("failed to load fixture {f}"));
+        for &budget in SWEEP_BUDGETS {
+            let c = check_fixture(f, &artifact, budget);
+            eprintln!("[fwd_parity sweep] {f} budget {budget}: {c} comparisons");
+            total += c;
+            if c > 0 {
+                sub1024_comparisons += c;
+                smallest_feasible = Some(smallest_feasible.map_or(budget, |s| s.min(budget)));
+            }
+        }
+    }
+
+    eprintln!(
+        "[fwd_parity sweep] smallest feasible budget across {} fixtures: {:?}",
+        SWEEP_FIXTURES.len(),
+        smallest_feasible
+    );
+    assert!(
+        total > 0,
+        "budget sweep performed 0 comparisons — every swept budget below floor (vacuous)"
+    );
+    assert!(
+        sub1024_comparisons > 0,
+        "budget sweep validated 0 comparisons below 1024 — the eviction regime was never \
+         exercised (every layer's floor exceeds {}); residency under realistic budgets is \
+         UNTESTED and possibly broken",
+        SWEEP_BUDGETS.last().unwrap()
+    );
+}
+
+// Proof that the small-budget sweep actually EXERCISES eviction — not just smaller
+// compiles that happen to still fit. add_sub layer 0's natural (uncapped) resident
+// working set exceeds 32 cells, so at budget 32 the planner MUST evict: reused cache
+// roots fall back to DRAM (more `dram_reads`, fewer resident `cell_reads`). The sweep
+// above already proved interp == `eval_layer_root` at budget 32 (correct UNDER
+// eviction); this asserts eviction genuinely engaged, so that correctness guarantee
+// is not vacuous. Asserts PROPERTIES (monotone traffic under cap pressure), not magic
+// numbers, so it survives codegen changes.
+#[test]
+fn residency_eviction_engages_under_tight_budget() {
+    let dir = compiled_circuit_dir();
+    let path = dir.join("add_sub_lui_auipc_mop_layout_gkr.json");
+    let artifact = match load_fixture(&path) {
+        Some(a) => a,
+        None => return,
+    };
+    let dag = lower_dag(&artifact).unwrap();
+    validate(&dag).unwrap();
+    let cross = build_cross_layer_field_map(&dag);
+
+    let stats_at = |budget: usize| {
+        compile_layer(
+            &dag.layers[0],
+            &artifact.layers[0],
+            &artifact.scratch_space_mapping,
+            &cross,
+            budget,
+        )
+        .unwrap_or_else(|e| panic!("add_sub L0 compile at budget {budget}: {e:?}"))
+        .stats
+    };
+
+    let tight = stats_at(32);
+    let loose = stats_at(1024);
+
+    // The uncapped resident working set genuinely exceeds the tight budget, so budget
+    // 32 is constraining (eviction is forced, not incidental).
+    assert!(
+        loose.max_live_cells > 32,
+        "add_sub L0 should need > 32 cells uncapped (else budget 32 wouldn't force \
+         eviction); got max_live {}",
+        loose.max_live_cells
+    );
+    // Hard cap honored under pressure.
+    assert!(
+        tight.max_live_cells <= 32,
+        "tight-budget max_live {} exceeds the 32-cell cap",
+        tight.max_live_cells
+    );
+    // Eviction makes reused cache roots fall back to DRAM: strictly MORE dram reads
+    // and correspondingly FEWER resident smem reads than the all-resident compile.
+    assert!(
+        tight.dram_reads > loose.dram_reads,
+        "eviction must force extra DRAM re-reads: tight {} vs loose {}",
+        tight.dram_reads,
+        loose.dram_reads
+    );
+    assert!(
+        tight.cell_reads < loose.cell_reads,
+        "eviction must reduce resident smem reads: tight {} vs loose {}",
+        tight.cell_reads,
+        loose.cell_reads
+    );
 }
