@@ -165,7 +165,16 @@ pub fn compile_layer(
                 // resident CSE/cache cells owned by the layer-wide `ResidencyState`
                 // (codex Mod3). The residency planner redirects reused same-layer
                 // reads (`Prior`/CSE) to resident `Smem` cells via `env`.
+                //
+                // CRITICAL (codex Mod3): the transient allocator and the residency
+                // planner write into the SAME interpreter cell file. A fresh transient
+                // allocator starts at cell 0 — the same cell residents occupy — so it
+                // MUST pre-reserve every currently-resident cell, else a transient
+                // lowering store clobbers a resident value before a later `Prior` read.
                 let mut alloc = CellAllocator::new(budget);
+                for (cell, field) in residency.resident_cells() {
+                    alloc.occupy(cell, field);
+                }
                 {
                     let env = LoweringEnv {
                         desc_by_expr: &desc_by_expr,
@@ -854,10 +863,31 @@ mod tests {
 
         // (iii) The transient `add_cd` cell in root1 must be evicted to a DIFFERENT cell
         // than the resident cell — the resident map (ResidencyState) and the per-root
-        // transient CellAllocator are disjoint (codex Mod3). root1's transient evict is
-        // a `MOV DstFromAcc Smem{t}` with t != resident_cell; assert at least one such
-        // distinct transient store exists OR (defensively) that the resident cell is
-        // never the transient. We assert no Global re-read of root0 leaked in:
+        // transient CellAllocator are disjoint (codex Mod3). Every transient evict
+        // store `MOV DstFromAcc Smem{t}` other than root0's resident store must have
+        // t != resident_cell (else a transient lowering would clobber the resident
+        // value in the shared interpreter cell file — the parity bug this guards).
+        let transient_evicts: Vec<u16> = compiled
+            .program
+            .instrs
+            .iter()
+            .filter_map(|i| match i {
+                Instr::Mov { dir: MovDir::DstFromAcc, dst: Some(DstLine::Smem { cell }), .. } => Some(*cell),
+                _ => None,
+            })
+            .collect();
+        // There must be >1 Smem evict (the resident store + root1's transient evict),
+        // and the transient one(s) must not reuse the resident cell.
+        let transient_collision = transient_evicts
+            .iter()
+            .filter(|&&t| t == resident_cell)
+            .count();
+        assert_eq!(
+            transient_collision, 1,
+            "exactly ONE store may target the resident cell (root0's resident store); a transient evict reusing it would clobber the resident: evicts={transient_evicts:?}, resident={resident_cell}",
+        );
+
+        // We assert no Global re-read of root0 leaked in:
         let root0_backing = compiled.ctx.cache_loc.get(&RootId(0)).copied();
         if let Some((slot, col)) = root0_backing {
             let reread_global = compiled.program.instrs.iter().any(|i| match i {

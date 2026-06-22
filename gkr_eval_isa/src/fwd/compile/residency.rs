@@ -301,6 +301,20 @@ impl ResidencyState {
         self.max_live
     }
 
+    /// The currently-resident cells as `(base_cell, field)` pairs (deterministic,
+    /// ValueId-sorted via the `BTreeMap`). The emitter pre-reserves these in each
+    /// root's transient `CellAllocator` so a transient lowering cell never collides
+    /// with a resident value in the shared interpreter cell file (codex Mod3).
+    pub fn resident_cells(&self) -> Vec<(u16, OperandField)> {
+        self.resident
+            .iter()
+            .map(|(v, &cell)| {
+                let field = self.info.get(v).map(|i| i.field).unwrap_or(OperandField::Base);
+                (cell, field)
+            })
+            .collect()
+    }
+
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     /// Update the high-water mark.

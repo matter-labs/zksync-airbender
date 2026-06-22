@@ -115,6 +115,33 @@ impl CellAllocator {
         self.live = self.live.saturating_sub(width);
     }
 
+    /// Mark a SPECIFIC base cell as occupied for a value of `field`, without first-fit
+    /// search (Task 10): the per-root transient allocator pre-reserves the cells that
+    /// a layer-wide `ResidencyState` currently holds resident, so a transient lowering
+    /// cell never collides with a resident value in the shared interpreter cell file
+    /// (codex Mod3). Base reserves 1 cell; Ext reserves the 4-cell aligned block at
+    /// `base` (caller guarantees `base % 4 == 0` for Ext — the residency planner only
+    /// hands out 4-aligned Ext blocks). Idempotent on already-occupied cells.
+    pub fn occupy(&mut self, base: u16, field: OperandField) {
+        let base = base as usize;
+        let width = match field {
+            OperandField::Base => 1,
+            OperandField::Ext => 4,
+        };
+        if base + width > self.budget {
+            return;
+        }
+        let mut newly = 0usize;
+        for c in base..base + width {
+            if !self.occupied[c] {
+                newly += 1;
+            }
+            self.occupied[c] = true;
+            self.ext_interior[c] = field == OperandField::Ext && c != base;
+        }
+        self.bump_live(newly);
+    }
+
     /// The high-water mark of live cells over this allocator's life (§11
     /// "max live cells" instrumentation; tracked into `trace.max_live_cells`).
     pub fn max_live(&self) -> usize {
