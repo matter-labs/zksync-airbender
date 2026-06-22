@@ -342,8 +342,15 @@ pub fn evaluate_single_dimension_reducing_kernel<
                             let accumulator = ext_dest.pop().unwrap();
                             for index in 0..chunk_size {
                                 let absolute_index = chunk_start + index;
+                                // New last-round form: emit the univariate monomial for the
+                                // last (output) coordinate via `EXPLICIT_FORM == false`
+                                // (point 0 + point at infinity), instead of the old explicit
+                                // endpoint values. `collect_last_values` below still folds all
+                                // input polys and records the [E;4] bilinear over
+                                // (last output coord) x (pairwise/LSB coord) for the post-loop
+                                // fixing of the last output coordinate.
                                 let value =
-                                    kernel.evaluate::<_, true>(absolute_index, inputs, challenges);
+                                    kernel.evaluate::<_, false>(absolute_index, inputs, challenges);
                                 for i in 0..2 {
                                     accumulator[index][i].add_assign(&value[i]);
                                 }
