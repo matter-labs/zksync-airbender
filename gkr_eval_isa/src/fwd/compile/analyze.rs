@@ -7,6 +7,7 @@
 use super::arith::child_operand_field;
 use super::super::context::DagForwardContext;
 use super::super::isa::OperandField;
+use super::super::source::lower_resolution;
 use cs::gkr_compiler::dag_ir::{
     DagLayer, Expr, ExprId, RootId, Root, SourceKind,
 };
@@ -17,6 +18,18 @@ use std::collections::HashMap;
 /// A `ValueId` is simply an `ExprId` — the dag is hash-consed, so an `ExprId`
 /// IS a value identity.
 pub type ValueId = ExprId;
+
+/// A stable, deduplicated list of resolution-leaf `ExprId`s that were actually
+/// **reached** during the Stage-1 DFS walk (i.e. pruning was applied to them).
+///
+/// Only reached resolutions are planned here. Interning an unreached resolution
+/// would create a `ctx.specials` entry with no `OperandLine::Special` reference,
+/// which `validate_special_bindings` (the orphan check) rejects.
+#[derive(Clone, Debug, Default)]
+pub struct DescriptorPlan {
+    /// Reached resolution-leaf ExprIds, in stable encounter order, deduplicated.
+    pub keys: Vec<ExprId>,
+}
 
 /// Lost-future-benefit cost of NOT keeping a value resident (the residency
 /// planner's eviction tie-breaker — higher cost = prefer to keep it).
@@ -50,6 +63,10 @@ pub struct ValueGraph {
     /// Dependency edges: `(use, producer)`. A `Prior{id}` source generates an
     /// edge from the using expr to the cache root's output expr.
     pub dep_edges: Vec<(ValueId, ValueId)>,
+    /// Resolution descriptors planned during analysis: the distinct leaf ExprIds
+    /// that were reached and pruned. Stage 3 calls `materialize_descriptors` to
+    /// intern these into `ctx.specials` exactly once.
+    pub descriptors: DescriptorPlan,
 }
 
 // ── Cost constants ────────────────────────────────────────────────────────────
@@ -75,6 +92,8 @@ const MISS_LITERAL: MissPenalty = MissPenalty { dram_reads: 0, instrs: 0, cell_o
 /// - `is_candidate` — true when a value has any use AFTER its production point
 /// - `miss` — recompute / re-obtain cost for the residency planner
 /// - `dep_edges` — `(use_expr_id, producer_expr_id)` pairs
+/// - `descriptors` — `DescriptorPlan` listing the distinct resolution leaf ExprIds
+///   actually reached by the DFS (in encounter order, deduplicated)
 ///
 /// Resolution pruning: if `layer.resolutions.contains_key(&id)`, the value's
 /// `miss` is `MISS_SPECIAL_GATHER` and analysis does NOT descend into children
@@ -84,6 +103,7 @@ const MISS_LITERAL: MissPenalty = MissPenalty { dram_reads: 0, instrs: 0, cell_o
 pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
     let mut info: HashMap<ValueId, ValueInfo> = HashMap::new();
     let mut dep_edges: Vec<(ValueId, ValueId)> = Vec::new();
+    let mut reached_resolutions: Vec<ExprId> = Vec::new();
 
     // Build a map: RootId → ExprId for all cache roots (roots with no origin).
     // This lets us resolve `SourceKind::Prior{id}` to the producer expr.
@@ -134,6 +154,7 @@ pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
             &cache_root_expr,
             &mut all_refs,
             &mut dep_edges,
+            &mut reached_resolutions,
         );
     }
 
@@ -204,7 +225,14 @@ pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
         }
     }
 
-    ValueGraph { info, dep_edges }
+    // Dedup reached_resolutions (preserve encounter order, stable).
+    let mut seen = std::collections::HashSet::new();
+    let keys: Vec<ExprId> = reached_resolutions
+        .into_iter()
+        .filter(|id| seen.insert(*id))
+        .collect();
+
+    ValueGraph { info, dep_edges, descriptors: DescriptorPlan { keys } }
 }
 
 /// DFS walk of an expression tree rooted at `expr_id`, called within the context
@@ -213,7 +241,7 @@ pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
 /// sources), and records dep_edges for `Prior` sources.
 ///
 /// Resolution pruning: if `layer.resolutions.contains_key(&expr_id)`, record the
-/// ref but do NOT descend into children.
+/// ref and append the `expr_id` to `reached_resolutions`, but do NOT descend.
 #[allow(clippy::too_many_arguments)]
 fn dfs_collect_refs(
     layer: &DagLayer,
@@ -223,11 +251,13 @@ fn dfs_collect_refs(
     cache_root_expr: &HashMap<RootId, ExprId>,
     all_refs: &mut Vec<(ExprId, usize)>,
     dep_edges: &mut Vec<(ValueId, ValueId)>,
+    reached_resolutions: &mut Vec<ExprId>,
 ) {
     all_refs.push((expr_id, root_idx));
 
     // Resolution pruning: treat as a terminal, do not descend.
     if layer.resolutions.contains_key(&expr_id) {
+        reached_resolutions.push(expr_id);
         return;
     }
 
@@ -264,6 +294,7 @@ fn dfs_collect_refs(
                     cache_root_expr,
                     all_refs,
                     dep_edges,
+                    reached_resolutions,
                 );
             }
         }
@@ -306,19 +337,120 @@ fn compute_miss(layer: &DagLayer, expr_id: ExprId) -> MissPenalty {
     }
 }
 
+// ── Stage-3 helper ────────────────────────────────────────────────────────────
+
+/// Stage-3 helper: intern each reached resolution descriptor into `ctx.specials`
+/// exactly once, returning the `ExprId → special index` map.
+///
+/// For each key in `plan.keys`, this calls `lower_resolution(&layer.resolutions[&id], id)`
+/// and pushes the resulting descriptor via `SpecialTable::push` (which does NOT dedup —
+/// so calling this once per key guarantees `special_gathers == distinct descriptors`).
+///
+/// The returned map is used by Stage-3 emit instead of calling `resolve_or_descend`
+/// per use-site (which pushed a fresh descriptor on every reference of the same leaf).
+pub fn materialize_descriptors(
+    plan: &DescriptorPlan,
+    layer: &DagLayer,
+    ctx: &mut DagForwardContext,
+) -> HashMap<ExprId, u16> {
+    let mut map = HashMap::with_capacity(plan.keys.len());
+    for &id in &plan.keys {
+        let strategy = layer.resolutions.get(&id)
+            .expect("DescriptorPlan key must be present in layer.resolutions");
+        let desc = lower_resolution(strategy, id);
+        let idx = ctx.specials.push(desc);
+        map.insert(id, idx);
+    }
+    map
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use cs::gkr_compiler::dag_ir::{
-        ArenaBuilder, BatchingOrder, FieldKind, ReadPlace, Root, SinkId, SinkInfo, SinkKind,
-        SourceKind,
+        ArenaBuilder, BatchingOrder, FieldKind, ReadPlace, ResolutionStrategy, Root, SinkId,
+        SinkInfo, SinkKind, SourceKind,
     };
     use std::collections::BTreeMap;
 
     fn make_ctx() -> DagForwardContext {
         DagForwardContext::default()
+    }
+
+    // ── Fixture: layer with two distinct PEEKs and one duplicate ──────────────
+    //
+    // root0 = resolution-leaf A (PeekSetup)
+    // root1 = resolution-leaf B (PeekAggregate{0})
+    // root2 = resolution-leaf A again (same ExprId) — a duplicate reference
+    //
+    // Analysis must yield exactly 2 distinct descriptor keys (A and B).
+    fn layer_with_two_peeks_one_dup() -> DagLayer {
+        let mut arena = ArenaBuilder::new();
+        // Expr 0: a constant source — will become resolution-leaf A
+        let s0 = arena.intern_source(SourceKind::Constant { value: 2 });
+        let leaf_a = arena.source_expr(s0);
+        // Expr 1: a second constant source — will become resolution-leaf B
+        let s1 = arena.intern_source(SourceKind::Constant { value: 3 });
+        let leaf_b = arena.source_expr(s1);
+
+        let mut resolutions = BTreeMap::new();
+        resolutions.insert(leaf_a, ResolutionStrategy::PeekSetup);
+        resolutions.insert(leaf_b, ResolutionStrategy::PeekAggregate { set_index: 0 });
+
+        DagLayer {
+            sources: arena.sources().to_vec(),
+            exprs: arena.exprs().to_vec(),
+            roots: vec![
+                Root::Output { expr: leaf_a, sink: SinkId(0) },
+                Root::Output { expr: leaf_b, sink: SinkId(1) },
+                Root::Output { expr: leaf_a, sink: SinkId(2) }, // duplicate
+            ],
+            sinks: vec![
+                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base },
+                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 1 }, field: FieldKind::Base },
+                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 2 }, field: FieldKind::Base },
+            ],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions,
+        }
+    }
+
+    // ── Fixture: layer with one reached and one unreached resolution ──────────
+    //
+    // leaf_used  is the root's expr AND has a resolutions entry → reached.
+    // leaf_unused is NOT referenced by any root but HAS a resolutions entry → unreached.
+    //
+    // Analysis must plan only leaf_used (1 key); materialize must intern only that one.
+    fn layer_one_used_one_unused_resolution() -> DagLayer {
+        let mut arena = ArenaBuilder::new();
+        // Expr 0: reached leaf
+        let s0 = arena.intern_source(SourceKind::Constant { value: 2 });
+        let leaf_used = arena.source_expr(s0);
+        // Expr 1: unreached leaf — has a resolution entry but no root references it
+        let s1 = arena.intern_source(SourceKind::Constant { value: 3 });
+        let leaf_unused = arena.source_expr(s1);
+
+        let mut resolutions = BTreeMap::new();
+        resolutions.insert(leaf_used, ResolutionStrategy::PeekSetup);
+        resolutions.insert(leaf_unused, ResolutionStrategy::PeekSetup);
+
+        DagLayer {
+            sources: arena.sources().to_vec(),
+            exprs: arena.exprs().to_vec(),
+            roots: vec![
+                Root::Output { expr: leaf_used, sink: SinkId(0) },
+                // leaf_unused is deliberately not a root and not referenced by any root
+            ],
+            sinks: vec![
+                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base },
+            ],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions,
+        }
     }
 
     // Mirror of `mod.rs::tests::cache_root_computes_and_materializes` but with a
@@ -390,5 +522,29 @@ mod tests {
             graph.info[&add_ab].is_candidate,
             "a cache root with even one later Prior use must be a residency candidate (#8)"
         );
+    }
+
+    // ── Task 7: DescriptorPlan ────────────────────────────────────────────────
+
+    #[test]
+    fn descriptor_plan_dedups_and_analysis_is_pure() {
+        let ctx = DagForwardContext::default();
+        let before = ctx.specials.len();
+        let layer = layer_with_two_peeks_one_dup();
+        let graph = analyze_layer(&layer, &ctx);
+        assert_eq!(graph.descriptors.keys.len(), 2, "two distinct PEEK descriptors expected");
+        assert_eq!(ctx.specials.len(), before, "analysis must not mutate ctx.specials");
+    }
+
+    #[test]
+    fn descriptor_plan_excludes_unreached_resolutions() {
+        // layer.resolutions has TWO entries; only ONE is reached as an operand/root.
+        let ctx = DagForwardContext::default();
+        let layer = layer_one_used_one_unused_resolution();
+        let graph = analyze_layer(&layer, &ctx);
+        assert_eq!(graph.descriptors.keys.len(), 1, "only the reached resolution is planned (no orphan)");
+        let mut ctx2 = DagForwardContext::default();
+        materialize_descriptors(&graph.descriptors, &layer, &mut ctx2);
+        assert_eq!(ctx2.specials.len(), 1, "materialize interns only the reached descriptor — no orphan for validate_special_bindings");
     }
 }
