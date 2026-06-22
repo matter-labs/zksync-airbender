@@ -58,6 +58,14 @@ pub(crate) struct LoweringEnv<'a> {
     /// for the gated circuits `split_by_working_set` returns a single chunk and the
     /// arity-cap `split_reduction` is what actually fires.
     pub free_cells: usize,
+    /// Whether the `Prior` arm may return a resident `Smem` operand. TRUE on the
+    /// normal lowering path. FALSE for a `CopyAlias` root: `RootOutput::Alias` is
+    /// resolved at PROGRAM END (`interp.rs`), but a resident smem cell is only valid
+    /// until the planner evicts/reuses it — so an alias must reference STABLE storage
+    /// (the `cache_loc` DRAM backing), never a resident cell (codex S2 review,
+    /// finding 1). When false, a same-layer `Prior` falls through to its `Global`
+    /// backing instead of `Smem`.
+    pub allow_resident_smem: bool,
 }
 
 /// BabyBear modulus P = 2^31 − 2^27 + 1 = 0x78000001.
@@ -267,9 +275,11 @@ pub(crate) fn source_to_operand(
             // `cache_loc` DRAM backing. The cache backing is never dropped — residency
             // is purely a READ-side choice (codex re-review Imp1). A cache root always
             // has a real DRAM backing, so `location` never returns `Recompute` here.
-            if let Some(&producer) = env.cache_root_expr.get(id) {
-                if let Loc::Smem(cell) = env.residency.location(producer, env.point) {
-                    return Ok(OperandLine::Smem { cell });
+            if env.allow_resident_smem {
+                if let Some(&producer) = env.cache_root_expr.get(id) {
+                    if let Loc::Smem(cell) = env.residency.location(producer, env.point) {
+                        return Ok(OperandLine::Smem { cell });
+                    }
                 }
             }
             // Caches lead: the driver populated `cache_loc[id]` before this read
@@ -1240,6 +1250,7 @@ mod tests {
             cache_root_expr: &cache_root_expr,
             point: 0,
             free_cells: 1024,
+            allow_resident_smem: true,
         };
         compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base, env)
             .expect("compile_expr");
@@ -1258,6 +1269,7 @@ mod tests {
             cache_root_expr: &cache_root_expr,
             point: 0,
             free_cells: 1024,
+            allow_resident_smem: true,
         };
         compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base, env)?;
         Ok(out)
@@ -1848,6 +1860,7 @@ mod tests {
             cache_root_expr: &cache_root_expr,
             point: 0,
             free_cells: 1024,
+            allow_resident_smem: true,
         };
 
         // lower_operand on the resolution-pruned expr must reuse the descriptor.
@@ -1896,6 +1909,7 @@ mod tests {
             cache_root_expr: &cache_root_expr,
             point: 0,
             free_cells: 1024,
+            allow_resident_smem: true,
         };
         compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, expected, env)
             .expect("compile_expr");

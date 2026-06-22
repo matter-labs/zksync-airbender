@@ -182,6 +182,7 @@ pub fn compile_layer(
                         cache_root_expr: &cache_root_expr,
                         point,
                         free_cells,
+                        allow_resident_smem: true,
                     };
                     compile_expr(
                         layer,
@@ -296,8 +297,20 @@ pub fn compile_layer(
                     cache_root_expr: &cache_root_expr,
                     point,
                     free_cells: budget,
+                    // A view-alias output is read at PROGRAM END, not at this root's
+                    // program point — so it must reference STABLE storage. Forbid a
+                    // resident `Smem` operand (which Belady could evict/reuse before
+                    // the read): a same-layer `Prior` falls through to its `Global`
+                    // cache backing instead (codex S2 review, finding 1).
+                    allow_resident_smem: false,
                 };
                 let op = source_to_operand(layer, expr, &mut ctx, &mut trace, env)?;
+                debug_assert!(
+                    !matches!(op, OperandLine::Smem { .. }),
+                    "CopyAlias output must be stable storage, never a resident Smem cell \
+                     (RootId {}); residency must not redirect an alias operand",
+                    rid.0
+                );
                 root_outputs.push((rid, RootOutput::Alias(op)));
             }
             ForwardAction::SkipScratchPrefill => {
