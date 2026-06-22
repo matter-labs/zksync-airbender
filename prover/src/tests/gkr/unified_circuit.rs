@@ -60,5 +60,68 @@ fn run_unified_test(level: SecurityLevel) {
             BabyBearExt4::ONE,
             "unified grand-product accumulator should be ONE"
         );
+
+        write_fsv_unified_fixture(&output, proof_suffix);
     }
+}
+
+/// Serialize the component bundle (Option B) for the full statement verifier's unified
+/// base-layer test. The FSV crate (where `ProgramProof` lives) sits above the prover in the
+/// crate graph, so the prover can't build a `ProgramProof` directly — it emits these
+/// ingredients via the shared [`UnifiedBaseLayerComponents`] struct and the FSV test reassembles
+/// the `ProgramProof`. The struct is the single source of truth for the layout (no positional
+/// tuple to keep in sync).
+fn write_fsv_unified_fixture(
+    output: &super::orchestration::unified::UnifiedProverOutput,
+    proof_suffix: &str,
+) {
+    use crate::definitions::FinalRegisterValue;
+    use crate::fsv_fixture::{DelegationComponents, UnifiedBaseLayerComponents};
+
+    let (Some(unified_proof), Some(unified_setup_cap)) = (
+        output.unified_proof.as_ref(),
+        output.unified_setup_cap.as_ref(),
+    ) else {
+        // Only emit the fixture when a full unified proof was produced.
+        return;
+    };
+
+    let delegations: Vec<DelegationComponents> = output
+        .delegation_outputs
+        .iter()
+        .filter_map(|d| {
+            d.proof.as_ref().map(|p| DelegationComponents {
+                delegation_csr: d.delegation_type as u32,
+                proof: p.clone(),
+                compiled_circuit: d.compiled_circuit.clone(),
+            })
+        })
+        .collect();
+
+    let register_final_values: Vec<FinalRegisterValue> = output
+        .register_final_state
+        .iter()
+        .map(|el| FinalRegisterValue {
+            value: el.current_value,
+            last_access_timestamp: el.last_access_timestamp,
+        })
+        .collect();
+
+    let bundle = UnifiedBaseLayerComponents {
+        unified_proof: unified_proof.clone(),
+        compiled_unified_circuit: output.compiled_unified_circuit.clone(),
+        delegations,
+        register_final_values,
+        final_pc: output.final_pc,
+        final_timestamp: output.final_timestamp,
+        unified_setup_cap: *unified_setup_cap,
+    };
+
+    let dir = "../full_statement_verifier/tests/fixtures";
+    std::fs::create_dir_all(dir).expect("create FSV fixtures dir");
+    let path = format!("{dir}/unified_base_layer_fixture_{proof_suffix}.json");
+    let file = std::fs::File::create(&path).expect("create FSV fixture file");
+    serde_json::to_writer(std::io::BufWriter::new(file), &bundle)
+        .expect("serialize FSV unified fixture");
+    println!("Wrote FSV unified base-layer fixture to {path}");
 }

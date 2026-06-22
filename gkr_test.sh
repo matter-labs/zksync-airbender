@@ -24,7 +24,7 @@ DELEGATIONS=(
 PER_FAMILY_SET=("${PER_FAMILY_CIRCUITS[@]}" "${DELEGATIONS[@]}")
 UNIFIED_SET=(unified_reduced_machine "${DELEGATIONS[@]}")
 
-ALL_STEPS=(circuits witness_gen build_program generator prover native corruption binaries transpiler)
+ALL_STEPS=(circuits witness_gen build_program generator prover native corruption binaries transpiler fsv)
 OPT_IN_STEPS=(malicious)
 
 # ============================================================================
@@ -90,6 +90,9 @@ Steps (canonical order):
   corruption      Run corruption tests
   binaries        Build RISC-V binaries
   transpiler      Run transpiler tests (writes flamegraphs)
+  fsv             Full statement verifier — unified base-layer happy path +
+                  corruption (reads the fixture written by the prover step).
+                  Unified mode + blake2_with_compression only; no-op otherwise.
 
 Extra step (opt-in, runs last when invoked):
   malicious       Soundness-gap tests. Subcommand-aware: per_family runs the
@@ -431,6 +434,32 @@ step_transpiler() {
       -- "${TEST_FILTERS[@]+"${TEST_FILTERS[@]}"}" --include-ignored
 }
 
+# Full statement verifier: unified base-layer happy path + corruption. Reads the
+# component bundle written by step_prover's gkr_run_unified_test (Option B; the FSV
+# crate can't depend on the prover). Unified mode only (no per-family FSV base-layer
+# test) and blake2_with_compression only (the only blake variant the FSV crate's
+# Cargo features expose). The fixture's bundled compiled circuits make it variant-
+# agnostic, so no caches/no_caches feature is needed here.
+step_fsv() {
+  if [[ "$MODE" != "unified" ]]; then
+    echo "  [fsv] skipped (unified mode only)"
+    return 0
+  fi
+  if [[ "$BLAKE" != "blake2_with_compression" ]]; then
+    echo "  [fsv] skipped (FSV base-layer test runs under blake2_with_compression only; BLAKE=$BLAKE)"
+    return 0
+  fi
+  # The FSV RISC-V binary (fsv_unified_base_layer_sec_80) is NOT in the per-circuit set the
+  # `binaries` step builds, so build it here for the transpiler test. dump_bin.sh auto-discovers
+  # it; the blake variant comes from verifier_common's unified features (the FSV pins no blake).
+  run_step "Build FSV unified base-layer RISC-V binary" \
+    in_dir tools/gkr_verifier ./dump_bin.sh \
+      --blake "$BLAKE" --variant "$VARIANT" fsv_unified_base_layer_sec_80
+  run_step "Full statement verifier (unified base layer: native + transpiler)" \
+    env RUSTFLAGS="$WARN_FLAGS" cargo test -p full_statement_verifier \
+      --features blake2_with_compression --test unified -- --include-ignored
+}
+
 # per_family: malicious_proof test (#[ignore]) writes corrupted proofs with
 # self_checks OFF; verifier-side malicious.rs then asserts rejection.
 # unified: now BOTH layers (symmetric uplift from plans/negative_test_pipeline_rework.md):
@@ -496,6 +525,7 @@ for step in "${STEPS[@]}"; do
     corruption)     step_corruption ;;
     binaries)       step_binaries ;;
     transpiler)     step_transpiler ;;
+    fsv)            step_fsv ;;
     malicious)      step_malicious ;;
   esac
 done

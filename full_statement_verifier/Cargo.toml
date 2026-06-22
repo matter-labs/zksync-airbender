@@ -16,6 +16,10 @@ serde = { workspace = true, default-features = false, features = ["derive", "all
 
 # setups = { workspace = true, default-features = false } // TODO: import as dependency if we make it no-std
 
+[dev-dependencies]
+serde_json = "*"
+riscv_transpiler = { workspace = true }
+
 [features]
 verifiers = []
 
