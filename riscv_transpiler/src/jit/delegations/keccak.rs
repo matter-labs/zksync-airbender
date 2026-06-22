@@ -1,7 +1,5 @@
 use super::*;
 use crate::vm::delegations::keccak_special5::*;
-use common_constants::*;
-use std::mem::MaybeUninit;
 
 pub fn keccak_unrolled_implementation(
     trace_piece: &mut TraceChunk,

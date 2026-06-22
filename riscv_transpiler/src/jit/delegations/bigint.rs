@@ -1,8 +1,6 @@
 use super::*;
 use crate::vm::delegations::bigint::*;
-use common_constants::*;
 use ruint::aliases::U256;
-use std::mem::MaybeUninit;
 
 pub fn bigint_implementation(
     trace_piece: &mut TraceChunk,
