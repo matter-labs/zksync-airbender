@@ -4,6 +4,12 @@
 //! reducing it to a parity-flipped negate flag + the remaining factors. A `MUL`
 //! carrying `-1` among other factors is never emitted downstream.
 //!
+//! Note (#7): when a negated term is an ADDEND of a sum, the negate is folded into
+//! the consuming ADD/FMA as a `Sign::Minus` bit — zero extra instructions — by
+//! `arith.rs::classify_additive_child`, which peels the `-1` parity at the `ExprId`
+//! level (via `binary_mul_factors` / `mul_surviving_factors`). That path does NOT
+//! go through this module's `OperandLine`-level helpers below.
+//!
 //! `choose_sign_vs_negate` selects the cheaper strategy for a homogeneous negative
 //! group: either per-term sign bits (`PerTermSign`) or a single post-ADD negate
 //! (`AddThenNegate`). Costs are tunable (measured in SP3).

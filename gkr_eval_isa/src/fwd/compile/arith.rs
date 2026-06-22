@@ -499,20 +499,36 @@ fn compile_reduction(
 ) -> Result<(), CompileError> {
     debug_assert!(!children.is_empty());
 
-    // Pre-materialize EVERY child to an `OperandLine` BEFORE touching the acc:
-    // a compound child is lowered into a fresh smem cell (general §11 fallback),
-    // and that lowering clobbers the acc — so all operands must be resolved up
-    // front. A source/resolution-pruned child resolves directly (no cell). Cells
-    // are freed after the reduction's last fold reads them.
-    let mut ops: Vec<(OperandField, OperandLine)> = Vec::with_capacity(children.len());
+    // Classify each child for sign-aware lowering (#7). In the ADD path a negated
+    // single-factor addend `(-1)·x` lowers `x` itself under a `Sign::Minus` ADD bit
+    // (no standalone unary negate); every other child is `Sign::Plus`. The MUL path
+    // (`is_add == false`) has no sign — `compile_mul` already peeled `-1`s at the
+    // ExprId level — so classification is skipped and each child lowers as-is (Plus).
+    //
+    // Pre-materialize EVERY child to an `OperandLine` BEFORE touching the acc: a
+    // compound child is lowered into a fresh smem cell (general §11 fallback), and
+    // that lowering clobbers the acc — so all operands must be resolved up front.
+    // A source/resolution-pruned child resolves directly (no cell). Cells are freed
+    // after the reduction's last fold reads them.
+    let mut ops: Vec<(OperandField, OperandLine, Sign)> = Vec::with_capacity(children.len());
     let mut owned_cells: Vec<u16> = Vec::new();
     for &c in children {
-        let field = child_operand_field(layer, c, expected, &ctx.cross_layer_fields);
-        let (op, cell) = lower_operand(layer, c, ctx, trace, out, alloc, expected)?;
+        let (to_lower, sign) = if is_add {
+            match classify_additive_child(layer, c) {
+                // Products never reach here: `try_compile_fma` intercepts any sum
+                // with a binary product before the generic reduction is invoked.
+                AdditiveChild::Product { .. } => (c, Sign::Plus),
+                AdditiveChild::Addend { sign, id } => (id, sign),
+            }
+        } else {
+            (c, Sign::Plus)
+        };
+        let field = child_operand_field(layer, to_lower, expected, &ctx.cross_layer_fields);
+        let (op, cell) = lower_operand(layer, to_lower, ctx, trace, out, alloc, expected)?;
         if let Some(cell) = cell {
             owned_cells.push(cell);
         }
-        ops.push((field, op));
+        ops.push((field, op, sign));
     }
 
     // Base-as-long-as-possible (§5): seed the acc from a BASE operand when the
@@ -523,9 +539,17 @@ fn compile_reduction(
     // +/× are commutative, so the seed term may be any child. Label the init
     // MOV with the seed's actual field so the validator's field-transition
     // tracker agrees with the materialize at the end (§5/§12).
+    //
+    // The seed MUST be an un-negated (Plus) term: there is no `MOV AccFromSrc` that
+    // negates, so the Minus-fold applies to NON-SEED additive terms only. Prefer a
+    // Plus Base term, then a Plus Ext term; only if EVERY term is negated (does not
+    // occur in the gated circuits) fall back to the current seed (preserving #5b's
+    // Base-first ordering among candidates).
     let init_idx = ops
         .iter()
-        .position(|(f, _)| *f == OperandField::Base)
+        .position(|(f, _, s)| *f == OperandField::Base && *s == Sign::Plus)
+        .or_else(|| ops.iter().position(|(_, _, s)| *s == Sign::Plus))
+        .or_else(|| ops.iter().position(|(f, _, _)| *f == OperandField::Base))
         .unwrap_or(0);
     emit_init_field(out, ops[init_idx].1, ops[init_idx].0);
 
@@ -534,31 +558,37 @@ fn compile_reduction(
         return Ok(()); // unary → just the MOV
     }
 
-    // Partition the remaining children (all but the seed) into Base/Ext groups.
-    let mut base_ops: Vec<OperandLine> = Vec::new();
-    let mut ext_ops: Vec<OperandLine> = Vec::new();
-    for (i, &(field, op)) in ops.iter().enumerate() {
+    // Partition the remaining children (all but the seed) into `(field, sign)` groups.
+    let mut base_plus: Vec<OperandLine> = Vec::new();
+    let mut base_minus: Vec<OperandLine> = Vec::new();
+    let mut ext_plus: Vec<OperandLine> = Vec::new();
+    let mut ext_minus: Vec<OperandLine> = Vec::new();
+    for (i, &(field, op, sign)) in ops.iter().enumerate() {
         if i == init_idx {
             continue;
         }
-        match field {
-            OperandField::Base => base_ops.push(op),
-            OperandField::Ext => ext_ops.push(op),
+        match (field, sign) {
+            (OperandField::Base, Sign::Plus) => base_plus.push(op),
+            (OperandField::Base, Sign::Minus) => base_minus.push(op),
+            (OperandField::Ext, Sign::Plus) => ext_plus.push(op),
+            (OperandField::Ext, Sign::Minus) => ext_minus.push(op),
         }
     }
 
-    // Emit the Base group first (base-as-long-as-possible, §5), then the Ext group.
+    // Emit the Base groups first (base-as-long-as-possible, §5), then the Ext groups.
     // Each group is a single ADD/MUL when it fits the arity cap (the proven Tasks
     // 9/10 path); an over-long group is split into ≤MAX_ARITY chunks combined via
     // the evict-to-cell primitive (§11) so `encode` never sees an over-cap arity.
-    for (field, group) in [
-        (OperandField::Base, base_ops),
-        (OperandField::Ext, ext_ops),
+    for (field, sign, group) in [
+        (OperandField::Base, Sign::Plus, base_plus),
+        (OperandField::Base, Sign::Minus, base_minus),
+        (OperandField::Ext, Sign::Plus, ext_plus),
+        (OperandField::Ext, Sign::Minus, ext_minus),
     ] {
         if group.is_empty() {
             continue;
         }
-        emit_reduction_group(out, trace, field, group, is_add, alloc)?;
+        emit_reduction_group(out, trace, field, group, is_add, sign, alloc)?;
     }
     free_all(alloc, &owned_cells);
     Ok(())
@@ -591,12 +621,23 @@ fn emit_reduction_group(
     field: OperandField,
     ops: Vec<OperandLine>,
     is_add: bool,
+    sign: Sign,
     alloc: &mut CellAllocator,
 ) -> Result<(), CompileError> {
     if ops.len() <= MAX_ARITY {
         // Unsplit fast path — identical to the prior Tasks 9/10 emission.
-        push_fold(out, field, ops, is_add);
+        push_fold(out, field, ops, is_add, sign);
         return Ok(());
+    }
+
+    // Fail-loud: a `Sign::Minus` ADD group over the arity cap does not occur in the
+    // gated circuits, and the evict-to-cell split below is NOT sign-trivial (the
+    // running partial would need re-signing). Reject rather than miscompile (#7).
+    if is_add && sign == Sign::Minus {
+        return Err(CompileError::FieldMismatch(
+            "over-MAX_ARITY Sign::Minus ADD group is unsupported (evict-split is not sign-trivial)"
+                .into(),
+        ));
     }
 
     // Over-cap: split into chunks bounded by the arity cap. The evict cell holds the
@@ -607,9 +648,11 @@ fn emit_reduction_group(
     let mut idx = 0usize;
     let mut chunks = sizes.into_iter();
 
+    // The split path is `Sign::Plus`-only (the Minus case is rejected fail-loud
+    // above), so every fold below is byte-for-byte the prior Plus emission.
     // chunk0 folds into the acc, which already holds the reduction's running value.
     let first = chunks.next().expect("split_reduction yields >=1 chunk for arity>0");
-    push_fold(out, field, ops[idx..idx + first].to_vec(), is_add);
+    push_fold(out, field, ops[idx..idx + first].to_vec(), is_add, Sign::Plus);
     idx += first;
 
     for size in chunks {
@@ -623,10 +666,10 @@ fn emit_reduction_group(
         // Re-init the acc from the chunk's first operand, fold the chunk's rest.
         emit_init(out, chunk[0]);
         if chunk.len() > 1 {
-            push_fold(out, field, chunk[1..].to_vec(), is_add);
+            push_fold(out, field, chunk[1..].to_vec(), is_add, Sign::Plus);
         }
         // Fold the evicted partial back in (ADD/MUL referencing the cell).
-        push_fold(out, field, vec![OperandLine::Smem { cell }], is_add);
+        push_fold(out, field, vec![OperandLine::Smem { cell }], is_add, Sign::Plus);
         alloc.free(cell);
     }
 
@@ -634,13 +677,14 @@ fn emit_reduction_group(
     Ok(())
 }
 
-/// Emit a single field-homogeneous fold of `ops` into the acc: ADD (sign +) when
-/// `is_add`, else MUL. Caller guarantees `ops.len() <= MAX_ARITY` and non-empty.
-fn push_fold(out: &mut Vec<Instr>, field: OperandField, ops: Vec<OperandLine>, is_add: bool) {
+/// Emit a single field-homogeneous fold of `ops` into the acc: ADD (carrying `sign`)
+/// when `is_add`, else MUL. `sign` is ignored for MUL (a Mul has no sign — negation
+/// is handled separately). Caller guarantees `ops.len() <= MAX_ARITY` and non-empty.
+fn push_fold(out: &mut Vec<Instr>, field: OperandField, ops: Vec<OperandLine>, is_add: bool, sign: Sign) {
     if is_add {
         out.push(Instr::Add {
             field,
-            sign: Sign::Plus,
+            sign,
             operands: ops,
         });
     } else {
@@ -688,14 +732,17 @@ fn try_compile_fma(
     alloc: &mut CellAllocator,
     expected: OperandField,
 ) -> Result<Option<()>, CompileError> {
-    // Partition (preserving order): binary products become FMA pairs; every other
-    // child is an additive term that seeds the accumulator.
-    let mut products: Vec<(ExprId, ExprId)> = Vec::with_capacity(children.len());
-    let mut addends: Vec<ExprId> = Vec::new();
+    // Partition (preserving order): a (possibly negated) binary product becomes a
+    // signed FMA pair; every other child is an additive term that seeds/folds the
+    // accumulator. A negated single-factor `(-1)·x` becomes a `Sign::Minus` addend
+    // that lowers `x` (not the wrapping Mul) — the negate folds into the ADD's sign
+    // bit (#7). Carry each term's sign so the negate never needs a unary MUL lit(-1).
+    let mut products: Vec<(Sign, ExprId, ExprId)> = Vec::with_capacity(children.len());
+    let mut addends: Vec<(Sign, ExprId)> = Vec::new();
     for &c in children {
-        match binary_mul_factors(layer, c) {
-            Some(factors) => products.push(factors),
-            None => addends.push(c),
+        match classify_additive_child(layer, c) {
+            AdditiveChild::Product { sign, lhs, rhs } => products.push((sign, lhs, rhs)),
+            AdditiveChild::Addend { sign, id } => addends.push((sign, id)),
         }
     }
     // No product → not an FMA opportunity; let the generic reduction handle it.
@@ -708,18 +755,19 @@ fn try_compile_fma(
     // each operand's field label via `child_operand_field` BEFORE the `&mut ctx`
     // borrow in `lower_operand` so the immutable `layer` borrow does not overlap.
     let mut owned_cells: Vec<u16> = Vec::new();
-    let mut addend_ops: Vec<(OperandField, OperandLine)> = Vec::with_capacity(addends.len());
-    for &c in &addends {
+    let mut addend_ops: Vec<(OperandField, OperandLine, Sign)> =
+        Vec::with_capacity(addends.len());
+    for &(sign, c) in &addends {
         let f = child_operand_field(layer, c, expected, &ctx.cross_layer_fields);
         let (op, cell) = lower_operand(layer, c, ctx, trace, out, alloc, f)?;
         if let Some(cell) = cell {
             owned_cells.push(cell);
         }
-        addend_ops.push((f, op));
+        addend_ops.push((f, op, sign));
     }
-    let mut lo: Vec<(OperandField, OperandLine, OperandField, OperandLine)> =
+    let mut lo: Vec<(Sign, OperandField, OperandLine, OperandField, OperandLine)> =
         Vec::with_capacity(products.len());
-    for &(lhs, rhs) in &products {
+    for &(sign, lhs, rhs) in &products {
         let lf = child_operand_field(layer, lhs, expected, &ctx.cross_layer_fields);
         let rf = child_operand_field(layer, rhs, expected, &ctx.cross_layer_fields);
         let (lhs_op, lc) = lower_operand(layer, lhs, ctx, trace, out, alloc, lf)?;
@@ -730,65 +778,86 @@ fn try_compile_fma(
         if let Some(c) = rc {
             owned_cells.push(c);
         }
-        lo.push((lf, lhs_op, rf, rhs_op));
+        lo.push((sign, lf, lhs_op, rf, rhs_op));
     }
 
     // Seed the accumulator; `fma_lo` is the product range still to fold as FMA.
-    let fma_lo: &[(OperandField, OperandLine, OperandField, OperandLine)] =
+    // The seed MUST be an un-negated (Plus) term — there is no negating init MOV.
+    let fma_lo: &[(Sign, OperandField, OperandLine, OperandField, OperandLine)] =
         if !addend_ops.is_empty() {
-            // Seed from a BASE addend when one exists (base as long as possible,
-            // §5), then fold the remaining addends as field-grouped ADDs (Base
-            // group then Ext group). Every product then folds in as an FMA pair.
+            // Seed from a Plus BASE addend when one exists (base as long as possible,
+            // §5; Plus because the seed cannot be negated), then a Plus Ext addend;
+            // only if every addend is negated (does not occur in the gated circuits)
+            // fall back to the current Base-first seed. The remaining addends fold as
+            // `(field, sign)`-grouped ADDs (Base groups then Ext groups); every
+            // product then folds in as a signed FMA pair.
             let seed = addend_ops
                 .iter()
-                .position(|(f, _)| *f == OperandField::Base)
+                .position(|(f, _, s)| *f == OperandField::Base && *s == Sign::Plus)
+                .or_else(|| addend_ops.iter().position(|(_, _, s)| *s == Sign::Plus))
+                .or_else(|| addend_ops.iter().position(|(f, _, _)| *f == OperandField::Base))
                 .unwrap_or(0);
             emit_init_field(out, addend_ops[seed].1, addend_ops[seed].0);
-            let mut base_ops: Vec<OperandLine> = Vec::new();
-            let mut ext_ops: Vec<OperandLine> = Vec::new();
-            for (i, &(f, op)) in addend_ops.iter().enumerate() {
+            let mut base_plus: Vec<OperandLine> = Vec::new();
+            let mut base_minus: Vec<OperandLine> = Vec::new();
+            let mut ext_plus: Vec<OperandLine> = Vec::new();
+            let mut ext_minus: Vec<OperandLine> = Vec::new();
+            for (i, &(f, op, s)) in addend_ops.iter().enumerate() {
                 if i == seed {
                     continue;
                 }
-                match f {
-                    OperandField::Base => base_ops.push(op),
-                    OperandField::Ext => ext_ops.push(op),
+                match (f, s) {
+                    (OperandField::Base, Sign::Plus) => base_plus.push(op),
+                    (OperandField::Base, Sign::Minus) => base_minus.push(op),
+                    (OperandField::Ext, Sign::Plus) => ext_plus.push(op),
+                    (OperandField::Ext, Sign::Minus) => ext_minus.push(op),
                 }
             }
-            for (f, group) in [(OperandField::Base, base_ops), (OperandField::Ext, ext_ops)] {
+            for (f, s, group) in [
+                (OperandField::Base, Sign::Plus, base_plus),
+                (OperandField::Base, Sign::Minus, base_minus),
+                (OperandField::Ext, Sign::Plus, ext_plus),
+                (OperandField::Ext, Sign::Minus, ext_minus),
+            ] {
                 if group.is_empty() {
                     continue;
                 }
-                emit_reduction_group(out, trace, f, group, /* is_add */ true, alloc)?;
+                emit_reduction_group(out, trace, f, group, /* is_add */ true, s, alloc)?;
             }
             &lo[..]
         } else {
-            // No addends: seed from the first product (MOV lhs0; MUL rhs0); FMA the
-            // rest — the proven all-products form.
-            let (lf0, lhs0_op, rf0, rhs0_op) = lo[0];
+            // No addends: seed from a Plus product (MOV lhs0; MUL rhs0) — the seed
+            // cannot be negated — then FMA the rest. Prefer a Plus product as the
+            // seed; only if every product is negated (does not occur in the gated
+            // circuits) fall back to the first product. This is the proven
+            // all-products form when no negate is present.
+            let seed = lo.iter().position(|(s, ..)| *s == Sign::Plus).unwrap_or(0);
+            let (_, lf0, lhs0_op, rf0, rhs0_op) = lo[seed];
             emit_init_field(out, lhs0_op, lf0);
             out.push(Instr::Mul { field: rf0, operands: vec![rhs0_op] });
             if lo.len() == 1 {
                 free_all(alloc, &owned_cells);
                 return Ok(Some(()));
             }
-            &lo[1..]
+            lo.remove(seed);
+            &lo[..]
         };
 
-    // Group the FMA pairs by canonical (lhs_field, rhs_field). Canonical mixed
+    // Group the FMA pairs by canonical (lhs_field, rhs_field, sign). Canonical mixed
     // order is (Base, Ext): swap the commutative factors so EB is never emitted
-    // (H5). Emit one (arity-chunked) FMA per field-pair group.
+    // (H5). A negated product folds as a `Sign::Minus` FMA pair (zero extra
+    // instructions). Emit one (arity-chunked) FMA per (field-pair, sign) group.
     use std::collections::BTreeMap;
-    let mut groups: BTreeMap<(u8, u8), Vec<(OperandLine, OperandLine)>> = BTreeMap::new();
-    for &(lf, lhs_op, rf, rhs_op) in fma_lo {
+    let mut groups: BTreeMap<(u8, u8, u8), Vec<(OperandLine, OperandLine)>> = BTreeMap::new();
+    for &(sign, lf, lhs_op, rf, rhs_op) in fma_lo {
         let ((cf_l, cf_r), (op_l, op_r)) = canonical_fma_pair(lf, rf, lhs_op, rhs_op);
         groups
-            .entry((cf_l as u8, cf_r as u8))
+            .entry((cf_l as u8, cf_r as u8, sign as u8))
             .or_default()
             .push((op_l, op_r));
     }
-    for ((lf, rf), gpairs) in groups {
-        push_fma_chunked(out, field_from_u8(lf), field_from_u8(rf), gpairs);
+    for ((lf, rf, sign), gpairs) in groups {
+        push_fma_chunked(out, field_from_u8(lf), field_from_u8(rf), sign_from_u8(sign), gpairs);
     }
     free_all(alloc, &owned_cells);
     Ok(Some(()))
@@ -819,6 +888,14 @@ fn field_from_u8(v: u8) -> OperandField {
     }
 }
 
+fn sign_from_u8(v: u8) -> Sign {
+    if v == 0 {
+        Sign::Plus
+    } else {
+        Sign::Minus
+    }
+}
+
 /// Emit one or more `Instr::Fma` instructions that together accumulate all `pairs`
 /// for the given `(field_lhs, field_rhs)` group. Chunks `pairs` into slices of at
 /// most `MAX_ARITY` to satisfy the encoder's 7-bit arity cap. Multiple Fma
@@ -829,13 +906,14 @@ fn push_fma_chunked(
     out: &mut Vec<Instr>,
     field_lhs: OperandField,
     field_rhs: OperandField,
+    sign: Sign,
     pairs: Vec<(OperandLine, OperandLine)>,
 ) {
     for chunk in pairs.chunks(MAX_ARITY) {
         out.push(Instr::Fma {
             field_lhs,
             field_rhs,
-            sign: Sign::Plus,
+            sign,
             pairs: chunk.to_vec(),
         });
     }
@@ -856,25 +934,79 @@ fn is_neg_one_factor(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> 
     )
 }
 
-/// `Some((f0, f1))` if `id` is a `Mul` that, after eliding `Constant{1}` factors,
-/// has exactly two factors. `None` otherwise (the FMA path bails to the generic
-/// reduction so we never invent FMA pairs for non-binary products).
+/// `Some((negated, f0, f1))` if `id` is a `Mul` that, after eliding `Constant{1}`
+/// factors AND peeling `-1` factors, has exactly two surviving (non-`±1`) factors.
+/// `negated` is the parity of the peeled `-1` count (odd → the product is negated).
+/// `None` otherwise (the FMA path bails to the generic reduction so we never invent
+/// FMA pairs for non-binary products). A negated binary product folds into a
+/// `Sign::Minus` FMA pair — zero extra instructions, vs. a separate unary negate (#7).
 fn binary_mul_factors(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     id: ExprId,
-) -> Option<(ExprId, ExprId)> {
+) -> Option<(bool, ExprId, ExprId)> {
+    let (neg, kept) = mul_surviving_factors(layer, id)?;
+    if kept.len() == 2 {
+        Some((neg, kept[0], kept[1]))
+    } else {
+        None
+    }
+}
+
+/// Decompose a `Mul` into `(negated_parity, surviving_factors)`: elide `Constant{1}`
+/// factors, peel `-1` factors (tracking the odd/even parity of their count), and
+/// return the remaining non-`±1` factors. `None` if `id` is not a `Mul`.
+fn mul_surviving_factors(
+    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    id: ExprId,
+) -> Option<(bool, Vec<ExprId>)> {
     let Expr::Mul(factors) = &layer.exprs[id.0 as usize] else {
         return None;
     };
-    let kept: Vec<ExprId> = factors
-        .iter()
-        .copied()
-        .filter(|&f| !is_constant_one(layer, f))
-        .collect();
-    if kept.len() == 2 {
-        Some((kept[0], kept[1]))
-    } else {
-        None
+    let mut neg_one_count = 0usize;
+    let mut kept: Vec<ExprId> = Vec::with_capacity(factors.len());
+    for &f in factors {
+        if is_constant_one(layer, f) {
+            continue;
+        }
+        if is_neg_one_factor(layer, f) {
+            neg_one_count += 1;
+        } else {
+            kept.push(f);
+        }
+    }
+    Some((neg_one_count % 2 == 1, kept))
+}
+
+/// An additive child of a sum, classified for sign-aware lowering (#7):
+/// - `Product { sign, lhs, rhs }` — a (possibly negated) binary product → one FMA pair.
+/// - `Addend { sign, id }` — an additive term to lower into a sign-keyed ADD group.
+///   A negated single-factor `Mul([-1, x])` becomes `Addend { Minus, x }` (lower `x`,
+///   NOT the wrapping Mul — folding the negate into the consuming ADD's sign bit).
+enum AdditiveChild {
+    Product { sign: Sign, lhs: ExprId, rhs: ExprId },
+    Addend { sign: Sign, id: ExprId },
+}
+
+/// Classify an additive child of a sum into a product (FMA) or a sign-keyed addend.
+/// Shared by `try_compile_fma`'s product/addend partition AND `compile_reduction`'s
+/// add path so the negate-into-sign fold is uniform (DRY).
+fn classify_additive_child(
+    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    id: ExprId,
+) -> AdditiveChild {
+    match mul_surviving_factors(layer, id) {
+        Some((negated, kept)) if kept.len() == 2 => {
+            let sign = if negated { Sign::Minus } else { Sign::Plus };
+            AdditiveChild::Product { sign, lhs: kept[0], rhs: kept[1] }
+        }
+        Some((true, kept)) if kept.len() == 1 => {
+            // Negated single surviving factor `(-1)·x`: lower `x` itself and fold the
+            // negate into the consuming ADD's sign bit (no standalone unary negate).
+            AdditiveChild::Addend { sign: Sign::Minus, id: kept[0] }
+        }
+        // Plain additive term (a source, a non-negated single-factor Mul, a compound
+        // subtree, or any Mul whose surviving-factor count is not 1 or 2): no fold.
+        _ => AdditiveChild::Addend { sign: Sign::Plus, id },
     }
 }
 
@@ -1717,5 +1849,48 @@ mod tests {
             ),
             _ => panic!("expected an evict MOV DstFromAcc → Smem for the compound child"),
         }
+    }
+
+    // ── #7: negated product addend folds into a Sign::Minus FMA pair ───────────
+    #[test]
+    fn negated_product_addend_folds_into_minus_fma() {
+        let mut arena = ArenaBuilder::new();
+        let w = read_base(&mut arena, 0);
+        let a = read_base(&mut arena, 1);
+        let bx = challenge(&mut arena, ChallengePower::One); // ext
+        let neg1 = arena.intern_source(SourceKind::Constant { value: BABYBEAR_NEG_ONE });
+        let neg1e = arena.source_expr(neg1);
+        let prod = arena.mul(vec![neg1e, a, bx]);      // (-1)·a·bx
+        let add = arena.add(vec![w, prod]);            // w + (-1)·a·bx
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, add);
+        // No standalone unary negate.
+        assert!(!instrs.iter().any(|i| matches!(i,
+            Instr::Mul { operands, .. } if operands.len()==1
+                && matches!(operands[0], OperandLine::Ldc { sub: LdcSub::Special, idx } if idx == Special::NegOne as u16))),
+            "negate must be folded, not a standalone MUL lit(-1): {instrs:?}");
+        // A Minus-signed FMA exists.
+        assert!(instrs.iter().any(|i| matches!(i, Instr::Fma { sign: Sign::Minus, .. })),
+            "expected a Sign::Minus FMA: {instrs:?}");
+    }
+
+    // ── #7: negated non-product addend folds into a Sign::Minus ADD group ──────
+    #[test]
+    fn negated_value_addend_folds_into_minus_add() {
+        let mut arena = ArenaBuilder::new();
+        let w = read_base(&mut arena, 0);
+        let a = read_base(&mut arena, 1);
+        let neg1 = arena.intern_source(SourceKind::Constant { value: BABYBEAR_NEG_ONE });
+        let neg1e = arena.source_expr(neg1);
+        let nega = arena.mul(vec![neg1e, a]);   // (-1)·a — single surviving factor, NOT a binary product
+        let add = arena.add(vec![w, nega]);     // w + (-1)·a
+        let layer = layer_of(&arena);
+        let instrs = run(&layer, add);
+        assert!(!instrs.iter().any(|i| matches!(i,
+            Instr::Mul { operands, .. } if operands.len()==1
+                && matches!(operands[0], OperandLine::Ldc { sub: LdcSub::Special, idx } if idx == Special::NegOne as u16))),
+            "no standalone negate for a negated addend: {instrs:?}");
+        assert!(instrs.iter().any(|i| matches!(i, Instr::Add { sign: Sign::Minus, .. })),
+            "expected a Sign::Minus ADD group: {instrs:?}");
     }
 }
