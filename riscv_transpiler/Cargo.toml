@@ -36,13 +36,12 @@ flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object"]
 #   xmm_ts       : keep the 8 mapped registers' timestamps live in XMM lanes (xmm6/7/13/14)
 #                  via `pinsrq` instead (the previous default; kept for A/B comparison).
 xmm_ts = []
-# Fuse runs of consecutive same-base word loads/stores (immediate stride +4) in the eager
-# (default, packed-timestamp) JIT path into wide vector memory/trace stores. The merge width
-# (max group size, one of 2/4/8) is chosen at runtime via the RISCV_MERGE_WINDOW env var
-# (default 8). BLINDLY ASSUMES no jump target lands between the merged accesses. No effect
-# under `xmm_ts`. See `emit_merged_word_run` in src/jit/impls.rs.
-mem_merge = []
 default = ["jit"]
+# NOTE: word load/store fusion (the eager, packed-timestamp path) is always compiled and is
+# controlled SOLELY by the RISCV_MERGE_WINDOW env var: the merge width (max group size) is one
+# of 0/2/4/8 (0 disables merging), default 4 when unset; an out-of-set value panics at JIT
+# build. It BLINDLY ASSUMES no jump target lands between the merged accesses, and has no effect
+# under `xmm_ts`. See `emit_merged_word_run` / `merge_window` in src/jit/impls.rs.
 
 [dev-dependencies]
 test_utils = { workspace = true }

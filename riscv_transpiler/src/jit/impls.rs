@@ -308,8 +308,7 @@ fn destination_gpr(x: u32) -> u8 {
 // (`MachineState::reconstruct_register_timestamps`). With the `xmm_ts` feature the 8 mapped
 // registers' timestamps are kept live in XMM lanes (`pinsrq`) instead, spilled/reloaded at
 // snapshots and external calls. Both expose the same entry points used by the cfg-agnostic
-// emitters: `write_reg_timestamp`, `flush_reg_timestamp`, `spill_register_timestamps`,
-// `reload_register_timestamps`.
+// emitters: `write_reg_timestamp`, `spill_register_timestamps`, `reload_register_timestamps`.
 // ===========================================================================
 
 // ---- default (packed): per-register timestamp writes are eliminated entirely ----
@@ -450,30 +449,6 @@ fn reload_register_timestamps(ops: &mut x64::Assembler) {
         ; pinsrq xmm14, [rdx + rts + 8 * 16], 0
         ; pinsrq xmm14, [rdx + rts + 8 * 28], 1
     );
-}
-
-/// Deferred (lazy-flush) form of `write_reg_timestamp`: store register `r`'s timestamp,
-/// which is `r8 + k` (the region base plus the deferred sub-slot offset `k`). Routes to
-/// the off-memory location (GPR or XMM lane) when `r` is mapped, else to memory. Uses RAX
-/// as scratch when `k != 0` — the caller (flush) must ensure RAX is dead.
-// packed: the lazy path is not used in packed builds; provide a no-op so it compiles.
-#[cfg(not(feature = "xmm_ts"))]
-pub(crate) fn flush_reg_timestamp(_ops: &mut x64::Assembler, _r: u32, _k: i32) {}
-
-#[cfg(feature = "xmm_ts")]
-pub(crate) fn flush_reg_timestamp(ops: &mut x64::Assembler, r: u32, k: i32) {
-    let rts = MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
-    if let Some((xmm, lane)) = reg_ts_xmm(r) {
-        if k == 0 {
-            dynasm!(ops ; pinsrq Rx(xmm), r8, lane as i8);
-        } else {
-            dynasm!(ops ; lea rax, [r8 + k] ; pinsrq Rx(xmm), rax, lane as i8);
-        }
-    } else if k == 0 {
-        dynasm!(ops ; mov [rsp + 8 * (r as i32) + rts], r8);
-    } else {
-        dynasm!(ops ; lea rax, [r8 + k] ; mov [rsp + 8 * (r as i32) + rts], rax);
-    }
 }
 
 // ---- value save/restore for the mapped host GPRs and the vector-resident registers ----
@@ -858,7 +833,7 @@ macro_rules! emit_early_exit {
     };
 }
 
-// === Fused word load/store runs (feature `mem_merge`, packed-timestamp path only) ========
+// === Fused word load/store runs (packed-timestamp path only) =============================
 //
 // A run of `g` consecutive RISC-V word accesses (all Lw or all Sw) that share the base
 // register `rs1` and ascend by an immediate stride of exactly +4 touch `g` *contiguous*
@@ -879,27 +854,32 @@ macro_rules! emit_early_exit {
 // BLINDLY ASSUMES no control-flow target lands strictly inside the run (the caller binds the
 // inner instruction labels to the run head defensively, so a stray jump cannot crash the JIT).
 //
-// `window` (max group size, one of 2/4/8) comes from RISCV_MERGE_WINDOW (default 8).
-#[cfg(all(feature = "mem_merge", not(feature = "xmm_ts")))]
+// `window` (max group size, one of 0/2/4/8; 0 disables) comes from RISCV_MERGE_WINDOW
+// (default 4 when unset).
+#[cfg(not(feature = "xmm_ts"))]
 pub(crate) fn merge_window() -> usize {
     use std::sync::OnceLock;
     static W: OnceLock<usize> = OnceLock::new();
-    *W.get_or_init(|| {
-        let w = std::env::var("RISCV_MERGE_WINDOW")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(8);
-        match w {
-            2 | 4 | 8 => w,
-            _ => 8,
+    *W.get_or_init(|| match std::env::var("RISCV_MERGE_WINDOW") {
+        Ok(s) => {
+            let w: usize = s.parse().unwrap_or_else(|_| {
+                panic!("RISCV_MERGE_WINDOW must be 0, 2, 4 or 8 (got {:?})", s)
+            });
+            assert!(
+                matches!(w, 0 | 2 | 4 | 8),
+                "RISCV_MERGE_WINDOW must be 0, 2, 4 or 8 (got {})",
+                w
+            );
+            w // 0 disables merging (see `merged_word_run_g`)
         }
+        Err(_) => 4, // default window when unset
     })
 }
 
 /// Largest fusable group size (a power of two in {1,2,4,8}, capped by `window`) of the run of
 /// consecutive same-opcode, same-base word accesses with immediate stride exactly +4 starting
 /// at `i`. Returns 1 when nothing fuses.
-#[cfg(all(feature = "mem_merge", not(feature = "xmm_ts")))]
+#[cfg(not(feature = "xmm_ts"))]
 fn merged_word_run_g(
     program: &[Instruction],
     is_static_target: &[bool],
@@ -945,7 +925,7 @@ fn merged_word_run_g(
 
 /// Emit a fused run of `g` (a power of two in {2,4,8}) consecutive word loads or stores. Does
 /// NOT touch r9; the caller advances r9 by g and does the chunk-full check. Advances r8 by 4*g.
-#[cfg(all(feature = "mem_merge", not(feature = "xmm_ts")))]
+#[cfg(not(feature = "xmm_ts"))]
 fn emit_merged_word_run(
     ops: &mut x64::Assembler,
     program: &[Instruction],
@@ -1179,7 +1159,7 @@ impl<I: ContextImpl> JittedCode<I> {
         // are not independently addressable). JALR targets are dynamic and are *blindly assumed*
         // never to land inside a run (return sites always follow a transfer, so they are run
         // heads). Index 0 is the entry point.
-        #[cfg(all(feature = "mem_merge", not(feature = "xmm_ts")))]
+        #[cfg(not(feature = "xmm_ts"))]
         let is_static_target: Vec<bool> = {
             use InstructionName as Op;
             let mut t = vec![false; program.len()];
@@ -1229,10 +1209,10 @@ impl<I: ContextImpl> JittedCode<I> {
             // print_registers!(ops, pc, instr);
 
             // Fuse a run of consecutive same-base word loads/stores (immediate stride +4) into
-            // wide vector memory/trace stores (feature `mem_merge`, packed path). The emitter
+            // wide vector memory/trace stores (packed path; RISCV_MERGE_WINDOW). The emitter
             // does all packed/timestamp/trace/counter bookkeeping for the whole run, so it
             // bypasses the per-instruction prologue and dispatch below.
-            #[cfg(all(feature = "mem_merge", not(feature = "xmm_ts")))]
+            #[cfg(not(feature = "xmm_ts"))]
             {
                 if matches!(instr.name, InstructionName::Lw | InstructionName::Sw) {
                     let g = merged_word_run_g(program, &is_static_target, i, merge_window());
@@ -2394,7 +2374,7 @@ impl<I: ContextImpl> JittedCode<I> {
         // delta = 1 for loads, 2 for stores. These hold the (4*w + delta) addends as u64 so a
         // 128-bit load of two adjacent entries plus a broadcast `paddq` of T0 builds two
         // consecutive new timestamps. Sized for the largest window (8 words).
-        #[cfg(all(feature = "mem_merge", not(feature = "xmm_ts")))]
+        #[cfg(not(feature = "xmm_ts"))]
         dynasm!(ops
             ; .align 16
             ; ->ts_word_off_load:
@@ -2850,12 +2830,6 @@ fn view_assembly(assembly: &[u8], start: usize) {
         }
     }
 }
-
-// Lazy (batched) timestamp path. Declared here, AFTER every `macro_rules!` above,
-// so the child module inherits those macros by textual scope and reaches the
-// private helper fns/consts of this module via `super`.
-#[path = "impls_lazy_ts.rs"]
-mod impls_lazy_ts;
 
 fn view_rv32_assembly(assembly: &[u32], start: usize) {
     let assembly =
