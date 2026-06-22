@@ -147,21 +147,22 @@ impl ResidencyState {
         let field = self.info.get(&v).map(|i| i.field).unwrap_or(OperandField::Base);
 
         // Try a direct alloc first (may succeed if there is a free slot).
-        match self.alloc.alloc(field) {
+        let initial_err = match self.alloc.alloc(field) {
             Ok(cell) => {
                 self.resident.insert(v, cell);
                 self.cell_to_value.insert(cell, v);
                 self.update_max_live();
                 return Ok(Loc::Smem(cell));
             }
-            Err(_) => {}
-        }
+            Err(e) => e,
+        };
 
         // Need to evict.  Build the candidate eviction order: sorted by
         // (MissPenalty ascending, next_use descending) — cheapest-miss first,
         // farthest-use as tiebreaker.
         let eviction_order = self.eviction_order(point);
 
+        let mut last_alloc_err = initial_err;
         for victim_id in eviction_order {
             let victim_cell = match self.resident.get(&victim_id) {
                 Some(&c) => c,
@@ -180,12 +181,12 @@ impl ResidencyState {
                     self.update_max_live();
                     return Ok(Loc::Smem(cell));
                 }
-                Err(_) => {} // keep evicting
+                Err(e) => { last_alloc_err = e; } // keep evicting
             }
         }
 
         // Even with all residents evicted, no fit.
-        Err(self.alloc.alloc(field).unwrap_err())
+        Err(last_alloc_err)
     }
 
     /// Return the current location of `v` at event index `point`.
@@ -238,7 +239,7 @@ impl ResidencyState {
 
         if currently_free >= min_working_set {
             let reservation = TempReservation {
-                free_cells: currently_free,
+                free_cells: min_working_set,
                 evicted: vec![],
             };
             self.temp_cells_held += min_working_set;
@@ -278,7 +279,7 @@ impl ResidencyState {
         self.temp_cells_held += min_working_set;
         self.update_max_live();
         Ok(TempReservation {
-            free_cells: freed_cells,
+            free_cells: min_working_set,
             evicted: evicted_values,
         })
     }
@@ -631,6 +632,85 @@ mod tests {
             matches!(loc, Loc::Recompute | Loc::Spill(_)),
             "evicted compound must recompute/spill, not SourceDram: {:?}",
             loc
+        );
+    }
+
+    // ── Test 5: temp reservation accounting is symmetric ─────────────────────
+    //
+    // Budget = 6, 2 Base residents (cells 0,1), leaving 4 free cells.
+    // Reserve N=3: free_cells must equal N (not 4), temp_cells_held += 3.
+    // max_live = 2 residents + 3 reserved = 5.
+    // Release: temp_cells_held returns to 0 (symmetric subtract).
+    // Reserve N=3 again: max_live must still be 5, not 8 (no leak).
+    // Reserve N=5 (> budget - residents = 4): must fail with BudgetBelowFloor.
+    //
+    // RefString: just the two Produce events; no further uses so eviction is free.
+
+    fn refs_two_residents() -> RefString {
+        RefString {
+            events: vec![
+                RefEvent::Produce(value_a()),  // 0
+                RefEvent::Produce(value_b()),  // 1
+            ],
+        }
+    }
+
+    fn info_two_base() -> HashMap<ValueId, ValueInfo> {
+        let mut m = HashMap::new();
+        m.insert(value_a(), base_info(equal_miss(), true));
+        m.insert(value_b(), base_info(equal_miss(), true));
+        m
+    }
+
+    #[test]
+    fn temp_reservation_accounting_is_symmetric() {
+        // budget=6, 2 Base residents (2 cells used), 4 cells genuinely free.
+        let mut st = ResidencyState::new(&refs_two_residents(), &info_two_base(), 6);
+        let _ = st.admit(value_a(), 0);
+        let _ = st.admit(value_b(), 1);
+
+        // Baseline: residents contribute 2 cells to max_live, no temps yet.
+        let baseline_max = st.max_live_cells();
+        assert_eq!(baseline_max, 2, "baseline max_live should equal 2 residents");
+
+        // ── First reservation ──────────────────────────────────────────────
+        let n: usize = 3;
+        let r1 = st.ensure_temp_capacity(n, 2)
+            .expect("3 cells should be reservable with 4 free");
+
+        // free_cells must equal exactly the reserved amount, not the total free.
+        assert_eq!(r1.free_cells, n,
+            "free_cells must equal min_working_set, not total free");
+
+        // max_live must now be residents(2) + reserved(3) = 5.
+        assert_eq!(st.max_live_cells(), 2 + n,
+            "max_live must be residents + reserved");
+
+        // ── Release ───────────────────────────────────────────────────────
+        st.release(r1);
+
+        // ── Second reservation (same N) ────────────────────────────────────
+        let r2 = st.ensure_temp_capacity(n, 2)
+            .expect("second identical reservation must succeed");
+
+        assert_eq!(r2.free_cells, n,
+            "second reservation free_cells must equal min_working_set");
+
+        // max_live must NOT drift upward: still 2 + 3 = 5.
+        assert_eq!(st.max_live_cells(), 2 + n,
+            "max_live must not drift after release+re-reserve (no leak)");
+
+        st.release(r2);
+
+        // ── Budget-floor guard: N > total budget ──────────────────────────
+        // budget=6; even evicting all residents (2 cells) yields at most 6
+        // free cells. Asking for 7 exceeds what the budget can ever provide.
+        let too_big = 7;
+        let result = st.ensure_temp_capacity(too_big, 2);
+        assert!(
+            matches!(result, Err(CompileError::BudgetBelowFloor { floor, budget })
+                if floor == too_big && budget == 6),
+            "must return BudgetBelowFloor{{floor={too_big}, budget=6}}"
         );
     }
 }
