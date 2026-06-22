@@ -31,6 +31,10 @@
 ///   SP1: not yet counted.
 /// - `avg_chunk`: average chunk size across all split groups (0.0 if no splits).
 ///   SP1: not yet counted.
+/// - `dram_reads`: DRAM-read operands. SP1: not yet counted.
+/// - `ldc_reads`: Ldc (load cache) operands. SP1: not yet counted.
+/// - `special_reads`: `OperandLine::Special{desc}` operand-use count.
+///   SP1: not yet counted.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CompileStats {
     pub program_lanes: usize,
@@ -46,6 +50,9 @@ pub struct CompileStats {
     pub max_live_cells: usize,
     pub split_count: usize,    // SP1: not yet counted
     pub avg_chunk: f64,        // SP1: not yet counted
+    pub dram_reads: usize,     // SP1: not yet counted
+    pub ldc_reads: usize,      // SP1: not yet counted
+    pub special_reads: usize,  // SP1: not yet counted
 }
 
 /// Opcode indices for `op_counts`.
@@ -62,7 +69,8 @@ pub fn report(s: &CompileStats) -> String {
     format!(
         "layer stats: lanes={} mov={} add={} mul={} fma={} specials={} max_live_cells={} \
          inline_reads={} cell_reads={} cell_loads={} cell_stores={} \
-         evicts={} reloads={} recomputes={} split_count={} avg_chunk={:.2}",
+         evicts={} reloads={} recomputes={} split_count={} avg_chunk={:.2} \
+         dram_reads={} ldc_reads={} special_reads={}",
         s.program_lanes,
         s.op_counts[OP_MOV],
         s.op_counts[OP_ADD],
@@ -79,6 +87,9 @@ pub fn report(s: &CompileStats) -> String {
         s.recomputes,
         s.split_count,
         s.avg_chunk,
+        s.dram_reads,
+        s.ldc_reads,
+        s.special_reads,
     )
 }
 
@@ -165,5 +176,17 @@ mod tests {
         let r = report(stats);
         assert!(r.contains("layer stats:"),
             "report missing 'layer stats:' header: {}", r);
+    }
+
+    #[test]
+    fn report_renders_dram_ldc_and_special_read_counters() {
+        let mut s = CompileStats::default();
+        s.dram_reads = 7;
+        s.ldc_reads = 3;
+        s.special_reads = 5;
+        let r = report(&s);
+        assert!(r.contains("dram_reads=7"), "report missing dram_reads: {r}");
+        assert!(r.contains("ldc_reads=3"), "report missing ldc_reads: {r}");
+        assert!(r.contains("special_reads=5"), "report missing special_reads: {r}");
     }
 }
