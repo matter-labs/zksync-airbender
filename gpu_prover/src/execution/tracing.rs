@@ -602,7 +602,7 @@ impl TracingDataProducers for SplitTracingDataProducers {
                     final_count,
                     &mut trace_ranges.slt_branch_family,
                 ),
-                CounterType::ShiftBinaryCsr => {
+                CounterType::ShiftBinary => {
                     self.binary_shift_csr_family_producer.process_snapshot(
                         snapshot_index,
                         initial_count,
@@ -726,7 +726,7 @@ impl TracingDataProducers for UnifiedTracingDataProducers {
             match counter_type {
                 CounterType::AddSubLui
                 | CounterType::BranchSlt
-                | CounterType::ShiftBinaryCsr
+                | CounterType::ShiftBinary
                 | CounterType::MulDiv
                 | CounterType::MemWord
                 | CounterType::MemSubword => {

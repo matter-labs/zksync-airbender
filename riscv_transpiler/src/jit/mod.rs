@@ -214,7 +214,7 @@ const _: () = const {
 pub enum CounterType {
     AddSubLui = 0,
     BranchSlt,
-    ShiftBinaryCsr,
+    ShiftBinary,
     MulDiv,
     MemWord,
     MemSubword,
@@ -440,7 +440,7 @@ impl MachineState {
             counters: DelegationsAndFamiliesCounters {
                 add_sub_family: self.counters[CounterType::AddSubLui as u8 as usize] as usize,
                 slt_branch_family: self.counters[CounterType::BranchSlt as u8 as usize] as usize,
-                binary_shift_family: self.counters[CounterType::ShiftBinaryCsr as u8 as usize]
+                binary_shift_family: self.counters[CounterType::ShiftBinary as u8 as usize]
                     as usize,
                 mul_div_family: self.counters[CounterType::MulDiv as u8 as usize] as usize,
 

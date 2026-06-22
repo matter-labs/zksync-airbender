@@ -1387,7 +1387,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             dynasm!(ops
                                 ; and Rd(out), imm
                             );
-                            record_circuit_type(&mut ops, CounterType::ShiftBinaryCsr, 1);
+                            record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         } else {
                             touch_register_and_increment_timestamp!(ops, rs1);
                             touch_register_and_increment_timestamp!(ops, rs2);
@@ -1395,7 +1395,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             dynasm!(ops
                                 ; and Rd(out), Rd(other)
                             );
-                            record_circuit_type(&mut ops, CounterType::ShiftBinaryCsr, 1);
+                            record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         }
                     }
                     // Or models OR / ORI
@@ -1407,7 +1407,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             dynasm!(ops
                                 ; or Rd(out), imm
                             );
-                            record_circuit_type(&mut ops, CounterType::ShiftBinaryCsr, 1);
+                            record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         } else {
                             touch_register_and_increment_timestamp!(ops, rs1);
                             touch_register_and_increment_timestamp!(ops, rs2);
@@ -1415,7 +1415,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             dynasm!(ops
                                 ; or Rd(out), Rd(other)
                             );
-                            record_circuit_type(&mut ops, CounterType::ShiftBinaryCsr, 1);
+                            record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         }
                     }
                     // Xor models XOR / XORI
@@ -1427,7 +1427,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             dynasm!(ops
                                 ; xor Rd(out), imm
                             );
-                            record_circuit_type(&mut ops, CounterType::ShiftBinaryCsr, 1);
+                            record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         } else {
                             touch_register_and_increment_timestamp!(ops, rs1);
                             touch_register_and_increment_timestamp!(ops, rs2);
@@ -1435,7 +1435,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             dynasm!(ops
                                 ; xor Rd(out), Rd(other)
                             );
-                            record_circuit_type(&mut ops, CounterType::ShiftBinaryCsr, 1);
+                            record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         }
                     }
                     // Sll models SLL / SLLI (immediate form has rs2 == x0 and the shift
@@ -1448,7 +1448,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             dynasm!(ops
                                 ; shl Rd(out), imm as i8
                             );
-                            record_circuit_type(&mut ops, CounterType::ShiftBinaryCsr, 1);
+                            record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         } else {
                             touch_register_and_increment_timestamp!(ops, rs1);
                             touch_register_and_increment_timestamp!(ops, rs2);
@@ -1458,7 +1458,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                 ; and rcx, 0x1f
                                 ; shl Rd(out), cl
                             );
-                            record_circuit_type(&mut ops, CounterType::ShiftBinaryCsr, 1);
+                            record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         }
                     }
                     // Srl models SRL / SRLI
@@ -1470,7 +1470,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             dynasm!(ops
                                 ; shr Rd(out), imm as i8
                             );
-                            record_circuit_type(&mut ops, CounterType::ShiftBinaryCsr, 1);
+                            record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         } else {
                             touch_register_and_increment_timestamp!(ops, rs1);
                             touch_register_and_increment_timestamp!(ops, rs2);
@@ -1480,7 +1480,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                 ; and rcx, 0x1f
                                 ; shr Rd(out), cl
                             );
-                            record_circuit_type(&mut ops, CounterType::ShiftBinaryCsr, 1);
+                            record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         }
                     }
                     // Sra models SRA / SRAI
@@ -1492,7 +1492,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             dynasm!(ops
                                 ; sar Rd(out), imm as i8
                             );
-                            record_circuit_type(&mut ops, CounterType::ShiftBinaryCsr, 1);
+                            record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         } else {
                             touch_register_and_increment_timestamp!(ops, rs1);
                             touch_register_and_increment_timestamp!(ops, rs2);
@@ -1502,7 +1502,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                 ; and rcx, 0x1f
                                 ; sar Rd(out), cl
                             );
-                            record_circuit_type(&mut ops, CounterType::ShiftBinaryCsr, 1);
+                            record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         }
                     }
                     Op::Auipc => {
@@ -1852,6 +1852,68 @@ impl<I: ContextImpl> JittedCode<I> {
                     touch_register_and_bump_timestamp!(ops, rd, 2);
                     store_result(&mut ops, rd);
 
+                    i += 1;
+                }
+
+                // MOP-I xor-rotate (Zimop): rd = (rd_old ^ rs1).rotate_right(imm). Mirrors the
+                // reference `binary_shifts_family::mopi::mopi_xor_rot`: it reads rs1 (sub-slot
+                // +0), touches x0 (rs2 is always 0, sub-slot +1), reads rd's OLD value WITHOUT
+                // a timestamp touch, then writes rd (sub-slot +2); ShiftBinary family. The
+                // packed slot `(rs1, rs2=0, rd)` reconstructs exactly these touches.
+                Op::ZimopIXorRot => {
+                    assert!(rd != 0);
+                    debug_assert_eq!(rs2, 0);
+                    let out = destination_gpr(rd); // rd's GPR, or RAX for an XMM-resident rd
+                    touch_register_and_increment_timestamp!(ops, rs1); // rs1 @ +0
+                    touch_register_and_increment_timestamp!(ops, rs2); // x0 @ +1 (rs2 == 0)
+                    // Materialize rd's OLD value into `out`. A GPR-mapped rd already lives in
+                    // `out`; an XMM-resident rd (out == RAX) must be extracted first. This read
+                    // is value-only (no timestamp touch), matching the reference.
+                    if rv_to_gpr(rd).is_none() {
+                        load_into(&mut ops, rd, out);
+                    }
+                    // `src` is rs1 (a GPR, or RDX via pextrd for XMM/x0); never RAX, so it can
+                    // never alias an XMM-resident rd's `out`. If rs1 == rd the xor yields 0,
+                    // which is exactly rd_old ^ rd_old.
+                    let src = load(&mut ops, rs1);
+                    let rotation = (imm & 31) as i8; // imm ∈ [0,31] from the decoder; mask anyway
+                    dynasm!(ops
+                        ; xor Rd(out), Rd(src)
+                        ; ror Rd(out), rotation
+                    );
+                    touch_register_and_bump_timestamp!(ops, rd, 2); // rd @ +2
+                    store_result(&mut ops, rd);
+                    record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
+                    i += 1;
+                }
+
+                // MOP tri-add (Zimop): rd = rs1 + rs2 + rd_old (wrapping). Mirrors the reference
+                // `add_sub_family::mop::mop_tri_add`: reads rs1 (sub-slot +0), rs2 (sub-slot +1),
+                // rd's OLD value WITHOUT a timestamp touch, then writes rd (sub-slot +2);
+                // AddSubLui family. The packed slot `(rs1, rs2, rd)` reconstructs exactly these
+                // touches.
+                Op::ZimopTriAdd => {
+                    assert!(rd != 0);
+                    let out = destination_gpr(rd); // rd's GPR, or RAX for an XMM-resident rd
+                    touch_register_and_increment_timestamp!(ops, rs1); // rs1 @ +0
+                    touch_register_and_increment_timestamp!(ops, rs2); // rs2 @ +1
+                    // Accumulate in EAX so rd's GPR (which may alias rs1/rs2) keeps its OLD value
+                    // until all three source reads are done. This rd_old read is value-only (no
+                    // timestamp touch), matching the reference.
+                    load_into(&mut ops, rd, x64::Rq::RAX as u8); // EAX = rd_old
+                    // `a`/`b` are rs1/rs2 (a GPR, or RDX via pextrd for XMM/x0); never RAX. `a` is
+                    // consumed before `b` is loaded, so reusing RDX across the two is safe. If rs1
+                    // or rs2 aliases rd, its GPR still holds rd_old here (only EAX has changed).
+                    let a = load(&mut ops, rs1);
+                    dynasm!(ops ; add eax, Rd(a));
+                    let b = load(&mut ops, rs2);
+                    dynasm!(ops ; add eax, Rd(b));
+                    if out != x64::Rq::RAX as u8 {
+                        dynasm!(ops ; mov Rd(out), eax);
+                    }
+                    touch_register_and_bump_timestamp!(ops, rd, 2); // rd @ +2
+                    store_result(&mut ops, rd);
+                    record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                     i += 1;
                 }
 
@@ -2581,6 +2643,42 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         >(program);
         let runner = Self::preprocess_bytecode(&instructions, cycles_bound);
 
+        runner.run(
+            &mut context,
+            memory.as_mut(),
+            unsafe { NonNull::new_unchecked(trace.as_mut() as *mut _) },
+            initial_memory,
+        );
+
+        let final_state = context
+            .implementation
+            .take_final_state()
+            .expect("must finish execution");
+
+        (final_state, memory)
+    }
+
+    /// Like `run_alternative_simulator`, but takes an already-decoded instruction stream
+    /// directly (skipping the `FullUnsignedMachineDecoderConfig` decode step). Useful for
+    /// exercising opcodes the default decoder config does not emit (e.g. `ZimopIXorRot`).
+    pub fn run_alternative_simulator_from_instructions(
+        instructions: &[Instruction],
+        non_determinism_source: &mut N,
+        initial_memory: &[u32],
+        cycles_bound: Option<u32>,
+    ) -> (MachineState, Box<MemoryHolder>) {
+        let mut context = Context::<DefaultContextImpl<'_, N>> {
+            implementation: DefaultContextImpl {
+                non_determinism_source,
+                trace_len: 0,
+                final_state: None,
+            },
+        };
+
+        let mut memory: Box<MemoryHolder> = unsafe { Box::new_zeroed().assume_init() };
+        let mut trace: Box<TraceChunk> = unsafe { Box::new_zeroed().assume_init() };
+
+        let runner = Self::preprocess_bytecode(instructions, cycles_bound);
         runner.run(
             &mut context,
             memory.as_mut(),

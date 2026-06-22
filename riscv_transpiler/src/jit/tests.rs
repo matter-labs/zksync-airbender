@@ -230,6 +230,129 @@ fn test_few_instr() {
     JittedCode::<_>::run_alternative_simulator(&text, &mut (), &[], None);
 }
 
+/// `ZimopIXorRot` (MOP-I xor-rotate) computes `rd = (rd_old ^ rs1).rotate_right(imm)` — the
+/// exact formula of the reference `binary_shifts_family::mopi::mopi_xor_rot`. The default JIT
+/// decoder config never emits this opcode, so build instruction streams directly and check the
+/// JIT's result against the reference formula across the register-placement cases that exercise
+/// the asm: GPR-mapped vs XMM-resident rd/rs1, rs1 == rd (xor -> 0), rs1 == x0, and rot == 0.
+#[test]
+#[serial_test::serial]
+fn test_jit_zimop_ixor_rot() {
+    use InstructionName::{Add, Jal, ZimopIXorRot};
+
+    // (rs1, rd, v1, v2, rot). GPR-mapped regs are {10,11,12,13,14,15,16,28}; the rest are
+    // XMM-resident. v1 -> rs1, v2 -> rd's OLD value.
+    let cases: &[(u8, u8, u32, u32, u32)] = &[
+        (10, 11, 0xDEAD_BEEF, 0x1234_5678, 7), // both GPR-mapped
+        (5, 11, 0xDEAD_BEEF, 0x1234_5678, 13), // rs1 XMM-resident, rd GPR-mapped
+        (11, 6, 0xDEAD_BEEF, 0x1234_5678, 1),  // rs1 GPR-mapped, rd XMM-resident
+        (7, 9, 0xCAFE_BABE, 0x0F0F_0F0F, 31),  // both XMM-resident
+        (12, 12, 0, 0xABCD_1234, 5),           // rs1 == rd (xor -> 0)
+        (0, 13, 0, 0x8000_0001, 3),            // rs1 == x0 (xor with 0)
+        (14, 17, 0xFFFF_FFFF, 0x0000_0001, 0), // rot == 0 (identity rotate)
+    ];
+
+    for &(rs1, rd, v1, v2, rot) in cases {
+        let mut prog: Vec<Instruction> = Vec::new();
+        if rs1 != 0 && rs1 != rd {
+            prog.push(Instruction::new(Add, 0, 0, rs1, v1)); // rs1 = v1
+        }
+        prog.push(Instruction::new(Add, 0, 0, rd, v2)); // rd = v2 (its OLD value)
+        prog.push(Instruction::new(ZimopIXorRot, rs1, 0, rd, rot));
+        prog.push(Instruction::new(Jal, 0, 0, 0, 0)); // jal x0, 0 = self-loop = exit
+
+        // rs1's value as actually seen by the opcode after setup.
+        let rs1_value = if rs1 == 0 {
+            0
+        } else if rs1 == rd {
+            v2
+        } else {
+            v1
+        };
+        let expected = (v2 ^ rs1_value).rotate_right(rot);
+
+        let (state, _mem) = JittedCode::<_>::run_alternative_simulator_from_instructions(
+            &prog,
+            &mut (),
+            &[],
+            None,
+        );
+        let got = state.materialized_registers()[rd as usize];
+        assert_eq!(
+            got, expected,
+            "ZimopIXorRot mismatch: rs1=x{rs1} rd=x{rd} v1={v1:#010x} v2={v2:#010x} rot={rot} -> got {got:#010x}, expected {expected:#010x}"
+        );
+    }
+}
+
+/// `ZimopTriAdd` (MOP tri-add) computes `rd = rs1 + rs2 + rd_old` (wrapping) — the exact
+/// formula of the reference `add_sub_family::mop::mop_tri_add`. The default JIT decoder config
+/// never emits it, so build instruction streams directly and check the JIT's result against the
+/// reference formula across register placements (GPR-mapped vs XMM-resident rd/rs1/rs2) and the
+/// aliasing edge cases that stress accumulating in EAX: rs1==rd, rs2==rd, rs1==rs2, rs?==x0.
+#[test]
+#[serial_test::serial]
+fn test_jit_zimop_tri_add() {
+    use InstructionName::{Add, Jal, ZimopTriAdd};
+
+    // (rs1, rs2, rd, v1, v2, v_rd). v1->rs1, v2->rs2, v_rd->rd's OLD value.
+    let cases: &[(u8, u8, u8, u32, u32, u32)] = &[
+        (10, 11, 12, 0x1111_1111, 0x2222_2222, 0x3333_3333), // all GPR-mapped
+        (5, 6, 7, 0x1111_1111, 0x2222_2222, 0x3333_3333),    // all XMM-resident
+        (5, 11, 6, 0xAAAA_0000, 0x0000_5555, 0x0F0F_0F0F),   // mixed
+        (10, 11, 10, 0x1234_5678, 0x9abc_def0, 0),           // rs1 == rd
+        (11, 12, 12, 0x0000_0007, 0x1234_5678, 0),           // rs2 == rd
+        (9, 9, 13, 0x4000_0001, 0, 0x0000_0002),             // rs1 == rs2
+        (0, 14, 15, 0, 0x8000_0000, 0x8000_0001),            // rs1 == x0
+        (16, 0, 17, 0xFFFF_FFFF, 0, 0x0000_0002),            // rs2 == x0 (wraps)
+    ];
+
+    for &(rs1, rs2, rd, v1, v2, v_rd) in cases {
+        // Set up rs1, rs2 and rd's old value. The LAST write to a given reg wins, so write rd
+        // last to guarantee its OLD value is exactly v_rd.
+        let mut prog: Vec<Instruction> = Vec::new();
+        let mut set = |prog: &mut Vec<Instruction>, reg: u8, val: u32| {
+            if reg != 0 {
+                prog.push(Instruction::new(Add, 0, 0, reg, val));
+            }
+        };
+        set(&mut prog, rs1, v1);
+        set(&mut prog, rs2, v2);
+        set(&mut prog, rd, v_rd);
+        prog.push(Instruction::new(ZimopTriAdd, rs1, rs2, rd, 0));
+        prog.push(Instruction::new(Jal, 0, 0, 0, 0)); // exit
+
+        // Value actually surviving in a register after setup, honoring last-write-wins for the
+        // write order rs1, rs2, rd (so rd > rs2 > rs1 when they alias); x0 always reads 0.
+        let val_of = |reg: u8| -> u32 {
+            if reg == 0 {
+                0
+            } else if reg == rd {
+                v_rd
+            } else if reg == rs2 {
+                v2
+            } else if reg == rs1 {
+                v1
+            } else {
+                unreachable!()
+            }
+        };
+        let expected = val_of(rs1).wrapping_add(val_of(rs2)).wrapping_add(v_rd);
+
+        let (state, _mem) = JittedCode::<_>::run_alternative_simulator_from_instructions(
+            &prog,
+            &mut (),
+            &[],
+            None,
+        );
+        let got = state.materialized_registers()[rd as usize];
+        assert_eq!(
+            got, expected,
+            "ZimopTriAdd mismatch: rs1=x{rs1} rs2=x{rs2} rd=x{rd} v1={v1:#010x} v2={v2:#010x} v_rd={v_rd:#010x} -> got {got:#010x}, expected {expected:#010x}"
+        );
+    }
+}
+
 #[test]
 #[serial_test::serial]
 fn test_jit_full_block() {
@@ -1345,7 +1468,7 @@ fn run_and_compare() {
         );
         assert_eq!(
             reference_state.counters.binary_shift_family as u64,
-            jit_state.counters[CounterType::ShiftBinaryCsr as u8 as usize]
+            jit_state.counters[CounterType::ShiftBinary as u8 as usize]
         );
         assert_eq!(
             reference_state.counters.mul_div_family as u64,
@@ -1562,7 +1685,7 @@ fn run_recursion_and_compare() {
         );
         assert_eq!(
             reference_state.counters.binary_shift_family as u64,
-            jit_state.counters[CounterType::ShiftBinaryCsr as u8 as usize]
+            jit_state.counters[CounterType::ShiftBinary as u8 as usize]
         );
         assert_eq!(
             reference_state.counters.mul_div_family as u64,
