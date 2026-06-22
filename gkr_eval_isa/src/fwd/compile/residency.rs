@@ -89,6 +89,13 @@ pub struct ResidencyState {
     /// Reverse map: base cell → ValueId (for eviction debugging; cell 0 is Base
     /// or Ext base).
     cell_to_value: BTreeMap<u16, ValueId>,
+    /// Active resident borrows: ValueId → outstanding borrow count. A resident
+    /// value with a live borrow is an in-flight operand of a pending fold (its
+    /// `Smem{cell}` is already baked into the instruction stream but the consuming
+    /// ADD/MUL/FMA has not run yet), so its cell MUST NOT be evicted/reused until
+    /// the borrow is released. `eviction_order` skips every value present here.
+    /// This is the lease that closes the codex round-1 in-flight-borrow hole.
+    borrowed: BTreeMap<ValueId, u32>,
     /// Per-value facts (field, miss penalty, has_backing).
     info: HashMap<ValueId, ValueInfo>,
     /// Precomputed: for each (ValueId, point), the index of the next `Use` event
@@ -122,6 +129,7 @@ impl ResidencyState {
             alloc: CellAllocator::new(budget),
             resident: BTreeMap::new(),
             cell_to_value: BTreeMap::new(),
+            borrowed: BTreeMap::new(),
             info: info.clone(),
             next_uses,
             temp_cells_held: 0,
@@ -205,6 +213,92 @@ impl ResidencyState {
             Some(info) if info.has_backing => Loc::SourceDram,
             _ => Loc::Recompute,
         }
+    }
+
+    // ── On-demand transient allocation + resident borrow leases ───────────────
+    //
+    // These replace the static `ensure_temp_capacity` reservation model with the
+    // one-shared-allocator + lazy-eviction design: the emitter asks for a transient
+    // cell exactly when a compound child must materialize, and the planner evicts a
+    // backed (re-readable) resident on demand to make room — emitting nothing; the
+    // evicted value's future uses re-resolve via `location` (backed → `SourceDram`,
+    // unbacked → `Recompute`). Borrowed residents are protected (see `borrowed`).
+
+    /// Allocate a transient lowering cell for a value of `field`, evicting the
+    /// cheapest-to-reobtain *unborrowed* resident on demand if no free block fits.
+    ///
+    /// The returned cell is NOT recorded as a resident — it is a transient temp the
+    /// caller owns and must return via `free_temp` once the operand it backs has been
+    /// consumed. Eviction emits no instructions: an evicted resident's later uses
+    /// re-resolve through `location`. Returns `Err(BudgetBelowFloor)` only when no
+    /// evictable (unborrowed) resident remains and the demand still won't fit — i.e.
+    /// the budget is genuinely below the aligned schedule floor.
+    pub fn alloc_temp(&mut self, field: OperandField, point: usize) -> Result<u16, CompileError> {
+        // Direct fit first.
+        let initial_err = match self.alloc.alloc(field) {
+            Ok(cell) => {
+                self.bump_max_live();
+                return Ok(cell);
+            }
+            Err(e) => e,
+        };
+        // Evict cheapest-miss / farthest-next-use unborrowed residents until it fits.
+        let order = self.eviction_order(point);
+        let mut last_err = initial_err;
+        for victim_id in order {
+            let victim_cell = match self.resident.get(&victim_id) {
+                Some(&c) => c,
+                None => continue,
+            };
+            self.resident.remove(&victim_id);
+            self.cell_to_value.remove(&victim_cell);
+            self.alloc.free(victim_cell);
+            match self.alloc.alloc(field) {
+                Ok(cell) => {
+                    self.bump_max_live();
+                    return Ok(cell);
+                }
+                Err(e) => last_err = e,
+            }
+        }
+        Err(last_err)
+    }
+
+    /// Return a transient cell allocated by `alloc_temp` to the free pool.
+    /// Transient cells are never residents, so this only frees allocator space.
+    pub fn free_temp(&mut self, cell: u16) {
+        self.alloc.free(cell);
+    }
+
+    /// Borrow resident value `v` as an in-flight operand: pin its cell against
+    /// eviction for the lifetime of the borrow and return the cell. Returns `None`
+    /// when `v` is not resident (the caller then re-resolves via `location` —
+    /// backed → DRAM `Global`, unbacked → `Recompute`). Borrowing reads the cell `v`
+    /// already occupies; it allocates nothing. Balance every `Some` with
+    /// `release_borrow` once the consuming fold has been emitted.
+    pub fn borrow_resident(&mut self, v: ValueId) -> Option<u16> {
+        if let Some(&cell) = self.resident.get(&v) {
+            *self.borrowed.entry(v).or_insert(0) += 1;
+            Some(cell)
+        } else {
+            None
+        }
+    }
+
+    /// Release one borrow of `v` taken by `borrow_resident`. Once the count reaches
+    /// zero the value becomes an eviction candidate again.
+    pub fn release_borrow(&mut self, v: ValueId) {
+        if let Some(n) = self.borrowed.get_mut(&v) {
+            *n -= 1;
+            if *n == 0 {
+                self.borrowed.remove(&v);
+            }
+        }
+    }
+
+    /// Whether `v` currently has a live borrow (its cell is pinned against eviction).
+    pub fn is_borrowed(&self, v: ValueId) -> bool {
+        self.borrowed.contains_key(&v)
     }
 
     /// Evict enough residents to free at least `min_working_set` cells, then
@@ -328,6 +422,16 @@ impl ResidencyState {
         }
     }
 
+    /// Sync the high-water mark from the shared allocator's live count (residents +
+    /// transient temps allocated through `alloc_temp`/`admit`). The allocator is the
+    /// single source of truth for simultaneous occupancy in the one-allocator design.
+    fn bump_max_live(&mut self) {
+        let live = self.alloc.max_live();
+        if live > self.max_live {
+            self.max_live = live;
+        }
+    }
+
     /// Compute the next `Use` event index for `v` strictly after `point`.
     /// Returns `usize::MAX` if there are no future uses.
     fn next_use_after(&self, v: ValueId, point: usize) -> usize {
@@ -358,6 +462,10 @@ impl ResidencyState {
         let mut candidates: Vec<(ValueId, MissPenalty, usize)> = self
             .resident
             .keys()
+            // Skip values with a live borrow: their `Smem{cell}` is already baked into
+            // a pending fold's operands, so evicting them would corrupt that fold (the
+            // codex round-1 in-flight-borrow hole). Only unborrowed residents are victims.
+            .filter(|v| !self.borrowed.contains_key(v))
             .map(|&v| {
                 let miss = self.info.get(&v).map(|i| i.miss).unwrap_or_default();
                 let next = self.next_use_after(v, point);
@@ -674,6 +782,88 @@ mod tests {
         m.insert(value_a(), base_info(equal_miss(), true));
         m.insert(value_b(), base_info(equal_miss(), true));
         m
+    }
+
+    // ── On-demand alloc_temp + borrow lease ──────────────────────────────────
+
+    // Must-have #1 (the codex round-1 in-flight-borrow guard): a resident borrowed
+    // as a pending operand MUST NOT be evicted by a later transient alloc in the same
+    // chunk. A (cheap miss) is the natural eviction victim; borrowing it must force
+    // alloc_temp to evict B (expensive miss) instead. WITHOUT the borrow lease,
+    // alloc_temp evicts cheapest-miss A and the temp reuses A's cell — corrupting the
+    // in-flight borrow. This test FAILS (temp == A's cell, A no longer resident)
+    // without the `borrowed` skip in `eviction_order`.
+    #[test]
+    fn borrowed_resident_is_protected_from_eviction() {
+        // budget=2: A and B both Base-resident, A cheap-miss (natural victim).
+        let mut st = ResidencyState::new(&refs_a_b_tie_next_use(), &info_a_cheap_b_expensive(), 2);
+        let a_cell = match st.admit(value_a(), 0).unwrap() {
+            Loc::Smem(c) => c,
+            other => panic!("expected Smem, got {other:?}"),
+        };
+        let _b = st.admit(value_b(), 1).unwrap();
+
+        // Borrow A — it is now pinned even though it is the cheapest-miss victim.
+        let borrowed = st.borrow_resident(value_a()).expect("A is resident");
+        assert_eq!(borrowed, a_cell, "borrow returns A's resident cell");
+
+        // A transient alloc forces eviction. The lease must protect A → B is evicted.
+        let temp = st
+            .alloc_temp(OperandField::Base, 2)
+            .expect("alloc_temp evicts unborrowed B");
+        assert_ne!(temp, a_cell, "temp must NOT reuse the borrowed resident's cell");
+        assert_eq!(
+            st.location(value_a(), 2),
+            Loc::Smem(a_cell),
+            "borrowed A must stay resident in its cell"
+        );
+        assert_eq!(
+            st.location(value_b(), 2),
+            Loc::SourceDram,
+            "unborrowed B was the eviction victim"
+        );
+
+        st.free_temp(temp);
+        st.release_borrow(value_a());
+        // After release, A is an eviction candidate again.
+        assert!(
+            !st.is_borrowed(value_a()),
+            "release_borrow clears the lease"
+        );
+    }
+
+    // alloc_temp evicts a backed resident on demand and the temp reuses the freed
+    // cell; the evicted value re-resolves to its DRAM backing.
+    #[test]
+    fn alloc_temp_evicts_backed_resident_on_demand() {
+        let mut st = ResidencyState::new(&refs_two_residents(), &info_two_base(), 1);
+        let a_cell = match st.admit(value_a(), 0).unwrap() {
+            Loc::Smem(c) => c,
+            other => panic!("expected Smem, got {other:?}"),
+        };
+        // budget=1, A occupies the only cell. A temp must evict A (unborrowed, backed).
+        let temp = st.alloc_temp(OperandField::Base, 1).expect("evicts A");
+        assert_eq!(temp, a_cell, "temp reuses the freed cell");
+        assert_eq!(
+            st.location(value_a(), 1),
+            Loc::SourceDram,
+            "evicted backed resident re-reads DRAM"
+        );
+        st.free_temp(temp);
+    }
+
+    // With the only resident borrowed and the budget exhausted, alloc_temp cannot
+    // steal the borrowed cell → BudgetBelowFloor (NOT a silent borrow corruption).
+    #[test]
+    fn alloc_temp_below_floor_when_only_resident_is_borrowed() {
+        let mut st = ResidencyState::new(&refs_two_residents(), &info_two_base(), 1);
+        let _a = st.admit(value_a(), 0).unwrap();
+        let _ = st.borrow_resident(value_a()).expect("A resident");
+        match st.alloc_temp(OperandField::Base, 1) {
+            Err(CompileError::BudgetBelowFloor { .. }) => {}
+            other => panic!("expected BudgetBelowFloor (borrowed cell unstealable), got {other:?}"),
+        }
+        st.release_borrow(value_a());
     }
 
     #[test]
