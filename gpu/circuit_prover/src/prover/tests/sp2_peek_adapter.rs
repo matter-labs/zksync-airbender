@@ -22,6 +22,7 @@
 
 use super::*;
 
+use rayon::prelude::*;
 use std::alloc::Global;
 
 // Real-witness imports (test files are exempt from the `crate::upstream` rule).
@@ -1037,13 +1038,27 @@ fn adapter_resolves_one_peek_per_present_strategy_on_real_add_sub() {
 #[test]
 fn g1_peek_eq_fold_all_rows_add_sub_layer0() {
     let data = build_add_sub_real_data();
-    let peek = ProverPeekResolver { data: &data };
-    let ors = OracleResolvers::new(&data);
-    let r = ors.real();
     let rows: Vec<usize> = (0..data.trace_len).collect(); // ALL rows (Global Constraint)
-    let n = gkr_eval_isa::fwd::peek::validate_special_bindings(
-        &data.compiled_layer0, &data.dag.layers[0], &rows, &r, &peek,
-    ).expect("every referenced descriptor: peek == query-fold on every row");
+    // Partition the all-row differential across rayon workers: each chunk builds its own
+    // resolver bundle from `&data` (the bundle is `!Sync`, so it must be task-local) and
+    // runs `validate_special_bindings` on its slice. The function stays serial internally;
+    // its O(descriptors) coverage checks re-run per chunk (negligible). Counts sum.
+    let n: usize = rows
+        .par_chunks(16_384)
+        .map(|chunk| {
+            let peek = ProverPeekResolver { data: &data };
+            let ors = OracleResolvers::new(&data);
+            let r = ors.real();
+            gkr_eval_isa::fwd::peek::validate_special_bindings(
+                &data.compiled_layer0,
+                &data.dag.layers[0],
+                chunk,
+                &r,
+                &peek,
+            )
+            .expect("every referenced descriptor: peek == query-fold on every row")
+        })
+        .sum();
     assert!(n > 0, "expected at least one descriptor×row comparison");
     println!("G1 add_sub L0: {n} peek==fold comparisons over {} rows", data.trace_len);
 }
@@ -1098,13 +1113,26 @@ impl RealData {
 fn g1_all_four_strategies_covered_layer0() {
     let mut seen = StrategyKinds::default();
     for data in [build_add_sub_real_data(), build_unsigned_mul_div_real_data()] {
-        let peek = ProverPeekResolver { data: &data };
-        let ors = OracleResolvers::new(&data);
-        let r = ors.real();
         let rows: Vec<usize> = (0..data.trace_len).collect();
-        gkr_eval_isa::fwd::peek::validate_special_bindings(
-            &data.compiled_layer0, &data.dag.layers[0], &rows, &r, &peek,
-        ).unwrap();
+        // All-row binding differential, partitioned across rayon workers (same pattern as
+        // g1_peek_eq_fold_all_rows): per-chunk local resolver bundle, counts sum.
+        let n: usize = rows
+            .par_chunks(16_384)
+            .map(|chunk| {
+                let peek = ProverPeekResolver { data: &data };
+                let ors = OracleResolvers::new(&data);
+                let r = ors.real();
+                gkr_eval_isa::fwd::peek::validate_special_bindings(
+                    &data.compiled_layer0,
+                    &data.dag.layers[0],
+                    chunk,
+                    &r,
+                    &peek,
+                )
+                .unwrap()
+            })
+            .sum();
+        assert!(n > 0, "validate_special_bindings did no descriptor×row comparisons");
         seen.absorb(&data.compiled_layer0); // count strategies referenced at layer 0
     }
     assert!(seen.single && seen.aggregate && seen.setup && seen.decoder,
@@ -1115,9 +1143,10 @@ fn g1_all_four_strategies_covered_layer0() {
 
 /// Rows for the G2 composition gate.
 ///
-/// All-row is the strongest form and HAS been run green over both circuits
-/// (`finished in 2171.53s`, ~36 min, single-threaded). But all-row is too slow
-/// for a routine `cargo test` gate, so by default this returns a DETERMINISTIC
+/// All-row is the strongest form and HAS been run green over both circuits. The
+/// per-row work is now `rayon`-partitioned (see the test), so exhaustive dropped
+/// from ~36 min single-threaded (`2171.53s`) to ~80s on a 48-core host. Still
+/// slower than a routine gate wants, so by default this returns a DETERMINISTIC
 /// representative sample (head + tail + even stride + the PeekSetup padding
 /// boundary) and logs the count. Sampling is sanctioned for G2 specifically
 /// because G1 (Tasks 7-8) already proved the leaf binding `peek == fold` over
@@ -1159,21 +1188,45 @@ fn g2_vm_with_peeks_matches_identity_fold_root_parity_layer0() {
     let mut comparisons = 0usize; // non-vacuity guard (matches G1's `n > 0` discipline)
     for data in [build_add_sub_real_data(), build_unsigned_mul_div_real_data()] {
         let peek = ProverPeekResolver { data: &data };
-        let ors = OracleResolvers::new(&data);
-        let r = ors.real();
         let rows: Vec<usize> = sample_or_all_rows(&data); // all-row preferred; logs if sampled
         let layer = &data.dag.layers[0];
-        for &row in &rows {
-            let vm = gkr_eval_isa::fwd::interp::interpret_layer_row_with_peeks(&data.compiled_layer0, layer, &r, &peek, row).unwrap();
-            let id = gkr_eval_isa::fwd::peek::IdentityLookupResolver::new();
-            let oracle = ors.with_lookup(&id);
-            for (rid, vm_val) in &vm.by_root {
-                let oracle_val = cs::gkr_compiler::dag_ir::eval_layer_root(layer, *rid, row, &oracle);
-                assert_eq!(*vm_val, oracle_val, "root {rid:?} row {row}: VM-with-peeks != identity-fold");
-                comparisons += 1;
-            }
-            assert!(id.took_violation().is_none());
-        }
+        // Rows are fully independent (interpret + per-root identity-fold + assert), so
+        // partition them across rayon workers. `OracleResolvers` embeds a `Cell`-bearing
+        // no-op lookup (so it is `!Sync`) and the `Resolvers` bundle is `!Sync` too —
+        // both are built FRESH INSIDE each task (created-and-used within one worker,
+        // never shared), so the closure captures only `&data`/`&peek`/`layer`, which are
+        // `Sync` (RealData holds no interior mutability). Each per-row `IdentityLookupResolver`
+        // is task-local, so its violation `Cell` is never touched across threads.
+        let comps: usize = rows
+            .par_iter()
+            .map(|&row| {
+                let ors = OracleResolvers::new(&data);
+                let r = ors.real();
+                let vm = gkr_eval_isa::fwd::interp::interpret_layer_row_with_peeks(
+                    &data.compiled_layer0,
+                    layer,
+                    &r,
+                    &peek,
+                    row,
+                )
+                .unwrap();
+                let id = gkr_eval_isa::fwd::peek::IdentityLookupResolver::new();
+                let oracle = ors.with_lookup(&id);
+                let mut c = 0usize;
+                for (rid, vm_val) in &vm.by_root {
+                    let oracle_val =
+                        cs::gkr_compiler::dag_ir::eval_layer_root(layer, *rid, row, &oracle);
+                    assert_eq!(
+                        *vm_val, oracle_val,
+                        "root {rid:?} row {row}: VM-with-peeks != identity-fold"
+                    );
+                    c += 1;
+                }
+                assert!(id.took_violation().is_none());
+                c
+            })
+            .sum();
+        comparisons += comps;
     }
     assert!(comparisons > 0, "G2 compared no roots across either circuit");
 }
