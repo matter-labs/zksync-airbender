@@ -357,12 +357,15 @@ pub fn compile_layer(
     }
     // special_gathers = number of resolved-fold Specials emitted (SpecialTable length).
     stats.special_gathers = ctx.specials.len();
-    // max_live_cells is the LAYER-WIDE high-water of the per-layer residency planner
-    // (residents across all roots + lowering temps reserved via `ensure_temp_capacity`),
-    // replacing the per-root transient allocator's `max_live()` — a stricter cap that
-    // must stay ≤ BUDGET (Task-10 keystone). The transient `lower_operand` cells fold
-    // into this via the reservation handshake; `trace.max_live_cells` (the per-root
-    // transient high-water) is retained as a lower-bound floor for robustness.
+    // max_live_cells is the LAYER-WIDE high-water of the ONE shared cell allocator the
+    // `ResidencyState` owns — residents (admitted across all roots) and transient
+    // lowering temps share that single space, so its peak IS the layer's simultaneous
+    // live-cell count (residents + temps + evict partials). It must stay ≤ BUDGET; the
+    // allocator enforces this by construction (`alloc()` fails with BudgetBelowFloor
+    // beyond budget, so this can never under-report). `residency.max_live_cells()`
+    // returns that allocator's high-water; `trace.max_live_cells` is sampled from the
+    // same allocator inside `lower_operand`/`emit_reduction_group`, so the `.max()` is
+    // a belt-and-braces lower bound, not a separate source.
     stats.max_live_cells = residency.max_live_cells().max(trace.max_live_cells);
     // Remaining counters (inline_reads, evicts, reloads, recomputes, split_count,
     // avg_chunk) require per-instruction fine-grained tracking not yet wired in SP1.
@@ -724,8 +727,9 @@ mod tests {
         validate_compiled(&compiled, &dag.layers[0]).expect("validate_compiled must pass");
     }
 
-    // ── Task 10 / codex Mod3: a resident compound survives ACROSS two roots while a
-    // transient nested child lowered between them is freed. ────────────────────────
+    // ── A resident compound survives ACROSS two roots while a transient nested child
+    // lowered between them is freed (one shared allocator: residents and temps share
+    // the cell space, so a temp never lands on a live resident's cell). ─────────────
     //
     //   root0 = Add(memA, memB)            — cache root (no origin), CANDIDATE (later
     //                                        Prior use) → admitted resident in cell c.
@@ -817,11 +821,11 @@ mod tests {
         );
 
         // (iii) The transient `add_cd` cell in root1 must be evicted to a DIFFERENT cell
-        // than the resident cell — the resident map (ResidencyState) and the per-root
-        // transient CellAllocator are disjoint (codex Mod3). Every transient evict
-        // store `MOV DstFromAcc Smem{t}` other than root0's resident store must have
-        // t != resident_cell (else a transient lowering would clobber the resident
-        // value in the shared interpreter cell file — the parity bug this guards).
+        // than the resident cell. With ONE shared allocator, `alloc_temp` only hands out
+        // cells not currently occupied — a live resident occupies its cell, so a transient
+        // can never collide with it (the b5069ea0 collision is impossible by construction).
+        // Every transient evict store `MOV DstFromAcc Smem{t}` other than root0's resident
+        // store must have t != resident_cell.
         let transient_evicts: Vec<u16> = compiled
             .program
             .instrs

@@ -606,16 +606,12 @@ mod tests {
         );
     }
 
-    // ── Test 5: temp reservation accounting is symmetric ─────────────────────
+    // ── Shared fixtures for the alloc_temp / borrow-lease / max_live tests ────
     //
-    // Budget = 6, 2 Base residents (cells 0,1), leaving 4 free cells.
-    // Reserve N=3: free_cells must equal N (not 4), temp_cells_held += 3.
-    // max_live = 2 residents + 3 reserved = 5.
-    // Release: temp_cells_held returns to 0 (symmetric subtract).
-    // Reserve N=3 again: max_live must still be 5, not 8 (no leak).
-    // Reserve N=5 (> budget - residents = 4): must fail with BudgetBelowFloor.
-    //
-    // RefString: just the two Produce events; no further uses so eviction is free.
+    // Two Base residents (cells 0,1) with no further uses (so eviction is free).
+    // Reused by `alloc_temp_evicts_backed_resident_on_demand`,
+    // `alloc_temp_below_floor_when_only_resident_is_borrowed`, and
+    // `max_live_tracks_residents_plus_live_temps`.
 
     fn refs_two_residents() -> RefString {
         RefString {
