@@ -1,3 +1,4 @@
+pub mod analyze;
 pub mod arith;
 pub mod negate;
 pub mod resolution;

@@ -97,7 +97,7 @@ pub fn build_cross_layer_field_map(
 /// If any leaf is absent from the map (defensive — should not happen for a valid
 /// circuit), `expr_field_with_map` returns `None` and we fall back to `expected`.
 /// Where the field IS already known (`Ok`), `expected` and `map` are ignored.
-fn child_operand_field(
+pub(crate) fn child_operand_field(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     id: ExprId,
     expected: OperandField,
