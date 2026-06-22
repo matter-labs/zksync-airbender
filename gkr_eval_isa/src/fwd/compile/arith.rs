@@ -15,7 +15,7 @@ use super::super::isa::{
     DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Sign, Special, MAX_ARITY,
 };
 use super::residency::{Loc, ResidencyState};
-use super::schedule::{split_reduction, CellAllocator};
+use super::schedule::{split_by_working_set, split_reduction, CellAllocator, LoweringOperandNeed};
 use cs::gkr_compiler::dag_ir::{
     expr_field, Expr, ExprId, FieldKind, ReadPlace, RootId, SinkKind, SourceKind,
 };
@@ -50,6 +50,14 @@ pub(crate) struct LoweringEnv<'a> {
     /// `location` is point-insensitive (it reads the current resident snapshot), so
     /// this is passed for API symmetry only.
     pub point: usize,
+    /// Free smem cells the residency planner reserved for THIS expression's lowering
+    /// (`ResidencyState::ensure_temp_capacity(min_working_set, point).free_cells`,
+    /// codex Imp4). Threaded into `split_by_working_set` so an over-cap reduction's
+    /// compound-operand working set never exceeds what the planner reserved. All
+    /// reduction-group operands are SIMPLE (compounds were pre-lowered to cells), so
+    /// for the gated circuits `split_by_working_set` returns a single chunk and the
+    /// arity-cap `split_reduction` is what actually fires.
+    pub free_cells: usize,
 }
 
 /// BabyBear modulus P = 2^31 − 2^27 + 1 = 0x78000001.
@@ -681,7 +689,7 @@ fn compile_reduction(
         if group.is_empty() {
             continue;
         }
-        emit_reduction_group(out, trace, field, group, is_add, sign, alloc)?;
+        emit_reduction_group(out, trace, field, group, is_add, sign, alloc, env.free_cells)?;
     }
 
     // Insert negate between base and ext phases when a base phase exists.
@@ -697,7 +705,7 @@ fn compile_reduction(
         if group.is_empty() {
             continue;
         }
-        emit_reduction_group(out, trace, field, group, is_add, sign, alloc)?;
+        emit_reduction_group(out, trace, field, group, is_add, sign, alloc, env.free_cells)?;
     }
 
     // Trailing negate when no base phase existed (all-Ext seed — unavoidable).
@@ -738,7 +746,20 @@ fn emit_reduction_group(
     is_add: bool,
     sign: Sign,
     alloc: &mut CellAllocator,
+    free_cells: usize,
 ) -> Result<(), CompileError> {
+    // Task 10 owns the `split_by_working_set` invocation (codex Imp4). Every operand
+    // in a reduction GROUP is SIMPLE (a compound child was pre-lowered into a cell by
+    // `lower_operand` upstream), so the working-set need is a list of inline operands
+    // plus the running-partial evict reserve carried by the group's field width. For
+    // all-simple operands `split_by_working_set` returns a single chunk and never
+    // forces a split — the arity-cap `split_reduction` below is what actually chunks.
+    // The call still validates that the planner's reservation can hold the evict
+    // partial (a `BudgetBelowFloor` here is a genuinely-infeasible reservation).
+    let width = if field == OperandField::Ext { 4u8 } else { 1u8 };
+    let needs = vec![LoweringOperandNeed { is_compound: false, width }; ops.len()];
+    let _ws_chunks = split_by_working_set(&needs, free_cells.max(width as usize))?;
+
     if ops.len() <= MAX_ARITY {
         // Unsplit fast path — identical to the prior Tasks 9/10 emission.
         push_fold(out, field, ops, is_add, sign);
@@ -943,7 +964,7 @@ fn try_compile_fma(
                 if group.is_empty() {
                     continue;
                 }
-                emit_reduction_group(out, trace, f, group, /* is_add */ true, s, alloc)?;
+                emit_reduction_group(out, trace, f, group, /* is_add */ true, s, alloc, env.free_cells)?;
             }
             &lo[..]
         } else {
@@ -984,7 +1005,7 @@ fn try_compile_fma(
             .push((op_l, op_r));
     }
     for ((lf, rf, sign), gpairs) in groups {
-        push_fma_chunked(out, field_from_u8(lf), field_from_u8(rf), sign_from_u8(sign), gpairs);
+        push_fma_chunked(out, field_from_u8(lf), field_from_u8(rf), sign_from_u8(sign), gpairs, env.free_cells)?;
     }
     free_all(alloc, &owned_cells);
     Ok(Some(()))
@@ -1035,7 +1056,17 @@ fn push_fma_chunked(
     field_rhs: OperandField,
     sign: Sign,
     pairs: Vec<(OperandLine, OperandLine)>,
-) {
+    free_cells: usize,
+) -> Result<(), CompileError> {
+    // Task 10 owns the `split_by_working_set` invocation here too (codex Imp4). FMA
+    // pair operands are SIMPLE (compound factors were pre-lowered to cells upstream),
+    // so the working-set guard returns a single chunk; the arity-cap `chunks(MAX_ARITY)`
+    // below does the real splitting. The wider of the two field widths sizes the
+    // evict reserve (an FMA promotes the acc to Ext when either factor is Ext).
+    let width = if field_lhs == OperandField::Ext || field_rhs == OperandField::Ext { 4u8 } else { 1u8 };
+    let needs = vec![LoweringOperandNeed { is_compound: false, width }; pairs.len()];
+    let _ws_chunks = split_by_working_set(&needs, free_cells.max(width as usize))?;
+
     for chunk in pairs.chunks(MAX_ARITY) {
         out.push(Instr::Fma {
             field_lhs,
@@ -1044,6 +1075,7 @@ fn push_fma_chunked(
             pairs: chunk.to_vec(),
         });
     }
+    Ok(())
 }
 
 // ── small structural predicates ──────────────────────────────────────────────────
@@ -1207,6 +1239,7 @@ mod tests {
             residency: &residency,
             cache_root_expr: &cache_root_expr,
             point: 0,
+            free_cells: 1024,
         };
         compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base, env)
             .expect("compile_expr");
@@ -1224,6 +1257,7 @@ mod tests {
             residency: &residency,
             cache_root_expr: &cache_root_expr,
             point: 0,
+            free_cells: 1024,
         };
         compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base, env)?;
         Ok(out)
@@ -1813,6 +1847,7 @@ mod tests {
             residency: &residency,
             cache_root_expr: &cache_root_expr,
             point: 0,
+            free_cells: 1024,
         };
 
         // lower_operand on the resolution-pruned expr must reuse the descriptor.
@@ -1860,6 +1895,7 @@ mod tests {
             residency: &residency,
             cache_root_expr: &cache_root_expr,
             point: 0,
+            free_cells: 1024,
         };
         compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, expected, env)
             .expect("compile_expr");

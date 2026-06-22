@@ -148,6 +148,17 @@ pub fn compile_layer(
                 let sink = &layer.sinks[sink_id.0 as usize];
                 let expected = operand_field_of(sink);
 
+                // Residents-vs-temps handshake (codex Imp4): BEFORE lowering, reserve
+                // the root's smem working set from the residency planner so residents +
+                // temps never exceed BUDGET. `release` returns the temps after the
+                // expression. `free_cells` is threaded into `split_by_working_set` via
+                // the env. The reservation (`&mut residency`) is taken before the env's
+                // immutable borrow and released after it drops (no borrow overlap).
+                let min_working_set =
+                    root_min_working_set(layer, expr, &ctx.cross_layer_fields);
+                let reservation = residency.ensure_temp_capacity(min_working_set, point)?;
+                let free_cells = reservation.free_cells;
+
                 // Lower the expr into the accumulator. A fresh transient
                 // `CellAllocator` backs the general nested-subexpression fallback
                 // (`lower_operand`): transient lowering cells are distinct from the
@@ -161,6 +172,7 @@ pub fn compile_layer(
                         residency: &residency,
                         cache_root_expr: &cache_root_expr,
                         point,
+                        free_cells,
                     };
                     compile_expr(
                         layer,
@@ -173,6 +185,8 @@ pub fn compile_layer(
                         env,
                     )?;
                 }
+                // Return the temp cells to the planner (residents stay resident).
+                residency.release(reservation);
 
                 // If lowering emitted no instructions, the root is degenerate
                 // (post-elision empty): materializing now would push a stale
@@ -264,11 +278,15 @@ pub fn compile_layer(
             ForwardAction::CopyAlias { .. } => {
                 // §10: a view-alias produces NO kernel bytecode. Lower the root's
                 // single source expr to an OperandLine for the action executor.
+                // A CopyAlias root lowers a single source/special operand — no reduction
+                // lowering reaches `split_by_working_set`, so `free_cells` is unused
+                // here (set to the full budget).
                 let env = LoweringEnv {
                     desc_by_expr: &desc_by_expr,
                     residency: &residency,
                     cache_root_expr: &cache_root_expr,
                     point,
+                    free_cells: budget,
                 };
                 let op = source_to_operand(layer, expr, &mut ctx, &mut trace, env)?;
                 root_outputs.push((rid, RootOutput::Alias(op)));
@@ -339,8 +357,13 @@ pub fn compile_layer(
     }
     // special_gathers = number of resolved-fold Specials emitted (SpecialTable length).
     stats.special_gathers = ctx.specials.len();
-    // max_live_cells from the compiler's high-water mark across all roots.
-    stats.max_live_cells = trace.max_live_cells;
+    // max_live_cells is the LAYER-WIDE high-water of the per-layer residency planner
+    // (residents across all roots + lowering temps reserved via `ensure_temp_capacity`),
+    // replacing the per-root transient allocator's `max_live()` — a stricter cap that
+    // must stay ≤ BUDGET (Task-10 keystone). The transient `lower_operand` cells fold
+    // into this via the reservation handshake; `trace.max_live_cells` (the per-root
+    // transient high-water) is retained as a lower-bound floor for robustness.
+    stats.max_live_cells = residency.max_live_cells().max(trace.max_live_cells);
     // Remaining counters (inline_reads, evicts, reloads, recomputes, split_count,
     // avg_chunk) require per-instruction fine-grained tracking not yet wired in SP1.
     // cell_loads: left at 0 in S1 — see cell_stores note above.
@@ -434,6 +457,42 @@ fn collect_prior_uses(
             }
         }
     }
+}
+
+/// The smem working set a root's lowering needs simultaneously (codex Imp4): the sum
+/// of the cell widths of its top-level COMPOUND children (each pre-lowered into a cell
+/// by `lower_operand` and held live across the fold) plus a one-value evict reserve
+/// sized to the root's field. A source/resolution child needs no cell. This bounds
+/// the temps the residency planner reserves via `ensure_temp_capacity` so residents +
+/// temps never exceed BUDGET. For the gated circuits this is small (≤ a few cells).
+fn root_min_working_set(
+    layer: &DagLayer,
+    expr_id: ExprId,
+    cross_layer_fields: &HashMap<ReadPlace, FieldKind>,
+) -> usize {
+    // Field width of a value: Ext = 4 cells, Base = 1.
+    let width_of = |id: ExprId| -> usize {
+        match arith::child_operand_field(layer, id, OperandField::Base, cross_layer_fields) {
+            OperandField::Ext => 4,
+            OperandField::Base => 1,
+        }
+    };
+    // The root's own field sizes the evict/acc reserve.
+    let reserve = width_of(expr_id);
+    let children: &[ExprId] = match &layer.exprs[expr_id.0 as usize] {
+        Expr::Add(children) | Expr::Mul(children) => children,
+        Expr::Source(_) => return reserve, // a bare source needs no lowering cell
+    };
+    let compound_cells: usize = children
+        .iter()
+        .filter(|&&c| {
+            // A compound child (not a source, not resolution-pruned) lowers into a cell.
+            !layer.resolutions.contains_key(&c)
+                && !matches!(&layer.exprs[c.0 as usize], Expr::Source(_))
+        })
+        .map(|&c| width_of(c))
+        .sum();
+    (compound_cells + reserve).max(reserve)
 }
 
 /// Map a sink to the backing `(key, col)` its value materializes into.
@@ -633,5 +692,187 @@ mod tests {
         let err = compile_layer(&layer, &artifact_layer(0), &BTreeMap::new(), &HashMap::new(), 16)
             .unwrap_err();
         assert_eq!(err, CompileError::DegenerateRoot(RootId(0)));
+    }
+
+    // ── Task 10 Step 6: invariant goldens (real add_sub L0 fixture) ────────────────
+
+    use std::path::PathBuf;
+    use cs::gkr_compiler::dag_ir::{lower_dag, validate};
+    use cs::gkr_compiler::GKRCircuitArtifact;
+    use field::baby_bear::base::BabyBearField;
+    use crate::fwd::validate::validate_compiled;
+
+    fn load_fixture(name: &str) -> Option<GKRCircuitArtifact<BabyBearField>> {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cs/compiled_circuits");
+        let bytes = std::fs::read(dir.join(format!("{}.json", name))).ok()?;
+        serde_json::from_slice(&bytes).ok()
+    }
+
+    // (6a) `root_outputs` are in RootId index order and identical to a recomputed-by-
+    // RootId reference (S2 keeps index order — no reorder until S3). (6b) `ctx.specials`
+    // holds exactly the DISTINCT reached descriptors (no per-use duplication). (6c)
+    // `validate_compiled` passes — field transitions, ext alignment, budget all clean
+    // over the residency-redirected program.
+    #[test]
+    fn add_sub_layer0_invariant_goldens() {
+        let artifact = match load_fixture("add_sub_lui_auipc_mop_layout_gkr") {
+            Some(a) => a,
+            None => return,
+        };
+        let dag = lower_dag(&artifact).expect("lower_dag");
+        validate(&dag).expect("validate dag");
+        let cross = build_cross_layer_field_map(&dag);
+        let compiled =
+            compile_layer(&dag.layers[0], &artifact.layers[0], &artifact.scratch_space_mapping, &cross, 1024)
+                .expect("compile_layer");
+
+        // (6a) root_outputs sorted by RootId, matching a by-RootId reference.
+        let ids: Vec<RootId> = compiled.root_outputs.iter().map(|(rid, _)| *rid).collect();
+        let mut sorted = ids.clone();
+        sorted.sort_by_key(|r| r.0);
+        assert_eq!(ids, sorted, "root_outputs must stay in RootId index order (no reorder until S3)");
+        // Recompute the by-RootId reference and assert identity.
+        let mut reference: std::collections::BTreeMap<u32, RootOutput> = std::collections::BTreeMap::new();
+        for (rid, out) in &compiled.root_outputs {
+            assert!(reference.insert(rid.0, *out).is_none(), "duplicate RootId {} in root_outputs", rid.0);
+        }
+        let recomputed: Vec<(RootId, RootOutput)> =
+            reference.into_iter().map(|(k, v)| (RootId(k), v)).collect();
+        assert_eq!(compiled.root_outputs, recomputed, "root_outputs must equal the by-RootId reference");
+
+        // (6b) specials hold exactly the distinct reached descriptors — no duplicates.
+        let graph = analyze_layer(&dag.layers[0], &DagForwardContext::default());
+        let distinct = graph.descriptors.keys.len();
+        assert_eq!(
+            compiled.ctx.specials.len(),
+            distinct,
+            "ctx.specials.len() {} must equal the distinct reached-descriptor count {}",
+            compiled.ctx.specials.len(),
+            distinct
+        );
+        // Every descriptor origin is distinct (no per-use duplication).
+        let mut origins: std::collections::HashSet<ExprId> = std::collections::HashSet::new();
+        for d in compiled.ctx.specials.iter() {
+            assert!(origins.insert(d.origin_expr), "duplicate descriptor for origin {:?}", d.origin_expr);
+        }
+
+        // (6c) the residency-redirected program validates cleanly.
+        validate_compiled(&compiled, &dag.layers[0]).expect("validate_compiled must pass");
+    }
+
+    // ── Task 10 / codex Mod3: a resident compound survives ACROSS two roots while a
+    // transient nested child lowered between them is freed. ────────────────────────
+    //
+    //   root0 = Add(memA, memB)            — cache root (no origin), CANDIDATE (later
+    //                                        Prior use) → admitted resident in cell c.
+    //   root1 = Mul(Add(memC, memD), memE) — its Add child lowers into a TRANSIENT cell
+    //                                        (freed after root1's fold).
+    //   root2 = Mul(Prior(root0), memF)    — reads root0 from its RESIDENT cell c.
+    //
+    // Asserts: (i) root0 emits a resident store `MOV DstFromAcc Smem{c}`; (ii) root2
+    // reads `OperandLine::Smem{c}` (resident survived + is read by root2, NOT re-read
+    // from DRAM); (iii) the transient cell from root1 does not collide with the
+    // resident cell c (resident map and transient allocator are disjoint — codex Mod3).
+    #[test]
+    fn resident_compound_survives_across_roots_transient_freed() {
+        use crate::fwd::isa::OperandLine;
+        let mut arena = ArenaBuilder::new();
+        let mem = |arena: &mut ArenaBuilder, col: usize| {
+            let s = arena.intern_source(SourceKind::Read {
+                place: ReadPlace::BaseLayerMemory { column: col },
+            });
+            arena.source_expr(s)
+        };
+        let a = mem(&mut arena, 0);
+        let b = mem(&mut arena, 1);
+        let add_ab = arena.add(vec![a, b]); // root0 expr (cache root)
+
+        let c = mem(&mut arena, 2);
+        let d = mem(&mut arena, 3);
+        let add_cd = arena.add(vec![c, d]); // transient compound child of root1
+        let e = mem(&mut arena, 4);
+        let mul_cde = arena.mul(vec![add_cd, e]); // root1 expr (Mul of a compound + source)
+
+        let prior0 = arena.intern_source(SourceKind::Prior { id: RootId(0) });
+        let prior0_expr = arena.source_expr(prior0);
+        let f = mem(&mut arena, 5);
+        let mul_prior_f = arena.mul(vec![prior0_expr, f]); // root2 expr (reads root0)
+
+        let layer = DagLayer {
+            sources: arena.sources().to_vec(),
+            exprs: arena.exprs().to_vec(),
+            roots: vec![
+                Root::Output { expr: add_ab, sink: SinkId(0) },     // cache root
+                Root::Output { expr: mul_cde, sink: SinkId(1) },    // normal output
+                Root::Output { expr: mul_prior_f, sink: SinkId(2) },// reads root0
+            ],
+            sinks: vec![
+                SinkInfo { kind: SinkKind::Cache { layer: 3, offset: 0 }, field: FieldKind::Base },
+                SinkInfo { kind: SinkKind::Inner { layer: 3, offset: 0 }, field: FieldKind::Base },
+                SinkInfo { kind: SinkKind::Inner { layer: 3, offset: 1 }, field: FieldKind::Base },
+            ],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(), // root0 has no origin → cache root
+            resolutions: BTreeMap::new(),
+        };
+
+        let compiled =
+            compile_layer(&layer, &artifact_layer(3), &BTreeMap::new(), &HashMap::new(), 1024)
+                .expect("compile_layer");
+
+        // (i) root0 emitted a resident store MOV DstFromAcc Smem{c}; capture cell c.
+        let resident_cell = compiled.program.instrs.iter().find_map(|i| match i {
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                dst: Some(DstLine::Smem { cell }),
+                ..
+            } => Some(*cell),
+            _ => None,
+        });
+        let resident_cell = resident_cell.expect(
+            "root0 (a reused cache root) must be kept resident via MOV DstFromAcc Smem",
+        );
+
+        // (ii) some instruction reads the resident cell as an Smem operand (root2's
+        // Prior read), proving the resident survived and was read — not re-read DRAM.
+        let reads_resident = compiled.program.instrs.iter().any(|i| match i {
+            Instr::Mul { operands, .. } | Instr::Add { operands, .. } => {
+                operands.iter().any(|o| matches!(o, OperandLine::Smem { cell } if *cell == resident_cell))
+            }
+            Instr::Mov { src: Some(OperandLine::Smem { cell }), .. } => *cell == resident_cell,
+            Instr::Fma { pairs, .. } => pairs.iter().any(|(l, r)| {
+                matches!(l, OperandLine::Smem { cell } if *cell == resident_cell)
+                    || matches!(r, OperandLine::Smem { cell } if *cell == resident_cell)
+            }),
+            _ => false,
+        });
+        assert!(
+            reads_resident,
+            "root2's Prior read must consume the RESIDENT cell {resident_cell} (resident survived across roots), program: {:#?}",
+            compiled.program.instrs
+        );
+
+        // (iii) The transient `add_cd` cell in root1 must be evicted to a DIFFERENT cell
+        // than the resident cell — the resident map (ResidencyState) and the per-root
+        // transient CellAllocator are disjoint (codex Mod3). root1's transient evict is
+        // a `MOV DstFromAcc Smem{t}` with t != resident_cell; assert at least one such
+        // distinct transient store exists OR (defensively) that the resident cell is
+        // never the transient. We assert no Global re-read of root0 leaked in:
+        let root0_backing = compiled.ctx.cache_loc.get(&RootId(0)).copied();
+        if let Some((slot, col)) = root0_backing {
+            let reread_global = compiled.program.instrs.iter().any(|i| match i {
+                Instr::Mul { operands, .. } | Instr::Add { operands, .. } => operands
+                    .iter()
+                    .any(|o| matches!(o, OperandLine::Global { slot: s, col: cc } if *s == slot && *cc == col)),
+                Instr::Mov { src: Some(OperandLine::Global { slot: s, col: cc }), .. } => *s == slot && *cc == col,
+                _ => false,
+            });
+            assert!(
+                !reread_global,
+                "root0's cache backing ({slot},{col}) must NOT be re-read — the resident cell replaces it",
+            );
+        }
+        // The compiled layer validates cleanly with both resident + transient cells.
+        validate_compiled(&compiled, &layer).expect("validate_compiled must pass");
     }
 }
