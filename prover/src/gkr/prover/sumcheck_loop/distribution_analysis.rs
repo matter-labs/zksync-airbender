@@ -1,7 +1,10 @@
 use std::collections::BTreeSet;
 
 use super::*;
+use crate::gkr::prover::sumcheck_loop::batch_evaluation::BatchedGKRDescription;
+use cs::definitions::gkr::NoFieldLinearRelation;
 use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
+use cs::gkr_compiler::{NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation};
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(crate) fn analyze_terms(&self) {
@@ -400,6 +403,342 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
         (addresses, terms)
     }
+
+    /// Compare the cost (field multiplications and additions) of evaluating this layer two ways:
+    ///
+    /// * **Batched** — the flattened [`BatchedGKRDescription`]. Flattening distributes the random
+    ///   batching challenges into every coefficient, so a constraint `gamma * (a*b + a*c)` becomes
+    ///   `(gamma*a)*b + ... ` — every monomial carries a non-trivial (random) coefficient and is a
+    ///   separate product. We therefore charge one coefficient-multiply per monomial.
+    /// * **Individual gates** — each gate evaluated with its native bracket structure (e.g. a max-
+    ///   quadratic constraint keeps `a * (c1*b1 + c2*b2 + ...)` as one product), with the small
+    ///   integer coefficients `1`/`-1` charged as free. The batching challenge is *not* distributed;
+    ///   instead each gate pays it once: **one multiply per output, or one multiply if it has no
+    ///   output** (a pure enforced constraint).
+    ///
+    /// Multiplications are reported in two kinds:
+    /// * **challenge** — folding the batching challenge: the batched mode's per-monomial coefficient
+    ///   multiply is modeled as the *same kind* as the gate mode's per-output fold;
+    /// * **internal** — the multiplications done inside the evaluation itself (structural products
+    ///   and any native integer-coefficient scaling), counted as a separate kind.
+    pub(crate) fn compare_gate_vs_batched_cost(
+        &self,
+        layer: &GKRLayerDescription,
+    ) -> CostComparison {
+        let challenge_constants = BatchedGKRTermDescriptionConstants {
+            external_challenges: GKRExternalChallenges {
+                permutation_argument_linearization_challenges: [E::ONE;
+                    NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES],
+                permutation_argument_additive_part: E::ONE,
+                _marker: core::marker::PhantomData,
+            },
+            lookup_challenges_additive_part: E::ONE,
+            lookup_challenges_multiplicative_part: E::ONE,
+            _marker: core::marker::PhantomData,
+        };
+        let description = self.make_batched_description(&challenge_constants, self.layer);
+        let batched = batched_form_cost(&description);
+
+        let p = F::CHARACTERISTICS;
+        let mut gate_native = EvalCost::default();
+        let mut gate_native_cse = EvalCost::default();
+        let mut gate_batching_mults = 0usize;
+        let mut num_gates = 0usize;
+        let mut unmodeled_gates = 0usize;
+        // Inner linear combinations already materialized, shared across all max-quadratic gates so a
+        // common sub-expression is built once and then reused.
+        let mut materialized: BTreeSet<Vec<(u32, GKRAddress)>> = BTreeSet::new();
+        for gate in layer
+            .gates_with_external_connections
+            .iter()
+            .chain(layer.gates.iter())
+        {
+            num_gates += 1;
+            let rel = &gate.enforced_relation;
+            match native_gate_cost(rel, p) {
+                Some(cost) => gate_native += cost,
+                None => unmodeled_gates += 1,
+            }
+            // CSE variant: max-quadratic constraints share inner-linear-form construction.
+            match rel {
+                NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input }
+                | NoFieldGKRRelation::MaxQuadratic { input, .. } => {
+                    gate_native_cse += max_quadratic_cse_cost(input, p, &mut materialized);
+                }
+                other => {
+                    if let Some(cost) = native_gate_cost(other, p) {
+                        gate_native_cse += cost;
+                    }
+                }
+            }
+            // The batching challenge is folded in once per output (or once if there is no output).
+            let outputs = num_outputs(rel);
+            gate_batching_mults += if outputs > 0 { outputs } else { 1 };
+        }
+
+        CostComparison {
+            batched,
+            gate_native,
+            gate_native_cse,
+            gate_batching_mults,
+            num_gates,
+            unmodeled_gates,
+        }
+    }
+}
+
+/// Field-operation cost split into the two kinds of multiply we care about, plus additions.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct EvalCost {
+    /// Multiplications of two runtime values (`var * var`, or `var * inner-sum`).
+    pub(crate) product_mults: usize,
+    /// Multiplications by a non-trivial constant / challenge (i.e. not `0`, `1` or `-1`).
+    pub(crate) coeff_mults: usize,
+    pub(crate) adds: usize,
+}
+
+impl EvalCost {
+    pub(crate) fn total_mults(&self) -> usize {
+        self.product_mults + self.coeff_mults
+    }
+}
+
+impl core::ops::AddAssign for EvalCost {
+    fn add_assign(&mut self, rhs: Self) {
+        self.product_mults += rhs.product_mults;
+        self.coeff_mults += rhs.coeff_mults;
+        self.adds += rhs.adds;
+    }
+}
+
+/// Side-by-side cost of evaluating a layer batched vs as individual gates.
+#[derive(Clone, Debug)]
+pub(crate) struct CostComparison {
+    pub(crate) batched: EvalCost,
+    pub(crate) gate_native: EvalCost,
+    /// Like `gate_native`, but max-quadratic constraints share the construction of identical inner
+    /// linear combinations (common subexpression elimination).
+    pub(crate) gate_native_cse: EvalCost,
+    /// Challenge folds: one multiply per gate output, or one per output-less gate.
+    pub(crate) gate_batching_mults: usize,
+    pub(crate) num_gates: usize,
+    pub(crate) unmodeled_gates: usize,
+}
+
+impl CostComparison {
+    /// "Challenge" multiplications: folding a random batching challenge in. In batched mode this is
+    /// the per-monomial coefficient multiply; in gate mode it is the per-output (or single
+    /// output-less) fold. The two are modeled as the *same kind* of multiply.
+    pub(crate) fn batched_challenge_mults(&self) -> usize {
+        self.batched.coeff_mults
+    }
+    pub(crate) fn gate_challenge_mults(&self) -> usize {
+        self.gate_batching_mults
+    }
+
+    /// "Internal" multiplications done *inside* the evaluation: structural products plus any native
+    /// (non-challenge) integer-coefficient scaling. A separate kind from the challenge folds.
+    pub(crate) fn batched_internal_mults(&self) -> usize {
+        // Batched coefficients are all challenges, so the only internal mults are the products.
+        self.batched.product_mults
+    }
+    pub(crate) fn gate_internal_mults(&self) -> usize {
+        self.gate_native.product_mults + self.gate_native.coeff_mults
+    }
+    /// Internal multiplications with common-subexpression elimination on the max-quadratic gates.
+    pub(crate) fn gate_internal_mults_cse(&self) -> usize {
+        self.gate_native_cse.product_mults + self.gate_native_cse.coeff_mults
+    }
+}
+
+/// Cost of evaluating the flattened batched description. Its coefficients are products of the
+/// constraints' integer coefficients with random transcript challenges, hence generically
+/// non-trivial, so every stored monomial is charged one coefficient-multiply.
+fn batched_form_cost<F: PrimeField, E: FieldExtension<F> + Field>(
+    desc: &BatchedGKRDescription<F, E>,
+) -> EvalCost {
+    let mut cost = EvalCost::default();
+    for part in [
+        &desc.quadratic_part_base_by_base,
+        &desc.quadratic_part_base_by_ext,
+        &desc.quadratic_part_ext_by_ext,
+    ] {
+        for (_a, inner) in part.iter() {
+            let k = inner.len();
+            if k == 0 {
+                continue;
+            }
+            cost.coeff_mults += k; // one random-challenge multiply per monomial
+            cost.product_mults += 1; // a * (inner sum)
+            cost.adds += k; // (k - 1) to build the inner sum + 1 to accumulate
+        }
+    }
+    for part in [
+        &desc.linear_part_base_by_everything,
+        &desc.linear_part_ext_by_everything,
+    ] {
+        for _ in part.iter() {
+            cost.coeff_mults += 1;
+            cost.adds += 1;
+        }
+    }
+    if !desc.constant_term.is_zero() {
+        cost.adds += 1;
+    }
+    cost
+}
+
+/// Whether a `u32` coefficient is non-trivial (costs a multiply): anything but `0`, `1`, `p-1`.
+fn u32_coeff_is_mult(coeff: u32, p: u32) -> bool {
+    coeff != 0 && coeff != 1 && coeff != p - 1
+}
+
+/// Native (bracket-preserving) cost of a max-quadratic relation `Σ a*(Σ c_j b_j) + Σ c_k v_k + c`.
+fn max_quadratic_native_cost(rel: &NoFieldMaxQuadraticGKRRelation, p: u32) -> EvalCost {
+    let mut cost = EvalCost::default();
+    for (_a, inner) in rel.quadratic_terms.iter() {
+        let mut nonzero = 0usize;
+        for (coeff, _b) in inner.iter() {
+            if *coeff == 0 {
+                continue;
+            }
+            nonzero += 1;
+            if u32_coeff_is_mult(*coeff, p) {
+                cost.coeff_mults += 1;
+            }
+        }
+        if nonzero > 0 {
+            cost.product_mults += 1; // one multiply of `a` by the bracketed inner sum
+            cost.adds += nonzero; // (nonzero - 1) to sum the inner + 1 to accumulate
+        }
+    }
+    for (coeff, _v) in rel.linear_terms.iter() {
+        if *coeff == 0 {
+            continue;
+        }
+        if u32_coeff_is_mult(*coeff, p) {
+            cost.coeff_mults += 1;
+        }
+        cost.adds += 1;
+    }
+    if rel.constant != 0 {
+        cost.adds += 1;
+    }
+    cost
+}
+
+/// Cost of a max-quadratic relation with common-subexpression elimination on the inner linear
+/// combinations. `materialized` records the canonical inner forms already built (shared across
+/// gates): each distinct form pays its construction (coefficient scaling + additions) only once,
+/// after which every quadratic term that uses it just multiplies (`a * L`) and accumulates.
+fn max_quadratic_cse_cost(
+    rel: &NoFieldMaxQuadraticGKRRelation,
+    p: u32,
+    materialized: &mut BTreeSet<Vec<(u32, GKRAddress)>>,
+) -> EvalCost {
+    let mut cost = EvalCost::default();
+    for (_a, inner) in rel.quadratic_terms.iter() {
+        // Canonical key for the inner linear form (drop zero coefficients, sort).
+        let mut key: Vec<(u32, GKRAddress)> =
+            inner.iter().filter(|(c, _)| *c != 0).copied().collect();
+        if key.is_empty() {
+            continue;
+        }
+        key.sort();
+        // Build the inner sum only the first time we ever see this exact linear form.
+        if materialized.insert(key.clone()) {
+            for (coeff, _b) in key.iter() {
+                if u32_coeff_is_mult(*coeff, p) {
+                    cost.coeff_mults += 1;
+                }
+            }
+            cost.adds += key.len() - 1; // sum the (already-scaled) terms
+        }
+        cost.product_mults += 1; // a * L
+        cost.adds += 1; // accumulate into the result
+    }
+    for (coeff, _v) in rel.linear_terms.iter() {
+        if *coeff == 0 {
+            continue;
+        }
+        if u32_coeff_is_mult(*coeff, p) {
+            cost.coeff_mults += 1;
+        }
+        cost.adds += 1;
+    }
+    if rel.constant != 0 {
+        cost.adds += 1;
+    }
+    cost
+}
+
+/// Native cost of a linear relation `Σ c_k v_k + c`.
+fn linear_native_cost(rel: &NoFieldLinearRelation, p: u32) -> EvalCost {
+    let mut cost = EvalCost::default();
+    for (coeff, _v) in rel.linear_terms.iter() {
+        if *coeff == 0 {
+            continue;
+        }
+        if u32_coeff_is_mult(*coeff, p) {
+            cost.coeff_mults += 1;
+        }
+        cost.adds += 1;
+    }
+    if rel.constant != 0 {
+        cost.adds += 1;
+    }
+    cost
+}
+
+/// Native arithmetic cost of one gate, before the batching fold. `None` for gate kinds we do not
+/// model (so the caller can report coverage). Lookup gates use small, documented closed-form costs.
+fn native_gate_cost(rel: &NoFieldGKRRelation, p: u32) -> Option<EvalCost> {
+    let cost = match rel {
+        NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
+            max_quadratic_native_cost(input, p)
+        }
+        NoFieldGKRRelation::MaxQuadratic { input, .. } => max_quadratic_native_cost(input, p),
+        NoFieldGKRRelation::LinearBaseFieldRelation { input, .. } => linear_native_cost(input, p),
+        // A copy a(x) = Σ eq(x,y) a(y) carries no arithmetic of its own here.
+        NoFieldGKRRelation::CopyInBaseField { .. }
+        | NoFieldGKRRelation::CopyInExtensionField { .. } => EvalCost::default(),
+        // A single product of two operands.
+        NoFieldGKRRelation::InitialGrandProductFromCaches { .. }
+        | NoFieldGKRRelation::InitialGrandProductWithoutCaches { .. }
+        | NoFieldGKRRelation::TrivialProduct { .. } => EvalCost {
+            product_mults: 1,
+            coeff_mults: 0,
+            adds: 0,
+        },
+        // 1/(a+γ) + 1/(b+γ): den = (a+γ)(b+γ), num = (a+γ) + (b+γ).
+        NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs { .. } => EvalCost {
+            product_mults: 1,
+            coeff_mults: 0,
+            adds: 3,
+        },
+        // 1/(a+γ) + m/(s+γ): den = (a+γ)(s+γ), num = (s+γ) + m*(a+γ).
+        NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup { .. } => EvalCost {
+            product_mults: 2,
+            coeff_mults: 0,
+            adds: 3,
+        },
+        // a/b - c/d -> (num = a*d - c*b, den = b*d).
+        NoFieldGKRRelation::LookupWithCachedDensAndSetup { .. } => EvalCost {
+            product_mults: 3,
+            coeff_mults: 0,
+            adds: 1,
+        },
+        _ => return None,
+    };
+    Some(cost)
+}
+
+/// Number of outputs a gate writes (used for the batching-fold charge). Output-less enforced
+/// constraints return 0 (the caller then charges a single fold).
+fn num_outputs(rel: &NoFieldGKRRelation) -> usize {
+    let mut outputs = BTreeSet::new();
+    rel.dump_outputs(&mut outputs);
+    outputs.len()
 }
 
 /// One operand-bearing monomial of the quadratic form, over dense variable indices.
@@ -1012,6 +1351,67 @@ mod test {
 
     type F = BabyBearField;
     type E = BabyBearExt4;
+
+    #[test]
+    fn compare_gate_vs_batched_cost_in_circuit() {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
+        } else {
+            deserialize_from_file(
+                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
+            )
+        };
+
+        let layer_idx = 0;
+        let layer = &circuit.layers[layer_idx];
+
+        let collector =
+            KernelCollector::<F, E>::from_layer(layer, layer_idx, E::ONE, E::ONE, E::ONE, &[], 0);
+
+        let cmp = collector.compare_gate_vs_batched_cost(layer);
+
+        println!("\n===== batched (flattened) vs individual gates, layer {} =====", layer_idx);
+        println!(
+            "gates: {} ({} unmodeled)",
+            cmp.num_gates, cmp.unmodeled_gates
+        );
+        println!("                       challenge-mults   internal-mults   adds");
+        println!(
+            "  batched:             {:>13}   {:>14}   {:>4}",
+            cmp.batched_challenge_mults(),
+            cmp.batched_internal_mults(),
+            cmp.batched.adds,
+        );
+        println!(
+            "  individual gates:    {:>13}   {:>14}   {:>4}",
+            cmp.gate_challenge_mults(),
+            cmp.gate_internal_mults(),
+            cmp.gate_native.adds,
+        );
+        println!(
+            "  gates (with CSE):    {:>13}   {:>14}   {:>4}",
+            cmp.gate_challenge_mults(),
+            cmp.gate_internal_mults_cse(),
+            cmp.gate_native_cse.adds,
+        );
+        println!(
+            "  delta (batched-gates):{:>+12}   {:>+14}   {:>+4}",
+            cmp.batched_challenge_mults() as i64 - cmp.gate_challenge_mults() as i64,
+            cmp.batched_internal_mults() as i64 - cmp.gate_internal_mults() as i64,
+            cmp.batched.adds as i64 - cmp.gate_native.adds as i64,
+        );
+        println!(
+            "CSE saved {} internal-mults and {} adds inside the max-quadratic gates",
+            cmp.gate_internal_mults() as i64 - cmp.gate_internal_mults_cse() as i64,
+            cmp.gate_native.adds as i64 - cmp.gate_native_cse.adds as i64,
+        );
+
+        assert_eq!(cmp.unmodeled_gates, 0, "all layer-0 gate kinds should be modeled");
+        assert!(
+            cmp.gate_internal_mults_cse() <= cmp.gate_internal_mults(),
+            "CSE cannot increase internal multiplications"
+        );
+    }
 
     #[test]
     fn analyze_terms_in_circuit() {

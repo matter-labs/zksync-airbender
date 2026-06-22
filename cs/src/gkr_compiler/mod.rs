@@ -900,6 +900,9 @@ impl NoFieldGKRRelation {
             Self::EnforceConstraintsMaxQuadratic { input } => {
                 // nothing
             }
+            Self::EnforceSingleMaxQuadraticConstraint { input } => {
+                // nothing
+            }
             Self::CopyInBaseField { output, .. } | Self::CopyInExtensionField { output, .. } => {
                 result.insert(*output);
             }
