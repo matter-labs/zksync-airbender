@@ -1,6 +1,7 @@
 pub mod analyze;
 pub mod arith;
 pub mod negate;
+pub mod residency;
 pub mod resolution;
 pub mod schedule;
 

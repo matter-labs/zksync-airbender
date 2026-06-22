@@ -54,6 +54,12 @@ pub struct ValueInfo {
     pub is_candidate: bool,
     /// Estimated cost to re-obtain this value if evicted from residency.
     pub miss: MissPenalty,
+    /// True if this value has a real global DRAM backing that can be re-read:
+    /// `SourceKind::Read`, `VirtualSetup`, or `Prior` (→ `OperandLine::Global`).
+    /// False for compound `Add`/`Mul` subexprs, `Constant`/`Challenge` literals,
+    /// and resolution-pruned (special-gather) leaves — these must be recomputed
+    /// or re-gathered if evicted.
+    pub has_backing: bool,
 }
 
 /// The value graph produced by `analyze_layer`.
@@ -169,12 +175,14 @@ pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
             );
             let width = if field == OperandField::Ext { 4 } else { 1 };
             let miss = compute_miss(layer, expr_id);
+            let has_backing = has_global_backing(layer, expr_id);
             ValueInfo {
                 refcount: 0,
                 field,
                 width,
                 is_candidate: false,
                 miss,
+                has_backing,
             }
         });
         entry.refcount += 1;
@@ -298,6 +306,28 @@ fn dfs_collect_refs(
                 );
             }
         }
+    }
+}
+
+/// Return `true` if `expr_id` has a real DRAM backing that can be re-read via
+/// `OperandLine::Global` — i.e. it is a `SourceKind::Read`, `VirtualSetup`, or
+/// `Prior` leaf. Returns `false` for compound exprs, literals, and resolution-
+/// pruned leaves (those are re-gathered or recomputed, not re-read from DRAM).
+fn has_global_backing(layer: &DagLayer, expr_id: ExprId) -> bool {
+    // Resolution-pruned → special gather, no DRAM backing.
+    if layer.resolutions.contains_key(&expr_id) {
+        return false;
+    }
+    match &layer.exprs[expr_id.0 as usize] {
+        Expr::Source(src_id) => {
+            matches!(
+                &layer.sources[src_id.0 as usize].kind,
+                SourceKind::Read { .. }
+                    | SourceKind::VirtualSetup { .. }
+                    | SourceKind::Prior { .. }
+            )
+        }
+        Expr::Add(_) | Expr::Mul(_) => false,
     }
 }
 
