@@ -115,33 +115,6 @@ impl CellAllocator {
         self.live = self.live.saturating_sub(width);
     }
 
-    /// Mark a SPECIFIC base cell as occupied for a value of `field`, without first-fit
-    /// search (Task 10): the per-root transient allocator pre-reserves the cells that
-    /// a layer-wide `ResidencyState` currently holds resident, so a transient lowering
-    /// cell never collides with a resident value in the shared interpreter cell file
-    /// (codex Mod3). Base reserves 1 cell; Ext reserves the 4-cell aligned block at
-    /// `base` (caller guarantees `base % 4 == 0` for Ext — the residency planner only
-    /// hands out 4-aligned Ext blocks). Idempotent on already-occupied cells.
-    pub fn occupy(&mut self, base: u16, field: OperandField) {
-        let base = base as usize;
-        let width = match field {
-            OperandField::Base => 1,
-            OperandField::Ext => 4,
-        };
-        if base + width > self.budget {
-            return;
-        }
-        let mut newly = 0usize;
-        for c in base..base + width {
-            if !self.occupied[c] {
-                newly += 1;
-            }
-            self.occupied[c] = true;
-            self.ext_interior[c] = field == OperandField::Ext && c != base;
-        }
-        self.bump_live(newly);
-    }
-
     /// The high-water mark of live cells over this allocator's life (§11
     /// "max live cells" instrumentation; tracked into `trace.max_live_cells`).
     pub fn max_live(&self) -> usize {
@@ -192,74 +165,6 @@ pub fn split_reduction(arity: usize) -> Vec<usize> {
         remaining -= take;
     }
     chunks
-}
-
-/// One operand's contribution to a reduction's smem working set (Task 9 / §11).
-///
-/// A SIMPLE (non-compound) operand is read inline from its backing and occupies
-/// no cell. A COMPOUND operand (a nested `Add`/`Mul` pre-materialized into a cell)
-/// occupies `width` cells (1 for Base, 4 for Ext) for the duration of the fold.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LoweringOperandNeed {
-    pub is_compound: bool,
-    pub width: u8,
-}
-
-/// Split a reduction's operands into chunks whose simultaneous smem working set
-/// fits `free_cells` (spec §11). `free_cells` is the live free-cell count the
-/// residency planner reserved via `ResidencyState::ensure_temp_capacity`; the
-/// emitter passes it in — this function never recomputes it.
-///
-/// Only COMPOUND operands consume cells; SIMPLE operands are inline and never
-/// force a split. Each chunk also reserves space for the running accumulator
-/// partial that is evicted between chunks (`reserve`, sized to the reduction's
-/// field = the widest operand, since a reduction is field-homogeneous). A chunk
-/// is cut when admitting the next compound operand would push
-/// `compound_cells + reserve` past `free_cells`. A single compound operand that
-/// cannot fit even alone (`width + reserve > free_cells`) is an unsupported
-/// budget → `Err(CompileError::BudgetBelowFloor)` (reusing the allocator's
-/// variant — a plain `Vec` can't distinguish "no chunks" from "infeasible
-/// budget").
-///
-/// Returns index ranges into `needs`; `Ok(vec![0..needs.len()])` when nothing
-/// forces a split, `Ok(vec![])` for an empty operand list.
-pub fn split_by_working_set(
-    needs: &[LoweringOperandNeed],
-    free_cells: usize,
-) -> Result<Vec<std::ops::Range<usize>>, CompileError> {
-    if needs.is_empty() {
-        return Ok(Vec::new());
-    }
-    // The acc/evict reserve approximates the reduction's field width: the running
-    // partial is a value of that field (Base = 1 cell, Ext = 4), and a reduction
-    // is field-homogeneous, so the widest operand carries that field's width.
-    let reserve = needs.iter().map(|n| n.width as usize).max().unwrap_or(0);
-
-    let mut chunks = Vec::new();
-    let mut chunk_start = 0usize;
-    let mut chunk_compound_cells = 0usize;
-    for (i, need) in needs.iter().enumerate() {
-        if !need.is_compound {
-            continue; // inline operand: no cell, never forces a split
-        }
-        let w = need.width as usize;
-        // A single compound operand + the partial reserve cannot fit at all.
-        if w + reserve > free_cells {
-            return Err(CompileError::BudgetBelowFloor {
-                floor: w + reserve,
-                budget: free_cells,
-            });
-        }
-        // Admitting this compound would overflow the current chunk's working set.
-        if chunk_compound_cells > 0 && chunk_compound_cells + w + reserve > free_cells {
-            chunks.push(chunk_start..i);
-            chunk_start = i;
-            chunk_compound_cells = 0;
-        }
-        chunk_compound_cells += w;
-    }
-    chunks.push(chunk_start..needs.len());
-    Ok(chunks)
 }
 
 #[cfg(test)]
@@ -342,32 +247,6 @@ mod tests {
         let chunks = split_reduction(MAX_ARITY + 1);
         assert_eq!(chunks.iter().sum::<usize>(), MAX_ARITY + 1);
         assert_eq!(chunks, vec![MAX_ARITY, 1]);
-    }
-
-    // ── split_by_working_set: simple inline vs compound-cell pressure ────────────
-
-    #[test]
-    fn simple_operands_do_not_force_a_split() {
-        let needs = vec![LoweringOperandNeed { is_compound: false, width: 1 }; 8];
-        let chunks = split_by_working_set(&needs, /*free_cells*/ 2).unwrap();
-        assert_eq!(chunks.len(), 1, "8 simple inline operands must NOT chunk under a tight budget: {chunks:?}");
-    }
-
-    #[test]
-    fn compound_operands_split_under_tight_budget() {
-        let needs = vec![LoweringOperandNeed { is_compound: true, width: 4 }; 3]; // 3 compound Ext operands
-        let chunks = split_by_working_set(&needs, /*free_cells*/ 8).unwrap(); // holds ~1 Ext + evict at a time
-        assert!(chunks.len() >= 2, "compound Ext operands exceeding the working set must chunk: {chunks:?}");
-    }
-
-    #[test]
-    fn single_compound_over_budget_is_below_floor() {
-        // One Ext compound (4) + acc/evict reserve cannot fit in free_cells=2 → BudgetBelowFloor.
-        let needs = vec![LoweringOperandNeed { is_compound: true, width: 4 }];
-        assert!(matches!(
-            split_by_working_set(&needs, /*free_cells*/ 2),
-            Err(CompileError::BudgetBelowFloor { .. })
-        ));
     }
 
     // ── below-floor error ───────────────────────────────────────────────────────

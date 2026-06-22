@@ -9,7 +9,6 @@ use self::analyze::{analyze_layer, materialize_descriptors};
 use self::arith::{compile_expr, source_to_operand, LoweringEnv};
 pub use self::arith::build_cross_layer_field_map;
 use self::residency::{Loc, RefEvent, RefString, ResidencyState};
-use self::schedule::CellAllocator;
 use super::binding::BackingKey;
 use super::context::{
     build_forward_actions, CompileTrace, CompiledLayer, DagForwardContext, ForwardAction,
@@ -148,55 +147,34 @@ pub fn compile_layer(
                 let sink = &layer.sinks[sink_id.0 as usize];
                 let expected = operand_field_of(sink);
 
-                // Residents-vs-temps handshake (codex Imp4): BEFORE lowering, reserve
-                // the root's smem working set from the residency planner so residents +
-                // temps never exceed BUDGET. `release` returns the temps after the
-                // expression. `free_cells` is threaded into `split_by_working_set` via
-                // the env. The reservation (`&mut residency`) is taken before the env's
-                // immutable borrow and released after it drops (no borrow overlap).
-                let min_working_set =
-                    root_min_working_set(layer, expr, &ctx.cross_layer_fields);
-                let reservation = residency.ensure_temp_capacity(min_working_set, point)?;
-                let free_cells = reservation.free_cells;
-
-                // Lower the expr into the accumulator. A fresh transient
-                // `CellAllocator` backs the general nested-subexpression fallback
-                // (`lower_operand`): transient lowering cells are distinct from the
-                // resident CSE/cache cells owned by the layer-wide `ResidencyState`
-                // (codex Mod3). The residency planner redirects reused same-layer
-                // reads (`Prior`/CSE) to resident `Smem` cells via `env`.
-                //
-                // CRITICAL (codex Mod3): the transient allocator and the residency
-                // planner write into the SAME interpreter cell file. A fresh transient
-                // allocator starts at cell 0 — the same cell residents occupy — so it
-                // MUST pre-reserve every currently-resident cell, else a transient
-                // lowering store clobbers a resident value before a later `Prior` read.
-                let mut alloc = CellAllocator::new(budget);
-                for (cell, field) in residency.resident_cells() {
-                    alloc.occupy(cell, field);
-                }
+                // Lower the expr into the accumulator. The ONE per-layer
+                // `ResidencyState` owns the single cell space holding both residents
+                // (kept across roots) and this root's transient lowering temps: a
+                // compound child materializes via `alloc_temp`, which evicts a backed
+                // (DRAM-re-readable) resident on demand when full (emitting nothing —
+                // the evicted value's later uses re-resolve via `location`). A reused
+                // same-layer `Prior`/CSE value is BORROWED from its resident cell (a
+                // lease pinning it for the consuming fold). No second allocator, no
+                // static reservation, no pre-occupy: with one cell space the b5069ea0
+                // transient/resident collision cannot occur by construction.
                 {
                     let env = LoweringEnv {
                         desc_by_expr: &desc_by_expr,
-                        residency: &residency,
                         cache_root_expr: &cache_root_expr,
                         point,
-                        free_cells,
                         allow_resident_smem: true,
                     };
                     compile_expr(
                         layer,
                         expr,
                         &mut ctx,
+                        &mut residency,
                         &mut trace,
                         &mut program.instrs,
-                        &mut alloc,
                         expected,
                         env,
                     )?;
                 }
-                // Return the temp cells to the planner (residents stay resident).
-                residency.release(reservation);
 
                 // If lowering emitted no instructions, the root is degenerate
                 // (post-elision empty): materializing now would push a stale
@@ -288,15 +266,10 @@ pub fn compile_layer(
             ForwardAction::CopyAlias { .. } => {
                 // §10: a view-alias produces NO kernel bytecode. Lower the root's
                 // single source expr to an OperandLine for the action executor.
-                // A CopyAlias root lowers a single source/special operand — no reduction
-                // lowering reaches `split_by_working_set`, so `free_cells` is unused
-                // here (set to the full budget).
                 let env = LoweringEnv {
                     desc_by_expr: &desc_by_expr,
-                    residency: &residency,
                     cache_root_expr: &cache_root_expr,
                     point,
-                    free_cells: budget,
                     // A view-alias output is read at PROGRAM END, not at this root's
                     // program point — so it must reference STABLE storage. Forbid a
                     // resident `Smem` operand (which Belady could evict/reuse before
@@ -304,13 +277,18 @@ pub fn compile_layer(
                     // cache backing instead (codex S2 review, finding 1).
                     allow_resident_smem: false,
                 };
-                let op = source_to_operand(layer, expr, &mut ctx, &mut trace, env)?;
+                let (op, lease) = source_to_operand(layer, expr, &mut ctx, &mut residency, &mut trace, env)?;
+                // `allow_resident_smem=false` guarantees the Prior arm never borrows, so
+                // the lease is `None` and the operand is stable storage (never a resident
+                // Smem cell, which Belady could evict before the program-end alias read).
                 debug_assert!(
-                    !matches!(op, OperandLine::Smem { .. }),
+                    matches!(lease, arith::OperandLease::None)
+                        && !matches!(op, OperandLine::Smem { .. }),
                     "CopyAlias output must be stable storage, never a resident Smem cell \
                      (RootId {}); residency must not redirect an alias operand",
                     rid.0
                 );
+                let _ = lease;
                 root_outputs.push((rid, RootOutput::Alias(op)));
             }
             ForwardAction::SkipScratchPrefill => {
@@ -479,42 +457,6 @@ fn collect_prior_uses(
             }
         }
     }
-}
-
-/// The smem working set a root's lowering needs simultaneously (codex Imp4): the sum
-/// of the cell widths of its top-level COMPOUND children (each pre-lowered into a cell
-/// by `lower_operand` and held live across the fold) plus a one-value evict reserve
-/// sized to the root's field. A source/resolution child needs no cell. This bounds
-/// the temps the residency planner reserves via `ensure_temp_capacity` so residents +
-/// temps never exceed BUDGET. For the gated circuits this is small (≤ a few cells).
-fn root_min_working_set(
-    layer: &DagLayer,
-    expr_id: ExprId,
-    cross_layer_fields: &HashMap<ReadPlace, FieldKind>,
-) -> usize {
-    // Field width of a value: Ext = 4 cells, Base = 1.
-    let width_of = |id: ExprId| -> usize {
-        match arith::child_operand_field(layer, id, OperandField::Base, cross_layer_fields) {
-            OperandField::Ext => 4,
-            OperandField::Base => 1,
-        }
-    };
-    // The root's own field sizes the evict/acc reserve.
-    let reserve = width_of(expr_id);
-    let children: &[ExprId] = match &layer.exprs[expr_id.0 as usize] {
-        Expr::Add(children) | Expr::Mul(children) => children,
-        Expr::Source(_) => return reserve, // a bare source needs no lowering cell
-    };
-    let compound_cells: usize = children
-        .iter()
-        .filter(|&&c| {
-            // A compound child (not a source, not resolution-pruned) lowers into a cell.
-            !layer.resolutions.contains_key(&c)
-                && !matches!(&layer.exprs[c.0 as usize], Expr::Source(_))
-        })
-        .map(|&c| width_of(c))
-        .sum();
-    (compound_cells + reserve).max(reserve)
 }
 
 /// Map a sink to the backing `(key, col)` its value materializes into.

@@ -55,21 +55,6 @@ pub enum Loc {
     Spill(u16),
 }
 
-// ── Temp reservation ─────────────────────────────────────────────────────────
-
-/// Scoped temp reservation returned by `ensure_temp_capacity`.
-///
-/// Holds cells that were freed for a single expression's lowering and returns
-/// them to the planner on `release`. `free_cells` is how many aligned cells the
-/// emitter may use without further eviction.
-pub struct TempReservation {
-    /// How many aligned cells are free for the lowering.
-    pub free_cells: usize,
-    /// Internal: cells that were evicted to satisfy the request (to be restored
-    /// when `release` is called — or in practice, the emitter re-admits them).
-    evicted: Vec<ValueId>,
-}
-
 // ── ResidencyState ────────────────────────────────────────────────────────────
 
 /// Per-layer smem residency planner.
@@ -102,12 +87,6 @@ pub struct ResidencyState {
     /// at or after `point`. Stored as a sorted list of use-event indices per
     /// value; binary search gives the next use.
     next_uses: HashMap<ValueId, Vec<usize>>,
-    /// Number of temp cells currently held by active `TempReservation`s.
-    temp_cells_held: usize,
-    /// High-water mark: residents + temp cells held.
-    max_live: usize,
-    /// Total budget (used for max_live_cells reporting).
-    budget: usize,
 }
 
 impl ResidencyState {
@@ -132,9 +111,6 @@ impl ResidencyState {
             borrowed: BTreeMap::new(),
             info: info.clone(),
             next_uses,
-            temp_cells_held: 0,
-            max_live: 0,
-            budget,
         }
     }
 
@@ -159,7 +135,6 @@ impl ResidencyState {
             Ok(cell) => {
                 self.resident.insert(v, cell);
                 self.cell_to_value.insert(cell, v);
-                self.update_max_live();
                 return Ok(Loc::Smem(cell));
             }
             Err(e) => e,
@@ -186,7 +161,6 @@ impl ResidencyState {
                 Ok(cell) => {
                     self.resident.insert(v, cell);
                     self.cell_to_value.insert(cell, v);
-                    self.update_max_live();
                     return Ok(Loc::Smem(cell));
                 }
                 Err(e) => { last_alloc_err = e; } // keep evicting
@@ -236,10 +210,7 @@ impl ResidencyState {
     pub fn alloc_temp(&mut self, field: OperandField, point: usize) -> Result<u16, CompileError> {
         // Direct fit first.
         let initial_err = match self.alloc.alloc(field) {
-            Ok(cell) => {
-                self.bump_max_live();
-                return Ok(cell);
-            }
+            Ok(cell) => return Ok(cell),
             Err(e) => e,
         };
         // Evict cheapest-miss / farthest-next-use unborrowed residents until it fits.
@@ -254,10 +225,7 @@ impl ResidencyState {
             self.cell_to_value.remove(&victim_cell);
             self.alloc.free(victim_cell);
             match self.alloc.alloc(field) {
-                Ok(cell) => {
-                    self.bump_max_live();
-                    return Ok(cell);
-                }
+                Ok(cell) => return Ok(cell),
                 Err(e) => last_err = e,
             }
         }
@@ -301,136 +269,17 @@ impl ResidencyState {
         self.borrowed.contains_key(&v)
     }
 
-    /// Evict enough residents to free at least `min_working_set` cells, then
-    /// return a `TempReservation` that holds those cells until `release`.
+    /// High-water mark of simultaneously live smem cells over this planner's life.
     ///
-    /// The emitter uses this before lowering a subexpression that needs scratch
-    /// cells. After lowering, call `release` to return the temp cells.
-    ///
-    /// Returns `Err(BudgetBelowFloor)` if even evicting all residents cannot
-    /// satisfy `min_working_set`.
-    pub fn ensure_temp_capacity(
-        &mut self,
-        min_working_set: usize,
-        point: usize,
-    ) -> Result<TempReservation, CompileError> {
-        // Count currently-free cells (budget minus occupied cells tracked by the
-        // alloc's live count). We do not have a direct "free cells" method, so we
-        // probe: attempt Base allocs until we have `min_working_set` free, tracking
-        // how many we could grab.
-        //
-        // Simpler approach: compute free_cells = budget - live_from_alloc.
-        // CellAllocator tracks `live` internally but doesn't expose it directly.
-        // We can measure free capacity by counting how many cells we can alloc
-        // then freeing them. But that would perturb state.
-        //
-        // Instead we track free capacity ourselves: free_cells = budget - sum of
-        // widths of all resident values.
-        let currently_resident_cells: usize = self.resident.keys().map(|v| {
-            self.info.get(v).map(|i| i.width as usize).unwrap_or(1)
-        }).sum();
-        let currently_free = self.budget.saturating_sub(currently_resident_cells);
-
-        if currently_free >= min_working_set {
-            let reservation = TempReservation {
-                free_cells: min_working_set,
-                evicted: vec![],
-            };
-            self.temp_cells_held += min_working_set;
-            self.update_max_live();
-            return Ok(reservation);
-        }
-
-        // Need to evict.
-        let mut evicted_values: Vec<ValueId> = Vec::new();
-        let mut freed_cells = currently_free;
-        let eviction_order = self.eviction_order(point);
-
-        for victim_id in eviction_order {
-            if freed_cells >= min_working_set {
-                break;
-            }
-            let victim_cell = match self.resident.get(&victim_id) {
-                Some(&c) => c,
-                None => continue,
-            };
-            let width = self.info.get(&victim_id).map(|i| i.width as usize).unwrap_or(1);
-            self.resident.remove(&victim_id);
-            self.cell_to_value.remove(&victim_cell);
-            self.alloc.free(victim_cell);
-            freed_cells += width;
-            evicted_values.push(victim_id);
-        }
-
-        if freed_cells < min_working_set {
-            // Even evicting everything wasn't enough (budget < min_working_set).
-            return Err(CompileError::BudgetBelowFloor {
-                floor: min_working_set,
-                budget: self.budget,
-            });
-        }
-
-        self.temp_cells_held += min_working_set;
-        self.update_max_live();
-        Ok(TempReservation {
-            free_cells: min_working_set,
-            evicted: evicted_values,
-        })
-    }
-
-    /// Return the temp cells reserved by `r` back to the planner.
-    ///
-    /// The evicted values tracked in the reservation are NOT automatically
-    /// re-admitted — the emitter must re-admit them via `admit` if needed.
-    pub fn release(&mut self, r: TempReservation) {
-        self.temp_cells_held = self.temp_cells_held.saturating_sub(r.free_cells);
-        // evicted values in `r` are not re-placed — the emitter decides.
-        drop(r);
-    }
-
-    /// High-water mark of live smem cells over this planner's life.
-    ///
-    /// Counts both resident cells AND temp cells held by `ensure_temp_capacity`.
+    /// In the one-allocator design the shared `CellAllocator` is the single source of
+    /// truth for occupancy: it tracks residents (via `admit`) and transient lowering
+    /// temps (via `alloc_temp`) in one space, so its high-water IS the layer's peak
+    /// live-cell count (residents + temps + evict partials).
     pub fn max_live_cells(&self) -> usize {
-        self.max_live
-    }
-
-    /// The currently-resident cells as `(base_cell, field)` pairs (deterministic,
-    /// ValueId-sorted via the `BTreeMap`). The emitter pre-reserves these in each
-    /// root's transient `CellAllocator` so a transient lowering cell never collides
-    /// with a resident value in the shared interpreter cell file (codex Mod3).
-    pub fn resident_cells(&self) -> Vec<(u16, OperandField)> {
-        self.resident
-            .iter()
-            .map(|(v, &cell)| {
-                let field = self.info.get(v).map(|i| i.field).unwrap_or(OperandField::Base);
-                (cell, field)
-            })
-            .collect()
+        self.alloc.max_live()
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────
-
-    /// Update the high-water mark.
-    fn update_max_live(&mut self) {
-        let resident_cells: usize = self.resident.keys().map(|v| {
-            self.info.get(v).map(|i| i.width as usize).unwrap_or(1)
-        }).sum();
-        let live = resident_cells + self.temp_cells_held;
-        if live > self.max_live {
-            self.max_live = live;
-        }
-    }
-
-    /// Sync the high-water mark from the shared allocator's live count (residents +
-    /// transient temps allocated through `alloc_temp`/`admit`). The allocator is the
-    /// single source of truth for simultaneous occupancy in the one-allocator design.
-    fn bump_max_live(&mut self) {
-        let live = self.alloc.max_live();
-        if live > self.max_live {
-            self.max_live = live;
-        }
-    }
 
     /// Compute the next `Use` event index for `v` strictly after `point`.
     /// Returns `usize::MAX` if there are no future uses.
@@ -866,55 +715,35 @@ mod tests {
         st.release_borrow(value_a());
     }
 
+    // max_live_cells reflects the shared allocator's true high-water of residents +
+    // transient temps held SIMULTANEOUSLY (not a stale per-reservation counter).
     #[test]
-    fn temp_reservation_accounting_is_symmetric() {
-        // budget=6, 2 Base residents (2 cells used), 4 cells genuinely free.
+    fn max_live_tracks_residents_plus_live_temps() {
+        // budget=6, 2 Base residents (cells 0,1).
         let mut st = ResidencyState::new(&refs_two_residents(), &info_two_base(), 6);
         let _ = st.admit(value_a(), 0);
         let _ = st.admit(value_b(), 1);
+        assert_eq!(st.max_live_cells(), 2, "two residents = 2 live cells");
 
-        // Baseline: residents contribute 2 cells to max_live, no temps yet.
-        let baseline_max = st.max_live_cells();
-        assert_eq!(baseline_max, 2, "baseline max_live should equal 2 residents");
+        // Hold 3 transient temps at once → peak 5.
+        let t0 = st.alloc_temp(OperandField::Base, 2).unwrap();
+        let t1 = st.alloc_temp(OperandField::Base, 2).unwrap();
+        let t2 = st.alloc_temp(OperandField::Base, 2).unwrap();
+        assert_eq!(st.max_live_cells(), 5, "2 residents + 3 live temps = peak 5");
 
-        // ── First reservation ──────────────────────────────────────────────
-        let n: usize = 3;
-        let r1 = st.ensure_temp_capacity(n, 2)
-            .expect("3 cells should be reservable with 4 free");
+        // Freeing temps does not lower the high-water (it is a peak, not a gauge).
+        st.free_temp(t0);
+        st.free_temp(t1);
+        st.free_temp(t2);
+        assert_eq!(st.max_live_cells(), 5, "high-water is monotone");
 
-        // free_cells must equal exactly the reserved amount, not the total free.
-        assert_eq!(r1.free_cells, n,
-            "free_cells must equal min_working_set, not total free");
-
-        // max_live must now be residents(2) + reserved(3) = 5.
-        assert_eq!(st.max_live_cells(), 2 + n,
-            "max_live must be residents + reserved");
-
-        // ── Release ───────────────────────────────────────────────────────
-        st.release(r1);
-
-        // ── Second reservation (same N) ────────────────────────────────────
-        let r2 = st.ensure_temp_capacity(n, 2)
-            .expect("second identical reservation must succeed");
-
-        assert_eq!(r2.free_cells, n,
-            "second reservation free_cells must equal min_working_set");
-
-        // max_live must NOT drift upward: still 2 + 3 = 5.
-        assert_eq!(st.max_live_cells(), 2 + n,
-            "max_live must not drift after release+re-reserve (no leak)");
-
-        st.release(r2);
-
-        // ── Budget-floor guard: N > total budget ──────────────────────────
-        // budget=6; even evicting all residents (2 cells) yields at most 6
-        // free cells. Asking for 7 exceeds what the budget can ever provide.
-        let too_big = 7;
-        let result = st.ensure_temp_capacity(too_big, 2);
-        assert!(
-            matches!(result, Err(CompileError::BudgetBelowFloor { floor, budget })
-                if floor == too_big && budget == 6),
-            "must return BudgetBelowFloor{{floor={too_big}, budget=6}}"
-        );
+        // A second wave of 3 temps reuses freed cells → peak stays 5 (no drift).
+        let u0 = st.alloc_temp(OperandField::Base, 2).unwrap();
+        let u1 = st.alloc_temp(OperandField::Base, 2).unwrap();
+        let u2 = st.alloc_temp(OperandField::Base, 2).unwrap();
+        assert_eq!(st.max_live_cells(), 5, "reused cells must not inflate the peak");
+        st.free_temp(u0);
+        st.free_temp(u1);
+        st.free_temp(u2);
     }
 }

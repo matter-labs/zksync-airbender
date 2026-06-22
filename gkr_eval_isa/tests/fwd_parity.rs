@@ -366,13 +366,20 @@ fn parity_all_layout_no_caches_gkr() {
 
 const SWEEP_BUDGETS: &[usize] = &[8, 12, 16, 24, 32, 48, 64, 128, 256];
 
+// Routine gate: the two cache-heaviest fixtures (add_sub, mul_div) at warp-scale
+// budgets. Fast (~15s) and enough to guard the in-flight-borrow timing + bit-exact
+// re-emission under eviction. The exhaustive 11-fixture variant is the `#[ignore]`d
+// `parity_budget_sweep_all_fixtures` below (the design's broad-corpus run, ~150s).
 const SWEEP_FIXTURES: &[&str] = &[
     "add_sub_lui_auipc_mop_layout_gkr.json",
     "unsigned_mul_div_layout_gkr.json",
 ];
 
-#[test]
-fn parity_budget_sweep_small() {
+/// Run the budget sweep over `fixtures`, asserting that the eviction regime was
+/// actually exercised (≥1 comparison at a budget below 1024) and that every feasible
+/// (budget, layer) reproduced `eval_layer_root` bit-exactly (the `check_fixture`
+/// differential). Returns the smallest feasible budget seen, for logging.
+fn run_budget_sweep(fixtures: &[&str]) {
     let dir = compiled_circuit_dir();
     let mut total = 0usize;
     // Comparisons performed at a budget strictly below 1024 — proves the eviction
@@ -380,7 +387,7 @@ fn parity_budget_sweep_small() {
     let mut sub1024_comparisons = 0usize;
     let mut smallest_feasible: Option<usize> = None;
 
-    for &f in SWEEP_FIXTURES {
+    for &f in fixtures {
         let path = dir.join(f);
         let artifact =
             load_fixture(&path).unwrap_or_else(|| panic!("failed to load fixture {f}"));
@@ -397,7 +404,7 @@ fn parity_budget_sweep_small() {
 
     eprintln!(
         "[fwd_parity sweep] smallest feasible budget across {} fixtures: {:?}",
-        SWEEP_FIXTURES.len(),
+        fixtures.len(),
         smallest_feasible
     );
     assert!(
@@ -411,6 +418,21 @@ fn parity_budget_sweep_small() {
          UNTESTED and possibly broken",
         SWEEP_BUDGETS.last().unwrap()
     );
+}
+
+#[test]
+fn parity_budget_sweep_small() {
+    run_budget_sweep(SWEEP_FIXTURES);
+}
+
+// Exhaustive cross-corpus eviction sweep (the design's broad-corpus validation). Runs
+// every cache-bearing layout fixture across all warp-scale budgets — ~150s, so it is
+// `#[ignore]`d and run on demand: `cargo test -p gkr_eval_isa --test fwd_parity -- \
+// --ignored parity_budget_sweep_all_fixtures`.
+#[test]
+#[ignore = "slow (~150s) exhaustive sweep; run on demand"]
+fn parity_budget_sweep_all_fixtures() {
+    run_budget_sweep(LAYOUT_GKR_FIXTURES);
 }
 
 // Proof that the small-budget sweep actually EXERCISES eviction — not just smaller
@@ -433,7 +455,7 @@ fn residency_eviction_engages_under_tight_budget() {
     validate(&dag).unwrap();
     let cross = build_cross_layer_field_map(&dag);
 
-    let stats_at = |budget: usize| {
+    let try_stats_at = |budget: usize| {
         compile_layer(
             &dag.layers[0],
             &artifact.layers[0],
@@ -441,39 +463,79 @@ fn residency_eviction_engages_under_tight_budget() {
             &cross,
             budget,
         )
-        .unwrap_or_else(|e| panic!("add_sub L0 compile at budget {budget}: {e:?}"))
-        .stats
+        .map(|c| c.stats)
+    };
+    let stats_at = |budget: usize| {
+        try_stats_at(budget)
+            .unwrap_or_else(|e| panic!("add_sub L0 compile at budget {budget}: {e:?}"))
     };
 
-    let tight = stats_at(32);
-    let loose = stats_at(1024);
+    // ── On-demand eviction replaces the old eager-pin model ───────────────────
+    //
+    // Pre-rework, compile_layer reported an inflated "floor" of 24–48 cells for this
+    // layer because every per-root transient allocator pre-pinned ALL residents. With
+    // one shared allocator + lazy eviction of backed (DRAM-re-readable) residents, the
+    // floor collapses to the aligned schedule peak. add_sub L0's measured curve:
+    //   budget   8: max_live  8, dram_reads 83, cell_reads 24   ← compiles! (was infeasible)
+    //   budget  16: max_live 16, dram_reads 81, cell_reads 26
+    //   budget  24: max_live 24, dram_reads 79, cell_reads 28
+    //   budget  32: max_live 32, dram_reads 77, cell_reads 30   ← S2-optimal reached
+    //   budget 1024: max_live 40, dram_reads 77, cell_reads 30  ← uncapped working set 40
 
-    // The uncapped resident working set genuinely exceeds the tight budget, so budget
-    // 32 is constraining (eviction is forced, not incidental).
+    // (1) Floor collapse: a budget the old eager-pin model rejected now compiles.
     assert!(
-        loose.max_live_cells > 32,
-        "add_sub L0 should need > 32 cells uncapped (else budget 32 wouldn't force \
-         eviction); got max_live {}",
+        try_stats_at(8).is_ok(),
+        "add_sub L0 must now compile at budget 8 (the inflated 24–48 floor is gone)"
+    );
+
+    let loose = stats_at(1024);
+    let tight = stats_at(16);
+    let roomy = stats_at(32);
+
+    // (2) The uncapped working set genuinely exceeds the tight budget, so eviction is
+    //     forced (not incidental); and the hard cap is honored under pressure.
+    assert!(
+        loose.max_live_cells > 16,
+        "uncapped working set {} should exceed the tight budget (else no eviction is \
+         forced)",
         loose.max_live_cells
     );
-    // Hard cap honored under pressure.
     assert!(
-        tight.max_live_cells <= 32,
-        "tight-budget max_live {} exceeds the 32-cell cap",
+        tight.max_live_cells <= 16,
+        "tight-budget max_live {} exceeds the 16-cell cap",
         tight.max_live_cells
     );
-    // Eviction makes reused cache roots fall back to DRAM: strictly MORE dram reads
-    // and correspondingly FEWER resident smem reads than the all-resident compile.
+
+    // (3) Under genuine pressure, evicting a still-needed backed resident forces its
+    //     reader to fall back to DRAM: strictly MORE dram reads and FEWER resident
+    //     smem reads than the all-resident compile.
     assert!(
         tight.dram_reads > loose.dram_reads,
-        "eviction must force extra DRAM re-reads: tight {} vs loose {}",
+        "eviction must force extra DRAM re-reads: tight16 {} vs loose {}",
         tight.dram_reads,
         loose.dram_reads
     );
     assert!(
         tight.cell_reads < loose.cell_reads,
-        "eviction must reduce resident smem reads: tight {} vs loose {}",
+        "eviction must reduce resident smem reads: tight16 {} vs loose {}",
         tight.cell_reads,
         loose.cell_reads
+    );
+
+    // (4) dram_reads degrades SMOOTHLY (monotone non-increasing) as the budget grows —
+    //     tighter budget spills more reused values to DRAM; it never fails or spikes.
+    let d8 = stats_at(8).dram_reads;
+    let d16 = tight.dram_reads;
+    let d32 = roomy.dram_reads;
+    assert!(
+        d8 >= d16 && d16 >= d32,
+        "dram_reads must be monotone non-increasing in budget: 8→{d8} 16→{d16} 32→{d32}"
+    );
+
+    // (5) The #8 residency win is fully preserved once the budget is roomy enough:
+    //     budget 32 already reaches the S2-optimal dram_reads of the uncapped compile.
+    assert_eq!(
+        roomy.dram_reads, loose.dram_reads,
+        "budget 32 must reach the S2-optimal dram_reads (no regression of the #8 win)"
     );
 }

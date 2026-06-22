@@ -14,8 +14,8 @@ use super::super::error::CompileError;
 use super::super::isa::{
     DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Sign, Special, MAX_ARITY,
 };
-use super::residency::{Loc, ResidencyState};
-use super::schedule::{split_by_working_set, split_reduction, CellAllocator, LoweringOperandNeed};
+use super::residency::ResidencyState;
+use super::schedule::split_reduction;
 use cs::gkr_compiler::dag_ir::{
     expr_field, Expr, ExprId, FieldKind, ReadPlace, RootId, SinkKind, SourceKind,
 };
@@ -39,26 +39,13 @@ pub(crate) struct LoweringEnv<'a> {
     /// `ctx.specials` index. During emit, a resolution-carrying expr resolves to
     /// `OperandLine::Special{ desc_by_expr[&id] }` — never via `resolve_or_descend`.
     pub desc_by_expr: &'a HashMap<ExprId, u16>,
-    /// Per-layer residency snapshot. A same-layer `Prior(rid)` (or a CSE'd compound)
-    /// resolves to the resident `Smem{cell}` when `residency.location` says so, else
-    /// to its DRAM backing. Read-side only.
-    pub residency: &'a ResidencyState,
     /// `RootId → producer ExprId` for cache roots (no origin). A `Prior{id}` read maps
-    /// `id` to its producer expr to query residency (`ValueInfo` is keyed by ExprId).
+    /// `id` to its producer expr to borrow from residency (`ValueInfo` is keyed by ExprId).
     pub cache_root_expr: &'a HashMap<RootId, ExprId>,
-    /// The current reference-string event index (used as the residency query point).
-    /// `location` is point-insensitive (it reads the current resident snapshot), so
-    /// this is passed for API symmetry only.
+    /// The current reference-string event index, used as the residency `point` for
+    /// `alloc_temp`'s Belady next-use eviction tiebreak.
     pub point: usize,
-    /// Free smem cells the residency planner reserved for THIS expression's lowering
-    /// (`ResidencyState::ensure_temp_capacity(min_working_set, point).free_cells`,
-    /// codex Imp4). Threaded into `split_by_working_set` so an over-cap reduction's
-    /// compound-operand working set never exceeds what the planner reserved. All
-    /// reduction-group operands are SIMPLE (compounds were pre-lowered to cells), so
-    /// for the gated circuits `split_by_working_set` returns a single chunk and the
-    /// arity-cap `split_reduction` is what actually fires.
-    pub free_cells: usize,
-    /// Whether the `Prior` arm may return a resident `Smem` operand. TRUE on the
+    /// Whether a `Prior`/CSE arm may borrow a resident `Smem` operand. TRUE on the
     /// normal lowering path. FALSE for a `CopyAlias` root: `RootOutput::Alias` is
     /// resolved at PROGRAM END (`interp.rs`), but a resident smem cell is only valid
     /// until the planner evicts/reuses it — so an alias must reference STABLE storage
@@ -66,6 +53,35 @@ pub(crate) struct LoweringEnv<'a> {
     /// finding 1). When false, a same-layer `Prior` falls through to its `Global`
     /// backing instead of `Smem`.
     pub allow_resident_smem: bool,
+}
+
+/// A lease over the cell an operand occupies during lowering, returned alongside the
+/// `OperandLine` so the consuming fold can release it once emitted (the on-demand-
+/// eviction rework). Mirrors the design's `LoweredOperand::{Inline,Temp,ResidentBorrow}`.
+///
+/// - `None` — an inline source/ldc/special (or a demoted backed read): occupies no cell.
+/// - `Temp(cell)` — a compound subexpr materialized into a transient cell via
+///   `alloc_temp`; freed with `free_temp` on release.
+/// - `Borrow(value)` — a resident value borrowed as an in-flight `Smem{cell}` operand;
+///   its cell is pinned against eviction until `release_borrow` (the lease that closes
+///   the codex round-1 in-flight-borrow hole).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum OperandLease {
+    None,
+    Temp(u16),
+    Borrow(ExprId),
+}
+
+/// Release every lease held over one (sub)expression's operands. Temp cells return to
+/// the shared allocator; resident borrows un-pin. Called after the consuming folds emit.
+fn release_leases(res: &mut ResidencyState, leases: Vec<OperandLease>) {
+    for lease in leases.into_iter().rev() {
+        match lease {
+            OperandLease::None => {}
+            OperandLease::Temp(cell) => res.free_temp(cell),
+            OperandLease::Borrow(v) => res.release_borrow(v),
+        }
+    }
 }
 
 /// BabyBear modulus P = 2^31 − 2^27 + 1 = 0x78000001.
@@ -211,9 +227,10 @@ pub(crate) fn source_to_operand(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     expr_id: ExprId,
     ctx: &mut DagForwardContext,
+    res: &mut ResidencyState,
     trace: &mut CompileTrace,
     env: LoweringEnv,
-) -> Result<OperandLine, CompileError> {
+) -> Result<(OperandLine, OperandLease), CompileError> {
     // §9: a resolved fold expr prunes to one Special; do not descend. During S2 emit
     // the descriptor was already interned ONCE by `materialize_descriptors` — look it
     // up in `env.desc_by_expr` instead of calling `resolve_or_descend` (codex Imp1).
@@ -225,7 +242,7 @@ pub(crate) fn source_to_operand(
                 expr_id.0
             ))
         })?;
-        return Ok(OperandLine::Special { desc });
+        return Ok((OperandLine::Special { desc }, OperandLease::None));
     }
 
     let Expr::Source(src_id) = &layer.exprs[expr_id.0 as usize] else {
@@ -240,11 +257,11 @@ pub(crate) fn source_to_operand(
     match &layer.sources[src_id.0 as usize].kind {
         SourceKind::Read { place } => {
             let (slot, col) = ctx.backings.read_slot_col(place)?;
-            Ok(OperandLine::Global { slot, col })
+            Ok((OperandLine::Global { slot, col }, OperandLease::None))
         }
         SourceKind::VirtualSetup { kind } => {
             let (slot, col) = ctx.backings.virtual_setup_slot(kind)?;
-            Ok(OperandLine::Global { slot, col })
+            Ok((OperandLine::Global { slot, col }, OperandLease::None))
         }
         SourceKind::Constant { value } => {
             // Strength-reduction: the special field elements `1` and `−1` (= P−1)
@@ -255,30 +272,31 @@ pub(crate) fn source_to_operand(
             // genuine additive term and `0` must never reach this arm — the
             // `ConstBank::intern` guard fails loud if it does.
             match *value {
-                1 => Ok(OperandLine::Ldc { sub: LdcSub::Special, idx: Special::One as u16 }),
+                1 => Ok((OperandLine::Ldc { sub: LdcSub::Special, idx: Special::One as u16 }, OperandLease::None)),
                 v if v == BABYBEAR_NEG_ONE => {
-                    Ok(OperandLine::Ldc { sub: LdcSub::Special, idx: Special::NegOne as u16 })
+                    Ok((OperandLine::Ldc { sub: LdcSub::Special, idx: Special::NegOne as u16 }, OperandLease::None))
                 }
                 v => {
                     let idx = ctx.consts.intern(v);
-                    Ok(OperandLine::Ldc { sub: LdcSub::Const, idx })
+                    Ok((OperandLine::Ldc { sub: LdcSub::Const, idx }, OperandLease::None))
                 }
             }
         }
         SourceKind::Challenge { reference } => {
             let (sub, idx) = ctx.challenges.intern(reference);
-            Ok(OperandLine::Ldc { sub, idx })
+            Ok((OperandLine::Ldc { sub, idx }, OperandLease::None))
         }
         SourceKind::Prior { id } => {
-            // Residency (#8): a same-layer `Prior(rid)` resolves to the cache root's
-            // resident smem cell when the planner kept it resident, ELSE re-reads the
-            // `cache_loc` DRAM backing. The cache backing is never dropped — residency
-            // is purely a READ-side choice (codex re-review Imp1). A cache root always
-            // has a real DRAM backing, so `location` never returns `Recompute` here.
+            // Residency (#8): a same-layer `Prior(rid)` BORROWS the cache root's resident
+            // smem cell when the planner kept it resident (a lease pinning the cell for
+            // this fold), ELSE re-reads the `cache_loc` DRAM backing. The cache backing
+            // is never dropped — residency is purely a READ-side choice (codex re-review
+            // Imp1). A cache root always has a real DRAM backing, so a non-resident
+            // (evicted) `Prior` always re-reads DRAM here (never Recompute).
             if env.allow_resident_smem {
                 if let Some(&producer) = env.cache_root_expr.get(id) {
-                    if let Loc::Smem(cell) = env.residency.location(producer, env.point) {
-                        return Ok(OperandLine::Smem { cell });
+                    if let Some(cell) = res.borrow_resident(producer) {
+                        return Ok((OperandLine::Smem { cell }, OperandLease::Borrow(producer)));
                     }
                 }
             }
@@ -291,7 +309,7 @@ pub(crate) fn source_to_operand(
                     "Prior read of unmaterialized cache root {}",
                     id.0
                 )))?;
-            Ok(OperandLine::Global { slot, col })
+            Ok((OperandLine::Global { slot, col }, OperandLease::None))
         }
         SourceKind::LookupValue { .. } => {
             // Reached an uncovered LookupValue leaf by emitted-code traversal (§9,
@@ -326,9 +344,9 @@ pub(crate) fn compile_expr(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     expr_id: ExprId,
     ctx: &mut DagForwardContext,
+    res: &mut ResidencyState,
     trace: &mut CompileTrace,
     out: &mut Vec<Instr>,
-    alloc: &mut CellAllocator,
     expected: OperandField,
     env: LoweringEnv,
 ) -> Result<(), CompileError> {
@@ -354,12 +372,14 @@ pub(crate) fn compile_expr(
     match &layer.exprs[expr_id.0 as usize] {
         Expr::Source(_) => {
             let field = child_operand_field(layer, expr_id, expected, &ctx.cross_layer_fields);
-            let op = source_to_operand(layer, expr_id, ctx, trace, env)?;
+            let (op, lease) = source_to_operand(layer, expr_id, ctx, res, trace, env)?;
             emit_init_field(out, op, field);
+            // The init MOV has consumed the operand: release any resident borrow.
+            release_leases(res, vec![lease]);
             Ok(())
         }
-        Expr::Add(children) => compile_add(layer, children.clone(), ctx, trace, out, alloc, expected, env),
-        Expr::Mul(children) => compile_mul(layer, children.clone(), ctx, trace, out, alloc, expected, env),
+        Expr::Add(children) => compile_add(layer, children.clone(), ctx, res, trace, out, expected, env),
+        Expr::Mul(children) => compile_mul(layer, children.clone(), ctx, res, trace, out, expected, env),
     }
 }
 
@@ -383,15 +403,14 @@ fn lower_operand(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     expr_id: ExprId,
     ctx: &mut DagForwardContext,
+    res: &mut ResidencyState,
     trace: &mut CompileTrace,
     out: &mut Vec<Instr>,
-    alloc: &mut CellAllocator,
     expected: OperandField,
     env: LoweringEnv,
-) -> Result<(OperandLine, Option<u16>), CompileError> {
-    // A source or a resolution-pruned fold lowers directly to one operand line.
-    // `resolve_or_descend` (inside `source_to_operand`) prunes a resolved parent to
-    // a Special without descending, so we never spuriously cell-lower a fold.
+) -> Result<(OperandLine, OperandLease), CompileError> {
+    // A source or a resolution-pruned fold lowers directly to one operand line
+    // (and may borrow a resident `Prior` via `source_to_operand`).
     //
     // Use the non-mutating `contains_key` probe here rather than calling
     // `resolve_or_descend` again: that call would push a SpecialDescriptor as a side
@@ -402,28 +421,29 @@ fn lower_operand(
     if layer.resolutions.contains_key(&expr_id)
         || matches!(&layer.exprs[expr_id.0 as usize], Expr::Source(_))
     {
-        let op = source_to_operand(layer, expr_id, ctx, trace, env)?;
-        return Ok((op, None));
+        return source_to_operand(layer, expr_id, ctx, res, trace, env);
     }
 
-    // CSE (#4): a shared compound subexpr the planner kept resident is read from its
-    // resident smem cell rather than re-lowered. The resident cell is owned by the
-    // `ResidencyState`, NOT this caller — return `None` for the owned-cell so it never
-    // enters the caller's transient `free_all` (codex Mod3).
-    if let Loc::Smem(cell) = env.residency.location(expr_id, env.point) {
-        return Ok((OperandLine::Smem { cell }, None));
+    // CSE (#4): a shared compound subexpr the planner kept resident is BORROWED from
+    // its resident smem cell rather than re-lowered (a lease pinning the cell for this
+    // fold). If it is not resident (never admitted, or evicted), `borrow_resident`
+    // returns None and we re-lower it below — the `Loc::Recompute` path for an unbacked
+    // compound (the DAG expr is pure, so re-lowering is semantically safe).
+    if let Some(cell) = res.borrow_resident(expr_id) {
+        return Ok((OperandLine::Smem { cell }, OperandLease::Borrow(expr_id)));
     }
 
-    // Compound child: recursively lower into the acc, then evict to a fresh cell.
+    // Compound child: recursively lower into the acc, then evict to a transient cell
+    // drawn from the shared allocator (evicting a backed resident on demand if full).
     // The child's evict width follows its own field (cross-layer read → its producing
     // sink's field via the map; absent → `expected`).
     let field = child_operand_field(layer, expr_id, expected, &ctx.cross_layer_fields);
-    compile_expr(layer, expr_id, ctx, trace, out, alloc, field, env)?;
-    let cell = alloc.alloc(field)?;
+    compile_expr(layer, expr_id, ctx, res, trace, out, field, env)?;
+    let cell = res.alloc_temp(field, env.point)?;
     evict_acc_to_cell(out, field, cell);
-    trace.max_live_cells = trace.max_live_cells.max(alloc.max_live());
+    trace.max_live_cells = trace.max_live_cells.max(res.max_live_cells());
     trace.nested_subexprs += 1;
-    Ok((OperandLine::Smem { cell }, Some(cell)))
+    Ok((OperandLine::Smem { cell }, OperandLease::Temp(cell)))
 }
 
 /// `MOV AccFromSrc <op>` — accumulator init (§5), labeling the acc field `Base`.
@@ -453,9 +473,9 @@ fn compile_add(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     children: Vec<ExprId>,
     ctx: &mut DagForwardContext,
+    res: &mut ResidencyState,
     trace: &mut CompileTrace,
     out: &mut Vec<Instr>,
-    alloc: &mut CellAllocator,
     expected: OperandField,
     env: LoweringEnv,
 ) -> Result<(), CompileError> {
@@ -480,12 +500,12 @@ fn compile_add(
     // groups split freely. `try_compile_fma` returns None — falling through to the
     // generic reduction — only when the Add has no product child (a pure additive
     // sum). Subsumes the α-fold case (a single leading bare column is one addend).
-    if let Some(()) = try_compile_fma(layer, &children, ctx, trace, out, alloc, expected, env)? {
+    if let Some(()) = try_compile_fma(layer, &children, ctx, res, trace, out, expected, env)? {
         return Ok(());
     }
 
     // Generic additive reduction grouped by operand field (pure additive sum).
-    compile_reduction(layer, &children, ctx, trace, out, /* is_add */ true, /* negate */ false, alloc, expected, env)
+    compile_reduction(layer, &children, ctx, res, trace, out, /* is_add */ true, /* negate */ false, expected, env)
 }
 
 // ── Mul lowering ───────────────────────────────────────────────────────────────
@@ -494,9 +514,9 @@ fn compile_mul(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     children: Vec<ExprId>,
     ctx: &mut DagForwardContext,
+    res: &mut ResidencyState,
     trace: &mut CompileTrace,
     out: &mut Vec<Instr>,
-    alloc: &mut CellAllocator,
     expected: OperandField,
     env: LoweringEnv,
 ) -> Result<(), CompileError> {
@@ -544,7 +564,7 @@ fn compile_mul(
     // and `Instr::Mul{field:Ext}` groups (§5). This is the proven Task 9 path.
     // Pass `negate` so compile_reduction can insert the unary negate in the base
     // phase (before the first ext-promoting MUL) when a base phase exists (Task 5).
-    compile_reduction(layer, &surviving, ctx, trace, out, /* is_add */ false, negate, alloc, expected, env)?;
+    compile_reduction(layer, &surviving, ctx, res, trace, out, /* is_add */ false, negate, expected, env)?;
 
     Ok(())
 }
@@ -579,11 +599,11 @@ fn compile_reduction(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     children: &[ExprId],
     ctx: &mut DagForwardContext,
+    res: &mut ResidencyState,
     trace: &mut CompileTrace,
     out: &mut Vec<Instr>,
     is_add: bool,
     negate: bool,
-    alloc: &mut CellAllocator,
     expected: OperandField,
     env: LoweringEnv,
 ) -> Result<(), CompileError> {
@@ -601,7 +621,7 @@ fn compile_reduction(
     // A source/resolution-pruned child resolves directly (no cell). Cells are freed
     // after the reduction's last fold reads them.
     let mut ops: Vec<(OperandField, OperandLine, Sign)> = Vec::with_capacity(children.len());
-    let mut owned_cells: Vec<u16> = Vec::new();
+    let mut leases: Vec<OperandLease> = Vec::new();
     for &c in children {
         let (to_lower, sign) = if is_add {
             match classify_additive_child(layer, c) {
@@ -614,10 +634,8 @@ fn compile_reduction(
             (c, Sign::Plus)
         };
         let field = child_operand_field(layer, to_lower, expected, &ctx.cross_layer_fields);
-        let (op, cell) = lower_operand(layer, to_lower, ctx, trace, out, alloc, expected, env)?;
-        if let Some(cell) = cell {
-            owned_cells.push(cell);
-        }
+        let (op, lease) = lower_operand(layer, to_lower, ctx, res, trace, out, expected, env)?;
+        leases.push(lease);
         ops.push((field, op, sign));
     }
 
@@ -658,7 +676,7 @@ fn compile_reduction(
         if negate {
             emit_unary_negate(out);
         }
-        free_all(alloc, &owned_cells);
+        release_leases(res, leases);
         return Ok(());
     }
 
@@ -699,7 +717,7 @@ fn compile_reduction(
         if group.is_empty() {
             continue;
         }
-        emit_reduction_group(out, trace, field, group, is_add, sign, alloc, env.free_cells)?;
+        emit_reduction_group(out, trace, field, group, is_add, sign, res, env.point)?;
     }
 
     // Insert negate between base and ext phases when a base phase exists.
@@ -715,7 +733,7 @@ fn compile_reduction(
         if group.is_empty() {
             continue;
         }
-        emit_reduction_group(out, trace, field, group, is_add, sign, alloc, env.free_cells)?;
+        emit_reduction_group(out, trace, field, group, is_add, sign, res, env.point)?;
     }
 
     // Trailing negate when no base phase existed (all-Ext seed — unavoidable).
@@ -723,15 +741,8 @@ fn compile_reduction(
         emit_unary_negate(out);
     }
 
-    free_all(alloc, &owned_cells);
+    release_leases(res, leases);
     Ok(())
-}
-
-/// Free every cell that backed a lowered compound operand, in reverse alloc order.
-fn free_all(alloc: &mut CellAllocator, cells: &[u16]) {
-    for &c in cells.iter().rev() {
-        alloc.free(c);
-    }
 }
 
 /// Emit ONE field-homogeneous reduction group, folding `ops` into the running
@@ -755,21 +766,17 @@ fn emit_reduction_group(
     ops: Vec<OperandLine>,
     is_add: bool,
     sign: Sign,
-    alloc: &mut CellAllocator,
-    free_cells: usize,
+    res: &mut ResidencyState,
+    point: usize,
 ) -> Result<(), CompileError> {
-    // Task 10 owns the `split_by_working_set` invocation (codex Imp4). Every operand
-    // in a reduction GROUP is SIMPLE (a compound child was pre-lowered into a cell by
-    // `lower_operand` upstream), so the working-set need is a list of inline operands
-    // plus the running-partial evict reserve carried by the group's field width. For
-    // all-simple operands `split_by_working_set` returns a single chunk and never
-    // forces a split — the arity-cap `split_reduction` below is what actually chunks.
-    // The call still validates that the planner's reservation can hold the evict
-    // partial (a `BudgetBelowFloor` here is a genuinely-infeasible reservation).
-    let width = if field == OperandField::Ext { 4u8 } else { 1u8 };
-    let needs = vec![LoweringOperandNeed { is_compound: false, width }; ops.len()];
-    let _ws_chunks = split_by_working_set(&needs, free_cells.max(width as usize))?;
-
+    // Every operand in a reduction GROUP is SIMPLE: a compound child was pre-lowered
+    // into a transient cell by `lower_operand` upstream (and is held via its lease for
+    // the whole reduction), so it reads an already-allocated cell and consumes no new
+    // capacity here. The only NEW cell a group allocates is the running-partial evict
+    // in the over-arity split below, drawn from the shared allocator with on-demand
+    // eviction — so no static working-set guard is needed (it is the design's retired
+    // `split_by_working_set` call shape). Capacity failures surface as `BudgetBelowFloor`
+    // from `alloc_temp` only when no evictable resident remains.
     if ops.len() <= MAX_ARITY {
         // Unsplit fast path — identical to the prior Tasks 9/10 emission.
         push_fold(out, field, ops, is_add, sign);
@@ -802,9 +809,9 @@ fn emit_reduction_group(
     idx += first;
 
     for size in chunks {
-        // Evict the running acc to a fresh cell, then recompute the next chunk in
-        // the acc and fold the evicted partial back in.
-        let cell = alloc.alloc(field)?;
+        // Evict the running acc to a fresh transient cell, then recompute the next
+        // chunk in the acc and fold the evicted partial back in.
+        let cell = res.alloc_temp(field, point)?;
         evict_acc_to_cell(out, field, cell);
 
         let chunk = &ops[idx..idx + size];
@@ -816,10 +823,10 @@ fn emit_reduction_group(
         }
         // Fold the evicted partial back in (ADD/MUL referencing the cell).
         push_fold(out, field, vec![OperandLine::Smem { cell }], is_add, Sign::Plus);
-        alloc.free(cell);
+        res.free_temp(cell);
     }
 
-    trace.max_live_cells = trace.max_live_cells.max(alloc.max_live());
+    trace.max_live_cells = trace.max_live_cells.max(res.max_live_cells());
     Ok(())
 }
 
@@ -873,9 +880,9 @@ fn try_compile_fma(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     children: &[ExprId],
     ctx: &mut DagForwardContext,
+    res: &mut ResidencyState,
     trace: &mut CompileTrace,
     out: &mut Vec<Instr>,
-    alloc: &mut CellAllocator,
     expected: OperandField,
     env: LoweringEnv,
 ) -> Result<Option<()>, CompileError> {
@@ -901,15 +908,13 @@ fn try_compile_fma(
     // e.g. a product-of-sums — lowers to a cell, which clobbers the acc). Collect
     // each operand's field label via `child_operand_field` BEFORE the `&mut ctx`
     // borrow in `lower_operand` so the immutable `layer` borrow does not overlap.
-    let mut owned_cells: Vec<u16> = Vec::new();
+    let mut leases: Vec<OperandLease> = Vec::new();
     let mut addend_ops: Vec<(OperandField, OperandLine, Sign)> =
         Vec::with_capacity(addends.len());
     for &(sign, c) in &addends {
         let f = child_operand_field(layer, c, expected, &ctx.cross_layer_fields);
-        let (op, cell) = lower_operand(layer, c, ctx, trace, out, alloc, f, env)?;
-        if let Some(cell) = cell {
-            owned_cells.push(cell);
-        }
+        let (op, lease) = lower_operand(layer, c, ctx, res, trace, out, f, env)?;
+        leases.push(lease);
         addend_ops.push((f, op, sign));
     }
     let mut lo: Vec<(Sign, OperandField, OperandLine, OperandField, OperandLine)> =
@@ -917,14 +922,10 @@ fn try_compile_fma(
     for &(sign, lhs, rhs) in &products {
         let lf = child_operand_field(layer, lhs, expected, &ctx.cross_layer_fields);
         let rf = child_operand_field(layer, rhs, expected, &ctx.cross_layer_fields);
-        let (lhs_op, lc) = lower_operand(layer, lhs, ctx, trace, out, alloc, lf, env)?;
-        if let Some(c) = lc {
-            owned_cells.push(c);
-        }
-        let (rhs_op, rc) = lower_operand(layer, rhs, ctx, trace, out, alloc, rf, env)?;
-        if let Some(c) = rc {
-            owned_cells.push(c);
-        }
+        let (lhs_op, l_lease) = lower_operand(layer, lhs, ctx, res, trace, out, lf, env)?;
+        leases.push(l_lease);
+        let (rhs_op, r_lease) = lower_operand(layer, rhs, ctx, res, trace, out, rf, env)?;
+        leases.push(r_lease);
         lo.push((sign, lf, lhs_op, rf, rhs_op));
     }
 
@@ -974,7 +975,7 @@ fn try_compile_fma(
                 if group.is_empty() {
                     continue;
                 }
-                emit_reduction_group(out, trace, f, group, /* is_add */ true, s, alloc, env.free_cells)?;
+                emit_reduction_group(out, trace, f, group, /* is_add */ true, s, res, env.point)?;
             }
             &lo[..]
         } else {
@@ -994,7 +995,7 @@ fn try_compile_fma(
                 emit_unary_negate(out);
             }
             if lo.len() == 1 {
-                free_all(alloc, &owned_cells);
+                release_leases(res, leases);
                 return Ok(Some(()));
             }
             lo.remove(seed);
@@ -1015,9 +1016,9 @@ fn try_compile_fma(
             .push((op_l, op_r));
     }
     for ((lf, rf, sign), gpairs) in groups {
-        push_fma_chunked(out, field_from_u8(lf), field_from_u8(rf), sign_from_u8(sign), gpairs, env.free_cells)?;
+        push_fma_chunked(out, field_from_u8(lf), field_from_u8(rf), sign_from_u8(sign), gpairs)?;
     }
-    free_all(alloc, &owned_cells);
+    release_leases(res, leases);
     Ok(Some(()))
 }
 
@@ -1066,17 +1067,10 @@ fn push_fma_chunked(
     field_rhs: OperandField,
     sign: Sign,
     pairs: Vec<(OperandLine, OperandLine)>,
-    free_cells: usize,
 ) -> Result<(), CompileError> {
-    // Task 10 owns the `split_by_working_set` invocation here too (codex Imp4). FMA
-    // pair operands are SIMPLE (compound factors were pre-lowered to cells upstream),
-    // so the working-set guard returns a single chunk; the arity-cap `chunks(MAX_ARITY)`
-    // below does the real splitting. The wider of the two field widths sizes the
-    // evict reserve (an FMA promotes the acc to Ext when either factor is Ext).
-    let width = if field_lhs == OperandField::Ext || field_rhs == OperandField::Ext { 4u8 } else { 1u8 };
-    let needs = vec![LoweringOperandNeed { is_compound: false, width }; pairs.len()];
-    let _ws_chunks = split_by_working_set(&needs, free_cells.max(width as usize))?;
-
+    // FMA pair operands are SIMPLE (compound factors were pre-lowered to cells upstream
+    // and held via their leases); FMA accumulates into the acc and allocates no cells,
+    // so the only split needed is the encoder's arity cap. Chunk into ≤MAX_ARITY slices.
     for chunk in pairs.chunks(MAX_ARITY) {
         out.push(Instr::Fma {
             field_lhs,
@@ -1242,17 +1236,14 @@ mod tests {
         let mut ctx = DagForwardContext::default();
         let mut trace = CompileTrace::default();
         let mut out = Vec::new();
-        let mut alloc = CellAllocator::new(1024);
-        let (desc_by_expr, cache_root_expr, residency) = empty_env_parts(layer, &mut ctx);
+        let (desc_by_expr, cache_root_expr, mut residency) = empty_env_parts(layer, &mut ctx);
         let env = LoweringEnv {
             desc_by_expr: &desc_by_expr,
-            residency: &residency,
             cache_root_expr: &cache_root_expr,
             point: 0,
-            free_cells: 1024,
             allow_resident_smem: true,
         };
-        compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base, env)
+        compile_expr(layer, expr, &mut ctx, &mut residency, &mut trace, &mut out, OperandField::Base, env)
             .expect("compile_expr");
         out
     }
@@ -1261,17 +1252,14 @@ mod tests {
         let mut ctx = DagForwardContext::default();
         let mut trace = CompileTrace::default();
         let mut out = Vec::new();
-        let mut alloc = CellAllocator::new(1024);
-        let (desc_by_expr, cache_root_expr, residency) = empty_env_parts(layer, &mut ctx);
+        let (desc_by_expr, cache_root_expr, mut residency) = empty_env_parts(layer, &mut ctx);
         let env = LoweringEnv {
             desc_by_expr: &desc_by_expr,
-            residency: &residency,
             cache_root_expr: &cache_root_expr,
             point: 0,
-            free_cells: 1024,
             allow_resident_smem: true,
         };
-        compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base, env)?;
+        compile_expr(layer, expr, &mut ctx, &mut residency, &mut trace, &mut out, OperandField::Base, env)?;
         Ok(out)
     }
 
@@ -1850,21 +1838,18 @@ mod tests {
         let mut ctx = DagForwardContext::default();
         let mut trace = CompileTrace::default();
         let mut out = Vec::new();
-        let mut alloc = CellAllocator::new(1024);
         // Pre-intern the layer's descriptors ONCE (the materialize_descriptors pass).
-        let (desc_by_expr, cache_root_expr, residency) = empty_env_parts(&layer, &mut ctx);
+        let (desc_by_expr, cache_root_expr, mut residency) = empty_env_parts(&layer, &mut ctx);
         assert_eq!(ctx.specials.len(), 1, "materialize_descriptors interns exactly one");
         let env = LoweringEnv {
             desc_by_expr: &desc_by_expr,
-            residency: &residency,
             cache_root_expr: &cache_root_expr,
             point: 0,
-            free_cells: 1024,
             allow_resident_smem: true,
         };
 
         // lower_operand on the resolution-pruned expr must reuse the descriptor.
-        lower_operand(&layer, fold, &mut ctx, &mut trace, &mut out, &mut alloc, OperandField::Base, env)
+        lower_operand(&layer, fold, &mut ctx, &mut residency, &mut trace, &mut out, OperandField::Base, env)
             .expect("lower_operand");
 
         assert_eq!(
@@ -1901,17 +1886,14 @@ mod tests {
         ctx.cross_layer_fields = map;
         let mut trace = CompileTrace::default();
         let mut out = Vec::new();
-        let mut alloc = CellAllocator::new(1024);
-        let (desc_by_expr, cache_root_expr, residency) = empty_env_parts(layer, &mut ctx);
+        let (desc_by_expr, cache_root_expr, mut residency) = empty_env_parts(layer, &mut ctx);
         let env = LoweringEnv {
             desc_by_expr: &desc_by_expr,
-            residency: &residency,
             cache_root_expr: &cache_root_expr,
             point: 0,
-            free_cells: 1024,
             allow_resident_smem: true,
         };
-        compile_expr(layer, expr, &mut ctx, &mut trace, &mut out, &mut alloc, expected, env)
+        compile_expr(layer, expr, &mut ctx, &mut residency, &mut trace, &mut out, expected, env)
             .expect("compile_expr");
         out
     }
