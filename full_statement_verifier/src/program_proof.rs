@@ -154,7 +154,7 @@ impl ProgramProof {
 
         responses
     }
-    
+
     pub fn flatten_unified_for_verification(&self) -> Vec<u32> {
         let mut responses = Vec::with_capacity(32 + 32 * 2);
 

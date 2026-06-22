@@ -5,8 +5,8 @@ use crate::statement_common::{
     read_setup_cap, FINAL_PC_BUFFER_PC_IDX, FINAL_PC_BUFFER_TS_HIGH_IDX, FINAL_PC_BUFFER_TS_LOW_IDX,
 };
 use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
-use verifier_common::cs::definitions::split_timestamp;
 use prover::definitions::DEFAULT_CAP_SIZE;
+use verifier_common::cs::definitions::split_timestamp;
 
 /// Full-statement verifier for the unified reduced-machine circuit (recursion layer only).
 ///
@@ -35,14 +35,20 @@ pub unsafe fn verify_full_statement_for_unified_circuit<
 >(
     unified_circuit_setup: &MerkleTreeCap<DEFAULT_CAP_SIZE>,
     unified_circuit_verifier: UniVerifyFn,
-    delegation_circuits_params: &[DelegationCircuitSetupData<DEFAULT_CAP_SIZE>; NUM_DELEGATION_CIRCUIT_TYPES],
+    delegation_circuits_params: &[DelegationCircuitSetupData<DEFAULT_CAP_SIZE>;
+         NUM_DELEGATION_CIRCUIT_TYPES],
     delegation_circuits_verifiers: &[DelVerifyFn; NUM_DELEGATION_CIRCUIT_TYPES],
     nd_source: &mut I,
-) -> Result<[u32; 16], E::Error> 
+) -> Result<[u32; 16], E::Error>
 where
-    UniVerifyFn: Fn(&GKRExternalChallenges<BabyBearField, BabyBearExt4>, &mut I) -> Result<UnifiedCircuitOutput, E::Error>,
-    DelVerifyFn: Fn(&GKRExternalChallenges<BabyBearField, BabyBearExt4>, &mut I) -> Result<DelegationCircuitOutput, E::Error>
-
+    UniVerifyFn: Fn(
+        &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+        &mut I,
+    ) -> Result<UnifiedCircuitOutput, E::Error>,
+    DelVerifyFn: Fn(
+        &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+        &mut I,
+    ) -> Result<DelegationCircuitOutput, E::Error>,
 {
     let mut transcript = Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new();
 

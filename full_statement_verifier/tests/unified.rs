@@ -126,6 +126,34 @@ fn unified_base_layer_rejects_corrupted_stream() {
     assert!(result.is_err(), "corrupted unified stream must be rejected");
 }
 
+#[test]
+#[ignore = "requires generated unified base-layer fixture (run the prover step)"]
+fn rejects_corrupted_setup_cap() {
+    let (proof, setup_cap) = assemble(load_bundle());
+    let prefix_len = MerkleTreeCap::flatten_single(&setup_cap).len();
+    let mut corrupted = build_stream(&proof, &setup_cap);
+    assert!(prefix_len > 0, "setup-cap prefix must be non-empty");
+    corrupted[prefix_len / 2] ^= 0x5555_5555;
+
+    let result = run_unified_base_layer(corrupted);
+    assert!(result.is_err(), "corrupted setup-cap VK must be rejected");
+}
+
+#[test]
+#[ignore = "requires generated unified base-layer fixture (run the prover step)"]
+fn rejects_tampered_final_register_state() {
+    let (proof, setup_cap) = assemble(load_bundle());
+    let prefix_len = MerkleTreeCap::flatten_single(&setup_cap).len();
+    let mut corrupted = build_stream(&proof, &setup_cap);
+    corrupted[prefix_len + 3] ^= 0x5555_5555;
+
+    let result = run_unified_base_layer(corrupted);
+    assert!(
+        result.is_err(),
+        "tampered final register state must be rejected (Fiat-Shamir binding)"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Synthetic multi-instance soundness tests.
 //
