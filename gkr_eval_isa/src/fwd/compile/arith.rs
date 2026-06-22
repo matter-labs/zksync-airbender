@@ -694,7 +694,7 @@ fn emit_reduction_group(
     // running partial between chunks; its width follows the group field (Ext → 4).
     // The evict cell is drawn from the SHARED allocator so it never collides with a
     // cell still holding a lowered compound operand of this very reduction (§11).
-    let sizes = split_reduction(ops.len(), /* budget */ 4);
+    let sizes = split_reduction(ops.len());
     let mut idx = 0usize;
     let mut chunks = sizes.into_iter();
 

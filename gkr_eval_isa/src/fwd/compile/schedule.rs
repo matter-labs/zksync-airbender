@@ -138,28 +138,23 @@ impl CellAllocator {
     }
 }
 
-/// Split a reduction of `arity` terms into chunk sizes, each `<= MAX_ARITY` and
-/// bounded by what the budget allows, summing **exactly** to `arity` (spec §11).
+/// Split a reduction of `arity` terms into chunk sizes, each `<= MAX_ARITY`,
+/// summing **exactly** to `arity` (spec §11).
 ///
-/// `arity <= MAX_ARITY` returns `vec![arity]` (no split — emitted exactly as
-/// Tasks 9/10 do today). For larger arity the terms are sliced into chunks of at
-/// most `chunk_cap = min(MAX_ARITY, budget-bounded max)`; each emitted chunk is a
+/// `arity <= MAX_ARITY` returns `vec![arity]` (no split). For larger arity the
+/// terms are sliced into chunks of at most `MAX_ARITY`; each emitted chunk is a
 /// single ADD/MUL instruction over the accumulator with the running partial held
-/// in a single evict cell between chunks (§11 eviction).
-pub fn split_reduction(arity: usize, budget: usize) -> Vec<usize> {
+/// in an evict cell between chunks (§11 eviction). This enforces ONLY the encoder
+/// arity cap — the smem working-set bound is a separate concern handled by
+/// [`split_by_working_set`], which the emitter consults with the live free-cell
+/// count from the residency planner.
+pub fn split_reduction(arity: usize) -> Vec<usize> {
     if arity == 0 {
         return vec![];
     }
     if arity <= MAX_ARITY {
         return vec![arity];
     }
-    // Operands are read inline; only the evicted running partial is resident
-    // between chunks (1 cell for Base, up to 4 for Ext). The arity cap (127) is
-    // the binding limit on a single instruction; the budget only has to hold the
-    // evict cell, so it never forces chunks *smaller* than the cap here. The
-    // `budget` term keeps the signature honest as a future tightening knob while
-    // never producing a zero-size chunk.
-    let _ = budget;
     let chunk_cap = MAX_ARITY;
 
     let mut chunks = Vec::new();
@@ -170,6 +165,74 @@ pub fn split_reduction(arity: usize, budget: usize) -> Vec<usize> {
         remaining -= take;
     }
     chunks
+}
+
+/// One operand's contribution to a reduction's smem working set (Task 9 / §11).
+///
+/// A SIMPLE (non-compound) operand is read inline from its backing and occupies
+/// no cell. A COMPOUND operand (a nested `Add`/`Mul` pre-materialized into a cell)
+/// occupies `width` cells (1 for Base, 4 for Ext) for the duration of the fold.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LoweringOperandNeed {
+    pub is_compound: bool,
+    pub width: u8,
+}
+
+/// Split a reduction's operands into chunks whose simultaneous smem working set
+/// fits `free_cells` (spec §11). `free_cells` is the live free-cell count the
+/// residency planner reserved via `ResidencyState::ensure_temp_capacity`; the
+/// emitter passes it in — this function never recomputes it.
+///
+/// Only COMPOUND operands consume cells; SIMPLE operands are inline and never
+/// force a split. Each chunk also reserves space for the running accumulator
+/// partial that is evicted between chunks (`reserve`, sized to the reduction's
+/// field = the widest operand, since a reduction is field-homogeneous). A chunk
+/// is cut when admitting the next compound operand would push
+/// `compound_cells + reserve` past `free_cells`. A single compound operand that
+/// cannot fit even alone (`width + reserve > free_cells`) is an unsupported
+/// budget → `Err(CompileError::BudgetBelowFloor)` (reusing the allocator's
+/// variant — a plain `Vec` can't distinguish "no chunks" from "infeasible
+/// budget").
+///
+/// Returns index ranges into `needs`; `Ok(vec![0..needs.len()])` when nothing
+/// forces a split, `Ok(vec![])` for an empty operand list.
+pub fn split_by_working_set(
+    needs: &[LoweringOperandNeed],
+    free_cells: usize,
+) -> Result<Vec<std::ops::Range<usize>>, CompileError> {
+    if needs.is_empty() {
+        return Ok(Vec::new());
+    }
+    // The acc/evict reserve approximates the reduction's field width: the running
+    // partial is a value of that field (Base = 1 cell, Ext = 4), and a reduction
+    // is field-homogeneous, so the widest operand carries that field's width.
+    let reserve = needs.iter().map(|n| n.width as usize).max().unwrap_or(0);
+
+    let mut chunks = Vec::new();
+    let mut chunk_start = 0usize;
+    let mut chunk_compound_cells = 0usize;
+    for (i, need) in needs.iter().enumerate() {
+        if !need.is_compound {
+            continue; // inline operand: no cell, never forces a split
+        }
+        let w = need.width as usize;
+        // A single compound operand + the partial reserve cannot fit at all.
+        if w + reserve > free_cells {
+            return Err(CompileError::BudgetBelowFloor {
+                floor: w + reserve,
+                budget: free_cells,
+            });
+        }
+        // Admitting this compound would overflow the current chunk's working set.
+        if chunk_compound_cells > 0 && chunk_compound_cells + w + reserve > free_cells {
+            chunks.push(chunk_start..i);
+            chunk_start = i;
+            chunk_compound_cells = 0;
+        }
+        chunk_compound_cells += w;
+    }
+    chunks.push(chunk_start..needs.len());
+    Ok(chunks)
 }
 
 #[cfg(test)]
@@ -229,14 +292,14 @@ mod tests {
 
     #[test]
     fn split_small_arity_is_single_chunk() {
-        assert_eq!(split_reduction(1, 16), vec![1]);
-        assert_eq!(split_reduction(MAX_ARITY, 16), vec![MAX_ARITY]);
-        assert_eq!(split_reduction(64, 16), vec![64]);
+        assert_eq!(split_reduction(1), vec![1]);
+        assert_eq!(split_reduction(MAX_ARITY), vec![MAX_ARITY]);
+        assert_eq!(split_reduction(64), vec![64]);
     }
 
     #[test]
     fn split_large_arity_chunks_sum_and_bound() {
-        let chunks = split_reduction(300, 16);
+        let chunks = split_reduction(300);
         assert!(chunks.len() >= 2, "arity 300 must split into multiple chunks");
         assert_eq!(chunks.iter().sum::<usize>(), 300, "chunks must sum to arity");
         for &c in &chunks {
@@ -249,9 +312,35 @@ mod tests {
 
     #[test]
     fn split_arity_just_over_cap() {
-        let chunks = split_reduction(MAX_ARITY + 1, 16);
+        let chunks = split_reduction(MAX_ARITY + 1);
         assert_eq!(chunks.iter().sum::<usize>(), MAX_ARITY + 1);
         assert_eq!(chunks, vec![MAX_ARITY, 1]);
+    }
+
+    // ── split_by_working_set: simple inline vs compound-cell pressure ────────────
+
+    #[test]
+    fn simple_operands_do_not_force_a_split() {
+        let needs = vec![LoweringOperandNeed { is_compound: false, width: 1 }; 8];
+        let chunks = split_by_working_set(&needs, /*free_cells*/ 2).unwrap();
+        assert_eq!(chunks.len(), 1, "8 simple inline operands must NOT chunk under a tight budget: {chunks:?}");
+    }
+
+    #[test]
+    fn compound_operands_split_under_tight_budget() {
+        let needs = vec![LoweringOperandNeed { is_compound: true, width: 4 }; 3]; // 3 compound Ext operands
+        let chunks = split_by_working_set(&needs, /*free_cells*/ 8).unwrap(); // holds ~1 Ext + evict at a time
+        assert!(chunks.len() >= 2, "compound Ext operands exceeding the working set must chunk: {chunks:?}");
+    }
+
+    #[test]
+    fn single_compound_over_budget_is_below_floor() {
+        // One Ext compound (4) + acc/evict reserve cannot fit in free_cells=2 → BudgetBelowFloor.
+        let needs = vec![LoweringOperandNeed { is_compound: true, width: 4 }];
+        assert!(matches!(
+            split_by_working_set(&needs, /*free_cells*/ 2),
+            Err(CompileError::BudgetBelowFloor { .. })
+        ));
     }
 
     // ── below-floor error ───────────────────────────────────────────────────────
