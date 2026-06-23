@@ -44,18 +44,15 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
     let mul_root_offset = MW::mul_assign(quote! { root }, quote! { high_powers_offset });
     let square_root_inv = MW::square(quote! { root_inv });
 
+    // eq(z, α) = (1-α) + (2α-1)·z. Precompute (1-α) and the coefficient (2α-1) once per fold
+    // call, then evaluate each inner `eq` with a single fused multiply-add. This removes the
+    // per-entry extension-field add and sub that the explicit `(1-α) + 2α·z - z` form needed.
     let sub_oma_alpha = MW::sub_assign(quote! { one_minus_alpha }, quote! { alpha });
-    let double_two_alpha = MW::double(quote! { two_alpha });
-    let mul_two_a_zi_zi = MW::mul_assign(quote! { two_a_zi }, quote! { zi });
-    let add_eq_two_a_zi = MW::add_assign(quote! { eq }, quote! { two_a_zi });
-    let eq_add_two_a_zi =
-        MW::add_assign_product(quote! { eq }, quote! { two_alpha }, quote! { zi });
-    let sub_eq_zi = MW::sub_assign(quote! { eq }, quote! { zi });
+    let double_alpha_coeff = MW::double(quote! { alpha_coeff });
+    let sub_coeff_one = MW::sub_assign_base(quote! { alpha_coeff }, MW::field_one());
+    let fma_eq_zi = MW::add_assign_product(quote! { eq }, quote! { alpha_coeff }, quote! { zi });
     let mul_prefactor_eq = MW::mul_assign(quote! { acc.z_initial_prefactor }, quote! { eq });
-    let mul_two_a_s_s = MW::mul_assign(quote! { two_a_s }, quote! { s });
-    let add_eq_two_a_s = MW::add_assign(quote! { eq }, quote! { two_a_s });
-    let sub_eq_s = MW::sub_assign(quote! { eq }, quote! { s });
-    let eq_add_two_a_s = MW::add_assign_product(quote! { eq }, quote! { two_alpha }, quote! { s });
+    let fma_eq_s = MW::add_assign_product(quote! { eq }, quote! { alpha_coeff }, quote! { s });
     let mul_entry_prefactor_eq = MW::mul_assign(quote! { entry.prefactor }, quote! { eq });
     let square_current_scalar = MW::square(quote! { entry.current_scalar });
 
@@ -309,26 +306,20 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             alpha: #quartic_struct,
             z_initial: &[#quartic_struct],
         ) {
-            // eq(z, α) = (1-z)(1-α) + zα = (1-α) - z + 2αz
-            // precompute (1-α) and 2α; each inner eq eval is 1 mul + 1 add + 1 sub.
+            // eq(z, α) = (1-z)(1-α) + zα = (1-α) + (2α-1)·z.
+            // Precompute (1-α) and (2α-1) once; each inner eq eval is then a single fused
+            // multiply-add `eq = (1-α); eq += (2α-1)·z`, i.e. one extension multiply with the
+            // accumulate fused in - no separate add/sub per entry.
             let mut one_minus_alpha = #quartic_one;
             #sub_oma_alpha;
-            let mut two_alpha = alpha;
-            #double_two_alpha;
+            let mut alpha_coeff = alpha;
+            #double_alpha_coeff;
+            #sub_coeff_one;
 
             unsafe {
                 let zi = *z_initial.get_unchecked(acc.z_initial_idx);
                 let mut eq = one_minus_alpha;
-                // eq += 2 * alpha * zi
-
-                // #eq_add_two_a_zi; // not beneficial
-
-                let mut two_a_zi = two_alpha;
-                #mul_two_a_zi_zi;
-                #add_eq_two_a_zi;
-
-                // eq -= zi
-                #sub_eq_zi;
+                #fma_eq_zi;
                 #mul_prefactor_eq;
                 acc.z_initial_idx += 1;
             }
@@ -340,16 +331,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
                     let entry = acc.pow_entries.get_unchecked_mut(i);
                     let s = entry.current_scalar;
                     let mut eq = one_minus_alpha;
-                    // eq += two_alpha * s
-
-                    // #eq_add_two_a_s; // not beneficial
-
-                    let mut two_a_s = two_alpha;
-                    #mul_two_a_s_s;
-                    #add_eq_two_a_s;
-
-                    // eq -= s
-                    #sub_eq_s;
+                    #fma_eq_s;
                     #mul_entry_prefactor_eq;
                     #square_current_scalar;
                 }

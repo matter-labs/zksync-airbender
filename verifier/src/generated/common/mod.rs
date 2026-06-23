@@ -643,15 +643,13 @@ pub fn fold_whir_accumulator<const MAX_POW: usize>(
 ) {
     let mut one_minus_alpha = BabyBearExt4::ONE;
     field_ops::sub_assign(&mut one_minus_alpha, &alpha);
-    let mut two_alpha = alpha;
-    field_ops::double(&mut two_alpha);
+    let mut alpha_coeff = alpha;
+    field_ops::double(&mut alpha_coeff);
+    field_ops::sub_assign_base(&mut alpha_coeff, &BabyBearField::ONE);
     unsafe {
         let zi = *z_initial.get_unchecked(acc.z_initial_idx);
         let mut eq = one_minus_alpha;
-        let mut two_a_zi = two_alpha;
-        field_ops::mul_assign(&mut two_a_zi, &zi);
-        field_ops::add_assign(&mut eq, &two_a_zi);
-        field_ops::sub_assign(&mut eq, &zi);
+        field_ops::add_assign_product(&mut eq, &alpha_coeff, &zi);
         field_ops::mul_assign(&mut acc.z_initial_prefactor, &eq);
         acc.z_initial_idx += 1;
     }
@@ -662,10 +660,7 @@ pub fn fold_whir_accumulator<const MAX_POW: usize>(
             let entry = acc.pow_entries.get_unchecked_mut(i);
             let s = entry.current_scalar;
             let mut eq = one_minus_alpha;
-            let mut two_a_s = two_alpha;
-            field_ops::mul_assign(&mut two_a_s, &s);
-            field_ops::add_assign(&mut eq, &two_a_s);
-            field_ops::sub_assign(&mut eq, &s);
+            field_ops::add_assign_product(&mut eq, &alpha_coeff, &s);
             field_ops::mul_assign(&mut entry.prefactor, &eq);
             field_ops::square(&mut entry.current_scalar);
         }
