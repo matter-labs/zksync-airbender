@@ -230,6 +230,11 @@ mod tests {
     // roots) are loaded once into an smem cell and their reuses read the cell instead
     // of re-reading the DRAM backing. Both anchor circuits shed more DRAM reads on top
     // of S2. Measured from `compile_layer(&dag.layers[0], .., 1024).stats.dram_reads`.
+    // CAVEAT: budget 1024 is the UNCAPPED / all-resident case (nothing evicts) — so
+    // 52/75 are the CEILING savings, not a real-budget figure. At an occupancy-bound
+    // budget (~8-16 cells/thread on this GPU) eviction engages and the realized cut is
+    // smaller (the post-residency optimum is not reached until budget ≥ 64; see the
+    // re-derived curve in `residency_eviction_engages_under_tight_budget`).
     pub const ADD_SUB_S3_DRAM_READS: usize = 52;
     pub const MUL_DIV_S3_DRAM_READS: usize = 75;
 

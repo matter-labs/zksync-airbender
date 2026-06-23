@@ -309,8 +309,12 @@ pub fn compile_layer(
             }
         }
         // Advance the residency query cursor one step per root. `location` is
-        // point-insensitive, so only Belady eviction tiebreaks consult it under cap
-        // pressure; with no eviction (the gated circuits fit BUDGET) this is inert.
+        // point-insensitive, so the per-root cursor only affects Belady eviction
+        // tiebreaks, which engage under cap pressure. At a loose test budget (1024)
+        // nothing evicts so the granularity is moot THERE — but at a real
+        // occupancy-bound budget (~8-16 cells/thread, see fwd_parity floor table)
+        // eviction DOES fire, and the coarse per-root point is the known limitation
+        // the deferred per-event cursor would address. Not a no-op at real budgets.
         point += 1;
     }
 

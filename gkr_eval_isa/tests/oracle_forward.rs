@@ -132,7 +132,8 @@ fn oracle_all_fixtures() {
     assert_eq!(paths.len(), 22, "expected 22 IR fixtures");
     for p in &paths {
         check_circuit(p, CompileParams::default(), 7);
-        // And once with a realistic GPU-ish budget, half of it pinned.
+        // And once with a moderate, low-occupancy GPU-scale budget (64 bf-cells;
+        // full occupancy is ~16 cells/thread), half of it pinned.
         check_circuit(
             p,
             CompileParams { budget_cells: 64, pinned_cells: 32, ..Default::default() },
