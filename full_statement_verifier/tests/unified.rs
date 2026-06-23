@@ -154,31 +154,6 @@ fn rejects_tampered_final_register_state() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Synthetic multi-instance soundness tests.
-//
-// The prover emits a single genuine unified instance (`num_circuits = 1,
-// num_it_circuits = 1`), so the multi-instance soundness rules in
-// `verify_full_statement_for_unified_circuit` are never exercised by the happy path. We reach
-// them by fabricating malformed streams from the real fixture (the happy path above is the
-// differential: with correct counts it accepts, so a rejection below is attributable to the
-// specific malformation).
-//
-// Reachability matters: these three malformations trip asserts INSIDE/BEFORE the circuit loop
-// (`num_it_circuits >= 1` at line ~91, `num_it_circuits <= num_circuits` at ~92, and the
-// strictly-increasing `top_bits` check at ~136) — all BEFORE the Fiat-Shamir challenge check
-// (~199-205). So they reject for the intended reason, not an incidental FS mismatch.
-//
-// NOT covered here (documented limitation): the i/t *exclusion*-affects-`read == write`
-// soundness (line ~221) sits AFTER the FS check. A synthetic stream built from a single
-// genuine proof has FS challenges derived from a 1-instance transcript, so any ≥2-instance
-// stream is rejected at the FS check first — the exclusion path can only be isolated with a
-// genuine FS-consistent multi-instance proof, which the prover does not produce. The FS check
-// is itself the guard that makes the structure binding. Likewise, `inits_and_teardowns = None`
-// for a trailing instance and `it_circuits_seen != num_it_circuits` are structurally
-// unreachable for the unified circuit (every instance carries folded i/t; the count is exact
-// by loop construction) — defensive asserts only.
-
 #[test]
 #[ignore = "requires generated unified base-layer fixture (run the prover step)"]
 fn rejects_num_it_circuits_zero() {
@@ -200,12 +175,11 @@ fn rejects_num_it_circuits_exceeds_num_circuits() {
 
 #[test]
 #[ignore = "requires generated unified base-layer fixture (run the prover step)"]
-fn rejects_duplicate_top_bits_across_instances() {
+fn rejects_multi_instance() {
     let (proof, setup_cap) = assemble_with(load_bundle(), 2, 2);
     let result = run_unified_base_layer(build_stream(&proof, &setup_cap));
     assert!(
         result.is_err(),
-        "two trailing instances with identical (non-increasing) top_bits must be rejected"
     );
 }
 

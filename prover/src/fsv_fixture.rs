@@ -14,7 +14,6 @@ pub struct DelegationComponents {
     pub compiled_circuit: Circuit,
 }
 
-
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct UnifiedBaseLayerComponents {
     pub unified_proof: Proof,

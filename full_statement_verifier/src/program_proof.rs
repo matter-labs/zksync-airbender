@@ -155,6 +155,12 @@ impl ProgramProof {
         responses
     }
 
+    /// Flattens a unified-circuit `ProgramProof` into the NDS word stream the FSV consumes.
+    ///
+    /// NOTE: the setup (verification-key) cap is **not** included — the caller must prepend it
+    /// (the verifier reads it first via `read_setup_cap`). This mirrors `flatten_for_verification`
+    /// for the unrolled path. Passing this stream to the verifier without the prepended setup
+    /// cap is malformed.
     pub fn flatten_unified_for_verification(&self) -> Vec<u32> {
         let mut responses = Vec::with_capacity(32 + 32 * 2);
 

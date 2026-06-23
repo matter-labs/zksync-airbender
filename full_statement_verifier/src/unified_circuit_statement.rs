@@ -16,13 +16,7 @@ use verifier_common::cs::definitions::split_timestamp;
 /// - inits/teardowns are carried only by the **last `num_it_circuits`** instances (the
 ///   prover sends `num_it_circuits` as an extra word). For those trailing instances we
 ///   multiply their (now separately-surfaced) i/t grand-product into the accumulators and
-///   require their `top_bits` to be **strictly increasing** (⇒ unique ⇒ disjoint address
-///   prefixes ⇒ no instance can re-initialize memory owned by another). The i/t product of
-///   the earlier (ignored) instances is **excluded** — never multiplied in — so it cannot
-///   affect soundness regardless of its contents. Completeness (every touched address is
-///   initialized by some counted instance) is still forced by the global `read == write`.
-/// - `BASE_LAYER`: starts a fresh recursion chain (requires the upper 8 output registers
-///   to be zero, no preimage); otherwise continues an existing chain (reads a preimage).
+///   require their `top_bits` to be **strictly increasing**. 
 #[allow(invalid_value)]
 #[inline(never)]
 pub unsafe fn verify_full_statement_for_unified_circuit<
@@ -88,7 +82,7 @@ where
 
     // single reduced-machine family with folded inits/teardowns
     let num_circuits = nd_source.read_word();
-    assert!(num_circuits > 0);
+    assert!(num_circuits == 1);
 
     // extra word: how many of the *trailing* circuits carry real inits/teardowns
     let num_it_circuits = nd_source.read_word();
@@ -108,7 +102,9 @@ where
     let mut prev_top_bit: i64 = -1;
     let mut it_circuits_seen = 0u32;
     for circuit_sequence in 0..num_circuits {
-        total_cycles += 1u64 << 24; // TODO
+        // TODO: unified circuit's trace len.
+        // This should be derived from the circuit, not hardcoded
+        total_cycles += 1u64 << 24;
         assert!(total_cycles < MAX_CYCLES);
 
         let proof_output = (unified_circuit_verifier)(&external_challenges, nd_source)?;
