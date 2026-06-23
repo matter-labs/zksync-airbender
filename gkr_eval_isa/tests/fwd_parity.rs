@@ -299,6 +299,354 @@ const LAYOUT_NO_CACHES_GKR_FIXTURES: &[&str] = &[
     "unsigned_mul_div_layout_no_caches_gkr.json",
 ];
 
+// ── S3 opportunity audit (corpus-wide; #[ignore]d) ──────────────────────────────
+//
+// Quantifies the S3 (#10 reorder + #5a acc-carry) opportunity across ALL 22 layout
+// fixtures (cache + no-cache), every layer, focused on the TIGHT-budget regime (the
+// regime that actually matters, and worse in the backward pass where base->ext folding
+// quadruples cell width). For each (circuit, layer) it reports:
+//   DAG opportunity: output/cache roots; same-layer Prior reuse edges (#10 reorder
+//     adjacency potential); carry-eligible roots (>=1 same-layer-Prior child, the #5a
+//     UPPER bound) + first-child-Prior roots (natural-seed proxy); size (exprs/reads);
+//     base/ext sink split (backward-pass 4x-blowup signal).
+//   Compile sweep: the irreducible floor (min feasible budget) and dram_reads / max_live
+//     / lanes at floor / 16 / 32 / 1024 — the tight-vs-loose dram_reads gap is the room
+//     #10 could recover; max_live@1024 is the uncapped cell pressure.
+// Emits parseable `[AUDIT]` CSV lines + a per-circuit rollup. Run:
+//   cargo test -p gkr_eval_isa --test fwd_parity -- --ignored --nocapture s3_opportunity_audit
+const AUDIT_BUDGETS: &[usize] = &[4, 8, 12, 16, 24, 32, 48, 64, 128, 1024];
+
+#[test]
+#[ignore = "corpus-wide S3 opportunity audit; run on demand"]
+fn s3_opportunity_audit() {
+    use cs::gkr_compiler::dag_ir::{Expr, FieldKind, SourceKind};
+    let dir = compiled_circuit_dir();
+    let mut all: Vec<String> = Vec::new();
+    let mut fixtures: Vec<&str> = Vec::new();
+    fixtures.extend_from_slice(LAYOUT_GKR_FIXTURES);
+    fixtures.extend_from_slice(LAYOUT_NO_CACHES_GKR_FIXTURES);
+
+    println!("[AUDIT] circuit,caches,layer,out_roots,cache_roots,prior_edges,carry_elig,carry_firstchild,exprs,reads,base_sinks,ext_sinks,floor,dram@floor,dram@16,dram@32,dram@1024,maxlive@1024,lanes@1024");
+    for &f in &fixtures {
+        let has_caches = !f.contains("no_caches");
+        let circuit = f.trim_end_matches("_layout_gkr.json").trim_end_matches("_layout_no_caches_gkr.json");
+        let artifact = match load_fixture(&dir.join(f)) {
+            Some(a) => a,
+            None => { eprintln!("[AUDIT] SKIP (missing) {f}"); continue; }
+        };
+        let dag = match lower_dag(&artifact) { Ok(d) => d, Err(e) => { eprintln!("[AUDIT] {f} lower_dag err {e}"); continue; } };
+        if let Err(e) = validate(&dag) { eprintln!("[AUDIT] {f} validate err {e}"); continue; }
+        let cross = build_cross_layer_field_map(&dag);
+
+        for (l, layer) in dag.layers.iter().enumerate() {
+            // cache RootIds = Output roots with no origin.
+            let mut cache_ids: std::collections::HashSet<RootId> = std::collections::HashSet::new();
+            let mut n_out = 0usize;
+            for (idx, root) in layer.roots.iter().enumerate() {
+                if let Root::Output { .. } = root {
+                    n_out += 1;
+                    let rid = RootId(idx as u32);
+                    if !layer.origins.contains_key(&rid) { cache_ids.insert(rid); }
+                }
+            }
+            let is_same_layer_prior = |id: cs::gkr_compiler::dag_ir::ExprId| -> bool {
+                if let Expr::Source(src) = &layer.exprs[id.0 as usize] {
+                    if let SourceKind::Prior { id: rid } = &layer.sources[src.0 as usize].kind {
+                        return cache_ids.contains(rid);
+                    }
+                }
+                false
+            };
+            // Per-root carry/reuse structure.
+            let mut prior_edges = 0usize;     // total same-layer-Prior child uses at top level
+            let mut carry_elig = 0usize;      // roots with >=1 same-layer-Prior top-level child (UPPER bound)
+            let mut carry_firstchild = 0usize;// roots whose child[0] is a same-layer Prior (natural-seed proxy)
+            for root in &layer.roots {
+                if let Root::Output { expr, .. } = root {
+                    if let Expr::Add(ch) | Expr::Mul(ch) = &layer.exprs[expr.0 as usize] {
+                        if ch.is_empty() { continue; }
+                        let priors = ch.iter().filter(|&&c| is_same_layer_prior(c)).count();
+                        prior_edges += priors;
+                        if priors > 0 { carry_elig += 1; }
+                        if is_same_layer_prior(ch[0]) { carry_firstchild += 1; }
+                    }
+                }
+            }
+            let n_reads = layer.sources.iter().filter(|s| matches!(s.kind, SourceKind::Read { .. })).count();
+            let (mut base_sinks, mut ext_sinks) = (0usize, 0usize);
+            for s in &layer.sinks { match s.field { FieldKind::Base => base_sinks += 1, FieldKind::Ext => ext_sinks += 1 } }
+
+            // Compile sweep.
+            let mut floor: Option<usize> = None;
+            let mut dram: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+            let mut maxlive1024 = 0usize;
+            let mut lanes1024 = 0usize;
+            for &b in AUDIT_BUDGETS {
+                match compile_layer(layer, &artifact.layers[l], &artifact.scratch_space_mapping, &cross, b) {
+                    Ok(c) => {
+                        if floor.is_none() { floor = Some(b); }
+                        dram.insert(b, c.stats.dram_reads);
+                        if b == 1024 { maxlive1024 = c.stats.max_live_cells; lanes1024 = c.stats.program_lanes; }
+                    }
+                    Err(CompileError::BudgetBelowFloor { .. }) => {}
+                    Err(e) => { eprintln!("[AUDIT] {circuit} caches={has_caches} L{l} budget {b} ERR {e:?}"); }
+                }
+            }
+            let fl = floor.unwrap_or(0);
+            let g = |b: usize| dram.get(&b).map(|v| *v as i64).unwrap_or(-1);
+            all.push(format!(
+                "[AUDIT] {circuit},{has_caches},{l},{n_out},{},{prior_edges},{carry_elig},{carry_firstchild},{},{n_reads},{base_sinks},{ext_sinks},{fl},{},{},{},{},{maxlive1024},{lanes1024}",
+                cache_ids.len(), layer.exprs.len(), g(fl), g(16), g(32), g(1024)
+            ));
+        }
+    }
+    for line in &all { println!("{line}"); }
+    println!("[AUDIT] total layer-rows: {}", all.len());
+    assert!(!all.is_empty(), "audit produced no rows");
+}
+
+// ── Source-reuse redundancy audit (the REAL reuse opportunity; #[ignore]d) ──────
+//
+// Corrects the cache-root-Prior-only view: counts how many DRAM reads are REDUNDANT
+// reloads of an already-read source (any Global: regular Read / VirtualSetup / a
+// not-resident cache backing). A hot source read by N instructions costs N DRAM reads
+// today (the planner only admits cache roots; regular sources are never kept resident).
+// Per (circuit, caches, layer, budget): G = total Global operand reads, D = distinct
+// (slot,col) sources, R = G - D = redundant reloads a read-once smem residency could
+// eliminate (bounded by budget), maxfan = reads of the hottest single source.
+// Run: cargo test -p gkr_eval_isa --test fwd_parity -- --ignored --nocapture reuse_redundancy_audit
+fn count_globals(op: &gkr_eval_isa::fwd::isa::OperandLine, tot: &mut usize, set: &mut std::collections::HashMap<(u8, u16), usize>) {
+    if let gkr_eval_isa::fwd::isa::OperandLine::Global { slot, col } = op {
+        *tot += 1;
+        *set.entry((*slot, *col)).or_insert(0) += 1;
+    }
+}
+
+#[test]
+#[ignore = "corpus-wide source-reuse redundancy audit; run on demand"]
+fn reuse_redundancy_audit() {
+    use gkr_eval_isa::fwd::isa::Instr;
+    let dir = compiled_circuit_dir();
+    let mut fixtures: Vec<&str> = Vec::new();
+    fixtures.extend_from_slice(LAYOUT_GKR_FIXTURES);
+    fixtures.extend_from_slice(LAYOUT_NO_CACHES_GKR_FIXTURES);
+    println!("[REUSE] circuit,caches,layer,budget,G_total_global,D_distinct,R_redundant,R_pct,maxfan,smem_reads,lanes");
+    for &f in &fixtures {
+        let has_caches = !f.contains("no_caches");
+        let circuit = f.trim_end_matches("_layout_gkr.json").trim_end_matches("_layout_no_caches_gkr.json");
+        let artifact = match load_fixture(&dir.join(f)) { Some(a) => a, None => continue };
+        let dag = match lower_dag(&artifact) { Ok(d) => d, Err(_) => continue };
+        if validate(&dag).is_err() { continue; }
+        let cross = build_cross_layer_field_map(&dag);
+        for (l, layer) in dag.layers.iter().enumerate() {
+            for &budget in &[1024usize, 32] {
+                let compiled = match compile_layer(layer, &artifact.layers[l], &artifact.scratch_space_mapping, &cross, budget) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let mut g = 0usize;
+                let mut set: std::collections::HashMap<(u8, u16), usize> = std::collections::HashMap::new();
+                let mut smem = 0usize;
+                let bump_smem = |op: &gkr_eval_isa::fwd::isa::OperandLine, s: &mut usize| {
+                    if matches!(op, gkr_eval_isa::fwd::isa::OperandLine::Smem { .. }) { *s += 1; }
+                };
+                for instr in &compiled.program.instrs {
+                    match instr {
+                        Instr::Mov { src: Some(op), .. } => { count_globals(op, &mut g, &mut set); bump_smem(op, &mut smem); }
+                        Instr::Mov { src: None, .. } => {}
+                        Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
+                            for op in operands { count_globals(op, &mut g, &mut set); bump_smem(op, &mut smem); }
+                        }
+                        Instr::Fma { pairs, .. } => {
+                            for (a, b) in pairs {
+                                count_globals(a, &mut g, &mut set); bump_smem(a, &mut smem);
+                                count_globals(b, &mut g, &mut set); bump_smem(b, &mut smem);
+                            }
+                        }
+                    }
+                }
+                let d = set.len();
+                let r = g - d;
+                let maxfan = set.values().copied().max().unwrap_or(0);
+                let rpct = if g > 0 { 100.0 * r as f64 / g as f64 } else { 0.0 };
+                println!(
+                    "[REUSE] {circuit},{has_caches},{l},{budget},{g},{d},{r},{rpct:.1},{maxfan},{smem},{}",
+                    compiled.program.instrs.len()
+                );
+            }
+        }
+    }
+}
+
+// ── Budget-bounded ACHIEVABLE source-residency savings (Belady/OPT sim) ──────────
+//
+// `reuse_redundancy_audit` measures R = G - D, the UNBOUNDED ceiling (a read-once
+// residency with infinite cells eliminates every reload). This measures how much of
+// R is ACHIEVABLE under a finite source-residency cache of `cap` cells, per circuit.
+//
+// Method: compile at budget 1024 so every cache root stays resident — then the only
+// Global (DRAM) reads left in the program are REGULAR sources (Read/VirtualSetup) and
+// any non-resident backing, i.e. exactly the untapped opportunity this design targets.
+// Build the linear trace of those reads in program order and run a Belady/OPT
+// demand-cache of capacity `cap` over it. OPT is hit-maximal (Belady 1966: evict the
+// resident whose NEXT use is farthest in the future), so `hits@cap` is the TRUE
+// achievable ceiling at that capacity — no online residency policy beats it. OPT also
+// self-prioritizes: a single-use source has next-use = ∞, so it is the first eviction
+// candidate and never displaces a reused source. `hits@cap` = recoverable reloads;
+// hits/G = fraction of ALL forward DRAM reads eliminated at that cache size.
+//
+// Run: cargo test -p gkr_eval_isa --test fwd_parity -- --ignored --nocapture source_residency_savings_audit
+const SRC_RESIDENCY_CAPS: &[usize] = &[8, 16, 32, 64, 128];
+
+fn belady_opt_hits(trace: &[(u8, u16)], cap: usize) -> usize {
+    if cap == 0 || trace.is_empty() {
+        return 0;
+    }
+    let n = trace.len();
+    // next_use[i] = next index > i referencing the same source, else usize::MAX.
+    let mut next_use = vec![usize::MAX; n];
+    let mut last: std::collections::HashMap<(u8, u16), usize> = std::collections::HashMap::new();
+    for i in (0..n).rev() {
+        if let Some(&nxt) = last.get(&trace[i]) {
+            next_use[i] = nxt;
+        }
+        last.insert(trace[i], i);
+    }
+    // cache: resident source -> next-use position recorded at its last access.
+    let mut cache: std::collections::HashMap<(u8, u16), usize> = std::collections::HashMap::new();
+    let mut hits = 0usize;
+    for i in 0..n {
+        let item = trace[i];
+        if cache.contains_key(&item) {
+            hits += 1; // served from residency — a saved DRAM read
+            cache.insert(item, next_use[i]);
+        } else {
+            if cache.len() >= cap {
+                // OPT: evict the resident whose next use is farthest in the future.
+                let victim = *cache.iter().max_by_key(|&(_, &nu)| nu).map(|(k, _)| k).unwrap();
+                cache.remove(&victim);
+            }
+            cache.insert(item, next_use[i]);
+        }
+    }
+    hits
+}
+
+#[test]
+#[ignore = "budget-bounded achievable source-residency savings (Belady/OPT); run on demand"]
+fn source_residency_savings_audit() {
+    use gkr_eval_isa::fwd::isa::{Instr, OperandLine};
+    let dir = compiled_circuit_dir();
+    let mut fixtures: Vec<&str> = Vec::new();
+    fixtures.extend_from_slice(LAYOUT_GKR_FIXTURES);
+    fixtures.extend_from_slice(LAYOUT_NO_CACHES_GKR_FIXTURES);
+
+    // Corpus + per-caches aggregates: index 0 = cap 8 .. 4 = cap 128.
+    let ncaps = SRC_RESIDENCY_CAPS.len();
+    let (mut tot_g, mut tot_r) = (0usize, 0usize);
+    let mut tot_hits = vec![0usize; ncaps];
+    let mut by_caches: std::collections::HashMap<bool, (usize, usize, Vec<usize>)> = std::collections::HashMap::new();
+
+    let caps_hdr: Vec<String> = SRC_RESIDENCY_CAPS.iter().map(|c| format!("hits@{c},pctR@{c},pctG@{c}")).collect();
+    println!("[SRCRES] circuit,caches,layer,G_global,D_distinct,R_unbounded,maxfan,maxlive@1024,W_min_cap,reuse_d1,reuse_le4,reuse_le16,reuse_gt16,reuse_dmax,{}", caps_hdr.join(","));
+
+    for &f in &fixtures {
+        let has_caches = !f.contains("no_caches");
+        let circuit = f.trim_end_matches("_layout_gkr.json").trim_end_matches("_layout_no_caches_gkr.json");
+        let artifact = match load_fixture(&dir.join(f)) { Some(a) => a, None => continue };
+        let dag = match lower_dag(&artifact) { Ok(d) => d, Err(_) => continue };
+        if validate(&dag).is_err() { continue; }
+        let cross = build_cross_layer_field_map(&dag);
+        for (l, layer) in dag.layers.iter().enumerate() {
+            let compiled = match compile_layer(layer, &artifact.layers[l], &artifact.scratch_space_mapping, &cross, 1024) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            // Linear trace of Global (DRAM source) reads in program order.
+            let mut trace: Vec<(u8, u16)> = Vec::new();
+            let mut push = |op: &OperandLine, t: &mut Vec<(u8, u16)>| {
+                if let OperandLine::Global { slot, col } = op { t.push((*slot, *col)); }
+            };
+            for instr in &compiled.program.instrs {
+                match instr {
+                    Instr::Mov { src: Some(op), .. } => push(op, &mut trace),
+                    Instr::Mov { src: None, .. } => {}
+                    Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
+                        for op in operands { push(op, &mut trace); }
+                    }
+                    Instr::Fma { pairs, .. } => {
+                        for (a, b) in pairs { push(a, &mut trace); push(b, &mut trace); }
+                    }
+                }
+            }
+            let g = trace.len();
+            let mut distinct: std::collections::HashMap<(u8, u16), usize> = std::collections::HashMap::new();
+            for &it in &trace { *distinct.entry(it).or_insert(0) += 1; }
+            let d = distinct.len();
+            let r = g - d;
+            let maxfan = distinct.values().copied().max().unwrap_or(0);
+            let maxlive = compiled.stats.max_live_cells;
+
+            // MECHANISM check: reuse distance (gap to the previous use of the same
+            // source, in trace positions) + W = smallest cache that recovers 100% of R.
+            let mut last_pos: std::collections::HashMap<(u8, u16), usize> = std::collections::HashMap::new();
+            let (mut d_adj, mut d_le4, mut d_le16, mut d_gt16, mut d_max) = (0usize, 0usize, 0usize, 0usize, 0usize);
+            for (i, &it) in trace.iter().enumerate() {
+                if let Some(&p) = last_pos.get(&it) {
+                    let dist = i - p;
+                    d_max = d_max.max(dist);
+                    if dist == 1 { d_adj += 1; } else if dist <= 4 { d_le4 += 1; } else if dist <= 16 { d_le16 += 1; } else { d_gt16 += 1; }
+                }
+                last_pos.insert(it, i);
+            }
+            // W: min cap in 1..=256 with hits == R (R==0 → W=0).
+            let mut w = 0usize;
+            if r > 0 {
+                w = 257;
+                for cap in 1..=256 {
+                    if belady_opt_hits(&trace, cap) == r { w = cap; break; }
+                }
+            }
+
+            tot_g += g;
+            tot_r += r;
+            let entry = by_caches.entry(has_caches).or_insert((0, 0, vec![0usize; ncaps]));
+            entry.0 += g;
+            entry.1 += r;
+
+            let mut cols = String::new();
+            for (ci, &cap) in SRC_RESIDENCY_CAPS.iter().enumerate() {
+                let hits = belady_opt_hits(&trace, cap);
+                tot_hits[ci] += hits;
+                entry.2[ci] += hits;
+                let pct_r = if r > 0 { 100.0 * hits as f64 / r as f64 } else { 0.0 };
+                let pct_g = if g > 0 { 100.0 * hits as f64 / g as f64 } else { 0.0 };
+                cols.push_str(&format!(",{hits},{pct_r:.1},{pct_g:.1}"));
+            }
+            println!("[SRCRES] {circuit},{has_caches},{l},{g},{d},{r},{maxfan},{maxlive},{w},{d_adj},{d_le4},{d_le16},{d_gt16},{d_max}{cols}");
+        }
+    }
+
+    // Aggregates.
+    println!("[SRCRES-AGG] scope,G,R,R_pctG{}", SRC_RESIDENCY_CAPS.iter().map(|c| format!(",hits@{c},pctR@{c},pctG@{c}")).collect::<Vec<_>>().join(""));
+    let emit_agg = |label: &str, g: usize, r: usize, hits: &[usize]| {
+        let rpg = if g > 0 { 100.0 * r as f64 / g as f64 } else { 0.0 };
+        let mut cols = String::new();
+        for (ci, &cap) in SRC_RESIDENCY_CAPS.iter().enumerate() {
+            let _ = cap;
+            let h = hits[ci];
+            let pr = if r > 0 { 100.0 * h as f64 / r as f64 } else { 0.0 };
+            let pg = if g > 0 { 100.0 * h as f64 / g as f64 } else { 0.0 };
+            cols.push_str(&format!(",{h},{pr:.1},{pg:.1}"));
+        }
+        println!("[SRCRES-AGG] {label},{g},{r},{rpg:.1}{cols}");
+    };
+    emit_agg("CORPUS", tot_g, tot_r, &tot_hits);
+    if let Some((g, r, h)) = by_caches.get(&true) { emit_agg("caches=true", *g, *r, h); }
+    if let Some((g, r, h)) = by_caches.get(&false) { emit_agg("caches=false", *g, *r, h); }
+    assert!(tot_g > 0, "audit produced no Global reads");
+}
+
 fn run_fixtures(fixtures: &[&str]) {
     let dir = compiled_circuit_dir();
     let mut checked = 0usize;
