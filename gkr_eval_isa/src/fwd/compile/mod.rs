@@ -405,9 +405,11 @@ fn cache_root_expr_map(layer: &DagLayer) -> HashMap<RootId, ExprId> {
 /// Walks `layer.roots` in index order. For each CACHE root (no origin) that is a
 /// residency candidate, emits a `Produce(producer_expr)` at the root's production
 /// point; for each `SourceKind::Prior{id}` read encountered in any root's expr tree,
-/// emits a `Use(producer_expr)` at the using root's point. The events drive the
-/// Belady next-use distances in `ResidencyState`. The emit-side `point` cursor is
-/// advanced in the same root order so query points line up.
+/// emits a `Use(producer_expr)` at the using root's point; for each
+/// `SourceKind::Read` source that is marked `is_source_resident` in an Output root,
+/// emits a `Use(source_expr)` so `ResidencyState`'s next-use table sees source reuse.
+/// The events drive the Belady next-use distances in `ResidencyState`. The emit-side
+/// `point` cursor is advanced in the same root order so query points line up.
 fn build_ref_string(
     layer: &DagLayer,
     cache_root_expr: &HashMap<RootId, ExprId>,
@@ -423,40 +425,54 @@ fn build_ref_string(
                 events.push(RefEvent::Produce(producer));
             }
         }
-        // Use: every `Prior{id}` read in this root's expr tree is a use of the cache
-        // root's producer expr at this point.
-        if let Root::Output { expr, .. } | Root::Constraint { expr } = root {
-            collect_prior_uses(layer, *expr, cache_root_expr, &mut events);
+        // Use: Prior reads and (for Output roots) source-resident Read sources.
+        match root {
+            Root::Output { expr, .. } => {
+                collect_prior_uses(layer, *expr, cache_root_expr, &graph.info, /*include_sources=*/ true, &mut events);
+            }
+            Root::Constraint { expr } => {
+                // Constraint roots are not emitted in the forward pass; keep the
+                // pre-existing Prior-use behavior, suppress source uses (no emission to align to).
+                collect_prior_uses(layer, *expr, cache_root_expr, &graph.info, /*include_sources=*/ false, &mut events);
+            }
         }
     }
     RefString { events }
 }
 
 /// DFS an expr tree, pushing a `Use(producer_expr)` for each `SourceKind::Prior{id}`
-/// that maps to a known cache root. Resolution-pruned exprs are terminals (not
+/// that maps to a known cache root. When `include_sources` is true, also pushes a
+/// `Use(expr_id)` for each `SourceKind::Read` source whose `is_source_resident` flag
+/// is set (reused across ≥2 Output roots). Resolution-pruned exprs are terminals (not
 /// descended), matching `analyze_layer`'s pruning.
 fn collect_prior_uses(
     layer: &DagLayer,
     expr_id: ExprId,
     cache_root_expr: &HashMap<RootId, ExprId>,
+    info: &HashMap<ExprId, self::analyze::ValueInfo>,
+    include_sources: bool,
     events: &mut Vec<RefEvent>,
 ) {
     if layer.resolutions.contains_key(&expr_id) {
         return;
     }
     match &layer.exprs[expr_id.0 as usize] {
-        Expr::Source(src_id) => {
-            if let cs::gkr_compiler::dag_ir::SourceKind::Prior { id } =
-                &layer.sources[src_id.0 as usize].kind
-            {
+        Expr::Source(src_id) => match &layer.sources[src_id.0 as usize].kind {
+            cs::gkr_compiler::dag_ir::SourceKind::Prior { id } => {
                 if let Some(&producer) = cache_root_expr.get(id) {
                     events.push(RefEvent::Use(producer));
                 }
             }
-        }
+            cs::gkr_compiler::dag_ir::SourceKind::Read { .. } if include_sources => {
+                if info.get(&expr_id).map(|i| i.is_source_resident).unwrap_or(false) {
+                    events.push(RefEvent::Use(expr_id)); // a Read source is its own producer (loaded at first use)
+                }
+            }
+            _ => {}
+        },
         Expr::Add(children) | Expr::Mul(children) => {
             for &c in children {
-                collect_prior_uses(layer, c, cache_root_expr, events);
+                collect_prior_uses(layer, c, cache_root_expr, info, include_sources, events);
             }
         }
     }
@@ -863,5 +879,69 @@ mod tests {
         }
         // The compiled layer validates cleanly with both resident + transient cells.
         validate_compiled(&compiled, &layer).expect("validate_compiled must pass");
+    }
+
+    // Two Output roots both reference the same Read source; build_ref_string must
+    // emit a Use(source_expr) for each reference after Task 2 extends
+    // collect_prior_uses with the Read-source arm.
+    //
+    // Before Task 2: use_count == 0 (only Prior sources emit Use events).
+    // After Task 2:  use_count >= 2 (one per root that references the source).
+    #[test]
+    fn ref_string_includes_source_resident_uses() {
+        let mut arena = ArenaBuilder::new();
+        // One Read source referenced by both roots (≥2 uses → is_source_resident).
+        let src = arena.intern_source(SourceKind::Read {
+            place: ReadPlace::BaseLayerMemory { column: 0 },
+        });
+        let read_expr = arena.source_expr(src);
+
+        // Give root0 a non-trivial expr so it is a cache root candidate:
+        // root0 = Add(read_expr, read_expr)  → two refs to read_expr here.
+        let add0 = arena.add(vec![read_expr, read_expr]);
+
+        // root1 = Add(read_expr, read_expr)  → two more refs (same ExprId).
+        let add1 = arena.add(vec![read_expr, read_expr]);
+
+        let layer = DagLayer {
+            sources: arena.sources().to_vec(),
+            exprs: arena.exprs().to_vec(),
+            roots: vec![
+                Root::Output { expr: add0, sink: SinkId(0) },
+                Root::Output { expr: add1, sink: SinkId(1) },
+            ],
+            sinks: vec![
+                SinkInfo {
+                    kind: SinkKind::Cache { layer: 0, offset: 0 },
+                    field: FieldKind::Base,
+                },
+                SinkInfo {
+                    kind: SinkKind::Inner { layer: 0, offset: 0 },
+                    field: FieldKind::Base,
+                },
+            ],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        };
+
+        let ctx = DagForwardContext::default();
+        let graph = crate::fwd::compile::analyze::analyze_layer(&layer, &ctx);
+        assert!(
+            graph.info[&read_expr].is_source_resident,
+            "precondition: source is a residency candidate (used ≥2×)"
+        );
+
+        let cache_root_expr = cache_root_expr_map(&layer);
+        let refs = build_ref_string(&layer, &cache_root_expr, &graph);
+        let use_count = refs
+            .events
+            .iter()
+            .filter(|e| matches!(e, RefEvent::Use(v) if *v == read_expr))
+            .count();
+        assert!(
+            use_count >= 2,
+            "build_ref_string must emit a Use per source-resident read use; got {use_count}"
+        );
     }
 }
