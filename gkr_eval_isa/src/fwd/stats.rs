@@ -231,21 +231,38 @@ mod tests {
     // of re-reading the DRAM backing. Both anchor circuits shed more DRAM reads on top
     // of S2. Measured from `compile_layer(&dag.layers[0], .., 1024).stats.dram_reads`.
     // CAVEAT: budget 1024 is the UNCAPPED / all-resident case (nothing evicts) — so
-    // 52/75 are the CEILING savings, not a real-budget figure. At an occupancy-bound
-    // budget (~8-16 cells/thread on this GPU) eviction engages and the realized cut is
-    // smaller (the post-residency optimum is not reached until budget ≥ 64; see the
-    // re-derived curve in `residency_eviction_engages_under_tight_budget`).
+    // 52/75 are the CEILING savings, NOT the production figure. The real operating point
+    // is the GPU occupancy budget (~16 bf-cells/thread at full occupancy on sm_120); the
+    // locked real-budget baseline is `*_B16_*` + the test `b16_dram_reads_baselines`
+    // below. At b16 the realized cut is only ~11-12% (not ~26-32%), and the post-residency
+    // optimum is not reached until budget ≥ 64.
     pub const ADD_SUB_S3_DRAM_READS: usize = 52;
     pub const MUL_DIV_S3_DRAM_READS: usize = 75;
 
-    fn dram_reads_of(name: &str) -> usize {
+    // === REAL operating-point baseline (the production budget, NOT the b1024 ceiling) ===
+    // Full occupancy on the target GPU (RTX PRO 6000 Blackwell, sm_120) is ~16 bf-cells/
+    // thread: 100KB smem/SM ÷ 1536 resident threads ÷ 4B per bf cell (8 at the 48KB
+    // default carveout). This is the budget the production kernel runs at; b1024/b4096 are
+    // uncapped test stand-ins. Measured 2026-06-23 (fwd_parity::
+    // remeasure_dram_reads_real_budget_band); the pre-residency b16 reference came from a
+    // worktree at commit 51b27bf7. (NOTE: at the 48KB/8-cell carveout add_sub/mul_div L0
+    // do NOT compile — their floor rose 8→12 — so the real budget must be ≥12.)
+    pub const REAL_BUDGET: usize = 16;
+    pub const ADD_SUB_B16_PRE_DRAM_READS: usize = 81; // pre source-residency (S2-era) @ b16
+    pub const MUL_DIV_B16_PRE_DRAM_READS: usize = 106;
+    pub const ADD_SUB_B16_DRAM_READS: usize = 71; // post @ b16: -12.3% vs pre (vs -32.5% at b1024)
+    pub const MUL_DIV_B16_DRAM_READS: usize = 94; // post @ b16: -11.3% vs pre (vs -26.5% at b1024)
+
+    fn dram_reads_at(name: &str, budget: usize) -> usize {
         let artifact = load_fixture(name).expect("fixture");
         let dag = lower_dag(&artifact).unwrap();
         validate(&dag).unwrap();
         let cross = build_cross_layer_field_map(&dag);
-        let compiled = compile_layer(&dag.layers[0], &artifact.layers[0], &artifact.scratch_space_mapping, &cross, BUDGET).unwrap();
+        let compiled = compile_layer(&dag.layers[0], &artifact.layers[0], &artifact.scratch_space_mapping, &cross, budget).unwrap();
         compiled.stats.dram_reads
     }
+
+    fn dram_reads_of(name: &str) -> usize { dram_reads_at(name, BUDGET) }
 
     // Step 1 (Task 10 brief): residency must cut add_sub L0 `dram_reads` below the
     // S1 baseline. Asserts the hard cap (residents + temps ≤ BUDGET) as well.
@@ -274,6 +291,23 @@ mod tests {
         assert_eq!(mul_div, MUL_DIV_S3_DRAM_READS, "unsigned_mul_div S3 dram_reads changed");
         assert!(MUL_DIV_S3_DRAM_READS < MUL_DIV_S2_DRAM_READS, "source residency must cut mul_div dram_reads below S2 {MUL_DIV_S2_DRAM_READS}");
         assert!(mul_div < MUL_DIV_S1_DRAM_READS, "unsigned_mul_div S3 must be below S1 {MUL_DIV_S1_DRAM_READS}, got {mul_div}");
+    }
+
+    // REAL-budget regression gate: at the production budget (b16 = full occupancy on
+    // sm_120) source residency must hit the locked dram_reads AND stay below the
+    // pre-residency b16 reference. Contrast `s2_dram_reads_baselines`, which locks the
+    // UNCAPPED b1024 ceiling (52/75) — an upper bound, not the production figure.
+    #[test]
+    fn b16_dram_reads_baselines() {
+        if load_fixture("add_sub_lui_auipc_mop_layout_gkr").is_none() { return; }
+        let add_sub = dram_reads_at("add_sub_lui_auipc_mop_layout_gkr", REAL_BUDGET);
+        assert_eq!(add_sub, ADD_SUB_B16_DRAM_READS, "add_sub b16 dram_reads changed");
+        assert!(ADD_SUB_B16_DRAM_READS < ADD_SUB_B16_PRE_DRAM_READS,
+            "source residency must cut add_sub dram_reads at the real budget (pre {ADD_SUB_B16_PRE_DRAM_READS})");
+        let mul_div = dram_reads_at("unsigned_mul_div_layout_gkr", REAL_BUDGET);
+        assert_eq!(mul_div, MUL_DIV_B16_DRAM_READS, "unsigned_mul_div b16 dram_reads changed");
+        assert!(MUL_DIV_B16_DRAM_READS < MUL_DIV_B16_PRE_DRAM_READS,
+            "source residency must cut mul_div dram_reads at the real budget (pre {MUL_DIV_B16_PRE_DRAM_READS})");
     }
 
     #[test]
