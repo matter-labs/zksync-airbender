@@ -723,6 +723,20 @@ mod tests {
         st.release_borrow(value_a());
     }
 
+    // `admit` must not evict a borrowed resident even when the budget is exhausted:
+    // the same `eviction_order` borrow-skip that protects `alloc_temp` also gates
+    // `admit` (residency.rs eviction_order is shared by both paths).
+    #[test]
+    fn admit_never_evicts_a_borrowed_resident() {
+        // Budget 1 (Base). Admit A, borrow A, then admit B → B must NOT steal A's cell.
+        let mut res = ResidencyState::new(&refs_two_residents(), &info_two_base(), 1);
+        assert!(matches!(res.admit(value_a(), 0), Ok(Loc::Smem(_))));
+        let _ = res.borrow_resident(value_a()).expect("A resident");
+        let before = res.location(value_a(), 0);
+        assert!(res.admit(value_b(), 0).is_err(), "admit must NOT evict the only (borrowed) resident");
+        assert_eq!(res.location(value_a(), 0), before, "A must remain resident in its cell");
+    }
+
     // max_live_cells reflects the shared allocator's true high-water of residents +
     // transient temps held SIMULTANEOUSLY (not a stale per-reservation counter).
     #[test]

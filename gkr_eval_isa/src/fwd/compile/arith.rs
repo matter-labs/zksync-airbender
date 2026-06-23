@@ -668,7 +668,8 @@ fn compile_reduction(
             (c, Sign::Plus)
         };
         let field = child_operand_field(layer, to_lower, expected, &ctx.cross_layer_fields);
-        let (op, lease) = lower_operand(layer, to_lower, ctx, res, trace, out, expected, env)?;
+        let (op, lease) = lower_operand(layer, to_lower, ctx, res, trace, out, expected, env)
+            .map_err(|e| { release_leases(res, std::mem::take(&mut leases)); e })?;
         leases.push(lease);
         ops.push((field, op, sign));
     }
@@ -751,7 +752,8 @@ fn compile_reduction(
         if group.is_empty() {
             continue;
         }
-        emit_reduction_group(out, trace, field, group, is_add, sign, res, env.point)?;
+        emit_reduction_group(out, trace, field, group, is_add, sign, res, env.point)
+            .map_err(|e| { release_leases(res, std::mem::take(&mut leases)); e })?;
     }
 
     // Insert negate between base and ext phases when a base phase exists.
@@ -767,7 +769,8 @@ fn compile_reduction(
         if group.is_empty() {
             continue;
         }
-        emit_reduction_group(out, trace, field, group, is_add, sign, res, env.point)?;
+        emit_reduction_group(out, trace, field, group, is_add, sign, res, env.point)
+            .map_err(|e| { release_leases(res, std::mem::take(&mut leases)); e })?;
     }
 
     // Trailing negate when no base phase existed (all-Ext seed — unavoidable).
@@ -947,7 +950,8 @@ fn try_compile_fma(
         Vec::with_capacity(addends.len());
     for &(sign, c) in &addends {
         let f = child_operand_field(layer, c, expected, &ctx.cross_layer_fields);
-        let (op, lease) = lower_operand(layer, c, ctx, res, trace, out, f, env)?;
+        let (op, lease) = lower_operand(layer, c, ctx, res, trace, out, f, env)
+            .map_err(|e| { release_leases(res, std::mem::take(&mut leases)); e })?;
         leases.push(lease);
         addend_ops.push((f, op, sign));
     }
@@ -956,9 +960,11 @@ fn try_compile_fma(
     for &(sign, lhs, rhs) in &products {
         let lf = child_operand_field(layer, lhs, expected, &ctx.cross_layer_fields);
         let rf = child_operand_field(layer, rhs, expected, &ctx.cross_layer_fields);
-        let (lhs_op, l_lease) = lower_operand(layer, lhs, ctx, res, trace, out, lf, env)?;
+        let (lhs_op, l_lease) = lower_operand(layer, lhs, ctx, res, trace, out, lf, env)
+            .map_err(|e| { release_leases(res, std::mem::take(&mut leases)); e })?;
         leases.push(l_lease);
-        let (rhs_op, r_lease) = lower_operand(layer, rhs, ctx, res, trace, out, rf, env)?;
+        let (rhs_op, r_lease) = lower_operand(layer, rhs, ctx, res, trace, out, rf, env)
+            .map_err(|e| { release_leases(res, std::mem::take(&mut leases)); e })?;
         leases.push(r_lease);
         lo.push((sign, lf, lhs_op, rf, rhs_op));
     }
@@ -1009,7 +1015,8 @@ fn try_compile_fma(
                 if group.is_empty() {
                     continue;
                 }
-                emit_reduction_group(out, trace, f, group, /* is_add */ true, s, res, env.point)?;
+                emit_reduction_group(out, trace, f, group, /* is_add */ true, s, res, env.point)
+                    .map_err(|e| { release_leases(res, std::mem::take(&mut leases)); e })?;
             }
             &lo[..]
         } else {
@@ -1050,7 +1057,8 @@ fn try_compile_fma(
             .push((op_l, op_r));
     }
     for ((lf, rf, sign), gpairs) in groups {
-        push_fma_chunked(out, field_from_u8(lf), field_from_u8(rf), sign_from_u8(sign), gpairs)?;
+        push_fma_chunked(out, field_from_u8(lf), field_from_u8(rf), sign_from_u8(sign), gpairs)
+            .map_err(|e| { release_leases(res, std::mem::take(&mut leases)); e })?;
     }
     release_leases(res, leases);
     Ok(Some(()))
