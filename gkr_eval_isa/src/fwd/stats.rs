@@ -245,8 +245,9 @@ mod tests {
     // default carveout). This is the budget the production kernel runs at; b1024/b4096 are
     // uncapped test stand-ins. Measured 2026-06-23 (fwd_parity::
     // remeasure_dram_reads_real_budget_band); the pre-residency b16 reference came from a
-    // worktree at commit 51b27bf7. (NOTE: at the 48KB/8-cell carveout add_sub/mul_div L0
-    // do NOT compile — their floor rose 8→12 — so the real budget must be ≥12.)
+    // worktree at commit 51b27bf7.
+    // (NOTE: with the emission-exact candidate set (Lever A) add_sub/mul_div L0 compile
+    // at the 48KB/8-cell default carveout again — their floor returned to 8.)
     pub const REAL_BUDGET: usize = 16;
     pub const ADD_SUB_B16_PRE_DRAM_READS: usize = 81; // pre source-residency (S2-era) @ b16
     pub const MUL_DIV_B16_PRE_DRAM_READS: usize = 106;
