@@ -840,22 +840,36 @@ fn residency_eviction_engages_under_tight_budget() {
             .unwrap_or_else(|e| panic!("add_sub L0 compile at budget {budget}: {e:?}"))
     };
 
-    // ── On-demand eviction replaces the old eager-pin model ───────────────────
+    // ── On-demand eviction under source residency (S3) ────────────────────────
     //
-    // Pre-rework, compile_layer reported an inflated "floor" of 24–48 cells for this
-    // layer because every per-root transient allocator pre-pinned ALL residents. With
-    // one shared allocator + lazy eviction of backed (DRAM-re-readable) residents, the
-    // floor collapses to the aligned schedule peak. add_sub L0's measured curve:
-    //   budget   8: max_live  8, dram_reads 83, cell_reads 24   ← compiles! (was infeasible)
-    //   budget  16: max_live 16, dram_reads 81, cell_reads 26
-    //   budget  24: max_live 24, dram_reads 79, cell_reads 28
-    //   budget  32: max_live 32, dram_reads 77, cell_reads 30   ← S2-optimal reached
-    //   budget 1024: max_live 40, dram_reads 77, cell_reads 30  ← uncapped working set 40
+    // With source residency (#7) hot regular `Read` sources are also kept resident,
+    // so the uncapped resident working set grew (40→58) and the optimal dram_reads
+    // dropped (S2 77 → S3 52). The extra residents also raise the irreducible floor:
+    // budget 8 no longer compiles; the smallest feasible budget is 12. add_sub L0's
+    // re-measured curve (from `compile_layer(.., budget).stats`):
+    //   budget ≤11: BudgetBelowFloor (infeasible — residents + temps don't fit)
+    //   budget  12: max_live 12, dram_reads 74, cell_reads 68   ← floor (smallest feasible)
+    //   budget  16: max_live 16, dram_reads 71, cell_reads 69
+    //   budget  24: max_live 24, dram_reads 65, cell_reads 71
+    //   budget  32: max_live 32, dram_reads 59, cell_reads 73
+    //   budget  48: max_live 48, dram_reads 54, cell_reads 73
+    //   budget  64: max_live 58, dram_reads 52, cell_reads 73   ← S3-optimal reached
+    //   budget 1024: max_live 58, dram_reads 52, cell_reads 73  ← uncapped working set 58
+    //
+    // Assertions are PROPERTY-based (monotone traffic under cap pressure, hard cap
+    // honored, optimum reachable) so they survive codegen drift; the only hard budget
+    // anchors are the feasibility boundary (compiles at 12, not at 8).
 
-    // (1) Floor collapse: a budget the old eager-pin model rejected now compiles.
+    // (1) Feasibility boundary: under source residency the floor sits between 8 and 12;
+    //     a too-tight budget yields a clean BudgetBelowFloor, a roomy one compiles.
     assert!(
-        try_stats_at(8).is_ok(),
-        "add_sub L0 must now compile at budget 8 (the inflated 24–48 floor is gone)"
+        try_stats_at(8).is_err(),
+        "add_sub L0 should NOT compile at budget 8 once source residents are pinned \
+         (extra residents raise the floor); expected BudgetBelowFloor"
+    );
+    assert!(
+        try_stats_at(12).is_ok(),
+        "add_sub L0 must compile at budget 12 (the irreducible floor under source residency)"
     );
 
     let loose = stats_at(1024);
@@ -894,18 +908,152 @@ fn residency_eviction_engages_under_tight_budget() {
 
     // (4) dram_reads degrades SMOOTHLY (monotone non-increasing) as the budget grows —
     //     tighter budget spills more reused values to DRAM; it never fails or spikes.
-    let d8 = stats_at(8).dram_reads;
+    //     Anchored at 16/24/32 (budget 8 is now below the floor).
     let d16 = tight.dram_reads;
+    let d24 = stats_at(24).dram_reads;
     let d32 = roomy.dram_reads;
     assert!(
-        d8 >= d16 && d16 >= d32,
-        "dram_reads must be monotone non-increasing in budget: 8→{d8} 16→{d16} 32→{d32}"
+        d16 >= d24 && d24 >= d32,
+        "dram_reads must be monotone non-increasing in budget: 16→{d16} 24→{d24} 32→{d32}"
     );
 
-    // (5) The #8 residency win is fully preserved once the budget is roomy enough:
-    //     budget 32 already reaches the S2-optimal dram_reads of the uncapped compile.
-    assert_eq!(
-        roomy.dram_reads, loose.dram_reads,
-        "budget 32 must reach the S2-optimal dram_reads (no regression of the #8 win)"
+    // (5) The source-residency win is fully preserved once the budget is roomy enough:
+    //     a sufficiently large budget reaches the uncapped (optimal) dram_reads.
+    //     NOTE: unlike S2 (where budget 32 already hit the optimum), source residency
+    //     enlarges the resident working set to 58, so budget 32 (max_live capped at 32)
+    //     still spills — roomy(32) > loose here. We assert (a) budget 32 still improves
+    //     on the tight budget but does NOT yet reach the optimum (so eviction is still
+    //     engaging at 32, not vacuous), and (b) a budget ≥ the uncapped working set
+    //     (64 ≥ 58) reaches the optimum exactly. This stays non-tautological: it fails
+    //     if eviction stops engaging at 32, or if the optimum becomes unreachable.
+    assert!(
+        roomy.dram_reads < tight.dram_reads,
+        "budget 32 must still improve on the tight budget: roomy32 {} vs tight16 {}",
+        roomy.dram_reads, tight.dram_reads
     );
+    assert!(
+        roomy.dram_reads > loose.dram_reads,
+        "budget 32 (< uncapped working set 58) must still spill — eviction engaging: \
+         roomy32 {} vs loose {}",
+        roomy.dram_reads, loose.dram_reads
+    );
+    assert_eq!(
+        stats_at(64).dram_reads, loose.dram_reads,
+        "a budget ≥ the uncapped working set (64 ≥ 58) must reach the S3-optimal \
+         dram_reads (no regression of the source-residency win)"
+    );
+}
+
+// ── Source-residency regression gates (Task 6) ──────────────────────────────────
+//
+// Dedicated, isolated locks for the source-residency (#7) win. The S3 baselines in
+// `stats.rs` already assert the descent; this re-asserts the add_sub L0 cut at the
+// integration-test level (same fixture, budget 1024) so it is visible in the parity
+// suite. Measured value: 52 DRAM reads (was S2 77).
+#[test]
+fn source_residency_cuts_dram_reads_add_sub_l0() {
+    let dir = compiled_circuit_dir();
+    let path = dir.join("add_sub_lui_auipc_mop_layout_gkr.json");
+    let artifact = match load_fixture(&path) {
+        Some(a) => a,
+        None => return,
+    };
+    let dag = lower_dag(&artifact).expect("lower");
+    validate(&dag).expect("validate");
+    let cross = build_cross_layer_field_map(&dag);
+    let c = compile_layer(
+        &dag.layers[0],
+        &artifact.layers[0],
+        &artifact.scratch_space_mapping,
+        &cross,
+        BUDGET,
+    )
+    .expect("compile");
+    assert!(
+        c.stats.dram_reads < 77,
+        "source residency must cut add_sub L0 below the S2 baseline of 77; got {}",
+        c.stats.dram_reads
+    );
+    assert_eq!(
+        c.stats.dram_reads, 52,
+        "add_sub L0 dram_reads changed (measured S3 baseline is 52)"
+    );
+}
+
+// Floor tracking + DRAM no-regress (spec open-Q3).
+//
+// Source residency pins extra cells, so it CAN raise the smallest viable budget (the
+// floor) for a layer. MEASUREMENT (pre = commit 51b27bf7 in an out-of-tree worktree,
+// post = current tree; smallest `AUDIT_BUDGETS` entry where `compile_layer` is `Ok`):
+//
+//   circuit / layer                    pre  post
+//   add_sub_lui_auipc L0                 8   12   ← floor ROSE
+//   unsigned_mul_div  L0                 8   12   ← floor ROSE
+//   blake2_with_extended_control L0      8    8
+//   blake2_g_function  L0                8    8
+//   bigint_with_extended_control L0      8    8
+//   keccak_special5    L0                8    8
+// (and several deeper layers rose 4→8: add_sub L1/L2, mul_div L2, blake2 L1/L6, etc.)
+//
+// So the floor is NOT no-regress: source residency raised it by one AUDIT_BUDGETS step
+// on the heaviest L0s (8→12) and on a number of small deeper layers (4→8). This is the
+// floor regression the design's deferred `point`-cursor follow-up was gated on (see
+// task-6 brief Q3 / deferred note) — it has now appeared and is left for adjudication.
+//
+// This gate therefore does NOT assert `post <= pre` (that is false). It LOCKS the
+// measured post-residency floors (so any further drift — up OR down — is caught) and
+// asserts the property that genuinely holds and matters: dram_reads is monotone
+// non-increasing in budget at every layer (a roomier budget never costs MORE DRAM
+// traffic; the residency win never regresses with more cells). We do NOT hardcode a
+// universal floor (e.g. 32): each layer is locked to its own measured floor.
+#[test]
+fn source_residency_floor_locked_and_dram_monotone() {
+    let dir = compiled_circuit_dir();
+    // (fixture, layer, measured post-residency floor — smallest AUDIT_BUDGETS that compiles).
+    let post_floor: &[(&str, usize, usize)] = &[
+        ("blake2_with_extended_control_layout_gkr.json", 0, 8),
+        ("blake2_g_function_layout_gkr.json", 0, 8),
+        ("bigint_with_extended_control_layout_gkr.json", 0, 8),
+        ("keccak_special5_layout_gkr.json", 0, 8),
+        ("unsigned_mul_div_layout_gkr.json", 0, 12),
+        ("add_sub_lui_auipc_mop_layout_gkr.json", 0, 12),
+    ];
+    for &(f, l, floor_expected) in post_floor {
+        let artifact = match load_fixture(&dir.join(f)) {
+            Some(a) => a,
+            None => continue,
+        };
+        let dag = lower_dag(&artifact).expect("lower");
+        validate(&dag).expect("validate");
+        let cross = build_cross_layer_field_map(&dag);
+        // Post-residency floor: smallest AUDIT_BUDGETS that compiles.
+        let floor_post = AUDIT_BUDGETS
+            .iter()
+            .copied()
+            .find(|&b| {
+                compile_layer(&dag.layers[l], &artifact.layers[l], &artifact.scratch_space_mapping, &cross, b)
+                    .is_ok()
+            })
+            .unwrap_or_else(|| panic!("{f} L{l}: compiles at no AUDIT_BUDGET"));
+        assert_eq!(
+            floor_post, floor_expected,
+            "{f} L{l}: floor drifted from the locked post-residency value {floor_expected}→{floor_post}"
+        );
+        // dram_reads must be monotone non-increasing in budget at this layer (a roomier
+        // budget never costs MORE DRAM traffic) — the real no-regress property, and a
+        // guard against a residency interaction that spikes traffic at some budget.
+        let mut prev: Option<(usize, usize)> = None;
+        for &b in AUDIT_BUDGETS {
+            if let Ok(c) = compile_layer(&dag.layers[l], &artifact.layers[l], &artifact.scratch_space_mapping, &cross, b) {
+                if let Some((pb, pd)) = prev {
+                    assert!(
+                        c.stats.dram_reads <= pd,
+                        "{f} L{l}: dram_reads rose with budget: {pb}→{pd} then {b}→{}",
+                        c.stats.dram_reads
+                    );
+                }
+                prev = Some((b, c.stats.dram_reads));
+            }
+        }
+    }
 }

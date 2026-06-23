@@ -226,6 +226,12 @@ mod tests {
     // shed 8 DRAM reads. The cache's Global backing is still written (never dropped).
     pub const ADD_SUB_S2_DRAM_READS: usize = 77;
     pub const MUL_DIV_S2_DRAM_READS: usize = 102;
+    // S3 = source-residency emission (#7): hot regular `Read` sources (not just cache
+    // roots) are loaded once into an smem cell and their reuses read the cell instead
+    // of re-reading the DRAM backing. Both anchor circuits shed more DRAM reads on top
+    // of S2. Measured from `compile_layer(&dag.layers[0], .., 1024).stats.dram_reads`.
+    pub const ADD_SUB_S3_DRAM_READS: usize = 52;
+    pub const MUL_DIV_S3_DRAM_READS: usize = 75;
 
     fn dram_reads_of(name: &str) -> usize {
         let artifact = load_fixture(name).expect("fixture");
@@ -248,17 +254,21 @@ mod tests {
         assert!(compiled.stats.max_live_cells <= BUDGET, "hard cap incl. residents + temps");
     }
 
-    // S2 baselines (codex Mod7): assert each circuit hits its S2 const AND is strictly
-    // below its S1 baseline. The S1 consts are kept (not overwritten) for the `<` guard.
+    // S3 baselines: assert each anchor circuit hits its S3 const AND that source
+    // residency cut it strictly below the S2 baseline. Earlier-stage consts (S1, S2)
+    // are kept (never overwritten) so the regression gate proves the full S1>S2>S3
+    // descent. (Test name is historical — it locks the current/S3 baselines.)
     #[test]
     fn s2_dram_reads_baselines() {
         if load_fixture("add_sub_lui_auipc_mop_layout_gkr").is_none() { return; }
         let add_sub = dram_reads_of("add_sub_lui_auipc_mop_layout_gkr");
-        assert_eq!(add_sub, ADD_SUB_S2_DRAM_READS, "add_sub S2 dram_reads changed");
-        assert!(add_sub < ADD_SUB_S1_DRAM_READS, "add_sub S2 must be below S1 {ADD_SUB_S1_DRAM_READS}, got {add_sub}");
+        assert_eq!(add_sub, ADD_SUB_S3_DRAM_READS, "add_sub S3 dram_reads changed");
+        assert!(ADD_SUB_S3_DRAM_READS < ADD_SUB_S2_DRAM_READS, "source residency must cut add_sub dram_reads below S2 {ADD_SUB_S2_DRAM_READS}");
+        assert!(add_sub < ADD_SUB_S1_DRAM_READS, "add_sub S3 must be below S1 {ADD_SUB_S1_DRAM_READS}, got {add_sub}");
         let mul_div = dram_reads_of("unsigned_mul_div_layout_gkr");
-        assert_eq!(mul_div, MUL_DIV_S2_DRAM_READS, "unsigned_mul_div S2 dram_reads changed");
-        assert!(mul_div < MUL_DIV_S1_DRAM_READS, "unsigned_mul_div S2 must be below S1 {MUL_DIV_S1_DRAM_READS}, got {mul_div}");
+        assert_eq!(mul_div, MUL_DIV_S3_DRAM_READS, "unsigned_mul_div S3 dram_reads changed");
+        assert!(MUL_DIV_S3_DRAM_READS < MUL_DIV_S2_DRAM_READS, "source residency must cut mul_div dram_reads below S2 {MUL_DIV_S2_DRAM_READS}");
+        assert!(mul_div < MUL_DIV_S1_DRAM_READS, "unsigned_mul_div S3 must be below S1 {MUL_DIV_S1_DRAM_READS}, got {mul_div}");
     }
 
     #[test]
