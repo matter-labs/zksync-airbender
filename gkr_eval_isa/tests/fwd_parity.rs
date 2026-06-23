@@ -548,7 +548,9 @@ fn source_residency_savings_audit() {
     let mut by_caches: std::collections::HashMap<bool, (usize, usize, Vec<usize>)> = std::collections::HashMap::new();
 
     let caps_hdr: Vec<String> = SRC_RESIDENCY_CAPS.iter().map(|c| format!("hits@{c},pctR@{c},pctG@{c}")).collect();
-    println!("[SRCRES] circuit,caches,layer,G_global,D_distinct,R_unbounded,maxfan,maxlive@1024,W_min_cap,reuse_d1,reuse_le4,reuse_le16,reuse_gt16,reuse_dmax,{}", caps_hdr.join(","));
+    let mut tot_vs_total = 0usize;
+    let mut tot_vs_redundant = 0usize;
+    println!("[SRCRES] circuit,caches,layer,G_dram,D_distinct,R_dram,maxfan,maxlive@1024,W_min_cap,reuse_d1,reuse_le4,reuse_le16,reuse_gt16,reuse_dmax,vs_global,vs_redundant,{}", caps_hdr.join(","));
 
     for &f in &fixtures {
         let has_caches = !f.contains("no_caches");
@@ -562,23 +564,35 @@ fn source_residency_savings_audit() {
                 Ok(c) => c,
                 Err(_) => continue,
             };
-            // Linear trace of Global (DRAM source) reads in program order.
-            let mut trace: Vec<(u8, u16)> = Vec::new();
-            let mut push = |op: &OperandLine, t: &mut Vec<(u8, u16)>| {
-                if let OperandLine::Global { slot, col } = op { t.push((*slot, *col)); }
+            // Linear trace of Global reads in program order, CLASSIFIED by backing:
+            // VirtualSetup is NOT a DRAM read — the interpreter resolves it by
+            // COMPUTATION (`r.virtual_setup(kind,row)`, interp.rs:147-148), not
+            // `r.read` (interp.rs:150). It only lowers to a `Global` operand. So it is
+            // excluded from the DRAM-read residency trace; we tally it separately to
+            // show how much it inflated the earlier (uncorrected) R.
+            use gkr_eval_isa::fwd::binding::BackingKey;
+            let is_vsetup = |slot: u8| matches!(compiled.ctx.backings.backing(slot), Some(BackingKey::VirtualSetup { .. }));
+            let mut trace: Vec<(u8, u16)> = Vec::new(); // DRAM reads only
+            let mut vs_total = 0usize; // VirtualSetup Global reads (computed, not DRAM)
+            let mut vs_set: std::collections::HashSet<(u8, u16)> = std::collections::HashSet::new();
+            let mut push = |op: &OperandLine, t: &mut Vec<(u8, u16)>, vt: &mut usize, vs: &mut std::collections::HashSet<(u8, u16)>| {
+                if let OperandLine::Global { slot, col } = op {
+                    if is_vsetup(*slot) { *vt += 1; vs.insert((*slot, *col)); } else { t.push((*slot, *col)); }
+                }
             };
             for instr in &compiled.program.instrs {
                 match instr {
-                    Instr::Mov { src: Some(op), .. } => push(op, &mut trace),
+                    Instr::Mov { src: Some(op), .. } => push(op, &mut trace, &mut vs_total, &mut vs_set),
                     Instr::Mov { src: None, .. } => {}
                     Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
-                        for op in operands { push(op, &mut trace); }
+                        for op in operands { push(op, &mut trace, &mut vs_total, &mut vs_set); }
                     }
                     Instr::Fma { pairs, .. } => {
-                        for (a, b) in pairs { push(a, &mut trace); push(b, &mut trace); }
+                        for (a, b) in pairs { push(a, &mut trace, &mut vs_total, &mut vs_set); push(b, &mut trace, &mut vs_total, &mut vs_set); }
                     }
                 }
             }
+            let vs_redundant = vs_total.saturating_sub(vs_set.len()); // reloads attributable to VirtualSetup
             let g = trace.len();
             let mut distinct: std::collections::HashMap<(u8, u16), usize> = std::collections::HashMap::new();
             for &it in &trace { *distinct.entry(it).or_insert(0) += 1; }
@@ -623,7 +637,9 @@ fn source_residency_savings_audit() {
                 let pct_g = if g > 0 { 100.0 * hits as f64 / g as f64 } else { 0.0 };
                 cols.push_str(&format!(",{hits},{pct_r:.1},{pct_g:.1}"));
             }
-            println!("[SRCRES] {circuit},{has_caches},{l},{g},{d},{r},{maxfan},{maxlive},{w},{d_adj},{d_le4},{d_le16},{d_gt16},{d_max}{cols}");
+            tot_vs_total += vs_total;
+            tot_vs_redundant += vs_redundant;
+            println!("[SRCRES] {circuit},{has_caches},{l},{g},{d},{r},{maxfan},{maxlive},{w},{d_adj},{d_le4},{d_le16},{d_gt16},{d_max},{vs_total},{vs_redundant}{cols}");
         }
     }
 
@@ -644,6 +660,12 @@ fn source_residency_savings_audit() {
     emit_agg("CORPUS", tot_g, tot_r, &tot_hits);
     if let Some((g, r, h)) = by_caches.get(&true) { emit_agg("caches=true", *g, *r, h); }
     if let Some((g, r, h)) = by_caches.get(&false) { emit_agg("caches=false", *g, *r, h); }
+    // VirtualSetup: computed (not DRAM); reported separately. The OLD (uncorrected) R
+    // counted these; corrected DRAM R excludes them.
+    println!(
+        "[SRCRES-VS] vs_global_reads={tot_vs_total} vs_redundant={tot_vs_redundant}  (DRAM R={tot_r}; old_uncorrected_R={})",
+        tot_r + tot_vs_redundant
+    );
     assert!(tot_g > 0, "audit produced no Global reads");
 }
 
