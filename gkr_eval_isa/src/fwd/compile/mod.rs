@@ -277,7 +277,20 @@ pub fn compile_layer(
                     // cache backing instead (codex S2 review, finding 1).
                     allow_resident_smem: false,
                 };
-                let (op, lease) = source_to_operand(layer, expr, &mut ctx, &mut residency, &mut trace, env)?;
+                // A CopyAlias root emits NO bytecode; pass a throwaway sink and
+                // `allow_source_load=false` so no load MOV is ever produced here.
+                let mut alias_sink: Vec<Instr> = Vec::new();
+                let (op, lease) = source_to_operand(
+                    layer,
+                    expr,
+                    &mut ctx,
+                    &mut residency,
+                    &mut trace,
+                    &mut alias_sink,
+                    /*allow_source_load=*/ false,
+                    env,
+                )?;
+                debug_assert!(alias_sink.is_empty(), "CopyAlias lowering must emit no bytecode");
                 // `allow_resident_smem=false` guarantees the Prior arm never borrows, so
                 // the lease is `None` and the operand is stable storage (never a resident
                 // Smem cell, which Belady could evict before the program-end alias read).
@@ -626,6 +639,73 @@ mod tests {
             } => assert_eq!(*col, 5),
             other => panic!("expected fused MOV DstFromSrc, got {:?}", other),
         }
+    }
+
+    // Task 3 fusion guard: a bare-source `Read` root that is ALSO reused elsewhere
+    // (refcount ≥ 2 across roots → a source-residency candidate) must STILL fuse to a
+    // single `MOV DstFromSrc GlobalMaterialize` at its sole-source root. Load-once'ing
+    // there would split the one fused passthrough into load + AccFromSrc + DstFromAcc —
+    // a BIT-EXACT regression the parity gate cannot catch. The `allow_source_load=false`
+    // guard on the `compile_expr` top-level Source arm is what preserves the fusion;
+    // the load fires at the OTHER (fold-operand) use instead.
+    fn test_two_roots_one_bare_one_fold_share_read() -> DagLayer {
+        let mut arena = ArenaBuilder::new();
+        // Read(col9) — shared between the two roots (identical Reads dedup to one ExprId,
+        // so it is used across BOTH Output trees → `is_source_resident`).
+        let s9 = arena.intern_source(SourceKind::Read {
+            place: ReadPlace::BaseLayerMemory { column: 9 },
+        });
+        let r9 = arena.source_expr(s9);
+        // A second column for the fold's other operand.
+        let s2 = arena.intern_source(SourceKind::Read {
+            place: ReadPlace::BaseLayerMemory { column: 2 },
+        });
+        let r2 = arena.source_expr(s2);
+        // Root B: a fold that USES read9 as an operand (load-once fires here).
+        let fold = arena.add(vec![r9, r2]);
+        DagLayer {
+            sources: arena.sources().to_vec(),
+            exprs: arena.exprs().to_vec(),
+            roots: vec![
+                // Root A: bare-source passthrough whose expr IS read9 (sole expr).
+                Root::Output { expr: r9, sink: SinkId(0) },
+                // Root B: the fold sharing read9.
+                Root::Output { expr: fold, sink: SinkId(1) },
+            ],
+            sinks: vec![
+                SinkInfo { kind: SinkKind::Cache { layer: 3, offset: 5 }, field: FieldKind::Base },
+                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base },
+            ],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn reused_bare_source_root_still_fuses() {
+        let layer = test_two_roots_one_bare_one_fold_share_read();
+        let c = compile_layer(&layer, &artifact_layer(7), &BTreeMap::new(), &HashMap::new(), 1024)
+            .unwrap();
+        // The bare-source root's materialize must be a single fused DstFromSrc→GlobalMaterialize,
+        // NOT load(DstFromSrc Smem) + AccFromSrc + DstFromAcc.
+        let fused = c.program.instrs.iter().any(|i| {
+            matches!(
+                i,
+                Instr::Mov {
+                    dir: MovDir::DstFromSrc,
+                    dst: Some(DstLine::GlobalMaterialize { .. }),
+                    src: Some(OperandLine::Global { .. }),
+                    ..
+                }
+            )
+        });
+        assert!(
+            fused,
+            "a reused bare-source passthrough root must still fuse (no load-once at the \
+             sole-source root): {:#?}",
+            c.program.instrs
+        );
     }
 
     // A post-elision degenerate root is rejected: top expr is Mul([Constant{1}]),

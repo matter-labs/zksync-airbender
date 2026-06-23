@@ -14,7 +14,7 @@ use super::super::error::CompileError;
 use super::super::isa::{
     DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Sign, Special, MAX_ARITY,
 };
-use super::residency::ResidencyState;
+use super::residency::{Loc, ResidencyState};
 use super::schedule::split_reduction;
 use cs::gkr_compiler::dag_ir::{
     expr_field, Expr, ExprId, FieldKind, ReadPlace, RootId, SinkKind, SourceKind,
@@ -229,6 +229,8 @@ pub(crate) fn source_to_operand(
     ctx: &mut DagForwardContext,
     res: &mut ResidencyState,
     trace: &mut CompileTrace,
+    out: &mut Vec<Instr>,
+    allow_source_load: bool,
     env: LoweringEnv,
 ) -> Result<(OperandLine, OperandLease), CompileError> {
     // §9: a resolved fold expr prunes to one Special; do not descend. During S2 emit
@@ -257,6 +259,34 @@ pub(crate) fn source_to_operand(
     match &layer.sources[src_id.0 as usize].kind {
         SourceKind::Read { place } => {
             let (slot, col) = ctx.backings.read_slot_col(place)?;
+            // Source residency: a reused Read source used as a FOLD OPERAND is loaded
+            // into smem once and served from the cell thereafter (mirrors the cache-root
+            // Prior borrow above, plus an explicit DRAM→cell load). `allow_source_load`
+            // is false when this source is a root's SOLE expr — load-once'ing there would
+            // add an instruction and defeat passthrough fusion (mod.rs's DstFromSrc
+            // GlobalMaterialize fuse), so we leave it a plain Global; the load fires at
+            // its first fold-operand use instead.
+            if allow_source_load && env.allow_resident_smem && res.is_source_resident_candidate(expr_id) {
+                if let Some(cell) = res.borrow_resident(expr_id) {
+                    return Ok((OperandLine::Smem { cell }, OperandLease::Borrow(expr_id)));
+                }
+                let field = res.field_of(expr_id);
+                if let Ok(Loc::Smem(cell)) = res.admit(expr_id, env.point) {
+                    out.push(Instr::Mov {
+                        dir: MovDir::DstFromSrc,
+                        field,
+                        dst: Some(DstLine::Smem { cell }),
+                        src: Some(OperandLine::Global { slot, col }),
+                    });
+                    trace.max_live_cells = trace.max_live_cells.max(res.max_live_cells());
+                    let bcell = res
+                        .borrow_resident(expr_id)
+                        .expect("just admitted → resident");
+                    debug_assert_eq!(bcell, cell, "borrow returned a different cell than admit");
+                    return Ok((OperandLine::Smem { cell }, OperandLease::Borrow(expr_id)));
+                }
+                // admit failed (budget) → fall through to a plain Global read.
+            }
             Ok((OperandLine::Global { slot, col }, OperandLease::None))
         }
         SourceKind::VirtualSetup { kind } => {
@@ -372,7 +402,10 @@ pub(crate) fn compile_expr(
     match &layer.exprs[expr_id.0 as usize] {
         Expr::Source(_) => {
             let field = child_operand_field(layer, expr_id, expected, &ctx.cross_layer_fields);
-            let (op, lease) = source_to_operand(layer, expr_id, ctx, res, trace, env)?;
+            // Sole-source root: NOT load-once'd (passthrough fusion preserves the single
+            // fused MOV DstFromSrc GlobalMaterialize). The load fires at fold-operand uses.
+            let (op, lease) =
+                source_to_operand(layer, expr_id, ctx, res, trace, out, /*allow_source_load=*/ false, env)?;
             emit_init_field(out, op, field);
             // The init MOV has consumed the operand: release any resident borrow.
             release_leases(res, vec![lease]);
@@ -421,7 +454,8 @@ fn lower_operand(
     if layer.resolutions.contains_key(&expr_id)
         || matches!(&layer.exprs[expr_id.0 as usize], Expr::Source(_))
     {
-        return source_to_operand(layer, expr_id, ctx, res, trace, env);
+        // Fold operand: a reused Read source may be load-once'd into smem here.
+        return source_to_operand(layer, expr_id, ctx, res, trace, out, /*allow_source_load=*/ true, env);
     }
 
     // CSE (#4): a shared compound subexpr the planner kept resident is BORROWED from
@@ -2206,5 +2240,104 @@ mod tests {
         let instrs = run(&layer, add);
         assert!(has_standalone_negate(&instrs),
             "the all-negated all-products seed must be compensated (else acc = +a·cx ...): {instrs:?}");
+    }
+
+    // ── Task 3: source-residency load-once + reuse-from-cell ───────────────────
+
+    /// Every `OperandLine` read by an instruction (Mov src; Add/Mul operands; Fma
+    /// pair elements). Lets a test count Global vs Smem reads in an emitted program.
+    fn operands_of(instr: &Instr) -> Vec<OperandLine> {
+        match instr {
+            Instr::Mov { src, .. } => src.iter().copied().collect(),
+            Instr::Add { operands, .. } | Instr::Mul { operands, .. } => operands.clone(),
+            Instr::Fma { pairs, .. } => {
+                pairs.iter().flat_map(|(l, r)| [*l, *r]).collect()
+            }
+        }
+    }
+
+    /// Build a REAL single-Output-root layer whose expr is `add(read(col5), read(col5))`
+    /// — the Read source is a FOLD OPERAND used 2× across the Output tree, so
+    /// `analyze_layer` flags it `is_source_resident`. Returns the pieces a load-once
+    /// emission test needs: the layer, a fresh ctx, a populated `ResidencyState`
+    /// (built from the real ref-string + value info, NOT the empty test helper), the
+    /// root expr to compile, and the reused Read's ExprId.
+    fn test_reduction_two_uses_of_read(
+    ) -> (DagLayer, DagForwardContext, ResidencyState, ExprId, ExprId) {
+        use cs::gkr_compiler::dag_ir::{Root, SinkId, SinkInfo, SinkKind, FieldKind};
+        let mut arena = ArenaBuilder::new();
+        let read_expr = read_base(&mut arena, 5); // Read(BaseLayerMemory col5)
+        let root_expr = arena.add(vec![read_expr, read_expr]); // read used 2× → resident
+        let layer = DagLayer {
+            sources: arena.sources().to_vec(),
+            exprs: arena.exprs().to_vec(),
+            roots: vec![Root::Output { expr: root_expr, sink: SinkId(0) }],
+            sinks: vec![SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset: 0 },
+                field: FieldKind::Base,
+            }],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        };
+        let ctx = DagForwardContext::default();
+        let graph = analyze_layer(&layer, &ctx);
+        let cache_root_expr = super::super::cache_root_expr_map(&layer);
+        let refs = super::super::build_ref_string(&layer, &cache_root_expr, &graph);
+        let residency = ResidencyState::new(&refs, &graph.info, 1024);
+        (layer, ctx, residency, root_expr, read_expr)
+    }
+
+    #[test]
+    fn reused_read_source_loads_once_then_reads_smem() {
+        // Output root: add(read(col5), read(col5)) → the source is a FOLD OPERAND.
+        let (layer, mut ctx, mut res, root_expr, read_expr) = test_reduction_two_uses_of_read();
+        assert!(
+            res.is_source_resident_candidate(read_expr),
+            "precondition: candidate"
+        );
+        let mut out: Vec<Instr> = Vec::new();
+        let mut trace = CompileTrace::default();
+        let desc_by_expr: HashMap<ExprId, u16> = HashMap::new();
+        let cache_root_expr: HashMap<RootId, ExprId> = HashMap::new();
+        let env = LoweringEnv {
+            desc_by_expr: &desc_by_expr,
+            cache_root_expr: &cache_root_expr,
+            point: 0,
+            allow_resident_smem: true,
+        };
+        compile_expr(
+            &layer, root_expr, &mut ctx, &mut res, &mut trace, &mut out, OperandField::Base, env,
+        )
+        .unwrap();
+
+        let loads = out
+            .iter()
+            .filter(|i| {
+                matches!(
+                    i,
+                    Instr::Mov {
+                        dir: MovDir::DstFromSrc,
+                        dst: Some(DstLine::Smem { .. }),
+                        src: Some(OperandLine::Global { .. }),
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert_eq!(
+            loads, 1,
+            "a reused Read fold-operand source must be loaded into smem exactly once: {out:#?}"
+        );
+
+        let global_reads = out
+            .iter()
+            .flat_map(operands_of)
+            .filter(|o| matches!(o, OperandLine::Global { .. }))
+            .count();
+        assert!(
+            global_reads <= 1,
+            "after load-once, reuse must read Smem not Global; got {global_reads}: {out:#?}"
+        );
     }
 }

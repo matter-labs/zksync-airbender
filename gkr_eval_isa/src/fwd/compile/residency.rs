@@ -269,6 +269,16 @@ impl ResidencyState {
         self.borrowed.contains_key(&v)
     }
 
+    /// True iff `v` was flagged a source-residency candidate by `analyze_layer`.
+    pub fn is_source_resident_candidate(&self, v: ValueId) -> bool {
+        self.info.get(&v).map(|i| i.is_source_resident).unwrap_or(false)
+    }
+
+    /// The operand field a value lives in (Base default if unknown).
+    pub fn field_of(&self, v: ValueId) -> OperandField {
+        self.info.get(&v).map(|i| i.field).unwrap_or(OperandField::Base)
+    }
+
     /// High-water mark of simultaneously live smem cells over this planner's life.
     ///
     /// In the one-allocator design the shared `CellAllocator` is the single source of

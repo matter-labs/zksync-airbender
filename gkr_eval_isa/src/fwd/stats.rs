@@ -15,8 +15,9 @@
 ///   SP1: not yet counted.
 /// - `cell_loads`: cell-evict stores emitted by `lower_operand` (nested subexprs).
 ///   SP1: not yet counted.
-/// - `cell_stores`: all `MOV DstFromAcc Smem{cell}` emitted (evicts + split evicts).
-///   SP1: not yet counted.
+/// - `cell_stores`: all cell-targeting MOVs into `Smem{cell}` — `DstFromAcc` evicts
+///   (incl. split evicts) plus `DstFromSrc` source-residency loads (a reused Read
+///   loaded once from DRAM into its cell). SP1: not yet counted.
 /// - `evicts`: acc evictions during over-cap split (`emit_reduction_group`).
 ///   SP1: not yet counted.
 /// - `reloads`: evict cells folded back in via ADD/MUL during splits.
