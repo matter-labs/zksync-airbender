@@ -901,6 +901,30 @@ mod tests {
         assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
     }
 
+    // ── Source-residency load primitive ──────────────────────────────────────
+
+    /// Pin test: the source-residency load primitive `MOV DstFromSrc Smem{cell}
+    /// ← Global{slot,col}` (emitted by the compiler for reused hot Read sources)
+    /// must be accepted by the validator.  No red phase — the validator already
+    /// accepts this shape; the test locks that in so future validator changes
+    /// cannot silently reject the load instruction.
+    #[test]
+    fn validate_accepts_dstfromsrc_into_smem() {
+        // The source-residency load-once primitive: MOV DstFromSrc Smem{0} <- Global{0,0}.
+        let layer = simple_compute_layer();
+        let mut compiled = clean_compiled(&layer);
+        // Prepend the load into the passing program (Base field needs no cell alignment).
+        // Global(0,0) is already read as Base in clean_compiled — same field, no conflict.
+        compiled.program.instrs.insert(0, Instr::Mov {
+            dir: MovDir::DstFromSrc,
+            field: OperandField::Base,
+            dst: Some(DstLine::Smem { cell: 0 }),
+            src: Some(OperandLine::Global { slot: 0, col: 0 }),
+        });
+        assert!(validate_compiled(&compiled, &layer).is_ok(),
+            "DstFromSrc into a Smem cell (the source-residency load) must validate");
+    }
+
     // ── Full clean pass ───────────────────────────────────────────────────────
 
     /// A fully-valid `CompiledLayer` passes all 7 checks.
