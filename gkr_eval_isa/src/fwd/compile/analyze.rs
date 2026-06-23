@@ -4,8 +4,8 @@
 //! `&DagForwardContext` but NEVER mutates the context. It produces a `ValueGraph`
 //! consumed by every downstream residency-planner task (S2+).
 
-use super::arith::child_operand_field;
-use super::super::context::DagForwardContext;
+use super::arith::{child_operand_field, is_zero_expr};
+use super::super::context::{DagForwardContext, ForwardAction};
 use super::super::isa::OperandField;
 use super::super::source::lower_resolution;
 use cs::gkr_compiler::dag_ir::{
@@ -61,10 +61,11 @@ pub struct ValueInfo {
     /// or re-gathered if evicted.
     pub has_backing: bool,
     /// True iff this value is a `SourceKind::Read` source (a real DRAM read — NOT
-    /// `VirtualSetup`, which is computed) referenced ≥ 2 times over the layer's
-    /// `Root::Output` expr trees. Drives source residency (load-once + borrow).
-    /// This is an OVER-approximation by design (see Step 4): a false positive only
-    /// wastes one load MOV + one cell, never a miscompile or a lost reload.
+    /// `VirtualSetup`, which is computed) loaded/borrowed as a fold operand ≥ 2 times
+    /// over the layer's `Root::Output` trees. Drives source residency (load-once +
+    /// borrow). EMISSION-EXACT for the three elided categories (zero-annihilated Mul,
+    /// CopyAlias-action roots, sole-source passthrough roots) so a flagged read is one
+    /// the emitter actually pins — see the candidate post-pass in `analyze_layer`.
     pub is_source_resident: bool,
 }
 
@@ -108,6 +109,8 @@ fn is_read_source(layer: &DagLayer, expr_id: ExprId) -> bool {
 
 /// DFS an Output-root expr tree, counting each operand-level use of a `Read` source.
 /// Resolution-pruned exprs are terminals (match analyze's pruning), not descended.
+/// A zero-annihilated `Mul` subtree is a terminal too: `compile_add` drops it via the
+/// shared `is_zero_expr`, so none of its reads are emitted — mirror that elision exactly.
 fn count_read_uses(layer: &DagLayer, expr_id: ExprId, counts: &mut HashMap<ExprId, u32>) {
     if layer.resolutions.contains_key(&expr_id) {
         return;
@@ -117,6 +120,12 @@ fn count_read_uses(layer: &DagLayer, expr_id: ExprId, counts: &mut HashMap<ExprI
         return;
     }
     if let Expr::Add(children) | Expr::Mul(children) = &layer.exprs[expr_id.0 as usize] {
+        // Category (a) — zero-annihilation: `is_zero_expr` is true for a `Mul` with any
+        // zero factor and FALSE for an `Add`, so this prunes only zero Muls; an Add that
+        // merely contains a zero-Mul sibling keeps counting its other reads.
+        if is_zero_expr(layer, expr_id) {
+            return;
+        }
         let children = children.clone();
         for c in children {
             count_read_uses(layer, c, counts);
@@ -276,21 +285,37 @@ pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
         .filter(|id| seen.insert(*id))
         .collect();
 
-    // Source-residency candidates: a `Read` source used ≥2× over the EMITTED (Output-root)
-    // trees. `Root::Constraint` roots are dropped by the forward emitter (mod.rs:121
-    // `Root::Constraint { .. } => continue`), so we walk Output roots only. `all_refs`
-    // already counts intra-reduction multi-use (dfs_collect_refs recurses per child).
+    // Source-residency candidates: a `Read` source loaded/borrowed as a FOLD OPERAND
+    // ≥2× over the EMITTED (Output-root) trees. `Root::Constraint` roots are dropped by
+    // the forward emitter (mod.rs `Root::Constraint { .. } => continue`), so we walk
+    // Output roots only.
     //
-    // ACCEPTED OVER-APPROXIMATION (vs spec §Task 1 [MFF]): this still counts a `Read`
-    // buried in a zero-annihilated `Mul([0,s])` (compile_add drops it at arith.rs:491)
-    // and inside a CopyAlias-action Output root (mod.rs:266, emits no source bytecode).
-    // Both are emitter-vs-analyze over-counts. We do NOT mirror those elisions here:
-    // a false-positive candidate only wastes one load MOV + cell, never a miscompile or
-    // a lost reload. The Task 6 dram_reads gate bounds any waste. (To make it exact, the
-    // spec's alternative is to derive candidates from the emitted Global stream — deferred.)
+    // EMISSION-EXACT (Lever A): we mirror the three emitter elisions so a flagged read
+    // is provably loaded/borrowed by the emitter (else admitting it pins a cell the
+    // emitter never reads — which on add_sub/mul_div L0 fragments an Ext-aligned block
+    // and raises the compile floor 8→12):
+    //   (a) zero-annihilated `Mul([0,s])` reads — dropped by `count_read_uses` above.
+    //   (b) CopyAlias-action roots — lowered with allow_source_load=false /
+    //       allow_resident_smem=false (mod.rs CopyAlias arm); emit no source load.
+    //   (c) sole-source passthrough roots (top expr is a bare `Read`) — fused to one
+    //       direct MOV (arith.rs allow_source_load=false); no borrowable fold operand.
+    // `ctx.actions` is populated at mod.rs:84 before analyze_layer at mod.rs:93, so the
+    // CopyAlias classification is available here. (A floor-irrelevant residual remains:
+    // a handful of mul_div interior reads flagged-but-not-admitted; harmless — they are
+    // never pinned and do not affect the floor or dram_reads. Closing them would need
+    // the emitted-Global-stream derivation, out of scope.)
     let mut read_use_counts: HashMap<ExprId, u32> = HashMap::new();
-    for root in &layer.roots {
+    for (idx, root) in layer.roots.iter().enumerate() {
         if let Root::Output { expr, .. } = root {
+            let rid = RootId(idx as u32);
+            // (b) CopyAlias roots emit no source bytecode.
+            if matches!(ctx.actions.get(&rid), Some(ForwardAction::CopyAlias { .. })) {
+                continue;
+            }
+            // (c) Sole-source passthrough roots fuse to one MOV.
+            if is_read_source(layer, *expr) {
+                continue;
+            }
             count_read_uses(layer, *expr, &mut read_use_counts);
         }
     }
@@ -461,8 +486,10 @@ pub fn materialize_descriptors(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fwd::context::ForwardAction;
+    use cs::definitions::GKRAddress;
     use cs::gkr_compiler::dag_ir::{
-        ArenaBuilder, BatchingOrder, FieldKind, ReadPlace, ResolutionStrategy, Root, SinkId,
+        ArenaBuilder, BatchingOrder, DagLayer, FieldKind, ReadPlace, ResolutionStrategy, Root, RootId, SinkId,
         SinkInfo, SinkKind, SourceKind,
     };
     use std::collections::BTreeMap;
@@ -654,6 +681,147 @@ mod tests {
         let s1 = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 7 } });
         let s2 = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 7 } });
         assert_eq!(s1, s2, "intern_source must dedup identical Read sources (ExprId-keying depends on it)");
+    }
+
+    // ── Lever A: emission-exact candidate set ─────────────────────────────────
+
+    // (a) A Read buried in a zero-annihilated Mul([0, read]) must NOT be flagged:
+    //     compile_add drops the whole Mul subtree (is_zero_expr), so the read is
+    //     never emitted. Without the Mul-node zero guard in count_read_uses the read
+    //     would be counted twice (once per Mul) and falsely flagged.
+    #[test]
+    fn candidate_skips_zero_annihilated_mul_read() {
+        use cs::gkr_compiler::dag_ir::ReadPlace;
+        let mut a = ArenaBuilder::new();
+        let r_sid = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 3 } });
+        let z_sid = a.intern_source(SourceKind::Constant { value: 0 });
+        let er = a.source_expr(r_sid);
+        let ez = a.source_expr(z_sid);
+        let m0 = a.mul(vec![ez, er]);
+        let m1 = a.mul(vec![ez, er]);
+        let root_expr = a.add(vec![m0, m1]); // read appears 2x, but only inside zero Muls
+
+        let layer = DagLayer {
+            sources: a.sources().to_vec(),
+            exprs: a.exprs().to_vec(),
+            roots: vec![Root::Output { expr: root_expr, sink: SinkId(0) }],
+            sinks: vec![SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base }],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        };
+        let ctx = make_ctx();
+        let g = analyze_layer(&layer, &ctx);
+        assert!(
+            !g.info[&er].is_source_resident,
+            "a Read only inside zero-annihilated Mul([0,s]) must NOT be a residency candidate (emitter drops it)"
+        );
+    }
+
+    // (b) A CopyAlias-action root emits NO source bytecode, so its reads must not be
+    //     counted. Synthetic isolation fixture: the CopyAlias root's top expr is an
+    //     Add (NOT a bare Read), so category (c) cannot fire — this isolates (b).
+    #[test]
+    fn candidate_skips_copyalias_root_read() {
+        use cs::gkr_compiler::dag_ir::ReadPlace;
+        let mut a = ArenaBuilder::new();
+        let r_sid = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 4 } });
+        let er = a.source_expr(r_sid);
+        let root_expr = a.add(vec![er, er]); // read 2x under a CopyAlias root
+
+        let layer = DagLayer {
+            sources: a.sources().to_vec(),
+            exprs: a.exprs().to_vec(),
+            roots: vec![Root::Output { expr: root_expr, sink: SinkId(0) }],
+            sinks: vec![SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base }],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        };
+        let mut ctx = make_ctx();
+        ctx.actions.insert(
+            RootId(0),
+            ForwardAction::CopyAlias { src_addr: GKRAddress::placeholder(), dst_addr: GKRAddress::placeholder() },
+        );
+        let g = analyze_layer(&layer, &ctx);
+        assert!(
+            !g.info[&er].is_source_resident,
+            "a Read under a CopyAlias-action root must NOT be a residency candidate (CopyAlias emits no source load)"
+        );
+    }
+
+    // (c) A Read that is the SOLE top expr of an Output root is passthrough-fused into
+    //     one direct MOV (allow_source_load=false), emitting no borrowable fold operand.
+    //     Two such roots reading the same Read column reach count 2 pre-lever; the
+    //     sole-source skip must drop both. Default (Compute) action → category (b) inert.
+    #[test]
+    fn candidate_skips_sole_source_passthrough_read() {
+        use cs::gkr_compiler::dag_ir::ReadPlace;
+        let mut a = ArenaBuilder::new();
+        let r_sid = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 5 } });
+        let er = a.source_expr(r_sid);
+
+        let layer = DagLayer {
+            sources: a.sources().to_vec(),
+            exprs: a.exprs().to_vec(),
+            roots: vec![
+                Root::Output { expr: er, sink: SinkId(0) }, // bare-read passthrough
+                Root::Output { expr: er, sink: SinkId(1) }, // bare-read passthrough (same ExprId)
+            ],
+            sinks: vec![
+                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base },
+                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 1 }, field: FieldKind::Base },
+            ],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        };
+        let ctx = make_ctx();
+        let g = analyze_layer(&layer, &ctx);
+        assert!(
+            !g.info[&er].is_source_resident,
+            "a Read that is only ever a root's sole expr is passthrough-fused, never a residency candidate"
+        );
+    }
+
+    // Negative guard (over-pruning) + positive case: an Add is NEVER pruned. A Read
+    // used 2x directly inside an Add IS flagged, even when a sibling is a zero Mul —
+    // the zero Mul's own read is dropped, but the Add's reads survive.
+    #[test]
+    fn candidate_keeps_read_in_add_with_zero_mul_sibling() {
+        use cs::gkr_compiler::dag_ir::ReadPlace;
+        let mut a = ArenaBuilder::new();
+        let kept_sid = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 6 } });
+        let dropped_sid = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 7 } });
+        let z_sid = a.intern_source(SourceKind::Constant { value: 0 });
+        let kept = a.source_expr(kept_sid);
+        let dropped = a.source_expr(dropped_sid);
+        let ez = a.source_expr(z_sid);
+        // `dropped` appears in TWO zero Muls so its pre-guard count is 2 (would be
+        // flagged WITHOUT the guard) — this makes the drop assertion non-vacuous.
+        let zero_mul_a = a.mul(vec![ez, dropped]); // annihilated → dropped read elided
+        let zero_mul_b = a.mul(vec![ez, dropped]); // same ExprId (hash-consed) → count 2 pre-guard
+        let root_expr = a.add(vec![kept, kept, zero_mul_a, zero_mul_b]);
+
+        let layer = DagLayer {
+            sources: a.sources().to_vec(),
+            exprs: a.exprs().to_vec(),
+            roots: vec![Root::Output { expr: root_expr, sink: SinkId(0) }],
+            sinks: vec![SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base }],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        };
+        let ctx = make_ctx();
+        let g = analyze_layer(&layer, &ctx);
+        assert!(
+            g.info[&kept].is_source_resident,
+            "a Read used 2x directly inside an Add MUST stay a candidate (Adds are never pruned)"
+        );
+        assert!(
+            !g.info[&dropped].is_source_resident,
+            "a Read only inside a zero Mul sibling must be dropped (does not poison the Add's reads)"
+        );
     }
 
     // ── Task 7: DescriptorPlan ────────────────────────────────────────────────

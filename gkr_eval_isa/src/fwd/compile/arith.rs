@@ -1221,7 +1221,7 @@ fn is_constant_zero(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> b
 /// `Mul` with any zero factor (annihilator), recursively. Such a term contributes
 /// nothing to a sum and is dropped by `compile_add` — `0` has no operand encoding
 /// (`Special::Zero` is not emittable, §6), so it must never reach lowering.
-fn is_zero_expr(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> bool {
+pub(crate) fn is_zero_expr(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> bool {
     match &layer.exprs[id.0 as usize] {
         Expr::Source(_) => is_constant_zero(layer, id),
         Expr::Mul(factors) => factors.iter().any(|&f| is_zero_expr(layer, f)),
