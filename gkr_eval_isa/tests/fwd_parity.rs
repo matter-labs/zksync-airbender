@@ -1057,3 +1057,43 @@ fn source_residency_floor_locked_and_dram_monotone() {
         }
     }
 }
+
+// Measurement harness: dram_reads across the REAL occupancy-bound budget band
+// (8-16 cells/thread is full occupancy on sm_120) instead of the uncapped 1024.
+// Run at HEAD (post-residency) and at the pre-residency commit to get the real
+// per-budget savings. CPU-only (codegen); not a gate (prints a CSV table).
+#[test]
+#[ignore = "measurement: prints dram_reads across the real budget band"]
+fn remeasure_dram_reads_real_budget_band() {
+    let dir = compiled_circuit_dir();
+    let targets: &[(&str, usize)] = &[
+        ("add_sub_lui_auipc_mop_layout_gkr.json", 0),
+        ("unsigned_mul_div_layout_gkr.json", 0),
+        ("blake2_with_extended_control_layout_gkr.json", 0),
+        ("bigint_with_extended_control_layout_gkr.json", 0),
+        ("keccak_special5_layout_gkr.json", 0),
+    ];
+    let budgets: &[usize] = &[8, 12, 16, 24, 32, 64, 128, 1024];
+    print!("[REMEASURE] circuit,layer");
+    for b in budgets {
+        print!(",b{b}");
+    }
+    println!();
+    for &(f, l) in targets {
+        let artifact = match load_fixture(&dir.join(f)) {
+            Some(a) => a,
+            None => continue,
+        };
+        let dag = lower_dag(&artifact).expect("lower");
+        validate(&dag).expect("validate");
+        let cross = build_cross_layer_field_map(&dag);
+        print!("[REMEASURE] {f},{l}");
+        for &b in budgets {
+            match compile_layer(&dag.layers[l], &artifact.layers[l], &artifact.scratch_space_mapping, &cross, b) {
+                Ok(c) => print!(",{}", c.stats.dram_reads),
+                Err(_) => print!(",-"),
+            }
+        }
+        println!();
+    }
+}
