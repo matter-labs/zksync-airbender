@@ -367,6 +367,7 @@ mod tests {
             is_candidate: true,
             miss,
             has_backing,
+            is_source_resident: false,
         }
     }
 
@@ -379,6 +380,7 @@ mod tests {
             is_candidate: true,
             miss,
             has_backing,
+            is_source_resident: false,
         }
     }
 

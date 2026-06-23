@@ -60,6 +60,12 @@ pub struct ValueInfo {
     /// and resolution-pruned (special-gather) leaves — these must be recomputed
     /// or re-gathered if evicted.
     pub has_backing: bool,
+    /// True iff this value is a `SourceKind::Read` source (a real DRAM read — NOT
+    /// `VirtualSetup`, which is computed) referenced ≥ 2 times over the layer's
+    /// `Root::Output` expr trees. Drives source residency (load-once + borrow).
+    /// This is an OVER-approximation by design (see Step 4): a false positive only
+    /// wastes one load MOV + one cell, never a miscompile or a lost reload.
+    pub is_source_resident: bool,
 }
 
 /// The value graph produced by `analyze_layer`.
@@ -88,6 +94,35 @@ const MISS_SPECIAL_GATHER: MissPenalty = MissPenalty { dram_reads: 0, instrs: 1,
 const MISS_LITERAL: MissPenalty = MissPenalty { dram_reads: 0, instrs: 0, cell_ops: 0 };
 
 // ── Analysis ──────────────────────────────────────────────────────────────────
+
+/// True iff `expr_id` is a `SourceKind::Read` source (a DRAM read). `VirtualSetup` is
+/// excluded — it lowers to a `Global` operand but is resolved by computation
+/// (interp.rs:148), not `r.read`, so caching it saves no DRAM read.
+fn is_read_source(layer: &DagLayer, expr_id: ExprId) -> bool {
+    if let Expr::Source(src_id) = &layer.exprs[expr_id.0 as usize] {
+        matches!(layer.sources[src_id.0 as usize].kind, SourceKind::Read { .. })
+    } else {
+        false
+    }
+}
+
+/// DFS an Output-root expr tree, counting each operand-level use of a `Read` source.
+/// Resolution-pruned exprs are terminals (match analyze's pruning), not descended.
+fn count_read_uses(layer: &DagLayer, expr_id: ExprId, counts: &mut HashMap<ExprId, u32>) {
+    if layer.resolutions.contains_key(&expr_id) {
+        return;
+    }
+    if is_read_source(layer, expr_id) {
+        *counts.entry(expr_id).or_insert(0) += 1;
+        return;
+    }
+    if let Expr::Add(children) | Expr::Mul(children) = &layer.exprs[expr_id.0 as usize] {
+        let children = children.clone();
+        for c in children {
+            count_read_uses(layer, c, counts);
+        }
+    }
+}
 
 /// Pure Stage-1 value graph analysis.
 ///
@@ -183,6 +218,7 @@ pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
                 is_candidate: false,
                 miss,
                 has_backing,
+                is_source_resident: false,
             }
         });
         entry.refcount += 1;
@@ -239,6 +275,32 @@ pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
         .into_iter()
         .filter(|id| seen.insert(*id))
         .collect();
+
+    // Source-residency candidates: a `Read` source used ≥2× over the EMITTED (Output-root)
+    // trees. `Root::Constraint` roots are dropped by the forward emitter (mod.rs:121
+    // `Root::Constraint { .. } => continue`), so we walk Output roots only. `all_refs`
+    // already counts intra-reduction multi-use (dfs_collect_refs recurses per child).
+    //
+    // ACCEPTED OVER-APPROXIMATION (vs spec §Task 1 [MFF]): this still counts a `Read`
+    // buried in a zero-annihilated `Mul([0,s])` (compile_add drops it at arith.rs:491)
+    // and inside a CopyAlias-action Output root (mod.rs:266, emits no source bytecode).
+    // Both are emitter-vs-analyze over-counts. We do NOT mirror those elisions here:
+    // a false-positive candidate only wastes one load MOV + cell, never a miscompile or
+    // a lost reload. The Task 6 dram_reads gate bounds any waste. (To make it exact, the
+    // spec's alternative is to derive candidates from the emitted Global stream — deferred.)
+    let mut read_use_counts: HashMap<ExprId, u32> = HashMap::new();
+    for root in &layer.roots {
+        if let Root::Output { expr, .. } = root {
+            count_read_uses(layer, *expr, &mut read_use_counts);
+        }
+    }
+    for (expr_id, n) in read_use_counts {
+        if n >= 2 {
+            if let Some(entry) = info.get_mut(&expr_id) {
+                entry.is_source_resident = true;
+            }
+        }
+    }
 
     ValueGraph { info, dep_edges, descriptors: DescriptorPlan { keys } }
 }
@@ -552,6 +614,46 @@ mod tests {
             graph.info[&add_ab].is_candidate,
             "a cache root with even one later Prior use must be a residency candidate (#8)"
         );
+    }
+
+    // ── Task 1: Source-residency candidate detection ──────────────────────────
+
+    #[test]
+    fn source_resident_flags_reused_read_not_virtualsetup() {
+        use cs::gkr_compiler::dag_ir::{ReadPlace, VirtualSetupKind};
+        let mut a = ArenaBuilder::new();
+        let r_sid  = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 3 } });
+        let vs_sid = a.intern_source(SourceKind::VirtualSetup { kind: VirtualSetupKind::RangeCheck16Bits });
+        let er  = a.source_expr(r_sid);
+        let evs = a.source_expr(vs_sid);
+        let root_expr = a.add(vec![er, er, evs, evs]); // read used 2x, vsetup used 2x
+
+        let layer = DagLayer {
+            sources: a.sources().to_vec(),
+            exprs: a.exprs().to_vec(),
+            roots: vec![
+                Root::Output { expr: root_expr, sink: SinkId(0) },
+            ],
+            sinks: vec![
+                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base },
+            ],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        };
+        let ctx = make_ctx();
+        let g = analyze_layer(&layer, &ctx);
+        assert!(g.info[&er].is_source_resident, "reused Read source must be a residency candidate");
+        assert!(!g.info[&evs].is_source_resident, "VirtualSetup is computed, never a residency candidate");
+    }
+
+    #[test]
+    fn identical_read_sources_dedup_to_one_exprid() {
+        use cs::gkr_compiler::dag_ir::ReadPlace;
+        let mut a = ArenaBuilder::new();
+        let s1 = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 7 } });
+        let s2 = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 7 } });
+        assert_eq!(s1, s2, "intern_source must dedup identical Read sources (ExprId-keying depends on it)");
     }
 
     // ── Task 7: DescriptorPlan ────────────────────────────────────────────────
