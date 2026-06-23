@@ -182,19 +182,12 @@ pub fn verify_sumcheck_rounds<
 }
 #[inline(always)]
 pub fn verify_final_step_check<E: ErrorCreator>(
-    f: [BabyBearExt4; 2],
-    last_prev_point: BabyBearExt4,
+    g: BabyBearExt4,
     final_eq_prefactor: BabyBearExt4,
     final_claim: BabyBearExt4,
     layer_idx: usize,
 ) -> Result<(), E::Error> {
-    let mut eq0 = BabyBearExt4::ONE;
-    field_ops::sub_assign(&mut eq0, &last_prev_point);
-    let mut rhs = eq0;
-    field_ops::mul_assign(&mut rhs, &f[0]);
-    let mut t = last_prev_point;
-    field_ops::mul_assign(&mut t, &f[1]);
-    field_ops::add_assign(&mut rhs, &t);
+    let mut rhs = g;
     field_ops::mul_assign(&mut rhs, &final_eq_prefactor);
     if rhs != final_claim {
         return Err(E::gkr_final_step_check_failed(layer_idx));
@@ -204,25 +197,19 @@ pub fn verify_final_step_check<E: ErrorCreator>(
 #[inline(always)]
 pub fn fold_standard_claims<const NUM_ADDRS: usize, const ADDRS: usize, const BUF: usize>(
     eval_buf: &CommitBuf<BUF>,
-    last_r: BabyBearExt4,
     claims: &mut LazyVec<BabyBearExt4, ADDRS>,
 ) {
-    let final_step_evals: &[[BabyBearExt4; 2]] = unsafe { eval_buf.data_as(NUM_ADDRS) };
+    let final_step_evals: &[[BabyBearExt4; 1]] = unsafe { eval_buf.data_as(NUM_ADDRS) };
     claims.clear();
     for i in 0..NUM_ADDRS {
         let evals = unsafe { final_step_evals.get_unchecked(i) };
-        let f0 = evals[0];
-        let mut diff = evals[1];
-        field_ops::sub_assign(&mut diff, &f0);
-        field_ops::mul_assign(&mut diff, &last_r);
-        field_ops::add_assign(&mut diff, &f0);
-        claims.push(diff);
+        claims.push(evals[0]);
     }
 }
 #[inline(always)]
 #[allow(unused_variables)]
 pub unsafe fn eval_linear_relation(
-    evals: &[[BabyBearExt4; 2]],
+    evals: &[[BabyBearExt4; 1]],
     terms: &[(usize, usize)],
     constant: usize,
     j: usize,
@@ -241,7 +228,7 @@ pub unsafe fn eval_linear_relation(
 #[inline(always)]
 #[allow(unused_variables)]
 pub unsafe fn eval_vector_lookup(
-    evals: &[[BabyBearExt4; 2]],
+    evals: &[[BabyBearExt4; 1]],
     alpha: BabyBearExt4,
     col_descs: &[(usize, usize)],
     terms: &[(usize, usize)],
@@ -275,7 +262,7 @@ pub unsafe fn eval_vector_lookup(
 #[inline(always)]
 #[allow(unused_variables)]
 pub unsafe fn eval_max_quadratic(
-    evals: &[[BabyBearExt4; 2]],
+    evals: &[[BabyBearExt4; 1]],
     quad_outer: &[(usize, usize)],
     quad_inner: &[(usize, usize)],
     linear: &[(usize, usize)],
@@ -326,7 +313,7 @@ pub const ME_OP_BYTE_VALUE_PAIR: usize = 7;
 #[inline(always)]
 #[allow(unused_variables)]
 pub unsafe fn eval_memory_expr(
-    evals: &[[BabyBearExt4; 2]],
+    evals: &[[BabyBearExt4; 1]],
     challenges: &[BabyBearExt4],
     additive_part: BabyBearExt4,
     ops: &[[usize; 6]],
