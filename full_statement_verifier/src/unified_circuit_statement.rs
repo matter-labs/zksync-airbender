@@ -81,14 +81,14 @@ where
         ::verifier_common::read_external_challenges::<BabyBearField, BabyBearExt4, I>(nd_source);
 
     // single reduced-machine family with folded inits/teardowns
-    let num_circuits = nd_source.read_word();
-    assert!(num_circuits == 1);
+    let num_unified_circuits = nd_source.read_word();
+    assert!(num_unified_circuits == 1);
 
     // extra word: how many of the *trailing* circuits carry real inits/teardowns
     let num_it_circuits = nd_source.read_word();
     assert!(num_it_circuits >= 1);
-    assert!(num_it_circuits <= num_circuits);
-    let first_it_circuit = num_circuits - num_it_circuits;
+    assert!(num_it_circuits <= num_unified_circuits);
+    let first_it_circuit = num_unified_circuits - num_it_circuits;
 
     {
         let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
@@ -101,7 +101,7 @@ where
     // instances: every covered prefix is unique, so no two instances init the same range.
     let mut prev_top_bit: i64 = -1;
     let mut it_circuits_seen = 0u32;
-    for circuit_sequence in 0..num_circuits {
+    for circuit_sequence in 0..num_unified_circuits {
         // TODO: unified circuit's trace len.
         // This should be derived from the circuit, not hardcoded
         total_cycles += 1u64 << 24;
