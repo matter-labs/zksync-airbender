@@ -93,7 +93,6 @@ fn write_fsv_unified_fixture(
             d.proof.as_ref().map(|p| DelegationComponents {
                 delegation_csr: d.delegation_type as u32,
                 proof: p.clone(),
-                compiled_circuit: d.compiled_circuit.clone(),
             })
         })
         .collect();
@@ -109,7 +108,6 @@ fn write_fsv_unified_fixture(
 
     let bundle = UnifiedBaseLayerComponents {
         unified_proof: unified_proof.clone(),
-        compiled_unified_circuit: output.compiled_unified_circuit.clone(),
         delegations,
         register_final_values,
         final_pc: output.final_pc,

@@ -2,13 +2,39 @@
 
 use std::collections::BTreeMap;
 
-use common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
+use common_constants::{
+    BIGINT_OPS_WITH_CONTROL_CSR_REGISTER, BLAKE2S_DELEGATION_CSR_REGISTER,
+    BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER,
+    REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
+};
 use full_statement_verifier::program_proof::ProgramProof;
 use full_statement_verifier::unified_circuit_statement::verify_unified_circuit_base_layer;
+use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
 use verifier_common::errors::DebugErrorCreator;
+use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::prover::definitions::{MerkleTreeCap, DEFAULT_CAP_SIZE};
 use verifier_common::prover::fsv_fixture::UnifiedBaseLayerComponents;
 use verifier_common::prover::nd_source_std::{set_iterator, ThreadLocalBasedSource};
+
+fn load_compiled_circuit(name: &str) -> GKRCircuitArtifact<BabyBearField> {
+    let path = format!(
+        "{}/../cs/compiled_circuits/{name}_layout_gkr.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let file =
+        std::fs::File::open(&path).unwrap_or_else(|e| panic!("open compiled circuit {path}: {e}"));
+    serde_json::from_reader(std::io::BufReader::new(file)).expect("deserialize compiled circuit")
+}
+
+fn delegation_circuit_name(csr: u32) -> &'static str {
+    match csr {
+        BLAKE2S_DELEGATION_CSR_REGISTER => "blake2_with_extended_control",
+        BIGINT_OPS_WITH_CONTROL_CSR_REGISTER => "bigint_with_extended_control",
+        KECCAK_SPECIAL5_CSR_REGISTER => "keccak_special5",
+        BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER => "blake2_g_function",
+        other => panic!("unknown delegation csr {other}"),
+    }
+}
 
 /// Must match the variant the fixture was proven with.
 const REDUCED_ROUNDS: bool = true;
@@ -40,13 +66,19 @@ fn assemble_with(
     let mut riscv_proofs = BTreeMap::new();
     riscv_proofs.insert(reduced_machine_idx, instances);
     let mut compiled_riscv_circuits = BTreeMap::new();
-    compiled_riscv_circuits.insert(reduced_machine_idx, bundle.compiled_unified_circuit);
+    compiled_riscv_circuits.insert(
+        reduced_machine_idx,
+        load_compiled_circuit("unified_reduced_machine"),
+    );
 
     let mut delegation_proofs = BTreeMap::new();
     let mut compiled_delegation_circuits = BTreeMap::new();
     for d in bundle.delegations {
+        compiled_delegation_circuits.insert(
+            d.delegation_csr,
+            load_compiled_circuit(delegation_circuit_name(d.delegation_csr)),
+        );
         delegation_proofs.insert(d.delegation_csr, vec![d.proof]);
-        compiled_delegation_circuits.insert(d.delegation_csr, d.compiled_circuit);
     }
 
     let proof = ProgramProof {
