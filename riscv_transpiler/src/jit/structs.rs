@@ -314,3 +314,111 @@ impl<'a, N: NonDeterminismCSRSource> ContextImpl for DefaultContextImpl<'a, N> {
         self.final_state.as_ref()
     }
 }
+
+pub struct FlattenedContextImpl<'a> {
+    pub(crate) non_determinism_start_ptr: *const u32,
+    pub(crate) non_determinism_source: &'a [u32],
+    pub(crate) trace_len: usize,
+    pub(crate) final_state: Option<MachineState>,
+}
+
+impl<'a> FlattenedContextImpl<'a> {
+    pub fn new(non_determinism_responses: &'a [u32]) -> Self {
+        let non_determinism_start_ptr = non_determinism_responses.as_ptr();
+        Self {
+            non_determinism_start_ptr,
+            non_determinism_source: non_determinism_responses,
+            trace_len: 0,
+            final_state: None,
+        }
+    }
+}
+
+impl<'a> ContextImpl for FlattenedContextImpl<'a> {
+    const PROVIDES_FLATTENED_NON_DETERMINISM: bool = true;
+
+    fn nondeterminism_as_raw_ptr(&self) -> Option<*const u32> {
+        Some(self.non_determinism_start_ptr)
+    }
+
+    fn read_nondeterminism(&mut self) -> u32 {
+        let (value, rest) = self.non_determinism_source.split_at(1);
+        self.non_determinism_source = rest;
+        value[0]
+    }
+
+    fn write_nondeterminism(&mut self, _value: u32, _memory: &RamImage) {
+        // nothing
+    }
+
+    fn receive_trace(
+        &mut self,
+        mut trace_chunk: NonNull<TraceChunk>,
+        machine_state: &MachineState,
+    ) -> NonNull<TraceChunk> {
+        debug_assert!((machine_state as *const MachineState)
+            .is_aligned_to(core::mem::align_of::<MachineState>()));
+        debug_assert!((trace_chunk.as_ptr() as *const TraceChunk)
+            .is_aligned_to(core::mem::align_of::<TraceChunk>()));
+
+        let trace_piece = unsafe { trace_chunk.as_mut() };
+        assert!((trace_piece.len as usize) >= TRACE_CHUNK_LEN);
+        assert!((trace_piece.len as usize) <= MAX_TRACE_CHUNK_LEN);
+        // println!(
+        //     "Received snapshot of length {} after {} cycles",
+        //     trace_piece.len,
+        //     (machine_state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP
+        // );
+        self.trace_len += trace_piece.len as usize;
+
+        #[cfg(debug_assertions)]
+        {
+            for i in (trace_piece.len as usize)..MAX_TRACE_CHUNK_LEN {
+                assert_eq!(
+                    trace_piece.values[i], 0,
+                    "invalid canary value at slot {}",
+                    i
+                );
+                assert_eq!(
+                    trace_piece.timestamps[i], 0,
+                    "invalid canary timestamp at slot {}",
+                    i
+                );
+            }
+
+            trace_piece.values.fill(0);
+            trace_piece.timestamps.fill(0);
+        }
+        trace_piece.len = 0;
+
+        trace_chunk
+    }
+
+    fn receive_final_trace_piece(
+        &mut self,
+        mut trace_chunk: NonNull<TraceChunk>,
+        machine_state: &MachineState,
+    ) {
+        println!("Execution completed");
+        debug_assert!((machine_state as *const MachineState)
+            .is_aligned_to(core::mem::align_of::<MachineState>()));
+        debug_assert!((trace_chunk.as_ptr() as *const TraceChunk)
+            .is_aligned_to(core::mem::align_of::<TraceChunk>()));
+        let trace_piece = unsafe { trace_chunk.as_mut() };
+        // println!(
+        //     "In total {} cycles passed",
+        //     (machine_state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP
+        // );
+        // println!("Final trace chunk len = {}", trace_piece.len);
+        // println!("Final PC = 0x{:08x}", machine_state.pc);
+        self.trace_len += trace_piece.len as usize;
+        self.final_state = Some(*machine_state);
+    }
+
+    fn take_final_state(&mut self) -> Option<MachineState> {
+        self.final_state.take()
+    }
+    fn final_state_ref(&'_ self) -> Option<&'_ MachineState> {
+        self.final_state.as_ref()
+    }
+}

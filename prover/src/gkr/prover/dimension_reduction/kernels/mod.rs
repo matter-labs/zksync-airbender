@@ -315,47 +315,7 @@ pub fn evaluate_single_dimension_reducing_kernel<
                     );
                 }
             }
-            i if i + 1 == total_sumcheck_rounds => {
-                assert!(i >= 3);
-
-                let sources =
-                    storage.get_for_sumcheck_round_3_and_beyond(inputs, folding_challenges);
-                {
-                    assert!(sources.base_field_inputs.is_empty());
-                    assert_eq!(sources.extension_field_inputs.len(), IN);
-                    assert_eq!(batch_challenges.len(), OUT);
-
-                    let inputs = sources.extension_field_inputs.as_array().unwrap_unchecked();
-                    let challenges = batch_challenges.as_array().unwrap_unchecked();
-
-                    for el in inputs.iter() {
-                        assert_eq!(work_size * 2, el.next_layer_size);
-                    }
-
-                    apply_row_wise::<F, _>(
-                        vec![],
-                        vec![accumulator],
-                        work_size,
-                        worker,
-                        |_, mut ext_dest, chunk_start, chunk_size| {
-                            assert_eq!(ext_dest.len(), 1);
-                            let accumulator = ext_dest.pop().unwrap();
-                            for index in 0..chunk_size {
-                                let absolute_index = chunk_start + index;
-                                let value =
-                                    kernel.evaluate::<_, true>(absolute_index, inputs, challenges);
-                                for i in 0..2 {
-                                    accumulator[index][i].add_assign(&value[i]);
-                                }
-                            }
-                        },
-                    );
-                }
-
-                // Fill the storage
-                sources.collect_last_values(inputs, last_evaluations);
-            }
-            1.. => {
+            round @ 1.. => {
                 let sources = storage.get_for_sumcheck_round_1(inputs, folding_challenges);
                 {
                     assert!(sources.base_field_inputs.is_empty());
@@ -388,7 +348,45 @@ pub fn evaluate_single_dimension_reducing_kernel<
                         },
                     );
                 }
-            }
+
+                // Fill the storage
+                if round + 1 == total_sumcheck_rounds {
+                    sources.collect_last_values(inputs, last_evaluations);
+                }
+            } // 1.. => {
+              //     let sources = storage.get_for_sumcheck_round_1(inputs, folding_challenges);
+              //     {
+              //         assert!(sources.base_field_inputs.is_empty());
+              //         assert_eq!(sources.extension_field_inputs.len(), IN);
+              //         assert_eq!(batch_challenges.len(), OUT);
+
+              //         let inputs = sources.extension_field_inputs.as_array().unwrap_unchecked();
+              //         let challenges = batch_challenges.as_array().unwrap_unchecked();
+
+              //         for el in inputs.iter() {
+              //             assert_eq!(work_size * 2, el.next_layer_size);
+              //         }
+
+              //         apply_row_wise::<F, _>(
+              //             vec![],
+              //             vec![accumulator],
+              //             work_size,
+              //             worker,
+              //             |_, mut ext_dest, chunk_start, chunk_size| {
+              //                 assert_eq!(ext_dest.len(), 1);
+              //                 let accumulator = ext_dest.pop().unwrap();
+              //                 for index in 0..chunk_size {
+              //                     let absolute_index = chunk_start + index;
+              //                     let value =
+              //                         kernel.evaluate::<_, false>(absolute_index, inputs, challenges);
+              //                     for i in 0..2 {
+              //                         accumulator[index][i].add_assign(&value[i]);
+              //                     }
+              //                 }
+              //             },
+              //         );
+              //     }
+              // }
         }
     }
 }

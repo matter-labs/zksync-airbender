@@ -1,8 +1,6 @@
 use super::*;
 use crate::vm::delegations::bigint::*;
-use common_constants::*;
 use ruint::aliases::U256;
-use std::mem::MaybeUninit;
 
 pub fn bigint_implementation(
     trace_piece: &mut TraceChunk,
@@ -12,9 +10,9 @@ pub fn bigint_implementation(
     // Implementer here is responsible for ALL the bookkeeping, and eventually MUST update trace piece chunk via context, and and update machine state to reflect filled part of trace chunk
     assert!((trace_piece.len as usize) < TRACE_CHUNK_LEN);
     debug_assert_eq!(machine_state.timestamp % 4, 3);
-    let a_ptr = machine_state.registers[10];
-    let b_ptr = machine_state.registers[11];
-    let x12 = machine_state.registers[12];
+    let a_ptr = machine_state.get_register(10);
+    let b_ptr = machine_state.get_register(11);
+    let x12 = machine_state.get_register(12);
     assert!(a_ptr as usize >= common_constants::rom::ROM_BYTE_SIZE);
     assert!(b_ptr as usize >= common_constants::rom::ROM_BYTE_SIZE);
     assert_eq!(a_ptr % 32, 0, "`a` pointer is unaligned");
@@ -24,6 +22,9 @@ pub fn bigint_implementation(
 
     let write_ts = machine_state.timestamp;
 
+    // Precompile post-cycle register-timestamp effect (a0/a1/a2 = x10/x11/x12 -> 3 mod 4).
+    // Under packed_ts this is the only writer of register_timestamps (per-cycle writes are
+    // off); the offline scan merges it via `register_timestamps_array`.
     machine_state.register_timestamps[10] = write_ts;
     machine_state.register_timestamps[11] = write_ts;
     machine_state.register_timestamps[12] = write_ts;
@@ -94,7 +95,7 @@ pub fn bigint_implementation(
     // write back the value
     *a = result;
 
-    machine_state.registers[12] = of as u32;
+    *machine_state.get_register_mut(12) = of as u32;
 
     assert!((trace_piece.len as usize) < MAX_TRACE_CHUNK_LEN);
     let should_flush = ((trace_piece.len as usize) >= TRACE_CHUNK_LEN) as u64;

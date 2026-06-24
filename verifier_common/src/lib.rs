@@ -17,6 +17,7 @@ macro_rules! gkr_circuits {
             keccak_special5; 22 ; "_layout",
             blake2_g_function; 22 ; "_layout",
             inits_and_teardowns; 24 ; "_layout",
+            unified_reduced_machine; 24 ; "_layout",
         }
     };
 }

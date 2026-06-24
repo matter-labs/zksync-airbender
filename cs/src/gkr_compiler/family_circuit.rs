@@ -27,7 +27,7 @@ impl<F: PrimeField> GKRCompiler<F> {
         caching_is_allowed: bool,
     ) -> GKRCircuitArtifact<F> {
         assert!(max_bytecode_size_in_words.is_power_of_two());
-        assert_eq!(num_inits_and_teardowns, 0, "TODO");
+        assert!(num_inits_and_teardowns == 0 || num_inits_and_teardowns.is_power_of_two(),);
 
         let CircuitOutput {
             table_driver,
@@ -490,6 +490,25 @@ impl<F: PrimeField> GKRCompiler<F> {
             &layers_mapping,
         );
 
+        // Allocate inline inits/teardowns columns (per-row, in BaseLayerMemory) when
+        // requested. `num_inits_and_teardowns` here counts pairs of sets: each pair uses
+        // the existing `InitsOrTeardownsInitialPair` GKR relation, allocating 2 sets x 4
+        // cols = 8 cols/cycle per pair.
+        let inline_it_teardown_sets: Vec<([GKRAddress; 2], [GKRAddress; 2])> =
+            if num_inits_and_teardowns > 0 {
+                use crate::gkr_compiler::inits_and_teardowns_inline::allocate_inline_inits_and_teardowns_sets;
+                allocate_inline_inits_and_teardowns_sets(
+                    &mut graph,
+                    num_inits_and_teardowns,
+                    &mut num_variables,
+                    &mut all_variables_to_place,
+                    &mut layers_mapping,
+                    &mut variable_names,
+                )
+            } else {
+                Vec::new()
+            };
+
         use crate::gkr_compiler::memory_like_grand_product::layout_initial_grand_product_accumulation;
 
         let (
@@ -512,6 +531,20 @@ impl<F: PrimeField> GKRCompiler<F> {
             None,
             executor_machine_state.cycle_start_state.timestamp,
         );
+
+        // Build the inline inits/teardowns grand product
+        let inline_it_output: Option<(
+            (GKRAddress, NoFieldGKRRelation),
+            (GKRAddress, NoFieldGKRRelation),
+        )> = if !inline_it_teardown_sets.is_empty() {
+            use crate::gkr_compiler::inits_and_teardowns_inline::build_inline_inits_and_teardowns_grand_product;
+            Some(build_inline_inits_and_teardowns_grand_product(
+                &mut graph,
+                &inline_it_teardown_sets,
+            ))
+        } else {
+            None
+        };
 
         // now we can follow up with lookup subarguments. We separate "hot" range check 16 and 19 bit
         // ones, and "generic" ones (that includes decoder)
@@ -764,8 +797,12 @@ impl<F: PrimeField> GKRCompiler<F> {
                 .map(|(k, v)| (k, (v.0, LookupOutput::Direct(v.1)))),
         );
 
-        let (layers, global_output_map) =
-            graph.layout_layers([final_read_node, final_write_node], lookup_outputs);
+        let inline_it_output_for_layout = inline_it_output.map(|(read, write)| [read, write]);
+        let (layers, global_output_map) = graph.layout_layers(
+            [final_read_node, final_write_node],
+            lookup_outputs,
+            inline_it_output_for_layout,
+        );
 
         let table_offsets = table_driver
             .table_starts_offsets()
@@ -888,15 +925,26 @@ impl<F: PrimeField> GKRCompiler<F> {
             }
         };
 
+        // RISC-V word size is fixed at 4 bytes = log2(4) = 2 word_bits. The
+        // standalone i/t circuit makes this a const generic (see
+        // `compile_inits_and_teardowns_circuit<F, const WORD_BITS: u32>`),
+        // but the unified circuit always handles RISC-V 32-bit words so we
+        // hardcode `Some(2)` here. verifier_generator (`gkr/mod.rs:345,920,1228`)
+        // requires `Some(_)` whenever `teardown_sets` is non-empty.
+        let inits_and_teardowns_word_bits = if inline_it_teardown_sets.is_empty() {
+            None
+        } else {
+            Some(2u32)
+        };
         let memory_layout = GKRMemoryLayout {
             ram_access_sets,
             machine_state: Some(machine_state),
             delegation_state: None,
             indirect_access_variable_offsets: vec![],
             total_width: graph.base_layer_memory.len(),
-            teardown_sets: Vec::new(),
+            teardown_sets: inline_it_teardown_sets.clone(),
             decoder_input: Some(decoder_input),
-            inits_and_teardowns_word_bits: None,
+            inits_and_teardowns_word_bits,
         };
 
         let multiplicities_columns_for_range_check_16 =
@@ -1028,5 +1076,35 @@ impl<F: PrimeField> GKRCompiler<F> {
 
             _marker: std::marker::PhantomData,
         }
+    }
+
+    pub fn compile_family_circuit_with_inline_inits_and_teardowns(
+        &self,
+        circuit_output: CircuitOutput<F>,
+        max_bytecode_size_in_words: usize,
+        num_inits_and_teardowns: usize,
+        trace_len_log2: usize,
+        caching_is_allowed: bool,
+    ) -> GKRCircuitArtifact<F> {
+        assert!(
+            num_inits_and_teardowns > 0,
+            "use compile_family_circuit when there are no inline inits/teardowns"
+        );
+        // The downstream `allocate_inline_inits_and_teardowns_sets` requires
+        // `num_inits_and_teardowns_pairs.is_power_of_two()` because the pairwise grand-product
+        // aggregation needs balanced halves. Validate at the public entry point so a bad caller
+        // gets a clear error here instead of an opaque assertion deep in compilation.
+        assert!(
+            num_inits_and_teardowns.is_power_of_two(),
+            "num_inits_and_teardowns must be a power of two; got {}",
+            num_inits_and_teardowns
+        );
+        self.compile_family_circuit(
+            circuit_output,
+            max_bytecode_size_in_words,
+            num_inits_and_teardowns,
+            trace_len_log2,
+            caching_is_allowed,
+        )
     }
 }

@@ -1,0 +1,819 @@
+use super::*;
+use crate::constraint::{Constraint, Term};
+use crate::cs::circuit_trait::*;
+use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables_from_constraints_conditional;
+use crate::gkr_circuits::jump_branch_slt_family::JumpSltBranchFamilyCircuitMask;
+use crate::gkr_circuits::utils::update_intermediate_carry_value;
+use crate::types::*;
+use crate::witness_placer::*;
+use field::PrimeField;
+
+use super::circuit::{LookupRequest, F2_SCRATCH_BOOLS, F2_SCRATCH_VARS};
+
+/// Family 2 (jump/branch/slt) constraints for the unified circuit. Mirrors the
+/// standalone inner with two unified-specific adaptations:
+/// (1) the `JumpCleanupOffset` lookup is gated so non-Family-2 cycles route to
+/// `ZeroEntry`, and (2) the rd-write constraints are gated on per-opcode
+/// `is_X_writes_rd` Booleans so non-Family-2 cycles don't pin rd_write_limbs.
+pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
+    cs: &mut CS,
+    inputs: OpcodeFamilyCircuitState<F>,
+    decoder: JumpSltBranchFamilyCircuitMask,
+    rs1_limbs: [Variable; 2],
+    rs2_limbs: [Variable; 2],
+    rd_write_limbs: [Variable; 2],
+    intermediate_reg: Register<F>,
+    scratch_bools: [Boolean; F2_SCRATCH_BOOLS],
+    scratch_vars: [Variable; F2_SCRATCH_VARS],
+) -> Vec<LookupRequest<F>> {
+    // U16 views of rs1/rs2 reassembled from U8 bytes via free algebra.
+    let rs1_low_c: Constraint<F> = Constraint::from(rs1_limbs[0]);
+    let rs1_high_c: Constraint<F> = Constraint::from(rs1_limbs[1]);
+    let rs2_low_c: Constraint<F> = Constraint::from(rs2_limbs[0]);
+    let rs2_high_c: Constraint<F> = Constraint::from(rs2_limbs[1]);
+
+    // we do NOT need range checks on RD write values, as they will be results of masking
+    // based on rd == x0 predicate. But we will need to add some temporary variables to get addition results
+
+    // short note on the opcodes
+    // - jal jumps based on current PC (0 mod 4 for all rows that matter)
+    // - jalr jumps based on rs1 value
+    // - slt loads a value into the RD based on comparison of rs1 and rs2 (or corresponding immediate)
+    // - branch jumps using immediate offsets based on the result of comparison of rs1 and rs2
+
+    // we will need to allocate 2 u32 intermediate values
+    // first one:
+    // for jal/jalr - it's pc + 4 to potentially to write to the output register
+    // for branch and slt we use it for intermediate comparison result
+    // second one is partial (lower half):
+    // for jal/jalr it'll be jump destination address
+    // for taken(!) branch it'll be potential jump destination address
+    // we will also in the process materialize "not jump" boolean
+    // for not taken(!) branch we will do pc + 4
+    // for slt it'll be pc + 4
+    // because for all jump-like opcodes we only need to cleanup the lowest word,
+    // then we can target PC's high part as the output variable
+
+    let carry_shift = F::from_u32_with_reduction(1 << 16);
+
+    // we need range checks on high PC part
+    cs.require_invariant(
+        inputs.cycle_start_state.pc[1],
+        Invariant::RangeChecked { width: 16 },
+    );
+
+    let pc_intermediate_addition_tmp_low =
+        cs.add_named_variable("Intermedaite low for PC computation");
+    cs.require_invariant(
+        pc_intermediate_addition_tmp_low,
+        Invariant::RangeChecked { width: 16 },
+    );
+
+    // and we need 4 intermediate booleans — aliased into the shared scratch-Boolean
+    // pool slots [0..4] (branch-local: consumed only inside is_jal/is_jalr/is_branch/is_slt
+    // gated add-like constraints, so free on non-Family-2 rows).
+    let intermediate_bools: [Boolean; 4] = core::array::from_fn(|i| scratch_bools[i]);
+
+    let is_branch = decoder.perform_branch();
+    let is_slt = decoder.perform_slt();
+    let is_jal = decoder.perform_jal();
+    let is_jalr = decoder.perform_jalr();
+    let rd_is_zero = decoder.rd_is_zero();
+
+    // is_fam2 = is_jal + is_jalr + is_slt + is_branch; the decoder one-hot +
+    // dispatch constraint keep this sum in {0, 1}. Used to gate F2's lookups so
+    // they fold into the shared pool (ZeroEntry / 0-tuple on non-F2 rows).
+    let is_fam2_sum = || -> Constraint<F> {
+        Constraint::from(is_jal) + Term::from(is_jalr) + Term::from(is_slt) + Term::from(is_branch)
+    };
+    // Family-2 sub-opcode flag variables, OR-ed in-witness to form the is_fam2 mask
+    // that gates the conditional pool-slot peeks (lookup outputs share the scratch
+    // Variable pool with Family 3, so their witness writes must be conditional).
+    let f2_flag_vars = [
+        is_jal.expect_variable(),
+        is_jalr.expect_variable(),
+        is_slt.expect_variable(),
+        is_branch.expect_variable(),
+    ];
+
+    // NOTE: as usual, for SLT/SLTI if we have immediate variant, then we have x0 as rs2,
+    // so we can avoid selections
+
+    // on comparison: assume we want do a < b signed or unsigned
+    // unsigned case if easy - we just need to look at the underflow flag
+    // signed case if painful: if signs are the same, then underflow flag is enough,
+    // but if signs are different, and a < 0, then underflow flag would not be set.
+    // Opposite is also true: if a > 0, then underflow flag would not be set too.
+    // So we need to inspect signs of both input operands, and we do so using 1 lookup
+    // access to get sign of `a`, and then use single lookup table of
+    // `b_high` | of flag | zero_flag | funct3 to decide to take branch or not,
+    // and to resolve slt/sltu
+
+    // witness generation functions come first, so when constraints are added we can try to evaluate them
+    // in debug cases
+
+    let [add_rel_0_intermediate_of, add_rel_0_final_of, add_rel_1_intermediate_of, add_rel_1_final_of] =
+        intermediate_bools;
+
+    let [comparison_rel_or_jump_saved_pc_low, comparison_rel_or_jump_saved_pc_high] =
+        intermediate_reg.0.map(|el| el.get_variable());
+
+    let add_rel_0_intermediate_of_var = add_rel_0_intermediate_of.expect_variable();
+    let add_rel_0_final_of_var = add_rel_0_final_of.expect_variable();
+
+    let add_rel_1_intermediate_of_var = add_rel_1_intermediate_of.expect_variable();
+    let add_rel_1_final_of_var = add_rel_1_final_of.expect_variable();
+
+    {
+        let imm_vars = inputs.decoder_data.imm;
+        let pc_in_vars = inputs.cycle_start_state.pc;
+        let rs1_vars = rs1_limbs;
+        let rs2_vars = rs2_limbs;
+
+        let is_branch_var = is_branch.expect_variable();
+        let is_slt_var = is_slt.expect_variable();
+        let is_jal_var = is_jal.expect_variable();
+        let is_jalr_var = is_jalr.expect_variable();
+
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            // NOTE: it is UNCONDITIONAL assignment, even though we select across multiple variants
+
+            let mut out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
+            let mut intermedaite_of_value =
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
+            let mut of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
+
+            let imm_low = placer.get_u16(imm_vars[0]);
+            let imm = placer.get_u32_from_u16_parts(imm_vars);
+            let rs1_low = placer.get_u16(rs1_vars[0]);
+            let rs1_u32 = placer.get_u32_from_u16_parts(rs1_vars);
+            let rs2_low = placer.get_u16(rs2_vars[0]);
+            let rs2_u32 = placer.get_u32_from_u16_parts(rs2_vars);
+            let pc_low = placer.get_u16(pc_in_vars[0]);
+            let pc_u32 = placer.get_u32_from_u16_parts(pc_in_vars);
+
+            {
+                // UNSIGNED comparison of rs1 and rs2, but IMM is NOT used
+                let is_branch = placer.get_boolean(is_branch_var);
+                let (sub_result, of0) = rs1_u32.overflowing_sub(&rs2_u32);
+                out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                    &is_branch,
+                    &sub_result,
+                    &out_value,
+                );
+                of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                    &is_branch, &of0, &of_value,
+                );
+                update_intermediate_carry_value::<F, CS::WitnessPlacer, true>(
+                    &mut intermedaite_of_value,
+                    &is_branch,
+                    &rs1_low,
+                    &rs2_low,
+                    None,
+                );
+            }
+            {
+                // UNSIGNED comparison of rs1 and rs2, but IMM is used(!)
+                let is_slt = placer.get_boolean(is_slt_var);
+                let (sub_result, of0) = rs1_u32.overflowing_sub(&rs2_u32);
+                let (sub_result, of1) = sub_result.overflowing_sub(&imm);
+                let of = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::or(&of0, &of1);
+                out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                    &is_slt,
+                    &sub_result,
+                    &out_value,
+                );
+                of_value =
+                    <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(&is_slt, &of, &of_value);
+                update_intermediate_carry_value::<F, CS::WitnessPlacer, true>(
+                    &mut intermedaite_of_value,
+                    &is_slt,
+                    &rs1_low,
+                    &rs2_low,
+                    Some(&imm_low),
+                );
+            }
+            {
+                // for JAL and JALR we compute pc + 4
+                let is_jal = placer.get_boolean(is_jal_var);
+                let is_jalr = placer.get_boolean(is_jalr_var);
+                let is_jump = is_jal.or(&is_jalr);
+
+                let (jump_result, of) = pc_u32.overflowing_add(
+                    &<CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
+                        core::mem::size_of::<u32>() as u32,
+                    ),
+                );
+                out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                    &is_jump,
+                    &jump_result,
+                    &out_value,
+                );
+                of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                    &is_jump, &of, &of_value,
+                );
+                update_intermediate_carry_value::<F, CS::WitnessPlacer, false>(
+                    &mut intermedaite_of_value,
+                    &is_jump,
+                    &pc_low,
+                    &&<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                        core::mem::size_of::<u32>() as u16,
+                    ),
+                    None,
+                );
+            }
+
+            // Conditional-only write (shared Register with F1's intermediate_tmp):
+            // gate on F2-active so non-F2 rows leave the slot to F1 / the chain
+            // default (0). out_value is already 0 when no F2 op fires.
+            let is_fam2 = {
+                let mut m = placer.get_boolean(is_branch_var);
+                m = m.or(&placer.get_boolean(is_slt_var));
+                m = m.or(&placer.get_boolean(is_jal_var));
+                m = m.or(&placer.get_boolean(is_jalr_var));
+                m
+            };
+            placer.conditionally_assign_u32(
+                [
+                    comparison_rel_or_jump_saved_pc_low,
+                    comparison_rel_or_jump_saved_pc_high,
+                ],
+                &is_fam2,
+                &out_value,
+            );
+            // Conditional on is_fam2: these carry bools alias shared bool-pool slots,
+            // so non-Family-2 rows must leave them to the pool default / sibling families.
+            placer.conditionally_assign_mask(
+                add_rel_0_intermediate_of_var,
+                &is_fam2,
+                &intermedaite_of_value,
+            );
+            placer.conditionally_assign_mask(add_rel_0_final_of_var, &is_fam2, &of_value);
+        };
+        cs.set_values(value_fn);
+    }
+
+    // now we can put the constraint for such addition
+    {
+        let mut add_like_low_constraint = Constraint::empty();
+        // first addend
+        add_like_low_constraint += Term::from(is_jal) * Term::from(inputs.cycle_start_state.pc[0]);
+        add_like_low_constraint += Term::from(is_jalr) * Term::from(inputs.cycle_start_state.pc[0]);
+        // for subtraction 2^16*of + a - b = c -> 2^16*of + a = b + c
+        // so we use output for the first addend, and keep second addend unchanged
+        add_like_low_constraint +=
+            Term::from(is_branch) * Term::from(comparison_rel_or_jump_saved_pc_low);
+        add_like_low_constraint +=
+            Term::from(is_slt) * Term::from(comparison_rel_or_jump_saved_pc_low);
+        // second addend
+        // NOTE: for additions we blindly mix imm and rs2 as preprocessing ensures that if imm !=0 then rs2 = x0
+        add_like_low_constraint +=
+            Term::from(is_jal) * Term::from(common_constants::PC_STEP as u32);
+        add_like_low_constraint +=
+            Term::from(is_jalr) * Term::from(common_constants::PC_STEP as u32);
+        add_like_low_constraint += Term::from(is_branch) * rs2_low_c.clone();
+        add_like_low_constraint += Term::from(is_slt) * rs2_low_c.clone();
+        add_like_low_constraint += Term::from(is_slt) * Term::from(inputs.decoder_data.imm[0]);
+        // out-like var
+        add_like_low_constraint -=
+            Term::from(is_jal) * Term::from(comparison_rel_or_jump_saved_pc_low);
+        add_like_low_constraint -=
+            Term::from(is_jalr) * Term::from(comparison_rel_or_jump_saved_pc_low);
+        add_like_low_constraint -= Term::from(is_branch) * rs1_low_c.clone();
+        add_like_low_constraint -= Term::from(is_slt) * rs1_low_c.clone();
+
+        // intermediate carry
+        add_like_low_constraint -=
+            Term::from(is_jal) * Term::from((carry_shift, add_rel_0_intermediate_of_var));
+        add_like_low_constraint -=
+            Term::from(is_jalr) * Term::from((carry_shift, add_rel_0_intermediate_of_var));
+        add_like_low_constraint -=
+            Term::from(is_branch) * Term::from((carry_shift, add_rel_0_intermediate_of_var));
+        add_like_low_constraint -=
+            Term::from(is_slt) * Term::from((carry_shift, add_rel_0_intermediate_of_var));
+        cs.add_constraint(add_like_low_constraint);
+
+        // high part
+        let mut add_like_high_constraint = Constraint::empty();
+        // intermediate carry
+        add_like_high_constraint += Term::from(is_jal) * Term::from(add_rel_0_intermediate_of_var);
+        add_like_high_constraint += Term::from(is_jalr) * Term::from(add_rel_0_intermediate_of_var);
+        add_like_high_constraint +=
+            Term::from(is_branch) * Term::from(add_rel_0_intermediate_of_var);
+        add_like_high_constraint += Term::from(is_slt) * Term::from(add_rel_0_intermediate_of_var);
+        // first addend
+        add_like_high_constraint += Term::from(is_jal) * Term::from(inputs.cycle_start_state.pc[1]);
+        add_like_high_constraint +=
+            Term::from(is_jalr) * Term::from(inputs.cycle_start_state.pc[1]);
+        add_like_high_constraint +=
+            Term::from(is_branch) * Term::from(comparison_rel_or_jump_saved_pc_high);
+        add_like_high_constraint +=
+            Term::from(is_slt) * Term::from(comparison_rel_or_jump_saved_pc_high);
+        // second addend
+        // NOTE: for additions we blindly mix imm and rs2 as preprocessing ensures that if imm !=0 then rs2 = x0
+        add_like_high_constraint += Term::from(is_branch) * rs2_high_c.clone();
+        add_like_high_constraint += Term::from(is_slt) * rs2_high_c.clone();
+        add_like_high_constraint += Term::from(is_slt) * Term::from(inputs.decoder_data.imm[1]);
+        // out-like
+        add_like_high_constraint -=
+            Term::from(is_jal) * Term::from(comparison_rel_or_jump_saved_pc_high);
+        add_like_high_constraint -=
+            Term::from(is_jalr) * Term::from(comparison_rel_or_jump_saved_pc_high);
+        add_like_high_constraint -= Term::from(is_branch) * rs1_high_c.clone();
+        add_like_high_constraint -= Term::from(is_slt) * rs1_high_c.clone();
+        // final carry
+        add_like_high_constraint -=
+            Term::from(is_jal) * Term::from((carry_shift, add_rel_0_final_of_var));
+        add_like_high_constraint -=
+            Term::from(is_jalr) * Term::from((carry_shift, add_rel_0_final_of_var));
+        add_like_high_constraint -=
+            Term::from(is_branch) * Term::from((carry_shift, add_rel_0_final_of_var));
+        add_like_high_constraint -=
+            Term::from(is_slt) * Term::from((carry_shift, add_rel_0_final_of_var));
+        cs.add_constraint(add_like_high_constraint);
+    }
+
+    // now we should compare the output result to 0,
+    // then resolve jump/slt condition
+
+    let comparison_result_is_zero = scratch_vars[0];
+    let regiszero_input: Constraint<F> = Constraint::empty()
+        + Term::from(comparison_rel_or_jump_saved_pc_low)
+        + Term::from(comparison_rel_or_jump_saved_pc_high);
+    peek_lookup_values_unconstrained_into_variables_from_constraints_conditional(
+        cs,
+        &[is_fam2_sum() * regiszero_input.clone()],
+        &[comparison_result_is_zero],
+        is_fam2_sum() * Term::from(TableType::RegIsZero.to_num()),
+        &f2_flag_vars,
+    );
+    let regiszero_request = LookupRequest::new(
+        is_fam2_sum() * Term::from(TableType::RegIsZero.to_num()),
+        vec![
+            is_fam2_sum() * regiszero_input,
+            is_fam2_sum() * Term::from(comparison_result_is_zero),
+        ],
+    );
+
+    // sign of rs1's high U16 limb (reassembled from the high two bytes — that's
+    // exactly `rs1_high_c`). U16GetSign maps the full 16-bit value to its sign.
+    let rs1_sign = scratch_vars[1];
+    peek_lookup_values_unconstrained_into_variables_from_constraints_conditional(
+        cs,
+        &[is_fam2_sum() * rs1_high_c.clone()],
+        &[rs1_sign],
+        is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
+        &f2_flag_vars,
+    );
+    let u16getsign_request = LookupRequest::new(
+        is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
+        vec![
+            is_fam2_sum() * rs1_high_c.clone(),
+            is_fam2_sum() * Term::from(rs1_sign),
+        ],
+    );
+
+    // and now we can resolve jump. Note that SLT/SLTU use the same formal(!) funct3 as BLT/BLTU,
+    // and for JAL/JALR we formally set funct3 to be such that jump resolution will be always
+    // false, so in computing next PC below we can avoid thinking about overlapping
+    // boolean conditions. The packed input references rs1_sign +
+    // comparison_result_is_zero (peeked above); the witness resolver orders the
+    // peeks by data dependency.
+    let should_jump_or_slt_value = scratch_vars[2];
+    let cond_jmp_input: Constraint<F> = Constraint::empty()
+        + rs2_high_c.clone()
+        + Term::from((F::from_u32(1 << 16).unwrap(), rs1_sign))
+        + Term::from((F::from_u32(1 << 17).unwrap(), add_rel_0_final_of_var))
+        + Term::from((F::from_u32(1 << 18).unwrap(), comparison_result_is_zero))
+        + Term::from((
+            F::from_u32(1 << 19).unwrap(),
+            inputs.decoder_data.funct3.expect("must have funct3"),
+        ));
+    peek_lookup_values_unconstrained_into_variables_from_constraints_conditional(
+        cs,
+        &[is_fam2_sum() * cond_jmp_input.clone()],
+        &[should_jump_or_slt_value],
+        is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSlt.to_num()),
+        &f2_flag_vars,
+    );
+    let cond_jmp_request = LookupRequest::new(
+        is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSlt.to_num()),
+        vec![
+            is_fam2_sum() * cond_jmp_input,
+            is_fam2_sum() * Term::from(should_jump_or_slt_value),
+        ],
+    );
+    let should_jump_if_branch = cs.add_named_variable("should jump if BRANCH opcode");
+
+    // now we can compute next PC, as well as PC that will be placed into RD for JAL/JALR
+    // NOTE: if branch is NOT taken then we treat it as jump by constant offset of 4
+
+    {
+        let imm_vars = inputs.decoder_data.imm;
+        let pc_in_vars = inputs.cycle_start_state.pc;
+        let pc_out_vars = [
+            pc_intermediate_addition_tmp_low,
+            inputs.cycle_end_state.pc[1],
+        ];
+        let rs1_vars = rs1_limbs;
+
+        let is_slt_var = is_slt.expect_variable();
+        let is_jal_var = is_jal.expect_variable();
+        let is_jalr_var = is_jalr.expect_variable();
+        let is_branch_var = is_branch.expect_variable();
+
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            // NOTE: it is UNCONDITIONAL assignment, even though we select across multiple variants
+
+            let imm_low = placer.get_u16(imm_vars[0]);
+            let imm = placer.get_u32_from_u16_parts(imm_vars);
+            let rs1_low = placer.get_u16(rs1_vars[0]);
+            let rs1_u32 = placer.get_u32_from_u16_parts(rs1_vars);
+            let pc_low = placer.get_u16(pc_in_vars[0]);
+            let pc_u32 = placer.get_u32_from_u16_parts(pc_in_vars);
+
+            // easy case for extra var if jump
+            let should_jump = {
+                let is_branch = placer.get_boolean(is_branch_var);
+                let jump_resolution = placer.get_boolean(should_jump_or_slt_value);
+
+                is_branch.and(&jump_resolution)
+            };
+            placer.assign_mask(should_jump_if_branch, &should_jump);
+
+            // NOTE: in case of padding our default case matches "branch not taken" case, so we use different defaults
+            let (mut out_value, mut intermedaite_of_value, mut of_value) = {
+                let (default_next_pc, default_of_value) = pc_u32.overflowing_add(
+                    &<CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
+                        core::mem::size_of::<u32>() as u32,
+                    ),
+                );
+                let (_, default_intermediate_of_value) = pc_low.overflowing_add(
+                    &<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                        core::mem::size_of::<u32>() as u16,
+                    ),
+                );
+
+                (
+                    default_next_pc,
+                    default_of_value,
+                    default_intermediate_of_value,
+                )
+            };
+
+            {
+                // Branch taken(!)
+                let (next_pc, of) = pc_u32.overflowing_add(&imm);
+                out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                    &should_jump,
+                    &next_pc,
+                    &out_value,
+                );
+                of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                    &should_jump,
+                    &of,
+                    &of_value,
+                );
+                update_intermediate_carry_value::<F, CS::WitnessPlacer, false>(
+                    &mut intermedaite_of_value,
+                    &should_jump,
+                    &pc_low,
+                    &imm_low,
+                    None,
+                );
+            }
+            {
+                // JAL
+                let is_jal = placer.get_boolean(is_jal_var);
+                let (next_pc, of) = pc_u32.overflowing_add(&imm);
+                out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                    &is_jal, &next_pc, &out_value,
+                );
+                of_value =
+                    <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(&is_jal, &of, &of_value);
+                update_intermediate_carry_value::<F, CS::WitnessPlacer, false>(
+                    &mut intermedaite_of_value,
+                    &is_jal,
+                    &pc_low,
+                    &imm_low,
+                    None,
+                );
+            }
+            {
+                // JALR
+                let is_jalr = placer.get_boolean(is_jalr_var);
+                let (next_pc, of) = rs1_u32.overflowing_add(&imm);
+                out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                    &is_jalr, &next_pc, &out_value,
+                );
+                of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                    &is_jalr, &of, &of_value,
+                );
+                update_intermediate_carry_value::<F, CS::WitnessPlacer, false>(
+                    &mut intermedaite_of_value,
+                    &is_jalr,
+                    &rs1_low,
+                    &imm_low,
+                    None,
+                );
+            }
+            {
+                // for SLT we compute pc + 4
+                let is_slt = placer.get_boolean(is_slt_var);
+                let (next_pc, of) = pc_u32.overflowing_add(
+                    &<CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
+                        core::mem::size_of::<u32>() as u32,
+                    ),
+                );
+                out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                    &is_slt, &next_pc, &out_value,
+                );
+                of_value =
+                    <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(&is_slt, &of, &of_value);
+                update_intermediate_carry_value::<F, CS::WitnessPlacer, false>(
+                    &mut intermedaite_of_value,
+                    &is_slt,
+                    &pc_low,
+                    &&<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                        core::mem::size_of::<u32>() as u16,
+                    ),
+                    None,
+                );
+            }
+
+            placer.assign_u32_from_u16_parts(pc_out_vars, &out_value);
+            // Conditional on is_fam2: add_rel_1 carry bools alias shared bool-pool slots.
+            let is_fam2 = {
+                let mut m = placer.get_boolean(is_branch_var);
+                m = m.or(&placer.get_boolean(is_slt_var));
+                m = m.or(&placer.get_boolean(is_jal_var));
+                m = m.or(&placer.get_boolean(is_jalr_var));
+                m
+            };
+            placer.conditionally_assign_mask(
+                add_rel_1_intermediate_of_var,
+                &is_fam2,
+                &intermedaite_of_value,
+            );
+            placer.conditionally_assign_mask(add_rel_1_final_of_var, &is_fam2, &of_value);
+        };
+        cs.set_values(value_fn);
+    }
+
+    // enforce the jump if branch value
+    cs.add_constraint(
+        Term::from(is_branch) * Term::from(should_jump_or_slt_value)
+            - Term::from(should_jump_if_branch),
+    );
+
+    // and the corresponding constraint
+    // NOTE: if we have branch opcode, then `should_jump_or_slt_value` will indicate whether to branch or not,
+    // and if we have `should_jump_or_slt_value` it'll indicate the value,
+    // but not the presence of jump. That's why we added extra variable above
+    {
+        let mut add_like_low_constraint = Constraint::empty();
+        // first addend - default case
+        add_like_low_constraint += Term::from(is_jal) * Term::from(inputs.cycle_start_state.pc[0]);
+        add_like_low_constraint += Term::from(is_jalr) * rs1_low_c.clone();
+        add_like_low_constraint +=
+            Term::from(is_branch) * Term::from(inputs.cycle_start_state.pc[0]);
+        add_like_low_constraint += Term::from(is_slt) * Term::from(inputs.cycle_start_state.pc[0]);
+        // second addend
+        add_like_low_constraint += Term::from(is_jal) * Term::from(inputs.decoder_data.imm[0]);
+        add_like_low_constraint += Term::from(is_jalr) * Term::from(inputs.decoder_data.imm[0]);
+        add_like_low_constraint +=
+            Term::from(is_branch) * Term::from(common_constants::PC_STEP as u32);
+        add_like_low_constraint += Term::from(should_jump_if_branch)
+            * (Term::from(inputs.decoder_data.imm[0])
+                - Term::from(common_constants::PC_STEP as u32));
+        add_like_low_constraint +=
+            Term::from(is_slt) * Term::from(common_constants::PC_STEP as u32);
+        // out-like var
+        add_like_low_constraint -=
+            Term::from(is_jal) * Term::from(pc_intermediate_addition_tmp_low);
+        add_like_low_constraint -=
+            Term::from(is_jalr) * Term::from(pc_intermediate_addition_tmp_low);
+        add_like_low_constraint -=
+            Term::from(is_branch) * Term::from(pc_intermediate_addition_tmp_low);
+        add_like_low_constraint -=
+            Term::from(is_slt) * Term::from(pc_intermediate_addition_tmp_low);
+
+        // intermediate carry
+        add_like_low_constraint -=
+            Term::from(is_jal) * Term::from((carry_shift, add_rel_1_intermediate_of_var));
+        add_like_low_constraint -=
+            Term::from(is_jalr) * Term::from((carry_shift, add_rel_1_intermediate_of_var));
+        add_like_low_constraint -=
+            Term::from(is_branch) * Term::from((carry_shift, add_rel_1_intermediate_of_var));
+        add_like_low_constraint -=
+            Term::from(is_slt) * Term::from((carry_shift, add_rel_1_intermediate_of_var));
+        cs.add_constraint(add_like_low_constraint);
+
+        // high part
+        let mut add_like_high_constraint = Constraint::empty();
+        // intermediate carry
+        add_like_high_constraint += Term::from(is_jal) * Term::from(add_rel_1_intermediate_of_var);
+        add_like_high_constraint += Term::from(is_jalr) * Term::from(add_rel_1_intermediate_of_var);
+        add_like_high_constraint +=
+            Term::from(is_branch) * Term::from(add_rel_1_intermediate_of_var);
+        add_like_high_constraint += Term::from(is_slt) * Term::from(add_rel_1_intermediate_of_var);
+        // first addend
+        add_like_high_constraint += Term::from(is_jal) * Term::from(inputs.cycle_start_state.pc[1]);
+        add_like_high_constraint += Term::from(is_jalr) * rs1_high_c.clone();
+        add_like_high_constraint +=
+            Term::from(is_branch) * Term::from(inputs.cycle_start_state.pc[1]);
+        add_like_high_constraint += Term::from(is_slt) * Term::from(inputs.cycle_start_state.pc[1]);
+        // second addend
+        add_like_high_constraint += Term::from(is_jal) * Term::from(inputs.decoder_data.imm[1]);
+        add_like_high_constraint += Term::from(is_jalr) * Term::from(inputs.decoder_data.imm[1]);
+        add_like_high_constraint +=
+            Term::from(should_jump_if_branch) * Term::from(inputs.decoder_data.imm[1]);
+        // out-like
+        add_like_high_constraint -= Term::from(is_jal) * Term::from(inputs.cycle_end_state.pc[1]);
+        add_like_high_constraint -= Term::from(is_jalr) * Term::from(inputs.cycle_end_state.pc[1]);
+        add_like_high_constraint -=
+            Term::from(is_branch) * Term::from(inputs.cycle_end_state.pc[1]);
+        add_like_high_constraint -= Term::from(is_slt) * Term::from(inputs.cycle_end_state.pc[1]);
+        // final carry
+        add_like_high_constraint -=
+            Term::from(is_jal) * Term::from((carry_shift, add_rel_1_final_of_var));
+        add_like_high_constraint -=
+            Term::from(is_jalr) * Term::from((carry_shift, add_rel_1_final_of_var));
+        add_like_high_constraint -=
+            Term::from(is_branch) * Term::from((carry_shift, add_rel_1_final_of_var));
+        add_like_high_constraint -=
+            Term::from(is_slt) * Term::from((carry_shift, add_rel_1_final_of_var));
+        cs.add_constraint(add_like_high_constraint);
+    }
+
+    // next_pc_bit_1 = bit 1 of pc_intermediate_addition_tmp_low. The JumpCleanupOffset
+    // lookup tuple is (input, bit_1, pc_out_low) and is enforced against a gated
+    // table_id so non-Family-2 cycles match (0, 0, 0) under the ZeroEntry table.
+    // Shared bool-pool slot [4] (Family-2-exclusive); witnessed conditionally on is_fam2
+    // so non-Family-2 rows leave it at the pool default (0).
+    let next_pc_bit_1 = scratch_bools[4];
+    {
+        let is_branch_var = is_branch.expect_variable();
+        let is_slt_var = is_slt.expect_variable();
+        let is_jal_var = is_jal.expect_variable();
+        let is_jalr_var = is_jalr.expect_variable();
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let tmp_low = placer.get_u16(pc_intermediate_addition_tmp_low);
+            let bit_1 = tmp_low.shr(1).get_lowest_bits(1).is_one();
+            let is_fam2 = {
+                let mut m = placer.get_boolean(is_branch_var);
+                m = m.or(&placer.get_boolean(is_slt_var));
+                m = m.or(&placer.get_boolean(is_jal_var));
+                m = m.or(&placer.get_boolean(is_jalr_var));
+                m
+            };
+            placer.conditionally_assign_mask(next_pc_bit_1.expect_variable(), &is_fam2, &bit_1);
+        };
+        cs.set_values(value_fn);
+    }
+
+    // Assign pc_out[0] = pc_intermediate_addition_tmp_low & ~0x3 (the JumpCleanupOffset
+    // table mapping). Non-Family-2 cycles: pc_intermediate defaults to pc+4 which is
+    // already 4-aligned, so this is a no-op. Padding (execute=0): no constraint reads
+    // pc_out[0]'s value, so the override is harmless.
+    {
+        let pc_out_low_var = inputs.cycle_end_state.pc[0];
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let tmp_low = placer.get_u16(pc_intermediate_addition_tmp_low);
+            let aligned = tmp_low.and(&<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                0xFFFCu16,
+            ));
+            placer.assign_u16(pc_out_low_var, &aligned);
+        };
+        cs.set_values(value_fn);
+    }
+
+    // JumpCleanupOffset request for the shared pool: tuple
+    // (is_fam2*input, is_fam2*bit_1, is_fam2*pc_out_low) under
+    // table_id = is_fam2 * JumpCleanupOffset; (0,0,0)/ZeroEntry on non-F2 rows.
+    let jump_cleanup_request = LookupRequest::new(
+        is_fam2_sum() * Term::from(TableType::JumpCleanupOffset.to_num()),
+        vec![
+            is_fam2_sum() * Term::from(pc_intermediate_addition_tmp_low),
+            is_fam2_sum() * Term::from(next_pc_bit_1),
+            is_fam2_sum() * Term::from(inputs.cycle_end_state.pc[0]),
+        ],
+    );
+
+    // unaligned jump is unprovable, and we only need to check bit number 1, as jump offset is always 0 mod 2,
+    // and PC is 0 mod 4
+    cs.add_constraint(
+        (Constraint::from(is_jal) + Term::from(is_jalr) + Term::from(should_jump_if_branch))
+            * Term::from(next_pc_bit_1),
+    );
+
+    // Per-opcode rd-write helpers. JAL and JALR are merged into a single helper
+    // (`is_jal_or_jalr_writes_rd`) because they always appear summed at the two
+    // rd-write use sites and produce the same value (saved_pc); decoder-enforced
+    // mutual exclusion keeps the sum Boolean. SLT and the rd=0 gate keep separate
+    // helpers because they enter different constraints.
+    //   is_jal_or_jalr_writes_rd = (is_jal + is_jalr) * (1 - rd_is_zero)
+    //   is_slt_writes_rd         = is_slt           * (1 - rd_is_zero)
+    //   gate_fam2_rd_zero        = (any F2 sub-op)  * rd_is_zero
+    // Non-Family-2 cycles: all three 0 ⇒ every rd-write constraint below trivially
+    // holds, so other families own rd_write_limbs on their own cycles.
+    let is_jal_or_jalr_writes_rd = cs.add_named_boolean_variable("is_jal_or_jalr_writes_rd");
+    let is_slt_writes_rd = cs.add_named_boolean_variable("is_slt_writes_rd");
+    let gate_fam2_rd_zero = cs.add_named_boolean_variable("gate_fam2_rd_zero");
+
+    {
+        let is_jal_var = is_jal.expect_variable();
+        let is_jalr_var = is_jalr.expect_variable();
+        let is_slt_var = is_slt.expect_variable();
+        let is_branch_var = is_branch.expect_variable();
+        let rd_is_zero_var = rd_is_zero.expect_variable();
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let is_jal_m = placer.get_boolean(is_jal_var);
+            let is_jalr_m = placer.get_boolean(is_jalr_var);
+            let is_slt_m = placer.get_boolean(is_slt_var);
+            let is_branch_m = placer.get_boolean(is_branch_var);
+            let rd_is_zero_m = placer.get_boolean(rd_is_zero_var);
+            let not_rd_zero = rd_is_zero_m.negate();
+            let is_jal_or_jalr = is_jal_m.or(&is_jalr_m);
+            placer.assign_mask(
+                is_jal_or_jalr_writes_rd.expect_variable(),
+                &is_jal_or_jalr.and(&not_rd_zero),
+            );
+            placer.assign_mask(
+                is_slt_writes_rd.expect_variable(),
+                &is_slt_m.and(&not_rd_zero),
+            );
+            let any_f2 = is_jal_m.or(&is_jalr_m).or(&is_slt_m).or(&is_branch_m);
+            placer.assign_mask(
+                gate_fam2_rd_zero.expect_variable(),
+                &any_f2.and(&rd_is_zero_m),
+            );
+        };
+        cs.set_values(value_fn);
+    }
+
+    // Helper-Boolean setup (deg 2 each).
+    // is_jal_or_jalr_writes_rd = (is_jal + is_jalr) * (1 - rd_is_zero)
+    // Rearranged: is_jal_or_jalr_writes_rd + (is_jal + is_jalr)*rd_is_zero - is_jal - is_jalr = 0
+    cs.add_constraint(
+        Constraint::from(is_jal_or_jalr_writes_rd)
+            + (Constraint::from(is_jal) + Term::from(is_jalr)) * Term::from(rd_is_zero)
+            - Term::from(is_jal)
+            - Term::from(is_jalr),
+    );
+    cs.add_constraint(
+        Constraint::from(is_slt_writes_rd) + Term::from(is_slt) * Term::from(rd_is_zero)
+            - Term::from(is_slt),
+    );
+    // gate_fam2_rd_zero = (is_jal + is_jalr + is_slt + is_branch) * rd_is_zero  (deg 2)
+    cs.add_constraint(
+        Constraint::from(gate_fam2_rd_zero)
+            - (Constraint::from(is_jal)
+                + Term::from(is_jalr)
+                + Term::from(is_slt)
+                + Term::from(is_branch))
+                * Term::from(rd_is_zero),
+    );
+
+    const {
+        assert!(
+            CS::ASSUME_MEMORY_VALUES_ASSIGNED,
+            "Family 2 rd-write witness path requires CS::ASSUME_MEMORY_VALUES_ASSIGNED = true; \
+             the no-ASSUME path is not implemented"
+        );
+    }
+
+    // Per-opcode rd-write constraints. Low limb: jal/jalr → saved_pc_low; slt → slt_value.
+    cs.add_constraint(
+        Term::from(is_jal_or_jalr_writes_rd) * Term::from(comparison_rel_or_jump_saved_pc_low)
+            + Term::from(is_slt_writes_rd) * Term::from(should_jump_or_slt_value)
+            - (Constraint::from(is_jal_or_jalr_writes_rd) + Term::from(is_slt_writes_rd))
+                * Term::from(rd_write_limbs[0]),
+    );
+    // High limb: jal/jalr write saved_pc_high.
+    cs.add_constraint(
+        Constraint::from(is_jal_or_jalr_writes_rd)
+            * (Constraint::from(comparison_rel_or_jump_saved_pc_high)
+                - Term::from(rd_write_limbs[1])),
+    );
+    // Pin rd_write_limbs[1] = 0 when SLT writes rd (rd != 0). SLT's 0/1 result
+    // fits in the low limb. The Family-2 rd-write rewrite from standalone's
+    // `selected_rd_high = (is_jal+is_jalr)*saved_pc_high` pattern to per-opcode
+    // `is_X_writes_rd` helpers lost the implicit `selected_rd_high = 0 for SLT`
+    // zeroing; this explicit constraint restores it. Without it the high limb
+    // is only bounded by the top-level 16-bit RC on rd_write_limbs[1], leaving
+    // 16 bits attacker-controlled. The negative test
+    // `slt_rd_write_high_limb_nonzero_rejected` pins this.
+    cs.add_constraint(Term::from(is_slt_writes_rd) * Term::from(rd_write_limbs[1]));
+
+    // rd_is_zero case: Family 2 fires with rd=0 forces rd_write = 0.
+    cs.add_constraint(Term::from(gate_fam2_rd_zero) * Term::from(rd_write_limbs[0]));
+    cs.add_constraint(Term::from(gate_fam2_rd_zero) * Term::from(rd_write_limbs[1]));
+
+    vec![
+        regiszero_request,
+        u16getsign_request,
+        cond_jmp_request,
+        jump_cleanup_request,
+    ]
+}

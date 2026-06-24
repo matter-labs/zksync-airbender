@@ -452,7 +452,7 @@ impl<F: PrimeField> GKRCompiler<F> {
         );
 
         let (layers, global_output_map) =
-            graph.layout_layers([final_read_node, final_write_node], lookup_outputs);
+            graph.layout_layers([final_read_node, final_write_node], lookup_outputs, None);
 
         let table_offsets = table_driver
             .table_starts_offsets()
