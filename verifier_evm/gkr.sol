@@ -573,7 +573,7 @@ contract GKRVerifier {
             ptr, claim, alpha := sumcheck_circuit_layer3(ptr, claim, alpha)
             ptr, claim, alpha := sumcheck_circuit_layer2(ptr, claim, alpha)
             ptr, claim, alpha := sumcheck_circuit_layer1(ptr, claim, alpha)
-            // ptr, claim, alpha := sumcheck_circuit_layer0(ptr, claim, alpha)
+            ptr, claim, alpha := sumcheck_circuit_layer0(ptr, claim, alpha)
             next_ptr := ptr
             next_claim := claim
             next_alpha := alpha

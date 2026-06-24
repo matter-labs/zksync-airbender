@@ -2,7 +2,7 @@
 set -e
 
 GKR=gkr.sol
-WORK=$(mktemp -d -t gkr-solx.XXXXXX)
+WORK=$(mktemp -d -t gkr-solc-noremat.XXXXXX)
 trap 'rm -rf "$WORK"' EXIT INT TERM HUP
 
 cp "$GKR" "$WORK/$GKR"
@@ -30,4 +30,4 @@ else
     exit 1
 fi
 
-forge build -C "$WORK" --force --color never --use "$(which solx)"
+FOUNDRY_PROFILE=no_rematerializer forge build -C "$WORK" --force --color never

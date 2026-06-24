@@ -80,10 +80,10 @@ macro_rules! yul_println {
 }
 impl Yul {
     fn calldataload(idx: &usize) -> Self {
-        Self(format!("shr(128, calldataload(add(ptr, mul(16, {idx}))))"))
+        yul_format!("shr(128, calldataload(add(ptr, mul(16, {idx}))))")
     }
     fn mload(idx: &usize) -> Self {
-        Self(format!("mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, {idx})))"))
+        yul_format!("mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, {idx})))")
     }
     fn logup_gamma() -> Self {
         yul_format!("mload(add(LOGUP_CHALLS_PTR, 32))")
@@ -468,8 +468,12 @@ fn main() {
                 let memory_alpha4 = Dual(format!("α⁴"), Yul::memory_alpha(3));
                 let memory_alpha5 = Dual(format!("α⁵"), Yul::memory_alpha(4));
                 let memory_alpha6 = Dual(format!("α⁶"), Yul::memory_alpha(5));
-                Dual(format!("({memory_gamma} + {address_space} + {memory_alpha1}{addr_low} + {memory_alpha2}{addr_high} + {memory_alpha3}{ts_low} + {memory_alpha4}{ts_high} + {memory_alpha5}{val_low} + {memory_alpha6}{val_high})"),
-                yul_format!("add(add(add(add(add(add(add(mulmod({memory_alpha6:x}, {val_high:x}, P), mulmod({memory_alpha5:x}, {val_low:x}, P)), mulmod({memory_alpha4:x}, {ts_high:x}, P)), mulmod({memory_alpha3:x}, {ts_low:x}, P)), mulmod({memory_alpha2:x}, {addr_high:x}, P)), mulmod({memory_alpha1:x}, {addr_low:x}, P)), {address_space:x}), {memory_gamma:x})"))
+                Dual(
+                    format!("({memory_gamma} + {address_space} + {memory_alpha1}{addr_low} + {memory_alpha2}{addr_high} + {memory_alpha3}{ts_low} + {memory_alpha4}{ts_high} + {memory_alpha5}{val_low} + {memory_alpha6}{val_high})"),
+                    // yul_format!("add(add(add(add(add(add(add(mulmod({memory_alpha6:x}, {val_high:x}, P), mulmod({memory_alpha5:x}, {val_low:x}, P)), mulmod({memory_alpha4:x}, {ts_high:x}, P)), mulmod({memory_alpha3:x}, {ts_low:x}, P)), mulmod({memory_alpha2:x}, {addr_high:x}, P)), mulmod({memory_alpha1:x}, {addr_low:x}, P)), {address_space:x}), {memory_gamma:x})"))
+                    yul_format!("gkr_memrel_compress({address_space:x}, {addr_low:x}, {addr_high:x}, {ts_low:x}, {ts_high:x}, {val_low:x}, {val_high:x})")
+                )
+
             }
             fn memrelinitparts_to_calldata_inner(timestamp_and_value: &InitsOrTeardownsTimestampAndValue, running_max_group_offsets: &mut (usize, usize, usize, usize)) -> [String; 2] {
                 let (running_max_memvar, _running_max_witvar, _running_max_setupvar, _running_max_cachevar) = running_max_group_offsets;
@@ -497,6 +501,7 @@ fn main() {
                 format!("(δ + {compressed})")
             }
             fn lookrelgeneric_to_calldata(tuple: &NoFieldVectorLookupRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
+                // TODO: THIS IS MEGA EXPENSIVE FOR BYTECODE
                 let NoFieldVectorLookupRelation { columns, lookup_set_index: _ } = tuple;
                 assert_eq!(columns.len(), 10, "we expect generic lookups to be tuples of 10 elements");
                 let logup_alpha = Dual("β".to_string(), Yul::logup_alpha());
@@ -645,6 +650,7 @@ fn main() {
                     let [den1, den2] = input.each_ref().map(|input| lookrelgeneric_to_calldata(input, i, layer0_group_widths, &mut running_max_group_offsets));
                     let [num_out, den_out] = output.each_ref_mayberevmap(|address| gkraddress_to_outputvar(address, i + 1, &mut running_output_counter));
                     // println!("{relation_name}: 1/{den1} + 1/{den2} = {num_out}/{den_out}");
+                    // TODO: THIS IS MEGA EXPENSIVE FOR SOLC BYTECODE (+20% of LIMIT!!)
                     yul_println!("
                     \t{{  // {relation_name}: 1/{den1} + 1/{den2} = {num_out}/{den_out}
                     \t    let den_out := mulmod({den1:x}, {den2:x}, P)
@@ -686,7 +692,19 @@ fn main() {
                     let input = gkraddress_to_calldata(input, i, layer0_group_widths, &mut running_max_group_offsets);
                     let [multiplicity, setup] = setup.each_ref().map(|address| gkraddress_to_calldata(address, i, layer0_group_widths, &mut running_max_group_offsets));
                     let [num_out, den_out] = output.each_ref_mayberevmap(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
-                    println!("{relation_name}: 1/(δ + {input}) - {multiplicity}/(δ + {setup}) = {num_out}/{den_out}");
+                    let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
+                    println!("{relation_name}: 1/({logup_gamma} + {input}) - {multiplicity}/({logup_gamma} + {setup}) = {num_out}/{den_out}");
+                    yul_println!("
+                    \t{{  // {relation_name}: 1/({logup_gamma} + {input}) - {multiplicity}/({logup_gamma} + {setup}) = {num_out}/{den_out}
+                    \t    let den_out := mulmod(add({logup_gamma:x}, {input:x}), add({logup_gamma:x}, {setup:x}), P)
+                    \t    let gate := den_out
+                    \t    {pointcheck_update:x}
+                    \t    let num_out := add(add({logup_gamma:x}, {setup:x}), sub(P, mulmod({multiplicity:x}, add({logup_gamma:x}, {input:x}), P)))
+                    \t    // let num_out := add(add({logup_gamma:x}, {setup:x}), mulmod(sub(mul(2, P), {multiplicity:x}), add({logup_gamma:x}, {input:x}), P))
+                    \t    // let num_out := add(add({logup_gamma:x}, {setup:x}), mulmod(sub(mul(3, P), add({logup_gamma:x}, {input:x})), {multiplicity:x}, P))
+                    \t    gate := num_out
+                    \t    {pointcheck_update:x}
+                    \t}}");
                 }
                 NoFieldGKRRelation::LookupPairFromBaseInputs { input, output, range_check_width: _ } => {
                     let [den1, den2] = input.each_ref().map(|relation| lookrelsingle_to_calldata(relation, i, layer0_group_widths, &mut running_max_group_offsets));
@@ -820,4 +838,18 @@ fn main() {
         //     break
         // }
     }
+
+    // INTRODUCE EXTERNAL HELPER FNS
+    // GREAT FOR BYTECODE REDUCTION!!
+    yul_println!("
+        function gkr_memrel_compress(address_space, addr_low, addr_high, ts_low, ts_high, val_low, val_high) -> compressed {{
+            compressed := add(mload(add(MEMORY_CHALLS_PTR, 192)), address_space)
+            compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR), addr_low, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 32)), addr_high, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 64)), ts_low, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 96)), ts_high, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 128)), val_low, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 160)), val_high, P))
+        }}
+    ");
 }
