@@ -2,90 +2,38 @@
 pragma solidity ^0.8.24;
 
 contract GKRVerifier {
+    // ── Generic (used throughout) ───────────────────────────────────────────
+    uint256 constant P      = 0xffffffffffffffffffffffffffffff61; // 2^128 - 159
+    uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // high 128 bits
     uint256 constant ROUNDS = 200;
-    uint256 constant P = 0xffffffffffffffffffffffffffffff61;
-    uint256 constant MASK = 0xffffffffffffffffffffffffffffffff;
-    // FOR TESTING PURPOSES
-    uint256 constant GKR_INIT_CLAIM = 113722159391240751244870626465187757509;
-    uint256 constant GKR_INIT_PTR = 2048;
-    uint256 constant GKR_INIT_ALPHA = 24476944051572811188683507143397781588;
-    uint256 constant GKR_INIT_SEED = 0xce46387e7b660cd47da6c27c09c76886126a1683dd762f5abed0eae149fab054;
-    ///////////////////////
-    uint256 constant GKR_INIT_POLYS = 8;
-    uint256 constant GKR_INIT_POLY_SIZE = 16;
-    uint256 constant GKR_INIT_FIELD_ELEMENTS = GKR_INIT_POLYS * GKR_INIT_POLY_SIZE;
-    uint256 constant GKR_INIT_POLY_BYTES = 256; // = 16 * GKR_INIT_POLY_SIZE; literal because Yul rejects const expressions.
-    uint256 constant GKR_INIT_BYTES = 2048; // = GKR_INIT_POLYS * GKR_INIT_POLY_SIZE * 16.
-    uint256 constant GKR_COMPRESSION_POINTCHECK_POLY_BYTES = 64; // = 4 * 16.
-    uint256 constant GKR_COMPRESSION_POINTCHECK_BYTES = 512; // = 8 * GKR_COMPRESSION_POINTCHECK_POLY_BYTES.
-    // Byte addresses of the 16-word eq table materialized by gkr_init_fulleq_u256.
-    // Base placed above transcript scratch [0, 2080) to avoid Yul stack spills
-    // stomping the table under `assembly ("memory-safe")`. Workaround until we
-    // switch to FMP-aware allocation (which would also shrink the touched region
-    // and save ~270 gas of memory expansion).
-    // uint256 constant GKR_INIT_EQ_PTR0  = 672;
-    // uint256 constant GKR_INIT_EQ_PTR1  = 704;
-    // uint256 constant GKR_INIT_EQ_PTR2  = 736;
-    // uint256 constant GKR_INIT_EQ_PTR3  = 768;
-    // uint256 constant GKR_INIT_EQ_PTR4  = 800;
-    // uint256 constant GKR_INIT_EQ_PTR5  = 832;
-    // uint256 constant GKR_INIT_EQ_PTR6  = 864;
-    // uint256 constant GKR_INIT_EQ_PTR7  = 896;
-    // uint256 constant GKR_INIT_EQ_PTR8  = 928;
-    // uint256 constant GKR_INIT_EQ_PTR9  = 960;
-    // uint256 constant GKR_INIT_EQ_PTR10 = 992;
-    // uint256 constant GKR_INIT_EQ_PTR11 = 1024;
-    // uint256 constant GKR_INIT_EQ_PTR12 = 1056;
-    // uint256 constant GKR_INIT_EQ_PTR13 = 1088;
-    // uint256 constant GKR_INIT_EQ_PTR14 = 1120;
-    // uint256 constant GKR_INIT_EQ_PTR15 = 1152;
-    uint256 constant GKR_INIT_EQ_PTR0  = 2496;
-    uint256 constant GKR_INIT_EQ_PTR1  = 2528;
-    uint256 constant GKR_INIT_EQ_PTR2  = 2560;
-    uint256 constant GKR_INIT_EQ_PTR3  = 2592;
-    uint256 constant GKR_INIT_EQ_PTR4  = 2624;
-    uint256 constant GKR_INIT_EQ_PTR5  = 2656;
-    uint256 constant GKR_INIT_EQ_PTR6  = 2688;
-    uint256 constant GKR_INIT_EQ_PTR7  = 2720;
-    uint256 constant GKR_INIT_EQ_PTR8  = 2752;
-    uint256 constant GKR_INIT_EQ_PTR9  = 2784;
-    uint256 constant GKR_INIT_EQ_PTR10 = 2816;
-    uint256 constant GKR_INIT_EQ_PTR11 = 2848;
-    uint256 constant GKR_INIT_EQ_PTR12 = 2880;
-    uint256 constant GKR_INIT_EQ_PTR13 = 2912;
-    uint256 constant GKR_INIT_EQ_PTR14 = 2944;
-    uint256 constant GKR_INIT_EQ_PTR15 = 2976;
-    // 24 coords: [0, 768). Placed at the bottom of memory, below the transcript
-    // region, so the upward-growing absorb scratch (SEED_PTR+32 onward, up to
-    // 16*N bytes in the point batch) can never overrun the point array.
-    uint256 constant POINT_PTR = 0;
-    // Circuit-layer cache scratch shares the transcript absorb region. Caches are
-    // only live between the sumcheck rounds and the point-check, where no
-    // transcript absorb runs; this non-conflict is the current assumption (no
-    // layer keeps a cache value alive across an absorb).
-    // uint256 constant CIRCUIT_CACHE_PTR = 4680; // = SEED_PTR - 32*10
-    uint256 constant CIRCUIT_CACHE_PTR = 5032; // = SEED_PTR - 32*10
-    uint256 constant CIRCUIT_LAYER_ROUNDS = 24;
-    uint256 constant MERKLE_TREE_CAPS_BYTES = 512; // = 16 caps * 32-byte hash output.
-    uint256 constant MEMORY_CHALLS_PTR = 768; // 7 field elements: 6 tuple compression challenges + additive challenge.
-    uint256 constant LOGUP_CHALLS_PTR = 992; // 2 field elements: tuple compression challenge + additive challenge.
-    // Scratch slot for stashing gas() across gkr_init_* calls. Without this,
-    // a `let init_gas := gas()` Yul var can get spilled to memory and then
-    // clobbered by stack pressure inside the init helpers (observed with
-    // recursiverev_*), causing the returned init_gas to come back as garbage.
-    // Placed well past EQ_PTR15 because solx spills aggressively past the eq
-    // table into mem[2816..~4250); 4256 is the smallest offset where solx no
-    // longer clobbers it across the gkr_init_inlinefold path.
-    uint256 constant GKR_INIT_GAS_PTR  = 4256;
-    uint256 constant GKR_COMPRESS_GAS_PTR = 4288;
+    // Fiat-Shamir transcript region: seed at [SEED_PTR, SEED_PTR+32), absorb
+    // scratch above it. Every transcript helper uses this, never a hardcoded
+    // 0/32/64, so the layout can be relocated in one place.
+    uint256 constant SEED_PTR = 5000; // TODO: move back down
+
+    // ── Transcript init (absorb caps, derive memory/logup challenges) ─────────
+    uint256 constant MERKLE_TREE_CAPS_BYTES = 512; // 16 caps * 32-byte hash
+    uint256 constant MEMORY_CHALLS_PTR      = 768; // 7 elems: 6 tuple-compression + 1 additive
+    uint256 constant LOGUP_CHALLS_PTR       = 992; // 2 elems: 1 tuple-compression + 1 additive
+
+    // ── GKR init (fold the 8 init polys into the first sumcheck claim) ────────
+    uint256 constant GKR_INIT_BYTES          = 2048; // 8 polys * 16 elems * 16 bytes
+    uint256 constant GKR_INIT_POLY_BYTES     = 256;  // 16 elems * 16 bytes (literal; Yul rejects const exprs)
+    uint256 constant POINT_PTR               = 0;    // z1..z4 / point batch at [0, 768), below the transcript region
+    uint256 constant GKR_INIT_EQ_PTR0        = 2496; // fold-accumulator scratch slot (legacy eq-table name)
+    uint256 constant CLAIM_PTR               = 3000;
     uint256 constant GKR_STREAMREV_CLAIM_PTR = 4512;
-    uint256 constant CLAIM_PTR = 3000;
-    // Base of the Fiat-Shamir transcript region. The seed lives in
-    // mem[SEED_PTR..SEED_PTR+32) and the absorb scratch in
-    // mem[SEED_PTR+32..SEED_PTR+96). All transcript helpers must use this
-    // constant rather than hardcoded `0`/`32`/`64`, so the transcript layout
-    // can later be relocated without auditing the whole script.
-    uint256 constant SEED_PTR          = 5000; // TODO: move back down
+    uint256 constant GKR_INIT_GAS_PTR        = 4256; // stash gas() across init so Yul/solx spills can't clobber it
+    uint256 constant GKR_INIT_PTR            = 2048; // testing: hardcoded init pointer
+
+    // ── GKR compression ───────────────────────────────────────────────────────
+    uint256 constant GKR_COMPRESSION_POINTCHECK_POLY_BYTES = 64;  // 4 * 16
+    uint256 constant GKR_COMPRESSION_POINTCHECK_BYTES      = 512; // 8 * 64
+    uint256 constant GKR_COMPRESS_GAS_PTR    = 4288;
+
+    // ── GKR circuit ───────────────────────────────────────────────────────────
+    uint256 constant GKR_CIRCUIT_CACHE_PTR    = 5032; // = SEED_PTR - 32*10; shares the transcript absorb region
+    uint256 constant GKR_CIRCUIT_LAYER_ROUNDS = 24;
 
     fallback() external {
         // uint256 variant = VARIANT;
@@ -177,37 +125,6 @@ contract GKRVerifier {
 
             next_ptr := add(ptr, mul(2, MERKLE_TREE_CAPS_BYTES))
         }
-
-
-
-
-
-
-
-        // TODO: eventually move ptr inside
-        // u128 variant: eq stored packed as (eq[2k] << 128) | eq[2k+1] in
-        // EQ_PTR0..EQ_PTR7 (8 slots) by store_eq16_crossproduct_u128_* /
-        // store_eq16_recursiverev_u128.
-        // TODO: eventually move ptr inside
-        // u128 variant: eq stored packed as (eq[2k] << 128) | eq[2k+1] in
-        // EQ_PTR0..EQ_PTR7.
-        // TODO: eventually move ptr inside
-        // u128 variant: eq stored packed as (eq[2k] << 128) | eq[2k+1] in
-        // EQ_PTR0..EQ_PTR7.
-
-        // Strategy 1a: absorb the whole init block, draw z1..z4 and alpha, then
-        // materialize full eq[16] in memory as one 256-bit word per field element.
-        // Eq order must match Rust make_eq_poly: expand z4, z3, z2, z1. After
-        // eq is stored at 32..512, do a second calldata pass to fold the 8 init
-        // polys and batch their evaluations with alpha into the initial claim.
-
-        // Strategy 1b: same full-eq strategy as u256, but store eq[16] packed as
-        // two u128 field elements per memory word. This reduces memory footprint
-        // but consumers must unpack or consume pairs when folding/accumulating.
-
-
-
-
 
         function acceval_inlinefold_streamrevlooploop_evenodd(ptr, z1, z2, z3, z4, alpha) -> claim {
             // TODO: inject final values (regs, pc)
@@ -522,13 +439,6 @@ contract GKRVerifier {
             next_claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
             next_ptr := add(ptr, 64)
         }
-
-
-
-
-
-
-
 
         function sumcheck_compress_2pass(ptr, claim, alpha, rounds_skiplast) -> next_ptr, next_claim, next_alpha {
             // START WITH LAYER: 2^4 poly -> 2^5 polys (last var skip)

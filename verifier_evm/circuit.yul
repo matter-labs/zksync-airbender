@@ -1,7 +1,7 @@
 function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
     // SUMCHECK ROUNDS
     let eq_scale := 1
-    for { let i := 0 } lt(i, CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
+    for { let i := 0 } lt(i, GKR_CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
         let w0 := calldataload(ptr)
         let w1 := calldataload(add(ptr, 32))
         let c0 := shr(128, w0)
@@ -12,7 +12,7 @@ function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let r := transcript_4to1_dual(w0, w1) // before check is optimal
         // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
         let dummy_check := mod(add(claim, sub(P, g0g1_scaled)), P)
-        mstore(CIRCUIT_CACHE_PTR, dummy_check)
+        mstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
 
         claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
         let z := mload(add(POINT_PTR, mul(i, 32)))
@@ -67,10 +67,10 @@ function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, nex
     let rhs_scaled := mulmod(acc, eq_scale, P)
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
     let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
-    mstore(CIRCUIT_CACHE_PTR, dummy_check)
+    mstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
 
     // after stack-heavy values are dead
-    // if mload(CIRCUIT_CACHE_PTR) { revert(0, 0) }
+    // if mload(GKR_CIRCUIT_CACHE_PTR) { revert(0, 0) }
 
     // POINT CLAIMS BATCH (16 POINTS)
     let points := 16
@@ -103,7 +103,7 @@ function transcript16to1(ptr) -> alpha {
 function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
     // SUMCHECK ROUNDS
     let eq_scale := 1
-    for { let i := 0 } lt(i, CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
+    for { let i := 0 } lt(i, GKR_CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
         let w0 := calldataload(ptr)
         let w1 := calldataload(add(ptr, 32))
         let c0 := shr(128, w0)
@@ -114,7 +114,7 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let r := transcript_4to1_dual(w0, w1) // before check is optimal
         // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
         let dummy_check := mod(add(claim, sub(P, g0g1_scaled)), P)
-        mstore(CIRCUIT_CACHE_PTR, dummy_check)
+        mstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
 
         claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
         let z := mload(add(POINT_PTR, mul(i, 32)))
@@ -193,10 +193,10 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
     let rhs_scaled := mulmod(acc, eq_scale, P)
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
     let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
-    mstore(CIRCUIT_CACHE_PTR, dummy_check)
+    mstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
 
     // after stack-heavy values are dead
-    // if mload(CIRCUIT_CACHE_PTR) { revert(0, 0) }
+    // if mload(GKR_CIRCUIT_CACHE_PTR) { revert(0, 0) }
 
     // POINT CLAIMS BATCH (25 POINTS)
     let points := 25
@@ -229,7 +229,7 @@ function transcript25to1(ptr) -> alpha {
 function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
     // SUMCHECK ROUNDS
     let eq_scale := 1
-    for { let i := 0 } lt(i, CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
+    for { let i := 0 } lt(i, GKR_CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
         let w0 := calldataload(ptr)
         let w1 := calldataload(add(ptr, 32))
         let c0 := shr(128, w0)
@@ -240,7 +240,7 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let r := transcript_4to1_dual(w0, w1) // before check is optimal
         // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
         let dummy_check := mod(add(claim, sub(P, g0g1_scaled)), P)
-        mstore(CIRCUIT_CACHE_PTR, dummy_check)
+        mstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
 
         claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
         let z := mload(add(POINT_PTR, mul(i, 32)))
@@ -355,10 +355,10 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     let rhs_scaled := mulmod(acc, eq_scale, P)
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
     let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
-    mstore(CIRCUIT_CACHE_PTR, dummy_check)
+    mstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
 
     // after stack-heavy values are dead
-    // if mload(CIRCUIT_CACHE_PTR) { revert(0, 0) }
+    // if mload(GKR_CIRCUIT_CACHE_PTR) { revert(0, 0) }
 
     // POINT CLAIMS BATCH (72 POINTS)
     let points := 72
@@ -391,7 +391,7 @@ function transcript72to1(ptr) -> alpha {
 function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
     // SUMCHECK ROUNDS
     let eq_scale := 1
-    for { let i := 0 } lt(i, CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
+    for { let i := 0 } lt(i, GKR_CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
         let w0 := calldataload(ptr)
         let w1 := calldataload(add(ptr, 32))
         let c0 := shr(128, w0)
@@ -402,7 +402,7 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let r := transcript_4to1_dual(w0, w1) // before check is optimal
         // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
         let dummy_check := mod(add(claim, sub(P, g0g1_scaled)), P)
-        mstore(CIRCUIT_CACHE_PTR, dummy_check)
+        mstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
 
         claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
         let z := mload(add(POINT_PTR, mul(i, 32)))
@@ -441,10 +441,10 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
     let rhs_scaled := mulmod(acc, eq_scale, P)
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
     let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
-    mstore(CIRCUIT_CACHE_PTR, dummy_check)
+    mstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
 
     // after stack-heavy values are dead
-    // if mload(CIRCUIT_CACHE_PTR) { revert(0, 0) }
+    // if mload(GKR_CIRCUIT_CACHE_PTR) { revert(0, 0) }
 
     // POINT CLAIMS BATCH (72 POINTS)
     let points := 72

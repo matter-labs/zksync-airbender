@@ -83,7 +83,7 @@ impl Yul {
         Self(format!("shr(128, calldataload(add(ptr, mul(16, {idx}))))"))
     }
     fn mload(idx: &usize) -> Self {
-        Self(format!("mload(add(CIRCUIT_CACHE_PTR, mul(32, {idx})))"))
+        Self(format!("mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, {idx})))"))
     }
     fn logup_gamma() -> Self {
         yul_format!("mload(add(LOGUP_CHALLS_PTR, 32))")
@@ -170,7 +170,7 @@ fn main() {
         let check = if DEBUG_ENABLE_DUMMY_CHECKS {
             yul_format!("
             let dummy_check := mod(add(claim, sub(P, g0g1_scaled)), P)
-            \t\tmstore(CIRCUIT_CACHE_PTR, dummy_check)
+            \t\tmstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
             ")
         } else {
             yul_format!("
@@ -181,7 +181,7 @@ fn main() {
         function sumcheck_circuit_layer{i}(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {{
             // SUMCHECK ROUNDS
             let eq_scale := 1
-            for {{ let i := 0 }} lt(i, CIRCUIT_LAYER_ROUNDS) {{ i := add(i, 1) }} {{
+            for {{ let i := 0 }} lt(i, GKR_CIRCUIT_LAYER_ROUNDS) {{ i := add(i, 1) }} {{
                 let w0 := calldataload(ptr)
                 let w1 := calldataload(add(ptr, 32))
                 let c0 := shr(128, w0)
@@ -765,7 +765,7 @@ fn main() {
         let check = if DEBUG_ENABLE_DUMMY_CHECKS {
             yul_format!("
             let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
-            \tmstore(CIRCUIT_CACHE_PTR, dummy_check)
+            \tmstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
             ")
         } else {
             yul_format!("
@@ -777,7 +777,7 @@ fn main() {
             // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
             {check:x}
             // after stack-heavy values are dead
-            // if mload(CIRCUIT_CACHE_PTR) {{ revert(0, 0) }}
+            // if mload(GKR_CIRCUIT_CACHE_PTR) {{ revert(0, 0) }}
 
             // POINT CLAIMS BATCH ({previous_input_count} POINTS)
             let points := {previous_input_count}
