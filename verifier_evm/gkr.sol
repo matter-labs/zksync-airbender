@@ -55,9 +55,20 @@ contract GKRVerifier {
     uint256 constant GKR_INIT_EQ_PTR13 = 2912;
     uint256 constant GKR_INIT_EQ_PTR14 = 2944;
     uint256 constant GKR_INIT_EQ_PTR15 = 2976;
-    uint256 constant POINT_PTR = 5568; // 24 coords: [5568, 6336), clear of the seed + recurring absorb scratch [5000, 5544) (transcript32to3 copies the 512B blob to SEED_PTR+32)
-    uint256 constant CIRCUIT_CACHE_PTR = 6336;
+    // 24 coords: [0, 768). Placed at the bottom of memory, below the transcript
+    // region, so the upward-growing absorb scratch (SEED_PTR+32 onward, up to
+    // 16*N bytes in the point batch) can never overrun the point array.
+    uint256 constant POINT_PTR = 0;
+    // Circuit-layer cache scratch shares the transcript absorb region. Caches are
+    // only live between the sumcheck rounds and the point-check, where no
+    // transcript absorb runs; this non-conflict is the current assumption (no
+    // layer keeps a cache value alive across an absorb).
+    // uint256 constant CIRCUIT_CACHE_PTR = 4680; // = SEED_PTR - 32*10
+    uint256 constant CIRCUIT_CACHE_PTR = 5032; // = SEED_PTR - 32*10
     uint256 constant CIRCUIT_LAYER_ROUNDS = 24;
+    uint256 constant MERKLE_TREE_CAPS_BYTES = 512; // = 16 caps * 32-byte hash output.
+    uint256 constant MEMORY_CHALLS_PTR = 768; // 7 field elements: 6 tuple compression challenges + additive challenge.
+    uint256 constant LOGUP_CHALLS_PTR = 992; // 2 field elements: tuple compression challenge + additive challenge.
     // Scratch slot for stashing gas() across gkr_init_* calls. Without this,
     // a `let init_gas := gas()` Yul var can get spilled to memory and then
     // clobbered by stack pressure inside the init helpers (observed with
@@ -74,7 +85,7 @@ contract GKRVerifier {
     // mem[SEED_PTR+32..SEED_PTR+96). All transcript helpers must use this
     // constant rather than hardcoded `0`/`32`/`64`, so the transcript layout
     // can later be relocated without auditing the whole script.
-    uint256 constant SEED_PTR          = 5000;
+    uint256 constant SEED_PTR          = 5000; // TODO: move back down
 
     fallback() external {
         // uint256 variant = VARIANT;
@@ -184,6 +195,41 @@ contract GKRVerifier {
             seed := keccak256(SEED_PTR, 32)
             mstore(SEED_PTR, seed)
             alpha := shr(128, seed)
+        }
+
+        function transcript_init(ptr) -> next_ptr {
+            // TODO: we are missing FINAL regs val/ts + FINAL pc/ts
+            
+            // FIRST: absorb mem caps -> get 7 mem challs
+            calldatacopy(add(SEED_PTR, 32), ptr, MERKLE_TREE_CAPS_BYTES)
+            let seed := keccak256(SEED_PTR, add(32, MERKLE_TREE_CAPS_BYTES))
+            mstore(SEED_PTR, seed)
+            mstore(MEMORY_CHALLS_PTR, shr(128, seed))
+            mstore(add(MEMORY_CHALLS_PTR, 32), and(seed, MASK))
+
+            seed := keccak256(SEED_PTR, 32)
+            mstore(SEED_PTR, seed)
+            mstore(add(MEMORY_CHALLS_PTR, 64), shr(128, seed))
+            mstore(add(MEMORY_CHALLS_PTR, 96), and(seed, MASK))
+
+            seed := keccak256(SEED_PTR, 32)
+            mstore(SEED_PTR, seed)
+            mstore(add(MEMORY_CHALLS_PTR, 128), shr(128, seed))
+            mstore(add(MEMORY_CHALLS_PTR, 160), and(seed, MASK))
+
+            seed := keccak256(SEED_PTR, 32)
+            mstore(SEED_PTR, seed)
+            mstore(add(MEMORY_CHALLS_PTR, 192), shr(128, seed))
+
+            // SECOND: absorb wit+setup caps -> get 2 logup challs
+            ptr := add(ptr, MERKLE_TREE_CAPS_BYTES)
+            calldatacopy(add(SEED_PTR, 32), ptr, mul(2, MERKLE_TREE_CAPS_BYTES))
+            seed := keccak256(SEED_PTR, add(32, mul(2, MERKLE_TREE_CAPS_BYTES)))
+            mstore(SEED_PTR, seed)
+            mstore(LOGUP_CHALLS_PTR, shr(128, seed))
+            mstore(add(LOGUP_CHALLS_PTR, 32), and(seed, MASK))
+
+            next_ptr := add(ptr, mul(2, MERKLE_TREE_CAPS_BYTES))
         }
 
         function store_eq16_crossproduct_u256_formula(z1, z2, z3, z4) {
@@ -1230,6 +1276,7 @@ contract GKRVerifier {
         }
 
         function acceval_inlinefold_simple_lowhigh(ptr, z1, z2, z3, z4, alpha) -> claim {
+            // TODO: inject final values (regs, pc)
             // strategy 2b: name all poly values in parallel and all instances of elements, let compiler fully control streaming
             // READ
             let read_word0 := calldataload(ptr)
@@ -1690,6 +1737,7 @@ contract GKRVerifier {
             claim := add(mulmod(add(mulmod(add(mulmod(add(mulmod(add(mulmod(add(mulmod(add(mulmod(den3_claim, alpha, P), num3_claim), alpha, P), den2_claim), alpha, P), num2_claim), alpha, P), den1_claim), alpha, P), num1_claim), alpha, P), write_claim), alpha, P), read_claim)
         }
         function acceval_inlinefold_simple_evenodd(ptr, z1, z2, z3, z4, alpha) -> claim {
+            // TODO: inject final values (regs, pc)
             // strategy 2b: name all poly values in parallel and all instances of elements, let compiler fully control streaming
             // READ
             let read_word0 := calldataload(ptr)
@@ -2150,6 +2198,7 @@ contract GKRVerifier {
             claim := add(mulmod(add(mulmod(add(mulmod(add(mulmod(add(mulmod(add(mulmod(add(mulmod(den3_claim, alpha, P), num3_claim), alpha, P), den2_claim), alpha, P), num2_claim), alpha, P), den1_claim), alpha, P), num1_claim), alpha, P), write_claim), alpha, P), read_claim)
         }
         function acceval_inlinefold_streamrev_evenodd(ptr, z1, z2, z3, z4, alpha) -> claim {
+            // TODO: inject final values (regs, pc)
             // strategy 2a: one poly at a time, to encourage streaming
             let num3_acc, num3_claim
             let den3_acc, den3_claim
@@ -2734,6 +2783,7 @@ contract GKRVerifier {
         }
 
         function acceval_inlinefold_stream_evenodd(ptr, z1, z2, z3, z4, alpha) -> claim {
+            // TODO: inject final values (regs, pc)
             // strategy 2a: one poly at a time, to encourage streaming
             // WE BEGIN WITH READ
             let read_acc, read_claim
@@ -3292,11 +3342,13 @@ contract GKRVerifier {
         }
 
         function acceval_inlinefold_stream_lowhigh(ptr, z1, z2, z3, z4, alpha) -> claim {
+            // TODO: inject final values (regs, pc)
             // TODO: fill in the same streaming path with the opposite folding
             // order (low/high first instead of even/odd) for gas golfing.
         }
 
         function acceval_inlinefold_streamloop_evenodd(ptr, z1, z2, z3, z4, alpha) -> claim {
+            // TODO: inject final values (regs, pc)
             // Same current READ+WRITE work as the open-coded even/odd path, but
             // factored into four quarter chunks under a loop.
             let read_acc := 1
@@ -3594,6 +3646,7 @@ contract GKRVerifier {
             claim := add(mulmod(add(mulmod(add(mulmod(add(mulmod(add(mulmod(add(mulmod(add(mulmod(den3_claim, alpha, P), num3_claim), alpha, P), den2_claim), alpha, P), num2_claim), alpha, P), den1_claim), alpha, P), num1_claim), alpha, P), write_claim), alpha, P), read_claim)
         }
         function acceval_inlinefold_streamrevloop_evenodd(ptr, z1, z2, z3, z4, alpha) -> claim {
+            // TODO: inject final values (regs, pc)
             // NB: some stack values are explicitly spilled (fold0 and claim updates):
             //     - when written to, it is after stored
             //     - when read, it is first loaded
@@ -3922,6 +3975,7 @@ contract GKRVerifier {
         }
 
         function acceval_inlinefold_streamrevlooploop_evenodd(ptr, z1, z2, z3, z4, alpha) -> claim {
+            // TODO: inject final values (regs, pc)
             // NB: some stack values are explicitly spilled (fold0 and claim updates):
             //     - when written to, it is after stored
             //     - when read, it is first loaded
@@ -4061,6 +4115,7 @@ contract GKRVerifier {
         }
 
         function acceval_inlinefold_streamrevlooploop_evenodd_newunchecked(ptr, z1, z2, z3, z4, alpha) -> claim {
+            // TODO: inject final values (regs, pc)
             // TODO: this was made by AI, needs to be reviewed
             // NB: some stack values are explicitly spilled (fold0 and claim updates):
             //     - when written to, it is after stored
@@ -4616,7 +4671,7 @@ contract GKRVerifier {
         function gkr_circuit(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
             ptr, claim, alpha := sumcheck_circuit_layer3(ptr, claim, alpha)
             ptr, claim, alpha := sumcheck_circuit_layer2(ptr, claim, alpha)
-            // ptr, claim, alpha := sumcheck_circuit_layer1(ptr, claim, alpha)
+            ptr, claim, alpha := sumcheck_circuit_layer1(ptr, claim, alpha)
             // ptr, claim, alpha := sumcheck_circuit_layer0(ptr, claim, alpha)
             next_ptr := ptr
             next_claim := claim
@@ -4630,9 +4685,10 @@ contract GKRVerifier {
         {
             mstore(GKR_INIT_GAS_PTR, gas())
             mstore(SEED_PTR, 0) // SEED Transcript, FINE as long as we don't draw without absorb!
+            ptr := transcript_init(0)
             // let ptr, claim, alpha := gkr_init_fulleq_u256(0)
             // let ptr, claim, alpha := gkr_init_fulleq_u128(0)
-            ptr, claim, alpha := gkr_init_inlinefold(0)
+            ptr, claim, alpha := gkr_init_inlinefold(ptr)
             // mstore(SEED_PTR, GKR_INIT_SEED) // FOR TESTING: post-init FS seed so rounds draw the right r
             // ptr := GKR_INIT_PTR     // FOR TESTING: skip gkr_init, use captured constants
             // alpha := GKR_INIT_ALPHA
@@ -4663,6 +4719,8 @@ contract GKRVerifier {
         for { let i := 0 } lt(i, 10) { i := add(i, 1) } {
             if calldataload(add(ptr, mul(i, 32))) { revert(0, 0) }
         }
+
+        // TODO: don't forget the recursion chain check
 
         // anti-DCE
         mstore(0, claim)
@@ -4800,11 +4858,40 @@ function modInv(uint256 x, uint256 p) pure returns (uint256 result) {
     }
 }
 
+function generate_init_transcript_caps(bytes32 coeff_seed)
+    pure
+    returns (bytes memory capsData, bytes32 state, uint256 logupAlpha, uint256 logupGamma)
+{
+    bytes memory memCaps;
+    bytes memory witSetupCaps;
+
+    for (uint256 i = 0; i < 16; ++i) {
+        memCaps = abi.encodePacked(memCaps, keccak256(abi.encodePacked(coeff_seed, "mem-cap", i)));
+    }
+    for (uint256 i = 0; i < 16; ++i) {
+        witSetupCaps = abi.encodePacked(witSetupCaps, keccak256(abi.encodePacked(coeff_seed, "witness-cap", i)));
+    }
+    for (uint256 i = 0; i < 16; ++i) {
+        witSetupCaps = abi.encodePacked(witSetupCaps, keccak256(abi.encodePacked(coeff_seed, "setup-cap", i)));
+    }
+
+    state = keccak256(abi.encodePacked(bytes32(0), memCaps));
+    state = keccak256(abi.encodePacked(state));
+    state = keccak256(abi.encodePacked(state));
+    state = keccak256(abi.encodePacked(state));
+    state = keccak256(abi.encodePacked(state, witSetupCaps));
+    logupAlpha = uint256(state) >> 128;
+    logupGamma = uint128(uint256(state));
+    capsData = abi.encodePacked(memCaps, witSetupCaps);
+}
+
 function generate(uint256) pure returns (bytes memory out, uint256 initial_claim) {
     uint256 p = 0xffffffffffffffffffffffffffffff61;
     uint256 initFieldElements = 8 * 16;
     uint256 initPolySize = 16;
     bytes32 coeff_seed = keccak256("gkr_claude_seed");
+    (bytes memory capsData, bytes32 state, uint256 logupAlpha, uint256 logupGamma) =
+        generate_init_transcript_caps(coeff_seed);
     uint128[] memory initEvals = new uint128[](initFieldElements);
     bytes memory initData = new bytes(initFieldElements * 16);
 
@@ -4858,7 +4945,7 @@ function generate(uint256) pure returns (bytes memory out, uint256 initial_claim
         }
     }
 
-    bytes32 state = keccak256(abi.encodePacked(bytes32(0), initData));
+    state = keccak256(abi.encodePacked(state, initData));
     uint256 z1 = uint256(state) >> 128;
     uint256 z2 = uint128(uint256(state));
 
@@ -4909,7 +4996,7 @@ function generate(uint256) pure returns (bytes memory out, uint256 initial_claim
     }
     initial_claim = claim;
 
-    out = initData;
+    out = abi.encodePacked(capsData, initData);
 
     // Placeholder main sumcheck rounds disabled: compress now starts directly
     // from the 2^4 plaintext polys produced by init.
@@ -4937,15 +5024,41 @@ function generate(uint256) pure returns (bytes memory out, uint256 initial_claim
     //     claim = addmod(t, uint256(c0), p);
     // }
 
-    // All 20 compression layers: layer j runs (3 + j) eq-deferred rounds and
-    // appends 2 point coords, taking the 8 claims from 2^4-sized polys (after
-    // init) up to 2^24-sized polys. claim/alpha come back ready for whatever
-    // follows the compression stage.
+    out = generate_after_init(out, state, claim, alpha, zpoint, coeff_seed, logupAlpha, logupGamma);
+}
+
+function generate_after_init(
+    bytes memory out,
+    bytes32 state,
+    uint256 claim,
+    uint256 alpha,
+    uint256[24] memory zpoint,
+    bytes32 coeff_seed,
+    uint256 logupAlpha,
+    uint256 logupGamma
+) pure returns (bytes memory) {
     for (uint256 layer = 0; layer < 20; ++layer) {
         (out, state, claim, alpha) = generate_compression(
             out, state, claim, alpha, zpoint, keccak256(abi.encodePacked(coeff_seed, layer)), 3 + layer
         );
     }
+
+    (out, state, claim, alpha) = generate_circuit_layer(
+        out, state, claim, alpha, zpoint, keccak256(abi.encodePacked(coeff_seed, "circuit-layer-3")), 3, 16,
+        logupAlpha, logupGamma
+    );
+    (out, state, claim, alpha) = generate_circuit_layer(
+        out, state, claim, alpha, zpoint, keccak256(abi.encodePacked(coeff_seed, "circuit-layer-2")), 2, 25,
+        logupAlpha, logupGamma
+    );
+    (out, state, claim, alpha) = generate_circuit_layer(
+        out, state, claim, alpha, zpoint, keccak256(abi.encodePacked(coeff_seed, "circuit-layer-1")), 1, 72,
+        logupAlpha, logupGamma
+    );
+    state;
+    claim;
+    alpha;
+    return out;
 }
 
 // === Compression layer generator (mirrors gkr_compress_2pass) ===
@@ -5063,6 +5176,286 @@ function generate_compression(
     claim = fold_pointcheck_claims(evs, r_last, r_pair, alpha);
 
     return (out, state, claim, alpha);
+}
+
+// === Circuit layer generator (mirrors sumcheck_circuit_layer3/2) ===
+// This is deliberately mock-only: it solves the streamed proof equations for
+// the generated layer Yul without attempting to derive values from SSA witness
+// generation. The real prover should replace it.
+function generate_circuit_layer(
+    bytes memory out,
+    bytes32 state,
+    uint256 claim,
+    uint256 alpha,
+    uint256[24] memory zpoint,
+    bytes32 coeff_seed,
+    uint256 layer,
+    uint256 points,
+    uint256 logupAlpha,
+    uint256 logupGamma
+) pure returns (bytes memory, bytes32, uint256, uint256) {
+    uint256 eq_scale;
+    (out, state, claim, eq_scale) = generate_circuit_sumcheck(out, state, claim, zpoint, coeff_seed);
+    uint256[] memory vals = generate_circuit_points(
+        coeff_seed,
+        points,
+        layer,
+        alpha,
+        logupAlpha,
+        logupGamma,
+        mulmod(claim, modInv(eq_scale, 0xffffffffffffffffffffffffffffff61), 0xffffffffffffffffffffffffffffff61)
+    );
+    bytes memory pointData = serialize_u128s(vals);
+    out = abi.encodePacked(out, pointData);
+    state = keccak256(abi.encodePacked(state, pointData));
+    alpha = uint256(state) >> 128;
+    claim = fold_claims(vals, alpha);
+
+    return (out, state, claim, alpha);
+}
+
+function generate_circuit_sumcheck(
+    bytes memory out,
+    bytes32 state,
+    uint256 claim,
+    uint256[24] memory zpoint,
+    bytes32 coeff_seed
+) pure returns (bytes memory, bytes32, uint256, uint256) {
+    uint256 eq_scale = 1;
+    for (uint256 i = 0; i < 24; ++i) {
+        (out, state, claim, eq_scale) = generate_circuit_round(out, state, claim, eq_scale, zpoint, coeff_seed, i);
+    }
+    return (out, state, claim, eq_scale);
+}
+
+function generate_circuit_round(
+    bytes memory out,
+    bytes32 state,
+    uint256 claim,
+    uint256 eq_scale,
+    uint256[24] memory zpoint,
+    bytes32 coeff_seed,
+    uint256 i
+) pure returns (bytes memory, bytes32, uint256, uint256) {
+    uint256 p = 0xffffffffffffffffffffffffffffff61;
+    // (... % p) < p < 2^128 — fits in uint128.
+    // forge-lint: disable-next-line(unsafe-typecast)
+    uint128 c1 = uint128(uint256(keccak256(abi.encodePacked(coeff_seed, i, uint8(1)))) % p);
+    // (... % p) < p < 2^128 — fits in uint128.
+    // forge-lint: disable-next-line(unsafe-typecast)
+    uint128 c2 = uint128(uint256(keccak256(abi.encodePacked(coeff_seed, i, uint8(2)))) % p);
+    // (... % p) < p < 2^128 — fits in uint128.
+    // forge-lint: disable-next-line(unsafe-typecast)
+    uint128 c3 = uint128(uint256(keccak256(abi.encodePacked(coeff_seed, i, uint8(3)))) % p);
+    uint128 c0 = solve_sumcheck_c0(claim, eq_scale, c1, c2, c3);
+
+    out = abi.encodePacked(out, c0, c1, c2, c3);
+    state = keccak256(abi.encodePacked(state, c0, c1, c2, c3));
+    uint256 r = uint256(state) >> 128;
+    claim = eval_sumcheck_at_r(c0, c1, c2, c3, r);
+    eq_scale = next_eq_scale(zpoint[i], r);
+    zpoint[i] = r;
+    return (out, state, claim, eq_scale);
+}
+
+function solve_sumcheck_c0(uint256 claim, uint256 eq_scale, uint128 c1, uint128 c2, uint128 c3)
+    pure
+    returns (uint128)
+{
+    uint256 p = 0xffffffffffffffffffffffffffffff61;
+    uint256 rhs = mulmod(claim, modInv(eq_scale, p), p);
+    rhs = addmod(rhs, p - uint256(c1), p);
+    rhs = addmod(rhs, p - uint256(c2), p);
+    rhs = addmod(rhs, p - uint256(c3), p);
+    return uint128(mulmod(rhs, (p >> 1) + 1, p));
+}
+
+function eval_sumcheck_at_r(uint128 c0, uint128 c1, uint128 c2, uint128 c3, uint256 r)
+    pure
+    returns (uint256)
+{
+    uint256 p = 0xffffffffffffffffffffffffffffff61;
+    uint256 t = mulmod(uint256(c3), r, p);
+    t = addmod(t, uint256(c2), p);
+    t = mulmod(t, r, p);
+    t = addmod(t, uint256(c1), p);
+    t = mulmod(t, r, p);
+    return addmod(t, uint256(c0), p);
+}
+
+function next_eq_scale(uint256 z, uint256 r) pure returns (uint256) {
+    uint256 p = 0xffffffffffffffffffffffffffffff61;
+    z %= p;
+    uint256 zr = mulmod(z, r, p);
+    return addmod(addmod(addmod(zr, zr, p), 1, p), p - addmod(z, r % p, p), p);
+}
+
+function generate_circuit_points(
+    bytes32 coeff_seed,
+    uint256 points,
+    uint256 layer,
+    uint256 alpha,
+    uint256 logupAlpha,
+    uint256 logupGamma,
+    uint256 target
+) pure returns (uint256[] memory vals) {
+    uint256 p = 0xffffffffffffffffffffffffffffff61;
+    vals = new uint256[](points);
+    for (uint256 i = 0; i < points; ++i) {
+        vals[i] = uint256(keccak256(abi.encodePacked(coeff_seed, uint8(4), i))) % p;
+    }
+    patch_circuit_pointcheck(vals, layer, alpha, logupAlpha, logupGamma, target);
+}
+
+function patch_circuit_pointcheck(
+    uint256[] memory vals,
+    uint256 layer,
+    uint256 alpha,
+    uint256 logupAlpha,
+    uint256 logupGamma,
+    uint256 target
+) pure {
+    uint256 p = 0xffffffffffffffffffffffffffffff61;
+    if (layer == 3) {
+        vals[15] = 0;
+        uint256 rest = circuit_layer3_acc(vals, alpha);
+        vals[15] = mulmod(addmod(target, p - rest, p), modInv(pow_mod(alpha, 9, p), p), p);
+    } else if (layer == 2) {
+        vals[24] = 0;
+        uint256 rest = circuit_layer2_acc(vals, alpha);
+        vals[24] = mulmod(addmod(target, p - rest, p), modInv(pow_mod(alpha, 15, p), p), p);
+    } else {
+        vals[0] = 0;
+        uint256 rest = circuit_layer1_acc(vals, alpha, logupAlpha, logupGamma);
+        vals[0] = addmod(target, p - rest, p);
+    }
+}
+
+function circuit_layer3_acc(uint256[] memory v, uint256 alpha) pure returns (uint256 acc) {
+    uint256 p = 0xffffffffffffffffffffffffffffff61;
+    acc = addmod(mulmod(acc, alpha, p), v[15], p);
+    acc = addmod(mulmod(acc, alpha, p), v[14], p);
+    acc = addmod(mulmod(acc, alpha, p), v[1], p);
+    acc = addmod(mulmod(acc, alpha, p), v[0], p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[13], v[11], p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[12], v[11], p), mulmod(v[10], v[13], p), p), p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[9], v[7], p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[8], v[7], p), mulmod(v[6], v[9], p), p), p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[5], v[3], p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[4], v[3], p), mulmod(v[2], v[5], p), p), p);
+}
+
+function circuit_layer2_acc(uint256[] memory v, uint256 alpha) pure returns (uint256 acc) {
+    uint256 p = 0xffffffffffffffffffffffffffffff61;
+    acc = addmod(mulmod(acc, alpha, p), v[24], p);
+    acc = addmod(mulmod(acc, alpha, p), v[23], p);
+    acc = addmod(mulmod(acc, alpha, p), v[18], p);
+    acc = addmod(mulmod(acc, alpha, p), v[17], p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[22], v[20], p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[21], v[20], p), mulmod(v[19], v[22], p), p), p);
+    acc = addmod(mulmod(acc, alpha, p), v[12], p);
+    acc = addmod(mulmod(acc, alpha, p), v[11], p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[16], v[14], p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[15], v[14], p), mulmod(v[13], v[16], p), p), p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[6], v[4], p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[5], v[4], p), mulmod(v[3], v[6], p), p), p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[10], v[8], p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[9], v[8], p), mulmod(v[7], v[10], p), p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[2], v[0], p), addmod(1, p - v[0], p), p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[1], v[0], p), addmod(1, p - v[0], p), p), p);
+}
+
+function circuit_layer1_acc(uint256[] memory v, uint256 alpha, uint256 logupAlpha, uint256 logupGamma)
+    pure
+    returns (uint256 acc)
+{
+    uint256 p = 0xffffffffffffffffffffffffffffff61;
+    uint256 den1;
+    uint256 den2;
+    acc = addmod(mulmod(acc, alpha, p), v[5], p);
+    acc = addmod(mulmod(acc, alpha, p), v[6], p);
+
+    den2 = logup_vec(v, logupAlpha, logupGamma, [uint256(39), NO_POINT(), 47, 46, 45, 44, 43, 42, 41, 40]);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[71], den2, p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[70], den2, p), v[71], p), p);
+
+    den1 = logup_vec(v, logupAlpha, logupGamma, [uint256(21), NO_POINT(), 29, 28, 27, 26, 25, 24, 23, 22]);
+    den2 = logup_vec(v, logupAlpha, logupGamma, [uint256(30), NO_POINT(), 38, 37, 36, 35, 34, 33, 32, 31]);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(den1, den2, p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(den1, den2, p), p);
+
+    den1 = logup_vec(v, logupAlpha, logupGamma, [uint256(8), NO_POINT(), NO_POINT(), NO_POINT(), NO_POINT(), NO_POINT(), NO_POINT(), 11, 10, 9]);
+    den2 = logup_vec(v, logupAlpha, logupGamma, [uint256(12), NO_POINT(), 20, 19, 18, 17, 16, 15, 14, 13]);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(den1, den2, p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(den1, den2, p), p);
+
+    acc = addmod(mulmod(acc, alpha, p), v[62], p);
+    acc = addmod(mulmod(acc, alpha, p), v[61], p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[66], v[64], p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[65], v[64], p), mulmod(v[63], v[66], p), p), p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[68], addmod(logupGamma, v[69], p), p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[67], addmod(logupGamma, v[69], p), p), v[68], p), p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[49], addmod(logupGamma, v[7], p), p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[48], addmod(logupGamma, v[7], p), p), v[49], p), p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[53], v[51], p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[52], v[51], p), mulmod(v[50], v[53], p), p), p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[57], v[55], p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[56], v[55], p), mulmod(v[54], v[57], p), p), p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[59], addmod(logupGamma, v[60], p), p), p);
+    acc = addmod(mulmod(acc, alpha, p), addmod(mulmod(v[58], addmod(logupGamma, v[60], p), p), v[59], p), p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[2], v[4], p), p);
+    acc = addmod(mulmod(acc, alpha, p), mulmod(v[1], v[3], p), p);
+    acc = addmod(mulmod(acc, alpha, p), v[0], p);
+}
+
+function NO_POINT() pure returns (uint256) {
+    return type(uint256).max;
+}
+
+function logup_vec(uint256[] memory v, uint256 beta, uint256 gamma, uint256[10] memory columns)
+    pure
+    returns (uint256 acc)
+{
+    uint256 p = 0xffffffffffffffffffffffffffffff61;
+    for (uint256 i = 0; i < 10; ++i) {
+        acc = mulmod(acc, beta, p);
+        if (columns[i] != NO_POINT()) {
+            acc = addmod(acc, v[columns[i]], p);
+        }
+    }
+    acc = addmod(acc, gamma, p);
+}
+
+function serialize_u128s(uint256[] memory vals) pure returns (bytes memory out) {
+    out = new bytes(vals.length * 16);
+    for (uint256 i = 0; i < vals.length; ++i) {
+        uint256 offset = i * 16;
+        uint256 elWord = vals[i];
+        for (uint256 j = 0; j < 16; ++j) {
+            // elWord >> (8 * (15 - j)) takes one byte — masked to uint8 by the cast.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            out[offset + j] = bytes1(uint8(elWord >> (8 * (15 - j))));
+        }
+    }
+}
+
+function fold_claims(uint256[] memory vals, uint256 alpha) pure returns (uint256 claim) {
+    uint256 p = 0xffffffffffffffffffffffffffffff61;
+    for (uint256 i = vals.length; i > 0; --i) {
+        claim = addmod(mulmod(claim, alpha, p), vals[i - 1], p);
+    }
+}
+
+function pow_mod(uint256 base, uint256 exp, uint256 p) pure returns (uint256 result) {
+    result = 1;
+    base %= p;
+    while (exp != 0) {
+        if (exp & 1 == 1) {
+            result = mulmod(result, base, p);
+        }
+        base = mulmod(base, base, p);
+        exp >>= 1;
+    }
 }
 
 // RLC of the pointcheck evals at x4 (word select): logup pairs (6,7),(4,5),

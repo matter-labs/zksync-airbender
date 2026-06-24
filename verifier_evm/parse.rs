@@ -85,6 +85,21 @@ impl Yul {
     fn mload(idx: &usize) -> Self {
         Self(format!("mload(add(CIRCUIT_CACHE_PTR, mul(32, {idx})))"))
     }
+    fn logup_gamma() -> Self {
+        yul_format!("mload(add(LOGUP_CHALLS_PTR, 32))")
+    }
+    fn logup_alpha() -> Self {
+        yul_format!("mload(LOGUP_CHALLS_PTR)")
+    }
+    fn memory_gamma() -> Self {
+        yul_format!("mload(add(MEMORY_CHALLS_PTR, mul(32, 6)))")
+    }
+    fn memory_alpha(idx: usize) -> Self {
+        match idx {
+            0..6 => yul_format!("mload(add(MEMORY_CHALLS_PTR, mul(32, {idx})))"),
+            _ => unreachable!("we do not have memory linearisation challenge alpha_{idx}")
+        }
+    }
 }
 fn superscript(idx: usize) -> String {
     idx.to_string()
@@ -104,20 +119,23 @@ fn superscript(idx: usize) -> String {
         })
         .collect()
 }
-fn const_to_evm(c: &u32) -> String {
-    let mut c = BabyBearField::from_nonreduced_u32(*c).as_u32();
+fn const_to_evm(c: &u32) -> Dual {
+    assert!(*c < BabyBearField::ORDER, "we don't expect circuits with unreduced constants");
     // first check if negative
-    let sign = if c >= BabyBearField::HALF.to_u32() {
-        c = BabyBearField::ORDER - c;
-        "-"
-    } else { "" };
-    match c {
-        c if c!=0 && c!=1 && c!=2 && c.is_power_of_two() => {
-            let power = c.trailing_zeros();
+    let (sign, modc, yul) = if *c > BabyBearField::ORDER / 2 {
+        let modc = BabyBearField::ORDER - c;
+        ("-", modc, yul_format!("sub(P, {modc})"))
+    } else { 
+        ("", *c, yul_format!("{c}"))
+    };
+    let normal = match modc {
+        modc if modc.is_power_of_two() && !(0..=2).contains(&modc) => {
+            let power = modc.trailing_zeros();
             format!("{sign}2^{power}")
         }
-        _ => format!("{sign}{c}")
-    }
+        _ => format!("{sign}{modc}")
+    };
+    Dual(normal, yul)
 }
 fn u128_to_neg(Dual(input, yul): &Dual) -> Dual {
     Dual(format!("-{input}"), yul_format!("sub(mul(2, P), {yul:x})"))
@@ -125,16 +143,17 @@ fn u128_to_neg(Dual(input, yul): &Dual) -> Dual {
 
 fn main() {
     let json = std::fs::read_to_string(
-        "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
+        // "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
         // "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json",
-        // "../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
+        "../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
         // "../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json",
     )
     .unwrap();
     let circuit: GKRCircuitArtifact<BabyBearField> = serde_json::from_str(&json).unwrap();
     let layer0_group_widths = (circuit.memory_layout.total_width, circuit.witness_layout.total_width, circuit.generic_lookup_tables_width, circuit.layers[0].cached_relations.len());
-    let mut previous_input_count = 8;
-    // let mut previous_input_count = 10; // TEMPORARY: unified adds another product pair for inits/teardowns
+    // let mut previous_input_count = 8;
+    let mut previous_input_count = 10; // TEMPORARY: unified adds another product pair for inits/teardowns
+    let mut collected_previous_input_counts = vec![];
     for (i, layer) in circuit.layers.iter().enumerate().rev() {
         let GKRLayerDescription { layer, gates_with_external_connections, cached_relations, gates, intermediate_layer_width } = layer;
         assert!(*layer == i);
@@ -147,6 +166,17 @@ fn main() {
         };
 
         // println!("{i}:");
+        const DEBUG_ENABLE_DUMMY_CHECKS: bool = true;
+        let check = if DEBUG_ENABLE_DUMMY_CHECKS {
+            yul_format!("
+            let dummy_check := mod(add(claim, sub(P, g0g1_scaled)), P)
+            \t\tmstore(CIRCUIT_CACHE_PTR, dummy_check)
+            ")
+        } else {
+            yul_format!("
+            if mod(add(claim, sub(P, g0g1_scaled)), P) {{ revert(0, 0) }}
+            ")
+        };
         yul_println!("
         function sumcheck_circuit_layer{i}(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {{
             // SUMCHECK ROUNDS
@@ -161,9 +191,7 @@ fn main() {
                 let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P)
                 let r := transcript_4to1_dual(w0, w1) // before check is optimal
                 // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-                // if mod(add(claim, sub(P, g0g1_scaled)), P) {{ revert(0, 0) }}
-                let dummy_check := mod(add(claim, sub(P, g0g1_scaled)), P)
-                mstore(CIRCUIT_CACHE_PTR, dummy_check)
+                {check:x}
                 claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
                 let z := mload(add(POINT_PTR, mul(i, 32)))
                 let zr := mulmod(z, r, P)
@@ -273,7 +301,19 @@ fn main() {
                 }
             }
         }
-        const DEBUG_NATURAL_GATE_ORDER: bool = false;
+        const DEBUG_NATURAL_GATE_ORDER: bool = true;
+        trait EachRefMaybeRev<T, const N: usize> {
+            fn each_ref_mayberevmap<U>(&self, f: impl FnMut(&T) -> U) -> [U; N];
+        }
+        impl<T, const N: usize> EachRefMaybeRev<T, N> for [T; N] {
+            fn each_ref_mayberevmap<U>(&self, f: impl FnMut(&T) -> U) -> [U; N] {
+                if DEBUG_NATURAL_GATE_ORDER {
+                    self.each_ref().map(f)
+                } else {
+                    self.each_ref_revmap(f)
+                }
+            }
+        }
         let mut running_output_counter = if DEBUG_NATURAL_GATE_ORDER {
             0
         } else {
@@ -335,58 +375,101 @@ fn main() {
                     _ => unreachable!("unexpected output address {address:?} for layer {expected_layer} with {running_output_counter} outputs left")
                 }
             }
-            fn memrel_to_calldata(tuple: &NoFieldSpecialMemoryContributionRelation, running_max_group_offsets: &mut (usize, usize, usize, usize)) -> String {
+            fn memrel_to_calldata(tuple: &NoFieldSpecialMemoryContributionRelation, running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let (running_max_memvar, _running_max_witvar, _running_max_setupvar, _running_max_cachevar) = running_max_group_offsets;
                 let NoFieldSpecialMemoryContributionRelation { address_space, address, timestamp, value, timestamp_offset } = tuple;
                 let address_space = match address_space {
-                    CompiledAddressSpaceRelationStrict::Constant(c) => c.to_string(),
+                    CompiledAddressSpaceRelationStrict::Constant(c) => const_to_evm(c),
                     CompiledAddressSpaceRelationStrict::IsRam(idx) => {
                         *running_max_memvar = *idx.max(running_max_memvar);
-                        format!("[{idx}]")
+                        Dual(format!("[{idx}]"), Yul::calldataload(idx))
                     },
                     CompiledAddressSpaceRelationStrict::IsRegister(idx) => {
                         *running_max_memvar = *idx.max(running_max_memvar);
-                        format!("(1 - [{idx}])")
+                        let var = Dual(format!("[{idx}]"), Yul::calldataload(idx));
+                        let negvar = u128_to_neg(&var);
+                        Dual(format!("(1 + {negvar})"), yul_format!("add(1, {negvar:x})"))
                     },
                 };
                 let [addr_low, addr_high] = match address {
-                    CompiledAddressStrict::Constant(c) => [(c & 0xffff).to_string(), (c>>16).to_string()],
-                    CompiledAddressStrict::ConstantU16(c) => [c.to_string(), 0.to_string()],
+                    CompiledAddressStrict::Constant(c) => {
+                        assert!(*c < (1<<16), "with {address:?} we expect c < 2^16");
+                        let c = const_to_evm(c);
+                        let zero = Dual(format!("0"), yul_format!("0"));
+                        [c, zero]
+                    },
+                    CompiledAddressStrict::ConstantU16(c) => {
+                        let c = const_to_evm(&(*c as u32));
+                        let zero = Dual(format!("0"), yul_format!("0"));
+                        [c, zero]
+                    },
                     CompiledAddressStrict::U16Space(idx) => {
                         *running_max_memvar = *idx.max(running_max_memvar);
-                        [format!("[{idx}]"), 0.to_string()]
+                        let var = Dual(format!("[{idx}]"), Yul::calldataload(idx));
+                        let zero = Dual(format!("0"), yul_format!("0"));
+                        [var, zero]
                     },
                     CompiledAddressStrict::U32Space([low, high]) => {
                         *running_max_memvar = *low.max(running_max_memvar);
                         *running_max_memvar = *high.max(running_max_memvar);
-                        [format!("[{low}]"), format!("[{high}]")]
+                        let low = Dual(format!("[{low}]"), Yul::calldataload(low));
+                        let high = Dual(format!("[{high}]"), Yul::calldataload(high));
+                        [low, high]
                     },
                     _ => todo!()
                 };
                 let [ts_low, ts_high] = match timestamp {
-                    CompiledMemoryTimestamp::Zero => [0.to_string(), 0.to_string()],
-                    CompiledMemoryTimestamp::Normal([lo, hi]) => {
-                        *running_max_memvar = *lo.max(running_max_memvar);
-                        *running_max_memvar = *hi.max(running_max_memvar);
-                        [format!("[{lo}]"), format!("[{hi}]")]
+                    CompiledMemoryTimestamp::Zero => {
+                        assert_eq!(*timestamp_offset, 0, "with {timestamp:?} we expect timestamp_offset == 0");
+                        let zero1 = Dual(format!("0"), yul_format!("0"));
+                        let zero2 = Dual(format!("0"), yul_format!("0"));
+                        [zero1, zero2]
+                    },
+                    CompiledMemoryTimestamp::Normal([low, high]) => {
+                        *running_max_memvar = *low.max(running_max_memvar);
+                        *running_max_memvar = *high.max(running_max_memvar);
+                        let timestamp_offset = const_to_evm(timestamp_offset);
+                        let low = Dual(format!("[{low}]"), Yul::calldataload(low));
+                        let high = Dual(format!("[{high}]"), Yul::calldataload(high));
+                        [Dual(format!("({timestamp_offset} + {low})"), yul_format!("add({timestamp_offset:x}, {low:x})")), high]
                     }
                 };
                 let [val_low, val_high] = match value {
-                    RamWordRepresentation::Zero => [timestamp_offset.to_string(), 0.to_string()],
-                    RamWordRepresentation::U16Limbs([lo, hi]) => {
-                        *running_max_memvar = *lo.max(running_max_memvar);
-                        *running_max_memvar = *hi.max(running_max_memvar);
-                        [format!("({timestamp_offset} + [{lo}])"), format!("[{hi}]")]
+                    RamWordRepresentation::Zero => {
+                        let zero1 = Dual(format!("0"), yul_format!("0"));
+                        let zero2 = Dual(format!("0"), yul_format!("0"));
+                        [zero1, zero2]
+                    },
+                    RamWordRepresentation::U16Limbs([low, high]) => {
+                        *running_max_memvar = *low.max(running_max_memvar);
+                        *running_max_memvar = *high.max(running_max_memvar);
+                        let low = Dual(format!("[{low}]"), Yul::calldataload(low));
+                        let high = Dual(format!("[{high}]"), Yul::calldataload(high));
+                        [low, high]
                     },
                     RamWordRepresentation::U8Limbs([ll, lh, hl, hh]) => {
                         *running_max_memvar = *ll.max(running_max_memvar);
                         *running_max_memvar = *lh.max(running_max_memvar);
                         *running_max_memvar = *hl.max(running_max_memvar);
                         *running_max_memvar = *hh.max(running_max_memvar);
-                        [format!("({timestamp_offset} + [{ll}] + 2⁸[{lh}])"), format!("([{hl}] + 2⁸[{hh}])")]
+                        let ll = Dual(format!("[{ll}]"), Yul::calldataload(ll));
+                        let lh = Dual(format!("[{lh}]"), Yul::calldataload(lh));
+                        let hl = Dual(format!("[{hl}]"), Yul::calldataload(hl));
+                        let hh = Dual(format!("[{hh}]"), Yul::calldataload(hh));
+                        let low = Dual(format!("([{ll}] + 2⁸[{lh}])"), yul_format!("add({ll:x}, shl(8, {lh:x}))"));
+                        let high = Dual(format!("([{hl}] + 2⁸[{hh}])"), yul_format!("add({hl:x}, shl(8, {hh:x}))"));
+                        [low, high]
                     }
                 };
-                format!("(γ + {address_space} + α{addr_low} + α²{addr_high} + α³{ts_low} + α⁴{ts_high} + α⁵{val_low} + α⁶{val_high})")
+                let memory_gamma = Dual(format!("γ"), Yul::memory_gamma());
+                let memory_alpha1 = Dual(format!("α"), Yul::memory_alpha(0));
+                let memory_alpha2 = Dual(format!("α²"), Yul::memory_alpha(1));
+                let memory_alpha3 = Dual(format!("α³"), Yul::memory_alpha(2));
+                let memory_alpha4 = Dual(format!("α⁴"), Yul::memory_alpha(3));
+                let memory_alpha5 = Dual(format!("α⁵"), Yul::memory_alpha(4));
+                let memory_alpha6 = Dual(format!("α⁶"), Yul::memory_alpha(5));
+                Dual(format!("({memory_gamma} + {address_space} + {memory_alpha1}{addr_low} + {memory_alpha2}{addr_high} + {memory_alpha3}{ts_low} + {memory_alpha4}{ts_high} + {memory_alpha5}{val_low} + {memory_alpha6}{val_high})"),
+                yul_format!("add(add(add(add(add(add(add(mulmod({memory_alpha6:x}, {val_high:x}, P), mulmod({memory_alpha5:x}, {val_low:x}, P)), mulmod({memory_alpha4:x}, {ts_high:x}, P)), mulmod({memory_alpha3:x}, {ts_low:x}, P)), mulmod({memory_alpha2:x}, {addr_high:x}, P)), mulmod({memory_alpha1:x}, {addr_low:x}, P)), {address_space:x}), {memory_gamma:x})"))
             }
             fn memrelinitparts_to_calldata_inner(timestamp_and_value: &InitsOrTeardownsTimestampAndValue, running_max_group_offsets: &mut (usize, usize, usize, usize)) -> [String; 2] {
                 let (running_max_memvar, _running_max_witvar, _running_max_setupvar, _running_max_cachevar) = running_max_group_offsets;
@@ -413,24 +496,27 @@ fn main() {
                 let compressed = linrel_to_calldata_inner(input, expected_layer, layer0_group_widths, running_max_group_offsets);
                 format!("(δ + {compressed})")
             }
-            fn lookrelgeneric_to_calldata(tuple: &NoFieldVectorLookupRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> String {
+            fn lookrelgeneric_to_calldata(tuple: &NoFieldVectorLookupRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let NoFieldVectorLookupRelation { columns, lookup_set_index: _ } = tuple;
-                let compressed = columns.iter().enumerate().map(|(j, column)| {
+                assert_eq!(columns.len(), 10, "we expect generic lookups to be tuples of 10 elements");
+                let logup_alpha = Dual("β".to_string(), Yul::logup_alpha());
+                let compressed = columns.iter().enumerate().rev().map(|(j, column)| {
                     let compressed_column = linrel_to_calldata_inner(column, expected_layer, layer0_group_widths, running_max_group_offsets);
-                    let beta_j = "β".to_string() + &superscript(j);
-                    format!("{beta_j}({compressed_column})")
-                }).collect::<Vec<_>>().join(" + ");
-                format!("(δ + {compressed})")
+                    let logup_alpha_j = logup_alpha.0.clone() + &superscript(j);
+                    Dual(format!("{logup_alpha_j}({compressed_column})"), yul_format!("{compressed_column:x}"))
+                }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add(mulmod({acc:x}, {logup_alpha:x}, P), {el:x})"))).unwrap();
+                let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
+                Dual(format!("({logup_gamma} + {compressed})"), yul_format!("add({compressed:x}, {logup_gamma:x})"))
             }
-            fn linrel_to_calldata_inner(inputs: &NoFieldLinearRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> String {
+            fn linrel_to_calldata_inner(inputs: &NoFieldLinearRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let NoFieldLinearRelation { linear_terms, constant } = inputs;
                 let linear = linear_terms.iter().map(|(c, addr)| {
                     let input = gkraddress_to_calldata(addr, expected_layer, layer0_group_widths, running_max_group_offsets);
                     let c = const_to_evm(c);
-                    format!("{c}{input}")
-                }).collect::<Vec<_>>().join(" + ");
+                    Dual(format!("{c}{input}"), yul_format!("mulmod({c:x}, {input:x}, P)"))
+                }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or(Dual("0".to_string(), yul_format!("0")));
                 let constant = const_to_evm(constant);
-                format!("{constant} + {linear}")
+                Dual(format!("{constant} + {linear}"), yul_format!("add({constant:x}, {linear:x})"))
             }
             fn quadrel_to_calldata_inner(input: &NoFieldMaxQuadraticGKRRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> String {
                 let NoFieldMaxQuadraticGKRRelation { quadratic_terms, linear_terms, constant } = input;
@@ -480,11 +566,7 @@ fn main() {
                 // 3
                 NoFieldGKRRelation::AggregateLookupRationalPair { input, output } => {
                     let [[num1, den1], [num2, den2]] = input.each_ref().map(|pair| pair.each_ref().map(|addr| gkraddress_to_calldata(addr, i, layer0_group_widths, &mut running_max_group_offsets)));
-                    let [num_out, den_out] = if DEBUG_NATURAL_GATE_ORDER {
-                        output.each_ref().map(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter))
-                    } else {
-                        output.each_ref_revmap(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter))
-                    };
+                    let [num_out, den_out] = output.each_ref_mayberevmap(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
                     // println!("{relation_name}: {num1}/{den1} + {num2}/{den2} = {num_out}/{den_out}");
                     yul_println!("
                     \t{{  // {relation_name}: {num1}/{den1} + {num2}/{den2} = {num_out}/{den_out}
@@ -525,47 +607,90 @@ fn main() {
                 NoFieldGKRRelation::CopyInBaseField { input, output } => {
                     let input = gkraddress_to_calldata(input, i, layer0_group_widths, &mut running_max_group_offsets);
                     let output = gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
-                    println!("{relation_name}: {input} = {output}");
+                    // println!("{relation_name}: {input} = {output}");
+                    yul_println!("
+                    \t{{  // {relation_name}: {input} = {output}
+                    \t    let gate := {input:x}
+                    \t    {pointcheck_update:x}
+                    \t}}");
                 }
                 NoFieldGKRRelation::TrivialProduct { input, output } => {
                     let [lhs, rhs] = input.each_ref().map(|addr| gkraddress_to_calldata(addr, i, layer0_group_widths, &mut running_max_group_offsets));
                     let output = gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
-                    println!("{relation_name}: {lhs}*{rhs} = {output}");
+                    // println!("{relation_name}: {lhs}*{rhs} = {output}");
+                    yul_println!("
+                    \t{{  // {relation_name}: {lhs}*{rhs} = {output}
+                    \t    let gate := mulmod({lhs:x}, {rhs:x}, P)
+                    \t    {pointcheck_update:x}
+                    \t}}");
                 }
                 NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs { input, remainder, output } => {
                     let [num, den] = input.each_ref().map(|addr| gkraddress_to_calldata(addr, i, layer0_group_widths, &mut running_max_group_offsets));
                     let remainder = gkraddress_to_calldata(remainder, i, layer0_group_widths, &mut running_max_group_offsets);
-                    let [num_out, den_out] = output.each_ref().map(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
-                    println!("{relation_name}: {num}/{den} + 1/(δ + {remainder}) = {num_out}/{den_out}");
+                    let [num_out, den_out] = output.each_ref_mayberevmap(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
+                    let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
+                    // println!("{relation_name}: {num}/{den} + 1/({logup_gamma} + {remainder}) = {num_out}/{den_out}");
+                    yul_println!("
+                    \t{{  // {relation_name}: {num}/{den} + 1/({logup_gamma} + {remainder}) = {num_out}/{den_out}
+                    \t    let den_out := mulmod({den:x}, add({logup_gamma:x}, {remainder:x}), P)
+                    \t    let gate := den_out
+                    \t    {pointcheck_update:x}
+                    \t    let num_out := add(mulmod({num:x}, add({logup_gamma:x}, {remainder:x}), P), {den:x})
+                    \t    gate := num_out
+                    \t    {pointcheck_update:x}
+                    \t}}");
                 }
                 // (unified)
                 NoFieldGKRRelation::LookupPairFromVectorInputs { input, output } => {
                     let [den1, den2] = input.each_ref().map(|input| lookrelgeneric_to_calldata(input, i, layer0_group_widths, &mut running_max_group_offsets));
-                    let [num_out, den_out] = output.each_ref().map(|address| gkraddress_to_outputvar(address, i + 1, &mut running_output_counter));
-                    println!("{relation_name}: 1/{den1} + 1/{den2} = {num_out}/{den_out}")
+                    let [num_out, den_out] = output.each_ref_mayberevmap(|address| gkraddress_to_outputvar(address, i + 1, &mut running_output_counter));
+                    // println!("{relation_name}: 1/{den1} + 1/{den2} = {num_out}/{den_out}");
+                    yul_println!("
+                    \t{{  // {relation_name}: 1/{den1} + 1/{den2} = {num_out}/{den_out}
+                    \t    let den_out := mulmod({den1:x}, {den2:x}, P)
+                    \t    let gate := den_out
+                    \t    {pointcheck_update:x}
+                    \t    let num_out := add({den1:x}, {den2:x})
+                    \t    gate := num_out
+                    \t    {pointcheck_update:x}
+                    \t}}");
                 }
                 NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs { input, remainder, output } => {
                     let [num1, den1] = input.each_ref().map(|address| gkraddress_to_calldata(address, i, layer0_group_widths, &mut running_max_group_offsets));
                     let den2 = lookrelgeneric_to_calldata(remainder, i, layer0_group_widths, &mut running_max_group_offsets);
-                    let [num_out, den_out] = output.each_ref().map(|address| gkraddress_to_outputvar(address, i + 1, &mut running_output_counter));
-                    println!("{relation_name}: {num1}/{den1} + 1/{den2} = {num_out}/{den_out}")
+                    let [num_out, den_out] = output.each_ref_mayberevmap(|address| gkraddress_to_outputvar(address, i + 1, &mut running_output_counter));
+                    // println!("{relation_name}: {num1}/{den1} + 1/{den2} = {num_out}/{den_out}")
+                    yul_println!("
+                    \t{{  // {relation_name}: {num1}/{den1} + 1/{den2} = {num_out}/{den_out}
+                    \t    let den_out := mulmod({den1:x}, {den2:x}, P)
+                    \t    let gate := den_out
+                    \t    {pointcheck_update:x}
+                    \t    let num_out := add(mulmod({num1:x}, {den2:x}, P), {den1:x})
+                    \t    gate := num_out
+                    \t    {pointcheck_update:x}
+                    \t}}");
                 }
 
                 // 0
                 NoFieldGKRRelation::InitialGrandProductWithoutCaches { input, output } => {
                     let [lhs, rhs] = input.each_ref().map(|contribution| memrel_to_calldata(contribution, &mut running_max_group_offsets));
                     let output = gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
-                    println!("{relation_name}: {lhs}*{rhs} = {output}");
+                    // println!("{relation_name}: {lhs}*{rhs} = {output}");
+                    yul_println!("
+                    \t{{  // {relation_name}: {lhs}*{rhs} = {output}
+                    \t    let gate := mulmod({lhs:x}, {rhs:x}, P)
+                    \t    {pointcheck_update:x}
+                    \t}}");
                 }
                 NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup { input, setup, output } => {
                     let input = gkraddress_to_calldata(input, i, layer0_group_widths, &mut running_max_group_offsets);
                     let [multiplicity, setup] = setup.each_ref().map(|address| gkraddress_to_calldata(address, i, layer0_group_widths, &mut running_max_group_offsets));
-                    let [num_out, den_out] = output.each_ref().map(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
+                    let [num_out, den_out] = output.each_ref_mayberevmap(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
                     println!("{relation_name}: 1/(δ + {input}) - {multiplicity}/(δ + {setup}) = {num_out}/{den_out}");
                 }
                 NoFieldGKRRelation::LookupPairFromBaseInputs { input, output, range_check_width: _ } => {
                     let [den1, den2] = input.each_ref().map(|relation| lookrelsingle_to_calldata(relation, i, layer0_group_widths, &mut running_max_group_offsets));
-                    let [num_out, den_out] = output.each_ref().map(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
+                    let [num_out, den_out] = output.each_ref_mayberevmap(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
                     println!("{relation_name}: 1/{den1} + 1/{den2} = {num_out}/{den_out}");
                 }
                 NoFieldGKRRelation::MaterializeSingleLookupInput { input, output, range_check_width: _ } => {
@@ -586,8 +711,7 @@ fn main() {
                         let beta_j = "β".to_string() + &superscript(j);
                         format!("{beta_j}{input}")
                     }).collect::<Vec<_>>().join(" + ");
-                    let [num_out, den_out] =
-                        output.each_ref().map(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
+                    let [num_out, den_out] = output.each_ref_mayberevmap(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
                     println!("{relation_name}: {input_mask}/{input_den} - {setup_multiplicity}/(δ + {setup}) = {num_out}/{den_out}");
                 }
                 // NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, expression } => {
@@ -612,6 +736,7 @@ fn main() {
                     let input = quadrel_to_calldata_inner(input, i, layer0_group_widths, &mut running_max_group_offsets);
                     let output = gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
                     println!("{relation_name}: {input} = {output}")
+                    // TODO: DO NOT FORGET TO INSTANTIATE CACHES
                 }
 
                 _ => todo!("could not match {enforced_relation:?} at layer {i}")
@@ -637,12 +762,22 @@ fn main() {
         }
 
 
+        let check = if DEBUG_ENABLE_DUMMY_CHECKS {
+            yul_format!("
+            let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
+            \tmstore(CIRCUIT_CACHE_PTR, dummy_check)
+            ")
+        } else {
+            yul_format!("
+            if mod(add(claim, sub(P, rhs_scaled)), P) {{ revert(0, 0) }}
+            ")
+        };
         yul_println!("
             let rhs_scaled := mulmod(acc, eq_scale, P)
             // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-            // if mod(add(claim, sub(P, rhs_scaled)), P) {{ revert(0, 0) }}
-            let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
-            mstore(CIRCUIT_CACHE_PTR, dummy_check)
+            {check:x}
+            // after stack-heavy values are dead
+            // if mload(CIRCUIT_CACHE_PTR) {{ revert(0, 0) }}
 
             // POINT CLAIMS BATCH ({previous_input_count} POINTS)
             let points := {previous_input_count}
@@ -663,17 +798,26 @@ fn main() {
 
             next_ptr := add(ptr, mul(16, points))
         }}
-        function transcript{previous_input_count}to1(ptr) -> alpha {{
-            let input_bytes := mul({previous_input_count}, 16)
-            calldatacopy(add(SEED_PTR, 32), ptr, input_bytes)
-            let seed := keccak256(SEED_PTR, add(32, input_bytes))
-            mstore(SEED_PTR, seed)
-            alpha := shr(128, seed)
-        }}
         ");
-
-        if i <= 2 {
-            break
+        if !collected_previous_input_counts.contains(&previous_input_count) {
+            yul_println!("
+            function transcript{previous_input_count}to1(ptr) -> alpha {{
+                let input_bytes := mul({previous_input_count}, 16)
+                calldatacopy(add(SEED_PTR, 32), ptr, input_bytes)
+                let seed := keccak256(SEED_PTR, add(32, input_bytes))
+                mstore(SEED_PTR, seed)
+                alpha := shr(128, seed)
+            }}
+            ");
+        } else {
+            yul_println!("
+            // SKIPPING TRANSCRIPT FN transcript{previous_input_count}to1 FOR LAYER {i} -- ALREADY AVAILABLE
+            ");
         }
+        collected_previous_input_counts.push(previous_input_count);
+
+        // if i <= 1 {
+        //     break
+        // }
     }
 }
