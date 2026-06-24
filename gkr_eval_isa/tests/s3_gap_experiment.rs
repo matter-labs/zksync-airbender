@@ -657,7 +657,9 @@ fn dag_fanout_census() {
             }
         }
         let (mut k_all, mut k_recompute, mut k_reload, mut k_x, mut max_fanout) = (0, 0, 0, 0, 0u32);
-        let mut intervals: Vec<(u32, u32)> = Vec::new();
+        // (first, last, is_fork): is_fork = Add|Mul|Prior (the forward planner's
+        // search set); Read leaves are Belady-handled, excluded from fork concurrency.
+        let mut intervals: Vec<(u32, u32, bool)> = Vec::new();
         for i in 0..n {
             max_fanout = max_fanout.max(consumers[i]);
             if consumers[i] < 2 {
@@ -676,23 +678,142 @@ fn dag_fanout_census() {
             if seen_any[i] && last[i] > first[i] {
                 k_x += 1;
                 if recompute || reload {
-                    intervals.push((first[i], last[i]));
+                    let is_fork =
+                        matches!(inst.nodes[i].kind, NodeKind::Add | NodeKind::Mul | NodeKind::Prior);
+                    intervals.push((first[i], last[i], is_fork));
                 }
             }
         }
-        // W: max concurrent cross-root candidate intervals spanning a root boundary.
+        // W      = max concurrent cross-root candidates (all reload+recompute).
+        // W_fork = same EXCLUDING Read leaves — the real forward-planner DP-state
+        //          exponent (Reads are Belady-handled; only Add/Mul/Prior are forks).
         let nr = inst.roots.len() as u32;
-        let mut w = 0u32;
+        let (mut w, mut w_fork) = (0u32, 0u32);
         for b in 0..nr.saturating_sub(1) {
-            let active = intervals.iter().filter(|(f, l)| *f <= b && *l >= b + 1).count() as u32;
+            let active = intervals.iter().filter(|(f, l, _)| *f <= b && *l >= b + 1).count() as u32;
+            let active_fork =
+                intervals.iter().filter(|(f, l, fk)| *fk && *f <= b && *l >= b + 1).count() as u32;
             w = w.max(active);
+            w_fork = w_fork.max(active_fork);
         }
         println!(
-            "[{short:<32}] N={n:<5} roots={:<4} | K={k_all:<4}(recompute={k_recompute} reload={k_reload}) maxfanout={max_fanout:<4} | K_x={k_x:<4} | W={w:<3} → 2^W={}",
+            "[{short:<32}] N={n:<5} roots={:<4} | K={k_all:<4}(recompute={k_recompute} reload={k_reload}) maxfanout={max_fanout:<4} | W={w:<3} | W_fork={w_fork:<3} → DP 2^W_fork={}",
             inst.roots.len(),
-            pow2_str(w),
+            pow2_str(w_fork),
+        );
+        let _ = k_x;
+    }
+}
+
+/// PRIOR RELOAD-vs-RECOMPUTE BUCKETING (width-aware fork pre-resolution).
+///
+/// A Prior cache-root has two recoveries — reload (fixed = its own width) or
+/// recompute its producer cone. The width-weighted cost model means recompute can
+/// beat reload on field width alone (an ext value, reload=4, from ≤3 base inputs,
+/// recompute≤3) — even cold. So per Prior we compare:
+///   reload_w = width(value) (4 ext / 1 base)
+///   cold_w   = Σ distinct real-DRAM (Read+Prior) leaf widths in the producer cone
+///              (treats nested Priors as reloadable → a conservative UPPER bound on
+///               the true cold recompute cost)
+/// and bucket:
+///   always-recompute: cold_w ≤ reload_w  → recompute dominates even cold, so the
+///     reload path is dead and the value need not be materialized → it leaves the
+///     fork search entirely (becomes a recompute-only value, like a non-mat node).
+///   state-dependent : cold_w > reload_w  → cold favours reload, warm favours
+///     recompute → a genuine fork that stays in the search.
+/// (No "always-reload" bucket: warm recompute = 0 traffic ≤ reload always.)
+///
+/// `always-recompute` is a conservative LOWER bound (cold_w counts nested Priors at
+/// reload width; recomputing them could be cheaper still).
+#[test]
+#[ignore = "Prior reload-vs-recompute width bucketing; run with --ignored"]
+fn prior_recompute_census() {
+    use cs::gkr_compiler::dag_ir::{Expr, ExprId, Root, SourceKind};
+    use gkr_eval_isa::fwd::compile::expr_operand_field;
+    use gkr_eval_isa::fwd::isa::OperandField;
+    use std::collections::HashSet;
+
+    println!("\n=== PRIOR RELOAD-vs-RECOMPUTE BUCKETING (width-aware fork pre-resolution) ===");
+    println!("always-recompute = width-pruned out of the fork search; state-dependent = genuine fork\n");
+
+    let (mut tot_priors, mut tot_recompute, mut tot_statedep) = (0usize, 0usize, 0usize);
+    for &fixture in ALL_FIXTURES {
+        let short = fixture.trim_end_matches("_layout_gkr.json");
+        let Some((layer, cross)) = try_load_l0(fixture) else {
+            println!("[{short}] LOAD FAILED");
+            continue;
+        };
+
+        // cold-recompute width of a producer cone (nested Priors counted as reloadable).
+        let cone_cold_w = |top: ExprId| -> usize {
+            let mut seen: HashSet<u32> = HashSet::new();
+            let mut distinct: HashSet<usize> = HashSet::new();
+            let mut total = 0usize;
+            let mut stack = vec![top.0];
+            while let Some(eid) = stack.pop() {
+                if !seen.insert(eid) {
+                    continue;
+                }
+                if layer.resolutions.contains_key(&ExprId(eid)) {
+                    continue; // resolution-pruned terminal: 0 traffic
+                }
+                match &layer.exprs[eid as usize] {
+                    Expr::Source(sid) => {
+                        if matches!(
+                            layer.sources[sid.0 as usize].kind,
+                            SourceKind::Read { .. } | SourceKind::Prior { .. }
+                        ) && distinct.insert(sid.0 as usize)
+                        {
+                            let f = expr_operand_field(&layer, ExprId(eid), &cross);
+                            total += if f == OperandField::Ext { 4 } else { 1 };
+                        }
+                    }
+                    Expr::Add(ch) | Expr::Mul(ch) => stack.extend(ch.iter().map(|c| c.0)),
+                }
+            }
+            total
+        };
+
+        // distinct Prior cache-root ids referenced in this layer.
+        let mut seen_ids: HashSet<u32> = HashSet::new();
+        let mut prior_ids: Vec<u32> = Vec::new();
+        for s in &layer.sources {
+            if let SourceKind::Prior { id } = &s.kind {
+                if seen_ids.insert(id.0) {
+                    prior_ids.push(id.0);
+                }
+            }
+        }
+
+        let (mut recompute, mut statedep, mut ext_priors, mut skipped) = (0usize, 0usize, 0usize, 0usize);
+        for &pid in &prior_ids {
+            let Some(Root::Output { expr, sink }) = layer.roots.get(pid as usize) else {
+                skipped += 1;
+                continue;
+            };
+            let reload_w = if layer.sinks[sink.0 as usize].field == FieldKind::Ext { 4 } else { 1 };
+            if reload_w == 4 {
+                ext_priors += 1;
+            }
+            if cone_cold_w(*expr) <= reload_w {
+                recompute += 1;
+            } else {
+                statedep += 1;
+            }
+        }
+        let total = prior_ids.len();
+        tot_priors += total;
+        tot_recompute += recompute;
+        tot_statedep += statedep;
+        println!(
+            "[{short:<32}] priors={total:<4} (ext={ext_priors:<4}) | always-recompute={recompute:<4} state-dependent-fork={statedep:<4}{}",
+            if skipped > 0 { format!(" (+{skipped} non-Output skipped)") } else { String::new() },
         );
     }
+    let pct = if tot_priors > 0 { 100.0 * tot_recompute as f64 / tot_priors as f64 } else { 0.0 };
+    println!(
+        "\nTOTAL priors={tot_priors} | always-recompute(width-pruned)={tot_recompute} ({pct:.0}%) | state-dependent-fork={tot_statedep}"
+    );
 }
 
 /// Map a `(E−J)/D` ratio to its qualitative direction.
