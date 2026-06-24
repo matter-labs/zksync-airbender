@@ -28,11 +28,9 @@ gpu_prover = { workspace = true, optional = true }
 
 [dev-dependencies]
 test_utils = { workspace = true }
-worker = { workspace = true }
 bincode = { version = "1.3" }
 prover_examples = { path = "../circuit_defs/prover_examples" }
 serial_test = "3"
-lib-rv32-asm = { git = "https://github.com/shamatar/lib-rv32.git" }
 
 [features]
 prover = ["prover_examples"]

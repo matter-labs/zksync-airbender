@@ -119,8 +119,9 @@ jobs:
           name: cli
           path: |
             target/release/cli
-            examples/basic_fibonacci/app.bin
-            examples/basic_fibonacci/app.text
+            examples/opcode_smoke/app.bin
+            examples/opcode_smoke/app.text
+            examples/opcode_smoke/input.txt
 
   cli_smoke_verify:
     name: cli_smoke_verify (${{ matrix.security_level }})
@@ -139,13 +140,30 @@ jobs:
           chmod +x ./target/release/cli
           mkdir -p output
       - name: Prove base
-        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --security-level ${{ matrix.security_level }} --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file base.json
+        run: |
+          BIN="$PWD/examples/opcode_smoke/app.bin"
+          TEXT="$PWD/examples/opcode_smoke/app.text"
+          INPUT="$PWD/examples/opcode_smoke/input.txt"
+          ./target/release/cli prove --bin "$BIN" --text "$TEXT" --input-file "$INPUT" --security-level ${{ matrix.security_level }} --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file base.json
       - name: Verify base
-        run: ./target/release/cli verify --proof output/base.json --bin examples/basic_fibonacci/app.bin
+        run: |
+          BIN="$PWD/examples/opcode_smoke/app.bin"
+          TEXT="$PWD/examples/opcode_smoke/app.text"
+          verify_output="$(./target/release/cli verify --proof output/base.json --bin "$BIN" --text "$TEXT")"
+          echo "$verify_output"
+          echo "$verify_output" | grep -F "output=[1330660171, 0, 0, 42, 2374183677, 305419896, 524296, 0"
       - name: Continue to recursion unified
-        run: ./target/release/cli continue-proof --proof output/base.json --bin examples/basic_fibonacci/app.bin --target recursion-unified --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file recursion_unified.json
+        run: |
+          BIN="$PWD/examples/opcode_smoke/app.bin"
+          TEXT="$PWD/examples/opcode_smoke/app.text"
+          ./target/release/cli continue-proof --proof output/base.json --bin "$BIN" --text "$TEXT" --target recursion-unified --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file recursion_unified.json
       - name: Verify recursion unified
-        run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
+        run: |
+          BIN="$PWD/examples/opcode_smoke/app.bin"
+          TEXT="$PWD/examples/opcode_smoke/app.text"
+          verify_output="$(./target/release/cli verify --proof output/recursion_unified.json --bin "$BIN" --text "$TEXT")"
+          echo "$verify_output"
+          echo "$verify_output" | grep -F "output=[1330660171, 0, 0, 42, 2374183677, 305419896, 524296, 0"
 
   miri:
     name: miri

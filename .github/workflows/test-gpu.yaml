@@ -121,9 +121,13 @@ jobs:
       - name: Prove recursion unified on GPU
         run: |
           chmod +x zksync-airbender-cli/cli
+          BIN="$PWD/examples/opcode_smoke/app.bin"
+          TEXT="$PWD/examples/opcode_smoke/app.text"
+          INPUT="$PWD/examples/opcode_smoke/input.txt"
           zksync-airbender-cli/cli prove \
-            --bin examples/hashed_fibonacci/app.bin \
-            --input-file examples/hashed_fibonacci/input.txt \
+            --bin "$BIN" \
+            --text "$TEXT" \
+            --input-file "$INPUT" \
             --security-level ${{ matrix.security_level }} \
             --target recursion-unified \
             --backend gpu \
@@ -132,9 +136,14 @@ jobs:
 
       - name: Verify recursion unified proof
         run: |
-          zksync-airbender-cli/cli verify \
+          BIN="$PWD/examples/opcode_smoke/app.bin"
+          TEXT="$PWD/examples/opcode_smoke/app.text"
+          verify_output="$(zksync-airbender-cli/cli verify \
             --proof output/proof.json \
-            --bin examples/hashed_fibonacci/app.bin
+            --bin "$BIN" \
+            --text "$TEXT")"
+          echo "$verify_output"
+          echo "$verify_output" | grep -F "output=[1330660171, 0, 0, 42, 2374183677, 305419896, 524296, 0"
 
   # Keep branch protection tied to one stable GPU check name even if we
   # split GPU coverage across multiple jobs or matrix entries later on.
