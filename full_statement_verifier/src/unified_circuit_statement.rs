@@ -16,7 +16,7 @@ use verifier_common::cs::definitions::split_timestamp;
 /// - inits/teardowns are carried only by the **last `num_it_circuits`** instances (the
 ///   prover sends `num_it_circuits` as an extra word). For those trailing instances we
 ///   multiply their (now separately-surfaced) i/t grand-product into the accumulators and
-///   require their `top_bits` to be **strictly increasing**. 
+///   require their `top_bits` to be **strictly increasing**.
 #[allow(invalid_value)]
 #[inline(never)]
 pub unsafe fn verify_full_statement_for_unified_circuit<

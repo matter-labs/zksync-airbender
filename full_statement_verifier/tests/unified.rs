@@ -178,9 +178,7 @@ fn rejects_num_it_circuits_exceeds_num_circuits() {
 fn rejects_multi_instance() {
     let (proof, setup_cap) = assemble_with(load_bundle(), 2, 2);
     let result = run_unified_base_layer(build_stream(&proof, &setup_cap));
-    assert!(
-        result.is_err(),
-    );
+    assert!(result.is_err(),);
 }
 
 fn fsv_binary_section_path(ext: &str) -> String {
