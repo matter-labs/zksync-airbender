@@ -4297,7 +4297,9 @@ contract GKRVerifier {
             let c2 := shr(128, w1)
             let c3 := and(w1, MASK)
             let g0g1 := add(add(add(add(c0, c0), c1), c2), c3)
-            let r := transcript_4to1_dual(w0, w1) // before check is optimal
+            // r drawn before the claim check on purpose — optimal for the packed dual
+            // family on solc (plain non-packed is the opposite; see HEURISTICS.md).
+            let r := transcript_4to1_dual(w0, w1)
             if mod(sub(add(claim, mul(6, P)), g0g1), P) { revert(0, 0) }
             // NB: the 17P variant is more gas-efficient
             // but it's risky to use until we have hand measured
@@ -4424,7 +4426,7 @@ contract GKRVerifier {
                 let c2 := shr(128, w1)
                 let c3 := and(w1, MASK)
                 let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P)
-                let r := transcript_4to1_dual(w0, w1) // before check is optimal
+                let r := transcript_4to1_dual(w0, w1) // before-check draw is intentional; see HEURISTICS.md
                 // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
                 if mod(add(claim, sub(P, g0g1_scaled)), P) { revert(0, 0) }
                 claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
@@ -4541,7 +4543,7 @@ contract GKRVerifier {
                 let c2 := shr(128, w1)
                 let c3 := and(w1, MASK)
                 let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P)
-                let r := transcript_4to1_dual(w0, w1) // before check is optimal
+                let r := transcript_4to1_dual(w0, w1) // before-check draw is intentional; see HEURISTICS.md
                 // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
                 if mod(add(claim, sub(P, g0g1_scaled)), P) { revert(0, 0) }
                 claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
