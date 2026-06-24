@@ -55,7 +55,7 @@ pub fn evaluate_dimension_reduction_forward<F: PrimeField, E: FieldExtension<F> 
         for (arg_type, inputs) in layer_inputs.into_iter() {
             let inputs: [_; 2] = inputs.try_into().unwrap();
             match arg_type {
-                a @ OutputType::PermutationProduct => {
+                a @ OutputType::PermutationProduct | a @ OutputType::InitsAndTeardownsProduct => {
                     let [read_set, write_set] = inputs;
                     let mut set_outputs = [GKRAddress::placeholder(); 2];
                     for (i, set) in [read_set, write_set].into_iter().enumerate() {

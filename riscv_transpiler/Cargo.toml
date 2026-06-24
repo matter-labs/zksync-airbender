@@ -23,14 +23,25 @@ object = { workspace = true, optional = true }
 serde-big-array = "*"
 keccak = "*"
 
-dynasmrt = { version = "4", optional = true }
-riscv-decode = {version = "0.2", optional = true }
+dynasmrt = { version = "5", optional = true }
 capstone = {version = "0.13", optional = true }
 
 [features]
-jit = ["dynasmrt", "riscv-decode", "capstone"]
+jit = ["dynasmrt", "capstone"]
 flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object"]
+# Register-timestamp tracking for the JIT (8 RISC-V values always live in host GPRs):
+#   default (off): "packed" scheme — one store per cycle of the cycle's base timestamp into
+#                  a (32 x 33 x 33) u64 array in MachineState; per-register timestamps are
+#                  reconstructed by scanning it (MachineState::reconstruct_register_timestamps).
+#   xmm_ts       : keep the 8 mapped registers' timestamps live in XMM lanes (xmm6/7/13/14)
+#                  via `pinsrq` instead (the previous default; kept for A/B comparison).
+xmm_ts = []
 default = ["jit"]
+# NOTE: word load/store fusion (the eager, packed-timestamp path) is always compiled and is
+# controlled SOLELY by the RISCV_MERGE_WINDOW env var: the merge width (max group size) is one
+# of 0/2/4/8 (0 disables merging), default 4 when unset; an out-of-set value panics at JIT
+# build. It BLINDLY ASSUMES no jump target lands between the merged accesses, and has no effect
+# under `xmm_ts`. See `emit_merged_word_run` / `merge_window` in src/jit/impls.rs.
 
 [dev-dependencies]
 test_utils = { workspace = true }

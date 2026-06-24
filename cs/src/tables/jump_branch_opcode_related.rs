@@ -42,12 +42,12 @@ pub fn create_conditional_op_resolution_table<F: PrimeField>(id: u32) -> LookupT
                     !eq_flag
                 }
                 0b010 | 0b100 => {
-                    // STL or BLT
+                    // SLT or BLT
                     if rs1_sign && !rs2_sign {
-                        // rs1 < 0 and rs2 > 0
+                        // rs1 < 0 and rs2 >= 0
                         true
-                    } else if rs1_sign && !rs2_sign {
-                        // rs1 > 0 and rs2 < 0
+                    } else if !rs1_sign && rs2_sign {
+                        // rs1 >= 0 and rs2 < 0
                         false
                     } else {
                         // same sign, and then it matches unsigned comparison
@@ -59,11 +59,10 @@ pub fn create_conditional_op_resolution_table<F: PrimeField>(id: u32) -> LookupT
                     unsigned_lt_flag
                 }
                 0b101 => {
-                    // BGE
-                    // inverse of BLT
+                    // BGE — inverse of BLT
                     if rs1_sign && !rs2_sign {
                         false
-                    } else if rs1_sign && !rs2_sign {
+                    } else if !rs1_sign && rs2_sign {
                         true
                     } else {
                         !unsigned_lt_flag
@@ -114,4 +113,55 @@ pub fn create_jump_cleanup_offset_table<F: PrimeField>(id: u32) -> LookupTable<F
         Some(first_key_index_gen_fn::<F>),
         id,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use field::baby_bear::base::BabyBearField;
+
+    /// Pack a key exactly as `create_conditional_op_resolution_table` decodes it:
+    /// bits 0..16 = rs2 high half (rs2_sign = bit 15), bit 16 = rs1_sign,
+    /// bit 17 = rs1<rs2 unsigned, bit 18 = rs1==rs2, bits 19..22 = funct3.
+    fn packed_key(rs2_high: u32, rs1_sign: bool, unsigned_lt: bool, eq: bool, funct3: u32) -> u32 {
+        (rs2_high & 0xFFFF)
+            | ((rs1_sign as u32) << 16)
+            | ((unsigned_lt as u32) << 17)
+            | ((eq as u32) << 18)
+            | (funct3 << 19)
+    }
+
+    #[test]
+    fn conditional_jmp_branch_slt_cross_sign() {
+        let table = create_conditional_op_resolution_table::<BabyBearField>(0);
+        let resolve = |rs2_high, rs1_sign, unsigned_lt, eq, funct3| -> u32 {
+            let k = packed_key(rs2_high, rs1_sign, unsigned_lt, eq, funct3);
+            table.lookup_value::<1>(&[BabyBearField::new(k)])[0].as_u32_reduced()
+        };
+
+        // rs1 = 1 (sign 0), rs2 = -1 (high half 0xFFFF, sign 1), unsigned_lt = true.
+        // Signed `1 < -1` = false.
+        for funct3 in [0b010u32, 0b100] {
+            assert_eq!(
+                resolve(0xFFFF, false, true, false, funct3),
+                0,
+                "SLT/BLT(1,-1) must be signed-0 despite unsigned_lt=1 (funct3={funct3:#05b})"
+            );
+        }
+        // rs1 = -1 (sign 1), rs2 = 1 (high half 0, sign 0), unsigned_lt = false.
+        // Signed `-1 < 1` = true.
+        for funct3 in [0b010u32, 0b100] {
+            assert_eq!(
+                resolve(0x0000, true, false, false, funct3),
+                1,
+                "SLT/BLT(-1,1) must be signed-1 despite unsigned_lt=0 (funct3={funct3:#05b})"
+            );
+        }
+        // BGE is the inverse of BLT: BGE(1,-1) signed `1 >= -1` = true.
+        assert_eq!(
+            resolve(0xFFFF, false, true, false, 0b101),
+            1,
+            "BGE(1,-1) must be signed-1"
+        );
+    }
 }

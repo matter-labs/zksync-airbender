@@ -34,6 +34,7 @@ pub(crate) mod delegation_mem_accesses;
 mod family_circuit;
 mod graph;
 mod inits_and_teardowns;
+mod inits_and_teardowns_inline;
 mod layout;
 mod lookup;
 pub(crate) mod lookup_nodes;

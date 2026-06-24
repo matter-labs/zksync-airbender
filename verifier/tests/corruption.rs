@@ -284,9 +284,23 @@ fn test_rejects_non_canonical_field_element(name: &str) {
             SecurityLevel::Sec80,
             "non_canonical_field_element",
             |nds| {
-                nds[gkr_off + 4] ^= 0x7800_0001;
+                nds[gkr_off + 4] |= 0x8000_0000;
             },
-            |r| matches!(r, VerifyRejection::Error(..)),
+            |r| {
+                matches!(
+                    r,
+                    VerifyRejection::Error(
+                        VerificationError::GkrSumcheckRoundFailed { .. }
+                            | VerificationError::GkrFinalStepCheckFailed { .. }
+                            | VerificationError::GkrGrandProductCheckFailed
+                            | VerificationError::GkrPermutationCacheRelationFailed { .. }
+                            | VerificationError::GkrSingleLookupCacheRelationFailed { .. }
+                            | VerificationError::GkrVectorLookupCacheRelationFailed { .. }
+                            | VerificationError::GkrLookupIdentityFailed { .. }
+                            | VerificationError::GkrVirtualSetupEvalMismatch { .. }
+                    )
+                )
+            },
         );
     });
 }
@@ -355,83 +369,122 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
     );
 }
 
+fn test_rejects_corrupted_it_evals(name: &str) {
+    with_circuit!(name, SecurityLevel::Sec80, |m| {
+        type InitialTranscript = m::constants::ConcreteInitialTranscript;
+        let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker)
+            - (core::mem::offset_of!(InitialTranscript, setup_caps)
+                - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
+        let gkr_off = initial_transcript_responses_offset / core::mem::size_of::<u32>();
+
+        assert!(
+            m::constants::GKR_EVALS >= 160,
+            "{name} must have the 160-eval layout (i/t evals at [128..160])"
+        );
+        // First word of the first inits/teardowns ext4 eval (evals_slice[128]).
+        let it_eval_off = gkr_off + 128 * 4;
+
+        assert_rejects_corrupted_nds(
+            name,
+            SecurityLevel::Sec80,
+            "it_evals",
+            |nds| nds[it_eval_off] ^= 1,
+            |r| {
+                matches!(
+                    r,
+                    VerifyRejection::Error(
+                        VerificationError::GkrSumcheckRoundFailed { .. }
+                            | VerificationError::GkrFinalStepCheckFailed { .. }
+                            | VerificationError::GkrGrandProductCheckFailed
+                    )
+                )
+            },
+        );
+    });
+}
+
+#[test]
+fn rejects_corrupted_it_evals_unified_reduced_machine_sec_80() {
+    test_rejects_corrupted_it_evals("unified_reduced_machine");
+}
+
 macro_rules! generate_corruption_tests {
     ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
         $(
             paste::paste! {
                 #[test]
-                fn [<rejects_garbage_proof_ $name>]() {
+                fn [<rejects_garbage_proof_ $name _sec_80>]() {
                     test_rejects_garbage_proof(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corruption_ $name>]() {
+                fn [<rejects_corruption_ $name _sec_80>]() {
                     test_rejects_corruption_at_fractions(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_gkr_region_ $name>]() {
+                fn [<rejects_corrupted_gkr_region_ $name _sec_80>]() {
                     test_rejects_corrupted_gkr_region(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_whir_region_ $name>]() {
+                fn [<rejects_corrupted_whir_region_ $name _sec_80>]() {
                     test_rejects_corrupted_whir_region(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_zeroed_regions_ $name>]() {
+                fn [<rejects_zeroed_regions_ $name _sec_80>]() {
                     test_rejects_zeroed_regions(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_shifted_nds_ $name>]() {
+                fn [<rejects_shifted_nds_ $name _sec_80>]() {
                     test_rejects_shifted_nds(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_oracle_caps_ $name>]() {
+                fn [<rejects_corrupted_oracle_caps_ $name _sec_80>]() {
                     test_rejects_corrupted_oracle_caps(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_truncated_nds_ $name>]() {
+                fn [<rejects_truncated_nds_ $name _sec_80>]() {
                     test_rejects_truncated_nds(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_final_monomials_ $name>]() {
+                fn [<rejects_corrupted_final_monomials_ $name _sec_80>]() {
                     test_rejects_corrupted_final_monomials(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_cross_circuit_nds_ $name>]() {
+                fn [<rejects_cross_circuit_nds_ $name _sec_80>]() {
                     test_rejects_cross_circuit_nds(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_init_teardown_bits_ $name>]() {
+                fn [<rejects_corrupted_init_teardown_bits_ $name _sec_80>]() {
                     test_rejects_corrupted_init_teardown_bits(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_non_canonical_field_element_ $name>]() {
+                fn [<rejects_non_canonical_field_element_ $name _sec_80>]() {
                     test_rejects_non_canonical_field_element(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_ood_sample_ $name>]() {
+                fn [<rejects_corrupted_ood_sample_ $name _sec_80>]() {
                     test_rejects_corrupted_ood_sample(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_pow_nonce_ $name>]() {
+                fn [<rejects_corrupted_pow_nonce_ $name _sec_80>]() {
                     test_rejects_corrupted_pow_nonce(stringify!($name));
                 }
 
                 #[cfg(not(feature = "no_caches"))]
                 #[test]
-                fn [<rejects_corrupted_cache_relations_ $name>]() {
+                fn [<rejects_corrupted_cache_relations_ $name _sec_80>]() {
                     test_rejects_corrupted_cache_relations(stringify!($name));
                 }
 

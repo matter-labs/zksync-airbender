@@ -768,7 +768,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             let mut off = 0;
             for (output_type, group_addrs) in compiled_circuit.global_output_map.iter() {
                 match output_type {
-                    OutputType::PermutationProduct => {
+                    OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
                         for i in 0..group_addrs.len() {
                             addrs.push(GKRAddress::InnerLayer {
                                 layer: layer_idx,
@@ -969,6 +969,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     for group in &output_groups {
         let count = match group.output_type {
             OutputType::PermutationProduct => group.num_addresses,
+            OutputType::InitsAndTeardownsProduct => group.num_addresses,
             _ => 2,
         };
         for _ in 0..count {
@@ -1450,6 +1451,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
         let mut eval_offset = 0usize;
         let mut lookup_type_idx = 0usize;
+        let mut permutation_product_emitted = false;
         for group in &output_groups {
             match group.output_type {
                 OutputType::PermutationProduct => {
@@ -1474,6 +1476,35 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                             }
                             permutation_read_product = read_product;
                             permutation_write_product = write_product;
+                        }
+                    });
+                    permutation_product_emitted = true;
+                }
+                OutputType::InitsAndTeardownsProduct => {
+                    assert!(permutation_product_emitted);
+                    assert_eq!(group.num_addresses, 2);
+                    let read_off = eval_offset;
+                    let write_off = eval_offset + evals_per_poly;
+                    eval_offset += 2 * evals_per_poly;
+
+                    let mul_rp = mul(quote! { it_read }, quote! { eval });
+                    let mul_wp = mul(quote! { it_write }, quote! { eval });
+                    let mul_perm_r = mul(quote! { permutation_read_product }, quote! { it_read });
+                    let mul_perm_w = mul(quote! { permutation_write_product }, quote! { it_write });
+                    output_checks.extend(quote! {
+                        {
+                            let mut it_read = #quartic_one;
+                            for i in 0..#evals_per_poly {
+                                let eval = *evals_slice.get_unchecked(#read_off + i);
+                                #mul_rp;
+                            }
+                            let mut it_write = #quartic_one;
+                            for i in 0..#evals_per_poly {
+                                let eval = *evals_slice.get_unchecked(#write_off + i);
+                                #mul_wp;
+                            }
+                            #mul_perm_r;
+                            #mul_perm_w;
                         }
                     });
                 }

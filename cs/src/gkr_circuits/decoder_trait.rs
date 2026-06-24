@@ -32,6 +32,64 @@ impl Default for ExecutorFamilyDecoderData {
     }
 }
 
+pub struct DecoderTable {
+    entries: Vec<Option<ExecutorFamilyDecoderData>>,
+    family_idx: u8,
+}
+
+impl DecoderTable {
+    /// Construct from the per-family entries produced by
+    /// `process_binary_into_separate_tables_ext` for `family_idx`. Caller-side
+    /// discipline: pass the entries from the map's `family_idx` slot; mixing
+    /// families breaks the lookup invariant.
+    pub fn from_preprocessing(
+        family_idx: u8,
+        entries: Vec<Option<ExecutorFamilyDecoderData>>,
+    ) -> Self {
+        Self {
+            entries,
+            family_idx,
+        }
+    }
+
+    /// The family index this table is tagged for. See struct docs.
+    pub fn family_idx(&self) -> u8 {
+        self.family_idx
+    }
+
+    /// Look up the decoder data for a PC. Panics loudly if the PC is out of
+    /// bounds or has no entry in this family — both are caller bugs (witness
+    /// gen pointed at a PC outside this family's opcodes).
+    pub fn lookup_pc(&self, pc: u32) -> ExecutorFamilyDecoderData {
+        let idx = (pc as usize) / 4;
+        let entry = self.entries.get(idx).unwrap_or_else(|| {
+            panic!(
+                "PC 0x{:08x} out of decoder table bounds (len={})",
+                pc,
+                self.entries.len()
+            )
+        });
+        entry.unwrap_or_else(|| {
+            panic!(
+                "PC 0x{:08x} has no decoder entry in this circuit family",
+                pc
+            )
+        })
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub fn entries(&self) -> &[Option<ExecutorFamilyDecoderData>] {
+        &self.entries
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct DecoderTableEntry<F: PrimeField> {
     pub pc: [F; 2],

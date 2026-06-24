@@ -113,6 +113,7 @@ pub(crate) struct SimulationRunner<
     T: TracingType + 'static,
 > {
     pub batch_id: u64,
+    pub machine_type: MachineType,
     pub non_determinism_source: ND,
     pub free_trace_chunks_sender: Sender<LockedBoxedTraceChunk>,
     pub free_trace_chunks_receiver: Receiver<LockedBoxedTraceChunk>,
@@ -147,6 +148,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
         let tracing_data_producers = Some(tracing_data_producers);
         Self {
             batch_id,
+            machine_type,
             non_determinism_source,
             free_trace_chunks_sender,
             free_trace_chunks_receiver,
@@ -179,7 +181,27 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
                 entry.clone()
             } else {
                 trace!("BATCH[{batch_id}] SIMULATOR JIT compiling bytecode");
-                let jitted_code = JittedCode::preprocess_bytecode(&text_section, cycles_bound);
+                // Decode the raw bytecode into the intermediate `Instruction`
+                // representation expected by the JIT, using the decoder config that
+                // matches this runner's machine type.
+                use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
+                use riscv_transpiler::ir::{
+                    FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig,
+                    ReducedMachineDecoderConfig,
+                };
+                let instructions = match self.machine_type {
+                    MachineType::Full => {
+                        preprocess_bytecode::<FullMachineDecoderConfig, false>(&text_section)
+                    }
+                    MachineType::FullUnsigned => preprocess_bytecode::<
+                        FullUnsignedMachineDecoderConfig,
+                        false,
+                    >(&text_section),
+                    MachineType::Reduced => {
+                        preprocess_bytecode::<ReducedMachineDecoderConfig, false>(&text_section)
+                    }
+                };
+                let jitted_code = JittedCode::preprocess_bytecode(&instructions, cycles_bound);
                 trace!("BATCH[{batch_id}] SIMULATOR JIT compiled bytecode");
                 let jitted_code = Arc::new(jitted_code);
                 guard.insert(jitted_code.clone());

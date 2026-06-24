@@ -1172,6 +1172,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 &oracle,
                 &setup.table_driver,
                 &worker,
+                None,
                 Global,
                 Global,
             );
@@ -1345,6 +1346,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 &oracle,
                 &setup.table_driver,
                 &worker,
+                None,
                 Global,
                 Global,
             );

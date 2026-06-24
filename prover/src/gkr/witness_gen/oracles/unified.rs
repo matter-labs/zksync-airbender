@@ -1,15 +1,64 @@
-use common_constants::NON_DETERMINISM_CSR;
+use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
+use common_constants::{
+    BIGINT_OPS_WITH_CONTROL_CSR_REGISTER, BLAKE2S_DELEGATION_CSR_REGISTER,
+    BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER, NON_DETERMINISM_CSR,
+};
 use cs::definitions::TimestampScalar;
-use cs::gkr_circuits::ExecutorFamilyDecoderData;
+use cs::gkr_circuits::unified_reduced_machine::UnifiedReducedMachineDecoder;
+use cs::gkr_circuits::{
+    process_binary_into_separate_tables_ext, DecoderTable, ExecutorFamilyDecoderData,
+    OpcodeFamilyDecoder,
+};
 use cs::oracle::*;
 use field::PrimeField;
-use risc_v_simulator::machine_mode_only_unrolled::{
+use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
+use riscv_transpiler::witness::data_structs::{
     UnifiedOpcodeTracingDataWithTimestamp, MEM_LOAD_TRACE_DATA_MARKER,
 };
+use std::alloc::Global;
 
 pub struct UnifiedRiscvCircuitOracle<'a> {
-    pub inner: &'a [UnifiedOpcodeTracingDataWithTimestamp],
-    pub decoder_table: &'a [ExecutorFamilyDecoderData],
+    pub(crate) inner: &'a [UnifiedOpcodeTracingDataWithTimestamp],
+    decoder_table: DecoderTable,
+}
+
+impl<'a> UnifiedRiscvCircuitOracle<'a> {
+    pub fn new<F: PrimeField>(
+        inner: &'a [UnifiedOpcodeTracingDataWithTimestamp],
+        text_section: &[u32],
+        bytecode_size_words: usize,
+    ) -> Self {
+        let decoders: Vec<Box<dyn OpcodeFamilyDecoder>> =
+            vec![Box::new(UnifiedReducedMachineDecoder)];
+        const SUPPORTED_CSRS: &[u16] = &[
+            NON_DETERMINISM_CSR as u16,
+            BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
+            KECCAK_SPECIAL5_CSR_REGISTER as u16,
+            BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
+        ];
+        let mut preprocessing_data =
+            process_binary_into_separate_tables_ext::<
+                F,
+                FullUnsignedMachineDecoderConfig,
+                true,
+                Global,
+            >(text_section, &decoders, bytecode_size_words, SUPPORTED_CSRS);
+        let entries = preprocessing_data
+            .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
+            .expect("UnifiedReducedMachineDecoder must produce a family-128 entry");
+        Self {
+            inner,
+            decoder_table: DecoderTable::from_preprocessing(
+                REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
+                entries,
+            ),
+        }
+    }
+
+    pub fn decoder_table_with_options(&self) -> &[Option<ExecutorFamilyDecoderData>] {
+        self.decoder_table.entries()
+    }
 }
 
 impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
@@ -28,9 +77,19 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
 
     fn get_u32_witness_from_placeholder(&self, placeholder: Placeholder, trace_step: usize) -> u32 {
         let Some(cycle_data) = self.inner.get(trace_step) else {
-            // there are few cases of conventional values
             return match placeholder {
-                _ => 0,
+                Placeholder::PcInit
+                | Placeholder::PcFin
+                | Placeholder::ShuffleRamAddress(_)
+                | Placeholder::ShuffleRamReadValue(_)
+                | Placeholder::ShuffleRamWriteValue(_)
+                | Placeholder::ExternalOracle => 0,
+                a => panic!(
+                    "padding-row u32 query: placeholder {:?} has no defined default \
+                     (trace_step={trace_step} >= inner.len()={})",
+                    a,
+                    self.inner.len()
+                ),
             };
         };
 
@@ -41,7 +100,6 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
             Placeholder::PcFin => cycle_data.final_pc(),
 
             Placeholder::ShuffleRamAddress(access_idx) => match access_idx {
-                // 0 => decoded.rs1_index,
                 1 => match cycle_data {
                     UnifiedOpcodeTracingDataWithTimestamp::NonMem(..) => decoded.rs2_index as u32,
                     UnifiedOpcodeTracingDataWithTimestamp::Mem(inner) => {
@@ -96,10 +154,48 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
 
     fn get_u16_witness_from_placeholder(&self, placeholder: Placeholder, trace_step: usize) -> u16 {
         let Some(cycle_data) = self.inner.get(trace_step) else {
-            return 0;
+            return match placeholder {
+                Placeholder::ShuffleRamAddress(_)
+                | Placeholder::DelegationType
+                | Placeholder::DelegationABIOffset => 0,
+                a => panic!(
+                    "padding-row u16 query: placeholder {:?} has no defined default \
+                     (trace_step={trace_step} >= inner.len()={})",
+                    a,
+                    self.inner.len()
+                ),
+            };
         };
 
+        let decoded = <Self as cs::oracle::Oracle<F>>::get_executor_family_data(self, trace_step);
+
         match placeholder {
+            // rs1/rs2/rd register-index queries. For Mem-LOAD access 1 (RAM address)
+            // and Mem-STORE access 2 (RAM address) the witness eval queries u32 instead.
+            Placeholder::ShuffleRamAddress(access_idx) => match access_idx {
+                0 => decoded.rs1_index as u16,
+                1 => match cycle_data {
+                    UnifiedOpcodeTracingDataWithTimestamp::NonMem(..) => decoded.rs2_index,
+                    UnifiedOpcodeTracingDataWithTimestamp::Mem(inner) => {
+                        if inner.discr == MEM_LOAD_TRACE_DATA_MARKER {
+                            unreachable!("load: access 1 is a RAM address, must be queried as u32")
+                        } else {
+                            decoded.rs2_index
+                        }
+                    }
+                },
+                2 => match cycle_data {
+                    UnifiedOpcodeTracingDataWithTimestamp::NonMem(..) => decoded.rd_index as u16,
+                    UnifiedOpcodeTracingDataWithTimestamp::Mem(inner) => {
+                        if inner.discr == MEM_LOAD_TRACE_DATA_MARKER {
+                            decoded.rd_index as u16
+                        } else {
+                            unreachable!("store: access 2 is a RAM address, must be queried as u32")
+                        }
+                    }
+                },
+                _ => unreachable!(),
+            },
             Placeholder::DelegationType => {
                 match cycle_data {
                     UnifiedOpcodeTracingDataWithTimestamp::Mem(..) => 0,
@@ -125,7 +221,15 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
 
     fn get_u8_witness_from_placeholder(&self, placeholder: Placeholder, trace_step: usize) -> u8 {
         let Some(_cycle_data) = self.inner.get(trace_step) else {
-            return 0;
+            return match placeholder {
+                Placeholder::ShuffleRamAddress(_) => 0,
+                a => panic!(
+                    "padding-row u8 query: placeholder {:?} has no defined default \
+                     (trace_step={trace_step} >= inner.len()={})",
+                    a,
+                    self.inner.len()
+                ),
+            };
         };
 
         let decoded = <Self as cs::oracle::Oracle<F>>::get_executor_family_data(self, trace_step);
@@ -133,8 +237,6 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
         match placeholder {
             Placeholder::ShuffleRamAddress(access_idx) => match access_idx {
                 0 => decoded.rs1_index,
-                // 1 => decoded.rs2_index,
-                // 2 => decoded.rd_index,
                 _ => {
                     unreachable!()
                 }
@@ -222,7 +324,6 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
         let Some(cycle_data) = self.inner.get(trace_step) else {
             return Default::default();
         };
-        let pc = cycle_data.initial_pc();
-        self.decoder_table[(pc as usize) / 4]
+        self.decoder_table.lookup_pc(cycle_data.initial_pc())
     }
 }
