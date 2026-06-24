@@ -791,13 +791,23 @@ where
         let input_domain_size = 1u64 << rs_domain_log2;
         let extended_generator = domain_generator_for_size::<F>(input_domain_size);
 
-        // High powers
-        let set_generator = domain_generator_for_size::<F>(1u64 << num_initial_folding_rounds);
-        let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<F, Global>(
-            set_generator.inverse().unwrap(),
-            1 << (num_initial_folding_rounds - 1),
-        );
-        bitreverse_enumeration_inplace(&mut high_powers_offsets);
+        let initial_high_powers_offsets = if num_initial_folding_rounds > 0 {
+            let set_generator = domain_generator_for_size::<F>(1u64 << num_initial_folding_rounds);
+            let mut hp = materialize_powers_serial_starting_with_one::<F, Global>(
+                set_generator.inverse().unwrap(),
+                1 << (num_initial_folding_rounds - 1),
+            );
+            bitreverse_enumeration_inplace(&mut hp);
+            hp
+        } else {
+            vec![]
+        };
+        #[cfg(not(feature = "eval_leaves"))]
+        let monomial_weights = if !folding_challenges_in_round.is_empty() {
+            precompute_monomial_tensor(&folding_challenges_in_round)
+        } else {
+            vec![E::ONE]
+        };
 
         let query_index_bits = query_domain_size.trailing_zeros() as usize;
         let num_bits_for_queries = num_queries * query_index_bits;
@@ -828,6 +838,15 @@ where
         }
         let mut current_delinearization_challenge = delinearization_challenge;
         current_delinearization_challenge.square();
+
+        // Scratch buffers for evals_to_multilinear_coeffs (reused across queries).
+        #[cfg(not(feature = "eval_leaves"))]
+        let scratch_len = 1usize << num_initial_folding_rounds;
+        #[cfg(not(feature = "eval_leaves"))]
+        let mut scratch_a = vec![E::ZERO; scratch_len];
+        #[cfg(not(feature = "eval_leaves"))]
+        let mut scratch_b = vec![E::ZERO; scratch_len];
+
         for &query_index in query_indexes.iter() {
             assert!(query_index < query_domain_size as usize);
             let query_point = query_domain_generator.pow(query_index as u32);
@@ -878,12 +897,26 @@ where
                 }
             }
 
+            #[cfg(not(feature = "eval_leaves"))]
+            let folded = {
+                evals_to_multilinear_coeffs(
+                    &mut batched_evals,
+                    &base_root_inv,
+                    &initial_high_powers_offsets,
+                    &two_inv,
+                    num_initial_folding_rounds,
+                    &mut scratch_a,
+                    &mut scratch_b,
+                );
+                eval_multilinear_with_monomial_tensor(&batched_evals, &monomial_weights)
+            };
+            #[cfg(feature = "eval_leaves")]
             let folded = fold_coset(
                 batched_evals,
                 num_initial_folding_rounds,
                 &folding_challenges_in_round,
                 &base_root_inv,
-                &high_powers_offsets,
+                &initial_high_powers_offsets,
                 &two_inv,
             );
 
@@ -1103,15 +1136,20 @@ where
         let query_domain_size = 1u64 << query_domain_log2;
 
         let query_domain_generator = domain_generator_for_size::<F>(query_domain_size);
-        let input_domain_size = 1u64 << rs_domain_log2;
-        let extended_generator = domain_generator_for_size::<F>(input_domain_size);
 
-        let set_generator = domain_generator_for_size::<F>(1u64 << num_folding_steps);
-        let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<F, Global>(
-            set_generator.inverse().unwrap(),
-            1 << (num_folding_steps - 1),
-        );
-        bitreverse_enumeration_inplace(&mut high_powers_offsets);
+        #[cfg(not(feature = "eval_leaves"))]
+        let monomial_weights = precompute_monomial_tensor(&folding_challenges_in_round);
+        #[cfg(feature = "eval_leaves")]
+        let (extended_generator, high_powers_offsets) = {
+            let extended_generator = domain_generator_for_size::<F>(1u64 << rs_domain_log2);
+            let set_generator = domain_generator_for_size::<F>(1u64 << num_folding_steps);
+            let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<F, Global>(
+                set_generator.inverse().unwrap(),
+                1 << (num_folding_steps - 1),
+            );
+            bitreverse_enumeration_inplace(&mut high_powers_offsets);
+            (extended_generator, high_powers_offsets)
+        };
 
         let query_index_bits = query_domain_size.trailing_zeros() as usize;
         let num_bits_for_queries = num_queries * query_index_bits;
@@ -1146,33 +1184,31 @@ where
             assert!(query_index < query_domain_size as usize);
             let query_point = query_domain_generator.pow(query_index as u32);
 
-            let base_root = extended_generator.pow(query_index as u32);
-            assert_eq!(base_root.pow(1 << num_folding_steps), query_point);
-            let base_root_inv = base_root.inverse().unwrap();
-            for el in high_powers_offsets.iter() {
-                let mut t = *el;
-                t.mul_assign(&base_root_inv);
-                debug_assert_eq!(
-                    t.pow(1 << num_folding_steps),
-                    query_point.inverse().unwrap()
-                );
-            }
-
-            let (_coset_idx, evals, query) = rs_oracle_to_query.query_for_folded_index(query_index);
+            let (_coset_idx, coeffs, query) =
+                rs_oracle_to_query.query_for_folded_index(query_index);
             let num_intermediate_oracles = proof.intermediate_whir_oracles.len();
             assert!(num_intermediate_oracles >= 2);
             let intermediate_oracle =
                 &mut proof.intermediate_whir_oracles[num_intermediate_oracles - 2];
             intermediate_oracle.queries.push(query);
 
-            let folded = fold_coset(
-                evals,
-                num_folding_steps,
-                &folding_challenges_in_round,
-                &base_root_inv,
-                &high_powers_offsets,
-                &two_inv,
-            );
+            #[cfg(not(feature = "eval_leaves"))]
+            let folded = eval_multilinear_with_monomial_tensor(&coeffs, &monomial_weights);
+            #[cfg(feature = "eval_leaves")]
+            let folded = {
+                let base_root_inv = extended_generator
+                    .pow(query_index as u32)
+                    .inverse()
+                    .unwrap();
+                fold_coset(
+                    coeffs,
+                    num_folding_steps,
+                    &folding_challenges_in_round,
+                    &base_root_inv,
+                    &high_powers_offsets,
+                    &two_inv,
+                )
+            };
 
             query_references.push((query_index, query_point, folded));
 
@@ -1322,15 +1358,20 @@ where
         let query_domain_size = 1u64 << query_domain_log2;
 
         let query_domain_generator = domain_generator_for_size::<F>(query_domain_size);
-        let input_domain_size = 1u64 << rs_domain_log2;
-        let extended_generator = domain_generator_for_size::<F>(input_domain_size);
 
-        let set_generator = domain_generator_for_size::<F>(1u64 << num_folding_steps);
-        let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<F, Global>(
-            set_generator.inverse().unwrap(),
-            1 << (num_folding_steps - 1),
-        );
-        bitreverse_enumeration_inplace(&mut high_powers_offsets);
+        #[cfg(not(feature = "eval_leaves"))]
+        let monomial_weights = precompute_monomial_tensor(&folding_challenges_in_round);
+        #[cfg(feature = "eval_leaves")]
+        let (extended_generator, high_powers_offsets) = {
+            let extended_generator = domain_generator_for_size::<F>(1u64 << rs_domain_log2);
+            let set_generator = domain_generator_for_size::<F>(1u64 << num_folding_steps);
+            let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<F, Global>(
+                set_generator.inverse().unwrap(),
+                1 << (num_folding_steps - 1),
+            );
+            bitreverse_enumeration_inplace(&mut high_powers_offsets);
+            (extended_generator, high_powers_offsets)
+        };
 
         let query_index_bits = query_domain_size.trailing_zeros() as usize;
         let num_bits_for_queries = num_queries * query_index_bits;
@@ -1349,21 +1390,28 @@ where
             assert!(query_index < query_domain_size as usize);
             let query_point = query_domain_generator.pow(query_index as u32);
 
-            let base_root = extended_generator.pow(query_index as u32);
-            let base_root_inv = base_root.inverse().unwrap();
-
-            let (_coset_idx, evals, query) = rs_oracle_to_query.query_for_folded_index(query_index);
+            let (_coset_idx, coeffs, query) =
+                rs_oracle_to_query.query_for_folded_index(query_index);
             let intermediate_oracle = proof.intermediate_whir_oracles.last_mut().unwrap();
             intermediate_oracle.queries.push(query);
 
-            let folded = fold_coset(
-                evals,
-                num_folding_steps,
-                &folding_challenges_in_round,
-                &base_root_inv,
-                &high_powers_offsets,
-                &two_inv,
-            );
+            #[cfg(not(feature = "eval_leaves"))]
+            let folded = eval_multilinear_with_monomial_tensor(&coeffs, &monomial_weights);
+            #[cfg(feature = "eval_leaves")]
+            let folded = {
+                let base_root_inv = extended_generator
+                    .pow(query_index as u32)
+                    .inverse()
+                    .unwrap();
+                fold_coset(
+                    coeffs,
+                    num_folding_steps,
+                    &folding_challenges_in_round,
+                    &base_root_inv,
+                    &high_powers_offsets,
+                    &two_inv,
+                )
+            };
 
             query_references.push((query_index, query_point, folded));
         }
@@ -1426,6 +1474,134 @@ where
     proof
 }
 
+/// Coefficient-form commit (default): rewrites each leaf from evaluation form to
+/// multilinear-coefficient form before building the Merkle tree.
+#[cfg(not(feature = "eval_leaves"))]
+fn commit_single_ext_poly<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+>(
+    cosets: Vec<(Box<[E]>, F)>,
+    values_per_leaf: usize,
+    tree_cap_size: usize,
+    worker: &Worker,
+) -> ColumnMajorExtensionOracleForLDE<F, E, T>
+where
+    [(); E::DEGREE]: Sized,
+{
+    let num_folding_rounds = values_per_leaf.trailing_zeros() as usize;
+    let mut t = Vec::with_capacity(cosets.len());
+    let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
+    let trace_len = 1usize << trace_len_log2;
+
+    let two_inv = F::from_u32_unchecked(2).inverse().unwrap();
+    let set_generator = domain_generator_for_size::<F>(values_per_leaf as u64);
+    let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<F, Global>(
+        set_generator.inverse().unwrap(),
+        values_per_leaf / 2,
+    );
+    bitreverse_enumeration_inplace(&mut high_powers_offsets);
+
+    let offsets = offsets_vec_for_leaf_construction(trace_len, values_per_leaf);
+    let num_leaves = trace_len / values_per_leaf;
+
+    let coset_generator = domain_generator_for_size::<F>(trace_len as u64);
+    let coset_generator_inv = coset_generator.inverse().unwrap();
+
+    for (mut column, offset) in cosets.into_iter() {
+        assert_eq!(column.len(), trace_len);
+
+        if num_folding_rounds > 0 {
+            let offset_inv = offset.inverse().unwrap();
+            let base_root_invs = {
+                let mut v = materialize_powers_serial_starting_with_one::<F, Global>(
+                    coset_generator_inv,
+                    num_leaves,
+                );
+                for r in v.iter_mut() {
+                    r.mul_assign(&offset_inv);
+                }
+                v
+            };
+
+            debug_assert!(offsets
+                .iter()
+                .all(|&offset| offset % num_leaves == 0 && offset < trace_len));
+            let base_ptr = column.as_mut_ptr() as usize;
+            worker.scope(num_leaves, |scope, geometry| {
+                for chunk_idx in 0..geometry.len() {
+                    let chunk_start = geometry.get_chunk_start_pos(chunk_idx);
+                    let chunk_size = geometry.get_chunk_size(chunk_idx);
+                    let base_ptr = base_ptr;
+                    let offsets = &offsets;
+                    let base_root_invs = &base_root_invs;
+                    let high_powers_offsets = &high_powers_offsets;
+                    let is_last = chunk_idx == geometry.len() - 1;
+
+                    Worker::smart_spawn(scope, is_last, move |_| {
+                        let ptr = base_ptr as *mut E;
+                        let mut leaf_buf = vec![E::ZERO; values_per_leaf];
+                        let mut scratch_a = vec![E::ZERO; values_per_leaf];
+                        let mut scratch_b = vec![E::ZERO; values_per_leaf];
+                        for leaf_idx in chunk_start..(chunk_start + chunk_size) {
+                            for (k, &off) in offsets.iter().enumerate() {
+                                leaf_buf[k] = unsafe { *ptr.add(off + leaf_idx) };
+                            }
+                            evals_to_multilinear_coeffs(
+                                &mut leaf_buf,
+                                &base_root_invs[leaf_idx],
+                                high_powers_offsets,
+                                &two_inv,
+                                num_folding_rounds,
+                                &mut scratch_a,
+                                &mut scratch_b,
+                            );
+                            for (k, &off) in offsets.iter().enumerate() {
+                                unsafe { *ptr.add(off + leaf_idx) = leaf_buf[k] };
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        let el = ColumnMajorExtensionOracleForCoset {
+            values_normal_order: ColumnMajorCosetBoundTracePart {
+                column: Arc::new(column),
+                offset,
+            },
+        };
+        t.push(el);
+    }
+
+    let source: Vec<_> = t
+        .iter()
+        .map(|el| vec![&el.values_normal_order.column[..]])
+        .collect();
+    let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
+
+    let tree = T::construct_from_cosets::<E, Global>(
+        &source_ref[..],
+        values_per_leaf,
+        tree_cap_size,
+        true,
+        true,
+        false,
+        worker,
+    );
+
+    ColumnMajorExtensionOracleForLDE {
+        cosets: t,
+        tree,
+        values_per_leaf,
+        trace_len_log2,
+    }
+}
+
+/// Evaluation-form commit (`eval_leaves` feature): commits each leaf as raw
+/// evaluations; the verifier folds them with `fold_coset`.
+#[cfg(feature = "eval_leaves")]
 fn commit_single_ext_poly<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -1442,7 +1618,7 @@ where
     let mut t = Vec::with_capacity(cosets.len());
     let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
     for (column, offset) in cosets.into_iter() {
-        assert!(column.len() > 0);
+        assert!(!column.is_empty());
         let el = ColumnMajorExtensionOracleForCoset {
             values_normal_order: ColumnMajorCosetBoundTracePart {
                 column: Arc::new(column),
@@ -2063,6 +2239,115 @@ fn evaluate_multivariate_at_base_for_domain_hypercube<
     result
 }
 
+fn evals_to_multilinear_coeffs<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
+    data: &mut [E],
+    base_root_inv: &F,
+    high_powers_offsets: &[F],
+    two_inv: &F,
+    num_folding_rounds: usize,
+    buf_a: &mut [E],
+    buf_b: &mut [E],
+) {
+    let n = 1usize << num_folding_rounds;
+    assert_eq!(data.len(), n);
+    if num_folding_rounds == 0 {
+        return;
+    }
+    assert!(buf_a.len() >= n);
+    assert!(buf_b.len() >= n);
+
+    let mut root_inv = *base_root_inv;
+
+    // stage reads from `src` and writes `dst`. At stage 0 we read
+    // from `data`; afterwards we alternate between buf_a and buf_b.
+    for stage in 0..num_folding_rounds {
+        let src: &[E] = if stage == 0 {
+            &*data
+        } else if stage % 2 == 1 {
+            unsafe { core::slice::from_raw_parts(buf_a.as_ptr(), n) }
+        } else {
+            unsafe { core::slice::from_raw_parts(buf_b.as_ptr(), n) }
+        };
+        let dst: &mut [E] = if stage % 2 == 0 {
+            unsafe { core::slice::from_raw_parts_mut(buf_a.as_mut_ptr(), n) }
+        } else {
+            unsafe { core::slice::from_raw_parts_mut(buf_b.as_mut_ptr(), n) }
+        };
+
+        let num_existing = 1usize << stage;
+        let bit = 1usize << stage;
+        let block_len = n >> stage;
+        let half = block_len / 2;
+
+        for idx in 0..num_existing {
+            let base = idx * block_len;
+            let out_base = idx * half;
+            let linear_base = (idx | bit) * half;
+            for set_idx in 0..half {
+                let a = src[base + 2 * set_idx];
+                let b = src[base + 2 * set_idx + 1];
+
+                let mut root = root_inv;
+                root.mul_assign(&high_powers_offsets[set_idx]);
+
+                let mut c_even = a;
+                c_even.add_assign(&b);
+                c_even.mul_assign_by_base(two_inv);
+
+                let mut c_odd = a;
+                c_odd.sub_assign(&b);
+                c_odd.mul_assign_by_base(&root);
+                c_odd.mul_assign_by_base(two_inv);
+
+                dst[out_base + set_idx] = c_even;
+                dst[linear_base + set_idx] = c_odd;
+            }
+        }
+
+        root_inv.square();
+    }
+
+    let final_buf: &[E] = if num_folding_rounds % 2 == 1 {
+        unsafe { core::slice::from_raw_parts(buf_a.as_ptr(), n) }
+    } else {
+        unsafe { core::slice::from_raw_parts(buf_b.as_ptr(), n) }
+    };
+    data.copy_from_slice(&final_buf[..n]);
+}
+
+#[cfg(test)]
+fn eval_multilinear_from_coeffs<E: Field>(coeffs: &[E], challenges: &[E]) -> E {
+    let eq_weights = precompute_monomial_tensor(challenges);
+    eval_multilinear_with_monomial_tensor(coeffs, &eq_weights)
+}
+
+fn precompute_monomial_tensor<E: Field>(challenges: &[E]) -> Vec<E> {
+    let k = challenges.len();
+    let mut weights = vec![E::ZERO; 1 << k];
+    weights[0] = E::ONE;
+    for (j, alpha) in challenges.iter().enumerate() {
+        for i in (0..(1 << j)).rev() {
+            let w = weights[i];
+            let mut w_alpha = w;
+            w_alpha.mul_assign(alpha);
+            weights[i + (1 << j)] = w_alpha;
+        }
+    }
+    weights
+}
+
+fn eval_multilinear_with_monomial_tensor<E: Field>(coeffs: &[E], eq_weights: &[E]) -> E {
+    assert_eq!(coeffs.len(), eq_weights.len());
+    let mut result = E::ZERO;
+    for (c, w) in coeffs.iter().zip(eq_weights.iter()) {
+        let mut t = *c;
+        t.mul_assign(w);
+        result.add_assign(&t);
+    }
+    result
+}
+
+#[cfg(any(test, feature = "eval_leaves"))]
 fn fold_coset<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
     mut flattened_evals: Vec<E>,
     num_folding_rounds: usize,
@@ -2141,6 +2426,203 @@ mod test {
             .map(|_| F::from_u32_with_reduction(rng.next_u32()));
 
         <E as FieldExtension<F>>::from_coeffs(coefs)
+    }
+
+    use proptest::prelude::*;
+    use proptest::prop_assert_eq;
+
+    fn arb_base() -> impl Strategy<Value = F> {
+        any::<u32>().prop_map(F::from_u32_with_reduction)
+    }
+
+    fn arb_ext() -> impl Strategy<Value = E> {
+        [any::<u32>(); 4].prop_map(|raw| {
+            let coefs = raw.map(F::from_u32_with_reduction);
+            <E as FieldExtension<F>>::from_coeffs(coefs)
+        })
+    }
+
+    fn arb_ext_vec(len: usize) -> impl Strategy<Value = Vec<E>> {
+        proptest::collection::vec(arb_ext(), len)
+    }
+
+    fn coeffs_based_folding_matches_fold_coset(
+        num_folding_rounds: usize,
+        evals: Vec<E>,
+        challenges: Vec<E>,
+        base_root_raw: F,
+    ) -> Result<(), proptest::prelude::TestCaseError> {
+        use fft::{
+            bitreverse_enumeration_inplace, domain_generator_for_size,
+            materialize_powers_serial_starting_with_one,
+        };
+
+        let values_per_leaf = 1usize << num_folding_rounds;
+
+        let base_root = if base_root_raw == F::ZERO {
+            F::ONE
+        } else {
+            base_root_raw
+        };
+        let base_root_inv = base_root.inverse().unwrap();
+
+        let set_generator = domain_generator_for_size::<F>(values_per_leaf as u64);
+        let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<F, Global>(
+            set_generator.inverse().unwrap(),
+            1 << (num_folding_rounds - 1),
+        );
+        bitreverse_enumeration_inplace(&mut high_powers_offsets);
+
+        let folded_old = fold_coset(
+            evals.clone(),
+            num_folding_rounds,
+            &challenges,
+            &base_root_inv,
+            &high_powers_offsets,
+            &F::HALF,
+        );
+
+        let mut coeffs = evals;
+        let mut scratch_a = vec![E::ZERO; values_per_leaf];
+        let mut scratch_b = vec![E::ZERO; values_per_leaf];
+        evals_to_multilinear_coeffs(
+            &mut coeffs,
+            &base_root_inv,
+            &high_powers_offsets,
+            &F::HALF,
+            num_folding_rounds,
+            &mut scratch_a,
+            &mut scratch_b,
+        );
+        let folded_new = eval_multilinear_from_coeffs(&coeffs, &challenges);
+
+        prop_assert_eq!(folded_old, folded_new);
+        Ok(())
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn test_coeffs_folding_k1(
+            evals in arb_ext_vec(2),
+            challenges in arb_ext_vec(1),
+            base_root in arb_base(),
+        ) {
+            coeffs_based_folding_matches_fold_coset(1, evals, challenges, base_root)?;
+        }
+        #[test]
+        fn test_coeffs_folding_k2(
+            evals in arb_ext_vec(4),
+            challenges in arb_ext_vec(2),
+            base_root in arb_base(),
+        ) {
+            coeffs_based_folding_matches_fold_coset(2, evals, challenges, base_root)?;
+        }
+        #[test]
+        fn test_coeffs_folding_k3(
+            evals in arb_ext_vec(8),
+            challenges in arb_ext_vec(3),
+            base_root in arb_base(),
+        ) {
+            coeffs_based_folding_matches_fold_coset(3, evals, challenges, base_root)?;
+        }
+        #[test]
+        fn test_coeffs_folding_k4(
+            evals in arb_ext_vec(16),
+            challenges in arb_ext_vec(4),
+            base_root in arb_base(),
+        ) {
+            coeffs_based_folding_matches_fold_coset(4, evals, challenges, base_root)?;
+        }
+    }
+
+    fn commit_ext_poly_coeffs_match_fold_coset(
+        monomial: Vec<E>,
+        challenges: Vec<E>,
+        query_index_frac: f64,
+    ) -> Result<(), proptest::prelude::TestCaseError> {
+        use crate::gkr::prover::stages::stage1::compute_column_major_lde_from_monomial_form;
+        use fft::Twiddles;
+
+        let worker = Worker::new_with_num_threads(4);
+        let poly_size = monomial.len();
+        let lde_factor = 8usize;
+        let values_per_leaf = 16usize;
+        let num_folding_rounds = values_per_leaf.trailing_zeros() as usize;
+        assert_eq!(challenges.len(), num_folding_rounds);
+
+        let twiddles = Twiddles::<F, Global>::new(poly_size, &worker);
+
+        let cosets = compute_column_major_lde_from_monomial_form(
+            &monomial,
+            &twiddles,
+            lde_factor,
+            Some(&worker),
+        );
+        let raw_cosets: Vec<(Vec<E>, F)> = cosets
+            .iter()
+            .map(|(col, off)| (col.to_vec(), *off))
+            .collect();
+
+        let oracle = commit_single_ext_poly::<F, E, Blake2sU32MerkleTreeWithCap>(
+            cosets,
+            values_per_leaf,
+            16,
+            &worker,
+        );
+
+        let set_generator = domain_generator_for_size::<F>(values_per_leaf as u64);
+        let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<F, Global>(
+            set_generator.inverse().unwrap(),
+            values_per_leaf / 2,
+        );
+        bitreverse_enumeration_inplace(&mut high_powers_offsets);
+
+        let rs_domain_size = poly_size * lde_factor;
+        let extended_generator = domain_generator_for_size::<F>(rs_domain_size as u64);
+        let offsets_vec = offsets_vec_for_leaf_construction(poly_size, values_per_leaf);
+        let num_cosets = lde_factor;
+        let monomial_weights = precompute_monomial_tensor(&challenges);
+
+        let num_leaves_per_coset = poly_size / values_per_leaf;
+        let query_domain_size = num_leaves_per_coset * num_cosets;
+        let query_index = ((query_index_frac.abs() % 1.0) * query_domain_size as f64) as usize;
+        let query_index = query_index.min(query_domain_size - 1);
+
+        let coset_index = query_index % num_cosets;
+        let internal_index = query_index / num_cosets;
+
+        let (_ci, coeffs, _query) = oracle.query_for_folded_index(query_index);
+        let result_new = eval_multilinear_with_monomial_tensor(&coeffs, &monomial_weights);
+
+        let mut raw_leaf = Vec::with_capacity(values_per_leaf);
+        for &off in offsets_vec.iter() {
+            raw_leaf.push(raw_cosets[coset_index].0[off + internal_index]);
+        }
+        let base_root = extended_generator.pow(query_index as u32);
+        let base_root_inv = base_root.inverse().unwrap();
+        let result_old = fold_coset(
+            raw_leaf,
+            num_folding_rounds,
+            &challenges,
+            &base_root_inv,
+            &high_powers_offsets,
+            &F::HALF,
+        );
+
+        prop_assert_eq!(result_new, result_old);
+        Ok(())
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(32))]
+        #[test]
+        fn test_commit_ext_poly_stores_coefficients(
+            monomial in arb_ext_vec(256),
+            challenges in arb_ext_vec(4),
+            query_frac in 0.0f64..1.0,
+        ) {
+            commit_ext_poly_coeffs_match_fold_coset(monomial, challenges, query_frac)?;
+        }
     }
 
     #[test]
