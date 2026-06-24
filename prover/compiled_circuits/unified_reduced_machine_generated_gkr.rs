@@ -327,6 +327,36 @@ fn eval_fn_6<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     W::U8: Copy,
     W::I32: Copy,
 {
+    let v_0 = witness_proxy.get_witness_place_u16(3usize);
+    let v_1 = witness_proxy.get_witness_place_boolean(14usize);
+    let v_2 = witness_proxy.get_witness_place_boolean(15usize);
+    let v_3 = witness_proxy.get_witness_place_boolean(16usize);
+    let v_4 = witness_proxy.get_witness_place_boolean(17usize);
+    let v_5 = witness_proxy.get_memory_place_u16(8usize);
+    let v_6 = W::Mask::or(&v_1, &v_2);
+    let v_7 = W::Mask::or(&v_6, &v_3);
+    let v_8 = W::Mask::or(&v_7, &v_4);
+    let v_9 = W::U16::constant(0u16);
+    let v_10 = WitnessComputationCore::select(&v_3, &v_0, &v_9);
+    let mut v_11 = v_5;
+    W::U16::add_assign(&mut v_11, &v_10);
+    witness_proxy.set_witness_place_u16(
+        29usize,
+        W::U16::select(&v_8, &v_11, &witness_proxy.get_witness_place_u16(29usize)),
+    );
+}
+#[allow(unused_variables)]
+#[inline(always)]
+fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
     let v_0 = witness_proxy.get_witness_place_boolean(14usize);
     let v_1 = witness_proxy.get_witness_place_boolean(15usize);
     let v_2 = witness_proxy.get_witness_place_boolean(16usize);
@@ -345,7 +375,7 @@ fn eval_fn_6<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
+fn eval_fn_8<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -370,7 +400,7 @@ fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_8<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
+fn eval_fn_9<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -394,7 +424,12 @@ fn eval_fn_8<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_9<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
+fn eval_fn_10<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -427,7 +462,7 @@ fn eval_fn_9<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_10<
+fn eval_fn_11<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -473,7 +508,7 @@ fn eval_fn_10<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_11<
+fn eval_fn_12<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -512,7 +547,7 @@ fn eval_fn_11<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_12<
+fn eval_fn_13<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -560,7 +595,7 @@ fn eval_fn_12<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_13<
+fn eval_fn_14<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -604,7 +639,7 @@ fn eval_fn_13<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_14<
+fn eval_fn_15<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -646,7 +681,7 @@ fn eval_fn_14<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_15<
+fn eval_fn_16<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -692,7 +727,7 @@ fn eval_fn_15<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_16<
+fn eval_fn_17<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -733,7 +768,7 @@ fn eval_fn_16<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_17<
+fn eval_fn_18<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -770,7 +805,7 @@ fn eval_fn_17<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_18<
+fn eval_fn_19<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -793,7 +828,7 @@ fn eval_fn_18<
     witness_proxy.set_scratch_place(9usize, v_3);
 }
 #[allow(unused_variables)]
-fn eval_fn_19<
+fn eval_fn_20<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -834,7 +869,7 @@ fn eval_fn_19<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_20<
+fn eval_fn_21<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -857,7 +892,7 @@ fn eval_fn_20<
     witness_proxy.set_scratch_place(18usize, v_3);
 }
 #[allow(unused_variables)]
-fn eval_fn_21<
+fn eval_fn_22<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -898,7 +933,7 @@ fn eval_fn_21<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_22<
+fn eval_fn_23<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -922,7 +957,7 @@ fn eval_fn_22<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_23<
+fn eval_fn_24<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -950,7 +985,7 @@ fn eval_fn_23<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_24<
+fn eval_fn_25<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -987,7 +1022,7 @@ fn eval_fn_24<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_25<
+fn eval_fn_26<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1011,7 +1046,7 @@ fn eval_fn_25<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_26<
+fn eval_fn_27<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1033,7 +1068,7 @@ fn eval_fn_26<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_27<
+fn eval_fn_28<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1061,7 +1096,7 @@ fn eval_fn_27<
     witness_proxy.set_witness_place_boolean(57usize, v_9);
 }
 #[allow(unused_variables)]
-fn eval_fn_28<
+fn eval_fn_29<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1114,7 +1149,7 @@ fn eval_fn_28<
     witness_proxy.set_witness_place_boolean(58usize, v_34);
 }
 #[allow(unused_variables)]
-fn eval_fn_29<
+fn eval_fn_30<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1179,7 +1214,7 @@ fn eval_fn_29<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_30<
+fn eval_fn_31<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1217,7 +1252,7 @@ fn eval_fn_30<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_31<
+fn eval_fn_32<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1263,7 +1298,7 @@ fn eval_fn_31<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_32<
+fn eval_fn_33<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1317,7 +1352,7 @@ fn eval_fn_32<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_33<
+fn eval_fn_34<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1376,7 +1411,7 @@ fn eval_fn_33<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_34<
+fn eval_fn_35<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1431,7 +1466,7 @@ fn eval_fn_34<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_35<
+fn eval_fn_36<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1491,7 +1526,7 @@ fn eval_fn_35<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_36<
+fn eval_fn_37<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1535,7 +1570,7 @@ fn eval_fn_36<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_37<
+fn eval_fn_38<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1566,7 +1601,7 @@ fn eval_fn_37<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_38<
+fn eval_fn_39<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1590,7 +1625,7 @@ fn eval_fn_38<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_39<
+fn eval_fn_40<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1614,7 +1649,7 @@ fn eval_fn_39<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_40<
+fn eval_fn_41<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1637,7 +1672,7 @@ fn eval_fn_40<
     witness_proxy.set_scratch_place(13usize, v_3);
 }
 #[allow(unused_variables)]
-fn eval_fn_41<
+fn eval_fn_42<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1660,20 +1695,20 @@ fn eval_fn_41<
     let v_5 = witness_proxy.get_witness_place(19usize);
     let v_6 = witness_proxy.get_witness_place(20usize);
     let v_7 = witness_proxy.get_memory_place(2usize);
-    let v_8 = witness_proxy.get_memory_place(8usize);
-    let v_9 = witness_proxy.get_witness_place(22usize);
-    let v_10 = witness_proxy.get_witness_place(26usize);
-    let v_11 = witness_proxy.get_witness_place(27usize);
+    let v_8 = witness_proxy.get_witness_place(22usize);
+    let v_9 = witness_proxy.get_witness_place(26usize);
+    let v_10 = witness_proxy.get_witness_place(27usize);
+    let v_11 = witness_proxy.get_witness_place(29usize);
     let v_12 = witness_proxy.get_witness_place(43usize);
     let v_13 = W::Field::constant(BabyBearField(0u32));
     let mut v_14 = v_13;
-    W::Field::add_assign_product(&mut v_14, &v_1, &v_8);
+    W::Field::add_assign_product(&mut v_14, &v_1, &v_11);
     let mut v_15 = v_14;
-    W::Field::add_assign_product(&mut v_15, &v_2, &v_8);
+    W::Field::add_assign_product(&mut v_15, &v_2, &v_11);
     let mut v_16 = v_15;
-    W::Field::add_assign_product(&mut v_16, &v_3, &v_8);
+    W::Field::add_assign_product(&mut v_16, &v_3, &v_11);
     let mut v_17 = v_16;
-    W::Field::add_assign_product(&mut v_17, &v_4, &v_8);
+    W::Field::add_assign_product(&mut v_17, &v_4, &v_11);
     let v_18 = W::Field::constant(BabyBearField(133099247u32));
     let mut v_19 = v_0;
     W::Field::mul_assign(&mut v_19, &v_18);
@@ -1689,53 +1724,53 @@ fn eval_fn_41<
     let mut v_25 = v_1;
     W::Field::mul_assign(&mut v_25, &v_24);
     let mut v_26 = v_23;
-    W::Field::add_assign_product(&mut v_26, &v_25, &v_9);
+    W::Field::add_assign_product(&mut v_26, &v_25, &v_8);
     let v_27 = W::Field::constant(BabyBearField(1073182584u32));
     let mut v_28 = v_1;
     W::Field::mul_assign(&mut v_28, &v_27);
     let mut v_29 = v_26;
-    W::Field::add_assign_product(&mut v_29, &v_28, &v_10);
+    W::Field::add_assign_product(&mut v_29, &v_28, &v_9);
     let v_30 = W::Field::constant(BabyBearField(268295646u32));
     let mut v_31 = v_1;
     W::Field::mul_assign(&mut v_31, &v_30);
     let mut v_32 = v_29;
-    W::Field::add_assign_product(&mut v_32, &v_31, &v_11);
+    W::Field::add_assign_product(&mut v_32, &v_31, &v_10);
     let mut v_33 = v_2;
     W::Field::mul_assign(&mut v_33, &v_24);
     let mut v_34 = v_32;
-    W::Field::add_assign_product(&mut v_34, &v_33, &v_9);
+    W::Field::add_assign_product(&mut v_34, &v_33, &v_8);
     let mut v_35 = v_2;
     W::Field::mul_assign(&mut v_35, &v_27);
     let mut v_36 = v_34;
-    W::Field::add_assign_product(&mut v_36, &v_35, &v_10);
+    W::Field::add_assign_product(&mut v_36, &v_35, &v_9);
     let mut v_37 = v_2;
     W::Field::mul_assign(&mut v_37, &v_30);
     let mut v_38 = v_36;
-    W::Field::add_assign_product(&mut v_38, &v_37, &v_11);
+    W::Field::add_assign_product(&mut v_38, &v_37, &v_10);
     let mut v_39 = v_3;
     W::Field::mul_assign(&mut v_39, &v_24);
     let mut v_40 = v_38;
-    W::Field::add_assign_product(&mut v_40, &v_39, &v_9);
+    W::Field::add_assign_product(&mut v_40, &v_39, &v_8);
     let mut v_41 = v_3;
     W::Field::mul_assign(&mut v_41, &v_27);
     let mut v_42 = v_40;
-    W::Field::add_assign_product(&mut v_42, &v_41, &v_10);
+    W::Field::add_assign_product(&mut v_42, &v_41, &v_9);
     let mut v_43 = v_3;
     W::Field::mul_assign(&mut v_43, &v_30);
     let mut v_44 = v_42;
-    W::Field::add_assign_product(&mut v_44, &v_43, &v_11);
+    W::Field::add_assign_product(&mut v_44, &v_43, &v_10);
     let mut v_45 = v_4;
     W::Field::mul_assign(&mut v_45, &v_24);
     let mut v_46 = v_44;
-    W::Field::add_assign_product(&mut v_46, &v_45, &v_9);
+    W::Field::add_assign_product(&mut v_46, &v_45, &v_8);
     let mut v_47 = v_4;
     W::Field::mul_assign(&mut v_47, &v_27);
     let mut v_48 = v_46;
-    W::Field::add_assign_product(&mut v_48, &v_47, &v_10);
+    W::Field::add_assign_product(&mut v_48, &v_47, &v_9);
     let mut v_49 = v_4;
     W::Field::mul_assign(&mut v_49, &v_30);
     let mut v_50 = v_48;
-    W::Field::add_assign_product(&mut v_50, &v_49, &v_11);
+    W::Field::add_assign_product(&mut v_50, &v_49, &v_10);
     let v_51 = W::Field::constant(BabyBearField(16777216u32));
     let mut v_52 = v_6;
     W::Field::mul_assign(&mut v_52, &v_51);
@@ -1752,7 +1787,7 @@ fn eval_fn_41<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_42<
+fn eval_fn_43<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1776,7 +1811,7 @@ fn eval_fn_42<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_43<
+fn eval_fn_44<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1800,7 +1835,7 @@ fn eval_fn_43<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_44<
+fn eval_fn_45<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1824,7 +1859,7 @@ fn eval_fn_44<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_45<
+fn eval_fn_46<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1848,7 +1883,7 @@ fn eval_fn_45<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_46<
+fn eval_fn_47<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1872,7 +1907,7 @@ fn eval_fn_46<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_47<
+fn eval_fn_48<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1896,7 +1931,7 @@ fn eval_fn_47<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_48<
+fn eval_fn_49<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1920,7 +1955,7 @@ fn eval_fn_48<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_49<
+fn eval_fn_50<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1943,7 +1978,7 @@ fn eval_fn_49<
     witness_proxy.set_scratch_place(31usize, v_3);
 }
 #[allow(unused_variables)]
-fn eval_fn_50<
+fn eval_fn_51<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -1990,7 +2025,7 @@ fn eval_fn_50<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_51<
+fn eval_fn_52<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2021,7 +2056,7 @@ fn eval_fn_51<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_52<
+fn eval_fn_53<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2045,7 +2080,7 @@ fn eval_fn_52<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_53<
+fn eval_fn_54<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2069,7 +2104,7 @@ fn eval_fn_53<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_54<
+fn eval_fn_55<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2093,7 +2128,7 @@ fn eval_fn_54<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_55<
+fn eval_fn_56<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2117,7 +2152,7 @@ fn eval_fn_55<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_56<
+fn eval_fn_57<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2148,7 +2183,7 @@ fn eval_fn_56<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_57<
+fn eval_fn_58<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2168,10 +2203,10 @@ fn eval_fn_57<
     let v_2 = witness_proxy.get_witness_place(15usize);
     let v_3 = witness_proxy.get_witness_place(16usize);
     let v_4 = witness_proxy.get_witness_place(17usize);
-    let v_5 = witness_proxy.get_memory_place(8usize);
-    let v_6 = witness_proxy.get_witness_place(22usize);
-    let v_7 = witness_proxy.get_witness_place(26usize);
-    let v_8 = witness_proxy.get_witness_place(27usize);
+    let v_5 = witness_proxy.get_witness_place(22usize);
+    let v_6 = witness_proxy.get_witness_place(26usize);
+    let v_7 = witness_proxy.get_witness_place(27usize);
+    let v_8 = witness_proxy.get_witness_place(29usize);
     let v_9 = witness_proxy.get_witness_place_boolean(14usize);
     let v_10 = witness_proxy.get_witness_place_boolean(15usize);
     let v_11 = W::Mask::or(&v_9, &v_10);
@@ -2181,13 +2216,13 @@ fn eval_fn_57<
     let v_15 = W::Mask::or(&v_13, &v_14);
     let v_16 = W::Field::constant(BabyBearField(0u32));
     let mut v_17 = v_16;
-    W::Field::add_assign_product(&mut v_17, &v_1, &v_5);
+    W::Field::add_assign_product(&mut v_17, &v_1, &v_8);
     let mut v_18 = v_17;
-    W::Field::add_assign_product(&mut v_18, &v_2, &v_5);
+    W::Field::add_assign_product(&mut v_18, &v_2, &v_8);
     let mut v_19 = v_18;
-    W::Field::add_assign_product(&mut v_19, &v_3, &v_5);
+    W::Field::add_assign_product(&mut v_19, &v_3, &v_8);
     let mut v_20 = v_19;
-    W::Field::add_assign_product(&mut v_20, &v_4, &v_5);
+    W::Field::add_assign_product(&mut v_20, &v_4, &v_8);
     let v_21 = W::Field::constant(BabyBearField(133099247u32));
     let mut v_22 = v_0;
     W::Field::mul_assign(&mut v_22, &v_21);
@@ -2203,53 +2238,53 @@ fn eval_fn_57<
     let mut v_28 = v_1;
     W::Field::mul_assign(&mut v_28, &v_27);
     let mut v_29 = v_26;
-    W::Field::add_assign_product(&mut v_29, &v_28, &v_6);
+    W::Field::add_assign_product(&mut v_29, &v_28, &v_5);
     let v_30 = W::Field::constant(BabyBearField(1073182584u32));
     let mut v_31 = v_1;
     W::Field::mul_assign(&mut v_31, &v_30);
     let mut v_32 = v_29;
-    W::Field::add_assign_product(&mut v_32, &v_31, &v_7);
+    W::Field::add_assign_product(&mut v_32, &v_31, &v_6);
     let v_33 = W::Field::constant(BabyBearField(268295646u32));
     let mut v_34 = v_1;
     W::Field::mul_assign(&mut v_34, &v_33);
     let mut v_35 = v_32;
-    W::Field::add_assign_product(&mut v_35, &v_34, &v_8);
+    W::Field::add_assign_product(&mut v_35, &v_34, &v_7);
     let mut v_36 = v_2;
     W::Field::mul_assign(&mut v_36, &v_27);
     let mut v_37 = v_35;
-    W::Field::add_assign_product(&mut v_37, &v_36, &v_6);
+    W::Field::add_assign_product(&mut v_37, &v_36, &v_5);
     let mut v_38 = v_2;
     W::Field::mul_assign(&mut v_38, &v_30);
     let mut v_39 = v_37;
-    W::Field::add_assign_product(&mut v_39, &v_38, &v_7);
+    W::Field::add_assign_product(&mut v_39, &v_38, &v_6);
     let mut v_40 = v_2;
     W::Field::mul_assign(&mut v_40, &v_33);
     let mut v_41 = v_39;
-    W::Field::add_assign_product(&mut v_41, &v_40, &v_8);
+    W::Field::add_assign_product(&mut v_41, &v_40, &v_7);
     let mut v_42 = v_3;
     W::Field::mul_assign(&mut v_42, &v_27);
     let mut v_43 = v_41;
-    W::Field::add_assign_product(&mut v_43, &v_42, &v_6);
+    W::Field::add_assign_product(&mut v_43, &v_42, &v_5);
     let mut v_44 = v_3;
     W::Field::mul_assign(&mut v_44, &v_30);
     let mut v_45 = v_43;
-    W::Field::add_assign_product(&mut v_45, &v_44, &v_7);
+    W::Field::add_assign_product(&mut v_45, &v_44, &v_6);
     let mut v_46 = v_3;
     W::Field::mul_assign(&mut v_46, &v_33);
     let mut v_47 = v_45;
-    W::Field::add_assign_product(&mut v_47, &v_46, &v_8);
+    W::Field::add_assign_product(&mut v_47, &v_46, &v_7);
     let mut v_48 = v_4;
     W::Field::mul_assign(&mut v_48, &v_27);
     let mut v_49 = v_47;
-    W::Field::add_assign_product(&mut v_49, &v_48, &v_6);
+    W::Field::add_assign_product(&mut v_49, &v_48, &v_5);
     let mut v_50 = v_4;
     W::Field::mul_assign(&mut v_50, &v_30);
     let mut v_51 = v_49;
-    W::Field::add_assign_product(&mut v_51, &v_50, &v_7);
+    W::Field::add_assign_product(&mut v_51, &v_50, &v_6);
     let mut v_52 = v_4;
     W::Field::mul_assign(&mut v_52, &v_33);
     let mut v_53 = v_51;
-    W::Field::add_assign_product(&mut v_53, &v_52, &v_8);
+    W::Field::add_assign_product(&mut v_53, &v_52, &v_7);
     let v_54 = W::Field::constant(BabyBearField(268435390u32));
     let mut v_55 = v_16;
     W::Field::add_assign_product(&mut v_55, &v_54, &v_1);
@@ -2270,7 +2305,7 @@ fn eval_fn_57<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_58<
+fn eval_fn_59<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2365,7 +2400,7 @@ fn eval_fn_58<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_59<
+fn eval_fn_60<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2402,7 +2437,7 @@ fn eval_fn_59<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_61<
+fn eval_fn_62<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2444,7 +2479,7 @@ fn eval_fn_61<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_62<
+fn eval_fn_63<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2467,7 +2502,7 @@ fn eval_fn_62<
     witness_proxy.set_witness_place_boolean(55usize, v_4);
 }
 #[allow(unused_variables)]
-fn eval_fn_63<
+fn eval_fn_64<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2513,7 +2548,7 @@ fn eval_fn_63<
     witness_proxy.set_scratch_place(1usize, v_19);
 }
 #[allow(unused_variables)]
-fn eval_fn_64<
+fn eval_fn_65<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2572,7 +2607,7 @@ fn eval_fn_64<
     witness_proxy.set_scratch_place(2usize, v_27);
 }
 #[allow(unused_variables)]
-fn eval_fn_65<
+fn eval_fn_66<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2638,7 +2673,7 @@ fn eval_fn_65<
     witness_proxy.set_scratch_place(3usize, v_31);
 }
 #[allow(unused_variables)]
-fn eval_fn_66<
+fn eval_fn_67<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2681,7 +2716,7 @@ fn eval_fn_66<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_67<
+fn eval_fn_68<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2709,7 +2744,7 @@ fn eval_fn_67<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_68<
+fn eval_fn_69<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2733,7 +2768,7 @@ fn eval_fn_68<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_69<
+fn eval_fn_70<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2764,7 +2799,7 @@ fn eval_fn_69<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_70<
+fn eval_fn_71<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2824,7 +2859,7 @@ fn eval_fn_70<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_71<
+fn eval_fn_72<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2855,7 +2890,7 @@ fn eval_fn_71<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_72<
+fn eval_fn_73<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2886,7 +2921,7 @@ fn eval_fn_72<
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_73<
+fn eval_fn_74<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2926,7 +2961,7 @@ fn eval_fn_73<
     witness_proxy.set_scratch_place(24usize, v_15);
 }
 #[allow(unused_variables)]
-fn eval_fn_74<
+fn eval_fn_75<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -2969,7 +3004,7 @@ fn eval_fn_74<
     witness_proxy.set_scratch_place(25usize, v_17);
 }
 #[allow(unused_variables)]
-fn eval_fn_75<
+fn eval_fn_76<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -3013,7 +3048,7 @@ fn eval_fn_75<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_76<
+fn eval_fn_77<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -3116,7 +3151,7 @@ pub fn evaluate_witness_fn<
     eval_fn_57(witness_proxy);
     eval_fn_58(witness_proxy);
     eval_fn_59(witness_proxy);
-    eval_fn_61(witness_proxy);
+    eval_fn_60(witness_proxy);
     eval_fn_62(witness_proxy);
     eval_fn_63(witness_proxy);
     eval_fn_64(witness_proxy);
@@ -3132,4 +3167,5 @@ pub fn evaluate_witness_fn<
     eval_fn_74(witness_proxy);
     eval_fn_75(witness_proxy);
     eval_fn_76(witness_proxy);
+    eval_fn_77(witness_proxy);
 }

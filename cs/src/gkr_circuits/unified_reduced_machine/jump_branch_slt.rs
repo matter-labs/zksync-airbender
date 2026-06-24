@@ -379,9 +379,55 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // boolean conditions. The packed input references rs1_sign +
     // comparison_result_is_zero (peeked above); the witness resolver orders the
     // peeks by data dependency.
+    // Second-operand sign source for the comparison table. The table reads the second
+    // operand's sign from bit 15 of its low-16 input. For the immediate variant (SLT/SLTI:
+    // the decoder forces rs2 = x0 and carries the operand in `imm`) that sign must come
+    // from the immediate's high limb, not rs2's (which is 0) -- otherwise signed `slti`
+    // with a negative immediate resolves to the wrong value. Gated by `is_slt` so BRANCH
+    // keeps rs2's high limb (its `imm` is the jump offset, not a comparison operand).
+    // Mirrors `slt_branch_sign_source`. Lives in the shared scratch pool (layer 0, like
+    // `rs1_sign`, so the pooled lookup input stays single-layer); needs its own slot
+    // because the gated term is degree 2 and lookup inputs must be degree 1.
+    let slt_sign_source = scratch_vars[3];
+    let imm_high_var = inputs.decoder_data.imm[1];
+    let is_slt_var = is_slt.expect_variable();
+    {
+        let rs2_high_var = rs2_limbs[1];
+        let f2_flags = f2_flag_vars;
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let rs2_high = placer.get_u16(rs2_high_var);
+            let imm_high = placer.get_u16(imm_high_var);
+            let is_slt = placer.get_boolean(is_slt_var);
+            let zero = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0);
+            let addend =
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::select(&is_slt, &imm_high, &zero);
+            // No overflow: mutual exclusion (imm != 0 => rs2 = x0) keeps the sum <= 0xFFFF.
+            let (sign_source, _of) = rs2_high.overflowing_add(&addend);
+            // Aliased pool slot (shared with Family 3): write only when F2 fires.
+            let is_fam2 = {
+                let mut m = placer.get_boolean(f2_flags[0]);
+                m = m.or(&placer.get_boolean(f2_flags[1]));
+                m = m.or(&placer.get_boolean(f2_flags[2]));
+                m = m.or(&placer.get_boolean(f2_flags[3]));
+                m
+            };
+            placer.conditionally_assign_u16(slt_sign_source, &is_fam2, &sign_source);
+        };
+        cs.set_values(value_fn);
+    }
+    // Gated binding `slt_sign_source = rs2_high + is_slt * imm_high` on F2 rows. `is_slt`
+    // is already zero off-Family-2, so gating only the rs2_high / slt_sign_source terms by
+    // `is_fam2_sum()` keeps this degree 2 while still vanishing on non-F2 rows (leaving the
+    // aliased slot free for Family 3).
+    cs.add_constraint(
+        is_fam2_sum() * Term::from(slt_sign_source)
+            - is_fam2_sum() * rs2_high_c.clone()
+            - Term::from(is_slt_var) * Term::from(imm_high_var),
+    );
+
     let should_jump_or_slt_value = scratch_vars[2];
     let cond_jmp_input: Constraint<F> = Constraint::empty()
-        + rs2_high_c.clone()
+        + Term::from(slt_sign_source)
         + Term::from((F::from_u32(1 << 16).unwrap(), rs1_sign))
         + Term::from((F::from_u32(1 << 17).unwrap(), add_rel_0_final_of_var))
         + Term::from((F::from_u32(1 << 18).unwrap(), comparison_result_is_zero))

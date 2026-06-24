@@ -376,6 +376,39 @@ fn apply_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         cs::circuit::LookupQueryTableType::Constant(TableType::U16GetSign),
     );
 
+    // Second-operand sign source for the comparison table. The table reads the second
+    // operand's sign from bit 15 of its low-16 input. For the immediate variant (SLT/SLTI:
+    // the decoder forces rs2 = x0 and carries the operand in `imm`) that sign must come
+    // from the immediate's high limb, not rs2's (which is 0) -- otherwise signed `slti`
+    // with a negative immediate resolves to the wrong value. Gated by `is_slt` so BRANCH
+    // keeps rs2's high limb (its `imm` is the jump offset, not a comparison operand).
+    // Mutually exclusive by decode (`imm != 0 => rs2 = x0`), so the gated sum is a select
+    // and stays within 16 bits. Mirrors `slt_branch_sign_source`. Needs its own committed
+    // variable: the gated term is degree 2 and lookup inputs must be degree 1.
+    let slt_sign_source = cs.add_named_variable("slt/branch second-operand sign source");
+    {
+        let rs2_high_var = rs2_limbs[1];
+        let imm_high_var = inputs.decoder_data.imm[1];
+        let is_slt_var = is_slt.get_variable().unwrap();
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let rs2_high = placer.get_u16(rs2_high_var);
+            let imm_high = placer.get_u16(imm_high_var);
+            let is_slt = placer.get_boolean(is_slt_var);
+            let zero = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0);
+            let addend =
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::select(&is_slt, &imm_high, &zero);
+            // No overflow: mutual exclusion keeps the sum <= 0xFFFF.
+            let (sign_source, _of) = rs2_high.overflowing_add(&addend);
+            placer.assign_u16(slt_sign_source, &sign_source);
+        };
+        cs.set_values(value_fn);
+    }
+    cs.add_constraint_expr(
+        Expr::<F>::var(slt_sign_source)
+            - Expr::<F>::var(rs2_limbs[1])
+            - Expr::<F>::var(inputs.decoder_data.imm[1]).mask(is_slt),
+    );
+
     // and now we can resolve jump. Note that SLT/SLTU use the same formal(!) funct3 as BLT/BLTU,
     // and for JAL/JALR we formally set funct3 to be such that jump resolution will be always
     // false, so in computing next PC below we can avoid thinking about overlapping
@@ -383,7 +416,7 @@ fn apply_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     let should_jump_or_slt_value = cs.add_named_variable("jump resolution variable");
     cs.set_variables_from_lookup_constrained(
         &[LookupInput::from(
-            Expr::<F>::var(rs2_limbs[1])
+            Expr::<F>::var(slt_sign_source)
                 + Expr::var(rs1_sign) * F::from_u32(1 << 16).unwrap()
                 + Expr::var(add_rel_0_final_of_var) * F::from_u32(1 << 17).unwrap()
                 + Expr::var(comparison_result_is_zero) * F::from_u32(1 << 18).unwrap()
@@ -739,6 +772,70 @@ mod test {
                 StructuredStatement::AssertZero { expr, .. }
                     if grouped_selector_terms_count(expr) >= 4
             )));
+    }
+
+    #[test]
+    fn conditional_table_resolves_signed_slti_from_immediate_sign() {
+        // Executable spec for the signed-SLTI sign fix. The `ConditionalJmpBranchSlt` table
+        // derives the second operand's sign from bit 15 of its low-16 input. For the
+        // immediate variant (SLT/SLTI: the decoder forces rs2 = x0 and carries the operand
+        // in `imm`) the circuit must feed the IMMEDIATE's high limb there. Feeding rs2's
+        // high limb (= 0, the old behaviour) is exactly the bug.
+        use ::field::baby_bear::base::BabyBearField;
+
+        let table = crate::tables::create_conditional_op_resolution_table::<BabyBearField>(0);
+
+        // Pack a key exactly as `create_conditional_op_resolution_table` decodes it:
+        // bits 0..16 = second-operand sign source, bit 16 = rs1_sign, bit 17 = unsigned_lt,
+        // bit 18 = eq, bits 19..22 = funct3.
+        let resolve =
+            |sign_source: u32, rs1_sign: bool, unsigned_lt: bool, eq: bool, funct3: u32| -> u32 {
+                let k = (sign_source & 0xFFFF)
+                    | ((rs1_sign as u32) << 16)
+                    | ((unsigned_lt as u32) << 17)
+                    | ((eq as u32) << 18)
+                    | (funct3 << 19);
+                table.lookup_value::<1>(&[BabyBearField::new(k)])[0].as_u32_reduced()
+            };
+
+        const SLT_FUNCT3: u32 = 0b010;
+
+        // `slti rd, x0, -1`: rs1 = 0 (>= 0), rs2 = x0, imm = -1 (high limb 0xFFFF).
+        // unsigned_lt = borrow(rs1 - imm) = 1. Signed `0 < -1` = false => correct result 0.
+        // Old (buggy) sign source = rs2 high limb = 0 -> table takes the same-sign branch and
+        // returns unsigned_lt = 1 (WRONG). Fixed sign source = imm high limb = 0xFFFF ->
+        // table sees rs2 < 0, rs1 >= 0 and returns 0 (CORRECT).
+        assert_eq!(
+            resolve(0x0000, false, true, false, SLT_FUNCT3),
+            1,
+            "documents the bug: feeding rs2's high limb (0) resolves signed `slti _,x0,-1` to 1"
+        );
+        assert_eq!(
+            resolve(0xFFFF, false, true, false, SLT_FUNCT3),
+            0,
+            "fix: feeding the immediate's high limb (0xFFFF) resolves signed `slti _,x0,-1` to 0"
+        );
+    }
+
+    #[test]
+    fn jump_branch_slt_binds_immediate_sign_source() {
+        // Regression guard for the signed-SLTI sign fix. The comparison table's
+        // second-operand sign must be fed from a dedicated, value-bound sign-source variable
+        // (rs2 high limb gated-summed with is_slt * imm high limb), not from rs2's high limb
+        // directly. Reverting the fix removes this variable and reddens the test.
+        let mut cs = BasicAssembly::<F>::new();
+        jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
+        let (output, _) = cs.finalize();
+
+        // Reverting the fix removes this variable. (That it is value-bound rather than
+        // dangling is covered separately by the determinism sweep over the compiled layout.)
+        assert!(
+            output
+                .variable_names
+                .values()
+                .any(|name| name.as_str() == "slt/branch second-operand sign source"),
+            "the SLTI sign fix must introduce the sign-source variable"
+        );
     }
 
     #[test]

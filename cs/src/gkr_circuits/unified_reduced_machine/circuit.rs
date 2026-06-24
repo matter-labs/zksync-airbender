@@ -84,7 +84,7 @@ const UNIFIED_SCRATCH_BOOL_COUNT: usize = {
 };
 
 pub(super) const F1_SCRATCH_VARS: usize = 0;
-pub(super) const F2_SCRATCH_VARS: usize = 3; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value
+pub(super) const F2_SCRATCH_VARS: usize = 4; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value, slt_sign_source 
 pub(super) const F3_SCRATCH_VARS: usize = 21; // shift/binop scratch_space (17) + 4 rs1/rs2 low-byte split points
 pub(super) const F4_SCRATCH_VARS: usize = 2; // ram_addr[0], ram_addr[1]
 
