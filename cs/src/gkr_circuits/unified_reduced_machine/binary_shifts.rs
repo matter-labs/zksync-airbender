@@ -49,7 +49,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     let truncated_shift_amount = scratch_space[0];
     let shift_outputs: [Variable; 16] = core::array::from_fn(|i| scratch_space[i + 1]);
     let shift_output_chunks = shift_outputs.as_chunks::<4>().0;
-    
+
     let inv_256 = F::from_u32_with_reduction(1 << 8).inverse().unwrap();
     let rs1_b0 = scratch_space[17];
     let rs1_b2 = scratch_space[18];
