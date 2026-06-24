@@ -584,6 +584,117 @@ fn shared_dram_leaves(inst: &s3_gap::instance::OracleInstance) -> usize {
     uses.values().filter(|&&u| u >= 2).count()
 }
 
+/// Format `2^w` exactly for small `w`, else as `10^d`.
+fn pow2_str(w: u32) -> String {
+    if w <= 62 {
+        format!("{}", 1u64 << w)
+    } else {
+        format!("~10^{:.0}", w as f64 * std::f64::consts::LOG10_2)
+    }
+}
+
+/// CACHEABLE-CANDIDATE CENSUS for the "fork cache-vs-recompute per multi-consumer
+/// node" idea. Fixing the binary decision at every cacheable candidate makes the
+/// reference string deterministic (kills the keep-vs-recompute circularity), so a
+/// fixed order's inner problem becomes an enumeration over `2^K` decision vectors.
+///
+/// But the decisions only interact when their live-ranges overlap, so the inner
+/// problem is solvable by a left-to-right DP whose state is the set of currently
+/// "in-flight" decisions — cost `roots × 2^W`, where `W` = max concurrent
+/// cross-root candidate live-ranges. `W` (not `K`) is the real tractability knob.
+///
+/// Per circuit L0 we report, on the canonical scheduling DAG (`extract_instance`):
+///   - `K`   = #nodes with ≥2 consumers (the user's raw fork count → 2^K variants)
+///     split into recompute (Add/Mul; the hard ones) vs reload (Read/Prior).
+///   - `K_x` = those whose reuse spans ≥2 DISTINCT roots (the real cross-root cache
+///     decisions; same-cone reuse is handled by the within-stage SU peak).
+///   - `W`   = max, over root boundaries, of cross-root candidates spanning it.
+#[test]
+#[ignore = "DAG fan-out census for the cache-fork tractability analysis; run with --ignored"]
+fn dag_fanout_census() {
+    use std::collections::HashSet;
+    use s3_gap::instance::NodeKind;
+
+    println!("\n=== CACHEABLE-CANDIDATE CENSUS (fork = cache vs recompute per multi-consumer node) ===");
+    println!("K=#(≥2 consumers); K_x=cross-root-reused (real cache decisions); W=max concurrent → DP state 2^W\n");
+    for &fixture in ALL_FIXTURES {
+        let short = fixture.trim_end_matches("_layout_gkr.json");
+        let Some((layer, cross)) = try_load_l0(fixture) else {
+            println!("[{short}] LOAD FAILED");
+            continue;
+        };
+        let inst = extract_instance(&layer, &cross, REAL_BUDGET);
+        let n = inst.nodes.len();
+        // extract_instance assigns id == topo index, so nodes[i].id == i.
+        let mut consumers = vec![0u32; n];
+        for nd in &inst.nodes {
+            for &c in &nd.children {
+                consumers[c as usize] += 1;
+            }
+        }
+        for &r in &inst.roots {
+            consumers[r as usize] += 1;
+        }
+        // first/last use root-index per node (DFS per root, like distinct_live_values).
+        let mut first = vec![u32::MAX; n];
+        let mut last = vec![0u32; n];
+        let mut seen_any = vec![false; n];
+        for (ri, &root) in inst.roots.iter().enumerate() {
+            let ri = ri as u32;
+            let mut stack = vec![root];
+            let mut seen: HashSet<u32> = HashSet::new();
+            while let Some(id) = stack.pop() {
+                if !seen.insert(id) {
+                    continue;
+                }
+                let i = id as usize;
+                seen_any[i] = true;
+                first[i] = first[i].min(ri);
+                last[i] = last[i].max(ri);
+                for &c in &inst.nodes[i].children {
+                    stack.push(c);
+                }
+            }
+        }
+        let (mut k_all, mut k_recompute, mut k_reload, mut k_x, mut max_fanout) = (0, 0, 0, 0, 0u32);
+        let mut intervals: Vec<(u32, u32)> = Vec::new();
+        for i in 0..n {
+            max_fanout = max_fanout.max(consumers[i]);
+            if consumers[i] < 2 {
+                continue;
+            }
+            k_all += 1;
+            let recompute = matches!(inst.nodes[i].kind, NodeKind::Add | NodeKind::Mul);
+            let reload = matches!(inst.nodes[i].kind, NodeKind::Read | NodeKind::Prior);
+            if recompute {
+                k_recompute += 1;
+            }
+            if reload {
+                k_reload += 1;
+            }
+            // cross-root reuse: consumed under ≥2 distinct roots → a real cache decision
+            if seen_any[i] && last[i] > first[i] {
+                k_x += 1;
+                if recompute || reload {
+                    intervals.push((first[i], last[i]));
+                }
+            }
+        }
+        // W: max concurrent cross-root candidate intervals spanning a root boundary.
+        let nr = inst.roots.len() as u32;
+        let mut w = 0u32;
+        for b in 0..nr.saturating_sub(1) {
+            let active = intervals.iter().filter(|(f, l)| *f <= b && *l >= b + 1).count() as u32;
+            w = w.max(active);
+        }
+        println!(
+            "[{short:<32}] N={n:<5} roots={:<4} | K={k_all:<4}(recompute={k_recompute} reload={k_reload}) maxfanout={max_fanout:<4} | K_x={k_x:<4} | W={w:<3} → 2^W={}",
+            inst.roots.len(),
+            pow2_str(w),
+        );
+    }
+}
+
 /// Map a `(E−J)/D` ratio to its qualitative direction.
 fn direction(ratio: f64) -> &'static str {
     if ratio >= 0.15 {
@@ -592,5 +703,159 @@ fn direction(ratio: f64) -> &'static str {
         "order ~irrelevant (CachingOnly-leaning)"
     } else {
         "Marginal"
+    }
+}
+
+// ── Multi-circuit generalization (does the add_sub-L0 CachingOnly verdict hold?) ─
+
+/// Every compiled GKR circuit fixture (`*_layout_gkr.json`) in `cs/compiled_circuits`.
+const ALL_FIXTURES: &[&str] = &[
+    "add_sub_lui_auipc_mop_layout_gkr.json",
+    "bigint_with_extended_control_layout_gkr.json",
+    "blake2_g_function_layout_gkr.json",
+    "blake2_with_extended_control_layout_gkr.json",
+    "inits_and_teardowns_preprocessed_layout_gkr.json",
+    "jump_branch_slt_layout_gkr.json",
+    "keccak_special5_layout_gkr.json",
+    "mem_subword_only_layout_gkr.json",
+    "mem_word_only_layout_gkr.json",
+    "shift_binop_layout_gkr.json",
+    "unsigned_mul_div_layout_gkr.json",
+];
+
+/// Non-panicking L0 loader: returns `(layer0, full-dag cross map)` or `None` if a
+/// fixture fails to load/lower/validate (so one bad circuit cannot abort the sweep).
+fn try_load_l0(fixture: &str) -> Option<(DagLayer, HashMap<ReadPlace, FieldKind>)> {
+    let artifact = load_fixture(&compiled_circuit_dir().join(fixture))?;
+    let dag = lower_dag(&artifact).ok()?;
+    validate(&dag).ok()?;
+    let cross = build_cross_layer_field_map(&dag);
+    let layer = dag.layers.into_iter().next()?;
+    Some((layer, cross))
+}
+
+/// Dump an instance JSON to `$GAP_DUMP_DIR/<name>.json` for independent
+/// verification (the verifier adds the `"mode"` field). No-op if unset.
+fn dump_instance(name: &str, inst: &s3_gap::instance::OracleInstance) {
+    if let Ok(dir) = std::env::var("GAP_DUMP_DIR") {
+        let _ = std::fs::create_dir_all(&dir);
+        let path = PathBuf::from(dir).join(format!("{name}.json"));
+        if let Ok(s) = serde_json::to_string(inst) {
+            let _ = std::fs::write(&path, s);
+        }
+    }
+}
+
+/// GENERALIZATION: re-run the J-vs-E gap on EVERY circuit fixture, not just
+/// add_sub-L0, to test whether the CachingOnly verdict (order doesn't matter at
+/// budget 16) holds across circuit families or whether some circuit shows real
+/// order tension.
+///
+/// Per circuit: load L0, report roots/priors. Circuits with no Prior edges are
+/// cache-free tree forests where order is trivially irrelevant (skipped, noted).
+/// Otherwise: downscale to Prior-connected sweet-spot clusters, keep those with a
+/// DRAM leaf shared across ≥2 roots (the only order-sensitive ones), and solve
+/// J/E at the real budget 16. Each measured order-sensitive cluster's instance is
+/// dumped (`$GAP_DUMP_DIR`) for independent re-derivation.
+#[test]
+#[ignore = "S3 multi-circuit gap generalization; needs python3+ortools; run with --ignored"]
+fn s3_gap_multicircuit() {
+    if !oracle_available() {
+        eprintln!("[GAPX] SKIP: python3+ortools absent");
+        return;
+    }
+    const PER_CLUSTER_CAP: u64 = 30;
+    const MAX_MEASURED_PER_CIRCUIT: usize = 3;
+
+    println!("\n=== MULTI-CIRCUIT J-vs-E @ budget {REAL_BUDGET} (order-sensitive clusters) ===");
+    // (circuit, label, shared, status_both_optimal, J, E, D, ratio)
+    let mut summary: Vec<(String, bool, usize, bool, u64, u64, u64, f64)> = Vec::new();
+
+    for &fixture in ALL_FIXTURES {
+        let short = fixture.trim_end_matches("_layout_gkr.json");
+        let Some((layer, _cross)) = try_load_l0(fixture) else {
+            println!("\n[{short}] LOAD FAILED — skipped");
+            continue;
+        };
+        let priors = reachable_prior_sources(&layer);
+        println!("\n[{short}] L0: roots={} priors={}", layer.roots.len(), priors);
+        if priors == 0 {
+            println!("  no Prior edges → cache-free tree forest → order trivially irrelevant (skip)");
+            summary.push((short.to_string(), false, 0, true, 0, 0, 0, 0.0));
+            continue;
+        }
+
+        // Prior-connected sweet-spot clusters (≥1 prior, 2..=15 roots), densest first.
+        let candidates = sweet_spot_clusters(&layer, 1, 2, 15);
+        let mut measured = 0usize;
+        let mut any_shared = false;
+        for cand in &candidates {
+            if measured >= MAX_MEASURED_PER_CIRCUIT {
+                break;
+            }
+            let inst = extract_instance(&cand.layer, &cand.cross, REAL_BUDGET);
+            let shared = shared_dram_leaves(&inst);
+            if shared == 0 {
+                continue; // no cross-root DRAM sharing → no order tension to measure
+            }
+            any_shared = true;
+            let d = dag_traffic_floor(&cand.layer, &cand.cross) as u64;
+            let j = run_oracle(&inst, Mode::J, 0.01, PER_CLUSTER_CAP).expect("oracle J");
+            let e = run_oracle(&inst, Mode::E, 0.01, PER_CLUSTER_CAP).expect("oracle E");
+            let both_opt = j.status == "optimal" && e.status == "optimal";
+            let ratio = if both_opt && d > 0 {
+                (e.traffic as f64 - j.traffic as f64) / d as f64
+            } else {
+                f64::NAN
+            };
+            let label = format!("{short}-seed{}", cand.seed.0);
+            println!(
+                "  {label:<32} nodes={:<3} roots={} shared={shared} D={d} | \
+                 J={}({}) E={}({}){}",
+                inst.nodes.len(),
+                inst.roots.len(),
+                j.status,
+                j.traffic,
+                e.status,
+                e.traffic,
+                if both_opt {
+                    format!("  (E−J)/D={:.1}% → {}", ratio * 100.0, direction(ratio))
+                } else {
+                    "  [NOT both-optimal — bracket only]".to_string()
+                }
+            );
+            dump_instance(&label, &inst);
+            summary.push((label, true, shared, both_opt, j.traffic, e.traffic, d, ratio));
+            measured += 1;
+        }
+        if !any_shared {
+            println!("  caches present, but no sweet-spot cluster has a DRAM leaf shared across ≥2 roots");
+            summary.push((short.to_string(), false, 0, true, 0, 0, 0, 0.0));
+        }
+    }
+
+    // ── Cross-circuit verdict ─────────────────────────────────────────────────
+    println!("\n=== CROSS-CIRCUIT VERDICT ===");
+    let measured: Vec<_> = summary.iter().filter(|r| r.2 > 0 && r.3).collect();
+    let mut max_ratio = f64::MIN;
+    let mut any_order_matters = false;
+    for r in &measured {
+        if r.7.is_finite() {
+            max_ratio = max_ratio.max(r.7);
+            if r.7 >= 0.05 {
+                any_order_matters = true;
+                println!("  ORDER TENSION: {} (E−J)/D={:.1}%", r.0, r.7 * 100.0);
+            }
+        }
+    }
+    println!(
+        "  order-sensitive clusters measured both-optimal: {} | max (E−J)/D = {:.1}%",
+        measured.len(),
+        if max_ratio.is_finite() { max_ratio * 100.0 } else { 0.0 }
+    );
+    if any_order_matters {
+        println!("  VERDICT: order matters on ≥1 circuit → CachingOnly is NOT universal; investigate the flagged clusters.");
+    } else {
+        println!("  VERDICT: every order-sensitive cluster shows ~0% gap at budget {REAL_BUDGET} → CachingOnly generalizes (fix eviction, no order beam).");
     }
 }
