@@ -143,6 +143,78 @@ pub fn oracle_available() -> bool {
         .unwrap_or(false)
 }
 
+// ── Hand-built OracleInstance helpers for J-vs-E differential ───────────────
+
+/// Order-sensitive instance: two ext Priors P1 (id=0) and P2 (id=1), three
+/// fold roots R1=Add([P1]) (id=2), R2=Add([P2]) (id=3), R3=Add([P1,P2]) (id=4).
+/// Budget = 12 (= 3×ext = enough to hold one ext resident while computing one ext fold).
+///
+/// ## Why the identity order pays one extra ext reload (traffic gap = +4)
+///
+/// Both P1 and P2 are needed by R3 (the last root in identity order).
+/// Budget = 12 allows keeping at most ONE ext Prior resident while computing
+/// another ext fold (resident 4 + fold-acc 4 + transient 4 = 12 = budget).
+///
+/// **J-optimal order: [R1, R3, R2] (root indices 0→2, 2→4, 1→3)**
+///   t=0  compute R1=Add([P1])     load P1 (traffic 4); keep P1 resident
+///         base = 4(P1) + 4(R1-acc) = 8; trans = 4(P1-operand); total = 12 ✓
+///   t=1  compute R3=Add([P1,P2])  P1 available (no reload); load P2 (traffic 4)
+///         base = 4(R3-acc) = 4; trans = 4(max-operand P2) = 4; total = 8 ✓
+///         keep P2 resident (res[1,P2]=1 → live[1,P2]=1):
+///         base = 4(P2) + 4(R3-acc) = 8; trans = 4; total = 12 ✓
+///   t=2  compute R2=Add([P2])     P2 available (no reload); traffic = 0
+///         base = 4(R2-acc) = 4; trans = 4(P2-operand); total = 8 ✓
+///   **J traffic = 4 (P1) + 4 (P2) = 8**
+///
+/// **E (identity) order: [R1, R2, R3]**
+///   t=0  compute R1=Add([P1])     load P1 (traffic 4); must keep P1 for t=2
+///         keep P1 resident: base=4(P1)+4(R1)=8; trans=4; total=12 ✓
+///   t=1  compute R2=Add([P2])     load P2 (traffic 4); keep P1 for t=2
+///         must carry P1 (res[1,P1]=1 → live[1,P1]=1)
+///         base = 4(P1) + 4(R2-acc) = 8; trans = 4(P2-operand); total = 12 ✓
+///         but if also keeping P2 (res[1,P2]=1 → live[1,P2]=1):
+///         base = 4(P1) + 4(P2) + 4(R2-acc) = 12; trans = 4; total = 16 > 12 ✗
+///         → CANNOT keep both; at most one Prior can be carried across this stage
+///   t=2  compute R3=Add([P1,P2])  P1 available; must reload P2 (traffic 4)
+///         base = 4(R3-acc) = 4; trans = 4; total = 8 ✓
+///   **E traffic = 4 (P1) + 4 (P2) + 4 (P2 reload) = 12**
+///
+/// Gap = E − J = 12 − 8 = +4 = one ext Prior reload.
+pub fn order_sensitive_two_prior_instance() -> OracleInstance {
+    use crate::s3_gap::instance::{NodeKind, OracleNode};
+    OracleInstance {
+        // budget 12: 3×ext-width; allows one ext Prior resident while computing one ext fold
+        budget: 12,
+        // root 0 → R1 (id=2), root 1 → R2 (id=3), root 2 → R3 (id=4)
+        roots: vec![2, 3, 4],
+        nodes: vec![
+            OracleNode { id: 0, kind: NodeKind::Prior, width: 4, real_dram: true,  children: vec![] }, // P1
+            OracleNode { id: 1, kind: NodeKind::Prior, width: 4, real_dram: true,  children: vec![] }, // P2
+            OracleNode { id: 2, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![0] }, // R1=Add([P1])
+            OracleNode { id: 3, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![1] }, // R2=Add([P2])
+            OracleNode { id: 4, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![0, 1] }, // R3=Add([P1,P2])
+        ],
+    }
+}
+
+/// Order-insensitive instance: two independent single-Prior roots.
+/// P1 is only used by R1; P2 is only used by R2.  No matter the order, each
+/// Prior is loaded exactly once → J traffic == E traffic = 8.
+pub fn order_insensitive_instance() -> OracleInstance {
+    use crate::s3_gap::instance::{NodeKind, OracleNode};
+    OracleInstance {
+        budget: 8, // ext-fold streaming peak = 4+4 = 8; each root fits independently
+        // root 0 → R1 (id=1), root 1 → R2 (id=3)
+        roots: vec![1, 3],
+        nodes: vec![
+            OracleNode { id: 0, kind: NodeKind::Prior, width: 4, real_dram: true,  children: vec![] }, // P1
+            OracleNode { id: 1, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![0] }, // R1=Add([P1])
+            OracleNode { id: 2, kind: NodeKind::Prior, width: 4, real_dram: true,  children: vec![] }, // P2
+            OracleNode { id: 3, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![2] }, // R2=Add([P2])
+        ],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,5 +258,38 @@ mod tests {
         let r = run_oracle(&inst, Mode::J, 0.0, 60).expect("python3+ortools available");
         assert_eq!(r.status, "optimal");
         assert_eq!(r.traffic, 2, "recompute cost = 2 base reads");
+    }
+
+    #[test]
+    #[ignore = "needs python3 + ortools; run with --ignored"]
+    fn fixed_order_costs_more_than_free_order_when_order_matters() {
+        // See order_sensitive_two_prior_instance() for the hand-derived derivation.
+        // Briefly: budget=12 lets J pick order [R1,R3,R2] (P1 used consecutively,
+        // then P2 kept resident for R2) → traffic=8.  E (identity order [R1,R2,R3])
+        // cannot keep both P1 and P2 resident at stage 1 → must reload one at
+        // stage 2 → traffic=12.  Gap = +4 = one ext Prior reload.
+        let inst = order_sensitive_two_prior_instance();
+        let j = run_oracle(&inst, Mode::J, 0.0, 120).unwrap();
+        let e = run_oracle(&inst, Mode::E, 0.0, 120).unwrap();
+        println!("J: status={} traffic={} schedule={:?}", j.status, j.traffic,
+            j.schedule.iter().map(|s| (s.stage, s.root)).collect::<Vec<_>>());
+        println!("E: status={} traffic={} schedule={:?}", e.status, e.traffic,
+            e.schedule.iter().map(|s| (s.stage, s.root)).collect::<Vec<_>>());
+        assert_eq!(j.status, "optimal");
+        assert_eq!(e.status, "optimal");
+        assert!(j.traffic <= e.traffic, "J is the joint optimum, never worse than fixed-order E");
+        assert!(j.traffic < e.traffic, "this instance is order-sensitive → J strictly cheaper");
+    }
+
+    #[test]
+    #[ignore = "needs python3 + ortools; run with --ignored"]
+    fn fixed_order_equals_free_order_when_order_irrelevant() {
+        // independent single-read roots: order cannot change traffic
+        let inst = order_insensitive_instance();
+        let j = run_oracle(&inst, Mode::J, 0.0, 60).unwrap();
+        let e = run_oracle(&inst, Mode::E, 0.0, 60).unwrap();
+        println!("J: status={} traffic={}", j.status, j.traffic);
+        println!("E: status={} traffic={}", e.status, e.traffic);
+        assert_eq!(j.traffic, e.traffic, "no order sensitivity → J == E");
     }
 }
