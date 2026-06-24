@@ -5,6 +5,11 @@ cache_path = ".foundry/cache"
 via_ir = true
 optimizer = true
 optimizer_runs = 10000000
+# gkr_with_old_variants.sol is a pre-prune archive that reuses gkr.sol's contract
+# names; exclude it from compilation so a bare `forge build` in this dir (src=".")
+# never collides with gkr.sol. The bench scripts snapshot only gkr.sol, so they're
+# unaffected either way.
+skip = ["gkr_with_old_variants.sol"]
 
 # Inherits the default profile and disables the Yul Rematerialiser step
 # ('m' removed from the optimization sequence). Saves ~5.7k init gas on
