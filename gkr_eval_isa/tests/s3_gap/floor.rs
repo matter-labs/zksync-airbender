@@ -59,7 +59,8 @@ pub fn dag_traffic_floor(layer: &DagLayer, cross: &HashMap<ReadPlace, FieldKind>
 //   Root::Output { expr: Add([ext_A, base_B, ext_A_again, prior]) }
 //   - ext_A   = Read{LayerOutput{layer:1,offset:0}} + cross[..] = Ext → width 4
 //   - base_B  = Read{BaseLayerWitness{column:3}}               → width 1
-//   - prior   = Source(Prior{id: RootId(99)})                  → 0 traffic (excluded)
+//   - prior   = Source(Prior{id: RootId(0)})                   → 0 traffic (excluded)
+//   RootId(0) resolves to sinks[0].field = Ext (non-recursive sink-field lookup).
 //   ext_A referenced twice in Add but counts only ONCE (distinct SourceId check).
 //   Distinct real Reads = {A(ext,4), B(base,1)} → floor = 5.
 #[cfg(test)]
@@ -79,7 +80,7 @@ pub fn tests_support_two_reads_one_prior() -> (DagLayer, HashMap<ReadPlace, Fiel
     };
     // src 2: prior (avoidable — excluded from floor)
     let src_prior = SourceInfo {
-        kind: SourceKind::Prior { id: cs::gkr_compiler::dag_ir::RootId(99) },
+        kind: SourceKind::Prior { id: cs::gkr_compiler::dag_ir::RootId(0) },
     };
 
     // --- exprs ---
