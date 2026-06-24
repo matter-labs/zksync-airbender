@@ -234,6 +234,27 @@ pub fn connected_root_cluster(layer: &DagLayer, seed_root: RootId) -> DagLayer {
     }
 }
 
+// ── Public helpers (reused by the 8c harness) ───────────────────────────────
+
+/// Count the `SourceKind::Prior` sources reachable from a layer's roots — the
+/// order-sensitivity driver. Reachability uses the same edge set as
+/// `connected_root_cluster`/`validate()`, so the count matches what the oracle
+/// would see. A cluster with ≥2 Priors and several roots is where an order gap
+/// can actually manifest (a 1-Prior cluster is usually too small to show one).
+pub fn reachable_prior_sources(layer: &DagLayer) -> usize {
+    let mut keep_exprs: BTreeSet<u32> = BTreeSet::new();
+    let mut keep_sources: BTreeSet<u32> = BTreeSet::new();
+    let cluster: BTreeSet<RootId> = (0..layer.roots.len() as u32).map(RootId).collect();
+    for rid in 0..layer.roots.len() as u32 {
+        let top = root_expr(layer, RootId(rid));
+        collect_expr_cone(layer, top, &mut keep_exprs, &mut keep_sources, &cluster);
+    }
+    keep_sources
+        .iter()
+        .filter(|&&s| matches!(layer.sources[s as usize].kind, SourceKind::Prior { .. }))
+        .count()
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// The top `ExprId` of a root.
@@ -317,23 +338,7 @@ mod tests {
     use super::*;
     use cs::gkr_compiler::dag_ir::{validate, DagCircuit, DagGlobals};
 
-    /// Count the `SourceKind::Prior` sources actually reachable from the layer's
-    /// roots (the order-sensitivity driver). Reachability uses the validate()
-    /// edge set so the count matches what the oracle would see.
-    fn reachable_prior_sources(layer: &DagLayer) -> usize {
-        let mut keep_exprs: BTreeSet<u32> = BTreeSet::new();
-        let mut keep_sources: BTreeSet<u32> = BTreeSet::new();
-        let cluster: BTreeSet<RootId> =
-            (0..layer.roots.len() as u32).map(RootId).collect();
-        for rid in 0..layer.roots.len() as u32 {
-            let top = root_expr(layer, RootId(rid));
-            collect_expr_cone(layer, top, &mut keep_exprs, &mut keep_sources, &cluster);
-        }
-        keep_sources
-            .iter()
-            .filter(|&&s| matches!(layer.sources[s as usize].kind, SourceKind::Prior { .. }))
-            .count()
-    }
+    use super::reachable_prior_sources;
 
     /// Pick a seed root whose cone transitively reaches at least one `Prior`
     /// source — the smallest such cluster keeps the test fast while still
