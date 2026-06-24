@@ -19,8 +19,12 @@ pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &s
     serde_json::from_reader(src).unwrap()
 }
 
+mod orchestration;
+
 mod family_circuits;
 mod malicious_proofs;
+mod unified_circuit;
+mod unified_negative_tests;
 
 pub(crate) fn ensure_memory_trace_consistency<F: PrimeField>(
     memory_trace: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
@@ -170,6 +174,86 @@ fn read_value<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
             return F::ZERO;
         }
     }
+}
+
+/// Evaluate a `NoFieldLinearRelation` (used by lookup expressions) at the
+/// given row. Coefficients are stored as raw integers (`u32`) and reduced
+/// into `F` here. Non-base-layer addresses contribute zero, matching the
+/// fallback in `evaluate_linear_constraint`.
+fn evaluate_no_field_linear<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
+    rel: &NoFieldLinearRelation,
+    full_trace: &GKRFullWitnessTrace<F, A, B>,
+    absolute_row_idx: usize,
+) -> F {
+    let mut acc = F::from_u32_with_reduction(rel.constant);
+    for (coeff_raw, addr) in rel.linear_terms.iter() {
+        let v = read_value(full_trace, absolute_row_idx, *addr);
+        let mut term = F::from_u32_with_reduction(*coeff_raw);
+        term.mul_assign(&v);
+        acc.add_assign(&term);
+    }
+    acc
+}
+
+/// Validate that every range-check-16 and timestamp range-check lookup
+/// expression evaluates to an in-range integer at every row.
+///
+/// Coverage:
+/// - `range_check_16_lookup_expressions`: expression value must be in `[0, 2^16)`.
+/// - `timestamp_range_check_lookup_expressions`: expression value must be in
+///   `[0, 2^TIMESTAMP_COLUMNS_NUM_BITS)`.
+/// - Generic lookups (`generic_lookups`) are NOT validated — would need
+///   access to the committed table contents to verify tuple membership.
+///
+/// Returns `true` if every lookup expression is in range at every row,
+/// `false` otherwise (with a diagnostic `println!`).
+pub fn check_lookups_in_range<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    full_trace: &GKRFullWitnessTrace<F, A, B>,
+) -> bool {
+    let trace_len = full_trace.column_major_memory_trace[0].len();
+    assert!(trace_len.is_power_of_two());
+
+    const RC_16_BOUND: u32 = 1 << 16;
+    let timestamp_bound: u32 = 1u32 << TIMESTAMP_COLUMNS_NUM_BITS;
+
+    for (lookup_idx, lookup) in compiled_circuit
+        .range_check_16_lookup_expressions
+        .iter()
+        .enumerate()
+    {
+        for row in 0..trace_len {
+            let v = evaluate_no_field_linear(&lookup.input, full_trace, row);
+            let canonical = F::as_u32_reduced(v);
+            if canonical >= RC_16_BOUND {
+                println!(
+                    "RC-16 lookup #{} violated at row {}: value {} (= 0x{:x}) >= 2^16",
+                    lookup_idx, row, canonical, canonical
+                );
+                return false;
+            }
+        }
+    }
+
+    for (lookup_idx, lookup) in compiled_circuit
+        .timestamp_range_check_lookup_expressions
+        .iter()
+        .enumerate()
+    {
+        for row in 0..trace_len {
+            let v = evaluate_no_field_linear(&lookup.input, full_trace, row);
+            let canonical = F::as_u32_reduced(v);
+            if canonical >= timestamp_bound {
+                println!(
+                    "Timestamp-RC lookup #{} violated at row {}: value {} (= 0x{:x}) >= 2^{}",
+                    lookup_idx, row, canonical, canonical, TIMESTAMP_COLUMNS_NUM_BITS
+                );
+                return false;
+            }
+        }
+    }
+
+    true
 }
 
 pub fn check_satisfied_row<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
@@ -525,6 +609,33 @@ mod blake2_g_function {
         let fn_ptr = evaluate_witness_fn::<
             ScalarWitnessTypeSet<BabyBearField, true>,
             ColumnMajorWitnessProxy<'a, Blake2sGFunctionDelegationOracle<'b>, BabyBearField>,
+        >;
+        (fn_ptr)(proxy);
+    }
+}
+
+mod unified_reduced_machine {
+    use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
+    use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
+    use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
+    use ::cs::oracle::Placeholder;
+    use ::cs::witness_placer::WitnessTypeSet;
+    use ::cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
+    };
+    use ::field::baby_bear::base::BabyBearField;
+    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+
+    include!("../../../compiled_circuits/unified_reduced_machine_generated_gkr.rs");
+
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut ColumnMajorWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>, BabyBearField>,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<BabyBearField, true>,
+            ColumnMajorWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>, BabyBearField>,
         >;
         (fn_ptr)(proxy);
     }

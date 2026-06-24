@@ -626,14 +626,35 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
 
         if SINGLE_COLUMN {
             assert_eq!(input_rel.columns.len(), 1);
-            let rel = NoFieldSingleColumnLookupRelation {
+            let base_input = NoFieldSingleColumnLookupRelation {
                 input: input_rel.columns[0].clone(),
                 lookup_set_index: input_rel.lookup_set_index,
             };
-            if rel.input.is_trivial_single_input() {
-                todo!();
-            } else {
-                todo!();
+            match (num, den) {
+                (
+                    LookupNumerator::ExtensionValueWithAllConstantsMixed(num),
+                    LookupDenominator::ExtensionValueWithAllConstantsMixed(den),
+                ) => {
+                    use crate::gkr_compiler::lookup_nodes::LookupExplicitPairWithSingleColumnInputAggregationNode;
+                    let node = LookupExplicitPairWithSingleColumnInputAggregationNode {
+                        lhs_num: num,
+                        lhs_den: den,
+                        base_input,
+                        range_check_width: single_columns_lookup_width.unwrap(),
+                    };
+                    let ([num, den], rel) = node.add_at_layer(graph, input_layer + 1);
+                    intermediate_values
+                        .entry(input_layer + 1)
+                        .or_insert(vec![])
+                        .push((
+                            LookupNumerator::ExtensionValueWithAllConstantsMixed(num),
+                            LookupDenominator::ExtensionValueWithAllConstantsMixed(den),
+                        ));
+                    relations_map.insert([num, den], rel);
+                }
+                (num, den) => {
+                    panic!("combination of {:?}/{:?} is not yet supported", num, den);
+                }
             }
         } else {
             match (num, den) {

@@ -1,0 +1,25 @@
+[package]
+name = "zksync_os_multi_family_smoke"
+version = "0.1.0"
+edition = "2021"
+authors = ["The Matter Labs Team <hello@matterlabs.dev>"]
+homepage = "https://zksync.io/"
+repository = "https://github.com/matter-labs/zksync-airbender/"
+license = "MIT OR Apache-2.0"
+keywords = ["blockchain", "zksync", "zk", "risc-v"]
+categories = ["cryptography"]
+
+[dependencies]
+riscv_common = { path = "../../riscv_common"}
+blake2s_u32 = { path = "../../blake2s_u32", default-features = false }
+
+[profile.release]
+lto = true
+
+[features]
+# Exactly one Blake delegation feature must be enabled — `blake2s_u32`
+# emits a compile_error if both are.
+blake2_g_function = ["blake2s_u32/blake2_g_function"]
+blake2_with_compression = ["blake2s_u32/blake2_with_compression"]
+
+[workspace]

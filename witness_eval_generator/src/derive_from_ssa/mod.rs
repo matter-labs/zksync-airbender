@@ -498,6 +498,7 @@ mod test {
             "bigint_with_extended_control",
             "keccak_special5",
             "blake2_g_function",
+            "unified_reduced_machine",
         ] {
             // let compiled_circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
             //     &format!("../cs/compiled_circuits/{}_layout_no_caches_gkr.json", prefix),
