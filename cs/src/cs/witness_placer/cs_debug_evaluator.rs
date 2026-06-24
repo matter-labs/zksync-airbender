@@ -7,20 +7,33 @@ use field::PrimeField;
 
 use super::WitnessPlacer;
 
+#[derive(Clone, Copy)]
+struct ResolverWriteRecord<F: PrimeField> {
+    variable: Variable,
+    was_assigned: bool,
+    previous_value: F,
+}
+
 pub struct CSDebugWitnessEvaluator<F: PrimeField> {
     pub(crate) values: Vec<F>,
+    assigned: Vec<bool>,
     pub oracle: Option<Box<dyn Oracle<F>>>,
     pub(crate) table_driver: TableDriver<F>,
     pub(crate) preprocessed_decoder_table: Option<Vec<ExecutorFamilyDecoderData>>,
+    read_unassigned_during_resolver: bool,
+    written_during_resolver: Vec<ResolverWriteRecord<F>>,
 }
 
 impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
     pub fn new() -> Self {
         Self {
             values: Vec::new(),
+            assigned: Vec::new(),
             oracle: None,
             table_driver: TableDriver::new(),
             preprocessed_decoder_table: None,
+            read_unassigned_during_resolver: false,
+            written_during_resolver: Vec::new(),
         }
     }
 
@@ -54,8 +67,80 @@ impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
         }
     }
 
-    pub fn evaluate(&mut self, node: &impl WitnessResolutionDescription<F, Self>) {
-        node.evaluate(self);
+    pub(crate) fn get_assigned_value(&self, variable: Variable) -> Option<F> {
+        if variable.is_placeholder() {
+            panic!("variable is placeholder");
+        }
+        let idx = variable.0 as usize;
+        if idx >= self.values.len() || self.assigned.get(idx).copied().unwrap_or(false) == false {
+            None
+        } else {
+            Some(self.values[idx])
+        }
+    }
+
+    pub fn num_assigned(&self) -> usize {
+        self.assigned.iter().filter(|x| **x).count()
+    }
+
+    pub fn evaluate<R: WitnessResolutionDescription<F, Self> + ?Sized>(&mut self, node: &R) {
+        self.evaluate_resolver(node);
+    }
+
+    fn resize_to_include(&mut self, variable: Variable) -> usize {
+        if variable.is_placeholder() {
+            panic!("variable is placeholder");
+        }
+        let idx = variable.0 as usize;
+        if idx >= self.values.len() {
+            self.values.resize(idx + 1, F::ZERO);
+            self.assigned.resize(idx + 1, false);
+        }
+
+        idx
+    }
+
+    fn record_assignment(&mut self, variable: Variable, value: F) {
+        let idx = self.resize_to_include(variable);
+        self.written_during_resolver.push(ResolverWriteRecord {
+            variable,
+            was_assigned: self.assigned[idx],
+            previous_value: self.values[idx],
+        });
+        self.values[idx] = value;
+        self.assigned[idx] = true;
+    }
+
+    fn mark_unassigned_read(&mut self, variable: Variable) {
+        let idx = self.resize_to_include(variable);
+        if self.assigned[idx] == false {
+            self.read_unassigned_during_resolver = true;
+        }
+    }
+
+    fn evaluate_resolver<R: WitnessResolutionDescription<F, Self> + ?Sized>(
+        &mut self,
+        resolver: &R,
+    ) {
+        let previous_read_unassigned = self.read_unassigned_during_resolver;
+        let previous_written_len = self.written_during_resolver.len();
+
+        self.read_unassigned_during_resolver = false;
+        resolver.evaluate(self);
+
+        if self.read_unassigned_during_resolver {
+            for record in self.written_during_resolver[previous_written_len..]
+                .iter()
+                .rev()
+            {
+                let idx = record.variable.0 as usize;
+                self.values[idx] = record.previous_value;
+                self.assigned[idx] = record.was_assigned;
+            }
+        }
+
+        self.written_during_resolver.truncate(previous_written_len);
+        self.read_unassigned_during_resolver = previous_read_unassigned;
     }
 
     pub fn resolve_placeholder(
@@ -69,11 +154,7 @@ impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
         }
         if let Some(oracle) = self.oracle.as_ref() {
             let value = oracle.get_witness_from_placeholder(placeholder, subindex, 0);
-            let idx = variable.0 as usize;
-            if idx >= self.values.len() {
-                self.values.resize(idx + 1, F::ZERO);
-            }
-            self.values[idx] = value;
+            self.record_assignment(variable, value);
         }
     }
 }
@@ -97,7 +178,7 @@ impl<F: PrimeField> WitnessTypeSet<F> for CSDebugWitnessEvaluator<F> {
 
 impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
     fn record_resolver(&mut self, resolver: impl WitnessResolutionDescription<F, Self>) {
-        resolver.evaluate(self);
+        self.evaluate_resolver(&resolver);
     }
 
     fn get_oracle_field(&mut self, placeholder: Placeholder, subindex: usize) -> Self::Field {
@@ -145,10 +226,8 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
         if variable.is_placeholder() {
             panic!("variable is placeholder");
         }
-        let idx = variable.0 as usize;
-        if idx >= self.values.len() {
-            self.values.resize(idx + 1, F::ZERO);
-        }
+        self.mark_unassigned_read(variable);
+        let idx = self.resize_to_include(variable);
         self.values[idx]
     }
 
@@ -172,11 +251,7 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
         if variable.is_placeholder() {
             panic!("variable is placeholder");
         }
-        let idx = variable.0 as usize;
-        if idx >= self.values.len() {
-            self.values.resize(idx + 1, F::ZERO);
-        }
-        self.values[idx] = F::from_boolean(*value);
+        self.record_assignment(variable, F::from_boolean(*value));
     }
 
     #[inline(always)]
@@ -184,11 +259,7 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
         if variable.is_placeholder() {
             panic!("variable is placeholder");
         }
-        let idx = variable.0 as usize;
-        if idx >= self.values.len() {
-            self.values.resize(idx + 1, F::ZERO);
-        }
-        self.values[idx] = *value;
+        self.record_assignment(variable, *value);
     }
 
     #[inline(always)]

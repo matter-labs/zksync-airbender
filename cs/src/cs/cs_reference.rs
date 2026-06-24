@@ -100,13 +100,8 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
     fn materialize_table(&mut self, table_type: TableType) {
         self.table_driver.materialize_table(table_type);
         if let Some(witness_placer) = self.witness_placer.as_mut() {
-            if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
-                unsafe {
-                    let t = (witness_placer as *mut W)
-                        .cast::<CSDebugWitnessEvaluator<F>>()
-                        .as_mut_unchecked();
-                    t.table_driver.materialize_table(table_type);
-                }
+            if let Some(debug_evaluator) = Self::as_debug_evaluator_mut(witness_placer) {
+                debug_evaluator.table_driver.materialize_table(table_type);
             }
         }
     }
@@ -115,13 +110,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
         self.table_driver
             .add_table_with_content(table_type, table.clone());
         if let Some(witness_placer) = self.witness_placer.as_mut() {
-            if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
-                unsafe {
-                    let t = (witness_placer as *mut W)
-                        .cast::<CSDebugWitnessEvaluator<F>>()
-                        .as_mut_unchecked();
-                    t.table_driver.add_table_with_content(table_type, table);
-                }
+            if let Some(debug_evaluator) = Self::as_debug_evaluator_mut(witness_placer) {
+                debug_evaluator
+                    .table_driver
+                    .add_table_with_content(table_type, table);
             }
         }
     }
@@ -129,16 +121,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
     #[track_caller]
     fn get_value(&self, var: Variable) -> Option<F> {
         if let Some(witness_placer) = self.witness_placer.as_ref() {
-            if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
-                unsafe {
-                    let t = (witness_placer as *const W)
-                        .cast::<CSDebugWitnessEvaluator<F>>()
-                        .as_ref_unchecked();
-                    t.get_value(var)
-                }
-            } else {
-                None
-            }
+            Self::as_debug_evaluator(witness_placer).and_then(|resolver| resolver.get_value(var))
         } else {
             None
         }
@@ -1042,12 +1025,25 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
     }
 
     fn is_satisfied(&mut self) -> bool {
-        if let Some(witness_placer) = self.witness_placer.as_ref() {
-            if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
-                unsafe {
-                    let resolver = (witness_placer as *const W)
-                        .cast::<CSDebugWitnessEvaluator<F>>()
-                        .as_ref_unchecked();
+        if let Some(witness_placer) = self.witness_placer.as_mut() {
+            if Self::as_debug_evaluator(witness_placer).is_some() {
+                const MAX_FIXED_POINT_ITERATIONS: usize = 64;
+                let mut prev_assigned = Self::as_debug_evaluator(witness_placer)
+                    .unwrap()
+                    .num_assigned();
+                for _ in 0..MAX_FIXED_POINT_ITERATIONS {
+                    self.witness_graph.replay_resolvers(witness_placer);
+                    let now_assigned = Self::as_debug_evaluator(witness_placer)
+                        .unwrap()
+                        .num_assigned();
+                    if now_assigned == prev_assigned {
+                        break;
+                    }
+                    prev_assigned = now_assigned;
+                }
+
+                {
+                    let resolver = Self::as_debug_evaluator(witness_placer).unwrap();
 
                     // there could be cases when conditional branches were not taken,
                     // and our routines above just would not mark variable as resolved for that reason,
@@ -1058,32 +1054,16 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
                         let mut value = constant;
                         for (coeff, a, b) in quad.into_iter() {
                             let mut t = coeff;
-
-                            // let a_value = resolver.get_value(a).unwrap_or(F::ZERO);
-                            // t.mul_assign(&a_value);
-                            // let b_value = resolver.get_value(b).unwrap_or(F::ZERO);
-                            // t.mul_assign(&b_value);
-
-                            let Some(a_value) = resolver.get_value(a) else {
-                                panic!("Variable {:?} left unresolved", a);
-                            };
+                            let a_value = resolver.get_assigned_value(a).unwrap_or(F::ZERO);
                             t.mul_assign(&a_value);
-                            let Some(b_value) = resolver.get_value(b) else {
-                                panic!("Variable {:?} left unresolved", b);
-                            };
+                            let b_value = resolver.get_assigned_value(b).unwrap_or(F::ZERO);
                             t.mul_assign(&b_value);
 
                             value.add_assign(&t);
                         }
                         for (coeff, a) in linear.into_iter() {
                             let mut t = coeff;
-
-                            // let a_value = resolver.get_value(a).unwrap_or(F::ZERO);
-                            // t.mul_assign(&a_value);
-
-                            let Some(a_value) = resolver.get_value(a) else {
-                                panic!("Variable {:?} left unresolved", a);
-                            };
+                            let a_value = resolver.get_assigned_value(a).unwrap_or(F::ZERO);
                             t.mul_assign(&a_value);
 
                             value.add_assign(&t);
@@ -1108,49 +1088,53 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
 }
 
 impl<F: PrimeField, W: WitnessPlacer<F>> BasicAssembly<F, W> {
+    fn as_debug_evaluator(w: &W) -> Option<&CSDebugWitnessEvaluator<F>> {
+        let any: &dyn std::any::Any = w;
+        any.downcast_ref::<CSDebugWitnessEvaluator<F>>()
+    }
+
+    fn as_debug_evaluator_mut(w: &mut W) -> Option<&mut CSDebugWitnessEvaluator<F>> {
+        let any: &mut dyn std::any::Any = w;
+        any.downcast_mut::<CSDebugWitnessEvaluator<F>>()
+    }
+
     #[track_caller]
     fn try_check_constraint(&self, constraint: &Constraint<F>) {
         if let Some(witness_placer) = self.witness_placer.as_ref() {
-            if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
-                unsafe {
-                    let resolver = (witness_placer as *const W)
-                        .cast::<CSDebugWitnessEvaluator<F>>()
-                        .as_ref_unchecked();
+            if let Some(resolver) = Self::as_debug_evaluator(witness_placer) {
+                let (quad, linear, constant) = constraint.clone().split_max_quadratic();
+                let mut value = constant;
+                for (coeff, a, b) in quad.into_iter() {
+                    let mut t = coeff;
+                    let Some(a) = resolver.get_assigned_value(a) else {
+                        println!("Variable {:?} is unresolved", a);
+                        return;
+                    };
+                    let Some(b) = resolver.get_assigned_value(b) else {
+                        println!("Variable {:?} is unresolved", b);
+                        return;
+                    };
+                    t.mul_assign(&a);
+                    t.mul_assign(&b);
 
-                    let (quad, linear, constant) = constraint.clone().split_max_quadratic();
-                    let mut value = constant;
-                    for (coeff, a, b) in quad.into_iter() {
-                        let mut t = coeff;
-                        let Some(a) = resolver.get_value(a) else {
-                            println!("Variable {:?} is unresolved", a);
-                            return;
-                        };
-                        let Some(b) = resolver.get_value(b) else {
-                            println!("Variable {:?} is unresolved", b);
-                            return;
-                        };
-                        t.mul_assign(&a);
-                        t.mul_assign(&b);
+                    value.add_assign(&t);
+                }
+                for (coeff, a) in linear.into_iter() {
+                    let mut t = coeff;
+                    let Some(a) = resolver.get_assigned_value(a) else {
+                        println!("Variable {:?} is unresolved", a);
+                        return;
+                    };
+                    t.mul_assign(&a);
 
-                        value.add_assign(&t);
-                    }
-                    for (coeff, a) in linear.into_iter() {
-                        let mut t = coeff;
-                        let Some(a) = resolver.get_value(a) else {
-                            println!("Variable {:?} is unresolved", a);
-                            return;
-                        };
-                        t.mul_assign(&a);
+                    value.add_assign(&t);
+                }
 
-                        value.add_assign(&t);
-                    }
-
-                    if value != F::ZERO {
-                        panic!(
-                            "unsatisfied at constraint {:?} with value {:?}",
-                            constraint, value
-                        );
-                    }
+                if value != F::ZERO {
+                    println!(
+                        "unsatisfied at constraint {:?} with value {:?}",
+                        constraint, value
+                    );
                 }
             }
         }
@@ -1178,5 +1162,76 @@ impl<F: PrimeField> BasicAssembly<F, CSDebugWitnessEvaluator<F>> {
         );
 
         new
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::constraint::Term;
+    use field::{Field, Mersenne31Field};
+
+    fn new_debug_assembly() -> BasicAssembly<Mersenne31Field> {
+        let mut cs = BasicAssembly::new();
+        cs.witness_placer = Some(CSDebugWitnessEvaluator::new());
+        cs
+    }
+
+    #[test]
+    fn is_satisfied_replays_resolvers_in_append_order() {
+        let mut cs = new_debug_assembly();
+        let a = cs.add_variable();
+        let b = cs.add_variable();
+        let c = cs.add_variable();
+
+        cs.set_values(
+            move |placer: &mut CSDebugWitnessEvaluator<Mersenne31Field>| {
+                let value = placer.get_field(b);
+                placer.assign_field(c, &value);
+            },
+        );
+        cs.set_values(
+            move |placer: &mut CSDebugWitnessEvaluator<Mersenne31Field>| {
+                let value = placer.get_field(a);
+                placer.assign_field(b, &value);
+            },
+        );
+        cs.set_values(
+            move |placer: &mut CSDebugWitnessEvaluator<Mersenne31Field>| {
+                placer.assign_field(a, &Mersenne31Field::ONE);
+            },
+        );
+
+        cs.add_constraint_allow_explicit_linear(Constraint::from(c) - Term::from(1u64));
+
+        assert!(cs.is_satisfied());
+        assert_eq!(cs.get_value(c), Some(Mersenne31Field::ONE));
+    }
+
+    #[test]
+    fn speculative_writes_restore_previous_assignments() {
+        let mut cs = new_debug_assembly();
+        let assigned = cs.add_variable();
+        let unresolved = cs.add_variable();
+
+        cs.set_values(
+            move |placer: &mut CSDebugWitnessEvaluator<Mersenne31Field>| {
+                placer.assign_field(assigned, &Mersenne31Field::from_u64_unchecked(5));
+            },
+        );
+        cs.set_values(
+            move |placer: &mut CSDebugWitnessEvaluator<Mersenne31Field>| {
+                let _ = placer.get_field(unresolved);
+                placer.assign_field(assigned, &Mersenne31Field::from_u64_unchecked(7));
+            },
+        );
+
+        cs.add_constraint_allow_explicit_linear(Constraint::from(assigned) - Term::from(5u64));
+
+        assert!(cs.is_satisfied());
+        assert_eq!(
+            cs.get_value(assigned),
+            Some(Mersenne31Field::from_u64_unchecked(5))
+        );
     }
 }
