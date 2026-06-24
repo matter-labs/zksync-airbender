@@ -385,9 +385,10 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // from the immediate's high limb, not rs2's (which is 0) -- otherwise signed `slti`
     // with a negative immediate resolves to the wrong value. Gated by `is_slt` so BRANCH
     // keeps rs2's high limb (its `imm` is the jump offset, not a comparison operand).
-    // Mirrors `slt_branch_sign_source`. Lives in the shared scratch pool (layer 0, like
-    // `rs1_sign`, so the pooled lookup input stays single-layer); needs its own slot
-    // because the gated term is degree 2 and lookup inputs must be degree 1.
+    // The standalone `jump_branch_slt_family` circuit applies the same fix. Lives in the
+    // shared scratch pool (layer 0, like `rs1_sign`, so the pooled lookup input stays
+    // single-layer); needs its own slot because the gated term is degree 2 and lookup
+    // inputs must be degree 1.
     let slt_sign_source = scratch_vars[3];
     let imm_high_var = inputs.decoder_data.imm[1];
     let is_slt_var = is_slt.expect_variable();
@@ -415,10 +416,11 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
         };
         cs.set_values(value_fn);
     }
-    // Gated binding `slt_sign_source = rs2_high + is_slt * imm_high` on F2 rows. `is_slt`
-    // is already zero off-Family-2, so gating only the rs2_high / slt_sign_source terms by
-    // `is_fam2_sum()` keeps this degree 2 while still vanishing on non-F2 rows (leaving the
-    // aliased slot free for Family 3).
+    // Gated binding `slt_sign_source = rs2_high + is_slt * imm_high` on F2 rows. `is_slt` is
+    // a decoder one-hot family bit, provably zero on every non-Family-2 row (enforced by the
+    // dispatch one-hot in `circuit.rs`), so gating only the rs2_high / slt_sign_source terms
+    // by `is_fam2_sum()` keeps this degree 2 while the whole constraint still vanishes on
+    // non-F2 rows (leaving the aliased slot free for Family 3).
     cs.add_constraint(
         is_fam2_sum() * Term::from(slt_sign_source)
             - is_fam2_sum() * rs2_high_c.clone()

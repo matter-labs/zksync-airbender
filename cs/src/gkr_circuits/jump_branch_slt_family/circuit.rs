@@ -383,8 +383,8 @@ fn apply_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // with a negative immediate resolves to the wrong value. Gated by `is_slt` so BRANCH
     // keeps rs2's high limb (its `imm` is the jump offset, not a comparison operand).
     // Mutually exclusive by decode (`imm != 0 => rs2 = x0`), so the gated sum is a select
-    // and stays within 16 bits. Mirrors `slt_branch_sign_source`. Needs its own committed
-    // variable: the gated term is degree 2 and lookup inputs must be degree 1.
+    // and stays within 16 bits. Needs its own committed variable: the gated term is degree
+    // 2 and lookup inputs must be degree 1. (The unified circuit applies the same fix.)
     let slt_sign_source = cs.add_named_variable("slt/branch second-operand sign source");
     {
         let rs2_high_var = rs2_limbs[1];
