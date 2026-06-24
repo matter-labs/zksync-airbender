@@ -54,6 +54,12 @@ pub struct CompileStats {
     pub dram_reads: usize,     // SP1: not yet counted
     pub ldc_reads: usize,      // SP1: not yet counted
     pub special_reads: usize,  // SP1: not yet counted
+    /// Width-weighted DRAM traffic in cells: each real-DRAM read operand
+    /// (Read/Prior backing) contributes its field width (Ext=4, Base=1);
+    /// VirtualSetup-backed Global reads contribute 0 (resolver-computed, not DRAM).
+    /// This is the Phase-1 / S3 primary objective. `dram_reads` above stays the
+    /// per-operand transaction count (test-locked diagnostic).
+    pub dram_traffic: usize,
 }
 
 /// Opcode indices for `op_counts`.

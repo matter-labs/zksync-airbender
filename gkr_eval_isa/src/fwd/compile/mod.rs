@@ -51,9 +51,33 @@ pub(crate) fn classify_operand(op: &OperandLine) -> OperandClass {
 }
 
 /// Tally the traffic class of a single read operand into `stats`.
-fn tally_operand(op: &OperandLine, stats: &mut CompileStats) {
+///
+/// `field` is the operand's field (Base/Ext), used to width-weight `dram_traffic`.
+/// `backings` is the current layer's backing table, used to identify VirtualSetup-backed
+/// Global reads (which are resolver-computed, not real DRAM, and contribute 0 traffic).
+fn tally_operand(
+    op: &OperandLine,
+    field: OperandField,
+    backings: &super::binding::BackingTable,
+    stats: &mut CompileStats,
+) {
     match classify_operand(op) {
-        OperandClass::Dram => stats.dram_reads += 1,
+        OperandClass::Dram => {
+            stats.dram_reads += 1; // per-operand diagnostic, unchanged
+            // Width-weighted traffic: VirtualSetup-backed Global reads are
+            // resolver-computed, not DRAM → 0. Others cost the field width.
+            // Invariant: classify_operand returns Dram only for Global operands,
+            // so this `if let` always matches; it extracts the slot to check backing.
+            if let OperandLine::Global { slot, .. } = op {
+                let is_virtual = matches!(
+                    backings.backing(*slot),
+                    Some(super::binding::BackingKey::VirtualSetup { .. })
+                );
+                if !is_virtual {
+                    stats.dram_traffic += if field == OperandField::Ext { 4 } else { 1 };
+                }
+            }
+        }
         OperandClass::Ldc => stats.ldc_reads += 1,
         OperandClass::SpecialLit => {} // inline literal — near-free, not counted
         OperandClass::SpecialGather => stats.special_reads += 1,
@@ -325,11 +349,11 @@ pub fn compile_layer(
     stats.program_lanes = program.instrs.len();
     for instr in &program.instrs {
         match instr {
-            Instr::Mov { dir, dst, src, .. } => {
+            Instr::Mov { dir, dst, src, field, .. } => {
                 stats.op_counts[OP_MOV] += 1;
                 // Tally the read operand (src), if any.
                 if let Some(op) = src {
-                    tally_operand(op, &mut stats);
+                    tally_operand(op, *field, &ctx.backings, &mut stats);
                 }
                 // Count cell-targeting MOV destinations as cell_stores.
                 // `GlobalMaterialize` is an output WRITE (DstLine, not OperandLine)
@@ -344,32 +368,34 @@ pub fn compile_layer(
                     }
                 }
             }
-            Instr::Add { operands, .. } => {
+            Instr::Add { field, operands, .. } => {
                 stats.op_counts[OP_ADD] += 1;
                 for op in operands {
-                    tally_operand(op, &mut stats);
+                    tally_operand(op, *field, &ctx.backings, &mut stats);
                 }
             }
-            Instr::Mul { operands, .. } => {
+            Instr::Mul { field, operands, .. } => {
                 stats.op_counts[OP_MUL] += 1;
                 for op in operands {
-                    tally_operand(op, &mut stats);
+                    tally_operand(op, *field, &ctx.backings, &mut stats);
                 }
             }
-            Instr::Fma { pairs, .. } => {
+            Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
                 stats.op_counts[OP_FMA] += 1;
                 for (l, r) in pairs {
-                    tally_operand(l, &mut stats);
-                    tally_operand(r, &mut stats);
+                    tally_operand(l, *field_lhs, &ctx.backings, &mut stats);
+                    tally_operand(r, *field_rhs, &ctx.backings, &mut stats);
                 }
             }
         }
     }
     // Alias operands (CopyAlias roots, zero program lanes) still read their source.
     // Count Global aliases as dram_reads; other classes tallied the same way.
+    // RootOutput::Alias has no field annotation — alias outputs are stable-storage
+    // (never Smem, per the CopyAlias invariant) and always Base width.
     for (_, out) in &root_outputs {
         if let RootOutput::Alias(op) = out {
-            tally_operand(op, &mut stats);
+            tally_operand(op, OperandField::Base, &ctx.backings, &mut stats);
         }
     }
     // special_gathers = number of resolved-fold Specials emitted (SpecialTable length).
@@ -963,6 +989,60 @@ mod tests {
         }
         // The compiled layer validates cleanly with both resident + transient cells.
         validate_compiled(&compiled, &layer).expect("validate_compiled must pass");
+    }
+
+    // ── Task 1: width-weighted dram_traffic counter ───────────────────────────
+    //
+    // Build a single Add root with three operands:
+    //   - an Ext cross-layer Read{LayerOutput{1,0}}  → width 4, counts in dram_traffic
+    //   - a Base Read{BaseLayerWitness{0}}           → width 1, counts in dram_traffic
+    //   - a VirtualSetup{RangeCheck16Bits}           → resolver-computed, 0 traffic
+    //
+    // Expected: dram_reads = 3 (all three are Global operands, unchanged);
+    //           dram_traffic = 4 + 1 + 0 = 5.
+    fn single_root_layer_ext_base_vsetup() -> (DagLayer, GKRLayerDescription) {
+        use cs::gkr_compiler::dag_ir::VirtualSetupKind;
+        let mut arena = ArenaBuilder::new();
+        // Ext cross-layer read (field supplied via cross map below).
+        let s_ext = arena.intern_source(SourceKind::Read {
+            place: ReadPlace::LayerOutput { layer: 1, offset: 0 },
+        });
+        // Base witness read.
+        let s_base = arena.intern_source(SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column: 0 },
+        });
+        // VirtualSetup source — resolver-computed, 0 DRAM traffic.
+        let s_vs = arena.intern_source(SourceKind::VirtualSetup {
+            kind: VirtualSetupKind::RangeCheck16Bits,
+        });
+        let e_ext  = arena.source_expr(s_ext);
+        let e_base = arena.source_expr(s_base);
+        let e_vs   = arena.source_expr(s_vs);
+        // Add all three — the Ext operand makes the result Ext.
+        let add = arena.add(vec![e_ext, e_base, e_vs]);
+        let layer = DagLayer {
+            sources: arena.sources().to_vec(),
+            exprs: arena.exprs().to_vec(),
+            roots: vec![Root::Output { expr: add, sink: SinkId(0) }],
+            sinks: vec![SinkInfo {
+                kind: SinkKind::Inner { layer: 2, offset: 0 },
+                field: FieldKind::Ext, // Ext sink to accept the mixed (→ Ext) add
+            }],
+            batching: BatchingOrder { roots: vec![] },
+            origins: BTreeMap::new(),
+            resolutions: BTreeMap::new(),
+        };
+        (layer, artifact_layer(2))
+    }
+
+    #[test]
+    fn dram_traffic_weights_ext_and_zeroes_virtual_setup() {
+        let (layer, art_layer) = single_root_layer_ext_base_vsetup();
+        let mut cross: HashMap<ReadPlace, FieldKind> = HashMap::new();
+        cross.insert(ReadPlace::LayerOutput { layer: 1, offset: 0 }, FieldKind::Ext);
+        let compiled = compile_layer(&layer, &art_layer, &BTreeMap::new(), &cross, 1024).unwrap();
+        assert_eq!(compiled.stats.dram_reads, 3, "per-operand count unchanged (incl. vsetup)");
+        assert_eq!(compiled.stats.dram_traffic, 5, "4 (ext read) + 1 (base read) + 0 (vsetup)");
     }
 
     // Two Output roots both reference the same Read source; build_ref_string must
