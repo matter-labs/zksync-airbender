@@ -480,7 +480,7 @@ where
     let mut evals_flattened = vec![];
     for (k, v) in dimension_reducing_inputs[&initial_layer_for_sumcheck].iter() {
         match *k {
-            OutputType::PermutationProduct => {
+            OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
                 let mut final_evals: [Vec<E>; 2] = std::array::from_fn(|_| Vec::new());
                 for (i, addr) in v.output.iter().enumerate() {
                     let poly = gkr_storage.get_ext_poly(*addr);

@@ -12,7 +12,7 @@ use cs::{
     gkr_compiler::{CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp, GKRCircuitArtifact, GKRLayerDescription, GateArtifacts, InitsOrTeardownsTimestampAndValue, NoFieldGKRCacheRelation, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation, NoFieldSpecialMemoryContributionRelation}
 };
 // use cs::gkr_compiler::NoFieldStructuredExpression;
-use field::{PrimeField, baby_bear::base::BabyBearField};
+use field::baby_bear::base::BabyBearField;
 
 trait EachRefRev<T, const N: usize> {
     fn each_ref_rev(&self) -> [&T; N];
