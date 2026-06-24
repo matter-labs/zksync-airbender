@@ -275,18 +275,18 @@ fn test_csrrw_rejects_unsupported_csr() {
             // field is irrelevant - what we want to trip is the CSR table
             // lookup, not value flow.
             0,
-            |mut cs| {
-                assert!(
-                    !cs.is_satisfied(),
-                    "CSRRW on an unsupported CSR must violate the SpecialCSRProperties \
-                     lookup constraint"
-                );
-            },
+            |mut cs| !cs.is_satisfied(),
         )
     }));
 
     match outcome {
-        Ok(()) => {}
+        Ok(rejected) => {
+            assert!(
+                rejected,
+                "CSRRW on an unsupported CSR must be rejected, either by \
+                 unsatisfied constraints or by an add-time debug panic"
+            );
+        }
         Err(_) => {
             // The add-time debug constraint checker may reject this intentionally
             // invalid case via a panic before is_satisfied() runs.
