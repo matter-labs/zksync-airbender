@@ -782,32 +782,81 @@ pub struct SumcheckRound1SelectedStorage<F: PrimeField, E: FieldExtension<F> + F
     pub extension_field_inputs: Vec<ExtensionFieldPolyContinuingSource<F, E>>,
 }
 
-// impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound1SelectedStorage<F, E> {
-//     pub fn collect_last_values(
-//         &self,
-//         inputs: &GKRInputs,
-//         last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
-//     ) {
-//         for input in inputs.inputs_in_base.iter() {
-//             todo!()
-//         }
-//         let mut idx = 0;
-//         for input in inputs.inputs_in_extension.iter() {
-//             if *input == GKRAddress::placeholder() {
-//                 // nothing
-//             } else {
-//                 if last_evaluations.contains_key(input) == false {
-//                     let current_values = self.extension_field_inputs[idx].current_values();
-//                     assert_eq!(current_values.len(), 2);
-//                     // let [f0, f1] = self.extension_field_inputs[idx].get_f0_and_f1(0);
+impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound1SelectedStorage<F, E> {
+    pub fn collect_last_values<const N: usize>(
+        &self,
+        inputs: &GKRInputs,
+        last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
+    ) {
+        {
+            let mut idx = 0;
+            for input in inputs.inputs_in_base.iter() {
+                if *input == GKRAddress::placeholder() {
+                    // nothing
+                } else {
+                    if let Some(existing_evals) = last_evaluations.get(input).copied() {
+                        let current_values = self.base_field_inputs[idx].current_values();
+                        assert_eq!(current_values.len(), N);
+                        assert_eq!(&existing_evals[..], &current_values[..]);
+                    } else {
+                        let current_values = self.base_field_inputs[idx].current_values();
+                        assert_eq!(current_values.len(), N);
+                        // let [f0, f1] = self.extension_field_inputs[idx].get_f0_and_f1(0);
+                        // println!("Inserting evaluations for {:?}", input);
+                        last_evaluations.insert(*input, current_values.try_into().unwrap());
+                    }
+                }
+                idx += 1;
+            }
+        }
+        {
+            let mut idx = 0;
+            for input in inputs.inputs_in_extension.iter() {
+                if *input == GKRAddress::placeholder() {
+                    // nothing
+                } else {
+                    if let Some(existing_evals) = last_evaluations.get(input).copied() {
+                        let current_values = self.extension_field_inputs[idx].current_values();
+                        assert_eq!(current_values.len(), N);
+                        assert_eq!(existing_evals, current_values);
+                    } else {
+                        let current_values = self.extension_field_inputs[idx].current_values();
+                        assert_eq!(current_values.len(), N);
+                        // let [f0, f1] = self.extension_field_inputs[idx].get_f0_and_f1(0);
+                        // println!("Inserting evaluations for {:?}", input);
+                        last_evaluations.insert(*input, current_values.try_into().unwrap());
+                    }
+                }
+                idx += 1;
+            }
+        }
+    }
 
-//                     last_evaluations.insert(*input, [current_values[0], current_values[1]]);
-//                 }
-//             }
-//             idx += 1;
-//         }
-//     }
-// }
+    // pub fn collect_last_values(
+    //     &self,
+    //     inputs: &GKRInputs,
+    //     last_evaluations: &mut BTreeMap<GKRAddress, [E; 2]>,
+    // ) {
+    //     for input in inputs.inputs_in_base.iter() {
+    //         panic!("for model that collect from such sources base field inputs are unexpected");
+    //     }
+    //     let mut idx = 0;
+    //     for input in inputs.inputs_in_extension.iter() {
+    //         if *input == GKRAddress::placeholder() {
+    //             // nothing
+    //         } else {
+    //             if last_evaluations.contains_key(input) == false {
+    //                 let current_values = self.extension_field_inputs[idx].current_values();
+    //                 assert_eq!(current_values.len(), 2);
+    //                 // let [f0, f1] = self.extension_field_inputs[idx].get_f0_and_f1(0);
+
+    //                 last_evaluations.insert(*input, [current_values[0], current_values[1]]);
+    //             }
+    //         }
+    //         idx += 1;
+    //     }
+    // }
+}
 
 #[derive(Default, Debug)]
 pub struct SumcheckRound2SelectedStorage<F: PrimeField, E: FieldExtension<F> + Field> {
