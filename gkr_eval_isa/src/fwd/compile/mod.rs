@@ -85,6 +85,19 @@ fn tally_operand(
     }
 }
 
+/// Public wrapper over the crate-private `arith::child_operand_field` so test-only
+/// oracle code can resolve an expr's operand field (→ cell width: Ext=4, Base=1).
+pub fn expr_operand_field(
+    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    expr_id: cs::gkr_compiler::dag_ir::ExprId,
+    cross: &std::collections::HashMap<
+        cs::gkr_compiler::dag_ir::ReadPlace,
+        cs::gkr_compiler::dag_ir::FieldKind,
+    >,
+) -> super::isa::OperandField {
+    arith::child_operand_field(layer, expr_id, super::isa::OperandField::Base, cross)
+}
+
 /// Compile one `dag_ir` layer to a forward program (spec §10, §11).
 ///
 /// Walks `layer.roots` by INDEX (caches lead, so a same-layer `Prior` read of a
