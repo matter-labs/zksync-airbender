@@ -1154,7 +1154,10 @@ mod recursion_binding_tests {
         // Two distinct base programs produce two distinct authenticated chains.
         let chain_p = chain_for_program([10, 11, 12, 13, 14, 15, 16, 17]);
         let chain_q = chain_for_program([99, 98, 97, 96, 95, 94, 93, 92]);
-        assert_ne!(chain_p, chain_q, "different programs must yield different chains");
+        assert_ne!(
+            chain_p, chain_q,
+            "different programs must yield different chains"
+        );
 
         // The attacker holds a valid proof for Q; the verifier authenticates Q's chain.
         let proven_output = verifier_output_with_chain(chain_q);
