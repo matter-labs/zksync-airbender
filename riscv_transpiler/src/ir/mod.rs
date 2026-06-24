@@ -8,6 +8,20 @@ use self::encoding_types::*;
 pub use self::instr_stream::*;
 use self::instructions::*;
 
+macro_rules! panic_or_illegal {
+    ($illegal_instr:expr, $($arg:tt)*) => {{
+        #[cfg(feature = "fuzzing-support")]
+        {
+            eprintln!($($arg)*);
+            $illegal_instr
+        }
+        #[cfg(not(feature = "fuzzing-support"))]
+        {
+            panic!($($arg)*);
+        }
+    }};
+}
+
 pub const CYCLE_CSR_INDEX: u32 = 3072;
 
 #[must_use]
@@ -105,17 +119,20 @@ pub fn preprocess_bytecode<OPT: DecodingOptions>(bytecode: &[u32]) -> Vec<Instru
                 // NOTE: branch instructions do not write, and we always model it as RD = 0 and write of 0 for tracing purposes.
                 // And we will put funct3 into rd here to reduce struct size
                 match funct3 {
-                    0 | 1 | 4 | 5 | 6 | 7 => {}
-                    _ => {
-                        panic!(
-                            "Unknown BRANCH-like opcode 0x{:08x} at PC = 0x{:08x}",
-                            opcode,
-                            i * 4
-                        );
-                    }
-                };
-
-                Instruction::from_imm(InstructionName::Branch, formal_rs1, formal_rs2, funct3, imm)
+                    0 | 1 | 4 | 5 | 6 | 7 => Instruction::from_imm(
+                        InstructionName::Branch,
+                        formal_rs1,
+                        formal_rs2,
+                        funct3,
+                        imm,
+                    ),
+                    _ => panic_or_illegal!(
+                        illegal_instr,
+                        "Unknown BRANCH-like opcode 0x{:08x} at PC = 0x{:08x}",
+                        opcode,
+                        i * 4
+                    ),
+                }
             }
             OP_IMM_SUBMASK => {
                 let mut imm = ITypeOpcode::imm(opcode);
@@ -163,9 +180,11 @@ pub fn preprocess_bytecode<OPT: DecodingOptions>(bytecode: &[u32]) -> Vec<Instru
                     GROUP_IMM_AND => {
                         Instruction::from_imm(InstructionName::Andi, formal_rs1, 0, rd, imm)
                     }
-                    _ => {
-                        panic!("Unknown opcode 0x{:08x}", opcode);
-                    }
+                    _ => panic_or_illegal!(
+                        illegal_instr,
+                        "Unknown opcode 0x{:08x}",
+                        opcode,
+                    ),
                 };
 
                 instr
@@ -362,9 +381,11 @@ pub fn preprocess_bytecode<OPT: DecodingOptions>(bytecode: &[u32]) -> Vec<Instru
                             rd,
                             0,
                         ),
-                        _ => {
-                            panic!("Unknown opcode 0x{:08x}", opcode);
-                        }
+                        _ => panic_or_illegal!(
+                            illegal_instr,
+                            "Unknown opcode 0x{:08x}",
+                            opcode,
+                        ),
                     }
                 }
             }
@@ -433,9 +454,11 @@ pub fn preprocess_bytecode<OPT: DecodingOptions>(bytecode: &[u32]) -> Vec<Instru
 
                         instr
                     }
-                    _ => {
-                        panic!("Unknown opcode 0x{:08x}", opcode);
-                    }
+                    _ => panic_or_illegal!(
+                        illegal_instr,
+                        "Unknown opcode 0x{:08x}",
+                        opcode,
+                    ),
                 }
             }
             OPCODE_STORE => {
@@ -487,9 +510,11 @@ pub fn preprocess_bytecode<OPT: DecodingOptions>(bytecode: &[u32]) -> Vec<Instru
                             _ => unsafe { core::hint::unreachable_unchecked() },
                         }
                     }
-                    _ => {
-                        panic!("Unknown opcode 0x{:08x}", opcode);
-                    }
+                    _ => panic_or_illegal!(
+                        illegal_instr,
+                        "Unknown opcode 0x{:08x}",
+                        opcode,
+                    ),
                 }
             }
             OPCODE_SYSTEM => {
@@ -543,12 +568,21 @@ pub fn preprocess_bytecode<OPT: DecodingOptions>(bytecode: &[u32]) -> Vec<Instru
                                     illegal_instr
                                 }
                             }
-                            _ => {
-                                panic!("Unknown MOP number {}", mop_number);
-                            }
+                            _ => panic_or_illegal!(
+                                illegal_instr,
+                                "Unknown MOP number {}",
+                                mop_number,
+                            ),
                         }
                     } else {
-                        panic!();
+                        #[cfg(feature = "fuzzing-support")]
+                        {
+                            illegal_instr
+                        }
+                        #[cfg(not(feature = "fuzzing-support"))]
+                        {
+                            panic!();
+                        }
                     }
                 } else if funct3 & ZICSR_MASK != 0 {
                     let csr_number = ITypeOpcode::imm(opcode);
@@ -665,19 +699,29 @@ pub fn preprocess_bytecode<OPT: DecodingOptions>(bytecode: &[u32]) -> Vec<Instru
                             // It is canonical CSR to encode UNIMP instruction
                             illegal_instr
                         }
-                        _ => {
-                            panic!("Unknown CSR number 0x{:04x}", csr_number);
-                        }
+                        _ => panic_or_illegal!(
+                            illegal_instr,
+                            "Unknown CSR number 0x{:04x}",
+                            csr_number,
+                        ),
                     };
 
                     if funct3 != 0b001 {
                         // not CSRRW
-                        panic!("Unknown opcode 0x{:08x}", opcode);
+                        panic_or_illegal!(
+                            illegal_instr,
+                            "Unknown opcode 0x{:08x}",
+                            opcode,
+                        )
+                    } else {
+                        instr
                     }
-
-                    instr
                 } else {
-                    panic!("Unknown system funct3 enc 0x{:08x}", funct3);
+                    panic_or_illegal!(
+                        illegal_instr,
+                        "Unknown system funct3 enc 0x{:08x}",
+                        funct3,
+                    )
                 };
 
                 instr

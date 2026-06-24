@@ -6,6 +6,7 @@ members = [
     "common_constants",
     "field",
     "cs",
+    "picus_frontend",
     "prover",
     "trace_holder",
     "fft",
@@ -51,7 +52,7 @@ members = [
     "circuit_defs/unrolled_circuits/shift_binary_csr",
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
 
-    "riscv_transpiler",
+    "riscv_transpiler", "llzk_backend", "fuzzing"
 ]
 
 default-members = [
@@ -65,6 +66,7 @@ default-members = [
     "circuit_defs/setups",
     "circuit_defs/trace_and_split",
     "cs",
+    "picus_frontend",
     "execution_utils",
     "fft",
     "field",
@@ -106,6 +108,7 @@ keywords = ["blockchain", "zksync", "zk", "risc-v"]
 categories = ["cryptography"]
 
 [workspace.dependencies]
+picus = {path = "./picus"}
 field = { path = "./field", default-features = false }
 blake2s_u32 = { path = "./blake2s_u32", default-features = false }
 common_constants = { path = "./common_constants" }
@@ -116,6 +119,7 @@ test_utils = { path = "./test_utils" }
 fft = { path = "./fft" }
 prover = { path = "./prover", default-features = false }
 cs = { path = "./cs", default-features = false }
+picus_frontend = { path = "./picus_frontend" }
 transcript = { path = "./transcript", default-features = false }
 verifier_generator = { path = "./verifier_generator" }
 verifier_common = { path = "./verifier_common", default-features = false }
@@ -201,3 +205,7 @@ debug = true         # Disable debug info to reduce compile time (optional, set 
 # strip = "symbols"     # Strip symbols to reduce binary size and linking time
 # panic = "unwind"      # Default panic strategy, no change needed (abort can be faster but less safe for tests)
 rpath = false         # Disable rpath (rarely needed, speeds up linking slightly)
+
+[profile.compliance-tests]
+inherits = "release"
+debug-assertions = true

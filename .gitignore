@@ -6,3 +6,4 @@
 rustc-ice-*.*
 .DS_Store
 **/.DS_Store
+fuzzing-runs

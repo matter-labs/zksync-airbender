@@ -930,6 +930,12 @@ pub struct CompiledCircuitArtifact<F: PrimeField> {
     pub total_tables_size: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProtectedConstraintSnapshot<F: PrimeField> {
+    pub degree_2_constraints: Vec<CompiledDegree2Constraint<F>>,
+    pub degree_1_constraints: Vec<CompiledDegree1Constraint<F>>,
+}
+
 impl<F: PrimeField> CompiledCircuitArtifact<F> {
     pub fn as_verifier_compiled_artifact<'a>(
         &'a self,

@@ -1,0 +1,18 @@
+# .github/workflows/pre-commit.yaml for picus-extraction-dev work
+name: pre-commit
+on:
+  pull_request:
+    branches: [picus-extraction-dev]
+  push:
+    branches: [picus-extraction-dev]
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+      - run: nix develop -c pre-commit run --all-files --show-diff-on-failure --color=always

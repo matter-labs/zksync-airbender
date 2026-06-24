@@ -1,6 +1,9 @@
 use std::collections::BTreeSet;
 
-use super::circuit::Circuit;
+use super::circuit::{
+    picus_expr_from_boolean_circuit, picus_expr_from_constraint, picus_expr_from_num_circuit,
+    Circuit, PicusExpr, PicusStructuredConstraint,
+};
 use crate::constraint::*;
 use crate::cs::utils::mask_by_boolean_into_accumulator_constraint;
 use crate::cs::utils::mask_linear_term_by_boolean_into_accumulator_constraint;
@@ -41,11 +44,19 @@ pub(crate) fn spec_choose_from_orthogonal_variants<F: PrimeField, CS: Circuit<F>
 
     // now we can make a constraint
     let mut constraint = Constraint::<F>::empty();
+    let mut parallel_constraint = PicusExpr::Constant(F::ZERO);
     for (flag, variant) in flags.iter().zip(variants.iter()) {
         constraint = mask_by_boolean_into_accumulator_constraint(flag, variant, constraint);
+        parallel_constraint = parallel_constraint
+            + picus_expr_from_boolean_circuit(*flag) * picus_expr_from_num_circuit(*variant);
     }
 
-    spec_choose_from_orthogonal_variants_for_constraint_inner(cs, boolean_vars, constraint)
+    spec_choose_from_orthogonal_variants_for_constraint_inner(
+        cs,
+        boolean_vars,
+        constraint,
+        parallel_constraint,
+    )
 }
 
 #[track_caller]
@@ -77,18 +88,27 @@ pub(crate) fn spec_choose_from_orthogonal_variants_for_linear_terms<
 
     // now we can make a constraint
     let mut constraint = Constraint::<F>::empty();
+    let mut parallel_constraint = PicusExpr::Constant(F::ZERO);
     for (flag, variant) in flags.iter().zip(variants.iter()) {
         constraint =
             mask_linear_term_by_boolean_into_accumulator_constraint(flag, variant, constraint);
+        parallel_constraint = parallel_constraint
+            + picus_expr_from_boolean_circuit(*flag) * picus_expr_from_constraint(variant);
     }
 
-    spec_choose_from_orthogonal_variants_for_constraint_inner(cs, boolean_vars, constraint)
+    spec_choose_from_orthogonal_variants_for_constraint_inner(
+        cs,
+        boolean_vars,
+        constraint,
+        parallel_constraint,
+    )
 }
 
 fn spec_choose_from_orthogonal_variants_for_constraint_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     booleans: BTreeSet<Variable>,
     mut constraint: Constraint<F>,
+    mut parallel_constraint: PicusExpr<F>,
 ) -> Num<F> {
     let (quadratic, linear, constant_term) = constraint.clone().split_max_quadratic();
 
@@ -110,6 +130,7 @@ fn spec_choose_from_orthogonal_variants_for_constraint_inner<F: PrimeField, CS: 
 
     let result = cs.add_variable();
     constraint -= Term::from(result);
+    parallel_constraint = parallel_constraint - PicusExpr::Variable(result);
 
     // Filter constants equal to 1
     let mut quadratic_trivial = vec![];
@@ -180,6 +201,10 @@ fn spec_choose_from_orthogonal_variants_for_constraint_inner<F: PrimeField, CS: 
     } else {
         cs.add_constraint_allow_explicit_linear(constraint);
     }
+    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: parallel_constraint,
+        rhs: PicusExpr::Constant(F::ZERO),
+    });
 
     Num::Var(result)
 }
@@ -199,6 +224,7 @@ fn spec_choose_from_orthogonal_variants_no_nots<F: PrimeField, CS: Circuit<F>>(
 
     // now we can make a constraint
     let mut constraint = Constraint::empty();
+    let mut parallel_constraint = PicusExpr::Constant(F::ZERO);
     for (flag, variant) in flags.iter().zip(variants.iter()) {
         let Boolean::Is(flag) = *flag else {
             unreachable!()
@@ -211,16 +237,23 @@ fn spec_choose_from_orthogonal_variants_no_nots<F: PrimeField, CS: Circuit<F>>(
             Num::Var(variant) => {
                 constraint = constraint + Term::from(flag) * Term::from(*variant);
                 parsed_quadratic.push((flag, *variant));
+                parallel_constraint = parallel_constraint
+                    + picus_expr_from_boolean_circuit(Boolean::Is(flag))
+                        * PicusExpr::Variable(*variant);
             }
             Num::Constant(constant) => {
                 constraint += Term::from((*constant, flag));
                 parsed_linear.push((flag, *constant));
+                parallel_constraint = parallel_constraint
+                    + picus_expr_from_boolean_circuit(Boolean::Is(flag))
+                        * PicusExpr::Constant(*constant);
             }
         }
     }
 
     let result = cs.add_variable();
     constraint -= Term::from(result);
+    parallel_constraint = parallel_constraint - PicusExpr::Variable(result);
 
     let value_fn = move |placer: &mut CS::WitnessPlacer| {
         let mut value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(F::ZERO);
@@ -248,6 +281,10 @@ fn spec_choose_from_orthogonal_variants_no_nots<F: PrimeField, CS: Circuit<F>>(
     } else {
         cs.add_constraint_allow_explicit_linear(constraint);
     }
+    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: parallel_constraint,
+        rhs: PicusExpr::Constant(F::ZERO),
+    });
 
     Num::Var(result)
 }

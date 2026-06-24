@@ -1,4 +1,5 @@
 use super::spec_selection::*;
+use crate::constraint::*;
 use crate::cs::placeholder::*;
 use crate::cs::utils::collapse_max_quadratic_constraint_into;
 use crate::cs::witness_placer::*;
@@ -6,12 +7,11 @@ use crate::definitions::*;
 use crate::devices::optimization_context::OptimizationContext;
 use crate::one_row_compiler::LookupInput;
 use crate::tables::LookupWrapper;
+use crate::tables::TableDriver;
+use crate::types::Boolean;
+use crate::types::Num;
 use crate::types::Register;
-use crate::{
-    constraint::*,
-    tables::TableDriver,
-    types::{Boolean, Num},
-};
+use core::ops::{Add, Mul, Sub};
 use field::PrimeField;
 use std::collections::HashMap;
 
@@ -28,7 +28,7 @@ pub enum Invariant {
     Substituted((Placeholder, usize)),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShuffleRamQueryType {
     RegisterOnly {
         register_index: Variable,
@@ -88,7 +88,7 @@ impl ShuffleRamQueryType {
 // Prover would have to substitute global timestamp here
 // but itself, and ensure that eventually global read timestamp
 // is < global write timestamp + local offset
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ShuffleRamMemQuery {
     pub query_type: ShuffleRamQueryType,
     pub local_timestamp_in_cycle: usize,
@@ -128,24 +128,142 @@ impl ShuffleRamMemQuery {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LookupQuery<F: PrimeField> {
     pub row: [LookupInput<F>; COMMON_TABLE_WIDTH],
     pub table: LookupQueryTableType,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DisjunctiveLookupGuard<F: PrimeField> {
+    EqConst { var: Variable, value: F },
+    And(Vec<DisjunctiveLookupGuard<F>>),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DisjunctiveLookupCase<F: PrimeField> {
+    pub flag: Boolean,
+    pub row: [LookupInput<F>; COMMON_TABLE_WIDTH],
+    pub table: Num<F>,
+    pub guard: Option<DisjunctiveLookupGuard<F>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DisjunctiveLookup<F: PrimeField> {
+    pub relation_index: usize,
+    pub cases: Vec<DisjunctiveLookupCase<F>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct PicusExtractionMetadata<F: PrimeField> {
+    pub parallel_constraints_enabled: bool,
+    pub disjunctive_lookups: Vec<DisjunctiveLookup<F>>,
+    pub parallel_constraints: Vec<PicusStructuredConstraint<F>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PicusExpr<F: PrimeField> {
+    Variable(Variable),
+    Constant(F),
+    Add(Box<PicusExpr<F>>, Box<PicusExpr<F>>),
+    Sub(Box<PicusExpr<F>>, Box<PicusExpr<F>>),
+    Mul(Box<PicusExpr<F>>, Box<PicusExpr<F>>),
+}
+
+impl<F: PrimeField> PicusExpr<F> {
+    pub fn from_const(c: u64) -> PicusExpr<F> {
+        PicusExpr::Constant(F::from_u64_unchecked(c))
+    }
+}
+
+pub fn picus_expr_from_num_circuit<F: PrimeField>(num: Num<F>) -> PicusExpr<F> {
+    match num {
+        Num::Var(variable) => PicusExpr::Variable(variable),
+        Num::Constant(c) => PicusExpr::Constant(c),
+    }
+}
+
+pub fn picus_expr_from_boolean_circuit<F: PrimeField>(boolean: Boolean) -> PicusExpr<F> {
+    match boolean {
+        Boolean::Is(variable) => PicusExpr::Variable(variable),
+        Boolean::Not(variable) => PicusExpr::from_const(1) - PicusExpr::Variable(variable),
+        Boolean::Constant(c) => {
+            if c {
+                PicusExpr::from_const(1)
+            } else {
+                PicusExpr::from_const(0)
+            }
+        }
+    }
+}
+
+pub fn picus_expr_from_constraint<F: PrimeField>(constraint: &Constraint<F>) -> PicusExpr<F> {
+    let mut expr = PicusExpr::Constant(F::ZERO);
+    for term in constraint.terms.iter() {
+        let term_expr = match term {
+            Term::Constant(c) => PicusExpr::Constant(*c),
+            Term::Expression {
+                coeff,
+                inner,
+                degree,
+            } => {
+                let mut product = PicusExpr::Constant(*coeff);
+                for var in inner.iter().take(*degree) {
+                    product = product * PicusExpr::Variable(*var);
+                }
+                product
+            }
+        };
+        expr = expr + term_expr;
+    }
+    expr
+}
+
+impl<F: PrimeField> Add for PicusExpr<F> {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self::Add(Box::new(self), Box::new(rhs))
+    }
+}
+
+impl<F: PrimeField> Sub for PicusExpr<F> {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self::Sub(Box::new(self), Box::new(rhs))
+    }
+}
+
+impl<F: PrimeField> Mul for PicusExpr<F> {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self::Mul(Box::new(self), Box::new(rhs))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PicusStructuredConstraint<F: PrimeField> {
+    Eq {
+        lhs: PicusExpr<F>,
+        rhs: PicusExpr<F>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LookupQueryTableType {
     Variable(Variable),
     Constant(TableType),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LinkedVariablesPair {
     pub initial_var: Variable,
     pub final_var: Variable,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RangeCheckQuery<F: PrimeField> {
     pub input: LookupInput<F>,
     pub width: usize,
@@ -277,6 +395,7 @@ pub struct RegisterAndIndirectAccesses {
     pub indirect_accesses: Vec<IndirectAccessType>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CircuitOutput<F: PrimeField> {
     pub state_input: Vec<Variable>,
     pub state_output: Vec<Variable>,
@@ -294,6 +413,7 @@ pub struct CircuitOutput<F: PrimeField> {
     pub range_check_expressions: Vec<RangeCheckQuery<F>>,
     pub boolean_vars: Vec<Variable>,
     pub substitutions: HashMap<(Placeholder, usize), Variable>,
+    pub picus_extraction_metadata: PicusExtractionMetadata<F>,
 }
 
 impl<F: PrimeField> CircuitOutput<F> {
@@ -346,6 +466,9 @@ pub trait Circuit<F: PrimeField>: Sized {
 
     fn materialize_table(&mut self, table_type: TableType);
     fn add_table_with_content(&mut self, table_type: TableType, table: LookupWrapper<F>);
+    fn add_disjunctive_lookup_hint(&mut self, _hint: DisjunctiveLookup<F>) {}
+    fn set_picus_parallel_constraints_enabled(&mut self, _enabled: bool) {}
+    fn add_picus_parallel_constraint(&mut self, _constraint: PicusStructuredConstraint<F>) {}
 
     #[track_caller]
     fn add_boolean_variable(&mut self) -> Boolean {
@@ -461,6 +584,13 @@ pub trait Circuit<F: PrimeField>: Sized {
                         self.set_values(value_fn);
 
                         self.add_constraint(cnstr);
+                        self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: PicusExpr::Variable(cond)
+                                * (PicusExpr::Variable(a) - PicusExpr::Variable(b))
+                                + PicusExpr::Variable(b)
+                                - PicusExpr::Variable(new_var),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Num::Var(new_var)
                     }
 
@@ -484,12 +614,21 @@ pub trait Circuit<F: PrimeField>: Sized {
                                 - (Term::from(cond) * Term::from(b)
                                     + (Term::from(1) - Term::from(cond)) * Term::from(a)),
                         );
+                        self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: PicusExpr::Variable(new_var)
+                                - (PicusExpr::Variable(cond) * PicusExpr::Variable(b)
+                                    + (PicusExpr::from_const(1)
+                                        - picus_expr_from_boolean_circuit(Boolean::Is(cond)))
+                                        * PicusExpr::Variable(a)),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Num::Var(new_var)
 
                         // // new_var = flag * b + (1 - flag) * a = flag * (b - a) + a
                         // let cnstr: Constraint<F> =
-                        //     { Term::from(cond) * (Term::from(b) - Term::from(a)) + Term::from(a) };
-                        // let new_var = self.add_variable_from_constraint(cnstr);
+                        //     { Term::from(cond) * (Term::from(b) - Term::from(a)) + Term::from(a)
+                        // }; let new_var =
+                        // self.add_variable_from_constraint(cnstr);
                         // Num::Var(new_var)
                     }
                 }
@@ -504,7 +643,8 @@ pub trait Circuit<F: PrimeField>: Sized {
                         }
                     }
                     Boolean::Is(cond) => {
-                        // new_var = flag * a + (1 - flag) * constant = flag * (if_true - constant) + constant
+                        // new_var = flag * a + (1 - flag) * constant = flag * (if_true - constant)
+                        // + constant
                         let mut cnstr: Constraint<F> = {
                             Term::from(cond) * (Term::from(a) - Term::from_field(constant))
                                 + Term::from_field(constant)
@@ -522,6 +662,13 @@ pub trait Circuit<F: PrimeField>: Sized {
                         self.set_values(value_fn);
 
                         self.add_constraint(cnstr);
+                        self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: PicusExpr::Variable(cond)
+                                * (PicusExpr::Variable(a) - PicusExpr::Constant(constant))
+                                + PicusExpr::Constant(constant)
+                                - PicusExpr::Variable(new_var),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Num::Var(new_var)
                     }
 
@@ -544,6 +691,13 @@ pub trait Circuit<F: PrimeField>: Sized {
                         self.set_values(value_fn);
 
                         self.add_constraint(cnstr);
+                        self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: picus_expr_from_boolean_circuit(Boolean::Is(cond))
+                                * (PicusExpr::Constant(constant) - PicusExpr::Variable(a))
+                                + PicusExpr::Variable(a)
+                                - PicusExpr::Variable(new_var),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Num::Var(new_var)
                     }
                 }
@@ -582,6 +736,13 @@ pub trait Circuit<F: PrimeField>: Sized {
                         self.set_values(value_fn);
 
                         self.add_constraint_allow_explicit_linear(cnstr);
+                        self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: picus_expr_from_boolean_circuit(Boolean::Is(cond))
+                                * (PicusExpr::Constant(a) - PicusExpr::Constant(b))
+                                + PicusExpr::Constant(b)
+                                - PicusExpr::Variable(new_var),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Num::Var(new_var)
                     }
                     Boolean::Not(cond) => {
@@ -604,6 +765,13 @@ pub trait Circuit<F: PrimeField>: Sized {
                         self.set_values(value_fn);
 
                         self.add_constraint_allow_explicit_linear(cnstr);
+                        self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: picus_expr_from_boolean_circuit(Boolean::Is(cond))
+                                * (PicusExpr::Constant(b) - PicusExpr::Constant(a))
+                                + PicusExpr::Constant(a)
+                                - PicusExpr::Variable(new_var),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Num::Var(new_var)
                     }
                 }
@@ -668,9 +836,20 @@ pub trait Circuit<F: PrimeField>: Sized {
                     Constraint::from(inv) * (Term::from(low) + Term::from(high))
                         - not_zero_flag.clone(),
                 );
+                self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                    lhs: PicusExpr::Variable(inv)
+                        * (PicusExpr::Variable(low) + PicusExpr::Variable(high))
+                        - (PicusExpr::from_const(1) - PicusExpr::Variable(is_zero_flag)),
+                    rhs: PicusExpr::from_const(0),
+                });
                 self.add_constraint(
                     (Constraint::from(1) - not_zero_flag) * (Term::from(low) + Term::from(high)),
                 );
+                self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                    lhs: PicusExpr::Variable(is_zero_flag)
+                        * (PicusExpr::Variable(low) + PicusExpr::Variable(high)),
+                    rhs: PicusExpr::from_const(0),
+                });
             }
             _ => unreachable!(),
         }
@@ -713,7 +892,16 @@ pub trait Circuit<F: PrimeField>: Sized {
         self.set_values(value_fn);
 
         self.add_constraint(Constraint::from(inv) * sum.clone() - not_zero_flag.clone());
-        self.add_constraint((Constraint::from(1) - not_zero_flag) * sum);
+        self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: PicusExpr::Variable(inv) * picus_expr_from_constraint(&sum)
+                - (PicusExpr::from_const(1) - PicusExpr::Variable(is_zero_flag)),
+            rhs: PicusExpr::from_const(0),
+        });
+        self.add_constraint((Constraint::from(1) - not_zero_flag) * sum.clone());
+        self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: PicusExpr::Variable(is_zero_flag) * picus_expr_from_constraint(&sum),
+            rhs: PicusExpr::from_const(0),
+        });
         Boolean::Is(is_zero_flag)
     }
 
@@ -737,10 +925,22 @@ pub trait Circuit<F: PrimeField>: Sized {
                 };
                 self.set_values(value_fn);
                 self.add_constraint((Term::from(a) - Term::from(b)) * Term::from(zero_flag));
+                self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                    lhs: (PicusExpr::Variable(a) - PicusExpr::Variable(b))
+                        * picus_expr_from_boolean_circuit(zero_flag),
+                    rhs: PicusExpr::from_const(0),
+                });
                 self.add_constraint(
                     (Term::from(a) - Term::from(b)) * Term::from(var_inv) + Term::from(zero_flag)
                         - Term::from(1),
                 );
+                self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                    lhs: (PicusExpr::Variable(a) - PicusExpr::Variable(b))
+                        * PicusExpr::Variable(var_inv)
+                        + picus_expr_from_boolean_circuit(zero_flag)
+                        - PicusExpr::from_const(1),
+                    rhs: PicusExpr::from_const(0),
+                });
 
                 zero_flag
             }
@@ -762,11 +962,23 @@ pub trait Circuit<F: PrimeField>: Sized {
                 };
                 self.set_values(value_fn);
                 self.add_constraint((Term::from(a) - Term::from_field(b)) * Term::from(zero_flag));
+                self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                    lhs: (PicusExpr::Variable(a) - PicusExpr::Constant(b))
+                        * picus_expr_from_boolean_circuit(zero_flag),
+                    rhs: PicusExpr::from_const(0),
+                });
                 self.add_constraint(
                     (Term::from(a) - Term::from_field(b)) * Term::from(var_inv)
                         + Term::from(zero_flag)
                         - Term::from(1),
                 );
+                self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                    lhs: (PicusExpr::Variable(a) - PicusExpr::Constant(b))
+                        * PicusExpr::Variable(var_inv)
+                        + picus_expr_from_boolean_circuit(zero_flag)
+                        - PicusExpr::from_const(1),
+                    rhs: PicusExpr::from_const(0),
+                });
 
                 zero_flag
             }
@@ -788,11 +1000,23 @@ pub trait Circuit<F: PrimeField>: Sized {
                 };
                 self.set_values(value_fn);
                 self.add_constraint((Term::from_field(a) - Term::from(b)) * Term::from(zero_flag));
+                self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                    lhs: (PicusExpr::Constant(a) - PicusExpr::Variable(b))
+                        * picus_expr_from_boolean_circuit(zero_flag),
+                    rhs: PicusExpr::from_const(0),
+                });
                 self.add_constraint(
                     (Term::from_field(a) - Term::from(b)) * Term::from(var_inv)
                         + Term::from(zero_flag)
                         - Term::from(1),
                 );
+                self.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                    lhs: (PicusExpr::Constant(a) - PicusExpr::Variable(b))
+                        * PicusExpr::Variable(var_inv)
+                        + picus_expr_from_boolean_circuit(zero_flag)
+                        - PicusExpr::from_const(1),
+                    rhs: PicusExpr::from_const(0),
+                });
 
                 zero_flag
             }

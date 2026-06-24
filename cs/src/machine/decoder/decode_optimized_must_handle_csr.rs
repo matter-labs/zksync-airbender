@@ -1,6 +1,10 @@
 use one_row_compiler::LookupInput;
 
 use super::*;
+use crate::cs::circuit::{
+    picus_expr_from_boolean_circuit, picus_expr_from_num_circuit, PicusExpr,
+    PicusStructuredConstraint,
+};
 use crate::devices::risc_v_types::NUM_INSTRUCTION_TYPES;
 
 // An optimization of basic decode for the case when CSR is explicitly matched later on. We try to drag values that are
@@ -140,8 +144,23 @@ impl OptimizedDecoder {
                 - Term::from(rs1_low) * Term::from(1 << 15)
         };
         imm11_constraint.scale(F::from_u64_unchecked(1 << 7).inverse().unwrap());
-        circuit
-            .add_constraint(imm11_constraint.clone() * (imm11_constraint.clone() - Term::from(1)));
+        let imm11 = circuit.add_variable_from_constraint_allow_explicit_linear(imm11_constraint);
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: (picus_expr_from_num_circuit(opcode)
+                + PicusExpr::from_const(1 << 8) * picus_expr_from_num_circuit(imm4_1)
+                + PicusExpr::from_const(1 << 12) * picus_expr_from_num_circuit(funct3)
+                + picus_expr_from_boolean_circuit(rs1_low) * PicusExpr::from_const(1 << 15)
+                + PicusExpr::Variable(imm11) * PicusExpr::from_const(1 << 7))
+                - picus_expr_from_num_circuit(inputs.instruction.0[0]),
+            rhs: PicusExpr::from_const(0),
+        });
+        let imm11_booleanity = Term::from(imm11) * (Term::from(imm11) - Term::from(1));
+        circuit.add_constraint(imm11_booleanity);
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: PicusExpr::Variable(imm11)
+                * (PicusExpr::Variable(imm11) - PicusExpr::from_const(1)),
+            rhs: PicusExpr::from_const(0),
+        });
 
         // insn_high <=> rs1_high: [19:16], rs2: [24:20], imm[10-5]: [30:25], imm12: [31]
         let mut rs2_low_constraint = {
@@ -152,13 +171,24 @@ impl OptimizedDecoder {
                 - Term::from(sign_bit) * Term::from(1 << 15)
         };
         rs2_low_constraint.scale(F::from_u64_unchecked(1 << 4).inverse().unwrap());
-        circuit.add_constraint(
-            rs2_low_constraint.clone() * (rs2_low_constraint.clone() - Term::from(1)),
-        );
-
-        // imm11 and rs2_low constraint are linear
-        assert_eq!(imm11_constraint.degree(), 1);
-        assert_eq!(rs2_low_constraint.degree(), 1);
+        let rs2_low =
+            circuit.add_variable_from_constraint_allow_explicit_linear(rs2_low_constraint);
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: (picus_expr_from_num_circuit(rs1_high)
+                + PicusExpr::from_const(1 << 5) * picus_expr_from_num_circuit(rs2_high)
+                + PicusExpr::from_const(1 << 9) * picus_expr_from_num_circuit(imm10_5)
+                + PicusExpr::from_const(1 << 15) * picus_expr_from_boolean_circuit(sign_bit)
+                + PicusExpr::from_const(1 << 4) * PicusExpr::Variable(rs2_low))
+                - picus_expr_from_num_circuit(inputs.instruction.0[1]),
+            rhs: PicusExpr::from_const(0),
+        });
+        let rs2_low_booleanity = Term::from(rs2_low) * (Term::from(rs2_low) - Term::from(1));
+        circuit.add_constraint(rs2_low_booleanity);
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: PicusExpr::Variable(rs2_low)
+                * (PicusExpr::Variable(rs2_low) - PicusExpr::from_const(1)),
+            rhs: PicusExpr::from_const(0),
+        });
 
         // We do NOT need rd as variable, because it'll be merged in the write into explicit variable,
         // so we can drag it along as linear constraint
@@ -168,11 +198,41 @@ impl OptimizedDecoder {
         let rs1 = circuit.add_variable_from_constraint_allow_explicit_linear(
             Term::from(rs1_high) * Term::from(1 << 1) + Term::from(rs1_low),
         );
-        let rs2_constraint = Term::from(rs2_high) * Term::from(1 << 1) + rs2_low_constraint.clone();
-        let rd_constraint = Term::from(imm4_1) * Term::from(1 << 1) + imm11_constraint.clone();
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: PicusExpr::from_const(2) * picus_expr_from_num_circuit(rs1_high)
+                + picus_expr_from_boolean_circuit(rs1_low)
+                - PicusExpr::Variable(rs1),
+            rhs: PicusExpr::from_const(0),
+        });
+        let rs2 = circuit.add_variable_from_constraint_allow_explicit_linear(
+            Term::from(rs2_high) * Term::from(1 << 1) + Term::from(rs2_low),
+        );
+        let rd = circuit.add_variable_from_constraint_allow_explicit_linear(
+            Term::from(imm4_1) * Term::from(1 << 1) + Term::from(imm11),
+        );
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: PicusExpr::from_const(2) * picus_expr_from_num_circuit(rs2_high)
+                + PicusExpr::Variable(rs2_low)
+                - PicusExpr::Variable(rs2),
+            rhs: PicusExpr::from_const(0),
+        });
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: PicusExpr::from_const(2) * picus_expr_from_num_circuit(imm4_1)
+                + PicusExpr::Variable(imm11)
+                - PicusExpr::Variable(rd),
+            rhs: PicusExpr::from_const(0),
+        });
 
         // funct_7 = sign_bit[1] | imm_10-5[6]
-        let funct7_constraint = Term::from(sign_bit) * Term::from(1 << 6) + Term::from(imm10_5);
+        let funct7 = circuit.add_variable_from_constraint_allow_explicit_linear(
+            Term::from(sign_bit) * Term::from(1 << 6) + Term::from(imm10_5),
+        );
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: PicusExpr::from_const(1 << 6) * picus_expr_from_boolean_circuit(sign_bit)
+                + picus_expr_from_num_circuit(imm10_5)
+                - PicusExpr::Variable(funct7),
+            rhs: PicusExpr::from_const(0),
+        });
 
         // now we can feed [opcode || funct_3 || funct 7] (all are range checked, so concatenation IS allowed)
         // to get basic bitmask that will tell whether the opcode is valid or not, and provide aux properties
@@ -184,7 +244,7 @@ impl OptimizedDecoder {
         ) = Self::opcode_lookup::<F, CS>(
             opcode,
             funct3,
-            funct7_constraint.clone(),
+            Constraint::from(funct7),
             circuit,
             splitting,
         );
@@ -218,8 +278,7 @@ impl OptimizedDecoder {
         // chunks 0..4 are used for linear constraint later on to form imm_low
         let chunks_defining_constraints: [Constraint<F>; 5] = [
             // 0
-            Term::from(i_insn) * rs2_low_constraint.clone()
-                + Term::from(s_insn) * imm11_constraint.clone(),
+            Term::from(i_insn) * Term::from(rs2_low) + Term::from(s_insn) * Term::from(imm11),
             // 1
             (Term::from(i_insn) + Term::from(j_insn)) * Term::from(rs2_high)
                 + (Term::from(s_insn) + Term::from(b_insn)) * Term::from(imm4_1),
@@ -227,8 +286,8 @@ impl OptimizedDecoder {
             (Term::from(1) - Term::from(u_insn)) * Term::from(imm10_5),
             // 3
             (Term::from(i_insn) + Term::from(s_insn)) * Term::from(sign_bit)
-                + Term::from(b_insn) * imm11_constraint
-                + Term::from(j_insn) * rs2_low_constraint.clone(),
+                + Term::from(b_insn) * Term::from(imm11)
+                + Term::from(j_insn) * Term::from(rs2_low),
             // 4
             (Term::from(i_insn) + Term::from(s_insn) + Term::from(b_insn))
                 * Term::from(sign_bit)
@@ -240,12 +299,44 @@ impl OptimizedDecoder {
         let [chunk0, chunk1, chunk2, chunk3, chunk4] = chunks_defining_constraints;
 
         let imm_low = Num::Var(circuit.add_variable_from_constraint(
-            chunk0
-                + chunk1 * Term::from(1 << 1)
-                + chunk2 * Term::from(1 << 5)
-                + chunk3 * Term::from(1 << 11)
-                + chunk4 * Term::from(1 << 12),
+            chunk0.clone()
+                + chunk1.clone() * Term::from(1 << 1)
+                + chunk2.clone() * Term::from(1 << 5)
+                + chunk3.clone() * Term::from(1 << 11)
+                + chunk4.clone() * Term::from(1 << 12),
         ));
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: picus_expr_from_boolean_circuit(i_insn) * PicusExpr::Variable(rs2_low)
+                + picus_expr_from_boolean_circuit(s_insn) * PicusExpr::Variable(imm11)
+                + ((picus_expr_from_boolean_circuit(i_insn)
+                    + picus_expr_from_boolean_circuit(j_insn))
+                    * picus_expr_from_num_circuit(rs2_high)
+                    + (picus_expr_from_boolean_circuit(s_insn)
+                        + picus_expr_from_boolean_circuit(b_insn))
+                        * picus_expr_from_num_circuit(imm4_1))
+                    * PicusExpr::from_const(1 << 1)
+                + ((PicusExpr::from_const(1) - picus_expr_from_boolean_circuit(u_insn))
+                    * picus_expr_from_num_circuit(imm10_5))
+                    * PicusExpr::from_const(1 << 5)
+                + ((picus_expr_from_boolean_circuit(i_insn)
+                    + picus_expr_from_boolean_circuit(s_insn))
+                    * picus_expr_from_boolean_circuit(sign_bit)
+                    + picus_expr_from_boolean_circuit(b_insn) * PicusExpr::Variable(imm11)
+                    + picus_expr_from_boolean_circuit(j_insn) * PicusExpr::Variable(rs2_low))
+                    * PicusExpr::from_const(1 << 11)
+                + ((picus_expr_from_boolean_circuit(i_insn)
+                    + picus_expr_from_boolean_circuit(s_insn)
+                    + picus_expr_from_boolean_circuit(b_insn))
+                    * picus_expr_from_boolean_circuit(sign_bit)
+                    * PicusExpr::from_const(0b1111)
+                    + (picus_expr_from_boolean_circuit(u_insn)
+                        + picus_expr_from_boolean_circuit(j_insn))
+                        * (picus_expr_from_boolean_circuit(rs1_low) * PicusExpr::from_const(1 << 3)
+                            + picus_expr_from_num_circuit(funct3)))
+                    * PicusExpr::from_const(1 << 12)
+                - picus_expr_from_num_circuit(imm_low),
+            rhs: PicusExpr::from_const(0),
+        });
 
         // chunk 5 is just higher part of the immediate
         let imm_high = Num::Var(circuit.add_variable_from_constraint(
@@ -255,6 +346,20 @@ impl OptimizedDecoder {
                     * Term::from(sign_bit)
                     * Term::from(0xffff),
         ));
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: picus_expr_from_boolean_circuit(j_insn)
+                * (picus_expr_from_boolean_circuit(sign_bit) * PicusExpr::from_const(0xfff0)
+                    + picus_expr_from_num_circuit(rs1_high))
+                + picus_expr_from_boolean_circuit(u_insn)
+                    * picus_expr_from_num_circuit(inputs.instruction.0[1])
+                + (PicusExpr::from_const(1)
+                    - picus_expr_from_boolean_circuit(j_insn)
+                    - picus_expr_from_boolean_circuit(u_insn))
+                    * picus_expr_from_boolean_circuit(sign_bit)
+                    * PicusExpr::from_const(0xffff)
+                - picus_expr_from_num_circuit(imm_high),
+            rhs: PicusExpr::from_const(0),
+        });
 
         let imm = Register([imm_low, imm_high]);
 
@@ -263,16 +368,23 @@ impl OptimizedDecoder {
         // SYSTEM ECALL/EBREAK - again, we can check validity in there, because if it's not a valid 12-bit index we will trap anyway, but with different code
 
         // funct_12 = sign_bit[1] | imm_10-5[6] | rs2_high[4] | rs2_low[1]
-        let funct12_constraint =
-            rs2_constraint.clone() + (funct7_constraint.clone() * Term::from(1 << 5));
+        let funct12 = circuit.add_variable_from_constraint_allow_explicit_linear(
+            Constraint::from(rs2) + Term::from(funct7) * Term::from(1 << 5),
+        );
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: PicusExpr::Variable(rs2)
+                + PicusExpr::Variable(funct7) * PicusExpr::from_const(1 << 5)
+                - PicusExpr::Variable(funct12),
+            rhs: PicusExpr::from_const(0),
+        });
 
         let decoder_output = OptimizedDecoderOutput {
             rs1: Num::Var(rs1),
-            rs2: rs2_constraint,
-            rd: rd_constraint,
+            rs2: Constraint::from(rs2),
+            rd: Constraint::from(rd),
             funct3,
-            funct7: funct7_constraint,
-            funct12: funct12_constraint,
+            funct7: Constraint::from(funct7),
+            funct12: Constraint::from(funct12),
             imm,
         };
 
@@ -327,8 +439,7 @@ impl OptimizedDecoder {
 
             // not push the splitting data
 
-            const NUM_INPUT_VARS: usize = 4;
-            assert_eq!(linear_terms.len(), NUM_INPUT_VARS);
+            assert!(linear_terms.is_empty() == false);
 
             let outputs: Vec<_> = all_bits
                 .iter()
@@ -418,11 +529,20 @@ impl OptimizedDecoder {
         );
 
         // opcode formats are orthogonal flags, so a boolean to update RD is just a linear combination
-        let update_rd = Constraint::from(r_insn.get_variable().unwrap())
+        let update_rd_constraint = Constraint::from(r_insn.get_variable().unwrap())
             + Constraint::from(i_insn.get_variable().unwrap())
             + Constraint::from(j_insn.get_variable().unwrap())
             + Constraint::from(u_insn.get_variable().unwrap());
+        let update_rd = cs.add_variable_from_constraint_allow_explicit_linear(update_rd_constraint);
+        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: picus_expr_from_boolean_circuit(r_insn)
+                + picus_expr_from_boolean_circuit(i_insn)
+                + picus_expr_from_boolean_circuit(j_insn)
+                + picus_expr_from_boolean_circuit(u_insn)
+                - PicusExpr::Variable(update_rd),
+            rhs: PicusExpr::from_const(0),
+        });
 
-        (src1, src2, update_rd)
+        (src1, src2, Constraint::from(update_rd))
     }
 }
