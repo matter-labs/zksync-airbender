@@ -32,6 +32,7 @@
 //!      result, and read the actionable signal off the downscaled clusters.
 
 mod s3_gap;
+mod s3_planner;
 
 use s3_gap::cluster::{connected_root_cluster, reachable_prior_sources};
 use s3_gap::driver::{oracle_available, run_oracle, Mode, OracleResult};
@@ -979,4 +980,96 @@ fn s3_gap_multicircuit() {
     } else {
         println!("  VERDICT: every order-sensitive cluster shows ~0% gap at budget {REAL_BUDGET} → CachingOnly generalizes (fix eviction, no order beam).");
     }
+}
+
+// ── Task 5: M1 gate — corpus differential, determinism, per-family frontier ────
+
+#[test]
+fn m1_planner_is_deterministic() {
+    use s3_planner::inner_dp::plan_fixed_order;
+    let Some((layer, _cross)) = try_load_l0("add_sub_lui_auipc_mop_layout_gkr.json") else {
+        eprintln!("fixture unavailable; skipping"); return;
+    };
+    let Some(c) = sweet_spot_clusters(&layer, 1, 2, 15).into_iter().next() else { return };
+    let inst = extract_instance(&c.layer, &c.cross, REAL_BUDGET);
+    let a = plan_fixed_order(&inst).result.objective();
+    let b = plan_fixed_order(&inst).result.objective();
+    let d = plan_fixed_order(&inst).result.objective();
+    assert_eq!(a, b);
+    assert_eq!(b, d);
+}
+
+/// True iff all real-DRAM leaf nodes share one width (so Belady is exact).
+fn cluster_dram_widths_uniform(inst: &s3_gap::instance::OracleInstance) -> bool {
+    let mut w: Option<u8> = None;
+    for nd in &inst.nodes {
+        if nd.real_dram {
+            match w { None => w = Some(nd.width), Some(x) if x != nd.width => return false, _ => {} }
+        }
+    }
+    true
+}
+
+#[test]
+#[ignore = "requires python3 + ortools; full corpus, minutes"]
+fn m1_planner_matches_oracle_e_across_corpus() {
+    use std::collections::BTreeMap;
+    use s3_planner::inner_dp::plan_fixed_order;
+    if !oracle_available() { eprintln!("ortools unavailable; skipping"); return; }
+
+    const FRONTIER_CAP: usize = 200_000; // R3: log-and-flag, never silently truncate
+    let mut checked = 0usize;
+    let mut checked_uniform = 0usize;
+    let mut max_gap: i64 = 0;
+    let mut frontier_by_fixture: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut cap_exceeded = false;
+
+    for fx in ALL_FIXTURES {
+        let Some((layer, _cross)) = try_load_l0(fx) else { continue };
+        for c in sweet_spot_clusters(&layer, 1, 2, 15).into_iter().take(3) {
+            let inst = extract_instance(&c.layer, &c.cross, REAL_BUDGET);
+            let e = match run_oracle(&inst, Mode::E, 0.0, 60) {
+                Ok(r) if r.status == "optimal" => r,
+                _ => continue,
+            };
+            let run = plan_fixed_order(&inst);
+            let (pt, pi) = run.result.objective();
+            assert!((pt, pi) >= (e.traffic, e.instrs),
+                "[{fx}] planner-E {:?} < oracle-E {:?} — DP bug", (pt, pi), (e.traffic, e.instrs));
+            if cluster_dram_widths_uniform(&inst) {
+                assert_eq!((pt, pi), (e.traffic, e.instrs), "[{fx}] uniform-width must equal oracle-E");
+                checked_uniform += 1;
+            }
+            max_gap = max_gap.max(pt as i64 - e.traffic as i64);
+            let slot = frontier_by_fixture.entry(fx).or_insert(0);
+            *slot = (*slot).max(run.max_frontier);
+            if run.max_frontier > FRONTIER_CAP { cap_exceeded = true; }
+            checked += 1;
+        }
+    }
+    assert!(checked > 0, "no optimal oracle-E rows checked — corpus/oracle setup broken");
+    eprintln!("[M1] checked={checked} (uniform={checked_uniform}); max (planner-E − oracle-E)={max_gap}");
+    for (fx, f) in &frontier_by_fixture { eprintln!("[M1] frontier[{fx}] = {f}"); }
+    if cap_exceeded { eprintln!("[M1][WARN] dominance frontier exceeded {FRONTIER_CAP} — investigate before scaling"); }
+}
+
+#[test]
+fn m1_uniform_binding_c_is_exact_handbuilt() {
+    use s3_planner::inner_dp::plan_fixed_order;
+    use s3_gap::instance::{NodeKind, OracleInstance, OracleNode};
+    let nd = |id, kind, width, real_dram, children| OracleNode { id, kind, width, real_dram, children };
+    // budget 2, all base width 1. X(0) used by A=Add{0}=2 (s0) and C=Add{0}=4 (s2);
+    // B=Add{1,?}=3 (s1) with P[B]=2=budget so X (outsider, w1) cannot be carried (1+2>2).
+    // -> X reloaded at s2. traffic = X@s0(1) + (s1 leaves) + X@s2(1); instrs = 3.
+    let inst = OracleInstance { budget: 2, roots: vec![2, 3, 4], nodes: vec![
+        nd(0, NodeKind::Read, 1, true, vec![]),
+        nd(1, NodeKind::Read, 1, true, vec![]),
+        nd(2, NodeKind::Add, 1, false, vec![0]),
+        nd(3, NodeKind::Add, 1, false, vec![1, 1]), // P[B] = max(1, 1+1) = 2 = budget
+        nd(4, NodeKind::Add, 1, false, vec![0]),
+    ]};
+    // s0: load X (1). carry X to s2? (C) at s1: X outsider(1) + P[B](2) = 3 > 2 -> evict.
+    // s1: load Y(1). s2: reload X(1). traffic = 1 + 1 + 1 = 3; instrs = 3.
+    let run = plan_fixed_order(&inst);
+    assert_eq!(run.result.objective(), (3, 3));
 }
