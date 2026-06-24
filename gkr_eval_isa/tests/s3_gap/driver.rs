@@ -8,17 +8,21 @@
 //!
 //! ## Solver self-test + within-stage capacity LOCK guards (audit HIGH-1)
 //!
-//! The within-stage capacity uses a STREAMING charge — a fold's transient peak
-//! is `width(result) + max-single-operand` (accumulator + the single largest
-//! operand being merged), a TRUE LOWER BOUND. Verify directly:
+//! The within-stage capacity charges the SEQUENTIAL (Sethi-Ullman) peak of each
+//! root's cone — `peak(fold) = max(peak(c1), width + peak(c2))` over children
+//! sorted by descending peak — a TRUE LOWER BOUND that, for a lone n-ary fold,
+//! collapses to `width(result) + max-operand` (the single-fold guards are
+//! therefore unchanged from the earlier streaming charge). Verify directly:
 //!
 //! ```text
-//! # Self-test (recompute cost = 2 base reads) + both LOCK guards in one shot:
+//! # Self-test (recompute cost = 2 base reads) + all LOCK guards in one shot:
 //! python3 gkr_eval_isa/oracle/solve.py --selftest
 //!   → "recompute": {"status":"optimal","traffic":2}
 //!   → "guard_4base": cliff 5  (Add(4 base)→ext infeasible@4, feasible@5 == 4+1)
 //!   → "guard_4ext":  cliff 8  (Add(4 ext)→ext  infeasible@7, feasible@8/@16 == 4+4)
 //!   → "guard_8ext":  cliff 8  (wider ext reduction; peak stays 8, feasible@16)
+//!   → "guard_sop":   cliff 12 (sum-of-3-ext-products; OLD SUM model rejected @16,
+//!                              sequential peak = max(8, 4+8) = 12, feasible@12/@16)
 //!   → "all_pass": true ; exit 0
 //!
 //! # Guard 1 (sub-peak rejects) by hand — Add(4 base)→ext, budget below peak 5:
@@ -145,54 +149,49 @@ pub fn oracle_available() -> bool {
 
 // ── Hand-built OracleInstance helpers for J-vs-E differential ───────────────
 
-/// Order-sensitive instance: two ext Priors P1 (id=0) and P2 (id=1), three
-/// fold roots R1=Add([P1]) (id=2), R2=Add([P2]) (id=3), R3=Add([P1,P2]) (id=4).
-/// Budget = 12 (= 3×ext = enough to hold one ext resident while computing one ext fold).
+/// Order-sensitive instance: one ext Prior P1 (id=0) shared by two roots
+/// R_a=Add([P1]) (id=3) and R_c=Add([P1]) (id=5), with an EXPENSIVE intervening
+/// root R_b=Add([read,read]) (id=4) whose cone peak is 8.
 ///
 /// ## Why the identity order pays one extra ext reload (traffic gap = +4)
 ///
-/// Both P1 and P2 are needed by R3 (the last root in identity order).
-/// Budget = 12 allows keeping at most ONE ext Prior resident while computing
-/// another ext fold (resident 4 + fold-acc 4 + transient 4 = 12 = budget).
+/// Budget = 8. The sequential cone peaks are P[R_a]=P[R_c]=4 and P[R_b]=8 (an
+/// ext fold of two ext reads: `max(4, 4+4) = 8`). Carrying P1 (4 cells) resident
+/// *across* R_b's stage costs `4 + P[R_b] = 4 + 8 = 12 > 8` — impossible. So P1
+/// can only stay resident across stages whose cone leaves room for it.
 ///
-/// **J-optimal order: [R1, R3, R2] (root indices 0→2, 2→4, 1→3)**
-///   t=0  compute R1=Add([P1])     load P1 (traffic 4); keep P1 resident
-///         base = 4(P1) + 4(R1-acc) = 8; trans = 4(P1-operand); total = 12 ✓
-///   t=1  compute R3=Add([P1,P2])  P1 available (no reload); load P2 (traffic 4)
-///         base = 4(R3-acc) = 4; trans = 4(max-operand P2) = 4; total = 8 ✓
-///         keep P2 resident (res[1,P2]=1 → live[1,P2]=1):
-///         base = 4(P2) + 4(R3-acc) = 8; trans = 4; total = 12 ✓
-///   t=2  compute R2=Add([P2])     P2 available (no reload); traffic = 0
-///         base = 4(R2-acc) = 4; trans = 4(P2-operand); total = 8 ✓
-///   **J traffic = 4 (P1) + 4 (P2) = 8**
+/// **E (identity) order: [R_a, R_b, R_c]** — R_b sits *between* the two P1 uses.
+///   t=0  R_a=Add([P1])      load P1 (traffic 4)
+///   t=1  R_b=Add([a,b])     load a,b (traffic 8); cannot also carry P1
+///         (carry P1 4 + P[R_b] 8 = 12 > 8) → P1 evicted
+///   t=2  R_c=Add([P1])      P1 gone → reload P1 (traffic 4)
+///   **E traffic = 4 (P1) + 8 (R_b) + 4 (P1 reload) = 16**
 ///
-/// **E (identity) order: [R1, R2, R3]**
-///   t=0  compute R1=Add([P1])     load P1 (traffic 4); must keep P1 for t=2
-///         keep P1 resident: base=4(P1)+4(R1)=8; trans=4; total=12 ✓
-///   t=1  compute R2=Add([P2])     load P2 (traffic 4); keep P1 for t=2
-///         must carry P1 (res[1,P1]=1 → live[1,P1]=1)
-///         base = 4(P1) + 4(R2-acc) = 8; trans = 4(P2-operand); total = 12 ✓
-///         but if also keeping P2 (res[1,P2]=1 → live[1,P2]=1):
-///         base = 4(P1) + 4(P2) + 4(R2-acc) = 12; trans = 4; total = 16 > 12 ✗
-///         → CANNOT keep both; at most one Prior can be carried across this stage
-///   t=2  compute R3=Add([P1,P2])  P1 available; must reload P2 (traffic 4)
-///         base = 4(R3-acc) = 4; trans = 4; total = 8 ✓
-///   **E traffic = 4 (P1) + 4 (P2) + 4 (P2 reload) = 12**
+/// **J-optimal order: [R_b, R_a, R_c]** — R_b moved out from between the P1 uses.
+///   t=0  R_b=Add([a,b])     load a,b (traffic 8)
+///   t=1  R_a=Add([P1])      load P1 (traffic 4); keep P1 resident (boundary 4 ≤ 8)
+///   t=2  R_c=Add([P1])      P1 resident (no reload); traffic 0
+///   **J traffic = 8 (R_b) + 4 (P1) = 12**
 ///
-/// Gap = E − J = 12 − 8 = +4 = one ext Prior reload.
-pub fn order_sensitive_two_prior_instance() -> OracleInstance {
+/// Gap = E − J = 16 − 12 = +4 = one ext Prior reload. (Under the earlier
+/// over-strict `base+transient` charge the simpler two-Prior instance also read
+/// as order-sensitive, but that sensitivity was a modeling artifact — the
+/// corrected sequential peak lets a fixed order keep both Priors resident there,
+/// so genuine order-sensitivity now requires an expensive *intervening* cone.)
+pub fn order_sensitive_shared_prior_instance() -> OracleInstance {
     use crate::s3_gap::instance::{NodeKind, OracleNode};
     OracleInstance {
-        // budget 12: 3×ext-width; allows one ext Prior resident while computing one ext fold
-        budget: 12,
-        // root 0 → R1 (id=2), root 1 → R2 (id=3), root 2 → R3 (id=4)
-        roots: vec![2, 3, 4],
+        // budget 8: P1(4) cannot be carried across R_b's cone peak (8) → 4+8 > 8
+        budget: 8,
+        // root 0 → R_a (id=3), root 1 → R_b (id=4), root 2 → R_c (id=5)
+        roots: vec![3, 4, 5],
         nodes: vec![
-            OracleNode { id: 0, kind: NodeKind::Prior, width: 4, real_dram: true,  children: vec![] }, // P1
-            OracleNode { id: 1, kind: NodeKind::Prior, width: 4, real_dram: true,  children: vec![] }, // P2
-            OracleNode { id: 2, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![0] }, // R1=Add([P1])
-            OracleNode { id: 3, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![1] }, // R2=Add([P2])
-            OracleNode { id: 4, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![0, 1] }, // R3=Add([P1,P2])
+            OracleNode { id: 0, kind: NodeKind::Prior, width: 4, real_dram: true,  children: vec![] },     // P1 (shared)
+            OracleNode { id: 1, kind: NodeKind::Read,  width: 4, real_dram: true,  children: vec![] },     // R_b leaf a
+            OracleNode { id: 2, kind: NodeKind::Read,  width: 4, real_dram: true,  children: vec![] },     // R_b leaf b
+            OracleNode { id: 3, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![0] },    // R_a = Add([P1])
+            OracleNode { id: 4, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![1, 2] }, // R_b = Add([a,b]) peak 8
+            OracleNode { id: 5, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![0] },    // R_c = Add([P1])
         ],
     }
 }
@@ -263,12 +262,12 @@ mod tests {
     #[test]
     #[ignore = "needs python3 + ortools; run with --ignored"]
     fn fixed_order_costs_more_than_free_order_when_order_matters() {
-        // See order_sensitive_two_prior_instance() for the hand-derived derivation.
-        // Briefly: budget=12 lets J pick order [R1,R3,R2] (P1 used consecutively,
-        // then P2 kept resident for R2) → traffic=8.  E (identity order [R1,R2,R3])
-        // cannot keep both P1 and P2 resident at stage 1 → must reload one at
-        // stage 2 → traffic=12.  Gap = +4 = one ext Prior reload.
-        let inst = order_sensitive_two_prior_instance();
+        // See order_sensitive_shared_prior_instance() for the hand-derived
+        // derivation. Briefly: budget=8, P1 is shared by R_a and R_c with an
+        // expensive R_b (cone peak 8) between them in emission order. J reorders
+        // R_b out from between the P1 uses (traffic 12); E (identity [R_a,R_b,R_c])
+        // cannot carry P1 across R_b → reloads it (traffic 16). Gap = +4.
+        let inst = order_sensitive_shared_prior_instance();
         let j = run_oracle(&inst, Mode::J, 0.0, 120).unwrap();
         let e = run_oracle(&inst, Mode::E, 0.0, 120).unwrap();
         println!("J: status={} traffic={} schedule={:?}", j.status, j.traffic,

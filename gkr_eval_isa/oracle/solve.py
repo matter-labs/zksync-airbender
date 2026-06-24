@@ -14,60 +14,106 @@ A time-indexed scheduling model MUST charge the within-stage PEAK working set,
 not just end-of-stage residency, or the budget never binds. The original model
 solved a 4-input fold at budget 0 and falsely reported "optimal".
 
-The brief's starting model charged ALL children of a computed fold
-simultaneously live (`comp[v] -> live[c]` for every child c). That is SOUND but
-too strict: an ext-input reduction with 4 ext children costs 4*4 + 4 = 20 > 16,
-so real wide reductions (add_sub L0 hits MAX_ARITY=127) become infeasible at the
-real budget 16.
+The FIRST fix charged a per-stage `base + transient`:
 
-We RELAX toward a STREAMING charge. The true minimum transient working set to
-compute a k-ary fold is
+    base(t)      = sum_v width[v] * live[t,v]    (residents + EVERY computed fold acc)
+    transient(t) = sum_{folds f at t} max_operand(f)
 
-    width(result) + max_i width(operand_i)
+That was SOUND (never under-counts) but OVER-STRICT for a cone with several
+folds in one stage: it forced *all* fold accumulators simultaneously live (the
+`base` over-count) AND it SUMMED the per-fold operand bumps (the `transient`
+over-count). A real streaming evaluator never holds all of a sum-of-products'
+intermediate products at once — it folds them one at a time. The over-strictness
+made genuinely-feasible real cones (add_sub L0) infeasible at the real budget 16.
 
-i.e. the accumulator plus the single largest operand being merged in. A real
-streaming reducer loads one operand, merges it into the accumulator, frees it,
-then loads the next — so only `acc + one operand` is ever co-resident for the
-fold's own transient. For an ext result with ext operands that is 4 + 4 = 8; for
-an ext result with base operands it is 4 + 1 = 5.
+THE SEQUENTIAL (Sethi-Ullman) PEAK
+----------------------------------
+The minimum cells to evaluate a cone, when every n-ary fold is a binary-streamed
+left-fold (`acc = c1; acc (+|*)= c2; ...`, one operand merged at a time, freed
+after merging) and children are evaluated in descending-peak order, is the
+Sethi-Ullman number of the cone:
 
-This is the IDEAL (best-case) transient, which is exactly what makes J a TRUE
-LOWER BOUND: no real schedule can compute a fold with less than
-`accumulator + one operand` live, and we never charge less than that.
+    peak(leaf)           = width(leaf)
+    peak(fold v; c1..ck) = max( peak(c_(1)),  width(v) + peak(c_(2)) )
+                           (children sorted by DESCENDING peak; c_(2) = 2nd largest)
 
-ENCODING
---------
-We keep persistent residency capacity (carried `res[t-1,v]` + the result of any
-fold computed at t) as the *base* working set charged each stage, and add a
-per-stage TRANSIENT bump for the folds computed at t:
+This is the IDEAL (smallest-possible) peak, so it is a TRUE LOWER BOUND on any
+real schedule's peak: no evaluator can compute the cone with fewer cells. For a
+lone n-ary fold it collapses to `width(result) + max-operand` (the old streaming
+bump), so the single-fold LOCK guards are unchanged; for multi-fold cones it
+correctly serializes (sum-of-3-ext-products peaks at 12, not the old 32).
 
-    base(t)      = sum_v width[v] * live[t,v]         (residents + computed nodes)
-    transient(t) = sum_{folds f computed at t} max_operand_width(f)
+ENCODING (per stage t)
+----------------------
+`P[ri]` = Sethi-Ullman peak of root ri's cone (a per-cone CONSTANT, no T blow-up).
+`cone[ri]` = node ids reachable from root ri.
 
-    base(t) + transient(t) <= budget                  (within-stage peak)
+    (B) boundary:   sum_v width[v] * res[t,v]  <=  budget
+                    (at the stage boundary all residents coexist — a real instant)
 
-`live[t,v]` already includes `comp[t,v]` (the fold's own result == accumulator
-width) and any carried residents. The transient bump adds exactly the single
-largest operand being merged. So for a lone fold f computed into an otherwise
-empty cell file we charge `width(f) + max_operand_width(f)`, the streaming peak.
+    (C) cone fit:   sum_{v not in cone[ri]} width[v] * carry[t,v]  +  P[ri]  <= budget
+                    enforced when mat[t,ri]=1, where
+                    carry[t,v] = res[t-1,v] AND res[t,v]  (held resident across the
+                    WHOLE stage → continuously live → live at the cone's peak).
 
-Why this is a valid lower bound (never under-counts below result+one-operand):
-`live[t,f]` forces `width(f)` to be charged whenever f is computed (the
-accumulator must be live), and `transient(t)` adds at least the largest single
-operand width. Their sum is >= width(f) + max_operand_width(f) for every
-computed fold, so the model can never let a fold compute with less than
-accumulator+operand co-resident. It is a lower bound (not the exact peak)
-because it does NOT additionally force every child to be simultaneously
-materialized — a streaming reducer is free not to.
+Why (C) is a valid lower bound (never over-rejects a real schedule): the cone's
+peak instant is >= P[ri] (Sethi-Ullman optimum), and at that instant every value
+HELD THROUGH the stage that is not part of the cone is also resident. Cone-internal
+values (leaves and sub-results) are already counted inside P[ri], so only the
+carried-through OUTSIDERS are added — no double-count. The sum (C) is therefore
+<= the true peak, so any schedule whose true peak fits the budget also satisfies
+(C). A cone whose P[ri] alone exceeds budget is genuinely infeasible.
 
-Note `max_operand_width(f)` is a per-node CONSTANT (children widths are known
-from the instance), so the transient bump is `const * comp[t,f]` — linear, no
-auxiliary max variables needed.
+Why the budget still BINDS on reload pressure: keeping a shared DRAM leaf resident
+across an intervening root (to avoid a reload) charges its width into that root's
+(C) constraint via `carry`. When the intervening cone's P is near budget, the leaf
+cannot be carried → it must be reloaded → traffic. That tension is exactly the
+order/eviction signal the gap experiment measures.
 """
 import sys
 import json
 import time
 from ortools.sat.python import cp_model
+
+
+def _cone_peaks(nodes):
+    """Sethi-Ullman cell-peak per node (memoized over the shared-subexpr DAG)."""
+    width = {n["id"]: n["width"] for n in nodes}
+    children = {n["id"]: n["children"] for n in nodes}
+    peak = {}
+
+    def rec(v):
+        if v in peak:
+            return peak[v]
+        ch = children[v]
+        if not ch:
+            peak[v] = width[v]
+            return peak[v]
+        cps = sorted((rec(c) for c in ch), reverse=True)
+        p = cps[0]
+        if len(cps) >= 2:
+            p = max(p, width[v] + cps[1])  # binary-streamed fold: acc + 2nd-largest child
+        else:
+            p = max(p, width[v])           # unary fold: accumulator holds width(v)
+        peak[v] = p
+        return p
+
+    for n in nodes:
+        rec(n["id"])
+    return peak
+
+
+def _cone_set(root, children):
+    """Node ids reachable from `root` (inclusive)."""
+    seen = set()
+    stack = [root]
+    while stack:
+        u = stack.pop()
+        if u in seen:
+            continue
+        seen.add(u)
+        stack.extend(children[u])
+    return seen
 
 
 def solve(inst):
@@ -83,63 +129,43 @@ def solve(inst):
     # Special-gather terminals (resolution-pruned) cost 0 traffic + 1 instr (spec §3 class 3).
     is_recompute = {n["id"]: n["kind"] in ("Add", "Mul", "Special") for n in nodes}
 
-    # Streaming transient: the largest single operand merged into a fold's
-    # accumulator. Constant per node (children widths are known up front).
-    # A fold's within-stage peak is width(result) [charged via live] + this.
-    max_operand = {
-        n["id"]: (max((width[c] for c in n["children"]), default=0))
-        for n in nodes
-    }
+    # Sethi-Ullman cone peaks (per-node) + per-root cone membership + peak.
+    node_peak = _cone_peaks(nodes)
+    P = [node_peak[r] for r in roots]
+    cones = [_cone_set(r, children) for r in roots]
+
+    # A cone whose IDEAL (Sethi-Ullman) peak already exceeds the budget cannot be
+    # evaluated by ANY schedule → the instance is genuinely infeasible.
+    if any(P[ri] > budget for ri in range(T)):
+        return {"status": "infeasible", "traffic": 0, "instrs": 0, "bound": 0,
+                "wall_ms": 0, "schedule": []}
 
     m = cp_model.CpModel()
     comp = {(t, v): m.NewBoolVar(f"c{t}_{v}") for t in range(T) for v in range(N)}
     res = {(t, v): m.NewBoolVar(f"r{t}_{v}") for t in range(T) for v in range(N)}
-    live = {(t, v): m.NewBoolVar(f"l{t}_{v}") for t in range(T) for v in range(N)}
 
-    def avail(t, v):
-        return (res[(t - 1, v)] if t > 0 else 0), comp[(t, v)]
-
-    # Special nodes are leaf-like (resolution terminals): no fold accumulator is
-    # charged for them. is_recompute INCLUDES Special (1 instr cost), but is_fold
-    # does NOT (no comp->live charge). A new node kind must be classified in BOTH.
-    is_fold = {n["id"]: n["kind"] in ("Add", "Mul") for n in nodes}
+    def res_prev(t, v):
+        return res[(t - 1, v)] if t > 0 else 0
 
     for t in range(T):
         for v in range(N):
             # precedence: computing v needs each child available this stage
             for c in children[v]:
-                rprev, cnow = avail(t, c)
-                m.Add(rprev + cnow >= 1).OnlyEnforceIf(comp[(t, v)])
-            prev = res[(t - 1, v)] if t > 0 else 0
-            m.Add(res[(t, v)] <= prev + comp[(t, v)])
-            m.AddImplication(res[(t, v)], live[(t, v)])  # carried residents are live
-            # A FOLD's accumulator must be live while it computes (acc width).
-            # A streamed leaf operand (Read/Prior/etc.) that is computed and
-            # consumed within the stage is NOT individually charged here — its
-            # cost is carried by its consumer fold's `max_operand` transient
-            # (streaming: load one operand, merge, free, load next). Charging
-            # `comp -> live` for every leaf would over-count to the
-            # all-children peak (Σ child widths) and over-reject wide ext
-            # reductions; see module docstring.
-            if is_fold[v]:
-                m.AddImplication(comp[(t, v)], live[(t, v)])
-        # WITHIN-STAGE CAPACITY (audit HIGH-1), STREAMING charge:
-        #   base working set  = carried residents + fold accumulators (live)
-        #   transient bump    = the single largest operand of each computed fold
-        # Per-fold charge >= width(result) + max_operand: the accumulator is
-        # forced live (width) and the largest operand is added as transient.
-        # This is the IDEAL streaming peak (acc + one operand), so it is a TRUE
-        # LOWER BOUND — never under-counts below result+one-operand, and never
-        # forces every child simultaneously materialized.
-        base = sum(width[v] * live[(t, v)] for v in range(N))
-        # NOTE (over-strict, NOT unsound): when multiple folds compute at the same
-        # stage, their max_operand transients SUM rather than taking the sequential
-        # max of the true streaming schedule. Over-strict for deep binary fold-trees
-        # in one stage; EXACT for single n-ary L0 reductions (sum == max there).
-        # If real instances come out infeasible at budget 16, relax this to a
-        # per-stage MAX over folds (deferred per plan).
-        transient = sum(max_operand[v] * comp[(t, v)] for v in range(N))
-        m.Add(base + transient <= budget)
+                m.Add(res_prev(t, c) + comp[(t, c)] >= 1).OnlyEnforceIf(comp[(t, v)])
+            # residency carries forward only if held or (re)computed this stage
+            m.Add(res[(t, v)] <= res_prev(t, v) + comp[(t, v)])
+
+    # carry[t,v] = res[t-1,v] AND res[t,v]: v held resident across the WHOLE stage
+    # t (the model has no intra-stage eviction, so a held value is continuously
+    # live and therefore live at the cone's peak instant).
+    carry = {}
+    for t in range(1, T):
+        for v in range(N):
+            cv = m.NewBoolVar(f"k{t}_{v}")
+            m.Add(cv <= res[(t - 1, v)])
+            m.Add(cv <= res[(t, v)])
+            m.Add(cv >= res[(t - 1, v)] + res[(t, v)] - 1)
+            carry[(t, v)] = cv
 
     # root materialization: each root produced at exactly one stage; one per stage
     mat = {(t, ri): m.NewBoolVar(f"m{t}_{ri}") for t in range(T) for ri in range(T)}
@@ -153,6 +179,20 @@ def solve(inst):
     for t in range(T):
         for ri in range(T):
             m.Add(comp[(t, roots[ri])] >= mat[(t, ri)])  # root produced at its stage
+
+    # WITHIN-STAGE CAPACITY (sequential Sethi-Ullman charge; see module docstring).
+    # (B) boundary residency: all residents coexist at the stage boundary.
+    for t in range(T):
+        m.Add(sum(width[v] * res[(t, v)] for v in range(N)) <= budget)
+    # (C) cone peak coexists with residents carried THROUGH the stage that are not
+    # part of the cone (cone-internal values are already inside P[ri]). For t=0
+    # there is no carry, and P[ri] <= budget is guaranteed above, so (C) is vacuous.
+    for t in range(1, T):
+        for ri in range(T):
+            outsiders = [v for v in range(N) if v not in cones[ri]]
+            m.Add(
+                sum(width[v] * carry[(t, v)] for v in outsiders) <= budget - P[ri]
+            ).OnlyEnforceIf(mat[(t, ri)])
 
     # objective: lexicographic (traffic, instrs) via big-M
     traffic = sum(width[v] * comp[(t, v)] for t in range(T) for v in range(N) if is_dram[v])
@@ -183,9 +223,11 @@ def solve(inst):
 
 
 # ── --selftest cases ───────────────────────────────────────────────────────────
-# The recompute-cost selftest plus the two within-stage LOCK guards (audit
-# HIGH-1). Each guard records the empirical feasibility cliff (budget at which
-# infeasible -> feasible) under the final STREAMING charge.
+# The recompute-cost selftest plus the within-stage LOCK guards (audit HIGH-1).
+# Each guard records the empirical feasibility cliff (budget at which infeasible
+# -> feasible) under the SEQUENTIAL Sethi-Ullman charge. The single-fold guards
+# (4base/4ext/8ext) are unchanged from the streaming model (peak == result +
+# max-operand there); guard_sop is the NEW multi-fold lock the relaxation enables.
 
 def _selftest_recompute():
     # ext value (width 4) = Add of two base reads (width 1 each); budget 16.
@@ -201,7 +243,7 @@ def _selftest_recompute():
 
 def _guard_4base(budget):
     # LOCK guard 1 (too-loose / soundness floor): Add(4 base reads)→ext.
-    # Streaming peak = width(result) + max-operand = 4 + 1 = 5.
+    # Sethi-Ullman peak = width(result) + max-operand = 4 + 1 = 5.
     # MUST be infeasible below 5, feasible at/above 5 (sub-peak rejects).
     return {"budget": budget, "mode": "J", "roots": [4],
             "nodes": [{"id": 0, "kind": "Read", "width": 1, "real_dram": True, "children": []},
@@ -213,9 +255,9 @@ def _guard_4base(budget):
 
 def _guard_4ext(budget):
     # LOCK guard 2 (too-strict / calibration): Add(4 ext reads)→ext.
-    # Streaming peak = 4 + 4 = 8 <= 16. MUST be feasible at 16 (the
+    # Sethi-Ullman peak = 4 + 4 = 8 <= 16. MUST be feasible at 16 (the
     # un-relaxed all-children charge gave 4*4 + 4 = 20 > 16 → infeasible; that
-    # over-rejection is the whole reason to relax to streaming).
+    # over-rejection is the whole reason to relax to the sequential peak).
     return {"budget": budget, "mode": "J", "roots": [4],
             "nodes": [{"id": 0, "kind": "Read", "width": 4, "real_dram": True, "children": []},
                       {"id": 1, "kind": "Read", "width": 4, "real_dram": True, "children": []},
@@ -225,11 +267,26 @@ def _guard_4ext(budget):
 
 
 def _guard_8ext(budget):
-    # Wider ext reduction (8 ext inputs): streaming peak stays 4 + 4 = 8 <= 16.
+    # Wider ext reduction (8 ext inputs): sequential peak stays 4 + 4 = 8 <= 16.
     # MUST still be feasible at 16 (peak does not grow with arity).
     nodes = [{"id": i, "kind": "Read", "width": 4, "real_dram": True, "children": []} for i in range(8)]
     nodes.append({"id": 8, "kind": "Add", "width": 4, "real_dram": False, "children": list(range(8))})
     return {"budget": budget, "mode": "J", "roots": [8], "nodes": nodes}
+
+
+def _guard_sop(budget):
+    # NEW multi-fold LOCK: sum-of-3-ext-products  Add[Mul1,Mul2,Mul3], each
+    # Mul = two ext leaves. The OLD base+transient model charged
+    #   base = 4(Mul1)+4(Mul2)+4(Mul3)+4(Add) = 16, transient = 4+4+4+4 = 16 → 32
+    # → INFEASIBLE at 16. The sequential Sethi-Ullman peak is
+    #   peak(Mul) = max(4, 4+4) = 8;  peak(Add) = max(8, 4 + 8) = 12
+    # → MUST be infeasible below 12 and feasible at/above 12 (and at 16).
+    nodes = [{"id": i, "kind": "Read", "width": 4, "real_dram": True, "children": []} for i in range(6)]
+    nodes.append({"id": 6, "kind": "Mul", "width": 4, "real_dram": False, "children": [0, 1]})
+    nodes.append({"id": 7, "kind": "Mul", "width": 4, "real_dram": False, "children": [2, 3]})
+    nodes.append({"id": 8, "kind": "Mul", "width": 4, "real_dram": False, "children": [4, 5]})
+    nodes.append({"id": 9, "kind": "Add", "width": 4, "real_dram": False, "children": [6, 7, 8]})
+    return {"budget": budget, "mode": "J", "roots": [9], "nodes": nodes}
 
 
 def _cliff(build):
@@ -252,7 +309,7 @@ def _run_selftest():
         "infeasible@4": solve(_guard_4base(4))["status"],
         "feasible@5": solve(_guard_4base(5))["status"],
         "cliff": cliff_4base,
-        "streaming_peak": 5,
+        "su_peak": 5,
     }
     # Guard 2: not over-rejected. Add(4 ext)→ext feasible at 16 (peak 8).
     cliff_4ext = _cliff(_guard_4ext)
@@ -261,13 +318,23 @@ def _run_selftest():
         "infeasible@7": solve(_guard_4ext(7))["status"],
         "feasible@8": solve(_guard_4ext(8))["status"],
         "cliff": cliff_4ext,
-        "streaming_peak": 8,
+        "su_peak": 8,
     }
     # Wider ext reduction: peak stays 8 → still feasible at 16.
     out["guard_8ext"] = {
         "feasible@16": solve(_guard_8ext(16))["status"],
         "cliff": _cliff(_guard_8ext),
-        "streaming_peak": 8,
+        "su_peak": 8,
+    }
+    # NEW multi-fold guard: sum-of-products feasible at its SU peak 12 (the old
+    # SUM model rejected this at 16); infeasible at 11.
+    cliff_sop = _cliff(_guard_sop)
+    out["guard_sop"] = {
+        "infeasible@11": solve(_guard_sop(11))["status"],
+        "feasible@12": solve(_guard_sop(12))["status"],
+        "feasible@16": solve(_guard_sop(16))["status"],
+        "cliff": cliff_sop,
+        "su_peak": 12,
     }
 
     ok = (
@@ -279,6 +346,9 @@ def _run_selftest():
         and out["guard_4ext"]["feasible@16"] in ("optimal", "feasible")
         and out["guard_4ext"]["cliff"] == 8
         and out["guard_8ext"]["feasible@16"] in ("optimal", "feasible")
+        and out["guard_sop"]["infeasible@11"] == "infeasible"
+        and out["guard_sop"]["feasible@12"] in ("optimal", "feasible")
+        and out["guard_sop"]["cliff"] == 12
     )
     out["all_pass"] = ok
     return out, ok

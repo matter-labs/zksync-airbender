@@ -340,8 +340,10 @@ fn s3_gap_experiment() {
     }
 
     // ── 3. Full-size REQUIRED bracket row (add_sub L0 @ budget 16, short cap) ──
-    // Expected infeasible/feasible-not-optimal at full scale → makes gate()
-    // return Insufficient BY DESIGN. Record real compile_layer traffic as C.
+    // Expected feasible-not-optimal at full scale (a pure MILP SCALE limit now
+    // that the per-stage over-strictness is fixed — 146 nodes/39 roots cannot be
+    // proven optimal within the cap) → makes gate() return Insufficient BY DESIGN.
+    // Record real compile_layer traffic as C.
     {
         let (dag, artifact, cross) = load_layer_source("add_sub_lui_auipc_mop_layout_gkr.json");
         let layer = &dag.layers[0];
@@ -392,9 +394,11 @@ fn s3_gap_experiment() {
     println!(
         "GATE EXPLANATION: `Insufficient` is the HONEST verdict here — the §4.3 guard requires a \n\
          full-size prior_edges>0 row solved to OPTIMAL before concluding, and the full-size row \n\
-         cannot solve to optimal at budget {REAL_BUDGET} (oracle over-strictness + MILP scale limit, \n\
-         per 8a). gate() therefore refuses to conclude at full scale. The actionable Phase-1 signal \n\
-         is the downscaled-cluster section below, which the gate's guard intentionally suppresses."
+         cannot be PROVEN optimal at budget {REAL_BUDGET} (a pure MILP scale limit on 146 nodes/39 \n\
+         roots; the per-stage over-strictness has been fixed by the sequential SU-peak charge, so \n\
+         the downscaled order-sensitive cluster now solves both-optimal at 16). gate() therefore \n\
+         refuses to conclude at full scale. The actionable Phase-1 signal is the downscaled-cluster \n\
+         section below, which the gate's guard intentionally suppresses."
     );
 
     // ── Downscaled-cluster signal section ─────────────────────────────────────
@@ -433,25 +437,26 @@ fn s3_gap_experiment() {
     }
 
     // ── Supplementary order-tension probe ─────────────────────────────────────
-    // The budget-16 both-optimal clusters lack cross-root DRAM sharing. The ONLY
-    // add_sub-L0 cluster that DOES share a DRAM leaf across roots is
-    // over-strict-infeasible at 16. We sweep budgets to find the window where it
-    // solves BOTH J and E to optimal, exposing the real order gap the real budget
-    // hides. This is the most decision-relevant J-vs-E datum the experiment can
-    // produce on a genuinely order-sensitive real sub-circuit.
+    // The ONLY add_sub-L0 cluster that shares a DRAM leaf across roots (seed 18,
+    // shared_dram_leaves=2) is the one genuinely order-sensitive instance. Under
+    // the sequential Sethi-Ullman charge it now solves BOTH J and E to optimal AT
+    // the real budget 16 (the old per-stage SUM charge wrongly made it infeasible
+    // there). We sweep budgets to confirm whether ANY budget exposes an order gap
+    // on it — the most decision-relevant J-vs-E datum the experiment can produce
+    // on a genuinely order-sensitive real sub-circuit.
     println!("\n=== SUPPLEMENTARY ORDER-TENSION PROBE (shared-DRAM cluster, budget sweep) ===");
     order_tension_probe();
 
     // ── Headline finding ──────────────────────────────────────────────────────
     println!("\n=== HEADLINE FINDING ===");
     println!(
-        "  Over-strictness@16 + scale limit: the scheduling oracle's per-stage transient charge \n\
-         (Task-4) is over-strict at the real budget 16 on full 146-node layers — add_sub-L0 J is \n\
-         infeasible/feasible-not-optimal at 16, and the MILP cannot prove optimality at that scale \n\
-         within the cap. A full-size J at the real budget is therefore unobtainable. We DOWNSCALE \n\
-         to Prior-connected clusters that (a) solve to optimal at 16 and (b) preserve ≥2 Prior edges \n\
-         (order-sensitivity). Because J and E share the identical model, the shared over-strictness \n\
-         cancels and the J-vs-E DIRECTION measured on those clusters is the valid Phase-1 signal."
+        "  Sequential SU-peak charge fixes the over-strictness: the genuinely order-sensitive \n\
+         downscaled cluster (seed 18, shared_dram_leaves=2) now solves BOTH J and E to optimal AT \n\
+         the real budget 16 → (E−J)/D = 0% (order ~irrelevant). The remaining limit is pure MILP \n\
+         scale: the full 146-node/39-root layer is only feasible-not-optimal within the cap, so a \n\
+         PROVEN full-size optimum is still unobtainable and gate() stays Insufficient. The valid \n\
+         Phase-1 signal is the downscaled both-optimal section: order does not matter on add_sub-L0 \n\
+         at the real budget (the earlier 12.5%@budget-48 was an artifact of the old E over-strictness)."
     );
 }
 
@@ -482,7 +487,7 @@ fn order_tension_probe() {
     let d = dag_traffic_floor(&clayer, &cross) as u64;
     println!(
         "  cluster seed={seed:?}: shared_dram_leaves={shared}, D={d}. \n\
-         Sweeping budgets (this cluster is infeasible at the real budget {REAL_BUDGET}):"
+         Sweeping budgets (sequential SU-peak charge makes it feasible at the real budget {REAL_BUDGET}):"
     );
 
     let mut best_signal: Option<(usize, u64, u64)> = None; // (budget, j, e) at first both-optimal
