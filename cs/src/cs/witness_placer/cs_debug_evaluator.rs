@@ -7,6 +7,13 @@ use field::PrimeField;
 
 use super::WitnessPlacer;
 
+#[derive(Clone, Copy)]
+struct ResolverWriteRecord<F: PrimeField> {
+    variable: Variable,
+    was_assigned: bool,
+    previous_value: F,
+}
+
 pub struct CSDebugWitnessEvaluator<F: PrimeField> {
     pub(crate) values: Vec<F>,
     assigned: Vec<bool>,
@@ -14,7 +21,7 @@ pub struct CSDebugWitnessEvaluator<F: PrimeField> {
     pub(crate) table_driver: TableDriver<F>,
     pub(crate) preprocessed_decoder_table: Option<Vec<ExecutorFamilyDecoderData>>,
     read_unassigned_during_resolver: bool,
-    written_during_resolver: Vec<Variable>,
+    written_during_resolver: Vec<ResolverWriteRecord<F>>,
 }
 
 impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
@@ -76,7 +83,7 @@ impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
         self.assigned.iter().filter(|x| **x).count()
     }
 
-    pub fn evaluate(&mut self, node: &impl WitnessResolutionDescription<F, Self>) {
+    pub fn evaluate<R: WitnessResolutionDescription<F, Self> + ?Sized>(&mut self, node: &R) {
         self.evaluate_resolver(node);
     }
 
@@ -95,9 +102,13 @@ impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
 
     fn record_assignment(&mut self, variable: Variable, value: F) {
         let idx = self.resize_to_include(variable);
+        self.written_during_resolver.push(ResolverWriteRecord {
+            variable,
+            was_assigned: self.assigned[idx],
+            previous_value: self.values[idx],
+        });
         self.values[idx] = value;
         self.assigned[idx] = true;
-        self.written_during_resolver.push(variable);
     }
 
     fn mark_unassigned_read(&mut self, variable: Variable) {
@@ -107,7 +118,10 @@ impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
         }
     }
 
-    fn evaluate_resolver(&mut self, resolver: &impl WitnessResolutionDescription<F, Self>) {
+    fn evaluate_resolver<R: WitnessResolutionDescription<F, Self> + ?Sized>(
+        &mut self,
+        resolver: &R,
+    ) {
         let previous_read_unassigned = self.read_unassigned_during_resolver;
         let previous_written_len = self.written_during_resolver.len();
 
@@ -115,14 +129,13 @@ impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
         resolver.evaluate(self);
 
         if self.read_unassigned_during_resolver {
-            for variable in self.written_during_resolver[previous_written_len..]
+            for record in self.written_during_resolver[previous_written_len..]
                 .iter()
-                .copied()
+                .rev()
             {
-                let idx = variable.0 as usize;
-                if idx < self.assigned.len() {
-                    self.assigned[idx] = false;
-                }
+                let idx = record.variable.0 as usize;
+                self.values[idx] = record.previous_value;
+                self.assigned[idx] = record.was_assigned;
             }
         }
 

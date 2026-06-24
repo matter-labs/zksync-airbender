@@ -122,6 +122,7 @@ pub struct WitnessResolutionGraph<F: PrimeField, W: WitnessPlacer<F>> {
             Box<dyn WitnessResolutionDescription<F, W>>,
         >,
     >,
+    ordered_resolvers: Vec<Box<dyn WitnessResolutionDescription<F, W>>>,
     _marker: std::marker::PhantomData<(F, W)>,
 }
 
@@ -138,19 +139,24 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
                 b: Box::new(EmptyResolution),
                 _marker: core::marker::PhantomData,
             }),
+            ordered_resolvers: vec![],
             _marker: core::marker::PhantomData,
         }
     }
     pub fn append<T: WitnessResolutionDescription<F, W>>(self, node: T) -> Self {
         let Self {
-            inner, reorder_fn, ..
+            inner,
+            reorder_fn,
+            mut ordered_resolvers,
+            ..
         } = self;
 
         // we manually make next step via dyn cast
 
         let WitnessResolutionNode { a, b, .. } = inner;
         let next_step = Box::new(node) as Box<dyn WitnessResolutionDescription<F, W>>;
-        let result = (reorder_fn)(a, b, next_step);
+        let result = (reorder_fn)(a, b, next_step.clone());
+        ordered_resolvers.push(next_step);
 
         let reorder_fn = Box::new(
             |a: Box<dyn WitnessResolutionDescription<F, W>>,
@@ -178,6 +184,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
         Self {
             inner: result,
             reorder_fn,
+            ordered_resolvers,
             _marker: core::marker::PhantomData,
         }
     }
@@ -189,6 +196,12 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
 
     pub fn evaluate(&self, placer: &mut W) {
         self.inner.evaluate(placer);
+    }
+
+    pub fn replay_resolvers(&self, placer: &mut W) {
+        for resolver in self.ordered_resolvers.iter() {
+            placer.record_resolver(resolver.clone());
+        }
     }
 
     pub fn new() -> Self {
@@ -224,6 +237,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
         Self {
             inner: first_step,
             reorder_fn,
+            ordered_resolvers: vec![],
             _marker: core::marker::PhantomData,
         }
     }

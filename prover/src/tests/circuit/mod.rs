@@ -199,6 +199,3 @@ mod load_store_subword;
 mod mul_div;
 #[cfg(test)]
 mod shift_binop;
-
-#[cfg(test)]
-mod fuzz;

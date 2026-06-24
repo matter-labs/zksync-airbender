@@ -285,7 +285,11 @@ fn test_csrrw_rejects_unsupported_csr() {
         )
     }));
 
-    // The add-time debug constraint checker may reject this intentionally
-    // invalid case via a panic before is_satisfied() runs.
-    let _ = outcome;
+    match outcome {
+        Ok(()) => {}
+        Err(_) => {
+            // The add-time debug constraint checker may reject this intentionally
+            // invalid case via a panic before is_satisfied() runs.
+        }
+    }
 }

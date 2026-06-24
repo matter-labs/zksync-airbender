@@ -70,11 +70,3 @@ pub const fn encode_store(funct3: u32, rs1: u32, rs2: u32, imm: u32) -> u32 {
     let imm_4_0 = imm & 0x1F;
     (imm_11_5 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (imm_4_0 << 7) | 0x23
 }
-
-pub fn sign_extend_12(imm: u32) -> u32 {
-    if imm & 0x800 != 0 {
-        imm | 0xFFFFF000
-    } else {
-        imm
-    }
-}
