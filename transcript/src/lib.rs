@@ -207,6 +207,20 @@ impl Blake2sTranscript {
         }
     }
 
+    /// Inclusive upper bound on the top transcript word that satisfies `pow_bits`
+    /// of proof-of-work (only words `<= threshold` are accepted).
+    ///
+    /// Uses a checked shift so that `pow_bits == 32` maps to a threshold of `0`
+    /// (only an all-zero top word passes). A plain `0xffffffff >> pow_bits` is a
+    /// shift overflow for `pow_bits == 32`: it panics in debug builds and wraps to
+    /// `0xffffffff` (accepting every nonce, losing all grinding) in release builds.
+    /// The prover's PoW search uses the same definition, so the two must agree for
+    /// every value in `0..=32`.
+    #[inline(always)]
+    pub fn pow_threshold(pow_bits: u32) -> u32 {
+        u32::MAX.checked_shr(pow_bits).unwrap_or(0)
+    }
+
     pub fn verify_pow(seed: &mut Seed, nonce: u64, pow_bits: u32) {
         let mut hasher = blake2s_u32::DelegatedBlake2sState::new();
         Self::verify_pow_using_hasher(&mut hasher, seed, nonce, pow_bits);
@@ -247,7 +261,7 @@ impl Blake2sTranscript {
 
         // check that first element is small enough
         assert!(
-            hasher.state[0] <= (0xffffffff >> pow_bits),
+            hasher.state[0] <= Self::pow_threshold(pow_bits),
             "we expect {} bits of PoW using nonce {}, but top word is 0x{:08x} and full state is {:?}",
             pow_bits,
             nonce,
@@ -370,5 +384,25 @@ impl Blake2sBufferingTranscript {
         self.buffer_offset = 0;
 
         seed
+    }
+}
+
+#[cfg(test)]
+mod threshold_tests {
+    use super::*;
+
+    // The verifier threshold must match the prover's PoW search for every legal
+    // `pow_bits` value, including the `32` boundary. A plain `0xffffffff >> 32`
+    // is a shift overflow that panics in debug builds and wraps to `0xffffffff`
+    // (accepting every nonce) in release builds; this test runs in both modes and
+    // pins down the intended thresholds.
+    #[test]
+    fn pow_threshold_boundaries() {
+        assert_eq!(Blake2sTranscript::pow_threshold(0), u32::MAX);
+        assert_eq!(Blake2sTranscript::pow_threshold(1), u32::MAX >> 1);
+        assert_eq!(Blake2sTranscript::pow_threshold(28), 0xf);
+        assert_eq!(Blake2sTranscript::pow_threshold(31), 1);
+        // 32 bits of PoW must require an all-zero top word, not accept everything.
+        assert_eq!(Blake2sTranscript::pow_threshold(32), 0);
     }
 }
