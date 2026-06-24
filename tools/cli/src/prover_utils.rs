@@ -558,14 +558,16 @@ pub fn verify_artifact(
     match artifact.target {
         ProofTarget::Base => {
             let base_level = make_base_level_data(&loaded);
-            verify_unrolled_layer_proof(
+            let output = verify_unrolled_layer_proof(
                 &artifact.proof,
                 &base_level.setup,
                 &base_level.layouts,
                 true,
                 security,
             )
-            .map_err(|_| "base proof verification failed".to_string())
+            .map_err(|_| "base proof verification failed".to_string())?;
+            ensure_recursion_chain_binds_program(&output, &base_level.hash_chain)?;
+            Ok(output)
         }
         ProofTarget::RecursionUnrolled => {
             let base_level = make_base_level_data(&loaded);
@@ -579,16 +581,18 @@ pub fn verify_artifact(
                 preimage[8..16].try_into().expect("slice with exact length");
 
             if previous_end_params == base_level.setup.end_params {
-                verify_unrolled_layer_proof(
+                let output = verify_unrolled_layer_proof(
                     &artifact.proof,
                     &base_level.setup,
                     &base_level.layouts,
                     true,
                     security,
                 )
-                .map_err(|_| "recursion(unrolled over base) verification failed".to_string())
+                .map_err(|_| "recursion(unrolled over base) verification failed".to_string())?;
+                ensure_recursion_chain_binds_program(&output, &base_level.hash_chain)?;
+                Ok(output)
             } else if previous_end_params == unrolled_level.setup.end_params {
-                verify_unrolled_layer_proof(
+                let output = verify_unrolled_layer_proof(
                     &artifact.proof,
                     &unrolled_level.setup,
                     &unrolled_level.layouts,
@@ -597,7 +601,9 @@ pub fn verify_artifact(
                 )
                 .map_err(|_| {
                     "recursion(unrolled over recursion-unrolled) verification failed".to_string()
-                })
+                })?;
+                ensure_recursion_chain_binds_program(&output, &unrolled_level.hash_chain)?;
+                Ok(output)
             } else {
                 Err("unable to infer previous layer for recursion-unrolled proof".to_string())
             }
@@ -614,14 +620,16 @@ pub fn verify_artifact(
 
             validate_recursion_chain(&artifact.proof)?;
 
-            verify_proof_in_unified_layer(
+            let output = verify_proof_in_unified_layer(
                 &artifact.proof,
                 &unified_level.setup,
                 &unified_level.layouts,
                 false,
                 security,
             )
-            .map_err(|_| "recursion(unified) verification failed".to_string())
+            .map_err(|_| "recursion(unified) verification failed".to_string())?;
+            ensure_recursion_chain_binds_program(&output, &unified_level.hash_chain)?;
+            Ok(output)
         }
     }
 }
@@ -642,6 +650,34 @@ fn validate_recursion_chain(proof: &UnrolledProgramProof) -> Result<[u32; 16], S
     }
 
     Ok(preimage)
+}
+
+/// Bind a verified proof to the program supplied by the caller.
+///
+/// The cryptographic verifier returns the recursion chain it actually proved in
+/// `output[8..16]`. That chain authenticates the whole tower of verified programs back
+/// to the base program (see `begin_recursion_chain` / `continue_recursion_chain`): it is
+/// `continue_recursion_chain(this_layer_end_params, previous_chain)`, exactly how the
+/// matching `*_level.hash_chain` is derived from the supplied program.
+///
+/// `expected_chain` is the `hash_chain` of the level whose setup was verified against,
+/// derived from the supplied `--bin`/`--text`. If the proof proved a chain for a
+/// different base program, the two differ and we reject.
+///
+/// This is the binding step: the recursion verifier's setup is the (program-independent)
+/// embedded verifier program, and the `program_*_keccak` metadata is attacker-mutable, so
+/// neither constrains which base program the STARK proof actually attests to — only this
+/// chain comparison does.
+fn ensure_recursion_chain_binds_program(
+    verifier_output: &[u32; 16],
+    expected_chain: &[u32; 8],
+) -> Result<(), String> {
+    if &verifier_output[8..16] != expected_chain {
+        return Err(
+            "recursion chain proven by the proof does not match the supplied program".to_string(),
+        );
+    }
+    Ok(())
 }
 
 fn make_artifact(
@@ -1083,4 +1119,55 @@ fn keccak256(data: &[u8]) -> [u8; 32] {
     let mut hasher = Keccak256::new();
     hasher.update(data);
     hasher.finalize().into()
+}
+
+#[cfg(test)]
+mod recursion_binding_tests {
+    use super::*;
+    use execution_utils::unrolled::UnrolledProgramSetup;
+
+    /// The recursion chain a top-layer proof carries for a base program with the given
+    /// `end_params` (the value the verifier authenticates in `output[8..16]`).
+    fn chain_for_program(base_end_params: [u32; 8]) -> [u32; 8] {
+        let (hash_chain, _preimage) = UnrolledProgramSetup::begin_recursion_chain(&base_end_params);
+        hash_chain
+    }
+
+    fn verifier_output_with_chain(chain: [u32; 8]) -> [u32; 16] {
+        let mut out = [0u32; 16];
+        out[8..16].copy_from_slice(&chain);
+        out
+    }
+
+    #[test]
+    fn accepts_when_proven_chain_matches_supplied_program() {
+        let chain = chain_for_program([1, 2, 3, 4, 5, 6, 7, 8]);
+        let output = verifier_output_with_chain(chain);
+        assert!(ensure_recursion_chain_binds_program(&output, &chain).is_ok());
+    }
+
+    /// Regression test for proof replay across programs: a valid proof generated for
+    /// program Q must not verify as a proof for a different program P, even though the
+    /// program-hash metadata can be freely rewritten to P's hashes.
+    #[test]
+    fn rejects_proof_whose_chain_encodes_a_different_program() {
+        // Two distinct base programs produce two distinct authenticated chains.
+        let chain_p = chain_for_program([10, 11, 12, 13, 14, 15, 16, 17]);
+        let chain_q = chain_for_program([99, 98, 97, 96, 95, 94, 93, 92]);
+        assert_ne!(chain_p, chain_q, "different programs must yield different chains");
+
+        // The attacker holds a valid proof for Q; the verifier authenticates Q's chain.
+        let proven_output = verifier_output_with_chain(chain_q);
+
+        // Claiming it is a proof for P must be rejected by the binding check.
+        let err = ensure_recursion_chain_binds_program(&proven_output, &chain_p)
+            .expect_err("a proof whose chain encodes a different program must be rejected");
+        assert!(
+            err.contains("does not match the supplied program"),
+            "unexpected error message: {err}"
+        );
+
+        // And it still verifies against the program it was actually generated for.
+        assert!(ensure_recursion_chain_binds_program(&proven_output, &chain_q).is_ok());
+    }
 }
