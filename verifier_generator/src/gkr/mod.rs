@@ -13,6 +13,7 @@ use prover::cs::gkr_compiler::{
     GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation, OutputType,
 };
 use prover::gkr::prover::WhirSchedule;
+use prover::gkr::prover_config::pow_bits;
 
 pub mod dim_reducing_layer;
 pub mod standard_layer;
@@ -743,7 +744,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     sumcheck_output_size_log_2: usize,
     whir_schedule: &WhirSchedule,
     lookup_challenges_pow_bits: u32,
-    batched_proximity_check_challenge_pow_bits: u32,
+    security_bits: u32,
 ) -> GKRGeneratedFiles {
     let num_standard_layers = compiled_circuit.layers.len();
     let trace_len = compiled_circuit.trace_len;
@@ -1579,6 +1580,12 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     let whir_pow_bits = &whir_schedule.whir_pow_schedule;
     let whir_lde_factors = &whir_schedule.whir_steps_lde_factors;
     let whir_base_lde_factor = whir_schedule.base_lde_factor;
+    let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits(
+        security_bits as usize,
+        trace_len_log_2,
+        whir_base_lde_factor.trailing_zeros() as usize,
+        pow_bits::total_base_oracle_columns(compiled_circuit),
+    );
     let whir_cap_size = whir_schedule.cap_size;
     let whir_cap_size_log2 = whir_cap_size.trailing_zeros() as usize;
 
@@ -1713,11 +1720,16 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         };
         pub const DRAW_BUF_CAPACITY: usize =
             (#num_challenges * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+        // `draw_field_els_into_after_pow` draws the 2 lookup challenges plus the skipped PoW word.
+        const _: () = assert!(
+            DRAW_BUF_CAPACITY >= (2 * EXT_DEGREE + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS),
+            "DRAW_BUF_CAPACITY too small for the post-PoW lookup-challenge draw",
+        );
         pub const WHIR_FOLD_STEPS: [usize; #whir_rounds] = [#(#whir_fold_steps),*];
         pub const WHIR_QUERIES: [usize; #whir_rounds] = [#(#whir_queries),*];
         pub const WHIR_POW_BITS: [u32; #whir_rounds] = [#(#whir_pow_bits),*];
         pub const LOOKUP_CHALLENGES_POW_BITS: u32 = #lookup_challenges_pow_bits;
-        pub const BATCHED_PROXIMITY_POW_BITS: u32 = #batched_proximity_check_challenge_pow_bits;
+        pub const BATCHED_PROXIMITY_POW_BITS: u32 = #batched_proximity_pow_bits;
         pub const MAX_POW_ENTRIES: usize = #max_pow_entries;
         pub const FINAL_MONOMIALS_LEN: usize = #final_monomials_len;
         pub const NUM_ORACLES: usize = #num_oracles;

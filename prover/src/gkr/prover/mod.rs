@@ -17,7 +17,7 @@ use crate::gkr::prover::transcript_utils::{
     commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
 };
 use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
-use crate::gkr::prover_config::ProverConfig;
+use crate::gkr::prover_config::{pow_bits, ProverConfig};
 use crate::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRStorage};
 use crate::gkr::sumcheck::eq_poly::*;
 use crate::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
@@ -772,14 +772,17 @@ where
     drop(gkr_storage);
 
     // The WHIR batching challenge is gated behind a proof-of-work; the GKR sumcheck
-    // transcript above already committed everything that feeds this draw.
+    // transcript above already committed everything that feeds this draw. The bit count
+    // scales with the number of batched base-oracle columns l, so it is
+    // computed per-circuit here (and identically baked by the verifier generator).
+    let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits(
+        prover_config.security_bits as usize,
+        trace_len.trailing_zeros() as usize,
+        prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
+        pow_bits::total_base_oracle_columns(compiled_circuit),
+    );
     let (batched_proximity_check_pow_nonce, whir_batching_challenges): (u64, Vec<E>) =
-        draw_random_field_els_with_pow(
-            &mut seed,
-            1,
-            prover_config.batched_proximity_check_challenge_pow_bits,
-            worker,
-        );
+        draw_random_field_els_with_pow(&mut seed, 1, batched_proximity_pow_bits, worker);
     let whir_batching_challenge = whir_batching_challenges[0];
 
     let whir_proof = whir_fold(

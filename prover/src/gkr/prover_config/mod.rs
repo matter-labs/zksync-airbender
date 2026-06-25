@@ -14,7 +14,7 @@ pub struct ProverConfig {
     // we do not expect any challenges for sumcheck, as it's soundness
     // error is very small
     pub sumcheck_explicit_output_size_log_2: usize,
-    pub batched_proximity_check_challenge_pow_bits: u32,
+    pub security_bits: u32,
     pub whir_schedule: WhirSchedule,
 }
 
