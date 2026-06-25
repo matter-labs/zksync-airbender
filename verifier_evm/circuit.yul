@@ -426,7 +426,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
     }
     {  // InitsAndTeardownsLow: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = Cache(2)
         let gate := mul(4, gkr_virtual_poly_compose_vars(14, 0)) // u32 word-aligned
-        // let gate := shl(2, gkr_virtual_poly_compose_vars(14, 0))
         mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 2)), gate)
     }
     {  // InitsAndTeardownsHigh: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = Cache(3)
@@ -639,12 +638,13 @@ function gkr_memrel_compress_high(ts_low, ts_high, val_low, val_high) -> compres
 }
 
 function gkr_virtual_poly_compose_vars(len, skip) -> eval {
-    let total := add(skip, len)
+    // let total := add(skip, len)
     let max := sub(GKR_CIRCUIT_LAYER_ROUNDS, skip) // exclusive
     let min := sub(max, len)
-    if gt(total, GKR_CIRCUIT_LAYER_ROUNDS) { // abort when bad
-        min := max
-    }
+    // NO NEED FOR THIS CHECK, WE DO IT VIA RUST
+    // if gt(total, GKR_CIRCUIT_LAYER_ROUNDS) { // abort when bad
+    //     min := max
+    // }
     for { let i := min } lt(i, max) { i := add(i, 1) } {
         eval := add(mul(eval, 2), mload(add(POINT_PTR, mul(i, 32))))
     }

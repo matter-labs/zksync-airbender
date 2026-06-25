@@ -153,6 +153,11 @@ fn main() {
     )
     .unwrap();
     let circuit: GKRCircuitArtifact<BabyBearField> = serde_json::from_str(&json).unwrap();
+    let circuit_rounds = {
+        assert!(circuit.trace_len.is_power_of_two() && circuit.trace_len > 0);
+        assert_eq!(circuit.trace_len, 1<<24, "we need to keep sync with gkr.sol constant!");
+        circuit.trace_len.trailing_zeros()
+    };
     let layer0_group_widths = (circuit.memory_layout.total_width, circuit.witness_layout.total_width, circuit.generic_lookup_tables_width, circuit.layers[0].cached_relations.len());
     // let mut previous_input_count = 8;
     let mut previous_input_count = 10; // TEMPORARY: unified adds another product pair for inits/teardowns
@@ -310,6 +315,7 @@ fn main() {
                 let relation_name = format!("{virtualpoly_relation:?}");
                 match virtualpoly_relation {
                     VirtualSetupPoly::RangeCheck16Bits => {
+                        assert!(16 <= circuit_rounds);
                         // println!("{relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}");
                         yul_println!("
                         \t{{  // {relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}
@@ -318,26 +324,36 @@ fn main() {
                         \t}}");
                     }
                     VirtualSetupPoly::RangeCheckTimestamp => {
+                        let timestamp_range_bits = cs::definitions::TIMESTAMP_COLUMNS_NUM_BITS;
+                        assert!(timestamp_range_bits <= circuit_rounds);
                         // println!("{relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}");
                         yul_println!("
                         \t{{  // {relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}
-                        \t    let gate := gkr_virtual_poly_rangecheck(19)
+                        \t    let gate := gkr_virtual_poly_rangecheck({timestamp_range_bits})
                         \t    {output:x}
                         \t}}");
                     }
                     VirtualSetupPoly::InitsAndTeardownsLow => {
+                        assert_eq!(circuit.memory_layout.inits_and_teardowns_word_bits.unwrap(), 2, "we expect there to be just 2 empty inits/teardowns low bits");
+                        let low_bits = 16 - 2;
+                        assert!(low_bits <= circuit_rounds);
                         // println!("{relation_name}: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = {output}");
                         yul_println!("
                         \t{{  // {relation_name}: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = {output}
-                        \t    let gate := mul(4, gkr_virtual_poly_compose_vars(14, 0)) // u32 word-aligned
+                        \t    let gate := mul(4, gkr_virtual_poly_compose_vars({low_bits}, 0)) // u32 word-aligned
                         \t    {output:x}
                         \t}}");
                     }
                     VirtualSetupPoly::InitsAndTeardownsHigh => {
+                        assert_eq!(circuit.memory_layout.inits_and_teardowns_word_bits.unwrap(), 2, "we expect there to be just 2 empty inits/teardowns low bits");
+                        let low_bits = 16 - 2;
+                        assert!(low_bits <= circuit_rounds);
+                        let high_bits = circuit_rounds - low_bits;
+                        assert_eq!(high_bits, prover::gkr::high_bits_offset_for_inits_and_teardowns::<2>(circuit.trace_len));
                         // println!("{relation_name}: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = {output}");
                         yul_println!("
                         \t{{  // {relation_name}: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = {output}
-                        \t    let gate := gkr_virtual_poly_compose_vars(10, 14)
+                        \t    let gate := gkr_virtual_poly_compose_vars({high_bits}, {low_bits})
                         \t    {output:x}
                         \t}}");
                     }
@@ -849,6 +865,7 @@ fn main() {
                     let [setup_low, setup_high] = setup.each_ref().map(|address| gkraddress_to_calldata(address, i, layer0_group_widths, &mut running_max_group_offsets));
                     let [lhs_addr_high, rhs_addr_high] = {
                         assert_eq!(circuit.trace_len, 1<<24, "currently we expect gkr_compress to go up to 2^24");
+                        assert_eq!(circuit.memory_layout.inits_and_teardowns_word_bits.unwrap(), 2, "we expect there to be just 2 empty low bits");
                         let high_bits_shift = prover::gkr::high_bits_offset_for_inits_and_teardowns::<2>(circuit.trace_len);
                         let top_bits = set_idxes.map(|c| c << high_bits_shift);
                         let memory_alpha2 = Dual(format!("α²"), Yul::memory_alpha(1));
@@ -1000,12 +1017,13 @@ fn main() {
         }}
 
         function gkr_virtual_poly_compose_vars(len, skip) -> eval {{
-            let total := add(skip, len)
+            // let total := add(skip, len)
             let max := sub(GKR_CIRCUIT_LAYER_ROUNDS, skip) // exclusive
             let min := sub(max, len)
-            if gt(total, GKR_CIRCUIT_LAYER_ROUNDS) {{ // abort when bad
-                min := max
-            }}
+            // NO NEED FOR THIS CHECK, WE DO IT VIA RUST
+            // if gt(total, GKR_CIRCUIT_LAYER_ROUNDS) {{ // abort when bad
+            //     min := max
+            // }}
             for {{ let i := min }} lt(i, max) {{ i := add(i, 1) }} {{
                 eval := add(mul(eval, 2), mload(add(POINT_PTR, mul(i, 32))))
             }}
