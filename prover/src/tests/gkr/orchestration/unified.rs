@@ -28,6 +28,7 @@ use cs::tables::TableDriver;
 use cs::utils::split_timestamp;
 use fft::Twiddles;
 use field::Field;
+use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{Counters, ReplayBuffer};
 use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp;
@@ -335,11 +336,36 @@ where
     );
     assert_eq!(vm.expected_final_state(), state);
 
-    let oracle = UnifiedRiscvCircuitOracle::new::<BabyBearField>(
-        &buffer[..],
+    use common_constants::*;
+    use cs::gkr_circuits::*;
+
+    let decoders: Vec<Box<dyn OpcodeFamilyDecoder>> = vec![Box::new(UnifiedReducedMachineDecoder)];
+    const SUPPORTED_CSRS: &[u16] = &[
+        NON_DETERMINISM_CSR as u16,
+        BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+        BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
+        KECCAK_SPECIAL5_CSR_REGISTER as u16,
+        BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
+    ];
+    let mut preprocessing_data = process_binary_into_separate_tables_ext::<
+        BabyBearField,
+        ReducedMachineDecoderConfig,
+        true,
+        Global,
+    >(
         &vm.text_section,
+        &decoders,
         common_constants::ROM_WORD_SIZE,
+        SUPPORTED_CSRS,
     );
+    let decoder_table = preprocessing_data
+        .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
+        .expect("UnifiedReducedMachineDecoder must produce a family-128 entry");
+
+    let oracle = UnifiedRiscvCircuitOracle {
+        inner: &buffer,
+        decoder_table: &decoder_table,
+    };
     let unified_table_driver = build_unified_table_driver::<BabyBearField>(&vm.binary);
 
     // Collect i/t columns sized to the unified circuit's set count.
@@ -396,7 +422,6 @@ where
         super::common::ensure_memory_trace_consistency(memory_trace, &unified_full_trace);
     }
 
-    let decoder_table = oracle.decoder_table_with_options().to_vec();
     (unified_full_trace, unified_table_driver, decoder_table)
 }
 

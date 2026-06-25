@@ -325,6 +325,7 @@ pub fn commit_memory_tree_for_unified_circuits<
     text_section: &[u32],
     twiddles: &Twiddles<F, Global>,
     prover_config: &ProverConfig,
+    decoder_data: &[Option<ExecutorFamilyDecoderData>],
     worker: &Worker,
 ) -> MerkleTreeCapVarLength
 where
@@ -337,11 +338,10 @@ where
     assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
 
-    let oracle = UnifiedRiscvCircuitOracle::new::<F>(
-        witness_chunk,
-        text_section,
-        common_constants::ROM_WORD_SIZE,
-    );
+    let oracle = UnifiedRiscvCircuitOracle {
+        inner: witness_chunk,
+        decoder_table: decoder_data,
+    };
 
     let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<F, _, A, B>(
         &circuit,

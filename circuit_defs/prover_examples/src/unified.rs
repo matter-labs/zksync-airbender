@@ -27,7 +27,7 @@ use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::worker;
-use riscv_transpiler::cycle::MachineConfig;
+use riscv_transpiler::cycle::{MachineConfig, ReducedMachineWithDelegation};
 use riscv_transpiler::vm::Counters;
 use riscv_transpiler::vm::DelegationsAndUnifiedCounters;
 use riscv_transpiler::vm::SimpleSnapshotter;
@@ -80,7 +80,7 @@ fn replay_unified_circuit<C: Counters>(
 
     let mut buffers = make_tracer_buffers::<UnifiedOpcodeTracingDataWithTimestamp>(
         UnifiedOpcodeTracingDataWithTimestamp::default(),
-        cycles_bound,
+        num_calls,
         capacity_per_circuit,
     );
     let mut buffer_ref_mut: Vec<_> = buffers.iter_mut().map(|el| &mut el[..]).collect();
@@ -100,6 +100,9 @@ fn replay_unified_circuit<C: Counters>(
     assert_eq!(expected_final_state.pc, state.pc);
     assert_eq!(expected_final_state.timestamp, state.timestamp);
 
+    dbg!(buffers.len());
+    dbg!(buffers[0].len());
+
     buffers
 }
 
@@ -109,7 +112,7 @@ fn replay_unified_circuit<C: Counters>(
 /// [`crate::unrolled::prove_unrolled_execution_with_replayer`]; it follows the
 /// same Fiat-Shamir flow (commit memory trees -> derive challenges -> prove) and
 /// asserts that the global permutation grand-product closes to ONE.
-pub fn prove_unified_execution_with_replayer<C: MachineConfig, A: GoodAllocator>(
+pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
     cycles_bound: usize,
     binary_image: &[u32],
     text_section: &[u32],
@@ -126,6 +129,8 @@ pub fn prove_unified_execution_with_replayer<C: MachineConfig, A: GoodAllocator>
     (u32, TimestampScalar),
     u64,
 ) {
+    type C = ReducedMachineWithDelegation;
+
     assert!(
         ram_bound <= (1 << 30),
         "Large RAM sizes are not supported for now"
@@ -323,6 +328,14 @@ pub fn prove_unified_execution_with_replayer<C: MachineConfig, A: GoodAllocator>
     let mut memory_trees: Vec<(Vec<u32>, prover::merkle_trees::MerkleTreeCapVarLength)> = vec![];
     {
         let twiddles_for_size = &twiddles[&trace_len];
+        let UnrolledCircuitWitnessEvalFn::Unified {
+            witness_fn,
+            decoder_table,
+        } = unified_setup.witness_eval_fn.as_ref().unwrap()
+        else {
+            unreachable!()
+        };
+
         for (i, unified_buffer) in unified_buffers.iter().enumerate() {
             let (top_bits, inits_and_teardowns) = if i >= num_dummy_inits_and_teardowns {
                 inits_and_teardown_chunks[i - num_dummy_inits_and_teardowns].clone()
@@ -363,6 +376,7 @@ pub fn prove_unified_execution_with_replayer<C: MachineConfig, A: GoodAllocator>
                 text_section,
                 twiddles_for_size,
                 &prover_config,
+                decoder_table,
                 worker,
             );
             memory_trees.push((top_bits, cap));
@@ -578,8 +592,10 @@ pub fn prove_unified_execution_with_replayer<C: MachineConfig, A: GoodAllocator>
             worker,
         );
 
-        let UnrolledCircuitWitnessEvalFn::Unified { witness_fn, .. } =
-            unified_setup.witness_eval_fn.as_ref().unwrap()
+        let UnrolledCircuitWitnessEvalFn::Unified {
+            witness_fn,
+            decoder_table,
+        } = unified_setup.witness_eval_fn.as_ref().unwrap()
         else {
             unreachable!()
         };
@@ -617,11 +633,10 @@ pub fn prove_unified_execution_with_replayer<C: MachineConfig, A: GoodAllocator>
                 (vec![0u32; num_teardown_sets], inits_and_teardowns)
             };
 
-            let oracle = UnifiedRiscvCircuitOracle::new::<BabyBearField>(
-                &unified_buffer,
-                text_section,
-                ROM_WORD_SIZE,
-            );
+            let oracle = UnifiedRiscvCircuitOracle {
+                inner: &unified_buffer,
+                decoder_table,
+            };
 
             let witness_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
                 &unified_setup.compiled_circuit,
@@ -791,14 +806,10 @@ pub fn prove_unified_execution_with_replayer<C: MachineConfig, A: GoodAllocator>
 
 #[cfg(test)]
 pub(crate) mod test {
-    use riscv_transpiler::ir::ReducedMachineDecoderConfig;
     use test_utils::skip_if_ci;
 
     use super::*;
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-    use riscv_transpiler::cycle::{
-        IMStandardIsaConfigUnsignedMulDivOnly, ReducedMachineWithDelegation,
-    };
     use std::alloc::Global;
     use std::path::Path;
 
@@ -814,11 +825,11 @@ pub(crate) mod test {
         let (_, text_section) =
             setups::read_and_pad_binary(&Path::new("../../examples/basic_fibonacci/app.text"));
 
-        let worker = worker::Worker::new_with_num_threads(1);
+        let worker = worker::Worker::new_with_num_threads(8);
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
 
         let (unified_proofs, delegation_proofs, _registers, _final, _pow) =
-            prove_unified_execution_with_replayer::<ReducedMachineWithDelegation, Global>(
+            prove_unified_execution_with_replayer::<Global>(
                 1 << 24,
                 &binary_image,
                 &text_section,
@@ -835,5 +846,7 @@ pub(crate) mod test {
             "Proved unified circuit + {} delegation types",
             delegation_proofs.len()
         );
+
+        // bincode_serialize_to_file(&(unified_proofs, delegation_proofs), "tmp_unifier_proof.bin");
     }
 }

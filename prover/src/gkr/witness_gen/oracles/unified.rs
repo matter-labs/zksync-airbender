@@ -18,47 +18,8 @@ use riscv_transpiler::witness::data_structs::{
 use std::alloc::Global;
 
 pub struct UnifiedRiscvCircuitOracle<'a> {
-    pub(crate) inner: &'a [UnifiedOpcodeTracingDataWithTimestamp],
-    decoder_table: DecoderTable,
-}
-
-impl<'a> UnifiedRiscvCircuitOracle<'a> {
-    pub fn new<F: PrimeField>(
-        inner: &'a [UnifiedOpcodeTracingDataWithTimestamp],
-        text_section: &[u32],
-        bytecode_size_words: usize,
-    ) -> Self {
-        let decoders: Vec<Box<dyn OpcodeFamilyDecoder>> =
-            vec![Box::new(UnifiedReducedMachineDecoder)];
-        const SUPPORTED_CSRS: &[u16] = &[
-            NON_DETERMINISM_CSR as u16,
-            BLAKE2S_DELEGATION_CSR_REGISTER as u16,
-            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
-            KECCAK_SPECIAL5_CSR_REGISTER as u16,
-            BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
-        ];
-        let mut preprocessing_data =
-            process_binary_into_separate_tables_ext::<
-                F,
-                FullUnsignedMachineDecoderConfig,
-                true,
-                Global,
-            >(text_section, &decoders, bytecode_size_words, SUPPORTED_CSRS);
-        let entries = preprocessing_data
-            .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
-            .expect("UnifiedReducedMachineDecoder must produce a family-128 entry");
-        Self {
-            inner,
-            decoder_table: DecoderTable::from_preprocessing(
-                REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
-                entries,
-            ),
-        }
-    }
-
-    pub fn decoder_table_with_options(&self) -> &[Option<ExecutorFamilyDecoderData>] {
-        self.decoder_table.entries()
-    }
+    pub inner: &'a [UnifiedOpcodeTracingDataWithTimestamp],
+    pub decoder_table: &'a [Option<ExecutorFamilyDecoderData>],
 }
 
 impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
@@ -324,6 +285,13 @@ impl<'a, F: PrimeField> Oracle<F> for UnifiedRiscvCircuitOracle<'a> {
         let Some(cycle_data) = self.inner.get(trace_step) else {
             return Default::default();
         };
-        self.decoder_table.lookup_pc(cycle_data.initial_pc())
+        let pc = cycle_data.initial_pc();
+        self.decoder_table[(pc as usize) / 4].unwrap_or_else(|| {
+            panic!(
+                "no decoder entry for PC {pc:#010x} (index {}): this family's oracle was \
+                 queried for a captured cycle whose opcode it does not decode",
+                (pc as usize) / 4
+            )
+        })
     }
 }
