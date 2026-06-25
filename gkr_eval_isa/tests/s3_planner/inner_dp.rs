@@ -83,21 +83,24 @@ fn next_demand_stage(stage_leaves: &[Vec<u32>], ti: usize, v: u32) -> usize {
     usize::MAX
 }
 
-// ── Task 4a: fork residency DP (cache vs recompute, no binding (C)) ───────────
+// ── Fork-residency planner: enumerate fork trajectories, then Belady each ──────
+//
+// CORRECTNESS (systematic-debugging, seed-12): Belady must NOT be interleaved with
+// the fork-keep decisions. Belady's next-use lookahead depends on which leaves are
+// *shielded* by resident forks at FUTURE stages — decisions a forward DP has not
+// made yet. Running Belady stage-by-stage with a shielding-blind (static-cone)
+// demand string keeps leaves a later resident fork would shield, overflowing the
+// budget and forcing a needless fork recompute (the (2,6)-vs-(2,5) bug). The fix is
+// two-phase:
+//   Phase A — enumerate every feasible fork-residency trajectory to the end (fork
+//             choices fully locked in; per-stage recompute/instrs determined here).
+//   Phase B — per complete trajectory the fork schedule is fixed, so each stage's
+//             *shielded* DRAM-leaf demand is exact; run Belady over it for traffic.
+//   Phase C — pick the min-objective trajectory.
 
 pub struct PlanRun {
     pub result: PlanResult,
     pub max_frontier: usize,
-}
-
-/// DP value for a resident-fork state: best lex `(traffic, instrs)` reached, plus
-/// the resident leaf set carried alongside the forks (a deterministic function of
-/// the fork-residency path under stage-boundary Belady).
-#[derive(Clone)]
-struct StateVal {
-    traffic: u64,
-    instrs: u64,
-    leaves: Vec<u32>, // sorted resident leaf node ids
 }
 
 /// Walk `cone(root)` but stop descending at any node in `resident` (those nodes
@@ -133,15 +136,11 @@ fn demanded_with_resident(inst: &OracleInstance, root: u32, resident: &[u32]) ->
         .collect()
 }
 
-/// Fork-residency DP over a fixed root order. State = sorted set of resident fork
-/// node ids at a stage boundary; value = min-lex `(traffic, instrs)` to reach it.
-///
-/// Task 4a: no binding cone-fit `(C)` — instances have `peak <= budget` so `(C)`
-/// never binds. Belady stage-boundary leaf caching is simulated per DP path, with
-/// the leaf cache costed against the budget left by the resident forks.
+/// Plan a fixed root order: enumerate all feasible fork-residency trajectories
+/// (Phase A), Belady each one with its now-fixed shielded leaf demand (Phase B),
+/// and return the min-objective `(traffic, instrs)` (Phase C). `max_frontier` is
+/// the number of complete fork trajectories enumerated.
 pub fn plan_fixed_order(inst: &OracleInstance) -> PlanRun {
-    use std::collections::BTreeMap;
-
     let fi = forkset::analyze(inst);
     let t = inst.roots.len();
     let budget = inst.budget;
@@ -161,168 +160,95 @@ pub fn plan_fixed_order(inst: &OracleInstance) -> PlanRun {
         };
     }
 
-    // Per-stage full cone (descending through everything), sorted, for future-demand
-    // lookahead on both forks and leaves, and for the cone-fit (C) outsider test.
+    // Per-stage full cone (sorted), for the cone-fit (C) outsider test and the
+    // fork future-demand lookahead used to drop spent forks at each boundary.
     let stage_cones: Vec<Vec<u32>> =
         inst.roots.iter().map(|&r| forkset::cone(inst, r)).collect();
-    // Future-demand stage per fork: smallest stage index > ti whose cone references
-    // the fork. Used to drop forks with no remaining consumer at a boundary.
+    let is_outsider = |s: usize, v: u32| -> bool { stage_cones[s].binary_search(&v).is_err() };
     let fork_demanded_after = |ti: usize, f: u32| -> bool {
         ((ti + 1)..t).any(|s| stage_cones[s].binary_search(&f).is_ok())
     };
-    // (C) outsider: a carried value v is an outsider at stage `s` iff it is NOT in
-    // cone(roots[s]). Carried leaves count exactly like carried forks.
-    let is_outsider = |s: usize, v: u32| -> bool { stage_cones[s].binary_search(&v).is_err() };
-    // Per-stage DRAM-leaf demand string (sorted), for Belady next-demand lookahead
-    // when choosing which (C)-outsider leaf to evict.
-    let stage_cones_leaves: Vec<Vec<u32>> = stage_cones
-        .iter()
-        .map(|c| {
-            c.iter()
-                .copied()
-                .filter(|&v| inst.nodes[v as usize].real_dram)
-                .collect::<Vec<u32>>()
-        })
-        .collect();
 
-    // DP states: resident fork set (sorted, canonical) -> StateVal.
-    let mut states: BTreeMap<Vec<u32>, StateVal> = BTreeMap::new();
-    states.insert(Vec::new(), StateVal { traffic: 0, instrs: 0, leaves: Vec::new() });
-    let mut max_frontier = 0usize;
-
-    for ti in 0..t {
+    // ── Phase A: enumerate every feasible fork-residency trajectory ──
+    // A trajectory is `schedule[ti]` = the (sorted) set of forks resident ENTERING
+    // stage ti (schedule[0] = {}). The keep-decision after stage ti picks which
+    // keepable forks survive to ti+1. No Belady/traffic here — only fork choices and
+    // their (C)/budget feasibility (instrs follow from the fork schedule in Phase B).
+    // DFS over partial schedules; each pop processes the last (current) stage.
+    const HARD_CAP: usize = 2_000_000; // loud failure beats OOM on a pathological instance
+    let mut trajectories: Vec<Vec<Vec<u32>>> = Vec::new();
+    let mut stack: Vec<Vec<Vec<u32>>> = vec![vec![Vec::new()]]; // stage 0 enters with {}
+    while let Some(schedule) = stack.pop() {
+        let ti = schedule.len() - 1;
+        let resident_in = &schedule[ti];
         let root = inst.roots[ti];
-        let mut next: BTreeMap<Vec<u32>, StateVal> = BTreeMap::new();
-
         let p_root = fi.peak[root as usize] as usize;
 
-        for (s_prev, val) in &states {
-            // (C) cone fit for the root materialized this stage: carried outsiders
-            // (forks AND leaves not in cone(root)) plus P[root] must fit the budget.
-            // A carried fork that violates (C) makes this state illegal at this stage
-            // (it should have been evicted at the prior boundary) — skip it. Carried
-            // leaf outsiders are evicted here (reloaded later if demanded again), so
-            // they are dropped from the carried leaf set before the Belady step.
-            let fork_outsider_w: usize = s_prev
-                .iter()
-                .filter(|&&f| is_outsider(ti, f))
-                .map(|&f| width(f))
-                .sum();
-            if fork_outsider_w + p_root > budget {
-                continue; // illegal carry: forks alone overflow (C)
-            }
-            // Evict carried leaf outsiders that don't fit (C), smallest budget impact
-            // first is unnecessary: any outsider eviction is traffic-free here and the
-            // value reloads later. Drop outsider leaves until (C) holds.
-            let mut carried_leaves: Vec<u32> = val.leaves.clone();
-            {
-                let mut outsider_leaf_w: usize = carried_leaves
-                    .iter()
-                    .filter(|&&v| is_outsider(ti, v))
-                    .map(|&v| width(v))
-                    .sum();
-                // Outsider leaves contribute to (C) alongside outsider forks + P[root].
-                // Evict outsider leaves (furthest-next-demand first, tie -> largest id)
-                // until fork_outsider_w + outsider_leaf_w + p_root <= budget.
-                while fork_outsider_w + outsider_leaf_w + p_root > budget {
-                    let victim_idx = carried_leaves
-                        .iter()
-                        .enumerate()
-                        .filter(|&(_, &v)| is_outsider(ti, v))
-                        .max_by(|&(_, &a), &(_, &b)| {
-                            let na = next_demand_stage(&stage_cones_leaves, ti, a);
-                            let nb = next_demand_stage(&stage_cones_leaves, ti, b);
-                            na.cmp(&nb).then(a.cmp(&b)) // furthest; tie -> largest id
-                        })
-                        .map(|(i, _)| i)
-                        .expect("(C) overflow with no outsider leaves to evict");
-                    let v = carried_leaves.remove(victim_idx);
-                    outsider_leaf_w -= width(v);
-                }
-            }
-
-            // Resident forks (from the carried state) are free this stage.
-            let demanded = demanded_with_resident(inst, root, s_prev);
-
-            let mut stage_instrs = 0u64;
-            let mut stage_leaves: Vec<u32> = Vec::new(); // distinct demanded DRAM leaves (sorted)
-            let mut computed_forks: Vec<u32> = Vec::new();
-            for &v in &demanded {
-                let node = &inst.nodes[v as usize];
-                if node.real_dram {
-                    stage_leaves.push(v);
-                }
-                if matches!(node.kind, NodeKind::Add | NodeKind::Mul | NodeKind::Special) {
-                    stage_instrs += 1;
-                }
-                if fi.is_fork[v as usize] {
-                    computed_forks.push(v);
-                }
-            }
-
-            // Belady leaf step for this stage, against the budget left by resident
-            // forks; replay from the carried leaf residency.
-            let fork_budget: usize = s_prev.iter().map(|&f| width(f)).sum();
-            let leaf_budget = budget.saturating_sub(fork_budget);
-            let (stage_traffic, leaves_after) =
-                belady_leaf_step(inst, ti, &stage_leaves, &carried_leaves, leaf_budget);
-
-            // Candidate forks to keep resident after this stage: carried forks plus
-            // forks computed this stage, restricted to those with future demand.
-            let mut keepable: Vec<u32> = Vec::new();
-            for &f in s_prev.iter().chain(computed_forks.iter()) {
-                if fork_demanded_after(ti, f) {
-                    keepable.push(f);
-                }
-            }
-            keepable.sort_unstable();
-            keepable.dedup();
-
-            let new_traffic = val.traffic + stage_traffic;
-            let new_instrs = val.instrs + stage_instrs;
-            let leaf_after_width: usize = leaves_after.iter().map(|&v| width(v)).sum();
-
-            // Enumerate subsets of keepable forks that fit the boundary budget (B)
-            // alongside the surviving leaves.
-            let m = keepable.len();
-            for mask in 0u32..(1u32 << m) {
-                let mut s_next: Vec<u32> = Vec::new();
-                let mut fork_w = 0usize;
-                for (bit, &f) in keepable.iter().enumerate() {
-                    if mask & (1 << bit) != 0 {
-                        s_next.push(f);
-                        fork_w += width(f);
-                    }
-                }
-                // (B) boundary: resident forks + surviving leaves fit the budget.
-                if fork_w + leaf_after_width > budget {
-                    continue;
-                }
-                let cand = StateVal {
-                    traffic: new_traffic,
-                    instrs: new_instrs,
-                    leaves: leaves_after.clone(),
-                };
-                match next.get(&s_next) {
-                    Some(existing)
-                        if (existing.traffic, existing.instrs)
-                            <= (cand.traffic, cand.instrs) => {}
-                    _ => {
-                        next.insert(s_next, cand);
-                    }
-                }
-            }
+        // (C) feasibility of this carry: outsider forks + P[root] must fit the budget,
+        // and the resident forks alone must fit. An illegal carry prunes the branch.
+        let fork_outsider_w: usize = resident_in
+            .iter()
+            .filter(|&&f| is_outsider(ti, f))
+            .map(|&f| width(f))
+            .sum();
+        let fork_w: usize = resident_in.iter().map(|&f| width(f)).sum();
+        if fork_outsider_w + p_root > budget || fork_w > budget {
+            continue;
         }
 
-        let pruned = prune_dominated(next);
-        max_frontier = max_frontier.max(pruned.len());
-        states = pruned;
+        if ti + 1 == t {
+            trajectories.push(schedule);
+            assert!(
+                trajectories.len() <= HARD_CAP,
+                "fork-trajectory enumeration exceeded {HARD_CAP}; instance too large for exhaustive M1 planner"
+            );
+            continue;
+        }
+
+        // Keepable forks for the next boundary: forks computed this stage (in the
+        // shielded demand) plus carried forks, restricted to those still demanded.
+        let demanded = demanded_with_resident(inst, root, resident_in);
+        let mut keepable: Vec<u32> = Vec::new();
+        for &v in &demanded {
+            if fi.is_fork[v as usize] && fork_demanded_after(ti, v) {
+                keepable.push(v);
+            }
+        }
+        for &f in resident_in {
+            if fork_demanded_after(ti, f) {
+                keepable.push(f);
+            }
+        }
+        keepable.sort_unstable();
+        keepable.dedup();
+
+        // Enumerate every subset of keepable forks (the keep-decision) that fits the
+        // budget; (C) at the next stage prunes any that overflow its root peak.
+        let m = keepable.len();
+        for mask in 0u32..(1u32 << m) {
+            let mut keep: Vec<u32> = Vec::new();
+            let mut w = 0usize;
+            for (bit, &f) in keepable.iter().enumerate() {
+                if mask & (1 << bit) != 0 {
+                    keep.push(f);
+                    w += width(f);
+                }
+            }
+            if w > budget {
+                continue;
+            }
+            let mut next_schedule = schedule.clone();
+            next_schedule.push(keep);
+            stack.push(next_schedule);
+        }
     }
 
-    // Best terminal state (min lex value). Determinism: BTreeMap iteration order.
-    let best = states
-        .values()
-        .map(|v| (v.traffic, v.instrs))
+    let max_frontier = trajectories.len();
+
+    // ── Phase B + C: Belady each complete trajectory, take the min objective. ──
+    let best = trajectories
+        .iter()
+        .map(|sch| simulate_trajectory(inst, &fi, &stage_cones, sch))
         .min()
         .unwrap_or((0, 0));
 
@@ -338,97 +264,126 @@ pub fn plan_fixed_order(inst: &OracleInstance) -> PlanRun {
     }
 }
 
-/// One stage of stage-boundary Belady leaf caching, against `leaf_budget` cells.
-/// `prior_leaves` is the carried resident leaf set (sorted); returns
-/// `(stage_traffic, leaves_after)` where `leaves_after` is the resident leaf set
-/// after this stage's boundary cleanup (sorted). Mirrors `plan_belady_leaves`'s
-/// per-stage step but uses only the budget left by resident forks.
-fn belady_leaf_step(
+/// Phase B: cost one complete fork-residency trajectory. `schedule[ti]` is the set
+/// of forks resident entering stage ti. Because the fork schedule is fully fixed,
+/// each stage's *shielded* DRAM-leaf demand is exact (a resident fork shields its
+/// sub-cone), so Belady's next-use lookahead is correct — this is what the old
+/// interleaved DP could not see. Returns `(traffic, instrs)`.
+fn simulate_trajectory(
     inst: &OracleInstance,
-    ti: usize,
-    stage_leaves: &[u32],
-    prior_leaves: &[u32],
-    leaf_budget: usize,
-) -> (u64, Vec<u32>) {
-    let width = |v: u32| inst.nodes[v as usize].width as usize;
+    fi: &forkset::ForkInfo,
+    stage_cones: &[Vec<u32>],
+    schedule: &[Vec<u32>],
+) -> (u64, u64) {
     let t = inst.roots.len();
-    // Per-stage DRAM-leaf demand string for next-demand lookahead (Belady).
-    let stage_demand: Vec<Vec<u32>> = (0..t)
-        .map(|s| {
-            let mut leaves: Vec<u32> = forkset::cone(inst, inst.roots[s])
-                .into_iter()
-                .filter(|&v| inst.nodes[v as usize].real_dram)
-                .collect();
+    let budget = inst.budget;
+    let width = |v: u32| inst.nodes[v as usize].width as usize;
+    let is_outsider = |s: usize, v: u32| -> bool { stage_cones[s].binary_search(&v).is_err() };
+
+    // Shielded per-stage DRAM-leaf demand string (sorted) for this trajectory — the
+    // crux fix: lookahead uses demand AS SHIELDED by the resident forks, not the
+    // static cone. A leaf hidden behind a resident fork at a later stage is correctly
+    // NOT demanded there, so Belady can drop it instead of overflowing the budget.
+    let demand_dram: Vec<Vec<u32>> = (0..t)
+        .map(|ti| {
+            let mut leaves: Vec<u32> =
+                demanded_with_resident(inst, inst.roots[ti], &schedule[ti])
+                    .into_iter()
+                    .filter(|&v| inst.nodes[v as usize].real_dram)
+                    .collect();
             leaves.sort_unstable();
             leaves
         })
         .collect();
 
-    let mut resident: Vec<u32> = prior_leaves.to_vec();
-    let mut used: usize = resident.iter().map(|&v| width(v)).sum();
+    let mut resident: Vec<u32> = Vec::new(); // resident leaf set
     let mut traffic = 0u64;
+    let mut instrs = 0u64;
 
-    for &v in stage_leaves {
-        if resident.contains(&v) {
-            continue; // hit
-        }
-        traffic += width(v) as u64; // miss -> load
-        while used + width(v) > leaf_budget && !resident.is_empty() {
-            let victim_idx = (0..resident.len())
-                .max_by(|&a, &b| {
-                    let na = next_demand_stage(&stage_demand, ti, resident[a]);
-                    let nb = next_demand_stage(&stage_demand, ti, resident[b]);
-                    na.cmp(&nb).then(resident[b].cmp(&resident[a])) // furthest; tie -> smallest id
-                })
-                .unwrap();
-            let victim = resident.swap_remove(victim_idx);
-            used -= width(victim);
-        }
-        if used + width(v) <= leaf_budget {
-            resident.push(v);
-            used += width(v);
-        }
-        // else: v alone exceeds the leaf budget — reloaded on each future demand.
-    }
-    // Boundary cleanup: drop residents with no future demand.
-    let mut i = 0;
-    while i < resident.len() {
-        if next_demand_stage(&stage_demand, ti, resident[i]) == usize::MAX {
-            resident.swap_remove(i);
-        } else {
-            i += 1;
-        }
-    }
-    resident.sort_unstable();
-    (traffic, resident)
-}
+    for ti in 0..t {
+        let root = inst.roots[ti];
+        let resident_in = &schedule[ti];
+        let p_root = fi.peak[root as usize] as usize;
+        let fork_w: usize = resident_in.iter().map(|&f| width(f)).sum();
+        let leaf_budget = budget.saturating_sub(fork_w);
 
-/// Drop dominated states: if `S1 ⊇ S2` and `value(S1) <= value(S2)` lexically,
-/// remove `S2` — eviction is traffic-free, so the larger resident set can always
-/// reach the smaller one at no cost. Deterministic over the sorted BTreeMap.
-fn prune_dominated(
-    states: std::collections::BTreeMap<Vec<u32>, StateVal>,
-) -> std::collections::BTreeMap<Vec<u32>, StateVal> {
-    let entries: Vec<(Vec<u32>, StateVal)> = states.into_iter().collect();
-    let mut kept: std::collections::BTreeMap<Vec<u32>, StateVal> =
-        std::collections::BTreeMap::new();
-    for (i, (si, vi)) in entries.iter().enumerate() {
-        let vi_obj = (vi.traffic, vi.instrs);
-        let dominated = entries.iter().enumerate().any(|(j, (sj, vj))| {
-            if i == j {
-                return false;
+        // instrs: each Add/Mul/Special in the shielded demand is computed once.
+        for v in demanded_with_resident(inst, root, resident_in) {
+            if matches!(
+                inst.nodes[v as usize].kind,
+                NodeKind::Add | NodeKind::Mul | NodeKind::Special
+            ) {
+                instrs += 1;
             }
-            // sj ⊇ si and value(sj) <= value(si): sj dominates si.
-            let superset = si.iter().all(|x| sj.contains(x));
-            let strictly_bigger_or_better =
-                (sj.len() > si.len()) || ((vj.traffic, vj.instrs) < vi_obj);
-            superset && (vj.traffic, vj.instrs) <= vi_obj && strictly_bigger_or_better
-        });
-        if !dominated {
-            kept.insert(si.clone(), vi.clone());
+        }
+
+        // (C) cone-fit: evict carried OUTSIDER leaves (furthest next-demand first)
+        // until outsider forks + outsider leaves + P[root] fit the budget. Eviction is
+        // traffic-free; the value reloads later if demanded again.
+        let fork_outsider_w: usize = resident_in
+            .iter()
+            .filter(|&&f| is_outsider(ti, f))
+            .map(|&f| width(f))
+            .sum();
+        loop {
+            let outsider_leaf_w: usize =
+                resident.iter().filter(|&&v| is_outsider(ti, v)).map(|&v| width(v)).sum();
+            if fork_outsider_w + outsider_leaf_w + p_root <= budget {
+                break;
+            }
+            let Some(victim_idx) = resident
+                .iter()
+                .enumerate()
+                .filter(|&(_, &v)| is_outsider(ti, v))
+                .max_by(|&(_, &a), &(_, &b)| {
+                    let na = next_demand_stage(&demand_dram, ti, a);
+                    let nb = next_demand_stage(&demand_dram, ti, b);
+                    na.cmp(&nb).then(a.cmp(&b)) // furthest; tie -> largest id
+                })
+                .map(|(i, _)| i)
+            else {
+                break; // no outsider leaves left to evict
+            };
+            resident.swap_remove(victim_idx);
+        }
+
+        // Belady load of this stage's shielded DRAM-leaf demand, against leaf_budget.
+        let mut used: usize = resident.iter().map(|&v| width(v)).sum();
+        for &v in &demand_dram[ti] {
+            if resident.contains(&v) {
+                continue; // hit (resident from a prior stage)
+            }
+            traffic += width(v) as u64; // miss -> load
+            while used + width(v) > leaf_budget && !resident.is_empty() {
+                let victim_idx = (0..resident.len())
+                    .max_by(|&a, &b| {
+                        let na = next_demand_stage(&demand_dram, ti, resident[a]);
+                        let nb = next_demand_stage(&demand_dram, ti, resident[b]);
+                        na.cmp(&nb).then(resident[b].cmp(&resident[a])) // furthest; tie -> smallest id
+                    })
+                    .unwrap();
+                let victim = resident.swap_remove(victim_idx);
+                used -= width(victim);
+            }
+            if used + width(v) <= leaf_budget {
+                resident.push(v);
+                used += width(v);
+            }
+            // else: v alone exceeds the leaf budget — reloaded on each future demand.
+        }
+
+        // Boundary cleanup: drop residents with no future demand.
+        let mut i = 0;
+        while i < resident.len() {
+            if next_demand_stage(&demand_dram, ti, resident[i]) == usize::MAX {
+                resident.swap_remove(i);
+            } else {
+                i += 1;
+            }
         }
     }
-    kept
+
+    (traffic, instrs)
 }
 
 #[cfg(test)]
@@ -636,6 +591,52 @@ mod tests {
             n(3, NodeKind::Add, 1, false, vec![1, 1]),
             n(4, NodeKind::Add, 1, false, vec![0]),
         ]};
+        let run = plan_fixed_order(&inst);
+        let e = run_oracle(&inst, Mode::E, 0.0, 30).unwrap();
+        assert_eq!(e.status, "optimal");
+        assert_eq!(run.result.objective(), (e.traffic, e.instrs));
+    }
+
+    // Regression: Belady must run AFTER fork enumeration, not interleaved with it
+    // (systematic-debugging repro, randomized seed 12). Two forks {2,3}, budget 3, all
+    // width 1. The optimum caches BOTH forks and drops Reads {0,1} after stage 1 —
+    // betting that at stage 2 the resident forks shield {0,1}. The old interleaved DP
+    // chose leaf residency stage-by-stage with a shielding-blind (static-cone) Belady
+    // lookahead, so it KEPT {0,1} after stage 1 (thought stage 2 still needed them),
+    // overflowed the budget, and could not cache both forks → one extra recompute.
+    // Uniform width ⇒ the planner must be EXACT; the oracle-E optimum (confirmed by
+    // run_oracle, status optimal) is (traffic=2, instrs=5); the buggy DP returned (2,6).
+    fn repro_seed12_instance() -> OracleInstance {
+        OracleInstance {
+            budget: 3,
+            roots: vec![4, 5, 6],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Add, 1, false, vec![1, 0]),
+                n(3, NodeKind::Mul, 1, false, vec![0, 1]),
+                n(4, NodeKind::Add, 1, false, vec![0, 2]),
+                n(5, NodeKind::Mul, 1, false, vec![3, 0]),
+                n(6, NodeKind::Mul, 1, false, vec![2, 3]),
+            ],
+        }
+    }
+
+    #[test]
+    fn fork_dp_leaf_residency_keeps_optimum() {
+        let run = plan_fixed_order(&repro_seed12_instance());
+        assert_eq!(run.result.objective(), (2, 5));
+    }
+
+    #[test]
+    #[ignore = "requires python3 + ortools"]
+    fn fork_dp_leaf_residency_matches_oracle() {
+        use crate::s3_gap::driver::{oracle_available, run_oracle, Mode};
+        if !oracle_available() {
+            eprintln!("ortools unavailable; skipping");
+            return;
+        }
+        let inst = repro_seed12_instance();
         let run = plan_fixed_order(&inst);
         let e = run_oracle(&inst, Mode::E, 0.0, 30).unwrap();
         assert_eq!(e.status, "optimal");
