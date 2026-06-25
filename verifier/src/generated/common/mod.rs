@@ -506,63 +506,54 @@ pub fn materialize_gamma_powers<const N: usize>(gamma: BabyBearExt4) -> [BabyBea
     unsafe { powers.into_array() }
 }
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
-pub fn fold_coset(
-    evals: &[BabyBearExt4],
-    num_rounds: usize,
-    folding_challenges: &[BabyBearExt4],
-    mut root_inv: BabyBearField,
-    high_powers_offsets: &[BabyBearField],
-    buf_a: &mut [BabyBearExt4],
-    buf_b: &mut [BabyBearExt4],
-) -> BabyBearExt4 {
-    debug_assert!(num_rounds == 0 || high_powers_offsets.len() >= 1 << (num_rounds - 1));
-    let mut round = 0;
-    while round < num_rounds {
-        let half = 1 << (num_rounds - round - 1);
-        let challenge = unsafe { *folding_challenges.get_unchecked(round) };
-        let src: &[BabyBearExt4] = if round == 0 {
-            evals
-        } else if round % 2 == 1 {
-            unsafe { core::slice::from_raw_parts(buf_a.as_ptr(), half * 2) }
-        } else {
-            unsafe { core::slice::from_raw_parts(buf_b.as_ptr(), half * 2) }
-        };
-        let dst: &mut [BabyBearExt4] = if round % 2 == 0 {
-            unsafe { core::slice::from_raw_parts_mut(buf_a.as_mut_ptr(), half) }
-        } else {
-            unsafe { core::slice::from_raw_parts_mut(buf_b.as_mut_ptr(), half) }
-        };
-        let mut pair_idx = 0;
-        while pair_idx < half {
-            let src_idx = pair_idx * 2;
-            let a = unsafe { *src.get_unchecked(src_idx) };
-            let b = unsafe { *src.get_unchecked(src_idx + 1) };
-            let mut t = a;
-            field_ops::sub_assign(&mut t, &b);
-            field_ops::mul_assign(&mut t, &challenge);
-            let mut root = root_inv;
-            let high_powers_offset = unsafe { *high_powers_offsets.get_unchecked(pair_idx) };
-            field_ops::mul_assign(&mut root, &high_powers_offset);
-            field_ops::mul_assign_by_base(&mut t, &root);
-            field_ops::add_assign(&mut t, &a);
-            field_ops::add_assign(&mut t, &b);
-            field_ops::mul_assign_by_base(&mut t, &BabyBearField::HALF);
+pub fn precompute_monomial_tensor<const N: usize>(
+    challenges: &[BabyBearExt4],
+    weights: &mut LazyVec<BabyBearExt4, N>,
+) {
+    let k = challenges.len();
+    let len = 1usize << k;
+    debug_assert!(len <= N);
+    unsafe {
+        weights.set_unchecked(0, BabyBearExt4::ONE);
+    }
+    let mut j = 0;
+    while j < k {
+        let alpha = unsafe { *challenges.get_unchecked(j) };
+        let bit = 1usize << j;
+        let mut i = bit;
+        while i > 0 {
+            i -= 1;
+            let w = unsafe { *weights.get_unchecked(i) };
+            let mut w_alpha = w;
+            field_ops::mul_assign(&mut w_alpha, &alpha);
             unsafe {
-                *dst.get_unchecked_mut(pair_idx) = t;
+                weights.set_unchecked(i + bit, w_alpha);
             }
-            pair_idx += 1;
         }
-        field_ops::square(&mut root_inv);
-        round += 1;
+        j += 1;
     }
-    if num_rounds == 0 {
-        unsafe { *evals.get_unchecked(0) }
-    } else if num_rounds % 2 == 1 {
-        unsafe { *buf_a.get_unchecked(0) }
-    } else {
-        unsafe { *buf_b.get_unchecked(0) }
+    unsafe {
+        weights.set_len(len);
     }
+}
+#[inline(always)]
+pub fn eval_multilinear_with_monomial_tensor(
+    coeffs: &[BabyBearExt4],
+    weights: &[BabyBearExt4],
+) -> BabyBearExt4 {
+    debug_assert_eq!(coeffs.len(), weights.len());
+    debug_assert!(unsafe { *weights.get_unchecked(0) } == BabyBearExt4::ONE);
+    let n = coeffs.len();
+    let mut result = unsafe { *coeffs.get_unchecked(0) };
+    let mut i = 1;
+    while i < n {
+        let mut term = unsafe { *coeffs.get_unchecked(i) };
+        let w = unsafe { *weights.get_unchecked(i) };
+        field_ops::mul_assign(&mut term, &w);
+        field_ops::add_assign(&mut result, &term);
+        i += 1;
+    }
+    result
 }
 pub const MAX_HIGH_POWERS: usize = 16usize;
 #[inline(always)]

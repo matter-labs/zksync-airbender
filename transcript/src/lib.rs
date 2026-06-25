@@ -275,6 +275,11 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         }
     }
 
+    #[inline(always)]
+    pub fn pow_threshold(pow_bits: u32) -> u32 {
+        u32::MAX.checked_shr(pow_bits).unwrap_or(0)
+    }
+
     pub fn verify_pow(seed: &mut Seed, nonce: u64, pow_bits: u32) {
         let mut hasher = blake2s_u32::DelegatedBlake2sState::new();
         Self::verify_pow_using_hasher(&mut hasher, seed, nonce, pow_bits);
@@ -312,7 +317,7 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
 
         // check that first element is small enough
         assert!(
-            hasher.state[0] <= (0xffffffff >> pow_bits),
+            hasher.state[0] <= Self::pow_threshold(pow_bits),
             "we expect {} bits of PoW using nonce {}, but top word is 0x{:08x} and full state is {:?}",
             pow_bits,
             nonce,
