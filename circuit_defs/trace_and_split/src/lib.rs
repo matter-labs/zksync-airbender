@@ -41,7 +41,7 @@ pub fn commit_memory_tree_for_unrolled_nonmem_circuits<
     twiddles: &Twiddles<F, Global>,
     prover_config: &ProverConfig,
     default_pc_value_in_padding: u32,
-    decoder_data: &[ExecutorFamilyDecoderData],
+    decoder_data: &[Option<ExecutorFamilyDecoderData>],
     worker: &Worker,
 ) -> MerkleTreeCapVarLength
 where
@@ -108,7 +108,7 @@ pub fn commit_memory_tree_for_unrolled_mem_circuits<
     witness_chunk: &[MemoryOpcodeTracingDataWithTimestamp],
     twiddles: &Twiddles<F, Global>,
     prover_config: &ProverConfig,
-    decoder_data: &[ExecutorFamilyDecoderData],
+    decoder_data: &[Option<ExecutorFamilyDecoderData>],
     worker: &Worker,
 ) -> MerkleTreeCapVarLength
 where

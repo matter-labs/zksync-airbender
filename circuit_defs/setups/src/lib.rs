@@ -76,17 +76,17 @@ pub enum UnrolledCircuitWitnessEvalFn<A: GoodAllocator> {
     NonMemory {
         witness_fn:
             fn(&'_ mut ColumnMajorWitnessProxy<'_, NonMemoryCircuitOracle<'_>, BabyBearField>),
-        decoder_table: Vec<ExecutorFamilyDecoderData, A>,
+        decoder_table: Vec<Option<ExecutorFamilyDecoderData>, A>,
         default_pc_value_in_padding: u32,
     },
     Memory {
         witness_fn: fn(&'_ mut ColumnMajorWitnessProxy<'_, MemoryCircuitOracle<'_>, BabyBearField>),
-        decoder_table: Vec<ExecutorFamilyDecoderData, A>,
+        decoder_table: Vec<Option<ExecutorFamilyDecoderData>, A>,
     },
-    // Unified {
-    //     witness_fn: fn(&'_ mut ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>>),
-    //     decoder_table: Vec<ExecutorFamilyDecoderData, A>,
-    // },
+    Unified {
+        witness_fn: fn(&'_ mut ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>>),
+        decoder_table: Vec<Option<ExecutorFamilyDecoderData>, A>,
+    },
 }
 
 pub struct CircuitSetup<A: GoodAllocator = Global> {
@@ -126,7 +126,7 @@ pub fn make_setup_for_non_mem_circuit<
 
     let witness_eval_fn = witness_eval_fn.map(|el| UnrolledCircuitWitnessEvalFn::NonMemory {
         witness_fn: el,
-        decoder_table: witness_gen_data,
+        decoder_table: decoder_table_data.to_vec_in(A::default()),
         default_pc_value_in_padding,
     });
 
@@ -170,7 +170,7 @@ pub fn make_setup_for_with_mem_circuit<
 
     let witness_eval_fn = witness_eval_fn.map(|el| UnrolledCircuitWitnessEvalFn::Memory {
         witness_fn: el,
-        decoder_table: witness_gen_data,
+        decoder_table: decoder_table_data.to_vec_in(A::default()),
     });
 
     CircuitSetup {

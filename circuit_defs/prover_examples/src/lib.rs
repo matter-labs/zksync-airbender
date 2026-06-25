@@ -8,7 +8,7 @@ pub use ::setups;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
-// pub mod unified;
+pub mod unified;
 pub mod unrolled;
 
 const DUMP_WITNESS_VAR: &str = "DUMP_WITNESS";
