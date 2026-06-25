@@ -84,7 +84,8 @@ pub enum UnrolledCircuitWitnessEvalFn<A: GoodAllocator> {
         decoder_table: Vec<Option<ExecutorFamilyDecoderData>, A>,
     },
     Unified {
-        witness_fn: fn(&'_ mut ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>>),
+        witness_fn:
+            fn(&'_ mut ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>, BabyBearField>),
         decoder_table: Vec<Option<ExecutorFamilyDecoderData>, A>,
     },
 }

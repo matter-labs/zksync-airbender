@@ -6,6 +6,7 @@ use std::alloc::Global;
 
 use crate::cs::gkr_circuits::ExecutorFamilyDecoderData;
 use common_constants::INITIAL_PC;
+use common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use merkle_trees::MerkleTreeCapVarLength;
 use prover::cs::definitions::TimestampScalar;
 use prover::cs::gkr_compiler::GKRCircuitArtifact;
@@ -306,6 +307,80 @@ where
 //     caps
 // }
 
+/// Commit to the memory part of a unified-circuit chunk. The unified circuit
+/// folds every executor family plus its inline inits-and-teardowns into one GKR
+/// circuit, so this both feeds the per-cycle memory trace (via
+/// [`UnifiedRiscvCircuitOracle`]) and the i/t columns into a single memory
+/// commitment. Mirrors [`commit_memory_tree_for_unrolled_nonmem_circuits`] but
+/// with the unified oracle and `Some(inits_and_teardowns)`.
+pub fn commit_memory_tree_for_unified_circuits<
+    F: PrimeField + TwoAdicField,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    A: GoodAllocator,
+    B: GoodAllocator,
+>(
+    circuit: &GKRCircuitArtifact<F>,
+    witness_chunk: &[riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp],
+    inits_and_teardowns: Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>,
+    text_section: &[u32],
+    twiddles: &Twiddles<F, Global>,
+    prover_config: &ProverConfig,
+    worker: &Worker,
+) -> MerkleTreeCapVarLength
+where
+    [(); F::DEGREE]:,
+{
+    use prover::gkr::prover::stages::stage1::commit_trace_part;
+    use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
+
+    let trace_len = twiddles.domain_size;
+    assert!(witness_chunk.len() <= trace_len);
+    let now = std::time::Instant::now();
+
+    let oracle = UnifiedRiscvCircuitOracle::new::<F>(
+        witness_chunk,
+        text_section,
+        common_constants::ROM_WORD_SIZE,
+    );
+
+    let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<F, _, A, B>(
+        &circuit,
+        trace_len,
+        &oracle,
+        &worker,
+        Some(inits_and_teardowns),
+        A::default(),
+        B::default(),
+    );
+
+    println!(
+        "Materializing unified memory trace for {} cycles took {:?}",
+        trace_len,
+        now.elapsed()
+    );
+
+    let mem_inputs: Vec<_> = memory_trace
+        .column_major_trace
+        .iter()
+        .map(|el| &el[..])
+        .collect();
+    let mem = commit_trace_part::<F, T>(
+        &mem_inputs,
+        twiddles,
+        prover_config.lde_factor,
+        prover_config.whir_schedule.whir_steps_schedule[0],
+        prover_config.cap_size,
+        trace_len.trailing_zeros() as usize,
+        worker,
+    );
+
+    let cap = mem.tree.get_cap();
+
+    println!("Unified memory commitment took {:?}", now.elapsed());
+
+    cap
+}
+
 pub fn commit_memory_tree_for_delegation_circuit<
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -389,7 +464,7 @@ fn flatten_merkle_cap(cap: &MerkleTreeCapVarLength) -> Vec<u32> {
 
 /// We need to draw a common challenge based on all the values that will contribute to the memory permutation grand product, and
 /// delegation argument set equality
-pub fn fs_transform_for_permutation_argument<const REDUCED_ROUNDS: bool>(
+pub fn fs_transform_unrolled_for_permutation_argument<const REDUCED_ROUNDS: bool>(
     final_register_values: &[FinalRegisterValue],
     final_pc: u32,
     final_timestamp: TimestampScalar,
@@ -449,6 +524,83 @@ pub fn fs_transform_for_permutation_argument<const REDUCED_ROUNDS: bool>(
             let caps = flatten_merkle_cap(caps);
             memory_trace_transcript.absorb(&caps);
         }
+    }
+
+    assert_eq!(
+        memory_trace_transcript.get_current_buffer_offset(),
+        BLAKE2S_BLOCK_SIZE_U32_WORDS
+    );
+
+    // then for delegation circuits: delegation type contributes to the delegation argument's expressions, and as we have a variable number of them
+    // we will always commit a tuple of delegation type + caps. This way the order is not too important, but we adhere to convention that
+    // those should be batched and sorted
+
+    assert!(delegation_circuits_memory_caps.is_sorted_by(|a, b| a.0 < b.0));
+    for (delegation_type, caps) in delegation_circuits_memory_caps.iter() {
+        if caps.len() > 0 {
+            let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+            buffer[0] = *delegation_type;
+            memory_trace_transcript.absorb(&buffer);
+        }
+        for caps in caps.iter() {
+            let caps = flatten_merkle_cap(caps);
+            memory_trace_transcript.absorb(&caps);
+        }
+
+        assert_eq!(
+            memory_trace_transcript.get_current_buffer_offset(),
+            BLAKE2S_BLOCK_SIZE_U32_WORDS
+        );
+    }
+
+    let memory_challenges_seed = memory_trace_transcript.finalize();
+
+    memory_challenges_seed
+}
+
+/// We need to draw a common challenge based on all the values that will contribute to the memory permutation grand product, and
+/// delegation argument set equality
+pub fn fs_transform_unified_for_permutation_argument<const REDUCED_ROUNDS: bool>(
+    final_register_values: &[FinalRegisterValue],
+    final_pc: u32,
+    final_timestamp: TimestampScalar,
+    unified_circuits_memory_caps: &[(Vec<u32>, MerkleTreeCapVarLength)], // (inits and teardowns top bits, memory tree caps)
+    delegation_circuits_memory_caps: &[(u32, Vec<MerkleTreeCapVarLength>)],
+) -> Seed {
+    use transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
+
+    let mut memory_trace_transcript =
+        transcript::Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new();
+
+    // commit all registers
+    let mut register_values_and_timestamps = Vec::with_capacity(32 + 32 * 2);
+    for register in final_register_values.iter() {
+        register_values_and_timestamps.push(register.value);
+        let (low, high) = split_timestamp(register.last_access_timestamp);
+        register_values_and_timestamps.push(low);
+        register_values_and_timestamps.push(high);
+    }
+
+    memory_trace_transcript.absorb(&register_values_and_timestamps);
+
+    // then final PC
+    let (ts_low, ts_high) = split_timestamp(final_timestamp);
+    let mut final_pc_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+    final_pc_buffer[0] = final_pc;
+    final_pc_buffer[1] = ts_low;
+    final_pc_buffer[2] = ts_high;
+
+    memory_trace_transcript.absorb(&final_pc_buffer);
+
+    // then we commit all main RISC-V circuits
+    for (top_bits, caps) in unified_circuits_memory_caps.iter() {
+        assert!(top_bits.len() < BLAKE2S_BLOCK_SIZE_U32_WORDS);
+        let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+        buffer[0] = REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32;
+        buffer[1..][..top_bits.len()].copy_from_slice(top_bits);
+        memory_trace_transcript.absorb(&buffer);
+        let caps = flatten_merkle_cap(caps);
+        memory_trace_transcript.absorb(&caps);
     }
 
     assert_eq!(

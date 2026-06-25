@@ -58,7 +58,7 @@ use trace_and_split::commit_memory_tree_for_delegation_circuit;
 use trace_and_split::commit_memory_tree_for_inits_and_teardowns;
 use trace_and_split::commit_memory_tree_for_unrolled_mem_circuits;
 use trace_and_split::commit_memory_tree_for_unrolled_nonmem_circuits;
-use trace_and_split::fs_transform_for_permutation_argument;
+use trace_and_split::fs_transform_unrolled_for_permutation_argument;
 
 pub fn run_unrolled_machine_in_full<M: MachineConfig, C: Counters>(
     cycles_bound: usize,
@@ -955,7 +955,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             .collect();
 
     // commit memory challenges
-    let all_challenges_seed = fs_transform_for_permutation_argument::<true>(
+    let all_challenges_seed = fs_transform_unrolled_for_permutation_argument::<true>(
         &register_final_state,
         final_pc,
         final_timestamp,
@@ -1634,7 +1634,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     assert_eq!(&aux_delegation_memory_trees, &delegation_memory_trees_vec);
 
     // compare challenge
-    let aux_all_challenges_seed = fs_transform_for_permutation_argument::<true>(
+    let aux_all_challenges_seed = fs_transform_unrolled_for_permutation_argument::<true>(
         &register_final_state,
         final_pc,
         final_timestamp,
@@ -1650,7 +1650,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     (program_proof, risc_v_setup_params)
 }
 
-fn prove_delegation_circuit<
+pub(crate) fn prove_delegation_circuit<
     A: GoodAllocator,
     D: DelegationAbiDescription,
     const REG_ACCESSES: usize,

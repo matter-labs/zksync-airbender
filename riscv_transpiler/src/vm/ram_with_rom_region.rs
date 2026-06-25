@@ -1,7 +1,6 @@
-use common_constants::TimestampScalar;
 use field::PrimeField;
 use std::alloc::{self, Allocator, Layout};
-
+use common_constants::*;
 use crate::vm::{RamPeek, Register, RAM};
 
 /// Allocate a zeroed `Vec<Register>` without touching every backing page.
@@ -105,6 +104,27 @@ mod tests {
         assert_eq!(read_timestamp, 4 | 2);
         assert_eq!(read_value, 0xDEAD_BEEF);
     }
+}
+
+pub const fn timestamp_scalar_into_column_values(
+    timestamp: TimestampScalar,
+) -> [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM] {
+    let low = timestamp & ((1 << TIMESTAMP_COLUMNS_NUM_BITS) - 1);
+    let high = timestamp >> TIMESTAMP_COLUMNS_NUM_BITS;
+
+    [low as u32, high as u32]
+}
+
+pub fn split_u32_into_pair_u16(num: u32) -> (u16, u16) {
+    let high_word = (num >> 16) as u16;
+    let low_word = (num & 0xffff) as u16;
+    (low_word, high_word)
+}
+
+pub fn split_timestamp(timestamp: TimestampScalar) -> (u32, u32) {
+    let [low, high] = timestamp_scalar_into_column_values(timestamp);
+
+    (low, high)
 }
 
 // NOTE: we will not branch and special-case here to model ROM reads as reads from address 0 of 0 value,
@@ -279,26 +299,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
     ) {
         use common_constants::*;
 
-        pub const fn timestamp_scalar_into_column_values(
-            timestamp: TimestampScalar,
-        ) -> [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM] {
-            let low = timestamp & ((1 << TIMESTAMP_COLUMNS_NUM_BITS) - 1);
-            let high = timestamp >> TIMESTAMP_COLUMNS_NUM_BITS;
-
-            [low as u32, high as u32]
-        }
-
-        pub fn split_u32_into_pair_u16(num: u32) -> (u16, u16) {
-            let high_word = (num >> 16) as u16;
-            let low_word = (num & 0xffff) as u16;
-            (low_word, high_word)
-        }
-
-        pub fn split_timestamp(timestamp: TimestampScalar) -> (u32, u32) {
-            let [low, high] = timestamp_scalar_into_column_values(timestamp);
-
-            (low, high)
-        }
+        
 
         // parallel collect, and we access mutually exclusive places, so we first degrate everything to pointers
         // first we will walk over access_bitmask and collect subparts
@@ -384,5 +385,202 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                 d.set_len(words_per_chunk);
             }
         }
+    }
+
+    pub fn collect_inits_and_teardowns_sets<
+        F: PrimeField,
+        A: Allocator + Clone + Send + Sync + Default,
+    >(
+        &self,
+        worker: &worker::Worker,
+        words_per_chunk_log2: usize,
+        chunks_in_set: usize,
+        upper_ram_bound_hint_in_words: Option<usize>,
+    ) -> Vec<(Vec<u32>, Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>)> // ts, value
+    {
+        assert!(chunks_in_set > 0);
+        assert!(chunks_in_set <= 2, "we do not support logic for generic grouping of chunks yet");
+        // parallel collect, and we access mutually exclusive places, so we first degrate everything to pointers
+        // first we will walk over access_bitmask and collect subparts
+
+        let (sender, receiver) = std::sync::mpsc::channel();
+
+        let words_upper_bound = std::cmp::min(upper_ram_bound_hint_in_words.unwrap_or(usize::MAX), self.backing.len());
+        let num_chunks = words_upper_bound.div_ceil(1 << words_per_chunk_log2);
+
+        worker.scope(num_chunks, |scope, geometry| {
+            for thread_idx in 0..geometry.len() {
+                let sender = sender.clone();
+                let chunk_size = geometry.get_chunk_size(thread_idx);
+                let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+
+                worker::Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    let mut buffer = (
+                        [
+                            Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
+                            Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                        ],
+                        [
+                            Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
+                            Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                        ],
+                    );
+                    buffer.0[0].resize(1 << words_per_chunk_log2, F::ZERO);
+                    buffer.0[1].resize(1 << words_per_chunk_log2, F::ZERO);
+                    buffer.1[0].resize(1 << words_per_chunk_log2, F::ZERO);
+                    buffer.1[1].resize(1 << words_per_chunk_log2, F::ZERO);
+
+                    for chunk_idx in chunk_start..chunk_start+chunk_size {
+                        let start = chunk_idx * (1 << words_per_chunk_log2);
+                        let src = &self.backing[start..][..1 << words_per_chunk_log2];
+                        let mut non_trivial_word = false;
+                        let top_bits = chunk_idx as u32;
+                        let mut word_idx = start;
+                        for (buffer_idx, word) in src.iter().enumerate() {
+                            let address = word_idx * core::mem::size_of::<u32>();
+                            let mut word_value = word.value;
+                            // we mask ROM region to be zero-valued
+                            if address < (1 << (16 + ROM_BOUND_SECOND_WORD_BITS)) {
+                                word_value = 0;
+                            }
+                            let last_timestamp: TimestampScalar = word.timestamp;
+                            if last_timestamp != 0 {
+                                non_trivial_word = true;
+                            }
+                            let (val_low, val_high) = split_u32_into_pair_u16(word_value);
+                            let (ts_low, ts_high) = split_timestamp(last_timestamp);
+
+                            buffer.0[0][buffer_idx] = F::from_u32_unchecked(ts_low as u32);
+                            buffer.0[1][buffer_idx] = F::from_u32_unchecked(ts_high as u32);
+
+                            buffer.1[0][buffer_idx] = F::from_u32_unchecked(val_low as u32);
+                            buffer.1[1][buffer_idx] = F::from_u32_unchecked(val_high as u32);
+
+                            word_idx += 1;
+                        }
+
+                        if non_trivial_word {
+                            // send and replace buffer
+                            let mut t = (
+                                [
+                                    Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
+                                    Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                                ],
+                                [
+                                    Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
+                                    Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                                ],
+                            );
+                            t.0[0].resize(1 << words_per_chunk_log2, F::ZERO);
+                            t.0[1].resize(1 << words_per_chunk_log2, F::ZERO);
+                            t.1[0].resize(1 << words_per_chunk_log2, F::ZERO);
+                            t.1[1].resize(1 << words_per_chunk_log2, F::ZERO);
+
+                            let buffer_to_send = std::mem::replace(
+                                &mut buffer,
+                                t,
+                            );
+                            sender.send((top_bits, buffer_to_send)).expect("must send to unbounded channel");
+                        }
+                    }
+                });
+            }
+        });
+
+        let mut result = vec![];
+        while let Ok((top_bits, buffer)) = receiver.try_recv() {
+            result.push((
+                top_bits,
+                buffer,
+            ));
+        }
+
+        result.sort_by(|a, b| {
+            a.0.cmp(&b.0)
+        });
+
+        let num_extra_elements = result.len() % chunks_in_set;
+        let need_extra_element = num_extra_elements != 0;
+        let groups = result.len().div_ceil(chunks_in_set);
+
+        let mut grouped = vec![];
+        if need_extra_element == false {
+            let mut it = result.into_iter();
+            for _ in 0..groups {
+                let mut chunk = (vec![], vec![]);
+                for _ in 0..chunks_in_set {
+                    let (bits, inits) = it.next().unwrap();
+                    chunk.0.push(bits);
+                    chunk.1.push(inits);
+                }
+                grouped.push(chunk);
+            }
+        } else {
+            assert_eq!(num_extra_elements, 1);
+            let min_top_bits = result.iter().map(|el| el.0).min().unwrap();
+            // let max_top_bits = result.iter().map(|el| el.0).max().unwrap();
+            let top_bits_beyond_bound = self.backing.len().div_ceil(1 << words_per_chunk_log2);
+            let padding_bits_to_use = if min_top_bits > 0 {
+                0u32
+            } else {
+                top_bits_beyond_bound as u32
+            };
+            let bound = result.len();
+            let mut chunk = (vec![], vec![]);
+            if padding_bits_to_use == 0 {
+                let mut t = (
+                    [
+                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
+                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                    ],
+                    [
+                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
+                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                    ],
+                );
+                t.0[0].resize(1 << words_per_chunk_log2, F::ZERO);
+                t.0[1].resize(1 << words_per_chunk_log2, F::ZERO);
+                t.1[0].resize(1 << words_per_chunk_log2, F::ZERO);
+                t.1[1].resize(1 << words_per_chunk_log2, F::ZERO);
+
+                chunk.0.push(padding_bits_to_use);
+                chunk.1.push(t);
+            }
+            let mut it = result.into_iter();
+            for _ in 0..bound {
+                let (bits, inits) = it.next().unwrap();
+                chunk.0.push(bits);
+                chunk.1.push(inits);
+                if chunk.0.len() == chunks_in_set {
+                    let t = std::mem::take(&mut chunk);
+                    grouped.push(t);
+                }
+            }
+            assert!(it.next().is_none());
+            if padding_bits_to_use == (top_bits_beyond_bound as u32) {
+                let mut t = (
+                    [
+                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
+                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                    ],
+                    [
+                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
+                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                    ],
+                );
+                t.0[0].resize(1 << words_per_chunk_log2, F::ZERO);
+                t.0[1].resize(1 << words_per_chunk_log2, F::ZERO);
+                t.1[0].resize(1 << words_per_chunk_log2, F::ZERO);
+                t.1[1].resize(1 << words_per_chunk_log2, F::ZERO);
+
+                chunk.0.push(padding_bits_to_use);
+                chunk.1.push(t);
+
+                assert_eq!(chunk.0.len(), chunks_in_set);
+                grouped.push(chunk);
+            }
+        }
+
+        grouped
     }
 }
