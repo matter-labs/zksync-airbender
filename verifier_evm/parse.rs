@@ -501,17 +501,20 @@ fn main() {
                 format!("(δ + {compressed})")
             }
             fn lookrelgeneric_to_calldata(tuple: &NoFieldVectorLookupRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
-                // TODO: THIS IS MEGA EXPENSIVE FOR BYTECODE
+                // TODO: THIS IS MEGA EXPENSIVE FOR BYTECODE (was able to save 20% by specialising to actual realistic scenario of single variables)
                 let NoFieldVectorLookupRelation { columns, lookup_set_index: _ } = tuple;
                 assert_eq!(columns.len(), 10, "we expect generic lookups to be tuples of 10 elements");
                 let logup_alpha = Dual("β".to_string(), Yul::logup_alpha());
-                let compressed = columns.iter().enumerate().rev().map(|(j, column)| {
+                let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
+                let [col0, col1, col2, col3, col4, col5, col6, col7, col8, col9] = columns.iter().enumerate().map(|(j, column)| {
                     let compressed_column = linrel_to_calldata_inner(column, expected_layer, layer0_group_widths, running_max_group_offsets);
                     let logup_alpha_j = logup_alpha.0.clone() + &superscript(j);
                     Dual(format!("{logup_alpha_j}({compressed_column})"), yul_format!("{compressed_column:x}"))
-                }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add(mulmod({acc:x}, {logup_alpha:x}, P), {el:x})"))).unwrap();
-                let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
-                Dual(format!("({logup_gamma} + {compressed})"), yul_format!("add({compressed:x}, {logup_gamma:x})"))
+                }).collect::<Vec<_>>().try_into().ok().unwrap();
+                Dual(
+                    format!("({logup_gamma} + {col0} + {col1} + {col2} + {col3} + {col4} + {col5} + {col6} + {col7} + {col8} + {col9})"),
+                    yul_format!("add({logup_gamma:x}, gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, {col5:x}, {col6:x}, {col7:x}, {col8:x}, {col9:x}), {col0:x}, {col1:x}, {col2:x}, {col3:x}, {col4:x}))")
+                )
             }
             fn linrel_to_calldata_inner(inputs: &NoFieldLinearRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let NoFieldLinearRelation { linear_terms, constant } = inputs;
@@ -650,13 +653,14 @@ fn main() {
                     let [den1, den2] = input.each_ref().map(|input| lookrelgeneric_to_calldata(input, i, layer0_group_widths, &mut running_max_group_offsets));
                     let [num_out, den_out] = output.each_ref_mayberevmap(|address| gkraddress_to_outputvar(address, i + 1, &mut running_output_counter));
                     // println!("{relation_name}: 1/{den1} + 1/{den2} = {num_out}/{den_out}");
-                    // TODO: THIS IS MEGA EXPENSIVE FOR SOLC BYTECODE (+20% of LIMIT!!)
                     yul_println!("
                     \t{{  // {relation_name}: 1/{den1} + 1/{den2} = {num_out}/{den_out}
-                    \t    let den_out := mulmod({den1:x}, {den2:x}, P)
+                    \t    let den1 := {den1:x} // for generic lookups we collect
+                    \t    let den2 := {den2:x} // for generic lookups we collect
+                    \t    let den_out := mulmod(den1, den2, P)
                     \t    let gate := den_out
                     \t    {pointcheck_update:x}
-                    \t    let num_out := add({den1:x}, {den2:x})
+                    \t    let num_out := add(den1, den2)
                     \t    gate := num_out
                     \t    {pointcheck_update:x}
                     \t}}");
@@ -668,10 +672,11 @@ fn main() {
                     // println!("{relation_name}: {num1}/{den1} + 1/{den2} = {num_out}/{den_out}")
                     yul_println!("
                     \t{{  // {relation_name}: {num1}/{den1} + 1/{den2} = {num_out}/{den_out}
-                    \t    let den_out := mulmod({den1:x}, {den2:x}, P)
+                    \t    let den2 := {den2:x} // for generic lookups we collect
+                    \t    let den_out := mulmod({den1:x}, den2, P)
                     \t    let gate := den_out
                     \t    {pointcheck_update:x}
-                    \t    let num_out := add(mulmod({num1:x}, {den2:x}, P), {den1:x})
+                    \t    let num_out := add(mulmod({num1:x}, den2, P), {den1:x})
                     \t    gate := num_out
                     \t    {pointcheck_update:x}
                     \t}}");
@@ -684,7 +689,9 @@ fn main() {
                     // println!("{relation_name}: {lhs}*{rhs} = {output}");
                     yul_println!("
                     \t{{  // {relation_name}: {lhs}*{rhs} = {output}
-                    \t    let gate := mulmod({lhs:x}, {rhs:x}, P)
+                    \t    let lhs := {lhs:x} // for memrel we collect
+                    \t    let rhs := {rhs:x} // for memrel we collect
+                    \t    let gate := mulmod(lhs, rhs, P)
                     \t    {pointcheck_update:x}
                     \t}}");
                 }
@@ -693,15 +700,13 @@ fn main() {
                     let [multiplicity, setup] = setup.each_ref().map(|address| gkraddress_to_calldata(address, i, layer0_group_widths, &mut running_max_group_offsets));
                     let [num_out, den_out] = output.each_ref_mayberevmap(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
                     let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
-                    println!("{relation_name}: 1/({logup_gamma} + {input}) - {multiplicity}/({logup_gamma} + {setup}) = {num_out}/{den_out}");
+                    // println!("{relation_name}: 1/({logup_gamma} + {input}) - {multiplicity}/({logup_gamma} + {setup}) = {num_out}/{den_out}");
                     yul_println!("
                     \t{{  // {relation_name}: 1/({logup_gamma} + {input}) - {multiplicity}/({logup_gamma} + {setup}) = {num_out}/{den_out}
                     \t    let den_out := mulmod(add({logup_gamma:x}, {input:x}), add({logup_gamma:x}, {setup:x}), P)
                     \t    let gate := den_out
                     \t    {pointcheck_update:x}
                     \t    let num_out := add(add({logup_gamma:x}, {setup:x}), sub(P, mulmod({multiplicity:x}, add({logup_gamma:x}, {input:x}), P)))
-                    \t    // let num_out := add(add({logup_gamma:x}, {setup:x}), mulmod(sub(mul(2, P), {multiplicity:x}), add({logup_gamma:x}, {input:x}), P))
-                    \t    // let num_out := add(add({logup_gamma:x}, {setup:x}), mulmod(sub(mul(3, P), add({logup_gamma:x}, {input:x})), {multiplicity:x}, P))
                     \t    gate := num_out
                     \t    {pointcheck_update:x}
                     \t}}");
@@ -731,6 +736,7 @@ fn main() {
                     }).collect::<Vec<_>>().join(" + ");
                     let [num_out, den_out] = output.each_ref_mayberevmap(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
                     println!("{relation_name}: {input_mask}/{input_den} - {setup_multiplicity}/(δ + {setup}) = {num_out}/{den_out}");
+                    // TODO: remember to collect input_den
                 }
                 // NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, expression } => {
                 NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
@@ -850,6 +856,20 @@ fn main() {
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 96)), ts_high, P))
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 128)), val_low, P))
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 160)), val_high, P))
+        }}
+
+        // Fold five generic lookup tuple columns into an existing Horner accumulator.
+        // A single helper that took all c0..c9 made solc materialize all ten columns
+        // at the call boundary and failed stack allocation. Splitting the fold into
+        // two five-column calls keeps each call boundary small while still supporting
+        // arbitrary linrel_to_calldata_inner() output for every column.
+        function gkr_lookrel_compress_half(acc, c0, c1, c2, c3, c4) -> acc_next {{
+            let beta := mload(LOGUP_CHALLS_PTR)
+            acc_next := add(mulmod(acc, beta, P), c4)
+            acc_next := add(mulmod(acc_next, beta, P), c3)
+            acc_next := add(mulmod(acc_next, beta, P), c2)
+            acc_next := add(mulmod(acc_next, beta, P), c1)
+            acc_next := add(mulmod(acc_next, beta, P), c0)
         }}
     ");
 }
