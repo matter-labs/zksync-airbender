@@ -51,7 +51,7 @@ members = [
     "circuit_defs/unrolled_circuits/shift_binary_csr",
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
 
-    "riscv_transpiler",
+    "riscv_transpiler", "fuzzing"
 ]
 
 default-members = [
@@ -201,3 +201,7 @@ debug = true         # Disable debug info to reduce compile time (optional, set 
 # strip = "symbols"     # Strip symbols to reduce binary size and linking time
 # panic = "unwind"      # Default panic strategy, no change needed (abort can be faster but less safe for tests)
 rpath = false         # Disable rpath (rarely needed, speeds up linking slightly)
+
+[profile.compliance-tests]
+inherits = "release"
+debug-assertions = true
