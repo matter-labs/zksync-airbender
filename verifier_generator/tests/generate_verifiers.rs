@@ -81,12 +81,13 @@ fn generate_gkr_verifier<MW: FieldWrapper<BaseField = BabyBearField>>(
     let compiled_circuit = circuit.compiled_circuit();
     assert_eq!(compiled_circuit.trace_len, 1 << circuit.trace_len_log_2);
 
+    let prover_config = circuit.prover_config_for(level);
     let files = gkr::generate_gkr_inlined::<MW>(
         &compiled_circuit,
-        circuit
-            .prover_config_for(level)
-            .sumcheck_explicit_output_size_log_2,
+        prover_config.sumcheck_explicit_output_size_log_2,
         circuit.whir_schedule_for(level),
+        prover_config.lookup_challenges_pow_bits,
+        prover_config.batched_proximity_check_challenge_pow_bits,
     );
 
     write_and_fmt(&format!("{}/constants.rs", dir), &files.constants);

@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::gkr::{prover::WhirSchedule, whir::proximity_testing_modes::ProximityTestingMode};
 
 pub mod example_configs;
+pub mod pow_bits;
 
 #[derive(Clone, Debug)]
 pub struct ProverConfig {

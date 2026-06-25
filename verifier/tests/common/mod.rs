@@ -367,6 +367,22 @@ pub fn assert_rejects_via_panic(
     }
 }
 
+/// Assert the proof is rejected, accepting *either* a panic or a structured error.
+/// Useful for corruptions whose rejection path depends on the security level — e.g.
+/// a tampered PoW nonce is caught directly by `verify_pow` when the bit-count is
+/// non-zero, but only downstream (via seed divergence) when the bit-count is zero.
+pub fn assert_rejects_any(
+    name: &str,
+    level: SecurityLevel,
+    label: &str,
+    proof: &GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
+) {
+    let (nds, external_challenges) = proof_to_nds(name, level, proof);
+    if verify_nds(name, level, &external_challenges, nds).is_ok() {
+        panic!("{}: should reject {}", name, label);
+    }
+}
+
 pub fn load_binary_section(path: &str) -> Vec<u32> {
     let bytes = std::fs::read(path).unwrap_or_else(|_| {
         panic!(

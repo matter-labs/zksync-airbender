@@ -13,7 +13,9 @@ use crate::fft::Twiddles;
 use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::stage1;
-use crate::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
+use crate::gkr::prover::transcript_utils::{
+    commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
+};
 use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
 use crate::gkr::prover_config::ProverConfig;
 use crate::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRStorage};
@@ -85,6 +87,8 @@ pub struct GKRProof<
     pub whir_proof: WhirPolyCommitProof<F, E, T>,
     pub grand_product_accumulator_computed: E,
     pub inits_and_teardowns_top_bits: Vec<u32>,
+    pub lookup_challenges_pow_nonce: u64,
+    pub batched_proximity_check_pow_nonce: u64,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
@@ -368,11 +372,15 @@ where
 
     let mut seed = Transcript::commit_initial(&transcript_input);
 
-    // TODO
-    assert_eq!(prover_config.lookup_challenges_pow_bits, 0, "TODO");
-
-    // now we need to draw prove-local challenges, and in our case it's just a challenge for lookups, and challenge to batch all constraints
-    let challenges: Vec<E> = draw_random_field_els(&mut seed, 2);
+    // Now we need to draw prove-local challenges, and in our case it's just a challenge for lookups,
+    // and challenge to batch all constraints. They are gated behind a proof-of-work; commit-before-draw
+    // is satisfied by `commit_initial` above.
+    let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) = draw_random_field_els_with_pow(
+        &mut seed,
+        2,
+        prover_config.lookup_challenges_pow_bits,
+        worker,
+    );
     let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
 
     let mut gkr_storage = GKRStorage::<F, E>::default();
@@ -763,14 +771,16 @@ where
 
     drop(gkr_storage);
 
-    // TODO
-    assert_eq!(
-        prover_config.batched_proximity_check_challenge_pow_bits, 0,
-        "TODO"
-    );
-
-    let whir_batching_challenge = draw_random_field_els::<F, E>(&mut seed, 1);
-    let whir_batching_challenge = whir_batching_challenge[0];
+    // The WHIR batching challenge is gated behind a proof-of-work; the GKR sumcheck
+    // transcript above already committed everything that feeds this draw.
+    let (batched_proximity_check_pow_nonce, whir_batching_challenges): (u64, Vec<E>) =
+        draw_random_field_els_with_pow(
+            &mut seed,
+            1,
+            prover_config.batched_proximity_check_challenge_pow_bits,
+            worker,
+        );
+    let whir_batching_challenge = whir_batching_challenges[0];
 
     let whir_proof = whir_fold(
         mem_oracle,
@@ -830,5 +840,7 @@ where
         sumcheck_intermediate_values,
         grand_product_accumulator_computed,
         inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.to_vec(),
+        lookup_challenges_pow_nonce,
+        batched_proximity_check_pow_nonce,
     }
 }

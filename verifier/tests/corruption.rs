@@ -1,4 +1,8 @@
-#![cfg(feature = "security_80")]
+// Corruption tests. The bulk of the suite is Sec80-only (it depends on the Sec80 NDS layout
+// and the Sec80 generated verifier), so those tests are gated at their macro invocation below.
+// The PoW-nonce tests run at *every* enabled security level: at Sec80 a tampered nonce is caught
+// downstream (0-bit threshold is vacuous), while at Sec100 it is caught directly by `verify_pow`'s
+// threshold check — so this is the coverage of the nonzero-bit rejection branch.
 
 #[macro_use]
 mod common;
@@ -8,8 +12,8 @@ use field::Field;
 use verifier_common::errors::VerificationError;
 
 use common::{
-    assert_rejects_corrupted_nds, assert_rejects_via_panic, assert_rejects_with_variant,
-    SecurityLevel, VerifyRejection,
+    assert_rejects_any, assert_rejects_corrupted_nds, assert_rejects_via_panic,
+    assert_rejects_with_variant, SecurityLevel, VerifyRejection,
 };
 
 fn test_rejects_garbage_proof(name: &str) {
@@ -329,6 +333,23 @@ fn test_rejects_corrupted_pow_nonce(name: &str) {
     assert_rejects_via_panic(name, SecurityLevel::Sec80, "corrupted PoW nonce", &proof);
 }
 
+fn test_rejects_corrupted_lookup_pow_nonce(name: &str, level: SecurityLevel) {
+    let circuit_data = common::circuit_by_name(name);
+    let mut proof = circuit_data.proof_for(level);
+    // The lookup-challenge PoW nonce is bound into the transcript seed. Tampering with it
+    // must be rejected — directly by `verify_pow` when the bit-count is non-zero (Sec100),
+    // otherwise downstream once the diverged seed corrupts every later challenge (Sec80).
+    proof.lookup_challenges_pow_nonce ^= 1;
+    assert_rejects_any(name, level, "corrupted lookup PoW nonce", &proof);
+}
+
+fn test_rejects_corrupted_batched_proximity_pow_nonce(name: &str, level: SecurityLevel) {
+    let circuit_data = common::circuit_by_name(name);
+    let mut proof = circuit_data.proof_for(level);
+    proof.batched_proximity_check_pow_nonce ^= 1;
+    assert_rejects_any(name, level, "corrupted batched-proximity PoW nonce", &proof);
+}
+
 #[cfg(not(feature = "no_caches"))]
 fn test_rejects_corrupted_cache_relations(name: &str) {
     let circuit_data = common::circuit_by_name(name);
@@ -492,4 +513,39 @@ macro_rules! generate_corruption_tests {
         )*
     };
 }
+// The bulk of the corruption suite is Sec80-only (Sec80 NDS layout + Sec80 verifier).
+#[cfg(feature = "security_80")]
 verifier_common::gkr_circuits!(generate_corruption_tests);
+
+// PoW-nonce corruption runs at every enabled security level — the only corruption tests that
+// exercise Sec100. At Sec100 (non-zero PoW bits) these hit `verify_pow`'s threshold-rejection
+// branch directly; at Sec80 (0 bits) they verify the nonce is transcript-bound (downstream reject).
+macro_rules! generate_pow_nonce_corruption_tests {
+    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
+        $(
+            paste::paste! {
+                #[cfg(feature = "security_80")]
+                #[test]
+                fn [<rejects_corrupted_lookup_pow_nonce_sec80_ $name>]() {
+                    test_rejects_corrupted_lookup_pow_nonce(stringify!($name), SecurityLevel::Sec80);
+                }
+                #[cfg(feature = "security_100")]
+                #[test]
+                fn [<rejects_corrupted_lookup_pow_nonce_sec100_ $name>]() {
+                    test_rejects_corrupted_lookup_pow_nonce(stringify!($name), SecurityLevel::Sec100);
+                }
+                #[cfg(feature = "security_80")]
+                #[test]
+                fn [<rejects_corrupted_batched_proximity_pow_nonce_sec80_ $name>]() {
+                    test_rejects_corrupted_batched_proximity_pow_nonce(stringify!($name), SecurityLevel::Sec80);
+                }
+                #[cfg(feature = "security_100")]
+                #[test]
+                fn [<rejects_corrupted_batched_proximity_pow_nonce_sec100_ $name>]() {
+                    test_rejects_corrupted_batched_proximity_pow_nonce(stringify!($name), SecurityLevel::Sec100);
+                }
+            }
+        )*
+    };
+}
+verifier_common::gkr_circuits!(generate_pow_nonce_corruption_tests);

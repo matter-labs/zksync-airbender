@@ -742,6 +742,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     compiled_circuit: &GKRCircuitArtifact<MW::BaseField>,
     sumcheck_output_size_log_2: usize,
     whir_schedule: &WhirSchedule,
+    lookup_challenges_pow_bits: u32,
+    batched_proximity_check_challenge_pow_bits: u32,
 ) -> GKRGeneratedFiles {
     let num_standard_layers = compiled_circuit.layers.len();
     let trace_len = compiled_circuit.trace_len;
@@ -953,7 +955,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     main_body.extend(quote! {
         let mut init_challenges = LazyVec::<#quartic_struct, 2>::new();
         unsafe { init_challenges.set_len(2); }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
+        read_and_verify_pow::<I>(ts, LOOKUP_CHALLENGES_POW_BITS, nd_source);
+        draw_field_els_into_after_pow::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
         let lookup_alpha = *init_challenges.get(0);
         let lookup_additive_challenge = *init_challenges.get(1);
         let address_high_bits_shift: u32 = #address_high_bits_shift_val;
@@ -1547,7 +1550,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     }
 
     main_body.extend(quote! {
-        state.batching_challenge = draw_single_field_el(ts);
+        read_and_verify_pow::<I>(ts, BATCHED_PROXIMITY_POW_BITS, nd_source);
+        state.batching_challenge = draw_single_field_el_after_pow(ts);
 
         let mut permutation_read_product: #quartic_struct = #quartic_one;
         let mut permutation_write_product: #quartic_struct = #quartic_one;
@@ -1712,6 +1716,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         pub const WHIR_FOLD_STEPS: [usize; #whir_rounds] = [#(#whir_fold_steps),*];
         pub const WHIR_QUERIES: [usize; #whir_rounds] = [#(#whir_queries),*];
         pub const WHIR_POW_BITS: [u32; #whir_rounds] = [#(#whir_pow_bits),*];
+        pub const LOOKUP_CHALLENGES_POW_BITS: u32 = #lookup_challenges_pow_bits;
+        pub const BATCHED_PROXIMITY_POW_BITS: u32 = #batched_proximity_check_challenge_pow_bits;
         pub const MAX_POW_ENTRIES: usize = #max_pow_entries;
         pub const FINAL_MONOMIALS_LEN: usize = #final_monomials_len;
         pub const NUM_ORACLES: usize = #num_oracles;
@@ -1752,10 +1758,12 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         use super::common::{
             verify_sumcheck_rounds, verify_final_step_check, fold_standard_claims,
             make_eq_poly, dot_eq, draw_field_els_into, draw_single_field_el,
+            draw_field_els_into_after_pow, draw_single_field_el_after_pow,
             read_field_el, read_reduced_field_el,
             ext_from_nds, ext_from_raw_words,
             EXT_DEGREE,
         };
+        use ::verifier_common::whir::read_and_verify_pow;
         use ::verifier_common::field_ops;
         use ::verifier_common::field::{Field, FieldExtension, PrimeField};
         use ::verifier_common::non_determinism_source::NonDeterminismSource;

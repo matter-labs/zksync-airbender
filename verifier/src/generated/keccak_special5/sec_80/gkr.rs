@@ -1,7 +1,8 @@
 use super::common::{
-    dot_eq, draw_field_els_into, draw_single_field_el, ext_from_nds, ext_from_raw_words,
-    fold_standard_claims, make_eq_poly, read_field_el, read_reduced_field_el,
-    verify_final_step_check, verify_sumcheck_rounds, EXT_DEGREE,
+    dot_eq, draw_field_els_into, draw_field_els_into_after_pow, draw_single_field_el,
+    draw_single_field_el_after_pow, ext_from_nds, ext_from_raw_words, fold_standard_claims,
+    make_eq_poly, read_field_el, read_reduced_field_el, verify_final_step_check,
+    verify_sumcheck_rounds, EXT_DEGREE,
 };
 use super::constants::*;
 use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
@@ -15,6 +16,7 @@ use verifier_common::gkr::{GKRVerifierOutput, LayerState};
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
+use verifier_common::whir::read_and_verify_pow;
 use verifier_common::GKRExternalChallenges;
 #[inline(always)]
 #[allow(unused_variables)]
@@ -7713,7 +7715,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
         unsafe {
             init_challenges.set_len(2);
         }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
+        read_and_verify_pow::<I>(ts, LOOKUP_CHALLENGES_POW_BITS, nd_source);
+        draw_field_els_into_after_pow::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
         let lookup_alpha = *init_challenges.get(0);
         let lookup_additive_challenge = *init_challenges.get(1);
         let address_high_bits_shift: u32 = 0u32;
@@ -10265,7 +10268,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR MAIN LAYER 0");
         }
-        state.batching_challenge = draw_single_field_el(ts);
+        read_and_verify_pow::<I>(ts, BATCHED_PROXIMITY_POW_BITS, nd_source);
+        state.batching_challenge = draw_single_field_el_after_pow(ts);
         let mut permutation_read_product: BabyBearExt4 = BabyBearExt4::ONE;
         let mut permutation_write_product: BabyBearExt4 = BabyBearExt4::ONE;
         {
