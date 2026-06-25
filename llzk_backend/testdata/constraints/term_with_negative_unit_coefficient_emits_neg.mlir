@@ -1,0 +1,14 @@
+module attributes {llzk.lang} {
+  struct.def @constraint_test {
+    function.def @compute(%arg0: !felt.type<"mersenne31">) -> !struct.type<@constraint_test<[]>> attributes {function.allow_non_native_field_ops, function.allow_witness} {
+      %self = struct.new : <@constraint_test<[]>>
+      function.return %self : !struct.type<@constraint_test<[]>>
+    }
+    function.def @constrain(%arg0: !struct.type<@constraint_test<[]>>, %arg1: !felt.type<"mersenne31">) attributes {function.allow_constraint, function.allow_non_native_field_ops} {
+      %felt_const_1 = felt.const  1 : <"mersenne31">
+      %0 = felt.mul %felt_const_1, %arg1 : !felt.type<"mersenne31">, !felt.type<"mersenne31">
+      %1 = felt.neg %0 : !felt.type<"mersenne31">
+      function.return
+    }
+  }
+}
