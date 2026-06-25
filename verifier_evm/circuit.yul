@@ -66,11 +66,10 @@ function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, nex
     }
     let rhs_scaled := mulmod(acc, eq_scale, P)
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
+    // after stack-heavy values are dead
     let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
     mstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
 
-    // after stack-heavy values are dead
-    // if mload(GKR_CIRCUIT_CACHE_PTR) { revert(0, 0) }
 
     // POINT CLAIMS BATCH (16 POINTS)
     let points := 16
@@ -192,11 +191,10 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
     }
     let rhs_scaled := mulmod(acc, eq_scale, P)
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
+    // after stack-heavy values are dead
     let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
     mstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
 
-    // after stack-heavy values are dead
-    // if mload(GKR_CIRCUIT_CACHE_PTR) { revert(0, 0) }
 
     // POINT CLAIMS BATCH (25 POINTS)
     let points := 25
@@ -359,11 +357,10 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     }
     let rhs_scaled := mulmod(acc, eq_scale, P)
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
+    // after stack-heavy values are dead
     let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
     mstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
 
-    // after stack-heavy values are dead
-    // if mload(GKR_CIRCUIT_CACHE_PTR) { revert(0, 0) }
 
     // POINT CLAIMS BATCH (72 POINTS)
     let points := 72
@@ -419,6 +416,23 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
     
     // POINT CHECK
     let acc
+    {  // RangeCheck16Bits: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = Cache(0)
+        let gate := gkr_virtual_poly_rangecheck(16)
+        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 0)), gate)
+    }
+    {  // RangeCheckTimestamp: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = Cache(1)
+        let gate := gkr_virtual_poly_rangecheck(19)
+        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 1)), gate)
+    }
+    {  // InitsAndTeardownsLow: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = Cache(2)
+        let gate := mul(4, gkr_virtual_poly_compose_vars(14, 0)) // u32 word-aligned
+        // let gate := shl(2, gkr_virtual_poly_compose_vars(14, 0))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 2)), gate)
+    }
+    {  // InitsAndTeardownsHigh: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = Cache(3)
+        let gate := gkr_virtual_poly_compose_vars(10, 14)
+        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 3)), gate)
+    }
     {  // CopyInBaseField: [21] = [0]
         let gate := shr(128, calldataload(add(ptr, mul(16, 21))))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -561,11 +575,10 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
     }
     let rhs_scaled := mulmod(acc, eq_scale, P)
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
+    // after stack-heavy values are dead
     let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
     mstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
 
-    // after stack-heavy values are dead
-    // if mload(GKR_CIRCUIT_CACHE_PTR) { revert(0, 0) }
 
     // POINT CLAIMS BATCH (72 POINTS)
     let points := 72
@@ -613,15 +626,36 @@ function gkr_lookrel_compress_half(acc, c0, c1, c2, c3, c4) -> acc_next {
     acc_next := add(mulmod(acc_next, beta, P), c0)
 }
 
-function gkr_memrel_compress_low(address_space, addr_low, addr_high) -> compressed {
-    compressed := add(compressed, add(mload(add(MEMORY_CHALLS_PTR, 192)), address_space))
-    compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR), addr_low, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 32)), addr_high, P))
-}
+// function gkr_memrel_compress_low(address_space, addr_low, addr_high) -> compressed {
+//     compressed := add(compressed, add(mload(add(MEMORY_CHALLS_PTR, 192)), address_space))
+//     compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR), addr_low, P))
+//     compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 32)), addr_high, P))
+// }
 function gkr_memrel_compress_high(ts_low, ts_high, val_low, val_high) -> compressed {
     compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 64)), ts_low, P))
     compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 96)), ts_high, P))
     compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 128)), val_low, P))
     compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 160)), val_high, P))
+}
+
+function gkr_virtual_poly_compose_vars(len, skip) -> eval {
+    let total := add(skip, len)
+    let max := sub(GKR_CIRCUIT_LAYER_ROUNDS, skip) // exclusive
+    let min := sub(max, len)
+    if gt(total, GKR_CIRCUIT_LAYER_ROUNDS) { // abort when bad
+        min := max
+    }
+    for { let i := min } lt(i, max) { i := add(i, 1) } {
+        eval := add(mul(eval, 2), mload(add(POINT_PTR, mul(i, 32))))
+    }
+}
+function gkr_virtual_poly_zero_vars(len) -> eval {
+    eval := 1
+    for { let i := 0 } lt(i, len) { i := add(i, 1) } {
+        eval := mulmod(eval, add(1, sub(mul(2, P), mload(add(POINT_PTR, mul(i, 32))))), P)
+    }
+}
+function gkr_virtual_poly_rangecheck(width) -> eval {
+    eval := mulmod(gkr_virtual_poly_compose_vars(width, 0), gkr_virtual_poly_zero_vars(sub(GKR_CIRCUIT_LAYER_ROUNDS, width)), P)
 }
 

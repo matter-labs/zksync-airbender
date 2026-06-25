@@ -85,6 +85,9 @@ impl Yul {
     fn mload(idx: &usize) -> Self {
         yul_format!("mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, {idx})))")
     }
+    fn mstore(idx: &usize) -> Self {
+        yul_format!("mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, {idx})), gate)")
+    }
     fn logup_gamma() -> Self {
         yul_format!("mload(add(LOGUP_CHALLS_PTR, 32))")
     }
@@ -208,37 +211,47 @@ fn main() {
             let output = gkraddress_to_outputvar(cached_address, i, &mut running_cachedoutput_counter);
             let relation_name = serde_json::to_value(cached_relation).unwrap().as_object().unwrap().keys().next().unwrap().clone();
 
-            fn gkraddress_to_calldata(address: &GKRAddress, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> String {
+            fn gkraddress_to_calldata(address: &GKRAddress, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let (l0_memvars, l0_witvars, _l0_setupvars, _l0_cachevars) = layer0_group_widths;
                 let (_running_max_memvar, _running_max_witvar, running_max_setupvar, _running_max_cachevar) = running_max_group_offsets;
                 match address {
-                    // InnerLayer { layer, offset } if *layer==expected_layer && expected_layer > 0 => format!("[{offset}]"),
+                    // InnerLayer { layer, offset } if *layer==expected_layer && expected_layer > 0 => {
+                    //     Dual(format!("[{offset}]"), Yul::calldataload(offset))
+                    // },
                     // GKRAddress::BaseLayerMemory(offset) if expected_layer == 0 => {
                     //     *running_max_memvar = *offset.max(running_max_memvar);
                     //     let calldata_offset = offset; // memory is first in calldata
-                    //     format!("[{calldata_offset}]")
+                    //     Dual(format!("[{calldata_offset}]"), Yul::calldataload(calldata_offset))
                     // },
                     // GKRAddress::BaseLayerWitness(offset) if expected_layer == 0 => {
                     //     *running_max_witvar = *offset.max(running_max_witvar);
                     //     let calldata_offset = l0_memvars + offset; // witness is second in calldata
-                    //     format!("[{calldata_offset}]")
+                    //     Dual(format!("[{calldata_offset}]"), Yul::calldataload(&calldata_offset))
                     // },
                     GKRAddress::Setup(offset) if expected_layer == 0 => {
                         *running_max_setupvar = *offset.max(running_max_setupvar);
                         let calldata_offset = l0_memvars + l0_witvars + offset; // setup is third in calldata
-                        format!("[{calldata_offset}]")
+                        Dual(format!("[{calldata_offset}]"), Yul::calldataload(&calldata_offset))
                     },
-                    // GKRAddress::Cached { layer, offset } if *layer==expected_layer && expected_layer == 0 => format!("c[{offset}]"),
-                    // GKRAddress::VirtualSetup(setup) => format!("VirtualSetup{setup:?}(0)"),
+                    // GKRAddress::Cached { layer, offset } if *layer==expected_layer && expected_layer == 0 => {
+                    //     *running_max_cachevar = *offset.max(running_max_cachevar);
+                    //     Dual(format!("Cache({offset})"), Yul::mload(offset))
+                    // },
+                    // GKRAddress::VirtualSetup(virtual_poly) if expected_layer == 0 => {
+                    //     let cache_idx = l0_cachevars + *virtual_poly as usize;
+                    //     *running_max_cachevar = cache_idx.max(*running_max_cachevar);
+                    //     Dual(format!("Cache({cache_idx})"), Yul::mload(&cache_idx))
+                    // }
+                    // GKRAddress::VirtualSetup(virtual_poly) => format!("VirtualSetup{setup:?}(x)")
                     _ => todo!("unexpected address {address:?} for layer {expected_layer}")
                 }
             }
-            fn gkraddress_to_outputvar(address: &GKRAddress, expected_layer: usize, running_cachedoutput_counter: &mut usize) -> String {
+            fn gkraddress_to_outputvar(address: &GKRAddress, expected_layer: usize, running_cachedoutput_counter: &mut usize) -> Dual {
                 match address {
                     GKRAddress::Cached { layer, offset } if *layer==expected_layer && expected_layer == 0 && *running_cachedoutput_counter == *offset => {
                         *running_cachedoutput_counter += 1;
-                        format!("Cache({offset})")
-                    }
+                        Dual(format!("Cache({offset})"), Yul::mstore(offset))
+                    },
                     _ => todo!("unexpected address {address:?} for layer {expected_layer}")
                 }
             }
@@ -261,12 +274,24 @@ fn main() {
                 //     println!("{relation_name}: {term} = {output}");
                 // }
                 NoFieldGKRCacheRelation::VectorizedLookupSetup(terms) => {
-                    let term = terms.iter().enumerate().map(|(j, addr)| {
-                        let input = gkraddress_to_calldata(addr, i, layer0_group_widths, &mut running_max_group_offsets);
-                        let beta_j = "β".to_string() + &superscript(j);
-                        format!("{beta_j}{input}")
-                    }).collect::<Vec<_>>().join(" + ");
-                    println!("{relation_name}: {term} = {output}");
+                    let logup_alpha = Dual("β".to_string(), Yul::logup_alpha());
+                    let setup = {
+                        let [set0, set1, set2, set3, set4, set5, set6, set7, set8, set9] = terms.iter().enumerate().map(|(j, addr)| {
+                            let input = gkraddress_to_calldata(addr, i, layer0_group_widths, &mut running_max_group_offsets);
+                            let beta_j = logup_alpha.0.clone() + &superscript(j);
+                            Dual(format!("{beta_j}{input}"), yul_format!("{input:x}"))
+                        }).collect::<Vec<_>>().try_into().ok().unwrap();
+                        Dual(
+                            format!("{set0} + {set1} + {set2} + {set3} + {set4} + {set5} + {set6} + {set7} + {set8} + {set9}"),
+                            yul_format!("gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, {set5:x}, {set6:x}, {set7:x}, {set8:x}, {set9:x}), {set0:x}, {set1:x}, {set2:x}, {set3:x}, {set4:x})")
+                        )
+                    };
+                    // println!("{relation_name}: {setup} = {output}");
+                    yul_println!("
+                    \t{{  // {relation_name}: {setup} = {output}
+                    \t    let gate := {setup:x}
+                    \t    {output:x}
+                    \t}}");
                 }
                 _ => todo!("could not match (cached) {cached_relation:?} at layer {i}")
             }
@@ -275,28 +300,46 @@ fn main() {
         let injected_virtualpoly_relations = [
             VirtualSetupPoly::RangeCheck16Bits,
             VirtualSetupPoly::RangeCheckTimestamp,
-            VirtualSetupPoly::InitsAndTeardownsLow,
-            VirtualSetupPoly::InitsAndTeardownsHigh,
+            VirtualSetupPoly::InitsAndTeardownsLow, // (unified)
+            VirtualSetupPoly::InitsAndTeardownsHigh, // (unified)
         ];
         if i == 0 {
             for virtualpoly_relation in injected_virtualpoly_relations {
                 let cache_idx = running_cachedoutput_counter + virtualpoly_relation as usize;
-                let output = format!("Cache({cache_idx})");
+                let output = Dual(format!("Cache({cache_idx})"), Yul::mstore(&cache_idx));
                 let relation_name = format!("{virtualpoly_relation:?}");
                 match virtualpoly_relation {
                     VirtualSetupPoly::RangeCheck16Bits => {
-                        println!("{relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}");
+                        // println!("{relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}");
+                        yul_println!("
+                        \t{{  // {relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}
+                        \t    let gate := gkr_virtual_poly_rangecheck(16)
+                        \t    {output:x}
+                        \t}}");
                     }
                     VirtualSetupPoly::RangeCheckTimestamp => {
-                        // TODO: u wanna custom merge this with RangeCheck16Bits since most calculations overlap and can be reused
-                        println!("{relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}");
+                        // println!("{relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}");
+                        yul_println!("
+                        \t{{  // {relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}
+                        \t    let gate := gkr_virtual_poly_rangecheck(19)
+                        \t    {output:x}
+                        \t}}");
                     }
                     VirtualSetupPoly::InitsAndTeardownsLow => {
-                        // TODO: u wanna custom merge this with RangeCheck16Bits since most calculations overlap and can be reused
-                        println!("{relation_name}: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = {output}");
+                        // println!("{relation_name}: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = {output}");
+                        yul_println!("
+                        \t{{  // {relation_name}: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = {output}
+                        \t    let gate := mul(4, gkr_virtual_poly_compose_vars(14, 0)) // u32 word-aligned
+                        \t    {output:x}
+                        \t}}");
                     }
                     VirtualSetupPoly::InitsAndTeardownsHigh => {
-                        println!("{relation_name}: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = {output}");
+                        // println!("{relation_name}: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = {output}");
+                        yul_println!("
+                        \t{{  // {relation_name}: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = {output}
+                        \t    let gate := gkr_virtual_poly_compose_vars(10, 14)
+                        \t    {output:x}
+                        \t}}");
                     }
                 }
             }
@@ -470,7 +513,6 @@ fn main() {
                 let memory_alpha6 = Dual(format!("α⁶"), Yul::memory_alpha(5));
                 Dual(
                     format!("({memory_gamma} + {address_space} + {memory_alpha1}{addr_low} + {memory_alpha2}{addr_high} + {memory_alpha3}{ts_low} + {memory_alpha4}{ts_high} + {memory_alpha5}{val_low} + {memory_alpha6}{val_high})"),
-                    // yul_format!("add(add(add(add(add(add(add(mulmod({memory_alpha6:x}, {val_high:x}, P), mulmod({memory_alpha5:x}, {val_low:x}, P)), mulmod({memory_alpha4:x}, {ts_high:x}, P)), mulmod({memory_alpha3:x}, {ts_low:x}, P)), mulmod({memory_alpha2:x}, {addr_high:x}, P)), mulmod({memory_alpha1:x}, {addr_low:x}, P)), {address_space:x}), {memory_gamma:x})"))
                     yul_format!("gkr_memrel_compress({address_space:x}, {addr_low:x}, {addr_high:x}, {ts_low:x}, {ts_high:x}, {val_low:x}, {val_high:x})")
                 )
 
@@ -524,7 +566,7 @@ fn main() {
                 )
             }
             fn lookrelgeneric_to_calldata(tuple: &NoFieldVectorLookupRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
-                // TODO: THIS IS MEGA EXPENSIVE FOR BYTECODE (was able to save 20% by specialising to actual realistic scenario of single variables)
+                // TODO: THIS IS EXPENSIVE FOR BYTECODE (was able to save 20% by specialising to actual realistic scenario of single variables)
                 let NoFieldVectorLookupRelation { columns, lookup_set_index: _ } = tuple;
                 assert_eq!(columns.len(), 10, "we expect generic lookups to be tuples of 10 elements");
                 let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
@@ -626,8 +668,8 @@ fn main() {
                     let input = gkraddress_to_calldata(input, i, layer0_group_widths, &mut running_max_group_offsets);
                     let mask = gkraddress_to_calldata(mask, i, layer0_group_widths, &mut running_max_group_offsets);
                     let output = gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
-                    // println!("{relation_name}: {input}*{mask} + (1-{mask}) = {output}");
                     let neg_mask = u128_to_neg(&mask);
+                    // println!("{relation_name}: {input}*{mask} + (1-{mask}) = {output}");
                     yul_println!("
                     \t{{  // {relation_name}: {input}*{mask} + (1-{mask}) = {output}
                     \t    let gate := add(mulmod({input:x}, {mask:x}, P), add(1, {neg_mask:x}))
@@ -806,7 +848,7 @@ fn main() {
                 NoFieldGKRRelation::InitsOrTeardownsInitialPair { timestamp_and_value, setup, output, set_idxes } => {
                     let [setup_low, setup_high] = setup.each_ref().map(|address| gkraddress_to_calldata(address, i, layer0_group_widths, &mut running_max_group_offsets));
                     let [lhs_addr_high, rhs_addr_high] = {
-                        assert_eq!(circuit.trace_len, 1<<24);
+                        assert_eq!(circuit.trace_len, 1<<24, "currently we expect gkr_compress to go up to 2^24");
                         let high_bits_shift = prover::gkr::high_bits_offset_for_inits_and_teardowns::<2>(circuit.trace_len);
                         let top_bits = set_idxes.map(|c| c << high_bits_shift);
                         let memory_alpha2 = Dual(format!("α²"), Yul::memory_alpha(1));
@@ -873,9 +915,8 @@ fn main() {
         yul_println!("
             let rhs_scaled := mulmod(acc, eq_scale, P)
             // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-            {check:x}
             // after stack-heavy values are dead
-            // if mload(GKR_CIRCUIT_CACHE_PTR) {{ revert(0, 0) }}
+            {check:x}
 
             // POINT CLAIMS BATCH ({previous_input_count} POINTS)
             let points := {previous_input_count}
@@ -946,16 +987,37 @@ fn main() {
             acc_next := add(mulmod(acc_next, beta, P), c0)
         }}
 
-        function gkr_memrel_compress_low(address_space, addr_low, addr_high) -> compressed {{
-            compressed := add(compressed, add(mload(add(MEMORY_CHALLS_PTR, 192)), address_space))
-            compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR), addr_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 32)), addr_high, P))
-        }}
+        // function gkr_memrel_compress_low(address_space, addr_low, addr_high) -> compressed {{
+        //     compressed := add(compressed, add(mload(add(MEMORY_CHALLS_PTR, 192)), address_space))
+        //     compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR), addr_low, P))
+        //     compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 32)), addr_high, P))
+        // }}
         function gkr_memrel_compress_high(ts_low, ts_high, val_low, val_high) -> compressed {{
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 64)), ts_low, P))
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 96)), ts_high, P))
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 128)), val_low, P))
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 160)), val_high, P))
+        }}
+
+        function gkr_virtual_poly_compose_vars(len, skip) -> eval {{
+            let total := add(skip, len)
+            let max := sub(GKR_CIRCUIT_LAYER_ROUNDS, skip) // exclusive
+            let min := sub(max, len)
+            if gt(total, GKR_CIRCUIT_LAYER_ROUNDS) {{ // abort when bad
+                min := max
+            }}
+            for {{ let i := min }} lt(i, max) {{ i := add(i, 1) }} {{
+                eval := add(mul(eval, 2), mload(add(POINT_PTR, mul(i, 32))))
+            }}
+        }}
+        function gkr_virtual_poly_zero_vars(len) -> eval {{
+            eval := 1
+            for {{ let i := 0 }} lt(i, len) {{ i := add(i, 1) }} {{
+                eval := mulmod(eval, add(1, sub(mul(2, P), mload(add(POINT_PTR, mul(i, 32))))), P)
+            }}
+        }}
+        function gkr_virtual_poly_rangecheck(width) -> eval {{
+            eval := mulmod(gkr_virtual_poly_compose_vars(width, 0), gkr_virtual_poly_zero_vars(sub(GKR_CIRCUIT_LAYER_ROUNDS, width)), P)
         }}
     ");
 }
