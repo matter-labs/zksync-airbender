@@ -79,6 +79,16 @@ impl<
                 * (Term::from(src2.0[0].get_variable())
                     + Term::from((shift, src2.0[1].get_variable()))),
         );
+        #[cfg(feature = "picus")]
+        cs.add_picus_parallel_constraint(crate::cs::circuit::PicusStructuredConstraint::Eq {
+            lhs: crate::cs::circuit::PicusExpr::Variable(product_result),
+            rhs: (crate::cs::circuit::picus_expr_from_num_circuit(src1.0[0])
+                + crate::cs::circuit::PicusExpr::Constant(shift)
+                    * crate::cs::circuit::picus_expr_from_num_circuit(src1.0[1]))
+                * (crate::cs::circuit::picus_expr_from_num_circuit(src2.0[0])
+                    + crate::cs::circuit::PicusExpr::Constant(shift)
+                        * crate::cs::circuit::picus_expr_from_num_circuit(src2.0[1])),
+        });
 
         // select orthogonal if we execute MOP, and do not care otherwise
         let result_register = opt_ctx.get_register_output(cs);
@@ -101,6 +111,29 @@ impl<
                         - Term::from((shift, src2.0[1].get_variable()))))
                 - (Term::from(result_tmp_low) + Term::from((shift, result_tmp_high))),
         );
+        #[cfg(feature = "picus")]
+        cs.add_picus_parallel_constraint(crate::cs::circuit::PicusStructuredConstraint::Eq {
+            lhs: crate::cs::circuit::PicusExpr::Variable(mulmod.get_variable().unwrap())
+                * crate::cs::circuit::PicusExpr::Variable(product_result)
+                + crate::cs::circuit::PicusExpr::Variable(addmod.get_variable().unwrap())
+                    * (crate::cs::circuit::picus_expr_from_num_circuit(src1.0[0])
+                        + crate::cs::circuit::PicusExpr::Constant(shift)
+                            * crate::cs::circuit::picus_expr_from_num_circuit(src1.0[1])
+                        + crate::cs::circuit::picus_expr_from_num_circuit(src2.0[0])
+                        + crate::cs::circuit::PicusExpr::Constant(shift)
+                            * crate::cs::circuit::picus_expr_from_num_circuit(src2.0[1]))
+                + crate::cs::circuit::PicusExpr::Variable(submod.get_variable().unwrap())
+                    * (crate::cs::circuit::picus_expr_from_num_circuit(src1.0[0])
+                        + crate::cs::circuit::PicusExpr::Constant(shift)
+                            * crate::cs::circuit::picus_expr_from_num_circuit(src1.0[1])
+                        - crate::cs::circuit::picus_expr_from_num_circuit(src2.0[0])
+                        - crate::cs::circuit::PicusExpr::Constant(shift)
+                            * crate::cs::circuit::picus_expr_from_num_circuit(src2.0[1]))
+                - (crate::cs::circuit::PicusExpr::Variable(result_tmp_low)
+                    + crate::cs::circuit::PicusExpr::Constant(shift)
+                        * crate::cs::circuit::PicusExpr::Variable(result_tmp_high)),
+            rhs: crate::cs::circuit::PicusExpr::from_const(0),
+        });
 
         let src_1_vars = [src1.0[0].get_variable(), src1.0[1].get_variable()];
         let src_2_vars = [src2.0[0].get_variable(), src2.0[1].get_variable()];
@@ -160,10 +193,24 @@ impl<
             Term::from(exec_flag.get_variable().unwrap())
                 * (Term::from(result_tmp_low) - Term::from(result_register.0[0].get_variable())),
         );
+        #[cfg(feature = "picus")]
+        cs.add_picus_parallel_constraint(crate::cs::circuit::PicusStructuredConstraint::Eq {
+            lhs: crate::cs::circuit::picus_expr_from_boolean_circuit(exec_flag)
+                * (crate::cs::circuit::PicusExpr::Variable(result_tmp_low)
+                    - crate::cs::circuit::picus_expr_from_num_circuit(result_register.0[0])),
+            rhs: crate::cs::circuit::PicusExpr::from_const(0),
+        });
         cs.add_constraint(
             Term::from(exec_flag.get_variable().unwrap())
                 * (Term::from(result_tmp_high) - Term::from(result_register.0[1].get_variable())),
         );
+        #[cfg(feature = "picus")]
+        cs.add_picus_parallel_constraint(crate::cs::circuit::PicusStructuredConstraint::Eq {
+            lhs: crate::cs::circuit::picus_expr_from_boolean_circuit(exec_flag)
+                * (crate::cs::circuit::PicusExpr::Variable(result_tmp_high)
+                    - crate::cs::circuit::picus_expr_from_num_circuit(result_register.0[1])),
+            rhs: crate::cs::circuit::PicusExpr::from_const(0),
+        });
 
         let input_vars = [result_tmp_low, result_tmp_high];
         let output_vars = [
@@ -193,6 +240,13 @@ impl<
             (Term::from(1u64) - Term::from(uf_flag.get_variable().unwrap()))
                 * Term::from(exec_flag.get_variable().unwrap()),
         );
+        #[cfg(feature = "picus")]
+        cs.add_picus_parallel_constraint(crate::cs::circuit::PicusStructuredConstraint::Eq {
+            lhs: (crate::cs::circuit::PicusExpr::from_const(1)
+                - crate::cs::circuit::picus_expr_from_boolean_circuit(uf_flag))
+                * crate::cs::circuit::picus_expr_from_boolean_circuit(exec_flag),
+            rhs: crate::cs::circuit::PicusExpr::from_const(0),
+        });
 
         if exec_flag.get_value(cs).unwrap_or(false) {
             println!("MOP");

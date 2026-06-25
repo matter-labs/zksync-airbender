@@ -6,7 +6,7 @@ use field::PrimeField;
 pub const TERM_INNER_CAPACITY: usize = 4;
 
 // #[derive(Clone, Debug, Copy, PartialEq, Eq)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Term<F: PrimeField> {
     Constant(F),
     Expression {
@@ -316,7 +316,7 @@ impl<F: PrimeField> Term<F> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Constraint<F: PrimeField> {
     pub terms: Vec<Term<F>>,
 }

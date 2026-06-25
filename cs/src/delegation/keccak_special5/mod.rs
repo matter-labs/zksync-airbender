@@ -1725,8 +1725,32 @@ mod test {
     use super::*;
     use crate::cs::cs_reference::BasicAssembly;
     use crate::one_row_compiler::OneRowCompiler;
+    #[cfg(feature = "picus")]
+    use crate::one_row_compiler::{CompiledCircuitArtifact, ProtectedConstraintSnapshot};
     use crate::utils::serialize_to_file;
     use field::Mersenne31Field;
+
+    #[cfg(feature = "picus")]
+    fn assert_all_protected_constraints_are_present(
+        artifact: &CompiledCircuitArtifact<Mersenne31Field>,
+        protected: &ProtectedConstraintSnapshot<Mersenne31Field>,
+    ) {
+        for constraint in protected.degree_1_constraints.iter() {
+            assert!(
+                artifact.degree_1_constraints.contains(constraint),
+                "missing protected degree-1 constraint: {:?}",
+                constraint
+            );
+        }
+
+        for constraint in protected.degree_2_constraints.iter() {
+            assert!(
+                artifact.degree_2_constraints.contains(constraint),
+                "missing protected degree-2 constraint: {:?}",
+                constraint
+            );
+        }
+    }
 
     #[test]
     fn compile_keccak_special5() {

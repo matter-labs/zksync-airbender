@@ -43,6 +43,10 @@ pub struct BasicAssembly<F: PrimeField, W: WitnessPlacer<F> = CSDebugWitnessEval
     witness_graph: WitnessResolutionGraph<F, W>,
 
     logger: Vec<(&'static str, u64, OptCtxIndexers)>,
+    #[cfg(feature = "picus")]
+    picus_extraction_metadata: PicusExtractionMetadata<F>,
+    #[cfg(feature = "picus")]
+    picus_parallel_constraints_enabled: bool,
 }
 
 impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
@@ -71,6 +75,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
             witness_placer: None,
 
             logger: vec![],
+            #[cfg(feature = "picus")]
+            picus_extraction_metadata: PicusExtractionMetadata::default(),
+            #[cfg(feature = "picus")]
+            picus_parallel_constraints_enabled: false,
         }
     }
 
@@ -115,6 +123,28 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
                     .table_driver
                     .add_table_with_content(table_type, table);
             }
+        }
+    }
+
+    #[cfg(feature = "picus")]
+    fn add_disjunctive_lookup_hint(&mut self, hint: DisjunctiveLookup<F>) {
+        self.picus_extraction_metadata
+            .disjunctive_lookups
+            .push(hint);
+    }
+
+    #[cfg(feature = "picus")]
+    fn set_picus_parallel_constraints_enabled(&mut self, enabled: bool) {
+        self.picus_parallel_constraints_enabled = enabled;
+        self.picus_extraction_metadata.parallel_constraints_enabled = enabled;
+    }
+
+    #[cfg(feature = "picus")]
+    fn add_picus_parallel_constraint(&mut self, constraint: PicusStructuredConstraint<F>) {
+        if self.picus_parallel_constraints_enabled {
+            self.picus_extraction_metadata
+                .parallel_constraints
+                .push(constraint);
         }
     }
 
@@ -989,6 +1019,8 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
             register_and_indirect_memory_accesses,
             decoder_machine_state,
             executor_machine_state,
+            #[cfg(feature = "picus")]
+            picus_extraction_metadata,
             ..
         } = self;
 
@@ -1019,6 +1051,8 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
             register_and_indirect_memory_accesses,
             decoder_machine_state,
             executor_machine_state,
+            #[cfg(feature = "picus")]
+            picus_extraction_metadata,
         };
 
         (output, self.witness_placer)

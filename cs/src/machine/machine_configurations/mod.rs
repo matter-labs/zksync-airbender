@@ -507,6 +507,83 @@ mod tests {
     use field::Mersenne31Field;
 
     use super::*;
+    #[cfg(feature = "picus")]
+    use crate::cs::cs_reference::BasicAssembly;
+    #[cfg(feature = "picus")]
+    use crate::machine::machine_configurations::full_isa_with_delegation_no_exceptions::FullIsaMachineWithDelegationNoExceptionHandling;
+    #[cfg(feature = "picus")]
+    use crate::machine::machine_configurations::minimal_no_exceptions_with_delegation::MinimalMachineNoExceptionHandlingWithDelegation;
+    #[cfg(feature = "picus")]
+    use crate::one_row_compiler::{
+        CompiledCircuitArtifact, OneRowCompiler, ProtectedConstraintSnapshot,
+    };
+    #[cfg(feature = "picus")]
+    use crate::tables::{LookupWrapper, TableType};
+
+    #[cfg(feature = "picus")]
+    const SECOND_WORD_BITS: usize = 4;
+
+    #[cfg(feature = "picus")]
+    fn compile_machine_with_protected_constraints<
+        M: Machine<Mersenne31Field> + Default,
+        const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
+    >() -> (
+        CompiledCircuitArtifact<Mersenne31Field>,
+        ProtectedConstraintSnapshot<Mersenne31Field>,
+    )
+    where
+        [(); { <M as Machine<Mersenne31Field>>::ASSUME_TRUSTED_CODE } as usize]:,
+        [(); { <M as Machine<Mersenne31Field>>::OUTPUT_EXACT_EXCEPTIONS } as usize]:,
+    {
+        let machine = M::default();
+        let mut output = compile_machine::<
+            Mersenne31Field,
+            BasicAssembly<Mersenne31Field>,
+            M,
+            ROM_ADDRESS_SPACE_SECOND_WORD_BITS,
+        >(machine);
+        let rom_table = create_table_for_rom_image::<_, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(
+            &[],
+            TableType::RomRead.to_table_id(),
+        );
+        output
+            .table_driver
+            .add_table_with_content(TableType::RomRead, LookupWrapper::Dimensional3(rom_table));
+        let csr_table = create_csr_table_for_delegation(
+            true,
+            &[1991],
+            TableType::SpecialCSRProperties.to_table_id(),
+        );
+        output.table_driver.add_table_with_content(
+            TableType::SpecialCSRProperties,
+            LookupWrapper::Dimensional3(csr_table),
+        );
+
+        OneRowCompiler::default()
+            .compile_output_for_chunked_memory_argument_and_protected_constraints(output, 20)
+    }
+
+    #[cfg(feature = "picus")]
+    fn assert_all_protected_constraints_are_present(
+        artifact: &CompiledCircuitArtifact<Mersenne31Field>,
+        protected: &ProtectedConstraintSnapshot<Mersenne31Field>,
+    ) {
+        for constraint in protected.degree_2_constraints.iter() {
+            assert!(
+                artifact.degree_2_constraints.contains(constraint),
+                "missing protected degree-2 constraint: {:?}",
+                constraint
+            );
+        }
+
+        for constraint in protected.degree_1_constraints.iter() {
+            assert!(
+                artifact.degree_1_constraints.contains(constraint),
+                "missing protected degree-1 constraint: {:?}",
+                constraint
+            );
+        }
+    }
 
     #[test]
     fn rom_table_test() {
@@ -534,5 +611,21 @@ mod tests {
             table.lookup_value::<2>(&[Mersenne31Field::new(12)]),
             [Mersenne31Field::new(0x1073), Mersenne31Field::new(0xc000)]
         );
+    }
+
+    #[cfg(feature = "picus")]
+    #[test]
+    fn machine_compile_keeps_all_protected_constraints() {
+        let (full_artifact, full_protected) = compile_machine_with_protected_constraints::<
+            FullIsaMachineWithDelegationNoExceptionHandling,
+            SECOND_WORD_BITS,
+        >();
+        assert_all_protected_constraints_are_present(&full_artifact, &full_protected);
+
+        let (minimal_artifact, minimal_protected) = compile_machine_with_protected_constraints::<
+            MinimalMachineNoExceptionHandlingWithDelegation,
+            SECOND_WORD_BITS,
+        >();
+        assert_all_protected_constraints_are_present(&minimal_artifact, &minimal_protected);
     }
 }

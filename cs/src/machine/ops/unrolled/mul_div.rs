@@ -19,12 +19,18 @@ pub fn mul_div_table_driver_fn<F: PrimeField>(table_driver: &mut TableDriver<F>)
     }
 }
 
+#[cfg(feature = "picus")]
+type MulDivResult = [Variable; MUL_DIV_FAMILY_NUM_FLAGS];
+#[cfg(not(feature = "picus"))]
+type MulDivResult = ();
+
 fn apply_mul_div<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
-) {
+) -> MulDivResult {
     // GET EXEC FLAGS
-    // NB: we set division to 1 s.t. default padding-mask goes to 0 and our division-exclusive traps pass quietly
+    // NB: we set division to 1 s.t. default padding-mask goes to 0 and our division-exclusive traps
+    // pass quietly
     let decoder =
         <DivMulDecoder<SUPPORT_SIGNED> as OpcodeFamilyDecoder>::BitmaskCircuitParser::parse(
             cs,
@@ -32,6 +38,8 @@ fn apply_mul_div<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool>(
         );
     let is_division = decoder.perform_division_group();
     let is_multiplication = is_division.toggle();
+    #[cfg(feature = "picus")]
+    let circ_flags = decoder.get_inner_vars();
 
     // GET OPERANDS
     let is_rd_x0 = Boolean::Is(inputs.decoder_data.rd_is_zero);
@@ -42,9 +50,9 @@ fn apply_mul_div<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool>(
         get_rs2_as_shuffle_ram(cs, Num::Var(inputs.decoder_data.rs2_index), true);
     cs.add_shuffle_ram_query(rs2_mem_query);
 
-    // 1) first we allocate the right MulDiv operation
-    //    TODO: test that the PADDING / default case (circuit_family_extra_mask == 0) always works
-    //    TODO: possibly we could build a big table to take care of all the weird bit cases across the entire circuit
+    // 1) first we allocate the right MulDiv operation TODO: test that the PADDING / default case
+    //    (circuit_family_extra_mask == 0) always works TODO: possibly we could build a big table to
+    //    take care of all the weird bit cases across the entire circuit
     let rs1_sign = if SUPPORT_SIGNED {
         let is_rs1_signed = decoder.perform_rs1_signed();
         let rs1_reg_high = rs1_reg.0[1];
@@ -315,6 +323,21 @@ fn apply_mul_div<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool>(
         let mul_low = Register::choose(cs, &is_multiplication, &product_low, &rs1_reg);
         let mul_high = {
             let rs1_reg_extension = {
+                #[cfg(feature = "picus")]
+                let ext = if SUPPORT_SIGNED {
+                    let cnstr = Constraint::from(rs1_sign) * Term::from(0xffff);
+                    let tmp = cs.add_variable_from_constraint_allow_explicit_linear(cnstr.clone());
+                    cs.add_picus_parallel_constraint(
+                        crate::cs::circuit::PicusStructuredConstraint::Eq {
+                            lhs: crate::cs::circuit::picus_expr_from_constraint(&cnstr),
+                            rhs: crate::cs::circuit::PicusExpr::Variable(tmp),
+                        },
+                    );
+                    Num::Var(tmp)
+                } else {
+                    Num::Constant(F::ZERO)
+                };
+                #[cfg(not(feature = "picus"))]
                 let ext = if SUPPORT_SIGNED {
                     Num::Var(cs.add_variable_from_constraint_allow_explicit_linear(
                         Constraint::from(rs1_sign) * Term::from(0xffff),
@@ -348,28 +371,58 @@ fn apply_mul_div<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool>(
         }
     };
 
-    // 2) then we take care of special division traps
-    //    TODO: it's possible the second invariant would benefit from lookup table
-    //          it's also possible it would simply benefit from smarter arithmetisation instead
+    // 2) then we take care of special division traps TODO: it's possible the second invariant would
+    //    benefit from lookup table it's also possible it would simply benefit from smarter
+    //    arithmetisation instead
 
     // INVARIANT 1:     QUOT==-1        if DIVISOR == 0
+    #[cfg(feature = "picus")]
+    let (is_division_and_rs2_zero, is_div_and_rs2_zero_bool) = {
+        let is_rs2_zero = cs.is_zero_reg(rs2_reg);
+        let and_res = Boolean::and(&is_division, &is_rs2_zero, cs);
+        (Constraint::from(and_res.clone()), and_res)
+    };
+    #[cfg(not(feature = "picus"))]
     let is_division_and_rs2_zero = {
         let is_rs2_zero = cs.is_zero_reg(rs2_reg);
         Constraint::from(Boolean::and(&is_division, &is_rs2_zero, cs))
     };
+
     let quotient_low = quotient.0[0];
     let quotient_high = quotient.0[1];
-    cs.add_constraint(
-        is_division_and_rs2_zero.clone() * (Term::from(quotient_low) - Term::from(0xffff)),
-    );
-    cs.add_constraint(
-        is_division_and_rs2_zero.clone() * (Term::from(quotient_high) - Term::from(0xffff)),
-    );
+    #[cfg(feature = "picus")]
+    {
+        let quotient_low_inv =
+            is_division_and_rs2_zero.clone() * (Term::from(quotient_low) - Term::from(0xffff));
+        cs.add_constraint(quotient_low_inv.clone());
+        cs.add_picus_parallel_constraint(crate::cs::circuit::PicusStructuredConstraint::Eq {
+            lhs: crate::cs::circuit::picus_expr_from_constraint(&quotient_low_inv),
+            rhs: crate::cs::circuit::PicusExpr::Constant(F::ZERO),
+        });
+        let quotient_high_inv =
+            is_division_and_rs2_zero.clone() * (Term::from(quotient_high) - Term::from(0xffff));
+        cs.add_constraint(quotient_high_inv.clone());
+        cs.add_picus_parallel_constraint(crate::cs::circuit::PicusStructuredConstraint::Eq {
+            lhs: picus_expr_from_bool(is_div_and_rs2_zero_bool)
+                * (picus_expr_from_num(quotient_high) - PicusExpr::from_const(0xffff)),
+            rhs: PicusExpr::from_const(0),
+        });
+    }
+    #[cfg(not(feature = "picus"))]
+    {
+        cs.add_constraint(
+            is_division_and_rs2_zero.clone() * (Term::from(quotient_low) - Term::from(0xffff)),
+        );
+        cs.add_constraint(
+            is_division_and_rs2_zero.clone() * (Term::from(quotient_high) - Term::from(0xffff)),
+        );
+    }
     // INVARIANT 2:     |REM|<|DIVISOR| if DIVISOR != 0
     let is_modular_inequality = if SUPPORT_SIGNED {
         // check that modulus of remainder is less than modulus of divisor
         // we simply mask one add_sub relation based on which case we're in
-        // this only applies if the divisor is not zero!!! otherwise of course remainder will be larger
+        // this only applies if the divisor is not zero!!! otherwise of course remainder will be
+        // larger
         //
         //     remainder_sign divisor_sign
         //     0              0            -->  r <  d --> (r-d) < 0    --> condition: underflow
@@ -389,13 +442,21 @@ fn apply_mul_div<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool>(
         let (_out, uf) = get_reg_sub_and_underflow(cs, remainder, rs2_reg);
         uf
     };
+
     let is_division_and_rs2_not_zero = {
         // DIVISION * (RS2!=0) == DIVISION * (1 - RS2==0) = DIVISION - DIVISION * (RS2==0)
         Constraint::from(is_division) - is_division_and_rs2_zero
     };
-    cs.add_constraint(
-        is_division_and_rs2_not_zero * (Term::from(1) - Term::from(is_modular_inequality)),
-    );
+
+    let modular_inv =
+        is_division_and_rs2_not_zero * (Term::from(1) - Term::from(is_modular_inequality));
+    cs.add_constraint(modular_inv.clone());
+    #[cfg(feature = "picus")]
+    cs.add_picus_parallel_constraint(crate::cs::circuit::PicusStructuredConstraint::Eq {
+        lhs: (picus_expr_from_bool(is_division) - picus_expr_from_bool(is_div_and_rs2_zero_bool))
+            * (PicusExpr::from_const(1) - picus_expr_from_bool(is_modular_inequality)),
+        rhs: PicusExpr::from_const(0),
+    });
 
     // write to RD
     let rd_mem_query = set_rd_with_mask_as_shuffle_ram(
@@ -414,6 +475,10 @@ fn apply_mul_div<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool>(
         Register(inputs.cycle_start_state.pc.map(|x| Num::Var(x))),
         Register(inputs.cycle_end_state.pc.map(|x| Num::Var(x))),
     );
+    #[cfg(feature = "picus")]
+    {
+        circ_flags
+    }
 }
 
 pub fn mul_div_circuit_with_preprocessed_bytecode<

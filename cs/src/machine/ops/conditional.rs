@@ -210,20 +210,50 @@ impl<
             let trapped = cs.add_variable_from_constraint(
                 Term::from(should_jump) * Term::from(is_misaligned_addr),
             );
+            #[cfg(feature = "picus")]
+            cs.add_picus_parallel_constraint(crate::cs::circuit::PicusStructuredConstraint::Eq {
+                lhs: crate::cs::circuit::PicusExpr::Variable(trapped),
+                rhs: crate::cs::circuit::PicusExpr::Variable(should_jump)
+                    * crate::cs::circuit::PicusExpr::Variable(is_misaligned_addr),
+            });
 
             // if we do jump, then it must be unprovable
             cs.add_constraint(Term::from(trapped) * exec_flag.get_terms());
+            #[cfg(feature = "picus")]
+            cs.add_picus_parallel_constraint(crate::cs::circuit::PicusStructuredConstraint::Eq {
+                lhs: crate::cs::circuit::PicusExpr::Variable(trapped)
+                    * crate::cs::circuit::picus_expr_from_boolean_circuit(exec_flag),
+                rhs: crate::cs::circuit::PicusExpr::from_const(0),
+            });
 
             let new_pc_low = cs.add_variable_from_constraint(
                 Term::from(exec_jump) * Term::from(true_jmp_address.0[0].get_variable())
                     + (Term::from(1) - Term::from(exec_jump))
                         * Term::from(pc_next.0[0].get_variable()),
             );
+            #[cfg(feature = "picus")]
+            cs.add_picus_parallel_constraint(crate::cs::circuit::PicusStructuredConstraint::Eq {
+                lhs: crate::cs::circuit::PicusExpr::Variable(new_pc_low),
+                rhs: crate::cs::circuit::PicusExpr::Variable(exec_jump)
+                    * crate::cs::circuit::picus_expr_from_num_circuit(true_jmp_address.0[0])
+                    + (crate::cs::circuit::PicusExpr::from_const(1)
+                        - crate::cs::circuit::PicusExpr::Variable(exec_jump))
+                        * crate::cs::circuit::picus_expr_from_num_circuit(pc_next.0[0]),
+            });
             let new_pc_high = cs.add_variable_from_constraint(
                 Term::from(exec_jump) * Term::from(true_jmp_address.0[1].get_variable())
                     + (Term::from(1) - Term::from(exec_jump))
                         * Term::from(pc_next.0[1].get_variable()),
             );
+            #[cfg(feature = "picus")]
+            cs.add_picus_parallel_constraint(crate::cs::circuit::PicusStructuredConstraint::Eq {
+                lhs: crate::cs::circuit::PicusExpr::Variable(new_pc_high),
+                rhs: crate::cs::circuit::PicusExpr::Variable(exec_jump)
+                    * crate::cs::circuit::picus_expr_from_num_circuit(true_jmp_address.0[1])
+                    + (crate::cs::circuit::PicusExpr::from_const(1)
+                        - crate::cs::circuit::PicusExpr::Variable(exec_jump))
+                        * crate::cs::circuit::picus_expr_from_num_circuit(pc_next.0[1]),
+            });
 
             let pc = Register([Num::Var(new_pc_low), Num::Var(new_pc_high)]);
 

@@ -930,6 +930,21 @@ pub struct CompiledCircuitArtifact<F: PrimeField> {
     pub total_tables_size: usize,
 }
 
+#[cfg(feature = "picus")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProtectedConstraintSnapshot<F: PrimeField> {
+    pub degree_2_constraints: Vec<CompiledDegree2Constraint<F>>,
+    pub degree_1_constraints: Vec<CompiledDegree1Constraint<F>>,
+}
+
+// Internal compile entry points additionally return the protected-constraint snapshot when Picus
+// extraction is enabled; with the feature off they return just the artifact, matching upstream.
+#[cfg(feature = "picus")]
+pub(crate) type CompileInnerOutput<F> =
+    (CompiledCircuitArtifact<F>, ProtectedConstraintSnapshot<F>);
+#[cfg(not(feature = "picus"))]
+pub(crate) type CompileInnerOutput<F> = CompiledCircuitArtifact<F>;
+
 impl<F: PrimeField> CompiledCircuitArtifact<F> {
     pub fn as_verifier_compiled_artifact<'a>(
         &'a self,

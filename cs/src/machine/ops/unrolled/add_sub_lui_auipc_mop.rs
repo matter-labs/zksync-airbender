@@ -13,10 +13,16 @@ pub fn add_sub_lui_auipc_mop_table_driver_fn<F: PrimeField>(table_driver: &mut T
     let _ = table_driver;
 }
 
+#[cfg(feature = "picus")]
+type ApplyAddSubLuiAuipcMopReturn =
+    [Variable; crate::definitions::ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS];
+#[cfg(not(feature = "picus"))]
+type ApplyAddSubLuiAuipcMopReturn = ();
+
 fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
-) {
+) -> ApplyAddSubLuiAuipcMopReturn {
     let mut opt_ctx = OptimizationContext::new();
     let decoder = <AddSubLuiAuipcMopDecoder as OpcodeFamilyDecoder>::BitmaskCircuitParser::parse(
         cs,
@@ -40,7 +46,8 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
         get_rs2_as_shuffle_ram(cs, Num::Var(inputs.decoder_data.rs2_index), true);
     cs.add_shuffle_ram_query(rs2_mem_query);
 
-    // do what's effectively inside of optimization context, but we will manually allocate the output
+    // do what's effectively inside of optimization context, but we will manually allocate the
+    // output
     let out = opt_ctx.get_register_output(cs);
     // we will also need to pay 2 more range checks
     let intermediate_tmp = opt_ctx.get_register_output(cs);
@@ -82,6 +89,17 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
     let is_addmod = decoder.perform_addmod();
     let is_submod = decoder.perform_submod();
     let is_mulmod = decoder.perform_mulmod();
+    #[cfg(feature = "picus")]
+    let decoded_mask_bits = [
+        is_add.get_variable().unwrap(),
+        is_addi.get_variable().unwrap(),
+        is_sub.get_variable().unwrap(),
+        is_lui.get_variable().unwrap(),
+        is_auipc.get_variable().unwrap(),
+        is_addmod.get_variable().unwrap(),
+        is_submod.get_variable().unwrap(),
+        is_mulmod.get_variable().unwrap(),
+    ];
 
     if is_add.get_value(cs).unwrap_or(false) {
         println!("ADD");
@@ -107,7 +125,8 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
     if is_mulmod.get_value(cs).unwrap_or(false) {
         println!("MOP_MUL");
     }
-
+    #[cfg(feature = "picus")]
+    println!("INDEXERS: {indexers:?}");
     // ADD
     let of_var = {
         opt_ctx.restore_indexers(indexers);
@@ -185,14 +204,13 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
     // ADDMOD
     {
         opt_ctx.restore_indexers(indexers);
-        cs.add_constraint(
-            Constraint::from(is_addmod)
-                * ((Constraint::from(out_low) + shift * Term::from(out_high))
-                    - (Constraint::from(rs1_reg_low)
-                        + shift * Term::from(rs1_reg_high)
-                        + Term::from(rs2_reg_low)
-                        + shift * Term::from(rs2_reg_high))),
-        );
+        let cons = Constraint::from(is_addmod)
+            * ((Constraint::from(out_low) + shift * Term::from(out_high))
+                - (Constraint::from(rs1_reg_low)
+                    + shift * Term::from(rs1_reg_high)
+                    + Term::from(rs2_reg_low)
+                    + shift * Term::from(rs2_reg_high)));
+        cs.add_constraint(cons);
         // of + out - modulus = tmp, and OF must be true
         let relation = AddSubRelation {
             exec_flag: is_addmod,
@@ -451,13 +469,23 @@ fn apply_add_sub_lui_auipc_mop<F: PrimeField, CS: Circuit<F>>(
     );
 
     opt_ctx.enforce_all(cs);
+    #[cfg(feature = "picus")]
+    {
+        decoded_mask_bits
+    }
 }
 
 pub fn add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
 ) {
+    #[cfg(not(feature = "picus"))]
     let input = cs.allocate_execution_circuit_state::<true>();
+    #[cfg(not(feature = "picus"))]
     apply_add_sub_lui_auipc_mop(cs, input);
+    #[cfg(feature = "picus")]
+    let input: OpcodeFamilyCircuitState<F> = cs.allocate_execution_circuit_state::<true>();
+    #[cfg(feature = "picus")]
+    let _ = apply_add_sub_lui_auipc_mop(cs, input);
 }
 
 #[cfg(test)]
@@ -465,7 +493,51 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
+    #[cfg(feature = "picus")]
+    use crate::cs::cs_reference::BasicAssembly;
+    #[cfg(feature = "picus")]
+    use crate::definitions::ColumnAddress;
+    #[cfg(feature = "picus")]
+    use crate::definitions::CompiledDegree1Constraint;
+    #[cfg(feature = "picus")]
+    use crate::definitions::TIMESTAMP_COLUMNS_NUM_BITS;
+    #[cfg(feature = "picus")]
+    use crate::definitions::TIMESTAMP_STEP;
     use crate::utils::serialize_to_file;
+    #[cfg(feature = "picus")]
+    use field::Field;
+    #[cfg(feature = "picus")]
+    use field::PrimeField;
+
+    #[cfg(feature = "picus")]
+    fn equal_up_to_sign(
+        lhs: &CompiledDegree1Constraint<field::Mersenne31Field>,
+        rhs: &CompiledDegree1Constraint<field::Mersenne31Field>,
+    ) -> bool {
+        if lhs == rhs {
+            return true;
+        }
+
+        let mut neg_rhs = rhs.clone();
+        for (coeff, _) in neg_rhs.linear_terms.iter_mut() {
+            coeff.negate();
+        }
+        neg_rhs.constant_term.negate();
+        neg_rhs.normalize();
+
+        lhs == &neg_rhs
+    }
+
+    #[cfg(feature = "picus")]
+    #[test]
+    fn compile_circuit_output() {
+        use ::field::Mersenne31Field;
+
+        let mut cs = BasicAssembly::<Mersenne31Field>::new();
+        add_sub_lui_auipc_mop_table_addition_fn(&mut cs);
+        add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode(&mut cs);
+        let (_, _) = cs.finalize();
+    }
 
     #[test]
     fn compile_add_sub_lui_auipc_mop_circuit() {
@@ -493,5 +565,76 @@ mod test {
             &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode(cs),
         );
         serialize_to_file(&ssa_forms, "add_sub_lui_auipc_mop_preprocessed_ssa.json");
+    }
+
+    #[cfg(feature = "picus")]
+    #[test]
+    fn compiled_add_sub_lui_auipc_mop_keeps_protected_timestamp_constraints() {
+        use ::field::Mersenne31Field;
+
+        let compiled = compile_unrolled_circuit_state_transition::<Mersenne31Field>(
+            &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
+            &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode(cs),
+            1 << 20,
+            24,
+        );
+
+        let machine_state = compiled
+            .memory_layout
+            .machine_state_layout
+            .expect("compiled add/sub family must contain machine state layout");
+        let intermediate_state = compiled
+            .memory_layout
+            .intermediate_state_layout
+            .expect("compiled add/sub family must contain intermediate state layout");
+        let carry = compiled
+            .executor_family_circuit_next_timestamp_aux_var
+            .expect("compiled add/sub family must expose timestamp carry aux var");
+        let next_timestamp_range = machine_state.timestamp.full_range();
+        let next_timestamp = [
+            ColumnAddress::MemorySubtree(next_timestamp_range.start),
+            ColumnAddress::MemorySubtree(next_timestamp_range.start + 1),
+        ];
+        let current_timestamp_range = intermediate_state.timestamp.full_range();
+        let current_timestamp = [
+            ColumnAddress::MemorySubtree(current_timestamp_range.start),
+            ColumnAddress::MemorySubtree(current_timestamp_range.start + 1),
+        ];
+
+        let mut expected_low = CompiledDegree1Constraint {
+            linear_terms: vec![
+                (Mersenne31Field::ONE, next_timestamp[0]),
+                (Mersenne31Field::MINUS_ONE, current_timestamp[0]),
+                (
+                    Mersenne31Field::from_u64_with_reduction(1 << TIMESTAMP_COLUMNS_NUM_BITS),
+                    carry,
+                ),
+            ]
+            .into_boxed_slice(),
+            constant_term: Mersenne31Field::from_u64_with_reduction(
+                Mersenne31Field::CHARACTERISTICS - TIMESTAMP_STEP as u64,
+            ),
+        };
+        expected_low.normalize();
+
+        let mut expected_high = CompiledDegree1Constraint {
+            linear_terms: vec![
+                (Mersenne31Field::ONE, next_timestamp[1]),
+                (Mersenne31Field::MINUS_ONE, current_timestamp[1]),
+                (Mersenne31Field::MINUS_ONE, carry),
+            ]
+            .into_boxed_slice(),
+            constant_term: Mersenne31Field::ZERO,
+        };
+        expected_high.normalize();
+
+        assert!(compiled
+            .degree_1_constraints
+            .iter()
+            .any(|constraint| equal_up_to_sign(constraint, &expected_low)));
+        assert!(compiled
+            .degree_1_constraints
+            .iter()
+            .any(|constraint| equal_up_to_sign(constraint, &expected_high)));
     }
 }

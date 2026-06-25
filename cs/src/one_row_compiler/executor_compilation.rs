@@ -34,6 +34,8 @@ impl<F: PrimeField> OneRowCompiler<F> {
             register_and_indirect_memory_accesses,
             decoder_machine_state,
             executor_machine_state,
+            #[cfg(feature = "picus")]
+                picus_extraction_metadata: _,
         } = circuit_output;
 
         assert!(trace_len_log2 > TIMESTAMP_COLUMNS_NUM_BITS as usize);

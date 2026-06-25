@@ -40,6 +40,11 @@ debug_evaluate_witness = []
 # When enabled, the crate will print detailed debug logs.
 debug_logs = []
 experimental_witness_eval = []
+# Enables Picus/LLZK extraction support (structured-constraint recording, translation
+# circuit variants, and the less-optimized "protected constraints" compilation). OFF by
+# default so the compiled proving circuits are unchanged; only the picus_frontend / llzk
+# backends turn it on.
+picus = []
 
 default = ["compiler"]
 # default = ["compiler", "experimental_witness_eval"]

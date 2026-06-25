@@ -1,4 +1,9 @@
 use super::*;
+#[cfg(feature = "picus")]
+use crate::cs::circuit::{
+    picus_expr_from_boolean_circuit, picus_expr_from_num_circuit, PicusExpr,
+    PicusStructuredConstraint,
+};
 use crate::machine::Term;
 use crate::one_row_compiler::LookupInput;
 use crate::tables::TableType;
@@ -6,6 +11,14 @@ use crate::types::Boolean;
 use crate::{constraint::Constraint, machine::read_opcode_from_rom, types::Register};
 
 const OPCODE_TYPES_BITS: usize = NUM_INSTRUCTION_TYPES - 1;
+
+#[cfg(feature = "picus")]
+#[derive(Clone, Copy, Debug)]
+pub struct UnrolledDecoderPicusMetadata {
+    pub packed_opcode_var: Variable,
+    pub is_invalid: Boolean,
+    pub opcode_formats_except_r: [Boolean; OPCODE_TYPES_BITS],
+}
 
 pub fn describe_decoder_cycle<
     F: PrimeField,
@@ -32,6 +45,37 @@ pub fn describe_decoder_cycle<
         println!("Opcode = 0x{:08x}", opcode);
     }
 
+    let _ = describe_decoder_cycle_for_supplied_opcode(circuit, decoder_circuit_state, next_opcode);
+}
+
+#[cfg(feature = "picus")]
+pub fn describe_decoder_cycle_from_opcode<F: PrimeField, CS: Circuit<F>>(
+    circuit: &mut CS,
+    next_opcode: Register<F>,
+) {
+    let decoder_circuit_state = circuit.allocate_decoder_circuit_state();
+    let _ = describe_decoder_cycle_for_supplied_opcode(circuit, decoder_circuit_state, next_opcode);
+}
+
+#[cfg(feature = "picus")]
+pub fn describe_decoder_cycle_from_opcode_with_metadata<F: PrimeField, CS: Circuit<F>>(
+    circuit: &mut CS,
+    next_opcode: Register<F>,
+) -> UnrolledDecoderPicusMetadata {
+    let decoder_circuit_state = circuit.allocate_decoder_circuit_state();
+    describe_decoder_cycle_for_supplied_opcode(circuit, decoder_circuit_state, next_opcode)
+}
+
+#[cfg(feature = "picus")]
+type DecoderCycleResult = UnrolledDecoderPicusMetadata;
+#[cfg(not(feature = "picus"))]
+type DecoderCycleResult = ();
+
+fn describe_decoder_cycle_for_supplied_opcode<F: PrimeField, CS: Circuit<F>>(
+    circuit: &mut CS,
+    decoder_circuit_state: DecoderCircuitMachineState<F>,
+    next_opcode: Register<F>,
+) -> DecoderCycleResult {
     // now we can parse the opcode. Note that many variables are already pre-allocated for us,
     // so we will want to use them as much as possible
 
@@ -56,6 +100,15 @@ pub fn describe_decoder_cycle<
     let mut imm4_1: Constraint<F> = Constraint::from(rd_from_decoder);
     imm4_1 -= Term::from(imm11);
     imm4_1.scale(F::from_u64_unchecked(1 << 1).inverse().unwrap());
+    #[cfg(feature = "picus")]
+    let imm4_1_var = circuit.add_variable_from_constraint_allow_explicit_linear(imm4_1.clone());
+    #[cfg(feature = "picus")]
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: PicusExpr::from_const(2) * PicusExpr::Variable(imm4_1_var)
+            + picus_expr_from_boolean_circuit(imm11)
+            - picus_expr_from_num_circuit(rd_from_decoder),
+        rhs: PicusExpr::from_const(0),
+    });
     // funct3 comes from decoder
     let funct3 = Num::Var(decoder_circuit_state.decoder_data.decoder_data.funct3);
     // rs1 crosses the boundary, and we could need to split lowest bit. Instead - we rewrite it as
@@ -70,15 +123,41 @@ pub fn describe_decoder_cycle<
             - Term::from(1 << 12) * Term::from(funct3) // 3 bits
     };
     rs1_low_constraint.scale(F::from_u64_unchecked(1 << 15).inverse().unwrap());
-    // ensure that it's boolean
     circuit
         .add_constraint(rs1_low_constraint.clone() * (rs1_low_constraint.clone() - Term::from(1)));
+    #[cfg(feature = "picus")]
+    let rs1_low_var =
+        circuit.add_variable_from_constraint_allow_explicit_linear(rs1_low_constraint.clone());
+    #[cfg(feature = "picus")]
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: picus_expr_from_num_circuit(opcode)
+            + PicusExpr::from_const(1 << 7) * picus_expr_from_num_circuit(rd_from_decoder)
+            + PicusExpr::from_const(1 << 12) * picus_expr_from_num_circuit(funct3)
+            + PicusExpr::from_const(1 << 15) * PicusExpr::Variable(rs1_low_var)
+            - picus_expr_from_num_circuit(next_opcode.0[0]),
+        rhs: PicusExpr::from_const(0),
+    });
+    #[cfg(feature = "picus")]
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: PicusExpr::Variable(rs1_low_var)
+            * (PicusExpr::Variable(rs1_low_var) - PicusExpr::from_const(1)),
+        rhs: PicusExpr::from_const(0),
+    });
 
     let rs1_from_decoder = Num::Var(decoder_circuit_state.decoder_data.decoder_data.rs1_index);
 
     let mut rs1_high: Constraint<F> = Constraint::from(rs1_from_decoder);
     rs1_high = rs1_high - rs1_low_constraint.clone();
     rs1_high.scale(F::from_u64_unchecked(1 << 1).inverse().unwrap());
+    #[cfg(feature = "picus")]
+    let rs1_high_var = circuit.add_variable_from_constraint_allow_explicit_linear(rs1_high.clone());
+    #[cfg(feature = "picus")]
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: PicusExpr::from_const(2) * PicusExpr::Variable(rs1_high_var)
+            + PicusExpr::Variable(rs1_low_var)
+            - picus_expr_from_num_circuit(rs1_from_decoder),
+        rhs: PicusExpr::from_const(0),
+    });
     // rs2 doesn't cross the word boundary, but we need it's 1 bit to parse immediate
     let rs2_from_decoder = Num::Var(decoder_circuit_state.decoder_data.decoder_data.rs2_index);
 
@@ -88,20 +167,55 @@ pub fn describe_decoder_cycle<
     let mut rs2_high: Constraint<F> = Constraint::from(rs2_from_decoder);
     rs2_high -= Term::from(rs2_low);
     rs2_high.scale(F::from_u64_unchecked(1 << 1).inverse().unwrap());
+    #[cfg(feature = "picus")]
+    let rs2_high_var = circuit.add_variable_from_constraint_allow_explicit_linear(rs2_high.clone());
+    #[cfg(feature = "picus")]
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: PicusExpr::from_const(2) * PicusExpr::Variable(rs2_high_var)
+            + picus_expr_from_boolean_circuit(rs2_low)
+            - picus_expr_from_num_circuit(rs2_from_decoder),
+        rhs: PicusExpr::from_const(0),
+    });
     let imm10_5 = Num::Var(circuit.add_variable());
 
     // and we do not need sign bit, as we can span a linear constraint on it
     // insn_high <=> rs1_high: [19:16], rs2: [24:20], imm[10-5]: [30:25], imm12: [31]
+    #[cfg(not(feature = "picus"))]
     let mut sign_bit_constraint = {
         Constraint::from(high_insn)
             - rs1_high.clone()
             - Term::from(rs1_from_decoder) * Term::from(1 << 4)
             - Term::from(imm10_5) * Term::from(1 << 9)
     };
+    #[cfg(feature = "picus")]
+    let mut sign_bit_constraint = {
+        Constraint::from(high_insn)
+            - rs1_high.clone()
+            - Term::from(rs2_from_decoder) * Term::from(1 << 4)
+            - Term::from(imm10_5) * Term::from(1 << 9)
+    };
     sign_bit_constraint.scale(F::from_u64_unchecked(1 << 16).inverse().unwrap());
     circuit.add_constraint(
         sign_bit_constraint.clone() * (sign_bit_constraint.clone() - Term::from(1)),
     );
+    #[cfg(feature = "picus")]
+    let sign_bit_var =
+        circuit.add_variable_from_constraint_allow_explicit_linear(sign_bit_constraint.clone());
+    #[cfg(feature = "picus")]
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: PicusExpr::Variable(rs1_high_var)
+            + PicusExpr::from_const(1 << 4) * picus_expr_from_num_circuit(rs2_from_decoder)
+            + PicusExpr::from_const(1 << 9) * picus_expr_from_num_circuit(imm10_5)
+            + PicusExpr::from_const(1 << 16) * PicusExpr::Variable(sign_bit_var)
+            - picus_expr_from_num_circuit(next_opcode.0[1]),
+        rhs: PicusExpr::from_const(0),
+    });
+    #[cfg(feature = "picus")]
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: PicusExpr::Variable(sign_bit_var)
+            * (PicusExpr::Variable(sign_bit_var) - PicusExpr::from_const(1)),
+        rhs: PicusExpr::from_const(0),
+    });
     let funct7_from_decoder = Num::Var(
         decoder_circuit_state
             .decoder_data
@@ -155,7 +269,6 @@ pub fn describe_decoder_cycle<
         placer.assign_mask(imm11_var, &imm_11);
         placer.assign_u16(rd_full_var, &rd);
         placer.assign_u16(funct3_var, &funct3);
-
         placer.assign_u16(rs1_full_var, &rs1);
         placer.assign_mask(rs2_low_var, &rs2_low);
         placer.assign_u16(rs2_full_var, &rs2);
@@ -192,10 +305,34 @@ pub fn describe_decoder_cycle<
         sign_bit_constraint.clone() * Term::from(1 << 6) + Term::from(imm10_5)
             - Term::from(funct7_from_decoder),
     );
+    #[cfg(feature = "picus")]
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: PicusExpr::from_const(1 << 6) * PicusExpr::Variable(sign_bit_var)
+            + picus_expr_from_num_circuit(imm10_5)
+            - picus_expr_from_num_circuit(funct7_from_decoder),
+        rhs: PicusExpr::from_const(0),
+    });
 
     // now we can feed [opcode || funct_3 || funct 7] (all are range checked, so concatenation IS allowed)
     // to get basic bitmask that will tell whether the opcode is valid or not, and provide aux properties
     // like belonging to opcode family, etc
+    #[cfg(feature = "picus")]
+    let (
+        is_invalid,
+        [i_insn, s_insn, b_insn, u_insn, j_insn], // no r_inst
+        packed_opcode_var,
+    ) = opcode_lookup(
+        circuit,
+        opcode,
+        funct3,
+        funct7_from_decoder,
+        decoder_circuit_state.decoder_data.circuit_family,
+        decoder_circuit_state
+            .decoder_data
+            .decoder_data
+            .circuit_family_extra_mask,
+    );
+    #[cfg(not(feature = "picus"))]
     let (
         is_invalid,
         [i_insn, s_insn, b_insn, u_insn, j_insn], // no r_inst
@@ -214,6 +351,11 @@ pub fn describe_decoder_cycle<
     // We do not support invalid opcodes
     circuit
         .add_constraint_allow_explicit_linear_prevent_optimizations(Constraint::from(is_invalid));
+    #[cfg(feature = "picus")]
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: picus_expr_from_boolean_circuit(is_invalid),
+        rhs: PicusExpr::from_const(0),
+    });
 
     // now we need to construct the right constant from different constant chunks
     // the actual constant is dependent on the opcode type:
@@ -274,6 +416,38 @@ pub fn describe_decoder_cycle<
             + chunk4 * Term::from(1 << 12)
             - Term::from(imm_low),
     );
+    #[cfg(feature = "picus")]
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: picus_expr_from_boolean_circuit(i_insn) * picus_expr_from_boolean_circuit(rs2_low)
+            + picus_expr_from_boolean_circuit(s_insn) * picus_expr_from_boolean_circuit(imm11)
+            + ((picus_expr_from_boolean_circuit(i_insn) + picus_expr_from_boolean_circuit(j_insn))
+                * PicusExpr::Variable(rs2_high_var)
+                + (picus_expr_from_boolean_circuit(s_insn)
+                    + picus_expr_from_boolean_circuit(b_insn))
+                    * PicusExpr::Variable(imm4_1_var))
+                * PicusExpr::from_const(1 << 1)
+            + ((PicusExpr::from_const(1) - picus_expr_from_boolean_circuit(u_insn))
+                * picus_expr_from_num_circuit(imm10_5))
+                * PicusExpr::from_const(1 << 5)
+            + ((picus_expr_from_boolean_circuit(i_insn) + picus_expr_from_boolean_circuit(s_insn))
+                * PicusExpr::Variable(sign_bit_var)
+                + picus_expr_from_boolean_circuit(b_insn) * picus_expr_from_boolean_circuit(imm11)
+                + picus_expr_from_boolean_circuit(j_insn)
+                    * picus_expr_from_boolean_circuit(rs2_low))
+                * PicusExpr::from_const(1 << 11)
+            + ((picus_expr_from_boolean_circuit(i_insn)
+                + picus_expr_from_boolean_circuit(s_insn)
+                + picus_expr_from_boolean_circuit(b_insn))
+                * PicusExpr::Variable(sign_bit_var)
+                * PicusExpr::from_const(0b1111)
+                + (picus_expr_from_boolean_circuit(u_insn)
+                    + picus_expr_from_boolean_circuit(j_insn))
+                    * (PicusExpr::Variable(rs1_low_var) * PicusExpr::from_const(1 << 3)
+                        + picus_expr_from_num_circuit(funct3)))
+                * PicusExpr::from_const(1 << 12)
+            - PicusExpr::Variable(imm_low),
+        rhs: PicusExpr::from_const(0),
+    });
 
     // chunk 5 is just higher part of the immediate
     let imm_high = decoder_circuit_state.decoder_data.decoder_data.imm[1];
@@ -285,6 +459,21 @@ pub fn describe_decoder_cycle<
                 * Term::from(0xffff)
             - Term::from(imm_high),
     );
+    #[cfg(feature = "picus")]
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: picus_expr_from_boolean_circuit(j_insn)
+            * (PicusExpr::Variable(sign_bit_var) * PicusExpr::from_const(0xfff0)
+                + PicusExpr::Variable(rs1_high_var))
+            + picus_expr_from_boolean_circuit(u_insn)
+                * picus_expr_from_num_circuit(next_opcode.0[1])
+            + (PicusExpr::from_const(1)
+                - picus_expr_from_boolean_circuit(j_insn)
+                - picus_expr_from_boolean_circuit(u_insn))
+                * PicusExpr::Variable(sign_bit_var)
+                * PicusExpr::from_const(0xffff)
+            - PicusExpr::Variable(imm_high),
+        rhs: PicusExpr::from_const(0),
+    });
 
     // funct_12 is used only by:
     // SYSTEM CSR - there we can use single table lookup to validate if 12-bit index is valid and trap (along with R/W info if we want)
@@ -313,10 +502,35 @@ pub fn describe_decoder_cycle<
             Term::from(rd_full_var) * Term::from(var_inv) + Term::from(zero_flag_var)
                 - Term::from(1),
         );
+        #[cfg(feature = "picus")]
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: picus_expr_from_num_circuit(rd_from_decoder) * PicusExpr::Variable(zero_flag_var),
+            rhs: PicusExpr::from_const(0),
+        });
+        #[cfg(feature = "picus")]
+        circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: picus_expr_from_num_circuit(rd_from_decoder) * PicusExpr::Variable(var_inv)
+                + PicusExpr::Variable(zero_flag_var)
+                - PicusExpr::from_const(1),
+            rhs: PicusExpr::from_const(0),
+        });
     }
 
     // And we are done - all variables are linked and values were assigned
+    #[cfg(feature = "picus")]
+    {
+        UnrolledDecoderPicusMetadata {
+            packed_opcode_var,
+            is_invalid,
+            opcode_formats_except_r: [i_insn, s_insn, b_insn, u_insn, j_insn],
+        }
+    }
 }
+
+#[cfg(feature = "picus")]
+type OpcodeLookupResult = (Boolean, [Boolean; OPCODE_TYPES_BITS], Variable);
+#[cfg(not(feature = "picus"))]
+type OpcodeLookupResult = (Boolean, [Boolean; OPCODE_TYPES_BITS]);
 
 #[track_caller]
 fn opcode_lookup<F: PrimeField, CS: Circuit<F>>(
@@ -326,11 +540,22 @@ fn opcode_lookup<F: PrimeField, CS: Circuit<F>>(
     funct7: Num<F>,
     opcode_family_type_var: Variable,
     opcode_family_bitmask_var: Variable,
-) -> (Boolean, [Boolean; OPCODE_TYPES_BITS]) {
+) -> OpcodeLookupResult {
     let table_input_constraint = Constraint::empty()
         + Term::from(opcode)
         + Term::from(funct3) * Term::from(1 << 7)
         + Term::from(funct7) * Term::from(1 << (7 + 3));
+    #[cfg(feature = "picus")]
+    let packed_opcode_var =
+        circuit.add_variable_from_constraint_allow_explicit_linear(table_input_constraint.clone());
+    #[cfg(feature = "picus")]
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: picus_expr_from_num_circuit(opcode)
+            + PicusExpr::from_const(1 << 7) * picus_expr_from_num_circuit(funct3)
+            + PicusExpr::from_const(1 << (7 + 3)) * picus_expr_from_num_circuit(funct7)
+            - PicusExpr::Variable(packed_opcode_var),
+        rhs: PicusExpr::from_const(0),
+    });
 
     // here we will merge bit decomposition AND splitting, by putting linear constraints into everything
 
@@ -345,6 +570,24 @@ fn opcode_lookup<F: PrimeField, CS: Circuit<F>>(
     }
     splitting_constraint = splitting_constraint
         + Term::from(opcode_family_bitmask_var) * Term::from(1 << NUM_DEFAULT_DECODER_BITS);
+    #[cfg(feature = "picus")]
+    let splitting_var =
+        circuit.add_variable_from_constraint_allow_explicit_linear(splitting_constraint.clone());
+    #[cfg(feature = "picus")]
+    let formats_expr = opcode_formats_except_r.iter().enumerate().fold(
+        picus_expr_from_boolean_circuit(is_invalid),
+        |acc, (i, flag)| {
+            acc + PicusExpr::from_const(1 << (1 + i)) * picus_expr_from_boolean_circuit(*flag)
+        },
+    );
+    #[cfg(feature = "picus")]
+    circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+        lhs: formats_expr
+            + PicusExpr::from_const(1 << NUM_DEFAULT_DECODER_BITS)
+                * PicusExpr::Variable(opcode_family_bitmask_var)
+            - PicusExpr::Variable(splitting_var),
+        rhs: PicusExpr::from_const(0),
+    });
 
     assert_eq!(InstructionType::RType as u32, 0);
 
@@ -411,5 +654,12 @@ fn opcode_lookup<F: PrimeField, CS: Circuit<F>>(
     // We need to range-check `opcode_family_bitmask_var` coarsely (8 bits or 16 bits, just to avoid overflowing a field)
     assert!(F::CHAR_BITS - 1 >= NUM_DEFAULT_DECODER_BITS + 16);
 
-    (is_invalid, opcode_formats_except_r)
+    #[cfg(feature = "picus")]
+    {
+        (is_invalid, opcode_formats_except_r, packed_opcode_var)
+    }
+    #[cfg(not(feature = "picus"))]
+    {
+        (is_invalid, opcode_formats_except_r)
+    }
 }

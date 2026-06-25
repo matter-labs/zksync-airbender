@@ -24,6 +24,46 @@ impl<F: PrimeField> OneRowCompiler<F> {
         num_inits_and_teardowns: usize,
         trace_len_log2: usize,
     ) -> CompiledCircuitArtifact<F> {
+        let out = self
+            .compile_executor_circuit_assuming_preprocessed_bytecode_with_inits_and_teardowns_impl(
+                circuit_output,
+                max_bytecode_size_in_words,
+                num_inits_and_teardowns,
+                trace_len_log2,
+            );
+        #[cfg(feature = "picus")]
+        {
+            out.0
+        }
+        #[cfg(not(feature = "picus"))]
+        {
+            out
+        }
+    }
+
+    #[cfg(all(test, feature = "picus"))]
+    pub fn compile_executor_circuit_assuming_preprocessed_bytecode_with_inits_and_teardowns_and_protected_constraints(
+        &self,
+        circuit_output: CircuitOutput<F>,
+        max_bytecode_size_in_words: usize,
+        num_inits_and_teardowns: usize,
+        trace_len_log2: usize,
+    ) -> (CompiledCircuitArtifact<F>, ProtectedConstraintSnapshot<F>) {
+        self.compile_executor_circuit_assuming_preprocessed_bytecode_with_inits_and_teardowns_impl(
+            circuit_output,
+            max_bytecode_size_in_words,
+            num_inits_and_teardowns,
+            trace_len_log2,
+        )
+    }
+
+    fn compile_executor_circuit_assuming_preprocessed_bytecode_with_inits_and_teardowns_impl(
+        &self,
+        circuit_output: CircuitOutput<F>,
+        max_bytecode_size_in_words: usize,
+        num_inits_and_teardowns: usize,
+        trace_len_log2: usize,
+    ) -> CompileInnerOutput<F> {
         // our main purposes are:
         // - place variables in particular grid places
         // - select whether they go into witness subtree or memory subtree
@@ -47,6 +87,8 @@ impl<F: PrimeField> OneRowCompiler<F> {
             register_and_indirect_memory_accesses,
             decoder_machine_state,
             executor_machine_state,
+            #[cfg(feature = "picus")]
+                picus_extraction_metadata: _,
         } = circuit_output;
 
         assert!(trace_len_log2 > TIMESTAMP_COLUMNS_NUM_BITS as usize);
@@ -485,6 +527,18 @@ impl<F: PrimeField> OneRowCompiler<F> {
             Some(executor_state.timestamp),
         );
 
+        #[cfg(feature = "picus")]
+        let protected_constraints_before_optimization: Vec<_> = constraints
+            .iter()
+            .filter_map(|(constraint, prevent_optimizations)| {
+                if *prevent_optimizations {
+                    Some(constraint.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         // now check if there exist any variables that are
         // - not yet placed (so - not lookup ins/outs)
         // - can be expressed via linear constraint
@@ -509,6 +563,10 @@ impl<F: PrimeField> OneRowCompiler<F> {
             all_variables_to_place,
             &mut layout,
         );
+
+        #[cfg(feature = "picus")]
+        let (protected_degree_2_constraints, protected_degree_1_constraints) =
+            compile_constraints_using_layout(protected_constraints_before_optimization, &layout);
 
         // there are no inputs or outputs, or linkage
 
@@ -633,6 +691,18 @@ impl<F: PrimeField> OneRowCompiler<F> {
             total_tables_size,
         };
 
-        result
+        #[cfg(feature = "picus")]
+        {
+            let protected_constraints = ProtectedConstraintSnapshot {
+                degree_2_constraints: protected_degree_2_constraints,
+                degree_1_constraints: protected_degree_1_constraints,
+            };
+
+            (result, protected_constraints)
+        }
+        #[cfg(not(feature = "picus"))]
+        {
+            result
+        }
     }
 }

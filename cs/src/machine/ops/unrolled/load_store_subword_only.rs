@@ -5,8 +5,8 @@ pub fn subword_only_load_store_tables() -> Vec<TableType> {
     vec![
         TableType::ZeroEntry, // as we use lookups via optimization context
         TableType::MemoryGetOffsetAndMaskWithTrap,
-        // these get dynamically allocated by instance of the circuit depending on the machine configuration
-        //      TableType::RomAddressSpaceSeparator,
+        // these get dynamically allocated by instance of the circuit depending on the machine
+        // configuration      TableType::RomAddressSpaceSeparator,
         //      TableType::AlignedRomRead,
         TableType::MemoryLoadHalfwordOrByte,
         TableType::MemStoreClearOriginalRamValueLimb,
@@ -26,6 +26,11 @@ pub fn subword_only_load_store_table_driver_fn<F: PrimeField>(table_driver: &mut
     }
 }
 
+#[cfg(feature = "picus")]
+type ApplySubwordOnlyLoadStoreReturn = [Variable; SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS];
+#[cfg(not(feature = "picus"))]
+type ApplySubwordOnlyLoadStoreReturn = ();
+
 fn apply_subword_only_load_store<
     F: PrimeField,
     CS: Circuit<F>,
@@ -33,7 +38,7 @@ fn apply_subword_only_load_store<
 >(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
-) {
+) -> ApplySubwordOnlyLoadStoreReturn {
     let decoder =
         <SubwordOnlyMemoryFamilyDecoder as OpcodeFamilyDecoder>::BitmaskCircuitParser::parse(
             cs,
@@ -71,12 +76,15 @@ fn apply_subword_only_load_store<
     // We need to derive address in any case
     let unclean_addr = get_reg_add_and_overflow(cs, rs1_reg, immediate).0;
 
-    // Special note about `MemoryGetOffsetAndMask` table - it maps offset_low || funct3 || is_load || rd_is_zero into
-    // - lowest 2 bits of the offset, so we can form an address of aligned word (and also use these 2 bit integer in other places)
+    // Special note about `MemoryGetOffsetAndMask` table - it maps offset_low || funct3 || is_load
+    // || rd_is_zero into
+    // - lowest 2 bits of the offset, so we can form an address of aligned word (and also use these
+    //   2 bit integer in other places)
     // - `MEMORY_GET_OFFSET_AND_MASK_NUM_BITS_WITH_TRAP` - wide bitmask
 
-    // Later on we use a trick, that instead of decomposing bitmask into `MEMORY_GET_OFFSET_AND_MASK_NUM_BITS_WITH_TRAP` bits,
-    // we instead decompose into 1 less bits, so if trap happened - it's unsatisfiable
+    // Later on we use a trick, that instead of decomposing bitmask into
+    // `MEMORY_GET_OFFSET_AND_MASK_NUM_BITS_WITH_TRAP` bits, we instead decompose into 1 less
+    // bits, so if trap happened - it's unsatisfiable
 
     let [offset_low_bits, mem_offset_with_trap_table_bitmask] = {
         let unclean_addr_low = unclean_addr.0[0];
@@ -97,7 +105,8 @@ fn apply_subword_only_load_store<
             Num::Var(mem_offset_with_trap_table_bitmask),
         );
 
-    // Below that line the only trap that can happen is an attempt to store into ROM (offsets are irrelevant)
+    // Below that line the only trap that can happen is an attempt to store into ROM (offsets are
+    // irrelevant)
 
     if let Some(less_than_word_op) = less_than_word_op.get_value(cs) {
         if less_than_word_op {
@@ -118,7 +127,8 @@ fn apply_subword_only_load_store<
     let clean_addr = {
         let unclean_addr_low = unclean_addr.0[0];
         let unclean_addr_high = unclean_addr.0[1];
-        // This constraint is guaranteed to cleanup lowest bits as `offset_low_bits` is true 2 lowest bits of `unclean_addr_low`
+        // This constraint is guaranteed to cleanup lowest bits as `offset_low_bits` is true 2
+        // lowest bits of `unclean_addr_low`
         let low = Constraint::from(unclean_addr_low) - Term::from(offset_low_bits);
         let high = Constraint::from(unclean_addr_high);
         [low, high]
@@ -164,7 +174,8 @@ fn apply_subword_only_load_store<
     // We tran if it's a store into ROM
     cs.add_constraint(Term::from(is_store) * (Term::from(1) - Term::from(is_ram_range)));
 
-    // Now we will produce two aux bits - one to understand whether it's a load from ROM, and another - from RAM
+    // Now we will produce two aux bits - one to understand whether it's a load from ROM, and
+    // another - from RAM
 
     let load_from_rom = Boolean::and(&is_load, &Boolean::Not(is_ram_range), cs);
     let load_from_ram = Boolean::and(&is_load, &Boolean::Is(is_ram_range), cs);
@@ -179,11 +190,13 @@ fn apply_subword_only_load_store<
             println!("Load from RAM");
         }
     }
-    // Branches below are orthogonal, but before proceeding we will manually create queries for RS2/LOAD_RAM_ACCESS and RD/STORE_RAM_ACCESS
+    // Branches below are orthogonal, but before proceeding we will manually create queries for
+    // RS2/LOAD_RAM_ACCESS and RD/STORE_RAM_ACCESS
 
-    // NOTE: construction of this circuit REQUIRES non-trivial padding of memory query values if we do NOT
-    // execute (so we pad circuits for capacity). Such queries do NOT contribute to memory accumulators due to
-    // predication on `execute`, but we still do not want to spend too many variables to make extra masking here
+    // NOTE: construction of this circuit REQUIRES non-trivial padding of memory query values if we
+    // do NOT execute (so we pad circuits for capacity). Such queries do NOT contribute to
+    // memory accumulators due to predication on `execute`, but we still do not want to spend
+    // too many variables to make extra masking here
 
     let rs2_or_load_ram_access_query = {
         let rs2_or_load_ram_access_query_is_register = is_store;
@@ -197,9 +210,9 @@ fn apply_subword_only_load_store<
             clean_addr[1].clone() * (Term::from(1u64) - Term::from(is_store)), // load from RAM/ROM, and 0 in case of STORE
         );
 
-        // We will make read/write values and for purposes of witness evaluation just mark them as "known".
-        // We also do not need to range check them as for reads it's ensured by permutation,
-        // and for writes - we will add constraints
+        // We will make read/write values and for purposes of witness evaluation just mark them as
+        // "known". We also do not need to range check them as for reads it's ensured by
+        // permutation, and for writes - we will add constraints
         let rs2_or_load_ram_access_query_read_value = std::array::from_fn(|_| cs.add_variable());
 
         let rs2_or_load_ram_access_query = ShuffleRamMemQuery {
@@ -257,9 +270,9 @@ fn apply_subword_only_load_store<
             clean_addr[1].clone() * Term::from(is_store), // store into RAM, and 0 in case of LOAD
         );
 
-        // We will make read/write values and for purposes of witness evaluation just mark them as "known".
-        // We also do not need to range check them as for reads it's ensured by permutation,
-        // and for writes - we will add constraints
+        // We will make read/write values and for purposes of witness evaluation just mark them as
+        // "known". We also do not need to range check them as for reads it's ensured by
+        // permutation, and for writes - we will add constraints
         let rd_or_store_ram_access_query_read_value = std::array::from_fn(|_| cs.add_variable());
         let rd_or_store_ram_access_query_write_value = std::array::from_fn(|_| cs.add_variable());
 
@@ -325,15 +338,17 @@ fn apply_subword_only_load_store<
         );
     }
 
-    // // we still need witness for RAM read - and we range-check it, as we may fully copy it into outputs
-    // let ram_read_witness = Register::new_from_placeholder(cs, Placeholder::LoadStoreRamValue);
+    // // we still need witness for RAM read - and we range-check it, as we may fully copy it into
+    // outputs let ram_read_witness = Register::new_from_placeholder(cs,
+    // Placeholder::LoadStoreRamValue);
 
     // // - if we load from RAM, then witness is equal to RS2 query read value
     // for (a, b) in ram_read_witness.0.iter().zip(rs2_or_load_ram_access_query.read_value.iter()) {
     //     cs.add_constraint((Term::from(*a) - Term::from(*b)) * Term::from(load_from_ram));
     // }
 
-    // let ram_limb_for_subword_size_ops = cs.choose(use_high_word_in_mem_load, ram_read_witness.0[1], ram_read_witness.0[0]);
+    // let ram_limb_for_subword_size_ops = cs.choose(use_high_word_in_mem_load,
+    // ram_read_witness.0[1], ram_read_witness.0[0]);
 
     // now we can actually use optimization context
     let mut opt_ctx = OptimizationContext::new();
@@ -342,9 +357,9 @@ fn apply_subword_only_load_store<
     // LOAD from ROM
     opt_ctx.reset_indexers();
     let [rom_load_low, rom_load_high] = {
-        // it's enough to perform a single lookup from the combination of RAM offset (unaligned - it gives us all the information) + funct3,
-        // but such table is potentially too large (21 + 3 bits or more),
-        // so we would need to select again, and use another table
+        // it's enough to perform a single lookup from the combination of RAM offset (unaligned - it
+        // gives us all the information) + funct3, but such table is potentially too large
+        // (21 + 3 bits or more), so we would need to select again, and use another table
 
         // This combination is always aligned, so we can shift another 2 bits to the right
         let mut input =
@@ -382,10 +397,13 @@ fn apply_subword_only_load_store<
     // LOAD from RAM
     opt_ctx.reset_indexers();
     let [ram_load_low, ram_load_high] = {
-        // we already have a full word, so it's enough to use selected limb and output the case of less than word
+        // we already have a full word, so it's enough to use selected limb and output the case of
+        // less than word
 
-        // NOTE: this interpretation works fine even if we STORE - it's just a value, and we didn't constraint anything yet. We treat is as a witness in some sense.
-        // We already make query addresses, so we only will need to add constraint on the RS/STORE query write value!
+        // NOTE: this interpretation works fine even if we STORE - it's just a value, and we didn't
+        // constraint anything yet. We treat is as a witness in some sense. We already make
+        // query addresses, so we only will need to add constraint on the RS/STORE query write
+        // value!
         let ram_limb_for_subword_size_ops = cs.choose(
             use_high_word_in_mem_ops,
             Num::Var(rs2_or_load_ram_access_query.read_value[1]),
@@ -430,7 +448,8 @@ fn apply_subword_only_load_store<
     // STORE
     opt_ctx.reset_indexers();
     let [store_value_low, store_value_high] = {
-        // For STORE the same logic applies - we can just use query value as witness-style input, and only constraint how we write
+        // For STORE the same logic applies - we can just use query value as witness-style input,
+        // and only constraint how we write
 
         // In the contrast to LOADS, we just need to make
         let updated_limb_in_store = cs.choose(
@@ -438,8 +457,9 @@ fn apply_subword_only_load_store<
             Num::Var(rd_or_store_ram_access_query.read_value[1]),
             Num::Var(rd_or_store_ram_access_query.read_value[0]),
         );
-        // now we need to update it - we can do it with 2 lookups - one will cleanup the source word in case of subword sized update,
-        // another will cut a part of the value that we want to store
+        // now we need to update it - we can do it with 2 lookups - one will cleanup the source word
+        // in case of subword sized update, another will cut a part of the value that we
+        // want to store
 
         let [original_ram_limb_cleaned, _unused] = opt_ctx
             .append_lookup_relation_from_linear_terms(
@@ -494,8 +514,8 @@ fn apply_subword_only_load_store<
 
     // now we just need to constraint memory query values
 
-    // if we LOAD, then RD write query WRITE value must be equal to the corresponding RAM or ROM read value if we do read,
-    // and we also need to mask into writing into X0
+    // if we LOAD, then RD write query WRITE value must be equal to the corresponding RAM or ROM
+    // read value if we do read, and we also need to mask into writing into X0
     let rd_candidate_low = cs.add_variable_from_constraint(
         Term::from(load_from_ram) * Term::from(ram_load_low)
             + Term::from(load_from_rom) * Term::from(rom_load_low),
@@ -547,6 +567,10 @@ fn apply_subword_only_load_store<
     let pc = Register(inputs.cycle_start_state.pc.map(|x| Num::Var(x)));
     let pc_next = Register(inputs.cycle_end_state.pc.map(Num::Var));
     bump_pc_no_range_checks_explicit(cs, pc, pc_next);
+    #[cfg(feature = "picus")]
+    {
+        [is_store.get_variable().unwrap()]
+    }
 }
 
 pub fn subword_only_load_store_circuit_with_preprocessed_bytecode<

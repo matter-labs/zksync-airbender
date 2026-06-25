@@ -2,10 +2,11 @@ use super::*;
 
 pub fn word_only_load_store_tables() -> Vec<TableType> {
     vec![
-        TableType::ZeroEntry, // as we use lookups via optimization context
-                              // these get dynamically allocated by instance of the circuit depending on the machine configuration
-                              //      TableType::RomAddressSpaceSeparator,
-                              //      TableType::RomRead,
+        TableType::ZeroEntry, /* as we use lookups via optimization context
+                               * these get dynamically allocated by instance of the circuit
+                               * depending on the machine configuration
+                               *      TableType::RomAddressSpaceSeparator,
+                               *      TableType::RomRead, */
     ]
 }
 
@@ -48,6 +49,11 @@ pub fn create_word_only_load_store_special_tables<
     ]
 }
 
+#[cfg(feature = "picus")]
+type ApplyWordOnlyLoadStoreReturn = [Variable; WORD_ONLY_MEMORY_FAMILY_NUM_FLAGS];
+#[cfg(not(feature = "picus"))]
+type ApplyWordOnlyLoadStoreReturn = ();
+
 fn apply_word_only_load_store<
     F: PrimeField,
     CS: Circuit<F>,
@@ -55,7 +61,7 @@ fn apply_word_only_load_store<
 >(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
-) {
+) -> ApplyWordOnlyLoadStoreReturn {
     let decoder = <WordOnlyMemoryFamilyDecoder as OpcodeFamilyDecoder>::BitmaskCircuitParser::parse(
         cs,
         inputs.decoder_data.circuit_family_extra_mask,
@@ -93,19 +99,21 @@ fn apply_word_only_load_store<
     // We tran if it's a store into ROM
     cs.add_constraint(Term::from(is_store) * (Term::from(1) - Term::from(is_ram_range)));
 
-    // Now we will produce two aux bits - one to understand whether it's a load from ROM, and another - from RAM
+    // Now we will produce two aux bits - one to understand whether it's a load from ROM, and
+    // another - from RAM
 
     let load_from_rom = Boolean::and(&is_load, &Boolean::Not(is_ram_range), cs);
     let load_from_ram = Boolean::and(&is_load, &Boolean::Is(is_ram_range), cs);
-    // Branches below are orthogonal, but before proceeding we will manually create queries for RS2/LOAD_RAM_ACCESS and RD/STORE_RAM_ACCESS
+    // Branches below are orthogonal, but before proceeding we will manually create queries for
+    // RS2/LOAD_RAM_ACCESS and RD/STORE_RAM_ACCESS
 
     // NOTE: we have a RomRead table that only contains addresses 0 mod 4,
     // so by trying to read from it - we trap the case of unaligned addresses
 
     let [rom_load_low, rom_load_high] = {
-        // it's enough to perform a single lookup from the combination of RAM offset (unaligned - it gives us all the information) + funct3,
-        // but such table is potentially too large (21 + 3 bits or more),
-        // so we would need to select again, and use another table
+        // it's enough to perform a single lookup from the combination of RAM offset (unaligned - it
+        // gives us all the information) + funct3, but such table is potentially too large
+        // (21 + 3 bits or more), so we would need to select again, and use another table
 
         // This combination is always aligned, so we can shift another 2 bits to the right
         let input = Term::from(1 << 16) * Term::from(address_high_bits_for_rom)
@@ -120,9 +128,10 @@ fn apply_word_only_load_store<
 
     // Below this point we know that address is aligned
 
-    // NOTE: construction of this circuit REQUIRES non-trivial padding of memory query values if we do NOT
-    // execute (so we pad circuits for capacity). Such queries do NOT contribute to memory accumulators due to
-    // predication on `execute`, but we still do not want to spend too many variables to make extra masking here
+    // NOTE: construction of this circuit REQUIRES non-trivial padding of memory query values if we
+    // do NOT execute (so we pad circuits for capacity). Such queries do NOT contribute to
+    // memory accumulators due to predication on `execute`, but we still do not want to spend
+    // too many variables to make extra masking here
 
     let rs2_or_load_ram_access_query = {
         let rs2_or_load_ram_access_query_is_register = is_store;
@@ -136,9 +145,9 @@ fn apply_word_only_load_store<
             Term::from(unclean_addr.0[1]) * (Term::from(1u64) - Term::from(is_store)), // load from RAM or ROM, and 0 in case of STORE
         );
 
-        // We will make read/write values and for purposes of witness evaluation just mark them as "known".
-        // We also do not need to range check them as for reads it's ensured by permutation,
-        // and for writes - we will add constraints
+        // We will make read/write values and for purposes of witness evaluation just mark them as
+        // "known". We also do not need to range check them as for reads it's ensured by
+        // permutation, and for writes - we will add constraints
         let rs2_or_load_ram_access_query_read_value = std::array::from_fn(|_| cs.add_variable());
 
         let rs2_or_load_ram_access_query = ShuffleRamMemQuery {
@@ -183,12 +192,13 @@ fn apply_word_only_load_store<
             Term::from(inputs.decoder_data.rd_index) * (Term::from(1) - Term::from(is_store)), // RD index in case of any LOAD
         );
         let rd_or_store_ram_access_query_address_high = cs.add_variable_from_constraint(
-            Term::from(unclean_addr.0[1]) * Term::from(is_store), // store into RAM, and 0 in case of LOAD
+            Term::from(unclean_addr.0[1]) * Term::from(is_store), /* store into RAM, and 0 in
+                                                                   * case of LOAD */
         );
 
-        // We will make read/write values and for purposes of witness evaluation just mark them as "known".
-        // We also do not need to range check them as for reads it's ensured by permutation,
-        // and for writes - we will add constraints
+        // We will make read/write values and for purposes of witness evaluation just mark them as
+        // "known". We also do not need to range check them as for reads it's ensured by
+        // permutation, and for writes - we will add constraints
         let rd_or_store_ram_access_query_read_value = std::array::from_fn(|_| cs.add_variable());
         let rd_or_store_ram_access_query_write_value = std::array::from_fn(|_| cs.add_variable());
 
@@ -231,8 +241,8 @@ fn apply_word_only_load_store<
 
     // now we just need to constraint memory query values
 
-    // if we LOAD, then RD write query WRITE value must be equal to the corresponding RAM or ROM read value if we do read,
-    // and we also need to mask into writing into X0
+    // if we LOAD, then RD write query WRITE value must be equal to the corresponding RAM or ROM
+    // read value if we do read, and we also need to mask into writing into X0
     let rd_candidate_low = cs.add_variable_from_constraint(
         Term::from(load_from_ram) * Term::from(rs2_or_load_ram_access_query.read_value[0])
             + Term::from(load_from_rom) * Term::from(rom_load_low),
@@ -273,6 +283,10 @@ fn apply_word_only_load_store<
     let pc = Register(inputs.cycle_start_state.pc.map(|x| Num::Var(x)));
     let pc_next = Register(inputs.cycle_end_state.pc.map(Num::Var));
     bump_pc_no_range_checks_explicit(cs, pc, pc_next);
+    #[cfg(feature = "picus")]
+    {
+        [is_store.get_variable().unwrap()]
+    }
 }
 
 pub fn word_only_load_store_circuit_with_preprocessed_bytecode<

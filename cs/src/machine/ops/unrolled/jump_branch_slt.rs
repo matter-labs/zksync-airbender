@@ -1,5 +1,23 @@
 use super::*;
 
+#[cfg(feature = "picus")]
+#[inline(always)]
+fn debug_var_mapping(label: &str, var: Variable) {
+    println!("[jump_branch_slt] {label}: x_{}", var.0);
+}
+
+#[cfg(feature = "picus")]
+#[inline(always)]
+fn debug_var_with_value<F: PrimeField, CS: Circuit<F>>(cs: &CS, label: &str, var: Variable) {
+    println!("[jump_branch_slt] {label}: x_{}", var.0);
+    if let Some(value) = cs.get_value(var) {
+        println!(
+            "[jump_branch_slt] {label} value: {}",
+            value.as_u64_reduced()
+        );
+    }
+}
+
 pub fn jump_branch_slt_tables() -> Vec<TableType> {
     vec![
         TableType::ConditionalJmpBranchSlt,
@@ -38,6 +56,38 @@ fn apply_jump_branch_slt<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bo
     let is_jal = decoder.perform_jal();
     let is_jalr = decoder.perform_jalr();
 
+    #[cfg(feature = "picus")]
+    {
+        debug_var_with_value(cs, "execute", inputs.execute);
+        debug_var_with_value(cs, "decoder.rs1_idx", inputs.decoder_data.rs1_index);
+        debug_var_with_value(cs, "decoder.rs2_idx", inputs.decoder_data.rs2_index);
+        debug_var_with_value(cs, "decoder.rd_idx", inputs.decoder_data.rd_index);
+        debug_var_with_value(cs, "decoder.rd_is_zero", inputs.decoder_data.rd_is_zero);
+        debug_var_with_value(cs, "decoder.funct3", inputs.decoder_data.funct3);
+        debug_var_with_value(
+            cs,
+            "decoder.circuit_family_extra_mask",
+            inputs.decoder_data.circuit_family_extra_mask,
+        );
+        let [imm_low, imm_high] = inputs.decoder_data.imm;
+        debug_var_mapping("decoder.imm_low", imm_low);
+        debug_var_mapping("decoder.imm_high", imm_high);
+
+        let decoded_mask_bits = [
+            is_branches.get_variable().unwrap(),
+            is_sltimmediates.get_variable().unwrap(),
+            is_sltregisters.get_variable().unwrap(),
+            is_jal.get_variable().unwrap(),
+            is_jalr.get_variable().unwrap(),
+        ];
+        debug_var_mapping("decoded.is_branches", decoded_mask_bits[0]);
+        debug_var_mapping("decoded.is_slti", decoded_mask_bits[1]);
+        debug_var_mapping("decoded.is_slt", decoded_mask_bits[2]);
+        debug_var_mapping("decoded.is_jal", decoded_mask_bits[3]);
+        debug_var_mapping("decoded.is_jalr", decoded_mask_bits[4]);
+
+        println!("DECODED BITS {decoded_mask_bits:?}");
+    }
     let four_as_reg = Register([
         Num::Constant(F::from_u64_unchecked(4)),
         Num::Constant(F::ZERO),
@@ -168,6 +218,8 @@ fn apply_jump_branch_slt<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bo
         &lookup_inputs,
         TableType::ConditionalJmpBranchSlt,
     );
+    #[cfg(feature = "picus")]
+    debug_var_mapping("lookup.conditional_flag", flag);
 
     // write to RD
     let rd_reg = {
@@ -208,7 +260,8 @@ fn apply_jump_branch_slt<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bo
     opt_ctx.restore_indexers(indexers);
     let (next_pc_for_state_t, of_t) =
         opt_ctx.append_add_relation(pc_as_reg, four_as_reg, is_sltimmediates, cs);
-    // cs.add_constraint(Constraint::from(is_sltimmediates) * Term::from(of)); // PC + 4 can overflow
+    // cs.add_constraint(Constraint::from(is_sltimmediates) * Term::from(of)); // PC + 4 can
+    // overflow
     assert_eq!(
         next_pc_for_state_t.0[0].get_variable(),
         next_pc_for_state.0[0].get_variable()
@@ -250,7 +303,8 @@ fn apply_jump_branch_slt<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bo
     let is_branches_skipped = Boolean::and(&is_branches, &Boolean::Is(flag).toggle(), cs);
     let (next_pc_for_state_t, of_t) =
         opt_ctx.append_add_relation(pc_as_reg, four_as_reg, is_branches_skipped, cs);
-    // cs.add_constraint(Constraint::from(is_branches_skipped) * Term::from(of)); // PC + 4 can overflow
+    // cs.add_constraint(Constraint::from(is_branches_skipped) * Term::from(of)); // PC + 4 can
+    // overflow
     assert_eq!(
         next_pc_for_state_t.0[0].get_variable(),
         next_pc_for_state.0[0].get_variable()
@@ -259,10 +313,18 @@ fn apply_jump_branch_slt<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bo
         next_pc_for_state_t.0[1].get_variable(),
         next_pc_for_state.0[1].get_variable()
     );
+    #[cfg(feature = "picus")]
+    {
+        println!("NEXT PC FOR STATE: {next_pc_for_state:?}");
+        println!("NEXT PC FOR STATE T: {next_pc_for_state_t:?}");
+    }
+
     assert_eq!(of.get_variable().unwrap(), of_t.get_variable().unwrap());
     // BRANCHES (taken)
     opt_ctx.restore_indexers(indexers);
     let is_branches_taken = Boolean::and(&is_branches, &Boolean::Is(flag), cs);
+    #[cfg(feature = "picus")]
+    println!("IS BRANCHES TAKEN: {is_branches_taken:?}");
     let (next_pc_for_state_t, of_t) =
         opt_ctx.append_add_relation(pc_as_reg, imm_as_reg, is_branches_taken, cs);
     // cs.add_constraint(Constraint::from(is_branches_taken) * Term::from(of)); // PC can overflow
@@ -282,9 +344,16 @@ fn apply_jump_branch_slt<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bo
         &lookup_inputs,
         TableType::JumpCleanupOffset,
     );
+    #[cfg(feature = "picus")]
+    {
+        debug_var_mapping("lookup.jump_cleanup.bit_1", bit_1);
+        debug_var_mapping("lookup.jump_cleanup.dst_low_for_jump", dst_low_for_jump);
+    }
 
-    // unaligned jump is unprovable, and we only need to check bit number 1, as jump offset is always 0 mod 2,
-    // and PC is 0 mod 4
+    // unaligned jump is unprovable, and we only need to check bit number 1, as jump offset is
+    // always 0 mod 2, and PC is 0 mod 4
+    #[cfg(feature = "picus")]
+    println!("BIT_1: {bit_1:?} {is_branches_taken:?}");
     cs.add_constraint(
         (Constraint::from(is_jal) + Term::from(is_jalr) + Term::from(is_branches_taken))
             * Term::from(bit_1),
@@ -320,6 +389,8 @@ fn apply_jump_branch_slt<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bo
     let default_next_pc_vars = next_pc_for_state.0.map(|el| el.get_variable());
     let next_pc_dst_vars = inputs.cycle_end_state.pc;
 
+    #[cfg(feature = "picus")]
+    println!("NEXT PC VARS: {next_pc_dst_vars:?}");
     let value_fn = move |placer: &mut CS::WitnessPlacer| {
         use crate::cs::witness_placer::*;
         let is_jal = placer.get_boolean(is_jal_var);

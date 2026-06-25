@@ -14,7 +14,7 @@ use field::PrimeField;
 pub const LIMB_WIDTH: usize = 16;
 pub const LIMB_MASK: u64 = (1 << LIMB_WIDTH) - 1;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Num<F: PrimeField> {
     Var(Variable),
     Constant(F),
@@ -68,7 +68,7 @@ impl<F: PrimeField> Num<F> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Boolean {
     /// Existential view of the boolean variable
     Is(Variable),
@@ -162,7 +162,7 @@ impl Boolean {
             var
         });
 
-        //setting values
+        // setting values
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             use crate::cs::witness_placer::*;
             let input_value = placer.get_field(input).as_integer();
@@ -179,6 +179,20 @@ impl Boolean {
             acc + Term::from(type_bitmask_terms[x]) * Term::from(1 << x)
         }) - full_bitmask_as_int;
         circuit.add_constraint_allow_explicit_linear(constraint);
+        #[cfg(feature = "picus")]
+        {
+            let mut parallel_constraint = PicusExpr::from_const(0);
+            for (x, b) in type_bitmask.iter().enumerate() {
+                parallel_constraint = parallel_constraint
+                    + picus_expr_from_boolean_circuit(*b)
+                        * PicusExpr::Constant(F::from_u64_unchecked(1 << x));
+            }
+            parallel_constraint = parallel_constraint - picus_expr_from_num_circuit(full_bitmask);
+            circuit.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                lhs: parallel_constraint,
+                rhs: PicusExpr::from_const(0),
+            });
+        }
 
         type_bitmask
     }
@@ -244,6 +258,33 @@ impl Boolean {
         }
     }
 
+    #[cfg(feature = "picus")]
+    pub fn and_constraint_picus<F: PrimeField>(a: &Self, b: &Self) -> PicusExpr<F> {
+        match (a, b) {
+            // false AND x is always false
+            (&Boolean::Constant(false), _) | (_, &Boolean::Constant(false)) => {
+                PicusExpr::from_const(0)
+            }
+            // true AND x is always x
+            (&Boolean::Constant(true), &x) | (&x, &Boolean::Constant(true)) => {
+                picus_expr_from_boolean_circuit(x)
+            }
+            // a AND (NOT b)
+            (&Boolean::Is(is), &Boolean::Not(not)) | (&Boolean::Not(not), &Boolean::Is(is)) => {
+                PicusExpr::Variable(is) * (PicusExpr::from_const(1) - PicusExpr::Variable(not))
+            }
+            // (NOT a) AND (NOT b) = a NOR b
+            (&Boolean::Not(a), &Boolean::Not(b)) => {
+                PicusExpr::Variable(a) * PicusExpr::Variable(b)
+                    - PicusExpr::Variable(a)
+                    - PicusExpr::Variable(b)
+                    + PicusExpr::from_const(1)
+            }
+            // a AND b
+            (&Boolean::Is(a), &Boolean::Is(b)) => PicusExpr::Variable(a) * PicusExpr::Variable(b),
+        }
+    }
+
     #[track_caller]
     pub fn and<F: PrimeField, C: Circuit<F>>(a: &Self, b: &Self, cs: &mut C) -> Self {
         match (a, b) {
@@ -258,17 +299,42 @@ impl Boolean {
                 // This constrain for and_not: (a) * (1 - b) = (c), ensuring c is 1 iff
                 // a is true and b is false, and otherwise c is 0.
 
+                #[cfg(not(feature = "picus"))]
                 let var = Boolean::Is(cs.add_variable_from_constraint(
                     Term::from(is) * (Term::from(1) - Term::from(not)),
                 ));
+                #[cfg(feature = "picus")]
+                let var = {
+                    let cnstr =
+                        Constraint::from(Term::from(is) * (Term::from(1) - Term::from(not)));
+                    let tmp = cs.add_variable_from_constraint(cnstr.clone());
+                    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                        lhs: picus_expr_from_constraint(&cnstr),
+                        rhs: PicusExpr::Variable(tmp),
+                    });
+                    Boolean::Is(tmp)
+                };
 
                 var
             }
             // (NOT a) AND (NOT b) = (1 - a) * (1 - b)
             (&Boolean::Not(a), &Boolean::Not(b)) => {
+                #[cfg(not(feature = "picus"))]
                 let var = Boolean::Is(cs.add_variable_from_constraint(
                     (Term::from(1) - Term::from(a)) * (Term::from(1) - Term::from(b)),
                 ));
+                #[cfg(feature = "picus")]
+                let var = {
+                    let cnstr = Constraint::from(
+                        (Term::from(1) - Term::from(a)) * (Term::from(1) - Term::from(b)),
+                    );
+                    let tmp = cs.add_variable_from_constraint(cnstr.clone());
+                    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                        lhs: picus_expr_from_constraint(&cnstr),
+                        rhs: PicusExpr::Variable(tmp),
+                    });
+                    Boolean::Is(tmp)
+                };
 
                 var
             }
@@ -276,8 +342,19 @@ impl Boolean {
             (&Boolean::Is(a), &Boolean::Is(b)) => {
                 // This constrain for and (a) * (b) = (c), ensuring c is 1 iff
                 // a AND b are both 1.
+                #[cfg(not(feature = "picus"))]
                 let var =
                     Boolean::Is(cs.add_variable_from_constraint(Term::from(a) * Term::from(b)));
+                #[cfg(feature = "picus")]
+                let var = {
+                    let cnstr = Constraint::from(Term::from(a) * Term::from(b));
+                    let tmp = cs.add_variable_from_constraint(cnstr.clone());
+                    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                        lhs: picus_expr_from_constraint(&cnstr),
+                        rhs: PicusExpr::Variable(tmp),
+                    });
+                    Boolean::Is(tmp)
+                };
 
                 var
             }
@@ -295,9 +372,22 @@ impl Boolean {
             // a OR (NOT b) = NOT( a AND Not b)
             (&Boolean::Is(is), &Boolean::Not(not)) | (&Boolean::Not(not), &Boolean::Is(is)) => {
                 // 1 - b + ab
+                #[cfg(not(feature = "picus"))]
                 let var = Boolean::Is(cs.add_variable_from_constraint(
                     Term::from(1) - Term::from(not) + Term::from(is) * Term::from(not),
                 ));
+                #[cfg(feature = "picus")]
+                let var = {
+                    let cnstr = Constraint::from(
+                        Term::from(1) - Term::from(not) + Term::from(is) * Term::from(not),
+                    );
+                    let tmp = cs.add_variable_from_constraint(cnstr.clone());
+                    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                        lhs: picus_expr_from_constraint(&cnstr),
+                        rhs: PicusExpr::Variable(tmp),
+                    });
+                    Boolean::Is(tmp)
+                };
 
                 var
             }
@@ -309,9 +399,20 @@ impl Boolean {
             (&Boolean::Is(a), &Boolean::Is(b)) => {
                 // 1 - b + ab
                 // res = 1 - (1 - a)(1-b) = a + b - ab
+                #[cfg(not(feature = "picus"))]
                 let var = Boolean::Is(cs.add_variable_from_constraint(
                     Constraint::from(a) + Term::from(b) - Term::from(a) * Term::from(b),
                 ));
+                #[cfg(feature = "picus")]
+                let var = {
+                    let cnstr = Constraint::from(a) + Term::from(b) - Term::from(a) * Term::from(b);
+                    let tmp = cs.add_variable_from_constraint(cnstr.clone());
+                    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                        lhs: picus_expr_from_constraint(&cnstr),
+                        rhs: PicusExpr::Variable(tmp),
+                    });
+                    Boolean::Is(tmp)
+                };
 
                 var
             }
@@ -328,7 +429,7 @@ impl Boolean {
             | (_not @ &Boolean::Not(_), _is @ &Boolean::Is(_)) => {
                 unreachable!();
 
-                //Boolean::xor(is, &not.toggle(), cs).toggle()
+                // Boolean::xor(is, &not.toggle(), cs).toggle()
             }
             // a XOR b = (NOT a) XOR (NOT b)
             (&Boolean::Is(a), &Boolean::Is(b)) => {
@@ -336,10 +437,22 @@ impl Boolean {
                     return Boolean::Constant(false);
                 }
                 // res = 1 - (1 - a)(1-b) = a + b - 2 * ab
+                #[cfg(not(feature = "picus"))]
                 let var = Boolean::Is(cs.add_variable_from_constraint(
                     Constraint::from(a) + Term::from(b)
                         - Term::from(a) * Term::from(b) * Term::from(2),
                 ));
+                #[cfg(feature = "picus")]
+                let var = {
+                    let cnstr = Constraint::from(a) + Term::from(b)
+                        - Term::from(a) * Term::from(b) * Term::from(2);
+                    let tmp = cs.add_variable_from_constraint(cnstr.clone());
+                    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                        lhs: picus_expr_from_constraint(&cnstr),
+                        rhs: PicusExpr::Variable(tmp),
+                    });
+                    Boolean::Is(tmp)
+                };
 
                 var
             }
@@ -377,9 +490,22 @@ impl Boolean {
             // a NOR b
             (&Boolean::Is(a), &Boolean::Is(b)) => {
                 // res = (1 - a)(1 - b) = 1 - a - b + ab
+                #[cfg(not(feature = "picus"))]
                 let var = Boolean::Is(cs.add_variable_from_constraint(
                     (Term::from(1) - Term::from(a)) * (Term::from(1) - Term::from(b)),
                 ));
+                #[cfg(feature = "picus")]
+                let var = {
+                    let cnstr = Constraint::from(
+                        (Term::from(1) - Term::from(a)) * (Term::from(1) - Term::from(b)),
+                    );
+                    let tmp = cs.add_variable_from_constraint(cnstr.clone());
+                    cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                        lhs: picus_expr_from_constraint(&cnstr),
+                        rhs: PicusExpr::Variable(tmp),
+                    });
+                    Boolean::Is(tmp)
+                };
 
                 var
             }
@@ -417,7 +543,17 @@ impl Boolean {
                 .iter()
                 .fold(Constraint::<F>::empty(), |acc, x| acc + x.get_terms());
             cnstr -= Term::from(meaningful_terms.len() as u64);
+            #[cfg(not(feature = "picus"))]
             let tmp = Num::Var(cs.add_variable_from_constraint_allow_explicit_linear(cnstr));
+            #[cfg(feature = "picus")]
+            let tmp = {
+                let tmp_var = cs.add_variable_from_constraint_allow_explicit_linear(cnstr.clone());
+                cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                    lhs: picus_expr_from_constraint(&cnstr),
+                    rhs: PicusExpr::Variable(tmp_var),
+                });
+                Num::Var(tmp_var)
+            };
             // if sum of booleans is equal to number of them - than all of those were `true`
 
             cs.is_zero(tmp)
@@ -457,7 +593,17 @@ impl Boolean {
             let cnstr = meaningful_terms
                 .iter()
                 .fold(Constraint::<F>::empty(), |acc, x| acc + Term::from(*x));
+            #[cfg(not(feature = "picus"))]
             let tmp = cs.add_variable_from_constraint(cnstr);
+            #[cfg(feature = "picus")]
+            let tmp = {
+                let tmp = cs.add_variable_from_constraint(cnstr.clone());
+                cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                    lhs: picus_expr_from_constraint(&cnstr),
+                    rhs: PicusExpr::Variable(tmp),
+                });
+                tmp
+            };
             let tmp = Num::Var(tmp);
 
             let sum_is_zero = cs.is_zero(tmp);
@@ -474,6 +620,8 @@ impl Boolean {
     ) -> Self {
         assert_eq!(conds.len(), flags.len());
         let mut constraint = Constraint::<F>::empty();
+        #[cfg(feature = "picus")]
+        let mut parallel_constraint = PicusExpr::from_const(0);
         for (condition, flag) in conds.iter().zip(flags.iter()) {
             match *flag {
                 Boolean::Constant(false) => {
@@ -493,6 +641,11 @@ impl Boolean {
                 }
                 cond @ _ => {
                     constraint = constraint + Boolean::and_constraint(&cond, flag);
+                    #[cfg(feature = "picus")]
+                    {
+                        parallel_constraint =
+                            parallel_constraint + Boolean::and_constraint_picus(&cond, flag);
+                    }
                 }
             };
         }
@@ -500,7 +653,17 @@ impl Boolean {
         if constraint.is_empty() {
             return Boolean::Constant(false);
         }
+        #[cfg(not(feature = "picus"))]
         let res = cs.add_variable_from_constraint(constraint);
+        #[cfg(feature = "picus")]
+        let res = {
+            let res = cs.add_variable_from_constraint(constraint.clone());
+            cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                lhs: parallel_constraint,
+                rhs: PicusExpr::Variable(res),
+            });
+            res
+        };
 
         Boolean::Is(res)
     }
@@ -546,6 +709,15 @@ impl Boolean {
                                 - Term::from(new_var)
                         };
                         cs.add_constraint_allow_explicit_linear(cnstr);
+                        #[cfg(feature = "picus")]
+                        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: picus_expr_from_boolean_circuit(Boolean::Is(cond))
+                                * (PicusExpr::from_const(a as u64)
+                                    - PicusExpr::from_const(b as u64))
+                                + PicusExpr::from_const(b as u64)
+                                - PicusExpr::Variable(new_var),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Boolean::Is(new_var)
                     }
 
@@ -589,6 +761,14 @@ impl Boolean {
                                 - Term::from(new_var)
                         };
                         cs.add_constraint(cnstr);
+                        #[cfg(feature = "picus")]
+                        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: picus_expr_from_boolean_circuit(Boolean::Is(cond))
+                                * (PicusExpr::Variable(a) - PicusExpr::Variable(b))
+                                + PicusExpr::Variable(b)
+                                - PicusExpr::Variable(new_var),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Boolean::Is(new_var)
                     }
 
@@ -614,6 +794,16 @@ impl Boolean {
                                 - (Term::from(cond) * Term::from(b)
                                     + (Term::from(1) - Term::from(cond)) * Term::from(a)),
                         );
+                        #[cfg(feature = "picus")]
+                        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: PicusExpr::Variable(new_var)
+                                - (picus_expr_from_boolean_circuit(Boolean::Is(cond))
+                                    * PicusExpr::Variable(b)
+                                    + (PicusExpr::from_const(1)
+                                        - picus_expr_from_boolean_circuit(Boolean::Is(cond)))
+                                        * PicusExpr::Variable(a)),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Boolean::Is(new_var)
                     }
                 }
@@ -647,7 +837,8 @@ impl Boolean {
 
                         cs.set_values(value_fn);
 
-                        // new_var = flag * a + (1 - flag) * constant = flag * (if_true - constant) + constant
+                        // new_var = flag * a + (1 - flag) * constant = flag * (if_true - constant)
+                        // + constant
                         let cnstr: Constraint<F> = {
                             Term::from(cond)
                                 * (Term::from(a)
@@ -656,6 +847,15 @@ impl Boolean {
                                 - Term::from(new_var)
                         };
                         cs.add_constraint(cnstr);
+                        #[cfg(feature = "picus")]
+                        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: picus_expr_from_boolean_circuit(Boolean::Is(cond))
+                                * (PicusExpr::Variable(a)
+                                    - PicusExpr::Constant(F::from_u64_unchecked(constant as u64)))
+                                + PicusExpr::Constant(F::from_u64_unchecked(constant as u64))
+                                - PicusExpr::Variable(new_var),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Boolean::Is(new_var)
                     }
 
@@ -700,6 +900,15 @@ impl Boolean {
                                 - Term::from(new_var)
                         };
                         cs.add_constraint(cnstr);
+                        #[cfg(feature = "picus")]
+                        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: picus_expr_from_boolean_circuit(Boolean::Is(cond))
+                                * (PicusExpr::Constant(F::from_u64_unchecked(constant as u64))
+                                    - PicusExpr::Variable(b))
+                                + PicusExpr::Variable(b)
+                                - PicusExpr::Variable(new_var),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Boolean::Is(new_var)
                     }
 
@@ -765,6 +974,15 @@ impl Boolean {
                                 - Term::from(new_var)
                         };
                         cs.add_constraint_allow_explicit_linear(cnstr);
+                        #[cfg(feature = "picus")]
+                        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: picus_expr_from_boolean_circuit(Boolean::Is(cond))
+                                * (PicusExpr::from_const(a as u64)
+                                    - PicusExpr::from_const(b as u64))
+                                + PicusExpr::from_const(b as u64)
+                                - PicusExpr::Variable(new_var),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Boolean::Is(new_var)
                     }
 
@@ -809,6 +1027,14 @@ impl Boolean {
                                 - Term::from(new_var)
                         };
                         cs.add_constraint(cnstr);
+                        #[cfg(feature = "picus")]
+                        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: picus_expr_from_boolean_circuit(Boolean::Is(cond))
+                                * (PicusExpr::Variable(a) - PicusExpr::Variable(b))
+                                + PicusExpr::Variable(b)
+                                - PicusExpr::Variable(new_var),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Boolean::Is(new_var)
                     }
 
@@ -846,7 +1072,8 @@ impl Boolean {
 
                         cs.set_values(value_fn);
 
-                        // new_var = flag * a + (1 - flag) * constant = flag * (if_true - constant) + constant
+                        // new_var = flag * a + (1 - flag) * constant = flag * (if_true - constant)
+                        // + constant
                         let cnstr: Constraint<F> = {
                             Term::from(cond)
                                 * (Term::from(a)
@@ -855,6 +1082,15 @@ impl Boolean {
                                 - Term::from(new_var)
                         };
                         cs.add_constraint(cnstr);
+                        #[cfg(feature = "picus")]
+                        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: picus_expr_from_boolean_circuit(Boolean::Is(cond))
+                                * (PicusExpr::Variable(a)
+                                    - PicusExpr::Constant(F::from_u64_unchecked(constant as u64)))
+                                + PicusExpr::Constant(F::from_u64_unchecked(constant as u64))
+                                - PicusExpr::Variable(new_var),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Boolean::Is(new_var)
                     }
 
@@ -899,6 +1135,15 @@ impl Boolean {
                                 - Term::from(new_var)
                         };
                         cs.add_constraint(cnstr);
+                        #[cfg(feature = "picus")]
+                        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                            lhs: picus_expr_from_boolean_circuit(Boolean::Is(cond))
+                                * (PicusExpr::Constant(F::from_u64_unchecked(constant as u64))
+                                    - PicusExpr::Variable(b))
+                                + PicusExpr::Variable(b)
+                                - PicusExpr::Variable(new_var),
+                            rhs: PicusExpr::from_const(0),
+                        });
                         Boolean::Is(new_var)
                     }
 
@@ -1067,14 +1312,28 @@ impl<F: PrimeField> RegisterDecomposition<F> {
             Term::from(chunks[1]) * Term::from(1 << 8) + Term::from(chunks[0])
                 - Term::from(reg.0[0]),
         );
+        #[cfg(feature = "picus")]
+        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: picus_expr_from_num_circuit(chunks[1]) * PicusExpr::from_const(1 << 8)
+                + picus_expr_from_num_circuit(chunks[0])
+                - picus_expr_from_num_circuit(reg.0[0]),
+            rhs: PicusExpr::from_const(0),
+        });
         cs.add_constraint(
             Term::from(chunks[3]) * Term::from(1 << 8) + Term::from(chunks[2])
                 - Term::from(reg.0[1]),
         );
+        #[cfg(feature = "picus")]
+        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: picus_expr_from_num_circuit(chunks[3]) * PicusExpr::from_const(1 << 8)
+                + picus_expr_from_num_circuit(chunks[2])
+                - picus_expr_from_num_circuit(reg.0[1]),
+            rhs: PicusExpr::from_const(0),
+        });
 
         let outputs = chunks.map(|x| x.get_variable());
         let register_limbs = [reg.0[0].get_variable(), reg.0[1].get_variable()];
-        //setting values for overflow flags
+        // setting values for overflow flags
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let low_limb = placer.get_u16(register_limbs[0]);
             let high_limb = placer.get_u16(register_limbs[1]);
@@ -1145,7 +1404,7 @@ impl<F: PrimeField> RegisterDecomposition<F> {
 
         let outputs = chunks.map(|x| x.get_variable());
         let register_limbs = [reg.0[0].get_variable(), reg.0[1].get_variable()];
-        //setting values for overflow flags
+        // setting values for overflow flags
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let low_limb = placer.get_u16(register_limbs[0]);
             let high_limb = placer.get_u16(register_limbs[1]);
@@ -1168,10 +1427,24 @@ impl<F: PrimeField> RegisterDecomposition<F> {
             Term::from(chunks[1]) * Term::from(1 << 8) + Term::from(chunks[0])
                 - Term::from(reg.0[0]),
         );
+        #[cfg(feature = "picus")]
+        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: picus_expr_from_num_circuit(chunks[1]) * PicusExpr::from_const(1 << 8)
+                + picus_expr_from_num_circuit(chunks[0])
+                - picus_expr_from_num_circuit(reg.0[0]),
+            rhs: PicusExpr::from_const(0),
+        });
         cs.add_constraint_allow_explicit_linear(
             Term::from(chunks[3]) * Term::from(1 << 8) + Term::from(chunks[2])
                 - Term::from(reg.0[1]),
         );
+        #[cfg(feature = "picus")]
+        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: picus_expr_from_num_circuit(chunks[3]) * PicusExpr::from_const(1 << 8)
+                + picus_expr_from_num_circuit(chunks[2])
+                - picus_expr_from_num_circuit(reg.0[1]),
+            rhs: PicusExpr::from_const(0),
+        });
 
         RegisterDecomposition {
             u16_limbs: [reg.0[0], reg.0[1]],
@@ -1213,7 +1486,7 @@ impl<F: PrimeField> RegisterDecompositionWithSign<F> {
     pub fn parse_reg<CS: Circuit<F>>(cs: &mut CS, reg: Register<F>) -> Self {
         let byte_0 = cs.add_variable();
         let low_word = reg.0[0].get_variable();
-        //setting values for overflow flags
+        // setting values for overflow flags
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let low_limb = placer.get_u16(low_word);
 
@@ -1225,6 +1498,16 @@ impl<F: PrimeField> RegisterDecompositionWithSign<F> {
 
         let mut byte_1 = Term::from(reg.0[0]) - Term::from(byte_0);
         byte_1.scale(F::from_u64_unchecked(1 << 8).inverse().unwrap());
+        #[cfg(feature = "picus")]
+        {
+            let byte_1_constraint = Constraint::from(byte_1.clone());
+            cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+                lhs: picus_expr_from_num_circuit(reg.0[0]),
+                rhs: PicusExpr::Variable(byte_0)
+                    + PicusExpr::from_const(1 << 8)
+                        * picus_expr_from_constraint(&byte_1_constraint),
+            });
+        }
 
         // for high we get high byte and sign as one lookup, and low - as constraint
         let [sign, byte_3] = cs.get_variables_from_lookup_constrained(
@@ -1233,6 +1516,12 @@ impl<F: PrimeField> RegisterDecompositionWithSign<F> {
         );
         let sign = Boolean::Is(sign);
         let byte_2 = Constraint::from(reg.0[1]) - (Term::from(byte_3) * Term::from(1 << 8));
+        #[cfg(feature = "picus")]
+        cs.add_picus_parallel_constraint(PicusStructuredConstraint::Eq {
+            lhs: picus_expr_from_num_circuit(reg.0[1]),
+            rhs: picus_expr_from_constraint(&byte_2)
+                + PicusExpr::from_const(1 << 8) * PicusExpr::Variable(byte_3),
+        });
 
         Self {
             u16_limbs: reg.0,

@@ -1,4 +1,8 @@
 use super::*;
+#[cfg(feature = "picus")]
+use crate::constraint::Constraint;
+#[cfg(feature = "picus")]
+use crate::cs::witness_placer::{WitnessMask, WitnessPlacer, WitnessTypeSet};
 use crate::types::Boolean;
 
 const IS_DIVISION_BIT: usize = 0;
@@ -24,6 +28,26 @@ impl<const SUPPORT_SIGNED: bool> InstructionFamilyBitmaskCircuitParser
                 Boolean::split_into_bitmask::<_, _, MUL_DIV_FAMILY_NUM_FLAGS>(cs, Num::Var(input));
             Self { inner }
         } else {
+            #[cfg(feature = "picus")]
+            let mut inner = {
+                let make_false_bit = |cs: &mut CS| {
+                    let var = cs.add_boolean_variable();
+                    let var_id = var.get_variable().unwrap();
+                    cs.add_constraint_allow_explicit_linear(Constraint::from(var_id));
+                    let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                        let false_value =
+                            <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
+                        placer.assign_mask(var_id, &false_value);
+                    };
+                    cs.set_values(value_fn);
+                    var
+                };
+                let inner: [Boolean; MUL_DIV_FAMILY_NUM_FLAGS] = std::array::from_fn(|_| {
+                    Boolean::Is(make_false_bit(cs).get_variable().unwrap())
+                });
+                inner
+            };
+            #[cfg(not(feature = "picus"))]
             let mut inner = [Boolean::Constant(false); MUL_DIV_FAMILY_NUM_FLAGS];
             let [is_div_bit, mul_low_or_divu_bit] =
                 Boolean::split_into_bitmask::<_, _, 2>(cs, Num::Var(input));
@@ -38,6 +62,11 @@ impl<const SUPPORT_SIGNED: bool> DivMulFamilyCircuitMask<SUPPORT_SIGNED> {
     // getters for our opcodes
     pub fn perform_division_group(&self) -> Boolean {
         self.inner[IS_DIVISION_BIT]
+    }
+
+    #[cfg(feature = "picus")]
+    pub fn get_inner_vars(&self) -> [Variable; MUL_DIV_FAMILY_NUM_FLAGS] {
+        self.inner.map(|b| b.get_variable().unwrap())
     }
 
     pub fn perform_rs1_signed(&self) -> Boolean {
