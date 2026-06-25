@@ -153,6 +153,8 @@ unsafe fn workload() -> ! {
         // Family 2 SLTI — signed less-than against a small immediate.
         let lt_imm = ((r as i32) < 5) as u32;
         slt_acc = slt_acc.wrapping_add(lt_imm);
+        let lt_neg_imm = ((r as i32) < -1) as u32;
+        slt_acc = slt_acc.wrapping_add(lt_neg_imm);
 
         // Family 2 branches — both signed and unsigned conditional flow.
         if r < 100u32 {

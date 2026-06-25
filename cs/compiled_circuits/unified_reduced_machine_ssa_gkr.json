@@ -2187,6 +2187,117 @@
   ],
   [
     {
+      "Integer": {
+        "U16Place": 9
+      }
+    },
+    {
+      "Bool": {
+        "Place": 20
+      }
+    },
+    {
+      "Bool": {
+        "Place": 21
+      }
+    },
+    {
+      "Bool": {
+        "Place": 22
+      }
+    },
+    {
+      "Bool": {
+        "Place": 23
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 42
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 1
+          },
+          "rhs": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 6
+          },
+          "rhs": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 7
+          },
+          "rhs": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 0
+      }
+    },
+    {
+      "Integer": {
+        "Select": {
+          "selector": {
+            "SubExpression": 3
+          },
+          "if_true": {
+            "U16SubExpression": 0
+          },
+          "if_false": {
+            "U16SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "WrappingAdd": {
+          "lhs": {
+            "U16SubExpression": 5
+          },
+          "rhs": {
+            "U16SubExpression": 10
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 59,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 11
+          }
+        },
+        "condition_subexpr_idx": 8
+      }
+    }
+  ],
+  [
+    {
       "Bool": {
         "Place": 20
       }
@@ -6642,11 +6753,6 @@
     },
     {
       "Field": {
-        "Place": 42
-      }
-    },
-    {
-      "Field": {
         "Place": 52
       }
     },
@@ -6658,6 +6764,11 @@
     {
       "Field": {
         "Place": 57
+      }
+    },
+    {
+      "Field": {
+        "Place": 59
       }
     },
     {
@@ -6680,7 +6791,7 @@
             "SubExpression": 1
           },
           "mul_1": {
-            "SubExpression": 8
+            "SubExpression": 11
           }
         }
       }
@@ -6695,7 +6806,7 @@
             "SubExpression": 2
           },
           "mul_1": {
-            "SubExpression": 8
+            "SubExpression": 11
           }
         }
       }
@@ -6710,7 +6821,7 @@
             "SubExpression": 3
           },
           "mul_1": {
-            "SubExpression": 8
+            "SubExpression": 11
           }
         }
       }
@@ -6725,7 +6836,7 @@
             "SubExpression": 4
           },
           "mul_1": {
-            "SubExpression": 8
+            "SubExpression": 11
           }
         }
       }
@@ -6834,7 +6945,7 @@
             "SubExpression": 25
           },
           "mul_1": {
-            "SubExpression": 9
+            "SubExpression": 8
           }
         }
       }
@@ -6866,7 +6977,7 @@
             "SubExpression": 28
           },
           "mul_1": {
-            "SubExpression": 10
+            "SubExpression": 9
           }
         }
       }
@@ -6898,7 +7009,7 @@
             "SubExpression": 31
           },
           "mul_1": {
-            "SubExpression": 11
+            "SubExpression": 10
           }
         }
       }
@@ -6925,7 +7036,7 @@
             "SubExpression": 33
           },
           "mul_1": {
-            "SubExpression": 9
+            "SubExpression": 8
           }
         }
       }
@@ -6952,7 +7063,7 @@
             "SubExpression": 35
           },
           "mul_1": {
-            "SubExpression": 10
+            "SubExpression": 9
           }
         }
       }
@@ -6979,7 +7090,7 @@
             "SubExpression": 37
           },
           "mul_1": {
-            "SubExpression": 11
+            "SubExpression": 10
           }
         }
       }
@@ -7006,7 +7117,7 @@
             "SubExpression": 39
           },
           "mul_1": {
-            "SubExpression": 9
+            "SubExpression": 8
           }
         }
       }
@@ -7033,7 +7144,7 @@
             "SubExpression": 41
           },
           "mul_1": {
-            "SubExpression": 10
+            "SubExpression": 9
           }
         }
       }
@@ -7060,7 +7171,7 @@
             "SubExpression": 43
           },
           "mul_1": {
-            "SubExpression": 11
+            "SubExpression": 10
           }
         }
       }
@@ -7087,7 +7198,7 @@
             "SubExpression": 45
           },
           "mul_1": {
-            "SubExpression": 9
+            "SubExpression": 8
           }
         }
       }
@@ -7114,7 +7225,7 @@
             "SubExpression": 47
           },
           "mul_1": {
-            "SubExpression": 10
+            "SubExpression": 9
           }
         }
       }
@@ -7141,7 +7252,7 @@
             "SubExpression": 49
           },
           "mul_1": {
-            "SubExpression": 11
+            "SubExpression": 10
           }
         }
       }
@@ -8116,11 +8227,6 @@
     },
     {
       "Field": {
-        "Place": 42
-      }
-    },
-    {
-      "Field": {
         "Place": 52
       }
     },
@@ -8132,6 +8238,11 @@
     {
       "Field": {
         "Place": 57
+      }
+    },
+    {
+      "Field": {
+        "Place": 59
       }
     },
     {
@@ -8205,7 +8316,7 @@
             "SubExpression": 1
           },
           "mul_1": {
-            "SubExpression": 5
+            "SubExpression": 8
           }
         }
       }
@@ -8220,7 +8331,7 @@
             "SubExpression": 2
           },
           "mul_1": {
-            "SubExpression": 5
+            "SubExpression": 8
           }
         }
       }
@@ -8235,7 +8346,7 @@
             "SubExpression": 3
           },
           "mul_1": {
-            "SubExpression": 5
+            "SubExpression": 8
           }
         }
       }
@@ -8250,7 +8361,7 @@
             "SubExpression": 4
           },
           "mul_1": {
-            "SubExpression": 5
+            "SubExpression": 8
           }
         }
       }
@@ -8359,7 +8470,7 @@
             "SubExpression": 28
           },
           "mul_1": {
-            "SubExpression": 6
+            "SubExpression": 5
           }
         }
       }
@@ -8391,7 +8502,7 @@
             "SubExpression": 31
           },
           "mul_1": {
-            "SubExpression": 7
+            "SubExpression": 6
           }
         }
       }
@@ -8423,7 +8534,7 @@
             "SubExpression": 34
           },
           "mul_1": {
-            "SubExpression": 8
+            "SubExpression": 7
           }
         }
       }
@@ -8450,7 +8561,7 @@
             "SubExpression": 36
           },
           "mul_1": {
-            "SubExpression": 6
+            "SubExpression": 5
           }
         }
       }
@@ -8477,7 +8588,7 @@
             "SubExpression": 38
           },
           "mul_1": {
-            "SubExpression": 7
+            "SubExpression": 6
           }
         }
       }
@@ -8504,7 +8615,7 @@
             "SubExpression": 40
           },
           "mul_1": {
-            "SubExpression": 8
+            "SubExpression": 7
           }
         }
       }
@@ -8531,7 +8642,7 @@
             "SubExpression": 42
           },
           "mul_1": {
-            "SubExpression": 6
+            "SubExpression": 5
           }
         }
       }
@@ -8558,7 +8669,7 @@
             "SubExpression": 44
           },
           "mul_1": {
-            "SubExpression": 7
+            "SubExpression": 6
           }
         }
       }
@@ -8585,7 +8696,7 @@
             "SubExpression": 46
           },
           "mul_1": {
-            "SubExpression": 8
+            "SubExpression": 7
           }
         }
       }
@@ -8612,7 +8723,7 @@
             "SubExpression": 48
           },
           "mul_1": {
-            "SubExpression": 6
+            "SubExpression": 5
           }
         }
       }
@@ -8639,7 +8750,7 @@
             "SubExpression": 50
           },
           "mul_1": {
-            "SubExpression": 7
+            "SubExpression": 6
           }
         }
       }
@@ -8666,7 +8777,7 @@
             "SubExpression": 52
           },
           "mul_1": {
-            "SubExpression": 8
+            "SubExpression": 7
           }
         }
       }
