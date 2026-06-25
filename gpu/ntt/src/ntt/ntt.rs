@@ -157,6 +157,20 @@ monomials_to_evals_compact!(ab_monomials_to_evals_first_10_stages_compact_kernel
 monomials_to_evals_compact!(ab_monomials_to_evals_first_11_stages_compact_kernel);
 monomials_to_evals_compact!(ab_monomials_to_evals_first_12_stages_compact_kernel);
 
+cuda_kernel!(
+    LdeIntermediate,
+    lde_intermediate,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    log_n: u32,
+    coset_index_base: u32,
+    coset_factor_shift: u32,
+    num_cols_per_coset: u32,
+    num_cosets_in_tile: u32,
+);
+
+lde_intermediate!(ab_lde_first_10_stages_kernel);
+
 pub fn evals_to_monomials_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
@@ -1212,6 +1226,76 @@ pub fn monomials_to_evals_2_pass(
     Ok(())
 }
 
+fn lde_intermediate(
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    outputs: &mut DeviceSlice<BF>,
+    log_n: usize,
+    log_lde_factor: usize,
+    cosets_in_tile: usize,
+    coset_index_base: usize,
+    num_cols_per_coset_stride: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let trace_len = 1 << log_n;
+    assert_eq!(inputs_matrix.rows(), trace_len);
+    assert_eq!(inputs_matrix.cols(), num_cols_per_coset_stride);
+    let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
+    let mut outputs_matrix = DeviceMatrixMut::new(outputs, trace_len);
+    let inputs_matrix = inputs_matrix.as_ptr_and_stride();
+    let outputs_matrix_const = outputs_matrix.as_ptr_and_stride();
+    let outputs_matrix_mut = outputs_matrix.as_mut_ptr_and_stride();
+    let log_k = 10;
+    const BLOCK_DIM_X: usize = 512;
+    let grid_dim_x = (1 << log_n) / BLOCK_DIM_X;
+    let grid_dim_y = num_cols_per_coset_stride;
+    let grid_dim: Dim3 = (grid_dim_x as u32, grid_dim_y as u32).into();
+    let config = CudaLaunchConfig::basic(grid_dim, BLOCK_DIM_X as u32, stream);
+    let args = LdeIntermediateArguments::new(
+        inputs_matrix,
+        outputs_matrix_mut,
+        log_n as u32,
+        coset_index_base as u32,
+        coset_factor_shift as u32,
+        num_cols_per_coset_stride as u32,
+        cosets_in_tile as u32,
+    );
+    LdeIntermediateFunction(ab_lde_first_10_stages_kernel).launch(&config, &args)?;
+    // Pass 2: noninitial_8 with start_stage = log_k.
+    assert!(
+        cosets_in_tile.is_power_of_two(),
+        "cosets_in_tile must be a power of 2 (got {cosets_in_tile})"
+    );
+    let log_cosets_in_tile = cosets_in_tile.trailing_zeros();
+    let threads_pass2 = 512;
+    let bf_vals_per_block_pass2 = 1 << 13;
+    let start_stage = log_k;
+    let num_block_exchg_regions = trace_len >> (start_stage + 8);
+    let block_exchg_region_size = 1 << (start_stage + 8);
+    let blocks_per_exchg_region = block_exchg_region_size / bf_vals_per_block_pass2;
+    assert_eq!(
+        blocks_per_exchg_region * num_block_exchg_regions,
+        trace_len / bf_vals_per_block_pass2
+    );
+    let cols_in_chunk = num_cols_per_coset_stride;
+    let grid_dim_pass2: Dim3 = (blocks_per_exchg_region as u32
+        * num_block_exchg_regions as u32
+        * cosets_in_tile as u32
+        * cols_in_chunk as u32)
+        .into();
+    let config_pass2 =
+        CudaLaunchConfig::basic(grid_dim_pass2, threads_pass2 as u32, stream);
+    let args_pass2 = StridedTilesStagesArguments::new(
+        outputs_matrix_const,
+        outputs_matrix_mut,
+        log_n as i32,
+        start_stage as i32,
+        cols_in_chunk as i32,
+        log_cosets_in_tile as i32,
+    );
+    StridedTilesStagesFunction(ab_monomials_to_evals_noninitial_8_stages_kernel)
+        .launch(&config_pass2, &args_pass2)
+}
+
 /// Multi-coset variant of `bitreversed_monomials_to_natural_evals`.
 ///
 /// Runs the same forward NTT across the full power-of-two LDE: all
@@ -1289,10 +1373,20 @@ pub fn bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range(
         num_cosets.is_power_of_two(),
         "num_cosets must be a power of 2 (got {num_cosets})"
     );
-    // assert!(
-    //     (coset_index_base == 0) || coset_index_base.is_power_of_two(),
-    //     "coset_index_base must be a power of 2 (got {coset_index_base})"
-    // );
+    // Temporary for testing
+    if log_n == 18 {
+        let result = lde_intermediate(
+            inputs_matrix,
+            outputs,
+            log_n,
+            log_lde_factor,
+            num_cosets,
+            coset_index_base,
+            num_cols_per_coset_stride,
+            stream,
+        );
+        return result;
+    }
     bitreversed_monomials_to_natural_evals_multi_coset_impl(
         inputs_matrix,
         outputs,
