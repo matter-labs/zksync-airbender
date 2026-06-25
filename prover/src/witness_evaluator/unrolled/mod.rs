@@ -12,6 +12,26 @@ mod family_circuits;
 
 pub use self::family_circuits::*;
 
+/// Number of real events to expose in the final replay chunk.
+///
+/// The replay helpers allocate `num_calls.div_ceil(cycles_per_circuit)` chunks and
+/// fill every full chunk with `cycles_per_circuit` events. The last chunk holds the
+/// remaining events. When `num_calls` is a positive exact multiple of
+/// `cycles_per_circuit`, the last chunk is *full*, so a plain `num_calls %
+/// cycles_per_circuit` (which is `0`) would wrongly truncate it to length zero and
+/// trip the `sum(len) == num_calls` assertion. Treat a zero remainder as a full
+/// chunk instead. Callers must have already handled `num_calls == 0`.
+#[inline]
+fn last_chunk_init_size(num_calls: usize, cycles_per_circuit: usize) -> usize {
+    debug_assert!(num_calls > 0);
+    let remainder = num_calls % cycles_per_circuit;
+    if remainder == 0 {
+        cycles_per_circuit
+    } else {
+        remainder
+    }
+}
+
 pub fn run_unrolled_machine<
     C: MachineConfig,
     A: GoodAllocator,
@@ -778,7 +798,7 @@ pub(crate) fn replay_non_mem<
         FAMILY_IDX,
     );
 
-    let last_chunk_init_size = num_calls % cycles_per_circuit;
+    let last_chunk_init_size = last_chunk_init_size(num_calls, cycles_per_circuit);
 
     // cast to init and return
 
@@ -1021,7 +1041,7 @@ pub(crate) fn replay_mem<
         FAMILY_IDX,
     );
 
-    let last_chunk_init_size = num_calls % cycles_per_circuit;
+    let last_chunk_init_size = last_chunk_init_size(num_calls, cycles_per_circuit);
 
     // cast to init and return
 
@@ -1248,7 +1268,7 @@ pub(crate) fn replay_generic_work<
         work_type_idx,
     );
 
-    let last_chunk_init_size = num_calls % cycles_per_circuit;
+    let last_chunk_init_size = last_chunk_init_size(num_calls, cycles_per_circuit);
 
     // cast to init and return
 
@@ -1270,4 +1290,47 @@ pub(crate) fn replay_generic_work<
     assert_eq!(result.iter().map(|el| el.len()).sum::<usize>(), num_calls);
 
     result
+}
+
+#[cfg(test)]
+mod replay_chunking_tests {
+    use super::last_chunk_init_size;
+
+    // Regression test: a valid execution whose family/delegation count exactly
+    // fills the final configured chunk must reconstruct a FULL final chunk, not
+    // truncate it to length zero (which previously tripped the
+    // `sum(len) == num_calls` assertion in replay_non_mem / replay_mem /
+    // replay_generic_work). See the chunk-construction loops in this module.
+    #[test]
+    fn last_chunk_is_full_on_exact_multiples() {
+        // Partial final chunk: unchanged behaviour (remainder kept as-is).
+        assert_eq!(last_chunk_init_size(7, 4), 3);
+        assert_eq!(last_chunk_init_size(1, 4), 1);
+
+        // Exact positive multiples: the final chunk is full, never zero.
+        assert_eq!(last_chunk_init_size(4, 4), 4);
+        assert_eq!(last_chunk_init_size(8, 4), 4);
+        assert_eq!(last_chunk_init_size(1, 1), 1);
+        // setups::add_sub_lui_auipc_mop::NUM_CYCLES == (1 << 24) - 1
+        let add_sub_num_cycles = (1usize << 24) - 1;
+        assert_eq!(
+            last_chunk_init_size(add_sub_num_cycles, add_sub_num_cycles),
+            add_sub_num_cycles
+        );
+
+        // The reconstructed chunk-length total must always equal num_calls, which
+        // is exactly the invariant the replay helpers assert.
+        for cycles_per_circuit in [1usize, 3, 4, 16, (1usize << 24) - 1] {
+            for k in 1..=3usize {
+                let num_calls = k * cycles_per_circuit;
+                let num_circuits = num_calls.div_ceil(cycles_per_circuit);
+                let total = (num_circuits - 1) * cycles_per_circuit
+                    + last_chunk_init_size(num_calls, cycles_per_circuit);
+                assert_eq!(
+                    total, num_calls,
+                    "cycles_per_circuit={cycles_per_circuit}, k={k}"
+                );
+            }
+        }
+    }
 }
