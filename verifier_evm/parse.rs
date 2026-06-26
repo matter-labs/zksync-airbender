@@ -921,8 +921,8 @@ fn main() {
 
         assert_eq!(running_output_counter, if DEBUG_NATURAL_GATE_ORDER { previous_input_count } else { 0 });
         if i > 0 {
-            previous_input_count = intermediate_layer_width.unwrap();
             assert!(cached_relations.len() == 0);
+            previous_input_count = intermediate_layer_width.unwrap();
         } else {
             let (l0_memvars, l0_witvars, l0_setupvars, l0_cachevars) = layer0_group_widths;
             let (running_max_memvar, running_max_witvar, running_max_setupvar, running_max_cachevar) = running_max_group_offsets;
@@ -935,6 +935,7 @@ fn main() {
             assert_group_width(running_max_witvar, l0_witvars);
             assert_group_width(running_max_setupvar, l0_setupvars);
             assert_group_width(running_max_cachevar, l0_cachevars + injected_virtualpoly_relations.len());
+            previous_input_count = l0_memvars + l0_witvars + l0_setupvars;
         }
 
 

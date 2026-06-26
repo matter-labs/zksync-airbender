@@ -1075,13 +1075,13 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
     mstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
 
 
-    // POINT CLAIMS BATCH (72 POINTS)
-    let points := 72
+    // POINT CLAIMS BATCH (113 POINTS)
+    let points := 113
     let is_odd := mod(points, 2)
     if is_odd {
         next_claim := shr(128, calldataload(add(ptr, mul(16, sub(points, 1)))))
     }
-    next_alpha := transcript72to1(ptr)
+    next_alpha := transcript113to1(ptr)
     let even_points := sub(points, is_odd)
     let pairs := shr(1, even_points)
     for { let pair := sub(pairs, 1) } lt(pair, pairs) { pair := sub(pair, 1) } {
@@ -1095,7 +1095,13 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
     next_ptr := add(ptr, mul(16, points))
 }
 
-// SKIPPING TRANSCRIPT FN transcript72to1 FOR LAYER 0 -- ALREADY AVAILABLE
+function transcript113to1(ptr) -> alpha {
+    let input_bytes := mul(113, 16)
+    calldatacopy(add(SEED_PTR, 32), ptr, input_bytes)
+    let seed := keccak256(SEED_PTR, add(32, input_bytes))
+    mstore(SEED_PTR, seed)
+    alpha := shr(128, seed)
+}
 
 function gkr_memrel_compress(address_space, addr_low, addr_high, ts_low, ts_high, val_low, val_high) -> compressed {
     compressed := add(mload(add(MEMORY_CHALLS_PTR, 192)), address_space)
