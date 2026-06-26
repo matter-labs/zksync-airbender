@@ -367,6 +367,28 @@ fn should_expand_policy_demand(
     }
 }
 
+// Reload-vs-recompute for a reloadable CachedRootOutput. Returns true = RELOAD
+// (re-read the backing, do NOT expand the producing sub-cone), false = RECOMPUTE.
+//
+// DESIGN (closes OQ3): the decision is a PER-SITE genome policy, NOT a residency-
+// aware runtime computation, and that is deliberate on two grounds:
+//   1. State-dependence is already expressed per site. A DemandSite is
+//      (root_occurrence, consumer, input_index, value), so the SAME value demanded
+//      in two different cones gets two DIFFERENT `recovery_bias` genes. Residency at
+//      a demand point is a function of order + context, and the site encodes that
+//      context — so the optimizer, tuning per-site recovery_bias, learns a
+//      context- (hence residency-) adapted decision. (See the per-site divergence
+//      test `recovery_policy_is_per_site_not_global`.)
+//   2. The decision must be residency-BLIND to keep the liveness pre-count
+//      (`remaining_demand_counts`, residency-free) consistent with the runtime
+//      consumption (`consume_policy_demands`): both call this function, so it must
+//      be a pure function of (value, site, genome). A residency-aware runtime
+//      decision would expand cones the pre-count never counted → counter underflow.
+//      (This is the same shielding-blind hazard that the inner_dp two-phase fix
+//      resolved — eviction here is genome-keep-score driven, NOT Belady, so there
+//      is no next-use optimality to preserve, only liveness consistency.)
+// `recompute_traffic_for` is therefore the zero-bias PRIOR (an empty-cache full-cone
+// estimate); recovery_bias shifts it per site and the optimizer corrects it.
 fn choose_reload_policy(
     inst: &OracleInstance,
     genome: &Genome,
@@ -1742,6 +1764,63 @@ mod tests {
 
         assert_eq!(score.traffic, 4);
         assert_eq!(score.instrs, 2);
+    }
+
+    #[test]
+    fn recovery_policy_is_per_site_not_global() {
+        // Closes OQ3 (M1): the reload-vs-recompute decision is a PER-SITE policy, so
+        // the SAME value can take OPPOSITE policies at two different demand sites —
+        // the structural mechanism by which the genome adapts the decision to context
+        // (≈ residency), with no residency-aware runtime computation needed.
+        //
+        // V = node 1 = ext Add{a} (width 4, reloadable root). reload(V)=width 4;
+        // recompute(V)=re-read base leaf a (width 1). At budget 0, V is never cached,
+        // so each reuse independently reloads (recovery_bias 1.0 → 4*1 >= 4-1) or
+        // recomputes (bias 0.0 → cheaper recompute wins). V is reused at R1=Add{V,c}
+        // and R2=Add{V,d}. Per-reuse cost: recompute = a(1)+V-Add instr; reload = 4.
+        let inst = OracleInstance {
+            budget: 0,
+            reloadable_values: vec![1],
+            roots: vec![1, 3, 5],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),     // a
+                n(1, NodeKind::Add, 4, false, vec![0]),    // V (ext root output)
+                n(2, NodeKind::Read, 1, true, vec![]),     // c
+                n(3, NodeKind::Add, 4, false, vec![1, 2]), // R1 reuses V
+                n(4, NodeKind::Read, 1, true, vec![]),     // d
+                n(5, NodeKind::Add, 4, false, vec![1, 4]), // R2 reuses V
+            ],
+        };
+        let sites = enumerate_demand_sites(&inst);
+        let v_at = |consumer: u32| -> usize {
+            sites
+                .iter()
+                .position(|s| s.value == 1 && s.consumer == consumer)
+                .unwrap_or_else(|| panic!("no V-demand site at consumer {consumer}"))
+        };
+        let (r1_site, r2_site) = (v_at(3), v_at(5));
+
+        let mut both_recompute = Genome::neutral(&inst, &sites);
+        both_recompute.recovery_bias[r1_site] = 0.0;
+        both_recompute.recovery_bias[r2_site] = 0.0;
+
+        let mut both_reload = Genome::neutral(&inst, &sites);
+        both_reload.recovery_bias[r1_site] = 1.0;
+        both_reload.recovery_bias[r2_site] = 1.0;
+
+        let mut mixed = Genome::neutral(&inst, &sites);
+        mixed.recovery_bias[r1_site] = 1.0; // reload at R1
+        mixed.recovery_bias[r2_site] = 0.0; // recompute at R2
+
+        let rc = score_candidate(&inst, &sites, &both_recompute);
+        let rl = score_candidate(&inst, &sites, &both_reload);
+        let mx = score_candidate(&inst, &sites, &mixed);
+
+        // Three DISTINCT outcomes prove each site's policy is applied independently;
+        // mixed lands strictly between, with the per-site reload/recompute split.
+        assert_eq!((rc.traffic, rc.instrs), (5, 5), "both-recompute");
+        assert_eq!((rl.traffic, rl.instrs), (11, 3), "both-reload");
+        assert_eq!((mx.traffic, mx.instrs), (8, 4), "mixed (R1 reload, R2 recompute)");
     }
 
     #[test]
