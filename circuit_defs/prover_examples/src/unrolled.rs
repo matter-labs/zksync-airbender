@@ -1892,7 +1892,7 @@ pub(crate) mod test {
                         _,
                         DebugErrorCreator,
                         true,
-                    >(&mut i);
+                    >(&mut it);
                 dbg!(&verification_result);
                 assert!(verification_result.is_ok());
             })

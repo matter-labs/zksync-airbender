@@ -166,6 +166,11 @@ where
                 prev_top_bit = *top_bit as i32;
             }
             it_circuits_seen += 1;
+        } else {
+            // we ask for conventional values
+            for top_bit in proof_output.inits_and_teardowns_top_bits.iter() {
+                assert_eq!(*top_bit, 0);
+            }
         }
     }
     assert_eq!(it_circuits_seen, num_it_circuits);

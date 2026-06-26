@@ -143,6 +143,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
         recursion_chain_hash: None,
         recursion_chain_preimage: None,
         pow_challenge: 0,
+        num_it_circuits: None,
     };
 
     let mut risc_v_setup_params = BTreeMap::new();
@@ -343,6 +344,8 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
         num_teardown_sets,
         Some((1 << 27) / 4), // 128Mb
     );
+
+    program_proof.num_it_circuits = Some(inits_and_teardown_chunks.len() as u32);
 
     assert!(inits_and_teardown_chunks.len() <= num_circuits_to_prove);
     let num_dummy_inits_and_teardowns = num_circuits_to_prove - inits_and_teardown_chunks.len();
@@ -914,5 +917,49 @@ pub(crate) mod test {
         bincode_serialize_to_file(&program_proof, "tmp_unified_proof.bin");
         let setups: Vec<_> = setups.into_iter().map(|(_, v)| v).collect();
         bincode_serialize_to_file(&setups, "tmp_unified_setup.bin");
+    }
+
+    #[cfg(feature = "verifiers")]
+    #[test]
+    #[ignore = "manual heavy proving test"]
+    #[serial_test::serial(prover_examples_proof_artifacts)]
+    fn test_verify_unified_simple_fib() {
+        skip_if_ci!();
+        use crate::bincode_deserialize_from_file;
+        use full_statement_verifier::program_proof::ProgramProof;
+        use full_statement_verifier::unrolled_circuit_params::NUM_BASE_LAYER_CIRCUITS;
+        use setups::*;
+        use verifier_common::errors::DebugErrorCreator;
+
+        let program_proof: ProgramProof = bincode_deserialize_from_file("tmp_unified_proof.bin");
+        let risc_v_setups: Vec<UnrolledCircuitSetupParams> =
+            bincode_deserialize_from_file("tmp_unified_setup.bin");
+        assert_eq!(risc_v_setups.len(), 1);
+
+        let responses = program_proof.flatten_unified_for_verification();
+        std::thread::Builder::new()
+            .name("verifier thread".to_string())
+            .stack_size(1 << 27)
+            .spawn(move || {
+                let families_setups: Vec<u32> = risc_v_setups
+                    .iter()
+                    .map(|el| MerkleTreeCap::flatten_single(&el.setup_caps).to_vec())
+                    .flatten()
+                    .collect();
+
+                let mut it = families_setups.into_iter().chain(responses.into_iter());
+
+                let verification_result =
+                    full_statement_verifier::unified_circuit_statement::verify_unified_circuit_base_layer::<
+                        _,
+                        DebugErrorCreator,
+                        true,
+                    >(&mut it);
+                dbg!(&verification_result);
+                assert!(verification_result.is_ok());
+            })
+            .expect("must spawn")
+            .join()
+            .expect("must verify");
     }
 }
