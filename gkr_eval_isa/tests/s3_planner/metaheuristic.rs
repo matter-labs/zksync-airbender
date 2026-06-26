@@ -14,6 +14,12 @@ const CACHE_FAMILY_QUOTA: usize = 64;
 const TRACE_GUIDED_BIAS: f64 = 0.125;
 const CACHE_PLATEAU_STEPS: usize = 4;
 const OPTIMIZER_BEAM_WIDTH: usize = 8;
+/// H3: fixed per-iteration neighbor-batch cap, INDEPENDENT of the eval budget. The
+/// root-insert move family is O(roots^2); without a fixed cap the first batch at
+/// production scale (hundreds of roots) consumes the whole `eval_budget`, so the
+/// local search degenerates to ~one greedy step. A constant cap funds many
+/// iterations regardless of root count.
+const NEIGHBOR_BATCH_CAP: usize = 128;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ValueClass {
@@ -2466,6 +2472,7 @@ mod tests {
         best_genome: Genome,
         best_score: CandidateScore,
         evals: usize,
+        iterations: usize,
         accepted: AcceptedMoves,
         family_stats: MoveFamilyStats,
     }
@@ -3008,13 +3015,21 @@ mod tests {
         let mut plateau_remaining = CACHE_PLATEAU_STEPS;
         let mut accepted = AcceptedMoves::default();
         let mut family_stats = MoveFamilyStats::default();
+        let mut iterations = 0usize;
 
         while evals < eval_budget {
-            let remaining = eval_budget - evals;
+            // H3: cap each batch to a FIXED branching factor, independent of the
+            // remaining eval budget. The root-insert family is O(roots^2); bounding it
+            // only by `remaining` let the FIRST batch consume the whole budget at
+            // production scale (hundreds of roots), so the search did ~one greedy step.
+            // A fixed cap makes the budget fund many iterations (the beam reuses this
+            // batch per state, so it inherits the fix).
+            let remaining = (eval_budget - evals).min(NEIGHBOR_BATCH_CAP);
             let neighbors = neighbor_entries(inst, sites, &current_genome, remaining);
             if neighbors.is_empty() {
                 break;
             }
+            iterations += 1;
             evals += neighbors.len();
             let neighbor_scores =
                 score_genomes_parallel(inst, sites, neighbors, default_worker_count());
@@ -3055,6 +3070,7 @@ mod tests {
             best_genome,
             best_score,
             evals,
+            iterations,
             accepted,
             family_stats,
         }
@@ -3095,6 +3111,60 @@ mod tests {
             smoke_genome_population(inst, sites, seed_count),
             eval_budget,
         )
+    }
+
+    /// Many-root synthetic instance: `r` root Adds over a shared pool of `p` base
+    /// reads, so the root-insert move family is O(r^2). With r=64 that is ~4096
+    /// candidate moves — larger than the eval budgets below, which is exactly the
+    /// production regime where an uncapped batch saturates the budget in one step.
+    fn many_root_shared_reads(p: usize, r: usize, budget: usize) -> OracleInstance {
+        let mut nodes = Vec::with_capacity(p + r);
+        for id in 0..p {
+            nodes.push(n(id as u32, NodeKind::Read, 1, true, vec![]));
+        }
+        let mut roots = Vec::with_capacity(r);
+        for i in 0..r {
+            let id = (p + i) as u32;
+            let children: Vec<u32> = (0..4).map(|k| ((i + k) % p) as u32).collect();
+            nodes.push(n(id, NodeKind::Add, 1, false, children));
+            roots.push(id);
+        }
+        OracleInstance {
+            budget,
+            reloadable_values: vec![],
+            roots,
+            nodes,
+        }
+    }
+
+    #[test]
+    fn optimizer_iterations_grow_with_eval_budget_on_many_roots() {
+        // H3: with the fixed NEIGHBOR_BATCH_CAP a given eval budget funds MANY local-
+        // search iterations even when the O(roots^2) root-insert family alone exceeds
+        // the budget. Without the cap the first batch saturates the budget and the
+        // search degenerates to ~one greedy step regardless of how much budget is left.
+        let inst = many_root_shared_reads(12, 64, 4);
+        let sites = enumerate_demand_sites(&inst);
+        assert!(inst.roots.len() * inst.roots.len() > 3000, "instance must be O(roots^2)-heavy");
+
+        let small = optimize_from_population(&inst, &sites, smoke_genome_population(&inst, &sites, 4), 600);
+        let large = optimize_from_population(&inst, &sites, smoke_genome_population(&inst, &sites, 4), 3000);
+
+        eprintln!(
+            "[H3] small: iters={} evals={}  large: iters={} evals={}",
+            small.iterations, small.evals, large.iterations, large.evals
+        );
+        assert!(
+            small.iterations >= 3,
+            "fixed cap must fund several iterations even at a small budget (got {})",
+            small.iterations
+        );
+        assert!(
+            large.iterations > small.iterations,
+            "iterations must grow with eval budget (small={} large={})",
+            small.iterations,
+            large.iterations
+        );
     }
 
     fn neighbor_entries(
