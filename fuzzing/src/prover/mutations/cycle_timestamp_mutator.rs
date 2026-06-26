@@ -1,0 +1,36 @@
+use rand::rngs::StdRng;
+use riscv_transpiler::machine_mode_only_unrolled::MemoryOpcodeTracingDataWithTimestamp;
+use riscv_transpiler::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
+
+use crate::prover::mutations::choose_row_mut;
+use crate::prover::mutations::mutate_timestamp;
+use crate::prover::mutations::Mutator;
+use crate::rv32im::prover::circuits::ProofInputs;
+
+pub struct CycleTimestampMutator;
+
+impl Mutator for CycleTimestampMutator {
+    fn name(&self) -> &'static str {
+        "cycle timestamp mutator"
+    }
+
+    fn mutate_non_mem_inputs(
+        &self,
+        input: &mut ProofInputs<NonMemoryOpcodeTracingDataWithTimestamp>,
+        rng: &mut StdRng,
+    ) {
+        if let Some(row) = choose_row_mut(input.buffer.as_mut_slice(), rng) {
+            mutate_timestamp(&mut row.cycle_timestamp, rng);
+        }
+    }
+
+    fn mutate_mem_inputs(
+        &self,
+        input: &mut ProofInputs<MemoryOpcodeTracingDataWithTimestamp>,
+        rng: &mut StdRng,
+    ) {
+        if let Some(row) = choose_row_mut(input.buffer.as_mut_slice(), rng) {
+            mutate_timestamp(&mut row.cycle_timestamp, rng);
+        }
+    }
+}

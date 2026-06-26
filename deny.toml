@@ -36,6 +36,11 @@ allow = [
     "CC0-1.0",
 ]
 exceptions = [
+    # Unicorn Engine (GPL-2.0) is used only as the reference VM for differential
+    # fuzzing in the `fuzzing` crate; it is a dev/test tool and is not part of any
+    # distributed artifact.
+    { crate = "unicorn-engine", allow = ["GPL-2.0"] },
+    { crate = "unicorn-engine-sys", allow = ["GPL-2.0"] },
 ]
 
 # Sigh

@@ -194,6 +194,29 @@ jobs:
       - name: Run bigint test on RISC-V
         run: ./target/release/cli run -b examples/bigint_with_control/app.bin --text examples/bigint_with_control/app.text --cycles 1000000 --expected-results 0,0,0,0,0,0,0,0
 
+  # The `fuzzing` crate is not a default workspace member, so it is not built by
+  # the other jobs. This job is a rot-check that the harness still compiles
+  # against the current tree (build only; actually running the fuzzers is not
+  # part of CI). It needs cmake + a C toolchain for `unicorn-engine-sys`, which
+  # the GitHub-hosted runner provides.
+  build_fuzzing:
+    name: build_fuzzing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          rustflags: ""
+      - name: Setup
+        run: rustup set profile minimal
+      - name: Build fuzzing harness
+        # Disable debug info: it is unnecessary for a build check, keeps the build
+        # fast, and avoids a known rustc crash on the prover crate under full debuginfo.
+        env:
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: cargo build -p fuzzing --all-features
+
   # Keep branch protection tied to one stable check name even as the
   # underlying CI fan-out changes over time.
   pr-checks:

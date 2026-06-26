@@ -66,7 +66,7 @@ pub mod keccak_special5_delegation_with_transpiler {
 
 use super::*;
 
-mod unrolled;
+pub mod unrolled;
 
 mod circuit;
 #[cfg(test)]
