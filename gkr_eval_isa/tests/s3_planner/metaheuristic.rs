@@ -4,6 +4,7 @@
 //! `.agents/specs/2026-06-25-metaheuristic-ordering-design.md`. It must stay out
 //! of the production compiler path.
 
+use super::forkset;
 use crate::s3_gap::instance::{NodeKind, OracleInstance};
 
 pub const ROOT_OUTPUT_INPUT_INDEX: u32 = u32::MAX;
@@ -307,6 +308,11 @@ struct Replay<'a> {
     sites: &'a [DemandSite],
     genome: &'a Genome,
     classes: Vec<ValueClass>,
+    fork_info: forkset::ForkInfo,
+    /// Sorted `cone(root)` per distinct root *value* (candidate-independent); empty
+    /// slot = not a root value / not yet needed. Used by the cone-fit (C) gate to tell
+    /// in-cone residents (shield) from outsiders (occupy budget during the cone).
+    cone_of: Vec<Vec<u32>>,
     remaining_demands: Vec<usize>,
     remaining_site_demands: Vec<usize>,
     completed_root: Vec<bool>,
@@ -315,7 +321,6 @@ struct Replay<'a> {
     resident_keep_site: Vec<Option<usize>>,
     borrowed: Vec<u32>,
     resident_width: usize,
-    transient_width: usize,
     traffic: u64,
     instrs: u64,
     feasible: bool,
@@ -408,11 +413,20 @@ impl<'a> Replay<'a> {
     ) -> Self {
         let (remaining_demands, remaining_site_demands) =
             Self::remaining_demand_counts(inst, sites, genome, order);
+        let mut cone_of: Vec<Vec<u32>> = vec![Vec::new(); inst.nodes.len()];
+        for &root_occurrence in order {
+            let rv = inst.roots[root_occurrence] as usize;
+            if cone_of[rv].is_empty() {
+                cone_of[rv] = forkset::cone(inst, rv as u32); // sorted, always ≥1 (the root)
+            }
+        }
         Self {
             inst,
             sites,
             genome,
             classes,
+            fork_info: forkset::analyze(inst),
+            cone_of,
             remaining_demands,
             remaining_site_demands,
             completed_root: vec![false; inst.nodes.len()],
@@ -421,7 +435,6 @@ impl<'a> Replay<'a> {
             resident_keep_site: vec![None; inst.nodes.len()],
             borrowed: vec![0; inst.nodes.len()],
             resident_width: 0,
-            transient_width: 0,
             traffic: 0,
             instrs: 0,
             feasible: true,
@@ -560,21 +573,20 @@ impl<'a> Replay<'a> {
             }
         }
 
+        // Streaming model: computing an instr node leaves its result in the separate
+        // accumulator register (not the cell budget); operands stream in. The only cell
+        // pressure — the single-accumulator spill on nested folds — is charged once per
+        // cone by `enforce_cone_fit`, not per node here.
         if is_instr_node(self.inst.nodes[node_id as usize].kind) {
-            let root_value = self.inst.roots[root_occurrence];
-            let transient = node_id != root_value;
-            if transient && !self.alloc_transient(self.inst.nodes[node_id as usize].width as usize)
-            {
-                return;
-            }
             self.instrs += 1;
-            if transient {
-                self.free_transient(self.inst.nodes[node_id as usize].width as usize);
-            }
         }
     }
 
     fn compute_root(&mut self, root_occurrence: usize) {
+        if !self.feasible {
+            return;
+        }
+        self.enforce_cone_fit(root_occurrence);
         if !self.feasible {
             return;
         }
@@ -790,11 +802,27 @@ impl<'a> Replay<'a> {
         }
     }
 
-    fn alloc_transient(&mut self, width: usize) -> bool {
-        while self.used_width() + width > self.inst.budget {
-            let Some(victim) = self.lowest_keep_resident() else {
+    /// (C) cone-fit: computing `root`'s cone needs its single-accumulator spill peak
+    /// (`fork_info.peak[root]`) of cells on top of the resident values that are
+    /// OUTSIDERS to this cone. In-cone residents shield their subtrees and are folded
+    /// into the conservative static peak (matching `inner_dp`'s (C) check), so they are
+    /// not charged here. Evict the lowest-keep unborrowed outsider until it fits; if the
+    /// peak alone exceeds the budget, or no outsider can be freed, the cone cannot be
+    /// scheduled.
+    fn enforce_cone_fit(&mut self, root_occurrence: usize) {
+        let root = self.inst.roots[root_occurrence];
+        let cone_peak = self.fork_info.peak[root as usize] as usize;
+        if cone_peak > self.inst.budget {
+            self.feasible = false;
+            return;
+        }
+        loop {
+            if self.outsider_resident_width(root) + cone_peak <= self.inst.budget {
+                return;
+            }
+            let Some(victim) = self.lowest_keep_outsider(root) else {
                 self.feasible = false;
-                return false;
+                return;
             };
             let victim_last_site = self.resident_keep_site[victim];
             self.resident[victim] = false;
@@ -805,19 +833,40 @@ impl<'a> Replay<'a> {
                 victim: victim as u32,
                 victim_last_site,
                 victim_remaining: self.remaining_demands[victim],
-                cause: EvictCause::Transient { width },
+                cause: EvictCause::Transient { width: cone_peak },
             });
         }
-        self.transient_width += width;
-        true
     }
 
-    fn free_transient(&mut self, width: usize) {
-        self.transient_width -= width;
+    fn is_outsider(&self, root: u32, value: usize) -> bool {
+        self.cone_of[root as usize].binary_search(&(value as u32)).is_err()
+    }
+
+    fn outsider_resident_width(&self, root: u32) -> usize {
+        (0..self.resident.len())
+            .filter(|&v| self.resident[v] && self.is_outsider(root, v))
+            .map(|v| self.inst.nodes[v].width as usize)
+            .sum()
+    }
+
+    fn lowest_keep_outsider(&self, root: u32) -> Option<usize> {
+        self.resident
+            .iter()
+            .enumerate()
+            .filter(|&(idx, &is_resident)| {
+                is_resident && self.borrowed[idx] == 0 && self.is_outsider(root, idx)
+            })
+            .min_by(|&(a, _), &(b, _)| {
+                self.resident_keep[a]
+                    .partial_cmp(&self.resident_keep[b])
+                    .expect("resident keep score must be finite")
+                    .then(a.cmp(&b))
+            })
+            .map(|(idx, _)| idx)
     }
 
     fn used_width(&self) -> usize {
-        self.resident_width + self.transient_width
+        self.resident_width
     }
 
     fn borrow_value(&mut self, value: u32) {
@@ -1255,6 +1304,8 @@ mod tests {
 
     #[test]
     fn root_output_can_be_cached_at_completion_for_later_reuse() {
+        // budget 1: under the streaming model the Add folds over reads at peak 0, so
+        // budget 1 is feasible — the single resident cell holds the cached root output.
         let inst = OracleInstance {
             budget: 1,
             reloadable_values: vec![2],
@@ -1655,77 +1706,14 @@ mod tests {
         assert_eq!(score.evicted, 1);
     }
 
-    #[test]
-    fn transient_compute_storage_evicts_residents_from_same_pool() {
-        let inst = OracleInstance {
-            budget: 2,
-            reloadable_values: vec![],
-            roots: vec![2, 3, 5, 6, 7],
-            nodes: vec![
-                n(0, NodeKind::Read, 1, true, vec![]),
-                n(1, NodeKind::Read, 1, true, vec![]),
-                n(2, NodeKind::Add, 1, false, vec![0]),
-                n(3, NodeKind::Add, 1, false, vec![1]),
-                n(4, NodeKind::Add, 2, false, vec![]),
-                n(5, NodeKind::Add, 1, false, vec![4]),
-                n(6, NodeKind::Add, 1, false, vec![0]),
-                n(7, NodeKind::Add, 1, false, vec![1]),
-            ],
-        };
-        let sites = enumerate_demand_sites(&inst);
-        let mut genome = Genome::neutral(&inst, &sites);
-        for (idx, site) in sites.iter().enumerate() {
-            genome.admit_bias[idx] = if site.value == 4 { -1.0 } else { 1.0 };
-            genome.keep_after_use_bias[idx] = match site.value {
-                0 => -1.0,
-                1 => 1.0,
-                _ => 0.0,
-            };
-        }
-
-        let score = score_candidate(&inst, &sites, &genome);
-
-        assert_eq!(score.traffic, 4);
-        assert_eq!(score.instrs, 6);
-        assert_eq!(score.evicted, 2);
-        assert!(score.feasible);
-    }
-
-    #[test]
-    fn operation_releases_consumed_operand_before_later_child_allocation() {
-        let inst = OracleInstance {
-            budget: 5,
-            reloadable_values: vec![],
-            roots: vec![2, 3, 5, 6, 7],
-            nodes: vec![
-                n(0, NodeKind::Read, 4, true, vec![]),
-                n(1, NodeKind::Read, 1, true, vec![]),
-                n(2, NodeKind::Add, 4, false, vec![0]),
-                n(3, NodeKind::Add, 1, false, vec![1]),
-                n(4, NodeKind::Add, 2, false, vec![]),
-                n(5, NodeKind::Add, 4, false, vec![0, 4]),
-                n(6, NodeKind::Add, 4, false, vec![0]),
-                n(7, NodeKind::Add, 1, false, vec![1]),
-            ],
-        };
-        let sites = enumerate_demand_sites(&inst);
-        let mut genome = Genome::neutral(&inst, &sites);
-        for (idx, site) in sites.iter().enumerate() {
-            genome.admit_bias[idx] = if site.value == 4 { -1.0 } else { 1.0 };
-            genome.keep_after_use_bias[idx] = match site.value {
-                0 => -1.0,
-                1 => 0.0,
-                _ => 0.0,
-            };
-        }
-
-        let score = score_candidate(&inst, &sites, &genome);
-
-        assert_eq!(score.traffic, 9);
-        assert_eq!(score.instrs, 6);
-        assert_eq!(score.evicted, 1);
-        assert!(score.feasible);
-    }
+    // NOTE: `transient_compute_storage_evicts_residents_from_same_pool` and
+    // `operation_releases_consumed_operand_before_later_child_allocation` were removed
+    // with the streaming cost-model correction: they asserted eviction counts driven by
+    // the per-node transient pool (`alloc_transient`), which no longer exists — instr
+    // results live in the separate accumulator register and operands stream. Eviction
+    // under cache pressure is now covered by `cone_fit_evicts_outsider_*` (spill forces
+    // eviction) and `fold_over_fused_products_does_not_evict_cross_root_cache` (a fold
+    // that streams must NOT evict).
 
     #[test]
     fn recovery_bias_can_choose_cached_root_reload_over_recompute() {
@@ -1799,6 +1787,107 @@ mod tests {
         let exact = crate::s3_planner::inner_dp::plan_fixed_order(&inst).result;
 
         assert_eq!((cheap.traffic, cheap.instrs), exact.objective());
+    }
+
+    #[test]
+    fn feasibility_matches_exact_when_cone_peak_exceeds_budget() {
+        // Under the single-accumulator streaming model a fold over reads streams
+        // (peak 0); infeasibility comes only from SPILL pressure. v = g + h where g,h
+        // are each a fold over two ext reads (peak 0): computing the second forces the
+        // accumulator to spill its width-4 partial, so peak[v] = 4. At budget 3 the cone
+        // cannot be scheduled. The scorer must agree with the exact reference instead of
+        // rating it feasible.
+        let inst = OracleInstance {
+            budget: 3,
+            reloadable_values: vec![],
+            roots: vec![6],
+            nodes: vec![
+                n(0, NodeKind::Read, 4, true, vec![]),
+                n(1, NodeKind::Read, 4, true, vec![]),
+                n(2, NodeKind::Add, 4, false, vec![0, 1]), // g, peak 0
+                n(3, NodeKind::Read, 4, true, vec![]),
+                n(4, NodeKind::Read, 4, true, vec![]),
+                n(5, NodeKind::Add, 4, false, vec![3, 4]), // h, peak 0
+                n(6, NodeKind::Add, 4, false, vec![2, 5]), // v, peak = 4 + 0 = 4 > 3
+            ],
+        };
+        let sites = enumerate_demand_sites(&inst);
+        let genome = Genome::neutral(&inst, &sites);
+
+        let cheap = score_candidate(&inst, &sites, &genome);
+        let exact = crate::s3_planner::inner_dp::plan_fixed_order(&inst).result;
+
+        assert!(!exact.feasible, "reference rejects spill peak 4 > budget 3");
+        assert_eq!(
+            cheap.feasible, exact.feasible,
+            "scorer feasibility must match the exact SU spill-peak verdict"
+        );
+    }
+
+    #[test]
+    fn fold_over_fused_products_does_not_evict_cross_root_cache() {
+        // B = Add(Mul(r,r), Mul(r,r)) folds two fused products: every operand streams,
+        // so peak[B] = 0 and computing B must NOT cost cache. X (read) is cached at A
+        // (s0) and reused at C (s2). The corrected cone-fit model keeps X resident
+        // through B (no spill), so X is reused at C with no reload — matching the exact
+        // reference. The old per-node transient model charged width per Mul and wrongly
+        // evicted X (reload at C).
+        let inst = OracleInstance {
+            budget: 1,
+            reloadable_values: vec![],
+            roots: vec![1, 8, 9],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),     // X
+                n(1, NodeKind::Add, 1, false, vec![0]),    // A (s0), reads X
+                n(2, NodeKind::Read, 1, true, vec![]),
+                n(3, NodeKind::Read, 1, true, vec![]),
+                n(4, NodeKind::Mul, 1, false, vec![2, 3]), // fused product, streams
+                n(5, NodeKind::Read, 1, true, vec![]),
+                n(6, NodeKind::Read, 1, true, vec![]),
+                n(7, NodeKind::Mul, 1, false, vec![5, 6]), // fused product, streams
+                n(8, NodeKind::Add, 1, false, vec![4, 7]), // B (s1), peak 0
+                n(9, NodeKind::Add, 1, false, vec![0]),    // C (s2), reuses X
+            ],
+        };
+        let sites = enumerate_demand_sites(&inst);
+        let genome = Genome::neutral(&inst, &sites);
+
+        let cheap = score_candidate(&inst, &sites, &genome);
+        let exact = crate::s3_planner::inner_dp::plan_fixed_order(&inst).result;
+
+        assert!(cheap.feasible);
+        assert_eq!(cheap.traffic, 5); // X(1) + 4 reads; X stays resident, no reload at C
+        assert_eq!((cheap.traffic, cheap.instrs), exact.objective());
+    }
+
+    #[test]
+    fn cone_fit_evicts_outsider_when_spill_plus_resident_exceeds_budget() {
+        // Fold-of-folds B (s1) spills (peak 1). X cached at A (s0), reused at C (s2).
+        // At budget 1, X outsider(1) + peak[B](1) = 2 > 1, so the scorer must evict X
+        // before B and re-read it at C — matching the exact reference (4,5).
+        let inst = OracleInstance {
+            budget: 1,
+            reloadable_values: vec![],
+            roots: vec![3, 6, 7],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Read, 1, true, vec![]),
+                n(3, NodeKind::Add, 1, false, vec![0]),
+                n(4, NodeKind::Add, 1, false, vec![1]),
+                n(5, NodeKind::Add, 1, false, vec![2]),
+                n(6, NodeKind::Add, 1, false, vec![4, 5]),
+                n(7, NodeKind::Add, 1, false, vec![0]),
+            ],
+        };
+        let sites = enumerate_demand_sites(&inst);
+        let genome = Genome::neutral(&inst, &sites);
+
+        let cheap = score_candidate(&inst, &sites, &genome);
+        let exact = crate::s3_planner::inner_dp::plan_fixed_order(&inst).result;
+
+        assert!(cheap.feasible);
+        assert_eq!((cheap.traffic, cheap.instrs), exact.objective()); // (4, 5)
     }
 
     #[test]
@@ -4227,5 +4316,248 @@ mod tests {
         }
 
         assert_eq!(checked, ALL_22_L0_FIXTURES.len());
+    }
+
+    #[test]
+    #[ignore = "research invariant: every L0 layout is feasible at budget 8 under any root order"]
+    fn real_all_22_l0_feasible_at_budget_8_under_any_order() {
+        use crate::s3_gap::instance::extract_instance;
+
+        // The real compiler materializes these L0 layers at a working set of 8 cells.
+        // Under the corrected single-accumulator streaming model the scorer must agree:
+        // every cone's spill-peak fits budget 8, so the layout is schedulable. Because
+        // the cone-fit gate can evict ALL outsiders at a root's start (nothing is
+        // borrowed yet), `max cone spill-peak <= budget` is a candidate-INDEPENDENT
+        // guarantee of feasibility under ANY root order — which we also check directly
+        // with the neutral order plus seeded random orders.
+        const BUDGET: usize = 8;
+        const SEEDS: u64 = 16;
+
+        let mut checked = 0usize;
+        let mut offenders: Vec<(String, u32)> = Vec::new();
+        for &fixture in ALL_22_L0_FIXTURES {
+            let name = fixture
+                .trim_end_matches("_layout_gkr.json")
+                .trim_end_matches("_layout_no_caches_gkr.json");
+            let flavor = if fixture.contains("no_caches") {
+                "no-cache"
+            } else {
+                "cache"
+            };
+            let label = format!("{name}/{flavor}");
+            let Some((layer, cross)) = crate::try_load_l0(fixture) else {
+                println!("[FEAS-8] {label:<52} LOAD_FAILED");
+                continue;
+            };
+            let inst = extract_instance(&layer, &cross, BUDGET);
+            let sites = enumerate_demand_sites(&inst);
+            if inst.roots.is_empty() || sites.is_empty() {
+                println!("[FEAS-8] {label:<52} SKIP (empty)");
+                continue;
+            }
+
+            let fi = crate::s3_planner::forkset::analyze(&inst);
+            let max_peak = fi.root_peak.iter().copied().max().unwrap_or(0);
+            println!(
+                "[FEAS-8] {label:<52} roots={:<4} nodes={:<5} max_cone_peak={max_peak}",
+                inst.roots.len(),
+                inst.nodes.len(),
+            );
+            if (max_peak as usize) > BUDGET {
+                offenders.push((label.clone(), max_peak));
+                continue;
+            }
+
+            assert!(
+                score_candidate(&inst, &sites, &Genome::neutral(&inst, &sites)).feasible,
+                "{label}: neutral root order is infeasible at budget {BUDGET}"
+            );
+            for seed in 0..SEEDS {
+                let genome = deterministic_smoke_genome(&inst, &sites, seed);
+                assert!(
+                    score_candidate(&inst, &sites, &genome).feasible,
+                    "{label}: random root order seed {seed} is infeasible at budget {BUDGET}"
+                );
+            }
+            checked += 1;
+        }
+
+        assert!(
+            offenders.is_empty(),
+            "layouts whose max cone spill-peak exceeds budget {BUDGET}: {offenders:?}"
+        );
+        assert_eq!(checked, ALL_22_L0_FIXTURES.len());
+    }
+
+    /// Min feasible `(traffic, instrs)` the scorer reaches over the neutral order
+    /// plus `seeds` random-key genomes (random root order + admit/recovery/keep
+    /// biases). `None` if no genome is feasible. This is the scorer's
+    /// best-over-orders, the analogue of the oracle's free-permutation (Mode J)
+    /// search — both optimize order AND eviction jointly.
+    fn scorer_best_over_orders(inst: &OracleInstance, seeds: u64) -> Option<(u64, u64)> {
+        let sites = enumerate_demand_sites(inst);
+        let mut best: Option<(u64, u64)> = None;
+        let neutral = score_candidate(inst, &sites, &Genome::neutral(inst, &sites));
+        if neutral.feasible {
+            best = Some((neutral.traffic, neutral.instrs));
+        }
+        for seed in 0..seeds {
+            let g = deterministic_smoke_genome(inst, &sites, seed);
+            let s = score_candidate(inst, &sites, &g);
+            if s.feasible {
+                let o = (s.traffic, s.instrs);
+                best = Some(best.map_or(o, |b| b.min(o)));
+            }
+        }
+        best
+    }
+
+    fn seed12_instance(budget: usize) -> OracleInstance {
+        // Two shared forks (Add{2}, Mul{3}) over reads {0,1}; reordering + caching
+        // both forks vs reloading reads trade off with the budget.
+        OracleInstance {
+            budget,
+            reloadable_values: vec![],
+            roots: vec![4, 5, 6],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Add, 1, false, vec![1, 0]),
+                n(3, NodeKind::Mul, 1, false, vec![0, 1]),
+                n(4, NodeKind::Add, 1, false, vec![0, 2]),
+                n(5, NodeKind::Mul, 1, false, vec![3, 0]),
+                n(6, NodeKind::Mul, 1, false, vec![2, 3]),
+            ],
+        }
+    }
+
+    /// H1+M5 differential (the keystone validation of the scorer's cost model):
+    /// the scorer's best-over-orders must equal the EXACT global optimum the CP-SAT
+    /// oracle proves under free permutation (Mode J). The `>=` direction is the
+    /// soundness guard — a scorer schedule can never cost LESS than the proven
+    /// optimum; if it did, the scorer would be under-counting (modeling an
+    /// impossible schedule as feasible). The `==` direction shows the random-key
+    /// decoder actually reaches the optimum on these tractable multi-root cones.
+    #[test]
+    #[ignore = "requires python3 + ortools"]
+    fn scorer_best_over_orders_matches_oracle_j() {
+        use crate::s3_gap::driver::{oracle_available, run_oracle, Mode};
+        if !oracle_available() {
+            eprintln!("ortools unavailable; skipping");
+            return;
+        }
+        const SEEDS: u64 = 512;
+        let cases: Vec<(&str, OracleInstance)> = vec![
+            ("seed12(b3)", seed12_instance(3)),
+            (
+                "carry(b4)",
+                OracleInstance {
+                    budget: 4,
+                    reloadable_values: vec![],
+                    roots: vec![2, 3, 4],
+                    nodes: vec![
+                        n(0, NodeKind::Read, 4, true, vec![]),
+                        n(1, NodeKind::Read, 4, true, vec![]),
+                        n(2, NodeKind::Add, 4, false, vec![0]),
+                        n(3, NodeKind::Add, 4, false, vec![1]),
+                        n(4, NodeKind::Add, 4, false, vec![0]),
+                    ],
+                },
+            ),
+            (
+                // (C) binds at b1 under a fixed order, but the scorer reorders the
+                // two X-consumers adjacent and puts the fold-of-folds last → traffic
+                // 3 (oracle-E fixed-order is 4; oracle-J free-permutation is 3).
+                "fold_of_folds(b1)",
+                OracleInstance {
+                    budget: 1,
+                    reloadable_values: vec![],
+                    roots: vec![3, 6, 7],
+                    nodes: vec![
+                        n(0, NodeKind::Read, 1, true, vec![]),
+                        n(1, NodeKind::Read, 1, true, vec![]),
+                        n(2, NodeKind::Read, 1, true, vec![]),
+                        n(3, NodeKind::Add, 1, false, vec![0]),
+                        n(4, NodeKind::Add, 1, false, vec![1]),
+                        n(5, NodeKind::Add, 1, false, vec![2]),
+                        n(6, NodeKind::Add, 1, false, vec![4, 5]),
+                        n(7, NodeKind::Add, 1, false, vec![0]),
+                    ],
+                },
+            ),
+            (
+                "shared_product(b16)",
+                OracleInstance {
+                    budget: 16,
+                    reloadable_values: vec![],
+                    roots: vec![3, 4],
+                    nodes: vec![
+                        n(0, NodeKind::Read, 1, true, vec![]),
+                        n(1, NodeKind::Read, 1, true, vec![]),
+                        n(2, NodeKind::Mul, 1, false, vec![0, 1]),
+                        n(3, NodeKind::Add, 1, false, vec![2, 0]),
+                        n(4, NodeKind::Add, 1, false, vec![2, 1]),
+                    ],
+                },
+            ),
+        ];
+
+        for (label, inst) in &cases {
+            let e = run_oracle(inst, Mode::J, 0.0, 60).unwrap();
+            assert_eq!(e.status, "optimal", "{label}: oracle-J not optimal");
+            let oracle = (e.traffic, e.instrs);
+            let best = scorer_best_over_orders(inst, SEEDS)
+                .unwrap_or_else(|| panic!("{label}: scorer found NO feasible genome"));
+            assert!(
+                best >= oracle,
+                "{label}: scorer best {best:?} < oracle-J {oracle:?} — UNSOUND (under-count)"
+            );
+            assert_eq!(best, oracle, "{label}: scorer best {best:?} != oracle-J {oracle:?}");
+        }
+    }
+
+    /// Budget sweep: across the feasibility range the scorer best-over-orders tracks
+    /// oracle-J. seed12 traffic falls 4→2 (b1→b2) and instrs 6→5 (b2→b3) as the
+    /// budget admits more fork caching.
+    ///
+    /// SOUNDNESS (`>=`) is the hard invariant at EVERY budget: the scorer's cost
+    /// model never reports a schedule cheaper than the proven global optimum — if it
+    /// did, it would be under-counting (an impossible schedule scored feasible). The
+    /// optimizer can only ever be misled by an under-count, so this is the direction
+    /// that matters for correctness; it holds everywhere here.
+    ///
+    /// TIGHTNESS (`==`) holds for budget >= 2. At budget 1 (a single cell — outside
+    /// the real regime, where the corpus floors at peak 8 under budget 16) the greedy
+    /// single-cell residency model floors at traffic 5 while oracle-J recomputes a
+    /// fork to reach traffic 4. Confirmed a REPRESENTABILITY gap, not a search gap
+    /// (the optimum is unreached over 50k random genomes), and in the SAFE direction
+    /// (the scorer over-counts, never under-counts). Documented, not asserted away.
+    #[test]
+    #[ignore = "requires python3 + ortools"]
+    fn scorer_budget_sweep_matches_oracle_j() {
+        use crate::s3_gap::driver::{oracle_available, run_oracle, Mode};
+        if !oracle_available() {
+            eprintln!("ortools unavailable; skipping");
+            return;
+        }
+        const SEEDS: u64 = 512;
+        for budget in 1..=4usize {
+            let inst = seed12_instance(budget);
+            let e = run_oracle(&inst, Mode::J, 0.0, 60).unwrap();
+            assert_eq!(e.status, "optimal", "seed12 b{budget}: oracle-J not optimal");
+            let oracle = (e.traffic, e.instrs);
+            let best = scorer_best_over_orders(&inst, SEEDS)
+                .unwrap_or_else(|| panic!("seed12 b{budget}: scorer found NO feasible genome"));
+            assert!(
+                best >= oracle,
+                "seed12 b{budget}: scorer best {best:?} < oracle-J {oracle:?} — UNSOUND"
+            );
+            if budget >= 2 {
+                assert_eq!(
+                    best, oracle,
+                    "seed12 b{budget}: scorer best {best:?} != oracle-J {oracle:?}"
+                );
+            }
+        }
     }
 }

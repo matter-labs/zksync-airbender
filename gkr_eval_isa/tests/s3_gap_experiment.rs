@@ -1141,23 +1141,27 @@ fn m1_uniform_binding_c_is_exact_handbuilt() {
         real_dram,
         children,
     };
-    // budget 2, all base width 1. X(0) used by A=Add{0}=2 (s0) and C=Add{0}=4 (s2);
-    // B=Add{1,?}=3 (s1) with P[B]=2=budget so X (outsider, w1) cannot be carried (1+2>2).
-    // -> X reloaded at s2. traffic = X@s0(1) + (s1 leaves) + X@s2(1); instrs = 3.
+    // budget 1, all base width 1, single-accumulator streaming model. X(0) is read at
+    // A=Add{0} (s0) and reused at C=Add{0} (s2). The intervening B (s1) is a fold-of-
+    // folds B=Add{g,h}, g=Add{p}, h=Add{q}: computing B spills its partial once, so
+    // P[B]=1 (a plain fold over reads would stream at peak 0 and not bind (C)).
+    // (C) at s1: X outsider(1) + P[B](1) = 2 > 1 -> X evicted before B, re-read at C.
+    // traffic = X@s0(1) + p,q@s1(2) + X@s2(1) = 4 ; instrs = 5.
     let inst = OracleInstance {
-        budget: 2,
+        budget: 1,
         reloadable_values: vec![],
-        roots: vec![2, 3, 4],
+        roots: vec![3, 6, 7],
         nodes: vec![
-            nd(0, NodeKind::Read, 1, true, vec![]),
-            nd(1, NodeKind::Read, 1, true, vec![]),
-            nd(2, NodeKind::Add, 1, false, vec![0]),
-            nd(3, NodeKind::Add, 1, false, vec![1, 1]), // P[B] = max(1, 1+1) = 2 = budget
-            nd(4, NodeKind::Add, 1, false, vec![0]),
+            nd(0, NodeKind::Read, 1, true, vec![]),     // X
+            nd(1, NodeKind::Read, 1, true, vec![]),     // p
+            nd(2, NodeKind::Read, 1, true, vec![]),     // q
+            nd(3, NodeKind::Add, 1, false, vec![0]),    // A (s0), reads X
+            nd(4, NodeKind::Add, 1, false, vec![1]),    // g
+            nd(5, NodeKind::Add, 1, false, vec![2]),    // h
+            nd(6, NodeKind::Add, 1, false, vec![4, 5]), // B (s1), fold-of-folds, P[B]=1
+            nd(7, NodeKind::Add, 1, false, vec![0]),    // C (s2), reuses X
         ],
     };
-    // s0: load X (1). carry X to s2? (C) at s1: X outsider(1) + P[B](2) = 3 > 2 -> evict.
-    // s1: load Y(1). s2: reload X(1). traffic = 1 + 1 + 1 = 3; instrs = 3.
     let run = plan_fixed_order(&inst);
-    assert_eq!(run.result.objective(), (3, 3));
+    assert_eq!(run.result.objective(), (4, 5));
 }

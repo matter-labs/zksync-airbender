@@ -386,13 +386,20 @@ fn simulate_trajectory(
             resident.swap_remove(victim_idx);
         }
 
-        // Belady load of this stage's shielded DRAM-leaf demand, against leaf_budget.
+        // Streaming Belady over this stage's shielded DRAM-leaf demand. A demanded leaf
+        // streams directly from DRAM into the fold (no cache cell); we charge its read
+        // traffic and then keep it resident ONLY if it has future reuse and fits the
+        // leaf budget. A leaf with no later demand never occupies cache — caching it
+        // would only evict a value that IS reused.
         let mut used: usize = resident.iter().map(|&v| width(v)).sum();
         for &v in &demand_dram[ti] {
             if resident.contains(&v) {
                 continue; // hit (resident from a prior stage)
             }
-            traffic += width(v) as u64; // miss -> load
+            traffic += width(v) as u64; // miss -> stream-read
+            if next_demand_stage(&demand_dram, ti, v) == usize::MAX {
+                continue; // no future reuse -> stream only, do not cache
+            }
             while used + width(v) > leaf_budget && !resident.is_empty() {
                 let victim_idx = (0..resident.len())
                     .max_by(|&a, &b| {
@@ -564,15 +571,41 @@ mod tests {
         assert!(run.max_frontier >= 1);
     }
 
-    // NOTE: this test is (B)-driven — the (B) boundary cap alone forces eviction of X
-    // (X w4 + Y w4 = 8 > budget 4). See fork_dp_cone_fit_c_isolated_uniform for the (C)-isolating gate.
     #[test]
-    fn fork_dp_respects_cone_fit_c_on_carried_leaf() {
+    fn fork_dp_caches_shared_special_root_to_save_instrs() {
+        // Degenerate corpus case (add_sub L0, extracted): roots [0,1,3] where the
+        // Special terminals 0,1 are ALSO children of root 3 = Add{2,2,0,1}. A Special
+        // costs 1 instr to recompute (it is resolution-pruned but still produced), so
+        // it is a cacheable fork exactly like Add/Mul. Keeping 0,1 resident after
+        // their own root stages shields them inside root 3's cone → 3 instrs; the old
+        // Add|Mul-only fork classification could not keep a Special, recomputing both
+        // → 5 instrs. traffic 0 (Special/Literal carry no DRAM). The oracle (E) reports
+        // (0,3); the planner must match.
+        let inst = OracleInstance {
+            budget: 16,
+            reloadable_values: vec![],
+            roots: vec![0, 1, 3],
+            nodes: vec![
+                n(0, NodeKind::Special, 1, false, vec![]),
+                n(1, NodeKind::Special, 1, false, vec![]),
+                n(2, NodeKind::Literal, 4, false, vec![]),
+                n(3, NodeKind::Add, 4, false, vec![2, 2, 0, 1]),
+            ],
+        };
+        let run = plan_fixed_order(&inst);
+        assert_eq!(run.result.objective(), (0, 3));
+    }
+
+    // Complement of fork_dp_cone_fit_c_isolated_uniform: when the intervening cone
+    // STREAMS, neither (B) nor (C) forces eviction, so the carried leaf is kept.
+    #[test]
+    fn fork_dp_carries_leaf_when_intervening_cone_streams() {
         // budget 4. ext Read X(0,w4) used by root A=Add{0}=2 (s0) and root C=Add{0}=4 (s2).
-        // Intervening root B=Add{1}=3 (s1) over ext Read Y(1,w4): P[B]=4=budget.
-        // (C) at s1: X is an outsider (w4) not in cone(B); 4 + P[B]=4 = 8 > 4 -> X CANNOT be carried.
-        // So X is evicted before B and reloaded at C: X traffic = 4 (s0) + 4 (s2). Y traffic = 4 (s1).
-        // total traffic = 12; instrs = 3 (three Adds). A DP ignoring (C) would carry X and report (8,3).
+        // Intervening root B=Add{1}=3 (s1) over ext Read Y(1,w4): under the streaming model
+        // Y streams directly from DRAM (no cache cell) and P[B]=0, so carrying X costs only
+        // X's own w4: X(4) + P[B](0) = 4 <= budget 4. X stays resident through B and is reused
+        // at C. traffic = X@s0(4) + Y@s1(4) = 8 ; instrs = 3 -> (8,3). (Under the old model
+        // that put Y in cache, X+Y=8>4 forced a reload and reported (12,3).)
         let inst = OracleInstance {
             budget: 4,
             reloadable_values: vec![],
@@ -586,32 +619,37 @@ mod tests {
             ],
         };
         let run = plan_fixed_order(&inst);
-        assert_eq!(run.result.objective(), (12, 3));
+        assert_eq!(run.result.objective(), (8, 3));
     }
 
     #[test]
     fn fork_dp_cone_fit_c_isolated_uniform() {
-        // Isolates (C): budget 2, all base width 1. X(0) used by A=Add{0}=2 (s0) and
-        // C=Add{0}=4 (s2). Intervening B=Add{1,1}=3 (s1): duplicate child edge to Y(1)
-        // gives cone(B)={1,3} (Y demanded once) but P[B]=max(peak(1)=1, width 1 + 1)=2=budget.
-        // (B) at s1 PERMITS carrying X: X(1)+Y(1)=2 <= 2. But (C) forbids: X outsider(1)
-        // + P[B](2) = 3 > 2 -> X must be evicted before B and reloaded at C.
-        //   WITH (C): traffic = X@s0(1) + Y@s1(1) + X@s2(1) = 3 ; instrs = 3 -> (3,3).
-        //   WITHOUT (C) (the discriminator): X stays resident -> (2,3).
+        // Isolates (C) under the single-accumulator STREAMING model: budget 1, all base
+        // width 1. X(0) is read at A=Add{0} (s0) and reused at C=Add{0} (s2). The
+        // intervening B (s1) is a fold-of-folds B=Add{g,h}, g=Add{p}, h=Add{q}: g and h
+        // each need their own accumulator pass, so computing B spills its partial once
+        // -> P[B]=1. A fold over plain reads would stream (peak 0) and NOT bind (C);
+        // the spill is what makes (C) bite.
+        // (C) at s1: X outsider(1) + P[B](1) = 2 > 1 -> X evicted before B, re-read at C.
+        //   WITH (C): traffic = X@s0(1) + p,q@s1(2) + X@s2(1) = 4 ; instrs = 5 -> (4,5).
+        //   WITHOUT (C) (the discriminator): X stays resident -> (3,5).
         let inst = OracleInstance {
-            budget: 2,
+            budget: 1,
             reloadable_values: vec![],
-            roots: vec![2, 3, 4],
+            roots: vec![3, 6, 7],
             nodes: vec![
                 n(0, NodeKind::Read, 1, true, vec![]),     // X
-                n(1, NodeKind::Read, 1, true, vec![]),     // Y
-                n(2, NodeKind::Add, 1, false, vec![0]),    // A (s0)
-                n(3, NodeKind::Add, 1, false, vec![1, 1]), // B (s1): P[B]=2=budget, 1-leaf footprint
-                n(4, NodeKind::Add, 1, false, vec![0]),    // C (s2), reuses X
+                n(1, NodeKind::Read, 1, true, vec![]),     // p
+                n(2, NodeKind::Read, 1, true, vec![]),     // q
+                n(3, NodeKind::Add, 1, false, vec![0]),    // A (s0), reads X
+                n(4, NodeKind::Add, 1, false, vec![1]),    // g
+                n(5, NodeKind::Add, 1, false, vec![2]),    // h
+                n(6, NodeKind::Add, 1, false, vec![4, 5]), // B (s1), fold-of-folds, P[B]=1
+                n(7, NodeKind::Add, 1, false, vec![0]),    // C (s2), reuses X
             ],
         };
         let run = plan_fixed_order(&inst);
-        assert_eq!(run.result.objective(), (3, 3));
+        assert_eq!(run.result.objective(), (4, 5));
     }
 
     #[test]
@@ -661,12 +699,17 @@ mod tests {
 
     #[test]
     #[ignore = "requires python3 + ortools"]
-    fn fork_dp_matches_oracle_e_binding_c() {
+    fn fork_dp_matches_oracle_e_carries_when_cone_streams() {
         use crate::s3_gap::driver::{oracle_available, run_oracle, Mode};
         if !oracle_available() {
             eprintln!("ortools unavailable; skipping");
             return;
         }
+        // Oracle-backed twin of fork_dp_carries_leaf_when_intervening_cone_streams:
+        // budget 4, X(0) reused at A (s0) and C (s2); intervening B=Add{Y} STREAMS
+        // (P[B]=0), so carrying X (4 <= 4) avoids a reload. Under the corrected
+        // streaming oracle both sides report (8,3) — NOT the old model's (12,3),
+        // which charged Y into cache and forced the reload.
         let inst = OracleInstance {
             budget: 4,
             reloadable_values: vec![],
@@ -682,36 +725,44 @@ mod tests {
         let run = plan_fixed_order(&inst);
         let e = run_oracle(&inst, Mode::E, 0.0, 30).unwrap();
         assert_eq!(e.status, "optimal");
-        assert_eq!(run.result.objective(), (e.traffic, e.instrs)); // (12,3): (C) forces the reload
+        assert_eq!(run.result.objective(), (8, 3));
+        assert_eq!(run.result.objective(), (e.traffic, e.instrs));
     }
 
     #[test]
     #[ignore = "requires python3 + ortools"]
-    fn fork_dp_matches_oracle_e_cone_fit_c_isolated() {
+    fn fork_dp_matches_oracle_e_cone_fit_c_binds() {
         use crate::s3_gap::driver::{oracle_available, run_oracle, Mode};
         if !oracle_available() {
             eprintln!("ortools unavailable; skipping");
             return;
         }
-        // budget 2, all base w1: X(0) used by A=Add{0}=2 (s0) and C=Add{0}=4 (s2);
-        // B=Add{1,1}=3 (s1) has P[B]=2=budget but a 1-leaf footprint, so (B) permits
-        // carrying X (X+Y=2<=2) while (C) (X outsider 1 + P[B] 2 = 3 > 2) forbids it.
-        // Confirms the planner's (C) matches solve.py's (C): both must report (3,3), not (2,3).
+        // Oracle-backed twin of fork_dp_cone_fit_c_isolated_uniform: the case where
+        // (C) GENUINELY binds under the streaming model. budget 1, all base w1.
+        // X(0) read at A=Add{0} (s0) and reused at C=Add{0} (s2). The intervening
+        // B (s1) is a fold-of-folds Add{Add{p}, Add{q}}, which spills its partial
+        // once → P[B]=1. (C) at s1: X outsider(1) + P[B](1) = 2 > 1 forbids carrying
+        // X, forcing a reload at C. Both sides must report (4,5) (a flat fold over
+        // reads would stream at peak 0 and NOT bind — the spill is what makes (C) bite).
         let inst = OracleInstance {
-            budget: 2,
+            budget: 1,
             reloadable_values: vec![],
-            roots: vec![2, 3, 4],
+            roots: vec![3, 6, 7],
             nodes: vec![
-                n(0, NodeKind::Read, 1, true, vec![]),
-                n(1, NodeKind::Read, 1, true, vec![]),
-                n(2, NodeKind::Add, 1, false, vec![0]),
-                n(3, NodeKind::Add, 1, false, vec![1, 1]),
-                n(4, NodeKind::Add, 1, false, vec![0]),
+                n(0, NodeKind::Read, 1, true, vec![]),     // X
+                n(1, NodeKind::Read, 1, true, vec![]),     // p
+                n(2, NodeKind::Read, 1, true, vec![]),     // q
+                n(3, NodeKind::Add, 1, false, vec![0]),    // A (s0), reads X
+                n(4, NodeKind::Add, 1, false, vec![1]),    // g
+                n(5, NodeKind::Add, 1, false, vec![2]),    // h
+                n(6, NodeKind::Add, 1, false, vec![4, 5]), // B (s1), fold-of-folds, P[B]=1
+                n(7, NodeKind::Add, 1, false, vec![0]),    // C (s2), reuses X
             ],
         };
         let run = plan_fixed_order(&inst);
         let e = run_oracle(&inst, Mode::E, 0.0, 30).unwrap();
         assert_eq!(e.status, "optimal");
+        assert_eq!(run.result.objective(), (4, 5));
         assert_eq!(run.result.objective(), (e.traffic, e.instrs));
     }
 
