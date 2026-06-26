@@ -758,6 +758,23 @@ impl<'a> Replay<'a> {
         self.trace_event(CacheTraceEvent::Admit { site_idx, value });
     }
 
+    // KEEP REDUCTION (M2). `keep_after_use_bias` is a PER-SITE gene, but a value has a
+    // single residency, so its keep priority is stored as ONE scalar in
+    // `resident_keep[value]`, overwritten by whichever site last stamps it — on
+    // admission AND on every reuse (`finish_root`, `satisfy_demand`, `admit_value`).
+    // The eviction comparators (`lowest_keep_resident`/`lowest_keep_outsider`) read
+    // only that scalar, so the EFFECTIVE per-value keep priority is the LAST-stamping
+    // site's gene. This is an explicit last-stamp reduction over the per-site genes.
+    //
+    // Consequence: the priority couples to the decoded root order (which site stamps
+    // last shifts with the order) — a known divergence from design.md:89, which
+    // specified a value-keyed `vec![0.0; nodes.len()]`. It is NOT a correctness bug:
+    // eviction stays a total order via the id tie-break, and the optimizer tunes
+    // whichever site stamps last. A clean unit pinning test is impractical (on small
+    // synthetic instances the scorer caches the leaf Reads, not the folds, so fold
+    // keep genes are inert); the lever's aggregate effect is covered by the corpus
+    // read-floor / all-fit invariants. If M6 shows the keep lever underperforms,
+    // promoting it to a value-keyed gene (one per node) is the documented next step.
     fn stamp_keep(&mut self, value: u32, site_idx: usize) {
         self.resident_keep[value as usize] = self.genome.keep_after_use_bias[site_idx];
         self.resident_keep_site[value as usize] = Some(site_idx);
