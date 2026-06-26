@@ -179,7 +179,7 @@ fn main() {
         };
 
         // println!("{i}:");
-        const DEBUG_ENABLE_DUMMY_CHECKS: bool = true;
+        const DEBUG_ENABLE_DUMMY_CHECKS: bool = false;
         let check = if DEBUG_ENABLE_DUMMY_CHECKS {
             yul_format!("
             let dummy_check := mod(add(claim, sub(P, g0g1_scaled)), P)
@@ -365,7 +365,7 @@ fn main() {
                 }
             }
         }
-        const DEBUG_NATURAL_GATE_ORDER: bool = true;
+        const DEBUG_NATURAL_GATE_ORDER: bool = false;
         trait EachRefMaybeRev<T, const N: usize> {
             fn each_ref_mayberevmap<U>(&self, f: impl FnMut(&T) -> U) -> [U; N];
         }
@@ -1016,12 +1016,11 @@ fn main() {
         // two five-column calls keeps each call boundary small while still supporting
         // arbitrary linrel_to_calldata_inner() output for every column.
         function gkr_lookrel_compress_half(acc, c0, c1, c2, c3, c4) -> acc_next {{
-            let beta := mload(LOGUP_CHALLS_PTR)
-            acc_next := add(mulmod(acc, beta, P), c4)
-            acc_next := add(mulmod(acc_next, beta, P), c3)
-            acc_next := add(mulmod(acc_next, beta, P), c2)
-            acc_next := add(mulmod(acc_next, beta, P), c1)
-            acc_next := add(mulmod(acc_next, beta, P), c0)
+            acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR), P), c4)
+            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR), P), c3)
+            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR), P), c2)
+            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR), P), c1)
+            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR), P), c0)
         }}
 
         // function gkr_memrel_compress_low(address_space, addr_low, addr_high) -> compressed {{

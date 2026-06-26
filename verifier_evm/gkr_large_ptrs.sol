@@ -9,32 +9,32 @@ contract GKRVerifier {
     // Fiat-Shamir transcript region: seed at [SEED_PTR, SEED_PTR+32), absorb
     // scratch above it. Every transcript helper uses this, never a hardcoded
     // 0/32/64, so the layout can be relocated in one place.
-    uint256 constant SEED_PTR = 5000; // TODO: move back down
+    uint256 constant SEED_PTR = 7648; // TODO: move back down
 
     // ── Transcript init (absorb caps, derive memory/logup challenges) ─────────
     uint256 constant MERKLE_TREE_CAPS_BYTES = 512; // 16 caps * 32-byte hash
-    uint256 constant MEMORY_CHALLS_PTR      = 768; // 7 elems: 6 tuple-compression + 1 additive
-    uint256 constant LOGUP_CHALLS_PTR       = 992; // 2 elems: 1 tuple-compression + 1 additive
+    uint256 constant MEMORY_CHALLS_PTR      = 6944; // 7 elems: 6 tuple-compression + 1 additive
+    uint256 constant LOGUP_CHALLS_PTR       = 7168; // 2 elems: 1 tuple-compression + 1 additive
 
     // ── GKR init (fold the 8 init polys into the first sumcheck claim) ────────
     uint256 constant GKR_INIT_BYTES          = 2048; // 8 polys * 16 elems * 16 bytes
     uint256 constant GKR_INIT_POLY_BYTES     = 256;  // 16 elems * 16 bytes (literal; Yul rejects const exprs)
-    uint256 constant POINT_PTR               = 0;    // z1..z4 / point batch at [0, 768), below the transcript region
-    uint256 constant GKR_INIT_EQ_PTR0        = 2496; // fold-accumulator scratch slot (legacy eq-table name)
-    uint256 constant CLAIM_PTR               = 3000;
-    uint256 constant GKR_STREAMREV_CLAIM_PTR = 4512;
-    uint256 constant GKR_INIT_GAS_PTR        = 4256; // stash gas() across init so Yul/solx spills can't clobber it
+    uint256 constant POINT_PTR               = 6176; // z1..z4 / point batch at [0, 768), below the transcript region
+    uint256 constant GKR_INIT_EQ_PTR0        = 7264; // fold-accumulator scratch slot (legacy eq-table name)
+    uint256 constant CLAIM_PTR               = 7296;
+    uint256 constant GKR_STREAMREV_CLAIM_PTR = 7328;
+    uint256 constant GKR_INIT_GAS_PTR        = 7584; // stash gas() across init so Yul/solx spills can't clobber it
     uint256 constant GKR_INIT_PTR            = 2048; // testing: hardcoded init pointer
 
     // ── GKR compression ───────────────────────────────────────────────────────
     uint256 constant GKR_COMPRESSION_POINTCHECK_POLY_BYTES = 64;  // 4 * 16
     uint256 constant GKR_COMPRESSION_POINTCHECK_BYTES      = 512; // 8 * 64
-    uint256 constant GKR_COMPRESS_GAS_PTR    = 4288;
+    uint256 constant GKR_COMPRESS_GAS_PTR    = 7616;
 
     // ── GKR circuit ───────────────────────────────────────────────────────────
     uint256 constant GKR_CIRCUIT_LAYER_ROUNDS = 24;
-    uint256 constant GKR_CIRCUIT_CACHE_PTR    = 5032; // = SEED_PTR - 32*10; shares the transcript absorb region
-    // uint256 constant GKR_CIRCUIT_SCRATCH_PTR    = 7040; // used to fix stack pressure crashes
+    uint256 constant GKR_CIRCUIT_CACHE_PTR    = 7680; // = SEED_PTR - 32*10; shares the transcript absorb region
+    uint256 constant GKR_CIRCUIT_SCRATCH_PTR    = 0; // used to fix stack pressure crashes
 
     fallback() external {
         // uint256 variant = VARIANT;
