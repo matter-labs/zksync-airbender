@@ -29,3 +29,8 @@ inot = "inot"
 [type.asm.extend-words]
 Wich = "Wich"
 TRE = "TRE"
+
+[type.c.extend-words]
+# c_examples/badwrite.c spaces out a comment so each 4-char group sits above the
+# little-endian hex word it decodes; "Guest" lands as "...he G    uest".
+uest = "uest"
