@@ -929,7 +929,7 @@ pub(crate) fn compile_timestamp_range_check_expressions<
     )
 }
 
-pub(crate) fn optimize_out_linear_constraints<F: PrimeField>(
+pub fn optimize_out_linear_constraints<F: PrimeField>(
     state_input: &[Variable],
     state_output: &[Variable],
     substitutions: &HashMap<(Placeholder, usize), Variable>,

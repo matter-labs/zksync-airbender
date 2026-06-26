@@ -14,7 +14,7 @@ use field::PrimeField;
 pub const LIMB_WIDTH: usize = 16;
 pub const LIMB_MASK: u64 = (1 << LIMB_WIDTH) - 1;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Num<F: PrimeField> {
     Var(Variable),
     Constant(F),
@@ -68,7 +68,7 @@ impl<F: PrimeField> Num<F> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Boolean {
     /// Existential view of the boolean variable
     Is(Variable),

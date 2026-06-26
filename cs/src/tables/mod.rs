@@ -72,6 +72,7 @@ pub const TABLE_TYPES_UPPER_BOUNDS: usize = TOTAL_NUM_OF_TABLES;
 
 #[derive(Derivative)]
 #[derivative(Clone, Debug)]
+#[derivative(PartialEq, Eq)]
 pub struct LookupTable<F: PrimeField, const N: usize> {
     pub name: String,
 
@@ -87,8 +88,10 @@ pub struct LookupTable<F: PrimeField, const N: usize> {
     #[derivative(Debug = "ignore")]
     pub data: Arc<Vec<[F; N]>>,
     #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub quick_value_lookup_fn: ValueLookupFn<F, N>,
     #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub quick_index_lookup_fn: IndexLookupFn<F, N>,
 
     pub num_key_columns: usize,
@@ -553,7 +556,7 @@ impl<F: PrimeField, const N: usize> LookupTable<F, N> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LookupWrapper<F: PrimeField> {
     Uninitialized,
     Dimensional1(LookupTable<F, 1>),
@@ -1099,7 +1102,7 @@ pub fn key_get_bit<F: PrimeField, const N: usize>() -> Vec<SmallVec<[F; N]>> {
 }
 
 /// Manages multiple lookup tables.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TableDriver<F: PrimeField> {
     pub tables: [LookupWrapper<F>; TABLE_TYPES_UPPER_BOUNDS],
     offsets_for_multiplicities: [usize; TABLE_TYPES_UPPER_BOUNDS],
