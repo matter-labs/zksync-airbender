@@ -207,10 +207,13 @@ fn rejects_num_it_circuits_exceeds_num_circuits() {
 
 #[test]
 #[ignore = "requires generated unified base-layer fixture (run the prover step)"]
-fn rejects_multi_instance() {
+fn rejects_duplicated_multi_instance() {
     let (proof, setup_cap) = assemble_with(load_bundle(), 2, 2);
     let result = run_unified_base_layer(build_stream(&proof, &setup_cap));
-    assert!(result.is_err(),);
+    assert!(
+        result.is_err(),
+        "a duplicated 2-instance proof must be rejected"
+    );
 }
 
 fn fsv_binary_section_path(ext: &str) -> String {

@@ -1426,7 +1426,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                         lookup_additive_challenge, lookup_alpha,
                         &external_challenges.permutation_argument_linearization_challenges,
                         external_challenges.permutation_argument_additive_part,
-                        address_high_bits_shift);
+                        address_high_bits_shift,
+                        &initial_transcript.inits_and_teardowns_top_bits);
                     verify_final_step_check::<E>(f[0],
                         final_eq_prefactor, final_claim, #config_idx)?;
                 }

@@ -101,6 +101,7 @@ unsafe fn layer_0_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -1377,6 +1378,7 @@ unsafe fn layer_1_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -1631,6 +1633,7 @@ unsafe fn layer_2_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -1874,6 +1877,7 @@ unsafe fn layer_3_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -3706,6 +3710,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 3usize)?;
             }
@@ -3752,6 +3757,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 2usize)?;
             }
@@ -3798,6 +3804,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 1usize)?;
             }
@@ -4061,6 +4068,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 0usize)?;
             }

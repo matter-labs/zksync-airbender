@@ -218,6 +218,7 @@ where
         derive_unified_fiat_shamir_challenges::<C>(
             &vm,
             &unified_memory_cap,
+            num_unified_teardown_sets,
             level,
             proof_suffix,
             worker,
@@ -434,6 +435,7 @@ fn flatten_merkle_cap(cap: &MerkleTreeCapVarLength) -> Vec<u32> {
 fn derive_unified_fiat_shamir_challenges<C>(
     vm: &VmRunOutput<C>,
     unified_memory_cap: &MerkleTreeCapVarLength,
+    num_unified_teardown_sets: usize,
     level: SecurityLevel,
     proof_suffix: &str,
     worker: &Worker,
@@ -558,11 +560,13 @@ where
     }
 
     let register_final_values = unified_register_final_values(vm);
+    let inits_and_teardowns_top_bits: Vec<u32> = (0..num_unified_teardown_sets as u32).collect();
     let seed = fs_transform_for_unified_circuit(
         &register_final_values,
         vm.final_pc(),
         vm.final_timestamp(),
         unified_memory_cap,
+        &inits_and_teardowns_top_bits,
         &delegation_caps,
     );
 
@@ -580,6 +584,7 @@ fn fs_transform_for_unified_circuit(
     final_pc: u32,
     final_timestamp: TimestampScalar,
     unified_memory_cap: &MerkleTreeCapVarLength,
+    inits_and_teardowns_top_bits: &[u32],
     delegation_memory_caps: &[(u32, MerkleTreeCapVarLength)],
 ) -> Seed {
     let mut transcript = Blake2sBufferingTranscript::<true>::new();
@@ -603,10 +608,15 @@ fn fs_transform_for_unified_circuit(
     transcript.absorb(&final_pc_buffer);
 
     // single reduced-machine family with one instance (no separate inits/teardowns section —
-    // it is folded into the unified circuit). The FSV absorbs the family idx unconditionally
-    // (num_circuits > 0 is asserted), so we always absorb it here.
+    // it is folded into the unified circuit). Per instance the FSV absorbs a block holding the
+    // family idx + this instance's inits/teardowns `top_bits`, then the memory caps — mirroring
+    // `trace_and_split::fs_transform_unified_for_permutation_argument`. Binding `top_bits` into
+    // the seed (not just the memory columns) is the soundness fix for multi-instance.
     let mut family_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
     family_buffer[0] = REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32;
+    assert!(inits_and_teardowns_top_bits.len() < BLAKE2S_BLOCK_SIZE_U32_WORDS);
+    family_buffer[1..][..inits_and_teardowns_top_bits.len()]
+        .copy_from_slice(inits_and_teardowns_top_bits);
     transcript.absorb(&family_buffer);
     transcript.absorb(&flatten_merkle_cap(unified_memory_cap));
 

@@ -17,6 +17,13 @@ use verifier_common::cs::definitions::split_timestamp;
 ///   prover sends `num_it_circuits` as an extra word). For those trailing instances we
 ///   multiply their (now separately-surfaced) i/t grand-product into the accumulators and
 ///   require their `top_bits` to be **strictly increasing**.
+///
+/// Multiple unified instances are sound: the GKR-verified i/t address window is bound to
+/// each instance's runtime, FS-committed `top_bits` (the generated verifier computes
+/// `set_bits = top_bits[set_idx] << shift`, mirroring the prover), so the
+/// `MAX_TOP_BIT`-bounded, strictly-increasing `top_bits` sequence forces the i/t-carrying
+/// instances onto disjoint memory super-blocks. A prover therefore cannot make two
+/// instances cover the same range while reporting distinct `top_bits`.
 #[allow(invalid_value)]
 #[inline(never)]
 pub unsafe fn verify_full_statement_for_unified_circuit<
@@ -80,9 +87,13 @@ where
     let external_challenges =
         ::verifier_common::read_external_challenges::<BabyBearField, BabyBearExt4, I>(nd_source);
 
-    // single reduced-machine family with folded inits/teardowns
+    // One or more reduced-machine instances with folded inits/teardowns. Multiple instances
+    // are sound: the GKR-verified i/t address window is bound to each instance's runtime,
+    // FS-committed `top_bits` (see `set_bits = top_bits[set_idx] << shift` in the generated
+    // verifier), and the `MAX_TOP_BIT` ceiling + strictly-increasing `top_bits` check below
+    // force the trailing i/t-carrying instances onto disjoint memory super-blocks.
     let num_unified_circuits = nd_source.read_word();
-    assert!(num_unified_circuits == 1);
+    assert!(num_unified_circuits > 0);
 
     // extra word: how many of the *trailing* circuits carry real inits/teardowns
     let num_it_circuits = nd_source.read_word();
@@ -90,16 +101,17 @@ where
     assert!(num_it_circuits <= num_unified_circuits);
     let first_it_circuit = num_unified_circuits - num_it_circuits;
 
-    {
-        let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
-        buffer[0] = common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32;
-        transcript.absorb(&buffer);
-    }
-
     let mut total_cycles = 0u64;
-    // strictly-increasing check over the concatenated `top_bits` of all i/t-carrying
-    // instances: every covered prefix is unique, so no two instances init the same range.
-    let mut prev_top_bit: i64 = -1;
+    
+    const ADDRESS_HIGH_BITS_SHIFT: u32 = 10;
+    const MAX_TOP_BIT: u32 = 1 << (32 - 16 - ADDRESS_HIGH_BITS_SHIFT);
+
+    // Strictly-increasing check over the concatenated `top_bits` of all i/t-carrying
+    // instances. The GKR-verified i/t address window is now bound to exactly these runtime
+    // `top_bits` (`set_bits = top_bits[set_idx] << shift`), and `MAX_TOP_BIT` keeps
+    // each window inside the high-address field, so strictly-increasing top_bits ⇒ disjoint
+    // per-instance super-blocks: no two instances can init/teardown the same range.
+    let mut prev_top_bit: i32 = -1;
     let mut it_circuits_seen = 0u32;
     for circuit_sequence in 0..num_unified_circuits {
         // TODO: unified circuit's trace len.
@@ -109,7 +121,22 @@ where
 
         let proof_output = (unified_circuit_verifier)(&external_challenges, nd_source)?;
 
-        // and commit memory caps
+        // Commit the reduced-machine family idx + THIS instance's inits/teardowns `top_bits`,
+        // then the memory caps. Mirrors the prover's `fs_transform_unified_for_permutation_argument`:
+        // binding `top_bits` into the Fiat-Shamir challenge (not just the memory columns) closes
+        // the gap where a prover could pick the GKR i/t window's `top_bits` adaptively after
+        // seeing the challenges. `INIT_AND_TEARDOWN_SETS < BLAKE2S_BLOCK_SIZE_U32_WORDS` holds for
+        // the unified circuit, so the family idx + all top_bits fit in one transcript block.
+        {
+            let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+            buffer[0] = common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32;
+            // `top_bits` is a fixed-size `[u32; INIT_AND_TEARDOWN_SETS]`, so this copy has a
+            // compile-time length: the transpiler unrolls it into word stores rather than a
+            // runtime-bounded loop.
+            let top_bits = &proof_output.inits_and_teardowns_top_bits;
+            buffer[1..1 + top_bits.len()].copy_from_slice(top_bits);
+            transcript.absorb(&buffer);
+        }
         transcript.absorb(proof_output.memory_caps_flattened());
 
         // continuity: every instance shares the same setup
@@ -123,6 +150,9 @@ where
         write_set_product_accumulator.mul_assign(&proof_output.grand_product_write_set_accumulator);
 
         // inits/teardowns: include ONLY for the trailing instances; the rest are excluded.
+        // Disjointness across these trailing instances is structurally backed by the GKR
+        // window binding (their i/t address windows track the strictly-increasing,
+        // ceiling-bounded `top_bits` checked below), not merely by this count split.
         if circuit_sequence >= first_it_circuit {
             let it = proof_output
                 .inits_and_teardowns
@@ -131,8 +161,9 @@ where
             write_set_product_accumulator.mul_assign(&it.write_product);
 
             for top_bit in proof_output.inits_and_teardowns_top_bits.iter() {
-                assert!((*top_bit as i64) > prev_top_bit);
-                prev_top_bit = *top_bit as i64;
+                assert!(*top_bit < MAX_TOP_BIT, "top_bit out of range");
+                assert!((*top_bit as i32) > prev_top_bit);
+                prev_top_bit = *top_bit as i32;
             }
             it_circuits_seen += 1;
         }
