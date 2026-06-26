@@ -408,8 +408,8 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         expected_final_state,
     ) = run_unrolled_machine_in_full::<C, DelegationsAndFamiliesCounters>(
         cycles_bound,
-        text_section,
         binary_image,
+        text_section,
         ram_bound,
         DelegationsAndFamiliesCounters::default(),
         non_determinism,
@@ -1157,6 +1157,9 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 );
                 println!("Serialization is done");
             }
+
+            let pc = 30238;
+            println!("Decoder data at PC = {} * 4 = {:?}", pc, decoder_table[pc]);
 
             let oracle = NonMemoryCircuitOracle {
                 inner: &chunk,

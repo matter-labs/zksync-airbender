@@ -11,6 +11,8 @@ pub mod gpu;
 pub mod unified;
 pub mod unrolled;
 
+mod recursion;
+
 const DUMP_WITNESS_VAR: &str = "DUMP_WITNESS";
 
 #[allow(dead_code)]

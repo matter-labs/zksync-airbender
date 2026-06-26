@@ -278,7 +278,11 @@ pub fn preprocess_bytecode<
                         Instruction::pure_from_imm(InstructionName::And, formal_rs1, 0, rd, imm)
                     }
                     _ => {
-                        panic!("Unknown opcode 0x{:08x}", opcode);
+                        panic!(
+                            "Unknown REG-IMM opcode 0x{:08x} at PC = 0x{:08x}",
+                            opcode,
+                            i * 4
+                        );
                     }
                 };
 
@@ -477,7 +481,11 @@ pub fn preprocess_bytecode<
                             0,
                         ),
                         _ => {
-                            panic!("Unknown opcode 0x{:08x}", opcode);
+                            panic!(
+                                "Unknown REG-REG I-ext opcode 0x{:08x} at PC = 0x{:08x}",
+                                opcode,
+                                i * 4
+                            );
                         }
                     }
                 }
@@ -557,7 +565,11 @@ pub fn preprocess_bytecode<
                         instr
                     }
                     _ => {
-                        panic!("Unknown opcode 0x{:08x}", opcode);
+                        panic!(
+                            "Unknown LOAD opcode 0x{:08x} at PC = 0x{:08x}",
+                            opcode,
+                            i * 4
+                        );
                     }
                 }
             }
@@ -611,7 +623,12 @@ pub fn preprocess_bytecode<
                         }
                     }
                     _ => {
-                        panic!("Unknown opcode 0x{:08x}", opcode);
+                        panic!(
+                            "Unknown STORE opcode funct3 = {}, opcode 0x{:08x} at PC = 0x{:08x}",
+                            funct3,
+                            opcode,
+                            i * 4
+                        );
                     }
                 }
             }
@@ -917,12 +934,21 @@ pub fn preprocess_bytecode<
 
                     if funct3 != 0b001 {
                         // not CSRRW
-                        panic!("Unknown opcode 0x{:08x}", opcode);
+                        panic!(
+                            "Unknown CSRRW family opcode 0x{:08x} at PC = 0x{:08x}",
+                            opcode,
+                            i * 4
+                        );
                     }
 
                     instr
                 } else {
-                    panic!("Unknown system funct3 enc 0x{:08x}", funct3);
+                    panic!(
+                        "Unknown SYSTEM funct3 enc 0x{:08x}, opcode 0x{:08x} at PC = 0x{:08x}",
+                        funct3,
+                        opcode,
+                        i * 4
+                    );
                 };
 
                 instr

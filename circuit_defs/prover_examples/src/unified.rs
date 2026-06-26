@@ -188,8 +188,8 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
         expected_final_state,
     ) = run_unrolled_machine_in_full::<C, DelegationsAndUnifiedCounters>(
         cycles_bound,
-        text_section,
         binary_image,
+        text_section,
         ram_bound,
         DelegationsAndUnifiedCounters::default(),
         non_determinism,

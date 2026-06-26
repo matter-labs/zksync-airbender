@@ -29,6 +29,7 @@ pub(crate) fn read_register<C: Counters, const TIMESTAMP_OFFSET: TimestampScalar
 }
 
 #[inline(always)]
+#[track_caller]
 pub(crate) fn write_register_for_pure_opcode<
     C: Counters,
     const TIMESTAMP_OFFSET: TimestampScalar,
