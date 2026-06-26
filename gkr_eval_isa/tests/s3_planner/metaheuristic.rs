@@ -13,7 +13,16 @@ const LOCAL_BIAS_STEP: f64 = 0.25;
 const CACHE_FAMILY_QUOTA: usize = 64;
 const TRACE_GUIDED_BIAS: f64 = 0.125;
 const CACHE_PLATEAU_STEPS: usize = 4;
+/// Maximum beam width (cap). The effective width scales with the eval budget — see
+/// `beam_width_for_budget` and `BEAM_STATE_MIN_BUDGET`.
 const OPTIMIZER_BEAM_WIDTH: usize = 8;
+/// Empirical per-state convergence budget. A single greedy descent on the L0 corpus at
+/// REAL_BUDGET stops improving within ~1000 evals — budget 2000 and 16000 reach the
+/// SAME optimum at beam width 1. Below this per-state share the beam dilutes the best
+/// trajectory and REGRESSES (width 8 @ budget 2000: 402→378); at or above it the surplus
+/// budget funds breadth and the beam WINS (width 2 @ 2000: 403; width 8 @ 16000: 411).
+/// The beam width is therefore `clamp(eval_budget / this, 1, OPTIMIZER_BEAM_WIDTH)`.
+const BEAM_STATE_MIN_BUDGET: usize = 1_000;
 /// H3: fixed per-iteration neighbor-batch cap, INDEPENDENT of the eval budget. The
 /// root-insert move family is O(roots^2); without a fixed cap the first batch at
 /// production scale (hundreds of roots) consumes the whole `eval_budget`, so the
@@ -2317,6 +2326,43 @@ mod tests {
     }
 
     #[test]
+    fn optimizer_beam_dedups_states_with_equal_order_and_objective() {
+        // Two distinct genomes that decode to the SAME root order and the SAME
+        // objective are redundant beam starts: greedy descent from either explores
+        // the identical neighborhood. Dedup must collapse them by (order, objective),
+        // NOT by byte-equal genome — random-key seeds almost never collide bytewise,
+        // so full-genome dedup would admit redundant states on small root sets.
+        let same_order = vec![5u32, 6, 7];
+        let mut a = candidate_score(10, 22);
+        a.order = same_order.clone();
+        let mut b = candidate_score(10, 22);
+        b.order = same_order.clone();
+        let scored = vec![
+            scored_test_candidate(0, a, MoveFamily::RootSwap),
+            scored_test_candidate(1, b, MoveFamily::RootInsert),
+        ];
+
+        let states = optimizer_beam_from_seed_scores(scored, 8);
+
+        assert_eq!(states.len(), 1);
+        assert_eq!(states[0].score.order, same_order);
+    }
+
+    #[test]
+    fn beam_width_scales_with_budget_to_avoid_dilution() {
+        // Beam width must track the eval budget: a single greedy descent needs
+        // ~BEAM_STATE_MIN_BUDGET evals to converge, so opening more states than the
+        // budget can fund starves the best trajectory and regresses (measured: width 8
+        // @ budget 2000 = 402→378). Width 1 below the floor; widen only with surplus.
+        assert_eq!(beam_width_for_budget(16), 1);
+        assert_eq!(beam_width_for_budget(BEAM_STATE_MIN_BUDGET - 1), 1);
+        assert_eq!(beam_width_for_budget(2_000), 2);
+        assert_eq!(beam_width_for_budget(16_000), OPTIMIZER_BEAM_WIDTH);
+        assert!(beam_width_for_budget(usize::MAX) <= OPTIMIZER_BEAM_WIDTH);
+        assert!(beam_width_for_budget(1) >= 1);
+    }
+
+    #[test]
     fn advance_optimizer_state_updates_global_best_on_improvement() {
         let inst = swap_optimizer_fixture();
         let sites = enumerate_demand_sites(&inst);
@@ -2490,6 +2536,7 @@ mod tests {
         best_score: CandidateScore,
         evals: usize,
         iterations: usize,
+        beam_states: usize,
         accepted: AcceptedMoves,
         family_stats: MoveFamilyStats,
     }
@@ -2910,6 +2957,14 @@ mod tests {
         )
     }
 
+    /// Budget-proportional beam width: open at most one state per `BEAM_STATE_MIN_BUDGET`
+    /// evals (the empirical single-descent convergence budget), capped at
+    /// `OPTIMIZER_BEAM_WIDTH`. This makes the beam a strict no-regression generalization
+    /// of single-state descent — at budgets that cannot fund breadth it stays width 1.
+    fn beam_width_for_budget(eval_budget: usize) -> usize {
+        (eval_budget / BEAM_STATE_MIN_BUDGET).clamp(1, OPTIMIZER_BEAM_WIDTH)
+    }
+
     fn optimizer_beam_from_seed_scores(
         mut scored: Vec<ScoredGenome>,
         beam_width: usize,
@@ -2925,10 +2980,15 @@ mod tests {
             if states.len() >= beam_width {
                 break;
             }
-            if states
-                .iter()
-                .any(|state: &OptimizerState| state.genome == entry.genome)
-            {
+            // Dedup by decoded order + objective, NOT byte-equal genome: random-key
+            // seeds that decode to the same order are redundant starts (identical
+            // greedy neighborhood), yet almost never collide bytewise on small root
+            // sets. Collapsing them keeps the beam funded with genuinely distinct
+            // trajectories.
+            if states.iter().any(|state: &OptimizerState| {
+                state.score.order == entry.score.order
+                    && objective_key(&state.score) == objective_key(&entry.score)
+            }) {
                 continue;
             }
             states.push(OptimizerState {
@@ -2954,7 +3014,12 @@ mod tests {
         if *evals >= eval_budget {
             return false;
         }
-        let remaining = eval_budget - *evals;
+        // H3: cap each batch to a FIXED branching factor, independent of the remaining
+        // eval budget. The root-insert family is O(roots^2); bounding it only by the
+        // remaining budget let one advance consume the whole budget at production scale
+        // (hundreds of roots), so the search did ~one greedy step. A fixed cap funds
+        // many iterations; the beam reuses this per state, so every state inherits it.
+        let remaining = (eval_budget - *evals).min(NEIGHBOR_BATCH_CAP);
         let neighbors = neighbor_entries(inst, sites, &state.genome, remaining);
         if neighbors.is_empty() {
             return false;
@@ -3016,70 +3081,54 @@ mod tests {
             .collect();
         let mut evals = seed_entries.len();
         let seed_scores = score_genomes_parallel(inst, sites, seed_entries, default_worker_count());
-        let best_seed = seed_scores
-            .iter()
-            .min_by(|a, b| {
-                objective_key(&a.score)
-                    .cmp(&objective_key(&b.score))
-                    .then(a.index.cmp(&b.index))
-            })
-            .expect("at least one seed must be scored")
-            .clone();
-        let mut best_genome = best_seed.genome;
-        let mut best_score = best_seed.score;
-        let mut current_genome = best_genome.clone();
-        let mut current_score = best_score.clone();
-        let mut plateau_remaining = CACHE_PLATEAU_STEPS;
+
+        // Initialize a fixed-width beam from the scored seeds (best-objective first,
+        // deduped by order+objective). The beam carries several promising states
+        // instead of collapsing the population to one greedy incumbent; a lone seed
+        // degenerates to a one-state beam (the single-seed call sites are unchanged).
+        let mut beam = optimizer_beam_from_seed_scores(seed_scores, beam_width_for_budget(eval_budget));
+        let beam_states = beam.len();
+        let mut best_genome = beam[0].genome.clone();
+        let mut best_score = beam[0].score.clone();
         let mut accepted = AcceptedMoves::default();
         let mut family_stats = MoveFamilyStats::default();
         let mut iterations = 0usize;
 
-        while evals < eval_budget {
-            // H3: cap each batch to a FIXED branching factor, independent of the
-            // remaining eval budget. The root-insert family is O(roots^2); bounding it
-            // only by `remaining` let the FIRST batch consume the whole budget at
-            // production scale (hundreds of roots), so the search did ~one greedy step.
-            // A fixed cap makes the budget fund many iterations (the beam reuses this
-            // batch per state, so it inherits the fix).
-            let remaining = (eval_budget - evals).min(NEIGHBOR_BATCH_CAP);
-            let neighbors = neighbor_entries(inst, sites, &current_genome, remaining);
-            if neighbors.is_empty() {
-                break;
+        // Round-robin: advance every live state once per round against the shared eval
+        // budget and the shared global best. A state that stalls (local optimum /
+        // plateau exhausted / empty neighborhood) is dropped so its dead neighborhood
+        // is never re-scored. Stop when the budget is spent or every state has stalled.
+        while evals < eval_budget && !beam.is_empty() {
+            let mut next_beam = Vec::with_capacity(beam.len());
+            let mut advanced_any = false;
+            for mut state in beam.drain(..) {
+                if evals >= eval_budget {
+                    next_beam.push(state);
+                    continue;
+                }
+                let before = evals;
+                let moved = advance_optimizer_state(
+                    inst,
+                    sites,
+                    &mut state,
+                    eval_budget,
+                    &mut evals,
+                    &mut best_genome,
+                    &mut best_score,
+                    &mut accepted,
+                    &mut family_stats,
+                );
+                if evals > before {
+                    iterations += 1;
+                }
+                if moved {
+                    advanced_any = true;
+                    next_beam.push(state);
+                }
             }
-            iterations += 1;
-            evals += neighbors.len();
-            let neighbor_scores =
-                score_genomes_parallel(inst, sites, neighbors, default_worker_count());
-            record_family_improvements(&neighbor_scores, &current_score, &mut family_stats);
-
-            match select_optimizer_neighbor(&neighbor_scores, &current_score, plateau_remaining) {
-                OptimizerStep::Improving(idx) => {
-                    let selected = neighbor_scores[idx].clone();
-                    current_genome = selected.genome;
-                    current_score = selected.score;
-                    plateau_remaining = CACHE_PLATEAU_STEPS;
-                    if objective_less(&current_score, &best_score) {
-                        best_genome = current_genome.clone();
-                        best_score = current_score.clone();
-                    }
-                    if let Some(family) = selected.family {
-                        accepted.add(family);
-                        family_stats.record_selected(family);
-                    }
-                }
-                OptimizerStep::Sideways(idx) => {
-                    let selected = neighbor_scores[idx].clone();
-                    current_genome = selected.genome;
-                    current_score = selected.score;
-                    plateau_remaining = plateau_remaining.saturating_sub(1);
-                    if let Some(family) = selected.family {
-                        accepted.add(family);
-                        family_stats.record_selected(family);
-                    }
-                }
-                OptimizerStep::Stop => {
-                    break;
-                }
+            beam = next_beam;
+            if !advanced_any {
+                break;
             }
         }
 
@@ -3088,6 +3137,7 @@ mod tests {
             best_score,
             evals,
             iterations,
+            beam_states,
             accepted,
             family_stats,
         }
@@ -3182,6 +3232,75 @@ mod tests {
             small.iterations,
             large.iterations
         );
+    }
+
+    #[test]
+    fn optimizer_runs_a_beam_over_multiple_distinct_seed_orders() {
+        // The optimizer must keep and refine SEVERAL promising seeds, not collapse the
+        // population to one greedy incumbent. With two seeds that decode to distinct
+        // root orders the beam carries >= 2 live states; a lone seed degenerates to a
+        // one-state beam (so the single-seed call sites are unchanged).
+        let inst = swap_optimizer_fixture();
+        let sites = enumerate_demand_sites(&inst);
+        let identity = Genome::neutral(&inst, &sites);
+        let mut reversed = Genome::neutral(&inst, &sites);
+        reversed.root_order_key = vec![0.75, 0.5, 0.25, 0.0];
+        assert_ne!(
+            decode_root_order(&inst, &identity),
+            decode_root_order(&inst, &reversed),
+            "seeds must decode to distinct orders to populate a beam"
+        );
+
+        // Budget must clear 2 * BEAM_STATE_MIN_BUDGET so the width policy funds >= 2 states.
+        let budget = 4 * BEAM_STATE_MIN_BUDGET;
+        let beam = optimize_from_population(&inst, &sites, vec![identity, reversed], budget);
+        assert!(
+            beam.beam_states >= 2,
+            "multiple distinct-order seeds must seed a beam (got {})",
+            beam.beam_states
+        );
+
+        let solo = optimize_from_population(
+            &inst,
+            &sites,
+            vec![Genome::neutral(&inst, &sites)],
+            budget,
+        );
+        assert_eq!(solo.beam_states, 1);
+    }
+
+    #[test]
+    fn optimizer_is_deterministic_across_repeated_runs() {
+        // Parallel scoring must not leak nondeterminism into selection: identical seeds
+        // and budget must yield identical results (objective, order, evals, iterations,
+        // beam width, accepted moves) on every run.
+        let inst = many_root_shared_reads(12, 64, 4);
+        let sites = enumerate_demand_sites(&inst);
+        let run = || {
+            optimize_from_population(
+                &inst,
+                &sites,
+                smoke_genome_population(&inst, &sites, 6),
+                4 * BEAM_STATE_MIN_BUDGET,
+            )
+        };
+        let first = run();
+        let second = run();
+
+        assert!(
+            first.beam_states >= 2,
+            "determinism must be exercised on a real multi-state beam (got {})",
+            first.beam_states
+        );
+        assert_eq!(
+            (first.best_score.traffic, first.best_score.instrs),
+            (second.best_score.traffic, second.best_score.instrs)
+        );
+        assert_eq!(first.best_score.order, second.best_score.order);
+        assert_eq!(first.evals, second.evals);
+        assert_eq!(first.iterations, second.iterations);
+        assert_eq!(first.beam_states, second.beam_states);
+        assert_eq!(first.accepted, second.accepted);
     }
 
     fn neighbor_entries(
