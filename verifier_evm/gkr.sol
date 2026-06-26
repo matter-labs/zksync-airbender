@@ -607,6 +607,7 @@ contract GKRVerifier {
         }
 
         // TODO: don't forget the recursion chain check
+        // TODO: very, VERY, carefully review end-to-end fiat-shamir
 
         // anti-DCE
         mstore(0, claim)

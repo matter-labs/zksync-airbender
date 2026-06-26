@@ -86,7 +86,7 @@ impl Yul {
         yul_format!("mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, {idx})))")
     }
     fn mstore(idx: &usize) -> Self {
-        yul_format!("mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, {idx})), gate)")
+        yul_format!("mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, {idx})), mod(gate, P))") // mod to prevent overflows with pointcheck const-cache multiplications
     }
     fn logup_gamma() -> Self {
         yul_format!("mload(add(LOGUP_CHALLS_PTR, 32))")
@@ -158,6 +158,11 @@ fn main() {
         assert_eq!(circuit.trace_len, 1<<24, "we need to keep sync with gkr.sol constant!");
         circuit.trace_len.trailing_zeros()
     };
+    let gkr_sol_rounds = include_str!("gkr.sol")
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("uint256 constant GKR_CIRCUIT_LAYER_ROUNDS = ")?.strip_suffix(";")?.parse::<u32>().ok())
+        .expect("GKR_CIRCUIT_LAYER_ROUNDS not found");
+    assert_eq!(circuit_rounds, gkr_sol_rounds, "inconsistent layer rounds/sizes, either fix the circuit json or GKR_CIRCUIT_LAYER_ROUNDS const in gkr.sol");
     let layer0_group_widths = (circuit.memory_layout.total_width, circuit.witness_layout.total_width, circuit.generic_lookup_tables_width, circuit.layers[0].cached_relations.len());
     // let mut previous_input_count = 8;
     let mut previous_input_count = 10; // TEMPORARY: unified adds another product pair for inits/teardowns
@@ -600,32 +605,37 @@ fn main() {
             fn linrel_to_calldata_inner(inputs: &NoFieldLinearRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 // TODO: THIS IS EXPENSIVE FOR BYTECODE SIZE
                 let NoFieldLinearRelation { linear_terms, constant } = inputs;
-                let linear = linear_terms.iter().map(|(c, addr)| {
-                    let input = gkraddress_to_calldata(addr, expected_layer, layer0_group_widths, running_max_group_offsets);
-                    let c = const_to_evm(c);
-                    Dual(format!("{c}{input}"), yul_format!("mul({c:x}, {input:x})"))
-                }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or(Dual(format!("0"), yul_format!("0")));
+                let linear = linterms_to_calldata_inner(linear_terms, expected_layer, layer0_group_widths, running_max_group_offsets);
                 let constant = const_to_evm(constant);
                 Dual(format!("{constant} + {linear}"), yul_format!("add({constant:x}, {linear:x})"))
             }
-            fn quadrel_to_calldata_inner(input: &NoFieldMaxQuadraticGKRRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> String {
+            fn linterms_to_calldata_inner(linear_terms: &Box<[(u32, GKRAddress)]>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
+                linear_terms.iter().map(|(c, addr)| {
+                    let input = gkraddress_to_calldata(addr, expected_layer, layer0_group_widths, running_max_group_offsets);
+                    let c = const_to_evm(c);
+                    if c.1.0.starts_with("sub(P, ") { // avoid overflows
+                        let modc = c.1.0.strip_circumfix("sub(P, ", ")").unwrap();
+                        let neg_input = u128_to_neg(&input);
+                        Dual(format!("{modc}{neg_input}"), yul_format!("mul({modc}, {neg_input:x})"))
+                    } else {
+                        Dual(format!("{c}{input}"), yul_format!("mul({c:x}, {input:x})"))
+                    }
+                }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or(Dual(format!("0"), yul_format!("0")))
+            }
+            fn quadrel_to_calldata_inner(input: &NoFieldMaxQuadraticGKRRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let NoFieldMaxQuadraticGKRRelation { quadratic_terms, linear_terms, constant } = input;
                 let quadratic = quadratic_terms.iter().map(|(address, linear_terms)| {
                     let read = gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets);
-                    let linear = linear_terms.iter().map(|(c, address)| {
-                        let read = gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets);
-                        let c = const_to_evm(c);
-                        format!("{c}{read}")
-                    }).collect::<Vec<_>>().join(" + ");
-                    format!("{read}({linear})")
-                }).collect::<Vec<_>>().join(" + ");
-                let linear = linear_terms.iter().map(|(c, address)| {
-                    let read = gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets);
-                    let c = const_to_evm(c);
-                    format!("{c}{read}")
-                }).collect::<Vec<_>>().join(" + ");
+                    let linear = linterms_to_calldata_inner(linear_terms, expected_layer, layer0_group_widths, running_max_group_offsets);
+                    // TODO: maybe call a fn to collect all quadratics..
+                    Dual(format!("{read}({linear})"), yul_format!("mulmod({read:x}, {linear:x}, P)"))
+                }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or(Dual(format!("0"), yul_format!("0")));
+                let linear = linterms_to_calldata_inner(linear_terms, expected_layer, layer0_group_widths, running_max_group_offsets);
                 let constant = const_to_evm(constant);
-                format!("{constant} + {linear} + {quadratic}")
+                Dual(
+                    format!("{constant} + {linear} + {quadratic}"),
+                    yul_format!("add(add({constant:x}, {linear:x}), {quadratic:x})")
+                )
             }
             // fn expression_to_calldata(expression: &NoFieldStructuredExpression, expected_layer: usize, layer0_group_widths: (usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize)) -> String {
             //    match expression {
@@ -858,7 +868,12 @@ fn main() {
                 NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
                     let input = quadrel_to_calldata_inner(input, i, layer0_group_widths, &mut running_max_group_offsets);
                     // let expression = expression_to_calldata(expression, i, layer0_group_widths, &mut running_max_group_offsets);
-                    println!("{relation_name}: 0 == {input}");
+                    // println!("{relation_name}: 0 == {input}");
+                    yul_println!("
+                    \t{{  // {relation_name}: 0 == {input}
+                    \t    let gate := {input:x}
+                    \t    {pointcheck_update:x}
+                    \t}}");
                 }
                 // (unified)
                 NoFieldGKRRelation::InitsOrTeardownsInitialPair { timestamp_and_value, setup, output, set_idxes } => {
@@ -892,8 +907,12 @@ fn main() {
                 NoFieldGKRRelation::MaxQuadratic { input, output } => {
                     let input = quadrel_to_calldata_inner(input, i, layer0_group_widths, &mut running_max_group_offsets);
                     let output = gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
-                    println!("{relation_name}: {input} = {output}")
-                    // TODO: DO NOT FORGET TO INSTANTIATE CACHES
+                    // println!("{relation_name}: {input} = {output}");
+                    yul_println!("
+                    \t{{  // {relation_name}: {input} = {output}
+                    \t    let gate := {input:x}
+                    \t    {pointcheck_update:x}
+                    \t}}");
                 }
 
                 _ => todo!("could not match {enforced_relation:?} at layer {i}")

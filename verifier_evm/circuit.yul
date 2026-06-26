@@ -418,19 +418,19 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
     let acc
     {  // RangeCheck16Bits: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = Cache(0)
         let gate := gkr_virtual_poly_rangecheck(16)
-        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 0)), gate)
+        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 0)), mod(gate, P))
     }
     {  // RangeCheckTimestamp: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = Cache(1)
         let gate := gkr_virtual_poly_rangecheck(19)
-        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 1)), gate)
+        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 1)), mod(gate, P))
     }
     {  // InitsAndTeardownsLow: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = Cache(2)
         let gate := mul(4, gkr_virtual_poly_compose_vars(14, 0)) // u32 word-aligned
-        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 2)), gate)
+        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 2)), mod(gate, P))
     }
     {  // InitsAndTeardownsHigh: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = Cache(3)
         let gate := gkr_virtual_poly_compose_vars(10, 14)
-        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 3)), gate)
+        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 3)), mod(gate, P))
     }
     {  // CopyInBaseField: [21] = [0]
         let gate := shr(128, calldataload(add(ptr, mul(16, 21))))
@@ -472,6 +472,170 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let lhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR, mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 3))), 0), P), gkr_memrel_compress_high(shr(128, calldataload(add(ptr, mul(16, 32)))), shr(128, calldataload(add(ptr, mul(16, 33)))), shr(128, calldataload(add(ptr, mul(16, 30)))), shr(128, calldataload(add(ptr, mul(16, 31))))))) // for memrel we collect
         let rhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR, mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 3))), 1024), P), gkr_memrel_compress_high(shr(128, calldataload(add(ptr, mul(16, 36)))), shr(128, calldataload(add(ptr, mul(16, 37)))), shr(128, calldataload(add(ptr, mul(16, 34)))), shr(128, calldataload(add(ptr, mul(16, 35))))))) // for memrel we collect
         let gate := mulmod(lhs, rhs, P)
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 64-[9] + 64-[16] + [9](2^16[61] + 1[65]) + [16](2^16[61] + 1[65]) = [7]
+        let gate := add(add(0, add(mul(64, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 9)))))), mul(64, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 16)))))))), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 9)))), add(mul(65536, shr(128, calldataload(add(ptr, mul(16, 61))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 65)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 16)))), add(mul(65536, shr(128, calldataload(add(ptr, mul(16, 61))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 65)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 1[52] + 1[53] + 1[54] + 1[55] + 2^3[57] + 3[58] + [21](34[93]) = [8]
+        let gate := add(add(0, add(add(add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 52))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 53)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 54)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 55)))))), mul(8, shr(128, calldataload(add(ptr, mul(16, 57)))))), mul(3, shr(128, calldataload(add(ptr, mul(16, 58))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 21)))), mul(34, shr(128, calldataload(add(ptr, mul(16, 93))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [41](1[58]) + [52](1[85] + 1[86]) + [53](1[85] + 1[86]) + [54](1[85] + 1[86]) + [55](1[85] + 1[86]) + [57](1[83]) + [64](1[93]) + [65](2^16[93]) = [9]
+        let gate := add(add(0, 0), add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 41)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 58))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 85))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 86)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 85))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 86)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 85))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 86)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 85))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 86)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 83))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 64)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 93))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 65)))), mul(65536, shr(128, calldataload(add(ptr, mul(16, 93))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [52](1[64]) + [53](1[64]) + [54](1[64]) + [55](1[64]) + [57](7864320[83] + 7864320-[7]) + [58](1[64]) + [7](1[93]) + [9](1-[7] + 1[19]) + [16](1-[7] + 1[19]) = [10]
+        let gate := add(add(0, 0), add(add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 64))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 64))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 64))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 64))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), add(mul(7864320, shr(128, calldataload(add(ptr, mul(16, 83))))), mul(7864320, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 7))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 64))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 7)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 93))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 9)))), add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 7)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 19)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 16)))), add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 7)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 19)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[64]) + [8](1[93]) + [9](1-[8] + 1[20]) + [16](1-[8] + 1[20]) = [11]
+        let gate := add(add(0, 0), add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 64))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 8)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 93))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 9)))), add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 8)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 20)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 16)))), add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 8)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 20)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 5[52] + 5[53] + 5[54] + 5[55] + 9[57] + [42](1[58]) = [12]
+        let gate := add(add(0, add(add(add(add(mul(5, shr(128, calldataload(add(ptr, mul(16, 52))))), mul(5, shr(128, calldataload(add(ptr, mul(16, 53)))))), mul(5, shr(128, calldataload(add(ptr, mul(16, 54)))))), mul(5, shr(128, calldataload(add(ptr, mul(16, 55)))))), mul(9, shr(128, calldataload(add(ptr, mul(16, 57))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 42)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 58))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [52](1[3]) + [53](1[3]) + [54](1[3]) + [55](1[3]) + [58](1[81]) = [13]
+        let gate := add(add(0, 0), add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 3))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 3))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 3))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 3))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 81))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [40](1[58]) + [52](1[65]) + [53](1[65]) + [54](1[65]) + [55](1[65]) + [57](1[81]) + [58](1[83]) = [14]
+        let gate := add(add(0, 0), add(add(add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 40)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 58))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 65))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 65))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 65))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 65))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 81))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 83))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [40](1[57]) + [57](1[64]) + [58](1[65]) = [15]
+        let gate := add(add(0, 0), add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 40)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 57))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 64))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 65))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [42](1[57]) = [16]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 42)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 57))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[65]) = [17]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 65))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[66]) = [18]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 66))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[67]) = [19]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 67))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[68]) = [20]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 68))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 31[52] + 31[53] + 31[54] + 31[55] + 9[57] + [42](1[58]) = [21]
+        let gate := add(add(0, add(add(add(add(mul(31, shr(128, calldataload(add(ptr, mul(16, 52))))), mul(31, shr(128, calldataload(add(ptr, mul(16, 53)))))), mul(31, shr(128, calldataload(add(ptr, mul(16, 54)))))), mul(31, shr(128, calldataload(add(ptr, mul(16, 55)))))), mul(9, shr(128, calldataload(add(ptr, mul(16, 57))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 42)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 58))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 1[57] + [42](2^19[52] + 2^19[53] + 2^19[54] + 2^19[55]) + [52](2^17[60] + 2^18[64] + 2^16[65] + 1[8]) + [53](2^17[60] + 2^18[64] + 2^16[65] + 1[8]) + [54](2^17[60] + 2^18[64] + 2^16[65] + 1[8]) + [55](2^17[60] + 2^18[64] + 2^16[65] + 1[8]) + [58](7864320[81] + 7864320-[2]) = [22]
+        let gate := add(add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 57)))))), add(add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 42)))), add(add(add(mul(524288, shr(128, calldataload(add(ptr, mul(16, 52))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 53)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 54)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 55)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), add(add(add(mul(131072, shr(128, calldataload(add(ptr, mul(16, 60))))), mul(262144, shr(128, calldataload(add(ptr, mul(16, 64)))))), mul(65536, shr(128, calldataload(add(ptr, mul(16, 65)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 8)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), add(add(add(mul(131072, shr(128, calldataload(add(ptr, mul(16, 60))))), mul(262144, shr(128, calldataload(add(ptr, mul(16, 64)))))), mul(65536, shr(128, calldataload(add(ptr, mul(16, 65)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 8)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), add(add(add(mul(131072, shr(128, calldataload(add(ptr, mul(16, 60))))), mul(262144, shr(128, calldataload(add(ptr, mul(16, 64)))))), mul(65536, shr(128, calldataload(add(ptr, mul(16, 65)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 8)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), add(add(add(mul(131072, shr(128, calldataload(add(ptr, mul(16, 60))))), mul(262144, shr(128, calldataload(add(ptr, mul(16, 64)))))), mul(65536, shr(128, calldataload(add(ptr, mul(16, 65)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 8)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), add(mul(7864320, shr(128, calldataload(add(ptr, mul(16, 81))))), mul(7864320, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 2))))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [41](1[58]) + [52](1[66]) + [53](1[66]) + [54](1[66]) + [55](1[66]) + [57](7864320[81] + 7864320-[2]) + [58](7864320[83] + 7864320-[7]) = [23]
+        let gate := add(add(0, 0), add(add(add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 41)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 58))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 66))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 66))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 66))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 66))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), add(mul(7864320, shr(128, calldataload(add(ptr, mul(16, 81))))), mul(7864320, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 2))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), add(mul(7864320, shr(128, calldataload(add(ptr, mul(16, 83))))), mul(7864320, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 7))))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [40](1[57]) + [57](1[64]) + [58](1[66]) = [24]
+        let gate := add(add(0, 0), add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 40)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 57))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 64))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 66))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [42](1[57]) = [25]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 42)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 57))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[69]) = [26]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 69))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[70]) = [27]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 70))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[71]) = [28]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 71))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[72]) = [29]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 72))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 2[52] + 2[53] + 2[54] + 2[55] + 9[57] + [42](1[58]) = [30]
+        let gate := add(add(0, add(add(add(add(mul(2, shr(128, calldataload(add(ptr, mul(16, 52))))), mul(2, shr(128, calldataload(add(ptr, mul(16, 53)))))), mul(2, shr(128, calldataload(add(ptr, mul(16, 54)))))), mul(2, shr(128, calldataload(add(ptr, mul(16, 55)))))), mul(9, shr(128, calldataload(add(ptr, mul(16, 57))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 42)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 58))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 2[57] + [52](1[88]) + [53](1[88]) + [54](1[88]) + [55](1[88]) + [58](1[82]) = [31]
+        let gate := add(add(0, mul(2, shr(128, calldataload(add(ptr, mul(16, 57)))))), add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 88))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 88))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 88))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 88))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 82))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [52](1[63]) + [53](1[63]) + [54](1[63]) + [55](1[63]) + [57](1[82]) + [58](1[64] + 1[84]) = [32]
+        let gate := add(add(0, 0), add(add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 63))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 63))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 63))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 63))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 82))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 64))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 84)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [40](1[57]) + [52](1[26]) + [53](1[26]) + [54](1[26]) + [55](1[26]) + [57](1[64]) + [58](1[67]) = [33]
+        let gate := add(add(0, 0), add(add(add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 40)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 57))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 26))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 26))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 26))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 26))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 64))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 67))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [42](1[57]) = [34]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 42)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 57))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[73]) = [35]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 73))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[74]) = [36]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 74))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[75]) = [37]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 75))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[76]) = [38]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 76))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 9[57] + [42](1[58]) = [39]
+        let gate := add(add(0, mul(9, shr(128, calldataload(add(ptr, mul(16, 57)))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 42)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 58))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 3[57] + [58](7864320[82] + 7864320-[3]) = [40]
+        let gate := add(add(0, mul(3, shr(128, calldataload(add(ptr, mul(16, 57)))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), add(mul(7864320, shr(128, calldataload(add(ptr, mul(16, 82))))), mul(7864320, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 3))))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](7864320[82] + 7864320-[3]) + [58](1[64] + 7864320[84] + 7864320-[8]) = [41]
+        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), add(mul(7864320, shr(128, calldataload(add(ptr, mul(16, 82))))), mul(7864320, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 3))))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 64))))), mul(7864320, shr(128, calldataload(add(ptr, mul(16, 84)))))), mul(7864320, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 8))))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [40](1[57]) + [57](1[64]) + [58](1[68]) = [42]
+        let gate := add(add(0, 0), add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 40)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 57))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 64))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 68))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [42](1[57]) = [43]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 42)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 57))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[77]) = [44]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 77))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[78]) = [45]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 78))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[79]) = [46]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 79))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // MaxQuadratic: 0 + 0 + [57](1[80]) = [47]
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 80))))), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [85]) - [100]/(δ + Cache(0)) = [48]/[49]
@@ -534,32 +698,32 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // LookupPairFromBaseInputs: 1/(δ + 0 + 1[29]) + 1/(δ + 0 + -1[24] + 1[0] + 2^19[97]) = [63]/[64]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 29))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, add(add(mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 24))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 0)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 97)))))))), P)
+    {  // LookupPairFromBaseInputs: 1/(δ + 0 + 1[29]) + 1/(δ + 0 + 1-[24] + 1[0] + 2^19[97]) = [63]/[64]
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 29))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 0)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 97)))))))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 29))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, add(add(mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 24))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 0)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 97)))))))))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 29))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 0)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 97)))))))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // LookupPairFromBaseInputs: 1/(δ + 2^19 + -1[25] + 1[1] + -1[97]) + 1/(δ + -1 + -1[24] + 1[5] + 2^19[98]) = [65]/[66]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(524288, add(add(mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 25))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 1)))))), mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 97)))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(sub(P, 1), add(add(mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 24))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 5)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 98)))))))), P)
+    {  // LookupPairFromBaseInputs: 1/(δ + 2^19 + 1-[25] + 1[1] + 1-[97]) + 1/(δ + -1 + 1-[24] + 1[5] + 2^19[98]) = [65]/[66]
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(524288, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 25)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 1)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 97))))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(sub(P, 1), add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 5)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 98)))))))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(524288, add(add(mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 25))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 1)))))), mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 97)))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(sub(P, 1), add(add(mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 24))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 5)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 98)))))))))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(524288, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 25)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 1)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 97))))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(sub(P, 1), add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 5)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 98)))))))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // LookupPairFromBaseInputs: 1/(δ + 2^19 + -1[25] + 1[6] + -1[98]) + 1/(δ + -2 + -1[24] + 1[12] + 2^19[99]) = [67]/[68]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(524288, add(add(mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 25))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 6)))))), mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 98)))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(sub(P, 2), add(add(mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 24))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 12)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 99)))))))), P)
+    {  // LookupPairFromBaseInputs: 1/(δ + 2^19 + 1-[25] + 1[6] + 1-[98]) + 1/(δ + -2 + 1-[24] + 1[12] + 2^19[99]) = [67]/[68]
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(524288, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 25)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 6)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 98))))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(sub(P, 2), add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 12)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 99)))))))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(524288, add(add(mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 25))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 6)))))), mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 98)))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(sub(P, 2), add(add(mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 24))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 12)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 99)))))))))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(524288, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 25)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 6)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 98))))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(sub(P, 2), add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 12)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 99)))))))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // MaterializeSingleLookupInput: 2^19 + -1[25] + 1[13] + -1[99] = [69]
-        let gate := add(524288, add(add(mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 25))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 13)))))), mul(sub(P, 1), shr(128, calldataload(add(ptr, mul(16, 99)))))))
+    {  // MaterializeSingleLookupInput: 2^19 + 1-[25] + 1[13] + 1-[99] = [69]
+        let gate := add(524288, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 25)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 13)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 99))))))))
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupWithDensAndSetupExpressions: [21]/(δ + β⁰(0 + 1[22]) + β¹(0 + 1[23]) + β²(0 + 1[4]) + β³(0 + 1[38]) + β⁴(0 + 1[39]) + β⁵(0 + 1[40]) + β⁶(0 + 1[41]) + β⁷(0 + 1[42]) + β⁸(0 + 1[43] + 2[44] + 2^2[45] + 2^3[46] + 2^4[47] + 2^5[48] + 2^6[49] + 2^7[50] + 2^8[51] + 2^9[52] + 2^10[53] + 2^11[54] + 2^12[55] + 2^13[56] + 2^14[57] + 2^15[58] + 2^16[9] + 2^17[16]) + β⁹(46 + 0)) - [102]/(δ + β⁰[103] + β¹[104] + β²[105] + β³[106] + β⁴[107] + β⁵[108] + β⁶[109] + β⁷[110] + β⁸[111] + β⁹[112]) = [70]/[71]
@@ -570,6 +734,338 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         acc := add(mulmod(acc, alpha, P), gate)
         let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 21)))), setup_den, P), sub(P, mulmod(input_den, shr(128, calldataload(add(ptr, mul(16, 102)))), P)))
         gate := num_out
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[21] + [21](1[21])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 21)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 21))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[87] + [49](1[14] + 2^16[15]) + [2](943718400[7] + 30720-[8]) + [3](30720-[7] + 1[8])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 87))))))), add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 49)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 14))))), mul(65536, shr(128, calldataload(add(ptr, mul(16, 15)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 2)))), add(mul(943718400, shr(128, calldataload(add(ptr, mul(16, 7))))), mul(30720, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 8))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 3)))), add(mul(30720, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 7)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 8)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [46](1-[2] + 65536-[3] + 1-[7] + 65536-[8] + 1[19] + 2^16[20]) + [47](1-[2] + 65536-[3] + 1[7] + 2^16[8] + 1[19] + 2^16[20]) + [48](1-[87] + 1[19] + 2^16[20]) + [49](1-[87] + 1[19] + 2^16[20])
+        let gate := add(add(0, 0), add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 46)))), add(add(add(add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 2)))))), mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 3))))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 7))))))), mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 8))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 19)))))), mul(65536, shr(128, calldataload(add(ptr, mul(16, 20)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 47)))), add(add(add(add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 2)))))), mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 3))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 7)))))), mul(65536, shr(128, calldataload(add(ptr, mul(16, 8)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 19)))))), mul(65536, shr(128, calldataload(add(ptr, mul(16, 20)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 48)))), add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 87)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 19)))))), mul(65536, shr(128, calldataload(add(ptr, mul(16, 20)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 49)))), add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 87)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 19)))))), mul(65536, shr(128, calldataload(add(ptr, mul(16, 20)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[46] + 1[47] + 1[48] + 1[49] + [46](1-[59]) + [47](1-[59]) + [48](1-[59]) + [49](1-[59])
+        let gate := add(add(0, add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 46))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 47)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 48)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 49))))))), add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 46)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 47)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 48)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 49)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[46] + 1[47] + 1[48] + 1[49] + [40](1[43] + 1[45]) + [43](65536-[60] + 1[2] + 1[7] + 1-[19]) + [44](65536-[60] + 1-[2] + 1[7] + 1[19]) + [45](65536-[60] + 1-[19] + 1[22]) + [46](65536-[60] + 1[85] + 1-[19]) + [47](65536-[60] + 1[85] + 1-[19]) + [48](65536-[60] + 1[85] + 1-[19]) + [49](65536-[60] + 1[85] + 1-[19])
+        let gate := add(add(0, add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 46))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 47)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 48)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 49))))))), add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 40)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 43))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 45)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 43)))), add(add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 60)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 2)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 7)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 19))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 44)))), add(add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 60)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 2))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 7)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 19)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 45)))), add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 60)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 19))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 22)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 46)))), add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 60)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 85)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 19))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 47)))), add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 60)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 85)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 19))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 48)))), add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 60)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 85)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 19))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 49)))), add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 60)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 85)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 19))))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 30720[46] + 30720[47] + 30720[48] + 30720[49] + [41](1[43] + 1[45]) + [43](65536-[59] + 1[60] + 1[3] + 1[8] + 1-[20]) + [44](65536-[59] + 1[60] + 1-[3] + 1[8] + 1[20]) + [45](65536-[59] + 1[60] + 1-[20] + 1[23]) + [46](65536-[59] + 1[60] + 1[86] + 1-[20]) + [47](65536-[59] + 1[60] + 1[86] + 1-[20]) + [48](65536-[59] + 1[60] + 1[86] + 1-[20]) + [49](65536-[59] + 1[60] + 1[86] + 1-[20])
+        let gate := add(add(0, add(add(add(mul(30720, shr(128, calldataload(add(ptr, mul(16, 46))))), mul(30720, shr(128, calldataload(add(ptr, mul(16, 47)))))), mul(30720, shr(128, calldataload(add(ptr, mul(16, 48)))))), mul(30720, shr(128, calldataload(add(ptr, mul(16, 49))))))), add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 41)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 43))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 45)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 43)))), add(add(add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 60)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 3)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 8)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 20))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 44)))), add(add(add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 60)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 3))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 8)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 20)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 45)))), add(add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 60)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 20))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 23)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 46)))), add(add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 60)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 86)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 20))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 47)))), add(add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 60)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 86)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 20))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 48)))), add(add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 60)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 86)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 20))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 49)))), add(add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 60)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 86)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 20))))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [50](1[7])
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 50)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 7))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [50](1[8])
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 50)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 8))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [50](1[5])
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 50)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 5))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [50](1[6])
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 50)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 6))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [50](1[19])
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 50)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 19))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [50](1[20])
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 50)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 20))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 2^2[52] + 2^2[53] + [40](1[54]) + [52](65536-[59] + 1-[85] + 1[22]) + [53](65536-[59] + 1-[85] + 1[22]) + [54](65536-[59] + 1[85] + 1-[2] + 1[7]) + [55](65536-[59] + 1[85] + 1-[2] + 1[7])
+        let gate := add(add(0, add(mul(4, shr(128, calldataload(add(ptr, mul(16, 52))))), mul(4, shr(128, calldataload(add(ptr, mul(16, 53))))))), add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 40)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 54))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 85))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 22)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 85))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 22)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), add(add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 85)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 2))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 7)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), add(add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 85)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 2))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 7)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [41](1[54]) + [52](1[59] + 65536-[60] + 1-[86] + 1[23]) + [53](1[59] + 65536-[60] + 1-[86] + 1[23]) + [54](1[59] + 65536-[60] + 1[86] + 1-[3] + 1[8]) + [55](1[59] + 65536-[60] + 1[86] + 1-[3] + 1[8])
+        let gate := add(add(0, 0), add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 41)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 54))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 59))))), mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 60))))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 86))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 23)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 59))))), mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 60))))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 86))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 23)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), add(add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 59))))), mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 60))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 86)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 3))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 8)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), add(add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 59))))), mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 60))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 86)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 3))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 8)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[89] + [55](1[66])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 89))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 66))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 2^2[54] + 2^2[55] + 4-[89] + [40](1[52] + 1[53] + 1[89]) + [52](65536-[61] + 1-[88] + 1[22]) + [53](65536-[61] + 1-[88] + 1[2]) + [54](65536-[61] + 1-[88] + 1[22]) + [55](65536-[61] + 1-[88] + 1[22])
+        let gate := add(add(0, add(add(mul(4, shr(128, calldataload(add(ptr, mul(16, 54))))), mul(4, shr(128, calldataload(add(ptr, mul(16, 55)))))), mul(4, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 89)))))))), add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 40)))), add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 52))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 53)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 89)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 61)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 88))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 22)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 61)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 88))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 2)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 61)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 88))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 22)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), add(add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 61)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 88))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 22)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [41](1[52] + 1[53] + 1[89]) + [52](1[61] + 65536-[62] + 1[23] + 1-[27]) + [53](1[61] + 65536-[62] + 1[3] + 1-[27]) + [54](1[61] + 65536-[62] + 1[23] + 1-[27]) + [55](1[61] + 65536-[62] + 1[23] + 1-[27])
+        let gate := add(add(0, 0), add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 41)))), add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 52))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 53)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 89)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 61))))), mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 62))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 23)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 27))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 61))))), mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 62))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 3)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 27))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 61))))), mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 62))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 23)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 27))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 61))))), mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 62))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 23)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 27))))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [52](1[63]) + [53](1[63]) + [63](1[89])
+        let gate := add(add(0, 0), add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 63))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 63))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 63)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 89))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[52] + 1-[53] + 1[90] + [52](1[56]) + [53](1[56])
+        let gate := add(add(0, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 52)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 53))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 90))))))), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 56))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 56))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[54] + 1[91] + [54](1[56])
+        let gate := add(add(0, add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 54)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 91))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 56))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[92] + [52](1-[56]) + [53](1-[56]) + [54](1-[56]) + [55](1-[56])
+        let gate := add(add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 92)))))), add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 56)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 56)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 56)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 56)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [66](1[91]) + [85](1[90]) + [90](1-[19]) + [91](1-[19])
+        let gate := add(add(0, 0), add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 66)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 91))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 85)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 90))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 90)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 19)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 91)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 19)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [86](1[90]) + [90](1-[20])
+        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 86)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 90))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 90)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 20)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [91](1[20])
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 91)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 20))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [92](1[19])
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 92)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 19))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [92](1[20])
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 92)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 20))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[57] + 1-[58] + [57](1[57] + 2[58]) + [58](1[58])
+        let gate := add(add(0, add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 57)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 58)))))))), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 57))))), mul(2, shr(128, calldataload(add(ptr, mul(16, 58)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 58))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [57](1[65] + 2^8[66] + 1[69] + 2^8[70] + 1[73] + 2^8[74] + 1[77] + 2^8[78] + 1-[19]) + [58](1[65] + 2^8[66] + 1-[19])
+        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), add(add(add(add(add(add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 65))))), mul(256, shr(128, calldataload(add(ptr, mul(16, 66)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 69)))))), mul(256, shr(128, calldataload(add(ptr, mul(16, 70)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 73)))))), mul(256, shr(128, calldataload(add(ptr, mul(16, 74)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 77)))))), mul(256, shr(128, calldataload(add(ptr, mul(16, 78)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 19))))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 65))))), mul(256, shr(128, calldataload(add(ptr, mul(16, 66)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 19))))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [57](1[67] + 2^8[68] + 1[71] + 2^8[72] + 1[75] + 2^8[76] + 1[79] + 2^8[80] + 1-[20]) + [58](1[67] + 2^8[68] + 1-[20])
+        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), add(add(add(add(add(add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 67))))), mul(256, shr(128, calldataload(add(ptr, mul(16, 68)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 71)))))), mul(256, shr(128, calldataload(add(ptr, mul(16, 72)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 75)))))), mul(256, shr(128, calldataload(add(ptr, mul(16, 76)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 79)))))), mul(256, shr(128, calldataload(add(ptr, mul(16, 80)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 20))))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 67))))), mul(256, shr(128, calldataload(add(ptr, mul(16, 68)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 20))))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[38] + 1[10] + [38](1[9]) + [9](1-[10])
+        let gate := add(add(0, add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 38)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 10))))))), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 38)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 9))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 9)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 10)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[11] + [9](1-[11])
+        let gate := add(add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 11)))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 9)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 11)))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[39] + 1[17] + [39](1[16]) + [16](1-[17])
+        let gate := add(add(0, add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 39)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 17))))))), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 39)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 16))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 16)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 17)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[18] + [16](1-[18])
+        let gate := add(add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 18)))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 16)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 18)))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [40](1[9] + 1[16]) + [59](65536-[9] + 65536-[16]) + [2](1[9] + 1[16]) + [9](1-[10]) + [16](1-[17])
+        let gate := add(add(0, 0), add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 40)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 9))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 16)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 59)))), add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 9)))))), mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 16))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 2)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 9))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 16)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 9)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 10)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 16)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 17)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [41](1[9] + 1[16]) + [59](1[9] + 1[16]) + [60](65536-[9] + 65536-[16]) + [3](1[9] + 1[16]) + [9](1-[11]) + [16](1-[18])
+        let gate := add(add(0, 0), add(add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 41)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 9))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 16)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 59)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 9))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 16)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 60)))), add(mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 9)))))), mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 16))))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 3)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 9))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 16)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 9)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 11)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 16)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 18)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [64](1[9]) + [9](1-[10])
+        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 64)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 9))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 9)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 10)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [64](1[16]) + [16](1-[17])
+        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 64)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 16))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 16)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 17)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [65](1[9]) + [9](1-[11])
+        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 65)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 9))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 9)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 11)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [65](1[16]) + [16](1-[18])
+        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 65)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 16))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 16)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 18)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [61](1[16])
+        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(ptr, mul(16, 61)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 16))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[93] + [61](1-[9] + 1-[16])
+        let gate := add(add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 93)))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 61)))), add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 9)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 16))))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [62](1[16]) + [63](2[16]) + [85](2^2[16]) + [16](1-[17])
+        let gate := add(add(0, 0), add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 62)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 16))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 63)))), mul(2, shr(128, calldataload(add(ptr, mul(16, 16))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 85)))), mul(4, shr(128, calldataload(add(ptr, mul(16, 16))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 16)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 17)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [62](1[16]) + [63](1[16])
+        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 62)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 16))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 63)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 16))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[95] + 1-[21] + [52](1[21]) + [53](1[21]) + [54](1[21]) + [55](1[21])
+        let gate := add(add(0, add(mul(1, shr(128, calldataload(add(ptr, mul(16, 95))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))))), add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 21))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 21))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 21))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 21))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 2^2[95] + [94](65536-[95]) + [95](1[22] + 1-[26])
+        let gate := add(add(0, mul(4, shr(128, calldataload(add(ptr, mul(16, 95)))))), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 94)))), mul(65536, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 95)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 95)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 22))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 26))))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [94](1[95]) + [95](1[23] + 1-[27])
+        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 94)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 95))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 95)))), add(mul(1, shr(128, calldataload(add(ptr, mul(16, 23))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 27))))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[96] + [43](1-[21]) + [44](1-[21]) + [45](1-[21]) + [46](1-[21]) + [47](1-[21]) + [48](1-[21]) + [49](1-[21]) + [50](1-[21]) + [51](1-[21]) + [52](1-[21]) + [53](1-[21]) + [54](1-[21]) + [55](1-[21]) + [57](1-[21]) + [58](1-[21]) + [9](1-[21]) + [16](1-[21])
+        let gate := add(add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 96)))))), add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 43)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 44)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 45)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 46)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 47)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 48)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 49)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 50)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 51)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 9)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 16)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[43] + 1[44] + 1[45] + 1[46] + 1[47] + 1[48] + 1[49] + 1[50] + 1[51] + 1[52] + 1[53] + 1[54] + 1[55] + 1[56] + 1[57] + 1[58] + 1[9] + 1[16] + [43](1-[21]) + [44](1-[21]) + [45](1-[21]) + [46](1-[21]) + [47](1-[21]) + [48](1-[21]) + [49](1-[21]) + [50](1-[21]) + [51](1-[21]) + [52](1-[21]) + [53](1-[21]) + [54](1-[21]) + [55](1-[21]) + [56](1-[21]) + [57](1-[21]) + [58](1-[21]) + [9](1-[21]) + [16](1-[21])
+        let gate := add(add(0, add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 43))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 44)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 45)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 46)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 47)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 48)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 49)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 50)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 51)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 52)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 53)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 54)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 55)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 56)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 57)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 58)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 9)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 16))))))), add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(ptr, mul(16, 43)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 44)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 45)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 46)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 47)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 48)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 49)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 50)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 51)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 56)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 9)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)), mulmod(shr(128, calldataload(add(ptr, mul(16, 16)))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 21)))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 235944960 + 117968640[24] + 117968640-[28] + [24](14745600[24] + 29491200-[28]) + [28](14745600[28])
+        let gate := add(add(235944960, add(mul(117968640, shr(128, calldataload(add(ptr, mul(16, 24))))), mul(117968640, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 28)))))))), add(mulmod(shr(128, calldataload(add(ptr, mul(16, 24)))), add(mul(14745600, shr(128, calldataload(add(ptr, mul(16, 24))))), mul(29491200, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 28))))))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 28)))), mul(14745600, shr(128, calldataload(add(ptr, mul(16, 28))))), P)))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 15360 + 3840[24] + 1-[25] + 3840-[28] + 1[29] + 0
+        let gate := add(add(15360, add(add(add(mul(3840, shr(128, calldataload(add(ptr, mul(16, 24))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 25))))))), mul(3840, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 28))))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 29))))))), 0)
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[43] + [43](1[43])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 43))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 43)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 43))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[44] + [44](1[44])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 44))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 44)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 44))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[45] + [45](1[45])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 45))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 45)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 45))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[46] + [46](1[46])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 46))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 46)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 46))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[47] + [47](1[47])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 47))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 47)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 47))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[48] + [48](1[48])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 48))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 48)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 48))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[49] + [49](1[49])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 49))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 49)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 49))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[50] + [50](1[50])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 50))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 50)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 50))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[51] + [51](1[51])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 51))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 51)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 51))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[52] + [52](1[52])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 52))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 52))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[53] + [53](1[53])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 53))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 53))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[54] + [54](1[54])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 54))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 54))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[55] + [55](1[55])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 55))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 55)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 55))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[56] + [56](1[56])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 56))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 56)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 56))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[57] + [57](1[57])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 57))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 57))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[58] + [58](1[58])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 58))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 58))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[9] + [9](1[9])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 9))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 9)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 9))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[16] + [16](1[16])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 16))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 16)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 16))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[59] + [59](1[59])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 59))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 59)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 59))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[60] + [60](1[60])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 60))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 60)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 60))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[61] + [61](1[61])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 61))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 61)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 61))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[62] + [62](1[62])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 62))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 62)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 62))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[63] + [63](1[63])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 63))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 63)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 63))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[90] + [90](1[90])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 90))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 90)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 90))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[91] + [91](1[91])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 91))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 91)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 91))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[92] + [92](1[92])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 92))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 92)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 92))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[93] + [93](1[93])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 93))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 93)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 93))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[94] + [94](1[94])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 94))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 94)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 94))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[95] + [95](1[95])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 95))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 95)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 95))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[96] + [96](1[96])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 96))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 96)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 96))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[97] + [97](1[97])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 97))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 97)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 97))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[98] + [98](1[98])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 98))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 98)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 98))))), P))
+        acc := add(mulmod(acc, alpha, P), gate)
+    }
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[99] + [99](1[99])
+        let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 99))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 99)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 99))))), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
     let rhs_scaled := mulmod(acc, eq_scale, P)
