@@ -48,12 +48,7 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static>(
         .expect("UnifiedReducedMachineDecoder must produce a family-128 entry");
 
     let trace_len = ::unified_reduced_machine::DOMAIN_SIZE;
-    let setup = GKRSetup::construct(
-        &table_driver,
-        &decoder_table,
-        trace_len,
-        &compiled_circuit,
-    );
+    let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &compiled_circuit);
 
     #[cfg(not(feature = "witness_eval_fn"))]
     let witness_eval_fn = None;

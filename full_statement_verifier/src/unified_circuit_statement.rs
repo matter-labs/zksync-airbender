@@ -102,7 +102,7 @@ where
     let first_it_circuit = num_unified_circuits - num_it_circuits;
 
     let mut total_cycles = 0u64;
-    
+
     const ADDRESS_HIGH_BITS_SHIFT: u32 = 10;
     const MAX_TOP_BIT: u32 = 1 << (32 - 16 - ADDRESS_HIGH_BITS_SHIFT);
 

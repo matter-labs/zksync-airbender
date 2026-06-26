@@ -1,7 +1,7 @@
+use crate::vm::{RamPeek, Register, RAM};
+use common_constants::*;
 use field::PrimeField;
 use std::alloc::{self, Allocator, Layout};
-use common_constants::*;
-use crate::vm::{RamPeek, Register, RAM};
 
 /// Allocate a zeroed `Vec<Register>` without touching every backing page.
 ///
@@ -299,8 +299,6 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
     ) {
         use common_constants::*;
 
-        
-
         // parallel collect, and we access mutually exclusive places, so we first degrate everything to pointers
         // first we will walk over access_bitmask and collect subparts
 
@@ -399,13 +397,19 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
     ) -> Vec<(Vec<u32>, Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>)> // ts, value
     {
         assert!(chunks_in_set > 0);
-        assert!(chunks_in_set <= 2, "we do not support logic for generic grouping of chunks yet");
+        assert!(
+            chunks_in_set <= 2,
+            "we do not support logic for generic grouping of chunks yet"
+        );
         // parallel collect, and we access mutually exclusive places, so we first degrate everything to pointers
         // first we will walk over access_bitmask and collect subparts
 
         let (sender, receiver) = std::sync::mpsc::channel();
 
-        let words_upper_bound = std::cmp::min(upper_ram_bound_hint_in_words.unwrap_or(usize::MAX), self.backing.len());
+        let words_upper_bound = std::cmp::min(
+            upper_ram_bound_hint_in_words.unwrap_or(usize::MAX),
+            self.backing.len(),
+        );
         let num_chunks = words_upper_bound.div_ceil(1 << words_per_chunk_log2);
 
         worker.scope(num_chunks, |scope, geometry| {
@@ -418,11 +422,11 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                     let mut buffer = (
                         [
                             Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                            Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                            Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
                         ],
                         [
                             Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                            Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                            Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
                         ],
                     );
                     buffer.0[0].resize(1 << words_per_chunk_log2, F::ZERO);
@@ -430,7 +434,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                     buffer.1[0].resize(1 << words_per_chunk_log2, F::ZERO);
                     buffer.1[1].resize(1 << words_per_chunk_log2, F::ZERO);
 
-                    for chunk_idx in chunk_start..chunk_start+chunk_size {
+                    for chunk_idx in chunk_start..chunk_start + chunk_size {
                         let start = chunk_idx * (1 << words_per_chunk_log2);
                         let src = &self.backing[start..][..1 << words_per_chunk_log2];
                         let mut non_trivial_word = false;
@@ -464,11 +468,11 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                             let mut t = (
                                 [
                                     Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                                    Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                                    Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
                                 ],
                                 [
                                     Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                                    Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                                    Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
                                 ],
                             );
                             t.0[0].resize(1 << words_per_chunk_log2, F::ZERO);
@@ -476,11 +480,10 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                             t.1[0].resize(1 << words_per_chunk_log2, F::ZERO);
                             t.1[1].resize(1 << words_per_chunk_log2, F::ZERO);
 
-                            let buffer_to_send = std::mem::replace(
-                                &mut buffer,
-                                t,
-                            );
-                            sender.send((top_bits, buffer_to_send)).expect("must send to unbounded channel");
+                            let buffer_to_send = std::mem::replace(&mut buffer, t);
+                            sender
+                                .send((top_bits, buffer_to_send))
+                                .expect("must send to unbounded channel");
                         }
                     }
                 });
@@ -489,15 +492,10 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
 
         let mut result = vec![];
         while let Ok((top_bits, buffer)) = receiver.try_recv() {
-            result.push((
-                top_bits,
-                buffer,
-            ));
+            result.push((top_bits, buffer));
         }
 
-        result.sort_by(|a, b| {
-            a.0.cmp(&b.0)
-        });
+        result.sort_by(|a, b| a.0.cmp(&b.0));
 
         let num_extra_elements = result.len() % chunks_in_set;
         let need_extra_element = num_extra_elements != 0;
@@ -531,11 +529,11 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                 let mut t = (
                     [
                         Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
                     ],
                     [
                         Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
                     ],
                 );
                 t.0[0].resize(1 << words_per_chunk_log2, F::ZERO);
@@ -561,11 +559,11 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                 let mut t = (
                     [
                         Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
                     ],
                     [
                         Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default())
+                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
                     ],
                 );
                 t.0[0].resize(1 << words_per_chunk_log2, F::ZERO);

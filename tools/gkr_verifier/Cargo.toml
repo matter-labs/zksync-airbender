@@ -31,6 +31,22 @@ no_caches = ["verifier_common/no_caches"]
 default = ["blake2_with_compression"]
 
 [[bin]]
+name = "fsv_unified_base_layer_sec_80"
+path = "src/bin/fsv_unified_base_layer_sec_80.rs"
+
+[[bin]]
+name = "fsv_unified_recursion_layer_sec_80"
+path = "src/bin/fsv_unified_recursion_layer_sec_80.rs"
+
+[[bin]]
+name = "fsv_unrolled_base_layer_sec_80"
+path = "src/bin/fsv_unrolled_base_layer_sec_80.rs"
+
+[[bin]]
+name = "fsv_unrolled_recursion_layer_sec_80"
+path = "src/bin/fsv_unrolled_recursion_layer_sec_80.rs"
+
+[[bin]]
 name = "inits_and_teardowns_sec_80"
 path = "src/bin/inits_and_teardowns_sec_80.rs"
 

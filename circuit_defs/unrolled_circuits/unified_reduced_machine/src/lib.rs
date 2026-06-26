@@ -40,9 +40,7 @@ pub const ALLOWED_DELEGATION_CSRS_U16: &[u16] = &[
 /// Compile (or load from cache) the unified GKR circuit artifact. The artifact
 /// shape is bytecode-independent (special-table *content* is supplied at
 /// table-driver/setup time), so this takes no bytecode.
-pub fn get_circuit(
-    use_caches: bool,
-) -> cs::gkr_compiler::GKRCircuitArtifact<BabyBearField> {
+pub fn get_circuit(use_caches: bool) -> cs::gkr_compiler::GKRCircuitArtifact<BabyBearField> {
     cs::gkr_circuits::unified_reduced_machine::build_unified_artifact::<BabyBearField>(use_caches)
 }
 
