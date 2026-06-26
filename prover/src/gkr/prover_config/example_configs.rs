@@ -68,7 +68,6 @@ pub fn config_for_80_bits_under_pessimistic_conjecture(trace_len_log_2: usize) -
     }
 }
 
-
 pub fn config_for_100_bits_under_pessimistic_conjecture(_trace_len_log_2: usize) -> ProverConfig {
     todo!("100-bit prover configs are defined by the WHIR-schedule generator")
 }

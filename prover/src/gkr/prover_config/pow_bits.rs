@@ -19,11 +19,7 @@ pub const fn pow_bits_for_cq_lookup(
     field_size_log2: usize,
 ) -> usize {
     let no_pow_security_bits = field_size_log2 - domain_size_log2 - 5;
-    if security_bits > no_pow_security_bits {
-        security_bits - no_pow_security_bits
-    } else {
-        0
-    }
+    security_bits.saturating_sub(no_pow_security_bits)
 }
 
 pub const fn lookup_challenges_pow_bits(security_bits: usize, trace_len_log_2: usize) -> u32 {
@@ -49,11 +45,7 @@ pub const fn pow_bits_for_batched_proximity(
     let no_pow_security_bits = field_size_log2
         .saturating_sub(lde_domain_log2)
         .saturating_sub(batch_bits);
-    if security_bits > no_pow_security_bits {
-        security_bits - no_pow_security_bits
-    } else {
-        0
-    }
+    security_bits.saturating_sub(no_pow_security_bits)
 }
 
 /// PoW bits for the WHIR batching challenge at the given security level, trace
