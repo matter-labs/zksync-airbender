@@ -4677,6 +4677,102 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "M7 production-baseline corpus comparison; release + python-free; run with --ignored"]
+    fn real_all_22_l0_optimized_vs_production_baseline() {
+        use crate::s3_gap::floor::dag_traffic_floor;
+        use crate::s3_gap::instance::extract_instance;
+
+        // M7: attempt to close the M6 caveat by comparing the optimizer to the REAL
+        // PRODUCTION residency scheduler (identity root order + Belady-ish eviction),
+        // whose width-weighted DRAM traffic comes from `compile_layer().stats.dram_traffic`.
+        //
+        // FINDING (the reason this test does not claim "beats production"): production's
+        // `dram_traffic` is NOT directly comparable to the scorer/oracle/floor metric.
+        // The scorer is validated `== oracle`, and the oracle/floor count distinct real
+        // `Read` leaves (EXCLUDING Prior and VirtualSetup) width-weighted; the production
+        // compiler counts every Prior backing read at full width AND sources some leaves
+        // via the free resolver path that the scorer's instance model still treats as
+        // DRAM. Concrete proof: on several no-caches layers `prod < dag_traffic_floor`
+        // (impossible if the two were the same metric — e.g. bigint no-caches prod=119
+        // vs floor=157). So the prod-vs-opt deltas below are NOT a valid beats-production
+        // claim — closing the M6 caveat requires reconciling the two cost models first.
+        // This test DOCUMENTS that gap (classifying each fixture comparable/not) and only
+        // asserts the genuine scorer invariant `opt >= floor`.
+        const POPULATION: usize = 200;
+        const EVAL_BUDGET: usize = 2_000;
+        const FINAL_STARTS: usize = 4;
+        const FINAL_EVAL_BUDGET: usize = 500;
+
+        let mut checked = 0usize;
+        let mut comparable = 0usize;
+        let mut not_comparable = 0usize;
+        for &fixture in ALL_22_L0_FIXTURES {
+            let name = fixture
+                .trim_end_matches("_layout_gkr.json")
+                .trim_end_matches("_layout_no_caches_gkr.json");
+            let Some((layer, cross)) = crate::try_load_l0(fixture) else {
+                println!("[M7] {name:<48} LOAD_FAILED");
+                continue;
+            };
+            let Some(prod) = crate::production_l0_traffic(fixture, crate::REAL_BUDGET) else {
+                println!(
+                    "[M7] {name:<48} PROD_COMPILE_FAILED (budget {})",
+                    crate::REAL_BUDGET
+                );
+                continue;
+            };
+            let inst = extract_instance(&layer, &cross, crate::REAL_BUDGET);
+            let sites = enumerate_demand_sites(&inst);
+            if inst.roots.is_empty() || sites.is_empty() {
+                continue;
+            }
+            let floor = dag_traffic_floor(&layer, &cross) as u64;
+            let smoke = compact_smoke(
+                &inst,
+                &sites,
+                POPULATION,
+                EVAL_BUDGET,
+                FINAL_STARTS,
+                FINAL_EVAL_BUDGET,
+            );
+            let opt = smoke
+                .optimized
+                .best_score
+                .traffic
+                .min(smoke.final_states.best.traffic);
+            // The scorer/floor share one model, so this is a genuine invariant.
+            assert!(
+                opt >= floor,
+                "{name}: optimizer traffic {opt} below DAG floor {floor}"
+            );
+            // Comparability: production cannot read below the distinct-leaf floor IF it
+            // counted traffic the same way the scorer does. `prod < floor` proves the two
+            // metrics diverge for this fixture → its prod-vs-opt delta is meaningless.
+            let comparable_here = prod >= floor;
+            if comparable_here {
+                comparable += 1;
+            } else {
+                not_comparable += 1;
+            }
+            let vs_prod = prod as i64 - opt as i64;
+            println!(
+                "[M7] {name:<48} floor={floor:<5} prod={prod:<5} optimized={opt:<5} vs_prod={vs_prod} \
+                 comparable={comparable_here}"
+            );
+            checked += 1;
+        }
+        assert!(checked > 0, "no fixtures checked — corpus setup broken");
+        println!(
+            "[M7][VERDICT] production baseline is COMPUTABLE (compile_layer.dram_traffic) but NOT \
+             metric-comparable to the scorer: {not_comparable}/{checked} fixtures have prod < floor \
+             (proof the cost models diverge on Prior/resolver accounting); {comparable} pass the floor \
+             guard but may still diverge on Prior traffic. CONCLUSION: closing the M6 caveat needs \
+             cost-model RECONCILIATION (count production-equivalent traffic in the scorer, or scorer- \
+             equivalent traffic in compile_layer) before any beats-production claim. M6-vs-neutral stands."
+        );
+    }
+
+    #[test]
     #[ignore = "research invariant: every L0 layout is feasible at budget 8 under any root order"]
     fn real_all_22_l0_feasible_at_budget_8_under_any_order() {
         use crate::s3_gap::instance::extract_instance;

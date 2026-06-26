@@ -88,6 +88,29 @@ fn load_layer_source(
     (dag, artifact, cross)
 }
 
+/// M7 baseline: the PRODUCTION residency scheduler's width-weighted DRAM traffic for an
+/// L0 fixture at `budget`. This runs the real compiler (`compile_layer`: identity root
+/// order + its Belady-ish eviction) and returns `stats.dram_traffic` — the same
+/// cell-weighted metric the gap experiment compares C/E/J/D in, so it is directly
+/// comparable to the optimizer's scorer traffic. Returns `None` if the fixture cannot
+/// load or the layer cannot compile at `budget`.
+fn production_l0_traffic(fixture: &str, budget: usize) -> Option<u64> {
+    let artifact = load_fixture(&compiled_circuit_dir().join(fixture))?;
+    let dag = lower_dag(&artifact).ok()?;
+    validate(&dag).ok()?;
+    let cross = build_cross_layer_field_map(&dag);
+    let layer = dag.layers.first()?;
+    let compiled = compile_layer(
+        layer,
+        artifact.layers.first()?,
+        &artifact.scratch_space_mapping,
+        &cross,
+        budget,
+    )
+    .ok()?;
+    Some(compiled.stats.dram_traffic as u64)
+}
+
 /// Wrap a single (possibly downscaled) layer into a `DagCircuit` so `validate()`
 /// can run on it, and so `build_cross_layer_field_map` can re-derive its fields.
 fn wrap_layer(layer: DagLayer) -> DagCircuit {
