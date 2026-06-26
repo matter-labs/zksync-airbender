@@ -181,6 +181,7 @@ unsafe fn layer_0_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -408,7 +409,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(101usize)[j];
-                    let set_bits = (0usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[0usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -431,7 +432,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(101usize)[j];
-                    let set_bits = (1usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[1usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -465,7 +466,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(101usize)[j];
-                    let set_bits = (0usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[0usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -512,7 +513,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(101usize)[j];
-                    let set_bits = (1usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[1usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -3307,6 +3308,7 @@ unsafe fn layer_1_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -3577,6 +3579,7 @@ unsafe fn layer_2_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -3829,6 +3832,7 @@ unsafe fn layer_3_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -5774,6 +5778,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 3usize)?;
             }
@@ -5820,6 +5825,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 2usize)?;
             }
@@ -5866,6 +5872,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 1usize)?;
             }
@@ -6129,6 +6136,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 0usize)?;
             }
@@ -6372,6 +6380,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
         state.batching_challenge = draw_single_field_el(ts);
         let mut permutation_read_product: BabyBearExt4 = BabyBearExt4::ONE;
         let mut permutation_write_product: BabyBearExt4 = BabyBearExt4::ONE;
+        #[allow(unused_mut)]
+        let mut inits_and_teardowns_read_product: BabyBearExt4 = BabyBearExt4::ONE;
+        #[allow(unused_mut)]
+        let mut inits_and_teardowns_write_product: BabyBearExt4 = BabyBearExt4::ONE;
         {
             let mut read_product = BabyBearExt4::ONE;
             for i in 0..16usize {
@@ -6445,8 +6457,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                 let eval = *evals_slice.get_unchecked(144usize + i);
                 field_ops::mul_assign(&mut it_write, &eval);
             }
-            field_ops::mul_assign(&mut permutation_read_product, &it_read);
-            field_ops::mul_assign(&mut permutation_write_product, &it_write);
+            inits_and_teardowns_read_product = it_read;
+            inits_and_teardowns_write_product = it_write;
         }
         #[cfg(feature = "verifier_stats")]
         verifier_common::stats::log("GKR MAIN OUTPUT");
@@ -6456,6 +6468,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             evaluation_point_len: state.prev_point_len,
             permutation_read_product,
             permutation_write_product,
+            inits_and_teardowns_read_product,
+            inits_and_teardowns_write_product,
             whir_batching_challenge: state.batching_challenge,
         })
     }

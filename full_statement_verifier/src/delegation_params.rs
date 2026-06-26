@@ -1,4 +1,4 @@
-use crate::prover::gkr::prover::GKRExternalChallenges;
+use crate::prover::definitions::GKRExternalChallenges;
 use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;

@@ -1352,7 +1352,13 @@ fn emit_inits_teardowns<MW: FieldWrapper>(
                 {
                     let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                     let mut addr_hi = evals.get_unchecked(#setup_hi_idx)[j];
-                    let set_bits = (#set_idx_val as u32) << address_high_bits_shift;
+                    // The init/teardown address window is bound to the runtime, FS-committed
+                    // `top_bits[set_idx]` (mirrors the prover at
+                    // `prover/src/gkr/prover/sumcheck_loop/kernel_collector.rs:518`), NOT the
+                    // compile-time `set_idx`. For single-instance proofs `top_bits` is the
+                    // identity (`top_bits[set_idx] == set_idx`) so this is behaviourally
+                    // unchanged; for multi-instance it enforces the disjoint per-instance window.
+                    let set_bits = inits_and_teardowns_top_bits[#set_idx_val] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = #field_struct_local::from_u32_unchecked(set_bits);
                         #add_addr_set;
@@ -1485,6 +1491,7 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper>(
             linearization_challenges: &[#quartic_struct],
             permutation_argument_additive_part: #quartic_struct,
             address_high_bits_shift: u32,
+            inits_and_teardowns_top_bits: &[u32],
         ) -> [#quartic_struct; 2] {
             #body
         }

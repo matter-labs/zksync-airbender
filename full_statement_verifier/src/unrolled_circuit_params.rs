@@ -1,7 +1,7 @@
 pub const NUM_BASE_LAYER_CIRCUITS: usize = 6;
 pub const NUM_RECURSION_LAYER_CIRCUITS: usize = 4;
 
-use crate::prover::gkr::prover::GKRExternalChallenges;
+use crate::prover::definitions::GKRExternalChallenges;
 use crate::NonDeterminismSource;
 use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;

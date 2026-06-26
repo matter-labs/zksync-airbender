@@ -21,8 +21,8 @@ pub mod definitions;
 pub mod delegation_params;
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod imports;
-// #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
-// pub mod unified_circuit_statement;
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
+pub mod unified_circuit_statement;
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod unrolled_circuit_params;
 #[cfg(feature = "verifiers")]

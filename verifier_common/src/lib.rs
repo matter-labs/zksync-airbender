@@ -123,6 +123,12 @@ pub fn parse_field_els_as_u32_from_u16_limbs_checked(
     low | (high << 16)
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct InitsAndTeardownsProduct<E: Field> {
+    pub read_product: E,
+    pub write_product: E,
+}
+
 pub struct VerifierOutput<
     E: Field,
     const INIT_AND_TEARDOWN_SETS: usize,
@@ -135,6 +141,7 @@ pub struct VerifierOutput<
     pub setup_caps: [[[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]; CAP_SIZE]; NUM_SETUP_COMMITS],
     pub grand_product_read_set_accumulator: E,
     pub grand_product_write_set_accumulator: E,
+    pub inits_and_teardowns: Option<InitsAndTeardownsProduct<E>>,
 }
 
 impl<
@@ -264,12 +271,22 @@ pub fn verify_impl<
         nd_source,
     )?;
 
+    let inits_and_teardowns = if INIT_AND_TEARDOWN_SETS > 0 {
+        Some(InitsAndTeardownsProduct {
+            read_product: gkr_output.inits_and_teardowns_read_product,
+            write_product: gkr_output.inits_and_teardowns_write_product,
+        })
+    } else {
+        None
+    };
+
     Ok(VerifierOutput {
         inits_and_teardowns_top_bits: initial_transcript_values.inits_and_teardowns_top_bits,
         memory_caps: initial_transcript_values.memory_caps,
         setup_caps: initial_transcript_values.setup_caps,
         grand_product_read_set_accumulator: gkr_output.permutation_read_product,
         grand_product_write_set_accumulator: gkr_output.permutation_write_product,
+        inits_and_teardowns,
     })
 }
 

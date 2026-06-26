@@ -16,6 +16,10 @@ verifier_common = { path = "../../verifier_common", default-features = false, fe
 non_determinism_source = { path = "../../non_determinism_source" }
 riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
 field = { path = "../../field", default-features = false, features = ["modular_ops", "modular_fma"] }
+# Full-statement verifier (no_std, verifiers-only — NOT proof_utils, which would pull std + the
+# full prover). Used only by the fsv_unified_base_layer bin; the blake variant comes from
+# verifier_common's unified features (the FSV's blake feature only forwards there), so no blake pin.
+full_statement_verifier = { path = "../../full_statement_verifier", default-features = false, features = ["security_80"] }
 
 [features]
 blake2_with_compression = ["verifier_common/blake2_with_compression"]

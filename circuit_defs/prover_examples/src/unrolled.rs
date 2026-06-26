@@ -346,6 +346,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         recursion_chain_hash: None,
         recursion_chain_preimage: None,
         pow_challenge: 0,
+        num_it_circuits: None,
     };
 
     let mut risc_v_setup_params = BTreeMap::new();

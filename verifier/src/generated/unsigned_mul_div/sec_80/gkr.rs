@@ -88,6 +88,7 @@ unsafe fn layer_0_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -1021,6 +1022,7 @@ unsafe fn layer_1_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -1513,6 +1515,7 @@ unsafe fn layer_2_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -1759,6 +1762,7 @@ unsafe fn layer_3_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -3593,6 +3597,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 3usize)?;
             }
@@ -3639,6 +3644,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 2usize)?;
             }
@@ -3685,6 +3691,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 1usize)?;
             }
@@ -3795,6 +3802,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 0usize)?;
             }
@@ -4081,6 +4089,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
         state.batching_challenge = draw_single_field_el(ts);
         let mut permutation_read_product: BabyBearExt4 = BabyBearExt4::ONE;
         let mut permutation_write_product: BabyBearExt4 = BabyBearExt4::ONE;
+        #[allow(unused_mut)]
+        let mut inits_and_teardowns_read_product: BabyBearExt4 = BabyBearExt4::ONE;
+        #[allow(unused_mut)]
+        let mut inits_and_teardowns_write_product: BabyBearExt4 = BabyBearExt4::ONE;
         {
             let mut read_product = BabyBearExt4::ONE;
             for i in 0..16usize {
@@ -4151,6 +4163,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             evaluation_point_len: state.prev_point_len,
             permutation_read_product,
             permutation_write_product,
+            inits_and_teardowns_read_product,
+            inits_and_teardowns_write_product,
             whir_batching_challenge: state.batching_challenge,
         })
     }

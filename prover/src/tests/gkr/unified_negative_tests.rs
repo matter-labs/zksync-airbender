@@ -909,7 +909,7 @@ fn generate_malicious_unified_proof(
         }
     }
 
-    let proof = prove_built_unified_trace(
+    let (proof, _setup_cap) = prove_built_unified_trace(
         &circuit,
         full_trace,
         &table_driver,
