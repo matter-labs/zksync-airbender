@@ -4485,6 +4485,79 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "research verdict: optimizer vs neutral baseline at REAL_BUDGET across the corpus"]
+    fn real_all_22_l0_optimized_vs_neutral_baseline() {
+        use crate::s3_gap::instance::extract_instance;
+
+        // M6: the motivating OPEN question — does joint order+caching beat the baseline
+        // at REAL_BUDGET? The optimizer SEEDS include the neutral genome, so it can never
+        // do WORSE (asserted per fixture). We REPORT the per-fixture gap (baseline -
+        // optimized); fixtures with a positive gap are evidence order/caching helps, and
+        // a no-gap-everywhere result IS the (negative) verdict — recorded, not hidden.
+        //
+        // M7: the baseline is `Genome::neutral` (identity order, zero biases), NOT the
+        // production residency scheduler. Beating neutral is NECESSARY but NOT SUFFICIENT
+        // evidence of production payoff; when the production order+residency for these
+        // layers is extractable it must replace neutral as the baseline.
+        const POPULATION: usize = 200;
+        const EVAL_BUDGET: usize = 2_000;
+        const FINAL_STARTS: usize = 4;
+        const FINAL_EVAL_BUDGET: usize = 500;
+
+        let mut checked = 0usize;
+        let mut improved = 0usize;
+        let mut no_gap = 0usize;
+        let mut total_gap = 0i64;
+        for &fixture in ALL_22_L0_FIXTURES {
+            let name = fixture
+                .trim_end_matches("_layout_gkr.json")
+                .trim_end_matches("_layout_no_caches_gkr.json");
+            let Some((layer, cross)) = crate::try_load_l0(fixture) else {
+                println!("[M6] {name:<48} LOAD_FAILED");
+                continue;
+            };
+            let inst = extract_instance(&layer, &cross, crate::REAL_BUDGET);
+            let sites = enumerate_demand_sites(&inst);
+            if inst.roots.is_empty() || sites.is_empty() {
+                continue;
+            }
+            let smoke = compact_smoke(
+                &inst,
+                &sites,
+                POPULATION,
+                EVAL_BUDGET,
+                FINAL_STARTS,
+                FINAL_EVAL_BUDGET,
+            );
+            let base = smoke.baseline.traffic;
+            let opt = smoke
+                .optimized
+                .best_score
+                .traffic
+                .min(smoke.final_states.best.traffic);
+            // Optimizer considers the neutral seed, so it must never regress below it.
+            assert!(
+                opt <= base,
+                "{name}: optimizer traffic {opt} worse than neutral baseline {base}"
+            );
+            let gap = base as i64 - opt as i64;
+            total_gap += gap;
+            if gap > 0 {
+                improved += 1;
+            } else {
+                no_gap += 1;
+            }
+            println!("[M6] {name:<48} baseline={base:<5} optimized={opt:<5} gap={gap}");
+            checked += 1;
+        }
+        assert!(checked > 0, "no fixtures checked — corpus setup broken");
+        println!(
+            "[M6][VERDICT] improved={improved}/{checked} (no-gap={no_gap}), total_gap={total_gap}. \
+             Baseline=neutral genome — necessary but NOT sufficient vs the production scheduler."
+        );
+    }
+
+    #[test]
     #[ignore = "research invariant: every L0 layout is feasible at budget 8 under any root order"]
     fn real_all_22_l0_feasible_at_budget_8_under_any_order() {
         use crate::s3_gap::instance::extract_instance;
