@@ -4670,6 +4670,58 @@ mod tests {
         }
     }
 
+    /// Distinct recomputable (Add/Mul/Special) node count — the minimum number of
+    /// instrs any schedule must execute, since each such node's value is needed by
+    /// some root and must be computed at least once (caching makes it exactly once;
+    /// recomputation makes it more). The instr analogue of the read-place floor.
+    fn distinct_recomputable_floor(inst: &OracleInstance) -> u64 {
+        inst.nodes
+            .iter()
+            .filter(|nd| matches!(nd.kind, NodeKind::Add | NodeKind::Mul | NodeKind::Special))
+            .count() as u64
+    }
+
+    #[test]
+    fn scorer_instrs_never_below_distinct_recomputable_floor() {
+        // L4: the secondary (instr) objective has a lower bound analogous to the read
+        // floor — total instrs can never drop below the count of distinct recomputable
+        // nodes. Checked on a multi-fork eviction-pressured instance (seed12, budget 3)
+        // across the neutral order plus random orders/biases.
+        let inst = seed12_instance(3);
+        let sites = enumerate_demand_sites(&inst);
+        let floor = distinct_recomputable_floor(&inst);
+        assert_eq!(floor, 5, "seed12 has 5 distinct Add/Mul nodes");
+
+        let neutral = score_candidate(&inst, &sites, &Genome::neutral(&inst, &sites));
+        assert!(
+            neutral.instrs >= floor,
+            "neutral instrs {} below floor {floor}",
+            neutral.instrs
+        );
+        for seed in 0..128u64 {
+            let g = deterministic_smoke_genome(&inst, &sites, seed);
+            let s = score_candidate(&inst, &sites, &g);
+            if s.feasible {
+                assert!(
+                    s.instrs >= floor,
+                    "seed {seed} instrs {} below floor {floor}",
+                    s.instrs
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn scorer_instrs_floor_is_tight_when_all_forks_cacheable() {
+        // At a generous budget every shared fork is cacheable, so the min-traffic
+        // schedule also computes each recomputable node exactly once → the best
+        // (traffic, instrs) lands its instr count exactly on the distinct floor.
+        let inst = seed12_instance(16);
+        let floor = distinct_recomputable_floor(&inst);
+        let best = scorer_best_over_orders(&inst, 256).expect("feasible at budget 16");
+        assert_eq!(best.1, floor, "best instrs must hit the floor when all forks fit");
+    }
+
     /// H1+M5 differential (the keystone validation of the scorer's cost model):
     /// the scorer's best-over-orders must equal the EXACT global optimum the CP-SAT
     /// oracle proves under free permutation (Mode J). The `>=` direction is the
