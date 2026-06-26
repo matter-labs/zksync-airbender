@@ -33,7 +33,7 @@ fn run_fuzzer(target: &dyn FuzzTarget<F>, check: &dyn Check<F>, sample_size: usi
     log::info!("Requested {sample_size} samples...");
     let witnesses = collect_witnesses(target, sample_size);
     assert_eq!(witnesses.len(), sample_size);
-    let aggregated = agreggate_witnesses(witnesses);
+    let aggregated = aggregate_witnesses(witnesses);
     log::info!(
         "The samples produced {} unique constraint systems",
         aggregated.len()
@@ -67,7 +67,7 @@ type Entry = (CircuitOutput<F>, Vec<Assignment<F>>);
 ///
 /// We use an associative list because it's not easy to implement `std::hash::Hash` on
 /// `CircuitOutput`.
-fn agreggate_witnesses(witnesses: impl IntoIterator<Item = Witness<F>>) -> Vec<Entry> {
+fn aggregate_witnesses(witnesses: impl IntoIterator<Item = Witness<F>>) -> Vec<Entry> {
     let mut aggregated: Vec<Entry> = vec![];
 
     for witness in witnesses {

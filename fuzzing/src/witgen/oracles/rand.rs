@@ -8,7 +8,7 @@ use rand::Rng;
 
 pub struct RngOracleConfig {
     // Limits the value of the program counter such that the circuit wont crash while fetching the
-    // proprocessed decoder tables.
+    // preprocessed decoder tables.
     pub pc_mod: u32,
 }
 

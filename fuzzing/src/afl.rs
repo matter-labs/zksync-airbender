@@ -1,4 +1,4 @@
-//! This module exposes the right macros for AFL++ based harnesses depending of wether they are
+//! This module exposes the right macros for AFL++ based harnesses depending of whether they are
 //! compiled with `cargo build` or `cargo afl build`.
 
 #![allow(unexpected_cfgs)]

@@ -237,7 +237,7 @@ impl Fuzzer {
                 removed_count += 1;
                 return false;
             };
-            log::info!("[{n}/{seed_count}] Seed {seed} validated successfuly",);
+            log::info!("[{n}/{seed_count}] Seed {seed} validated successfully",);
             true
         });
 
@@ -266,7 +266,7 @@ impl Fuzzer {
 /// Mutates the input seed, trying again if the mutated input is equal to
 /// the original seed.
 ///
-/// Gives up after a 1000 mutations attemps.
+/// Gives up after a 1000 mutations attempts.
 fn mutate_until_different(
     seed_case: &SeedCase,
     m: &MutatorRegistry,
@@ -274,16 +274,16 @@ fn mutate_until_different(
 ) -> Option<MutatedInput> {
     use similar::ChangeTag;
     use similar::TextDiff;
-    const MAX_ATTEMPS: usize = 1000;
-    let mut attemps = 0;
+    const MAX_ATTEMPTS: usize = 1000;
+    let mut attempts = 0;
 
     let mut mutated_input;
     loop {
-        log::debug!("[mutate_until_different] attempt #{attemps}");
-        if attemps >= MAX_ATTEMPS {
+        log::debug!("[mutate_until_different] attempt #{attempts}");
+        if attempts >= MAX_ATTEMPTS {
             return None;
         }
-        attemps += 1;
+        attempts += 1;
         mutated_input = m.apply_mutations(seed_case, rng);
         if mutated_input != seed_case {
             log::debug!("[mutate_until_different]    produced a different input");

@@ -12,9 +12,9 @@ pub fn check_constraints<F: PrimeField>(
         .all(|(constraint, _)| check_constraint(constraint.clone(), assignments))
 }
 
-/// Checks that the given constraint is equal to 0 with each of the given assigments.
+/// Checks that the given constraint is equal to 0 with each of the given assignments.
 ///
-/// Based on `BasicAsssembly::try_check_constraint`.
+/// Based on `BasicAssembly::try_check_constraint`.
 pub fn check_constraint<F: PrimeField>(
     constraint: Constraint<F>,
     assignments: &[Assignment<F>],

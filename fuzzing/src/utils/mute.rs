@@ -73,7 +73,7 @@ mod imp {
     }
 }
 
-/// Redirects stdout to /dev/null temporarly.
+/// Redirects stdout to /dev/null temporarily.
 ///
 /// Do not call this function if you are already within the scope of another call to it.
 ///

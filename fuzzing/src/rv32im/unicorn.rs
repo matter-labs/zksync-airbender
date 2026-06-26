@@ -19,7 +19,7 @@ use crate::rv32im::ENTRYPOINT;
 // Taken from `examples/scripts/lds/memory.x`.
 const ROM: u64 = 4 * 1024 * 1024;
 const RAM: u64 = TOTAL_MEM_SIZE as u64 - ROM;
-const ALIGN: u64 = 4096; // 4kb aligment.
+const ALIGN: u64 = 4096; // 4kb alignment.
 
 fn configure_vm<'vm>(
     data: &[u8],
