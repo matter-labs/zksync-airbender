@@ -149,7 +149,7 @@ pub fn oracle_available() -> bool {
 
 // ── Hand-built OracleInstance helpers for J-vs-E differential ───────────────
 
-/// Order-sensitive instance: one ext Prior P1 (id=0) shared by two roots
+/// Order-sensitive instance: one ext read P1 (id=0) shared by two roots
 /// R_a=Add([P1]) (id=3) and R_c=Add([P1]) (id=5), with an EXPENSIVE intervening
 /// root R_b=Add([read,read]) (id=4) whose cone peak is 8.
 ///
@@ -173,7 +173,7 @@ pub fn oracle_available() -> bool {
 ///   t=2  R_c=Add([P1])      P1 resident (no reload); traffic 0
 ///   **J traffic = 8 (R_b) + 4 (P1) = 12**
 ///
-/// Gap = E − J = 16 − 12 = +4 = one ext Prior reload. (Under the earlier
+/// Gap = E − J = 16 − 12 = +4 = one ext read reload. (Under the earlier
 /// over-strict `base+transient` charge the simpler two-Prior instance also read
 /// as order-sensitive, but that sensitivity was a modeling artifact — the
 /// corrected sequential peak lets a fixed order keep both Priors resident there,
@@ -183,33 +183,95 @@ pub fn order_sensitive_shared_prior_instance() -> OracleInstance {
     OracleInstance {
         // budget 8: P1(4) cannot be carried across R_b's cone peak (8) → 4+8 > 8
         budget: 8,
+        reloadable_values: vec![],
         // root 0 → R_a (id=3), root 1 → R_b (id=4), root 2 → R_c (id=5)
         roots: vec![3, 4, 5],
         nodes: vec![
-            OracleNode { id: 0, kind: NodeKind::Prior, width: 4, real_dram: true,  children: vec![] },     // P1 (shared)
-            OracleNode { id: 1, kind: NodeKind::Read,  width: 4, real_dram: true,  children: vec![] },     // R_b leaf a
-            OracleNode { id: 2, kind: NodeKind::Read,  width: 4, real_dram: true,  children: vec![] },     // R_b leaf b
-            OracleNode { id: 3, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![0] },    // R_a = Add([P1])
-            OracleNode { id: 4, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![1, 2] }, // R_b = Add([a,b]) peak 8
-            OracleNode { id: 5, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![0] },    // R_c = Add([P1])
+            OracleNode {
+                id: 0,
+                kind: NodeKind::Read,
+                width: 4,
+                real_dram: true,
+                children: vec![],
+            }, // P1 (shared)
+            OracleNode {
+                id: 1,
+                kind: NodeKind::Read,
+                width: 4,
+                real_dram: true,
+                children: vec![],
+            }, // R_b leaf a
+            OracleNode {
+                id: 2,
+                kind: NodeKind::Read,
+                width: 4,
+                real_dram: true,
+                children: vec![],
+            }, // R_b leaf b
+            OracleNode {
+                id: 3,
+                kind: NodeKind::Add,
+                width: 4,
+                real_dram: false,
+                children: vec![0],
+            }, // R_a = Add([P1])
+            OracleNode {
+                id: 4,
+                kind: NodeKind::Add,
+                width: 4,
+                real_dram: false,
+                children: vec![1, 2],
+            }, // R_b = Add([a,b]) peak 8
+            OracleNode {
+                id: 5,
+                kind: NodeKind::Add,
+                width: 4,
+                real_dram: false,
+                children: vec![0],
+            }, // R_c = Add([P1])
         ],
     }
 }
 
-/// Order-insensitive instance: two independent single-Prior roots.
+/// Order-insensitive instance: two independent single-read roots.
 /// P1 is only used by R1; P2 is only used by R2.  No matter the order, each
-/// Prior is loaded exactly once → J traffic == E traffic = 8.
+/// source is loaded exactly once → J traffic == E traffic = 8.
 pub fn order_insensitive_instance() -> OracleInstance {
     use crate::s3_gap::instance::{NodeKind, OracleNode};
     OracleInstance {
-        budget: 8, // ext-fold streaming peak = 4+4 = 8; each root fits independently
+        budget: 8,
+        reloadable_values: vec![], // ext-fold streaming peak = 4+4 = 8; each root fits independently
         // root 0 → R1 (id=1), root 1 → R2 (id=3)
         roots: vec![1, 3],
         nodes: vec![
-            OracleNode { id: 0, kind: NodeKind::Prior, width: 4, real_dram: true,  children: vec![] }, // P1
-            OracleNode { id: 1, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![0] }, // R1=Add([P1])
-            OracleNode { id: 2, kind: NodeKind::Prior, width: 4, real_dram: true,  children: vec![] }, // P2
-            OracleNode { id: 3, kind: NodeKind::Add,   width: 4, real_dram: false, children: vec![2] }, // R2=Add([P2])
+            OracleNode {
+                id: 0,
+                kind: NodeKind::Read,
+                width: 4,
+                real_dram: true,
+                children: vec![],
+            }, // P1
+            OracleNode {
+                id: 1,
+                kind: NodeKind::Add,
+                width: 4,
+                real_dram: false,
+                children: vec![0],
+            }, // R1=Add([P1])
+            OracleNode {
+                id: 2,
+                kind: NodeKind::Read,
+                width: 4,
+                real_dram: true,
+                children: vec![],
+            }, // P2
+            OracleNode {
+                id: 3,
+                kind: NodeKind::Add,
+                width: 4,
+                real_dram: false,
+                children: vec![2],
+            }, // R2=Add([P2])
         ],
     }
 }
@@ -229,6 +291,7 @@ mod tests {
         // recompute cost = 2 base reads (NOT a reload-vs-recompute choice; see model comment).
         let inst = OracleInstance {
             budget: 16,
+            reloadable_values: vec![],
             roots: vec![2],
             nodes: vec![
                 OracleNode {
@@ -270,14 +333,34 @@ mod tests {
         let inst = order_sensitive_shared_prior_instance();
         let j = run_oracle(&inst, Mode::J, 0.0, 120).unwrap();
         let e = run_oracle(&inst, Mode::E, 0.0, 120).unwrap();
-        println!("J: status={} traffic={} schedule={:?}", j.status, j.traffic,
-            j.schedule.iter().map(|s| (s.stage, s.root)).collect::<Vec<_>>());
-        println!("E: status={} traffic={} schedule={:?}", e.status, e.traffic,
-            e.schedule.iter().map(|s| (s.stage, s.root)).collect::<Vec<_>>());
+        println!(
+            "J: status={} traffic={} schedule={:?}",
+            j.status,
+            j.traffic,
+            j.schedule
+                .iter()
+                .map(|s| (s.stage, s.root))
+                .collect::<Vec<_>>()
+        );
+        println!(
+            "E: status={} traffic={} schedule={:?}",
+            e.status,
+            e.traffic,
+            e.schedule
+                .iter()
+                .map(|s| (s.stage, s.root))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(j.status, "optimal");
         assert_eq!(e.status, "optimal");
-        assert!(j.traffic <= e.traffic, "J is the joint optimum, never worse than fixed-order E");
-        assert!(j.traffic < e.traffic, "this instance is order-sensitive → J strictly cheaper");
+        assert!(
+            j.traffic <= e.traffic,
+            "J is the joint optimum, never worse than fixed-order E"
+        );
+        assert!(
+            j.traffic < e.traffic,
+            "this instance is order-sensitive → J strictly cheaper"
+        );
     }
 
     #[test]

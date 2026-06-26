@@ -75,7 +75,11 @@ fn load_fixture(path: &PathBuf) -> Option<GKRCircuitArtifact<BabyBearField>> {
 
 fn load_layer_source(
     fixture: &str,
-) -> (DagCircuit, GKRCircuitArtifact<BabyBearField>, HashMap<ReadPlace, FieldKind>) {
+) -> (
+    DagCircuit,
+    GKRCircuitArtifact<BabyBearField>,
+    HashMap<ReadPlace, FieldKind>,
+) {
     let artifact = load_fixture(&compiled_circuit_dir().join(fixture))
         .expect("fixture load failed: check compiled_circuits path");
     let dag = lower_dag(&artifact).expect("lower_dag failed");
@@ -146,11 +150,7 @@ fn sweet_spot_clusters(
         });
     }
     // Densest priors first, then smallest root count first.
-    out.sort_by(|a, b| {
-        b.n_priors
-            .cmp(&a.n_priors)
-            .then(a.n_roots.cmp(&b.n_roots))
-    });
+    out.sort_by(|a, b| b.n_priors.cmp(&a.n_priors).then(a.n_roots.cmp(&b.n_roots)));
     // Deduplicate clusters that are structurally identical (same root set yields
     // the same cluster from multiple seeds) by (n_roots, n_priors, source count).
     let mut seen: std::collections::HashSet<(usize, usize, usize)> =
@@ -271,7 +271,10 @@ fn s3_gap_experiment() {
             eprintln!("[GAP] ESCALATION: no ≥2-prior add_sub-L0 cluster solved BOTH J and E to optimal at budget {REAL_BUDGET} within {CAP_SECS}s.");
             eprintln!("[GAP] Candidates tried (seed -> roots/priors):");
             for cand in &candidates {
-                eprintln!("[GAP]   seed={:?} roots={} priors={}", cand.seed, cand.n_roots, cand.n_priors);
+                eprintln!(
+                    "[GAP]   seed={:?} roots={} priors={}",
+                    cand.seed, cand.n_roots, cand.n_priors
+                );
             }
             panic!(
                 "BLOCKED: even downscaled ≥2-prior clusters are over-strict-infeasible at budget {REAL_BUDGET}. \
@@ -318,7 +321,10 @@ fn s3_gap_experiment() {
                 j.traffic, e.traffic,
                 "order-insensitive instance must have J == E (gap 0)"
             );
-            eprintln!("[GAP]   VALIDATION OK: J == E == {} (no order sensitivity)", j.traffic);
+            eprintln!(
+                "[GAP]   VALIDATION OK: J == E == {} (no order sensitivity)",
+                j.traffic
+            );
         } else {
             eprintln!(
                 "[GAP]   note: no_caches cluster not both-optimal (J={} E={}); equality not asserted",
@@ -543,7 +549,11 @@ fn print_gap_line(
     e: &OracleResult,
     frag: u64,
 ) {
-    let c_str = if c == u64::MAX { "n/a".to_string() } else { c.to_string() };
+    let c_str = if c == u64::MAX {
+        "n/a".to_string()
+    } else {
+        c.to_string()
+    };
     eprintln!(
         "[GAP] {label}: nodes={} roots={} live_values≈{} | C={c_str} D={d} | \
          J(status={},traffic={}) E(status={},traffic={}) | frag={frag}",
@@ -563,8 +573,12 @@ fn print_gap_line(
 /// structurally correct (but uninformative) answer there, NOT an artifact.
 fn shared_dram_leaves(inst: &s3_gap::instance::OracleInstance) -> usize {
     use std::collections::{HashMap, HashSet};
-    let id_to_idx: HashMap<u32, usize> =
-        inst.nodes.iter().enumerate().map(|(i, n)| (n.id, i)).collect();
+    let id_to_idx: HashMap<u32, usize> = inst
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (n.id, i))
+        .collect();
     let mut uses: HashMap<u32, usize> = HashMap::new();
     for &root_id in &inst.roots {
         let mut seen: HashSet<u32> = HashSet::new();
@@ -613,10 +627,12 @@ fn pow2_str(w: u32) -> String {
 #[test]
 #[ignore = "DAG fan-out census for the cache-fork tractability analysis; run with --ignored"]
 fn dag_fanout_census() {
-    use std::collections::HashSet;
     use s3_gap::instance::NodeKind;
+    use std::collections::HashSet;
 
-    println!("\n=== CACHEABLE-CANDIDATE CENSUS (fork = cache vs recompute per multi-consumer node) ===");
+    println!(
+        "\n=== CACHEABLE-CANDIDATE CENSUS (fork = cache vs recompute per multi-consumer node) ==="
+    );
     println!("K=#(≥2 consumers); K_x=cross-root-reused (real cache decisions); W=max concurrent → DP state 2^W\n");
     for &fixture in ALL_FIXTURES {
         let short = fixture.trim_end_matches("_layout_gkr.json");
@@ -657,8 +673,9 @@ fn dag_fanout_census() {
                 }
             }
         }
-        let (mut k_all, mut k_recompute, mut k_reload, mut k_x, mut max_fanout) = (0, 0, 0, 0, 0u32);
-        // (first, last, is_fork): is_fork = Add|Mul|Prior (the forward planner's
+        let (mut k_all, mut k_recompute, mut k_reload, mut k_x, mut max_fanout) =
+            (0, 0, 0, 0, 0u32);
+        // (first, last, is_fork): is_fork = Add|Mul (the forward planner's
         // search set); Read leaves are Belady-handled, excluded from fork concurrency.
         let mut intervals: Vec<(u32, u32, bool)> = Vec::new();
         for i in 0..n {
@@ -668,7 +685,7 @@ fn dag_fanout_census() {
             }
             k_all += 1;
             let recompute = matches!(inst.nodes[i].kind, NodeKind::Add | NodeKind::Mul);
-            let reload = matches!(inst.nodes[i].kind, NodeKind::Read | NodeKind::Prior);
+            let reload = matches!(inst.nodes[i].kind, NodeKind::Read);
             if recompute {
                 k_recompute += 1;
             }
@@ -679,8 +696,7 @@ fn dag_fanout_census() {
             if seen_any[i] && last[i] > first[i] {
                 k_x += 1;
                 if recompute || reload {
-                    let is_fork =
-                        matches!(inst.nodes[i].kind, NodeKind::Add | NodeKind::Mul | NodeKind::Prior);
+                    let is_fork = matches!(inst.nodes[i].kind, NodeKind::Add | NodeKind::Mul);
                     intervals.push((first[i], last[i], is_fork));
                 }
             }
@@ -691,9 +707,14 @@ fn dag_fanout_census() {
         let nr = inst.roots.len() as u32;
         let (mut w, mut w_fork) = (0u32, 0u32);
         for b in 0..nr.saturating_sub(1) {
-            let active = intervals.iter().filter(|(f, l, _)| *f <= b && *l >= b + 1).count() as u32;
-            let active_fork =
-                intervals.iter().filter(|(f, l, fk)| *fk && *f <= b && *l >= b + 1).count() as u32;
+            let active = intervals
+                .iter()
+                .filter(|(f, l, _)| *f <= b && *l >= b + 1)
+                .count() as u32;
+            let active_fork = intervals
+                .iter()
+                .filter(|(f, l, fk)| *fk && *f <= b && *l >= b + 1)
+                .count() as u32;
             w = w.max(active);
             w_fork = w_fork.max(active_fork);
         }
@@ -735,7 +756,9 @@ fn prior_recompute_census() {
     use std::collections::HashSet;
 
     println!("\n=== PRIOR RELOAD-vs-RECOMPUTE BUCKETING (width-aware fork pre-resolution) ===");
-    println!("always-recompute = width-pruned out of the fork search; state-dependent = genuine fork\n");
+    println!(
+        "always-recompute = width-pruned out of the fork search; state-dependent = genuine fork\n"
+    );
 
     let (mut tot_priors, mut tot_recompute, mut tot_statedep) = (0usize, 0usize, 0usize);
     for &fixture in ALL_FIXTURES {
@@ -786,13 +809,18 @@ fn prior_recompute_census() {
             }
         }
 
-        let (mut recompute, mut statedep, mut ext_priors, mut skipped) = (0usize, 0usize, 0usize, 0usize);
+        let (mut recompute, mut statedep, mut ext_priors, mut skipped) =
+            (0usize, 0usize, 0usize, 0usize);
         for &pid in &prior_ids {
             let Some(Root::Output { expr, sink }) = layer.roots.get(pid as usize) else {
                 skipped += 1;
                 continue;
             };
-            let reload_w = if layer.sinks[sink.0 as usize].field == FieldKind::Ext { 4 } else { 1 };
+            let reload_w = if layer.sinks[sink.0 as usize].field == FieldKind::Ext {
+                4
+            } else {
+                1
+            };
             if reload_w == 4 {
                 ext_priors += 1;
             }
@@ -811,7 +839,11 @@ fn prior_recompute_census() {
             if skipped > 0 { format!(" (+{skipped} non-Output skipped)") } else { String::new() },
         );
     }
-    let pct = if tot_priors > 0 { 100.0 * tot_recompute as f64 / tot_priors as f64 } else { 0.0 };
+    let pct = if tot_priors > 0 {
+        100.0 * tot_recompute as f64 / tot_priors as f64
+    } else {
+        0.0
+    };
     println!(
         "\nTOTAL priors={tot_priors} | always-recompute(width-pruned)={tot_recompute} ({pct:.0}%) | state-dependent-fork={tot_statedep}"
     );
@@ -900,9 +932,15 @@ fn s3_gap_multicircuit() {
             continue;
         };
         let priors = reachable_prior_sources(&layer);
-        println!("\n[{short}] L0: roots={} priors={}", layer.roots.len(), priors);
+        println!(
+            "\n[{short}] L0: roots={} priors={}",
+            layer.roots.len(),
+            priors
+        );
         if priors == 0 {
-            println!("  no Prior edges → cache-free tree forest → order trivially irrelevant (skip)");
+            println!(
+                "  no Prior edges → cache-free tree forest → order trivially irrelevant (skip)"
+            );
             summary.push((short.to_string(), false, 0, true, 0, 0, 0, 0.0));
             continue;
         }
@@ -947,7 +985,9 @@ fn s3_gap_multicircuit() {
                 }
             );
             dump_instance(&label, &inst);
-            summary.push((label, true, shared, both_opt, j.traffic, e.traffic, d, ratio));
+            summary.push((
+                label, true, shared, both_opt, j.traffic, e.traffic, d, ratio,
+            ));
             measured += 1;
         }
         if !any_shared {
@@ -973,7 +1013,11 @@ fn s3_gap_multicircuit() {
     println!(
         "  order-sensitive clusters measured both-optimal: {} | max (E−J)/D = {:.1}%",
         measured.len(),
-        if max_ratio.is_finite() { max_ratio * 100.0 } else { 0.0 }
+        if max_ratio.is_finite() {
+            max_ratio * 100.0
+        } else {
+            0.0
+        }
     );
     if any_order_matters {
         println!("  VERDICT: order matters on ≥1 circuit → CachingOnly is NOT universal; investigate the flagged clusters.");
@@ -988,9 +1032,12 @@ fn s3_gap_multicircuit() {
 fn m1_planner_is_deterministic() {
     use s3_planner::inner_dp::plan_fixed_order;
     let Some((layer, _cross)) = try_load_l0("add_sub_lui_auipc_mop_layout_gkr.json") else {
-        eprintln!("fixture unavailable; skipping"); return;
+        eprintln!("fixture unavailable; skipping");
+        return;
     };
-    let Some(c) = sweet_spot_clusters(&layer, 1, 2, 15).into_iter().next() else { return };
+    let Some(c) = sweet_spot_clusters(&layer, 1, 2, 15).into_iter().next() else {
+        return;
+    };
     let inst = extract_instance(&c.layer, &c.cross, REAL_BUDGET);
     let a = plan_fixed_order(&inst).result.objective();
     let b = plan_fixed_order(&inst).result.objective();
@@ -1004,7 +1051,11 @@ fn cluster_dram_widths_uniform(inst: &s3_gap::instance::OracleInstance) -> bool 
     let mut w: Option<u8> = None;
     for nd in &inst.nodes {
         if nd.real_dram {
-            match w { None => w = Some(nd.width), Some(x) if x != nd.width => return false, _ => {} }
+            match w {
+                None => w = Some(nd.width),
+                Some(x) if x != nd.width => return false,
+                _ => {}
+            }
         }
     }
     true
@@ -1013,9 +1064,12 @@ fn cluster_dram_widths_uniform(inst: &s3_gap::instance::OracleInstance) -> bool 
 #[test]
 #[ignore = "requires python3 + ortools; full corpus, minutes"]
 fn m1_planner_matches_oracle_e_across_corpus() {
-    use std::collections::BTreeMap;
     use s3_planner::inner_dp::plan_fixed_order;
-    if !oracle_available() { eprintln!("ortools unavailable; skipping"); return; }
+    use std::collections::BTreeMap;
+    if !oracle_available() {
+        eprintln!("ortools unavailable; skipping");
+        return;
+    }
 
     const FRONTIER_CAP: usize = 200_000; // R3: log-and-flag, never silently truncate
     let mut checked = 0usize;
@@ -1025,7 +1079,9 @@ fn m1_planner_matches_oracle_e_across_corpus() {
     let mut cap_exceeded = false;
 
     for fx in ALL_FIXTURES {
-        let Some((layer, _cross)) = try_load_l0(fx) else { continue };
+        let Some((layer, _cross)) = try_load_l0(fx) else {
+            continue;
+        };
         for c in sweet_spot_clusters(&layer, 1, 2, 15).into_iter().take(3) {
             let inst = extract_instance(&c.layer, &c.cross, REAL_BUDGET);
             let e = match run_oracle(&inst, Mode::E, 0.0, 60) {
@@ -1034,40 +1090,72 @@ fn m1_planner_matches_oracle_e_across_corpus() {
             };
             let run = plan_fixed_order(&inst);
             let (pt, pi) = run.result.objective();
-            assert!((pt, pi) >= (e.traffic, e.instrs),
-                "[{fx}] planner-E {:?} < oracle-E {:?} — DP bug", (pt, pi), (e.traffic, e.instrs));
+            assert!(
+                (pt, pi) >= (e.traffic, e.instrs),
+                "[{fx}] planner-E {:?} < oracle-E {:?} — DP bug",
+                (pt, pi),
+                (e.traffic, e.instrs)
+            );
             if cluster_dram_widths_uniform(&inst) {
-                assert_eq!((pt, pi), (e.traffic, e.instrs), "[{fx}] uniform-width must equal oracle-E");
+                assert_eq!(
+                    (pt, pi),
+                    (e.traffic, e.instrs),
+                    "[{fx}] uniform-width must equal oracle-E"
+                );
                 checked_uniform += 1;
             }
             max_gap = max_gap.max(pt as i64 - e.traffic as i64);
             let slot = frontier_by_fixture.entry(fx).or_insert(0);
             *slot = (*slot).max(run.max_frontier);
-            if run.max_frontier > FRONTIER_CAP { cap_exceeded = true; }
+            if run.max_frontier > FRONTIER_CAP {
+                cap_exceeded = true;
+            }
             checked += 1;
         }
     }
-    assert!(checked > 0, "no optimal oracle-E rows checked — corpus/oracle setup broken");
-    eprintln!("[M1] checked={checked} (uniform={checked_uniform}); max (planner-E − oracle-E)={max_gap}");
-    for (fx, f) in &frontier_by_fixture { eprintln!("[M1] frontier[{fx}] = {f}"); }
-    if cap_exceeded { eprintln!("[M1][WARN] dominance frontier exceeded {FRONTIER_CAP} — investigate before scaling"); }
+    assert!(
+        checked > 0,
+        "no optimal oracle-E rows checked — corpus/oracle setup broken"
+    );
+    eprintln!(
+        "[M1] checked={checked} (uniform={checked_uniform}); max (planner-E − oracle-E)={max_gap}"
+    );
+    for (fx, f) in &frontier_by_fixture {
+        eprintln!("[M1] frontier[{fx}] = {f}");
+    }
+    if cap_exceeded {
+        eprintln!(
+            "[M1][WARN] dominance frontier exceeded {FRONTIER_CAP} — investigate before scaling"
+        );
+    }
 }
 
 #[test]
 fn m1_uniform_binding_c_is_exact_handbuilt() {
-    use s3_planner::inner_dp::plan_fixed_order;
     use s3_gap::instance::{NodeKind, OracleInstance, OracleNode};
-    let nd = |id, kind, width, real_dram, children| OracleNode { id, kind, width, real_dram, children };
+    use s3_planner::inner_dp::plan_fixed_order;
+    let nd = |id, kind, width, real_dram, children| OracleNode {
+        id,
+        kind,
+        width,
+        real_dram,
+        children,
+    };
     // budget 2, all base width 1. X(0) used by A=Add{0}=2 (s0) and C=Add{0}=4 (s2);
     // B=Add{1,?}=3 (s1) with P[B]=2=budget so X (outsider, w1) cannot be carried (1+2>2).
     // -> X reloaded at s2. traffic = X@s0(1) + (s1 leaves) + X@s2(1); instrs = 3.
-    let inst = OracleInstance { budget: 2, roots: vec![2, 3, 4], nodes: vec![
-        nd(0, NodeKind::Read, 1, true, vec![]),
-        nd(1, NodeKind::Read, 1, true, vec![]),
-        nd(2, NodeKind::Add, 1, false, vec![0]),
-        nd(3, NodeKind::Add, 1, false, vec![1, 1]), // P[B] = max(1, 1+1) = 2 = budget
-        nd(4, NodeKind::Add, 1, false, vec![0]),
-    ]};
+    let inst = OracleInstance {
+        budget: 2,
+        reloadable_values: vec![],
+        roots: vec![2, 3, 4],
+        nodes: vec![
+            nd(0, NodeKind::Read, 1, true, vec![]),
+            nd(1, NodeKind::Read, 1, true, vec![]),
+            nd(2, NodeKind::Add, 1, false, vec![0]),
+            nd(3, NodeKind::Add, 1, false, vec![1, 1]), // P[B] = max(1, 1+1) = 2 = budget
+            nd(4, NodeKind::Add, 1, false, vec![0]),
+        ],
+    };
     // s0: load X (1). carry X to s2? (C) at s1: X outsider(1) + P[B](2) = 3 > 2 -> evict.
     // s1: load Y(1). s2: reload X(1). traffic = 1 + 1 + 1 = 3; instrs = 3.
     let run = plan_fixed_order(&inst);

@@ -2,22 +2,41 @@
 //! (Task 3) + fork residency DP (Task 4). Objective matches the oracle: (traffic, instrs),
 //! counted ONCE PER NODE PER STAGE (deduped cone set), residency at stage boundaries.
 
-use crate::s3_gap::instance::{NodeKind, OracleInstance};
 use super::forkset;
+use crate::s3_gap::instance::{NodeKind, OracleInstance};
 
-pub struct PlanResult { pub traffic: u64, pub instrs: u64, pub feasible: bool, pub order: Vec<u32> }
-impl PlanResult { pub fn objective(&self) -> (u64, u64) { (self.traffic, self.instrs) } }
+pub struct PlanResult {
+    pub traffic: u64,
+    pub instrs: u64,
+    pub feasible: bool,
+    pub order: Vec<u32>,
+}
+impl PlanResult {
+    pub fn objective(&self) -> (u64, u64) {
+        (self.traffic, self.instrs)
+    }
+}
 
 pub fn plan_naive(inst: &OracleInstance) -> PlanResult {
     let (mut traffic, mut instrs) = (0u64, 0u64);
     for &root in &inst.roots {
-        for v in forkset::cone(inst, root) {            // deduped: each cone node once per stage
+        for v in forkset::cone(inst, root) {
+            // deduped: each cone node once per stage
             let node = &inst.nodes[v as usize];
-            if node.real_dram { traffic += node.width as u64; }
-            if matches!(node.kind, NodeKind::Add | NodeKind::Mul | NodeKind::Special) { instrs += 1; }
+            if node.real_dram {
+                traffic += node.width as u64;
+            }
+            if matches!(node.kind, NodeKind::Add | NodeKind::Mul | NodeKind::Special) {
+                instrs += 1;
+            }
         }
     }
-    PlanResult { traffic, instrs, feasible: true, order: inst.roots.clone() }
+    PlanResult {
+        traffic,
+        instrs,
+        feasible: true,
+        order: inst.roots.clone(),
+    }
 }
 
 pub fn plan_belady_leaves(inst: &OracleInstance) -> PlanResult {
@@ -31,8 +50,12 @@ pub fn plan_belady_leaves(inst: &OracleInstance) -> PlanResult {
         let mut leaves = Vec::new();
         for &v in &c {
             let node = &inst.nodes[v as usize];
-            if node.real_dram { leaves.push(v); }
-            if matches!(node.kind, NodeKind::Add | NodeKind::Mul | NodeKind::Special) { instrs += 1; }
+            if node.real_dram {
+                leaves.push(v);
+            }
+            if matches!(node.kind, NodeKind::Add | NodeKind::Mul | NodeKind::Special) {
+                instrs += 1;
+            }
         }
         stage_leaves.push(leaves);
     }
@@ -45,8 +68,10 @@ pub fn plan_belady_leaves(inst: &OracleInstance) -> PlanResult {
 
     for ti in 0..t {
         for &v in &stage_leaves[ti] {
-            if resident.contains(&v) { continue; }      // hit (resident from a prior stage)
-            traffic += width(v) as u64;                  // miss -> load
+            if resident.contains(&v) {
+                continue;
+            } // hit (resident from a prior stage)
+            traffic += width(v) as u64; // miss -> load
             while used + width(v) > budget && !resident.is_empty() {
                 let victim_idx = (0..resident.len())
                     .max_by(|&a, &b| {
@@ -58,27 +83,40 @@ pub fn plan_belady_leaves(inst: &OracleInstance) -> PlanResult {
                 let victim = resident.swap_remove(victim_idx);
                 used -= width(victim);
             }
-            if used + width(v) <= budget { resident.push(v); used += width(v); }
+            if used + width(v) <= budget {
+                resident.push(v);
+                used += width(v);
+            }
             // else: v alone exceeds budget — reloaded on each future demand.
         }
         // boundary cleanup: drop residents with no future demand.
         let mut i = 0;
         while i < resident.len() {
             if next_demand_stage(&stage_leaves, ti, resident[i]) == usize::MAX {
-                let v = resident.swap_remove(i); used -= width(v);
-            } else { i += 1; }
+                let v = resident.swap_remove(i);
+                used -= width(v);
+            } else {
+                i += 1;
+            }
         }
     }
 
     let feasible = fi.root_peak.iter().all(|&p| (p as usize) <= budget); // (B)-only baseline
-    PlanResult { traffic, instrs, feasible, order: inst.roots.clone() }
+    PlanResult {
+        traffic,
+        instrs,
+        feasible,
+        order: inst.roots.clone(),
+    }
 }
 
 /// Smallest stage index strictly greater than `ti` whose cone demands leaf `v`
 /// (usize::MAX if none). Stage granularity matches the oracle's per-stage compute.
 fn next_demand_stage(stage_leaves: &[Vec<u32>], ti: usize, v: u32) -> usize {
     for s in (ti + 1)..stage_leaves.len() {
-        if stage_leaves[s].contains(&v) { return s; }
+        if stage_leaves[s].contains(&v) {
+            return s;
+        }
     }
     usize::MAX
 }
@@ -162,8 +200,7 @@ pub fn plan_fixed_order(inst: &OracleInstance) -> PlanRun {
 
     // Per-stage full cone (sorted), for the cone-fit (C) outsider test and the
     // fork future-demand lookahead used to drop spent forks at each boundary.
-    let stage_cones: Vec<Vec<u32>> =
-        inst.roots.iter().map(|&r| forkset::cone(inst, r)).collect();
+    let stage_cones: Vec<Vec<u32>> = inst.roots.iter().map(|&r| forkset::cone(inst, r)).collect();
     let is_outsider = |s: usize, v: u32| -> bool { stage_cones[s].binary_search(&v).is_err() };
     let fork_demanded_after = |ti: usize, f: u32| -> bool {
         ((ti + 1)..t).any(|s| stage_cones[s].binary_search(&f).is_ok())
@@ -286,11 +323,10 @@ fn simulate_trajectory(
     // NOT demanded there, so Belady can drop it instead of overflowing the budget.
     let demand_dram: Vec<Vec<u32>> = (0..t)
         .map(|ti| {
-            let mut leaves: Vec<u32> =
-                demanded_with_resident(inst, inst.roots[ti], &schedule[ti])
-                    .into_iter()
-                    .filter(|&v| inst.nodes[v as usize].real_dram)
-                    .collect();
+            let mut leaves: Vec<u32> = demanded_with_resident(inst, inst.roots[ti], &schedule[ti])
+                .into_iter()
+                .filter(|&v| inst.nodes[v as usize].real_dram)
+                .collect();
             leaves.sort_unstable();
             leaves
         })
@@ -326,8 +362,11 @@ fn simulate_trajectory(
             .map(|&f| width(f))
             .sum();
         loop {
-            let outsider_leaf_w: usize =
-                resident.iter().filter(|&&v| is_outsider(ti, v)).map(|&v| width(v)).sum();
+            let outsider_leaf_w: usize = resident
+                .iter()
+                .filter(|&&v| is_outsider(ti, v))
+                .map(|&v| width(v))
+                .sum();
             if fork_outsider_w + outsider_leaf_w + p_root <= budget {
                 break;
             }
@@ -391,16 +430,33 @@ mod tests {
     use super::*;
     use crate::s3_gap::instance::{NodeKind, OracleInstance, OracleNode};
 
-    pub(super) fn n(id: u32, kind: NodeKind, width: u8, real_dram: bool, children: Vec<u32>) -> OracleNode {
-        OracleNode { id, kind, width, real_dram, children }
+    pub(super) fn n(
+        id: u32,
+        kind: NodeKind,
+        width: u8,
+        real_dram: bool,
+        children: Vec<u32>,
+    ) -> OracleNode {
+        OracleNode {
+            id,
+            kind,
+            width,
+            real_dram,
+            children,
+        }
     }
     pub(super) fn three_read_add() -> OracleInstance {
-        OracleInstance { budget: 16, roots: vec![3], nodes: vec![
-            n(0, NodeKind::Read, 4, true, vec![]),
-            n(1, NodeKind::Read, 4, true, vec![]),
-            n(2, NodeKind::Read, 1, true, vec![]),
-            n(3, NodeKind::Add, 4, false, vec![0, 1, 2]),
-        ]}
+        OracleInstance {
+            budget: 16,
+            reloadable_values: vec![],
+            roots: vec![3],
+            nodes: vec![
+                n(0, NodeKind::Read, 4, true, vec![]),
+                n(1, NodeKind::Read, 4, true, vec![]),
+                n(2, NodeKind::Read, 1, true, vec![]),
+                n(3, NodeKind::Add, 4, false, vec![0, 1, 2]),
+            ],
+        }
     }
 
     #[test]
@@ -408,17 +464,22 @@ mod tests {
         let inst = three_read_add();
         let r = plan_naive(&inst);
         assert_eq!(r.traffic, 4 + 4 + 1); // three distinct DRAM leaves, one stage
-        assert_eq!(r.instrs, 1);          // the single Add
+        assert_eq!(r.instrs, 1); // the single Add
     }
 
     #[test]
     fn naive_recomputes_shared_leaf_once_per_stage() {
         // base Read 0 shared by two root Adds -> re-read once per stage (no caching).
-        let inst = OracleInstance { budget: 16, roots: vec![1, 2], nodes: vec![
-            n(0, NodeKind::Read, 1, true, vec![]),
-            n(1, NodeKind::Add, 1, false, vec![0]),
-            n(2, NodeKind::Add, 1, false, vec![0]),
-        ]};
+        let inst = OracleInstance {
+            budget: 16,
+            reloadable_values: vec![],
+            roots: vec![1, 2],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Add, 1, false, vec![0]),
+                n(2, NodeKind::Add, 1, false, vec![0]),
+            ],
+        };
         let r = plan_naive(&inst);
         assert_eq!(r.traffic, 1 + 1); // Read 0 counted once per stage, two stages
         assert_eq!(r.instrs, 2);
@@ -426,11 +487,16 @@ mod tests {
 
     #[test]
     fn belady_caches_shared_leaf_once() {
-        let inst = OracleInstance { budget: 16, roots: vec![1, 2], nodes: vec![
-            n(0, NodeKind::Read, 1, true, vec![]),
-            n(1, NodeKind::Add, 1, false, vec![0]),
-            n(2, NodeKind::Add, 1, false, vec![0]),
-        ]};
+        let inst = OracleInstance {
+            budget: 16,
+            reloadable_values: vec![],
+            roots: vec![1, 2],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Add, 1, false, vec![0]),
+                n(2, NodeKind::Add, 1, false, vec![0]),
+            ],
+        };
         let r = plan_belady_leaves(&inst);
         assert_eq!(r.traffic, 1); // Read 0 loaded once, resident across both stages
         assert_eq!(r.instrs, 2);
@@ -441,24 +507,32 @@ mod tests {
         // budget 2 (two width-1 leaves). stages: s0 demands {a,b}, s1 demands {c}, s2 demands {a}.
         // At s1 admitting c must evict one of {a,b}: a's next stage is s2, b's is never ->
         // Belady evicts b (furthest). s2 then finds a resident -> no reload. traffic = a+b+c = 3.
-        let inst = OracleInstance { budget: 2, roots: vec![3, 4, 5], nodes: vec![
-            n(0, NodeKind::Read, 1, true, vec![]),   // a
-            n(1, NodeKind::Read, 1, true, vec![]),   // b
-            n(2, NodeKind::Read, 1, true, vec![]),   // c
-            n(3, NodeKind::Add, 1, false, vec![0, 1]), // s0: {a,b}
-            n(4, NodeKind::Add, 1, false, vec![2]),    // s1: {c}
-            n(5, NodeKind::Add, 1, false, vec![0]),    // s2: {a}
-        ]};
+        let inst = OracleInstance {
+            budget: 2,
+            reloadable_values: vec![],
+            roots: vec![3, 4, 5],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),     // a
+                n(1, NodeKind::Read, 1, true, vec![]),     // b
+                n(2, NodeKind::Read, 1, true, vec![]),     // c
+                n(3, NodeKind::Add, 1, false, vec![0, 1]), // s0: {a,b}
+                n(4, NodeKind::Add, 1, false, vec![2]),    // s1: {c}
+                n(5, NodeKind::Add, 1, false, vec![0]),    // s2: {a}
+            ],
+        };
         let r = plan_belady_leaves(&inst);
         assert_eq!(r.traffic, 3); // had it evicted a instead, s2 would reload a -> 4
-        assert_eq!(r.instrs, 3);  // three Adds
+        assert_eq!(r.instrs, 3); // three Adds
     }
 
     #[test]
     #[ignore = "requires python3 + ortools"]
     fn belady_matches_oracle_e_on_no_fork_instance() {
         use crate::s3_gap::driver::{oracle_available, run_oracle, Mode};
-        if !oracle_available() { eprintln!("ortools unavailable; skipping"); return; }
+        if !oracle_available() {
+            eprintln!("ortools unavailable; skipping");
+            return;
+        }
         let inst = three_read_add(); // single root, no fork, (C) trivial
         let plan = plan_belady_leaves(&inst);
         let e = run_oracle(&inst, Mode::E, 0.0, 30).unwrap();
@@ -473,13 +547,18 @@ mod tests {
         // Cache-2: stage0 computes 0,1,Mul2,Add3 (traffic 2, instrs 2), keep node 2 resident;
         //          stage1 sees node 2 resident (free, not descended) + Add4 (instr) -> traffic 0, instrs 1.
         // Cache total = (traffic 2, instrs 3) < recompute (2,4). DP must pick caching.
-        let inst = OracleInstance { budget: 16, roots: vec![3, 4], nodes: vec![
-            n(0, NodeKind::Read, 1, true, vec![]),
-            n(1, NodeKind::Read, 1, true, vec![]),
-            n(2, NodeKind::Mul, 1, false, vec![0, 1]),
-            n(3, NodeKind::Add, 1, false, vec![2, 0]),
-            n(4, NodeKind::Add, 1, false, vec![2, 1]),
-        ]};
+        let inst = OracleInstance {
+            budget: 16,
+            reloadable_values: vec![],
+            roots: vec![3, 4],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Mul, 1, false, vec![0, 1]),
+                n(3, NodeKind::Add, 1, false, vec![2, 0]),
+                n(4, NodeKind::Add, 1, false, vec![2, 1]),
+            ],
+        };
         let run = plan_fixed_order(&inst);
         assert_eq!(run.result.objective(), (2, 3));
         assert!(run.max_frontier >= 1);
@@ -494,13 +573,18 @@ mod tests {
         // (C) at s1: X is an outsider (w4) not in cone(B); 4 + P[B]=4 = 8 > 4 -> X CANNOT be carried.
         // So X is evicted before B and reloaded at C: X traffic = 4 (s0) + 4 (s2). Y traffic = 4 (s1).
         // total traffic = 12; instrs = 3 (three Adds). A DP ignoring (C) would carry X and report (8,3).
-        let inst = OracleInstance { budget: 4, roots: vec![2, 3, 4], nodes: vec![
-            n(0, NodeKind::Read, 4, true, vec![]),    // X
-            n(1, NodeKind::Read, 4, true, vec![]),    // Y
-            n(2, NodeKind::Add, 4, false, vec![0]),   // A (s0)
-            n(3, NodeKind::Add, 4, false, vec![1]),   // B (s1), P=4
-            n(4, NodeKind::Add, 4, false, vec![0]),   // C (s2), reuses X
-        ]};
+        let inst = OracleInstance {
+            budget: 4,
+            reloadable_values: vec![],
+            roots: vec![2, 3, 4],
+            nodes: vec![
+                n(0, NodeKind::Read, 4, true, vec![]),  // X
+                n(1, NodeKind::Read, 4, true, vec![]),  // Y
+                n(2, NodeKind::Add, 4, false, vec![0]), // A (s0)
+                n(3, NodeKind::Add, 4, false, vec![1]), // B (s1), P=4
+                n(4, NodeKind::Add, 4, false, vec![0]), // C (s2), reuses X
+            ],
+        };
         let run = plan_fixed_order(&inst);
         assert_eq!(run.result.objective(), (12, 3));
     }
@@ -514,26 +598,36 @@ mod tests {
         // + P[B](2) = 3 > 2 -> X must be evicted before B and reloaded at C.
         //   WITH (C): traffic = X@s0(1) + Y@s1(1) + X@s2(1) = 3 ; instrs = 3 -> (3,3).
         //   WITHOUT (C) (the discriminator): X stays resident -> (2,3).
-        let inst = OracleInstance { budget: 2, roots: vec![2, 3, 4], nodes: vec![
-            n(0, NodeKind::Read, 1, true, vec![]),     // X
-            n(1, NodeKind::Read, 1, true, vec![]),     // Y
-            n(2, NodeKind::Add, 1, false, vec![0]),    // A (s0)
-            n(3, NodeKind::Add, 1, false, vec![1, 1]), // B (s1): P[B]=2=budget, 1-leaf footprint
-            n(4, NodeKind::Add, 1, false, vec![0]),    // C (s2), reuses X
-        ]};
+        let inst = OracleInstance {
+            budget: 2,
+            reloadable_values: vec![],
+            roots: vec![2, 3, 4],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),     // X
+                n(1, NodeKind::Read, 1, true, vec![]),     // Y
+                n(2, NodeKind::Add, 1, false, vec![0]),    // A (s0)
+                n(3, NodeKind::Add, 1, false, vec![1, 1]), // B (s1): P[B]=2=budget, 1-leaf footprint
+                n(4, NodeKind::Add, 1, false, vec![0]),    // C (s2), reuses X
+            ],
+        };
         let run = plan_fixed_order(&inst);
         assert_eq!(run.result.objective(), (3, 3));
     }
 
     #[test]
     fn fork_dp_never_worse_than_belady_baseline() {
-        let inst = OracleInstance { budget: 16, roots: vec![3, 4], nodes: vec![
-            n(0, NodeKind::Read, 1, true, vec![]),
-            n(1, NodeKind::Read, 1, true, vec![]),
-            n(2, NodeKind::Mul, 1, false, vec![0, 1]),
-            n(3, NodeKind::Add, 1, false, vec![2, 0]),
-            n(4, NodeKind::Add, 1, false, vec![2, 1]),
-        ]};
+        let inst = OracleInstance {
+            budget: 16,
+            reloadable_values: vec![],
+            roots: vec![3, 4],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Mul, 1, false, vec![0, 1]),
+                n(3, NodeKind::Add, 1, false, vec![2, 0]),
+                n(4, NodeKind::Add, 1, false, vec![2, 1]),
+            ],
+        };
         let baseline = plan_belady_leaves(&inst);
         let run = plan_fixed_order(&inst);
         assert!(run.result.objective() <= baseline.objective());
@@ -543,14 +637,22 @@ mod tests {
     #[ignore = "requires python3 + ortools"]
     fn fork_dp_matches_oracle_e_uniform_width() {
         use crate::s3_gap::driver::{oracle_available, run_oracle, Mode};
-        if !oracle_available() { eprintln!("ortools unavailable; skipping"); return; }
-        let inst = OracleInstance { budget: 16, roots: vec![3, 4], nodes: vec![
-            n(0, NodeKind::Read, 1, true, vec![]),
-            n(1, NodeKind::Read, 1, true, vec![]),
-            n(2, NodeKind::Mul, 1, false, vec![0, 1]),
-            n(3, NodeKind::Add, 1, false, vec![2, 0]),
-            n(4, NodeKind::Add, 1, false, vec![2, 1]),
-        ]};
+        if !oracle_available() {
+            eprintln!("ortools unavailable; skipping");
+            return;
+        }
+        let inst = OracleInstance {
+            budget: 16,
+            reloadable_values: vec![],
+            roots: vec![3, 4],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Mul, 1, false, vec![0, 1]),
+                n(3, NodeKind::Add, 1, false, vec![2, 0]),
+                n(4, NodeKind::Add, 1, false, vec![2, 1]),
+            ],
+        };
         let run = plan_fixed_order(&inst);
         let e = run_oracle(&inst, Mode::E, 0.0, 30).unwrap();
         assert_eq!(e.status, "optimal");
@@ -561,14 +663,22 @@ mod tests {
     #[ignore = "requires python3 + ortools"]
     fn fork_dp_matches_oracle_e_binding_c() {
         use crate::s3_gap::driver::{oracle_available, run_oracle, Mode};
-        if !oracle_available() { eprintln!("ortools unavailable; skipping"); return; }
-        let inst = OracleInstance { budget: 4, roots: vec![2, 3, 4], nodes: vec![
-            n(0, NodeKind::Read, 4, true, vec![]),
-            n(1, NodeKind::Read, 4, true, vec![]),
-            n(2, NodeKind::Add, 4, false, vec![0]),
-            n(3, NodeKind::Add, 4, false, vec![1]),
-            n(4, NodeKind::Add, 4, false, vec![0]),
-        ]};
+        if !oracle_available() {
+            eprintln!("ortools unavailable; skipping");
+            return;
+        }
+        let inst = OracleInstance {
+            budget: 4,
+            reloadable_values: vec![],
+            roots: vec![2, 3, 4],
+            nodes: vec![
+                n(0, NodeKind::Read, 4, true, vec![]),
+                n(1, NodeKind::Read, 4, true, vec![]),
+                n(2, NodeKind::Add, 4, false, vec![0]),
+                n(3, NodeKind::Add, 4, false, vec![1]),
+                n(4, NodeKind::Add, 4, false, vec![0]),
+            ],
+        };
         let run = plan_fixed_order(&inst);
         let e = run_oracle(&inst, Mode::E, 0.0, 30).unwrap();
         assert_eq!(e.status, "optimal");
@@ -579,18 +689,26 @@ mod tests {
     #[ignore = "requires python3 + ortools"]
     fn fork_dp_matches_oracle_e_cone_fit_c_isolated() {
         use crate::s3_gap::driver::{oracle_available, run_oracle, Mode};
-        if !oracle_available() { eprintln!("ortools unavailable; skipping"); return; }
+        if !oracle_available() {
+            eprintln!("ortools unavailable; skipping");
+            return;
+        }
         // budget 2, all base w1: X(0) used by A=Add{0}=2 (s0) and C=Add{0}=4 (s2);
         // B=Add{1,1}=3 (s1) has P[B]=2=budget but a 1-leaf footprint, so (B) permits
         // carrying X (X+Y=2<=2) while (C) (X outsider 1 + P[B] 2 = 3 > 2) forbids it.
         // Confirms the planner's (C) matches solve.py's (C): both must report (3,3), not (2,3).
-        let inst = OracleInstance { budget: 2, roots: vec![2, 3, 4], nodes: vec![
-            n(0, NodeKind::Read, 1, true, vec![]),
-            n(1, NodeKind::Read, 1, true, vec![]),
-            n(2, NodeKind::Add, 1, false, vec![0]),
-            n(3, NodeKind::Add, 1, false, vec![1, 1]),
-            n(4, NodeKind::Add, 1, false, vec![0]),
-        ]};
+        let inst = OracleInstance {
+            budget: 2,
+            reloadable_values: vec![],
+            roots: vec![2, 3, 4],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Add, 1, false, vec![0]),
+                n(3, NodeKind::Add, 1, false, vec![1, 1]),
+                n(4, NodeKind::Add, 1, false, vec![0]),
+            ],
+        };
         let run = plan_fixed_order(&inst);
         let e = run_oracle(&inst, Mode::E, 0.0, 30).unwrap();
         assert_eq!(e.status, "optimal");
@@ -609,6 +727,7 @@ mod tests {
     fn repro_seed12_instance() -> OracleInstance {
         OracleInstance {
             budget: 3,
+            reloadable_values: vec![],
             roots: vec![4, 5, 6],
             nodes: vec![
                 n(0, NodeKind::Read, 1, true, vec![]),

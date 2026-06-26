@@ -9,18 +9,27 @@ pub fn cone(inst: &OracleInstance, root: u32) -> Vec<u32> {
     let mut seen = vec![false; inst.nodes.len()];
     let mut stack = vec![root];
     while let Some(v) = stack.pop() {
-        if seen[v as usize] { continue; }
+        if seen[v as usize] {
+            continue;
+        }
         seen[v as usize] = true;
         for &c in &inst.nodes[v as usize].children {
-            if !seen[c as usize] { stack.push(c); }
+            if !seen[c as usize] {
+                stack.push(c);
+            }
         }
     }
-    (0..inst.nodes.len() as u32).filter(|&v| seen[v as usize]).collect()
+    (0..inst.nodes.len() as u32)
+        .filter(|&v| seen[v as usize])
+        .collect()
 }
 
 /// Distinct real-DRAM node ids inside `cone(root)`.
 pub fn cone_dram_leaves(inst: &OracleInstance, root: u32) -> Vec<u32> {
-    cone(inst, root).into_iter().filter(|&v| inst.nodes[v as usize].real_dram).collect()
+    cone(inst, root)
+        .into_iter()
+        .filter(|&v| inst.nodes[v as usize].real_dram)
+        .collect()
 }
 
 pub struct ForkInfo {
@@ -43,8 +52,12 @@ pub fn analyze(inst: &OracleInstance) -> ForkInfo {
     for &r in &inst.roots {
         consumers[r as usize] += 1;
     }
-    let is_fork: Vec<bool> = inst.nodes.iter()
-        .map(|node| matches!(node.kind, NodeKind::Add | NodeKind::Mul) && consumers[node.id as usize] >= 2)
+    let is_fork: Vec<bool> = inst
+        .nodes
+        .iter()
+        .map(|node| {
+            matches!(node.kind, NodeKind::Add | NodeKind::Mul) && consumers[node.id as usize] >= 2
+        })
         .collect();
     let forks: Vec<u32> = (0..n as u32).filter(|&v| is_fork[v as usize]).collect();
 
@@ -62,7 +75,13 @@ pub fn analyze(inst: &OracleInstance) -> ForkInfo {
         }
     }
     let root_peak: Vec<u32> = inst.roots.iter().map(|&r| peak[r as usize]).collect();
-    ForkInfo { consumers, is_fork, forks, peak, root_peak }
+    ForkInfo {
+        consumers,
+        is_fork,
+        forks,
+        peak,
+        root_peak,
+    }
 }
 
 #[cfg(test)]
@@ -70,14 +89,27 @@ mod tests {
     use super::*;
     use crate::s3_gap::instance::{NodeKind, OracleInstance, OracleNode};
 
-    pub(super) fn n(id: u32, kind: NodeKind, width: u8, real_dram: bool, children: Vec<u32>) -> OracleNode {
-        OracleNode { id, kind, width, real_dram, children }
+    pub(super) fn n(
+        id: u32,
+        kind: NodeKind,
+        width: u8,
+        real_dram: bool,
+        children: Vec<u32>,
+    ) -> OracleNode {
+        OracleNode {
+            id,
+            kind,
+            width,
+            real_dram,
+            children,
+        }
     }
 
     // Add(root=3) over two ext Reads (4,4) and one base Read (1).
     pub(super) fn three_read_add() -> OracleInstance {
         OracleInstance {
             budget: 16,
+            reloadable_values: vec![],
             roots: vec![3],
             nodes: vec![
                 n(0, NodeKind::Read, 4, true, vec![]),
@@ -100,6 +132,7 @@ mod tests {
         // shared product Mul{0,1}=2 consumed by Add{2,0}=3 and Add{2,1}=4 (both roots).
         let inst = OracleInstance {
             budget: 16,
+            reloadable_values: vec![],
             roots: vec![3, 4],
             nodes: vec![
                 n(0, NodeKind::Read, 1, true, vec![]),
@@ -120,7 +153,7 @@ mod tests {
     fn analyze_sethi_ullman_peak_three_ext_add() {
         let inst = three_read_add();
         let fi = analyze(&inst);
-        assert_eq!(fi.peak[3], 8);     // 4 (width) + 4 (2nd-largest child peak) = 8
+        assert_eq!(fi.peak[3], 8); // 4 (width) + 4 (2nd-largest child peak) = 8
         assert_eq!(fi.root_peak, vec![8]);
     }
 }

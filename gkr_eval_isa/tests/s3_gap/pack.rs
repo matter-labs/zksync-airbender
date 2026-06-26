@@ -16,12 +16,26 @@ use super::instance::{NodeKind, OracleInstance, OracleNode};
 ///   `repair    += 4 * overflow`
 /// Σ over all stages = upper bound on `J_real − J_ideal`.
 pub fn fragmentation_upper_bound(inst: &OracleInstance, j: &OracleResult) -> u64 {
-    let w = |id: u32| inst.nodes.iter().find(|n| n.id == id).map(|n| n.width).unwrap_or(1);
+    let w = |id: u32| {
+        inst.nodes
+            .iter()
+            .find(|n| n.id == id)
+            .map(|n| n.width)
+            .unwrap_or(1)
+    };
     let num_blocks = (inst.budget / 4) as u64;
     let mut repair = 0u64;
     for stage in &j.schedule {
-        let ext = stage.resident_after.iter().filter(|&&id| w(id) == 4).count() as u64;
-        let base = stage.resident_after.iter().filter(|&&id| w(id) == 1).count() as u64;
+        let ext = stage
+            .resident_after
+            .iter()
+            .filter(|&&id| w(id) == 4)
+            .count() as u64;
+        let base = stage
+            .resident_after
+            .iter()
+            .filter(|&&id| w(id) == 1)
+            .count() as u64;
         let ruined = base.min(num_blocks);
         let usable = num_blocks.saturating_sub(ruined);
         let overflow = ext.saturating_sub(usable);
@@ -64,6 +78,7 @@ fn stage_set(budget: usize, n_ext: u32, n_base: u32) -> (OracleInstance, OracleR
 
     let inst = OracleInstance {
         budget,
+        reloadable_values: vec![],
         roots: resident_after.clone(),
         nodes,
     };
