@@ -24,6 +24,7 @@ use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::GKRProof;
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
 use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
+use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::worker;
@@ -39,8 +40,10 @@ use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionAb
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
 use riscv_transpiler::witness::UnifiedDestinationHolder;
+use setups::UnrolledCircuitSetupParams;
 use setups::UnrolledCircuitWitnessEvalFn;
 use std::alloc::Global;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use trace_and_split::commit_memory_tree_for_delegation_circuit;
 use trace_and_split::commit_memory_tree_for_unified_circuits;
@@ -123,12 +126,27 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
     security_level: SecurityLevel,
     permutation_argument_pow_bits: u32,
 ) -> (
-    Vec<UnifiedProof>,
-    Vec<(u16, Vec<UnifiedProof>)>,
-    [FinalRegisterValue; 32],
-    (u32, TimestampScalar),
-    u64,
+    full_statement_verifier::program_proof::ProgramProof,
+    BTreeMap<u32, UnrolledCircuitSetupParams>,
 ) {
+    let mut program_proof = full_statement_verifier::program_proof::ProgramProof {
+        riscv_proofs: BTreeMap::new(),
+        compiled_riscv_circuits: BTreeMap::new(),
+        inits_and_teardown_proofs: Vec::new(),
+        inits_and_teardowns_circuit: None,
+        delegation_proofs: BTreeMap::new(),
+        compiled_delegation_circuits: BTreeMap::new(),
+        register_final_values: Vec::new(),
+        final_pc: 0,
+        final_timestamp: 0,
+        end_params: [0u32; 8],
+        recursion_chain_hash: None,
+        recursion_chain_preimage: None,
+        pow_challenge: 0,
+    };
+
+    let mut risc_v_setup_params = BTreeMap::new();
+
     type C = ReducedMachineWithDelegation;
 
     assert!(
@@ -273,6 +291,12 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
         use_caches,
         worker,
     );
+
+    program_proof.compiled_riscv_circuits.insert(
+        REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
+        unified_setup.compiled_circuit.clone(),
+    );
+
     let trace_len = unified_setup.trace_len;
 
     let num_circuits_to_prove = num_unified_calls.div_ceil(trace_len);
@@ -295,6 +319,17 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
     let keccak_special5_setup = setups::get_keccak_special5_circuit_setup(use_caches, worker);
     let blake_g_function_setup = setups::get_blake2_g_function_circuit_setup(use_caches, worker);
 
+    for el in [
+        &blake_round_function_setup,
+        &bigint_setup,
+        &keccak_special5_setup,
+        &blake_g_function_setup,
+    ] {
+        program_proof
+            .compiled_delegation_circuits
+            .insert(el.delegation_type as u32, el.compiled_circuit.clone());
+    }
+
     // for unified circuits we have non-trivial splitting of inits and teardowns - only last N circuits out of all
     // `num_circuits_to_prove` will contribute to the grand product, and so we need to compute N. In general it would
     // require us to scan all continuous `setups::unified_reduced_machine::TRACE_LEN_LOG2` * core::mem::size_of::<u32>() byte chunks
@@ -316,6 +351,9 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
         value: el.value,
         last_access_timestamp: el.timestamp,
     });
+    program_proof.register_final_values = register_final_state.to_vec();
+    program_proof.final_pc = final_pc;
+    program_proof.final_timestamp = final_timestamp;
 
     let mut twiddles = HashMap::new();
     twiddles
@@ -555,6 +593,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
     } else {
         0
     };
+    program_proof.pow_challenge = pow_challenge;
 
     let external_challenges =
         GKRExternalChallenges::<BabyBearField, BabyBearExt4>::draw_from_transcript_seed(
@@ -590,6 +629,22 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
             prover_config.cap_size,
             trace_len.trailing_zeros() as usize,
             worker,
+        );
+
+        risc_v_setup_params.insert(
+            REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
+            UnrolledCircuitSetupParams {
+                family_idx: REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
+                capacity: trace_len as u32,
+                setup_caps: MerkleTreeCap {
+                    cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
+                        BabyBearField,
+                    >>::get_cap(&setup_commitment.tree)
+                    .cap
+                    .try_into()
+                    .unwrap(),
+                },
+            },
         );
 
         let UnrolledCircuitWitnessEvalFn::Unified {
@@ -666,6 +721,12 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                 );
             println!("Proving time for unified circuit is {:?}", now.elapsed());
 
+            program_proof
+                .riscv_proofs
+                .entry(REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32)
+                .or_default()
+                .push(proof.clone());
+
             permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
 
             aux_memory_trees.push((
@@ -700,6 +761,9 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                     &prover_config,
                     worker,
                 );
+            program_proof
+                .delegation_proofs
+                .insert(delegation_type as u32, proofs.clone());
             aux_delegation_memory_trees.push((delegation_type as u32, per_tree_set));
             delegation_proofs.push((delegation_type, proofs));
         }
@@ -724,6 +788,10 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                     &prover_config,
                     worker,
                 );
+            program_proof
+                .delegation_proofs
+                .insert(delegation_type as u32, proofs.clone());
+
             aux_delegation_memory_trees.push((delegation_type as u32, per_tree_set));
             delegation_proofs.push((delegation_type, proofs));
         }
@@ -749,6 +817,10 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                     &prover_config,
                     worker,
                 );
+            program_proof
+                .delegation_proofs
+                .insert(delegation_type as u32, proofs.clone());
+
             aux_delegation_memory_trees.push((delegation_type as u32, per_tree_set));
             delegation_proofs.push((delegation_type, proofs));
         }
@@ -774,6 +846,10 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                     &prover_config,
                     worker,
                 );
+            program_proof
+                .delegation_proofs
+                .insert(delegation_type as u32, proofs.clone());
+
             aux_delegation_memory_trees.push((delegation_type as u32, per_tree_set));
             delegation_proofs.push((delegation_type, proofs));
         }
@@ -795,13 +871,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
 
     assert_eq!(permutation_argument_accumulator, BabyBearExt4::ONE);
 
-    (
-        unified_proofs,
-        delegation_proofs,
-        register_final_state,
-        (final_pc, final_timestamp),
-        pow_challenge,
-    )
+    (program_proof, risc_v_setup_params)
 }
 
 #[cfg(test)]
@@ -809,6 +879,7 @@ pub(crate) mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
+    use crate::bincode_serialize_to_file;
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
     use std::alloc::Global;
     use std::path::Path;
@@ -828,25 +899,20 @@ pub(crate) mod test {
         let worker = worker::Worker::new_with_num_threads(8);
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
 
-        let (unified_proofs, delegation_proofs, _registers, _final, _pow) =
-            prove_unified_execution_with_replayer::<Global>(
-                1 << 24,
-                &binary_image,
-                &text_section,
-                use_caches,
-                non_determinism_source,
-                1 << 30,
-                &worker,
-                SecurityLevel::Sec80,
-                0,
-            );
-
-        assert_eq!(unified_proofs.len(), 1);
-        println!(
-            "Proved unified circuit + {} delegation types",
-            delegation_proofs.len()
+        let (program_proof, setups) = prove_unified_execution_with_replayer::<Global>(
+            1 << 24,
+            &binary_image,
+            &text_section,
+            use_caches,
+            non_determinism_source,
+            1 << 30,
+            &worker,
+            SecurityLevel::Sec80,
+            0,
         );
 
-        // bincode_serialize_to_file(&(unified_proofs, delegation_proofs), "tmp_unifier_proof.bin");
+        bincode_serialize_to_file(&program_proof, "tmp_unified_proof.bin");
+        let setups: Vec<_> = setups.into_iter().map(|(_, v)| v).collect();
+        bincode_serialize_to_file(&setups, "tmp_unified_setup.bin");
     }
 }
