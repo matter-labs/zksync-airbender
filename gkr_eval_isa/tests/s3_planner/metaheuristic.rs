@@ -5265,6 +5265,67 @@ mod tests {
         }
     }
 
+    /// REPORT: the TRUE use-count of materialized values. Because `intern_source`
+    /// deduplicates `SourceKind` (arena.rs), a value referenced by K consumers shares ONE
+    /// interned `Prior`/cross-layer-`Read` source — so "fan-out via source count" is ~1 by
+    /// construction (an interning artifact), NOT a use count. This measures the real reuse:
+    /// the ExprId refcount (distinct parent exprs + roots) of each interned materialized-value
+    /// source. max_uses > 1 means the value IS reused (read once, shared) → reload/keep
+    /// decisions remain live; the earlier "used at most once" framing was an artifact.
+    #[test]
+    #[ignore = "report: true use-count of materialized values (refutes/quantifies the fan-out-1 artifact)"]
+    fn materialized_source_use_count() {
+        use cs::gkr_compiler::dag_ir::{Expr, ReadPlace, Root, SourceKind};
+        use std::collections::BTreeSet;
+        for &fixture in ALL_22_L0_FIXTURES {
+            let name = fixture
+                .trim_end_matches("_layout_gkr.json")
+                .trim_end_matches("_layout_no_caches_gkr.json");
+            let flavor = if fixture.contains("no_caches") { "no-cache" } else { "cache" };
+            let Some((layer, _)) = crate::try_load_l0(fixture) else { continue };
+            let mut refcount = vec![0usize; layer.exprs.len()];
+            for e in &layer.exprs {
+                if let Expr::Add(ch) | Expr::Mul(ch) = e {
+                    for c in ch.iter().map(|c| c.0).collect::<BTreeSet<_>>() {
+                        refcount[c as usize] += 1;
+                    }
+                }
+            }
+            for root in &layer.roots {
+                let eid = match root {
+                    Root::Output { expr, .. } => *expr,
+                    Root::Constraint { expr } => *expr,
+                };
+                refcount[eid.0 as usize] += 1;
+            }
+            let (mut p_n, mut p_reused, mut p_max) = (0usize, 0usize, 0usize);
+            let (mut x_n, mut x_reused, mut x_max) = (0usize, 0usize, 0usize);
+            for (eid, e) in layer.exprs.iter().enumerate() {
+                if let Expr::Source(sid) = e {
+                    let rc = refcount[eid];
+                    match &layer.sources[sid.0 as usize].kind {
+                        SourceKind::Prior { .. } => {
+                            p_n += 1;
+                            p_max = p_max.max(rc);
+                            if rc > 1 { p_reused += 1; }
+                        }
+                        SourceKind::Read { place }
+                            if matches!(place, ReadPlace::LayerOutput { .. } | ReadPlace::CacheOutput { .. }) =>
+                        {
+                            x_n += 1;
+                            x_max = x_max.max(rc);
+                            if rc > 1 { x_reused += 1; }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            println!(
+                "[USECOUNT] {name:<30} {flavor:<8} in-layer Prior: n={p_n:<4} reused(>1)={p_reused:<4} max_uses={p_max:<3} | cross-layer Read(Layer/CacheOutput): n={x_n:<4} reused={x_reused:<4} max_uses={x_max}"
+            );
+        }
+    }
+
     fn duplicate_traffic_reads(trace: &CacheTrace) -> Vec<(u32, usize)> {
         use std::collections::BTreeMap;
 
