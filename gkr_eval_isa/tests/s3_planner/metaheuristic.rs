@@ -5607,6 +5607,96 @@ mod tests {
         );
     }
 
+    /// DEMONSTRATION + SANITY (a): does modeling cache values as intra-unit inline
+    /// intermediates (not scheduling roots) collapse the cache layout to its no-cache
+    /// forward cost? For each circuit (L0) compares THREE extractions — cache-as-root
+    /// (current), cache-materialized (new), and no-cache — on roots, reads, floor, the
+    /// DAG ceiling, and the optimized forward traffic at REAL_BUDGET. Asserts every
+    /// optimized result is within `[floor, no_cache_ceiling]` (the hard sanity bound) and
+    /// that materialization does not change the read-leaf set. Tunable via SWEEP_EVALS.
+    #[test]
+    #[ignore = "demo: cache-materialized collapses to no-cache forward cost + ceiling sanity"]
+    fn cache_materialized_collapse_demo() {
+        use crate::s3_gap::instance::{extract_instance, extract_instance_materialized_cache};
+        let pop = std::env::var("SWEEP_POP").ok().and_then(|v| v.parse().ok()).unwrap_or(600);
+        let evals = std::env::var("SWEEP_EVALS").ok().and_then(|v| v.parse().ok()).unwrap_or(8_000);
+
+        let read_cells = |inst: &OracleInstance| -> u64 {
+            inst.nodes.iter().filter(|n| n.real_dram).map(|n| n.width as u64).sum()
+        };
+        let run = |inst: &OracleInstance| -> (u64, bool, u64) {
+            let sites = enumerate_demand_sites(inst);
+            let ceiling = no_cache_ceiling(inst, &sites);
+            let opt = optimize_from_population(
+                inst,
+                &sites,
+                smoke_genome_population(inst, &sites, pop),
+                evals,
+            );
+            (opt.best_score.traffic, opt.best_score.feasible, ceiling)
+        };
+
+        println!("[COLLAPSE] evals={evals} pop={pop} (opt @ REAL_BUDGET={})", crate::REAL_BUDGET);
+        for &fixture in ALL_22_L0_FIXTURES {
+            if fixture.contains("no_caches") {
+                continue;
+            }
+            let name = fixture.trim_end_matches("_layout_gkr.json");
+            let nc_fixture = fixture
+                .replace("_preprocessed_layout_gkr.json", "_layout_no_caches_gkr.json")
+                .replace("_layout_gkr.json", "_layout_no_caches_gkr.json");
+            let (Some((cl, cc)), Some((nl, nc))) =
+                (crate::try_load_l0(fixture), crate::try_load_l0(&nc_fixture))
+            else {
+                println!("[COLLAPSE] {name:<40} LOAD_FAILED");
+                continue;
+            };
+            let floor_c = reachable_read_stats(&cl, &cc).read_place_cells as u64;
+            let floor_n = reachable_read_stats(&nl, &nc).read_place_cells as u64;
+            let i_root = extract_instance(&cl, &cc, crate::REAL_BUDGET);
+            let i_mat = extract_instance_materialized_cache(&cl, &cc, crate::REAL_BUDGET);
+            let i_nc = extract_instance(&nl, &nc, crate::REAL_BUDGET);
+            if i_mat.roots.is_empty() {
+                continue;
+            }
+
+            // Materialization must not change the read-leaf set.
+            assert_eq!(
+                read_cells(&i_root),
+                read_cells(&i_mat),
+                "{name}: cache materialization changed reads"
+            );
+
+            let (o_root, f_root, ceil_root) = run(&i_root);
+            let (o_mat, f_mat, ceil_mat) = run(&i_mat);
+            let (o_nc, f_nc, ceil_nc) = run(&i_nc);
+
+            // SANITY: every optimized result lies within [floor, no_cache_ceiling].
+            for (lbl, o, feas, ceil, fl) in [
+                ("cache-root", o_root, f_root, ceil_root, floor_c),
+                ("cache-mat", o_mat, f_mat, ceil_mat, floor_c),
+                ("no-cache", o_nc, f_nc, ceil_nc, floor_n),
+            ] {
+                if feas {
+                    assert!(o >= fl, "{name}/{lbl}: opt {o} < floor {fl}");
+                    assert!(o <= ceil, "{name}/{lbl}: opt {o} > ceiling {ceil} (scorer/search broken)");
+                }
+            }
+            println!(
+                "[COLLAPSE] {name:<40} roots[root/mat/nc]={}/{}/{} reads[root/mat/nc]={}/{}/{} \
+                 floor[c/nc]={floor_c}/{floor_n} opt[root/mat/nc]={o_root}/{o_mat}/{o_nc} \
+                 mat-vs-nc_gap={}",
+                i_root.roots.len(),
+                i_mat.roots.len(),
+                i_nc.roots.len(),
+                read_cells(&i_root),
+                read_cells(&i_mat),
+                read_cells(&i_nc),
+                o_mat as i64 - o_nc as i64,
+            );
+        }
+    }
+
     /// INVESTIGATION: forward/backward root taxonomy. The forward cost model only
     /// schedules `Root::Output` cones. The BACKWARD pass (sumcheck) consumes the
     /// claim-bearing roots (those with a `RootOrigin` / in `BatchingOrder`) and the

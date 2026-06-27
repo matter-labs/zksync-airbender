@@ -74,15 +74,52 @@ pub fn extract_instance(
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
 ) -> OracleInstance {
-    use cs::gkr_compiler::dag_ir::{Expr, Root};
+    extract_instance_impl(layer, cross, budget, false)
+}
+
+/// Like [`extract_instance`] but does NOT treat `Cache`-sink values as separate
+/// scheduling roots. A cache value is an intra-unit intermediate: it is computed once
+/// inline while its owning relation evaluates its num/den (the `Prior` rewire already
+/// routes those cones through it), and materialized (a free streamed write the cost model
+/// does not charge) for the backward pass. Excluding it as a root leaves exactly the
+/// non-cache claim-root set, so the scheduler orders relations — not phantom cache atoms.
+///
+/// Sound here because every cache value's in-layer consumers belong to a SINGLE relation
+/// (asserted by `dual_use_cache_consumers_share_relation`) and every cache value has an
+/// in-layer consumer (no orphans), so excluding it never drops a reachable value.
+pub fn extract_instance_materialized_cache(
+    layer: &DagLayer,
+    cross: &HashMap<ReadPlace, FieldKind>,
+    budget: usize,
+) -> OracleInstance {
+    extract_instance_impl(layer, cross, budget, true)
+}
+
+fn extract_instance_impl(
+    layer: &DagLayer,
+    cross: &HashMap<ReadPlace, FieldKind>,
+    budget: usize,
+    materialize_cache: bool,
+) -> OracleInstance {
+    use cs::gkr_compiler::dag_ir::{Expr, Root, SinkKind};
     use std::collections::HashSet;
 
     // --- Phase 1: collect Output-root top exprs in original order ---
+    // With `materialize_cache`, Cache-sink Output roots are NOT scheduling roots — they
+    // are reached inline as shared intermediates via their consumers' `Prior` edges.
     let top_exprs: Vec<u32> = layer
         .roots
         .iter()
         .filter_map(|r| match r {
-            Root::Output { expr, .. } => Some(expr.0),
+            Root::Output { expr, sink } => {
+                if materialize_cache
+                    && matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. })
+                {
+                    None
+                } else {
+                    Some(expr.0)
+                }
+            }
             Root::Constraint { .. } => None,
         })
         .collect();
@@ -691,6 +728,42 @@ mod tests {
             "Special terminal must have children: vec![]"
         );
         assert!(!node.real_dram, "Special must not be real_dram");
+    }
+
+    #[test]
+    fn materialized_cache_excludes_cache_roots_keeps_reads() {
+        // tests_support_two_roots_one_prior: root0 = Cache(Add(e0,e1)), root1 =
+        // Inner(Add(Prior(root0), e3)). The cache value (e2) feeds root1 via Prior.
+        let (layer, cross) = tests_support_two_roots_one_prior();
+
+        // Cache-as-root (current default): the cache value is its own scheduling root.
+        let base = extract_instance(&layer, &cross, 16);
+        assert_eq!(base.roots.len(), 2, "default: cache value is a separate root");
+
+        // Cache-materialized: the cache value is NOT a root — only its consuming relation
+        // (root1) is. It is still reachable inline (root1's cone routes through it).
+        let mat = extract_instance_materialized_cache(&layer, &cross, 16);
+        assert_eq!(mat.roots.len(), 1, "materialized: cache value is not a root");
+
+        // Reads are IDENTICAL — materialization adds no reads (the intermediate is computed
+        // for the consumer's num/den anyway; the write is free).
+        let read_cells = |inst: &OracleInstance| -> u64 {
+            inst.nodes
+                .iter()
+                .filter(|n| n.real_dram)
+                .map(|n| n.width as u64)
+                .sum()
+        };
+        assert_eq!(
+            read_cells(&base),
+            read_cells(&mat),
+            "cache materialization must not change the read-leaf set"
+        );
+        // The cache value's cone is present in the materialized instance (not dropped).
+        assert!(
+            mat.nodes.len() >= base.nodes.len() - 1,
+            "the cache value's cone must remain (folded into the consumer), not be dropped"
+        );
     }
 
     #[test]
