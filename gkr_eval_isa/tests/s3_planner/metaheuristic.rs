@@ -258,6 +258,13 @@ fn decode_grouped_occurrence_order(
     for u in decode_unit_order(&genome.root_order_key) {
         order.extend_from_slice(&units[u]);
     }
+    // Units must partition all occurrences exactly once — guard against a malformed
+    // `units` silently dropping/duplicating roots (would corrupt scoring).
+    assert_eq!(
+        order.len(),
+        inst.roots.len(),
+        "units must cover every occurrence exactly once"
+    );
     order
 }
 
@@ -4149,34 +4156,28 @@ mod tests {
         }
     }
 
-    /// Deterministic unit-keyed seed population (mirrors `smoke_genome_population` for
-    /// the per-occurrence genome): identity, reversed, then splitmix-shuffled unit
-    /// orders. Cache biases are neutral; the cache-bias move families explore those.
-    fn unit_keyed_seed_population(
-        n_units: usize,
-        sites: &[DemandSite],
-        total: usize,
-    ) -> Vec<Genome> {
-        let mut genomes = Vec::with_capacity(total);
-        if total == 0 {
-            return genomes;
+    /// Project a per-occurrence (flat) genome to a unit-keyed genome at PARITY: the
+    /// per-site cache biases are copied verbatim (identical representation in both
+    /// arms), and each unit's order key is the gentlest (minimum) key among its
+    /// members, so the unit sorts where the flat order would place its earliest root.
+    /// Used to seed the grouped arm from the SAME population as the flat arm, isolating
+    /// the move-space effect from seed quality (the seed asymmetry the review flagged).
+    fn project_genome_to_units(flat: &Genome, units: &[Vec<usize>]) -> Genome {
+        let root_order_key = units
+            .iter()
+            .map(|members| {
+                members
+                    .iter()
+                    .map(|&occ| flat.root_order_key[occ])
+                    .fold(f64::INFINITY, f64::min)
+            })
+            .collect();
+        Genome {
+            root_order_key,
+            admit_bias: flat.admit_bias.clone(),
+            recovery_bias: flat.recovery_bias.clone(),
+            keep_after_use_bias: flat.keep_after_use_bias.clone(),
         }
-        genomes.push(unit_neutral_genome(n_units, sites));
-        if genomes.len() < total {
-            let mut reversed = unit_neutral_genome(n_units, sites);
-            reversed.root_order_key.reverse();
-            genomes.push(reversed);
-        }
-        let mut seed = 0x5151_5151_5151_5151u64;
-        while genomes.len() < total {
-            let mut g = unit_neutral_genome(n_units, sites);
-            for key in g.root_order_key.iter_mut() {
-                seed = splitmix64(seed);
-                *key = (seed >> 11) as f64 / (1u64 << 53) as f64;
-            }
-            genomes.push(g);
-        }
-        genomes
     }
 
     fn push_cache_bias_neighbors_balanced(
@@ -6357,8 +6358,13 @@ mod tests {
         // singletons). The grouped arm's genome is UNIT-KEYED — one ordering key per
         // unit — so a swap/insert/reverse relocates a whole unit and members never
         // separate (the unit is the scheduling atom; there is nothing to "keep
-        // together"). The flat arm is the historical per-occurrence search. Both run the
-        // same optimizer + budget from their respective neutral-seeded populations.
+        // together"). The flat arm is the historical per-occurrence search.
+        //
+        // SEED PARITY: the grouped arm is seeded from the SAME population as the flat
+        // arm, projected into unit-keys (`project_genome_to_units`) — identical cache
+        // biases, unit order = the flat order's per-unit minimum. So the two arms start
+        // from the same places and ONLY the move space differs (occurrence vs unit),
+        // isolating the search-dynamics effect from seed quality.
         const POPULATION: usize = 200;
         const EVAL_BUDGET: usize = 16_000;
 
@@ -6401,7 +6407,10 @@ mod tests {
             let multi = units.iter().filter(|m| m.len() > 1).count();
 
             let flat_pop = smoke_genome_population(&inst, &sites, POPULATION);
-            let unit_pop = unit_keyed_seed_population(n_units, &sites, POPULATION);
+            let unit_pop: Vec<Genome> = flat_pop
+                .iter()
+                .map(|g| project_genome_to_units(g, &units))
+                .collect();
             let flat = optimize_from_population(&inst, &sites, flat_pop, EVAL_BUDGET);
             let grouped =
                 optimize_from_population_grouped(&inst, &sites, unit_pop, EVAL_BUDGET, &units);
@@ -6454,19 +6463,21 @@ mod tests {
         }
         assert!(checked > 0, "no fixtures checked — corpus setup broken");
         // KEY DIAGNOSIS: flat_nonatomic = how many fixtures' UNCONSTRAINED (flat) best
-        // order splits a unit. Measured 0/22 — every flat optimum is already
-        // unit-contiguous ⇒ relation-atomicity costs NOTHING at the optimum (it never
-        // forbids a better order). So the grouped regressions are NOT structural; they
-        // are a SEARCH/SEED artifact (the unit-keyed arm fails to find an order that
-        // provably lives in its own space), and the bigint/cache win is unit-keying
-        // converging BETTER on the largest layer. Stage 1.5 verdict: atomicity is free;
-        // unit-keying is a search-dynamics lever (helps big layers, hurts some mid
-        // layers under weak random seeds — removable by seeding parity).
+        // order splits a unit. Measured 1/22 (add_sub/cache) — and even there the
+        // grouped arm's ATOMIC best beats flat's non-atomic one (44 < 45). So
+        // relation-atomicity costs ~nothing at the optimum: 21/22 flat optima are
+        // already unit-contiguous, and the lone exception has a better atomic order.
+        // With seed parity (grouped seeded from the projected flat population) the
+        // earlier regressions collapse to one (mem_subword/cache, flat_atomic=yes — a
+        // SEARCH-QUALITY trap of the coarser unit move-set, NOT a structural cost) while
+        // the bigint/cache win (-53) holds. Stage 1.5 verdict: atomicity is free;
+        // unit-keying is a net-positive search-dynamics lever (net -45), with one
+        // residual local-optimum gap addressable by richer unit moves / more budget.
         println!(
             "[GROUP-AB][VERDICT] grouped_better={grouped_better} flat_better={flat_better} \
              equal={equal} checked={checked} flat_nonatomic={flat_nonatomic}/{checked} \
              total_flat={total_flat} total_grouped={total_grouped} net_delta={} \
-             (flat_nonatomic=0 ⇒ atomicity free at optimum; deltas are search-dynamics)",
+             (flat optima ~always atomic ⇒ atomicity free; deltas are search-dynamics)",
             total_flat - total_grouped
         );
     }
