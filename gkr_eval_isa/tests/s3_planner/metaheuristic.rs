@@ -4783,6 +4783,107 @@ mod tests {
         }
     }
 
+    /// REPORT: distance-from-floor across the full (fixture × layer × budget) grid — the
+    /// principled quality metric (neutral-baseline `total_gap` is only a regression guard).
+    /// For every layer of every fixture, sweep cell budgets at 25/50/75/100% of that
+    /// layer's all-fit capacity and report `residual = optimized − floor` (and relative
+    /// %). `floor` = `read_place_cells`; the scorer is `>= floor` always and `== floor` at
+    /// all-fit, so residual ≥ 0 and `residual == 0` means the layer hit its optimum.
+    /// `INF` = infeasible at that budget (cone peak exceeds it). The aggregate is the
+    /// total residual at 50% capacity over feasible layers — the headline "how far above
+    /// optimal, under moderate pressure, across the whole corpus" number.
+    #[test]
+    #[ignore = "report: distance-from-floor across all layers × budgets (quality metric)"]
+    fn real_all_layers_distance_from_floor_sweep() {
+        use crate::s3_gap::instance::extract_instance;
+
+        const POPULATION: usize = 200;
+        const EVAL_BUDGET: usize = 4_000;
+        // Absolute cell-budget ladder anchored at the production budget (REAL_BUDGET=16).
+        // The meaningful "enough cache" size is the CONVERGENCE budget (where residual hits
+        // 0 = the optimal schedule's peak live-set): ~48 for add_sub cache, ~192 for bigint
+        // cache, >256 for blake2_ext cache; no-cache layouts converge by b24. Production b16
+        // is below that for the wide CACHE layouts, so b16 is the tight band where residual
+        // lives. NB: all_fit_budget is Σ of ALL node widths (every input AND intermediate) —
+        // a loose ceiling where nothing is ever evicted, NOT the working set; it overstates
+        // residency need, so it is used here only as a stop bound. Stop at convergence.
+        const BUDGETS: [usize; 9] = [16, 24, 32, 48, 64, 96, 128, 192, 256];
+
+        let mut total_residual_at_real = 0u64;
+        let mut feasible_at_real = 0usize;
+        let mut converged_layers = 0usize;
+        let mut total_layers = 0usize;
+
+        for &fixture in ALL_22_L0_FIXTURES {
+            let name = fixture
+                .trim_end_matches("_layout_gkr.json")
+                .trim_end_matches("_layout_no_caches_gkr.json");
+            let flavor = if fixture.contains("no_caches") {
+                "no-cache"
+            } else {
+                "cache"
+            };
+            let (dag, _artifact, cross) = crate::load_layer_source(fixture);
+            for (layer_idx, layer) in dag.layers.iter().enumerate() {
+                let floor = reachable_read_stats(layer, &cross).read_place_cells as u64;
+                let mut inst = extract_instance(layer, &cross, crate::REAL_BUDGET);
+                let sites = enumerate_demand_sites(&inst);
+                if inst.roots.is_empty() || sites.is_empty() {
+                    continue;
+                }
+                total_layers += 1;
+                let all_fit = all_fit_budget(&inst);
+                let population = smoke_genome_population(&inst, &sites, POPULATION);
+
+                let mut points = Vec::new();
+                let mut converged = false;
+                for &budget in &BUDGETS {
+                    if budget > all_fit {
+                        break;
+                    }
+                    inst.budget = budget;
+                    let opt =
+                        optimize_from_population(&inst, &sites, population.clone(), EVAL_BUDGET);
+                    if opt.best_score.feasible {
+                        let residual = opt.best_score.traffic.saturating_sub(floor);
+                        let rel = if floor > 0 {
+                            100.0 * residual as f64 / floor as f64
+                        } else {
+                            0.0
+                        };
+                        points.push(format!(
+                            "b{budget}={}(+{residual},{rel:.0}%)",
+                            opt.best_score.traffic
+                        ));
+                        if budget == crate::REAL_BUDGET {
+                            total_residual_at_real += residual;
+                            feasible_at_real += 1;
+                        }
+                        if residual == 0 {
+                            converged = true;
+                            break;
+                        }
+                    } else {
+                        points.push(format!("b{budget}=INF"));
+                    }
+                }
+                if converged {
+                    converged_layers += 1;
+                }
+                println!(
+                    "[FLOORDIST] {name:<34} {flavor:<8} L{layer_idx:<2} floor={floor:<4} all_fit={all_fit:<5} | {}",
+                    points.join(" ")
+                );
+            }
+        }
+
+        println!(
+            "[FLOORDIST][SUMMARY] layers={total_layers} converged_to_floor={converged_layers} \
+             total_residual@REAL_BUDGET={total_residual_at_real} (over {feasible_at_real} layers feasible @ {})",
+            crate::REAL_BUDGET
+        );
+    }
+
     fn duplicate_traffic_reads(trace: &CacheTrace) -> Vec<(u32, usize)> {
         use std::collections::BTreeMap;
 
