@@ -4884,6 +4884,81 @@ mod tests {
         );
     }
 
+    /// REPORT: precise structural comparison of the cache vs no-cache DAG for each circuit
+    /// (L0). The no-cache DAG is the existence proof of what the SAME computation costs
+    /// without materialization, so it bounds whether the cache layout's b16 residual is
+    /// structural. Per flavor we compute, straight from the DAG: `floor` (each leaf read
+    /// once = budget→∞ limit), `all_recompute` (Σ over demand sites of the value's
+    /// recompute-from-base traffic = budget→0 limit, no caching/sharing), root & site
+    /// counts, and `opt@16` (optimizer at the production budget). Reading: `opt@16` must
+    /// lie in `[floor, all_recompute]`. If cache `opt@16 > all_recompute`, the optimizer
+    /// is doing WORSE than always-recompute → pure search failure. If the two flavors'
+    /// `all_recompute` match but cache `opt@16` ≫ no-cache `opt@16`, the recompute schedule
+    /// that no-cache found is expressible on the cache DAG and the optimizer simply missed
+    /// it (search). If cache `all_recompute` is structurally higher, the gap is real.
+    #[test]
+    #[ignore = "report: cache-vs-no-cache DAG structural comparison (floor/all-recompute/opt@16)"]
+    fn cache_vs_no_cache_dag_structural_comparison() {
+        use crate::s3_gap::instance::extract_instance;
+        const POPULATION: usize = 200;
+        const EVAL_BUDGET: usize = 4_000;
+
+        // (floor, all_recompute, n_roots, n_sites, opt@REAL_BUDGET)
+        fn structural(fixture: &str) -> Option<(u64, u64, usize, usize, u64)> {
+            let (layer, cross) = crate::try_load_l0(fixture)?;
+            let floor = reachable_read_stats(&layer, &cross).read_place_cells as u64;
+            let inst = extract_instance(&layer, &cross, crate::REAL_BUDGET);
+            let sites = enumerate_demand_sites(&inst);
+            if inst.roots.is_empty() || sites.is_empty() {
+                return None;
+            }
+            let all_recompute: u64 = sites
+                .iter()
+                .map(|s| recompute_traffic_for(&inst, s.value))
+                .sum();
+            let opt = optimize_from_population(
+                &inst,
+                &sites,
+                smoke_genome_population(&inst, &sites, POPULATION),
+                EVAL_BUDGET,
+            );
+            let opt_at_real = if opt.best_score.feasible {
+                opt.best_score.traffic
+            } else {
+                u64::MAX
+            };
+            Some((floor, all_recompute, inst.roots.len(), sites.len(), opt_at_real))
+        }
+
+        for &fixture in ALL_22_L0_FIXTURES {
+            if fixture.contains("no_caches") {
+                continue;
+            }
+            let name = fixture.trim_end_matches("_layout_gkr.json");
+            let nc_fixture = fixture.replace("_layout_gkr.json", "_layout_no_caches_gkr.json");
+            let Some((cf, car, croots, csites, copt)) = structural(fixture) else {
+                continue;
+            };
+            let Some((nf, nar, nroots, nsites, nopt)) = structural(&nc_fixture) else {
+                println!("[STRUCT] {name:<34} no-cache fixture MISSING");
+                continue;
+            };
+            let verdict = if copt > car {
+                "SEARCH-FAIL(opt>all_recompute)"
+            } else if car <= nar.saturating_add(nar / 20) && copt > nopt.saturating_add(nopt / 20) {
+                "SEARCH(recompute-path-exists)"
+            } else if car > nar.saturating_add(nar / 5) {
+                "STRUCTURAL(cache recomputes more)"
+            } else {
+                "mixed/converged"
+            };
+            println!(
+                "[STRUCT] {name:<32} cache[floor={cf} opt={copt} allrc={car} roots={croots} sites={csites}] \
+                 nocache[floor={nf} opt={nopt} allrc={nar} roots={nroots} sites={nsites}] => {verdict}"
+            );
+        }
+    }
+
     fn duplicate_traffic_reads(trace: &CacheTrace) -> Vec<(u32, usize)> {
         use std::collections::BTreeMap;
 
