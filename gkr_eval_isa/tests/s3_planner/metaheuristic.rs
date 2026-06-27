@@ -5005,10 +5005,16 @@ mod tests {
         // production residency scheduler. Beating neutral is NECESSARY but NOT SUFFICIENT
         // evidence of production payoff; when the production order+residency for these
         // layers is extractable it must replace neutral as the baseline.
+        //
+        // Budget reflects the OFFLINE-AMORTIZED search regime: the optimal schedule is
+        // computed ONCE per (circuit, layout, layer, budget) and baked into the compiled
+        // artifact, so the search can run long. SA's uphill escape is budget-gated — its
+        // value materializes at this scale (16k: total_gap 422 vs 404 at the old 2k quick
+        // budget; SA isolated +11). See ad02f476.
         const POPULATION: usize = 200;
-        const EVAL_BUDGET: usize = 2_000;
+        const EVAL_BUDGET: usize = 16_000;
         const FINAL_STARTS: usize = 4;
-        const FINAL_EVAL_BUDGET: usize = 500;
+        const FINAL_EVAL_BUDGET: usize = 2_000;
 
         let mut checked = 0usize;
         let mut improved = 0usize;
