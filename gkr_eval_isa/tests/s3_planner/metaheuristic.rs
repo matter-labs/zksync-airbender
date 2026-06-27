@@ -204,6 +204,23 @@ fn unit_members(unit_of: &[u32]) -> Vec<Vec<usize>> {
     units
 }
 
+/// True iff every unit's members form one contiguous run in `order` (used to test
+/// whether an arbitrary — e.g. flat-optimized — occurrence order is atomicity-feasible).
+fn order_keeps_units_contiguous(order: &[usize], units: &[Vec<usize>]) -> bool {
+    let mut pos = vec![0usize; order.len()];
+    for (i, &occ) in order.iter().enumerate() {
+        pos[occ] = i;
+    }
+    units.iter().all(|members| {
+        let (lo, hi) = members
+            .iter()
+            .fold((usize::MAX, 0usize), |(lo, hi), &occ| {
+                (lo.min(pos[occ]), hi.max(pos[occ]))
+            });
+        members.is_empty() || hi - lo + 1 == members.len()
+    })
+}
+
 /// The unit order a unit-keyed genome decodes to: unit indices sorted by their key,
 /// ties broken by unit index for determinism. The genome's `root_order_key` holds
 /// ONE key per unit here (length == number of units) — the unit is the scheduling
@@ -6351,6 +6368,7 @@ mod tests {
         let mut equal = 0usize;
         let mut total_flat = 0i64;
         let mut total_grouped = 0i64;
+        let mut flat_nonatomic = 0usize;
         for &fixture in ALL_22_L0_FIXTURES {
             let name = fixture
                 .trim_end_matches("_layout_gkr.json")
@@ -6388,6 +6406,16 @@ mod tests {
             let grouped =
                 optimize_from_population_grouped(&inst, &sites, unit_pop, EVAL_BUDGET, &units);
 
+            // DIAGNOSIS: is flat's winning order reachable under atomicity? If flat's best
+            // order keeps every unit contiguous, the grouped arm's space CONTAINS it, so a
+            // grouped regression is a search/seed artifact. If flat's best SPLITS a unit,
+            // atomicity structurally forbids it ⇒ the regression is a genuine trade-off.
+            let f_order = decode_root_occurrence_order(&inst, &flat.best_genome);
+            let f_contig = order_keeps_units_contiguous(&f_order, &units);
+            if !f_contig {
+                flat_nonatomic += 1;
+            }
+
             // The grouped best must keep every unit contiguous (atomicity by construction).
             let g_order = decode_grouped_occurrence_order(&inst, &grouped.best_genome, &units);
             for m in &units {
@@ -6416,18 +6444,29 @@ mod tests {
             }
             println!(
                 "[GROUP-AB] {label:<52} roots={:<4} units={n_units:<4} multi={multi:<4} \
-                 flat={f:<5}{} grouped={g:<5}{} delta={delta}",
+                 flat={f:<5}{} grouped={g:<5}{} delta={delta:<4} flat_atomic={}",
                 inst.roots.len(),
                 if ff { " " } else { "!" },
                 if gf { " " } else { "!" },
+                if f_contig { "yes" } else { "NO" },
             );
             checked += 1;
         }
         assert!(checked > 0, "no fixtures checked — corpus setup broken");
+        // KEY DIAGNOSIS: flat_nonatomic = how many fixtures' UNCONSTRAINED (flat) best
+        // order splits a unit. Measured 0/22 — every flat optimum is already
+        // unit-contiguous ⇒ relation-atomicity costs NOTHING at the optimum (it never
+        // forbids a better order). So the grouped regressions are NOT structural; they
+        // are a SEARCH/SEED artifact (the unit-keyed arm fails to find an order that
+        // provably lives in its own space), and the bigint/cache win is unit-keying
+        // converging BETTER on the largest layer. Stage 1.5 verdict: atomicity is free;
+        // unit-keying is a search-dynamics lever (helps big layers, hurts some mid
+        // layers under weak random seeds — removable by seeding parity).
         println!(
             "[GROUP-AB][VERDICT] grouped_better={grouped_better} flat_better={flat_better} \
-             equal={equal} checked={checked} total_flat={total_flat} total_grouped={total_grouped} \
-             net_delta={} (>0 ⇒ unit-keyed search reduces total traffic)",
+             equal={equal} checked={checked} flat_nonatomic={flat_nonatomic}/{checked} \
+             total_flat={total_flat} total_grouped={total_grouped} net_delta={} \
+             (flat_nonatomic=0 ⇒ atomicity free at optimum; deltas are search-dynamics)",
             total_flat - total_grouped
         );
     }
