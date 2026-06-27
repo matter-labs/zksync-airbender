@@ -539,6 +539,18 @@ fn recompute_traffic_for(inst: &OracleInstance, value: u32) -> u64 {
     traffic
 }
 
+/// DAG-computable **ceiling**: the maximum reads when NOTHING is cached or shared —
+/// every demand recomputes its value from base reads (the budget→0 limit). Pure graph
+/// traversal (no search), so it is a hard upper bound: any feasible schedule reuses at
+/// least as much, hence `floor ≤ optimizer_traffic ≤ no_cache_ceiling`. A scored result
+/// above this means the scorer/search is broken, not merely sub-optimal.
+fn no_cache_ceiling(inst: &OracleInstance, sites: &[DemandSite]) -> u64 {
+    sites
+        .iter()
+        .map(|s| recompute_traffic_for(inst, s.value))
+        .sum()
+}
+
 impl<'a> Replay<'a> {
     fn new(
         inst: &'a OracleInstance,
@@ -5498,6 +5510,171 @@ mod tests {
             }
         }
         println!("SWEEPDONE");
+    }
+
+    /// INVESTIGATION: are `Cache`-sink roots reused only WITHIN their own layer (via
+    /// `Prior`), or are some read by a LATER layer (via `Read{LayerOutput}`)? Only
+    /// intra-layer cache values can be modeled as "materialize after first evaluation"
+    /// (a non-root shared intermediate); a cross-layer cache value is a genuine exported
+    /// output and must stay a root. Scans the whole DAG of every cache fixture.
+    #[test]
+    #[ignore = "investigate: are Cache roots intra-layer (Prior) or cross-layer (LayerOutput)?"]
+    fn cache_root_locality_census() {
+        use cs::gkr_compiler::dag_ir::{ReadPlace, Root, SinkKind, SourceKind};
+        use std::collections::{BTreeMap, BTreeSet};
+
+        let mut tot_cache = 0usize;
+        let mut tot_intra = 0usize;
+        let mut tot_cross = 0usize;
+        let mut tot_both = 0usize;
+        let mut tot_orphan = 0usize;
+        for &fixture in ALL_22_L0_FIXTURES {
+            if fixture.contains("no_caches") {
+                continue;
+            }
+            let name = fixture.trim_end_matches("_layout_gkr.json");
+            let (dag, _artifact, _cross) = crate::load_layer_source(fixture);
+
+            // Global set of (layer, offset) read by some LATER layer via LayerOutput.
+            let mut layer_output_reads: BTreeSet<(usize, usize)> = BTreeSet::new();
+            for layer in &dag.layers {
+                for s in &layer.sources {
+                    if let SourceKind::Read {
+                        place: ReadPlace::LayerOutput { layer: l, offset: o },
+                    } = &s.kind
+                    {
+                        layer_output_reads.insert((*l, *o));
+                    }
+                }
+            }
+
+            let mut f_cache = 0usize;
+            let mut f_intra = 0usize;
+            let mut f_cross = 0usize;
+            let mut f_both = 0usize;
+            let mut f_orphan = 0usize;
+            let mut inner_cross = 0usize;
+            let mut inner_total = 0usize;
+            for layer in dag.layers.iter() {
+                // Intra-layer Prior reuse counts, per RootId of THIS layer.
+                let mut prior_to: BTreeMap<u32, usize> = BTreeMap::new();
+                for s in &layer.sources {
+                    if let SourceKind::Prior { id } = &s.kind {
+                        *prior_to.entry(id.0).or_default() += 1;
+                    }
+                }
+                for (rid, root) in layer.roots.iter().enumerate() {
+                    let Root::Output { sink, .. } = root else { continue };
+                    let kind = &layer.sinks[sink.0 as usize].kind;
+                    match kind {
+                        SinkKind::Cache { layer: cl, offset: co } => {
+                            f_cache += 1;
+                            let intra = prior_to.get(&(rid as u32)).copied().unwrap_or(0) > 0;
+                            let cross = layer_output_reads.contains(&(*cl, *co));
+                            match (intra, cross) {
+                                (true, false) => f_intra += 1,
+                                (false, true) => f_cross += 1,
+                                (true, true) => f_both += 1,
+                                (false, false) => f_orphan += 1,
+                            }
+                        }
+                        SinkKind::Inner { layer: il, offset: io } => {
+                            inner_total += 1;
+                            if layer_output_reads.contains(&(*il, *io)) {
+                                inner_cross += 1;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            println!(
+                "[CACHE-LOC] {name:<40} cache={f_cache:<4} intra-only={f_intra:<4} \
+                 cross-only={f_cross:<3} both={f_both:<3} orphan={f_orphan:<3} | \
+                 inner={inner_total} inner_cross_read={inner_cross}"
+            );
+            tot_cache += f_cache;
+            tot_intra += f_intra;
+            tot_cross += f_cross;
+            tot_both += f_both;
+            tot_orphan += f_orphan;
+        }
+        println!(
+            "[CACHE-LOC][SUMMARY] cache_roots={tot_cache} intra-only={tot_intra} \
+             cross-only={tot_cross} both={tot_both} orphan={tot_orphan} \
+             => cache-as-non-root is {} (cross+both must be 0)",
+            if tot_cross + tot_both == 0 { "SAFE for all" } else { "NOT universally safe" }
+        );
+    }
+
+    /// INVESTIGATION: forward/backward root taxonomy. The forward cost model only
+    /// schedules `Root::Output` cones. The BACKWARD pass (sumcheck) consumes the
+    /// claim-bearing roots (those with a `RootOrigin` / in `BatchingOrder`) and the
+    /// constraints (`Root::Constraint`). This census shows, per cache fixture: how the
+    /// retained-for-backward values appear as roots, whether any Cache root is itself
+    /// claim-bearing (it must not be), and how many claim roots are PURE backward (no
+    /// intra-forward Prior consumer) — i.e. "computed in forward, used only in backward".
+    #[test]
+    #[ignore = "investigate: forward/backward root taxonomy (claims vs cache vs constraints)"]
+    fn forward_backward_root_taxonomy() {
+        use cs::gkr_compiler::dag_ir::{Root, RootId, SinkKind, SourceKind};
+        use std::collections::BTreeSet;
+
+        for &fixture in ALL_22_L0_FIXTURES {
+            if fixture.contains("no_caches") {
+                continue;
+            }
+            let name = fixture.trim_end_matches("_layout_gkr.json");
+            let (dag, _a, _c) = crate::load_layer_source(fixture);
+            let mut out_total = 0usize;
+            let mut claim = 0usize; // Output root with a RootOrigin (sumcheck claim)
+            let mut cache = 0usize; // Cache-sink Output root
+            let mut inner = 0usize;
+            let mut cache_and_claim = 0usize; // MUST be 0
+            let mut claim_no_intra = 0usize; // claim with no intra-layer Prior consumer
+            let mut constraints = 0usize;
+            for layer in &dag.layers {
+                let priored: BTreeSet<u32> = layer
+                    .sources
+                    .iter()
+                    .filter_map(|s| match &s.kind {
+                        SourceKind::Prior { id } => Some(id.0),
+                        _ => None,
+                    })
+                    .collect();
+                for (rid, root) in layer.roots.iter().enumerate() {
+                    match root {
+                        Root::Constraint { .. } => constraints += 1,
+                        Root::Output { sink, .. } => {
+                            out_total += 1;
+                            let is_claim = layer.origins.contains_key(&RootId(rid as u32));
+                            let is_cache =
+                                matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. });
+                            if is_claim {
+                                claim += 1;
+                                if !priored.contains(&(rid as u32)) {
+                                    claim_no_intra += 1;
+                                }
+                            }
+                            if is_cache {
+                                cache += 1;
+                            }
+                            if matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Inner { .. }) {
+                                inner += 1;
+                            }
+                            if is_claim && is_cache {
+                                cache_and_claim += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            println!(
+                "[ROOT-TAX] {name:<40} out={out_total:<4} claim={claim:<4} cache={cache:<4} \
+                 inner={inner:<4} constraints={constraints:<4} cache∩claim={cache_and_claim} \
+                 claim_pure_backward(no_intra)={claim_no_intra}"
+            );
+        }
     }
 
     /// REPORT: precise structural comparison of the cache vs no-cache DAG for each circuit
