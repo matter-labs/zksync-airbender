@@ -5089,6 +5089,110 @@ mod tests {
         }
     }
 
+    /// REPORT: full-circuit fan-out of EVERY materialized value, all sink kinds, counting
+    /// both in-layer reuse (`Source(Prior)`) and cross-layer reload points
+    /// (`Source(Read{LayerOutput|CacheOutput})` in a later layer). Each such source is one
+    /// reload point (the value is read once then shared internally via ExprId). If fan-out
+    /// is ≤ 1 universally, reload is never beneficial (a single use comes from the
+    /// accumulator within a layer / merged graph; across unmerged layers it is exactly one
+    /// unavoidable boundary read). Confirms whether the fan-out-1 property holds for ALL
+    /// outputs (incl. one layer's output read by the next), not just in-layer Cache.
+    #[test]
+    #[ignore = "report: full-circuit fan-out of all materialized outputs (in-layer + cross-layer)"]
+    fn all_outputs_fanout_full_circuit() {
+        use cs::gkr_compiler::dag_ir::{ReadPlace, Root, SinkKind, SourceKind};
+        use std::collections::BTreeMap;
+
+        fn tag_name(t: u8) -> &'static str {
+            match t {
+                0 => "Inner",
+                1 => "Cache",
+                2 => "Export",
+                3 => "Scratch",
+                _ => "?",
+            }
+        }
+
+        for &fixture in ALL_22_L0_FIXTURES {
+            let name = fixture
+                .trim_end_matches("_layout_gkr.json")
+                .trim_end_matches("_layout_no_caches_gkr.json");
+            let flavor = if fixture.contains("no_caches") {
+                "no-cache"
+            } else {
+                "cache"
+            };
+            let (dag, _a, _c) = crate::load_layer_source(fixture);
+
+            // key = (tag, layer, offset); producers start at fan-out 0
+            let mut fanout: BTreeMap<(u8, i64, i64), usize> = BTreeMap::new();
+            // per-layer: RootId -> producer key (for in-layer Prior attribution)
+            let mut root_key: Vec<BTreeMap<u32, (u8, i64, i64)>> = Vec::new();
+            for layer in &dag.layers {
+                let mut m = BTreeMap::new();
+                for (rid, root) in layer.roots.iter().enumerate() {
+                    if let Root::Output { sink, .. } = root {
+                        let key = match layer.sinks[sink.0 as usize].kind {
+                            SinkKind::Inner { layer, offset } => (0u8, layer as i64, offset as i64),
+                            SinkKind::Cache { layer, offset } => (1u8, layer as i64, offset as i64),
+                            SinkKind::Export { slot } => (2u8, -1, slot as i64),
+                            SinkKind::Scratch { slot } => (3u8, -1, slot as i64),
+                        };
+                        fanout.entry(key).or_insert(0);
+                        m.insert(rid as u32, key);
+                    }
+                }
+                root_key.push(m);
+            }
+            for (lj, layer) in dag.layers.iter().enumerate() {
+                for s in &layer.sources {
+                    match &s.kind {
+                        SourceKind::Read { place } => {
+                            let key = match place {
+                                ReadPlace::LayerOutput { layer, offset } => {
+                                    Some((0u8, *layer as i64, *offset as i64))
+                                }
+                                ReadPlace::CacheOutput { layer, offset } => {
+                                    Some((1u8, *layer as i64, *offset as i64))
+                                }
+                                ReadPlace::Scratch { slot } => Some((3u8, -1, *slot as i64)),
+                                _ => None,
+                            };
+                            if let Some(k) = key {
+                                *fanout.entry(k).or_insert(0) += 1;
+                            }
+                        }
+                        SourceKind::Prior { id } => {
+                            if let Some(k) = root_key[lj].get(&id.0) {
+                                *fanout.entry(*k).or_insert(0) += 1;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            let mut by_tag: BTreeMap<u8, (usize, usize, BTreeMap<usize, usize>)> = BTreeMap::new();
+            for ((tag, _, _), fo) in &fanout {
+                let e = by_tag.entry(*tag).or_insert((0, 0, BTreeMap::new()));
+                e.0 += 1; // producer count
+                e.1 = e.1.max(*fo); // max fan-out
+                *e.2.entry(*fo).or_insert(0) += 1;
+            }
+            let layers = dag.layers.len();
+            let parts: Vec<String> = by_tag
+                .iter()
+                .map(|(tag, (n, max, hist))| {
+                    format!("{}[n={n} max={max} hist={hist:?}]", tag_name(*tag))
+                })
+                .collect();
+            println!(
+                "[FANOUT] {name:<32} {flavor:<8} layers={layers:<3} {}",
+                parts.join(" ")
+            );
+        }
+    }
+
     fn duplicate_traffic_reads(trace: &CacheTrace) -> Vec<(u32, usize)> {
         use std::collections::BTreeMap;
 
