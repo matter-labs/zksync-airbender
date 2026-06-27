@@ -5602,6 +5602,80 @@ mod tests {
         }
     }
 
+    /// REPORT: do the 2 consumers of each dual-use cache value share a `RootOrigin`
+    /// relation_index? If yes, the "dual root" affinity is ALREADY latent in the IR (the
+    /// num+den of one relation) and need not be invented — only surfaced as a scheduling
+    /// unit. Counts how many cache roots are dual-use and how the pairing aligns to relations.
+    #[test]
+    #[ignore = "report: are dual-use cache consumers the num/den of one relation (RootOrigin)?"]
+    fn dual_use_cache_consumers_share_relation() {
+        use cs::gkr_compiler::dag_ir::{Expr, Root, RootId, SinkKind, SourceKind};
+        use std::collections::{BTreeMap, BTreeSet};
+
+        for &fixture in ALL_22_L0_FIXTURES {
+            if fixture.contains("no_caches") {
+                continue;
+            }
+            let name = fixture.trim_end_matches("_layout_gkr.json");
+            let Some((layer, _)) = crate::try_load_l0(fixture) else { continue };
+            let mut cache_ids: BTreeSet<u32> = BTreeSet::new();
+            for (ri, root) in layer.roots.iter().enumerate() {
+                if let Root::Output { sink, .. } = root {
+                    if matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. }) {
+                        cache_ids.insert(ri as u32);
+                    }
+                }
+            }
+            let mut consumers: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+            for (ri, root) in layer.roots.iter().enumerate() {
+                let expr_id = match root {
+                    Root::Output { expr, .. } => *expr,
+                    Root::Constraint { expr } => *expr,
+                };
+                let mut seen = vec![false; layer.exprs.len()];
+                let mut stack = vec![expr_id];
+                let mut hit: BTreeSet<u32> = BTreeSet::new();
+                while let Some(e) = stack.pop() {
+                    if seen[e.0 as usize] {
+                        continue;
+                    }
+                    seen[e.0 as usize] = true;
+                    match &layer.exprs[e.0 as usize] {
+                        Expr::Source(sid) => {
+                            if let SourceKind::Prior { id } = &layer.sources[sid.0 as usize].kind {
+                                if cache_ids.contains(&id.0) {
+                                    hit.insert(id.0);
+                                }
+                            }
+                        }
+                        Expr::Add(ch) | Expr::Mul(ch) => stack.extend(ch.iter().copied()),
+                    }
+                }
+                for cid in hit {
+                    consumers.entry(cid).or_default().push(ri);
+                }
+            }
+            let (mut dual, mut same_rel, mut diff_rel, mut no_origin) = (0usize, 0, 0, 0);
+            for cons in consumers.values() {
+                if cons.len() != 2 {
+                    continue;
+                }
+                dual += 1;
+                let o0 = layer.origins.get(&RootId(cons[0] as u32));
+                let o1 = layer.origins.get(&RootId(cons[1] as u32));
+                match (o0, o1) {
+                    (Some(a), Some(b)) if a.relation_index == b.relation_index => same_rel += 1,
+                    (Some(_), Some(_)) => diff_rel += 1,
+                    _ => no_origin += 1,
+                }
+            }
+            println!(
+                "[DUAL] {name:<30} cache_roots={:<4} dual_use={dual:<4} same_relation={same_rel:<4} diff_relation={diff_rel:<4} consumer_no_origin={no_origin}",
+                cache_ids.len()
+            );
+        }
+    }
+
     fn duplicate_traffic_reads(trace: &CacheTrace) -> Vec<(u32, usize)> {
         use std::collections::BTreeMap;
 
