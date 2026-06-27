@@ -5411,6 +5411,197 @@ mod tests {
         }
     }
 
+    /// REPORT: for each value materialized as a `Cache` root in the cache layout, find the
+    /// SAME expression in the no-cache layout (structural fingerprint over base sources) and
+    /// report ITS use-count there. Answers: is the materialized value reused ≤ 2× in no-cache
+    /// too (just not committed), or does the cache layout's `Prior` fan-out (≤ 2) understate a
+    /// higher true reuse that surfaces as CSE sharing in no-cache? Fingerprint = structural
+    /// hash (op + sorted child fingerprints; `Source` keyed by `SourceKind` debug, which is
+    /// cross-layout-stable for `Read`/`Constant`). Assumes child ExprId < parent (interned).
+    ///
+    /// LIMITATION (verified by review, wf_ba11900c): the `unmatched` count is NOT a structural
+    /// signal. `LookupValue{query: ExprId}` and `Prior{id: RootId}` Debug-print LAYOUT-SPECIFIC
+    /// arena/root indices, so a cache root whose cone holds a lookup/memory fold or a
+    /// cache-of-cache fingerprints differently across layouts even when structurally identical.
+    /// Cache roots are dominated by exactly those, so most show as `unmatched` SPURIOUSLY — the
+    /// values DO exist in no_cache (same lowering helpers), the matcher just can't see them.
+    /// Only the `matched` subset (pure Add/Mul over Read/Constant) is meaningful; it confirms
+    /// use-count ≤ 2. A sound matcher would recurse into `query` and resolve `Prior` to the
+    /// referenced root's fingerprint.
+    #[test]
+    #[ignore = "report: cross-layout use-count of cache-materialized values (matched subset only — see LIMITATION)"]
+    fn cache_root_use_count_in_no_cache() {
+        use cs::gkr_compiler::dag_ir::{DagLayer, Expr, Root, SinkKind};
+        use std::collections::{BTreeMap, BTreeSet, HashMap};
+        use std::hash::{Hash, Hasher};
+
+        fn fingerprints(layer: &DagLayer) -> Vec<u64> {
+            let mut fp = vec![0u64; layer.exprs.len()];
+            for (i, e) in layer.exprs.iter().enumerate() {
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                match e {
+                    Expr::Source(sid) => {
+                        0u8.hash(&mut h);
+                        format!("{:?}", layer.sources[sid.0 as usize].kind).hash(&mut h);
+                    }
+                    Expr::Add(ch) | Expr::Mul(ch) => {
+                        (if matches!(e, Expr::Add(_)) { 1u8 } else { 2u8 }).hash(&mut h);
+                        let mut cs: Vec<u64> = ch.iter().map(|c| fp[c.0 as usize]).collect();
+                        cs.sort_unstable();
+                        cs.hash(&mut h);
+                    }
+                }
+                fp[i] = h.finish();
+            }
+            fp
+        }
+        fn use_counts(layer: &DagLayer) -> Vec<usize> {
+            let mut rc = vec![0usize; layer.exprs.len()];
+            for e in &layer.exprs {
+                if let Expr::Add(ch) | Expr::Mul(ch) = e {
+                    for c in ch.iter().map(|c| c.0).collect::<BTreeSet<u32>>() {
+                        rc[c as usize] += 1;
+                    }
+                }
+            }
+            for root in &layer.roots {
+                let eid = match root {
+                    Root::Output { expr, .. } => *expr,
+                    Root::Constraint { expr } => *expr,
+                };
+                rc[eid.0 as usize] += 1;
+            }
+            rc
+        }
+
+        for &fixture in ALL_22_L0_FIXTURES {
+            if fixture.contains("no_caches") {
+                continue;
+            }
+            let name = fixture.trim_end_matches("_layout_gkr.json");
+            let nc_fixture = fixture
+                .replace("_preprocessed_layout_gkr.json", "_layout_no_caches_gkr.json")
+                .replace("_layout_gkr.json", "_layout_no_caches_gkr.json");
+            let Some((clayer, _)) = crate::try_load_l0(fixture) else { continue };
+            let Some((nlayer, _)) = crate::try_load_l0(&nc_fixture) else {
+                println!("[XLAYER] {name:<30} no-cache MISSING");
+                continue;
+            };
+            let cfp = fingerprints(&clayer);
+            let nfp = fingerprints(&nlayer);
+            let nrc = use_counts(&nlayer);
+            let mut nmap: HashMap<u64, usize> = HashMap::new();
+            for (i, &f) in nfp.iter().enumerate() {
+                let e = nmap.entry(f).or_insert(0);
+                *e = (*e).max(nrc[i]);
+            }
+            let (mut cache_roots, mut matched, mut unmatched, mut nc_max) = (0usize, 0, 0, 0usize);
+            let mut nc_hist: BTreeMap<usize, usize> = BTreeMap::new();
+            for root in &clayer.roots {
+                if let Root::Output { expr, sink } = root {
+                    if matches!(clayer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. }) {
+                        cache_roots += 1;
+                        match nmap.get(&cfp[expr.0 as usize]) {
+                            Some(&uc) => {
+                                matched += 1;
+                                *nc_hist.entry(uc).or_default() += 1;
+                                nc_max = nc_max.max(uc);
+                            }
+                            None => unmatched += 1,
+                        }
+                    }
+                }
+            }
+            println!(
+                "[XLAYER] {name:<30} cache_roots={cache_roots:<4} matched_in_nocache={matched:<4} unmatched={unmatched:<4} | no_cache use-count of matched: max={nc_max} hist={nc_hist:?}"
+            );
+        }
+    }
+
+    /// REPORT: for each cache root with exactly 2 consumers, how far apart are its two use
+    /// sites in root-emission order? Answers "are the 2 uses emitted one after another"
+    /// (local → held briefly, free to co-locate) vs spread (needs cross-root residency). A
+    /// consumer of cache root V = a root whose expr cone contains `Source(Prior{id=V})`.
+    /// Reports the consumer-pair gap |c2-c1| and the gap from V's own emission index.
+    #[test]
+    #[ignore = "report: emission-order adjacency of the 2 use sites of use-count-2 cache values"]
+    fn cache_root_consumer_adjacency() {
+        use cs::gkr_compiler::dag_ir::{Expr, Root, SinkKind, SourceKind};
+        use std::collections::BTreeMap;
+
+        for &fixture in ALL_22_L0_FIXTURES {
+            if fixture.contains("no_caches") {
+                continue;
+            }
+            let name = fixture.trim_end_matches("_layout_gkr.json");
+            let Some((layer, _)) = crate::try_load_l0(fixture) else { continue };
+            // cache RootId -> its own root index
+            let mut cache_idx: BTreeMap<u32, usize> = BTreeMap::new();
+            for (ri, root) in layer.roots.iter().enumerate() {
+                if let Root::Output { sink, .. } = root {
+                    if matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. }) {
+                        cache_idx.insert(ri as u32, ri);
+                    }
+                }
+            }
+            // cache RootId -> consumer root indices (roots whose cone holds Prior{id})
+            let mut consumers: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+            for (ri, root) in layer.roots.iter().enumerate() {
+                let expr_id = match root {
+                    Root::Output { expr, .. } => *expr,
+                    Root::Constraint { expr } => *expr,
+                };
+                let mut seen = vec![false; layer.exprs.len()];
+                let mut stack = vec![expr_id];
+                let mut hit: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+                while let Some(e) = stack.pop() {
+                    if seen[e.0 as usize] {
+                        continue;
+                    }
+                    seen[e.0 as usize] = true;
+                    match &layer.exprs[e.0 as usize] {
+                        Expr::Source(sid) => {
+                            if let SourceKind::Prior { id } = &layer.sources[sid.0 as usize].kind {
+                                if cache_idx.contains_key(&id.0) {
+                                    hit.insert(id.0);
+                                }
+                            }
+                        }
+                        Expr::Add(ch) | Expr::Mul(ch) => stack.extend(ch.iter().copied()),
+                    }
+                }
+                for cid in hit {
+                    consumers.entry(cid).or_default().push(ri);
+                }
+            }
+            let (mut n2, mut adj, mut pair_gap_max, mut prod_gap_max) = (0usize, 0usize, 0usize, 0usize);
+            let mut pair_gap_hist: BTreeMap<usize, usize> = BTreeMap::new();
+            for (cid, cons) in &consumers {
+                if cons.len() != 2 {
+                    continue;
+                }
+                n2 += 1;
+                let gap = cons[1] - cons[0];
+                pair_gap_hist.entry(gap).or_default();
+                *pair_gap_hist.get_mut(&gap).unwrap() += 1;
+                pair_gap_max = pair_gap_max.max(gap);
+                if gap == 1 {
+                    adj += 1;
+                }
+                let prod = cache_idx[cid];
+                prod_gap_max = prod_gap_max.max(cons[0].saturating_sub(prod).max(cons[1].saturating_sub(prod)));
+            }
+            let bucket = |g: usize| if g == 1 { "1" } else if g <= 4 { "2-4" } else if g <= 16 { "5-16" } else { ">16" };
+            let mut buckets: BTreeMap<&str, usize> = BTreeMap::new();
+            for (g, c) in &pair_gap_hist {
+                *buckets.entry(bucket(*g)).or_default() += c;
+            }
+            println!(
+                "[ADJ] {name:<30} usecount2={n2:<4} adjacent(gap=1)={adj:<4} pair_gap_max={pair_gap_max:<4} prod_to_use_gap_max={prod_gap_max:<4} | gap buckets={buckets:?}"
+            );
+        }
+    }
+
     fn duplicate_traffic_reads(trace: &CacheTrace) -> Vec<(u32, usize)> {
         use std::collections::BTreeMap;
 
