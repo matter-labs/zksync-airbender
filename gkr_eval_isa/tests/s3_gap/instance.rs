@@ -69,30 +69,36 @@ pub struct OracleInstance {
 /// ```
 /// A resolution-pruned expr becomes a `NodeKind::Special` **terminal with
 /// `children: vec![]`** — do NOT descend into its children (spec §3 class 3).
+/// Lower a `DagLayer` to a solver `OracleInstance`. `Cache`-sink values are modeled as
+/// intra-unit inline intermediates, NOT scheduling roots: a cache value is computed once
+/// while its owning relation evaluates its num/den (the `Prior` rewire already routes
+/// those cones through it) and materialized (a free streamed write the cost model does
+/// not charge) for the backward pass. So the scheduling roots are exactly the claim
+/// (non-cache) roots — the scheduler orders relations, not phantom cache atoms.
+///
+/// Sound because every cache value's in-layer consumers belong to a SINGLE relation
+/// (asserted by `dual_use_cache_consumers_share_relation`) and every cache value has an
+/// in-layer consumer (no orphans), so excluding it as a root never drops a reachable
+/// value. See `extract_instance_cache_as_root` for the historical (buggy) model that
+/// promoted each cache value to its own scheduling root.
 pub fn extract_instance(
     layer: &DagLayer,
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
 ) -> OracleInstance {
-    extract_instance_impl(layer, cross, budget, false)
+    extract_instance_impl(layer, cross, budget, true)
 }
 
-/// Like [`extract_instance`] but does NOT treat `Cache`-sink values as separate
-/// scheduling roots. A cache value is an intra-unit intermediate: it is computed once
-/// inline while its owning relation evaluates its num/den (the `Prior` rewire already
-/// routes those cones through it), and materialized (a free streamed write the cost model
-/// does not charge) for the backward pass. Excluding it as a root leaves exactly the
-/// non-cache claim-root set, so the scheduler orders relations — not phantom cache atoms.
-///
-/// Sound here because every cache value's in-layer consumers belong to a SINGLE relation
-/// (asserted by `dual_use_cache_consumers_share_relation`) and every cache value has an
-/// in-layer consumer (no orphans), so excluding it never drops a reachable value.
-pub fn extract_instance_materialized_cache(
+/// Historical model: every `Cache`-sink Output root is a separate scheduling root. This
+/// bloats the order space and misprices residency (a materialized value held a cell over
+/// a long order-span instead of its short intra-unit span); kept only for before/after
+/// comparison (e.g. `cache_materialized_collapse_demo`). Use [`extract_instance`].
+pub fn extract_instance_cache_as_root(
     layer: &DagLayer,
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
 ) -> OracleInstance {
-    extract_instance_impl(layer, cross, budget, true)
+    extract_instance_impl(layer, cross, budget, false)
 }
 
 fn extract_instance_impl(
@@ -290,16 +296,18 @@ fn extract_instance_impl(
 /// the schedule, keeping their shared fold co-resident. An all-singleton
 /// assignment decodes identically to the flat decoder, so passing an empty slice
 /// (or all-distinct units) is a no-op relative to the unconstrained order.
+/// Aligned with [`extract_instance`] (the default, materialized-cache model): Cache-sink
+/// Output roots are skipped (not scheduling atoms), so the result lines up with that
+/// instance's `roots` occurrence order. With cache roots removed, the remaining roots are
+/// all claim-bearing, so units are grouped purely by relation.
 pub fn relation_units(layer: &DagLayer) -> Vec<u32> {
-    relation_units_impl(layer, false)
+    relation_units_impl(layer, true)
 }
 
-/// `relation_units` aligned with [`extract_instance_materialized_cache`]: Cache-sink
-/// Output roots are skipped (they are not scheduling atoms), so the result lines up
-/// with the materialized-cache `roots` occurrence order. With cache roots removed, the
-/// remaining roots are all claim-bearing, so units are grouped purely by relation.
-pub fn relation_units_materialized_cache(layer: &DagLayer) -> Vec<u32> {
-    relation_units_impl(layer, true)
+/// Aligned with [`extract_instance_cache_as_root`]: includes Cache-sink Output roots as
+/// (singleton) units. Historical; use [`relation_units`].
+pub fn relation_units_cache_as_root(layer: &DagLayer) -> Vec<u32> {
+    relation_units_impl(layer, false)
 }
 
 fn relation_units_impl(layer: &DagLayer, materialize_cache: bool) -> Vec<u32> {
@@ -491,8 +499,11 @@ mod tests {
 
     #[test]
     fn extract_topo_orders_children_before_parents_and_flags_dram() {
+        // Exercises the cache-as-root path (Prior target IS a root → reloadable); the
+        // default/materialized path on this fixture is covered by
+        // `materialized_cache_excludes_cache_roots_keeps_reads`.
         let (layer, cross) = tests_support_two_roots_one_prior();
-        let inst = extract_instance(&layer, &cross, 16);
+        let inst = extract_instance_cache_as_root(&layer, &cross, 16);
         // every child id strictly less than its parent id
         for n in &inst.nodes {
             for &c in &n.children {
@@ -753,14 +764,14 @@ mod tests {
         // Inner(Add(Prior(root0), e3)). The cache value (e2) feeds root1 via Prior.
         let (layer, cross) = tests_support_two_roots_one_prior();
 
-        // Cache-as-root (current default): the cache value is its own scheduling root.
-        let base = extract_instance(&layer, &cross, 16);
-        assert_eq!(base.roots.len(), 2, "default: cache value is a separate root");
+        // Historical cache-as-root: the cache value is its own scheduling root.
+        let base = extract_instance_cache_as_root(&layer, &cross, 16);
+        assert_eq!(base.roots.len(), 2, "cache-as-root: cache value is a separate root");
 
-        // Cache-materialized: the cache value is NOT a root — only its consuming relation
-        // (root1) is. It is still reachable inline (root1's cone routes through it).
-        let mat = extract_instance_materialized_cache(&layer, &cross, 16);
-        assert_eq!(mat.roots.len(), 1, "materialized: cache value is not a root");
+        // Default (materialized): the cache value is NOT a root — only its consuming
+        // relation (root1) is. It is still reachable inline (root1's cone routes through it).
+        let mat = extract_instance(&layer, &cross, 16);
+        assert_eq!(mat.roots.len(), 1, "default: cache value is not a root");
 
         // Reads are IDENTICAL — materialization adds no reads (the intermediate is computed
         // for the consumer's num/den anyway; the write is free).
@@ -792,18 +803,19 @@ mod tests {
         use std::collections::BTreeMap;
 
         // 5 layer roots in visitation order (expr bodies are irrelevant to grouping):
-        //   r0 Output  origin (Gates, rel 0, Output(0))  ─┐ num/den of relation 0
-        //   r1 Output  origin (Gates, rel 0, Output(1))  ─┘ → SAME unit
-        //   r2 Output  NO origin (cache / materialization-only) → singleton
+        //   r0 Output  Inner   origin (Gates, rel 0, Output(0))  ─┐ num/den of relation 0
+        //   r1 Output  Inner   origin (Gates, rel 0, Output(1))  ─┘ → SAME unit
+        //   r2 Output  Cache   NO origin (materialization-only)
         //   r3 Constraint                                  → skipped (not an occurrence)
-        //   r4 Output  origin (Gates, rel 1, Output(0))    → distinct unit
-        // Output occurrences (matching extract_instance) are [r0, r1, r2, r4].
-        // Units assigned in encounter order: rel0→0, cache→1, rel1→2 ⇒ [0, 0, 1, 2].
+        //   r4 Output  Inner   origin (Gates, rel 1, Output(0))    → distinct unit
+        // Default (materialized) skips the Cache root r2 ⇒ occurrences [r0,r1,r4] ⇒ [0,0,1].
+        // cache-as-root keeps r2 as a singleton ⇒ occurrences [r0,r1,r2,r4] ⇒ [0,0,1,2].
         let src = SourceInfo {
             kind: SourceKind::Read {
                 place: ReadPlace::BaseLayerWitness { column: 0 },
             },
         };
+        // sink 0 = Inner (claim roots), sink 1 = Cache (r2).
         let out = |s: u32| Root::Output {
             expr: ExprId(0),
             sink: SinkId(s),
@@ -836,16 +848,24 @@ mod tests {
         let layer = DagLayer {
             sources: vec![src],
             exprs: vec![Expr::Source(SourceId(0))],
-            roots: vec![out(0), out(0), out(0), Root::Constraint { expr: ExprId(0) }, out(0)],
-            sinks: vec![SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 0 },
-                field: FieldKind::Base,
-            }],
+            roots: vec![out(0), out(0), out(1), Root::Constraint { expr: ExprId(0) }, out(0)],
+            sinks: vec![
+                SinkInfo {
+                    kind: SinkKind::Inner { layer: 0, offset: 0 },
+                    field: FieldKind::Base,
+                },
+                SinkInfo {
+                    kind: SinkKind::Cache { layer: 0, offset: 0 },
+                    field: FieldKind::Base,
+                },
+            ],
             batching: BatchingOrder { roots: vec![] },
             origins,
             resolutions: BTreeMap::new(),
         };
 
-        assert_eq!(relation_units(&layer), vec![0, 0, 1, 2]);
+        // Default skips the Cache root; cache-as-root keeps it as a singleton.
+        assert_eq!(relation_units(&layer), vec![0, 0, 1]);
+        assert_eq!(relation_units_cache_as_root(&layer), vec![0, 0, 1, 2]);
     }
 }

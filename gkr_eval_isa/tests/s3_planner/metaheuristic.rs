@@ -5392,13 +5392,9 @@ mod tests {
     #[test]
     #[ignore = "report: heavy multi-run (layer × budget) sweep, flat vs unit-keyed; JSON rows"]
     fn real_sweep_all_layers_budgets_grouped_vs_flat() {
-        // (a): cache values are intra-unit inline intermediates, NOT scheduling roots.
-        // Materialized extraction is a no-op for no-cache fixtures, so this is the single
-        // correct model for both flavors.
-        use crate::s3_gap::instance::{
-            extract_instance_materialized_cache as extract_instance,
-            relation_units_materialized_cache as relation_units,
-        };
+        // extract_instance now models cache values as intra-unit inline intermediates
+        // (the default), a no-op for no-cache fixtures — the single correct model.
+        use crate::s3_gap::instance::{extract_instance, relation_units};
 
         let env_usize = |key: &str, default: usize| {
             std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
@@ -5636,7 +5632,7 @@ mod tests {
     #[test]
     #[ignore = "demo: cache-materialized collapses to no-cache forward cost + ceiling sanity"]
     fn cache_materialized_collapse_demo() {
-        use crate::s3_gap::instance::{extract_instance, extract_instance_materialized_cache};
+        use crate::s3_gap::instance::{extract_instance, extract_instance_cache_as_root};
         let pop = std::env::var("SWEEP_POP").ok().and_then(|v| v.parse().ok()).unwrap_or(600);
         let evals = std::env::var("SWEEP_EVALS").ok().and_then(|v| v.parse().ok()).unwrap_or(8_000);
 
@@ -5672,8 +5668,8 @@ mod tests {
             };
             let floor_c = reachable_read_stats(&cl, &cc).read_place_cells as u64;
             let floor_n = reachable_read_stats(&nl, &nc).read_place_cells as u64;
-            let i_root = extract_instance(&cl, &cc, crate::REAL_BUDGET);
-            let i_mat = extract_instance_materialized_cache(&cl, &cc, crate::REAL_BUDGET);
+            let i_root = extract_instance_cache_as_root(&cl, &cc, crate::REAL_BUDGET);
+            let i_mat = extract_instance(&cl, &cc, crate::REAL_BUDGET);
             let i_nc = extract_instance(&nl, &nc, crate::REAL_BUDGET);
             if i_mat.roots.is_empty() {
                 continue;
