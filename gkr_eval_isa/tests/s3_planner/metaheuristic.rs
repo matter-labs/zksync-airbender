@@ -4396,6 +4396,80 @@ mod tests {
         }
     }
 
+    /// REPORT: per-fixture best read-count budget sweep. For each L0 fixture, run the
+    /// optimizer at cell budgets 8, 12, 16, … and record the BEST discovered traffic
+    /// (read count) at each budget, stopping once it converges to the all-resident floor
+    /// (`read_place_cells`, printed on every row) or the all-fit budget is reached.
+    /// `INF` = no feasible candidate at that budget (cone peak exceeds it).
+    #[test]
+    #[ignore = "report: per-fixture best read-count budget sweep (8,12,16,… vs floor)"]
+    fn real_all_22_l0_budget_sweep_best_read_counts() {
+        use crate::s3_gap::instance::extract_instance;
+
+        const POPULATION: usize = 200;
+        const EVAL_BUDGET: usize = 2_000;
+        const START: usize = 8;
+        const STEP: usize = 4;
+        const MAX_STEPS: usize = 64;
+
+        for &fixture in ALL_22_L0_FIXTURES {
+            let name = fixture
+                .trim_end_matches("_layout_gkr.json")
+                .trim_end_matches("_layout_no_caches_gkr.json");
+            let flavor = if fixture.contains("no_caches") {
+                "no-cache"
+            } else {
+                "cache"
+            };
+            let label = format!("{name}/{flavor}");
+            let Some((layer, cross)) = crate::try_load_l0(fixture) else {
+                println!("[SWEEP] {label:<52} LOAD_FAILED");
+                continue;
+            };
+            let floor = reachable_read_stats(&layer, &cross).read_place_cells as u64;
+            let mut inst = extract_instance(&layer, &cross, crate::REAL_BUDGET);
+            let sites = enumerate_demand_sites(&inst);
+            if inst.roots.is_empty() || sites.is_empty() {
+                println!("[SWEEP] {label:<52} floor={floor:<4} SKIP (no roots/sites)");
+                continue;
+            }
+            let all_fit = all_fit_budget(&inst);
+
+            let mut points = Vec::new();
+            let mut budget = START;
+            let mut converged_at: Option<usize> = None;
+            for _ in 0..MAX_STEPS {
+                inst.budget = budget;
+                let opt = optimize_from_population(
+                    &inst,
+                    &sites,
+                    smoke_genome_population(&inst, &sites, POPULATION),
+                    EVAL_BUDGET,
+                );
+                if opt.best_score.feasible {
+                    points.push(format!("b{budget}={}", opt.best_score.traffic));
+                    if opt.best_score.traffic <= floor {
+                        converged_at = Some(budget);
+                        break;
+                    }
+                } else {
+                    points.push(format!("b{budget}=INF"));
+                }
+                if budget >= all_fit {
+                    break;
+                }
+                budget += STEP;
+            }
+            let conv = converged_at
+                .map(|b| b.to_string())
+                .unwrap_or_else(|| "—".to_string());
+            println!(
+                "[SWEEP] {label:<52} floor={floor:<4} all_fit={all_fit:<5} converged@{conv:<4} | {}",
+                points.join(" ")
+            );
+        }
+    }
+
     fn duplicate_traffic_reads(trace: &CacheTrace) -> Vec<(u32, usize)> {
         use std::collections::BTreeMap;
 
