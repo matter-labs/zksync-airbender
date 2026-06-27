@@ -4959,6 +4959,136 @@ mod tests {
         }
     }
 
+    /// REPORT: expression-level structural diff between the cache and no-cache layout of
+    /// each circuit (L0). The cache layout factors shared subexpressions into `Cache`-sink
+    /// roots, reused by consumers via `Source(Prior{id})`; the no-cache layout inlines
+    /// them. The decisive quantity is each cache root's FAN-OUT (# of Prior reuses): with
+    /// low fan-out a lifetime-aware ORDER can place the reuse right after production (no
+    /// residency, no re-read), so the cache residual would be search-addressable, not
+    /// structural. High/spread fan-out forces a value to stay live across many consumers.
+    #[test]
+    #[ignore = "report: expression-level cache-vs-no-cache diff (cache-root fan-out)"]
+    fn cache_vs_no_cache_expression_divergence() {
+        use cs::gkr_compiler::dag_ir::{DagLayer, Expr, Root, SinkKind, SourceKind};
+        use std::collections::{BTreeMap, BTreeSet};
+
+        struct Stat {
+            exprs: usize,
+            reads: usize,
+            priors: usize,
+            inner: usize,
+            cache: usize,
+            export: usize,
+            constraint: usize,
+            fanout_hist: BTreeMap<usize, usize>,
+            max_fanout: usize,
+            // fan-IN: distinct cached (Prior) values a single consumer root needs at once
+            max_fanin: usize,
+            fanin_hist: BTreeMap<usize, usize>,
+        }
+
+        fn analyze(layer: &DagLayer) -> Stat {
+            let (mut reads, mut priors) = (0usize, 0usize);
+            let mut prior_refs: BTreeMap<u32, usize> = BTreeMap::new();
+            for s in &layer.sources {
+                match &s.kind {
+                    SourceKind::Read { .. } => reads += 1,
+                    SourceKind::Prior { id } => {
+                        priors += 1;
+                        *prior_refs.entry(id.0).or_default() += 1;
+                    }
+                    _ => {}
+                }
+            }
+            let (mut inner, mut cache, mut export, mut constraint) = (0usize, 0, 0, 0);
+            let mut fanout_hist: BTreeMap<usize, usize> = BTreeMap::new();
+            let mut max_fanout = 0usize;
+            let mut fanin_hist: BTreeMap<usize, usize> = BTreeMap::new();
+            let mut max_fanin = 0usize;
+            for (rid, root) in layer.roots.iter().enumerate() {
+                match root {
+                    Root::Output { sink, .. } => match layer.sinks[sink.0 as usize].kind {
+                        SinkKind::Inner { .. } => inner += 1,
+                        SinkKind::Export { .. } => export += 1,
+                        SinkKind::Scratch { .. } => {}
+                        SinkKind::Cache { .. } => {
+                            cache += 1;
+                            let f = prior_refs.get(&(rid as u32)).copied().unwrap_or(0);
+                            *fanout_hist.entry(f).or_default() += 1;
+                            max_fanout = max_fanout.max(f);
+                        }
+                    },
+                    Root::Constraint { .. } => constraint += 1,
+                }
+                // fan-in: distinct Prior sources reachable in this root's expr cone.
+                let expr_id = match root {
+                    Root::Output { expr, .. } => *expr,
+                    Root::Constraint { expr } => *expr,
+                };
+                let mut seen = vec![false; layer.exprs.len()];
+                let mut priors_in_cone: BTreeSet<u32> = BTreeSet::new();
+                let mut stack = vec![expr_id];
+                while let Some(e) = stack.pop() {
+                    if seen[e.0 as usize] {
+                        continue;
+                    }
+                    seen[e.0 as usize] = true;
+                    match &layer.exprs[e.0 as usize] {
+                        Expr::Source(sid) => {
+                            if matches!(layer.sources[sid.0 as usize].kind, SourceKind::Prior { .. })
+                            {
+                                priors_in_cone.insert(sid.0);
+                            }
+                        }
+                        Expr::Add(children) | Expr::Mul(children) => {
+                            stack.extend(children.iter().copied());
+                        }
+                    }
+                }
+                let fi = priors_in_cone.len();
+                if fi > 0 {
+                    *fanin_hist.entry(fi).or_default() += 1;
+                    max_fanin = max_fanin.max(fi);
+                }
+            }
+            Stat {
+                exprs: layer.exprs.len(),
+                reads,
+                priors,
+                inner,
+                cache,
+                export,
+                constraint,
+                fanout_hist,
+                max_fanout,
+                max_fanin,
+                fanin_hist,
+            }
+        }
+
+        for &fixture in ALL_22_L0_FIXTURES {
+            if fixture.contains("no_caches") {
+                continue;
+            }
+            let name = fixture.trim_end_matches("_layout_gkr.json");
+            let nc_fixture = fixture.replace("_layout_gkr.json", "_layout_no_caches_gkr.json");
+            let Some((clayer, _)) = crate::try_load_l0(fixture) else {
+                continue;
+            };
+            let Some((nlayer, _)) = crate::try_load_l0(&nc_fixture) else {
+                println!("[EXPRDIFF] {name:<32} no-cache fixture MISSING");
+                continue;
+            };
+            let c = analyze(&clayer);
+            let n = analyze(&nlayer);
+            println!(
+                "[EXPRDIFF] {name:<30}\n  cache:    exprs={:<5} reads={:<5} priors={:<5} roots[inner={} cache={} constr={}] cache-root fanOUT(max={} hist={:?}) consumer fanIN(max={} hist={:?})\n  no-cache: exprs={:<5} reads={:<5} priors={:<5} roots[inner={} cache={} constr={}]",
+                c.exprs, c.reads, c.priors, c.inner, c.cache, c.constraint, c.max_fanout, c.fanout_hist, c.max_fanin, c.fanin_hist,
+                n.exprs, n.reads, n.priors, n.inner, n.cache, n.constraint
+            );
+        }
+    }
+
     fn duplicate_traffic_reads(trace: &CacheTrace) -> Vec<(u32, usize)> {
         use std::collections::BTreeMap;
 
