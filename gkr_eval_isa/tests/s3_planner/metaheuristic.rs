@@ -29,6 +29,11 @@ const BEAM_STATE_MIN_BUDGET: usize = 1_000;
 /// local search degenerates to ~one greedy step. A constant cap funds many
 /// iterations regardless of root count.
 const NEIGHBOR_BATCH_CAP: usize = 128;
+/// Simulated-annealing initial temperature, in read-traffic units. The optimizer's
+/// uphill (Metropolis) acceptance escapes local optima the greedy descent stalls in;
+/// the temperature cools linearly to 0 as the eval budget is spent (`sa_temperature`),
+/// so the search anneals back to pure hill-climbing by the end of the budget.
+const SA_INITIAL_TEMPERATURE: f64 = 4.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ValueClass {
@@ -2210,6 +2215,200 @@ mod tests {
     }
 
     #[test]
+    fn unit_draw_is_in_unit_interval_and_deterministic() {
+        for seed in [0u64, 1, 42, 1 << 40, u64::MAX] {
+            let d = unit_draw(seed);
+            assert!((0.0..1.0).contains(&d), "draw {d} must lie in [0, 1)");
+            assert_eq!(d, unit_draw(seed), "same seed must reproduce the same draw");
+        }
+        assert_ne!(
+            unit_draw(1),
+            unit_draw(2),
+            "distinct seeds should produce distinct draws"
+        );
+    }
+
+    #[test]
+    fn sa_temperature_starts_hot_and_cools_to_zero() {
+        assert_eq!(sa_temperature(0, 1000), SA_INITIAL_TEMPERATURE);
+        assert_eq!(sa_temperature(1000, 1000), 0.0);
+        assert_eq!(
+            sa_temperature(5000, 1000),
+            0.0,
+            "temperature is clamped to 0 at/after full budget"
+        );
+        assert_eq!(
+            sa_temperature(10, 0),
+            0.0,
+            "zero budget degenerates to zero temperature"
+        );
+        let mid = sa_temperature(500, 1000);
+        assert!(mid > 0.0 && mid < SA_INITIAL_TEMPERATURE);
+        assert!(
+            sa_temperature(250, 1000) > sa_temperature(750, 1000),
+            "temperature must decrease monotonically as budget is spent"
+        );
+    }
+
+    #[test]
+    fn best_uphill_neighbor_picks_gentlest_feasible_worse_traffic() {
+        let current = candidate_score(10, 20);
+        let scored = vec![
+            scored_test_candidate(0, candidate_score(9, 20), MoveFamily::RootSwap), // improving
+            scored_test_candidate(1, candidate_score(13, 20), MoveFamily::RootInsert), // +3
+            scored_test_candidate(2, candidate_score(11, 20), MoveFamily::RootReverse), // +1, gentlest
+            scored_test_candidate(3, candidate_score(12, 20), MoveFamily::RootSwap), // +2
+        ];
+        assert_eq!(best_uphill_neighbor(&scored, &current), Some(2));
+    }
+
+    #[test]
+    fn best_uphill_neighbor_ignores_improving_equal_and_infeasible() {
+        let current = candidate_score(10, 20);
+        let mut infeasible_worse = candidate_score(11, 20);
+        infeasible_worse.feasible = false;
+        let scored = vec![
+            scored_test_candidate(0, candidate_score(9, 20), MoveFamily::RootSwap), // improving
+            scored_test_candidate(1, candidate_score(10, 20), MoveFamily::RootSwap), // equal traffic
+            scored_test_candidate(2, candidate_score(10, 25), MoveFamily::RootSwap), // equal traffic, worse instr only
+            scored_test_candidate(3, infeasible_worse, MoveFamily::RootInsert),      // worse but infeasible
+        ];
+        assert_eq!(best_uphill_neighbor(&scored, &current), None);
+    }
+
+    #[test]
+    fn metropolis_rejects_worse_candidate_at_zero_temperature() {
+        // T <= 0 degenerates to hill-climbing: a strictly-worse candidate is never accepted,
+        // regardless of the draw.
+        assert!(!metropolis_accepts(5.0, 0.0, 0.0));
+        assert!(!metropolis_accepts(0.001, 0.0, 0.0));
+    }
+
+    #[test]
+    fn metropolis_accepts_worse_candidate_when_draw_below_boltzmann_probability() {
+        // delta=1, T=1 => p = e^-1 ~= 0.3679; a draw below p accepts the uphill move.
+        assert!(metropolis_accepts(1.0, 1.0, 0.30));
+    }
+
+    #[test]
+    fn metropolis_rejects_worse_candidate_when_draw_above_boltzmann_probability() {
+        // Same p ~= 0.3679; a draw above p rejects.
+        assert!(!metropolis_accepts(1.0, 1.0, 0.50));
+    }
+
+    #[test]
+    fn metropolis_acceptance_probability_shrinks_as_temperature_cools() {
+        // Fixed uphill delta and draw: a hot temperature accepts, a cold one rejects.
+        let delta = 1.0;
+        let draw = 0.30;
+        assert!(
+            metropolis_accepts(delta, 1.0, draw),
+            "hot temperature (p~=0.368) should accept draw 0.30"
+        );
+        assert!(
+            !metropolis_accepts(delta, 0.30, draw),
+            "cold temperature (p~=0.036) should reject draw 0.30"
+        );
+    }
+
+    #[test]
+    fn segment_reverse_neighbors_reverse_contiguous_runs_of_length_three_or_more() {
+        // 5 roots; neutral genome decodes to the identity occurrence order [0,1,2,3,4].
+        let inst = OracleInstance {
+            budget: 1,
+            reloadable_values: vec![],
+            roots: vec![5, 6, 7, 8, 9],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Read, 1, true, vec![]),
+                n(3, NodeKind::Read, 1, true, vec![]),
+                n(4, NodeKind::Read, 1, true, vec![]),
+                n(5, NodeKind::Add, 1, false, vec![0]),
+                n(6, NodeKind::Add, 1, false, vec![1]),
+                n(7, NodeKind::Add, 1, false, vec![2]),
+                n(8, NodeKind::Add, 1, false, vec![3]),
+                n(9, NodeKind::Add, 1, false, vec![4]),
+            ],
+        };
+        let sites = enumerate_demand_sites(&inst);
+        let base = Genome::neutral(&inst, &sites);
+        assert_eq!(
+            decode_root_occurrence_order(&inst, &base),
+            vec![0, 1, 2, 3, 4],
+            "neutral genome must decode to the identity occurrence order"
+        );
+
+        let mut out = Vec::new();
+        push_root_reverse_neighbors(&inst, &base, usize::MAX, &mut out);
+
+        let orders: Vec<Vec<usize>> = out
+            .iter()
+            .map(|(_, genome, _)| decode_root_occurrence_order(&inst, genome))
+            .collect();
+
+        // Every neighbor is a valid permutation of the five occurrences.
+        for order in &orders {
+            let mut sorted = order.clone();
+            sorted.sort_unstable();
+            assert_eq!(sorted, vec![0, 1, 2, 3, 4], "neighbor must be a permutation");
+        }
+
+        // Canonical length-3+ reversals are present.
+        assert!(orders.contains(&vec![2, 1, 0, 3, 4]), "must include reverse [0..=2]");
+        assert!(orders.contains(&vec![0, 3, 2, 1, 4]), "must include reverse [1..=3]");
+        assert!(orders.contains(&vec![4, 3, 2, 1, 0]), "must include reverse [0..=4]");
+
+        // Every emitted move is tagged RootReverse.
+        assert!(
+            out.iter()
+                .all(|(_, _, family)| *family == Some(MoveFamily::RootReverse)),
+            "all neighbors must be RootReverse moves"
+        );
+
+        // Length-2 reversals duplicate RootSwap's adjacent swaps and must be skipped,
+        // and the no-op identity order must never be emitted.
+        assert!(
+            !orders.contains(&vec![1, 0, 2, 3, 4]),
+            "length-2 reversal duplicates RootSwap; must be skipped"
+        );
+        assert!(
+            !orders.contains(&vec![0, 1, 2, 3, 4]),
+            "must not emit the identity order"
+        );
+    }
+
+    #[test]
+    fn neighbor_entries_include_root_reverse_moves() {
+        let inst = OracleInstance {
+            budget: 4,
+            reloadable_values: vec![],
+            roots: vec![5, 6, 7, 8, 9],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Read, 1, true, vec![]),
+                n(3, NodeKind::Read, 1, true, vec![]),
+                n(4, NodeKind::Read, 1, true, vec![]),
+                n(5, NodeKind::Add, 1, false, vec![0]),
+                n(6, NodeKind::Add, 1, false, vec![1]),
+                n(7, NodeKind::Add, 1, false, vec![2]),
+                n(8, NodeKind::Add, 1, false, vec![3]),
+                n(9, NodeKind::Add, 1, false, vec![4]),
+            ],
+        };
+        let sites = enumerate_demand_sites(&inst);
+        let base = Genome::neutral(&inst, &sites);
+        let neighbors = neighbor_entries(&inst, &sites, &base, 64);
+        assert!(
+            neighbors
+                .iter()
+                .any(|(_, _, family)| *family == Some(MoveFamily::RootReverse)),
+            "neighbor batch must include RootReverse 2-opt moves"
+        );
+    }
+
+    #[test]
     fn neighbor_batch_reserves_slots_for_cache_bias_families() {
         let inst = OracleInstance {
             budget: 1,
@@ -2552,6 +2751,7 @@ mod tests {
     struct AcceptedMoves {
         root_swaps: usize,
         root_inserts: usize,
+        root_reverses: usize,
         admit_bias: usize,
         recovery_bias: usize,
         keep_after_use_bias: usize,
@@ -2561,6 +2761,7 @@ mod tests {
         fn total(&self) -> usize {
             self.root_swaps
                 + self.root_inserts
+                + self.root_reverses
                 + self.admit_bias
                 + self.recovery_bias
                 + self.keep_after_use_bias
@@ -2570,6 +2771,7 @@ mod tests {
             match family {
                 MoveFamily::RootSwap => self.root_swaps += 1,
                 MoveFamily::RootInsert => self.root_inserts += 1,
+                MoveFamily::RootReverse => self.root_reverses += 1,
                 MoveFamily::AdmitBias => self.admit_bias += 1,
                 MoveFamily::RecoveryBias => self.recovery_bias += 1,
                 MoveFamily::KeepBias => self.keep_after_use_bias += 1,
@@ -2590,6 +2792,7 @@ mod tests {
     struct MoveFamilyStats {
         root_swaps: MoveFamilyCounters,
         root_inserts: MoveFamilyCounters,
+        root_reverses: MoveFamilyCounters,
         admit_bias: MoveFamilyCounters,
         recovery_bias: MoveFamilyCounters,
         keep_after_use_bias: MoveFamilyCounters,
@@ -2600,6 +2803,7 @@ mod tests {
             match family {
                 MoveFamily::RootSwap => &mut self.root_swaps,
                 MoveFamily::RootInsert => &mut self.root_inserts,
+                MoveFamily::RootReverse => &mut self.root_reverses,
                 MoveFamily::AdmitBias => &mut self.admit_bias,
                 MoveFamily::RecoveryBias => &mut self.recovery_bias,
                 MoveFamily::KeepBias => &mut self.keep_after_use_bias,
@@ -2633,6 +2837,7 @@ mod tests {
         fn merge(&mut self, other: MoveFamilyStats) {
             merge_counters(&mut self.root_swaps, other.root_swaps);
             merge_counters(&mut self.root_inserts, other.root_inserts);
+            merge_counters(&mut self.root_reverses, other.root_reverses);
             merge_counters(&mut self.admit_bias, other.admit_bias);
             merge_counters(&mut self.recovery_bias, other.recovery_bias);
             merge_counters(&mut self.keep_after_use_bias, other.keep_after_use_bias);
@@ -2659,6 +2864,7 @@ mod tests {
     enum MoveFamily {
         RootSwap,
         RootInsert,
+        RootReverse,
         AdmitBias,
         RecoveryBias,
         KeepBias,
@@ -2918,6 +3124,62 @@ mod tests {
             .is_lt()
     }
 
+    /// Metropolis acceptance for a strictly-worse candidate under simulated annealing.
+    /// `delta > 0` is the energy increase (worse primary objective, i.e. read traffic).
+    /// Accepts iff `draw < exp(-delta / temperature)`, where `draw` is the optimizer's
+    /// RNG sample in `[0, 1)`. At `temperature <= 0` it never accepts a worse candidate,
+    /// degenerating to plain hill-climbing.
+    fn metropolis_accepts(delta: f64, temperature: f64, draw: f64) -> bool {
+        debug_assert!(
+            delta > 0.0,
+            "metropolis_accepts is only for strictly-worse candidates"
+        );
+        if temperature <= 0.0 {
+            return false;
+        }
+        draw < (-delta / temperature).exp()
+    }
+
+    fn splitmix64(seed: u64) -> u64 {
+        let mut z = seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    /// Deterministic sample in `[0, 1)` from a seed (top 53 bits of a splitmix64 hash).
+    /// Deterministic so the optimizer's annealing stays reproducible across runs.
+    fn unit_draw(seed: u64) -> f64 {
+        (splitmix64(seed) >> 11) as f64 / (1u64 << 53) as f64
+    }
+
+    /// Linear cooling from `SA_INITIAL_TEMPERATURE` at the start of the budget to 0 once
+    /// the budget is fully spent, so the search anneals back to pure hill-climbing.
+    /// Linear cooling from `SA_INITIAL_TEMPERATURE` at the start of the budget to 0 once
+    /// the budget is fully spent, so the search anneals back to pure hill-climbing.
+    fn sa_temperature(evals: usize, eval_budget: usize) -> f64 {
+        if eval_budget == 0 {
+            return 0.0;
+        }
+        let progress = (evals as f64 / eval_budget as f64).min(1.0);
+        SA_INITIAL_TEMPERATURE * (1.0 - progress)
+    }
+
+    /// The gentlest feasible neighbor that is strictly worse in primary energy (read
+    /// traffic) than `current` — the candidate an uphill SA step would move to. Ties
+    /// break on instructions then index. `None` if no such neighbor exists.
+    fn best_uphill_neighbor(scored: &[ScoredGenome], current: &CandidateScore) -> Option<usize> {
+        scored
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.score.feasible && entry.score.traffic > current.traffic)
+            .min_by(|a, b| {
+                (a.1.score.traffic, a.1.score.instrs, a.0)
+                    .cmp(&(b.1.score.traffic, b.1.score.instrs, b.0))
+            })
+            .map(|(idx, _)| idx)
+    }
+
     fn select_optimizer_neighbor(
         scored: &[ScoredGenome],
         current: &CandidateScore,
@@ -3056,7 +3318,31 @@ mod tests {
                 }
                 true
             }
-            OptimizerStep::Stop => false,
+            OptimizerStep::Stop => {
+                // Simulated annealing: rather than abandon a stalled state, accept the
+                // gentlest feasible uphill move with Metropolis probability so the search
+                // can escape this local optimum. The global best is preserved (this move
+                // is strictly worse), and the temperature cools to 0 as the budget is
+                // spent, annealing back to hill-climbing — after which this branch stops
+                // accepting and the state is dropped.
+                let temperature = sa_temperature(*evals, eval_budget);
+                let Some(idx) = best_uphill_neighbor(&neighbor_scores, &state.score) else {
+                    return false;
+                };
+                let delta = (neighbor_scores[idx].score.traffic - state.score.traffic) as f64;
+                if !metropolis_accepts(delta, temperature, unit_draw(*evals as u64)) {
+                    return false;
+                }
+                let selected = neighbor_scores[idx].clone();
+                state.genome = selected.genome;
+                state.score = selected.score;
+                state.plateau_remaining = CACHE_PLATEAU_STEPS;
+                if let Some(family) = selected.family {
+                    accepted.add(family);
+                    family_stats.record_selected(family);
+                }
+                true
+            }
         }
     }
 
@@ -3313,6 +3599,7 @@ mod tests {
         push_root_swap_neighbors(inst, base, limit, &mut out);
         let cache_slots = reserved_cache_slots(inst, sites, base, limit.saturating_sub(out.len()));
         push_root_insert_neighbors(inst, base, limit - cache_slots, &mut out);
+        push_root_reverse_neighbors(inst, base, limit - cache_slots, &mut out);
         if out.len() < limit {
             let raw_cache_reserve = active_cache_move_families(sites, base).len();
             let (_score, trace) = score_candidate_with_trace(inst, sites, base);
@@ -3420,6 +3707,32 @@ mod tests {
         candidate
     }
 
+    fn push_root_reverse_neighbors(
+        inst: &OracleInstance,
+        base: &Genome,
+        limit: usize,
+        out: &mut Vec<(usize, Genome, Option<MoveFamily>)>,
+    ) {
+        // 2-opt: reverse a contiguous run of the occurrence order. Runs of length 2
+        // are skipped because reversing an adjacent pair is exactly a RootSwap move.
+        let order = decode_root_occurrence_order(inst, base);
+        let n = order.len();
+        for i in 0..n {
+            for j in (i + 2)..n {
+                if out.len() >= limit {
+                    return;
+                }
+                let mut reversed = order.clone();
+                reversed[i..=j].reverse();
+                out.push((
+                    out.len(),
+                    genome_with_root_occurrence_order(base, &reversed),
+                    Some(MoveFamily::RootReverse),
+                ));
+            }
+        }
+    }
+
     fn push_cache_bias_neighbors_balanced(
         sites: &[DemandSite],
         base: &Genome,
@@ -3520,7 +3833,7 @@ mod tests {
             MoveFamily::AdmitBias => push_admit_bias_neighbors(base, limit, out),
             MoveFamily::RecoveryBias => push_recovery_bias_neighbors(sites, base, limit, out),
             MoveFamily::KeepBias => push_keep_bias_neighbors(base, limit, out),
-            MoveFamily::RootSwap | MoveFamily::RootInsert => {
+            MoveFamily::RootSwap | MoveFamily::RootInsert | MoveFamily::RootReverse => {
                 panic!("root moves are not cache bias families")
             }
         }
