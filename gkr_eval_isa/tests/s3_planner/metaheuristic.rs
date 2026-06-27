@@ -191,59 +191,57 @@ fn decode_root_occurrence_order(inst: &OracleInstance, genome: &Genome) -> Vec<u
         .collect()
 }
 
-/// Group-atomic occurrence order: occurrences sharing a `unit_of` id are emitted
-/// contiguously. Units are ordered by their gentlest (minimum) member sort tuple;
-/// within a unit, members are emitted in ascending sort-tuple order. An empty
-/// `unit_of` (or an all-distinct assignment) reproduces [`decode_root_occurrence_order`]
-/// exactly, so this is a pure refinement of the flat order that never splits a unit.
-///
-/// Atomicity is enforced here, at decode time — the genome stays per-occurrence
-/// and every optimizer move (swap/insert/reverse/SA) is re-projected onto an
-/// atomic order when scored, so no move can split a relation's roots.
-fn decode_root_occurrence_order_grouped(
+/// Per-unit "scheduling element" members: `units[u]` lists the occurrences of unit
+/// `u` in canonical (gate-emission, i.e. ascending occurrence-index) order. Built
+/// from `relation_units`' per-occurrence `unit_of` (ids are 0..n_units, contiguous,
+/// assigned in encounter order). A 1-output relation / cache root is a singleton.
+fn unit_members(unit_of: &[u32]) -> Vec<Vec<usize>> {
+    let n_units = unit_of.iter().copied().max().map_or(0, |m| m as usize + 1);
+    let mut units = vec![Vec::new(); n_units];
+    for (occ, &u) in unit_of.iter().enumerate() {
+        units[u as usize].push(occ);
+    }
+    units
+}
+
+/// The unit order a unit-keyed genome decodes to: unit indices sorted by their key,
+/// ties broken by unit index for determinism. The genome's `root_order_key` holds
+/// ONE key per unit here (length == number of units) — the unit is the scheduling
+/// atom, so there is no per-member key and nothing to "keep together".
+fn decode_unit_order(unit_key: &[f64]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..unit_key.len()).collect();
+    order.sort_by(|&a, &b| {
+        unit_key[a]
+            .partial_cmp(&unit_key[b])
+            .expect("unit_order_key must be finite")
+            .then(a.cmp(&b))
+    });
+    order
+}
+
+/// Expand a unit-keyed genome to an occurrence order: order the units by key, then
+/// concatenate each unit's members (canonical order). Empty `units` ⇒ the flat
+/// per-occurrence decode (the genome is then per-occurrence, length == roots).
+/// A unit is indivisible by construction, so every order this produces keeps each
+/// relation's roots contiguous — atomicity is structural, not a re-projection.
+fn decode_grouped_occurrence_order(
     inst: &OracleInstance,
     genome: &Genome,
-    unit_of: &[u32],
+    units: &[Vec<usize>],
 ) -> Vec<usize> {
-    if unit_of.is_empty() {
+    if units.is_empty() {
         return decode_root_occurrence_order(inst, genome);
     }
     assert_eq!(
         genome.root_order_key.len(),
-        inst.roots.len(),
-        "root_order_key length must match roots length"
+        units.len(),
+        "unit-keyed genome must have exactly one key per unit"
     );
-    assert_eq!(
-        unit_of.len(),
-        inst.roots.len(),
-        "unit_of length must match roots length"
-    );
-
-    // Bucket occurrences by unit id, preserving each unit's members.
-    let mut members: std::collections::BTreeMap<u32, Vec<usize>> = std::collections::BTreeMap::new();
-    for occ in 0..inst.roots.len() {
-        members.entry(unit_of[occ]).or_default().push(occ);
+    let mut order = Vec::with_capacity(inst.roots.len());
+    for u in decode_unit_order(&genome.root_order_key) {
+        order.extend_from_slice(&units[u]);
     }
-
-    // Order members within a unit by sort tuple; the unit's representative key is
-    // its gentlest member (members are sorted, so its first element).
-    let mut units: Vec<((f64, u32, usize), u32, Vec<usize>)> = members
-        .into_iter()
-        .map(|(uid, mut occs)| {
-            occs.sort_by(|&a, &b| {
-                cmp_root_sort_tuple(
-                    &root_sort_tuple(inst, genome, a),
-                    &root_sort_tuple(inst, genome, b),
-                )
-            });
-            let rep = root_sort_tuple(inst, genome, occs[0]);
-            (rep, uid, occs)
-        })
-        .collect();
-
-    // Order units by representative tuple, breaking ties on unit id for determinism.
-    units.sort_by(|a, b| cmp_root_sort_tuple(&a.0, &b.0).then(a.1.cmp(&b.1)));
-    units.into_iter().flat_map(|(_, _, occs)| occs).collect()
+    order
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -320,16 +318,16 @@ pub fn score_candidate(
     score_candidate_internal(inst, sites, genome, false, &[]).0
 }
 
-/// Group-atomic scoring: decode the genome with `unit_of` so a relation's roots
-/// stay contiguous (see [`decode_root_occurrence_order_grouped`]). An empty
-/// `unit_of` is identical to [`score_candidate`].
+/// Group-atomic scoring: the genome is unit-keyed and decoded via `units` so each
+/// relation's roots stay contiguous (see [`decode_grouped_occurrence_order`]). An
+/// empty `units` is identical to [`score_candidate`] (flat, per-occurrence genome).
 fn score_candidate_grouped(
     inst: &OracleInstance,
     sites: &[DemandSite],
     genome: &Genome,
-    unit_of: &[u32],
+    units: &[Vec<usize>],
 ) -> CandidateScore {
-    score_candidate_internal(inst, sites, genome, false, unit_of).0
+    score_candidate_internal(inst, sites, genome, false, units).0
 }
 
 fn score_candidate_with_trace(
@@ -345,7 +343,7 @@ fn score_candidate_internal(
     sites: &[DemandSite],
     genome: &Genome,
     collect_trace: bool,
-    unit_of: &[u32],
+    units: &[Vec<usize>],
 ) -> (CandidateScore, CacheTrace) {
     assert_eq!(
         genome.admit_bias.len(),
@@ -364,7 +362,7 @@ fn score_candidate_internal(
     );
     assert_normalized_genome(genome);
 
-    let occurrence_order = decode_root_occurrence_order_grouped(inst, genome, unit_of);
+    let occurrence_order = decode_grouped_occurrence_order(inst, genome, units);
     let classes = classify_values(inst);
     let mut replay = Replay::new(
         inst,
@@ -1582,71 +1580,123 @@ mod tests {
     }
 
     #[test]
-    fn unit_atomic_decode_with_all_singletons_equals_flat() {
-        // Property: when every occurrence is its own singleton unit, the
-        // group-atomic decoder reproduces the flat occurrence order exactly.
+    fn unit_members_buckets_occurrences_in_canonical_order() {
+        // unit_of (per-occurrence ids from relation_units) → units[u] = ordered members.
+        // unit 0 = {0,2}, unit 1 = {1}, unit 2 = {3,4}; members ascending (gate order).
+        let unit_of = vec![0u32, 1, 0, 2, 2];
+        assert_eq!(
+            unit_members(&unit_of),
+            vec![vec![0, 2], vec![1], vec![3, 4]]
+        );
+    }
+
+    #[test]
+    fn decode_unit_order_sorts_units_by_key() {
+        // The unit-keyed genome holds one key per unit; the unit order is units sorted
+        // by key (ties by unit index).
+        assert_eq!(decode_unit_order(&[0.5, 0.1, 0.9, 0.1]), vec![1, 3, 0, 2]);
+    }
+
+    #[test]
+    fn decode_grouped_expands_units_in_canonical_order() {
+        // Two units {0,1} and {2,3}; the unit-keyed genome has ONE key per unit. With
+        // unit 1 keyed below unit 0 the occurrence order is unit 1's members then unit
+        // 0's, each member block intact ⇒ [2,3,0,1].
         let inst = swap_optimizer_fixture(); // roots [2,3,4,5]
+        let units = vec![vec![0usize, 1], vec![2, 3]];
         let genome = Genome {
+            root_order_key: vec![0.5, 0.1], // one key per unit
+            admit_bias: Vec::new(),
+            recovery_bias: Vec::new(),
+            keep_after_use_bias: Vec::new(),
+        };
+        assert_eq!(
+            decode_grouped_occurrence_order(&inst, &genome, &units),
+            vec![2, 3, 0, 1],
+            "units expand whole, ordered by their key"
+        );
+        // Empty units ⇒ flat per-occurrence decode (genome is then per-occurrence).
+        let flat_genome = Genome {
             root_order_key: vec![0.4, 0.1, 0.3, 0.2],
             admit_bias: Vec::new(),
             recovery_bias: Vec::new(),
             keep_after_use_bias: Vec::new(),
         };
-        let singletons = vec![0u32, 1, 2, 3];
         assert_eq!(
-            decode_root_occurrence_order_grouped(&inst, &genome, &singletons),
-            decode_root_occurrence_order(&inst, &genome),
-        );
-        // An empty slice is the same no-op (flat).
-        assert_eq!(
-            decode_root_occurrence_order_grouped(&inst, &genome, &[]),
-            decode_root_occurrence_order(&inst, &genome),
+            decode_grouped_occurrence_order(&inst, &flat_genome, &[]),
+            decode_root_occurrence_order(&inst, &flat_genome),
         );
     }
 
     #[test]
-    fn unit_atomic_decode_keeps_unit_members_contiguous() {
-        // Two units interleaved by key: unit 0 = occurrences {0,2}, unit 1 = {1,3}.
-        // Flat order by key 0.1<0.2<0.3<0.4 is [0,1,2,3] (members interleaved).
-        // Group-atomic pulls each unit together: unit order by min member key
-        // (unit0 min=0.1, unit1 min=0.2) ⇒ [unit0 members, unit1 members], each
-        // member block in ascending key ⇒ [0, 2, 1, 3].
-        let inst = swap_optimizer_fixture(); // roots [2,3,4,5]
-        let genome = Genome {
-            root_order_key: vec![0.1, 0.2, 0.3, 0.4],
-            admit_bias: Vec::new(),
-            recovery_bias: Vec::new(),
-            keep_after_use_bias: Vec::new(),
-        };
-        let unit_of = vec![0u32, 1, 0, 1];
-        assert_eq!(
-            decode_root_occurrence_order(&inst, &genome),
-            vec![0, 1, 2, 3],
-            "flat order interleaves the two units"
-        );
-        assert_eq!(
-            decode_root_occurrence_order_grouped(&inst, &genome, &unit_of),
-            vec![0, 2, 1, 3],
-            "group-atomic emits each unit's members contiguously"
+    fn grouped_decode_never_splits_a_unit() {
+        // Whatever the unit-key values, a unit is indivisible: every occurrence order
+        // the grouped decode produces keeps each unit's members in one contiguous run.
+        let inst = swap_optimizer_fixture();
+        let units = vec![vec![0usize, 2], vec![1, 3]]; // interleaved member indices
+        for keys in [[0.1, 0.9], [0.9, 0.1], [0.5, 0.5]] {
+            let genome = Genome {
+                root_order_key: keys.to_vec(),
+                admit_bias: Vec::new(),
+                recovery_bias: Vec::new(),
+                keep_after_use_bias: Vec::new(),
+            };
+            let order = decode_grouped_occurrence_order(&inst, &genome, &units);
+            // Each unit occupies one contiguous run.
+            for unit in &units {
+                let positions: Vec<usize> = unit
+                    .iter()
+                    .map(|&occ| order.iter().position(|&o| o == occ).unwrap())
+                    .collect();
+                let (lo, hi) = (
+                    *positions.iter().min().unwrap(),
+                    *positions.iter().max().unwrap(),
+                );
+                assert_eq!(hi - lo + 1, unit.len(), "unit {unit:?} split in {order:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn unit_swap_neighbor_swaps_whole_units() {
+        // With two units, the only adjacent unit-swap turns the base unit order [0,1]
+        // into [1,0] ⇒ occurrence order [2,3,0,1] (both members of each unit move).
+        let inst = swap_optimizer_fixture();
+        let units = vec![vec![0usize, 1], vec![2, 3]];
+        let base = unit_neutral_genome(units.len(), &enumerate_demand_sites(&inst));
+
+        let mut out = Vec::new();
+        push_unit_swap_neighbors(&base, 16, &mut out);
+        let decoded: Vec<Vec<usize>> = out
+            .iter()
+            .map(|(_, g, _)| decode_grouped_occurrence_order(&inst, g, &units))
+            .collect();
+        assert!(
+            decoded.contains(&vec![2, 3, 0, 1]),
+            "unit-swap must move whole units; got {decoded:?}"
         );
     }
 
     #[test]
     fn grouped_optimizer_with_singleton_units_matches_flat() {
-        // The full group-atomic search must be a strict no-op when every occurrence
-        // is its own singleton unit: identical decode at every step ⇒ identical
-        // trajectory ⇒ identical result. This guards the `unit_of` threading
-        // through parallel scoring + advance + beam, so any corpus A/B delta is
-        // attributable to real grouping, not a threading artifact.
+        // When every occurrence is its own singleton unit, the unit-keyed search and the
+        // flat search explore the same order space (each unit is one root) and the
+        // neutral seed decodes identically, so the grouped optimum equals the flat one.
+        // Guards that the unit-keyed re-key degrades cleanly to the historical search.
         let inst = swap_optimizer_fixture();
         let sites = enumerate_demand_sites(&inst);
-        let seeds = vec![Genome::neutral(&inst, &sites)];
-        let singletons: Vec<u32> = (0..inst.roots.len() as u32).collect();
+        let singletons: Vec<Vec<usize>> = (0..inst.roots.len()).map(|i| vec![i]).collect();
+        let flat_seeds = vec![Genome::neutral(&inst, &sites)];
+        let unit_seeds = vec![unit_neutral_genome(singletons.len(), &sites)];
 
-        let flat = optimize_from_population(&inst, &sites, seeds.clone(), 256);
-        let grouped = optimize_from_population_grouped(&inst, &sites, seeds, 256, &singletons);
+        let flat = optimize_from_population(&inst, &sites, flat_seeds, 256);
+        let grouped =
+            optimize_from_population_grouped(&inst, &sites, unit_seeds, 256, &singletons);
 
-        assert_eq!(flat.best_score, grouped.best_score);
+        assert_eq!(
+            (flat.best_score.traffic, flat.best_score.instrs),
+            (grouped.best_score.traffic, grouped.best_score.instrs)
+        );
     }
 
     #[test]
@@ -1832,7 +1882,7 @@ mod tests {
             .filter_map(|(idx, site)| (site.value == 1).then_some(idx))
             .collect();
 
-        let neighbors = neighbor_entries(&inst, &sites, &genome, 64);
+        let neighbors = neighbor_entries(&inst, &sites, &genome, 64, &[]);
 
         assert!(neighbors.iter().any(|(_, candidate, family)| {
             *family == Some(MoveFamily::AdmitBias)
@@ -2540,7 +2590,7 @@ mod tests {
         };
         let sites = enumerate_demand_sites(&inst);
         let base = Genome::neutral(&inst, &sites);
-        let neighbors = neighbor_entries(&inst, &sites, &base, 64);
+        let neighbors = neighbor_entries(&inst, &sites, &base, 64, &[]);
         assert!(
             neighbors
                 .iter()
@@ -2575,7 +2625,7 @@ mod tests {
         let sites = enumerate_demand_sites(&inst);
         let neutral = Genome::neutral(&inst, &sites);
 
-        let neighbors = neighbor_entries(&inst, &sites, &neutral, 12);
+        let neighbors = neighbor_entries(&inst, &sites, &neutral, 12, &[]);
 
         assert_eq!(neighbors.len(), 12);
         assert!(neighbors
@@ -3270,7 +3320,7 @@ mod tests {
         sites: &[DemandSite],
         entries: Vec<(usize, Genome, Option<MoveFamily>)>,
         workers: usize,
-        unit_of: &[u32],
+        units: &[Vec<usize>],
     ) -> Vec<ScoredGenome> {
         if entries.is_empty() {
             return Vec::new();
@@ -3300,7 +3350,7 @@ mod tests {
                         chunk
                             .into_iter()
                             .map(|(index, genome, family)| {
-                                let score = score_candidate_grouped(inst, sites, &genome, unit_of);
+                                let score = score_candidate_grouped(inst, sites, &genome, units);
                                 ScoredGenome {
                                     index,
                                     genome,
@@ -3489,7 +3539,7 @@ mod tests {
         best_score: &mut CandidateScore,
         accepted: &mut AcceptedMoves,
         family_stats: &mut MoveFamilyStats,
-        unit_of: &[u32],
+        units: &[Vec<usize>],
     ) -> bool {
         if *evals >= eval_budget {
             return false;
@@ -3500,13 +3550,13 @@ mod tests {
         // (hundreds of roots), so the search did ~one greedy step. A fixed cap funds
         // many iterations; the beam reuses this per state, so every state inherits it.
         let remaining = (eval_budget - *evals).min(NEIGHBOR_BATCH_CAP);
-        let neighbors = neighbor_entries(inst, sites, &state.genome, remaining);
+        let neighbors = neighbor_entries(inst, sites, &state.genome, remaining, units);
         if neighbors.is_empty() {
             return false;
         }
         *evals += neighbors.len();
         let neighbor_scores =
-            score_genomes_parallel(inst, sites, neighbors, default_worker_count(), unit_of);
+            score_genomes_parallel(inst, sites, neighbors, default_worker_count(), units);
         record_family_improvements(&neighbor_scores, &state.score, family_stats);
 
         match select_optimizer_neighbor(&neighbor_scores, &state.score, state.plateau_remaining) {
@@ -3574,22 +3624,26 @@ mod tests {
         optimize_from_population_grouped(inst, sites, seeds, eval_budget, &[])
     }
 
-    /// Group-atomic variant: `unit_of` (from `relation_units`) forces each gate
-    /// relation's roots to stay contiguous throughout the search (decode invariant).
-    /// `unit_of == &[]` is identical to [`optimize_from_population`].
+    /// Group-atomic variant: the seed genomes are UNIT-KEYED (one ordering key per
+    /// unit) and `units` (from `unit_members(relation_units(layer))`) expands them to
+    /// occurrence orders, so each gate relation's roots stay contiguous by
+    /// construction — the unit is the indivisible scheduling atom. `units == &[]` is
+    /// identical to [`optimize_from_population`] (flat, per-occurrence genome).
     fn optimize_from_population_grouped(
         inst: &OracleInstance,
         sites: &[DemandSite],
         seeds: Vec<Genome>,
         eval_budget: usize,
-        unit_of: &[u32],
+        units: &[Vec<usize>],
     ) -> OptimizerResult {
         assert!(eval_budget > 0, "eval_budget must be positive");
 
-        let seeds = if seeds.is_empty() {
+        let seeds = if !seeds.is_empty() {
+            seeds
+        } else if units.is_empty() {
             vec![Genome::neutral(inst, sites)]
         } else {
-            seeds
+            vec![unit_neutral_genome(units.len(), sites)]
         };
         let seed_entries: Vec<_> = seeds
             .into_iter()
@@ -3599,7 +3653,7 @@ mod tests {
             .collect();
         let mut evals = seed_entries.len();
         let seed_scores =
-            score_genomes_parallel(inst, sites, seed_entries, default_worker_count(), unit_of);
+            score_genomes_parallel(inst, sites, seed_entries, default_worker_count(), units);
 
         // Initialize a fixed-width beam from the scored seeds (best-objective first,
         // deduped by order+objective). The beam carries several promising states
@@ -3636,7 +3690,7 @@ mod tests {
                     &mut best_score,
                     &mut accepted,
                     &mut family_stats,
-                    unit_of,
+                    units,
                 );
                 if evals > before {
                     iterations += 1;
@@ -3828,15 +3882,30 @@ mod tests {
         sites: &[DemandSite],
         base: &Genome,
         limit: usize,
+        units: &[Vec<usize>],
     ) -> Vec<(usize, Genome, Option<MoveFamily>)> {
         let mut out = Vec::with_capacity(limit);
-        push_root_swap_neighbors(inst, base, limit, &mut out);
+        // Order moves: when `units` is set the genome is unit-keyed, so a swap/insert/
+        // reverse acts on whole units directly (the unit is the scheduling atom — there
+        // is nothing to "keep together"). Empty `units` ⇒ the historical per-occurrence
+        // (flat) moves.
+        if units.is_empty() {
+            push_root_swap_neighbors(inst, base, limit, &mut out);
+        } else {
+            push_unit_swap_neighbors(base, limit, &mut out);
+        }
         let cache_slots = reserved_cache_slots(inst, sites, base, limit.saturating_sub(out.len()));
-        push_root_insert_neighbors(inst, base, limit - cache_slots, &mut out);
-        push_root_reverse_neighbors(inst, base, limit - cache_slots, &mut out);
+        if units.is_empty() {
+            push_root_insert_neighbors(inst, base, limit - cache_slots, &mut out);
+            push_root_reverse_neighbors(inst, base, limit - cache_slots, &mut out);
+        } else {
+            push_unit_insert_neighbors(base, limit - cache_slots, &mut out);
+            push_unit_reverse_neighbors(base, limit - cache_slots, &mut out);
+        }
         if out.len() < limit {
             let raw_cache_reserve = active_cache_move_families(sites, base).len();
-            let (_score, trace) = score_candidate_with_trace(inst, sites, base);
+            // Trace reflects the same (flat or unit-keyed) decode the search scores under.
+            let (_score, trace) = score_candidate_internal(inst, sites, base, true, units);
             push_trace_guided_cache_neighbors(
                 sites,
                 base,
@@ -3965,6 +4034,132 @@ mod tests {
                 ));
             }
         }
+    }
+
+    // ── Unit-keyed order moves ────────────────────────────────────────────────
+    //
+    // The grouped genome carries ONE key per unit, so these are the flat swap/insert/
+    // reverse acting on units directly: a unit is the indivisible scheduling atom, so
+    // a move relocates a whole unit and members never separate. They mirror the
+    // per-occurrence functions above but operate on `decode_unit_order` (a permutation
+    // of unit indices) and write back over the unit-keyed genome.
+
+    /// Genome whose unit-key order equals `order` (rank/denom along it).
+    fn genome_with_unit_order(base: &Genome, order: &[usize]) -> Genome {
+        let mut candidate = base.clone();
+        let denom = order.len().max(1) as f64;
+        for (rank, &unit) in order.iter().enumerate() {
+            candidate.root_order_key[unit] = rank as f64 / denom;
+        }
+        candidate
+    }
+
+    fn push_unit_swap_neighbors(
+        base: &Genome,
+        limit: usize,
+        out: &mut Vec<(usize, Genome, Option<MoveFamily>)>,
+    ) {
+        let order = decode_unit_order(&base.root_order_key);
+        for pair in order.windows(2) {
+            if out.len() >= limit {
+                return;
+            }
+            let mut candidate = base.clone();
+            candidate.root_order_key.swap(pair[0], pair[1]);
+            out.push((out.len(), candidate, Some(MoveFamily::RootSwap)));
+        }
+    }
+
+    fn push_unit_insert_neighbors(
+        base: &Genome,
+        limit: usize,
+        out: &mut Vec<(usize, Genome, Option<MoveFamily>)>,
+    ) {
+        let order = decode_unit_order(&base.root_order_key);
+        for from in 0..order.len() {
+            for to in 0..order.len() {
+                if out.len() >= limit {
+                    return;
+                }
+                if from == to || from.abs_diff(to) == 1 {
+                    continue;
+                }
+                let mut inserted = order.clone();
+                let unit = inserted.remove(from);
+                inserted.insert(to, unit);
+                out.push((
+                    out.len(),
+                    genome_with_unit_order(base, &inserted),
+                    Some(MoveFamily::RootInsert),
+                ));
+            }
+        }
+    }
+
+    fn push_unit_reverse_neighbors(
+        base: &Genome,
+        limit: usize,
+        out: &mut Vec<(usize, Genome, Option<MoveFamily>)>,
+    ) {
+        // 2-opt over units: reverse a contiguous run of the unit order (runs of length
+        // 2 are skipped — reversing an adjacent pair is exactly a unit swap).
+        let order = decode_unit_order(&base.root_order_key);
+        let n = order.len();
+        for i in 0..n {
+            for j in (i + 2)..n {
+                if out.len() >= limit {
+                    return;
+                }
+                let mut reversed = order.clone();
+                reversed[i..=j].reverse();
+                out.push((
+                    out.len(),
+                    genome_with_unit_order(base, &reversed),
+                    Some(MoveFamily::RootReverse),
+                ));
+            }
+        }
+    }
+
+    /// Neutral unit-keyed genome: identity unit order, zero cache biases (per site).
+    fn unit_neutral_genome(n_units: usize, sites: &[DemandSite]) -> Genome {
+        let denom = n_units.max(1) as f64;
+        Genome {
+            root_order_key: (0..n_units).map(|i| i as f64 / denom).collect(),
+            admit_bias: vec![0.0; sites.len()],
+            recovery_bias: vec![0.0; sites.len()],
+            keep_after_use_bias: vec![0.0; sites.len()],
+        }
+    }
+
+    /// Deterministic unit-keyed seed population (mirrors `smoke_genome_population` for
+    /// the per-occurrence genome): identity, reversed, then splitmix-shuffled unit
+    /// orders. Cache biases are neutral; the cache-bias move families explore those.
+    fn unit_keyed_seed_population(
+        n_units: usize,
+        sites: &[DemandSite],
+        total: usize,
+    ) -> Vec<Genome> {
+        let mut genomes = Vec::with_capacity(total);
+        if total == 0 {
+            return genomes;
+        }
+        genomes.push(unit_neutral_genome(n_units, sites));
+        if genomes.len() < total {
+            let mut reversed = unit_neutral_genome(n_units, sites);
+            reversed.root_order_key.reverse();
+            genomes.push(reversed);
+        }
+        let mut seed = 0x5151_5151_5151_5151u64;
+        while genomes.len() < total {
+            let mut g = unit_neutral_genome(n_units, sites);
+            for key in g.root_order_key.iter_mut() {
+                seed = splitmix64(seed);
+                *key = (seed >> 11) as f64 / (1u64 << 53) as f64;
+            }
+            genomes.push(g);
+        }
+        genomes
     }
 
     fn push_cache_bias_neighbors_balanced(
@@ -6134,24 +6329,19 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "research A/B: group-atomic (relation-unit) decode vs flat order across the corpus"]
+    #[ignore = "research A/B: unit-keyed group-atomic search vs flat order across the corpus"]
     fn real_all_22_l0_group_atomic_vs_flat() {
         use crate::s3_gap::instance::{extract_instance, relation_units};
-        use std::collections::BTreeMap;
 
-        // STAGE 1 of the relation-unit prototype (optimizer-only, ZERO IR change):
-        // does forcing a gate relation's roots to stay contiguous reduce read traffic
-        // vs the unconstrained flat order? The scheduling unit is (RootGroup,
-        // relation_index) from layer.origins (cache / materialization-only roots, which
-        // have no origin, are singletons). Both arms run the SAME optimizer from the
-        // SAME deterministic seed population and budget; ONLY the decode differs
-        // (decode_root_occurrence_order_grouped(unit_of) vs the flat decoder), so any
-        // delta is attributable purely to the atomicity constraint.
-        //
-        // CAVEAT: only the SCORING decode is group-atomic — neighbor_entries still
-        // generates moves on the flat occurrence order, so the search explores the same
-        // key space and every candidate is re-projected onto an atomic order when scored.
-        // A win here is a LOWER BOUND on what unit-aware move generation could achieve.
+        // STAGE 1.5 of the relation-unit prototype (optimizer-only, ZERO IR change):
+        // does scheduling each gate relation as ONE indivisible unit reduce read traffic
+        // vs the unconstrained flat order? The unit is (RootGroup, relation_index) from
+        // layer.origins (cache / materialization-only roots, which have no origin, are
+        // singletons). The grouped arm's genome is UNIT-KEYED — one ordering key per
+        // unit — so a swap/insert/reverse relocates a whole unit and members never
+        // separate (the unit is the scheduling atom; there is nothing to "keep
+        // together"). The flat arm is the historical per-occurrence search. Both run the
+        // same optimizer + budget from their respective neutral-seeded populations.
         const POPULATION: usize = 200;
         const EVAL_BUDGET: usize = 16_000;
 
@@ -6186,19 +6376,31 @@ mod tests {
                 inst.roots.len(),
                 "{label}: relation_units must align with the Output-root occurrences"
             );
-            // How much does grouping actually constrain? Count distinct units and how
-            // many bind >1 root (the num/den-pair relations whose fold we co-locate).
-            let mut members: BTreeMap<u32, usize> = BTreeMap::new();
-            for &u in &unit_of {
-                *members.entry(u).or_default() += 1;
-            }
-            let n_units = members.len();
-            let multi = members.values().filter(|&&c| c > 1).count();
+            let units = unit_members(&unit_of);
+            // How much does grouping actually constrain? distinct units and how many
+            // bind >1 root (the num/den-pair relations whose fold we co-locate).
+            let n_units = units.len();
+            let multi = units.iter().filter(|m| m.len() > 1).count();
 
-            let pop = smoke_genome_population(&inst, &sites, POPULATION);
-            let flat = optimize_from_population(&inst, &sites, pop.clone(), EVAL_BUDGET);
+            let flat_pop = smoke_genome_population(&inst, &sites, POPULATION);
+            let unit_pop = unit_keyed_seed_population(n_units, &sites, POPULATION);
+            let flat = optimize_from_population(&inst, &sites, flat_pop, EVAL_BUDGET);
             let grouped =
-                optimize_from_population_grouped(&inst, &sites, pop, EVAL_BUDGET, &unit_of);
+                optimize_from_population_grouped(&inst, &sites, unit_pop, EVAL_BUDGET, &units);
+
+            // The grouped best must keep every unit contiguous (atomicity by construction).
+            let g_order = decode_grouped_occurrence_order(&inst, &grouped.best_genome, &units);
+            for m in &units {
+                let pos: Vec<usize> = m
+                    .iter()
+                    .map(|&occ| g_order.iter().position(|&o| o == occ).unwrap())
+                    .collect();
+                let (lo, hi) = (
+                    *pos.iter().min().unwrap(),
+                    *pos.iter().max().unwrap(),
+                );
+                assert_eq!(hi - lo + 1, m.len(), "{label}: grouped best split a unit");
+            }
 
             let f = flat.best_score.traffic;
             let g = grouped.best_score.traffic;
@@ -6225,7 +6427,7 @@ mod tests {
         println!(
             "[GROUP-AB][VERDICT] grouped_better={grouped_better} flat_better={flat_better} \
              equal={equal} checked={checked} total_flat={total_flat} total_grouped={total_grouped} \
-             net_delta={} (>0 ⇒ group-atomic reduces total traffic)",
+             net_delta={} (>0 ⇒ unit-keyed search reduces total traffic)",
             total_flat - total_grouped
         );
     }
