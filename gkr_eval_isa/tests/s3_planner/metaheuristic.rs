@@ -5602,12 +5602,15 @@ mod tests {
         }
     }
 
-    /// REPORT: do the 2 consumers of each dual-use cache value share a `RootOrigin`
-    /// relation_index? If yes, the "dual root" affinity is ALREADY latent in the IR (the
-    /// num+den of one relation) and need not be invented — only surfaced as a scheduling
-    /// unit. Counts how many cache roots are dual-use and how the pairing aligns to relations.
+    /// INVARIANT: every `Cache` root belongs to a SINGLE relation — all of its in-layer
+    /// consumers (roots reading it via `Source(Prior{id})`) share one `RootOrigin`
+    /// relation_index. This is what makes the relation a sound atomic scheduling unit (the
+    /// fold is privately owned by one relation). Measured true today (diff_relation==0 on all
+    /// 11 circuits); ASSERTED here so that if a future generator ever CSE-merges a fold across
+    /// relations the build fails LOUDLY (then build the cross-relation handling — YAGNI until
+    /// then, per RR). Cache roots with no in-layer consumer (cross-layer only) are vacuously OK.
     #[test]
-    #[ignore = "report: are dual-use cache consumers the num/den of one relation (RootOrigin)?"]
+    #[ignore = "research invariant: every Cache root belongs to a single relation"]
     fn dual_use_cache_consumers_share_relation() {
         use cs::gkr_compiler::dag_ir::{Expr, Root, RootId, SinkKind, SourceKind};
         use std::collections::{BTreeMap, BTreeSet};
@@ -5655,22 +5658,28 @@ mod tests {
                     consumers.entry(cid).or_default().push(ri);
                 }
             }
-            let (mut dual, mut same_rel, mut diff_rel, mut no_origin) = (0usize, 0, 0, 0);
-            for cons in consumers.values() {
-                if cons.len() != 2 {
-                    continue;
-                }
-                dual += 1;
-                let o0 = layer.origins.get(&RootId(cons[0] as u32));
-                let o1 = layer.origins.get(&RootId(cons[1] as u32));
-                match (o0, o1) {
-                    (Some(a), Some(b)) if a.relation_index == b.relation_index => same_rel += 1,
-                    (Some(_), Some(_)) => diff_rel += 1,
-                    _ => no_origin += 1,
+            let (mut checked, mut dual) = (0usize, 0usize);
+            for (cid, cons) in &consumers {
+                // distinct relation_index among this cache root's consumers
+                let rels: BTreeSet<usize> = cons
+                    .iter()
+                    .filter_map(|&r| layer.origins.get(&RootId(r as u32)).map(|o| o.relation_index))
+                    .collect();
+                assert!(
+                    rels.len() <= 1,
+                    "{name}: cache root {cid} is consumed by {} relations {:?} — violates \
+                     single-relation ownership; the relation-as-unit model assumes a fold belongs \
+                     to one relation. Build the cross-relation handling now.",
+                    rels.len(),
+                    rels
+                );
+                checked += 1;
+                if cons.len() == 2 {
+                    dual += 1;
                 }
             }
             println!(
-                "[DUAL] {name:<30} cache_roots={:<4} dual_use={dual:<4} same_relation={same_rel:<4} diff_relation={diff_rel:<4} consumer_no_origin={no_origin}",
+                "[DUAL] {name:<30} cache_roots={:<4} with_consumers={checked:<4} dual_use={dual:<4} (all belong to <=1 relation)",
                 cache_ids.len()
             );
         }
