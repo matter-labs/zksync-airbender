@@ -5193,6 +5193,78 @@ mod tests {
         }
     }
 
+    /// REPORT: the reuse the caching machinery ACTUALLY serves, now that materialized
+    /// reload is out. Counts `ExprId` fan-out within the expr DAG (distinct parent exprs +
+    /// root refs). `Add`/`Mul` nodes with fan-out > 1 are shared INTERMEDIATE
+    /// sub-expressions — computed once, reused → keep-resident-or-recompute (no reload;
+    /// they have no committed copy). `extra_uses = Σ(fanout-1)` is the cache-hit
+    /// opportunity (reuse events caching saves vs recomputing). Base-leaf (`Read`) reuse is
+    /// reported alongside (keep-vs-reread; can't recompute). Sizes the remaining problem.
+    #[test]
+    #[ignore = "report: intermediate sub-expression reuse (caching pressure after reload removed)"]
+    fn intermediate_expr_reuse() {
+        use cs::gkr_compiler::dag_ir::{Expr, Root, SourceKind};
+        use std::collections::BTreeSet;
+
+        for &fixture in ALL_22_L0_FIXTURES {
+            let name = fixture
+                .trim_end_matches("_layout_gkr.json")
+                .trim_end_matches("_layout_no_caches_gkr.json");
+            let flavor = if fixture.contains("no_caches") {
+                "no-cache"
+            } else {
+                "cache"
+            };
+            let Some((layer, _)) = crate::try_load_l0(fixture) else {
+                continue;
+            };
+            let mut refcount = vec![0usize; layer.exprs.len()];
+            for e in &layer.exprs {
+                if let Expr::Add(ch) | Expr::Mul(ch) = e {
+                    let uniq: BTreeSet<u32> = ch.iter().map(|c| c.0).collect();
+                    for c in uniq {
+                        refcount[c as usize] += 1;
+                    }
+                }
+            }
+            for root in &layer.roots {
+                let eid = match root {
+                    Root::Output { expr, .. } => *expr,
+                    Root::Constraint { expr } => *expr,
+                };
+                refcount[eid.0 as usize] += 1;
+            }
+            let (mut it_total, mut it_reused, mut it_max, mut it_extra) = (0usize, 0, 0, 0usize);
+            let (mut lf_total, mut lf_reused, mut lf_max, mut lf_extra) = (0usize, 0, 0, 0usize);
+            for (eid, e) in layer.exprs.iter().enumerate() {
+                let rc = refcount[eid];
+                match e {
+                    Expr::Add(_) | Expr::Mul(_) => {
+                        it_total += 1;
+                        it_max = it_max.max(rc);
+                        if rc > 1 {
+                            it_reused += 1;
+                            it_extra += rc - 1;
+                        }
+                    }
+                    Expr::Source(sid) => {
+                        if matches!(layer.sources[sid.0 as usize].kind, SourceKind::Read { .. }) {
+                            lf_total += 1;
+                            lf_max = lf_max.max(rc);
+                            if rc > 1 {
+                                lf_reused += 1;
+                                lf_extra += rc - 1;
+                            }
+                        }
+                    }
+                }
+            }
+            println!(
+                "[REUSE] {name:<30} {flavor:<8} intermediate(Add/Mul): total={it_total:<5} reused={it_reused:<5} max={it_max:<3} extra_uses={it_extra:<5} | leaf(Read): total={lf_total:<4} reused={lf_reused:<4} max={lf_max:<4} extra_uses={lf_extra}"
+            );
+        }
+    }
+
     fn duplicate_traffic_reads(trace: &CacheTrace) -> Vec<(u32, usize)> {
         use std::collections::BTreeMap;
 
