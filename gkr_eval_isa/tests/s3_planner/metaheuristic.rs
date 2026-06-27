@@ -160,30 +160,90 @@ pub fn decode_root_order(inst: &OracleInstance, genome: &Genome) -> Vec<u32> {
         .collect()
 }
 
+/// Per-occurrence sort tuple `(key, root_value, occurrence_index)` — the total
+/// order the decoders break ties with. Comparing two tuples never panics on
+/// finite keys; `assert_normalized_genome` (in scoring) guarantees finiteness,
+/// and the decoder asserts the length up front.
+fn root_sort_tuple(inst: &OracleInstance, genome: &Genome, occ: usize) -> (f64, u32, usize) {
+    (genome.root_order_key[occ], inst.roots[occ], occ)
+}
+
+fn cmp_root_sort_tuple(a: &(f64, u32, usize), b: &(f64, u32, usize)) -> std::cmp::Ordering {
+    a.0.partial_cmp(&b.0)
+        .expect("root_order_key must be finite")
+        .then(a.1.cmp(&b.1))
+        .then(a.2.cmp(&b.2))
+}
+
 fn decode_root_occurrence_order(inst: &OracleInstance, genome: &Genome) -> Vec<usize> {
     assert_eq!(
         genome.root_order_key.len(),
         inst.roots.len(),
         "root_order_key length must match roots length"
     );
-    let mut keyed: Vec<(f64, u32, usize)> = inst
-        .roots
-        .iter()
-        .copied()
-        .enumerate()
-        .zip(genome.root_order_key.iter().copied())
-        .map(|((idx, root), key)| (key, root, idx))
+    let mut keyed: Vec<(f64, u32, usize)> = (0..inst.roots.len())
+        .map(|idx| root_sort_tuple(inst, genome, idx))
         .collect();
-    keyed.sort_by(|a, b| {
-        a.0.partial_cmp(&b.0)
-            .expect("root_order_key must be finite")
-            .then(a.1.cmp(&b.1))
-            .then(a.2.cmp(&b.2))
-    });
+    keyed.sort_by(cmp_root_sort_tuple);
     keyed
         .into_iter()
         .map(|(_, _, root_occurrence)| root_occurrence)
         .collect()
+}
+
+/// Group-atomic occurrence order: occurrences sharing a `unit_of` id are emitted
+/// contiguously. Units are ordered by their gentlest (minimum) member sort tuple;
+/// within a unit, members are emitted in ascending sort-tuple order. An empty
+/// `unit_of` (or an all-distinct assignment) reproduces [`decode_root_occurrence_order`]
+/// exactly, so this is a pure refinement of the flat order that never splits a unit.
+///
+/// Atomicity is enforced here, at decode time — the genome stays per-occurrence
+/// and every optimizer move (swap/insert/reverse/SA) is re-projected onto an
+/// atomic order when scored, so no move can split a relation's roots.
+fn decode_root_occurrence_order_grouped(
+    inst: &OracleInstance,
+    genome: &Genome,
+    unit_of: &[u32],
+) -> Vec<usize> {
+    if unit_of.is_empty() {
+        return decode_root_occurrence_order(inst, genome);
+    }
+    assert_eq!(
+        genome.root_order_key.len(),
+        inst.roots.len(),
+        "root_order_key length must match roots length"
+    );
+    assert_eq!(
+        unit_of.len(),
+        inst.roots.len(),
+        "unit_of length must match roots length"
+    );
+
+    // Bucket occurrences by unit id, preserving each unit's members.
+    let mut members: std::collections::BTreeMap<u32, Vec<usize>> = std::collections::BTreeMap::new();
+    for occ in 0..inst.roots.len() {
+        members.entry(unit_of[occ]).or_default().push(occ);
+    }
+
+    // Order members within a unit by sort tuple; the unit's representative key is
+    // its gentlest member (members are sorted, so its first element).
+    let mut units: Vec<((f64, u32, usize), u32, Vec<usize>)> = members
+        .into_iter()
+        .map(|(uid, mut occs)| {
+            occs.sort_by(|&a, &b| {
+                cmp_root_sort_tuple(
+                    &root_sort_tuple(inst, genome, a),
+                    &root_sort_tuple(inst, genome, b),
+                )
+            });
+            let rep = root_sort_tuple(inst, genome, occs[0]);
+            (rep, uid, occs)
+        })
+        .collect();
+
+    // Order units by representative tuple, breaking ties on unit id for determinism.
+    units.sort_by(|a, b| cmp_root_sort_tuple(&a.0, &b.0).then(a.1.cmp(&b.1)));
+    units.into_iter().flat_map(|(_, _, occs)| occs).collect()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -257,7 +317,19 @@ pub fn score_candidate(
     sites: &[DemandSite],
     genome: &Genome,
 ) -> CandidateScore {
-    score_candidate_internal(inst, sites, genome, false).0
+    score_candidate_internal(inst, sites, genome, false, &[]).0
+}
+
+/// Group-atomic scoring: decode the genome with `unit_of` so a relation's roots
+/// stay contiguous (see [`decode_root_occurrence_order_grouped`]). An empty
+/// `unit_of` is identical to [`score_candidate`].
+fn score_candidate_grouped(
+    inst: &OracleInstance,
+    sites: &[DemandSite],
+    genome: &Genome,
+    unit_of: &[u32],
+) -> CandidateScore {
+    score_candidate_internal(inst, sites, genome, false, unit_of).0
 }
 
 fn score_candidate_with_trace(
@@ -265,7 +337,7 @@ fn score_candidate_with_trace(
     sites: &[DemandSite],
     genome: &Genome,
 ) -> (CandidateScore, CacheTrace) {
-    score_candidate_internal(inst, sites, genome, true)
+    score_candidate_internal(inst, sites, genome, true, &[])
 }
 
 fn score_candidate_internal(
@@ -273,6 +345,7 @@ fn score_candidate_internal(
     sites: &[DemandSite],
     genome: &Genome,
     collect_trace: bool,
+    unit_of: &[u32],
 ) -> (CandidateScore, CacheTrace) {
     assert_eq!(
         genome.admit_bias.len(),
@@ -291,7 +364,7 @@ fn score_candidate_internal(
     );
     assert_normalized_genome(genome);
 
-    let occurrence_order = decode_root_occurrence_order(inst, genome);
+    let occurrence_order = decode_root_occurrence_order_grouped(inst, genome, unit_of);
     let classes = classify_values(inst);
     let mut replay = Replay::new(
         inst,
@@ -1509,6 +1582,74 @@ mod tests {
     }
 
     #[test]
+    fn unit_atomic_decode_with_all_singletons_equals_flat() {
+        // Property: when every occurrence is its own singleton unit, the
+        // group-atomic decoder reproduces the flat occurrence order exactly.
+        let inst = swap_optimizer_fixture(); // roots [2,3,4,5]
+        let genome = Genome {
+            root_order_key: vec![0.4, 0.1, 0.3, 0.2],
+            admit_bias: Vec::new(),
+            recovery_bias: Vec::new(),
+            keep_after_use_bias: Vec::new(),
+        };
+        let singletons = vec![0u32, 1, 2, 3];
+        assert_eq!(
+            decode_root_occurrence_order_grouped(&inst, &genome, &singletons),
+            decode_root_occurrence_order(&inst, &genome),
+        );
+        // An empty slice is the same no-op (flat).
+        assert_eq!(
+            decode_root_occurrence_order_grouped(&inst, &genome, &[]),
+            decode_root_occurrence_order(&inst, &genome),
+        );
+    }
+
+    #[test]
+    fn unit_atomic_decode_keeps_unit_members_contiguous() {
+        // Two units interleaved by key: unit 0 = occurrences {0,2}, unit 1 = {1,3}.
+        // Flat order by key 0.1<0.2<0.3<0.4 is [0,1,2,3] (members interleaved).
+        // Group-atomic pulls each unit together: unit order by min member key
+        // (unit0 min=0.1, unit1 min=0.2) ⇒ [unit0 members, unit1 members], each
+        // member block in ascending key ⇒ [0, 2, 1, 3].
+        let inst = swap_optimizer_fixture(); // roots [2,3,4,5]
+        let genome = Genome {
+            root_order_key: vec![0.1, 0.2, 0.3, 0.4],
+            admit_bias: Vec::new(),
+            recovery_bias: Vec::new(),
+            keep_after_use_bias: Vec::new(),
+        };
+        let unit_of = vec![0u32, 1, 0, 1];
+        assert_eq!(
+            decode_root_occurrence_order(&inst, &genome),
+            vec![0, 1, 2, 3],
+            "flat order interleaves the two units"
+        );
+        assert_eq!(
+            decode_root_occurrence_order_grouped(&inst, &genome, &unit_of),
+            vec![0, 2, 1, 3],
+            "group-atomic emits each unit's members contiguously"
+        );
+    }
+
+    #[test]
+    fn grouped_optimizer_with_singleton_units_matches_flat() {
+        // The full group-atomic search must be a strict no-op when every occurrence
+        // is its own singleton unit: identical decode at every step ⇒ identical
+        // trajectory ⇒ identical result. This guards the `unit_of` threading
+        // through parallel scoring + advance + beam, so any corpus A/B delta is
+        // attributable to real grouping, not a threading artifact.
+        let inst = swap_optimizer_fixture();
+        let sites = enumerate_demand_sites(&inst);
+        let seeds = vec![Genome::neutral(&inst, &sites)];
+        let singletons: Vec<u32> = (0..inst.roots.len() as u32).collect();
+
+        let flat = optimize_from_population(&inst, &sites, seeds.clone(), 256);
+        let grouped = optimize_from_population_grouped(&inst, &sites, seeds, 256, &singletons);
+
+        assert_eq!(flat.best_score, grouped.best_score);
+    }
+
+    #[test]
     fn replay_caches_ram_source_when_admit_bias_is_positive() {
         let inst = OracleInstance {
             budget: 1,
@@ -2588,6 +2729,7 @@ mod tests {
             &mut best_score,
             &mut accepted,
             &mut family_stats,
+            &[],
         );
 
         assert!(moved);
@@ -2639,6 +2781,7 @@ mod tests {
                 &mut best_score,
                 &mut accepted,
                 &mut family_stats,
+                &[],
             );
             // Global best must be monotonically non-worsening — SA never writes a worse value.
             assert!(
@@ -3038,6 +3181,7 @@ mod tests {
                 .map(|(index, genome)| (index, genome, None))
                 .collect(),
             workers,
+            &[],
         );
         summarize_scored_population(scored)
     }
@@ -3126,6 +3270,7 @@ mod tests {
         sites: &[DemandSite],
         entries: Vec<(usize, Genome, Option<MoveFamily>)>,
         workers: usize,
+        unit_of: &[u32],
     ) -> Vec<ScoredGenome> {
         if entries.is_empty() {
             return Vec::new();
@@ -3155,7 +3300,7 @@ mod tests {
                         chunk
                             .into_iter()
                             .map(|(index, genome, family)| {
-                                let score = score_candidate(inst, sites, &genome);
+                                let score = score_candidate_grouped(inst, sites, &genome, unit_of);
                                 ScoredGenome {
                                     index,
                                     genome,
@@ -3344,6 +3489,7 @@ mod tests {
         best_score: &mut CandidateScore,
         accepted: &mut AcceptedMoves,
         family_stats: &mut MoveFamilyStats,
+        unit_of: &[u32],
     ) -> bool {
         if *evals >= eval_budget {
             return false;
@@ -3360,7 +3506,7 @@ mod tests {
         }
         *evals += neighbors.len();
         let neighbor_scores =
-            score_genomes_parallel(inst, sites, neighbors, default_worker_count());
+            score_genomes_parallel(inst, sites, neighbors, default_worker_count(), unit_of);
         record_family_improvements(&neighbor_scores, &state.score, family_stats);
 
         match select_optimizer_neighbor(&neighbor_scores, &state.score, state.plateau_remaining) {
@@ -3424,6 +3570,20 @@ mod tests {
         seeds: Vec<Genome>,
         eval_budget: usize,
     ) -> OptimizerResult {
+        // Flat (unconstrained) order — the historical behavior. `&[]` ⇒ no grouping.
+        optimize_from_population_grouped(inst, sites, seeds, eval_budget, &[])
+    }
+
+    /// Group-atomic variant: `unit_of` (from `relation_units`) forces each gate
+    /// relation's roots to stay contiguous throughout the search (decode invariant).
+    /// `unit_of == &[]` is identical to [`optimize_from_population`].
+    fn optimize_from_population_grouped(
+        inst: &OracleInstance,
+        sites: &[DemandSite],
+        seeds: Vec<Genome>,
+        eval_budget: usize,
+        unit_of: &[u32],
+    ) -> OptimizerResult {
         assert!(eval_budget > 0, "eval_budget must be positive");
 
         let seeds = if seeds.is_empty() {
@@ -3438,7 +3598,8 @@ mod tests {
             .map(|(index, genome)| (index, genome, None))
             .collect();
         let mut evals = seed_entries.len();
-        let seed_scores = score_genomes_parallel(inst, sites, seed_entries, default_worker_count());
+        let seed_scores =
+            score_genomes_parallel(inst, sites, seed_entries, default_worker_count(), unit_of);
 
         // Initialize a fixed-width beam from the scored seeds (best-objective first,
         // deduped by order+objective). The beam carries several promising states
@@ -3475,6 +3636,7 @@ mod tests {
                     &mut best_score,
                     &mut accepted,
                     &mut family_stats,
+                    unit_of,
                 );
                 if evals > before {
                     iterations += 1;
@@ -5968,6 +6130,103 @@ mod tests {
         println!(
             "[M6][VERDICT] improved={improved}/{checked} (no-gap={no_gap}), total_gap={total_gap}. \
              Baseline=neutral genome — necessary but NOT sufficient vs the production scheduler."
+        );
+    }
+
+    #[test]
+    #[ignore = "research A/B: group-atomic (relation-unit) decode vs flat order across the corpus"]
+    fn real_all_22_l0_group_atomic_vs_flat() {
+        use crate::s3_gap::instance::{extract_instance, relation_units};
+        use std::collections::BTreeMap;
+
+        // STAGE 1 of the relation-unit prototype (optimizer-only, ZERO IR change):
+        // does forcing a gate relation's roots to stay contiguous reduce read traffic
+        // vs the unconstrained flat order? The scheduling unit is (RootGroup,
+        // relation_index) from layer.origins (cache / materialization-only roots, which
+        // have no origin, are singletons). Both arms run the SAME optimizer from the
+        // SAME deterministic seed population and budget; ONLY the decode differs
+        // (decode_root_occurrence_order_grouped(unit_of) vs the flat decoder), so any
+        // delta is attributable purely to the atomicity constraint.
+        //
+        // CAVEAT: only the SCORING decode is group-atomic — neighbor_entries still
+        // generates moves on the flat occurrence order, so the search explores the same
+        // key space and every candidate is re-projected onto an atomic order when scored.
+        // A win here is a LOWER BOUND on what unit-aware move generation could achieve.
+        const POPULATION: usize = 200;
+        const EVAL_BUDGET: usize = 16_000;
+
+        let mut checked = 0usize;
+        let mut grouped_better = 0usize;
+        let mut flat_better = 0usize;
+        let mut equal = 0usize;
+        let mut total_flat = 0i64;
+        let mut total_grouped = 0i64;
+        for &fixture in ALL_22_L0_FIXTURES {
+            let name = fixture
+                .trim_end_matches("_layout_gkr.json")
+                .trim_end_matches("_layout_no_caches_gkr.json");
+            let flavor = if fixture.contains("no_caches") {
+                "no-cache"
+            } else {
+                "cache"
+            };
+            let label = format!("{name}/{flavor}");
+            let Some((layer, cross)) = crate::try_load_l0(fixture) else {
+                println!("[GROUP-AB] {label:<52} LOAD_FAILED");
+                continue;
+            };
+            let inst = extract_instance(&layer, &cross, crate::REAL_BUDGET);
+            let sites = enumerate_demand_sites(&inst);
+            if inst.roots.is_empty() || sites.is_empty() {
+                continue;
+            }
+            let unit_of = relation_units(&layer);
+            assert_eq!(
+                unit_of.len(),
+                inst.roots.len(),
+                "{label}: relation_units must align with the Output-root occurrences"
+            );
+            // How much does grouping actually constrain? Count distinct units and how
+            // many bind >1 root (the num/den-pair relations whose fold we co-locate).
+            let mut members: BTreeMap<u32, usize> = BTreeMap::new();
+            for &u in &unit_of {
+                *members.entry(u).or_default() += 1;
+            }
+            let n_units = members.len();
+            let multi = members.values().filter(|&&c| c > 1).count();
+
+            let pop = smoke_genome_population(&inst, &sites, POPULATION);
+            let flat = optimize_from_population(&inst, &sites, pop.clone(), EVAL_BUDGET);
+            let grouped =
+                optimize_from_population_grouped(&inst, &sites, pop, EVAL_BUDGET, &unit_of);
+
+            let f = flat.best_score.traffic;
+            let g = grouped.best_score.traffic;
+            let ff = flat.best_score.feasible;
+            let gf = grouped.best_score.feasible;
+            let delta = f as i64 - g as i64; // > 0 ⇒ group-atomic wins
+            total_flat += f as i64;
+            total_grouped += g as i64;
+            match delta.cmp(&0) {
+                std::cmp::Ordering::Greater => grouped_better += 1,
+                std::cmp::Ordering::Less => flat_better += 1,
+                std::cmp::Ordering::Equal => equal += 1,
+            }
+            println!(
+                "[GROUP-AB] {label:<52} roots={:<4} units={n_units:<4} multi={multi:<4} \
+                 flat={f:<5}{} grouped={g:<5}{} delta={delta}",
+                inst.roots.len(),
+                if ff { " " } else { "!" },
+                if gf { " " } else { "!" },
+            );
+            checked += 1;
+        }
+        assert!(checked > 0, "no fixtures checked — corpus setup broken");
+        println!(
+            "[GROUP-AB][VERDICT] grouped_better={grouped_better} flat_better={flat_better} \
+             equal={equal} checked={checked} total_flat={total_flat} total_grouped={total_grouped} \
+             net_delta={} (>0 ⇒ group-atomic reduces total traffic)",
+            total_flat - total_grouped
         );
     }
 

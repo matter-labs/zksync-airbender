@@ -235,6 +235,54 @@ pub fn extract_instance(
     }
 }
 
+// ── relation_units ───────────────────────────────────────────────────────────
+
+/// Per-Output-root-occurrence "scheduling unit" assignment, aligned 1:1 with
+/// `extract_instance`'s `roots` occurrence order (Output roots in `layer.roots`
+/// order; `Root::Constraint` roots are not occurrences and are skipped, exactly
+/// as `extract_instance` does).
+///
+/// Two occurrences share a unit id iff their `RootOrigin` has the same
+/// `(group, relation_index)` — i.e. they are the num/den (and privately-shared
+/// fold) of one gate relation, which is the atomic scheduling unit (asserted
+/// single-relation by `dual_use_cache_consumers_share_relation`). Output roots
+/// with no origin (cache / materialization-only roots — `origins` is sparse and
+/// omits them) each get a fresh singleton unit.
+///
+/// Consumed by the group-atomic decoder so a relation's roots stay contiguous in
+/// the schedule, keeping their shared fold co-resident. An all-singleton
+/// assignment decodes identically to the flat decoder, so passing an empty slice
+/// (or all-distinct units) is a no-op relative to the unconstrained order.
+pub fn relation_units(layer: &DagLayer) -> Vec<u32> {
+    use cs::gkr_compiler::dag_ir::{Root, RootGroup, RootId};
+
+    let mut unit_of = Vec::new();
+    let mut key_to_unit: HashMap<(RootGroup, usize), u32> = HashMap::new();
+    let mut next_unit = 0u32;
+    for (idx, root) in layer.roots.iter().enumerate() {
+        if !matches!(root, Root::Output { .. }) {
+            continue; // Constraint roots are not occurrences (see extract_instance).
+        }
+        let unit = match layer.origins.get(&RootId(idx as u32)) {
+            Some(origin) => *key_to_unit
+                .entry((origin.group.clone(), origin.relation_index))
+                .or_insert_with(|| {
+                    let u = next_unit;
+                    next_unit += 1;
+                    u
+                }),
+            None => {
+                // Cache / materialization-only root: own singleton unit.
+                let u = next_unit;
+                next_unit += 1;
+                u
+            }
+        };
+        unit_of.push(unit);
+    }
+    unit_of
+}
+
 // ── distinct_live_values ─────────────────────────────────────────────────────
 
 /// Upper bound on simultaneously-live distinct values.
@@ -643,5 +691,71 @@ mod tests {
             "Special terminal must have children: vec![]"
         );
         assert!(!node.real_dram, "Special must not be real_dram");
+    }
+
+    #[test]
+    fn relation_units_groups_pair_roots_and_singletons_cache() {
+        use cs::gkr_compiler::dag_ir::{
+            BatchingOrder, Expr, ExprId, RootGroup, RootId, RootOrigin, RootSlot, SinkId, SinkInfo,
+            SinkKind, SourceId, SourceInfo, SourceKind,
+        };
+        use std::collections::BTreeMap;
+
+        // 5 layer roots in visitation order (expr bodies are irrelevant to grouping):
+        //   r0 Output  origin (Gates, rel 0, Output(0))  ─┐ num/den of relation 0
+        //   r1 Output  origin (Gates, rel 0, Output(1))  ─┘ → SAME unit
+        //   r2 Output  NO origin (cache / materialization-only) → singleton
+        //   r3 Constraint                                  → skipped (not an occurrence)
+        //   r4 Output  origin (Gates, rel 1, Output(0))    → distinct unit
+        // Output occurrences (matching extract_instance) are [r0, r1, r2, r4].
+        // Units assigned in encounter order: rel0→0, cache→1, rel1→2 ⇒ [0, 0, 1, 2].
+        let src = SourceInfo {
+            kind: SourceKind::Read {
+                place: ReadPlace::BaseLayerWitness { column: 0 },
+            },
+        };
+        let out = |s: u32| Root::Output {
+            expr: ExprId(0),
+            sink: SinkId(s),
+        };
+        let mut origins = BTreeMap::new();
+        origins.insert(
+            RootId(0),
+            RootOrigin {
+                group: RootGroup::Gates,
+                relation_index: 0,
+                slot: RootSlot::Output(0),
+            },
+        );
+        origins.insert(
+            RootId(1),
+            RootOrigin {
+                group: RootGroup::Gates,
+                relation_index: 0,
+                slot: RootSlot::Output(1),
+            },
+        );
+        origins.insert(
+            RootId(4),
+            RootOrigin {
+                group: RootGroup::Gates,
+                relation_index: 1,
+                slot: RootSlot::Output(0),
+            },
+        );
+        let layer = DagLayer {
+            sources: vec![src],
+            exprs: vec![Expr::Source(SourceId(0))],
+            roots: vec![out(0), out(0), out(0), Root::Constraint { expr: ExprId(0) }, out(0)],
+            sinks: vec![SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset: 0 },
+                field: FieldKind::Base,
+            }],
+            batching: BatchingOrder { roots: vec![] },
+            origins,
+            resolutions: BTreeMap::new(),
+        };
+
+        assert_eq!(relation_units(&layer), vec![0, 0, 1, 2]);
     }
 }
