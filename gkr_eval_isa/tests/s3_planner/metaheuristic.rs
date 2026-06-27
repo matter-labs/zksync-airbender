@@ -2597,6 +2597,78 @@ mod tests {
     }
 
     #[test]
+    fn advance_drives_sa_stop_branch_and_preserves_global_best() {
+        // Drives the SA uphill (Stop) branch of advance_optimizer_state end-to-end and
+        // asserts the safety property both reviews leaned on: the GLOBAL best is never
+        // worsened by an uphill move. A 4-root no-cache fixture converges in a couple of
+        // advances, after which advance hits the Stop arm — either SA accepts an uphill move
+        // (state becomes worse than best) or rejects and drops the state (moved=false). Both
+        // transit the branch.
+        let inst = swap_optimizer_fixture();
+        let sites = enumerate_demand_sites(&inst);
+        let genome = Genome::neutral(&inst, &sites);
+        let score = score_candidate(&inst, &sites, &genome);
+        let mut state = OptimizerState {
+            genome: genome.clone(),
+            score: score.clone(),
+            plateau_remaining: CACHE_PLATEAU_STEPS,
+        };
+        let mut best_genome = genome;
+        let mut best_score = score.clone();
+        let mut evals = 1usize;
+        let mut accepted = AcceptedMoves::default();
+        let mut family_stats = MoveFamilyStats::default();
+        // Large eval budget so the 4-root state fully converges and reaches the Stop arm
+        // well before the budget is spent (a small budget just times out mid-search).
+        const BUDGET: usize = 2_000;
+
+        let mut prev_best = best_score.traffic;
+        let mut sa_uphill_observed = false;
+        let mut stop_reached = false;
+        for _ in 0..200 {
+            if evals >= BUDGET {
+                break;
+            }
+            let moved = advance_optimizer_state(
+                &inst,
+                &sites,
+                &mut state,
+                BUDGET,
+                &mut evals,
+                &mut best_genome,
+                &mut best_score,
+                &mut accepted,
+                &mut family_stats,
+            );
+            // Global best must be monotonically non-worsening — SA never writes a worse value.
+            assert!(
+                best_score.traffic <= prev_best,
+                "global best regressed {prev_best} -> {}",
+                best_score.traffic
+            );
+            prev_best = best_score.traffic;
+            if !moved {
+                stop_reached = true;
+                break;
+            }
+            // An uphill state strictly worse than the preserved best ⇒ the SA Stop branch
+            // accepted a worsening move.
+            if state.score.traffic > best_score.traffic {
+                sa_uphill_observed = true;
+            }
+        }
+        assert!(
+            sa_uphill_observed || stop_reached,
+            "SA Stop branch was never exercised (state never stalled)"
+        );
+        assert!(best_score.feasible, "global best must stay feasible");
+        assert!(
+            best_score.traffic <= score.traffic,
+            "global best must not exceed the neutral start"
+        );
+    }
+
+    #[test]
     fn population_summary_retains_best_order() {
         let inst = OracleInstance {
             budget: 1,
@@ -4935,7 +5007,12 @@ mod tests {
                 continue;
             }
             let name = fixture.trim_end_matches("_layout_gkr.json");
-            let nc_fixture = fixture.replace("_layout_gkr.json", "_layout_no_caches_gkr.json");
+            // Derive the no-cache twin. The `_preprocessed` cache variant (inits) maps to a
+            // no-cache fixture WITHOUT `_preprocessed`, so strip that first; otherwise the
+            // plain suffix swap applies. (Avoids silently dropping inits from the pairing.)
+            let nc_fixture = fixture
+                .replace("_preprocessed_layout_gkr.json", "_layout_no_caches_gkr.json")
+                .replace("_layout_gkr.json", "_layout_no_caches_gkr.json");
             let Some((cf, car, croots, csites, copt)) = structural(fixture) else {
                 continue;
             };
@@ -5035,9 +5112,12 @@ mod tests {
                     seen[e.0 as usize] = true;
                     match &layer.exprs[e.0 as usize] {
                         Expr::Source(sid) => {
-                            if matches!(layer.sources[sid.0 as usize].kind, SourceKind::Prior { .. })
-                            {
-                                priors_in_cone.insert(sid.0);
+                            // Key by the target RootId (the cached value's identity), not
+                            // the SourceId — robust if multiple Prior sources ever alias one
+                            // root (interning makes them 1:1 today, so this is behavior-
+                            // preserving, but correct by construction).
+                            if let SourceKind::Prior { id } = &layer.sources[sid.0 as usize].kind {
+                                priors_in_cone.insert(id.0);
                             }
                         }
                         Expr::Add(children) | Expr::Mul(children) => {
@@ -5071,7 +5151,12 @@ mod tests {
                 continue;
             }
             let name = fixture.trim_end_matches("_layout_gkr.json");
-            let nc_fixture = fixture.replace("_layout_gkr.json", "_layout_no_caches_gkr.json");
+            // Derive the no-cache twin. The `_preprocessed` cache variant (inits) maps to a
+            // no-cache fixture WITHOUT `_preprocessed`, so strip that first; otherwise the
+            // plain suffix swap applies. (Avoids silently dropping inits from the pairing.)
+            let nc_fixture = fixture
+                .replace("_preprocessed_layout_gkr.json", "_layout_no_caches_gkr.json")
+                .replace("_layout_gkr.json", "_layout_no_caches_gkr.json");
             let Some((clayer, _)) = crate::try_load_l0(fixture) else {
                 continue;
             };
