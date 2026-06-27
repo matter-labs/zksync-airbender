@@ -4687,17 +4687,23 @@ mod tests {
         // whose width-weighted DRAM traffic comes from `compile_layer().stats.dram_traffic`.
         //
         // FINDING (the reason this test does not claim "beats production"): production's
-        // `dram_traffic` is NOT directly comparable to the scorer/oracle/floor metric.
-        // The scorer is validated `== oracle`, and the oracle/floor count distinct real
-        // `Read` leaves (EXCLUDING Prior and VirtualSetup) width-weighted; the production
-        // compiler counts every Prior backing read at full width AND sources some leaves
-        // via the free resolver path that the scorer's instance model still treats as
-        // DRAM. Concrete proof: on several no-caches layers `prod < dag_traffic_floor`
-        // (impossible if the two were the same metric — e.g. bigint no-caches prod=119
-        // vs floor=157). So the prod-vs-opt deltas below are NOT a valid beats-production
-        // claim — closing the M6 caveat requires reconciling the two cost models first.
-        // This test DOCUMENTS that gap (classifying each fixture comparable/not) and only
-        // asserts the genuine scorer invariant `opt >= floor`.
+        // `dram_traffic` is NOT directly comparable to the scorer/oracle/floor metric, and
+        // the two count fundamentally DIFFERENT things:
+        //   - scorer/oracle/floor: each DISTINCT reachable `Read` leaf counted ONCE at its
+        //     DAG width (+ modeled reloads on eviction); Prior/VirtualSetup excluded.
+        //   - production: each Global read operand the COMPILED PROGRAM actually emits,
+        //     which is residency/alias/fusion dependent (a leaf may be re-read across
+        //     roots, or never separately loaded).
+        // Measured proof these are different metrics — the sign of (prod - floor) FLIPS
+        // across no-caches fixtures: bigint prod=119 < floor=157 (production emits fewer
+        // loads than there are distinct leaves), yet mem_word_only prod=53 > floor=35
+        // (production RE-reads base leaves it didn't keep resident). All reads here are
+        // base mem/witness — NOT scratch and NOT resolver (an earlier guess of mine,
+        // disproven by a read-place breakdown). So the prod-vs-opt deltas below are NOT a
+        // valid beats-production claim. This test DOCUMENTS the gap (classifying each
+        // fixture comparable/not by the floor guard) and asserts only the genuine scorer
+        // invariant `opt >= floor`. Closing the caveat needs the scorer to count what the
+        // compiled program actually reads (or to score candidates via `compile_layer`).
         const POPULATION: usize = 200;
         const EVAL_BUDGET: usize = 2_000;
         const FINAL_STARTS: usize = 4;
@@ -4765,10 +4771,11 @@ mod tests {
         println!(
             "[M7][VERDICT] production baseline is COMPUTABLE (compile_layer.dram_traffic) but NOT \
              metric-comparable to the scorer: {not_comparable}/{checked} fixtures have prod < floor \
-             (proof the cost models diverge on Prior/resolver accounting); {comparable} pass the floor \
-             guard but may still diverge on Prior traffic. CONCLUSION: closing the M6 caveat needs \
-             cost-model RECONCILIATION (count production-equivalent traffic in the scorer, or scorer- \
-             equivalent traffic in compile_layer) before any beats-production claim. M6-vs-neutral stands."
+             (proof the metrics differ — the scorer counts distinct reachable leaves, production counts \
+             emitted loads; the sign of prod-floor flips across fixtures). {comparable} pass the floor \
+             guard but still differ on emitted-vs-reachable accounting. CONCLUSION: closing the M6 caveat \
+             needs the scorer to count what the COMPILED PROGRAM actually reads (residency/alias/fusion- \
+             aware), or to score candidates via compile_layer. M6-vs-neutral stands."
         );
     }
 
