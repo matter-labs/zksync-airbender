@@ -4500,6 +4500,42 @@ mod tests {
         genomes
     }
 
+    /// Like `smoke_genome_population` but the random tail is seeded from `run_offset`, so
+    /// distinct runs explore distinct random starts (the structured neutral / reversed /
+    /// reuse-weighted anchors are kept in every run). `run_offset == 0` reproduces
+    /// `smoke_genome_population` exactly. Used to measure between-run search variance.
+    fn seeded_smoke_population(
+        inst: &OracleInstance,
+        sites: &[DemandSite],
+        total: usize,
+        run_offset: u64,
+    ) -> Vec<Genome> {
+        let mut genomes = Vec::with_capacity(total);
+        if total == 0 {
+            return genomes;
+        }
+        genomes.push(Genome::neutral(inst, sites));
+        if genomes.len() < total {
+            let mut reversed = Genome::neutral(inst, sites);
+            let n = reversed.root_order_key.len();
+            let denom = n.max(1) as f64;
+            for (idx, key) in reversed.root_order_key.iter_mut().enumerate() {
+                *key = (n - 1 - idx) as f64 / denom;
+            }
+            genomes.push(reversed);
+        }
+        if genomes.len() < total {
+            genomes.push(reuse_weighted_smoke_genome(inst, sites));
+        }
+        while genomes.len() < total {
+            let seed = run_offset
+                .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+                .wrapping_add((genomes.len() - 3) as u64);
+            genomes.push(deterministic_smoke_genome(inst, sites, seed));
+        }
+        genomes
+    }
+
     struct SmokeRng {
         state: u64,
     }
@@ -5329,6 +5365,139 @@ mod tests {
              total_residual@REAL_BUDGET={total_residual_at_real} (over {feasible_at_real} layers feasible @ {})",
             crate::REAL_BUDGET
         );
+    }
+
+    /// REPORT: heavy statistical sweep over (fixture × flavor × layer × cache-budget),
+    /// emitting one JSON row per cell. Each cell runs the optimizer `SWEEP_RUNS` times with
+    /// distinct seeded populations (`seeded_smoke_population` per run) for BOTH the flat
+    /// (per-occurrence) and the unit-keyed (group-atomic, parity-seeded) arm, so the row
+    /// carries the full per-run traffic arrays — the between-run variance the artifact plots.
+    /// Budgets start at 8, step by 4, capped per layer at all_fit; a layer stops once the
+    /// best-of-runs of BOTH arms reaches the floor. Rows are prefixed `SWEEPROW `.
+    ///
+    /// Compute is intentionally heavy; tune via env (defaults in parens):
+    ///   SWEEP_RUNS (4)  SWEEP_POP (1000)  SWEEP_EVALS (12000)  SWEEP_BUDGET_MAX (64)
+    #[test]
+    #[ignore = "report: heavy multi-run (layer × budget) sweep, flat vs unit-keyed; JSON rows"]
+    fn real_sweep_all_layers_budgets_grouped_vs_flat() {
+        use crate::s3_gap::instance::{extract_instance, relation_units};
+
+        let env_usize = |key: &str, default: usize| {
+            std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+        };
+        let runs = env_usize("SWEEP_RUNS", 4).max(1);
+        let population = env_usize("SWEEP_POP", 1000).max(1);
+        let eval_budget = env_usize("SWEEP_EVALS", 12_000).max(1);
+        let budget_max = env_usize("SWEEP_BUDGET_MAX", 64);
+        let budgets: Vec<usize> = (8..=budget_max).step_by(4).collect();
+        eprintln!(
+            "[SWEEP] runs={runs} population={population} eval_budget={eval_budget} \
+             budgets={budgets:?}"
+        );
+
+        let json_arr = |xs: &[u64]| -> String {
+            let body: Vec<String> = xs.iter().map(|x| x.to_string()).collect();
+            format!("[{}]", body.join(","))
+        };
+        let json_bool_arr = |xs: &[bool]| -> String {
+            let body: Vec<String> = xs.iter().map(|x| x.to_string()).collect();
+            format!("[{}]", body.join(","))
+        };
+
+        for &fixture in ALL_22_L0_FIXTURES {
+            let name = fixture
+                .trim_end_matches("_layout_gkr.json")
+                .trim_end_matches("_layout_no_caches_gkr.json");
+            let flavor = if fixture.contains("no_caches") {
+                "no-cache"
+            } else {
+                "cache"
+            };
+            let (dag, _artifact, cross) = crate::load_layer_source(fixture);
+            for (layer_idx, layer) in dag.layers.iter().enumerate() {
+                let floor = reachable_read_stats(layer, &cross).read_place_cells as u64;
+                let mut inst = extract_instance(layer, &cross, crate::REAL_BUDGET);
+                let sites = enumerate_demand_sites(&inst);
+                if inst.roots.is_empty() || sites.is_empty() {
+                    continue;
+                }
+                let all_fit = all_fit_budget(&inst);
+                let unit_of = relation_units(layer);
+                assert_eq!(
+                    unit_of.len(),
+                    inst.roots.len(),
+                    "{name}/{flavor} L{layer_idx}: relation_units must align with roots"
+                );
+                let units = unit_members(&unit_of);
+                let multi = units.iter().filter(|m| m.len() > 1).count();
+
+                // Per-run seeded populations (shared across budgets so each run is one
+                // coherent random start); grouped pop is the parity projection of the flat.
+                let flat_pops: Vec<Vec<Genome>> = (0..runs)
+                    .map(|r| seeded_smoke_population(&inst, &sites, population, r as u64))
+                    .collect();
+                let unit_pops: Vec<Vec<Genome>> = flat_pops
+                    .iter()
+                    .map(|pop| pop.iter().map(|g| project_genome_to_units(g, &units)).collect())
+                    .collect();
+
+                for &budget in &budgets {
+                    if budget > all_fit {
+                        break;
+                    }
+                    inst.budget = budget;
+                    let mut flat_runs = Vec::with_capacity(runs);
+                    let mut flat_feas = Vec::with_capacity(runs);
+                    let mut grouped_runs = Vec::with_capacity(runs);
+                    let mut grouped_feas = Vec::with_capacity(runs);
+                    for r in 0..runs {
+                        let flat = optimize_from_population(
+                            &inst,
+                            &sites,
+                            flat_pops[r].clone(),
+                            eval_budget,
+                        );
+                        let grouped = optimize_from_population_grouped(
+                            &inst,
+                            &sites,
+                            unit_pops[r].clone(),
+                            eval_budget,
+                            &units,
+                        );
+                        flat_runs.push(flat.best_score.traffic);
+                        flat_feas.push(flat.best_score.feasible);
+                        grouped_runs.push(grouped.best_score.traffic);
+                        grouped_feas.push(grouped.best_score.feasible);
+                    }
+                    println!(
+                        "SWEEPROW {{\"name\":\"{name}\",\"flavor\":\"{flavor}\",\"layer\":{layer_idx},\
+                         \"roots\":{},\"units\":{},\"multi\":{multi},\"floor\":{floor},\
+                         \"all_fit\":{all_fit},\"budget\":{budget},\
+                         \"flat_runs\":{},\"flat_feas\":{},\"grouped_runs\":{},\"grouped_feas\":{}}}",
+                        inst.roots.len(),
+                        units.len(),
+                        json_arr(&flat_runs),
+                        json_bool_arr(&flat_feas),
+                        json_arr(&grouped_runs),
+                        json_bool_arr(&grouped_feas),
+                    );
+                    // best-of-runs convergence (only over feasible runs).
+                    let best_feasible = |runs: &[u64], feas: &[bool]| -> Option<u64> {
+                        runs.iter()
+                            .zip(feas)
+                            .filter(|(_, f)| **f)
+                            .map(|(&t, _)| t)
+                            .min()
+                    };
+                    let fb = best_feasible(&flat_runs, &flat_feas);
+                    let gb = best_feasible(&grouped_runs, &grouped_feas);
+                    if fb == Some(floor) && gb == Some(floor) {
+                        break; // both arms converged to floor; higher budgets stay there
+                    }
+                }
+            }
+        }
+        println!("SWEEPDONE");
     }
 
     /// REPORT: precise structural comparison of the cache vs no-cache DAG for each circuit
