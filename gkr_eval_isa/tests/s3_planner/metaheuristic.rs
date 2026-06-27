@@ -5392,7 +5392,13 @@ mod tests {
     #[test]
     #[ignore = "report: heavy multi-run (layer × budget) sweep, flat vs unit-keyed; JSON rows"]
     fn real_sweep_all_layers_budgets_grouped_vs_flat() {
-        use crate::s3_gap::instance::{extract_instance, relation_units};
+        // (a): cache values are intra-unit inline intermediates, NOT scheduling roots.
+        // Materialized extraction is a no-op for no-cache fixtures, so this is the single
+        // correct model for both flavors.
+        use crate::s3_gap::instance::{
+            extract_instance_materialized_cache as extract_instance,
+            relation_units_materialized_cache as relation_units,
+        };
 
         let env_usize = |key: &str, default: usize| {
             std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
@@ -5442,6 +5448,9 @@ mod tests {
                 );
                 let units = unit_members(&unit_of);
                 let multi = units.iter().filter(|m| m.len() > 1).count();
+                // DAG ceiling (budget-independent): the no-caching max reads. Every
+                // feasible result must satisfy floor <= traffic <= ceiling.
+                let ceiling = no_cache_ceiling(&inst, &sites);
 
                 // Per-run seeded populations (shared across budgets so each run is one
                 // coherent random start); grouped pop is the parity projection of the flat.
@@ -5481,10 +5490,20 @@ mod tests {
                         grouped_runs.push(grouped.best_score.traffic);
                         grouped_feas.push(grouped.best_score.feasible);
                     }
+                    // SANITY: floor <= feasible traffic <= no_cache_ceiling, both arms.
+                    for (t, f) in flat_runs.iter().zip(&flat_feas).chain(grouped_runs.iter().zip(&grouped_feas)) {
+                        if *f {
+                            assert!(
+                                *t >= floor && *t <= ceiling,
+                                "{name}/{flavor} L{layer_idx} b{budget}: traffic {t} outside \
+                                 [floor {floor}, ceiling {ceiling}] — scorer/search broken"
+                            );
+                        }
+                    }
                     println!(
                         "SWEEPROW {{\"name\":\"{name}\",\"flavor\":\"{flavor}\",\"layer\":{layer_idx},\
                          \"roots\":{},\"units\":{},\"multi\":{multi},\"floor\":{floor},\
-                         \"all_fit\":{all_fit},\"budget\":{budget},\
+                         \"ceiling\":{ceiling},\"all_fit\":{all_fit},\"budget\":{budget},\
                          \"flat_runs\":{},\"flat_feas\":{},\"grouped_runs\":{},\"grouped_feas\":{}}}",
                         inst.roots.len(),
                         units.len(),

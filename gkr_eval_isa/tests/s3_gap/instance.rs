@@ -291,14 +291,31 @@ fn extract_instance_impl(
 /// assignment decodes identically to the flat decoder, so passing an empty slice
 /// (or all-distinct units) is a no-op relative to the unconstrained order.
 pub fn relation_units(layer: &DagLayer) -> Vec<u32> {
-    use cs::gkr_compiler::dag_ir::{Root, RootGroup, RootId};
+    relation_units_impl(layer, false)
+}
+
+/// `relation_units` aligned with [`extract_instance_materialized_cache`]: Cache-sink
+/// Output roots are skipped (they are not scheduling atoms), so the result lines up
+/// with the materialized-cache `roots` occurrence order. With cache roots removed, the
+/// remaining roots are all claim-bearing, so units are grouped purely by relation.
+pub fn relation_units_materialized_cache(layer: &DagLayer) -> Vec<u32> {
+    relation_units_impl(layer, true)
+}
+
+fn relation_units_impl(layer: &DagLayer, materialize_cache: bool) -> Vec<u32> {
+    use cs::gkr_compiler::dag_ir::{Root, RootGroup, RootId, SinkKind};
 
     let mut unit_of = Vec::new();
     let mut key_to_unit: HashMap<(RootGroup, usize), u32> = HashMap::new();
     let mut next_unit = 0u32;
     for (idx, root) in layer.roots.iter().enumerate() {
-        if !matches!(root, Root::Output { .. }) {
+        let Root::Output { sink, .. } = root else {
             continue; // Constraint roots are not occurrences (see extract_instance).
+        };
+        if materialize_cache
+            && matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. })
+        {
+            continue; // cache value is an inline intra-unit intermediate, not an atom
         }
         let unit = match layer.origins.get(&RootId(idx as u32)) {
             Some(origin) => *key_to_unit
