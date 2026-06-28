@@ -154,7 +154,7 @@ fn check_source_field_kinds(layer: &DagLayer, li: usize) -> Result<(), String> {
     Ok(())
 }
 
-// ── Dependency-graph acyclicity (Expr→Source, Prior→root, LookupValue.query→Expr)
+// ── Dependency-graph acyclicity (Expr→Source, Root→Expr, LookupValue.query→Expr)
 
 /// State color for the DFS cycle check over the unified dependency graph.
 #[derive(Clone, Copy, PartialEq, Eq)]
