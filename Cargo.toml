@@ -99,10 +99,10 @@ default-members = [
     "gpu_witness_eval_generator",
     "gpu_gkr_fwd_generator",
     "gkr_design_space",
-    # gkr_eval_isa removed from default-members during the DAG-IR attribute-model rewrite (Stage 1);
-    # it consumes the old DAG-IR API and is rebuilt in the program-gen/GPU stage. Still a workspace
-    # member (gpu/circuit_prover path-depends on it), so --workspace and -p circuit_prover builds
-    # break until that stage — that is expected and accepted for Stage 1.
+    # Restored to default-members after Stage 1 DAG-IR attribute-model rewrite (Task 7).
+    # Note: --workspace and -p circuit_prover builds remain expected-broken until the GPU stage
+    # (gpu/circuit_prover path-depends on gkr_eval_isa and has not yet been ported).
+    "gkr_eval_isa",
     # The one GPU-cluster crate with no CUDA dep (pure CPU model); safe as a default member.
     "gpu/gkr_model",
     "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
