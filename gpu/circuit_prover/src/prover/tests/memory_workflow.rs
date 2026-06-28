@@ -165,7 +165,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
 
     let oracle = MemoryCircuitOracle {
         inner: &buffer[..],
-        decoder_table: &witness_gen_data,
+        decoder_table: decoder_table_data,
     };
     let mut table_driver = TableDriver::new();
     populate_table_driver(&mut table_driver, &binary);
@@ -174,6 +174,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
         NUM_CYCLES_PER_CHUNK,
         &oracle,
         &worker,
+        None,
         Global,
         Global,
     );
@@ -184,6 +185,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
         &oracle,
         &table_driver,
         &worker,
+        None,
         Global,
         Global,
     );

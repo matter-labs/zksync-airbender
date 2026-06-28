@@ -238,7 +238,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     let worker = Worker::new_with_num_threads(8);
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
-        decoder_table: &witness_gen_data,
+        decoder_table: &decoder_table_data,
         default_pc_value_in_padding,
     };
     let trace_len = compiled_circuit.trace_len;
@@ -247,6 +247,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         NUM_CYCLES_PER_CHUNK,
         &oracle,
         &worker,
+        None,
         Global,
         Global,
     );
@@ -436,7 +437,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     let worker = Worker::new_with_num_threads(8);
     let oracle = MemoryCircuitOracle {
         inner: &buffer[..],
-        decoder_table: &witness_gen_data,
+        decoder_table: &decoder_table_data,
     };
     let trace_len = compiled_circuit.trace_len;
     let cpu_memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
@@ -444,6 +445,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         NUM_CYCLES_PER_CHUNK,
         &oracle,
         &worker,
+        None,
         Global,
         Global,
     );

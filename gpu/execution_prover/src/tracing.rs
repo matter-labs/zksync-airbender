@@ -11,7 +11,7 @@ use circuit_prover::witness::trace::ChunkedTraceHolder;
 use crossbeam_channel::{Receiver, Sender};
 use gpu_core::primitives::machine_type::MachineType;
 use itertools::Itertools;
-use riscv_transpiler::jit::{CounterType, MAX_NUM_COUNTERS};
+use riscv_transpiler::jit::{CounterType, MachineCounters, MAX_NUM_COUNTERS};
 use riscv_transpiler::vm::{
     Counters, DelegationsAndFamiliesCounters, DelegationsAndUnifiedCounters,
 };
@@ -67,7 +67,7 @@ pub(crate) trait TracingType {
     type Ranges: DataTraceRanges;
     type Producers: TracingDataProducers<Ranges = Self::Ranges>;
     type Tracer: Tracer<Ranges = Self::Ranges>;
-    type Counters: Counters + From<[u64; MAX_NUM_COUNTERS]>;
+    type Counters: Counters + From<MachineCounters>;
 }
 
 pub(crate) struct SplitTracingType;
@@ -722,7 +722,7 @@ impl TracingDataProducers for SplitTracingDataProducers {
                     final_count,
                     &mut trace_ranges.slt_branch_family,
                 ),
-                CounterType::ShiftBinaryCsr => {
+                CounterType::ShiftBinary => {
                     self.binary_shift_csr_family_producer.process_snapshot(
                         snapshot_index,
                         initial_count,
@@ -865,7 +865,7 @@ impl TracingDataProducers for UnifiedTracingDataProducers {
             match counter_type {
                 CounterType::AddSubLui
                 | CounterType::BranchSlt
-                | CounterType::ShiftBinaryCsr
+                | CounterType::ShiftBinary
                 | CounterType::MulDiv
                 | CounterType::MemWord
                 | CounterType::MemSubword => {

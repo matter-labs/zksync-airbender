@@ -35,6 +35,13 @@ impl Generator {
                 let new_ident = self.create_var();
                 self.push(&format!("FROM(f, {new_ident}, {var_ident})\n"));
             }
+            FieldNodeExpression::FromRawReprWithReduction(expr) => {
+                let var_ident = self.integer_expr_into_var(expr);
+                let new_ident = self.create_var();
+                self.push(&format!(
+                    "FROM_RAW_REPR_WITH_REDUCTION(f, {new_ident}, {var_ident})\n"
+                ));
+            }
             FieldNodeExpression::FromMask(expr) => {
                 let var_ident = self.boolean_expr_into_var(expr);
                 let new_ident = self.create_var();

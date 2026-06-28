@@ -296,6 +296,10 @@ where
             .try_into()
             .expect("dimension reduction forward inputs must have arity 2");
         match *arg_type {
+            OutputType::InitsAndTeardownsProduct => unimplemented!(
+                "GKR unified circuit (InitsAndTeardownsProduct layer, PR #305) is not yet \
+                 supported on GPU; gated so per-family circuits keep building"
+            ),
             OutputType::PermutationProduct => {
                 let mut outputs = [GKRAddress::placeholder(); 2];
                 for (idx, input) in inputs.into_iter().enumerate() {

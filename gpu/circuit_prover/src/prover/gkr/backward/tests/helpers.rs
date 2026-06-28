@@ -56,6 +56,10 @@ pub(in crate::prover::gkr::backward::tests) fn build_dimension_reducing_kernel_b
     let mut blueprints = Vec::new();
     for (output_type, reduced_io) in layer.iter() {
         match *output_type {
+            OutputType::InitsAndTeardownsProduct => unimplemented!(
+                "GKR unified circuit (InitsAndTeardownsProduct layer, PR #305) is not yet \
+                 supported on GPU; gated so per-family circuits keep building"
+            ),
             OutputType::PermutationProduct => {
                 for (input, output) in reduced_io.inputs.iter().zip(reduced_io.output.iter()) {
                     let batch_challenge_offset = next_batch_challenge_offset;

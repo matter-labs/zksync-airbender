@@ -114,6 +114,13 @@ impl Generator {
                 let new_ident = self.create_var();
                 self.push(&format!("FROM(u32, {new_ident}, {var_ident})\n"));
             }
+            FixedWidthIntegerNodeExpression::U32RawReprReducedFromField(expr) => {
+                let var_ident = self.field_expr_into_var(expr);
+                let new_ident = self.create_var();
+                self.push(&format!(
+                    "RAW_REPR_REDUCED_FROM_FIELD(u32, {new_ident}, {var_ident})\n"
+                ));
+            }
             FixedWidthIntegerNodeExpression::WidenFromU8(expr) => {
                 let var_ident = self.integer_expr_into_var(expr);
                 let new_ident = self.create_var();

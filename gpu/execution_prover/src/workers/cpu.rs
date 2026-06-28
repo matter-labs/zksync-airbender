@@ -158,10 +158,11 @@ pub(crate) fn run_simulator<
                 .expect("CPU worker results channel closed while sending init/teardown data");
             instant = Instant::now();
         }
+        let register_timestamps = state.register_timestamps_array();
         let final_register_values = state
-            .registers
+            .materialized_registers()
             .into_iter()
-            .zip(state.register_timestamps.into_iter())
+            .zip(register_timestamps.into_iter())
             .map(|(value, last_access_timestamp)| FinalRegisterValue {
                 value,
                 last_access_timestamp,

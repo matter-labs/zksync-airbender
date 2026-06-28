@@ -45,7 +45,7 @@ pub(super) fn schedule_commit_next_oracle_phase(
         lde_factor,
         1 << next_folding_steps,
         tree_cap_size,
-        false, // transform_leaves_to_multilinear_coeffs,
+        true, // transform_leaves_to_multilinear_coeffs (CPU #279 commits recursive WHIR oracles in coeff form)
         &mut cap_dst_u32,
         context,
     )?;
