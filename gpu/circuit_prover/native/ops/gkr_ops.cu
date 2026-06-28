@@ -199,6 +199,31 @@ EXTERN __global__ void ab_backward_new_claims_linear_kernel(const e4 *last_evals
   new_claims_out[idx] = e4_lerp(v0, v1, r);
 }
 
+// Dim-reducing final-round LSB-line reduction (#320). The last sumcheck round now
+// emits a univariate monomial and draws `r_before_last` in-loop; the [e4;4] bilinear
+// `last_evals` (over (last-output-coord) x (LSB-coord), packed
+// [v0=(0,0), v1=(0,1), v2=(1,0), v3=(1,1)]) is reduced over the last-output coord at
+// `r_before_last` into the [e4;2] LSB line that is sent in the proof and committed to
+// the transcript. Per address: out[0]=lerp(v0,v2,rbl), out[1]=lerp(v1,v3,rbl). Matches
+// the host `interpolate_linear(evals[0],evals[2],rbl)` / `(evals[1],evals[3],rbl)`.
+// - `last_evals_packed`: `num_addresses * 4` e4.
+// - `challenges`: `[r_before_last, ..]` (only slot 0 read).
+// - `lsb_lines_out`: `num_addresses * 2` e4.
+EXTERN __global__ void ab_backward_dim_reducing_lsb_lines_kernel(const e4 *last_evals_packed, const e4 *challenges, e4 *lsb_lines_out,
+                                                                 const unsigned num_addresses) {
+  const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= num_addresses)
+    return;
+  const e4 r_before_last = challenges[0];
+  const unsigned base = idx * 4u;
+  const e4 v0 = last_evals_packed[base + 0];
+  const e4 v1 = last_evals_packed[base + 1];
+  const e4 v2 = last_evals_packed[base + 2];
+  const e4 v3 = last_evals_packed[base + 3];
+  lsb_lines_out[idx * 2u + 0u] = e4_lerp(v0, v2, r_before_last);
+  lsb_lines_out[idx * 2u + 1u] = e4_lerp(v1, v3, r_before_last);
+}
+
 // Mirror of `GpuCombinedClaimDesc` in gpu/circuit_prover/src/ops/blake2s.rs. Holds
 // the per-layer `(exp, claim_idx)` descriptor pairs for `build_combined_claim`
 // inline as kernel-arg data — replaces the prior device-buffer + per-layer H2D.

@@ -630,6 +630,85 @@ fn backward_new_claims_linear_parity_randomized() {
     }
 }
 
+// `backward_dim_reducing_lsb_lines` must match the host dim-reducing #320
+// final-round reduction: out[0] = interpolate_linear(evals[0], evals[2], rbl),
+// out[1] = interpolate_linear(evals[1], evals[3], rbl). The two LSB lines are
+// what the new structure commits to the transcript and sends in the proof.
+fn run_device_lsb_lines(packed_values: &[E4], r_before_last: E4) -> Vec<E4> {
+    let stream = CudaStream::default();
+    let num_addresses = packed_values.len() / 4;
+    let mut d_packed: DeviceAllocation<E4> = DeviceAllocation::alloc(packed_values.len()).unwrap();
+    memory_copy_async(&mut d_packed, packed_values, &stream).unwrap();
+    let mut d_challenges: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
+    memory_copy_async(&mut d_challenges, &[r_before_last], &stream).unwrap();
+    let mut d_out: DeviceAllocation<E4> = DeviceAllocation::alloc(num_addresses * 2).unwrap();
+    super::backward_dim_reducing_lsb_lines(&d_packed, &d_challenges, &mut d_out, &stream).unwrap();
+    let mut out = vec![E4::ZERO; num_addresses * 2];
+    memory_copy_async(&mut out[..], &d_out, &stream).unwrap();
+    stream.synchronize().unwrap();
+    out
+}
+
+#[test]
+#[serial]
+fn backward_dim_reducing_lsb_lines_parity_fixed() {
+    let r_before_last = sample_e4(41);
+    let num_addresses = 6usize;
+    let packed: Vec<E4> = (0..num_addresses * 4)
+        .map(|i| sample_e4(300 + i as u32))
+        .collect();
+    let device = run_device_lsb_lines(&packed, r_before_last);
+    for i in 0..num_addresses {
+        let v: [E4; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
+        let lsb0 = host_new_claim_linear(v[0], v[2], r_before_last);
+        let lsb1 = host_new_claim_linear(v[1], v[3], r_before_last);
+        assert_eq!(device[i * 2], lsb0, "address {i} lsb0 mismatch");
+        assert_eq!(device[i * 2 + 1], lsb1, "address {i} lsb1 mismatch");
+    }
+}
+
+#[test]
+#[serial]
+fn backward_dim_reducing_lsb_lines_parity_randomized() {
+    use rand::Rng;
+    let mut rng = rand::rng();
+    for num_addresses in [1usize, 2, 3, 8, 17, 64, 257] {
+        let r_before_last = sample_e4(rng.random::<u32>());
+        let packed: Vec<E4> = (0..num_addresses * 4)
+            .map(|_| sample_e4(rng.random::<u32>()))
+            .collect();
+        let device = run_device_lsb_lines(&packed, r_before_last);
+        for i in 0..num_addresses {
+            let v: [E4; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
+            let lsb0 = host_new_claim_linear(v[0], v[2], r_before_last);
+            let lsb1 = host_new_claim_linear(v[1], v[3], r_before_last);
+            assert_eq!(device[i * 2], lsb0, "N={num_addresses} addr {i} lsb0 mismatch");
+            assert_eq!(device[i * 2 + 1], lsb1, "N={num_addresses} addr {i} lsb1 mismatch");
+        }
+    }
+}
+
+// Cross-check: lerp over LSB of the two lines at r_last must reproduce the full
+// two-var new_claim — i.e. the LSB-line split + linear new_claim is consistent
+// with the existing two-var kernel (and so with the CPU final claim).
+#[test]
+#[serial]
+fn lsb_lines_then_linear_matches_two_var() {
+    let rbl = sample_e4(71);
+    let r_last = sample_e4(89);
+    let num_addresses = 4usize;
+    let packed: Vec<E4> = (0..num_addresses * 4)
+        .map(|i| sample_e4(400 + i as u32))
+        .collect();
+    let lines = run_device_lsb_lines(&packed, rbl);
+    let claims = run_device_new_claims_linear(&lines, r_last);
+    for i in 0..num_addresses {
+        let v: [E4; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
+        let expected = host_new_claim_two_var(&v, rbl, r_last);
+        assert_eq!(claims[i], expected, "address {i} composed mismatch");
+    }
+}
+
 fn host_combined_claim(claims: &[E4], batching: E4, exp_idx: &[(u32, u32)]) -> E4 {
     let mut result = E4::ZERO;
     for (exp, idx) in exp_idx {

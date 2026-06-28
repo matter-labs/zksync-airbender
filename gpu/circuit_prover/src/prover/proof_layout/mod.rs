@@ -73,7 +73,8 @@ pub(crate) struct GpuGKRTraceGeometry {
 pub(crate) struct BackwardLayerDims {
     pub(crate) layer_idx: usize,
     /// Total sumcheck rounds for this layer; `internal_round_coefficients` has
-    /// length `sumcheck_num_rounds - 1`, each element `[E4; 4]`.
+    /// length `sumcheck_num_rounds`, each element `[E4; 4]` (#320: every round
+    /// — including the last — emits a univariate monomial).
     pub(crate) sumcheck_num_rounds: usize,
     /// Addresses for `final_step_evaluations`, in a stable order. Each entry
     /// contributes `final_step_eval_degree` `E4` values.
@@ -167,7 +168,7 @@ pub(crate) struct OutputEvaluationsLayout {
 pub(crate) struct BackwardLayerLayout {
     pub(crate) layer_idx: usize,
     /// `internal_round_coefficients` — flat array of `[E4; 4]`,
-    /// length `sumcheck_num_rounds - 1`.
+    /// length `sumcheck_num_rounds` (#320).
     pub(crate) internal_round_coefficients: Range<usize>,
     /// `final_step_evaluations` flat array — `addresses.len() *
     /// final_step_eval_degree` `E4` values, address order matches
@@ -307,7 +308,10 @@ impl ProofLayout {
         // Backward layers, in the order given.
         let mut backward = Vec::with_capacity(inputs.backward_layers.len());
         for layer in inputs.backward_layers.iter() {
-            let internal_count = layer.sumcheck_num_rounds.saturating_sub(1);
+            // #320: every sumcheck round (incl. the last) emits a univariate
+            // monomial, so `internal_round_coefficients` has `sumcheck_num_rounds`
+            // entries (was `sumcheck_num_rounds - 1`).
+            let internal_count = layer.sumcheck_num_rounds;
             let internal_round_coefficients = alloc(&mut cur, internal_count * 4, size_of::<E4>());
             let final_evals_count =
                 layer.final_step_eval_addresses.len() * layer.final_step_eval_degree;

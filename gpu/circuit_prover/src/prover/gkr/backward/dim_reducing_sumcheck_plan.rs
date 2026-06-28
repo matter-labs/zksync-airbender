@@ -91,6 +91,14 @@ where
     ///
     /// E is generic but E4-only in this build; pointer casts below are safe
     /// (both `Field` and `E4` are `#[repr(C)]` with identical layouts).
+    /// `fold_eq == false` is the #320 final round: the round still reduces its
+    /// univariate monomial, commits it, and draws the folding challenge, but it
+    /// must NOT fold the factored eq for a next round (there is none — the
+    /// factored eq is already fully consumed by the preceding `folding_steps-1`
+    /// rounds and is the identity at `acc_size == 1`). Passing
+    /// `active_eq_size_before_fold = 0` makes `mega_finalize_block` skip the
+    /// fold branch, and we skip `record_active_eq_slot_fold` to avoid a `u32`
+    /// underflow of the already-zero eq sizes.
     #[allow(clippy::too_many_arguments)]
     fn dispatch_fused_tail(
         &mut self,
@@ -101,6 +109,7 @@ where
         eq_prefactor: *mut E,
         coeffs_out: *mut E,
         challenge_out: *mut E,
+        fold_eq: bool,
         context: &ProverContext,
     ) -> CudaResult<()> {
         let prev_e4 = prev_claim_coord as *const E4;
@@ -112,8 +121,13 @@ where
         let eq_low_ptr = self.round_scratch.eq_low_group.as_mut_ptr() as *mut E4;
         let partials_ptr = self.round_scratch.partials.as_mut_ptr() as *mut E4;
 
-        let (slot_base, slot_size_before_fold) =
-            super::kernels::resolve_active_eq_slot(&self.eq_sizes, eq_low_ptr);
+        let (slot_base, slot_size_before_fold) = if fold_eq {
+            super::kernels::resolve_active_eq_slot(&self.eq_sizes, eq_low_ptr)
+        } else {
+            // Final round: identity eq, no fold. `slot_base` is a valid pointer
+            // but `mega_finalize_block` never dereferences it when size == 0.
+            (eq_low_ptr, 0u32)
+        };
 
         let num_blocks = super::kernels::dual_reduce_num_stage1_blocks(acc_size);
         if num_blocks == 0 {
@@ -152,7 +166,9 @@ where
             )?;
         }
 
-        super::kernels::record_active_eq_slot_fold(&mut self.eq_sizes);
+        if fold_eq {
+            super::kernels::record_active_eq_slot_fold(&mut self.eq_sizes);
+        }
         Ok(())
     }
 
@@ -258,7 +274,11 @@ where
         let mut device_claim: DeviceAllocation<E> = context.alloc(1, AllocationPlacement::Top)?;
         let mut device_eq_prefactor: DeviceAllocation<E> =
             context.alloc(1, AllocationPlacement::Top)?;
-        let coeffs_total_len = last_step * 4;
+        // #320: every round — including the last (acc_size == 1) — now emits a
+        // univariate monomial, so `internal_round_coefficients` has
+        // `folding_steps` entries (was `folding_steps - 1`). Must match the
+        // `ProofLayout` allocation (`sumcheck_num_rounds * 4`).
+        let coeffs_total_len = self.folding_steps * 4;
         // B1: per-round kernels write coeffs straight into the slab range for
         // this layer — no standalone allocation and no post-loop slab D2D. The
         // kernels are stream-ordered against the terminal D2H of the slab in
@@ -410,7 +430,8 @@ where
 
             // Unfused round-kernel head + fused tail (reduce + round-update +
             // fold-eq in one kernel; -0.9 ms vs the unfused 5-launch tail on this
-            // fixture).
+            // fixture). These `folding_steps - 1` rounds each fold the factored
+            // eq for the next round (`fold_eq = true`).
             self.dispatch_fused_tail(
                 acc_size,
                 prev_coord_slice.as_ptr(),
@@ -419,41 +440,96 @@ where
                 device_eq_prefactor.as_mut_ptr(),
                 coeffs_round_slice.as_mut_ptr(),
                 challenge_slice.as_mut_ptr(),
+                true,
                 context,
             )?;
         }
 
+        // #320 final round (step == last_step == folding_steps - 1, acc_size == 1).
+        // The factored eq is now fully consumed (identity), so the round kernel
+        // runs in monomial form (`explicit_form = false`) — exactly the CPU
+        // `evaluate::<_, false>` last round — and the fused tail emits the
+        // `last_step`-th monomial into the coeff slab and draws `r_before_last`
+        // into `device_claim_point_out[last_step]`, WITHOUT folding eq again.
+        // The `[E;4]` last-round line is still read from the round storage by
+        // `final_evaluation_sources_for_last_step(last_step)` below (the
+        // explicit-form flag never affected that storage fold).
         match last_step {
-            1 => self.launch_round1_kernels_from_symbol(1, true, context)?,
-            step => self.launch_continuation_kernels_from_symbol(step, 1, true, context)?,
+            1 => self.launch_round1_kernels_from_symbol(1, false, context)?,
+            step => self.launch_continuation_kernels_from_symbol(step, 1, false, context)?,
+        }
+        {
+            // SAFETY: `last_step == folding_steps - 1 < folding_steps + 1`, so
+            // this input claim-point coordinate (`z_{last_step}`) exists.
+            let prev_coord_slice = unsafe { device_claim_point_in.slice(last_step, 1) };
+            // SAFETY: `coeffs_total_len = folding_steps * 4`, so the
+            // `last_step`-th 4-element window is in-bounds.
+            let coeffs_round_slice = unsafe {
+                DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(last_step * 4), 4)
+            };
+            // SAFETY: `device_claim_point_out` is length `folding_steps + 2`;
+            // slot `last_step = folding_steps - 1` (= `r_before_last`) is in
+            // bounds and uniquely written here.
+            let challenge_slice = unsafe { device_claim_point_out.slice_mut(last_step, 1) };
+            self.dispatch_fused_tail(
+                1,
+                prev_coord_slice.as_ptr(),
+                device_seed.as_mut_ptr(),
+                device_claim.as_mut_ptr(),
+                device_eq_prefactor.as_mut_ptr(),
+                coeffs_round_slice.as_mut_ptr(),
+                challenge_slice.as_mut_ptr(),
+                false,
+                context,
+            )?;
         }
 
         // B1: coeffs already landed in the slab via the per-round kernels
         // (or in `fallback_device_coeffs` for test paths). No post-loop
         // slab D2D needed.
 
-        // Device-side inter-layer transcript: pack the flattened last-round
-        // evaluations into a packed E buffer (D2D from each address's 4-E
-        // source slot) — written **directly into the slab** via B2 in the
-        // production path. Absorbed into device_seed via transcript_commit,
-        // then squeezed into 3 E4 challenges
-        // `[r_before_last, r_last, next_batching_challenge]` via
-        // transcript_squeeze_e4. The same packed buffer feeds the on-device
-        // `backward_new_claims_two_var` kernel.
+        // Device-side inter-layer transcript (#320). The `[E;4]` last-round
+        // bilinear line is gathered from the round storage into a TEMP device
+        // buffer, then reduced over the last-output coordinate at
+        // `r_before_last` (drawn in-loop at `claim_point_out[last_step]`) into
+        // the `[E;2]` LSB line that is sent in the proof and committed to the
+        // transcript. We then squeeze the 2 remaining challenges
+        // `[r_last, next_batching_challenge]`. The TEMP `[E;4]` buffer still
+        // feeds `backward_new_claims_two_var` (whose value equals the CPU
+        // `interp(interp(v0,v2,rbl), interp(v1,v3,rbl), r_last)`).
         let transcript_input_sources = self.final_evaluation_sources_for_last_step(last_step);
         let num_addresses = transcript_input_sources.len();
-        let transcript_inputs_len = num_addresses * 4;
+        let last_evals_len = num_addresses * 4;
+        let final_step_evals_len = num_addresses * 2;
         let transcript_input_addresses: Vec<GKRAddress> =
             transcript_input_sources.keys().copied().collect();
-        // Per-address gather writes straight into the slab's
-        // `final_step_evaluations` range. The flat layout (4 E per address,
-        // in BTreeMap key order from `final_evaluation_sources_for_last_step`)
-        // matches what `build_proof_layout_inputs` stored in
-        // `ProofLayout.backward[slot].final_step_eval_addresses`.
-        let transcript_inputs_buffer_ptr: *mut E = if transcript_inputs_len > 0 {
-            // SAFETY: `layer_slot` selects this layer's slab segment and
-            // the returned region is validated against
-            // `transcript_inputs_len` immediately below.
+
+        // TEMP `[E;4]` gather target. The slab now holds the reduced `[E;2]`
+        // LSB lines (degree 2), so the raw 4-evals can no longer live there.
+        let mut device_last_evals: DeviceAllocation<E> =
+            context.alloc(last_evals_len.max(1), AllocationPlacement::Top)?;
+        if num_addresses > 0 {
+            let src_ptrs: Vec<u64> = transcript_input_sources
+                .values()
+                .map(|p| *p as u64)
+                .collect();
+            // SAFETY: `device_last_evals` holds `last_evals_len` ext elements;
+            // the E4 view matches the only instantiated extension layout.
+            let dst = unsafe {
+                DeviceSlice::from_raw_parts_mut(
+                    device_last_evals.as_mut_ptr() as *mut E4,
+                    last_evals_len,
+                )
+            };
+            crate::ops::blake2s::gather_e_addresses(&src_ptrs, dst, 4, stream)?;
+        }
+
+        // Slab destination for the `[E;2]` LSB lines = `final_step_evaluations`
+        // (degree 2; BTreeMap key order matches `final_step_eval_addresses`
+        // stored by `build_proof_layout_inputs`).
+        let final_step_evals_buffer_ptr: *mut E = if final_step_evals_len > 0 {
+            // SAFETY: `layer_slot` selects this layer's slab segment; the region
+            // is validated against `final_step_evals_len` immediately below.
             let (dst_ptr, dst_len) = unsafe {
                 proof_layout.backward_final_step_evals_device_mut(
                     proof_slab.as_ptr() as *mut u8,
@@ -461,64 +537,71 @@ where
                 )
             };
             debug_assert_eq!(
-                dst_len, transcript_inputs_len,
-                "slab final_step_evaluations range must match layer's transcript_inputs_len",
+                dst_len, final_step_evals_len,
+                "slab final_step_evaluations range must match num_addresses * 2",
             );
             dst_ptr as *mut E
         } else {
             null_mut()
         };
-        // B7: per-address gather kernel — single launch replaces the
-        // num_addresses-element D2D loop. Source pointers are scheduling-
-        // time-known and now ride inline in the kernel-arg struct
-        // (`GpuGatherEAddressesDesc`), so the previous SchedulerHostAllocation
-        // + per-launch H2D of the pointer table is gone. The slab/fallback
-        // `transcript_inputs_e_slice` below is still held alive by
-        // `_proof_slab` (slab path) or `fallback_d_layer_transcript_inputs`
-        // (test path) for the duration of the gather launch.
+
+        // #320: reduce the `[E;4]` line over the last-output coordinate at
+        // `r_before_last` into the `[E;2]` LSB line, written into the slab.
         if num_addresses > 0 {
-            let src_ptrs: Vec<u64> = transcript_input_sources
-                .values()
-                .map(|p| *p as u64)
-                .collect();
-            // SAFETY: the slab/fallback transcript-input buffer was allocated
-            // for `transcript_inputs_len` ext elements; viewing it as `E4`
-            // matches the only instantiated extension layout.
-            let dst = unsafe {
-                DeviceSlice::from_raw_parts_mut(
-                    transcript_inputs_buffer_ptr as *mut E4,
-                    transcript_inputs_len,
+            // SAFETY: TEMP `[E;4]` buffer, E = E4 layout, alive through launch.
+            let last_evals_e4 = unsafe {
+                DeviceSlice::from_raw_parts(
+                    device_last_evals.as_ptr() as *const E4,
+                    last_evals_len,
                 )
             };
-            crate::ops::blake2s::gather_e_addresses(&src_ptrs, dst, 4, stream)?;
+            // SAFETY: `claim_point_out[last_step]` is `r_before_last`, drawn by
+            // the in-loop final round; reading one E4 challenge.
+            let rbl_view = unsafe {
+                DeviceSlice::from_raw_parts(
+                    device_claim_point_out.as_ptr().add(last_step) as *const E4,
+                    1,
+                )
+            };
+            // SAFETY: slab final-step region, E = E4 layout, `2 * num_addresses`.
+            let lsb_out = unsafe {
+                DeviceSlice::from_raw_parts_mut(
+                    final_step_evals_buffer_ptr as *mut E4,
+                    final_step_evals_len,
+                )
+            };
+            crate::ops::gkr_ops::backward_dim_reducing_lsb_lines(
+                last_evals_e4,
+                rbl_view,
+                lsb_out,
+                stream,
+            )?;
         }
 
-        // SAFETY: E = E4 in every instantiation of this scheduler; the u32
-        // view matches the host `commit_field_els::<BF, E4>` byte layout
-        // (covered by `ops::blake2s::tests::transcript_squeeze_e4_parity_*`).
-        // The slab/fallback memory is alive through the kernel launch, and
-        // `transcript_commit` only reads from this slice.
-        let transcript_inputs_e_slice = unsafe {
+        // Commit the `[E;2]` LSB lines (matches host `commit_field_els::<BF, E4>`
+        // over the final-step evaluations).
+        // SAFETY: slab final-step region is alive through the launch; E = E4 so
+        // the u32 view matches the host byte layout. Empty when 0 addresses.
+        let final_step_evals_e_slice = unsafe {
             DeviceSlice::from_raw_parts(
-                transcript_inputs_buffer_ptr as *const E,
-                transcript_inputs_len,
+                final_step_evals_buffer_ptr as *const E,
+                final_step_evals_len,
             )
         };
-        // SAFETY: `E = E4` in this scheduler, so the transcript input slice is
-        // byte-identical to the `u32` view that `transcript_commit` expects.
-        let d_transcript_inputs_u32 = unsafe { transcript_inputs_e_slice.transmute::<u32>() };
-        crate::ops::blake2s::transcript_commit(&mut device_seed, d_transcript_inputs_u32, stream)?;
+        let d_final_step_evals_u32 = unsafe { final_step_evals_e_slice.transmute::<u32>() };
+        crate::ops::blake2s::transcript_commit(&mut device_seed, d_final_step_evals_u32, stream)?;
 
-        // Squeeze the 3 layer challenges directly into the tail of
-        // `device_claim_point_out` — slots
-        // `[last_step..last_step + 3] = [r_before_last, r_last, next_batching_challenge]`.
-        // SAFETY: `last_step + 3 = folding_steps + 2 = next_claim_point_and_batching_len`,
-        // so the range is in-bounds, and only this scheduling site writes
-        // it (see write-exclusivity below).
+        // Squeeze the 2 remaining layer challenges
+        // `[r_last, next_batching_challenge]` into
+        // `claim_point_out[folding_steps..folding_steps + 2]`. `r_before_last`
+        // was drawn in-loop at `claim_point_out[folding_steps - 1]`.
+        // SAFETY: `folding_steps + 2 = next_claim_point_and_batching_len`, so the
+        // range is in-bounds, and only this scheduling site writes it.
         {
-            let layer_challenges_dst = unsafe { device_claim_point_out.slice_mut(last_step, 3) };
-            // SAFETY: E = E4 in every instantiation; the transmute is a no-op at
-            // the byte level and matches host `draw_random_field_els::<BF, E4>`.
+            let layer_challenges_dst =
+                unsafe { device_claim_point_out.slice_mut(self.folding_steps, 2) };
+            // SAFETY: E = E4; the transmute is a byte-level no-op matching host
+            // `draw_random_field_els::<BF, E4>`.
             let layer_challenges_dst_e4 = unsafe { layer_challenges_dst.transmute_mut::<E4>() };
             crate::ops::blake2s::transcript_squeeze_e4(
                 &mut device_seed,
@@ -527,32 +610,27 @@ where
             )?;
         }
 
-        // Device-side per-address `new_claims` evaluator. Consumes the packed
-        // last-round evaluations (4 E per address) and the just-squeezed
-        // `[r_before_last, r_last]` to produce N E per-address next-layer
-        // claims. Replaces the host loop inside the final readback callback.
-        // The kernel is stream-ordered after the transcript squeeze and
-        // before the subsequent D2H of the result.
+        // Device-side per-address `new_claims` evaluator. Consumes the TEMP
+        // `[E;4]` last-round line and `[r_before_last, r_last]` to produce N E
+        // per-address next-layer claims. `r_before_last` is at
+        // `claim_point_out[last_step]` (in-loop) and `r_last` at
+        // `claim_point_out[last_step + 1] = claim_point_out[folding_steps]`
+        // (squeeze) — contiguous, so the 2-element read is unchanged.
         let mut device_new_claims: DeviceAllocation<E> =
             context.alloc(num_addresses.max(1), AllocationPlacement::Top)?;
         if num_addresses > 0 {
             // SAFETY: E = E4 in every instantiation; the transmutes match the
             // kernel's `e4` view of both the packed evals and the challenges.
-            // The packed evals slab/fallback memory is alive through the
-            // kernel launch.
+            // The TEMP eval buffer is alive through the kernel launch.
             let transcript_inputs_e_view = unsafe {
-                DeviceSlice::from_raw_parts(
-                    transcript_inputs_buffer_ptr as *const E,
-                    transcript_inputs_len,
-                )
+                DeviceSlice::from_raw_parts(device_last_evals.as_ptr() as *const E, last_evals_len)
             };
             // SAFETY: the packed eval buffer is laid out as `E4` elements in
             // this scheduler instantiation.
             let transcript_inputs_e4: &era_cudart::slice::DeviceSlice<E4> =
                 unsafe { transcript_inputs_e_view.transmute::<E4>() };
-            // SAFETY: layer-challenge tail lives at
-            // `claim_point_out[last_step..last_step + 3]`; reading the first
-            // two (`r_before_last`, `r_last`) for the kernel.
+            // SAFETY: layer-challenge slots `[last_step..last_step + 2]` hold
+            // `[r_before_last, r_last]` (in-loop draw + post-loop squeeze).
             let challenges_view = unsafe {
                 DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr().add(last_step), 2)
             };
@@ -588,10 +666,14 @@ where
             // work in this layer; coeffs and packed last-evals are now slab-direct via B1/B2
             // and not D2H'd here). The join lets exec wait for the per-layer D2Hs before
             // scheduling the final-readback callback and dropping the source allocations.
+            // #320: `r_before_last` is now drawn in-loop and lives among the
+            // folding challenges `claim_point_out[0..folding_steps]`; only
+            // `[r_last, next_batching_challenge]` are squeezed post-loop.
+            let folding_steps = self.folding_steps;
             // SAFETY: these pinned host buffers are used only as D2H
             // destinations before the callback reads them.
             let mut layer_challenges_host: HostAllocation<[E]> =
-                unsafe { context.alloc_host_uninit_slice(3) };
+                unsafe { context.alloc_host_uninit_slice(2) };
             let layer_challenges_accessor = layer_challenges_host.get_accessor();
             let mut new_claims_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(num_addresses.max(1)) };
@@ -601,19 +683,20 @@ where
             let mut final_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
             let final_seed_accessor = final_seed_host.get_accessor();
             let mut final_folding_challenges_host: HostAllocation<[E]> =
-                unsafe { context.alloc_host_uninit_slice(last_step.max(1)) };
+                unsafe { context.alloc_host_uninit_slice(folding_steps.max(1)) };
             let final_folding_challenges_accessor = final_folding_challenges_host.get_accessor();
             crate::prover::transfer::fork_join_exec_to_d2h(
                 stream,
                 context.get_d2h_stream(),
                 |d2h_stream| {
-                    // SAFETY: `[last_step..last_step + 3]` was just written by the
-                    // transcript squeeze on `stream`; d2h_stream waits on the fork event
+                    // SAFETY: `[folding_steps..folding_steps + 2] = [r_last,
+                    // next_batching_challenge]` was just written by the transcript
+                    // squeeze on `stream`; d2h_stream waits on the fork event
                     // before this read.
                     let layer_challenges_src = unsafe {
                         DeviceSlice::from_raw_parts(
-                            device_claim_point_out.as_ptr().add(last_step),
-                            3,
+                            device_claim_point_out.as_ptr().add(folding_steps),
+                            2,
                         )
                     };
                     memory_copy_async(
@@ -638,11 +721,16 @@ where
                     // for WHIR host setup; coeffs and packed last-evaluations stay on
                     // device and flow through the proof slab via B1/B2).
                     memory_copy_async(&mut final_seed_host, &device_seed, d2h_stream)?;
-                    if last_step > 0 {
-                        // SAFETY: `[0..last_step]` are written in-place by the
-                        // per-round update kernels.
+                    if folding_steps > 0 {
+                        // SAFETY: `[0..folding_steps]` are written in-place by the
+                        // per-round update kernels — slots `[0..folding_steps - 1]`
+                        // by the loop rounds and `[folding_steps - 1]` (=
+                        // `r_before_last`) by the in-loop final round.
                         let folding_src = unsafe {
-                            DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr(), last_step)
+                            DeviceSlice::from_raw_parts(
+                                device_claim_point_out.as_ptr(),
+                                folding_steps,
+                            )
                         };
                         memory_copy_async(
                             &mut final_folding_challenges_host,
@@ -665,7 +753,9 @@ where
                     // Populate the rolling state from the D2H'd device state. The
                     // seed captured here is already post-commit+squeeze (advanced
                     // on-device), so no host `commit_field_els`/`draw_random_field_els`
-                    // is needed — the 3 challenges live in `layer_challenges_host`.
+                    // is needed — the 2 post-loop challenges live in
+                    // `layer_challenges_host` and `r_before_last` is already among
+                    // the folding challenges.
                     let state = shared_state_for_callback.get_mut();
                     state.seed = Seed(
                         <&[u32; STATE_SIZE]>::try_from(final_seed_accessor.get())
@@ -673,19 +763,18 @@ where
                             .to_owned(),
                     );
                     state.folding_challenges.clear();
-                    if last_step > 0 {
+                    if folding_steps > 0 {
+                        // Includes `r_before_last` at index `folding_steps - 1`.
                         state.folding_challenges.extend_from_slice(
-                            &final_folding_challenges_accessor.get()[..last_step],
+                            &final_folding_challenges_accessor.get()[..folding_steps],
                         );
                     }
 
-                    let [r_before_last, r_last, next_batching_challenge]: [E; 3] =
-                        layer_challenges_accessor
-                            .get()
-                            .try_into()
-                            .expect("layer challenges D2H has length 3");
+                    let [r_last, next_batching_challenge]: [E; 2] = layer_challenges_accessor
+                        .get()
+                        .try_into()
+                        .expect("layer challenges D2H has length 2");
                     let mut new_claim_point = state.folding_challenges.clone();
-                    new_claim_point.push(r_before_last);
                     new_claim_point.push(r_last);
 
                     // Rebuild `new_claims` from the D2H'd device-computed per-
@@ -723,6 +812,9 @@ where
 
         drop(device_claim);
         drop(device_eq_prefactor);
+        // TEMP `[E;4]` gather buffer: freed (stream-ordered) after the
+        // lsb-lines + new_claims kernels that read it have been scheduled.
+        drop(device_last_evals);
         drop(device_claim_point_in);
         drop(device_claims_in);
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
