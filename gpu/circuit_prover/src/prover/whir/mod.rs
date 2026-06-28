@@ -407,8 +407,8 @@ pub(crate) mod tests {
     use fft::{bitreverse_enumeration_inplace, domain_generator_for_size, Twiddles};
     use field::Field;
     use prover::gkr::whir::{
-        commit_single_ext_poly, commit_single_ext_poly_with_transform_for_test,
-        ColumnMajorExtensionOracleForLDE,
+        commit_single_ext_poly_no_transform_for_test,
+        commit_single_ext_poly_with_transform_for_test, ColumnMajorExtensionOracleForLDE,
     };
     use prover::merkle_trees::{
         ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
@@ -726,7 +726,16 @@ pub(crate) mod tests {
                 worker,
             )
         } else {
-            commit_single_ext_poly(cosets, values_per_leaf, tree_cap_size, worker)
+            // Eval-form reference (no leaf transform), matching
+            // `GpuWhirExtensionOracle::from_monomial_coeffs(.., transform=false)`.
+            // `commit_single_ext_poly` is coefficient-form by default (#279), so
+            // use the ungated eval-form test helper for this branch.
+            commit_single_ext_poly_no_transform_for_test(
+                cosets,
+                values_per_leaf,
+                tree_cap_size,
+                worker,
+            )
         };
 
         result

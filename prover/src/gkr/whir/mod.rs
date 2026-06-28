@@ -1652,6 +1652,62 @@ where
     }
 }
 
+/// Eval-form (no leaf transform) single-poly commit for tests that validate the
+/// `transform_leaves_to_multilinear_coeffs == false` path against a GPU oracle.
+/// `commit_single_ext_poly` is coefficient-form by default (#279) and the
+/// eval-form variant is `#[cfg(feature = "eval_leaves")]`-gated, so this ungated
+/// helper provides the eval-form reference regardless of the active feature.
+/// Mirrors the eval-form `commit_single_ext_poly` body exactly.
+pub fn commit_single_ext_poly_no_transform_for_test<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+>(
+    cosets: Vec<(Box<[E]>, F)>,
+    values_per_leaf: usize,
+    tree_cap_size: usize,
+    worker: &Worker,
+) -> ColumnMajorExtensionOracleForLDE<F, E, T>
+where
+    [(); E::DEGREE]: Sized,
+{
+    let mut t = Vec::with_capacity(cosets.len());
+    let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
+    for (column, offset) in cosets.into_iter() {
+        assert!(!column.is_empty());
+        let el = ColumnMajorExtensionOracleForCoset {
+            values_normal_order: ColumnMajorCosetBoundTracePart {
+                column: Arc::new(column),
+                offset,
+            },
+        };
+        t.push(el);
+    }
+
+    let source: Vec<_> = t
+        .iter()
+        .map(|el| vec![&el.values_normal_order.column[..]])
+        .collect();
+    let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
+
+    let tree = T::construct_from_cosets::<E, Global>(
+        &source_ref[..],
+        values_per_leaf,
+        tree_cap_size,
+        true,
+        true,
+        false,
+        worker,
+    );
+
+    ColumnMajorExtensionOracleForLDE {
+        cosets: t,
+        tree,
+        values_per_leaf,
+        trace_len_log2,
+    }
+}
+
 pub fn commit_single_ext_poly_with_transform_for_test<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,

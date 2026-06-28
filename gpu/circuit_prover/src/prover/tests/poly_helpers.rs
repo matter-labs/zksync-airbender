@@ -61,41 +61,47 @@ pub(super) fn build_cpu_recursive_whir_oracle_for_test(
 ) -> ColumnMajorExtensionOracleForLDE<BF, E4, DefaultTreeConstructor> {
     let cosets =
         compute_column_major_lde_from_monomial_form_for_test(monomial_coeffs, twiddles, lde_factor);
-    let trace_len_log2 = monomial_coeffs.len().trailing_zeros() as usize;
-    let mut wrapped_cosets = Vec::with_capacity(cosets.len());
-    for (column, offset) in cosets.iter() {
-        wrapped_cosets.push(ColumnMajorExtensionOracleForCoset {
-            values_normal_order: ColumnMajorCosetBoundTracePart {
-                column: column.clone().into(),
-                offset: *offset,
-            },
-        });
-    }
-    let source: Vec<_> = wrapped_cosets
-        .iter()
-        .map(|coset| vec![&coset.values_normal_order.column[..]])
-        .collect();
-    let source_ref: Vec<_> = source.iter().map(|entry| &entry[..]).collect();
-    let tree =
-        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::construct_from_cosets::<
-            E4,
-            Global,
-        >(
-            &source_ref,
-            values_per_leaf,
-            tree_cap_size,
-            true,
-            true,
-            false,
-            worker,
-        );
-
-    ColumnMajorExtensionOracleForLDE {
-        cosets: wrapped_cosets,
-        tree,
+    // #279: route through the canonical recursive-oracle commit so the test
+    // reference matches the production WHIR leaf encoding exactly (coefficient
+    // form by default; the `eval_leaves` feature selects the eval-form variant).
+    // Previously this rebuilt the Merkle tree from raw coset evaluations
+    // (eval-form), which diverged from the coeff-form production oracles and
+    // surfaced as a "PoW nonce diverged" mismatch once #320 unblocked the WHIR
+    // stage of the stagewise parity test.
+    prover::gkr::whir::commit_single_ext_poly::<BF, E4, DefaultTreeConstructor>(
+        cosets,
         values_per_leaf,
-        trace_len_log2,
+        tree_cap_size,
+        worker,
+    )
+}
+
+/// #279 coeff-form leaf fold: recursive WHIR oracles now store each leaf as
+/// multilinear coefficients, so a queried leaf is evaluated at the folding
+/// challenges directly (monomial-tensor dot product) instead of FRI-folding
+/// eval-form coset values via [`fold_coset_for_test`]. Mirrors the canonical
+/// `eval_multilinear_from_coeffs` (proven equal to `fold_coset` by the prover's
+/// `coeffs_based_folding_matches_fold_coset` proptest). Base-layer oracles stay
+/// in evaluation form, so their queries keep using `fold_coset_for_test`.
+pub(super) fn eval_multilinear_from_coeffs_for_test(coeffs: &[E4], challenges: &[E4]) -> E4 {
+    let k = challenges.len();
+    assert_eq!(coeffs.len(), 1 << k);
+    let mut weights = vec![E4::ZERO; 1 << k];
+    weights[0] = E4::ONE;
+    for (j, alpha) in challenges.iter().enumerate() {
+        for i in (0..(1usize << j)).rev() {
+            let mut w_alpha = weights[i];
+            w_alpha.mul_assign(alpha);
+            weights[i + (1usize << j)] = w_alpha;
+        }
     }
+    let mut result = E4::ZERO;
+    for (c, w) in coeffs.iter().zip(weights.iter()) {
+        let mut t = *c;
+        t.mul_assign(w);
+        result.add_assign(&t);
+    }
+    result
 }
 
 pub(super) fn fold_monomial_form_for_test(input: &mut Vec<E4>, challenge: E4) {
