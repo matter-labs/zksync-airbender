@@ -133,7 +133,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
 
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
-        decoder_table: &witness_gen_data,
+        decoder_table: decoder_table_data,
         default_pc_value_in_padding: 4,
     };
     let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
@@ -141,6 +141,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         NUM_CYCLES_PER_CHUNK,
         &oracle,
         &worker,
+        None,
         Global,
         Global,
     );
@@ -151,6 +152,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         &oracle,
         &TableDriver::new(),
         &worker,
+        None,
         Global,
         Global,
     );

@@ -185,7 +185,7 @@ pub(super) fn prepare_basic_unrolled_fixture(
         let worker = Worker::new_with_num_threads(8);
         let oracle = NonMemoryCircuitOracle {
             inner: &buffer[..],
-            decoder_table: &witness_gen_data,
+            decoder_table: &decoder_table_data,
             default_pc_value_in_padding: 4,
         };
 
@@ -194,6 +194,7 @@ pub(super) fn prepare_basic_unrolled_fixture(
             NUM_CYCLES_PER_CHUNK,
             &oracle,
             &worker,
+            None,
             Global,
             Global,
         );
@@ -204,6 +205,7 @@ pub(super) fn prepare_basic_unrolled_fixture(
             &oracle,
             &TableDriver::new(),
             &worker,
+            None,
             Global,
             Global,
         );

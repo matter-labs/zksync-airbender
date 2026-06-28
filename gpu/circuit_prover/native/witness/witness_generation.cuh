@@ -20,6 +20,13 @@ struct wrapped_f {
 
   static DEVICE_FORCEINLINE wrapped_f from(const wrapped_f &value) { return value; }
 
+  // Mirrors host `WitnessComputationalField::from_raw_repr_with_reduction`: reduce the
+  // integer mod ORDER and store it AS the raw Montgomery limb (NO into_mont), unlike
+  // `from` which Montgomery-encodes. Used by the add/sub mulmod/fmamod R^-1 fix (PR #309).
+  template <typename U> static DEVICE_FORCEINLINE wrapped_f from_raw_repr_with_reduction(const U &value) {
+    return wrapped_f(bf::from_raw_repr_with_reduction(value.inner));
+  }
+
   static DEVICE_FORCEINLINE wrapped_f add(const wrapped_f &lhs, const wrapped_f &rhs) { return wrapped_f(bf::add(lhs.inner, rhs.inner)); }
 
   static DEVICE_FORCEINLINE wrapped_f sub(const wrapped_f &lhs, const wrapped_f &rhs) { return wrapped_f(bf::sub(lhs.inner, rhs.inner)); }
@@ -71,6 +78,11 @@ template <typename T, typename W> struct wrapped_integer {
   template <typename U> static DEVICE_FORCEINLINE wrapped_integer from(const U &value) { return wrapped_integer{static_cast<T>(value.inner)}; }
 
   static DEVICE_FORCEINLINE wrapped_integer from(const wrapped_f &value) { return wrapped_integer{static_cast<T>(bf::into_canonical_u32(value.inner))}; }
+
+  // Mirrors host `field.into_raw_repr_reduced()`: extract the RAW Montgomery limb (NO
+  // from_mont / canonicalization), unlike `from(wrapped_f)` which returns the canonical
+  // value. Used by the add/sub mulmod/fmamod R^-1 fix (PR #309).
+  static DEVICE_FORCEINLINE wrapped_integer raw_repr_reduced_from_field(const wrapped_f &value) { return wrapped_integer{static_cast<T>(bf::into_raw_u32(value.inner))}; }
 
   static DEVICE_FORCEINLINE wrapped_integer add(const wrapped_integer &lhs, const wrapped_integer &rhs) { return wrapped_integer(lhs.inner + rhs.inner); }
 
@@ -288,6 +300,8 @@ template <class R> struct WitnessProxy {
   }
 #define ACCESS_LOOKUP(N, O, IDX) [[maybe_unused]] const wrapped_f VAR(N) = VAR(O)[IDX];
 #define FROM(T, N, I) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::from(VAR(I));
+#define FROM_RAW_REPR_WITH_REDUCTION(T, N, I) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::from_raw_repr_with_reduction(VAR(I));
+#define RAW_REPR_REDUCED_FROM_FIELD(T, N, I) [[maybe_unused]] const wrapped_##T VAR(N) = wrapped_##T::raw_repr_reduced_from_field(VAR(I));
 #define B_FROM_INTEGER_EQUALITY(N, LHS, RHS) [[maybe_unused]] const wrapped_b VAR(N) = wrapped_b::from_integer_equality(VAR(LHS), VAR(RHS));
 #define B_FROM_INTEGER_CARRY(N, LHS, RHS) [[maybe_unused]] const wrapped_b VAR(N) = wrapped_b::from_integer_carry(VAR(LHS), VAR(RHS));
 #define B_FROM_INTEGER_BORROW(N, LHS, RHS) [[maybe_unused]] const wrapped_b VAR(N) = wrapped_b::from_integer_borrow(VAR(LHS), VAR(RHS));
