@@ -30,12 +30,12 @@ use cs::definitions::gkr::RamWordRepresentation;
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::codegen_ir::lower as retired_lower;
 use cs::gkr_compiler::dag_ir::{
-    check_batching_parity, eval_layer_root, lower_dag, validate, DagLayer, Resolvers, RootGroup,
-    RootSlot,
+    check_batching_parity, eval_layer_root, lower_dag, validate, DagLayer, Expr, ExprId, Resolvers,
+    Root, RootGroup, RootSlot, SinkKind,
 };
 use cs::gkr_compiler::test_support::{
-    golden_circuit_artifacts, sample_relation_cases, sample_relations, single_relation_artifact,
-    variant_name, ConcreteField,
+    build_add_sub_artifact, golden_circuit_artifacts, sample_relation_cases, sample_relations,
+    single_relation_artifact, variant_name, ConcreteField,
 };
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
@@ -406,4 +406,113 @@ fn memory_tuple_matches_prover_evaluate_memory_query() {
         "memory tuple: DAG-IR value diverged from the mirrored reference"
     );
     println!("memory tuple matched both evaluate_memory_query AND the mirrored reference");
+}
+
+// ── cache-cone alias-identity gate (Task 1 — the load-bearing test) ─────────
+
+/// `true` if `target` is reachable from `start` by walking ONLY the pure
+/// expression DAG: `Add`/`Mul` operands and a `LookupValue` source's `query`
+/// sub-expr.
+///
+/// It deliberately does NOT follow any source→root edge. With the old
+/// `SourceKind::Prior` machinery a same-layer cache read was an *opaque leaf*
+/// (`Source(Prior{id})`) that pointed at a separate root — so a consumer's
+/// expr-cone never reached the cache root's `expr` and this returns `false`
+/// (RED). After Task 1 the cache read IS the cache value's shared `ExprId`, so
+/// the consumer's cone contains it directly (GREEN).
+fn cone_contains(layer: &DagLayer, start: ExprId, target: ExprId) -> bool {
+    let mut stack = vec![start];
+    let mut seen = BTreeSet::new();
+    while let Some(id) = stack.pop() {
+        if id == target {
+            return true;
+        }
+        if !seen.insert(id.0) {
+            continue;
+        }
+        match &layer.exprs[id.0 as usize] {
+            Expr::Source(src_id) => {
+                if let cs::gkr_compiler::dag_ir::SourceKind::LookupValue { query, .. } =
+                    &layer.sources[src_id.0 as usize].kind
+                {
+                    stack.push(*query);
+                }
+            }
+            Expr::Add(args) | Expr::Mul(args) => stack.extend_from_slice(args),
+        }
+    }
+    false
+}
+
+/// The `expr` of `root` (both `Output` and `Constraint` carry one).
+fn root_expr(root: &Root) -> ExprId {
+    match root {
+        Root::Output { expr, .. } | Root::Constraint { expr } => *expr,
+    }
+}
+
+/// `true` if `root` is a `Cache`-sink (materialization-only) `Output` root.
+fn is_cache_root(layer: &DagLayer, root: &Root) -> bool {
+    matches!(root, Root::Output { sink, .. }
+        if matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. }))
+}
+
+/// Task-1 load-bearing gate (review C1/codex#1): a same-layer cache read must be
+/// the cache value's *shared `ExprId`*, not an opaque `Prior` leaf pointing at a
+/// separate root.
+///
+/// The add_sub family circuit materializes denominator caches that are consumed
+/// by same-layer product gates. For at least one such cache root we assert that
+/// some claim-bearing (batched) root's expr-cone reaches the EXACT `ExprId` the
+/// cache root materializes — DAG sharing, not a duplicated/aliased leaf.
+///
+/// RED (pre-rewrite): the consumer reads the cache via `Source(Prior{id})`, an
+/// opaque leaf, so its cone (pure expr DAG) never reaches `cache_expr`. GREEN
+/// (post-rewrite): the consumer shares the cache root's `ExprId`.
+#[test]
+fn cache_consumer_value_and_alias_identity() {
+    let artifact = build_add_sub_artifact();
+    let dag = lower_dag(&artifact).expect("lower_dag must succeed");
+
+    let mut checked_layers = 0usize;
+    let mut found_consumer = false;
+
+    for layer in &dag.layers {
+        // Cache-sink roots and the exact ExprId each materializes.
+        let cache_exprs: Vec<ExprId> = layer
+            .roots
+            .iter()
+            .filter(|r| is_cache_root(layer, r))
+            .map(root_expr)
+            .collect();
+        if cache_exprs.is_empty() {
+            continue;
+        }
+        checked_layers += 1;
+
+        // For every claim-bearing (batched) root, walk its expr-cone (pure DAG,
+        // NOT through Prior→root) and check it shares a cache root's ExprId.
+        for &consumer_id in &layer.batching.roots {
+            let consumer_expr = root_expr(&layer.roots[consumer_id.0 as usize]);
+            for &cache_expr in &cache_exprs {
+                if cone_contains(layer, consumer_expr, cache_expr) {
+                    found_consumer = true;
+                }
+            }
+        }
+    }
+
+    assert!(
+        checked_layers >= 1,
+        "add_sub must materialize at least one cache root for this gate to be meaningful"
+    );
+    assert!(
+        found_consumer,
+        "a claim-bearing root's expr-cone must SHARE a same-layer cache root's ExprId \
+         (cache reuse must be DAG sharing, never an opaque Prior/CacheOutput leaf)"
+    );
+    println!(
+        "cache alias-identity: a claim-bearing root shares a cache root's ExprId \
+         across {checked_layers} cache-bearing layer(s)"
+    );
 }

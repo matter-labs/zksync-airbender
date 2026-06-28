@@ -110,7 +110,6 @@ pub struct ChallengeRef {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SourceKind {
     Read { place: ReadPlace },
-    Prior { id: RootId },
     Constant { value: u32 },
     Challenge { reference: ChallengeRef },
     VirtualSetup { kind: VirtualSetupKind },

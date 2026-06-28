@@ -321,11 +321,10 @@ pub(super) fn product_of_tuples(
     Ok(arena.mul(vec![a, b]))
 }
 
-/// `Read`/`Prior` of `addr` (same-layer cache addresses alias via `Prior`; see
-/// [`super::util::read_source`]).
+/// Read `addr` (a same-layer cache address resolves to the materialized value's
+/// shared `ExprId` for in-layer reuse; see [`super::util::read_expr`]).
 fn read_addr(arena: &mut ArenaBuilder, addr: crate::definitions::GKRAddress) -> ExprId {
-    let src = arena.intern_source(super::util::read_source(arena, addr));
-    arena.source_expr(src)
+    super::util::read_expr(arena, addr)
 }
 
 /// `MaskIntoIdentityProduct`: `1 + mask·(input − 1)` (equivalently

@@ -1,8 +1,9 @@
 //! Row-bound reference evaluator for the DAG IR.
 //!
 //! Evaluates one row of a [`DagLayer`] root, lifting everything into `Ext`.
-//! Materialization-only roots (those absent from [`BatchingOrder`]) are evaluated
-//! eagerly in topological (index) order so that `Prior(id)` can read their result.
+//! Cache values are ordinary shared sub-exprs: a same-layer cache read is the
+//! materialized value's `ExprId`, so it is computed on demand and memoized by
+//! `expr_cache` like any other shared node — no sealed-root pre-pass.
 
 use std::collections::HashMap;
 
@@ -73,98 +74,35 @@ pub struct Resolvers<'a> {
 
 /// Evaluate `root` of `layer` at `row`, using `r` for all external references.
 ///
-/// Materialization-only roots (i.e. roots whose `RootId` does not appear in
-/// `layer.batching.roots`) are evaluated eagerly in ascending `RootId` order
-/// before the target root, so `Prior(id)` can look up their result.
-///
-/// **Precondition — caches-lead ordering**: all materialization-only (cache)
-/// roots MUST occupy leading indices in `layer.roots` (i.e. every cache root
-/// has a smaller `RootId` than every claim-bearing root).  The pre-pass only
-/// materializes roots with index < the target root's index, so a `Prior`
-/// referencing a root with index >= the referencing root's index is never
-/// materialized and will panic.  `validate` enforces this invariant; hand-
-/// crafted layers must satisfy it too.
-///
-/// `Prior(id)` is only valid when `id` is a materialization-only root (not in
-/// `batching.roots`); evaluating a root that `Prior`-references a batching root
-/// will panic.
+/// Cache values are ordinary shared sub-exprs: a same-layer cache read is the
+/// materialized value's `ExprId`, computed on demand and memoized by
+/// `expr_cache`. There is no sealed-root pre-pass and no caches-lead ordering
+/// precondition.
 pub fn eval_layer_root(layer: &DagLayer, root: RootId, row: usize, r: &Resolvers<'_>) -> Ext {
-    // Build the set of "claim-bearing" roots (those in batching order).
-    let batching_set: std::collections::HashSet<RootId> =
-        layer.batching.roots.iter().copied().collect();
-
-    // Map from RootId → materialized Ext value, filled in order.
-    let mut materialized: HashMap<RootId, Ext> = HashMap::new();
-
-    // Memoized expr values for this row.
     let mut expr_cache: HashMap<ExprId, Ext> = HashMap::new();
-
-    // Evaluate materialization-only roots (not in batching set) in index order.
-    // They must precede the target root index so that Prior(id) references are valid.
-    for (idx, dag_root) in layer.roots.iter().enumerate() {
-        let rid = RootId(idx as u32);
-        if rid == root {
-            break; // stop before the requested root; we evaluate it below
-        }
-        if !batching_set.contains(&rid) {
-            // Materialization-only root — evaluate eagerly.
-            let val = eval_root_expr(dag_root, layer, row, r, &materialized, &mut expr_cache);
-            materialized.insert(rid, val);
-        }
-    }
-
-    // Now evaluate the requested root.
-    let dag_root = &layer.roots[root.0 as usize];
-    eval_root_expr(dag_root, layer, row, r, &materialized, &mut expr_cache)
-}
-
-/// Evaluate an arbitrary `expr` of `layer` at `row`, materializing all cache
-/// (materialization-only) roots first so `Prior(id)` reads resolve. Used by the
-/// forward-VM CPU interpreter to re-resolve a pruned resolution fold through the
-/// authoritative evaluator (SP1). SP2 replaces this with real peek-array bindings.
-///
-/// SP1-only oracle helper: it assumes the existing cache-lead / topological
-/// invariant (`validate`) and **eagerly materializes every non-batching root in
-/// ascending `RootId`** — it is NOT a minimal-dependency arbitrary-subexpression
-/// evaluator. Do not use it on the hot path.
-pub fn eval_layer_expr(layer: &DagLayer, expr: ExprId, row: usize, r: &Resolvers<'_>) -> Ext {
-    let batching_set: std::collections::HashSet<RootId> =
-        layer.batching.roots.iter().copied().collect();
-    let mut materialized: HashMap<RootId, Ext> = HashMap::new();
-    let mut expr_cache: HashMap<ExprId, Ext> = HashMap::new();
-    for (idx, dag_root) in layer.roots.iter().enumerate() {
-        let rid = RootId(idx as u32);
-        if !batching_set.contains(&rid) {
-            let val = eval_root_expr(dag_root, layer, row, r, &materialized, &mut expr_cache);
-            materialized.insert(rid, val);
-        }
-    }
-    eval_expr(expr, layer, row, r, &materialized, &mut expr_cache)
-}
-
-// ── Internal helpers ──────────────────────────────────────────────────────────
-
-fn eval_root_expr(
-    root: &Root,
-    layer: &DagLayer,
-    row: usize,
-    r: &Resolvers<'_>,
-    materialized: &HashMap<RootId, Ext>,
-    expr_cache: &mut HashMap<ExprId, Ext>,
-) -> Ext {
-    let expr_id = match root {
+    let expr_id = match &layer.roots[root.0 as usize] {
         Root::Output { expr, .. } => *expr,
         Root::Constraint { expr } => *expr,
     };
-    eval_expr(expr_id, layer, row, r, materialized, expr_cache)
+    eval_expr(expr_id, layer, row, r, &mut expr_cache)
 }
+
+/// Evaluate an arbitrary `expr` of `layer` at `row`. Cache values reachable from
+/// `expr` are ordinary shared sub-exprs computed on demand (memoized by
+/// `expr_cache`); there is no pre-pass. Used by the forward-VM CPU interpreter to
+/// re-resolve a pruned resolution fold through the authoritative evaluator (SP1).
+pub fn eval_layer_expr(layer: &DagLayer, expr: ExprId, row: usize, r: &Resolvers<'_>) -> Ext {
+    let mut expr_cache: HashMap<ExprId, Ext> = HashMap::new();
+    eval_expr(expr, layer, row, r, &mut expr_cache)
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
 
 fn eval_expr(
     id: ExprId,
     layer: &DagLayer,
     row: usize,
     r: &Resolvers<'_>,
-    materialized: &HashMap<RootId, Ext>,
     cache: &mut HashMap<ExprId, Ext>,
 ) -> Ext {
     if let Some(&v) = cache.get(&id) {
@@ -172,12 +110,12 @@ fn eval_expr(
     }
     let val = match &layer.exprs[id.0 as usize] {
         Expr::Source(src_id) => {
-            eval_source(&layer.sources[src_id.0 as usize].kind, layer, row, r, materialized, cache)
+            eval_source(&layer.sources[src_id.0 as usize].kind, layer, row, r, cache)
         }
         Expr::Add(terms) => {
             let mut acc = Ext::ZERO;
             for &t in terms {
-                let v = eval_expr(t, layer, row, r, materialized, cache);
+                let v = eval_expr(t, layer, row, r, cache);
                 acc.add_assign(&v);
             }
             acc
@@ -185,7 +123,7 @@ fn eval_expr(
         Expr::Mul(factors) => {
             let mut acc = Ext::ONE;
             for &f in factors {
-                let v = eval_expr(f, layer, row, r, materialized, cache);
+                let v = eval_expr(f, layer, row, r, cache);
                 acc.mul_assign(&v);
             }
             acc
@@ -200,7 +138,6 @@ fn eval_source(
     layer: &DagLayer,
     row: usize,
     r: &Resolvers<'_>,
-    materialized: &HashMap<RootId, Ext>,
     cache: &mut HashMap<ExprId, Ext>,
 ) -> Ext {
     match kind {
@@ -209,23 +146,8 @@ fn eval_source(
         SourceKind::Read { place } => r.read.read(place, row),
         SourceKind::VirtualSetup { kind: vk } => lift(r.virtual_setup.virtual_setup(vk, row)),
         SourceKind::LookupValue { kind: lk, set_index, query } => {
-            let q_val = eval_expr(*query, layer, row, r, materialized, cache);
+            let q_val = eval_expr(*query, layer, row, r, cache);
             lift(r.lookup.lookup(lk, *set_index, q_val, row))
-        }
-        SourceKind::Prior { id } => {
-            // Defense-in-depth: the `Prior` target must have been materialized
-            // before this point (caches-lead ordering + pre-pass guarantee).
-            // `validate` enforces this at construction time; the assert fires in
-            // debug builds if a hand-crafted layer violates the precondition.
-            debug_assert!(
-                materialized.contains_key(id),
-                "Prior({:?}) referenced before materialization — \
-                 caches-lead ordering precondition violated",
-                id
-            );
-            *materialized
-                .get(id)
-                .unwrap_or_else(|| panic!("Prior({:?}) referenced before materialization", id))
         }
     }
 }
@@ -236,13 +158,12 @@ fn eval_source(
 mod tests {
     use std::collections::BTreeMap;
 
-    use field::{Field, FieldExtension, PrimeField};
+    use field::{Field, PrimeField};
 
     use super::*;
     use crate::gkr_compiler::dag_ir::{
         ArenaBuilder, BatchingOrder, ChallengeKey, ChallengeRef, ChallengePower, DagLayer, Expr,
-        ExprId, FieldKind, LookupValueKind, ReadPlace, Root, RootId, SinkId, SinkKind,
-        SourceKind, VirtualSetupKind,
+        LookupValueKind, ReadPlace, Root, RootId, SinkId, SourceKind, VirtualSetupKind,
     };
 
     // ── Stub resolvers ────────────────────────────────────────────────────────
@@ -395,38 +316,48 @@ mod tests {
         assert_eq!(result, expected, "lookup fold mismatch");
     }
 
-    // ── Test: Prior reads materialized root value ─────────────────────────────
+    // ── Test: a shared cache ExprId is reused by a consumer root ──────────────
 
-    /// Layer with two roots:
-    ///   root 0 (materialization-only): Output(Constant(5))
-    ///   root 1 (claim-bearing):        Output(Prior(RootId(0)) + Constant(3))
+    /// Cache reuse is DAG sharing: a cache value (`Constant(5)`) is materialized
+    /// by a `Cache`-sink root AND shared as a direct operand of a claim-bearing
+    /// consumer root (`cache_expr + Constant(3)`).
     ///
-    /// Expected: eval of root 1 = lift(5) + lift(3) = lift(8)
+    /// Assert: (a) the consumer's operand IS the cache `ExprId` (sharing, not a
+    /// duplicated leaf), and (b) the consumer evaluates to lift(5) + lift(3) =
+    /// lift(8) — the cache value flows through on demand, no pre-pass.
     #[test]
-    fn prior_reads_materialized_root() {
+    fn shared_cache_expr_is_reused_by_consumer() {
         let mut arena = ArenaBuilder::new();
 
-        // Constant(5)
-        let c5_src = arena.intern_source(SourceKind::Constant { value: 5 });
-        let c5 = arena.source_expr(c5_src);
-
-        // Prior(RootId(0))
-        let prior_src = arena.intern_source(SourceKind::Prior { id: RootId(0) });
-        let prior = arena.source_expr(prior_src);
+        // The cache value is an ordinary shared expr: Constant(5).
+        let cache_src = arena.intern_source(SourceKind::Constant { value: 5 });
+        let cache_expr = arena.source_expr(cache_src);
 
         // Constant(3)
         let c3_src = arena.intern_source(SourceKind::Constant { value: 3 });
         let c3 = arena.source_expr(c3_src);
 
-        // prior + 3
-        let sum = arena.add(vec![prior, c3]);
+        // Consumer = cache_expr + 3 — references the cache value's ExprId directly.
+        let sum = arena.add(vec![cache_expr, c3]);
 
         let roots = vec![
-            Root::Output { expr: c5, sink: SinkId(0) },   // RootId(0) — materialization-only
-            Root::Output { expr: sum, sink: SinkId(1) },  // RootId(1) — claim-bearing
+            // RootId(0): Cache-sink Output materializing the value (committed).
+            Root::Output { expr: cache_expr, sink: SinkId(0) },
+            // RootId(1): claim-bearing consumer sharing the cache ExprId.
+            Root::Output { expr: sum, sink: SinkId(1) },
         ];
-        // Only root 1 is in batching; root 0 is materialization-only.
+        // Only root 1 is claim-bearing; root 0 is the materialize-only cache.
         let layer = layer_from_arena(&arena, roots, vec![RootId(1)]);
+
+        // (a) ALIAS IDENTITY: the consumer's Add operand IS the cache ExprId.
+        match &layer.exprs[sum.0 as usize] {
+            Expr::Add(args) => assert!(
+                args.contains(&cache_expr),
+                "consumer must SHARE the cache value's ExprId as a direct operand, got {:?}",
+                args
+            ),
+            other => panic!("expected Add, got {:?}", other),
+        }
 
         let r = Resolvers {
             read: &ConstReadResolver(Ext::ZERO),
@@ -435,50 +366,37 @@ mod tests {
             challenge: &ConstChallengeResolver(Ext::ZERO),
         };
 
+        // (b) VALUE: the cache value flows through on demand → lift(8).
         let result = eval_layer_root(&layer, RootId(1), 0, &r);
-
         let expected = {
             let mut e = lift(Bf::from_u32_with_reduction(5));
             e.add_assign(&lift(Bf::from_u32_with_reduction(3)));
             e
         };
-
-        assert_eq!(result, expected, "Prior resolution mismatch");
+        assert_eq!(result, expected, "shared cache value mismatch");
     }
 
-    // ── Test: eval_layer_expr evaluates arbitrary expr with all caches materialized ──
+    // ── Test: eval_layer_expr evaluates an arbitrary shared sub-expr ──────────
 
-    /// Same layer as `prior_reads_materialized_root`:
-    ///   root 0 (materialization-only): Output(Constant(5))
-    ///   root 1 (claim-bearing):        Output(Prior(RootId(0)) + Constant(3))
-    ///
-    /// But we call `eval_layer_expr` targeting the inner `c5` expr directly
-    /// (the cache root's expr, ExprId(0)).
-    /// Expected: lift(5)
+    /// Same layer as `shared_cache_expr_is_reused_by_consumer`, but call
+    /// `eval_layer_expr` on arbitrary sub-exprs directly (no pre-pass). The
+    /// shared cache `ExprId` evaluates to lift(5); the consumer sum to lift(8).
     #[test]
-    fn eval_layer_expr_materializes_all_caches_and_evaluates_arbitrary_expr() {
+    fn eval_layer_expr_evaluates_shared_subexpr_on_demand() {
         let mut arena = ArenaBuilder::new();
 
-        // Constant(5)
-        let c5_src = arena.intern_source(SourceKind::Constant { value: 5 });
-        let c5 = arena.source_expr(c5_src);
+        let cache_src = arena.intern_source(SourceKind::Constant { value: 5 });
+        let cache_expr = arena.source_expr(cache_src);
 
-        // Prior(RootId(0))
-        let prior_src = arena.intern_source(SourceKind::Prior { id: RootId(0) });
-        let prior = arena.source_expr(prior_src);
-
-        // Constant(3)
         let c3_src = arena.intern_source(SourceKind::Constant { value: 3 });
         let c3 = arena.source_expr(c3_src);
 
-        // prior + 3
-        let sum = arena.add(vec![prior, c3]);
+        let sum = arena.add(vec![cache_expr, c3]);
 
         let roots = vec![
-            Root::Output { expr: c5, sink: SinkId(0) },   // RootId(0) — materialization-only
-            Root::Output { expr: sum, sink: SinkId(1) },  // RootId(1) — claim-bearing
+            Root::Output { expr: cache_expr, sink: SinkId(0) },
+            Root::Output { expr: sum, sink: SinkId(1) },
         ];
-        // Only root 1 is in batching; root 0 is materialization-only.
         let layer = layer_from_arena(&arena, roots, vec![RootId(1)]);
 
         let r = Resolvers {
@@ -488,12 +406,12 @@ mod tests {
             challenge: &ConstChallengeResolver(Ext::ZERO),
         };
 
-        // Evaluate the cache root's expr directly — should yield lift(5)
-        let result = eval_layer_expr(&layer, c5, 0, &r);
+        // The shared cache sub-expr evaluates to lift(5).
+        let result = eval_layer_expr(&layer, cache_expr, 0, &r);
         let expected = lift(Bf::from_u32_with_reduction(5));
         assert_eq!(result, expected, "eval_layer_expr: cache expr mismatch");
 
-        // Also verify it can evaluate the sum expr — should yield lift(8)
+        // And the consumer sum evaluates to lift(8).
         let result_sum = eval_layer_expr(&layer, sum, 0, &r);
         let expected_sum = {
             let mut e = lift(Bf::from_u32_with_reduction(5));

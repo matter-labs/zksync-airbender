@@ -7,23 +7,16 @@ use crate::definitions::GKRAddress;
 use super::super::{ArenaBuilder, ExprId, SourceKind};
 use super::map_address;
 
-/// The `SourceKind` for reading `addr`, preferring a `Prior` alias.
+/// The `ExprId` for reading `addr`.
 ///
-/// If `addr` is a `GKRAddress::Cached` materialized as a cache root in THIS
-/// layer, the read aliases the materializing root via `SourceKind::Prior`;
-/// otherwise it falls back to `map_address` (which yields `Read(CacheOutput)`
-/// for genuine external/compat cache reads). Used by every lowering read helper
-/// (`read_expr`, `lookup::read`, `memory::read`).
-pub(crate) fn read_source(arena: &ArenaBuilder, addr: GKRAddress) -> SourceKind {
-    match arena.cache_alias(addr) {
-        Some(id) => SourceKind::Prior { id },
-        None => map_address(addr),
-    }
-}
-
-/// Intern `Expr::Source(read_source(addr))`.
+/// If `addr` is a `GKRAddress::Cached` materialized as a cache value in THIS
+/// layer, the read IS that value's shared `ExprId` (in-layer reuse = DAG
+/// sharing). Otherwise it interns a `Read(...)` source leaf.
 pub(super) fn read_expr(arena: &mut ArenaBuilder, addr: GKRAddress) -> ExprId {
-    let src = arena.intern_source(read_source(arena, addr));
+    if let Some(eid) = arena.cache_alias(addr) {
+        return eid;
+    }
+    let src = arena.intern_source(map_address(addr));
     arena.source_expr(src)
 }
 

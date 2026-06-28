@@ -3,9 +3,12 @@
 //! # Rules
 //! - `join(Base, Base) = Base`; otherwise `Ext`.
 //! - `source_field`: `Constant | LookupValue | VirtualSetup → Base`, `Challenge → Ext`,
-//!   `Prior{id}` → the field of the referenced root's `SinkInfo`, `Read{place}` → delegated
-//!   to `read_place_field` (see below).
+//!   `Read{place}` → delegated to `read_place_field` (see below).
 //! - `expr_field`: `Source(s)` → `source_field(s)`; `Add`/`Mul` → `join` over arg fields.
+//!
+//! Cache values are ordinary shared sub-exprs (same-layer reuse = DAG sharing),
+//! so a cache value's field flows through its expr via normal inference — there
+//! is no special source case for it.
 //!
 //! # Cross-layer reads (DONE_WITH_CONCERNS)
 //! `ReadPlace::LayerOutput` and `ReadPlace::CacheOutput` carry no field tag in the model.
@@ -15,7 +18,7 @@
 //! Base-storage places (`BaseLayerMemory`, `BaseLayerWitness`, `Setup`, `Scratch`) always
 //! return `Some(Base)`.
 
-use super::{ExprId, Expr, FieldKind, ReadPlace, Root, SinkId, SinkInfo, SourceId, SourceInfo, SourceKind};
+use super::{ExprId, Expr, FieldKind, ReadPlace, SourceInfo, SourceKind};
 
 // ── join ─────────────────────────────────────────────────────────────────────
 
@@ -48,34 +51,15 @@ pub fn read_place_field(place: &ReadPlace) -> Option<FieldKind> {
 
 /// Infers the field kind for a `SourceKind`.
 ///
-/// `roots` and `sinks` are the layer's root and sink tables — needed to resolve
-/// `Prior` references.
-///
 /// Returns `Ok(FieldKind)` for all determinable cases.
 /// Returns `Err(ReadPlace)` when the source is `Read{LayerOutput|CacheOutput}` and
 /// the field cannot be determined without a cross-layer resolver.
-pub fn source_field(
-    kind: &SourceKind,
-    roots: &[Root],
-    sinks: &[SinkInfo],
-) -> Result<FieldKind, ReadPlace> {
+pub fn source_field(kind: &SourceKind) -> Result<FieldKind, ReadPlace> {
     match kind {
         SourceKind::Constant { .. } => Ok(FieldKind::Base),
         SourceKind::LookupValue { .. } => Ok(FieldKind::Base),
         SourceKind::VirtualSetup { .. } => Ok(FieldKind::Base),
         SourceKind::Challenge { .. } => Ok(FieldKind::Ext),
-
-        SourceKind::Prior { id } => {
-            // A Prior references an Output root; retrieve the sink's declared field.
-            let root = &roots[id.0 as usize];
-            match root {
-                Root::Output { sink, .. } => {
-                    let sink_info = &sinks[sink.0 as usize];
-                    Ok(sink_info.field)
-                }
-                Root::Constraint { .. } => unreachable!("Prior must reference an Output root, not a Constraint root"),
-            }
-        }
 
         SourceKind::Read { place } => {
             read_place_field(place).ok_or_else(|| place.clone())
@@ -88,7 +72,6 @@ pub fn source_field(
 /// Infers the field kind for an expression identified by `id`.
 ///
 /// `exprs` is the layer's expression table; `sources` is the layer's source table.
-/// `roots` and `sinks` are forwarded to `source_field` for `Prior` resolution.
 ///
 /// Returns `Ok(FieldKind)` when all referenced sources are determinable.
 /// Returns the first `Err(ReadPlace)` encountered for cross-layer reads.
@@ -96,16 +79,14 @@ pub fn expr_field(
     exprs: &[Expr],
     sources: &[SourceInfo],
     id: ExprId,
-    roots: &[Root],
-    sinks: &[SinkInfo],
 ) -> Result<FieldKind, ReadPlace> {
     match &exprs[id.0 as usize] {
-        Expr::Source(src_id) => source_field(&sources[src_id.0 as usize].kind, roots, sinks),
+        Expr::Source(src_id) => source_field(&sources[src_id.0 as usize].kind),
 
         Expr::Add(args) | Expr::Mul(args) => {
             let mut acc = FieldKind::Base;
             for &arg_id in args {
-                let f = expr_field(exprs, sources, arg_id, roots, sinks)?;
+                let f = expr_field(exprs, sources, arg_id)?;
                 acc = join(acc, f);
                 // Short-circuit: once Ext, can't go back to Base.
                 if acc == FieldKind::Ext {
@@ -124,8 +105,7 @@ mod tests {
     use super::*;
     use crate::gkr_compiler::dag_ir::{
         ChallengePower, ChallengeKey, ChallengeRef, ExprId, Expr, FieldKind, LookupValueKind,
-        ReadPlace, Root, RootId, SinkId, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
-        VirtualSetupKind,
+        ReadPlace, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
     };
 
     // ── join ──────────────────────────────────────────────────────────────────
@@ -155,7 +135,7 @@ mod tests {
     #[test]
     fn source_constant_is_base() {
         let kind = SourceKind::Constant { value: 0 };
-        assert_eq!(source_field(&kind, &[], &[]), Ok(FieldKind::Base));
+        assert_eq!(source_field(&kind), Ok(FieldKind::Base));
     }
 
     #[test]
@@ -165,13 +145,13 @@ mod tests {
             set_index: 0,
             query: ExprId(0),
         };
-        assert_eq!(source_field(&kind, &[], &[]), Ok(FieldKind::Base));
+        assert_eq!(source_field(&kind), Ok(FieldKind::Base));
     }
 
     #[test]
     fn source_virtual_setup_is_base() {
         let kind = SourceKind::VirtualSetup { kind: VirtualSetupKind::RangeCheck16Bits };
-        assert_eq!(source_field(&kind, &[], &[]), Ok(FieldKind::Base));
+        assert_eq!(source_field(&kind), Ok(FieldKind::Base));
     }
 
     #[test]
@@ -182,7 +162,7 @@ mod tests {
                 power: ChallengePower::One,
             },
         };
-        assert_eq!(source_field(&kind, &[], &[]), Ok(FieldKind::Ext));
+        assert_eq!(source_field(&kind), Ok(FieldKind::Ext));
     }
 
     // ── source_field: base-storage reads return Some(Base) ────────────────────
@@ -223,25 +203,7 @@ mod tests {
     fn source_read_layer_output_returns_err() {
         let place = ReadPlace::LayerOutput { layer: 1, offset: 3 };
         let kind = SourceKind::Read { place: place.clone() };
-        assert!(matches!(source_field(&kind, &[], &[]), Err(ReadPlace::LayerOutput { .. })));
-    }
-
-    // ── source_field: Prior follows sink field ────────────────────────────────
-
-    #[test]
-    fn source_prior_follows_sink_field_base() {
-        let sink = SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Base };
-        let root = Root::Output { expr: ExprId(0), sink: SinkId(0) };
-        let kind = SourceKind::Prior { id: RootId(0) };
-        assert_eq!(source_field(&kind, &[root], &[sink]), Ok(FieldKind::Base));
-    }
-
-    #[test]
-    fn source_prior_follows_sink_field_ext() {
-        let sink = SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Ext };
-        let root = Root::Output { expr: ExprId(0), sink: SinkId(0) };
-        let kind = SourceKind::Prior { id: RootId(0) };
-        assert_eq!(source_field(&kind, &[root], &[sink]), Ok(FieldKind::Ext));
+        assert!(matches!(source_field(&kind), Err(ReadPlace::LayerOutput { .. })));
     }
 
     // ── expr_field ────────────────────────────────────────────────────────────
@@ -271,7 +233,7 @@ mod tests {
             Expr::Mul(vec![ExprId(0), ExprId(1)]),
         ];
 
-        let result = expr_field(&exprs, &sources, ExprId(2), &[], &[]);
+        let result = expr_field(&exprs, &sources, ExprId(2));
         assert_eq!(result, Ok(FieldKind::Ext));
     }
 
@@ -292,13 +254,13 @@ mod tests {
             Expr::Add(vec![ExprId(0), ExprId(1)]),
         ];
 
-        let result = expr_field(&exprs, &sources, ExprId(2), &[], &[]);
+        let result = expr_field(&exprs, &sources, ExprId(2));
         assert_eq!(result, Ok(FieldKind::Base));
     }
 
     #[test]
     fn source_field_read_scratch_is_base() {
         let kind = SourceKind::Read { place: ReadPlace::Scratch { slot: 0 } };
-        assert_eq!(source_field(&kind, &[], &[]), Ok(FieldKind::Base));
+        assert_eq!(source_field(&kind), Ok(FieldKind::Base));
     }
 }

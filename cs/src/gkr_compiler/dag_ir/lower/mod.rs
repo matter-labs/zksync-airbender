@@ -16,10 +16,10 @@
 //! no `RootOrigin` and are excluded from the `BatchingOrder` (they consume no
 //! batching power), matching the source artifact where caches are computed per
 //! layer but excluded from batch-power assignment. Caches are materialized FIRST
-//! so the cache-address → `RootId` alias map is populated; a subsequent gate
-//! input that reads a same-layer cache address then resolves to
-//! `SourceKind::Prior{ id }` (the materializing root) instead of a
-//! `Read(CacheOutput)` compatibility read — see [`util::read_source`]. A genuine
+//! so the cache-address → shared-`ExprId` alias map is populated; a subsequent
+//! gate input that reads a same-layer cache address then resolves directly to
+//! that value's shared `ExprId` (in-layer reuse = DAG sharing) instead of a
+//! `Read(CacheOutput)` compatibility read — see [`util::read_expr`]. A genuine
 //! external/compat cache read (no in-layer materializer) still falls back to
 //! `Read(CacheOutput)`.
 //!
@@ -75,9 +75,10 @@ use super::{
 /// `VirtualSetupPoly` variant to its `VirtualSetupKind`.
 ///
 /// This is the field-agnostic fallback. A `GKRAddress::Cached` materialized as a
-/// cache root in the current layer is aliased to its root via `Prior` BEFORE this
-/// fallback runs (see [`util::read_source`]); the `CacheOutput` arm here is the
-/// genuine external/compat read for caches with no in-layer materializer.
+/// cache value in the current layer resolves to that value's shared `ExprId`
+/// BEFORE this fallback runs (see [`util::read_expr`]); the `CacheOutput` arm
+/// here is the genuine external/compat read for caches with no in-layer
+/// materializer.
 pub(crate) fn map_address(addr: GKRAddress) -> SourceKind {
     match addr {
         GKRAddress::BaseLayerWitness(column) => SourceKind::Read {
@@ -184,8 +185,9 @@ impl LayerOut {
     /// `RootId`.
     ///
     /// Cache roots are NOT claim-bearing: they record NO `RootOrigin` and are NOT
-    /// added to the batching order. They exist so same-layer consumers can alias
-    /// them through `Prior` (see the module + design docs).
+    /// added to the batching order. They materialize the value so it is committed;
+    /// same-layer consumers reuse the value by sharing its `ExprId` (DAG sharing),
+    /// not by referencing this root (see the module + design docs).
     fn emit_cache(
         &mut self,
         expr: ExprId,
@@ -621,8 +623,10 @@ fn lower_relation(
 ///   setup reads).
 /// - `MemoryTuple` → [`memory::lower_memory_tuple`], `Ext` (challenge-folded).
 ///
-/// Returns the materialized root's `RootId`. The root is materialization-only:
-/// it carries no `RootOrigin` and is excluded from the batching order.
+/// Returns the materialized root's `RootId` AND the cache value's `ExprId`. The
+/// root is materialization-only: it carries no `RootOrigin` and is excluded from
+/// the batching order. The returned `ExprId` is the value's shared expr, which
+/// same-layer consumers alias to (in-layer reuse = DAG sharing).
 fn lower_cache(
     arena: &mut ArenaBuilder,
     out: &mut LayerOut,
@@ -630,7 +634,7 @@ fn lower_cache(
     rel: &NoFieldGKRCacheRelation,
     minus_one: u32,
     decoder_predicate: Option<&ReadPlace>,
-) -> Result<RootId, String> {
+) -> Result<(RootId, ExprId), String> {
     use NoFieldGKRCacheRelation as C;
     let (expr, field) = match rel {
         C::SingleColumnLookup {
@@ -654,7 +658,8 @@ fn lower_cache(
         }
         C::MemoryTuple(mt) => (memory::lower_memory_tuple(arena, mt, minus_one)?, FieldKind::Ext),
     };
-    out.emit_cache(expr, addr, field)
+    let root_id = out.emit_cache(expr, addr, field)?;
+    Ok((root_id, expr))
 }
 
 /// Every decoder-lookup consumer must use the global `machine_state.execute` as
@@ -699,8 +704,8 @@ fn check_decoder_masks<'a>(
 
 /// Lower one `GKRLayerDescription` into a `DagLayer`.
 ///
-/// Caches are materialized FIRST (so same-layer cache reads can alias them via
-/// `Prior`), then gates in protocol order: `gates` first, then
+/// Caches are materialized FIRST (so same-layer cache reads resolve to the
+/// materialized value's shared `ExprId`), then gates in protocol order: `gates` first, then
 /// `gates_with_external_connections`. Every emitted gate `Output`/`Constraint`
 /// root is claim bearing and therefore listed in `batching` in emission order;
 /// the materialization-only cache roots are excluded.
@@ -746,18 +751,18 @@ fn lower_layer<F: PrimeField + PartialEq>(
     )?;
 
     // ── Materialize caches FIRST ─────────────────────────────────────────────
-    // Cache roots occupy the leading RootId slots so the cache-address → RootId
-    // alias map is populated before any gate is lowered. They are
+    // Cache roots occupy the leading RootId slots so the cache-address →
+    // shared-`ExprId` alias map is populated before any gate is lowered. They are
     // materialization-only: no origin, excluded from batching.
     let mut cache_roots: BTreeSet<RootId> = BTreeSet::new();
-    let mut cache_aliases: HashMap<GKRAddress, RootId> = HashMap::new();
+    let mut cache_aliases: HashMap<GKRAddress, ExprId> = HashMap::new();
     for (addr, rel) in layer.cached_relations.iter() {
-        let root_id =
+        let (root_id, expr) =
             lower_cache(&mut arena, &mut out, *addr, rel, minus_one, decoder_predicate.as_ref())?;
-        cache_roots.insert(root_id);
-        cache_aliases.insert(*addr, root_id);
+        cache_roots.insert(root_id); // still tracked for batching (Task 2 changes this)
+        cache_aliases.insert(*addr, expr); // alias → shared ExprId (was: root_id)
     }
-    // From here on, a same-layer cache read aliases its materializing root.
+    // From here on, a same-layer cache read IS the materialized value's ExprId.
     arena.set_cache_aliases(cache_aliases);
 
     let lower_group = |arena: &mut ArenaBuilder,
@@ -2119,29 +2124,73 @@ mod tests {
         }
     }
 
-    /// At least one gate input resolves to a `Prior` aliasing a cache root: the
-    /// add_sub denominator caches are consumed by same-layer product gates.
+    /// Structural invariant (Task 1, secondary): cache reuse is DAG sharing.
+    /// A same-layer cache value is materialized by a `Cache`-sink root AND its
+    /// `ExprId` is shared (reachable through the pure expr DAG) by at least one
+    /// claim-bearing root's cone — never an opaque separate-source leaf.
+    ///
+    /// (`SourceKind::Prior` was removed in Task 1, so a "no Prior sources" check
+    /// is now enforced by the type system; this asserts the positive sharing
+    /// property instead. The primary value/alias-identity gate lives prover-side
+    /// in `dag_ir_differential::cache_consumer_value_and_alias_identity`.)
     #[test]
-    fn a_gate_reads_a_cache_through_prior() {
+    fn lowering_shares_cache_exprs_with_consumers() {
+        // Walk the pure expr DAG (Add/Mul operands + LookupValue.query), NOT any
+        // root edge: a shared cache value is reachable this way iff the consumer
+        // references its ExprId directly.
+        fn cone_contains(layer: &DagLayer, start: ExprId, target: ExprId) -> bool {
+            let mut stack = vec![start];
+            let mut seen = std::collections::HashSet::new();
+            while let Some(id) = stack.pop() {
+                if id == target {
+                    return true;
+                }
+                if !seen.insert(id.0) {
+                    continue;
+                }
+                match &layer.exprs[id.0 as usize] {
+                    Expr::Source(src_id) => {
+                        if let SourceKind::LookupValue { query, .. } =
+                            &layer.sources[src_id.0 as usize].kind
+                        {
+                            stack.push(*query);
+                        }
+                    }
+                    Expr::Add(args) | Expr::Mul(args) => stack.extend_from_slice(args),
+                }
+            }
+            false
+        }
+        fn root_expr(root: &Root) -> ExprId {
+            match root {
+                Root::Output { expr, .. } | Root::Constraint { expr } => *expr,
+            }
+        }
+
         let artifact = build_add_sub_artifact();
         let circuit = lower_dag(&artifact).expect("lower_dag must succeed");
 
-        let mut found_prior_to_cache = false;
+        let mut found = false;
         for layer in &circuit.layers {
-            for source in &layer.sources {
-                if let SourceKind::Prior { id } = &source.kind {
-                    // The Prior must resolve to a real root in THIS layer, and
-                    // (for add_sub) that root is a materialization-only cache root.
-                    let root = &layer.roots[id.0 as usize];
-                    if is_cache_root(layer, root) {
-                        found_prior_to_cache = true;
+            let cache_exprs: Vec<ExprId> = layer
+                .roots
+                .iter()
+                .filter(|r| is_cache_root(layer, r))
+                .map(root_expr)
+                .collect();
+            for &consumer_id in &layer.batching.roots {
+                let consumer_expr = root_expr(&layer.roots[consumer_id.0 as usize]);
+                for &cache_expr in &cache_exprs {
+                    if cone_contains(layer, consumer_expr, cache_expr) {
+                        found = true;
                     }
                 }
             }
         }
         assert!(
-            found_prior_to_cache,
-            "a same-layer cache read must alias the cache root via Prior"
+            found,
+            "a claim-bearing root must SHARE a same-layer cache root's ExprId \
+             (cache reuse must be DAG sharing)"
         );
     }
 

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::definitions::GKRAddress;
 
-use super::{Expr, ExprId, RootId, SourceId, SourceInfo, SourceKind};
+use super::{Expr, ExprId, SourceId, SourceInfo, SourceKind};
 
 // ── ArenaBuilder ─────────────────────────────────────────────────────────────
 
@@ -13,10 +13,12 @@ use super::{Expr, ExprId, RootId, SourceId, SourceInfo, SourceKind};
 /// (ascending), keep repeated operands, and then intern the canonical `Expr`.
 ///
 /// `cache_aliases` maps each `GKRAddress::Cached` address materialized as a
-/// cache root in THIS layer to that root's `RootId`. The lowering read helpers
-/// consult it via [`ArenaBuilder::cache_alias`] so a same-layer cache read
-/// becomes `SourceKind::Prior` instead of a `Read(CacheOutput)` compatibility
-/// read (see the `lower` module docs and the design doc's "Roots" section).
+/// cache value in THIS layer to the **shared `ExprId`** of that value (in-layer
+/// reuse = DAG sharing). The lowering read helpers consult it via
+/// [`ArenaBuilder::cache_alias`] so a same-layer cache read IS the materialized
+/// value's expr — not a `Read(CacheOutput)` compatibility leaf and not a
+/// separate root reference (see the `lower` module docs and the design doc's
+/// "Roots" section).
 pub struct ArenaBuilder {
     sources: Vec<SourceInfo>,
     source_map: HashMap<SourceKind, SourceId>,
@@ -24,7 +26,7 @@ pub struct ArenaBuilder {
     exprs: Vec<Expr>,
     expr_map: HashMap<Expr, ExprId>,
 
-    cache_aliases: HashMap<GKRAddress, RootId>,
+    cache_aliases: HashMap<GKRAddress, ExprId>,
 
     /// Set of `ExprId`s that `canonicalize` must NOT flatten into their parent
     /// `Add`/`Mul`. Used for multi-column fold-leaf `Add` nodes whose `ExprId`
@@ -45,18 +47,19 @@ impl ArenaBuilder {
         }
     }
 
-    /// Register the in-layer cache-address → cache-root alias map.
+    /// Register the in-layer cache-address → shared-value-`ExprId` alias map.
     ///
-    /// Called once, after all cache roots are materialized and before any gate
-    /// is lowered, so subsequent reads of a same-layer cache address alias to
-    /// the materializing root through `Prior`.
-    pub fn set_cache_aliases(&mut self, aliases: HashMap<GKRAddress, RootId>) {
+    /// Called once, after all cache values are materialized and before any gate
+    /// is lowered, so a subsequent read of a same-layer cache address IS the
+    /// materialized value's shared `ExprId` (DAG sharing, not a `Prior` root).
+    pub fn set_cache_aliases(&mut self, aliases: HashMap<GKRAddress, ExprId>) {
         self.cache_aliases = aliases;
     }
 
-    /// The cache root aliasing `addr`, if `addr` was materialized as a cache
-    /// root in THIS layer. `None` for any non-cache or external/compat address.
-    pub fn cache_alias(&self, addr: GKRAddress) -> Option<RootId> {
+    /// The shared `ExprId` of the cache value at `addr`, if `addr` was
+    /// materialized as a cache value in THIS layer. `None` for any non-cache or
+    /// external/compat address.
+    pub fn cache_alias(&self, addr: GKRAddress) -> Option<ExprId> {
         self.cache_aliases.get(&addr).copied()
     }
 

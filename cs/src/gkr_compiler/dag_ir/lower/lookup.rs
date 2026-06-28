@@ -70,13 +70,12 @@ fn alpha_pow(arena: &mut ArenaBuilder, j: u32) -> ExprId {
     arena.source_expr(src)
 }
 
-/// `Read`/`Prior` of `addr` — for materialized / cached / setup operands.
+/// Read `addr` — for materialized / cached / setup operands.
 ///
-/// A same-layer cache address aliases its materializing root via `Prior`; see
-/// [`super::util::read_source`].
+/// A same-layer cache address resolves to the materialized value's shared
+/// `ExprId` (in-layer reuse = DAG sharing); see [`super::util::read_expr`].
 pub(super) fn read(arena: &mut ArenaBuilder, addr: GKRAddress) -> ExprId {
-    let src = arena.intern_source(super::util::read_source(arena, addr));
-    arena.source_expr(src)
+    super::util::read_expr(arena, addr)
 }
 
 /// Lower a linear relation query into an `ExprId` (`constant + Σ c_i·x_i`).
