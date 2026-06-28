@@ -1989,7 +1989,7 @@ mod tests {
     use crate::gkr_compiler::test_support::build_add_sub_artifact;
 
     /// A root is a materialize-only cache root (`materialize: Some(Cache)`).
-    fn is_cache_root(_layer: &DagLayer, root: &Root) -> bool {
+    fn is_cache_root(root: &Root) -> bool {
         matches!(&root.materialize, Some(s) if matches!(s.kind, SinkKind::Cache { .. }))
     }
 
@@ -2038,12 +2038,12 @@ mod tests {
             let n_cache_roots = layer
                 .roots
                 .iter()
-                .filter(|r| is_cache_root(layer, r))
+                .filter(|r| is_cache_root(r))
                 .count();
 
             for (i, root) in layer.roots.iter().enumerate() {
                 let id = RootId(i as u32);
-                if is_cache_root(layer, root) {
+                if is_cache_root(root) {
                     saw_cache_root = true;
                     // Materialization-only: no beta power, no claim/origin.
                     assert!(
@@ -2060,7 +2060,7 @@ mod tests {
             // Cache roots occupy the LEADING RootId slots (materialized first).
             for i in 0..n_cache_roots {
                 assert!(
-                    is_cache_root(layer, &layer.roots[i]),
+                    is_cache_root(&layer.roots[i]),
                     "cache roots must be the leading roots in the layer"
                 );
             }
@@ -2082,7 +2082,7 @@ mod tests {
             // The batching order is exactly the non-cache roots in emission order.
             let expected: Vec<RootId> = (0..layer.roots.len() as u32)
                 .map(RootId)
-                .filter(|id| !is_cache_root(layer, &layer.roots[id.0 as usize]))
+                .filter(|id| !is_cache_root(&layer.roots[id.0 as usize]))
                 .collect();
             assert_eq!(
                 layer.batching.roots, expected,
@@ -2175,7 +2175,7 @@ mod tests {
             let cache_exprs: Vec<ExprId> = layer
                 .roots
                 .iter()
-                .filter(|r| is_cache_root(layer, r))
+                .filter(|r| is_cache_root(r))
                 .map(root_expr)
                 .collect();
             for &consumer_id in &layer.batching.roots {

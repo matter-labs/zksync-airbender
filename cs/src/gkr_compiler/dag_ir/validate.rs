@@ -741,6 +741,15 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
         }
         for (ri, root) in layer.roots.iter().enumerate() {
             let id = RootId(ri as u32);
+            // A root with neither a sink nor a claim is a degenerate shape that
+            // lowering never emits; reject it explicitly so hand-crafted or
+            // mis-generated DAGs are caught before any downstream pass.
+            if root.materialize.is_none() && root.claim.is_none() {
+                return Err(format!(
+                    "layer {li} root {ri}: root carries neither materialize nor claim \
+                     — degenerate (None, None) root is not a valid DAG IR shape"
+                ));
+            }
             if root.claim.is_some() {
                 // Claim-bearing root must appear exactly once.
                 if !batching_set.contains(&id) {
@@ -794,7 +803,7 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
             if let Some(sink) = &root.materialize {
                 if expr_f != sink.field {
                     return Err(format!(
-                        "layer {li} root {ri}: Output expr field {:?} != sink field {:?}",
+                        "layer {li} root {ri}: materialized root expr field {:?} != sink field {:?}",
                         expr_f, sink.field
                     ));
                 }
@@ -1913,6 +1922,48 @@ mod tests {
         assert!(
             e.contains("wrong scaling"),
             "error should mention wrong scaling, got: {e}"
+        );
+    }
+
+    // ── M-B: degenerate (materialize: None, claim: None) root must be rejected ─
+
+    /// A `Root { materialize: None, claim: None }` is structurally representable
+    /// after the Task-2 struct dissolve but is semantically meaningless (neither
+    /// materializes a value nor participates in batching). Lowering never emits
+    /// it, but `validate` must explicitly reject it so a hand-crafted or future
+    /// mis-generated DAG is caught early.
+    ///
+    /// RED: before the guard is added this test fails because `validate` silently
+    /// accepts the degenerate root (the batching check only fires for roots that
+    /// would appear in the batching order; a `claim: None` root is ignored by
+    /// that arm, and the field-inference pass skips it too).
+    #[test]
+    fn rejects_degenerate_none_none_root() {
+        // Layer: root 0 is a degenerate (None, None) root.  We still need a
+        // valid claim-bearing root (root 1) so the batching order is satisfied
+        // and we isolate the specific degenerate-root rejection.
+        let sources = vec![SourceInfo {
+            kind: SourceKind::Constant { value: 1 },
+        }];
+        let exprs = vec![Expr::Source(SourceId(0))];
+        let roots = vec![
+            // root 0: degenerate — neither materializes nor carries a claim.
+            Root { expr: ExprId(0), materialize: None, claim: None },
+            // root 1: well-formed claim-bearing Output (satisfies batching).
+            out_root(ExprId(0), SinkKind::Inner { layer: 0, offset: 0 }, FieldKind::Base),
+        ];
+        let layer = DagLayer {
+            sources,
+            exprs,
+            roots,
+            batching: BatchingOrder { roots: vec![RootId(1)] },
+            resolutions: BTreeMap::new(),
+        };
+        let err = validate(&circuit_of(layer))
+            .expect_err("a (materialize: None, claim: None) root must be rejected");
+        assert!(
+            err.contains("neither materialize nor claim"),
+            "error should mention degenerate shape, got: {err}"
         );
     }
 }

@@ -261,20 +261,19 @@ fn golden_circuits_layer0_value_differential() {
             .collect();
 
         // Bind EVERY base-layer address the whole DAG layer reads — not just the
-        // base-only gates. Evaluating any root eagerly materializes ALL
-        // materialization-only (cache) roots first (Task-5 evaluator contract),
-        // and those caches read base columns too. We walk the lowered layer's
+        // base-only gates. A consumer's expr-cone reaches shared cache values on
+        // demand (no eager materialization pre-pass); bind reads exhaustively so
+        // no shared sub-expr hits an unbound poly. We walk the lowered layer's
         // `Read` sources directly so the binding is exhaustive regardless of the
         // relation type (gate, external, or cache). Any non-base read in layer 0
         // (rare) is left unbound; relations consuming it are skipped below.
         let mut addrs = BTreeSet::new();
         for src in &dag_layer.sources {
             if let cs::gkr_compiler::dag_ir::SourceKind::Read { place } = &src.kind {
-                // Bind base AND any cross-layer/cache read so eager cache
-                // materialization never hits an unbound poly. Cross-layer values
-                // are arbitrary fixed bindings; the value leg only compares
-                // base-only roots whose reference reads base addresses, so the
-                // extra bindings are harmless.
+                // Bind base AND any cross-layer/cache read so no shared sub-expr
+                // hits an unbound poly. Cross-layer values are arbitrary fixed
+                // bindings; the value leg only compares base-only roots whose
+                // reference reads base addresses, so the extra bindings are harmless.
                 if !matches!(place, cs::gkr_compiler::dag_ir::ReadPlace::Scratch { .. }) {
                     addrs.insert(super::dag_ir_reference::read_place_to_address(place));
                 }
@@ -462,7 +461,7 @@ fn root_expr(root: &Root) -> ExprId {
 
 /// `true` if `root` is a materialization-only cache root (`materialize:
 /// Some(Cache)`, `claim: None`).
-fn is_cache_root(_layer: &DagLayer, root: &Root) -> bool {
+fn is_cache_root(root: &Root) -> bool {
     matches!(&root.materialize, Some(s) if matches!(s.kind, SinkKind::Cache { .. }))
 }
 
@@ -491,7 +490,7 @@ fn cache_consumer_value_and_alias_identity() {
         let cache_exprs: Vec<ExprId> = layer
             .roots
             .iter()
-            .filter(|r| is_cache_root(layer, r))
+            .filter(|r| is_cache_root(r))
             .map(root_expr)
             .collect();
         if cache_exprs.is_empty() {
