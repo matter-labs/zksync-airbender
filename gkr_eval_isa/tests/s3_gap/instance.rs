@@ -6,16 +6,11 @@ use std::collections::HashMap;
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
-/// Node classification: all six `SourceKind` variants + Expr variants + resolution-pruned.
+/// Node classification: `SourceKind` variants + Expr variants + resolution-pruned.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeKind {
     /// `SourceKind::Read` — real DRAM access.
     Read,
-    /// `SourceKind::Prior` before canonical extraction.
-    ///
-    /// Extracted instances rewrite Prior uses into direct edges to the producer
-    /// expression and track reloadability in `OracleInstance::reloadable_values`.
-    Prior,
     /// `SourceKind::VirtualSetup` — precomputed, zero DRAM traffic.
     VirtualSetup,
     /// Resolution-pruned expr — treated as a terminal with no DAG children.
@@ -45,8 +40,8 @@ pub struct OracleInstance {
     pub budget: usize,
     /// Root occurrence values in original root visitation order.
     ///
-    /// Values may repeat when distinct output roots alias the same producer,
-    /// e.g. through `Prior`; the occurrence identity is the index in this vector.
+    /// Values may repeat when distinct output roots alias the same producer
+    /// (a shared `ExprId`); the occurrence identity is the index in this vector.
     pub roots: Vec<u32>,
     /// Root/output value ids that may be reloaded after their root has completed.
     pub reloadable_values: Vec<u32>,
@@ -71,10 +66,11 @@ pub struct OracleInstance {
 /// `children: vec![]`** — do NOT descend into its children (spec §3 class 3).
 /// Lower a `DagLayer` to a solver `OracleInstance`. `Cache`-sink values are modeled as
 /// intra-unit inline intermediates, NOT scheduling roots: a cache value is computed once
-/// while its owning relation evaluates its num/den (the `Prior` rewire already routes
-/// those cones through it) and materialized (a free streamed write the cost model does
-/// not charge) for the backward pass. So the scheduling roots are exactly the claim
-/// (non-cache) roots — the scheduler orders relations, not phantom cache atoms.
+/// while its owning relation evaluates its num/den (each consumer references the cache
+/// value's shared `ExprId` directly as a child, so its cone is reached inline) and
+/// materialized (a free streamed write the cost model does not charge) for the backward
+/// pass. So the scheduling roots are exactly the claim (non-cache) roots — the scheduler
+/// orders relations, not phantom cache atoms.
 ///
 /// Sound because every cache value's in-layer consumers belong to a SINGLE relation
 /// (asserted by `dual_use_cache_consumers_share_relation`) and every cache value has an
@@ -107,26 +103,37 @@ fn extract_instance_impl(
     budget: usize,
     materialize_cache: bool,
 ) -> OracleInstance {
-    use cs::gkr_compiler::dag_ir::{Expr, Root, SinkKind};
+    use cs::gkr_compiler::dag_ir::{Expr, SinkInfo, SinkKind};
     use std::collections::HashSet;
 
-    // --- Phase 1: collect Output-root top exprs in original order ---
-    // With `materialize_cache`, Cache-sink Output roots are NOT scheduling roots — they
-    // are reached inline as shared intermediates via their consumers' `Prior` edges.
+    // Cache-root identity (attribute model): a `Cache` materialize with no claim.
+    let is_cache_root = |r: &Root| -> bool {
+        matches!(
+            &r.materialize,
+            Some(SinkInfo { kind: SinkKind::Cache { .. }, .. })
+        ) && r.claim.is_none()
+    };
+
+    // --- Phase 1: collect schedulable-root top exprs in original order ---
+    // Schedulable (claim-bearing, materialized) roots = old non-cache `Root::Output`:
+    // `materialize.is_some() && claim.is_some()`. Constraints (`materialize None`) and
+    // Cache roots (`claim None`) are excluded by that predicate.
+    //
+    // With `materialize_cache`, Cache roots are NOT scheduling roots — they are reached
+    // inline as shared intermediates because each consumer references the cache value's
+    // shared `ExprId` directly as a child (no `Prior` redirect). Without it
+    // (`extract_instance_cache_as_root`), Cache roots are also top exprs — predicate
+    // relaxes to `materialize.is_some()` (Output + Cache; still skips Constraint).
     let top_exprs: Vec<u32> = layer
         .roots
         .iter()
-        .filter_map(|r| match r {
-            Root::Output { expr, sink } => {
-                if materialize_cache
-                    && matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. })
-                {
-                    None
-                } else {
-                    Some(expr.0)
-                }
-            }
-            Root::Constraint { .. } => None,
+        .filter_map(|r| {
+            let keep = if materialize_cache {
+                r.materialize.is_some() && r.claim.is_some()
+            } else {
+                r.materialize.is_some()
+            };
+            keep.then_some(r.expr.0)
         })
         .collect();
 
@@ -135,22 +142,6 @@ fn extract_instance_impl(
     // Result: child ids (topo positions) < parent ids → invariant satisfied.
     let mut visited: HashSet<u32> = HashSet::new();
     let mut topo_order: Vec<u32> = Vec::new();
-
-    fn prior_target_expr(layer: &DagLayer, eid: u32) -> Option<u32> {
-        if layer.resolutions.contains_key(&ExprId(eid)) {
-            return None;
-        }
-        let Expr::Source(sid) = &layer.exprs[eid as usize] else {
-            return None;
-        };
-        let SourceKind::Prior { id } = &layer.sources[sid.0 as usize].kind else {
-            return None;
-        };
-        let Root::Output { expr, .. } = layer.roots[id.0 as usize] else {
-            panic!("validated DAG must have Prior target an Output root");
-        };
-        Some(expr.0)
-    }
 
     fn dfs(eid: u32, layer: &DagLayer, visited: &mut HashSet<u32>, topo_order: &mut Vec<u32>) {
         if !visited.insert(eid) {
@@ -162,10 +153,8 @@ fn extract_instance_impl(
             topo_order.push(eid);
             return; // do NOT descend
         }
-        if let Some(target) = prior_target_expr(layer, eid) {
-            dfs(target, layer, visited, topo_order);
-            return;
-        }
+        // No Prior redirect: a cache value is a normal shared child `ExprId` the DFS
+        // descends into directly.
         match &layer.exprs[eid as usize] {
             Expr::Source(_) => {
                 // Leaf — no children to visit.
@@ -191,10 +180,7 @@ fn extract_instance_impl(
         remap.insert(old_eid, new_id as u32);
     }
 
-    let remap_child = |child: ExprId| -> u32 {
-        let target = prior_target_expr(layer, child.0).unwrap_or(child.0);
-        remap[&target]
-    };
+    let remap_child = |child: ExprId| -> u32 { remap[&child.0] };
 
     // --- Phase 4: emit OracleNodes ---
     let mut nodes: Vec<OracleNode> = Vec::with_capacity(topo_order.len());
@@ -218,10 +204,9 @@ fn extract_instance_impl(
 
         let (kind, children) = match &layer.exprs[old_eid as usize] {
             Expr::Source(sid) => {
-                // All six SourceKind variants classified:
+                // All SourceKind variants classified (Prior was removed in the attribute model):
                 let kind = match &layer.sources[sid.0 as usize].kind {
                     SourceKind::Read { .. } => NodeKind::Read,
-                    SourceKind::Prior { .. } => unreachable!("Prior source exprs are edge aliases"),
                     SourceKind::VirtualSetup { .. } => NodeKind::VirtualSetup,
                     SourceKind::Constant { .. }
                     | SourceKind::Challenge { .. }
@@ -253,19 +238,17 @@ fn extract_instance_impl(
     }
 
     // --- Phase 5: build remapped roots list in original visitation order ---
-    let roots: Vec<u32> = top_exprs
+    let roots: Vec<u32> = top_exprs.iter().map(|&eid| remap[&eid]).collect();
+
+    // Reloadable values = cache roots (cache predicate) whose shared `ExprId` was actually
+    // reached. Structurally equivalent to the old "visited Prior targets": a Prior target
+    // was exactly a cache producer's expr that a consumer cone reached, which is now that
+    // same shared `ExprId` appearing in `visited`.
+    let mut reloadable_values: Vec<u32> = layer
+        .roots
         .iter()
-        .map(|&eid| {
-            let target = prior_target_expr(layer, eid).unwrap_or(eid);
-            remap[&target]
-        })
-        .collect();
-    let mut reloadable_values: Vec<u32> = visited
-        .iter()
-        .filter_map(|&eid| {
-            let target = prior_target_expr(layer, eid)?;
-            remap.get(&target).copied()
-        })
+        .filter(|r| is_cache_root(r))
+        .filter_map(|r| visited.contains(&r.expr.0).then(|| remap[&r.expr.0]))
         .collect();
     reloadable_values.sort_unstable();
     reloadable_values.dedup();
@@ -285,12 +268,12 @@ fn extract_instance_impl(
 /// order; `Root::Constraint` roots are not occurrences and are skipped, exactly
 /// as `extract_instance` does).
 ///
-/// Two occurrences share a unit id iff their `RootOrigin` has the same
+/// Two occurrences share a unit id iff their `claim.origin` has the same
 /// `(group, relation_index)` — i.e. they are the num/den (and privately-shared
 /// fold) of one gate relation, which is the atomic scheduling unit (asserted
-/// single-relation by `dual_use_cache_consumers_share_relation`). Output roots
-/// with no origin (cache / materialization-only roots — `origins` is sparse and
-/// omits them) each get a fresh singleton unit.
+/// single-relation by `dual_use_cache_consumers_share_relation`). Every schedulable
+/// (materialized claim-bearing) root carries a `claim.origin`, so the old "no
+/// origin → singleton" branch is dead in the default model.
 ///
 /// Consumed by the group-atomic decoder so a relation's roots stay contiguous in
 /// the schedule, keeping their shared fold co-resident. An all-singleton
@@ -311,36 +294,41 @@ pub fn relation_units_cache_as_root(layer: &DagLayer) -> Vec<u32> {
 }
 
 fn relation_units_impl(layer: &DagLayer, materialize_cache: bool) -> Vec<u32> {
-    use cs::gkr_compiler::dag_ir::{Root, RootGroup, RootId, SinkKind};
+    use cs::gkr_compiler::dag_ir::{RootGroup, SinkInfo, SinkKind};
+
+    let is_cache_root = |r: &Root| -> bool {
+        matches!(
+            &r.materialize,
+            Some(SinkInfo { kind: SinkKind::Cache { .. }, .. })
+        ) && r.claim.is_none()
+    };
 
     let mut unit_of = Vec::new();
     let mut key_to_unit: HashMap<(RootGroup, usize), u32> = HashMap::new();
     let mut next_unit = 0u32;
-    for (idx, root) in layer.roots.iter().enumerate() {
-        let Root::Output { sink, .. } = root else {
-            continue; // Constraint roots are not occurrences (see extract_instance).
-        };
-        if materialize_cache
-            && matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. })
-        {
-            continue; // cache value is an inline intra-unit intermediate, not an atom
-        }
-        let unit = match layer.origins.get(&RootId(idx as u32)) {
-            Some(origin) => *key_to_unit
+    for root in layer.roots.iter() {
+        // Schedulable atom = materialized claim-bearing root (old non-cache Output).
+        if root.materialize.is_some() && root.claim.is_some() {
+            // Group by full relation identity (group, relation_index): num/den (and the
+            // privately-shared fold) of one gate relation share a unit.
+            let origin = &root.claim.as_ref().unwrap().origin;
+            let unit = *key_to_unit
                 .entry((origin.group.clone(), origin.relation_index))
                 .or_insert_with(|| {
                     let u = next_unit;
                     next_unit += 1;
                     u
-                }),
-            None => {
-                // Cache / materialization-only root: own singleton unit.
-                let u = next_unit;
-                next_unit += 1;
-                u
-            }
-        };
-        unit_of.push(unit);
+                });
+            unit_of.push(unit);
+        } else if !materialize_cache && is_cache_root(root) {
+            // cache-as-root historical model: each cache value is its own singleton unit,
+            // matching `extract_instance_cache_as_root`'s extra top exprs.
+            let u = next_unit;
+            next_unit += 1;
+            unit_of.push(u);
+        }
+        // Constraint roots (materialize None) and — in the default materialized model —
+        // Cache roots (claim None) are not occurrences and are skipped.
     }
     unit_of
 }
@@ -417,11 +405,18 @@ pub fn distinct_live_values(inst: &OracleInstance) -> usize {
 mod tests {
     use super::*;
     use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, RootId, SinkId,
-        SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
+        BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, RootGroup,
+        RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
     };
     use std::collections::BTreeMap;
 
+    // Attribute-model port of the old "two roots, one prior" fixture. Same shape:
+    //   root0 = Cache(e2 = Add(ext_A, base_A))                 ← cache producer
+    //   root1 = Inner(e4 = Add(e2, base_B)), claim-bearing     ← consumer
+    // The old DAG routed the consumer through `Source(Prior{id: root0})`; the attribute
+    // model dissolves that into the consumer referencing the cache value's shared `ExprId`
+    // (e2) directly as a child. Structurally equivalent: same reachable read leaves, same
+    // reloadable cache value.
     fn tests_support_two_roots_one_prior() -> (DagLayer, HashMap<ReadPlace, FieldKind>) {
         let src_ext = SourceInfo {
             kind: SourceKind::Read {
@@ -436,9 +431,6 @@ mod tests {
                 place: ReadPlace::BaseLayerWitness { column: 3 },
             },
         };
-        let src_prior = SourceInfo {
-            kind: SourceKind::Prior { id: RootId(0) },
-        };
         let src_base_b = SourceInfo {
             kind: SourceKind::Read {
                 place: ReadPlace::BaseLayerWitness { column: 4 },
@@ -446,43 +438,47 @@ mod tests {
         };
 
         let layer = DagLayer {
-            sources: vec![src_ext, src_base_a, src_prior, src_base_b],
+            sources: vec![src_ext, src_base_a, src_base_b],
             exprs: vec![
-                Expr::Source(SourceId(0)),
-                Expr::Source(SourceId(1)),
-                Expr::Add(vec![ExprId(0), ExprId(1)]),
-                Expr::Source(SourceId(2)),
-                Expr::Source(SourceId(3)),
-                Expr::Add(vec![ExprId(3), ExprId(4)]),
+                Expr::Source(SourceId(0)),             // e0 = ext_A
+                Expr::Source(SourceId(1)),             // e1 = base_A
+                Expr::Add(vec![ExprId(0), ExprId(1)]), // e2 = cache value (root0)
+                Expr::Source(SourceId(2)),             // e3 = base_B
+                Expr::Add(vec![ExprId(2), ExprId(3)]), // e4 = consumer (root1), uses e2 directly
             ],
             roots: vec![
-                Root::Output {
+                // root0: cache producer — materialize Cache, no claim.
+                Root {
                     expr: ExprId(2),
-                    sink: SinkId(0),
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Cache {
+                            layer: 0,
+                            offset: 0,
+                        },
+                        field: FieldKind::Ext,
+                    }),
+                    claim: None,
                 },
-                Root::Output {
-                    expr: ExprId(5),
-                    sink: SinkId(1),
-                },
-            ],
-            sinks: vec![
-                SinkInfo {
-                    kind: SinkKind::Cache {
-                        layer: 0,
-                        offset: 0,
-                    },
-                    field: FieldKind::Ext,
-                },
-                SinkInfo {
-                    kind: SinkKind::Inner {
-                        layer: 0,
-                        offset: 1,
-                    },
-                    field: FieldKind::Ext,
+                // root1: claim-bearing Inner output that consumes the cache value.
+                Root {
+                    expr: ExprId(4),
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Inner {
+                            layer: 0,
+                            offset: 1,
+                        },
+                        field: FieldKind::Ext,
+                    }),
+                    claim: Some(ClaimInfo {
+                        origin: RootOrigin {
+                            group: RootGroup::Gates,
+                            relation_index: 0,
+                            slot: RootSlot::Output(0),
+                        },
+                    }),
                 },
             ],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
 
@@ -499,9 +495,9 @@ mod tests {
 
     #[test]
     fn extract_topo_orders_children_before_parents_and_flags_dram() {
-        // Exercises the cache-as-root path (Prior target IS a root → reloadable); the
-        // default/materialized path on this fixture is covered by
-        // `materialized_cache_excludes_cache_roots_keeps_reads`.
+        // Exercises the cache-as-root path (the cache value IS a scheduling root → its
+        // shared `ExprId` is reachable → reloadable); the default/materialized path on
+        // this fixture is covered by `materialized_cache_excludes_cache_roots_keeps_reads`.
         let (layer, cross) = tests_support_two_roots_one_prior();
         let inst = extract_instance_cache_as_root(&layer, &cross, 16);
         // every child id strictly less than its parent id
@@ -510,7 +506,8 @@ mod tests {
                 assert!(c < n.id, "child {c} must precede parent {}", n.id);
             }
         }
-        // real_dram is exactly external Read; Prior is an edge alias to a materialized root.
+        // real_dram is exactly external Read; the cache value is a shared `ExprId`, not a
+        // source-like leaf, so no source node aliases it.
         let dram: Vec<_> = inst
             .nodes
             .iter()
@@ -518,16 +515,10 @@ mod tests {
             .map(|n| n.kind)
             .collect();
         assert!(dram.iter().all(|k| matches!(k, NodeKind::Read)));
-        assert!(
-            inst.nodes
-                .iter()
-                .all(|n| !matches!(n.kind, NodeKind::Prior)),
-            "Prior must not survive extraction as a source-like value node"
-        );
         assert_eq!(
             inst.reloadable_values,
             vec![inst.roots[0]],
-            "Prior target root must be marked reloadable after materialization"
+            "cache value (root0) must be marked reloadable after materialization"
         );
         // ext Read has width 4, base Read width 1
         assert!(inst
@@ -591,8 +582,8 @@ mod tests {
     #[test]
     fn distinct_live_values_counts_carry_across_roots() {
         use cs::gkr_compiler::dag_ir::{
-            BatchingOrder, Expr, ExprId, FieldKind, ReadPlace, Root, SinkId, SinkInfo, SinkKind,
-            SourceId, SourceInfo, SourceKind,
+            BatchingOrder, ClaimInfo, Expr, ExprId, FieldKind, ReadPlace, Root, RootGroup,
+            RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
         };
         use std::collections::BTreeMap;
 
@@ -601,6 +592,21 @@ mod tests {
             kind: SourceKind::Read {
                 place: ReadPlace::BaseLayerWitness { column: col },
             },
+        };
+        // Claim-bearing Inner output root over `expr`, with a distinct relation index `rel`.
+        let claim_out = |expr: ExprId, offset: usize, rel: usize| Root {
+            expr,
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset },
+                field: FieldKind::Base,
+            }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: rel,
+                    slot: RootSlot::Output(0),
+                },
+            }),
         };
 
         let layer = DagLayer {
@@ -622,44 +628,11 @@ mod tests {
                 Expr::Add(vec![ExprId(0), ExprId(4)]), // e7 = root 2
             ],
             roots: vec![
-                Root::Output {
-                    expr: ExprId(5),
-                    sink: SinkId(0),
-                },
-                Root::Output {
-                    expr: ExprId(6),
-                    sink: SinkId(1),
-                },
-                Root::Output {
-                    expr: ExprId(7),
-                    sink: SinkId(2),
-                },
-            ],
-            sinks: vec![
-                SinkInfo {
-                    kind: SinkKind::Inner {
-                        layer: 0,
-                        offset: 0,
-                    },
-                    field: FieldKind::Base,
-                },
-                SinkInfo {
-                    kind: SinkKind::Inner {
-                        layer: 0,
-                        offset: 1,
-                    },
-                    field: FieldKind::Base,
-                },
-                SinkInfo {
-                    kind: SinkKind::Inner {
-                        layer: 0,
-                        offset: 2,
-                    },
-                    field: FieldKind::Base,
-                },
+                claim_out(ExprId(5), 0, 0),
+                claim_out(ExprId(6), 1, 1),
+                claim_out(ExprId(7), 2, 2),
             ],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
 
@@ -692,8 +665,8 @@ mod tests {
         // Because expr 1 is pruned, we do NOT descend into its children.
         // Only ONE node is emitted: the Special terminal for expr 1.
         use cs::gkr_compiler::dag_ir::{
-            BatchingOrder, Expr, ExprId, RangeWidth, ResolutionStrategy, Root, SinkId, SinkInfo,
-            SinkKind, SourceId, SourceInfo, SourceKind,
+            BatchingOrder, ClaimInfo, Expr, ExprId, RangeWidth, ResolutionStrategy, Root,
+            RootGroup, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
         };
         use std::collections::BTreeMap;
 
@@ -720,19 +693,22 @@ mod tests {
         let layer = DagLayer {
             sources: vec![src],
             exprs: vec![e_src, e_mul],
-            roots: vec![Root::Output {
+            // Schedulable (materialized claim-bearing) root over the pruned expr.
+            roots: vec![Root {
                 expr: ExprId(1),
-                sink: SinkId(0),
-            }],
-            sinks: vec![SinkInfo {
-                kind: SinkKind::Inner {
-                    layer: 0,
-                    offset: 0,
-                },
-                field: FieldKind::Base,
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Inner { layer: 0, offset: 0 },
+                    field: FieldKind::Base,
+                }),
+                claim: Some(ClaimInfo {
+                    origin: RootOrigin {
+                        group: RootGroup::Gates,
+                        relation_index: 0,
+                        slot: RootSlot::Output(0),
+                    },
+                }),
             }],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions,
         };
 
@@ -760,8 +736,8 @@ mod tests {
 
     #[test]
     fn materialized_cache_excludes_cache_roots_keeps_reads() {
-        // tests_support_two_roots_one_prior: root0 = Cache(Add(e0,e1)), root1 =
-        // Inner(Add(Prior(root0), e3)). The cache value (e2) feeds root1 via Prior.
+        // tests_support_two_roots_one_prior: root0 = Cache(e2 = Add(e0,e1)), root1 =
+        // Inner(Add(e2, base_B)). The cache value (e2) feeds root1 as a shared `ExprId`.
         let (layer, cross) = tests_support_two_roots_one_prior();
 
         // Historical cache-as-root: the cache value is its own scheduling root.
@@ -797,17 +773,17 @@ mod tests {
     #[test]
     fn relation_units_groups_pair_roots_and_singletons_cache() {
         use cs::gkr_compiler::dag_ir::{
-            BatchingOrder, Expr, ExprId, RootGroup, RootId, RootOrigin, RootSlot, SinkId, SinkInfo,
+            BatchingOrder, ClaimInfo, Expr, ExprId, RootGroup, RootOrigin, RootSlot, SinkInfo,
             SinkKind, SourceId, SourceInfo, SourceKind,
         };
         use std::collections::BTreeMap;
 
         // 5 layer roots in visitation order (expr bodies are irrelevant to grouping):
-        //   r0 Output  Inner   origin (Gates, rel 0, Output(0))  ─┐ num/den of relation 0
-        //   r1 Output  Inner   origin (Gates, rel 0, Output(1))  ─┘ → SAME unit
-        //   r2 Output  Cache   NO origin (materialization-only)
-        //   r3 Constraint                                  → skipped (not an occurrence)
-        //   r4 Output  Inner   origin (Gates, rel 1, Output(0))    → distinct unit
+        //   r0 Inner  claim (Gates, rel 0, Output(0))  ─┐ num/den of relation 0
+        //   r1 Inner  claim (Gates, rel 0, Output(1))  ─┘ → SAME unit
+        //   r2 Cache  (materialize-only, claim None)
+        //   r3 Constraint (materialize None, claim-only) → skipped (not an occurrence)
+        //   r4 Inner  claim (Gates, rel 1, Output(0))    → distinct unit
         // Default (materialized) skips the Cache root r2 ⇒ occurrences [r0,r1,r4] ⇒ [0,0,1].
         // cache-as-root keeps r2 as a singleton ⇒ occurrences [r0,r1,r2,r4] ⇒ [0,0,1,2].
         let src = SourceInfo {
@@ -815,52 +791,53 @@ mod tests {
                 place: ReadPlace::BaseLayerWitness { column: 0 },
             },
         };
-        // sink 0 = Inner (claim roots), sink 1 = Cache (r2).
-        let out = |s: u32| Root::Output {
+        // Claim-bearing Inner output root, grouped by (group, relation_index).
+        let claim_out = |rel: usize, slot: usize| Root {
             expr: ExprId(0),
-            sink: SinkId(s),
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset: 0 },
+                field: FieldKind::Base,
+            }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: rel,
+                    slot: RootSlot::Output(slot),
+                },
+            }),
         };
-        let mut origins = BTreeMap::new();
-        origins.insert(
-            RootId(0),
-            RootOrigin {
-                group: RootGroup::Gates,
-                relation_index: 0,
-                slot: RootSlot::Output(0),
-            },
-        );
-        origins.insert(
-            RootId(1),
-            RootOrigin {
-                group: RootGroup::Gates,
-                relation_index: 0,
-                slot: RootSlot::Output(1),
-            },
-        );
-        origins.insert(
-            RootId(4),
-            RootOrigin {
-                group: RootGroup::Gates,
-                relation_index: 1,
-                slot: RootSlot::Output(0),
-            },
-        );
+        // Cache root: materialize Cache, no claim → not an occurrence in the default model.
+        let cache_root = Root {
+            expr: ExprId(0),
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Cache { layer: 0, offset: 0 },
+                field: FieldKind::Base,
+            }),
+            claim: None,
+        };
+        // Constraint root: claim-only (materialize None) → never an occurrence.
+        let constraint_root = Root {
+            expr: ExprId(0),
+            materialize: None,
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    slot: RootSlot::Constraint(0),
+                },
+            }),
+        };
         let layer = DagLayer {
             sources: vec![src],
             exprs: vec![Expr::Source(SourceId(0))],
-            roots: vec![out(0), out(0), out(1), Root::Constraint { expr: ExprId(0) }, out(0)],
-            sinks: vec![
-                SinkInfo {
-                    kind: SinkKind::Inner { layer: 0, offset: 0 },
-                    field: FieldKind::Base,
-                },
-                SinkInfo {
-                    kind: SinkKind::Cache { layer: 0, offset: 0 },
-                    field: FieldKind::Base,
-                },
+            roots: vec![
+                claim_out(0, 0),
+                claim_out(0, 1),
+                cache_root,
+                constraint_root,
+                claim_out(1, 0),
             ],
             batching: BatchingOrder { roots: vec![] },
-            origins,
             resolutions: BTreeMap::new(),
         };
 
