@@ -9,7 +9,7 @@ use super::super::context::{DagForwardContext, ForwardAction};
 use super::super::isa::OperandField;
 use super::super::source::lower_resolution;
 use cs::gkr_compiler::dag_ir::{
-    DagLayer, Expr, ExprId, RootId, Root, SourceKind,
+    DagLayer, Expr, ExprId, RootId, SinkInfo, SinkKind, SourceKind,
 };
 use std::collections::HashMap;
 
@@ -50,19 +50,20 @@ pub struct ValueInfo {
     /// Cell width in field elements: 1 for Base, 4 for Ext.
     pub width: u8,
     /// True if this value has at least one use AFTER the point it first becomes
-    /// available — including a cache root whose single later use is a `Prior` read.
+    /// available — e.g. a cache root's output expr referenced again (as a recomputed
+    /// shared `ExprId`) in a later root's tree.
     pub is_candidate: bool,
     /// Estimated cost to re-obtain this value if evicted from residency.
     pub miss: MissPenalty,
     /// True if this value has a real global DRAM backing that can be re-read:
-    /// `SourceKind::Read`, `VirtualSetup`, or `Prior` (→ `OperandLine::Global`).
+    /// `SourceKind::Read` or `VirtualSetup` (→ `OperandLine::Global`).
     /// False for compound `Add`/`Mul` subexprs, `Constant`/`Challenge` literals,
     /// and resolution-pruned (special-gather) leaves — these must be recomputed
     /// or re-gathered if evicted.
     pub has_backing: bool,
     /// True iff this value is a `SourceKind::Read` source (a real DRAM read — NOT
     /// `VirtualSetup`, which is computed) loaded/borrowed as a fold operand ≥ 2 times
-    /// over the layer's `Root::Output` trees. Drives source residency (load-once +
+    /// over the layer's materialize-bearing root trees. Drives source residency (load-once +
     /// borrow). EMISSION-EXACT for the three elided categories (zero-annihilated Mul,
     /// CopyAlias-action roots, sole-source passthrough roots) so a flagged read is one
     /// the emitter actually pins — see the candidate post-pass in `analyze_layer`.
@@ -73,8 +74,9 @@ pub struct ValueInfo {
 pub struct ValueGraph {
     /// Per-value facts, keyed by `ExprId`.
     pub info: HashMap<ValueId, ValueInfo>,
-    /// Dependency edges: `(use, producer)`. A `Prior{id}` source generates an
-    /// edge from the using expr to the cache root's output expr.
+    /// Dependency edges: `(use, producer)`. Part B: the `Prior`-source edge is gone
+    /// (same-layer cache reuse is now a recomputed shared `ExprId`), so this is
+    /// currently always empty — kept for the residency-internal interface.
     pub dep_edges: Vec<(ValueId, ValueId)>,
     /// Resolution descriptors planned during analysis: the distinct leaf ExprIds
     /// that were reached and pruned. Stage 3 calls `materialize_descriptors` to
@@ -155,53 +157,37 @@ pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
     let mut dep_edges: Vec<(ValueId, ValueId)> = Vec::new();
     let mut reached_resolutions: Vec<ExprId> = Vec::new();
 
-    // Build a map: RootId → ExprId for all cache roots (roots with no origin).
-    // This lets us resolve `SourceKind::Prior{id}` to the producer expr.
-    let mut cache_root_expr: HashMap<RootId, ExprId> = HashMap::new();
-    for (idx, root) in layer.roots.iter().enumerate() {
-        if let Root::Output { expr, .. } = root {
-            let rid = RootId(idx as u32);
-            if !layer.origins.contains_key(&rid) {
-                cache_root_expr.insert(rid, *expr);
-            }
-        }
-    }
-
     // produced_at[expr_id] = root index that "produces" this value.
     // For a cache root's output expr: the root index that materializes it.
     // All other exprs are produced on demand (no dedicated entry — they are
     // produced at the same root that first references them, so any LATER root
     // referencing them qualifies as a later use).
+    //
+    // A cache root is a `Cache` materialize with no claim (Part B: same-layer reuse is
+    // now a recomputed shared `ExprId`, so a cache root's later use is an ordinary ref
+    // in a later root's tree, not a `Prior` source).
     let mut produced_at: HashMap<ExprId, usize> = HashMap::new();
     for (idx, root) in layer.roots.iter().enumerate() {
-        if let Root::Output { expr, .. } = root {
-            let rid = RootId(idx as u32);
-            if !layer.origins.contains_key(&rid) {
-                // Cache root: produced at root idx, available to later roots.
-                produced_at.insert(*expr, idx);
-            }
+        let is_cache_root = matches!(
+            root.materialize,
+            Some(SinkInfo { kind: SinkKind::Cache { .. }, .. })
+        ) && root.claim.is_none();
+        if is_cache_root {
+            // Cache root: produced at root idx, available to later roots.
+            produced_at.insert(root.expr, idx);
         }
     }
 
     // Walk each root in order. For each expr encountered we record
-    // (expr_id, root_idx_of_use). Additionally, when a `Prior{id}` source is
-    // encountered at root_idx, we record a logical "use" of the cache root's
-    // OUTPUT EXPR at root_idx so the candidate check fires on the right expr.
-    // (The `prior_expr` itself — the `Source(Prior{id})` — is a separate node
-    // from the cache root's expr; we must mark the CACHE ROOT's expr as candidate.)
+    // (expr_id, root_idx_of_use).
     let mut all_refs: Vec<(ExprId, usize)> = Vec::new();
 
     for (root_idx, root) in layer.roots.iter().enumerate() {
-        let root_expr = match root {
-            Root::Output { expr, .. } => *expr,
-            Root::Constraint { expr } => *expr,
-        };
         dfs_collect_refs(
             layer,
-            root_expr,
+            root.expr,
             root_idx,
             ctx,
-            &cache_root_expr,
             &mut all_refs,
             &mut dep_edges,
             &mut reached_resolutions,
@@ -286,9 +272,9 @@ pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
         .collect();
 
     // Source-residency candidates: a `Read` source loaded/borrowed as a FOLD OPERAND
-    // ≥2× over the EMITTED (Output-root) trees. `Root::Constraint` roots are dropped by
-    // the forward emitter (mod.rs `Root::Constraint { .. } => continue`), so we walk
-    // Output roots only.
+    // ≥2× over the EMITTED (materialize-bearing) trees. Claim-only (Constraint) roots
+    // are dropped by the forward emitter (mod.rs skips `materialize.is_none()` roots),
+    // so we walk materialize-bearing roots only.
     //
     // EMISSION-EXACT (Lever A): we mirror the three emitter elisions so a flagged read
     // is provably loaded/borrowed by the emitter (else admitting it pins a cell the
@@ -306,18 +292,20 @@ pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
     // the emitted-Global-stream derivation, out of scope.)
     let mut read_use_counts: HashMap<ExprId, u32> = HashMap::new();
     for (idx, root) in layer.roots.iter().enumerate() {
-        if let Root::Output { expr, .. } = root {
-            let rid = RootId(idx as u32);
-            // (b) CopyAlias roots emit no source bytecode.
-            if matches!(ctx.actions.get(&rid), Some(ForwardAction::CopyAlias { .. })) {
-                continue;
-            }
-            // (c) Sole-source passthrough roots fuse to one MOV.
-            if is_read_source(layer, *expr) {
-                continue;
-            }
-            count_read_uses(layer, *expr, &mut read_use_counts);
+        // Materialize-bearing (forward-emitted) roots only; claim-only roots emit nothing.
+        if root.materialize.is_none() {
+            continue;
         }
+        let rid = RootId(idx as u32);
+        // (b) CopyAlias roots emit no source bytecode.
+        if matches!(ctx.actions.get(&rid), Some(ForwardAction::CopyAlias { .. })) {
+            continue;
+        }
+        // (c) Sole-source passthrough roots fuse to one MOV.
+        if is_read_source(layer, root.expr) {
+            continue;
+        }
+        count_read_uses(layer, root.expr, &mut read_use_counts);
     }
     for (expr_id, n) in read_use_counts {
         if n >= 2 {
@@ -332,8 +320,11 @@ pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
 
 /// DFS walk of an expression tree rooted at `expr_id`, called within the context
 /// of `root_idx` (the index of the enclosing root). Appends to `all_refs` for
-/// every expr encountered (including logical "producer expr" refs for `Prior`
-/// sources), and records dep_edges for `Prior` sources.
+/// every expr encountered.
+///
+/// Part B: same-layer cache reuse is now a recomputed shared `ExprId` — an ordinary
+/// `Expr` child the DFS descends into — so there is no longer a `SourceKind::Prior`
+/// arm (and no `dep_edges` pushed for it).
 ///
 /// Resolution pruning: if `layer.resolutions.contains_key(&expr_id)`, record the
 /// ref and append the `expr_id` to `reached_resolutions`, but do NOT descend.
@@ -343,7 +334,6 @@ fn dfs_collect_refs(
     expr_id: ExprId,
     root_idx: usize,
     ctx: &DagForwardContext,
-    cache_root_expr: &HashMap<RootId, ExprId>,
     all_refs: &mut Vec<(ExprId, usize)>,
     dep_edges: &mut Vec<(ValueId, ValueId)>,
     reached_resolutions: &mut Vec<ExprId>,
@@ -357,25 +347,7 @@ fn dfs_collect_refs(
     }
 
     match &layer.exprs[expr_id.0 as usize] {
-        Expr::Source(src_id) => {
-            match &layer.sources[src_id.0 as usize].kind {
-                SourceKind::Prior { id } => {
-                    // Prior source: record dep edge and also record a "use" of the
-                    // cache root's output expr at this root index so the candidate
-                    // check fires on the correct expr (the cache root's computed expr,
-                    // not the `Prior` source node itself).
-                    if let Some(&producer_expr) = cache_root_expr.get(id) {
-                        dep_edges.push((expr_id, producer_expr));
-                        // Record the cache root's expr as used at this root index.
-                        // This is the key that makes `add_ab` (the cache root's expr)
-                        // a candidate: it will have both a ref at root 0 (produced_at=0)
-                        // and a ref at root 1 (from the Prior use), making use_root_idx
-                        // (1) > produced_at (0).
-                        all_refs.push((producer_expr, root_idx));
-                    }
-                }
-                _ => {}
-            }
+        Expr::Source(_) => {
             // Source nodes are terminals — no children.
         }
         Expr::Add(children) | Expr::Mul(children) => {
@@ -386,7 +358,6 @@ fn dfs_collect_refs(
                     child_id,
                     root_idx,
                     ctx,
-                    cache_root_expr,
                     all_refs,
                     dep_edges,
                     reached_resolutions,
@@ -397,9 +368,9 @@ fn dfs_collect_refs(
 }
 
 /// Return `true` if `expr_id` has a real DRAM backing that can be re-read via
-/// `OperandLine::Global` — i.e. it is a `SourceKind::Read`, `VirtualSetup`, or
-/// `Prior` leaf. Returns `false` for compound exprs, literals, and resolution-
-/// pruned leaves (those are re-gathered or recomputed, not re-read from DRAM).
+/// `OperandLine::Global` — i.e. it is a `SourceKind::Read` or `VirtualSetup` leaf.
+/// Returns `false` for compound exprs, literals, and resolution-pruned leaves (those
+/// are re-gathered or recomputed, not re-read from DRAM).
 fn has_global_backing(layer: &DagLayer, expr_id: ExprId) -> bool {
     // Resolution-pruned → special gather, no DRAM backing.
     if layer.resolutions.contains_key(&expr_id) {
@@ -409,9 +380,7 @@ fn has_global_backing(layer: &DagLayer, expr_id: ExprId) -> bool {
         Expr::Source(src_id) => {
             matches!(
                 &layer.sources[src_id.0 as usize].kind,
-                SourceKind::Read { .. }
-                    | SourceKind::VirtualSetup { .. }
-                    | SourceKind::Prior { .. }
+                SourceKind::Read { .. } | SourceKind::VirtualSetup { .. }
             )
         }
         Expr::Add(_) | Expr::Mul(_) => false,
@@ -421,7 +390,7 @@ fn has_global_backing(layer: &DagLayer, expr_id: ExprId) -> bool {
 /// Compute the miss penalty for an expression.
 ///
 /// - Resolution-pruned (`layer.resolutions.contains_key`) → `MISS_SPECIAL_GATHER`.
-/// - `Expr::Source`: `Read`/`VirtualSetup`/`Prior` → `MISS_BACKED_READ`;
+/// - `Expr::Source`: `Read`/`VirtualSetup` → `MISS_BACKED_READ`;
 ///   `Constant`/`Challenge` → `MISS_LITERAL`; `LookupValue` (uncovered leaf) → `MISS_LITERAL`.
 /// - `Expr::Add`/`Expr::Mul` → recursive recompute cost (sum over subtree,
 ///   plus 1 instr for the fold itself).
@@ -433,8 +402,7 @@ fn compute_miss(layer: &DagLayer, expr_id: ExprId) -> MissPenalty {
         Expr::Source(src_id) => {
             match &layer.sources[src_id.0 as usize].kind {
                 SourceKind::Read { .. }
-                | SourceKind::VirtualSetup { .. }
-                | SourceKind::Prior { .. } => MISS_BACKED_READ,
+                | SourceKind::VirtualSetup { .. } => MISS_BACKED_READ,
                 SourceKind::Constant { .. }
                 | SourceKind::Challenge { .. }
                 | SourceKind::LookupValue { .. } => MISS_LITERAL,

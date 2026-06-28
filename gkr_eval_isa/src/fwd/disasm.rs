@@ -188,24 +188,19 @@ pub fn disassemble_layer(
 
     // ---- source DAG (optional) ----
     if let Some(layer) = layer {
+        let materializes = layer.roots.iter().filter(|r| r.materialize.is_some()).count();
         let _ = writeln!(
             o,
-            "\n--- DAG: {} sources, {} exprs, {} roots, {} sinks ---",
+            "\n--- DAG: {} sources, {} exprs, {} roots, {} materializes ---",
             layer.sources.len(),
             layer.exprs.len(),
             layer.roots.len(),
-            layer.sinks.len()
+            materializes
         );
         let _ = writeln!(o, "sources:");
         for (i, s) in layer.sources.iter().enumerate() {
             let desc = match &s.kind {
                 SourceKind::Read { place } => format!("Read {place:?}"),
-                SourceKind::Prior { id } => {
-                    format!(
-                        "Prior(root {})  <-- reuse of an already-computed root (cache/CSE)",
-                        id.0
-                    )
-                }
                 SourceKind::Constant { value } => format!("Constant {value}"),
                 SourceKind::Challenge { reference } => format!("Challenge {reference:?}"),
                 SourceKind::VirtualSetup { kind } => format!("VirtualSetup {kind:?}"),
@@ -233,20 +228,19 @@ pub fn disassemble_layer(
         for (idx, root) in layer.roots.iter().enumerate() {
             let rid = RootId(idx as u32);
             let action = ctx.actions.get(&rid);
-            let kind = match root {
-                Root::Output { expr, sink } => {
-                    let si = &layer.sinks[sink.0 as usize];
-                    let cache = if !layer.origins.contains_key(&rid) {
-                        "  [CACHE root — no origin]"
+            let kind = match (root.materialize.as_ref(), root.claim.as_ref()) {
+                (Some(si), claim) => {
+                    let cache = if claim.is_none() {
+                        "  [CACHE root — materialize-only, no claim]"
                     } else {
                         ""
                     };
                     format!(
                         "Output expr=e{} -> {:?}/{:?}{cache}",
-                        expr.0, si.kind, si.field
+                        root.expr.0, si.kind, si.field
                     )
                 }
-                Root::Constraint { expr } => format!("Constraint expr=e{}", expr.0),
+                (None, _) => format!("Constraint expr=e{}", root.expr.0),
             };
             let _ = writeln!(o, "  root{idx:<3} {kind}  action={action:?}");
         }

@@ -25,8 +25,8 @@ pub struct DagForwardContext {
     pub backings: BackingTable,
     pub actions: HashMap<RootId, ForwardAction>,
     /// Each cache (materialization-only) root → the backing `(slot, col)` it materialized to.
-    /// `SourceKind::Prior{id}` re-reads `cache_loc[id]` by default; the scheduler MAY instead
-    /// keep a heavily-reused cache resident in an smem cell (an OPTIONAL optimization).
+    /// Same-layer reuse of a cached value is now a shared `ExprId` the forward DFS
+    /// recomputes (Part B), so this is kept only as the cache root's materialize record.
     pub cache_loc: HashMap<RootId, (u8, u16)>,
     /// Cross-layer field map (codex Imp2): each prior-layer `ReadPlace::{LayerOutput,
     /// CacheOutput}` → the TRUE field of its producing sink. `child_operand_field`
@@ -79,7 +79,7 @@ pub struct CompiledLayer {
     pub stats: CompileStats,
 }
 
-/// Classify every `Root::Output` of a layer (spec §10). No closures — real metadata.
+/// Classify every materialize-bearing root of a layer (spec §10). No closures — real metadata.
 /// `artifact_layer` is `artifact.layers[layer_idx]`; `scratch_mapping` is `artifact.scratch_space_mapping`.
 pub fn build_forward_actions(
     layer: &DagLayer,
@@ -88,9 +88,12 @@ pub fn build_forward_actions(
 ) -> Result<HashMap<RootId, ForwardAction>, CompileError> {
     let mut actions = HashMap::new();
     for (idx, root) in layer.roots.iter().enumerate() {
-        let Root::Output { .. } = root else { continue; }; // Constraint roots ignored for forward
+        // A claim-only (Constraint) root never materializes — ignored for forward.
+        if root.materialize.is_none() {
+            continue;
+        }
         let rid = RootId(idx as u32);
-        let action = match layer.origins.get(&rid) {
+        let action = match root.claim.as_ref().map(|c| &c.origin) {
             None => ForwardAction::Compute, // cache root (materialization-only)
             Some(origin) => {
                 let gates = match origin.group {

@@ -17,7 +17,7 @@ use super::super::isa::{
 use super::residency::{Loc, ResidencyState};
 use super::schedule::split_reduction;
 use cs::gkr_compiler::dag_ir::{
-    expr_field, Expr, ExprId, FieldKind, ReadPlace, RootId, SinkKind, SourceKind,
+    expr_field, Expr, ExprId, FieldKind, ReadPlace, SinkInfo, SinkKind, SourceKind,
 };
 use std::collections::HashMap;
 
@@ -39,19 +39,15 @@ pub(crate) struct LoweringEnv<'a> {
     /// `ctx.specials` index. During emit, a resolution-carrying expr resolves to
     /// `OperandLine::Special{ desc_by_expr[&id] }` — never via `resolve_or_descend`.
     pub desc_by_expr: &'a HashMap<ExprId, u16>,
-    /// `RootId → producer ExprId` for cache roots (no origin). A `Prior{id}` read maps
-    /// `id` to its producer expr to borrow from residency (`ValueInfo` is keyed by ExprId).
-    pub cache_root_expr: &'a HashMap<RootId, ExprId>,
     /// The current reference-string event index, used as the residency `point` for
     /// `alloc_temp`'s Belady next-use eviction tiebreak.
     pub point: usize,
-    /// Whether a `Prior`/CSE arm may borrow a resident `Smem` operand. TRUE on the
-    /// normal lowering path. FALSE for a `CopyAlias` root: `RootOutput::Alias` is
+    /// Whether a CSE / source-residency arm may borrow a resident `Smem` operand. TRUE
+    /// on the normal lowering path. FALSE for a `CopyAlias` root: `RootOutput::Alias` is
     /// resolved at PROGRAM END (`interp.rs`), but a resident smem cell is only valid
-    /// until the planner evicts/reuses it — so an alias must reference STABLE storage
-    /// (the `cache_loc` DRAM backing), never a resident cell (codex S2 review,
-    /// finding 1). When false, a same-layer `Prior` falls through to its `Global`
-    /// backing instead of `Smem`.
+    /// until the planner evicts/reuses it — so an alias must reference STABLE storage,
+    /// never a resident cell (codex S2 review, finding 1). When false, a reused source
+    /// falls through to its `Global` backing instead of `Smem`.
     pub allow_resident_smem: bool,
 }
 
@@ -112,24 +108,27 @@ fn to_operand_field(f: FieldKind) -> OperandField {
 /// value, so this is value-neutral, but the LABEL feeds the GPU ABI and the
 /// validator — so it must be the read's true producing-sink field.
 ///
-/// Walks EVERY layer's `sinks`; `Inner{layer,offset}`/`Cache{layer,offset}` sinks are
-/// the only kinds re-read cross-layer (via `ReadPlace::LayerOutput`/`CacheOutput`).
-/// `Export`/`Scratch` are ignored — they are not read via those `ReadPlace` variants
-/// (`read_place_field` already classifies `Scratch` reads as `Base`).
+/// Walks EVERY layer's roots, reading each root's inline `materialize` sink;
+/// `Inner{layer,offset}`/`Cache{layer,offset}` sinks are the only kinds re-read
+/// cross-layer (via `ReadPlace::LayerOutput`/`CacheOutput`). `Export`/`Scratch` are
+/// ignored — they are not read via those `ReadPlace` variants (`read_place_field`
+/// already classifies `Scratch` reads as `Base`).
 pub fn build_cross_layer_field_map(
     circuit: &cs::gkr_compiler::dag_ir::DagCircuit,
 ) -> HashMap<ReadPlace, FieldKind> {
     let mut map = HashMap::new();
     for dag_layer in &circuit.layers {
-        for sink in &dag_layer.sinks {
-            match sink.kind {
-                SinkKind::Inner { layer, offset } => {
-                    map.insert(ReadPlace::LayerOutput { layer, offset }, sink.field);
+        for root in &dag_layer.roots {
+            if let Some(SinkInfo { kind, field }) = root.materialize.as_ref() {
+                match *kind {
+                    SinkKind::Inner { layer, offset } => {
+                        map.insert(ReadPlace::LayerOutput { layer, offset }, *field);
+                    }
+                    SinkKind::Cache { layer, offset } => {
+                        map.insert(ReadPlace::CacheOutput { layer, offset }, *field);
+                    }
+                    SinkKind::Export { .. } | SinkKind::Scratch { .. } => {}
                 }
-                SinkKind::Cache { layer, offset } => {
-                    map.insert(ReadPlace::CacheOutput { layer, offset }, sink.field);
-                }
-                SinkKind::Export { .. } | SinkKind::Scratch { .. } => {}
             }
         }
     }
@@ -166,7 +165,7 @@ pub(crate) fn child_operand_field(
     expected: OperandField,
     map: &HashMap<ReadPlace, FieldKind>,
 ) -> OperandField {
-    match expr_field(&layer.exprs, &layer.sources, id, &layer.roots, &layer.sinks) {
+    match expr_field(&layer.exprs, &layer.sources, id) {
         Ok(f) => to_operand_field(f),
         Err(_) => match expr_field_with_map(layer, id, map) {
             // The expr's TRUE field, resolving cross-layer leaves via the map.
@@ -190,7 +189,7 @@ fn expr_field_with_map(
         Expr::Source(_) => {
             // A determinable source resolves through the standard inference; an
             // `Err(place)` is a cross-layer read whose field we look up in the map.
-            match expr_field(&layer.exprs, &layer.sources, id, &layer.roots, &layer.sinks) {
+            match expr_field(&layer.exprs, &layer.sources, id) {
                 Ok(f) => Some(f),
                 Err(place) => map.get(&place).copied(),
             }
@@ -315,31 +314,6 @@ pub(crate) fn source_to_operand(
         SourceKind::Challenge { reference } => {
             let (sub, idx) = ctx.challenges.intern(reference);
             Ok((OperandLine::Ldc { sub, idx }, OperandLease::None))
-        }
-        SourceKind::Prior { id } => {
-            // Residency (#8): a same-layer `Prior(rid)` BORROWS the cache root's resident
-            // smem cell when the planner kept it resident (a lease pinning the cell for
-            // this fold), ELSE re-reads the `cache_loc` DRAM backing. The cache backing
-            // is never dropped — residency is purely a READ-side choice (codex re-review
-            // Imp1). A cache root always has a real DRAM backing, so a non-resident
-            // (evicted) `Prior` always re-reads DRAM here (never Recompute).
-            if env.allow_resident_smem {
-                if let Some(&producer) = env.cache_root_expr.get(id) {
-                    if let Some(cell) = res.borrow_resident(producer) {
-                        return Ok((OperandLine::Smem { cell }, OperandLease::Borrow(producer)));
-                    }
-                }
-            }
-            // Caches lead: the driver populated `cache_loc[id]` before this read
-            // (§5/§8). Re-read the cache backing.
-            let (slot, col) = *ctx
-                .cache_loc
-                .get(id)
-                .ok_or_else(|| CompileError::FieldMismatch(format!(
-                    "Prior read of unmaterialized cache root {}",
-                    id.0
-                )))?;
-            Ok((OperandLine::Global { slot, col }, OperandLease::None))
         }
         SourceKind::LookupValue { .. } => {
             // Reached an uncovered LookupValue leaf by emitted-code traversal (§9,

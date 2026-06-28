@@ -19,8 +19,9 @@ fn check_coverage(compiled: &CompiledLayer, layer: &DagLayer) -> Result<(), Comp
             continue;
         }
         let root_idx = rid.0 as usize;
+        // A Compute action only ever attaches to a materialize-bearing root.
         let expr_id = match layer.roots.get(root_idx) {
-            Some(Root::Output { expr, .. }) => *expr,
+            Some(root) if root.materialize.is_some() => root.expr,
             _ => continue,
         };
         walk_coverage(layer, expr_id)?;
@@ -61,10 +62,13 @@ fn walk_coverage(layer: &DagLayer, id: ExprId) -> Result<(), CompileError> {
 
 // ── Check 2: output action completeness ──────────────────────────────────────
 
-/// Every `Output` root has exactly one action in `compiled.ctx.actions`.
+/// Every materialize-bearing (forward-emitted) root has exactly one action in
+/// `compiled.ctx.actions`.
 fn check_action_completeness(compiled: &CompiledLayer, layer: &DagLayer) -> Result<(), CompileError> {
     for (idx, root) in layer.roots.iter().enumerate() {
-        let Root::Output { .. } = root else { continue; };
+        if root.materialize.is_none() {
+            continue;
+        }
         let rid = cs::gkr_compiler::dag_ir::RootId(idx as u32);
         if !compiled.ctx.actions.contains_key(&rid) {
             return Err(CompileError::OutputUnresolved(rid));

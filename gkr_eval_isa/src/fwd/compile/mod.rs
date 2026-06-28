@@ -100,16 +100,16 @@ pub fn expr_operand_field(
 
 /// Compile one `dag_ir` layer to a forward program (spec §10, §11).
 ///
-/// Walks `layer.roots` by INDEX (caches lead, so a same-layer `Prior` read of a
-/// cache always sees `cache_loc[id]` already populated). Each `Root::Output` is
-/// dispatched by its `ForwardAction`:
-/// - `Compute`: lower the expr into the acc and materialize. A CACHE root (no
-///   origin) materializes to its `CacheOutput` backing and records `cache_loc`; a
-///   NORMAL output materializes via its sink backing.
+/// Walks `layer.roots` by INDEX. Same-layer reuse of a cached value is now a shared
+/// `ExprId` the forward DFS recomputes (Part B — value-identical to the old reload).
+/// Each materialize-bearing root is dispatched by its `ForwardAction`:
+/// - `Compute`: lower the expr into the acc and materialize. A CACHE root (Cache
+///   sink, no claim) materializes to its `CacheOutput` backing and records
+///   `cache_loc`; a NORMAL output materializes via its sink backing.
 /// - `CopyAlias`: emit NO instructions; lower the root's single source expr to an
 ///   `OperandLine` recorded as `RootOutput::Alias`.
 /// - `SkipScratchPrefill`: emit nothing; record the rid in `skipped`.
-/// `Root::Constraint` roots are ignored for forward.
+/// Claim-only (Constraint) roots — `materialize.is_none()` — are ignored for forward.
 pub fn compile_layer(
     layer: &DagLayer,
     artifact_layer: &GKRLayerDescription,
@@ -132,14 +132,12 @@ pub fn compile_layer(
     //    (Task 7). The emitter looks these up via `desc_by_expr` and NEVER calls
     //    `resolve_or_descend` again — so `special_gathers == distinct descriptors`.
     let desc_by_expr = materialize_descriptors(&graph.descriptors, layer, &mut ctx);
-    // 3) `RootId → producer ExprId` for cache roots (no origin). A `Prior{id}` read
-    //    maps `id` to its producer expr to query residency (info is keyed by ExprId).
-    let cache_root_expr = cache_root_expr_map(layer);
-    // 4) The index-order reference string: a `Produce` when a cache root materializes,
-    //    a `Use` at each `Prior` read of a cache (and a candidate non-cache compound's
-    //    later reuse). Drives Belady next-use distances.
-    let refs = build_ref_string(layer, &cache_root_expr, &graph);
-    // 5) ONE per-layer residency planner (replaces the per-root CellAllocator) — a
+    // 3) The index-order reference string: a `Produce` when a cache root materializes,
+    //    and a `Use` at each later source-residency reuse. Drives Belady next-use
+    //    distances. (Part B: cache reuse is now a recomputed shared `ExprId`, so there
+    //    are no `Prior` `Use` events any more.)
+    let refs = build_ref_string(layer, &graph);
+    // 4) ONE per-layer residency planner (replaces the per-root CellAllocator) — a
     //    layer-wide high-water of residents + lowering temps that must stay ≤ BUDGET.
     let mut residency = ResidencyState::new(&refs, &graph.info, budget);
 
@@ -153,10 +151,9 @@ pub fn compile_layer(
 
     for (idx, root) in layer.roots.iter().enumerate() {
         let rid = RootId(idx as u32);
-        let (expr, sink_id) = match root {
-            Root::Output { expr, sink } => (*expr, *sink),
-            Root::Constraint { .. } => continue, // ignored for forward
-        };
+        // Claim-only (Constraint) roots never materialize — ignored for forward.
+        let Some(sink) = root.materialize.as_ref() else { continue };
+        let expr = root.expr;
 
         let action = ctx
             .actions
@@ -181,7 +178,6 @@ pub fn compile_layer(
                 // `expected` hint so a fully-cross-layer expr (whose `expr_field` is
                 // `Err` everywhere) labels its reads with the correct field, keeping
                 // the validator's field-transition tracker consistent (Task 13).
-                let sink = &layer.sinks[sink_id.0 as usize];
                 let expected = operand_field_of(sink);
 
                 // Lower the expr into the accumulator. The ONE per-layer
@@ -190,14 +186,13 @@ pub fn compile_layer(
                 // compound child materializes via `alloc_temp`, which evicts a backed
                 // (DRAM-re-readable) resident on demand when full (emitting nothing —
                 // the evicted value's later uses re-resolve via `location`). A reused
-                // same-layer `Prior`/CSE value is BORROWED from its resident cell (a
+                // same-layer source/CSE value is BORROWED from its resident cell (a
                 // lease pinning it for the consuming fold). No second allocator, no
                 // static reservation, no pre-occupy: with one cell space the b5069ea0
                 // transient/resident collision cannot occur by construction.
                 {
                     let env = LoweringEnv {
                         desc_by_expr: &desc_by_expr,
-                        cache_root_expr: &cache_root_expr,
                         point,
                         allow_resident_smem: true,
                     };
@@ -254,36 +249,6 @@ pub fn compile_layer(
                     false
                 };
 
-                let is_cache_root = !layer.origins.contains_key(&rid);
-
-                // Residency (#8): keep a heavily-reused cache root resident in an smem
-                // cell so its same-layer `Prior` readers read the cell (no DRAM re-read).
-                // Only NON-fused cache roots qualify — a fused passthrough never lands
-                // in the acc (the value is a bare source already cheap to re-read), and
-                // its single MOV writes straight to Global. The resident store
-                // (`MOV DstFromAcc Smem{c}`) runs BEFORE the Global materialize, so the
-                // acc still carries the root's value for both writes. The Global backing
-                // is ALWAYS also written (cross-layer reads + the cache backing are
-                // never dropped — codex re-review Imp1).
-                if !fused && is_cache_root {
-                    let producer = expr;
-                    let candidate = graph
-                        .info
-                        .get(&producer)
-                        .map(|i| i.is_candidate)
-                        .unwrap_or(false);
-                    if candidate {
-                        if let Loc::Smem(cell) = residency.admit(producer, point)? {
-                            program.instrs.push(Instr::Mov {
-                                dir: MovDir::DstFromAcc,
-                                field: expected,
-                                dst: Some(DstLine::Smem { cell }),
-                                src: None,
-                            });
-                        }
-                    }
-                }
-
                 if !fused {
                     program.instrs.push(Instr::Mov {
                         dir: MovDir::DstFromAcc,
@@ -293,10 +258,9 @@ pub fn compile_layer(
                     });
                 }
 
-                // A cache root (no origin) records its location for same-layer Prior reads.
-                if is_cache_root {
-                    ctx.cache_loc.insert(rid, (slot, col));
-                }
+                // Part B: nothing reads/borrows a cache backing once the `Prior` arm is
+                // gone (same-layer reuse is a recomputed shared `ExprId`), so a cache
+                // root no longer records a `cache_loc` for same-layer readers.
                 root_outputs
                     .push((rid, RootOutput::Cell(OutputCell::Global { slot, col })));
             }
@@ -305,13 +269,12 @@ pub fn compile_layer(
                 // single source expr to an OperandLine for the action executor.
                 let env = LoweringEnv {
                     desc_by_expr: &desc_by_expr,
-                    cache_root_expr: &cache_root_expr,
                     point,
                     // A view-alias output is read at PROGRAM END, not at this root's
                     // program point — so it must reference STABLE storage. Forbid a
                     // resident `Smem` operand (which Belady could evict/reuse before
-                    // the read): a same-layer `Prior` falls through to its `Global`
-                    // cache backing instead (codex S2 review, finding 1).
+                    // the read): a reused source falls through to its `Global`
+                    // backing instead (codex S2 review, finding 1).
                     allow_resident_smem: false,
                 };
                 // A CopyAlias root emits NO bytecode; pass a throwaway sink and
@@ -328,9 +291,9 @@ pub fn compile_layer(
                     env,
                 )?;
                 debug_assert!(alias_sink.is_empty(), "CopyAlias lowering must emit no bytecode");
-                // `allow_resident_smem=false` guarantees the Prior arm never borrows, so
-                // the lease is `None` and the operand is stable storage (never a resident
-                // Smem cell, which Belady could evict before the program-end alias read).
+                // `allow_resident_smem=false` guarantees the reused-source arm never
+                // borrows, so the lease is `None` and the operand is stable storage (never
+                // a resident Smem cell, which Belady could evict before the program-end alias read).
                 debug_assert!(
                     matches!(lease, arith::OperandLease::None)
                         && !matches!(op, OperandLine::Smem { .. }),
@@ -439,72 +402,54 @@ pub fn compile_layer(
     })
 }
 
-/// Build `RootId → producer ExprId` for every CACHE root (a `Root::Output` with no
-/// origin). Mirrors the internal map `analyze_layer` uses, exported here so the
-/// emitter can map a `SourceKind::Prior{id}` (a `RootId`) to the cache root's output
-/// expr — the key `ValueInfo`/residency are keyed by (an `ExprId`).
-fn cache_root_expr_map(layer: &DagLayer) -> HashMap<RootId, ExprId> {
-    let mut map = HashMap::new();
-    for (idx, root) in layer.roots.iter().enumerate() {
-        if let Root::Output { expr, .. } = root {
-            let rid = RootId(idx as u32);
-            if !layer.origins.contains_key(&rid) {
-                map.insert(rid, *expr);
-            }
-        }
-    }
-    map
-}
-
 /// Build the index-order reference string for residency planning.
 ///
-/// Walks `layer.roots` in index order. For each CACHE root (no origin) that is a
-/// residency candidate, emits a `Produce(producer_expr)` at the root's production
-/// point; for each `SourceKind::Prior{id}` read encountered in any root's expr tree,
-/// emits a `Use(producer_expr)` at the using root's point; for each
-/// `SourceKind::Read` source that is marked `is_source_resident` in an Output root,
-/// emits a `Use(source_expr)` so `ResidencyState`'s next-use table sees source reuse.
-/// The events drive the Belady next-use distances in `ResidencyState`. The emit-side
-/// `point` cursor is advanced in the same root order so query points line up.
+/// Walks `layer.roots` in index order. For each CACHE root (a `Cache` materialize with
+/// no claim) that is a residency candidate, emits a `Produce(root.expr)` at the root's
+/// production point; for each `SourceKind::Read` source that is marked
+/// `is_source_resident` in a materialize-bearing root, emits a `Use(source_expr)` so
+/// `ResidencyState`'s next-use table sees source reuse. The events drive the Belady
+/// next-use distances in `ResidencyState`. The emit-side `point` cursor is advanced in
+/// the same root order so query points line up.
+///
+/// Part B: same-layer cache reuse is now a recomputed shared `ExprId`, so there are no
+/// `Prior` `Use` events any more — only the source-residency `Use` events remain.
 fn build_ref_string(
     layer: &DagLayer,
-    cache_root_expr: &HashMap<RootId, ExprId>,
     graph: &self::analyze::ValueGraph,
 ) -> RefString {
     let mut events: Vec<RefEvent> = Vec::new();
-    for (idx, root) in layer.roots.iter().enumerate() {
-        let rid = RootId(idx as u32);
+    for root in &layer.roots {
         // Produce: a candidate cache root makes its value available here.
-        if let Some(&producer) = cache_root_expr.get(&rid) {
+        let is_cache_root =
+            matches!(root.materialize, Some(SinkInfo { kind: SinkKind::Cache { .. }, .. }))
+                && root.claim.is_none();
+        if is_cache_root {
+            let producer = root.expr;
             let candidate = graph.info.get(&producer).map(|i| i.is_candidate).unwrap_or(false);
             if candidate {
                 events.push(RefEvent::Produce(producer));
             }
         }
-        // Use: Prior reads and (for Output roots) source-resident Read sources.
-        match root {
-            Root::Output { expr, .. } => {
-                collect_prior_uses(layer, *expr, cache_root_expr, &graph.info, /*include_sources=*/ true, &mut events);
-            }
-            Root::Constraint { expr } => {
-                // Constraint roots are not emitted in the forward pass; keep the
-                // pre-existing Prior-use behavior, suppress source uses (no emission to align to).
-                collect_prior_uses(layer, *expr, cache_root_expr, &graph.info, /*include_sources=*/ false, &mut events);
-            }
-        }
+        // Use: source-resident Read sources. A materialize-bearing root is emitted in
+        // the forward pass (its source uses align to real loads); a claim-only
+        // (Constraint) root is not emitted, so suppress its source uses.
+        let include_sources = root.materialize.is_some();
+        collect_prior_uses(layer, root.expr, &graph.info, include_sources, &mut events);
     }
     RefString { events }
 }
 
-/// DFS an expr tree, pushing a `Use(producer_expr)` for each `SourceKind::Prior{id}`
-/// that maps to a known cache root. When `include_sources` is true, also pushes a
-/// `Use(expr_id)` for each `SourceKind::Read` source whose `is_source_resident` flag
-/// is set (reused across ≥2 Output roots). Resolution-pruned exprs are terminals (not
-/// descended), matching `analyze_layer`'s pruning.
+/// DFS an expr tree, pushing a `Use(expr_id)` for each `SourceKind::Read` source whose
+/// `is_source_resident` flag is set (reused across ≥2 emitted roots) when
+/// `include_sources` is true. Resolution-pruned exprs are terminals (not descended),
+/// matching `analyze_layer`'s pruning.
+///
+/// Part B: the old `SourceKind::Prior` arm is gone — a same-layer cache reuse is now a
+/// recomputed shared `ExprId`, an ordinary `Expr` child the DFS descends into.
 fn collect_prior_uses(
     layer: &DagLayer,
     expr_id: ExprId,
-    cache_root_expr: &HashMap<RootId, ExprId>,
     info: &HashMap<ExprId, self::analyze::ValueInfo>,
     include_sources: bool,
     events: &mut Vec<RefEvent>,
@@ -514,11 +459,6 @@ fn collect_prior_uses(
     }
     match &layer.exprs[expr_id.0 as usize] {
         Expr::Source(src_id) => match &layer.sources[src_id.0 as usize].kind {
-            cs::gkr_compiler::dag_ir::SourceKind::Prior { id } => {
-                if let Some(&producer) = cache_root_expr.get(id) {
-                    events.push(RefEvent::Use(producer));
-                }
-            }
             cs::gkr_compiler::dag_ir::SourceKind::Read { .. } if include_sources => {
                 if info.get(&expr_id).map(|i| i.is_source_resident).unwrap_or(false) {
                     events.push(RefEvent::Use(expr_id)); // a Read source is its own producer (loaded at first use)
@@ -528,7 +468,7 @@ fn collect_prior_uses(
         },
         Expr::Add(children) | Expr::Mul(children) => {
             for &c in children {
-                collect_prior_uses(layer, c, cache_root_expr, info, include_sources, events);
+                collect_prior_uses(layer, c, info, include_sources, events);
             }
         }
     }
