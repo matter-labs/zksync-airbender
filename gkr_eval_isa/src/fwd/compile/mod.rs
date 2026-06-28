@@ -506,8 +506,8 @@ fn is_empty_reduction(layer: &DagLayer, expr: ExprId) -> bool {
 mod tests {
     use super::*;
     use cs::gkr_compiler::dag_ir::{
-        ArenaBuilder, BatchingOrder, FieldKind, ReadPlace, Root, SinkId, SinkInfo, SinkKind,
-        SourceKind,
+        ArenaBuilder, BatchingOrder, ClaimInfo, FieldKind, ReadPlace, Root, RootGroup, RootOrigin,
+        RootSlot, SinkInfo, SinkKind, SourceKind,
     };
     use cs::gkr_compiler::{GKRLayerDescription, GateArtifacts};
     use std::collections::BTreeMap;
@@ -541,13 +541,16 @@ mod tests {
         let layer = DagLayer {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
-            roots: vec![Root::Output { expr: add, sink: SinkId(0) }],
-            sinks: vec![SinkInfo {
-                kind: SinkKind::Cache { layer: 3, offset: 5 },
-                field: FieldKind::Base,
+            roots: vec![Root {
+                expr: add,
+                // Cache materialize + no claim → cache root → Compute.
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Cache { layer: 3, offset: 5 },
+                    field: FieldKind::Base,
+                }),
+                claim: None,
             }],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(), // no origin → cache root → Compute
             resolutions: BTreeMap::new(),
         };
 
@@ -593,13 +596,15 @@ mod tests {
         let layer = DagLayer {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
-            roots: vec![Root::Output { expr: a, sink: SinkId(0) }],
-            sinks: vec![SinkInfo {
-                kind: SinkKind::Cache { layer: 3, offset: 5 },
-                field: FieldKind::Base,
+            roots: vec![Root {
+                expr: a,
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Cache { layer: 3, offset: 5 },
+                    field: FieldKind::Base,
+                }),
+                claim: None,
             }],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
         let compiled =
@@ -650,17 +655,32 @@ mod tests {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
             roots: vec![
-                // Root A: bare-source passthrough whose expr IS read9 (sole expr).
-                Root::Output { expr: r9, sink: SinkId(0) },
-                // Root B: the fold sharing read9.
-                Root::Output { expr: fold, sink: SinkId(1) },
-            ],
-            sinks: vec![
-                SinkInfo { kind: SinkKind::Cache { layer: 3, offset: 5 }, field: FieldKind::Base },
-                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base },
+                // Root A: bare-source passthrough whose expr IS read9 (sole expr) — a cache root.
+                Root {
+                    expr: r9,
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Cache { layer: 3, offset: 5 },
+                        field: FieldKind::Base,
+                    }),
+                    claim: None,
+                },
+                // Root B: the fold sharing read9 — a claim-bearing Inner output.
+                Root {
+                    expr: fold,
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Inner { layer: 0, offset: 0 },
+                        field: FieldKind::Base,
+                    }),
+                    claim: Some(ClaimInfo {
+                        origin: RootOrigin {
+                            group: RootGroup::Gates,
+                            relation_index: 0,
+                            slot: RootSlot::Output(0),
+                        },
+                    }),
+                },
             ],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         }
     }
@@ -704,13 +724,21 @@ mod tests {
         let layer = DagLayer {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
-            roots: vec![Root::Output { expr: mul_one, sink: SinkId(0) }],
-            sinks: vec![SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 0 },
-                field: FieldKind::Base,
+            roots: vec![Root {
+                expr: mul_one,
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Inner { layer: 0, offset: 0 },
+                    field: FieldKind::Base,
+                }),
+                claim: Some(ClaimInfo {
+                    origin: RootOrigin {
+                        group: RootGroup::Gates,
+                        relation_index: 0,
+                        slot: RootSlot::Output(0),
+                    },
+                }),
             }],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
         let err = compile_layer(&layer, &artifact_layer(0), &BTreeMap::new(), &HashMap::new(), 16)
@@ -726,13 +754,21 @@ mod tests {
         let layer = DagLayer {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
-            roots: vec![Root::Output { expr: empty, sink: SinkId(0) }],
-            sinks: vec![SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 0 },
-                field: FieldKind::Base,
+            roots: vec![Root {
+                expr: empty,
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Inner { layer: 0, offset: 0 },
+                    field: FieldKind::Base,
+                }),
+                claim: Some(ClaimInfo {
+                    origin: RootOrigin {
+                        group: RootGroup::Gates,
+                        relation_index: 0,
+                        slot: RootSlot::Output(0),
+                    },
+                }),
             }],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
         let err = compile_layer(&layer, &artifact_layer(0), &BTreeMap::new(), &HashMap::new(), 16)
@@ -810,11 +846,13 @@ mod tests {
     // lowered between them is freed (one shared allocator: residents and temps share
     // the cell space, so a temp never lands on a live resident's cell). ─────────────
     //
-    //   root0 = Add(memA, memB)            — cache root (no origin), CANDIDATE (later
-    //                                        Prior use) → admitted resident in cell c.
+    //   root0 = Add(memA, memB)            — cache root (Cache sink, no claim), CANDIDATE
+    //                                        (later shared-ExprId use) → admitted resident in cell c.
     //   root1 = Mul(Add(memC, memD), memE) — its Add child lowers into a TRANSIENT cell
     //                                        (freed after root1's fold).
-    //   root2 = Mul(Prior(root0), memF)    — reads root0 from its RESIDENT cell c.
+    //   root2 = Mul(add_ab, memF)          — reuses root0's value via the SHARED ExprId
+    //                                        `add_ab` (Part B: no `Prior` source), reading it
+    //                                        from its RESIDENT cell c.
     //
     // Asserts: (i) root0 emits a resident store `MOV DstFromAcc Smem{c}`; (ii) root2
     // reads `OperandLine::Smem{c}` (resident survived + is read by root2, NOT re-read
@@ -840,26 +878,56 @@ mod tests {
         let e = mem(&mut arena, 4);
         let mul_cde = arena.mul(vec![add_cd, e]); // root1 expr (Mul of a compound + source)
 
-        let prior0 = arena.intern_source(SourceKind::Prior { id: RootId(0) });
-        let prior0_expr = arena.source_expr(prior0);
         let f = mem(&mut arena, 5);
-        let mul_prior_f = arena.mul(vec![prior0_expr, f]); // root2 expr (reads root0)
+        // Part B: root2 reuses root0's value through the SHARED ExprId `add_ab` directly
+        // (no `Prior` source); the shared child reaches root0's resident cell.
+        let mul_prior_f = arena.mul(vec![add_ab, f]); // root2 expr (reuses root0's value)
 
         let layer = DagLayer {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
             roots: vec![
-                Root::Output { expr: add_ab, sink: SinkId(0) },     // cache root
-                Root::Output { expr: mul_cde, sink: SinkId(1) },    // normal output
-                Root::Output { expr: mul_prior_f, sink: SinkId(2) },// reads root0
-            ],
-            sinks: vec![
-                SinkInfo { kind: SinkKind::Cache { layer: 3, offset: 0 }, field: FieldKind::Base },
-                SinkInfo { kind: SinkKind::Inner { layer: 3, offset: 0 }, field: FieldKind::Base },
-                SinkInfo { kind: SinkKind::Inner { layer: 3, offset: 1 }, field: FieldKind::Base },
+                // root0: cache root (Cache sink, no claim).
+                Root {
+                    expr: add_ab,
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Cache { layer: 3, offset: 0 },
+                        field: FieldKind::Base,
+                    }),
+                    claim: None,
+                },
+                // root1: normal claim-bearing Inner output.
+                Root {
+                    expr: mul_cde,
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Inner { layer: 3, offset: 0 },
+                        field: FieldKind::Base,
+                    }),
+                    claim: Some(ClaimInfo {
+                        origin: RootOrigin {
+                            group: RootGroup::Gates,
+                            relation_index: 0,
+                            slot: RootSlot::Output(0),
+                        },
+                    }),
+                },
+                // root2: claim-bearing Inner output that reuses root0's value.
+                Root {
+                    expr: mul_prior_f,
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Inner { layer: 3, offset: 1 },
+                        field: FieldKind::Base,
+                    }),
+                    claim: Some(ClaimInfo {
+                        origin: RootOrigin {
+                            group: RootGroup::Gates,
+                            relation_index: 1,
+                            slot: RootSlot::Output(0),
+                        },
+                    }),
+                },
             ],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(), // root0 has no origin → cache root
             resolutions: BTreeMap::new(),
         };
 
@@ -881,7 +949,7 @@ mod tests {
         );
 
         // (ii) some instruction reads the resident cell as an Smem operand (root2's
-        // Prior read), proving the resident survived and was read — not re-read DRAM.
+        // shared-ExprId reuse), proving the resident survived and was read — not re-read DRAM.
         let reads_resident = compiled.program.instrs.iter().any(|i| match i {
             Instr::Mul { operands, .. } | Instr::Add { operands, .. } => {
                 operands.iter().any(|o| matches!(o, OperandLine::Smem { cell } if *cell == resident_cell))
@@ -895,7 +963,7 @@ mod tests {
         });
         assert!(
             reads_resident,
-            "root2's Prior read must consume the RESIDENT cell {resident_cell} (resident survived across roots), program: {:#?}",
+            "root2's shared-ExprId reuse must consume the RESIDENT cell {resident_cell} (resident survived across roots), program: {:#?}",
             compiled.program.instrs
         );
 
@@ -976,13 +1044,21 @@ mod tests {
         let layer = DagLayer {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
-            roots: vec![Root::Output { expr: add, sink: SinkId(0) }],
-            sinks: vec![SinkInfo {
-                kind: SinkKind::Inner { layer: 2, offset: 0 },
-                field: FieldKind::Ext, // Ext sink to accept the mixed (→ Ext) add
+            roots: vec![Root {
+                expr: add,
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Inner { layer: 2, offset: 0 },
+                    field: FieldKind::Ext, // Ext sink to accept the mixed (→ Ext) add
+                }),
+                claim: Some(ClaimInfo {
+                    origin: RootOrigin {
+                        group: RootGroup::Gates,
+                        relation_index: 0,
+                        slot: RootSlot::Output(0),
+                    },
+                }),
             }],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
         (layer, artifact_layer(2))
@@ -1024,21 +1100,30 @@ mod tests {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
             roots: vec![
-                Root::Output { expr: add0, sink: SinkId(0) },
-                Root::Output { expr: add1, sink: SinkId(1) },
-            ],
-            sinks: vec![
-                SinkInfo {
-                    kind: SinkKind::Cache { layer: 0, offset: 0 },
-                    field: FieldKind::Base,
+                Root {
+                    expr: add0,
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Cache { layer: 0, offset: 0 },
+                        field: FieldKind::Base,
+                    }),
+                    claim: None,
                 },
-                SinkInfo {
-                    kind: SinkKind::Inner { layer: 0, offset: 0 },
-                    field: FieldKind::Base,
+                Root {
+                    expr: add1,
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Inner { layer: 0, offset: 0 },
+                        field: FieldKind::Base,
+                    }),
+                    claim: Some(ClaimInfo {
+                        origin: RootOrigin {
+                            group: RootGroup::Gates,
+                            relation_index: 0,
+                            slot: RootSlot::Output(0),
+                        },
+                    }),
                 },
             ],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
 
@@ -1049,8 +1134,9 @@ mod tests {
             "precondition: source is a residency candidate (used ≥2×)"
         );
 
-        let cache_root_expr = cache_root_expr_map(&layer);
-        let refs = build_ref_string(&layer, &cache_root_expr, &graph);
+        // Part B: build_ref_string takes (layer, graph) — cache reuse is a shared ExprId,
+        // there is no `cache_root_expr` map any more.
+        let refs = build_ref_string(&layer, &graph);
         let use_count = refs
             .events
             .iter()

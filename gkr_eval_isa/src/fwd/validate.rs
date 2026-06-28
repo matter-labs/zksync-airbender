@@ -422,9 +422,9 @@ mod tests {
     use super::super::stats::CompileStats;
     use super::super::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program, Special};
     use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, RootId,
-        SinkId, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind, LookupValueKind,
-        ResolutionStrategy, RangeWidth,
+        BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root,
+        RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo,
+        SourceKind, LookupValueKind, ResolutionStrategy, RangeWidth,
     };
     use std::collections::BTreeMap;
 
@@ -435,9 +435,7 @@ mod tests {
             sources: vec![],
             exprs: vec![],
             roots: vec![],
-            sinks: vec![],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         }
     }
@@ -450,10 +448,18 @@ mod tests {
         layer.sources.push(SourceInfo { kind: SourceKind::Constant { value: 42 } });
         // Expr 0: Source(0)
         layer.exprs.push(Expr::Source(SourceId(0)));
-        // Sink 0
-        layer.sinks.push(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Base });
-        // Root 0: Output { expr: ExprId(0), sink: SinkId(0) }
-        layer.roots.push(Root::Output { expr: ExprId(0), sink: SinkId(0) });
+        // Root 0: claim-bearing materialized Output root.
+        layer.roots.push(Root {
+            expr: ExprId(0),
+            materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Base }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    slot: RootSlot::Output(0),
+                },
+            }),
+        });
         layer
     }
 
@@ -506,8 +512,17 @@ mod tests {
             },
         });
         layer.exprs.push(Expr::Source(SourceId(0))); // ExprId(0) = LookupValue
-        layer.sinks.push(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Ext });
-        layer.roots.push(Root::Output { expr: ExprId(0), sink: SinkId(0) });
+        layer.roots.push(Root {
+            expr: ExprId(0),
+            materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Ext }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    slot: RootSlot::Output(0),
+                },
+            }),
+        });
         // No resolutions entry → leaf is uncovered.
 
         let compiled = {
@@ -556,8 +571,17 @@ mod tests {
             set_index: 0,
             width: RangeWidth::Bits16,
         });
-        layer.sinks.push(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Base });
-        layer.roots.push(Root::Output { expr: ExprId(1), sink: SinkId(0) });
+        layer.roots.push(Root {
+            expr: ExprId(1),
+            materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Base }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    slot: RootSlot::Output(0),
+                },
+            }),
+        });
 
         let mut ctx = DagForwardContext::default();
         ctx.actions.insert(RootId(0), ForwardAction::Compute);
@@ -635,8 +659,17 @@ mod tests {
             },
         });
         layer.exprs.push(Expr::Source(SourceId(0)));
-        layer.sinks.push(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Base });
-        layer.roots.push(Root::Output { expr: ExprId(0), sink: SinkId(0) });
+        layer.roots.push(Root {
+            expr: ExprId(0),
+            materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Base }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    slot: RootSlot::Output(0),
+                },
+            }),
+        });
 
         let mut ctx = DagForwardContext::default();
         ctx.actions.insert(RootId(0), ForwardAction::Compute);

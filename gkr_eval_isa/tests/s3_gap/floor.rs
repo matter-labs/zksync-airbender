@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use cs::gkr_compiler::dag_ir::{
-    DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, SinkId, SinkInfo, SinkKind, SourceId,
+    DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, SinkInfo, SinkKind, SourceId,
     SourceInfo, SourceKind, BatchingOrder,
 };
 use gkr_eval_isa::fwd::compile::expr_operand_field;
@@ -10,10 +10,12 @@ use std::collections::BTreeMap;
 /// DAG-intrinsic width-weighted DRAM traffic floor `D`.
 ///
 /// Σ width over **distinct `SourceKind::Read` leaves** reachable from
-/// `Root::Output` top exprs. Excludes `Prior` (avoidable re-reads), and
-/// `VirtualSetup`/`Constant`/`Challenge`/`LookupValue` (zero traffic).
-/// Resolution-pruned exprs are treated as terminals (contribute 0, not descended).
-/// Order/budget-independent.
+/// materialize-bearing top exprs (`root.materialize.is_some()` — Output + Cache,
+/// skipping claim-only Constraint roots). `VirtualSetup`/`Constant`/`Challenge`/
+/// `LookupValue` are zero traffic. (Part B: there is no `Prior` source any more —
+/// same-layer cache reuse is a recomputed shared `ExprId`, reached transitively
+/// through the cone that holds it.) Resolution-pruned exprs are treated as terminals
+/// (contribute 0, not descended). Order/budget-independent.
 pub fn dag_traffic_floor(layer: &DagLayer, cross: &HashMap<ReadPlace, FieldKind>) -> usize {
     use std::collections::HashSet;
     let mut seen_expr: HashSet<u32> = HashSet::new();
@@ -22,10 +24,8 @@ pub fn dag_traffic_floor(layer: &DagLayer, cross: &HashMap<ReadPlace, FieldKind>
     let mut stack: Vec<u32> = layer
         .roots
         .iter()
-        .filter_map(|r| match r {
-            Root::Output { expr, .. } => Some(expr.0),
-            Root::Constraint { .. } => None,
-        })
+        // Materialize-bearing roots (Output + Cache); skip claim-only Constraint roots.
+        .filter_map(|r| r.materialize.is_some().then_some(r.expr.0))
         .collect();
     while let Some(eid) = stack.pop() {
         if !seen_expr.insert(eid) {
@@ -44,7 +44,7 @@ pub fn dag_traffic_floor(layer: &DagLayer, cross: &HashMap<ReadPlace, FieldKind>
                         total += if f == OperandField::Ext { 4 } else { 1 };
                     }
                 }
-                // Prior / VirtualSetup / Constant / Challenge / LookupValue → 0 traffic.
+                // VirtualSetup / Constant / Challenge / LookupValue → 0 traffic.
             }
             Expr::Add(ch) | Expr::Mul(ch) => stack.extend(ch.iter().map(|c| c.0)),
         }
@@ -56,15 +56,19 @@ pub fn dag_traffic_floor(layer: &DagLayer, cross: &HashMap<ReadPlace, FieldKind>
 // `crate::s3_gap::floor::tests_support_two_reads_one_prior`.
 //
 // Builds a synthetic layer:
-//   Root::Output { expr: Add([ext_A, base_B, ext_A_again, prior]) }
+//   Root { materialize: Inner, claim: .., expr: Add([ext_A, base_B, ext_A_again]) }
 //   - ext_A   = Read{LayerOutput{layer:1,offset:0}} + cross[..] = Ext → width 4
 //   - base_B  = Read{BaseLayerWitness{column:3}}               → width 1
-//   - prior   = Source(Prior{id: RootId(0)})                   → 0 traffic (excluded)
-//   RootId(0) resolves to sinks[0].field = Ext (non-recursive sink-field lookup).
 //   ext_A referenced twice in Add but counts only ONCE (distinct SourceId check).
 //   Distinct real Reads = {A(ext,4), B(base,1)} → floor = 5.
+//
+// Part B: the original fixture carried a 0-traffic `Source(Prior{id: RootId(0)})` term
+// (self-referential — its only root was the producer-less Output itself, not a cache
+// producer). `Prior` is gone; the term is dropped and the source removed, preserving the
+// expected metric (floor == 5).
 #[cfg(test)]
 pub fn tests_support_two_reads_one_prior() -> (DagLayer, HashMap<ReadPlace, FieldKind>) {
+    use cs::gkr_compiler::dag_ir::{ClaimInfo, RootGroup, RootOrigin, RootSlot};
     // --- sources ---
     // src 0: ext cross-layer read A
     let src_ext_a = SourceInfo {
@@ -78,31 +82,33 @@ pub fn tests_support_two_reads_one_prior() -> (DagLayer, HashMap<ReadPlace, Fiel
             place: ReadPlace::BaseLayerWitness { column: 3 },
         },
     };
-    // src 2: prior (avoidable — excluded from floor)
-    let src_prior = SourceInfo {
-        kind: SourceKind::Prior { id: cs::gkr_compiler::dag_ir::RootId(0) },
-    };
 
     // --- exprs ---
     // expr 0: Source(SourceId(0)) = ext_A
     let e_ext_a = Expr::Source(SourceId(0));
     // expr 1: Source(SourceId(1)) = base_B
     let e_base_b = Expr::Source(SourceId(1));
-    // expr 2: Source(SourceId(2)) = prior
-    let e_prior = Expr::Source(SourceId(2));
-    // expr 3: Add([ext_A=0, base_B=1, ext_A again=0, prior=2])
-    let e_add = Expr::Add(vec![ExprId(0), ExprId(1), ExprId(0), ExprId(2)]);
+    // expr 2: Add([ext_A=0, base_B=1, ext_A again=0])
+    let e_add = Expr::Add(vec![ExprId(0), ExprId(1), ExprId(0)]);
 
     let layer = DagLayer {
-        sources: vec![src_ext_a, src_base_b, src_prior],
-        exprs: vec![e_ext_a, e_base_b, e_prior, e_add],
-        roots: vec![Root::Output { expr: ExprId(3), sink: SinkId(0) }],
-        sinks: vec![SinkInfo {
-            kind: SinkKind::Inner { layer: 0, offset: 0 },
-            field: FieldKind::Ext, // top expr includes Ext leaf → Ext sink
+        sources: vec![src_ext_a, src_base_b],
+        exprs: vec![e_ext_a, e_base_b, e_add],
+        roots: vec![Root {
+            expr: ExprId(2),
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset: 0 },
+                field: FieldKind::Ext, // top expr includes Ext leaf → Ext sink
+            }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    slot: RootSlot::Output(0),
+                },
+            }),
         }],
         batching: BatchingOrder { roots: vec![] },
-        origins: BTreeMap::new(),
         resolutions: BTreeMap::new(),
     };
 

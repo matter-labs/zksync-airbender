@@ -457,8 +457,8 @@ mod tests {
     use crate::fwd::context::ForwardAction;
     use cs::definitions::GKRAddress;
     use cs::gkr_compiler::dag_ir::{
-        ArenaBuilder, BatchingOrder, DagLayer, FieldKind, ReadPlace, ResolutionStrategy, Root, RootId, SinkId,
-        SinkInfo, SinkKind, SourceKind,
+        ArenaBuilder, BatchingOrder, ClaimInfo, DagLayer, FieldKind, ReadPlace, ResolutionStrategy, Root,
+        RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceKind,
     };
     use std::collections::BTreeMap;
 
@@ -490,18 +490,31 @@ mod tests {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
             roots: vec![
-                Root::Output { expr: leaf_a, sink: SinkId(0) },
-                Root::Output { expr: leaf_b, sink: SinkId(1) },
-                Root::Output { expr: leaf_a, sink: SinkId(2) }, // duplicate
-            ],
-            sinks: vec![
-                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base },
-                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 1 }, field: FieldKind::Base },
-                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 2 }, field: FieldKind::Base },
+                claim_inner_root(leaf_a, 0),
+                claim_inner_root(leaf_b, 1),
+                claim_inner_root(leaf_a, 2), // duplicate
             ],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions,
+        }
+    }
+
+    /// A claim-bearing Inner-output `Root` materializing at `offset` (its own relation).
+    /// The Stage-1 "old non-cache Output root": `materialize.is_some() && claim.is_some()`.
+    fn claim_inner_root(expr: cs::gkr_compiler::dag_ir::ExprId, offset: usize) -> Root {
+        Root {
+            expr,
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset },
+                field: FieldKind::Base,
+            }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: offset,
+                    slot: RootSlot::Output(0),
+                },
+            }),
         }
     }
 
@@ -528,26 +541,23 @@ mod tests {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
             roots: vec![
-                Root::Output { expr: leaf_used, sink: SinkId(0) },
+                claim_inner_root(leaf_used, 0),
                 // leaf_unused is deliberately not a root and not referenced by any root
             ],
-            sinks: vec![
-                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base },
-            ],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions,
         }
     }
 
     // Mirror of `mod.rs::tests::cache_root_computes_and_materializes` but with a
-    // second root reading `Prior(root0)`:
-    //   root0 = Add(memA, memB)   -- cache root (no origin), produced at index 0
-    //   root1 = Mul(Prior(root0), memC) -- at index 1, reads the cache
+    // second root REUSING root0's value via the shared `ExprId`:
+    //   root0 = Add(memA, memB)   -- cache root (Cache sink, no claim), produced at index 0
+    //   root1 = Mul(add_ab, memC) -- at index 1, reuses root0's value (Part B: a shared
+    //                                ExprId child, NOT a `Prior` source)
     //
     // The ExprId of root0's expr (the Add) must be marked is_candidate = true
-    // because it has a later Prior use (root1's Mul references Prior(root0),
-    // which is a use of the cache root's value after its production point).
+    // because it has a later use (root1's Mul references `add_ab` directly, a use of
+    // the cache root's value at a root index after its production point).
     #[test]
     fn analyze_marks_single_prior_cache_root_as_candidate() {
         let mut arena = ArenaBuilder::new();
@@ -567,47 +577,37 @@ mod tests {
         let b = arena.source_expr(sb);
         let c = arena.source_expr(sc);
 
-        // root0: Add(a, b) — a cache root (no origin entry)
+        // root0: Add(a, b) — a cache root (Cache sink, no claim).
         let add_ab = arena.add(vec![a, b]);
 
-        // Prior source reading root0 (RootId(0))
-        let prior_root0 = arena.intern_source(SourceKind::Prior {
-            id: RootId(0),
-        });
-        let prior_expr = arena.source_expr(prior_root0);
-
-        // root1: Mul(Prior(root0), c)
-        let mul_prior_c = arena.mul(vec![prior_expr, c]);
+        // root1: Mul(add_ab, c) — reuses root0's value through the SHARED ExprId `add_ab`.
+        let mul_prior_c = arena.mul(vec![add_ab, c]);
 
         let layer = DagLayer {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
             roots: vec![
-                Root::Output { expr: add_ab, sink: SinkId(0) },
-                Root::Output { expr: mul_prior_c, sink: SinkId(1) },
-            ],
-            sinks: vec![
-                SinkInfo {
-                    kind: SinkKind::Cache { layer: 3, offset: 5 },
-                    field: FieldKind::Base,
+                Root {
+                    expr: add_ab,
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Cache { layer: 3, offset: 5 },
+                        field: FieldKind::Base,
+                    }),
+                    claim: None, // Cache + no claim → cache root
                 },
-                SinkInfo {
-                    kind: SinkKind::Inner { layer: 3, offset: 0 },
-                    field: FieldKind::Base,
-                },
+                claim_inner_root(mul_prior_c, 0),
             ],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(), // no origins → root0 is a cache root
             resolutions: BTreeMap::new(),
         };
 
         let ctx = make_ctx();
         let graph = analyze_layer(&layer, &ctx);
 
-        // root0's expr (add_ab) must be a candidate: it has a later Prior use.
+        // root0's expr (add_ab) must be a candidate: it has a later use (root1 reuses it).
         assert!(
             graph.info[&add_ab].is_candidate,
-            "a cache root with even one later Prior use must be a residency candidate (#8)"
+            "a cache root with even one later reuse must be a residency candidate (#8)"
         );
     }
 
@@ -626,14 +626,8 @@ mod tests {
         let layer = DagLayer {
             sources: a.sources().to_vec(),
             exprs: a.exprs().to_vec(),
-            roots: vec![
-                Root::Output { expr: root_expr, sink: SinkId(0) },
-            ],
-            sinks: vec![
-                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base },
-            ],
+            roots: vec![claim_inner_root(root_expr, 0)],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
         let ctx = make_ctx();
@@ -672,10 +666,8 @@ mod tests {
         let layer = DagLayer {
             sources: a.sources().to_vec(),
             exprs: a.exprs().to_vec(),
-            roots: vec![Root::Output { expr: root_expr, sink: SinkId(0) }],
-            sinks: vec![SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base }],
+            roots: vec![claim_inner_root(root_expr, 0)],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
         let ctx = make_ctx();
@@ -700,10 +692,8 @@ mod tests {
         let layer = DagLayer {
             sources: a.sources().to_vec(),
             exprs: a.exprs().to_vec(),
-            roots: vec![Root::Output { expr: root_expr, sink: SinkId(0) }],
-            sinks: vec![SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base }],
+            roots: vec![claim_inner_root(root_expr, 0)],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
         let mut ctx = make_ctx();
@@ -733,15 +723,10 @@ mod tests {
             sources: a.sources().to_vec(),
             exprs: a.exprs().to_vec(),
             roots: vec![
-                Root::Output { expr: er, sink: SinkId(0) }, // bare-read passthrough
-                Root::Output { expr: er, sink: SinkId(1) }, // bare-read passthrough (same ExprId)
-            ],
-            sinks: vec![
-                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base },
-                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 1 }, field: FieldKind::Base },
+                claim_inner_root(er, 0), // bare-read passthrough
+                claim_inner_root(er, 1), // bare-read passthrough (same ExprId)
             ],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
         let ctx = make_ctx();
@@ -774,10 +759,8 @@ mod tests {
         let layer = DagLayer {
             sources: a.sources().to_vec(),
             exprs: a.exprs().to_vec(),
-            roots: vec![Root::Output { expr: root_expr, sink: SinkId(0) }],
-            sinks: vec![SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base }],
+            roots: vec![claim_inner_root(root_expr, 0)],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
         let ctx = make_ctx();

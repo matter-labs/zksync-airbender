@@ -139,7 +139,7 @@ mod tests {
         NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression,
     };
     use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, DagLayer, Root, RootGroup, RootId, RootOrigin, RootSlot,
+        BatchingOrder, ClaimInfo, DagLayer, Root, RootGroup, RootId, RootOrigin, RootSlot,
         SinkInfo, SinkKind, FieldKind, SourceInfo, SourceKind,
     };
     use std::collections::BTreeMap;
@@ -151,9 +151,7 @@ mod tests {
             sources: vec![],
             exprs: vec![],
             roots: vec![],
-            sinks: vec![],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         }
     }
@@ -236,11 +234,13 @@ mod tests {
 
     #[test]
     fn cache_root_no_origin_yields_compute() {
-        let sink_id = cs::gkr_compiler::dag_ir::SinkId(0);
         let mut layer = empty_layer();
-        layer.sinks.push(SinkInfo { kind: SinkKind::Cache { layer: 0, offset: 0 }, field: FieldKind::Ext });
-        layer.roots.push(Root::Output { expr: cs::gkr_compiler::dag_ir::ExprId(0), sink: sink_id });
-        // origins is empty → cache root
+        // Cache root: materializes but carries no claim/origin → cache (materialization-only).
+        layer.roots.push(Root {
+            expr: cs::gkr_compiler::dag_ir::ExprId(0),
+            materialize: Some(SinkInfo { kind: SinkKind::Cache { layer: 0, offset: 0 }, field: FieldKind::Ext }),
+            claim: None,
+        });
 
         let artifact_layer = make_artifact_layer(vec![]);
         let mapping = BTreeMap::new();
@@ -259,17 +259,19 @@ mod tests {
         let relation = NoFieldGKRRelation::CopyInBaseField { input: src, output: dst };
         let artifact_layer = make_artifact_layer(vec![relation]);
 
-        let sink_id = cs::gkr_compiler::dag_ir::SinkId(0);
         let mut layer = empty_layer();
-        layer.sinks.push(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Ext });
-        layer.roots.push(Root::Output { expr: cs::gkr_compiler::dag_ir::ExprId(0), sink: sink_id });
-
-        let rid = RootId(0);
-        layer.origins.insert(rid, RootOrigin {
-            group: RootGroup::Gates,
-            relation_index: 0,
-            slot: RootSlot::Output(0),
+        layer.roots.push(Root {
+            expr: cs::gkr_compiler::dag_ir::ExprId(0),
+            materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Ext }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    slot: RootSlot::Output(0),
+                },
+            }),
         });
+        let rid = RootId(0);
 
         let mapping = BTreeMap::new();
         let actions = build_forward_actions(&layer, &artifact_layer, &mapping).unwrap();

@@ -1212,19 +1212,17 @@ mod tests {
     use crate::fwd::isa::{Instr, LdcSub, MovDir, OperandField, OperandLine, Sign, Special};
     use cs::gkr_compiler::dag_ir::{
         ArenaBuilder, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, DagLayer, ExprId,
-        ReadPlace, ResolutionStrategy, RootId, SourceKind,
+        ReadPlace, ResolutionStrategy, SourceKind,
     };
     use std::collections::{BTreeMap, HashMap};
 
-    // Build a DagLayer from an arena with no roots/sinks (structural lowering only).
+    // Build a DagLayer from an arena with no roots (structural lowering only).
     fn layer_of(arena: &ArenaBuilder) -> DagLayer {
         DagLayer {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
             roots: vec![],
-            sinks: vec![],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         }
     }
@@ -1237,25 +1235,26 @@ mod tests {
     /// descriptors so the `desc_by_expr` lookup never fails for resolution-carrying
     /// exprs in the test fixtures. Returns owned pieces the caller keeps alive while
     /// borrowing `LoweringEnv`.
+    ///
+    /// Part B: `LoweringEnv` no longer carries a `cache_root_expr` map (same-layer cache
+    /// reuse is a recomputed shared `ExprId`), so this no longer threads one through.
     fn empty_env_parts(
         layer: &DagLayer,
         ctx: &mut DagForwardContext,
-    ) -> (HashMap<ExprId, u16>, HashMap<RootId, ExprId>, ResidencyState) {
+    ) -> (HashMap<ExprId, u16>, ResidencyState) {
         let graph = analyze_layer(layer, ctx);
         let desc_by_expr = materialize_descriptors(&graph.descriptors, layer, ctx);
-        let cache_root_expr: HashMap<RootId, ExprId> = HashMap::new();
         let residency = ResidencyState::new(&RefString::default(), &graph.info, 1024);
-        (desc_by_expr, cache_root_expr, residency)
+        (desc_by_expr, residency)
     }
 
     fn run(layer: &DagLayer, expr: ExprId) -> Vec<Instr> {
         let mut ctx = DagForwardContext::default();
         let mut trace = CompileTrace::default();
         let mut out = Vec::new();
-        let (desc_by_expr, cache_root_expr, mut residency) = empty_env_parts(layer, &mut ctx);
+        let (desc_by_expr, mut residency) = empty_env_parts(layer, &mut ctx);
         let env = LoweringEnv {
             desc_by_expr: &desc_by_expr,
-            cache_root_expr: &cache_root_expr,
             point: 0,
             allow_resident_smem: true,
         };
@@ -1268,10 +1267,9 @@ mod tests {
         let mut ctx = DagForwardContext::default();
         let mut trace = CompileTrace::default();
         let mut out = Vec::new();
-        let (desc_by_expr, cache_root_expr, mut residency) = empty_env_parts(layer, &mut ctx);
+        let (desc_by_expr, mut residency) = empty_env_parts(layer, &mut ctx);
         let env = LoweringEnv {
             desc_by_expr: &desc_by_expr,
-            cache_root_expr: &cache_root_expr,
             point: 0,
             allow_resident_smem: true,
         };
@@ -1841,13 +1839,21 @@ mod tests {
         let layer = DagLayer {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
-            roots: vec![Root::Output { expr: fold, sink: SinkId(0) }],
-            sinks: vec![SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 0 },
-                field: FieldKind::Base,
+            roots: vec![Root {
+                expr: fold,
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Inner { layer: 0, offset: 0 },
+                    field: FieldKind::Base,
+                }),
+                claim: Some(ClaimInfo {
+                    origin: RootOrigin {
+                        group: RootGroup::Gates,
+                        relation_index: 0,
+                        slot: RootSlot::Output(0),
+                    },
+                }),
             }],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions,
         };
 
@@ -1855,11 +1861,10 @@ mod tests {
         let mut trace = CompileTrace::default();
         let mut out = Vec::new();
         // Pre-intern the layer's descriptors ONCE (the materialize_descriptors pass).
-        let (desc_by_expr, cache_root_expr, mut residency) = empty_env_parts(&layer, &mut ctx);
+        let (desc_by_expr, mut residency) = empty_env_parts(&layer, &mut ctx);
         assert_eq!(ctx.specials.len(), 1, "materialize_descriptors interns exactly one");
         let env = LoweringEnv {
             desc_by_expr: &desc_by_expr,
-            cache_root_expr: &cache_root_expr,
             point: 0,
             allow_resident_smem: true,
         };
@@ -1879,7 +1884,8 @@ mod tests {
     // ── codex Imp2: cross-layer field map ─────────────────────────────────────
 
     use cs::gkr_compiler::dag_ir::{
-        DagCircuit, DagGlobals, FieldKind, Root, SinkId, SinkInfo, SinkKind,
+        ClaimInfo, DagCircuit, DagGlobals, FieldKind, Root, RootGroup, RootOrigin, RootSlot,
+        SinkInfo, SinkKind,
     };
 
     // A cross-layer LayerOutput read → Global operand.
@@ -1902,10 +1908,9 @@ mod tests {
         ctx.cross_layer_fields = map;
         let mut trace = CompileTrace::default();
         let mut out = Vec::new();
-        let (desc_by_expr, cache_root_expr, mut residency) = empty_env_parts(layer, &mut ctx);
+        let (desc_by_expr, mut residency) = empty_env_parts(layer, &mut ctx);
         let env = LoweringEnv {
             desc_by_expr: &desc_by_expr,
-            cache_root_expr: &cache_root_expr,
             point: 0,
             allow_resident_smem: true,
         };
@@ -1918,30 +1923,59 @@ mod tests {
     //     and CacheOutput{0,1} to layer-0's declared sink fields.
     #[test]
     fn cross_layer_field_map_records_producing_sink_field() {
-        // Layer 0 produces two sinks: an Inner{layer:0,offset:0} (Base) read later as
-        // LayerOutput{0,0}, and a Cache{layer:0,offset:1} (Ext) read as CacheOutput{0,1}.
+        // Layer 0 produces four materialize-bearing roots: an Inner{layer:0,offset:0}
+        // (Base) read later as LayerOutput{0,0}, a Cache{layer:0,offset:1} (Ext) read as
+        // CacheOutput{0,1}, plus an Export and a Scratch (NOT read cross-layer → excluded
+        // from the map). The producing-sink field now lives in each `Root.materialize`.
+        let mut arena = ArenaBuilder::new();
+        let e0 = read_base(&mut arena, 0);
+        let e1 = read_base(&mut arena, 1);
+        let e2 = read_base(&mut arena, 2);
+        let e3 = read_base(&mut arena, 3);
+        // A small claim helper: each root materializes a distinct sink.
+        let claim = |rel: usize| {
+            Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: rel,
+                    slot: RootSlot::Output(0),
+                },
+            })
+        };
         let layer0 = DagLayer {
-            sources: vec![],
-            exprs: vec![],
-            roots: vec![],
-            sinks: vec![
-                SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base },
-                SinkInfo { kind: SinkKind::Cache { layer: 0, offset: 1 }, field: FieldKind::Ext },
+            sources: arena.sources().to_vec(),
+            exprs: arena.exprs().to_vec(),
+            roots: vec![
+                Root {
+                    expr: e0,
+                    materialize: Some(SinkInfo { kind: SinkKind::Inner { layer: 0, offset: 0 }, field: FieldKind::Base }),
+                    claim: claim(0),
+                },
+                Root {
+                    expr: e1,
+                    materialize: Some(SinkInfo { kind: SinkKind::Cache { layer: 0, offset: 1 }, field: FieldKind::Ext }),
+                    claim: None,
+                },
                 // Export/Scratch are NOT read cross-layer → excluded from the map.
-                SinkInfo { kind: SinkKind::Export { slot: 7 }, field: FieldKind::Ext },
-                SinkInfo { kind: SinkKind::Scratch { slot: 3 }, field: FieldKind::Base },
+                Root {
+                    expr: e2,
+                    materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 7 }, field: FieldKind::Ext }),
+                    claim: claim(1),
+                },
+                Root {
+                    expr: e3,
+                    materialize: Some(SinkInfo { kind: SinkKind::Scratch { slot: 3 }, field: FieldKind::Base }),
+                    claim: claim(2),
+                },
             ],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
         let layer1 = DagLayer {
             sources: vec![],
             exprs: vec![],
             roots: vec![],
-            sinks: vec![],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
         let circuit = DagCircuit {
@@ -2246,26 +2280,36 @@ mod tests {
     /// root expr to compile, and the reused Read's ExprId.
     fn test_reduction_two_uses_of_read(
     ) -> (DagLayer, DagForwardContext, ResidencyState, ExprId, ExprId) {
-        use cs::gkr_compiler::dag_ir::{Root, SinkId, SinkInfo, SinkKind, FieldKind};
+        use cs::gkr_compiler::dag_ir::{
+            ClaimInfo, FieldKind, Root, RootGroup, RootOrigin, RootSlot, SinkInfo, SinkKind,
+        };
         let mut arena = ArenaBuilder::new();
         let read_expr = read_base(&mut arena, 5); // Read(BaseLayerMemory col5)
         let root_expr = arena.add(vec![read_expr, read_expr]); // read used 2× → resident
         let layer = DagLayer {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
-            roots: vec![Root::Output { expr: root_expr, sink: SinkId(0) }],
-            sinks: vec![SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 0 },
-                field: FieldKind::Base,
+            roots: vec![Root {
+                expr: root_expr,
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Inner { layer: 0, offset: 0 },
+                    field: FieldKind::Base,
+                }),
+                claim: Some(ClaimInfo {
+                    origin: RootOrigin {
+                        group: RootGroup::Gates,
+                        relation_index: 0,
+                        slot: RootSlot::Output(0),
+                    },
+                }),
             }],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
         let ctx = DagForwardContext::default();
         let graph = analyze_layer(&layer, &ctx);
-        let cache_root_expr = super::super::cache_root_expr_map(&layer);
-        let refs = super::super::build_ref_string(&layer, &cache_root_expr, &graph);
+        // Part B: build_ref_string takes (layer, graph) — no `cache_root_expr` map.
+        let refs = super::super::build_ref_string(&layer, &graph);
         let residency = ResidencyState::new(&refs, &graph.info, 1024);
         (layer, ctx, residency, root_expr, read_expr)
     }
@@ -2281,10 +2325,8 @@ mod tests {
         let mut out: Vec<Instr> = Vec::new();
         let mut trace = CompileTrace::default();
         let desc_by_expr: HashMap<ExprId, u16> = HashMap::new();
-        let cache_root_expr: HashMap<RootId, ExprId> = HashMap::new();
         let env = LoweringEnv {
             desc_by_expr: &desc_by_expr,
-            cache_root_expr: &cache_root_expr,
             point: 0,
             allow_resident_smem: true,
         };

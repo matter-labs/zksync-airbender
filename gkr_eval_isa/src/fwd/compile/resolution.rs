@@ -27,8 +27,8 @@ pub fn resolve_or_descend(
 mod tests {
     use super::*;
     use cs::gkr_compiler::dag_ir::{
-        ArenaBuilder, BatchingOrder, DagLayer, FieldKind, ResolutionStrategy, Root, RootId,
-        SinkId, SinkInfo, SinkKind, SourceKind,
+        ArenaBuilder, BatchingOrder, ClaimInfo, DagLayer, FieldKind, ResolutionStrategy, Root,
+        RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceKind,
     };
     use std::collections::BTreeMap;
 
@@ -45,13 +45,21 @@ mod tests {
         let layer = DagLayer {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
-            roots: vec![Root::Output { expr: e, sink: SinkId(0) }],
-            sinks: vec![SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 0 },
-                field: FieldKind::Base,
+            roots: vec![Root {
+                expr: e,
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Inner { layer: 0, offset: 0 },
+                    field: FieldKind::Base,
+                }),
+                claim: Some(ClaimInfo {
+                    origin: RootOrigin {
+                        group: RootGroup::Gates,
+                        relation_index: 0,
+                        slot: RootSlot::Output(0),
+                    },
+                }),
             }],
             batching: BatchingOrder { roots: vec![RootId(0)] },
-            origins: BTreeMap::new(),
             resolutions,
         };
         let mut specials = SpecialTable::default();

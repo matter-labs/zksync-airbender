@@ -4850,12 +4850,74 @@ mod tests {
         "unsigned_mul_div_layout_no_caches_gkr.json",
     ];
 
+    // ── Shared cache-reuse helpers (Part B: same-layer cache reuse is a shared ExprId) ──
+    //
+    // A cache root's attribute-model identity (Stage-1 lowering): a `Cache` materialize
+    // with no claim. Same-layer reuse of a cache value is NOT a `Source(Prior)` any more —
+    // a consumer references the cache value's shared `expr: ExprId` directly, so the value
+    // is "reused" by a root iff that root's expr cone reaches the cache root's `expr`.
+
+    /// Map each cache root's shared `expr` → its `RootId`.
+    fn cache_expr_to_root(
+        layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    ) -> std::collections::HashMap<cs::gkr_compiler::dag_ir::ExprId, cs::gkr_compiler::dag_ir::RootId>
+    {
+        use cs::gkr_compiler::dag_ir::{RootId, SinkInfo, SinkKind};
+        (0..layer.roots.len() as u32)
+            .map(RootId)
+            .filter(|&rid| {
+                let r = &layer.roots[rid.0 as usize];
+                matches!(&r.materialize, Some(SinkInfo { kind: SinkKind::Cache { .. }, .. }))
+                    && r.claim.is_none()
+            })
+            .map(|rid| (layer.roots[rid.0 as usize].expr, rid))
+            .collect()
+    }
+
+    /// Walk the expr cone of `top` and return the set of cache-root `RootId`s whose shared
+    /// `expr` is reached (descending through reached cache exprs too — shared chains).
+    fn cache_roots_in_cone(
+        layer: &cs::gkr_compiler::dag_ir::DagLayer,
+        top: cs::gkr_compiler::dag_ir::ExprId,
+        cache_expr_to_root: &std::collections::HashMap<
+            cs::gkr_compiler::dag_ir::ExprId,
+            cs::gkr_compiler::dag_ir::RootId,
+        >,
+    ) -> std::collections::BTreeSet<cs::gkr_compiler::dag_ir::RootId> {
+        use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceKind};
+        let mut hit = std::collections::BTreeSet::new();
+        let mut visited: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+        let mut stack: Vec<ExprId> = vec![top];
+        while let Some(eid) = stack.pop() {
+            if !visited.insert(eid.0) {
+                continue;
+            }
+            if let Some(&rid) = cache_expr_to_root.get(&eid) {
+                hit.insert(rid);
+            }
+            match &layer.exprs[eid.0 as usize] {
+                Expr::Source(sid) => {
+                    if let SourceKind::LookupValue { query, .. } =
+                        &layer.sources[sid.0 as usize].kind
+                    {
+                        stack.push(*query);
+                    }
+                }
+                Expr::Add(ch) | Expr::Mul(ch) => stack.extend(ch.iter().copied()),
+            }
+        }
+        hit
+    }
+
     #[derive(Clone, Copy, Debug, Default)]
     struct ReachableReadStats {
         read_sources: usize,
         read_source_cells: usize,
         read_places: usize,
         read_place_cells: usize,
+        // Part B: "prior" now means distinct same-layer cache VALUES reached in the
+        // materialized-root cones (their shared `expr` appears in a cone), with the
+        // value's width summed in cells. (There is no `Source(Prior)` any more.)
         prior_sources: usize,
         prior_cells: usize,
     }
@@ -4867,25 +4929,27 @@ mod tests {
             cs::gkr_compiler::dag_ir::FieldKind,
         >,
     ) -> ReachableReadStats {
-        use cs::gkr_compiler::dag_ir::{Expr, ExprId, Root, SourceKind};
+        use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceKind};
         use gkr_eval_isa::fwd::compile::expr_operand_field;
         use gkr_eval_isa::fwd::isa::OperandField;
         use std::collections::{HashMap, HashSet};
 
+        // Cache-value identity: each cache root's shared `expr` (Part B replaces `Prior`).
+        let cache_roots = cache_expr_to_root(layer);
+
         let mut seen_expr = HashSet::new();
         let mut read_sources = HashSet::new();
         let mut read_places = HashMap::new();
-        let mut prior_sources = HashSet::new();
+        // Distinct same-layer cache VALUES (by cache-root expr) reached in the cones.
+        let mut prior_values: HashSet<u32> = HashSet::new();
         let mut read_source_cells = 0usize;
         let mut read_place_cells = 0usize;
         let mut prior_cells = 0usize;
         let mut stack: Vec<_> = layer
             .roots
             .iter()
-            .filter_map(|root| match root {
-                Root::Output { expr, .. } => Some(expr.0),
-                Root::Constraint { .. } => None,
-            })
+            // Materialized roots (Output + Cache); skip claim-only Constraint roots.
+            .filter_map(|root| root.materialize.is_some().then_some(root.expr.0))
             .collect();
 
         while let Some(eid) = stack.pop() {
@@ -4894,6 +4958,15 @@ mod tests {
             }
             if layer.resolutions.contains_key(&ExprId(eid)) {
                 continue;
+            }
+            // A reached cache-root `expr` is a same-layer cache value (the old `Prior`).
+            if cache_roots.contains_key(&ExprId(eid)) && prior_values.insert(eid) {
+                let cells = if expr_operand_field(layer, ExprId(eid), cross) == OperandField::Ext {
+                    4
+                } else {
+                    1
+                };
+                prior_cells += cells;
             }
             match &layer.exprs[eid as usize] {
                 Expr::Source(source_id) => {
@@ -4910,11 +4983,6 @@ mod tests {
                             }
                             if read_places.insert(place.clone(), cells).is_none() {
                                 read_place_cells += cells;
-                            }
-                        }
-                        SourceKind::Prior { .. } => {
-                            if prior_sources.insert(source_id.0) {
-                                prior_cells += cells;
                             }
                         }
                         SourceKind::VirtualSetup { .. }
@@ -4934,7 +5002,7 @@ mod tests {
             read_source_cells,
             read_places: read_places.len(),
             read_place_cells,
-            prior_sources: prior_sources.len(),
+            prior_sources: prior_values.len(),
             prior_cells,
         }
     }
@@ -5535,8 +5603,8 @@ mod tests {
     #[test]
     #[ignore = "investigate: are Cache roots intra-layer (Prior) or cross-layer (LayerOutput)?"]
     fn cache_root_locality_census() {
-        use cs::gkr_compiler::dag_ir::{ReadPlace, Root, SinkKind, SourceKind};
-        use std::collections::{BTreeMap, BTreeSet};
+        use cs::gkr_compiler::dag_ir::{ReadPlace, RootId, SinkInfo, SinkKind, SourceKind};
+        use std::collections::BTreeSet;
 
         let mut tot_cache = 0usize;
         let mut tot_intra = 0usize;
@@ -5571,35 +5639,43 @@ mod tests {
             let mut inner_cross = 0usize;
             let mut inner_total = 0usize;
             for layer in dag.layers.iter() {
-                // Intra-layer Prior reuse counts, per RootId of THIS layer.
-                let mut prior_to: BTreeMap<u32, usize> = BTreeMap::new();
-                for s in &layer.sources {
-                    if let SourceKind::Prior { id } = &s.kind {
-                        *prior_to.entry(id.0).or_default() += 1;
+                // Part B: intra-layer cache REUSE is a shared `ExprId` — a cache value is
+                // reused intra-layer iff its `expr` is reached by SOME OTHER root's cone.
+                // Build the set of cache RootIds whose value is so reused.
+                let cache_roots = cache_expr_to_root(layer);
+                let mut reused: BTreeSet<RootId> = BTreeSet::new();
+                for (ri, root) in layer.roots.iter().enumerate() {
+                    for cache_rid in cache_roots_in_cone(layer, root.expr, &cache_roots) {
+                        // Skip a cache root trivially reaching its own expr (that is not reuse).
+                        if cache_rid.0 as usize != ri {
+                            reused.insert(cache_rid);
+                        }
                     }
                 }
                 for (rid, root) in layer.roots.iter().enumerate() {
-                    let Root::Output { sink, .. } = root else { continue };
-                    let kind = &layer.sinks[sink.0 as usize].kind;
-                    match kind {
-                        SinkKind::Cache { layer: cl, offset: co } => {
-                            f_cache += 1;
-                            let intra = prior_to.get(&(rid as u32)).copied().unwrap_or(0) > 0;
-                            let cross = layer_output_reads.contains(&(*cl, *co));
-                            match (intra, cross) {
-                                (true, false) => f_intra += 1,
-                                (false, true) => f_cross += 1,
-                                (true, true) => f_both += 1,
-                                (false, false) => f_orphan += 1,
-                            }
-                        }
-                        SinkKind::Inner { layer: il, offset: io } => {
+                    // Cache root: a `Cache` materialize with no claim.
+                    let Some(SinkInfo { kind: SinkKind::Cache { layer: cl, offset: co }, .. }) =
+                        (if root.claim.is_none() { root.materialize.as_ref() } else { None })
+                    else {
+                        // Inner materialize → cross-layer read tally (claim or not).
+                        if let Some(SinkInfo { kind: SinkKind::Inner { layer: il, offset: io }, .. }) =
+                            root.materialize.as_ref()
+                        {
                             inner_total += 1;
                             if layer_output_reads.contains(&(*il, *io)) {
                                 inner_cross += 1;
                             }
                         }
-                        _ => {}
+                        continue;
+                    };
+                    f_cache += 1;
+                    let intra = reused.contains(&RootId(rid as u32));
+                    let cross = layer_output_reads.contains(&(*cl, *co));
+                    match (intra, cross) {
+                        (true, false) => f_intra += 1,
+                        (false, true) => f_cross += 1,
+                        (true, true) => f_both += 1,
+                        (false, false) => f_orphan += 1,
                     }
                 }
             }
@@ -5722,7 +5798,7 @@ mod tests {
     #[test]
     #[ignore = "investigate: forward/backward root taxonomy (claims vs cache vs constraints)"]
     fn forward_backward_root_taxonomy() {
-        use cs::gkr_compiler::dag_ir::{Root, RootId, SinkKind, SourceKind};
+        use cs::gkr_compiler::dag_ir::{Expr, ExprId, SinkInfo, SinkKind};
         use std::collections::BTreeSet;
 
         for &fixture in ALL_22_L0_FIXTURES {
@@ -5732,45 +5808,74 @@ mod tests {
             let name = fixture.trim_end_matches("_layout_gkr.json");
             let (dag, _a, _c) = crate::load_layer_source(fixture);
             let mut out_total = 0usize;
-            let mut claim = 0usize; // Output root with a RootOrigin (sumcheck claim)
-            let mut cache = 0usize; // Cache-sink Output root
+            let mut claim = 0usize; // claim-bearing root (sumcheck claim)
+            let mut cache = 0usize; // Cache materialize, no claim
             let mut inner = 0usize;
-            let mut cache_and_claim = 0usize; // MUST be 0
-            let mut claim_no_intra = 0usize; // claim with no intra-layer Prior consumer
+            let mut cache_and_claim = 0usize; // MUST be 0 (orthogonal attributes)
+            let mut claim_no_intra = 0usize; // claim with no intra-layer (shared-ExprId) reuse
             let mut constraints = 0usize;
             for layer in &dag.layers {
-                let priored: BTreeSet<u32> = layer
-                    .sources
+                // Part B: intra-layer reuse is a shared `ExprId`. A root's value is reused
+                // intra-forward iff its `expr` is reached by ANOTHER root's cone. Map each
+                // root's `expr` to its index, then mark reuse.
+                let expr_to_root: std::collections::HashMap<ExprId, usize> = layer
+                    .roots
                     .iter()
-                    .filter_map(|s| match &s.kind {
-                        SourceKind::Prior { id } => Some(id.0),
-                        _ => None,
-                    })
+                    .enumerate()
+                    .map(|(i, r)| (r.expr, i))
                     .collect();
-                for (rid, root) in layer.roots.iter().enumerate() {
-                    match root {
-                        Root::Constraint { .. } => constraints += 1,
-                        Root::Output { sink, .. } => {
-                            out_total += 1;
-                            let is_claim = layer.origins.contains_key(&RootId(rid as u32));
-                            let is_cache =
-                                matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. });
-                            if is_claim {
-                                claim += 1;
-                                if !priored.contains(&(rid as u32)) {
-                                    claim_no_intra += 1;
+                let mut reused: BTreeSet<usize> = BTreeSet::new();
+                for (ri, root) in layer.roots.iter().enumerate() {
+                    let mut visited: BTreeSet<u32> = BTreeSet::new();
+                    let mut stack = vec![root.expr];
+                    let mut first = true;
+                    while let Some(eid) = stack.pop() {
+                        if !visited.insert(eid.0) {
+                            continue;
+                        }
+                        // The root's own top expr is not "reuse"; descend past it.
+                        if !first {
+                            if let Some(&owner) = expr_to_root.get(&eid) {
+                                if owner != ri {
+                                    reused.insert(owner);
                                 }
                             }
-                            if is_cache {
-                                cache += 1;
-                            }
-                            if matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Inner { .. }) {
-                                inner += 1;
-                            }
-                            if is_claim && is_cache {
-                                cache_and_claim += 1;
-                            }
                         }
+                        first = false;
+                        if let Expr::Add(ch) | Expr::Mul(ch) = &layer.exprs[eid.0 as usize] {
+                            stack.extend(ch.iter().copied());
+                        }
+                    }
+                }
+                for (rid, root) in layer.roots.iter().enumerate() {
+                    if root.materialize.is_none() {
+                        // Claim-only (Constraint) root.
+                        constraints += 1;
+                        continue;
+                    }
+                    out_total += 1;
+                    let is_claim = root.claim.is_some();
+                    let is_cache = matches!(
+                        &root.materialize,
+                        Some(SinkInfo { kind: SinkKind::Cache { .. }, .. })
+                    ) && root.claim.is_none();
+                    if is_claim {
+                        claim += 1;
+                        if !reused.contains(&rid) {
+                            claim_no_intra += 1;
+                        }
+                    }
+                    if is_cache {
+                        cache += 1;
+                    }
+                    if matches!(
+                        &root.materialize,
+                        Some(SinkInfo { kind: SinkKind::Inner { .. }, .. })
+                    ) {
+                        inner += 1;
+                    }
+                    if is_claim && is_cache {
+                        cache_and_claim += 1;
                     }
                 }
             }
@@ -5872,7 +5977,7 @@ mod tests {
     #[test]
     #[ignore = "report: expression-level cache-vs-no-cache diff (cache-root fan-out)"]
     fn cache_vs_no_cache_expression_divergence() {
-        use cs::gkr_compiler::dag_ir::{DagLayer, Expr, Root, SinkKind, SourceKind};
+        use cs::gkr_compiler::dag_ir::{DagLayer, RootId, SinkInfo, SinkKind, SourceKind};
         use std::collections::{BTreeMap, BTreeSet};
 
         struct Stat {
@@ -5885,77 +5990,63 @@ mod tests {
             constraint: usize,
             fanout_hist: BTreeMap<usize, usize>,
             max_fanout: usize,
-            // fan-IN: distinct cached (Prior) values a single consumer root needs at once
+            // fan-IN: distinct cached values a single consumer root reaches at once
             max_fanin: usize,
             fanin_hist: BTreeMap<usize, usize>,
         }
 
         fn analyze(layer: &DagLayer) -> Stat {
-            let (mut reads, mut priors) = (0usize, 0usize);
-            let mut prior_refs: BTreeMap<u32, usize> = BTreeMap::new();
-            for s in &layer.sources {
-                match &s.kind {
-                    SourceKind::Read { .. } => reads += 1,
-                    SourceKind::Prior { id } => {
-                        priors += 1;
-                        *prior_refs.entry(id.0).or_default() += 1;
-                    }
-                    _ => {}
-                }
-            }
+            let reads = layer
+                .sources
+                .iter()
+                .filter(|s| matches!(s.kind, SourceKind::Read { .. }))
+                .count();
+            // Part B: a cache value's reuse is a shared `ExprId`. Build cache-expr → RootId,
+            // then count, per cache root, the number of OTHER root cones that reach it
+            // (fan-out) and, per root, the distinct cache values reached (fan-in).
+            let cache_roots = cache_expr_to_root(layer);
+            let mut fanout: BTreeMap<u32, usize> = BTreeMap::new(); // cache RootId → consumer count
+            let mut priors = 0usize; // total cache-reuse edges (≈ old Prior-source count)
             let (mut inner, mut cache, mut export, mut constraint) = (0usize, 0, 0, 0);
             let mut fanout_hist: BTreeMap<usize, usize> = BTreeMap::new();
             let mut max_fanout = 0usize;
             let mut fanin_hist: BTreeMap<usize, usize> = BTreeMap::new();
             let mut max_fanin = 0usize;
+            // Initialize fan-out 0 for every cache root so even unreached caches show.
+            for (&_expr, &rid) in cache_roots.iter() {
+                fanout.entry(rid.0).or_insert(0);
+            }
             for (rid, root) in layer.roots.iter().enumerate() {
-                match root {
-                    Root::Output { sink, .. } => match layer.sinks[sink.0 as usize].kind {
+                if let Some(SinkInfo { kind, .. }) = &root.materialize {
+                    match kind {
                         SinkKind::Inner { .. } => inner += 1,
                         SinkKind::Export { .. } => export += 1,
                         SinkKind::Scratch { .. } => {}
-                        SinkKind::Cache { .. } => {
-                            cache += 1;
-                            let f = prior_refs.get(&(rid as u32)).copied().unwrap_or(0);
-                            *fanout_hist.entry(f).or_default() += 1;
-                            max_fanout = max_fanout.max(f);
-                        }
-                    },
-                    Root::Constraint { .. } => constraint += 1,
-                }
-                // fan-in: distinct Prior sources reachable in this root's expr cone.
-                let expr_id = match root {
-                    Root::Output { expr, .. } => *expr,
-                    Root::Constraint { expr } => *expr,
-                };
-                let mut seen = vec![false; layer.exprs.len()];
-                let mut priors_in_cone: BTreeSet<u32> = BTreeSet::new();
-                let mut stack = vec![expr_id];
-                while let Some(e) = stack.pop() {
-                    if seen[e.0 as usize] {
-                        continue;
+                        SinkKind::Cache { .. } if root.claim.is_none() => cache += 1,
+                        SinkKind::Cache { .. } => {}
                     }
-                    seen[e.0 as usize] = true;
-                    match &layer.exprs[e.0 as usize] {
-                        Expr::Source(sid) => {
-                            // Key by the target RootId (the cached value's identity), not
-                            // the SourceId — robust if multiple Prior sources ever alias one
-                            // root (interning makes them 1:1 today, so this is behavior-
-                            // preserving, but correct by construction).
-                            if let SourceKind::Prior { id } = &layer.sources[sid.0 as usize].kind {
-                                priors_in_cone.insert(id.0);
-                            }
-                        }
-                        Expr::Add(children) | Expr::Mul(children) => {
-                            stack.extend(children.iter().copied());
-                        }
+                } else {
+                    constraint += 1;
+                }
+                // fan-in: distinct cache values reached in this root's cone (excluding the
+                // root trivially reaching its own cache expr).
+                let mut caches_in_cone: BTreeSet<RootId> = BTreeSet::new();
+                for cache_rid in cache_roots_in_cone(layer, root.expr, &cache_roots) {
+                    if cache_rid.0 as usize != rid {
+                        caches_in_cone.insert(cache_rid);
+                        *fanout.entry(cache_rid.0).or_insert(0) += 1;
+                        priors += 1;
                     }
                 }
-                let fi = priors_in_cone.len();
+                let fi = caches_in_cone.len();
                 if fi > 0 {
                     *fanin_hist.entry(fi).or_default() += 1;
                     max_fanin = max_fanin.max(fi);
                 }
+            }
+            for (_rid, f) in fanout.iter() {
+                *fanout_hist.entry(*f).or_default() += 1;
+                max_fanout = max_fanout.max(*f);
             }
             Stat {
                 exprs: layer.exprs.len(),
@@ -6011,7 +6102,7 @@ mod tests {
     #[test]
     #[ignore = "report: full-circuit fan-out of all materialized outputs (in-layer + cross-layer)"]
     fn all_outputs_fanout_full_circuit() {
-        use cs::gkr_compiler::dag_ir::{ReadPlace, Root, SinkKind, SourceKind};
+        use cs::gkr_compiler::dag_ir::{Expr, ExprId, ReadPlace, SinkInfo, SinkKind, SourceKind};
         use std::collections::BTreeMap;
 
         fn tag_name(t: u8) -> &'static str {
@@ -6037,48 +6128,71 @@ mod tests {
 
             // key = (tag, layer, offset); producers start at fan-out 0
             let mut fanout: BTreeMap<(u8, i64, i64), usize> = BTreeMap::new();
-            // per-layer: RootId -> producer key (for in-layer Prior attribution)
-            let mut root_key: Vec<BTreeMap<u32, (u8, i64, i64)>> = Vec::new();
+            // per-layer: producer ExprId -> producer key (for in-layer shared-ExprId reuse
+            // attribution — Part B replaces the old RootId-keyed `Prior` attribution).
+            let mut expr_key: Vec<BTreeMap<u32, (u8, i64, i64)>> = Vec::new();
             for layer in &dag.layers {
                 let mut m = BTreeMap::new();
-                for (rid, root) in layer.roots.iter().enumerate() {
-                    if let Root::Output { sink, .. } = root {
-                        let key = match layer.sinks[sink.0 as usize].kind {
+                for root in layer.roots.iter() {
+                    if let Some(SinkInfo { kind, .. }) = &root.materialize {
+                        let key = match *kind {
                             SinkKind::Inner { layer, offset } => (0u8, layer as i64, offset as i64),
                             SinkKind::Cache { layer, offset } => (1u8, layer as i64, offset as i64),
                             SinkKind::Export { slot } => (2u8, -1, slot as i64),
                             SinkKind::Scratch { slot } => (3u8, -1, slot as i64),
                         };
                         fanout.entry(key).or_insert(0);
-                        m.insert(rid as u32, key);
+                        m.insert(root.expr.0, key);
                     }
                 }
-                root_key.push(m);
+                expr_key.push(m);
             }
             for (lj, layer) in dag.layers.iter().enumerate() {
+                // Cross-layer reload points: a later layer's Read of a producer place.
                 for s in &layer.sources {
-                    match &s.kind {
-                        SourceKind::Read { place } => {
-                            let key = match place {
-                                ReadPlace::LayerOutput { layer, offset } => {
-                                    Some((0u8, *layer as i64, *offset as i64))
-                                }
-                                ReadPlace::CacheOutput { layer, offset } => {
-                                    Some((1u8, *layer as i64, *offset as i64))
-                                }
-                                ReadPlace::Scratch { slot } => Some((3u8, -1, *slot as i64)),
-                                _ => None,
-                            };
-                            if let Some(k) = key {
-                                *fanout.entry(k).or_insert(0) += 1;
+                    if let SourceKind::Read { place } = &s.kind {
+                        let key = match place {
+                            ReadPlace::LayerOutput { layer, offset } => {
+                                Some((0u8, *layer as i64, *offset as i64))
                             }
+                            ReadPlace::CacheOutput { layer, offset } => {
+                                Some((1u8, *layer as i64, *offset as i64))
+                            }
+                            ReadPlace::Scratch { slot } => Some((3u8, -1, *slot as i64)),
+                            _ => None,
+                        };
+                        if let Some(k) = key {
+                            *fanout.entry(k).or_insert(0) += 1;
                         }
-                        SourceKind::Prior { id } => {
-                            if let Some(k) = root_key[lj].get(&id.0) {
+                    }
+                }
+                // In-layer reuse: a root cone that reaches ANOTHER root's producer `expr`
+                // is one shared-ExprId reuse of that producer (the old `Source(Prior)` edge).
+                for root in layer.roots.iter() {
+                    let mut visited: std::collections::BTreeSet<u32> =
+                        std::collections::BTreeSet::new();
+                    let mut stack: Vec<ExprId> = vec![root.expr];
+                    let mut first = true;
+                    while let Some(eid) = stack.pop() {
+                        if !visited.insert(eid.0) {
+                            continue;
+                        }
+                        if !first {
+                            if let Some(k) = expr_key[lj].get(&eid.0) {
                                 *fanout.entry(*k).or_insert(0) += 1;
                             }
                         }
-                        _ => {}
+                        first = false;
+                        match &layer.exprs[eid.0 as usize] {
+                            Expr::Source(sid) => {
+                                if let SourceKind::LookupValue { query, .. } =
+                                    &layer.sources[sid.0 as usize].kind
+                                {
+                                    stack.push(*query);
+                                }
+                            }
+                            Expr::Add(ch) | Expr::Mul(ch) => stack.extend(ch.iter().copied()),
+                        }
                     }
                 }
             }
@@ -6139,10 +6253,7 @@ mod tests {
                 }
             }
             for root in &layer.roots {
-                let eid = match root {
-                    Root::Output { expr, .. } => *expr,
-                    Root::Constraint { expr } => *expr,
-                };
+                let eid = root.expr;
                 refcount[eid.0 as usize] += 1;
             }
             let (mut it_total, mut it_reused, mut it_max, mut it_extra) = (0usize, 0, 0, 0usize);
@@ -6186,7 +6297,7 @@ mod tests {
     #[test]
     #[ignore = "report: true use-count of materialized values (refutes/quantifies the fan-out-1 artifact)"]
     fn materialized_source_use_count() {
-        use cs::gkr_compiler::dag_ir::{Expr, ReadPlace, Root, SourceKind};
+        use cs::gkr_compiler::dag_ir::{Expr, ReadPlace, SourceKind};
         use std::collections::BTreeSet;
         for &fixture in ALL_22_L0_FIXTURES {
             let name = fixture
@@ -6203,36 +6314,35 @@ mod tests {
                 }
             }
             for root in &layer.roots {
-                let eid = match root {
-                    Root::Output { expr, .. } => *expr,
-                    Root::Constraint { expr } => *expr,
-                };
+                let eid = root.expr;
                 refcount[eid.0 as usize] += 1;
             }
+            // Part B: in-layer reuse of a materialized value is the ExprId refcount of the
+            // CACHE ROOT's shared `expr` (the old `Source(Prior)` is gone). Cross-layer
+            // reload points are still cross-layer `Read{Layer/CacheOutput}` sources.
+            let cache_roots = cache_expr_to_root(&layer);
             let (mut p_n, mut p_reused, mut p_max) = (0usize, 0usize, 0usize);
             let (mut x_n, mut x_reused, mut x_max) = (0usize, 0usize, 0usize);
+            for (&expr, _) in cache_roots.iter() {
+                let rc = refcount[expr.0 as usize];
+                p_n += 1;
+                p_max = p_max.max(rc);
+                if rc > 1 { p_reused += 1; }
+            }
             for (eid, e) in layer.exprs.iter().enumerate() {
                 if let Expr::Source(sid) = e {
                     let rc = refcount[eid];
-                    match &layer.sources[sid.0 as usize].kind {
-                        SourceKind::Prior { .. } => {
-                            p_n += 1;
-                            p_max = p_max.max(rc);
-                            if rc > 1 { p_reused += 1; }
-                        }
-                        SourceKind::Read { place }
-                            if matches!(place, ReadPlace::LayerOutput { .. } | ReadPlace::CacheOutput { .. }) =>
-                        {
+                    if let SourceKind::Read { place } = &layer.sources[sid.0 as usize].kind {
+                        if matches!(place, ReadPlace::LayerOutput { .. } | ReadPlace::CacheOutput { .. }) {
                             x_n += 1;
                             x_max = x_max.max(rc);
                             if rc > 1 { x_reused += 1; }
                         }
-                        _ => {}
                     }
                 }
             }
             println!(
-                "[USECOUNT] {name:<30} {flavor:<8} in-layer Prior: n={p_n:<4} reused(>1)={p_reused:<4} max_uses={p_max:<3} | cross-layer Read(Layer/CacheOutput): n={x_n:<4} reused={x_reused:<4} max_uses={x_max}"
+                "[USECOUNT] {name:<30} {flavor:<8} in-layer cache-reuse: n={p_n:<4} reused(>1)={p_reused:<4} max_uses={p_max:<3} | cross-layer Read(Layer/CacheOutput): n={x_n:<4} reused={x_reused:<4} max_uses={x_max}"
             );
         }
     }
@@ -6257,7 +6367,7 @@ mod tests {
     #[test]
     #[ignore = "report: cross-layout use-count of cache-materialized values (matched subset only — see LIMITATION)"]
     fn cache_root_use_count_in_no_cache() {
-        use cs::gkr_compiler::dag_ir::{DagLayer, Expr, Root, SinkKind};
+        use cs::gkr_compiler::dag_ir::{DagLayer, Expr, SinkInfo, SinkKind};
         use std::collections::{BTreeMap, BTreeSet, HashMap};
         use std::hash::{Hash, Hasher};
 
@@ -6291,10 +6401,7 @@ mod tests {
                 }
             }
             for root in &layer.roots {
-                let eid = match root {
-                    Root::Output { expr, .. } => *expr,
-                    Root::Constraint { expr } => *expr,
-                };
+                let eid = root.expr;
                 rc[eid.0 as usize] += 1;
             }
             rc
@@ -6324,17 +6431,21 @@ mod tests {
             let (mut cache_roots, mut matched, mut unmatched, mut nc_max) = (0usize, 0, 0, 0usize);
             let mut nc_hist: BTreeMap<usize, usize> = BTreeMap::new();
             for root in &clayer.roots {
-                if let Root::Output { expr, sink } = root {
-                    if matches!(clayer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. }) {
-                        cache_roots += 1;
-                        match nmap.get(&cfp[expr.0 as usize]) {
-                            Some(&uc) => {
-                                matched += 1;
-                                *nc_hist.entry(uc).or_default() += 1;
-                                nc_max = nc_max.max(uc);
-                            }
-                            None => unmatched += 1,
+                // Cache root: a `Cache` materialize with no claim.
+                let is_cache = matches!(
+                    &root.materialize,
+                    Some(SinkInfo { kind: SinkKind::Cache { .. }, .. })
+                ) && root.claim.is_none();
+                if is_cache {
+                    let expr = root.expr;
+                    cache_roots += 1;
+                    match nmap.get(&cfp[expr.0 as usize]) {
+                        Some(&uc) => {
+                            matched += 1;
+                            *nc_hist.entry(uc).or_default() += 1;
+                            nc_max = nc_max.max(uc);
                         }
+                        None => unmatched += 1,
                     }
                 }
             }
@@ -6352,7 +6463,6 @@ mod tests {
     #[test]
     #[ignore = "report: emission-order adjacency of the 2 use sites of use-count-2 cache values"]
     fn cache_root_consumer_adjacency() {
-        use cs::gkr_compiler::dag_ir::{Expr, Root, SinkKind, SourceKind};
         use std::collections::BTreeMap;
 
         for &fixture in ALL_22_L0_FIXTURES {
@@ -6361,43 +6471,21 @@ mod tests {
             }
             let name = fixture.trim_end_matches("_layout_gkr.json");
             let Some((layer, _)) = crate::try_load_l0(fixture) else { continue };
-            // cache RootId -> its own root index
+            // cache root `expr` -> its own RootId; and cache RootId -> its own root index.
+            let cache_roots = cache_expr_to_root(&layer);
             let mut cache_idx: BTreeMap<u32, usize> = BTreeMap::new();
-            for (ri, root) in layer.roots.iter().enumerate() {
-                if let Root::Output { sink, .. } = root {
-                    if matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. }) {
-                        cache_idx.insert(ri as u32, ri);
-                    }
-                }
+            for (&_expr, &rid) in cache_roots.iter() {
+                cache_idx.insert(rid.0, rid.0 as usize);
             }
-            // cache RootId -> consumer root indices (roots whose cone holds Prior{id})
+            // cache RootId -> consumer root indices (Part B: roots whose cone reaches the
+            // cache root's shared `expr` — the old `Source(Prior{id})` consumer).
             let mut consumers: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
             for (ri, root) in layer.roots.iter().enumerate() {
-                let expr_id = match root {
-                    Root::Output { expr, .. } => *expr,
-                    Root::Constraint { expr } => *expr,
-                };
-                let mut seen = vec![false; layer.exprs.len()];
-                let mut stack = vec![expr_id];
-                let mut hit: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
-                while let Some(e) = stack.pop() {
-                    if seen[e.0 as usize] {
-                        continue;
+                for cache_rid in cache_roots_in_cone(&layer, root.expr, &cache_roots) {
+                    // A cache root trivially reaches its own expr — that is not consumption.
+                    if cache_rid.0 as usize != ri {
+                        consumers.entry(cache_rid.0).or_default().push(ri);
                     }
-                    seen[e.0 as usize] = true;
-                    match &layer.exprs[e.0 as usize] {
-                        Expr::Source(sid) => {
-                            if let SourceKind::Prior { id } = &layer.sources[sid.0 as usize].kind {
-                                if cache_idx.contains_key(&id.0) {
-                                    hit.insert(id.0);
-                                }
-                            }
-                        }
-                        Expr::Add(ch) | Expr::Mul(ch) => stack.extend(ch.iter().copied()),
-                    }
-                }
-                for cid in hit {
-                    consumers.entry(cid).or_default().push(ri);
                 }
             }
             let (mut n2, mut adj, mut pair_gap_max, mut prod_gap_max) = (0usize, 0usize, 0usize, 0usize);
@@ -6429,17 +6517,22 @@ mod tests {
     }
 
     /// INVARIANT: every `Cache` root belongs to a SINGLE relation — all of its in-layer
-    /// consumers (roots reading it via `Source(Prior{id})`) share one `RootOrigin`
-    /// relation_index. This is what makes the relation a sound atomic scheduling unit (the
+    /// consumers (Part B: roots whose cone reaches the cache root's shared `expr`, the old
+    /// `Source(Prior{id})` consumer) share one FULL relation identity `(RootGroup,
+    /// relation_index)`. This is what makes the relation a sound atomic scheduling unit (the
     /// fold is privately owned by one relation). Measured true today (diff_relation==0 on all
     /// 11 circuits); ASSERTED here so that if a future generator ever CSE-merges a fold across
     /// relations the build fails LOUDLY (then build the cross-relation handling — YAGNI until
     /// then, per RR). Cache roots with no in-layer consumer (cross-layer only) are vacuously OK.
+    ///
+    /// Identity is the FULL `(group, relation_index)` — NOT `relation_index` alone, which
+    /// conflated `Gates[0]` with `GatesExternal[0]` (matches `relation_units` in instance.rs
+    /// and the validator key in validate.rs).
     #[test]
     #[ignore = "research invariant: every Cache root belongs to a single relation"]
     fn dual_use_cache_consumers_share_relation() {
-        use cs::gkr_compiler::dag_ir::{Expr, Root, RootId, SinkKind, SourceKind};
-        use std::collections::{BTreeMap, BTreeSet};
+        use cs::gkr_compiler::dag_ir::RootGroup;
+        use std::collections::{BTreeMap, HashSet};
 
         for &fixture in ALL_22_L0_FIXTURES {
             if fixture.contains("no_caches") {
@@ -6447,49 +6540,27 @@ mod tests {
             }
             let name = fixture.trim_end_matches("_layout_gkr.json");
             let Some((layer, _)) = crate::try_load_l0(fixture) else { continue };
-            let mut cache_ids: BTreeSet<u32> = BTreeSet::new();
-            for (ri, root) in layer.roots.iter().enumerate() {
-                if let Root::Output { sink, .. } = root {
-                    if matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. }) {
-                        cache_ids.insert(ri as u32);
-                    }
-                }
-            }
+            let cache_roots = cache_expr_to_root(&layer);
+            // cache RootId -> consumer root indices (cone reaches the cache root's `expr`).
             let mut consumers: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
             for (ri, root) in layer.roots.iter().enumerate() {
-                let expr_id = match root {
-                    Root::Output { expr, .. } => *expr,
-                    Root::Constraint { expr } => *expr,
-                };
-                let mut seen = vec![false; layer.exprs.len()];
-                let mut stack = vec![expr_id];
-                let mut hit: BTreeSet<u32> = BTreeSet::new();
-                while let Some(e) = stack.pop() {
-                    if seen[e.0 as usize] {
-                        continue;
+                for cache_rid in cache_roots_in_cone(&layer, root.expr, &cache_roots) {
+                    if cache_rid.0 as usize != ri {
+                        consumers.entry(cache_rid.0).or_default().push(ri);
                     }
-                    seen[e.0 as usize] = true;
-                    match &layer.exprs[e.0 as usize] {
-                        Expr::Source(sid) => {
-                            if let SourceKind::Prior { id } = &layer.sources[sid.0 as usize].kind {
-                                if cache_ids.contains(&id.0) {
-                                    hit.insert(id.0);
-                                }
-                            }
-                        }
-                        Expr::Add(ch) | Expr::Mul(ch) => stack.extend(ch.iter().copied()),
-                    }
-                }
-                for cid in hit {
-                    consumers.entry(cid).or_default().push(ri);
                 }
             }
             let (mut checked, mut dual) = (0usize, 0usize);
             for (cid, cons) in &consumers {
-                // distinct relation_index among this cache root's consumers
-                let rels: BTreeSet<usize> = cons
+                // distinct FULL relation identity (group, relation_index) among consumers.
+                let rels: HashSet<(RootGroup, usize)> = cons
                     .iter()
-                    .filter_map(|&r| layer.origins.get(&RootId(r as u32)).map(|o| o.relation_index))
+                    .filter_map(|&r| {
+                        layer.roots[r]
+                            .claim
+                            .as_ref()
+                            .map(|c| (c.origin.group.clone(), c.origin.relation_index))
+                    })
                     .collect();
                 assert!(
                     rels.len() <= 1,
@@ -6506,7 +6577,7 @@ mod tests {
             }
             println!(
                 "[DUAL] {name:<30} cache_roots={:<4} with_consumers={checked:<4} dual_use={dual:<4} (all belong to <=1 relation)",
-                cache_ids.len()
+                cache_roots.len()
             );
         }
     }

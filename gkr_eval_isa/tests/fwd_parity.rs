@@ -255,11 +255,11 @@ fn check_fixture(name: &str, artifact: &GKRCircuitArtifact<BabyBearField>, budge
                 !by_root.contains_key(skipped),
                 "[{name}] layer {l}: skipped root {skipped:?} also in root_outputs"
             );
-            // And the underlying Root must be an Output (Constraint roots are
-            // never classified into actions).
+            // And the underlying Root must be a materialized (Output/Cache) root —
+            // claim-only Constraint roots (materialize None) are never classified into actions.
             assert!(
-                matches!(dag_layer.roots[skipped.0 as usize], Root::Output { .. }),
-                "[{name}] layer {l}: skipped root {skipped:?} is not an Output root"
+                dag_layer.roots[skipped.0 as usize].materialize.is_some(),
+                "[{name}] layer {l}: skipped root {skipped:?} is not a materialized (Output) root"
             );
         }
     }
@@ -305,9 +305,10 @@ const LAYOUT_NO_CACHES_GKR_FIXTURES: &[&str] = &[
 // fixtures (cache + no-cache), every layer, focused on the TIGHT-budget regime (the
 // regime that actually matters, and worse in the backward pass where base->ext folding
 // quadruples cell width). For each (circuit, layer) it reports:
-//   DAG opportunity: output/cache roots; same-layer Prior reuse edges (#10 reorder
-//     adjacency potential); carry-eligible roots (>=1 same-layer-Prior child, the #5a
-//     UPPER bound) + first-child-Prior roots (natural-seed proxy); size (exprs/reads);
+//   DAG opportunity: output/cache roots; same-layer cache-reuse edges (a top-level
+//     child that IS a cache root's shared `ExprId`; #10 reorder adjacency potential);
+//     carry-eligible roots (>=1 same-layer cache-reuse child, the #5a UPPER bound) +
+//     first-child-reuse roots (natural-seed proxy); size (exprs/reads);
 //     base/ext sink split (backward-pass 4x-blowup signal).
 //   Compile sweep: the irreducible floor (min feasible budget) and dram_reads / max_live
 //     / lanes at floor / 16 / 32 / 1024 — the tight-vs-loose dram_reads gap is the room
@@ -319,7 +320,7 @@ const AUDIT_BUDGETS: &[usize] = &[4, 8, 12, 16, 24, 32, 48, 64, 128, 1024];
 #[test]
 #[ignore = "corpus-wide S3 opportunity audit; run on demand"]
 fn s3_opportunity_audit() {
-    use cs::gkr_compiler::dag_ir::{Expr, FieldKind, SourceKind};
+    use cs::gkr_compiler::dag_ir::{Expr, ExprId, FieldKind, SinkInfo, SinkKind, SourceKind};
     let dir = compiled_circuit_dir();
     let mut all: Vec<String> = Vec::new();
     let mut fixtures: Vec<&str> = Vec::new();
@@ -339,42 +340,53 @@ fn s3_opportunity_audit() {
         let cross = build_cross_layer_field_map(&dag);
 
         for (l, layer) in dag.layers.iter().enumerate() {
-            // cache RootIds = Output roots with no origin.
-            let mut cache_ids: std::collections::HashSet<RootId> = std::collections::HashSet::new();
+            // Attribute-model identities (Stage-1 lowering):
+            //   - materialized output root: `materialize.is_some()` (Output + Cache).
+            //   - cache root: a `Cache` materialize with no claim.
+            let is_cache_root = |r: &Root| -> bool {
+                matches!(
+                    &r.materialize,
+                    Some(SinkInfo { kind: SinkKind::Cache { .. }, .. })
+                ) && r.claim.is_none()
+            };
+            // Set of cache-root SHARED exprs: Part B replaces `Source(Prior{rid})` with a
+            // direct reference to the cache root's `expr`, so same-layer reuse of a cache
+            // value == a child that IS one of these exprs.
+            let mut cache_exprs: std::collections::HashSet<u32> = std::collections::HashSet::new();
             let mut n_out = 0usize;
-            for (idx, root) in layer.roots.iter().enumerate() {
-                if let Root::Output { .. } = root {
+            for root in layer.roots.iter() {
+                if root.materialize.is_some() {
                     n_out += 1;
-                    let rid = RootId(idx as u32);
-                    if !layer.origins.contains_key(&rid) { cache_ids.insert(rid); }
+                }
+                if is_cache_root(root) {
+                    cache_exprs.insert(root.expr.0);
                 }
             }
-            let is_same_layer_prior = |id: cs::gkr_compiler::dag_ir::ExprId| -> bool {
-                if let Expr::Source(src) = &layer.exprs[id.0 as usize] {
-                    if let SourceKind::Prior { id: rid } = &layer.sources[src.0 as usize].kind {
-                        return cache_ids.contains(rid);
-                    }
-                }
-                false
-            };
+            let is_same_layer_cache_reuse =
+                |id: ExprId| -> bool { cache_exprs.contains(&id.0) };
             // Per-root carry/reuse structure.
-            let mut prior_edges = 0usize;     // total same-layer-Prior child uses at top level
-            let mut carry_elig = 0usize;      // roots with >=1 same-layer-Prior top-level child (UPPER bound)
-            let mut carry_firstchild = 0usize;// roots whose child[0] is a same-layer Prior (natural-seed proxy)
+            let mut prior_edges = 0usize;     // total same-layer cache-reuse child uses at top level
+            let mut carry_elig = 0usize;      // roots with >=1 same-layer cache-reuse top-level child (UPPER bound)
+            let mut carry_firstchild = 0usize;// roots whose child[0] is a same-layer cache reuse (natural-seed proxy)
             for root in &layer.roots {
-                if let Root::Output { expr, .. } = root {
+                if root.materialize.is_some() {
+                    let expr = root.expr;
                     if let Expr::Add(ch) | Expr::Mul(ch) = &layer.exprs[expr.0 as usize] {
                         if ch.is_empty() { continue; }
-                        let priors = ch.iter().filter(|&&c| is_same_layer_prior(c)).count();
+                        let priors = ch.iter().filter(|&&c| is_same_layer_cache_reuse(c)).count();
                         prior_edges += priors;
                         if priors > 0 { carry_elig += 1; }
-                        if is_same_layer_prior(ch[0]) { carry_firstchild += 1; }
+                        if is_same_layer_cache_reuse(ch[0]) { carry_firstchild += 1; }
                     }
                 }
             }
             let n_reads = layer.sources.iter().filter(|s| matches!(s.kind, SourceKind::Read { .. })).count();
             let (mut base_sinks, mut ext_sinks) = (0usize, 0usize);
-            for s in &layer.sinks { match s.field { FieldKind::Base => base_sinks += 1, FieldKind::Ext => ext_sinks += 1 } }
+            for root in &layer.roots {
+                if let Some(SinkInfo { field, .. }) = &root.materialize {
+                    match field { FieldKind::Base => base_sinks += 1, FieldKind::Ext => ext_sinks += 1 }
+                }
+            }
 
             // Compile sweep.
             let mut floor: Option<usize> = None;
@@ -396,7 +408,7 @@ fn s3_opportunity_audit() {
             let g = |b: usize| dram.get(&b).map(|v| *v as i64).unwrap_or(-1);
             all.push(format!(
                 "[AUDIT] {circuit},{has_caches},{l},{n_out},{},{prior_edges},{carry_elig},{carry_firstchild},{},{n_reads},{base_sinks},{ext_sinks},{fl},{},{},{},{},{maxlive1024},{lanes1024}",
-                cache_ids.len(), layer.exprs.len(), g(fl), g(16), g(32), g(1024)
+                cache_exprs.len(), layer.exprs.len(), g(fl), g(16), g(32), g(1024)
             ));
         }
     }

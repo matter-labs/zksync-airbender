@@ -265,7 +265,7 @@ mod tests {
     use crate::fwd::source::{ConstBank, SpecialTable};
     use cs::gkr_compiler::dag_ir::{
         ArenaBuilder, BatchingOrder, ChallengeRef, DagLayer, ReadPlace, Resolvers, RootId,
-        SinkId, SinkKind, SourceKind, VirtualSetupKind,
+        SourceKind, VirtualSetupKind,
     };
     use std::collections::BTreeMap;
 
@@ -304,9 +304,7 @@ mod tests {
             sources: vec![],
             exprs: vec![],
             roots: vec![],
-            sinks: vec![],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         }
     }
@@ -401,9 +399,7 @@ mod tests {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
             roots: vec![],
-            sinks: vec![],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
 
@@ -434,9 +430,7 @@ mod tests {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
             roots: vec![],
-            sinks: vec![],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
 

@@ -287,9 +287,7 @@ mod tests {
             sources: vec![],
             exprs: vec![],
             roots: vec![],
-            sinks: vec![],
             batching: BatchingOrder { roots: vec![] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         }
     }
