@@ -1,13 +1,14 @@
 //! Constraint / enforce relation lowering for the DAG IR generator.
 //!
-//! Two `NoFieldGKRRelation` arms are handled:
+//! Two `NoFieldGKRRelation` arms are handled. Each emits one claim-only
+//! constraint root (`materialize: None`, `claim: Some(..)`):
 //!
-//! - `EnforceSingleMaxQuadraticConstraint` → one `Root::Constraint` whose expr is
+//! - `EnforceSingleMaxQuadraticConstraint` → one constraint root whose expr is
 //!   the flat MaxQuadratic lowering of the `input` field (same form as Task 7's
 //!   arithmetic lowering). The `expression` structured field is NOT consumed,
 //!   consistent with Task 7's MaxQuadratic arm.
 //!
-//! - `EnforceConstraintsMaxQuadratic` → one `Root::Constraint` whose expr is:
+//! - `EnforceConstraintsMaxQuadratic` → one constraint root whose expr is:
 //!   ```text
 //!   Σ_((a,b), terms) Σ_(c,p in terms) c · rho^p · a · b
 //! + Σ_(a, terms)     Σ_(c,p in terms) c · rho^p · a
@@ -16,10 +17,10 @@
 //!   where `rho = Challenge(ConstraintAggregation, One)` (or `Static(p)` for
 //!   `p != 1`).
 //!
-//! Neither arm produces a sink; `Root::Constraint` has no `SinkId`.
+//! Neither arm produces a sink; a constraint root carries `materialize: None`.
 
 use super::super::{
-    ArenaBuilder, ChallengeKey, ChallengeRef, ChallengePower, ExprId, Root, RootId,
+    ArenaBuilder, ChallengeKey, ChallengeRef, ChallengePower, ClaimInfo, ExprId, Root,
     RootOrigin, RootSlot, SourceKind,
 };
 use super::{LayerOut, RootGroup};
@@ -54,8 +55,8 @@ fn rho_pow(arena: &mut ArenaBuilder, p: usize) -> ExprId {
 
 /// Lower `EnforceSingleMaxQuadraticConstraint { input, .. }`.
 ///
-/// Emits one `Root::Constraint` whose expr is the flat MaxQuadratic form:
-/// `constant + Σ c_ij·a_i·b_ij + Σ c_i·x_i`.
+/// Emits one claim-only constraint root whose expr is the flat MaxQuadratic
+/// form: `constant + Σ c_ij·a_i·b_ij + Σ c_i·x_i`.
 pub(super) fn lower_single_constraint(
     arena: &mut ArenaBuilder,
     out: &mut LayerOut,
@@ -69,7 +70,7 @@ pub(super) fn lower_single_constraint(
 
 /// Lower `EnforceConstraintsMaxQuadratic { input }`.
 ///
-/// Emits one `Root::Constraint` whose expr is the batched aggregation:
+/// Emits one claim-only constraint root whose expr is the batched aggregation:
 /// `Σ_quad c·rho^p·a·b  +  Σ_lin c·rho^p·a  +  Σ_const c·rho^p`.
 pub(super) fn lower_batched_constraint(
     arena: &mut ArenaBuilder,
@@ -148,24 +149,26 @@ fn lower_batched_expr(
     sum_terms(arena, terms)
 }
 
-/// Push `Root::Constraint { expr }` and record `RootOrigin { slot: Constraint(0) }`.
+/// Push a claim-only constraint root (`materialize: None`) carrying
+/// `claim: Some(ClaimInfo{ origin: RootOrigin{ slot: Constraint(0) } })`.
 ///
-/// No sink is created. The root is claim-bearing; Task 11 assembles the batching
-/// order — this function only emits the root and records its origin.
+/// No sink is created (`materialize: None`). The root is claim-bearing; Task 11
+/// assembles the batching order — this function only emits the root.
 fn emit_constraint(
     out: &mut LayerOut,
     expr: ExprId,
     group: RootGroup,
     relation_index: usize,
 ) {
-    let root_id = RootId(out.roots.len() as u32);
-    out.roots.push(Root::Constraint { expr });
-    out.origins.insert(
-        root_id,
-        RootOrigin {
-            group,
-            relation_index,
-            slot: RootSlot::Constraint(0),
-        },
-    );
+    out.roots.push(Root {
+        expr,
+        materialize: None,
+        claim: Some(ClaimInfo {
+            origin: RootOrigin {
+                group,
+                relation_index,
+                slot: RootSlot::Constraint(0),
+            },
+        }),
+    });
 }

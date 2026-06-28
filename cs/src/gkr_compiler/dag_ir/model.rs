@@ -20,12 +20,6 @@ pub struct ExprId(pub u32);
 )]
 pub struct RootId(pub u32);
 
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord,
-    serde::Serialize, serde::Deserialize,
-)]
-pub struct SinkId(pub u32);
-
 // ── Field kind ───────────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -152,10 +146,21 @@ pub struct SinkInfo {
 
 // ── Root ─────────────────────────────────────────────────────────────────────
 
+/// An escaping expr: a value observed outside pure forward dataflow. The two
+/// attributes are ORTHOGONAL — Cache = materialize-only; Constraint = claim-only;
+/// Inner/Export = both; a pure internal value is never a Root.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum Root {
-    Output { expr: ExprId, sink: SinkId },
-    Constraint { expr: ExprId },
+pub struct Root {
+    pub expr: ExprId,
+    /// A free streamed write (commit) of this value; `None` = never written.
+    pub materialize: Option<SinkInfo>,
+    /// Claim-bearing batching identity; `None` = not claim-bearing.
+    pub claim: Option<ClaimInfo>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct ClaimInfo {
+    pub origin: RootOrigin,
 }
 
 // ── BatchingOrder ────────────────────────────────────────────────────────────
@@ -244,10 +249,7 @@ pub struct DagLayer {
     pub sources: Vec<SourceInfo>,
     pub exprs: Vec<Expr>,
     pub roots: Vec<Root>,
-    pub sinks: Vec<SinkInfo>,
     pub batching: BatchingOrder,
-    /// Sparse: only claim-bearing + constraint roots are present; cache roots absent.
-    pub origins: BTreeMap<RootId, RootOrigin>,
     /// Sparse forward-peek hints, keyed by lookup/setup fold-leaf `ExprId`.
     /// Absent ⇒ recompute. Populated by the generator (Tasks 2-4), checked by
     /// the validator (Task 5). See `.agents/specs/2026-06-18-gkr-lookup-resolution-hint-design.md`.
@@ -270,7 +272,8 @@ mod tests {
     use super::*;
 
     /// Serde round-trip: one-layer DagCircuit with a Constant source,
-    /// an Add expr referencing it, one Output root, and empty origins.
+    /// an Add expr referencing it, and one claim-bearing Output root (its sink
+    /// inlined into `materialize`, its origin into `claim`).
     #[test]
     fn serde_roundtrip_one_layer() {
         // Source: Constant(42)
@@ -287,24 +290,28 @@ mod tests {
         let expr_add_id = ExprId(1);
         let expr_add = Expr::Add(vec![expr_src_id]);
 
-        // Sink
-        let sink_id = SinkId(0);
-        let sink = SinkInfo {
-            kind: SinkKind::Export { slot: 0 },
-            field: FieldKind::Base,
-        };
-
-        // Root: Output using expr_add
+        // Root: claim-bearing Output using expr_add; sink + origin inlined.
         let root_id = RootId(0);
-        let root = Root::Output { expr: expr_add_id, sink: sink_id };
+        let root = Root {
+            expr: expr_add_id,
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Export { slot: 0 },
+                field: FieldKind::Base,
+            }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    slot: RootSlot::Output(0),
+                },
+            }),
+        };
 
         let layer = DagLayer {
             sources: vec![source],
             exprs: vec![expr_src, expr_add],
             roots: vec![root],
-            sinks: vec![sink],
             batching: BatchingOrder { roots: vec![root_id] },
-            origins: BTreeMap::new(), // sparse — empty for this test
             resolutions: BTreeMap::new(),
         };
 
@@ -328,9 +335,7 @@ mod tests {
             "sources": [],
             "exprs": [],
             "roots": [],
-            "sinks": [],
-            "batching": { "roots": [] },
-            "origins": {}
+            "batching": { "roots": [] }
         }"#;
         let layer: DagLayer = serde_json::from_str(legacy).expect("legacy layer must deserialize");
         assert!(layer.resolutions.is_empty(), "missing `resolutions` must default to empty");

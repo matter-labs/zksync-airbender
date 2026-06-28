@@ -12,7 +12,7 @@ use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension, PrimeField};
 
 use super::{
-    ChallengeRef, DagLayer, Expr, ExprId, LookupValueKind, ReadPlace, Root, RootId, SourceKind,
+    ChallengeRef, DagLayer, Expr, ExprId, LookupValueKind, ReadPlace, RootId, SourceKind,
     VirtualSetupKind,
 };
 
@@ -80,10 +80,7 @@ pub struct Resolvers<'a> {
 /// precondition.
 pub fn eval_layer_root(layer: &DagLayer, root: RootId, row: usize, r: &Resolvers<'_>) -> Ext {
     let mut expr_cache: HashMap<ExprId, Ext> = HashMap::new();
-    let expr_id = match &layer.roots[root.0 as usize] {
-        Root::Output { expr, .. } => *expr,
-        Root::Constraint { expr } => *expr,
-    };
+    let expr_id = layer.roots[root.0 as usize].expr;
     eval_expr(expr_id, layer, row, r, &mut expr_cache)
 }
 
@@ -162,8 +159,9 @@ mod tests {
 
     use super::*;
     use crate::gkr_compiler::dag_ir::{
-        ArenaBuilder, BatchingOrder, ChallengeKey, ChallengeRef, ChallengePower, DagLayer, Expr,
-        LookupValueKind, ReadPlace, Root, RootId, SinkId, SourceKind, VirtualSetupKind,
+        ArenaBuilder, BatchingOrder, ChallengeKey, ChallengeRef, ChallengePower, ClaimInfo,
+        DagLayer, Expr, FieldKind, LookupValueKind, ReadPlace, Root, RootGroup, RootId, RootOrigin,
+        RootSlot, SinkInfo, SinkKind, SourceKind, VirtualSetupKind,
     };
 
     // ── Stub resolvers ────────────────────────────────────────────────────────
@@ -217,10 +215,34 @@ mod tests {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
             roots,
-            sinks: Vec::new(),
             batching: BatchingOrder { roots: batching_roots },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
+        }
+    }
+
+    /// A claim-bearing Output root: sink inlined into `materialize`, a trivial
+    /// `Gates`/`Output(0)` origin into `claim`. (eval only reads `.expr`; the
+    /// attributes are present for shape correctness.)
+    fn claim_output(expr: ExprId, kind: SinkKind, field: FieldKind) -> Root {
+        Root {
+            expr,
+            materialize: Some(SinkInfo { kind, field }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    slot: RootSlot::Output(0),
+                },
+            }),
+        }
+    }
+
+    /// A materialize-only cache root (`claim: None`).
+    fn cache_root(expr: ExprId, kind: SinkKind, field: FieldKind) -> Root {
+        Root {
+            expr,
+            materialize: Some(SinkInfo { kind, field }),
+            claim: None,
         }
     }
 
@@ -282,10 +304,7 @@ mod tests {
         let sum = arena.add(vec![lv0, alpha_lv1]);
 
         let root_id = RootId(0);
-        let roots = vec![Root::Output {
-            expr: sum,
-            sink: SinkId(0),
-        }];
+        let roots = vec![claim_output(sum, SinkKind::Inner { layer: 0, offset: 0 }, FieldKind::Ext)];
         let layer = layer_from_arena(&arena, roots, vec![root_id]);
 
         // Stub resolvers
@@ -341,10 +360,10 @@ mod tests {
         let sum = arena.add(vec![cache_expr, c3]);
 
         let roots = vec![
-            // RootId(0): Cache-sink Output materializing the value (committed).
-            Root::Output { expr: cache_expr, sink: SinkId(0) },
+            // RootId(0): Cache materialize-only root (committed value).
+            cache_root(cache_expr, SinkKind::Cache { layer: 0, offset: 0 }, FieldKind::Base),
             // RootId(1): claim-bearing consumer sharing the cache ExprId.
-            Root::Output { expr: sum, sink: SinkId(1) },
+            claim_output(sum, SinkKind::Inner { layer: 0, offset: 0 }, FieldKind::Base),
         ];
         // Only root 1 is claim-bearing; root 0 is the materialize-only cache.
         let layer = layer_from_arena(&arena, roots, vec![RootId(1)]);
@@ -394,8 +413,8 @@ mod tests {
         let sum = arena.add(vec![cache_expr, c3]);
 
         let roots = vec![
-            Root::Output { expr: cache_expr, sink: SinkId(0) },
-            Root::Output { expr: sum, sink: SinkId(1) },
+            cache_root(cache_expr, SinkKind::Cache { layer: 0, offset: 0 }, FieldKind::Base),
+            claim_output(sum, SinkKind::Inner { layer: 0, offset: 0 }, FieldKind::Base),
         ];
         let layer = layer_from_arena(&arena, roots, vec![RootId(1)]);
 

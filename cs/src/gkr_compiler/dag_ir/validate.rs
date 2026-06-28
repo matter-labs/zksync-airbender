@@ -45,7 +45,7 @@ use crate::gkr_compiler::codegen_ir::CodegenCircuit;
 
 use super::{
     expr_field, source_field, ChallengeKey, ChallengePower, DagCircuit, DagLayer, Expr, ExprId,
-    FieldKind, LookupValueKind, RangeWidth, ReadPlace, ResolutionStrategy, Root, RootGroup,
+    FieldKind, LookupValueKind, RangeWidth, ReadPlace, ResolutionStrategy, RootGroup,
     RootId, RootSlot, SinkKind, SourceId, SourceKind,
 };
 
@@ -196,10 +196,7 @@ fn successors(node: Node, layer: &DagLayer) -> Vec<Node> {
             }
         },
         Node::Root(r) => {
-            let expr = match &layer.roots[r as usize] {
-                Root::Output { expr, .. } => *expr,
-                Root::Constraint { expr } => *expr,
-            };
+            let expr = layer.roots[r as usize].expr;
             vec![Node::Expr(expr.0)]
         }
     }
@@ -716,10 +713,7 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
         // …and every `Root.expr` must be in range too (review codex#5: keep the
         // root pointer explicitly checked, not just the arena exprs).
         for (ri, root) in layer.roots.iter().enumerate() {
-            let expr = match root {
-                Root::Output { expr, .. } => *expr,
-                Root::Constraint { expr } => *expr,
-            };
+            let expr = root.expr;
             if expr.0 as usize >= layer.exprs.len() {
                 return Err(format!(
                     "layer {li} root {ri}: Root references out-of-range expr {:?}",
@@ -733,8 +727,11 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
         check_resolutions(layer, li)?;
 
         // ── Batching-membership: claim-bearing exactly once, caches absent ────
-        // Classify each root: cache-sink Output = materialization-only; every
-        // other Output and every Constraint = claim-bearing.
+        // Classify each root by its attributes: `claim: Some` = claim-bearing
+        // (must appear in the batching order exactly once); `claim: None` =
+        // materialization-only (a cache; must be absent). This mirrors the
+        // lowering's `claim.is_some()` batching filter and the attribute-shape
+        // test (`cache_is_materialize_only_claims_are_batched`).
         let batching = &layer.batching.roots;
         let batching_set: HashSet<RootId> = batching.iter().copied().collect();
         if batching_set.len() != batching.len() {
@@ -744,20 +741,19 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
         }
         for (ri, root) in layer.roots.iter().enumerate() {
             let id = RootId(ri as u32);
-            let is_cache = matches!(root, Root::Output { sink, .. }
-                if matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. }));
-            if is_cache {
-                if batching_set.contains(&id) {
-                    return Err(format!(
-                        "layer {li}: cache root {:?} must not appear in the batching order",
-                        id
-                    ));
-                }
-            } else {
+            if root.claim.is_some() {
                 // Claim-bearing root must appear exactly once.
                 if !batching_set.contains(&id) {
                     return Err(format!(
                         "layer {li}: claim-bearing root {:?} missing from the batching order",
+                        id
+                    ));
+                }
+            } else {
+                // Materialization-only (cache) root must be absent.
+                if batching_set.contains(&id) {
+                    return Err(format!(
+                        "layer {li}: cache root {:?} must not appear in the batching order",
                         id
                     ));
                 }
@@ -773,57 +769,47 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
             }
         }
 
-        // ── Sink written exactly once per Output root; constraints have none ──
-        let mut sink_seen: HashSet<u32> = HashSet::new();
+        // ── Each materialized sink written by exactly one root ────────────────
+        // Constraint roots (`materialize: None`) write no sink. Sink identity is
+        // now the inlined `SinkKind` (carries layer/offset/slot), so dedup by it.
+        let mut sink_seen: HashSet<SinkKind> = HashSet::new();
         for (ri, root) in layer.roots.iter().enumerate() {
-            match root {
-                Root::Output { sink, .. } => {
-                    if sink.0 as usize >= layer.sinks.len() {
-                        return Err(format!(
-                            "layer {li} root {ri}: Output references undeclared sink {:?}",
-                            sink
-                        ));
-                    }
-                    if !sink_seen.insert(sink.0) {
-                        return Err(format!(
-                            "layer {li} root {ri}: sink {:?} written by more than one root",
-                            sink
-                        ));
-                    }
-                }
-                Root::Constraint { .. } => {
-                    // Constraint roots carry no sink — nothing to check here.
+            if let Some(sink) = &root.materialize {
+                if !sink_seen.insert(sink.kind.clone()) {
+                    return Err(format!(
+                        "layer {li} root {ri}: sink {:?} written by more than one root",
+                        sink.kind
+                    ));
                 }
             }
         }
 
-        // ── Field inference: every source/expr field inferable; Output expr ───
-        //    field == sink field exactly.
+        // ── Field inference: every source/expr field inferable; for a ─────────
+        //    materialized root, expr field == sink field exactly (this is also
+        //    the cache-Output expr/sink-field invariant — cache roots carry
+        //    `materialize: Some(Cache)` and pass through here).
         for (ri, root) in layer.roots.iter().enumerate() {
-            match root {
-                Root::Output { expr, sink } => {
-                    let expr_f = resolve_expr_field(*expr, layer, &cross_layer)
-                        .map_err(|e| format!("layer {li} root {ri} (Output): {e}"))?;
-                    let sink_f = layer.sinks[sink.0 as usize].field;
-                    if expr_f != sink_f {
-                        return Err(format!(
-                            "layer {li} root {ri}: Output expr field {:?} != sink field {:?}",
-                            expr_f, sink_f
-                        ));
-                    }
-                }
-                Root::Constraint { expr } => {
-                    // Field must still be inferable, but there is no sink to match.
-                    resolve_expr_field(*expr, layer, &cross_layer)
-                        .map_err(|e| format!("layer {li} root {ri} (Constraint): {e}"))?;
+            let expr_f = resolve_expr_field(root.expr, layer, &cross_layer)
+                .map_err(|e| format!("layer {li} root {ri}: {e}"))?;
+            if let Some(sink) = &root.materialize {
+                if expr_f != sink.field {
+                    return Err(format!(
+                        "layer {li} root {ri}: Output expr field {:?} != sink field {:?}",
+                        expr_f, sink.field
+                    ));
                 }
             }
         }
 
         // ── Publish this layer's sink fields for later layers ─────────────────
-        for sink in &layer.sinks {
-            if let Some(place) = sink_read_place(&sink.kind) {
-                cross_layer.insert(place, sink.field);
+        // Iterate roots and visit each `materialize` sink. Cache roots
+        // (`claim: None`) MUST be visited: `sink_read_place` returns `Some` for
+        // `Cache`, so a later layer's `Read{CacheOutput}` can resolve its field.
+        for root in &layer.roots {
+            if let Some(sink) = &root.materialize {
+                if let Some(place) = sink_read_place(&sink.kind) {
+                    cross_layer.insert(place, sink.field);
+                }
             }
         }
     }
@@ -842,7 +828,7 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
 /// # Forward-looking guard (spec §7)
 ///
 /// The inequality branch in `check_batching_parity` (where `prev != digest`) is
-/// currently unreachable: the lowering emits exactly one `Root::Constraint` per
+/// currently unreachable: the lowering emits exactly one constraint root per
 /// relation, so every `(group, relation_index)` key in
 /// `constraint_digest_by_origin` is unique within a layer — no two batching
 /// positions can share the same origin key.
@@ -1059,7 +1045,10 @@ pub fn check_batching_parity<F: PrimeField + PartialEq>(
                 ));
             }
             let root = &dl.roots[root_id.0 as usize];
-            let origin = dl.origins.get(root_id).ok_or_else(|| {
+            // Claim-bearing identity comes from the inlined `claim.origin` (codex#5
+            // soundness anchor: origin + sink identity are compared position-by-
+            // position over the claim-bearing roots).
+            let origin = root.claim.as_ref().map(|c| &c.origin).ok_or_else(|| {
                 format!("layer {li} pos {pos}: claim-bearing root {root_id:?} has no RootOrigin")
             })?;
             match slot {
@@ -1069,10 +1058,10 @@ pub fn check_batching_parity<F: PrimeField + PartialEq>(
                     slot: out_slot,
                     addr,
                 } => {
-                    // Must be an Output root.
-                    let sink_id = match root {
-                        Root::Output { sink, .. } => *sink,
-                        Root::Constraint { .. } => {
+                    // Must be a materialized (Output) root.
+                    let got_sink = match &root.materialize {
+                        Some(s) => &s.kind,
+                        None => {
                             return Err(format!(
                                 "layer {li} pos {pos}: expected Output root, got Constraint"
                             ));
@@ -1084,17 +1073,6 @@ pub fn check_batching_parity<F: PrimeField + PartialEq>(
                             "layer {li} pos {pos}: retired output addr {addr:?} has no sink mapping"
                         )
                     })?;
-                    // F3: bounds-check sink_id before indexing.
-                    if sink_id.0 as usize >= dl.sinks.len() {
-                        return Err(format!(
-                            "layer {li} pos {pos}: Output root {:?} references sink {:?} \
-                             out of range (sinks.len() = {})",
-                            root_id,
-                            sink_id,
-                            dl.sinks.len()
-                        ));
-                    }
-                    let got_sink = &dl.sinks[sink_id.0 as usize].kind;
                     if *got_sink != want_sink {
                         return Err(format!(
                             "layer {li} pos {pos}: sink-identity mismatch: dag {got_sink:?} vs retired {want_sink:?}"
@@ -1115,14 +1093,13 @@ pub fn check_batching_parity<F: PrimeField + PartialEq>(
                     group,
                     relation_index,
                 } => {
-                    let expr = match root {
-                        Root::Constraint { expr } => *expr,
-                        Root::Output { .. } => {
-                            return Err(format!(
-                                "layer {li} pos {pos}: expected Constraint root, got Output"
-                            ));
-                        }
-                    };
+                    // A constraint root is claim-only: `materialize: None`.
+                    if root.materialize.is_some() {
+                        return Err(format!(
+                            "layer {li} pos {pos}: expected Constraint root, got Output"
+                        ));
+                    }
+                    let expr = root.expr;
                     if origin.group != *group
                         || origin.relation_index != *relation_index
                         || !matches!(origin.slot, RootSlot::Constraint(_))
@@ -1167,11 +1144,39 @@ mod tests {
     use crate::definitions::gkr::DECODER_LOOKUP_FORMAL_SET_INDEX;
     use crate::gkr_compiler::codegen_ir::lower as retired_lower;
     use crate::gkr_compiler::dag_ir::{
-        lower_dag, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, DagGlobals, DagLayer,
-        Expr, ExprId, FieldKind, FillSource, LookupValueKind, ReadPlace, Root, RootGroup, RootId,
-        RootOrigin, RootSlot, SinkId, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
+        lower_dag, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo, DagGlobals,
+        DagLayer, Expr, ExprId, FieldKind, FillSource, LookupValueKind, ReadPlace, Root, RootGroup,
+        RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
     };
     use crate::gkr_compiler::test_support::{build_add_sub_artifact, ConcreteField};
+
+    // ── Root literal builders (sink inlined into `materialize`, origin into
+    //    `claim`) — keep hand-built test layers concise after the Task-2 struct
+    //    dissolve. ────────────────────────────────────────────────────────────
+
+    /// A claim-bearing Output root with a `Gates`/`Output(0)` origin.
+    fn out_root(expr: ExprId, kind: SinkKind, field: FieldKind) -> Root {
+        Root {
+            expr,
+            materialize: Some(SinkInfo { kind, field }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    slot: RootSlot::Output(0),
+                },
+            }),
+        }
+    }
+
+    /// A materialization-only cache root (`claim: None`).
+    fn cache_only_root(expr: ExprId, kind: SinkKind, field: FieldKind) -> Root {
+        Root {
+            expr,
+            materialize: Some(SinkInfo { kind, field }),
+            claim: None,
+        }
+    }
 
     // ── Small hand-built circuit helpers ─────────────────────────────────────
 
@@ -1182,32 +1187,18 @@ mod tests {
             kind: SourceKind::Constant { value: 7 },
         }];
         let exprs = vec![Expr::Source(SourceId(0))];
-        let sinks = vec![SinkInfo {
-            kind: SinkKind::Inner { layer: 0, offset: 0 },
-            field: FieldKind::Base,
-        }];
-        let roots = vec![Root::Output {
-            expr: ExprId(0),
-            sink: SinkId(0),
-        }];
-        let mut origins = BTreeMap::new();
-        origins.insert(
-            RootId(0),
-            RootOrigin {
-                group: RootGroup::Gates,
-                relation_index: 0,
-                slot: RootSlot::Output(0),
-            },
-        );
+        let roots = vec![out_root(
+            ExprId(0),
+            SinkKind::Inner { layer: 0, offset: 0 },
+            FieldKind::Base,
+        )];
         DagLayer {
             sources,
             exprs,
             roots,
-            sinks,
             batching: BatchingOrder {
                 roots: vec![RootId(0)],
             },
-            origins,
             resolutions: BTreeMap::new(),
         }
     }
@@ -1252,45 +1243,20 @@ mod tests {
             kind: SourceKind::Constant { value: 1 },
         }];
         let exprs = vec![Expr::Source(SourceId(0))];
-        let sinks = vec![
-            SinkInfo {
-                kind: SinkKind::Cache { layer: 0, offset: 0 },
-                field: FieldKind::Base,
-            },
-            SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 0 },
-                field: FieldKind::Base,
-            },
-        ];
         let roots = vec![
-            Root::Output {
-                expr: ExprId(0),
-                sink: SinkId(0),
-            },
-            Root::Output {
-                expr: ExprId(0),
-                sink: SinkId(1),
-            },
+            // root 0: materialization-only cache (claim: None).
+            cache_only_root(ExprId(0), SinkKind::Cache { layer: 0, offset: 0 }, FieldKind::Base),
+            // root 1: claim-bearing Inner Output.
+            out_root(ExprId(0), SinkKind::Inner { layer: 0, offset: 0 }, FieldKind::Base),
         ];
-        let mut origins = BTreeMap::new();
-        origins.insert(
-            RootId(1),
-            RootOrigin {
-                group: RootGroup::Gates,
-                relation_index: 0,
-                slot: RootSlot::Output(0),
-            },
-        );
         let layer = DagLayer {
             sources,
             exprs,
             roots,
-            sinks,
             // Illegal: cache root 0 is in the batching order.
             batching: BatchingOrder {
                 roots: vec![RootId(0), RootId(1)],
             },
-            origins,
             resolutions: BTreeMap::new(),
         };
         let err = validate(&circuit_of(layer))
@@ -1307,7 +1273,7 @@ mod tests {
     fn rejects_output_field_mismatch() {
         let mut layer = good_single_layer();
         // Expr is base (Constant) but the sink declares Ext → mismatch.
-        layer.sinks[0].field = FieldKind::Ext;
+        layer.roots[0].materialize.as_mut().unwrap().field = FieldKind::Ext;
         let err = validate(&circuit_of(layer))
             .expect_err("expr/sink field mismatch must be rejected");
         assert!(
@@ -1330,7 +1296,7 @@ mod tests {
     fn constant_is_base_not_ext() {
         // Constant must infer to Base; an Ext sink for a pure-Constant expr is rejected.
         let mut layer = good_single_layer();
-        layer.sinks[0].field = FieldKind::Ext;
+        layer.roots[0].materialize.as_mut().unwrap().field = FieldKind::Ext;
         assert!(
             validate(&circuit_of(layer)).is_err(),
             "a Constant expr written to an Ext sink must be rejected (Constant is base)"
@@ -1346,32 +1312,18 @@ mod tests {
             kind: SourceKind::Constant { value: 1 },
         }];
         let exprs = vec![Expr::Add(vec![ExprId(0)])]; // refers to itself
-        let sinks = vec![SinkInfo {
-            kind: SinkKind::Inner { layer: 0, offset: 0 },
-            field: FieldKind::Base,
-        }];
-        let roots = vec![Root::Output {
-            expr: ExprId(0),
-            sink: SinkId(0),
-        }];
-        let mut origins = BTreeMap::new();
-        origins.insert(
-            RootId(0),
-            RootOrigin {
-                group: RootGroup::Gates,
-                relation_index: 0,
-                slot: RootSlot::Output(0),
-            },
-        );
+        let roots = vec![out_root(
+            ExprId(0),
+            SinkKind::Inner { layer: 0, offset: 0 },
+            FieldKind::Base,
+        )];
         let layer = DagLayer {
             sources,
             exprs,
             roots,
-            sinks,
             batching: BatchingOrder {
                 roots: vec![RootId(0)],
             },
-            origins,
             resolutions: BTreeMap::new(),
         };
         let err = validate(&circuit_of(layer)).expect_err("expr cycle must be rejected");
@@ -1390,32 +1342,18 @@ mod tests {
             },
         }];
         let exprs = vec![Expr::Source(SourceId(0))]; // expr 0's source queries expr 0
-        let sinks = vec![SinkInfo {
-            kind: SinkKind::Inner { layer: 0, offset: 0 },
-            field: FieldKind::Base,
-        }];
-        let roots = vec![Root::Output {
-            expr: ExprId(0),
-            sink: SinkId(0),
-        }];
-        let mut origins = BTreeMap::new();
-        origins.insert(
-            RootId(0),
-            RootOrigin {
-                group: RootGroup::Gates,
-                relation_index: 0,
-                slot: RootSlot::Output(0),
-            },
-        );
+        let roots = vec![out_root(
+            ExprId(0),
+            SinkKind::Inner { layer: 0, offset: 0 },
+            FieldKind::Base,
+        )];
         let layer = DagLayer {
             sources,
             exprs,
             roots,
-            sinks,
             batching: BatchingOrder {
                 roots: vec![RootId(0)],
             },
-            origins,
             resolutions: BTreeMap::new(),
         };
         let err =
@@ -1447,32 +1385,18 @@ mod tests {
                 },
             }];
             let exprs = vec![Expr::Source(SourceId(0))];
-            let sinks = vec![SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 0 },
-                field: FieldKind::Ext,
-            }];
-            let roots = vec![Root::Output {
-                expr: ExprId(0),
-                sink: SinkId(0),
-            }];
-            let mut origins = BTreeMap::new();
-            origins.insert(
-                RootId(0),
-                RootOrigin {
-                    group: RootGroup::Gates,
-                    relation_index: 0,
-                    slot: RootSlot::Output(0),
-                },
-            );
+            let roots = vec![out_root(
+                ExprId(0),
+                SinkKind::Inner { layer: 0, offset: 0 },
+                FieldKind::Ext,
+            )];
             DagLayer {
                 sources,
                 exprs,
                 roots,
-                sinks,
                 batching: BatchingOrder {
                     roots: vec![RootId(0)],
                 },
-                origins,
                 resolutions: BTreeMap::new(),
             }
         };
@@ -1483,32 +1407,18 @@ mod tests {
                 },
             }];
             let exprs = vec![Expr::Source(SourceId(0))];
-            let sinks = vec![SinkInfo {
-                kind: SinkKind::Inner { layer: 1, offset: 0 },
-                field: FieldKind::Ext,
-            }];
-            let roots = vec![Root::Output {
-                expr: ExprId(0),
-                sink: SinkId(0),
-            }];
-            let mut origins = BTreeMap::new();
-            origins.insert(
-                RootId(0),
-                RootOrigin {
-                    group: RootGroup::Gates,
-                    relation_index: 0,
-                    slot: RootSlot::Output(0),
-                },
-            );
+            let roots = vec![out_root(
+                ExprId(0),
+                SinkKind::Inner { layer: 1, offset: 0 },
+                FieldKind::Ext,
+            )];
             DagLayer {
                 sources,
                 exprs,
                 roots,
-                sinks,
                 batching: BatchingOrder {
                     roots: vec![RootId(0)],
                 },
-                origins,
                 resolutions: BTreeMap::new(),
             }
         };
@@ -1537,32 +1447,18 @@ mod tests {
                 },
             }];
             let exprs = vec![Expr::Source(SourceId(0))];
-            let sinks = vec![SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 0 },
-                field: FieldKind::Ext,
-            }];
-            let roots = vec![Root::Output {
-                expr: ExprId(0),
-                sink: SinkId(0),
-            }];
-            let mut origins = BTreeMap::new();
-            origins.insert(
-                RootId(0),
-                RootOrigin {
-                    group: RootGroup::Gates,
-                    relation_index: 0,
-                    slot: RootSlot::Output(0),
-                },
-            );
+            let roots = vec![out_root(
+                ExprId(0),
+                SinkKind::Inner { layer: 0, offset: 0 },
+                FieldKind::Ext,
+            )];
             DagLayer {
                 sources,
                 exprs,
                 roots,
-                sinks,
                 batching: BatchingOrder {
                     roots: vec![RootId(0)],
                 },
-                origins,
                 resolutions: BTreeMap::new(),
             }
         };
@@ -1573,32 +1469,18 @@ mod tests {
                 },
             }];
             let exprs = vec![Expr::Source(SourceId(0))];
-            let sinks = vec![SinkInfo {
-                kind: SinkKind::Inner { layer: 1, offset: 0 },
-                field: FieldKind::Base, // WRONG: resolved read is Ext
-            }];
-            let roots = vec![Root::Output {
-                expr: ExprId(0),
-                sink: SinkId(0),
-            }];
-            let mut origins = BTreeMap::new();
-            origins.insert(
-                RootId(0),
-                RootOrigin {
-                    group: RootGroup::Gates,
-                    relation_index: 0,
-                    slot: RootSlot::Output(0),
-                },
-            );
+            let roots = vec![out_root(
+                ExprId(0),
+                SinkKind::Inner { layer: 1, offset: 0 },
+                FieldKind::Base, // WRONG: resolved read is Ext
+            )];
             DagLayer {
                 sources,
                 exprs,
                 roots,
-                sinks,
                 batching: BatchingOrder {
                     roots: vec![RootId(0)],
                 },
-                origins,
                 resolutions: BTreeMap::new(),
             }
         };
@@ -1737,13 +1619,12 @@ mod tests {
                 Expr::Mul(vec![ExprId(2), ExprId(3)]), // 4: alpha^1 * lv1
                 Expr::Add(vec![ExprId(1), ExprId(4)]), // 5: fold leaf
             ],
-            roots: vec![Root::Output { expr: ExprId(5), sink: SinkId(0) }],
-            sinks: vec![SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 0 },
-                field: FieldKind::Ext,
-            }],
+            roots: vec![out_root(
+                ExprId(5),
+                SinkKind::Inner { layer: 0, offset: 0 },
+                FieldKind::Ext,
+            )],
             batching: BatchingOrder { roots: vec![RootId(0)] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         }
     }
@@ -1756,7 +1637,7 @@ mod tests {
     ///
     /// sources: 0=Read(Setup{col:0}), 1=alpha^1 (Challenge{LookupMultiplicative,Static(1)}), 2=Read(Setup{col:1})
     /// exprs: 0=Source(0), 1=Source(1), 2=Source(2), 3=Mul([1,2]), 4=Add([0,3])
-    /// root: Output{expr=ExprId(4), sink=SinkId(0)} → SinkKind::Inner{layer:0,offset:0}, FieldKind::Ext
+    /// root: Output{expr=ExprId(4)} materialize=SinkKind::Inner{layer:0,offset:0}, FieldKind::Ext
     fn layer_with_single_setup_fold() -> DagLayer {
         DagLayer {
             sources: vec![
@@ -1778,13 +1659,12 @@ mod tests {
                 Expr::Mul(vec![ExprId(1), ExprId(2)]), // 3: alpha^1 * Setup{1}
                 Expr::Add(vec![ExprId(0), ExprId(3)]), // 4: fold leaf
             ],
-            roots: vec![Root::Output { expr: ExprId(4), sink: SinkId(0) }],
-            sinks: vec![SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 0 },
-                field: FieldKind::Ext,
-            }],
+            roots: vec![out_root(
+                ExprId(4),
+                SinkKind::Inner { layer: 0, offset: 0 },
+                FieldKind::Ext,
+            )],
             batching: BatchingOrder { roots: vec![RootId(0)] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         }
     }
@@ -2018,13 +1898,12 @@ mod tests {
                 Expr::Mul(vec![ExprId(5), ExprId(1)]), // 6: alpha^0 * lv0 (invalid)
                 Expr::Add(vec![ExprId(6), ExprId(4)]), // 7: fold leaf
             ],
-            roots: vec![Root::Output { expr: ExprId(7), sink: SinkId(0) }],
-            sinks: vec![SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 0 },
-                field: FieldKind::Ext,
-            }],
+            roots: vec![out_root(
+                ExprId(7),
+                SinkKind::Inner { layer: 0, offset: 0 },
+                FieldKind::Ext,
+            )],
             batching: BatchingOrder { roots: vec![RootId(0)] },
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         };
         // Tag the fold leaf ExprId(7) as PeekAggregate{set_index:7}.

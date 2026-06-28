@@ -19,7 +19,8 @@ use cs::definitions::gkr::NoFieldLinearRelation;
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::dag_ir::{
     eval_layer_root, ArenaBuilder, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef,
-    DagLayer, ExprId, Resolvers, Root, RootId, SinkId, SourceKind,
+    ClaimInfo, DagLayer, ExprId, FieldKind, Resolvers, Root, RootGroup, RootId, RootOrigin,
+    RootSlot, SinkInfo, SinkKind, SourceKind,
 };
 use cs::gkr_compiler::test_support::{build_add_sub_artifact, sample_relations};
 use cs::gkr_compiler::{NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation};
@@ -237,21 +238,39 @@ fn dag_ir_oracle_matches_prover_reference_on_three_roots() {
     };
     let constraint_expr = lower_constraint(&mut arena, constraint_input);
 
+    // Each Output's sink is inlined into `materialize`; its origin into `claim`.
+    // The constraint root is claim-only (`materialize: None`). `eval_layer_root`
+    // only reads `.expr`, so the attribute values are present for shape
+    // correctness (no `SinkKind::Cache`, preserving the cache⇒`claim: None`
+    // invariant). Slots mirror the comment block above.
+    let out_root = |expr: ExprId, offset: usize, field: FieldKind, slot: usize, rel: usize| Root {
+        expr,
+        materialize: Some(SinkInfo {
+            kind: SinkKind::Inner { layer: 0, offset },
+            field,
+        }),
+        claim: Some(ClaimInfo {
+            origin: RootOrigin {
+                group: RootGroup::Gates,
+                relation_index: rel,
+                slot: RootSlot::Output(slot),
+            },
+        }),
+    };
     let roots = vec![
-        Root::Output {
-            expr: linear_expr,
-            sink: SinkId(0),
-        },
-        Root::Output {
-            expr: num_expr,
-            sink: SinkId(1),
-        },
-        Root::Output {
-            expr: den_expr,
-            sink: SinkId(2),
-        },
-        Root::Constraint {
+        out_root(linear_expr, 0, FieldKind::Base, 0, 0),
+        out_root(num_expr, 1, FieldKind::Ext, 0, 1),
+        out_root(den_expr, 2, FieldKind::Ext, 1, 1),
+        Root {
             expr: constraint_expr,
+            materialize: None,
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 2,
+                    slot: RootSlot::Constraint(0),
+                },
+            }),
         },
     ];
     let batching = BatchingOrder {
@@ -261,9 +280,7 @@ fn dag_ir_oracle_matches_prover_reference_on_three_roots() {
         sources: arena.sources().to_vec(),
         exprs: arena.exprs().to_vec(),
         roots,
-        sinks: Vec::new(),
         batching,
-        origins: std::collections::BTreeMap::new(),
         resolutions: std::collections::BTreeMap::new(),
     };
 

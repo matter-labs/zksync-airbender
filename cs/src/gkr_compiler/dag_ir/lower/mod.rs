@@ -52,7 +52,7 @@ mod lookup;
 mod memory;
 mod util;
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 
 use field::PrimeField;
 
@@ -63,9 +63,9 @@ use crate::gkr_compiler::{
 };
 
 use super::{
-    ArenaBuilder, BatchingOrder, DagCircuit, DagGlobals, DagLayer, ExprId, FieldKind, FillSource,
-    RangeWidth, ReadPlace, ResolutionStrategy, Root, RootGroup, RootId, RootOrigin, RootSlot,
-    SinkId, SinkInfo, SinkKind, SourceKind, VirtualSetupKind,
+    ArenaBuilder, BatchingOrder, ClaimInfo, DagCircuit, DagGlobals, DagLayer, ExprId, FieldKind,
+    FillSource, RangeWidth, ReadPlace, ResolutionStrategy, Root, RootGroup, RootId, RootOrigin,
+    RootSlot, SinkInfo, SinkKind, SourceKind, VirtualSetupKind,
 };
 
 /// Map a `GKRAddress` to the DAG-IR `SourceKind` for an input read.
@@ -131,11 +131,10 @@ fn output_sink_kind(addr: GKRAddress) -> Result<SinkKind, String> {
     }
 }
 
-/// Per-layer accumulator: roots, sinks, origins, and resolution hints.
+/// Per-layer accumulator: roots (each carrying its inlined `materialize` sink
+/// and `claim` origin) and resolution hints.
 struct LayerOut {
     roots: Vec<Root>,
-    sinks: Vec<SinkInfo>,
-    origins: BTreeMap<RootId, RootOrigin>,
     resolutions: BTreeMap<ExprId, ResolutionStrategy>,
 }
 
@@ -143,14 +142,13 @@ impl LayerOut {
     fn new() -> Self {
         Self {
             roots: Vec::new(),
-            sinks: Vec::new(),
-            origins: BTreeMap::new(),
             resolutions: BTreeMap::new(),
         }
     }
 
-    /// Emit one `Output` root for `expr` writing to `output` with `field`, and
-    /// record its `RootOrigin{group, relation_index, slot: Output(0)}`.
+    /// Emit one claim-bearing `Output` root for `expr` writing to `output` with
+    /// `field`. Sink inlined into `materialize`; origin into
+    /// `claim` (`RootOrigin{group, relation_index, slot: Output(0)}`).
     fn emit_output(
         &mut self,
         expr: ExprId,
@@ -159,24 +157,20 @@ impl LayerOut {
         group: RootGroup,
         relation_index: usize,
     ) -> Result<(), String> {
-        let sink_id = SinkId(self.sinks.len() as u32);
-        self.sinks.push(SinkInfo {
-            kind: output_sink_kind(output)?,
-            field,
-        });
-        let root_id = RootId(self.roots.len() as u32);
-        self.roots.push(Root::Output {
+        self.roots.push(Root {
             expr,
-            sink: sink_id,
+            materialize: Some(SinkInfo {
+                kind: output_sink_kind(output)?,
+                field,
+            }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group,
+                    relation_index,
+                    slot: RootSlot::Output(0),
+                },
+            }),
         });
-        self.origins.insert(
-            root_id,
-            RootOrigin {
-                group,
-                relation_index,
-                slot: RootSlot::Output(0),
-            },
-        );
         Ok(())
     }
 
@@ -203,15 +197,14 @@ impl LayerOut {
                 ));
             }
         };
-        let sink_id = SinkId(self.sinks.len() as u32);
-        self.sinks.push(SinkInfo {
-            kind: SinkKind::Cache { layer, offset },
-            field,
-        });
         let root_id = RootId(self.roots.len() as u32);
-        self.roots.push(Root::Output {
+        self.roots.push(Root {
             expr,
-            sink: sink_id,
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Cache { layer, offset },
+                field,
+            }),
+            claim: None,
         });
         Ok(root_id)
     }
@@ -230,24 +223,20 @@ impl LayerOut {
         relation_index: usize,
     ) -> Result<(), String> {
         for (slot, (expr, addr)) in [(num, output[0]), (den, output[1])].into_iter().enumerate() {
-            let sink_id = SinkId(self.sinks.len() as u32);
-            self.sinks.push(SinkInfo {
-                kind: output_sink_kind(addr)?,
-                field: field.clone(),
-            });
-            let root_id = RootId(self.roots.len() as u32);
-            self.roots.push(Root::Output {
+            self.roots.push(Root {
                 expr,
-                sink: sink_id,
+                materialize: Some(SinkInfo {
+                    kind: output_sink_kind(addr)?,
+                    field: field.clone(),
+                }),
+                claim: Some(ClaimInfo {
+                    origin: RootOrigin {
+                        group: group.clone(),
+                        relation_index,
+                        slot: RootSlot::Output(slot),
+                    },
+                }),
             });
-            self.origins.insert(
-                root_id,
-                RootOrigin {
-                    group: group.clone(),
-                    relation_index,
-                    slot: RootSlot::Output(slot),
-                },
-            );
         }
         Ok(())
     }
@@ -753,13 +742,12 @@ fn lower_layer<F: PrimeField + PartialEq>(
     // ── Materialize caches FIRST ─────────────────────────────────────────────
     // Cache roots occupy the leading RootId slots so the cache-address →
     // shared-`ExprId` alias map is populated before any gate is lowered. They are
-    // materialization-only: no origin, excluded from batching.
-    let mut cache_roots: BTreeSet<RootId> = BTreeSet::new();
+    // materialization-only (`materialize: Some(Cache)`, `claim: None`): excluded
+    // from batching by the `claim.is_some()` filter below.
     let mut cache_aliases: HashMap<GKRAddress, ExprId> = HashMap::new();
     for (addr, rel) in layer.cached_relations.iter() {
-        let (root_id, expr) =
+        let (_root_id, expr) =
             lower_cache(&mut arena, &mut out, *addr, rel, minus_one, decoder_predicate.as_ref())?;
-        cache_roots.insert(root_id); // still tracked for batching (Task 2 changes this)
         cache_aliases.insert(*addr, expr); // alias → shared ExprId (was: root_id)
     }
     // From here on, a same-layer cache read IS the materialized value's ExprId.
@@ -794,13 +782,16 @@ fn lower_layer<F: PrimeField + PartialEq>(
         &layer.gates_with_external_connections,
     )?;
 
-    // Batching order = the claim-bearing roots only (every non-cache root), in
-    // emission order (caches, then gates → gates_external). Cache roots consume
-    // no batching power, so they are skipped here.
+    // Batching order = the claim-bearing roots only (`claim: Some`), in emission
+    // order (caches, then gates → gates_external). Cache roots carry `claim: None`
+    // and consume no batching power, so they are filtered out here.
     let batching = BatchingOrder {
-        roots: (0..out.roots.len() as u32)
-            .map(RootId)
-            .filter(|id| !cache_roots.contains(id))
+        roots: out
+            .roots
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.claim.is_some())
+            .map(|(i, _)| RootId(i as u32))
             .collect(),
     };
 
@@ -808,9 +799,7 @@ fn lower_layer<F: PrimeField + PartialEq>(
         sources: arena.sources().to_vec(),
         exprs: arena.exprs().to_vec(),
         roots: out.roots,
-        sinks: out.sinks,
         batching,
-        origins: out.origins,
         resolutions: out.resolutions,
     })
 }
@@ -858,13 +847,11 @@ mod tests {
         let outputs: Vec<&Root> = layer
             .roots
             .iter()
-            .filter(|r| matches!(r, Root::Output { .. }))
+            .filter(|r| r.materialize.is_some())
             .collect();
         assert_eq!(outputs.len(), 1, "expected exactly one Output root");
-        let Root::Output { expr, sink } = outputs[0] else {
-            unreachable!()
-        };
-        (&layer.sinks[sink.0 as usize].field, *expr)
+        let root = outputs[0];
+        (&root.materialize.as_ref().unwrap().field, root.expr)
     }
 
     fn blw(i: usize) -> GKRAddress {
@@ -903,7 +890,7 @@ mod tests {
         }
         // Origin recorded for the single Gates Output root.
         assert_eq!(
-            layer.origins.get(&RootId(0)),
+            layer.roots[0].claim.as_ref().map(|c| &c.origin),
             Some(&RootOrigin {
                 group: RootGroup::Gates,
                 relation_index: 0,
@@ -1066,17 +1053,12 @@ mod tests {
         GKRAddress::InnerLayer { layer: 1, offset: 1 }
     }
 
-    /// All `Output` roots' (field, expr), in root order.
+    /// All `Output` (materialized) roots' (field, expr), in root order.
     fn outputs(layer: &DagLayer) -> Vec<(FieldKind, ExprId)> {
         layer
             .roots
             .iter()
-            .filter_map(|r| match r {
-                Root::Output { expr, sink } => {
-                    Some((layer.sinks[sink.0 as usize].field, *expr))
-                }
-                _ => None,
-            })
+            .filter_map(|r| r.materialize.as_ref().map(|s| (s.field, r.expr)))
             .collect()
     }
 
@@ -1204,11 +1186,11 @@ mod tests {
         }
         // Roots are adjacent (ids 0 and 1) with slots Output(0)/Output(1).
         assert_eq!(
-            layer.origins.get(&RootId(0)).map(|o| o.slot.clone()),
+            layer.roots[0].claim.as_ref().map(|c| c.origin.slot.clone()),
             Some(RootSlot::Output(0))
         );
         assert_eq!(
-            layer.origins.get(&RootId(1)).map(|o| o.slot.clone()),
+            layer.roots[1].claim.as_ref().map(|c| c.origin.slot.clone()),
             Some(RootSlot::Output(1))
         );
         // num is an Add, den is a Mul.
@@ -1808,22 +1790,20 @@ mod tests {
         })
     }
 
-    /// Return the single `Root::Constraint` expr, asserting no Output roots exist.
+    /// Return the single constraint root's expr, asserting no Output roots
+    /// exist. A constraint root is claim-only: `materialize: None`.
     fn single_constraint(layer: &DagLayer) -> ExprId {
         let constraints: Vec<&Root> = layer
             .roots
             .iter()
-            .filter(|r| matches!(r, Root::Constraint { .. }))
+            .filter(|r| r.materialize.is_none())
             .collect();
         assert_eq!(constraints.len(), 1, "expected exactly one Constraint root");
         assert!(
-            layer.roots.iter().all(|r| matches!(r, Root::Constraint { .. })),
+            layer.roots.iter().all(|r| r.materialize.is_none()),
             "no Output roots should be present for a constraint relation"
         );
-        let Root::Constraint { expr } = constraints[0] else {
-            unreachable!()
-        };
-        *expr
+        constraints[0].expr
     }
 
     #[test]
@@ -1845,7 +1825,7 @@ mod tests {
 
         // RootOrigin recorded: slot is Constraint(0).
         assert_eq!(
-            layer.origins.get(&RootId(0)),
+            layer.roots[0].claim.as_ref().map(|c| &c.origin),
             Some(&RootOrigin {
                 group: RootGroup::Gates,
                 relation_index: 0,
@@ -1853,9 +1833,9 @@ mod tests {
             })
         );
 
-        // No sink was allocated (sinks vec is empty).
+        // No sink was allocated (constraint roots never materialize).
         assert!(
-            layer.sinks.is_empty(),
+            layer.roots.iter().all(|r| r.materialize.is_none()),
             "Constraint root must not create a sink"
         );
 
@@ -1914,12 +1894,15 @@ mod tests {
 
         // RootOrigin slot is Constraint(0).
         assert_eq!(
-            layer.origins.get(&RootId(0)).map(|o| o.slot.clone()),
+            layer.roots[0].claim.as_ref().map(|c| c.origin.slot.clone()),
             Some(RootSlot::Constraint(0))
         );
 
         // No sink allocated.
-        assert!(layer.sinks.is_empty(), "batched constraint must not create a sink");
+        assert!(
+            layer.roots.iter().all(|r| r.materialize.is_none()),
+            "batched constraint must not create a sink"
+        );
 
         // ConstraintAggregation challenge present (rho^1 = One).
         assert!(
@@ -2005,24 +1988,15 @@ mod tests {
 
     use crate::gkr_compiler::test_support::build_add_sub_artifact;
 
-    /// A root is a `Cache`-sink `Output` root.
-    fn is_cache_root(layer: &DagLayer, root: &Root) -> bool {
-        matches!(root, Root::Output { sink, .. }
-            if matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. }))
+    /// A root is a materialize-only cache root (`materialize: Some(Cache)`).
+    fn is_cache_root(_layer: &DagLayer, root: &Root) -> bool {
+        matches!(&root.materialize, Some(s) if matches!(s.kind, SinkKind::Cache { .. }))
     }
 
-    /// Count of claim-bearing roots: every non-`Cache` `Output` plus every `Constraint`.
+    /// Count of claim-bearing roots (`claim: Some` — every non-cache Output plus
+    /// every Constraint).
     fn claim_bearing_count(layer: &DagLayer) -> usize {
-        layer
-            .roots
-            .iter()
-            .filter(|r| match r {
-                Root::Output { sink, .. } => {
-                    !matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. })
-                }
-                Root::Constraint { .. } => true,
-            })
-            .count()
+        layer.roots.iter().filter(|r| r.claim.is_some()).count()
     }
 
     /// The whole add_sub artifact (the cache variant) lowers without `Err`.
@@ -2071,13 +2045,13 @@ mod tests {
                 let id = RootId(i as u32);
                 if is_cache_root(layer, root) {
                     saw_cache_root = true;
-                    // Materialization-only: no beta power, no origin.
+                    // Materialization-only: no beta power, no claim/origin.
                     assert!(
                         !layer.batching.roots.contains(&id),
                         "cache root {id:?} must be absent from the batching order"
                     );
                     assert!(
-                        !layer.origins.contains_key(&id),
+                        root.claim.is_none(),
                         "cache root {id:?} must have no RootOrigin"
                     );
                 }
@@ -2114,12 +2088,40 @@ mod tests {
                 layer.batching.roots, expected,
                 "batching order must be the non-cache roots in emission order"
             );
-            // Every batched root carries a RootOrigin; cache roots never do.
+            // Every batched root carries a claim/origin; cache roots never do.
             for id in &layer.batching.roots {
                 assert!(
-                    layer.origins.contains_key(id),
+                    layer.roots[id.0 as usize].claim.is_some(),
                     "every claim-bearing root must have a RootOrigin"
                 );
+            }
+        }
+    }
+
+    /// Task 2 attribute-shape invariant: the dissolved `Root` struct carries
+    /// orthogonal `materialize`/`claim` attributes. A cache root is
+    /// materialize-only (`Some(Cache)`, `claim: None`) and never batched; a
+    /// claim-bearing root carries `claim: Some(..)` and appears in the batching
+    /// order exactly once. No other attribute shape is produced by lowering.
+    #[test]
+    fn cache_is_materialize_only_claims_are_batched() {
+        let artifact = build_add_sub_artifact();
+        let dag = lower_dag(&artifact).expect("lower_dag");
+        for layer in &dag.layers {
+            for (i, root) in layer.roots.iter().enumerate() {
+                let rid = RootId(i as u32);
+                let in_batching = layer.batching.roots.contains(&rid);
+                match (&root.materialize, &root.claim) {
+                    // Cache: materialize-only, never batched.
+                    (Some(s), None) if matches!(s.kind, SinkKind::Cache { .. }) => {
+                        assert!(!in_batching, "cache root {rid:?} must be absent from batching");
+                    }
+                    // Claim-bearing: in batching exactly once.
+                    (_, Some(_)) => {
+                        assert!(in_batching, "claim-bearing root {rid:?} must be in batching");
+                    }
+                    other => panic!("unexpected root attribute shape: {other:?}"),
+                }
             }
         }
     }
@@ -2162,9 +2164,7 @@ mod tests {
             false
         }
         fn root_expr(root: &Root) -> ExprId {
-            match root {
-                Root::Output { expr, .. } | Root::Constraint { expr } => *expr,
-            }
+            root.expr
         }
 
         let artifact = build_add_sub_artifact();

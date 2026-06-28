@@ -31,7 +31,7 @@ use cs::definitions::GKRAddress;
 use cs::gkr_compiler::codegen_ir::lower as retired_lower;
 use cs::gkr_compiler::dag_ir::{
     check_batching_parity, eval_layer_root, lower_dag, validate, DagLayer, Expr, ExprId, Resolvers,
-    Root, RootGroup, RootSlot, SinkKind,
+    Root, RootGroup, RootId, RootSlot, SinkKind,
 };
 use cs::gkr_compiler::test_support::{
     build_add_sub_artifact, golden_circuit_artifacts, sample_relation_cases, sample_relations,
@@ -95,7 +95,12 @@ fn diff_layer(
 
     let mut compared = 0usize;
     with_resolvers!(ctx, resolvers, {
-        for (&root_id, origin) in layer.origins.iter() {
+        for (root_id, origin) in layer
+            .roots
+            .iter()
+            .enumerate()
+            .filter_map(|(i, r)| r.claim.as_ref().map(|c| (RootId(i as u32), &c.origin)))
+        {
             let (relation, refs) = match origin.group {
                 RootGroup::Gates => (&gates[origin.relation_index], &gate_refs[origin.relation_index]),
                 RootGroup::GatesExternal => (
@@ -295,7 +300,12 @@ fn golden_circuits_layer0_value_differential() {
         };
 
         let mut compared = 0usize;
-        for (&root_id, origin) in dag_layer.origins.iter() {
+        for (root_id, origin) in dag_layer
+            .roots
+            .iter()
+            .enumerate()
+            .filter_map(|(i, r)| r.claim.as_ref().map(|c| (RootId(i as u32), &c.origin)))
+        {
             let rel = match origin.group {
                 RootGroup::Gates => &gates[origin.relation_index],
                 RootGroup::GatesExternal => &gates_external[origin.relation_index],
@@ -370,10 +380,11 @@ fn memory_tuple_matches_prover_evaluate_memory_query() {
     let artifact = single_relation_artifact(rel.clone());
     let circuit = lower_dag(&artifact).expect("lower_dag must succeed");
     let layer = &circuit.layers[0];
-    let (&root_id, _) = layer
-        .origins
+    let root_id = layer
+        .roots
         .iter()
-        .next()
+        .enumerate()
+        .find_map(|(i, r)| r.claim.as_ref().map(|_| RootId(i as u32)))
         .expect("memory tuple relation must produce a claim-bearing root");
     let read = StorageReadResolver { ctx: &ctx };
     let challenge = RefChallengeResolver { ctx: &ctx };
@@ -444,17 +455,15 @@ fn cone_contains(layer: &DagLayer, start: ExprId, target: ExprId) -> bool {
     false
 }
 
-/// The `expr` of `root` (both `Output` and `Constraint` carry one).
+/// The `expr` of `root` (both Output and Constraint roots carry one).
 fn root_expr(root: &Root) -> ExprId {
-    match root {
-        Root::Output { expr, .. } | Root::Constraint { expr } => *expr,
-    }
+    root.expr
 }
 
-/// `true` if `root` is a `Cache`-sink (materialization-only) `Output` root.
-fn is_cache_root(layer: &DagLayer, root: &Root) -> bool {
-    matches!(root, Root::Output { sink, .. }
-        if matches!(layer.sinks[sink.0 as usize].kind, SinkKind::Cache { .. }))
+/// `true` if `root` is a materialization-only cache root (`materialize:
+/// Some(Cache)`, `claim: None`).
+fn is_cache_root(_layer: &DagLayer, root: &Root) -> bool {
+    matches!(&root.materialize, Some(s) if matches!(s.kind, SinkKind::Cache { .. }))
 }
 
 /// Task-1 load-bearing gate (review C1/codex#1): a same-layer cache read must be
