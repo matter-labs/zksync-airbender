@@ -82,6 +82,19 @@ pub fn extract_instance(
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
 ) -> OracleInstance {
+    extract_instance_with_remap(layer, cross, budget).0
+}
+
+/// Test-support variant of [`extract_instance`] (the default, materialized-cache model)
+/// that ALSO returns the internal `remap: HashMap<u32, u32>` (old `ExprId.0` → new
+/// contiguous topo node id). Structural gates need it to map a cache value's shared
+/// `ExprId` to the OracleNode id it became, so they can assert exact dedup / reloadable
+/// identity. `extract_instance` delegates here and discards the remap (`.0`).
+pub(crate) fn extract_instance_with_remap(
+    layer: &DagLayer,
+    cross: &HashMap<ReadPlace, FieldKind>,
+    budget: usize,
+) -> (OracleInstance, HashMap<u32, u32>) {
     extract_instance_impl(layer, cross, budget, true)
 }
 
@@ -94,7 +107,7 @@ pub fn extract_instance_cache_as_root(
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
 ) -> OracleInstance {
-    extract_instance_impl(layer, cross, budget, false)
+    extract_instance_impl(layer, cross, budget, false).0
 }
 
 fn extract_instance_impl(
@@ -102,7 +115,7 @@ fn extract_instance_impl(
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
     materialize_cache: bool,
-) -> OracleInstance {
+) -> (OracleInstance, HashMap<u32, u32>) {
     use cs::gkr_compiler::dag_ir::{Expr, SinkInfo, SinkKind};
     use std::collections::HashSet;
 
@@ -253,12 +266,15 @@ fn extract_instance_impl(
     reloadable_values.sort_unstable();
     reloadable_values.dedup();
 
-    OracleInstance {
-        budget,
-        roots,
-        reloadable_values,
-        nodes,
-    }
+    (
+        OracleInstance {
+            budget,
+            roots,
+            reloadable_values,
+            nodes,
+        },
+        remap,
+    )
 }
 
 // ── relation_units ───────────────────────────────────────────────────────────
@@ -408,7 +424,7 @@ mod tests {
         BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, RootGroup,
         RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
     };
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
 
     // Attribute-model port of the old "two roots, one prior" fixture. Same shape:
     //   root0 = Cache(e2 = Add(ext_A, base_A))                 ← cache producer
@@ -844,5 +860,179 @@ mod tests {
         // Default skips the Cache root; cache-as-root keeps it as a singleton.
         assert_eq!(relation_units(&layer), vec![0, 0, 1]);
         assert_eq!(relation_units_cache_as_root(&layer), vec![0, 0, 1, 2]);
+    }
+
+    // ── Anti-blindness structural gates on REAL lowered layers (Task 6) ──────────
+    //
+    // The existing `extract_instance` tests above all use hand-built tiny layers and
+    // check only scalar metrics. None value-checks the `OracleInstance` STRUCTURE on a
+    // real Stage-1 lowered layer, so a wrong port that splits the shared cache node
+    // (extra node id per consumer), over-broadens `reloadable_values` (e.g. leaks Output
+    // roots in), or drops a reachable cache value could ship GREEN. These two gates close
+    // that blind spot by asserting EXACT dedup + reloadable identity against the cache
+    // roots the loaded layer actually carries.
+
+    /// The cache-root predicate (attribute model): a `Cache` materialize with no claim.
+    fn is_cache_root(r: &Root) -> bool {
+        matches!(
+            &r.materialize,
+            Some(SinkInfo {
+                kind: SinkKind::Cache { .. },
+                ..
+            })
+        ) && r.claim.is_none()
+    }
+
+    /// The set of OracleNode ids that the layer's cache-root shared `ExprId`s were
+    /// remapped to AND that are reachable (present in the remap) in the instance.
+    fn reachable_cache_nodes(layer: &DagLayer, remap: &HashMap<u32, u32>) -> BTreeSet<u32> {
+        layer
+            .roots
+            .iter()
+            .filter(|r| is_cache_root(r))
+            .filter_map(|r| remap.get(&r.expr.0).copied())
+            .collect()
+    }
+
+    /// Step 1b — structural-equivalence gate on a REAL lowered layer whose L0 has cache
+    /// values reached from claim-root cones (`add_sub_lui_auipc_mop`; the lowering proves
+    /// the sharing in `lower/mod.rs::lowering_shares_cache_exprs_with_consumers`). Asserts
+    /// EXACT dedup (each shared cache expr is exactly ONE OracleNode that exists) and EXACT
+    /// reloadable identity (`reloadable_values` AS A SET equals the reachable-cache node-id
+    /// set — not just cardinality). Goes RED on: a split cache node (extra id), an
+    /// over-broad reloadable set (an Output/non-cache node leaks in), or a dropped cache
+    /// value (a reachable cache node missing from reloadable).
+    #[test]
+    fn extract_instance_shares_cache_value_node() {
+        // `load_layer_source` returns (DagCircuit, GKRCircuitArtifact, cross-field map).
+        let (dag, _artifact, cross) =
+            crate::load_layer_source("add_sub_lui_auipc_mop_layout_gkr.json");
+        let layer = &dag.layers[0];
+        let (inst, remap) = extract_instance_with_remap(layer, &cross, 1024);
+
+        // Cache roots whose shared `ExprId` is REACHABLE in the instance (mapped by remap).
+        let reachable: BTreeSet<u32> = reachable_cache_nodes(layer, &remap);
+        assert!(
+            !reachable.is_empty(),
+            "fixture must have ≥1 cache value reached from a claim-root cone \
+             (add_sub L0 has 16); none reachable means the loader/port dropped the sharing"
+        );
+
+        // 1. EXACT dedup: each shared cache expr maps (remap is a function) to exactly ONE
+        //    node id, and that node exists. A split-cache regression that emitted a fresh
+        //    node per consumer would put the consumer's id (not the shared producer's) in
+        //    the cone, but the producer's `ExprId` would no longer resolve to a present
+        //    node — so this loop catches the missing/duplicated node.
+        for &nid in &reachable {
+            assert_eq!(
+                inst.nodes.iter().filter(|n| n.id == nid).count(),
+                1,
+                "cache node {nid} must be exactly ONE OracleNode (no split / no collision)"
+            );
+        }
+
+        // 2. EXACT set equality (not cardinality): reloadable_values == reachable cache set.
+        //    Over-broadening (an Output root leaks in) or dropping a reachable cache value
+        //    both break this — cardinality alone would not.
+        let got: BTreeSet<u32> = inst.reloadable_values.iter().copied().collect();
+        assert_eq!(
+            got, reachable,
+            "reloadable_values must be EXACTLY the reachable cache node-id set"
+        );
+
+        // Cross-check: a reloadable node is never a Read/Literal/VirtualSetup leaf — a
+        // cache value is a computed intermediate (Add/Mul) or a resolution-pruned expr
+        // (Special terminal, when the cache value's own `ExprId` is in layer.resolutions).
+        // A source-like leaf appearing here would mean a non-cache root leaked into
+        // reloadable. (add_sub L0 has at least one resolution-pruned cache value, so
+        // Special MUST be accepted — restricting to Add/Mul would wrongly reject it.)
+        for &nid in &got {
+            let kind = inst.nodes.iter().find(|n| n.id == nid).unwrap().kind;
+            assert!(
+                matches!(kind, NodeKind::Add | NodeKind::Mul | NodeKind::Special),
+                "reloadable node {nid} must be a computed (Add/Mul) or resolution-pruned \
+                 (Special) cache value, never a source leaf; got {kind:?}"
+            );
+        }
+    }
+
+    /// Step 2 — exact-reloadable gate where cache values are consumed by ≥2 consumer roots
+    /// of the SAME relation (num/den — and any privately-shared fold — of one gate),
+    /// consistent with the single-relation invariant (`dual_use_cache_consumers_share_relation`).
+    /// `keccak_special5` L0 has 100 cache values, 69 of them with ≥2 same-relation
+    /// consumers. The point of this gate over Step 1b: even when MANY consumers reach the
+    /// SAME cache `ExprId`, the producer must remain ONE deduped node and appear ONCE in
+    /// `reloadable_values` (multi-consumer must not multiply the reloadable set).
+    ///
+    /// Occurrence-multiplicity note: the default `extract_instance.roots` dedups producers
+    /// (one entry per scheduling root), so duplicate cache occurrences are NOT visible
+    /// there; multiplicity lives in `extract_instance_cache_as_root.roots` / at
+    /// `relation_units`. This gate therefore asserts on the reloadable SET, not occurrences.
+    #[test]
+    fn reloadable_values_exact_under_multi_consumer_caches() {
+        let (dag, _artifact, cross) =
+            crate::load_layer_source("keccak_special5_layout_gkr.json");
+        let layer = &dag.layers[0];
+        let (inst, remap) = extract_instance_with_remap(layer, &cross, 1024);
+
+        // Confirm the multi-consumer (same-relation) structure this gate is meant to bind:
+        // ≥1 cache value reached by ≥2 claim roots that share (group, relation_index).
+        let cache_exprs: BTreeSet<u32> = layer
+            .roots
+            .iter()
+            .filter(|r| is_cache_root(r))
+            .map(|r| r.expr.0)
+            .collect();
+        let mut consumers: HashMap<u32, Vec<(RootGroup, usize)>> = HashMap::new();
+        for r in &layer.roots {
+            let Some(claim) = &r.claim else { continue };
+            let mut seen: BTreeSet<u32> = BTreeSet::new();
+            let mut stack = vec![r.expr.0];
+            while let Some(eid) = stack.pop() {
+                if !seen.insert(eid) {
+                    continue;
+                }
+                if cache_exprs.contains(&eid) {
+                    consumers
+                        .entry(eid)
+                        .or_default()
+                        .push((claim.origin.group.clone(), claim.origin.relation_index));
+                }
+                match &layer.exprs[eid as usize] {
+                    Expr::Source(_) => {}
+                    Expr::Add(ch) | Expr::Mul(ch) => stack.extend(ch.iter().map(|c| c.0)),
+                }
+            }
+        }
+        let same_relation_multi = consumers.values().any(|cons| {
+            let mut by_rel: HashMap<(RootGroup, usize), usize> = HashMap::new();
+            for c in cons {
+                *by_rel.entry(c.clone()).or_insert(0) += 1;
+            }
+            by_rel.values().any(|&n| n >= 2)
+        });
+        assert!(
+            same_relation_multi,
+            "fixture must have ≥1 cache value consumed by ≥2 roots of the SAME relation \
+             (keccak_special5 L0 has 69); otherwise this gate is not exercising multi-consumer"
+        );
+
+        // EXACT reloadable identity holds even with multiple same-relation consumers.
+        let reachable: BTreeSet<u32> = reachable_cache_nodes(layer, &remap);
+        assert!(!reachable.is_empty(), "must have reachable cache values");
+        let got: BTreeSet<u32> = inst.reloadable_values.iter().copied().collect();
+        assert_eq!(
+            got, reachable,
+            "reloadable_values must be EXACTLY the reachable cache node set even under \
+             multi-consumer sharing (no multiplication, no over-broadening)"
+        );
+        // And each is a single deduped node (no per-consumer split).
+        for &nid in &reachable {
+            assert_eq!(
+                inst.nodes.iter().filter(|n| n.id == nid).count(),
+                1,
+                "cache node {nid} must be a single deduped node despite multiple consumers"
+            );
+        }
     }
 }

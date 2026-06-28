@@ -1153,3 +1153,188 @@ fn source_residency_integer_floor_is_nine() {
         assert!(at(8).is_err(), "{f} L0 must fail below the floor (budget 8)");
     }
 }
+
+// ── Task 6 anti-blindness gates (non-ignored) ───────────────────────────────────
+//
+// `check_fixture` already compares interp == `eval_layer_root` over EVERY root, but it
+// is a broad sweep — it never asserts that the cache-consumer sharing the port introduced
+// (a claim root whose cone routes through a Cache value's shared `ExprId`) is the thing
+// being value-checked. These two gates are FOCUSED: Step 3 isolates a real cache-consumer
+// root and proves the forward value through the shared cache value is bit-identical to the
+// oracle; Step 4 BINDS the tight-budget feasibility at the fixture's pinned integer floor.
+
+/// True iff `r` is a materialization-only Cache root (attribute model: `Cache` materialize,
+/// no claim). Mirrors `extract_instance` / `floor.rs`.
+fn is_cache_root(r: &Root) -> bool {
+    use cs::gkr_compiler::dag_ir::{SinkInfo, SinkKind};
+    matches!(
+        &r.materialize,
+        Some(SinkInfo {
+            kind: SinkKind::Cache { .. },
+            ..
+        })
+    ) && r.claim.is_none()
+}
+
+/// The set of cache-root shared `ExprId.0`s in a layer.
+fn cache_expr_ids(layer: &cs::gkr_compiler::dag_ir::DagLayer) -> std::collections::BTreeSet<u32> {
+    layer
+        .roots
+        .iter()
+        .filter(|r| is_cache_root(r))
+        .map(|r| r.expr.0)
+        .collect()
+}
+
+/// Find the first claim-bearing root whose expr cone reaches one of `cache_exprs` (i.e. a
+/// real cache CONSUMER), returning its `RootId`. `None` if no consumer exists.
+fn first_cache_consumer_root(
+    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    cache_exprs: &std::collections::BTreeSet<u32>,
+) -> Option<RootId> {
+    use cs::gkr_compiler::dag_ir::Expr;
+    for (i, r) in layer.roots.iter().enumerate() {
+        if r.claim.is_none() {
+            continue;
+        }
+        let mut seen: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+        let mut stack = vec![r.expr.0];
+        while let Some(eid) = stack.pop() {
+            if !seen.insert(eid) {
+                continue;
+            }
+            if cache_exprs.contains(&eid) {
+                return Some(RootId(i as u32));
+            }
+            match &layer.exprs[eid as usize] {
+                Expr::Source(_) => {}
+                Expr::Add(ch) | Expr::Mul(ch) => stack.extend(ch.iter().map(|c| c.0)),
+            }
+        }
+    }
+    None
+}
+
+// Step 3 — forward value-parity for a CACHE CONSUMER.
+//
+// `add_sub_lui_auipc_mop_layout_gkr.json` L0 has Cache materialization roots whose shared
+// `ExprId` is consumed by later claim roots (the lowering proves the sharing in
+// `lower/mod.rs::lowering_shares_cache_exprs_with_consumers`). This isolates the FIRST such
+// consumer root and asserts the interpreter's forward value — which routes THROUGH the
+// shared cache value (recomputed/resident, per the 2a recompute model) — is bit-identical
+// to the authoritative `eval_layer_root` at every sampled row. A port that mis-wired the
+// cache value into the consumer (wrong child, dropped subtree, aliased to the wrong node)
+// would diverge here even though the broad sweep might still pass on the OTHER roots.
+#[test]
+fn forward_value_parity_through_cache_consumer() {
+    let dir = compiled_circuit_dir();
+    let path = dir.join("add_sub_lui_auipc_mop_layout_gkr.json");
+    let artifact = load_fixture(&path).expect("load add_sub fixture");
+    let dag = lower_dag(&artifact).expect("lower");
+    validate(&dag).expect("validate");
+    let cross = build_cross_layer_field_map(&dag);
+    let layer = &dag.layers[0];
+
+    // The fixture MUST carry a cache-consumer (else this gate is vacuous).
+    let cache_exprs = cache_expr_ids(layer);
+    assert!(
+        !cache_exprs.is_empty(),
+        "add_sub L0 must have ≥1 cache root (port dropped the Cache sink?)"
+    );
+    let consumer = first_cache_consumer_root(layer, &cache_exprs).expect(
+        "add_sub L0 must have a claim root whose cone reaches a cache value \
+         (the cache-consumer sharing this gate is meant to value-check)",
+    );
+
+    let compiled = compile_layer(
+        layer,
+        &artifact.layers[0],
+        &artifact.scratch_space_mapping,
+        &cross,
+        BUDGET,
+    )
+    .expect("compile add_sub L0");
+
+    // The consumer root must actually be a materialized output present in root_outputs
+    // (not skipped) — otherwise there is no interpreted value to compare.
+    assert!(
+        compiled.root_outputs.iter().any(|(rid, _)| *rid == consumer),
+        "cache-consumer root {consumer:?} must produce an interpreted output"
+    );
+
+    let n = dag.globals.trace_len;
+    let rows = sample_rows(n);
+    assert!(!rows.is_empty(), "fixture must have ≥1 row to sample");
+    let s = SyntheticResolvers;
+    let r = resolvers(&s);
+
+    let mut compared = 0usize;
+    for &row in &rows {
+        let got = interpret_layer_row(&compiled, layer, &r, row)
+            .unwrap_or_else(|e| panic!("interp failed at row {row}: {e:?}"));
+        let want = eval_layer_root(layer, consumer, row, &r);
+        let have = got.by_root[&consumer];
+        assert_eq!(
+            have, want,
+            "cache-consumer root {consumer:?} row {row}: forward value through the shared \
+             cache value diverged from eval_layer_root oracle"
+        );
+        compared += 1;
+    }
+    assert!(compared > 0, "compared 0 rows — vacuous (no value-parity proven)");
+}
+
+// Step 4 — BINDING compile-feasibility gate (can go RED; not "raise until is_ok()").
+//
+// `add_sub_lui_auipc_mop_layout_gkr.json` L0's pinned current integer floor is F = 9: it
+// was found by compiling at budget 8 (BudgetBelowFloor) vs 9 (Ok). This was RAISED 8→9 in
+// Stage 2a — cache consumers now RECOMPUTE the shared expr (the `Source(Prior)` reload was
+// removed), and the recompute working set needs one more live cell than the old
+// compound-residency model (see `source_residency_integer_floor_is_nine`). The gate pins
+// F and asserts BOTH that the fixture compiles AT F and that F IS the floor (compiles at F,
+// fails at F-1). If recompute / Stage-3 residency shifts the floor again, this goes RED,
+// forcing a CONSCIOUS re-pin of F with a documented root cause — not a silent skip (the
+// corpus sweeps already swallow `BudgetBelowFloor`, so an un-pinned gate is vacuous).
+const ADD_SUB_L0_FLOOR: usize = 9; // floor raised 8→9 in 2a: cache-fold recompute working set; re-pin if Stage-3 residency changes it.
+
+#[test]
+fn tight_budget_compile_feasibility_binds_at_floor() {
+    let dir = compiled_circuit_dir();
+    let path = dir.join("add_sub_lui_auipc_mop_layout_gkr.json");
+    let artifact = load_fixture(&path).expect("load add_sub fixture");
+    let dag = lower_dag(&artifact).expect("lower");
+    validate(&dag).expect("validate");
+    let cross = build_cross_layer_field_map(&dag);
+
+    let at = |budget: usize| {
+        compile_layer(
+            &dag.layers[0],
+            &artifact.layers[0],
+            &artifact.scratch_space_mapping,
+            &cross,
+            budget,
+        )
+    };
+
+    // Compiles AT the pinned floor.
+    assert!(
+        at(ADD_SUB_L0_FLOOR).is_ok(),
+        "add_sub L0 must compile at the pinned floor F={ADD_SUB_L0_FLOOR}; \
+         if recompute/Stage-3 raised it, re-pin F + document the root cause"
+    );
+    // F IS the floor: F-1 must be below it (a clean BudgetBelowFloor, the RED signal).
+    match at(ADD_SUB_L0_FLOOR - 1) {
+        Err(CompileError::BudgetBelowFloor { floor, .. }) => {
+            assert_eq!(
+                floor, ADD_SUB_L0_FLOOR,
+                "the reported floor must equal the pinned F={ADD_SUB_L0_FLOOR}; it drifted to \
+                 {floor} — re-pin F + document (cache-fold recompute / Stage-3 residency)"
+            );
+        }
+        other => panic!(
+            "add_sub L0 at F-1={} must be BudgetBelowFloor {{ floor: {ADD_SUB_L0_FLOOR} }}, \
+             got {other:?} — the floor moved; re-pin F",
+            ADD_SUB_L0_FLOOR - 1
+        ),
+    }
+}
