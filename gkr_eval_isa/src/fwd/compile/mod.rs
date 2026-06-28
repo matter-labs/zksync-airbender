@@ -264,44 +264,27 @@ pub fn compile_layer(
                 root_outputs
                     .push((rid, RootOutput::Cell(OutputCell::Global { slot, col })));
             }
-            ForwardAction::CopyAlias { .. } => {
-                // §10: a view-alias produces NO kernel bytecode. Lower the root's
-                // single source expr to an OperandLine for the action executor.
-                let env = LoweringEnv {
-                    desc_by_expr: &desc_by_expr,
-                    point,
-                    // A view-alias output is read at PROGRAM END, not at this root's
-                    // program point — so it must reference STABLE storage. Forbid a
-                    // resident `Smem` operand (which Belady could evict/reuse before
-                    // the read): a reused source falls through to its `Global`
-                    // backing instead (codex S2 review, finding 1).
-                    allow_resident_smem: false,
-                };
-                // A CopyAlias root emits NO bytecode; pass a throwaway sink and
-                // `allow_source_load=false` so no load MOV is ever produced here.
-                let mut alias_sink: Vec<Instr> = Vec::new();
-                let (op, lease) = source_to_operand(
-                    layer,
-                    expr,
-                    &mut ctx,
-                    &mut residency,
-                    &mut trace,
-                    &mut alias_sink,
-                    /*allow_source_load=*/ false,
-                    env,
-                )?;
-                debug_assert!(alias_sink.is_empty(), "CopyAlias lowering must emit no bytecode");
-                // `allow_resident_smem=false` guarantees the reused-source arm never
-                // borrows, so the lease is `None` and the operand is stable storage (never
-                // a resident Smem cell, which Belady could evict before the program-end alias read).
-                debug_assert!(
-                    matches!(lease, arith::OperandLease::None)
-                        && !matches!(op, OperandLine::Smem { .. }),
-                    "CopyAlias output must be stable storage, never a resident Smem cell \
-                     (RootId {}); residency must not redirect an alias operand",
-                    rid.0
-                );
-                let _ = lease;
+            ForwardAction::CopyAlias { src_addr, .. } => {
+                // §10: a view-alias produces NO kernel bytecode. The alias operand is the
+                // STABLE `Global` backing of the relation's copy-SOURCE address, read at
+                // program end by the action executor. We resolve `src_addr` directly rather
+                // than lowering `root.expr`: under the shared-`ExprId` model a cache/inner
+                // read whose value has an in-layer materializer is aliased to that
+                // producer's (possibly COMPOUND) expr, so `source_to_operand(root.expr)`
+                // would hit a non-source compound and fail (keccak_special5 L0 expr 253).
+                // The producer root already materialized `src_addr` into this backing, so
+                // reading it is value-identical to — and the structural equivalent of —
+                // the pre-shared-`ExprId` `Read{src_addr}` source the alias used to carry
+                // (`source_to_operand` resolved that source to the SAME `(slot, col)` via
+                // `map_address` → `read_slot_col`).
+                let place = copy_src_read_place(src_addr).ok_or_else(|| {
+                    CompileError::FieldMismatch(format!(
+                        "CopyAlias src_addr {src_addr:?} is not a backing read (RootId {})",
+                        rid.0
+                    ))
+                })?;
+                let (slot, col) = ctx.backings.read_slot_col(&place)?;
+                let op = OperandLine::Global { slot, col };
                 root_outputs.push((rid, RootOutput::Alias(op)));
             }
             ForwardAction::SkipScratchPrefill => {
@@ -486,6 +469,31 @@ fn sink_to_backing(sink: &SinkInfo, this_layer: usize) -> (BackingKey, u16) {
     }
 }
 
+/// Map a `GKRAddress` copy-source to the `ReadPlace` its materialized backing reads
+/// from — mirrors cs's `dag_ir::lower::map_address` for the read-addressable variants.
+///
+/// A `CopyAlias` root copies its relation's `src_addr` (a materialized GKR address) to
+/// `dst_addr`. Its operand is the BACKING of `src_addr`, not a re-lowering of `root.expr`:
+/// under the shared-`ExprId` model a `Read{Cached/Inner}` whose value has an in-layer
+/// materializer is aliased to that producer's (possibly COMPOUND) expr, so lowering
+/// `root.expr` via `source_to_operand` would hit a non-source compound and fail. The
+/// producer root already materialized `src_addr`'s value into this backing, so reading it
+/// as a `Global` operand is value-identical to (and the structural equivalent of) the
+/// pre-shared-`ExprId` `Read{src_addr}` source the alias used to carry.
+fn copy_src_read_place(addr: GKRAddress) -> Option<ReadPlace> {
+    match addr {
+        GKRAddress::BaseLayerWitness(column) => Some(ReadPlace::BaseLayerWitness { column }),
+        GKRAddress::BaseLayerMemory(column) => Some(ReadPlace::BaseLayerMemory { column }),
+        GKRAddress::Setup(column) => Some(ReadPlace::Setup { column }),
+        GKRAddress::ScratchSpace(slot) => Some(ReadPlace::Scratch { slot }),
+        GKRAddress::InnerLayer { layer, offset } => Some(ReadPlace::LayerOutput { layer, offset }),
+        GKRAddress::Cached { layer, offset } => Some(ReadPlace::CacheOutput { layer, offset }),
+        // A VirtualSetup copy source is resolver-computed, not a backing read; no such
+        // CopyAlias source exists in the corpus. Signal "not a plain backing read".
+        GKRAddress::VirtualSetup(_) => None,
+    }
+}
+
 fn operand_field_of(sink: &SinkInfo) -> OperandField {
     match sink.field {
         cs::gkr_compiler::dag_ir::FieldKind::Base => OperandField::Base,
@@ -509,7 +517,10 @@ mod tests {
         ArenaBuilder, BatchingOrder, ClaimInfo, FieldKind, ReadPlace, Root, RootGroup, RootOrigin,
         RootSlot, SinkInfo, SinkKind, SourceKind,
     };
-    use cs::gkr_compiler::{GKRLayerDescription, GateArtifacts};
+    use cs::gkr_compiler::{
+        GKRLayerDescription, GateArtifacts, NoFieldGKRRelation,
+        NoFieldMaxQuadraticConstraintsGKRRelation,
+    };
     use std::collections::BTreeMap;
 
     fn artifact_layer(layer: usize) -> GKRLayerDescription {
@@ -522,9 +533,38 @@ mod tests {
         }
     }
 
+    // A claim-bearing root carries a `RootOrigin{ group: Gates, relation_index: i }`,
+    // and `build_forward_actions` looks up `artifact_layer.gates[i].enforced_relation`
+    // to classify it. A test artifact layer must therefore expose a gate at every
+    // `relation_index` its claim roots reference, or the classification indexes an empty
+    // `gates` vec and panics (it is NOT a free-floating `None` like the pre-port
+    // `origins` map). This builds `n_gates` gates whose relation classifies to plain
+    // `Compute` (an `EnforceConstraintsMaxQuadratic` with empty terms hits the `_ =>`
+    // arm of `classify_relation` — not MaxQuadratic/CopyIn), the right default for a
+    // synthetic claim root that just exercises the Compute lowering path.
+    fn artifact_layer_with_gates(layer: usize, n_gates: usize) -> GKRLayerDescription {
+        let compute_relation = || NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
+            input: NoFieldMaxQuadraticConstraintsGKRRelation {
+                quadratic_terms: Box::new([]),
+                linear_terms: Box::new([]),
+                constants: Box::new([]),
+            },
+        };
+        let gates: Vec<GateArtifacts> = (0..n_gates)
+            .map(|_| GateArtifacts { output_layer: 0, enforced_relation: compute_relation() })
+            .collect();
+        GKRLayerDescription {
+            layer,
+            gates,
+            gates_with_external_connections: vec![],
+            cached_relations: BTreeMap::new(),
+            intermediate_layer_width: None,
+        }
+    }
+
     // A single cache root `Add(a_base, b_base)` (no origin) compiles to:
     //   MOV acc←a; ADD Base +[b]; MOV CacheOutput ← acc
-    // recording cache_loc + a Global RootOutput. Smoke test of the Compute path.
+    // emitting a Global RootOutput (no cache_loc post-2a). Smoke test of the Compute path.
     #[test]
     fn cache_root_computes_and_materializes() {
         let mut arena = ArenaBuilder::new();
@@ -573,8 +613,10 @@ mod tests {
             compiled.ctx.backings.backing(slot),
             Some(&BackingKey::CacheOutput { layer: 3 })
         );
-        // cache_loc recorded, and a Global RootOutput.
-        assert_eq!(compiled.ctx.cache_loc.get(&RootId(0)), Some(&(slot, 5)));
+        // re-baselined 2a: cache consumers recompute the shared expr (Prior reload
+        // removed), so a cache root no longer records a `cache_loc` for same-layer
+        // readers — `cache_loc` is empty by design. Only the Global RootOutput remains.
+        assert!(compiled.ctx.cache_loc.is_empty());
         assert_eq!(
             compiled.root_outputs,
             vec![(RootId(0), RootOutput::Cell(OutputCell::Global { slot, col: 5 }))]
@@ -688,7 +730,8 @@ mod tests {
     #[test]
     fn reused_bare_source_root_still_fuses() {
         let layer = test_two_roots_one_bare_one_fold_share_read();
-        let c = compile_layer(&layer, &artifact_layer(7), &BTreeMap::new(), &HashMap::new(), 1024)
+        // Root B is a claim-bearing fold at relation_index 0 → needs a gate at 0.
+        let c = compile_layer(&layer, &artifact_layer_with_gates(7, 1), &BTreeMap::new(), &HashMap::new(), 1024)
             .unwrap();
         // The bare-source root's materialize must be a single fused DstFromSrc→GlobalMaterialize,
         // NOT load(DstFromSrc Smem) + AccFromSrc + DstFromAcc.
@@ -741,8 +784,10 @@ mod tests {
             batching: BatchingOrder { roots: vec![] },
             resolutions: BTreeMap::new(),
         };
-        let err = compile_layer(&layer, &artifact_layer(0), &BTreeMap::new(), &HashMap::new(), 16)
-            .unwrap_err();
+        // Claim root → relation_index 0 → needs a gate at 0 (classifies to Compute).
+        let err =
+            compile_layer(&layer, &artifact_layer_with_gates(0, 1), &BTreeMap::new(), &HashMap::new(), 16)
+                .unwrap_err();
         assert_eq!(err, CompileError::DegenerateRoot(RootId(0)));
     }
 
@@ -771,8 +816,10 @@ mod tests {
             batching: BatchingOrder { roots: vec![] },
             resolutions: BTreeMap::new(),
         };
-        let err = compile_layer(&layer, &artifact_layer(0), &BTreeMap::new(), &HashMap::new(), 16)
-            .unwrap_err();
+        // Claim root → relation_index 0 → needs a gate at 0 (classifies to Compute).
+        let err =
+            compile_layer(&layer, &artifact_layer_with_gates(0, 1), &BTreeMap::new(), &HashMap::new(), 16)
+                .unwrap_err();
         assert_eq!(err, CompileError::DegenerateRoot(RootId(0)));
     }
 
@@ -842,22 +889,29 @@ mod tests {
         validate_compiled(&compiled, &dag.layers[0]).expect("validate_compiled must pass");
     }
 
-    // ── A resident compound survives ACROSS two roots while a transient nested child
-    // lowered between them is freed (one shared allocator: residents and temps share
-    // the cell space, so a temp never lands on a live resident's cell). ─────────────
+    // ── re-baselined 2a: cache consumers recompute the shared expr (Prior reload
+    // removed); residency now holds the reused SOURCES resident, not the compound.
     //
-    //   root0 = Add(memA, memB)            — cache root (Cache sink, no claim), CANDIDATE
-    //                                        (later shared-ExprId use) → admitted resident in cell c.
+    //   root0 = Add(memA, memB)            — cache root (Cache sink, no claim). memA/memB
+    //                                        are reused later (shared ExprId in root2) so
+    //                                        they are source-residency CANDIDATES, each
+    //                                        loaded once into a resident cell (cell0/cell1).
     //   root1 = Mul(Add(memC, memD), memE) — its Add child lowers into a TRANSIENT cell
     //                                        (freed after root1's fold).
     //   root2 = Mul(add_ab, memF)          — reuses root0's value via the SHARED ExprId
-    //                                        `add_ab` (Part B: no `Prior` source), reading it
-    //                                        from its RESIDENT cell c.
+    //                                        `add_ab`. Part B: there is no resident compound
+    //                                        cell to read; root2 RECOMPUTES add_ab from the
+    //                                        still-resident source cells (cell0+cell1),
+    //                                        value-identical to the old reload but reading
+    //                                        smem, NOT re-reading memA/memB from DRAM.
     //
-    // Asserts: (i) root0 emits a resident store `MOV DstFromAcc Smem{c}`; (ii) root2
-    // reads `OperandLine::Smem{c}` (resident survived + is read by root2, NOT re-read
-    // from DRAM); (iii) the transient cell from root1 does not collide with the
-    // resident cell c (resident map and transient allocator are disjoint — codex Mod3).
+    // Asserts: (i) the reused sources memA/memB are held in resident smem cells that
+    // SURVIVE across all three roots (each loaded once via `MOV DstFromSrc Smem{c}`);
+    // (ii) root2 consumes those resident source cells (recompute reads smem, NOT DRAM);
+    // (iii) a transient evict (root1's `add_cd`, root2's recomputed `add_ab`) never lands
+    // on a LIVE source-resident cell — the one shared allocator keeps residents and temps
+    // disjoint (codex Mod3). Transients may freely reuse a freed transient cell among
+    // themselves; only collision with a *live resident* is forbidden.
     #[test]
     fn resident_compound_survives_across_roots_transient_freed() {
         use crate::fwd::isa::OperandLine;
@@ -931,48 +985,78 @@ mod tests {
             resolutions: BTreeMap::new(),
         };
 
+        // root1/root2 are claim-bearing at relation_index 0 and 1 → need gates at both.
         let compiled =
-            compile_layer(&layer, &artifact_layer(3), &BTreeMap::new(), &HashMap::new(), 1024)
+            compile_layer(&layer, &artifact_layer_with_gates(3, 2), &BTreeMap::new(), &HashMap::new(), 1024)
                 .expect("compile_layer");
 
-        // (i) root0 emitted a resident store MOV DstFromAcc Smem{c}; capture cell c.
-        let resident_cell = compiled.program.instrs.iter().find_map(|i| match i {
-            Instr::Mov {
-                dir: MovDir::DstFromAcc,
-                dst: Some(DstLine::Smem { cell }),
-                ..
-            } => Some(*cell),
-            _ => None,
-        });
-        let resident_cell = resident_cell.expect(
-            "root0 (a reused cache root) must be kept resident via MOV DstFromAcc Smem",
-        );
+        // (i) The reused sources memA/memB are each LOADED ONCE into a resident smem cell
+        // via `MOV DstFromSrc Smem{c} <- Global{col}` (source residency), and those cells
+        // survive across all three roots. Capture the two source-resident cells by the
+        // column they loaded (memA = col0, memB = col1).
+        let source_resident_cell = |col: u16| -> Option<u16> {
+            compiled.program.instrs.iter().find_map(|i| match i {
+                Instr::Mov {
+                    dir: MovDir::DstFromSrc,
+                    dst: Some(DstLine::Smem { cell }),
+                    src: Some(OperandLine::Global { col: c, .. }),
+                    ..
+                } if *c == col => Some(*cell),
+                _ => None,
+            })
+        };
+        let cell_a = source_resident_cell(0)
+            .expect("memA (col0) must be loaded once into a resident smem cell (source residency)");
+        let cell_b = source_resident_cell(1)
+            .expect("memB (col1) must be loaded once into a resident smem cell (source residency)");
+        assert_ne!(cell_a, cell_b, "two distinct reused sources occupy two distinct resident cells");
+        let source_residents = [cell_a, cell_b];
 
-        // (ii) some instruction reads the resident cell as an Smem operand (root2's
-        // shared-ExprId reuse), proving the resident survived and was read — not re-read DRAM.
-        let reads_resident = compiled.program.instrs.iter().any(|i| match i {
+        // Each reused source is loaded EXACTLY once (residency, not re-load per use).
+        for (col, _cell) in [(0u16, cell_a), (1u16, cell_b)] {
+            let loads = compiled.program.instrs.iter().filter(|i| matches!(i,
+                Instr::Mov { dir: MovDir::DstFromSrc, dst: Some(DstLine::Smem { .. }),
+                    src: Some(OperandLine::Global { col: c, .. }), .. } if *c == col)).count();
+            assert_eq!(loads, 1, "reused source col{col} must be loaded exactly once (held resident)");
+        }
+
+        // (ii) root2 RECOMPUTES add_ab by reading the resident SOURCE cells (cell_a + cell_b)
+        // as Smem operands — the recompute reads smem, NOT DRAM. Proven by: both resident
+        // source cells are read as Smem operands somewhere after their single load.
+        let reads_smem_cell = |cell: u16| compiled.program.instrs.iter().any(|i| match i {
             Instr::Mul { operands, .. } | Instr::Add { operands, .. } => {
-                operands.iter().any(|o| matches!(o, OperandLine::Smem { cell } if *cell == resident_cell))
+                operands.iter().any(|o| matches!(o, OperandLine::Smem { cell: c } if *c == cell))
             }
-            Instr::Mov { src: Some(OperandLine::Smem { cell }), .. } => *cell == resident_cell,
+            Instr::Mov { src: Some(OperandLine::Smem { cell: c }), .. } => *c == cell,
             Instr::Fma { pairs, .. } => pairs.iter().any(|(l, r)| {
-                matches!(l, OperandLine::Smem { cell } if *cell == resident_cell)
-                    || matches!(r, OperandLine::Smem { cell } if *cell == resident_cell)
+                matches!(l, OperandLine::Smem { cell: c } if *c == cell)
+                    || matches!(r, OperandLine::Smem { cell: c } if *c == cell)
             }),
             _ => false,
         });
-        assert!(
-            reads_resident,
-            "root2's shared-ExprId reuse must consume the RESIDENT cell {resident_cell} (resident survived across roots), program: {:#?}",
-            compiled.program.instrs
-        );
+        assert!(reads_smem_cell(cell_a) && reads_smem_cell(cell_b),
+            "root2's recompute of add_ab must read the RESIDENT source cells (cell_a={cell_a}, cell_b={cell_b}), program: {:#?}",
+            compiled.program.instrs);
 
-        // (iii) The transient `add_cd` cell in root1 must be evicted to a DIFFERENT cell
-        // than the resident cell. With ONE shared allocator, `alloc_temp` only hands out
-        // cells not currently occupied — a live resident occupies its cell, so a transient
-        // can never collide with it (the b5069ea0 collision is impossible by construction).
-        // Every transient evict store `MOV DstFromAcc Smem{t}` other than root0's resident
-        // store must have t != resident_cell.
+        // memA(col0)/memB(col1) must NOT be re-read from DRAM after their single resident
+        // load — the source residency replaces every later DRAM read of the reused values.
+        // (Their single resident load is a `DstFromSrc Smem` dst, never counted here.)
+        let reread_reused_source = compiled.program.instrs.iter().any(|i| match i {
+            Instr::Mul { operands, .. } | Instr::Add { operands, .. } => operands.iter()
+                .any(|o| matches!(o, OperandLine::Global { col, .. } if *col == 0 || *col == 1)),
+            Instr::Mov { src: Some(OperandLine::Global { col, .. }), dir: MovDir::AccFromSrc, .. } => *col == 0 || *col == 1,
+            _ => false,
+        });
+        assert!(!reread_reused_source,
+            "the reused sources memA(col0)/memB(col1) must not be re-read from DRAM — the resident cells replace them");
+
+        // (iii) No transient evict (`MOV DstFromAcc Smem{t}` — root1's `add_cd`, root2's
+        // recomputed `add_ab`) may land on a LIVE source-resident cell. With ONE shared
+        // allocator `alloc_temp` only hands out cells not currently occupied, so a transient
+        // can never clobber a live resident (the b5069ea0 collision is impossible by
+        // construction). Transients MAY reuse a freed transient cell among themselves
+        // (Part B: add_ab is no longer a held resident, so two distinct transients legally
+        // reuse one freed cell — that is not a resident collision).
         let transient_evicts: Vec<u16> = compiled
             .program
             .instrs
@@ -982,32 +1066,15 @@ mod tests {
                 _ => None,
             })
             .collect();
-        // There must be >1 Smem evict (the resident store + root1's transient evict),
-        // and the transient one(s) must not reuse the resident cell.
-        let transient_collision = transient_evicts
+        assert!(!transient_evicts.is_empty(), "expected at least one transient evict store");
+        let resident_collision = transient_evicts
             .iter()
-            .filter(|&&t| t == resident_cell)
+            .filter(|t| source_residents.contains(t))
             .count();
         assert_eq!(
-            transient_collision, 1,
-            "exactly ONE store may target the resident cell (root0's resident store); a transient evict reusing it would clobber the resident: evicts={transient_evicts:?}, resident={resident_cell}",
+            resident_collision, 0,
+            "no transient evict may target a LIVE source-resident cell {source_residents:?}; evicts={transient_evicts:?}",
         );
-
-        // We assert no Global re-read of root0 leaked in:
-        let root0_backing = compiled.ctx.cache_loc.get(&RootId(0)).copied();
-        if let Some((slot, col)) = root0_backing {
-            let reread_global = compiled.program.instrs.iter().any(|i| match i {
-                Instr::Mul { operands, .. } | Instr::Add { operands, .. } => operands
-                    .iter()
-                    .any(|o| matches!(o, OperandLine::Global { slot: s, col: cc } if *s == slot && *cc == col)),
-                Instr::Mov { src: Some(OperandLine::Global { slot: s, col: cc }), .. } => *s == slot && *cc == col,
-                _ => false,
-            });
-            assert!(
-                !reread_global,
-                "root0's cache backing ({slot},{col}) must NOT be re-read — the resident cell replaces it",
-            );
-        }
         // The compiled layer validates cleanly with both resident + transient cells.
         validate_compiled(&compiled, &layer).expect("validate_compiled must pass");
     }
@@ -1061,7 +1128,8 @@ mod tests {
             batching: BatchingOrder { roots: vec![] },
             resolutions: BTreeMap::new(),
         };
-        (layer, artifact_layer(2))
+        // The single root is claim-bearing at relation_index 0 → needs a gate at 0.
+        (layer, artifact_layer_with_gates(2, 1))
     }
 
     #[test]

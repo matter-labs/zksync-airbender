@@ -242,8 +242,14 @@ mod tests {
     // locked real-budget baseline is `*_B16_*` + the test `b16_dram_reads_baselines`
     // below. At b16 the realized cut is only ~11-12% (not ~26-32%), and the post-residency
     // optimum is not reached until budget ≥ 64.
-    pub const ADD_SUB_S3_DRAM_READS: usize = 52;
-    pub const MUL_DIV_S3_DRAM_READS: usize = 75;
+    // re-baselined 2a: cache consumers recompute the shared expr (Prior reload removed);
+    // residency replaced by the Stage-3 schedule. The recompute path reads reused values
+    // from their resident SOURCE cells instead of re-reading DRAM, so dram_reads dropped
+    // further (52→38, 75→49; the +1 over the raw recompute delta is the keccak-class
+    // CopyAlias fix reading its copy-source backing as one Global operand). Still strictly
+    // below the S2 / S1 baselines (gate below).
+    pub const ADD_SUB_S3_DRAM_READS: usize = 38;
+    pub const MUL_DIV_S3_DRAM_READS: usize = 49;
 
     // === REAL operating-point baseline (the production budget, NOT the b1024 ceiling) ===
     // Full occupancy on the target GPU (RTX PRO 6000 Blackwell, sm_120) is ~16 bf-cells/
@@ -257,8 +263,13 @@ mod tests {
     pub const REAL_BUDGET: usize = 16;
     pub const ADD_SUB_B16_PRE_DRAM_READS: usize = 81; // pre source-residency (S2-era) @ b16
     pub const MUL_DIV_B16_PRE_DRAM_READS: usize = 106;
-    pub const ADD_SUB_B16_DRAM_READS: usize = 71; // post @ b16: -12.3% vs pre (vs -32.5% at b1024)
-    pub const MUL_DIV_B16_DRAM_READS: usize = 94; // post @ b16: -11.3% vs pre (vs -26.5% at b1024)
+    // re-baselined 2a: cache consumers recompute the shared expr (Prior reload removed);
+    // residency replaced by the Stage-3 schedule. At the real (b16) budget the recompute
+    // path's source-resident reads cut dram_reads further (71→63, 94→80; incl. the
+    // keccak-class CopyAlias src-backing read); still below the pre-residency b16
+    // reference (81/106, gate below).
+    pub const ADD_SUB_B16_DRAM_READS: usize = 63;
+    pub const MUL_DIV_B16_DRAM_READS: usize = 80;
 
     fn dram_reads_at(name: &str, budget: usize) -> usize {
         let artifact = load_fixture(name).expect("fixture");

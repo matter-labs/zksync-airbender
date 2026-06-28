@@ -81,9 +81,28 @@ pub fn connected_root_cluster(layer: &DagLayer, seed_root: RootId) -> DagLayer {
         .map(|rid| (layer.roots[rid.0 as usize].expr, rid))
         .collect();
 
+    // Reverse index: cache root -> the CLAIM-bearing roots that reach its value.
+    // Under the shared-`ExprId` model a "shared" cache value is one reached by ≥2
+    // claim cones; the cluster must therefore include those co-consumers, or the
+    // standalone `reachable_shared_cache_values(&cluster)` would see only the seed
+    // claim root and report 0 (the Prior-era closure pulled the same co-consumers in
+    // transitively because each reuse was its own `Prior` edge in the cone). We pull
+    // every co-consumer of a reached cache root into the cluster so the shared-cache
+    // property is self-contained.
+    let mut cache_to_claim_consumers: HashMap<RootId, BTreeSet<RootId>> = HashMap::new();
+    for rid in (0..layer.roots.len() as u32).map(RootId) {
+        if layer.roots[rid.0 as usize].claim.is_none() {
+            continue; // only claim cones drive sharing (a cache root's self-reach is not sharing)
+        }
+        for cache_rid in cache_roots_in_cone(layer, rid, &cache_expr_to_root) {
+            cache_to_claim_consumers.entry(cache_rid).or_default().insert(rid);
+        }
+    }
+
     // ── 1. Transitive shared-cache closure over roots ────────────────────────
     // Start from the seed; for each root in the set, walk its expr cone and add
-    // every cache root whose `expr` appears in the cone; repeat to a fixpoint.
+    // every cache root whose `expr` appears in the cone, AND every claim-bearing
+    // co-consumer of that cache value; repeat to a fixpoint.
     let mut cluster: BTreeSet<RootId> = BTreeSet::new();
     let mut frontier: Vec<RootId> = vec![seed_root];
     while let Some(rid) = frontier.pop() {
@@ -94,6 +113,15 @@ pub fn connected_root_cluster(layer: &DagLayer, seed_root: RootId) -> DagLayer {
         for cache_target in cache_roots_in_cone(layer, rid, &cache_expr_to_root) {
             if !cluster.contains(&cache_target) {
                 frontier.push(cache_target);
+            }
+            // Pull in the cache value's other claim-bearing consumers so the
+            // cluster preserves the shared-cache (≥2 consumer) property.
+            if let Some(consumers) = cache_to_claim_consumers.get(&cache_target) {
+                for &consumer in consumers {
+                    if !cluster.contains(&consumer) {
+                        frontier.push(consumer);
+                    }
+                }
             }
         }
     }
