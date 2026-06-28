@@ -135,6 +135,16 @@ cuda_kernel!(
     )
 );
 
+cuda_kernel!(
+    BackwardDimReducingLsbLines,
+    ab_backward_dim_reducing_lsb_lines_kernel(
+        last_evals_packed: *const E4,
+        challenges: *const E4,
+        lsb_lines_out: *mut E4,
+        num_addresses: u32,
+    )
+);
+
 /// Device-side per-address dim-reducing `new_claims` evaluator.
 ///
 /// Replaces the host loop inside the end-of-layer final-readback callback
@@ -192,6 +202,40 @@ pub(crate) fn backward_new_claims_linear(
         num_addresses as u32,
     );
     BackwardNewClaimsLinearFunction::default().launch(&config, &args)
+}
+
+/// Device-side dim-reducing final-round LSB-line reduction (#320).
+///
+/// The last sumcheck round now emits a monomial and draws `r_before_last`
+/// in-loop; this reduces the `[E4; 4]` bilinear `last_evals` (packed 4 per
+/// address) over the last-output coordinate at `r_before_last` into the
+/// `[E4; 2]` LSB line that is sent in the proof and committed to the
+/// transcript. Per address: `out[0] = lerp(v0, v2, rbl)`,
+/// `out[1] = lerp(v1, v3, rbl)`, matching the host `interpolate_linear`
+/// over `(evals[0], evals[2])` / `(evals[1], evals[3])`. `challenges` reads
+/// only slot 0 (`r_before_last`). Produces `2 * num_addresses` outputs.
+pub(crate) fn backward_dim_reducing_lsb_lines(
+    last_evals_packed: &DeviceSlice<E4>,
+    challenges: &DeviceSlice<E4>,
+    lsb_lines_out: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(lsb_lines_out.len() % 2, 0);
+    let num_addresses = lsb_lines_out.len() / 2;
+    assert!(num_addresses > 0);
+    assert!(num_addresses <= u32::MAX as usize);
+    assert_eq!(last_evals_packed.len(), num_addresses * 4);
+    assert!(!challenges.is_empty());
+    let (grid_dim, block_dim) =
+        get_grid_block_dims_for_threads_count(WARP_SIZE * 4, num_addresses as u32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = BackwardDimReducingLsbLinesArguments::new(
+        last_evals_packed.as_ptr(),
+        challenges.as_ptr(),
+        lsb_lines_out.as_mut_ptr(),
+        num_addresses as u32,
+    );
+    BackwardDimReducingLsbLinesFunction::default().launch(&config, &args)
 }
 
 /// Maximum `(batch_challenge_offset, claim_idx)` pairs the

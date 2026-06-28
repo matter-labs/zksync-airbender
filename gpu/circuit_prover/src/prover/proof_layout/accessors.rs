@@ -437,10 +437,8 @@ impl ProofLayout {
         let mut result = BTreeMap::new();
         for (layer_slot, bw) in self.backward.iter().enumerate() {
             let coeffs_flat = self.backward_internal_coeffs_host(slab, layer_slot);
-            debug_assert_eq!(
-                coeffs_flat.len(),
-                bw.sumcheck_num_rounds.saturating_sub(1) * 4
-            );
+            // #320: `sumcheck_num_rounds` monomials (was `- 1`).
+            debug_assert_eq!(coeffs_flat.len(), bw.sumcheck_num_rounds * 4);
             let internal_round_coefficients: Vec<[E4; 4]> = coeffs_flat
                 .chunks_exact(4)
                 .map(|c| [c[0], c[1], c[2], c[3]])

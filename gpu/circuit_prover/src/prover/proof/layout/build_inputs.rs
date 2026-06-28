@@ -118,7 +118,10 @@ where
             layer_idx,
             sumcheck_num_rounds,
             final_step_eval_addresses: addresses.into_iter().collect(),
-            final_step_eval_degree: 4,
+            // #320: dim-reducing final step sends the `[E;2]` LSB line (was the
+            // full `[E;4]` bilinear); the last output coord is fixed in-loop at
+            // `r_before_last`.
+            final_step_eval_degree: 2,
             // Dim-reducing layers don't host the kind of orphan-output
             // pattern that main-layer `MaxQuadratic` produces; the
             // forward dim-reduction pass wires every output from one
@@ -131,7 +134,9 @@ where
             layer_idx,
             sumcheck_num_rounds: initial_trace_size_log_2,
             final_step_eval_addresses: main_layer_input_addresses_per_layer[layer_idx].clone(),
-            final_step_eval_degree: 2,
+            // #320: main-layer final step sends the single at-point evaluation
+            // (was the `[E;2]` line); the last coord is fixed in-loop at `last_r`.
+            final_step_eval_degree: 1,
             extra_evaluations_addresses: main_layer_orphan_output_addresses_per_layer[layer_idx]
                 .clone(),
         });
