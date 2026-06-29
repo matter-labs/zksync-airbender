@@ -267,7 +267,10 @@ fn test_csrrw_non_determinism_read() {
 fn test_csrrw_rejects_unsupported_csr() {
     const UNSUPPORTED_CSR: u16 = 0xC00; // RV32I cycle CSR
 
-    let rd_reg: u8 = 1;
+    // Non-non-determinism CSRRW encodings are decoder-legal only in the
+    // delegation-style x0/x0 form. Use that shape here so this test still
+    // reaches the circuit and exercises the SpecialCSRProperties rejection.
+    let rd_reg: u8 = 0;
     let rs1_reg: u8 = 0;
 
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

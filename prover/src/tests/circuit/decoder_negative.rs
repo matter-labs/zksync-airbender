@@ -11,7 +11,7 @@
 //! the decoder leaves the slot empty and produces the default witness data with opcode_family_bits == 0.
 //! Both bytecode_preprocessor.rs:53 propagates an Err(()) from define_decoder_subspace.
 
-use super::encoding::{encode_b, encode_i, encode_r, encode_r_system, encode_u};
+use super::encoding::{encode_b, encode_csrrw, encode_i, encode_r, encode_r_system, encode_u};
 use super::*;
 
 use cs::machine::ops::unrolled::decoder::{
@@ -201,6 +201,32 @@ fn test_shift_binop_rejects_invalid_csr_funct3() {
         SHIFT_IDX,
         enc,
         "Shift: SYSTEM funct3=0b010 (CSRRS, not CSRRW)",
+    );
+}
+
+#[test]
+fn test_shift_binop_rejects_illegal_non_determinism_csrrw_operands() {
+    let enc = encode_csrrw(1, 2, common_constants::NON_DETERMINISM_CSR);
+    assert_decoder_rejects(
+        Box::new(ShiftBinaryCsrrwDecoder),
+        SHIFT_IDX,
+        enc,
+        "Shift: CSRRW(non-determinism) with rd!=x0 and rs1!=x0",
+    );
+}
+
+#[test]
+fn test_shift_binop_rejects_illegal_delegation_csrrw_rd() {
+    let enc = encode_csrrw(
+        1,
+        0,
+        common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
+    );
+    assert_decoder_rejects(
+        Box::new(ShiftBinaryCsrrwDecoder),
+        SHIFT_IDX,
+        enc,
+        "Shift: delegation CSRRW with rd!=x0",
     );
 }
 
