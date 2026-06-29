@@ -34,6 +34,7 @@ contract GKRVerifier {
     // ── GKR circuit ───────────────────────────────────────────────────────────
     uint256 constant GKR_CIRCUIT_LAYER_ROUNDS = 24;
     uint256 constant GKR_CIRCUIT_CACHE_PTR    = 5032; // = SEED_PTR - 32*10; shares the transcript absorb region
+    uint256 constant GKR_CIRCUIT_ALPHA2_PTR = 5500;
     // uint256 constant GKR_CIRCUIT_SCRATCH_PTR    = 7040; // used to fix stack pressure crashes
 
     fallback() external {

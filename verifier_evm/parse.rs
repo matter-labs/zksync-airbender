@@ -190,6 +190,12 @@ fn main() {
             if mod(add(claim, sub(P, g0g1_scaled)), P) {{ revert(0, 0) }}
             ")
         };
+        const DEBUG_ENABLE_HEAP_ALPHA: bool = true;
+        let alpha2_init = if DEBUG_ENABLE_HEAP_ALPHA {
+            yul_format!("mstore(GKR_CIRCUIT_ALPHA2_PTR, mulmod(alpha, alpha, P))")
+        } else {
+            yul_format!("let alpha2 := mulmod(alpha, alpha, P)")
+        };
         yul_println!("
         function sumcheck_circuit_layer{i}(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {{
             // SUMCHECK ROUNDS
@@ -214,6 +220,7 @@ fn main() {
             }}
             
             // POINT CHECK
+            {alpha2_init:x}
             let acc");
         let mut running_max_group_offsets = (0, 0, 0, 0);
         let mut running_cachedoutput_counter = 0;
@@ -390,6 +397,11 @@ fn main() {
             assert!(*output_layer == i+1);
             let relation_name =  serde_json::to_value(enforced_relation).unwrap().as_object().unwrap().keys().next().unwrap().clone();
             let pointcheck_update = yul_format!("acc := add(mulmod(acc, alpha, P), gate)");
+            let logup_pointcheck_update = if DEBUG_ENABLE_HEAP_ALPHA {
+                yul_format!("acc := add(mulmod(acc, mload(GKR_CIRCUIT_ALPHA2_PTR), P), add(mulmod(den_out, alpha, P), num_out))")
+            } else {
+                yul_format!("acc := add(mulmod(acc, alpha2, P), add(mulmod(den_out, alpha, P), num_out))")
+            };
 
             fn gkraddress_to_calldata(address: &GKRAddress, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let (l0_memvars, l0_witvars, _l0_setupvars, l0_cachevars) = layer0_group_widths;
@@ -671,11 +683,8 @@ fn main() {
                     yul_println!("
                     \t{{  // {relation_name}: {num1}/{den1} + {num2}/{den2} = {num_out}/{den_out}
                     \t    let den_out := mulmod({den1:x}, {den2:x}, P)
-                    \t    let gate := den_out
-                    \t    {pointcheck_update:x}
                     \t    let num_out := add(mulmod({num1:x}, {den2:x}, P), mulmod({num2:x}, {den1:x}, P))
-                    \t    gate := num_out
-                    \t    {pointcheck_update:x}
+                    \t    {logup_pointcheck_update:x}
                     \t}}");
                 }
                 NoFieldGKRRelation::CopyInExtensionField { input, output } => {
