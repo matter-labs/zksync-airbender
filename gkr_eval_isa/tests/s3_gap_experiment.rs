@@ -1194,3 +1194,206 @@ fn order_bridge_binding_holds() {
     assert_eq!(order.len(), occ_order.len());
     assert!(order_keeps_units_contiguous(&occ_order, &units), "unit contiguity");
 }
+
+// ── Task 7: on-demand CircuitSchedule producer ───────────────────────────────
+
+// Ungated + CI-safe: produces ONE fixture's schedule in-memory and validates it; writes nothing.
+// (The file-writing `produce_all_schedules` below is the gated, on-demand variant.)
+#[test]
+fn produce_schedule_smoke_one_fixture() {
+    let sched = produce_circuit_schedule("mem_word_only_layout_gkr.json", REAL_BUDGET)
+        .expect("produce");
+    assert_eq!(sched.budget, REAL_BUDGET);
+    // Must exercise the producer gates on a real schedule — assert at least one non-empty layer
+    // (review TQ7: otherwise an all-empty result would pass vacuously).
+    assert!(sched.layers.iter().any(|l| !l.order.is_empty()), "no scheduled layer in mem_word_only");
+    // Round-trip + validate against the freshly lowered circuit.
+    let artifact = load_fixture(&compiled_circuit_dir().join("mem_word_only_layout_gkr.json")).unwrap();
+    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact).unwrap();
+    let json = serde_json::to_string(&sched).unwrap();
+    let back: cs::gkr_compiler::dag_ir::CircuitSchedule = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, sched);
+    cs::gkr_compiler::dag_ir::validate_circuit_schedule(&dag, &back).expect("validates");
+    assert_eq!(sched.layers.len(), dag.layers.len());
+}
+
+fn produce_circuit_schedule(
+    fixture: &str,
+    budget: usize,
+) -> Option<cs::gkr_compiler::dag_ir::CircuitSchedule> {
+    use crate::s3_gap::floor::dag_traffic_floor;
+    use crate::s3_gap::instance::{extract_instance_with_remap, relation_units};
+    // Items living in the parent `metaheuristic` module (Task 5's instrumentation + decoders).
+    use crate::s3_planner::metaheuristic::{
+        decode_grouped_occurrence_order, enumerate_demand_sites, no_cache_ceiling,
+        order_keeps_units_contiguous, replay_plan, score_candidate_grouped, unit_members,
+        DemandKindRaw, ReplayEventRaw, StepPlanRaw,
+    };
+    // Items living in `metaheuristic::tests` (the optimizer driver + grouped seed helpers),
+    // imported exactly as the Task 5/6 tests do.
+    use crate::s3_planner::metaheuristic::tests::{
+        optimize_from_population_grouped, project_genome_to_units, seeded_smoke_population,
+    };
+    use cs::gkr_compiler::dag_ir::{
+        CircuitSchedule, DemandKind, ExprId, LayerSchedule, ReplayEvent, StepPlan,
+    };
+    use std::collections::HashMap;
+
+    let artifact = load_fixture(&compiled_circuit_dir().join(fixture))?;
+    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact).ok()?;
+    cs::gkr_compiler::dag_ir::validate(&dag).ok()?;
+    let cross = build_cross_layer_field_map(&dag);
+    const EVAL_BUDGET: usize = 1000;
+    // Reverse trim order (review CA-2/#4): the `_preprocessed_layout_gkr.json` variant ends with
+    // `_layout_gkr.json` too, so the broad trim must come SECOND or it strips first and leaves
+    // `_preprocessed`. This yields `inits_and_teardowns` and the correct stem for the other 10.
+    let stem = fixture
+        .trim_end_matches("_preprocessed_layout_gkr.json")
+        .trim_end_matches("_layout_gkr.json");
+
+    let mut layers_out = Vec::with_capacity(dag.layers.len());
+    // Per-non-empty-layer (layer index, remap, raw node-id steps) for the §5.7 post-serde binding.
+    let mut bindings: Vec<(usize, HashMap<u32, u32>, Vec<StepPlanRaw>)> = Vec::new();
+    for (li, layer) in dag.layers.iter().enumerate() {
+        let (inst, remap) = extract_instance_with_remap(layer, &cross, budget);
+        if inst.roots.is_empty() {
+            layers_out.push(LayerSchedule { order: vec![], steps: vec![], predicted_traffic: 0, floor: 0 });
+            continue;
+        }
+        let sites = enumerate_demand_sites(&inst);
+        let units = unit_members(&relation_units(layer));
+        let atom_roots = atom_root_ids(layer);
+        assert_eq!(atom_roots.len(), inst.roots.len(), "atom-root/occurrence count mismatch");
+
+        // Seeded, unit-projected population -> grouped optimizer.
+        let flat = seeded_smoke_population(&inst, &sites, 8, 0);
+        let unit_pop: Vec<_> = flat.iter().map(|g| project_genome_to_units(g, &units)).collect();
+        let opt = optimize_from_population_grouped(&inst, &sites, unit_pop, EVAL_BUDGET, &units);
+
+        // Instrumented replay over the winning genome.
+        let (score, raw_steps) = replay_plan(&inst, &sites, &opt.best_genome, &units);
+        // Feasibility guard (review F6): an infeasible layer at budget 16 is a real problem,
+        // not a schedule — fail loudly rather than emit a malformed artifact.
+        assert!(score.feasible, "layer {li} of {fixture} infeasible at budget {budget}");
+
+        let occ_order = decode_grouped_occurrence_order(&inst, &opt.best_genome, &units);
+        let order = bridge_order(&occ_order, &atom_roots);
+
+        // --- Gate §5.6: order-bridge BINDING (remap-based, non-tautological; see Task 6) ---
+        for occ in 0..inst.roots.len() {
+            let expr0 = layer.roots[atom_roots[occ].0 as usize].expr.0;
+            assert_eq!(remap.get(&expr0).copied(), Some(inst.roots[occ]),
+                "order-bridge binding failed: atom_roots[{occ}] vs inst.roots[{occ}] in {fixture}");
+        }
+        assert!(order_keeps_units_contiguous(&occ_order, &units), "unit contiguity in {fixture}");
+
+        // --- Gate §5.8: traffic provenance (score-record, NOT bridge) ---
+        let prov = score_candidate_grouped(&inst, &sites, &opt.best_genome, &units);
+        assert_eq!(prov.traffic, score.traffic, "provenance traffic mismatch for {fixture}");
+
+        // --- Gate §5.9: floor <= predicted <= ceiling ---
+        let floor = dag_traffic_floor(layer, &cross) as u64;
+        let ceiling = no_cache_ceiling(&inst, &sites);
+        assert!(floor <= score.traffic && score.traffic <= ceiling,
+            "floor {floor} <= {} <= ceiling {ceiling} violated for {fixture}", score.traffic);
+
+        // --- Gate §5.10: cache-no-orphan (every Cache root's expr is reachable in the instance) ---
+        for root in &layer.roots {
+            let is_cache = matches!(
+                root.materialize,
+                Some(cs::gkr_compiler::dag_ir::SinkInfo {
+                    kind: cs::gkr_compiler::dag_ir::SinkKind::Cache { .. }, ..
+                })
+            ) && root.claim.is_none();
+            if is_cache {
+                assert!(remap.contains_key(&root.expr.0),
+                    "orphan cache root expr {} in {fixture}", root.expr.0);
+            }
+        }
+
+        // --- Bridge raw (node-id) steps -> cs ExprId steps ---
+        let inv = invert_remap(&remap);
+        let to_expr = |n: u32| ExprId(inv[&n]);
+        let steps: Vec<StepPlan> = raw_steps.iter().map(|s| StepPlan {
+            resident_before: s.resident_before.iter().map(|&n| to_expr(n)).collect(),
+            events: s.events.iter().map(|e| match e {
+                ReplayEventRaw::Demand { consumer, input_index, value, kind } => ReplayEvent::Demand {
+                    consumer: to_expr(*consumer),
+                    input_index: *input_index,
+                    value: to_expr(*value),
+                    kind: match kind {
+                        DemandKindRaw::Resident => DemandKind::Resident,
+                        DemandKindRaw::Reload => DemandKind::Reload,
+                        DemandKindRaw::Recompute => DemandKind::Recompute,
+                    },
+                },
+                ReplayEventRaw::Admit { value } => ReplayEvent::Admit { value: to_expr(*value) },
+                ReplayEventRaw::Evict { value } => ReplayEvent::Evict { value: to_expr(*value) },
+            }).collect(),
+            resident_after: s.resident_after.iter().map(|&n| to_expr(n)).collect(),
+        }).collect();
+
+        bindings.push((li, remap, raw_steps)); // stash for the §5.7 post-serde binding
+        layers_out.push(LayerSchedule { order, steps, predicted_traffic: score.traffic, floor });
+    }
+
+    let sched = CircuitSchedule { circuit: stem.to_string(), budget, layers: layers_out };
+
+    // --- cs structural validator (also catches event-integrity / width) ---
+    cs::gkr_compiler::dag_ir::validate_circuit_schedule(&dag, &sched)
+        .unwrap_or_else(|e| panic!("validate_circuit_schedule failed for {fixture}: {e}"));
+
+    // --- Gate §5.7: residency-binding (NOT just serde round-trip — review F3/TQ1). Round-trip
+    // through serde, then re-invert the persisted ExprId steps back to node-ids and require they
+    // reproduce the raw replay steps EXACTLY. Round-trip proves serde fidelity; re-inversion proves
+    // the node<->ExprId mapping is a faithful bijection (catches any transposition/mapping bug).
+    // replay_plan over a fixed genome is deterministic, so this binds the same property a fresh
+    // post-serde replay would. ---
+    let json = serde_json::to_string(&sched).unwrap();
+    let back: CircuitSchedule = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, sched, "post-serde round-trip mismatch for {fixture}");
+    for (li, remap, raw_steps) in &bindings {
+        let to_node = |e: ExprId| -> u32 { remap[&e.0] };
+        let ls = &back.layers[*li];
+        assert_eq!(ls.steps.len(), raw_steps.len(), "step count mismatch, layer {li} of {fixture}");
+        for (si, (st, raw)) in ls.steps.iter().zip(raw_steps).enumerate() {
+            let reinv = StepPlanRaw {
+                resident_before: st.resident_before.iter().map(|&e| to_node(e)).collect(),
+                events: st.events.iter().map(|e| match e {
+                    ReplayEvent::Demand { consumer, input_index, value, kind } => ReplayEventRaw::Demand {
+                        consumer: to_node(*consumer),
+                        input_index: *input_index,
+                        value: to_node(*value),
+                        kind: match kind {
+                            DemandKind::Resident => DemandKindRaw::Resident,
+                            DemandKind::Reload => DemandKindRaw::Reload,
+                            DemandKind::Recompute => DemandKindRaw::Recompute,
+                        },
+                    },
+                    ReplayEvent::Admit { value } => ReplayEventRaw::Admit { value: to_node(*value) },
+                    ReplayEvent::Evict { value } => ReplayEventRaw::Evict { value: to_node(*value) },
+                }).collect(),
+                resident_after: st.resident_after.iter().map(|&e| to_node(e)).collect(),
+            };
+            assert_eq!(&reinv, raw, "residency-binding mismatch, layer {li} step {si} of {fixture}");
+        }
+    }
+
+    Some(sched)
+}
+
+#[test]
+fn produce_all_schedules() {
+    if std::env::var("GKR_PRODUCE_SCHEDULES").is_err() || std::env::var("CI").is_ok() {
+        eprintln!("skipping producer (set GKR_PRODUCE_SCHEDULES=1, not in CI)");
+        return;
+    }
+    for fixture in ALL_FIXTURES {
+        let sched = produce_circuit_schedule(fixture, REAL_BUDGET)
+            .unwrap_or_else(|| panic!("produce failed for {fixture}"));
+        let out = compiled_circuit_dir().join(format!("{}_schedule_b{}_gkr.json", sched.circuit, REAL_BUDGET));
+        let mut f = std::fs::File::create(&out).unwrap();
+        serde_json::to_writer_pretty(&mut f, &sched).unwrap();
+        eprintln!("wrote {}", out.display());
+    }
+}

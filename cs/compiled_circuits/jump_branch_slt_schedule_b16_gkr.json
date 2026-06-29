@@ -1,0 +1,2575 @@
+{
+  "circuit": "jump_branch_slt",
+  "budget": 16,
+  "layers": [
+    {
+      "order": [
+        21,
+        22,
+        23,
+        24,
+        20,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44
+      ],
+      "steps": [
+        {
+          "resident_before": [],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 17,
+                "input_index": 2,
+                "value": 4,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 4,
+                "input_index": 0,
+                "value": 2,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 2
+              }
+            },
+            {
+              "Admit": {
+                "value": 4
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 7,
+                "input_index": 0,
+                "value": 5,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 10,
+                "input_index": 0,
+                "value": 8,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 17,
+                "input_index": 5,
+                "value": 13,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 13,
+                "input_index": 0,
+                "value": 11,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 11
+              }
+            },
+            {
+              "Admit": {
+                "value": 13
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 17,
+                "input_index": 6,
+                "value": 16,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 16,
+                "input_index": 0,
+                "value": 14,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 14
+              }
+            },
+            {
+              "Admit": {
+                "value": 16
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 28,
+                "input_index": 2,
+                "value": 19,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 19,
+                "input_index": 1,
+                "value": 18,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 18
+              }
+            },
+            {
+              "Evict": {
+                "value": 4
+              }
+            },
+            {
+              "Admit": {
+                "value": 19
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 21,
+                "input_index": 1,
+                "value": 20,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 23,
+                "input_index": 1,
+                "value": 22,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 28,
+                "input_index": 5,
+                "value": 25,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 25,
+                "input_index": 1,
+                "value": 24,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 13
+              }
+            },
+            {
+              "Admit": {
+                "value": 24
+              }
+            },
+            {
+              "Evict": {
+                "value": 16
+              }
+            },
+            {
+              "Admit": {
+                "value": 25
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 28,
+                "input_index": 6,
+                "value": 27,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 27,
+                "input_index": 1,
+                "value": 26,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 26
+              }
+            },
+            {
+              "Evict": {
+                "value": 19
+              }
+            },
+            {
+              "Admit": {
+                "value": 27
+              }
+            }
+          ],
+          "resident_after": [
+            2,
+            11,
+            14,
+            18,
+            24,
+            25,
+            26,
+            27
+          ]
+        },
+        {
+          "resident_before": [
+            2,
+            11,
+            14,
+            18,
+            24,
+            25,
+            26,
+            27
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 33,
+                "input_index": 2,
+                "value": 4,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 4,
+                "input_index": 0,
+                "value": 2,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 33,
+                "input_index": 3,
+                "value": 13,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 13,
+                "input_index": 0,
+                "value": 11,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 33,
+                "input_index": 4,
+                "value": 16,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 16,
+                "input_index": 0,
+                "value": 14,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 33,
+                "input_index": 5,
+                "value": 30,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 30,
+                "input_index": 1,
+                "value": 29,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 2
+              }
+            },
+            {
+              "Evict": {
+                "value": 11
+              }
+            },
+            {
+              "Evict": {
+                "value": 14
+              }
+            },
+            {
+              "Admit": {
+                "value": 29
+              }
+            },
+            {
+              "Admit": {
+                "value": 30
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 33,
+                "input_index": 6,
+                "value": 32,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 32,
+                "input_index": 1,
+                "value": 31,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 25
+              }
+            },
+            {
+              "Admit": {
+                "value": 32
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 37,
+                "input_index": 2,
+                "value": 19,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 19,
+                "input_index": 1,
+                "value": 18,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 37,
+                "input_index": 3,
+                "value": 25,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 25,
+                "input_index": 1,
+                "value": 24,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 37,
+                "input_index": 4,
+                "value": 27,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 37,
+                "input_index": 5,
+                "value": 32,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 35,
+                "input_index": 0,
+                "value": 29,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            18,
+            24,
+            26,
+            27,
+            29,
+            30,
+            32
+          ]
+        },
+        {
+          "resident_before": [
+            18,
+            24,
+            26,
+            27,
+            29,
+            30,
+            32
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 48,
+                "input_index": 2,
+                "value": 39,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 39,
+                "input_index": 1,
+                "value": 38,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 18
+              }
+            },
+            {
+              "Evict": {
+                "value": 24
+              }
+            },
+            {
+              "Evict": {
+                "value": 26
+              }
+            },
+            {
+              "Evict": {
+                "value": 27
+              }
+            },
+            {
+              "Admit": {
+                "value": 38
+              }
+            },
+            {
+              "Admit": {
+                "value": 39
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 41,
+                "input_index": 1,
+                "value": 40,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 43,
+                "input_index": 1,
+                "value": 42,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 45,
+                "input_index": 1,
+                "value": 44,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 47,
+                "input_index": 1,
+                "value": 46,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 55,
+                "input_index": 1,
+                "value": 30,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 55,
+                "input_index": 2,
+                "value": 32,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 55,
+                "input_index": 4,
+                "value": 50,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Evict": {
+                "value": 30
+              }
+            },
+            {
+              "Admit": {
+                "value": 50
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 52,
+                "input_index": 1,
+                "value": 51,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 54,
+                "input_index": 1,
+                "value": 53,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 53
+              }
+            }
+          ],
+          "resident_after": [
+            29,
+            32,
+            38,
+            39,
+            50,
+            53
+          ]
+        },
+        {
+          "resident_before": [
+            29,
+            32,
+            38,
+            39,
+            50,
+            53
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 62,
+                "input_index": 2,
+                "value": 32,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 62,
+                "input_index": 3,
+                "value": 39,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 56,
+                "input_index": 0,
+                "value": 29,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 59,
+                "input_index": 1,
+                "value": 58,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 61,
+                "input_index": 1,
+                "value": 60,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 71,
+                "input_index": 2,
+                "value": 50,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 64,
+                "input_index": 1,
+                "value": 63,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 29
+              }
+            },
+            {
+              "Evict": {
+                "value": 32
+              }
+            },
+            {
+              "Evict": {
+                "value": 38
+              }
+            },
+            {
+              "Evict": {
+                "value": 39
+              }
+            },
+            {
+              "Evict": {
+                "value": 50
+              }
+            },
+            {
+              "Admit": {
+                "value": 63
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 66,
+                "input_index": 1,
+                "value": 65,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 65
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 68,
+                "input_index": 1,
+                "value": 67,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 70,
+                "input_index": 1,
+                "value": 69,
+                "kind": "Reload"
+              }
+            }
+          ],
+          "resident_after": [
+            53,
+            63,
+            65
+          ]
+        },
+        {
+          "resident_before": [
+            53,
+            63,
+            65
+          ],
+          "events": [
+            {
+              "Admit": {
+                "value": 263
+              }
+            }
+          ],
+          "resident_after": [
+            263,
+            53,
+            63,
+            65
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            53,
+            63,
+            65
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 274,
+                "input_index": 1,
+                "value": 268,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 274,
+                "input_index": 2,
+                "value": 271,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 271,
+                "input_index": 0,
+                "value": 164,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 164
+              }
+            },
+            {
+              "Admit": {
+                "value": 271
+              }
+            }
+          ],
+          "resident_after": [
+            263,
+            53,
+            63,
+            65,
+            164,
+            271
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            53,
+            63,
+            65,
+            164,
+            271
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 276,
+                "input_index": 0,
+                "value": 271,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            263,
+            53,
+            63,
+            65,
+            164,
+            271
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            53,
+            63,
+            65,
+            164,
+            271
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 279,
+                "input_index": 0,
+                "value": 53,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 279,
+                "input_index": 1,
+                "value": 165,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 164
+              }
+            },
+            {
+              "Evict": {
+                "value": 271
+              }
+            },
+            {
+              "Admit": {
+                "value": 165
+              }
+            }
+          ],
+          "resident_after": [
+            263,
+            53,
+            63,
+            65,
+            165
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            53,
+            63,
+            65,
+            165
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 277,
+                "input_index": 0,
+                "value": 165,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 278,
+                "input_index": 0,
+                "value": 53,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            263,
+            53,
+            63,
+            65,
+            165
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            53,
+            63,
+            65,
+            165
+          ],
+          "events": [],
+          "resident_after": [
+            263,
+            53,
+            63,
+            65,
+            165
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            53,
+            63,
+            65,
+            165
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 286,
+                "input_index": 1,
+                "value": 281,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 286,
+                "input_index": 2,
+                "value": 283,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 283,
+                "input_index": 0,
+                "value": 63,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Evict": {
+                "value": 53
+              }
+            },
+            {
+              "Evict": {
+                "value": 165
+              }
+            },
+            {
+              "Admit": {
+                "value": 283
+              }
+            }
+          ],
+          "resident_after": [
+            263,
+            63,
+            65,
+            283
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            63,
+            65,
+            283
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 288,
+                "input_index": 0,
+                "value": 283,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            263,
+            63,
+            65,
+            283
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            63,
+            65,
+            283
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 291,
+                "input_index": 0,
+                "value": 65,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 291,
+                "input_index": 1,
+                "value": 78,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Evict": {
+                "value": 63
+              }
+            },
+            {
+              "Evict": {
+                "value": 283
+              }
+            },
+            {
+              "Admit": {
+                "value": 78
+              }
+            }
+          ],
+          "resident_after": [
+            263,
+            65,
+            78
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            65,
+            78
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 289,
+                "input_index": 0,
+                "value": 65,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 290,
+                "input_index": 0,
+                "value": 78,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            263,
+            65,
+            78
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            65,
+            78
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 295,
+                "input_index": 0,
+                "value": 82,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Evict": {
+                "value": 65
+              }
+            },
+            {
+              "Evict": {
+                "value": 78
+              }
+            },
+            {
+              "Admit": {
+                "value": 82
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 295,
+                "input_index": 1,
+                "value": 86,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Admit": {
+                "value": 86
+              }
+            }
+          ],
+          "resident_after": [
+            263,
+            82,
+            86
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            82,
+            86
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 293,
+                "input_index": 0,
+                "value": 82,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 294,
+                "input_index": 0,
+                "value": 86,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            263,
+            82,
+            86
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            82,
+            86
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 299,
+                "input_index": 0,
+                "value": 89,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Evict": {
+                "value": 82
+              }
+            },
+            {
+              "Evict": {
+                "value": 86
+              }
+            },
+            {
+              "Admit": {
+                "value": 89
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 299,
+                "input_index": 1,
+                "value": 94,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Admit": {
+                "value": 94
+              }
+            }
+          ],
+          "resident_after": [
+            263,
+            89,
+            94
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            89,
+            94
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 297,
+                "input_index": 0,
+                "value": 89,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 298,
+                "input_index": 0,
+                "value": 94,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            263,
+            89,
+            94
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            89,
+            94
+          ],
+          "events": [],
+          "resident_after": [
+            263,
+            89,
+            94
+          ]
+        },
+        {
+          "resident_before": [
+            263,
+            89,
+            94
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 304,
+                "input_index": 0,
+                "value": 263,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 304,
+                "input_index": 1,
+                "value": 303,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Evict": {
+                "value": 263
+              }
+            },
+            {
+              "Evict": {
+                "value": 89
+              }
+            },
+            {
+              "Evict": {
+                "value": 94
+              }
+            },
+            {
+              "Admit": {
+                "value": 303
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 306,
+                "input_index": 1,
+                "value": 301,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 306,
+                "input_index": 2,
+                "value": 302,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Admit": {
+                "value": 302
+              }
+            }
+          ],
+          "resident_after": [
+            303,
+            302
+          ]
+        },
+        {
+          "resident_before": [
+            303,
+            302
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 308,
+                "input_index": 0,
+                "value": 302,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 308,
+                "input_index": 1,
+                "value": 303,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            303,
+            302
+          ]
+        },
+        {
+          "resident_before": [
+            303,
+            302
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 311,
+                "input_index": 0,
+                "value": 187,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Evict": {
+                "value": 303
+              }
+            },
+            {
+              "Evict": {
+                "value": 302
+              }
+            },
+            {
+              "Admit": {
+                "value": 187
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 311,
+                "input_index": 1,
+                "value": 209,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Admit": {
+                "value": 209
+              }
+            }
+          ],
+          "resident_after": [
+            187,
+            209
+          ]
+        },
+        {
+          "resident_before": [
+            187,
+            209
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 309,
+                "input_index": 0,
+                "value": 187,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 310,
+                "input_index": 0,
+                "value": 209,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            187,
+            209
+          ]
+        },
+        {
+          "resident_before": [
+            187,
+            209
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 315,
+                "input_index": 0,
+                "value": 240,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Evict": {
+                "value": 187
+              }
+            },
+            {
+              "Evict": {
+                "value": 209
+              }
+            },
+            {
+              "Admit": {
+                "value": 240
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 315,
+                "input_index": 1,
+                "value": 262,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Admit": {
+                "value": 262
+              }
+            }
+          ],
+          "resident_after": [
+            240,
+            262
+          ]
+        },
+        {
+          "resident_before": [
+            240,
+            262
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 313,
+                "input_index": 0,
+                "value": 240,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 314,
+                "input_index": 0,
+                "value": 262,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            240,
+            262
+          ]
+        }
+      ],
+      "predicted_traffic": 32,
+      "floor": 32
+    },
+    {
+      "order": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ],
+      "steps": [
+        {
+          "resident_before": [],
+          "events": [],
+          "resident_after": []
+        },
+        {
+          "resident_before": [],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 3,
+                "input_index": 0,
+                "value": 1,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 3,
+                "input_index": 1,
+                "value": 2,
+                "kind": "Reload"
+              }
+            }
+          ],
+          "resident_after": []
+        },
+        {
+          "resident_before": [],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 6,
+                "input_index": 0,
+                "value": 4,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 6,
+                "input_index": 1,
+                "value": 5,
+                "kind": "Reload"
+              }
+            }
+          ],
+          "resident_after": []
+        },
+        {
+          "resident_before": [],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 13,
+                "input_index": 0,
+                "value": 8,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 8
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 12,
+                "input_index": 0,
+                "value": 7,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 12,
+                "input_index": 1,
+                "value": 11,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 11,
+                "input_index": 0,
+                "value": 9,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 9
+              }
+            },
+            {
+              "Admit": {
+                "value": 11
+              }
+            }
+          ],
+          "resident_after": [
+            8,
+            9,
+            11
+          ]
+        },
+        {
+          "resident_before": [
+            8,
+            9,
+            11
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 14,
+                "input_index": 0,
+                "value": 8,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 14,
+                "input_index": 1,
+                "value": 11,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            8,
+            9,
+            11
+          ]
+        },
+        {
+          "resident_before": [
+            8,
+            9,
+            11
+          ],
+          "events": [],
+          "resident_after": [
+            8,
+            9,
+            11
+          ]
+        },
+        {
+          "resident_before": [
+            8,
+            9,
+            11
+          ],
+          "events": [],
+          "resident_after": [
+            8,
+            9,
+            11
+          ]
+        },
+        {
+          "resident_before": [
+            8,
+            9,
+            11
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 22,
+                "input_index": 0,
+                "value": 18,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 8
+              }
+            },
+            {
+              "Evict": {
+                "value": 9
+              }
+            },
+            {
+              "Evict": {
+                "value": 11
+              }
+            },
+            {
+              "Admit": {
+                "value": 18
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 21,
+                "input_index": 0,
+                "value": 17,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 21,
+                "input_index": 1,
+                "value": 20,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 20,
+                "input_index": 1,
+                "value": 19,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 19
+              }
+            },
+            {
+              "Admit": {
+                "value": 20
+              }
+            }
+          ],
+          "resident_after": [
+            18,
+            19,
+            20
+          ]
+        },
+        {
+          "resident_before": [
+            18,
+            19,
+            20
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 23,
+                "input_index": 0,
+                "value": 18,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 23,
+                "input_index": 1,
+                "value": 20,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            18,
+            19,
+            20
+          ]
+        },
+        {
+          "resident_before": [
+            18,
+            19,
+            20
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 28,
+                "input_index": 0,
+                "value": 24,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 28,
+                "input_index": 1,
+                "value": 27,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 18
+              }
+            },
+            {
+              "Evict": {
+                "value": 19
+              }
+            },
+            {
+              "Evict": {
+                "value": 20
+              }
+            },
+            {
+              "Admit": {
+                "value": 27
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 29,
+                "input_index": 0,
+                "value": 25,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 25
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 29,
+                "input_index": 1,
+                "value": 26,
+                "kind": "Reload"
+              }
+            }
+          ],
+          "resident_after": [
+            27,
+            25
+          ]
+        },
+        {
+          "resident_before": [
+            27,
+            25
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 31,
+                "input_index": 0,
+                "value": 25,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 31,
+                "input_index": 1,
+                "value": 27,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            27,
+            25
+          ]
+        },
+        {
+          "resident_before": [
+            27,
+            25
+          ],
+          "events": [],
+          "resident_after": [
+            27,
+            25
+          ]
+        },
+        {
+          "resident_before": [
+            27,
+            25
+          ],
+          "events": [],
+          "resident_after": [
+            27,
+            25
+          ]
+        },
+        {
+          "resident_before": [
+            27,
+            25
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 38,
+                "input_index": 0,
+                "value": 34,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 38,
+                "input_index": 1,
+                "value": 37,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 27
+              }
+            },
+            {
+              "Evict": {
+                "value": 25
+              }
+            },
+            {
+              "Admit": {
+                "value": 37
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 39,
+                "input_index": 0,
+                "value": 35,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 35
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 39,
+                "input_index": 1,
+                "value": 36,
+                "kind": "Reload"
+              }
+            }
+          ],
+          "resident_after": [
+            37,
+            35
+          ]
+        },
+        {
+          "resident_before": [
+            37,
+            35
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 41,
+                "input_index": 0,
+                "value": 35,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 41,
+                "input_index": 1,
+                "value": 37,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            37,
+            35
+          ]
+        },
+        {
+          "resident_before": [
+            37,
+            35
+          ],
+          "events": [],
+          "resident_after": [
+            37,
+            35
+          ]
+        },
+        {
+          "resident_before": [
+            37,
+            35
+          ],
+          "events": [],
+          "resident_after": [
+            37,
+            35
+          ]
+        }
+      ],
+      "predicted_traffic": 91,
+      "floor": 91
+    },
+    {
+      "order": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "steps": [
+        {
+          "resident_before": [],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 5,
+                "input_index": 0,
+                "value": 1,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 1
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 4,
+                "input_index": 0,
+                "value": 0,
+                "kind": "Reload"
+              }
+            }
+          ],
+          "resident_after": [
+            1
+          ]
+        },
+        {
+          "resident_before": [
+            1
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 9,
+                "input_index": 0,
+                "value": 1,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 8,
+                "input_index": 1,
+                "value": 7,
+                "kind": "Reload"
+              }
+            }
+          ],
+          "resident_after": [
+            1
+          ]
+        },
+        {
+          "resident_before": [
+            1
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 15,
+                "input_index": 0,
+                "value": 11,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 15,
+                "input_index": 1,
+                "value": 14,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 1
+              }
+            },
+            {
+              "Admit": {
+                "value": 14
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 16,
+                "input_index": 0,
+                "value": 12,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 12
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 16,
+                "input_index": 1,
+                "value": 13,
+                "kind": "Reload"
+              }
+            }
+          ],
+          "resident_after": [
+            14,
+            12
+          ]
+        },
+        {
+          "resident_before": [
+            14,
+            12
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 18,
+                "input_index": 0,
+                "value": 12,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 18,
+                "input_index": 1,
+                "value": 14,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            14,
+            12
+          ]
+        },
+        {
+          "resident_before": [
+            14,
+            12
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 23,
+                "input_index": 0,
+                "value": 19,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 23,
+                "input_index": 1,
+                "value": 22,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 14
+              }
+            },
+            {
+              "Evict": {
+                "value": 12
+              }
+            },
+            {
+              "Admit": {
+                "value": 22
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 24,
+                "input_index": 0,
+                "value": 20,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 20
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 24,
+                "input_index": 1,
+                "value": 21,
+                "kind": "Reload"
+              }
+            }
+          ],
+          "resident_after": [
+            22,
+            20
+          ]
+        },
+        {
+          "resident_before": [
+            22,
+            20
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 26,
+                "input_index": 0,
+                "value": 20,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 26,
+                "input_index": 1,
+                "value": 22,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            22,
+            20
+          ]
+        },
+        {
+          "resident_before": [
+            22,
+            20
+          ],
+          "events": [],
+          "resident_after": [
+            22,
+            20
+          ]
+        },
+        {
+          "resident_before": [
+            22,
+            20
+          ],
+          "events": [],
+          "resident_after": [
+            22,
+            20
+          ]
+        },
+        {
+          "resident_before": [
+            22,
+            20
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 33,
+                "input_index": 0,
+                "value": 29,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 33,
+                "input_index": 1,
+                "value": 32,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 22
+              }
+            },
+            {
+              "Evict": {
+                "value": 20
+              }
+            },
+            {
+              "Admit": {
+                "value": 32
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 34,
+                "input_index": 0,
+                "value": 30,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 30
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 34,
+                "input_index": 1,
+                "value": 31,
+                "kind": "Reload"
+              }
+            }
+          ],
+          "resident_after": [
+            32,
+            30
+          ]
+        },
+        {
+          "resident_before": [
+            32,
+            30
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 36,
+                "input_index": 0,
+                "value": 30,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 36,
+                "input_index": 1,
+                "value": 32,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            32,
+            30
+          ]
+        }
+      ],
+      "predicted_traffic": 65,
+      "floor": 65
+    },
+    {
+      "order": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "steps": [
+        {
+          "resident_before": [],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 4,
+                "input_index": 0,
+                "value": 0,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 4,
+                "input_index": 1,
+                "value": 3,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 3
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 5,
+                "input_index": 0,
+                "value": 1,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 1
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 5,
+                "input_index": 1,
+                "value": 2,
+                "kind": "Reload"
+              }
+            }
+          ],
+          "resident_after": [
+            3,
+            1
+          ]
+        },
+        {
+          "resident_before": [
+            3,
+            1
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 7,
+                "input_index": 0,
+                "value": 1,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 7,
+                "input_index": 1,
+                "value": 3,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            3,
+            1
+          ]
+        },
+        {
+          "resident_before": [
+            3,
+            1
+          ],
+          "events": [],
+          "resident_after": [
+            3,
+            1
+          ]
+        },
+        {
+          "resident_before": [
+            3,
+            1
+          ],
+          "events": [],
+          "resident_after": [
+            3,
+            1
+          ]
+        },
+        {
+          "resident_before": [
+            3,
+            1
+          ],
+          "events": [],
+          "resident_after": [
+            3,
+            1
+          ]
+        },
+        {
+          "resident_before": [
+            3,
+            1
+          ],
+          "events": [],
+          "resident_after": [
+            3,
+            1
+          ]
+        },
+        {
+          "resident_before": [
+            3,
+            1
+          ],
+          "events": [],
+          "resident_after": [
+            3,
+            1
+          ]
+        },
+        {
+          "resident_before": [
+            3,
+            1
+          ],
+          "events": [],
+          "resident_after": [
+            3,
+            1
+          ]
+        }
+      ],
+      "predicted_traffic": 40,
+      "floor": 40
+    }
+  ]
+}
