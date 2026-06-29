@@ -178,6 +178,9 @@ impl<C: Counters> ReplayerVM<C> {
                 InstructionName::ZimopFMA => {
                     add_sub_family::mop::mop_fmamod::<C, R, F>(state, ram, instr, tracer)
                 }
+                InstructionName::ZimopTriAdd => {
+                    add_sub_family::mop::mop_tri_add::<C, R, F>(state, ram, instr, tracer)
+                }
                 InstructionName::ZicsrNonDeterminismRead => {
                     add_sub_family::non_determinism::nd_read::<C, R, ND>(
                         state, ram, instr, tracer, nd,
@@ -236,6 +239,9 @@ impl<C: Counters> ReplayerVM<C> {
                 }
                 InstructionName::Sra => {
                     binary_shifts_family::shifts::sra::<C, R>(state, ram, instr, tracer)
+                }
+                InstructionName::ZimopIXorRot => {
+                    binary_shifts_family::mopi::mopi_xor_rot::<C, R>(state, ram, instr, tracer)
                 }
 
                 InstructionName::Mul => mul_div::mul::<C, R>(state, ram, instr, tracer),
