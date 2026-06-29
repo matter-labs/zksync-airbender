@@ -628,6 +628,8 @@ pub fn verify_artifact(
                 security,
             )
             .map_err(|_| "recursion(unified) verification failed".to_string())?;
+            let (family_count, _, _) = artifact.proof.get_proof_counts();
+            ensure_unified_recursion_target_converged(artifact.security_level, family_count)?;
             ensure_recursion_chain_binds_program(&output, &unified_level.hash_chain)?;
             Ok(output)
         }
@@ -691,6 +693,22 @@ fn ensure_unrolled_target_binds_program(
     expected_unrolled_chain: &[u32; 8],
 ) -> Result<(), String> {
     ensure_recursion_chain_binds_program(verifier_output, expected_unrolled_chain)
+}
+
+fn ensure_unified_recursion_target_converged(
+    security_level: SecurityLevel,
+    family_count: usize,
+) -> Result<(), String> {
+    if security_level.unified_recursion_has_converged(family_count) {
+        return Ok(());
+    }
+
+    Err(format!(
+        "recursion(unified) proof has not converged for {:?}: got {} family proof(s), need {}",
+        security_level,
+        family_count,
+        security_level.unified_recursion_target_family_proofs()
+    ))
 }
 
 fn make_artifact(
@@ -1222,5 +1240,22 @@ mod recursion_binding_tests {
 
         let unrolled_output = verifier_output_with_chain(unrolled_chain);
         assert!(ensure_unrolled_target_binds_program(&unrolled_output, &unrolled_chain).is_ok());
+    }
+
+    #[test]
+    fn rejects_unified_target_before_security100_convergence() {
+        let err = ensure_unified_recursion_target_converged(SecurityLevel::Security100, 1)
+            .expect_err("Security100 must require two unified family proofs");
+        assert!(
+            err.contains("has not converged"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn accepts_unified_target_after_security100_convergence() {
+        assert!(
+            ensure_unified_recursion_target_converged(SecurityLevel::Security100, 2).is_ok()
+        );
     }
 }
