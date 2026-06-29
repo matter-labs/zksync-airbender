@@ -195,7 +195,7 @@ fn decode_root_occurrence_order(inst: &OracleInstance, genome: &Genome) -> Vec<u
 /// `u` in canonical (gate-emission, i.e. ascending occurrence-index) order. Built
 /// from `relation_units`' per-occurrence `unit_of` (ids are 0..n_units, contiguous,
 /// assigned in encounter order). A 1-output relation / cache root is a singleton.
-fn unit_members(unit_of: &[u32]) -> Vec<Vec<usize>> {
+pub(crate) fn unit_members(unit_of: &[u32]) -> Vec<Vec<usize>> {
     let n_units = unit_of.iter().copied().max().map_or(0, |m| m as usize + 1);
     let mut units = vec![Vec::new(); n_units];
     for (occ, &u) in unit_of.iter().enumerate() {
@@ -206,7 +206,7 @@ fn unit_members(unit_of: &[u32]) -> Vec<Vec<usize>> {
 
 /// True iff every unit's members form one contiguous run in `order` (used to test
 /// whether an arbitrary — e.g. flat-optimized — occurrence order is atomicity-feasible).
-fn order_keeps_units_contiguous(order: &[usize], units: &[Vec<usize>]) -> bool {
+pub(crate) fn order_keeps_units_contiguous(order: &[usize], units: &[Vec<usize>]) -> bool {
     let mut pos = vec![0usize; order.len()];
     for (i, &occ) in order.iter().enumerate() {
         pos[occ] = i;
@@ -241,7 +241,7 @@ fn decode_unit_order(unit_key: &[f64]) -> Vec<usize> {
 /// per-occurrence decode (the genome is then per-occurrence, length == roots).
 /// A unit is indivisible by construction, so every order this produces keeps each
 /// relation's roots contiguous — atomicity is structural, not a re-projection.
-fn decode_grouped_occurrence_order(
+pub(crate) fn decode_grouped_occurrence_order(
     inst: &OracleInstance,
     genome: &Genome,
     units: &[Vec<usize>],
@@ -345,7 +345,7 @@ pub fn score_candidate(
 /// Group-atomic scoring: the genome is unit-keyed and decoded via `units` so each
 /// relation's roots stay contiguous (see [`decode_grouped_occurrence_order`]). An
 /// empty `units` is identical to [`score_candidate`] (flat, per-occurrence genome).
-fn score_candidate_grouped(
+pub(crate) fn score_candidate_grouped(
     inst: &OracleInstance,
     sites: &[DemandSite],
     genome: &Genome,
@@ -362,7 +362,7 @@ fn score_candidate_with_trace(
     score_candidate_internal(inst, sites, genome, true, &[])
 }
 
-fn score_candidate_internal(
+pub(crate) fn score_candidate_internal(
     inst: &OracleInstance,
     sites: &[DemandSite],
     genome: &Genome,
@@ -544,7 +544,7 @@ fn recompute_traffic_for(inst: &OracleInstance, value: u32) -> u64 {
 /// traversal (no search), so it is a hard upper bound: any feasible schedule reuses at
 /// least as much, hence `floor ≤ optimizer_traffic ≤ no_cache_ceiling`. A scored result
 /// above this means the scorer/search is broken, not merely sub-optimal.
-fn no_cache_ceiling(inst: &OracleInstance, sites: &[DemandSite]) -> u64 {
+pub(crate) fn no_cache_ceiling(inst: &OracleInstance, sites: &[DemandSite]) -> u64 {
     sites
         .iter()
         .map(|s| recompute_traffic_for(inst, s.value))
@@ -1175,7 +1175,13 @@ pub fn perturb_one_gene(genome: &Genome, index: usize, delta: f64) -> Genome {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) use tests::{
+    optimize_from_population_grouped, project_genome_to_units, seeded_smoke_population,
+    OptimizerResult,
+};
+
+#[cfg(test)]
+pub(crate) mod tests {
     use super::*;
     use crate::s3_gap::instance::{OracleInstance, OracleNode};
 
@@ -3031,9 +3037,9 @@ mod tests {
     }
 
     #[derive(Clone, Debug)]
-    struct OptimizerResult {
-        best_genome: Genome,
-        best_score: CandidateScore,
+    pub(crate) struct OptimizerResult {
+        pub(crate) best_genome: Genome,
+        pub(crate) best_score: CandidateScore,
         evals: usize,
         iterations: usize,
         beam_states: usize,
@@ -3665,7 +3671,7 @@ mod tests {
     /// occurrence orders, so each gate relation's roots stay contiguous by
     /// construction — the unit is the indivisible scheduling atom. `units == &[]` is
     /// identical to [`optimize_from_population`] (flat, per-occurrence genome).
-    fn optimize_from_population_grouped(
+    pub(crate) fn optimize_from_population_grouped(
         inst: &OracleInstance,
         sites: &[DemandSite],
         seeds: Vec<Genome>,
@@ -4174,7 +4180,7 @@ mod tests {
     /// members, so the unit sorts where the flat order would place its earliest root.
     /// Used to seed the grouped arm from the SAME population as the flat arm, isolating
     /// the move-space effect from seed quality (the seed asymmetry the review flagged).
-    fn project_genome_to_units(flat: &Genome, units: &[Vec<usize>]) -> Genome {
+    pub(crate) fn project_genome_to_units(flat: &Genome, units: &[Vec<usize>]) -> Genome {
         let root_order_key = units
             .iter()
             .map(|members| {
@@ -4516,7 +4522,7 @@ mod tests {
     /// distinct runs explore distinct random starts (the structured neutral / reversed /
     /// reuse-weighted anchors are kept in every run). `run_offset == 0` reproduces
     /// `smoke_genome_population` exactly. Used to measure between-run search variance.
-    fn seeded_smoke_population(
+    pub(crate) fn seeded_smoke_population(
         inst: &OracleInstance,
         sites: &[DemandSite],
         total: usize,
