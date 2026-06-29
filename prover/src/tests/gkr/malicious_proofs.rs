@@ -20,10 +20,9 @@ use worker::Worker;
 const TRACE_LEN_LOG2: usize = 24;
 const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
-// jump_branch_slt multiplicity column indices (from compiled circuit witness_layout)
-const MULTIPLICITY_COL_RANGE_CHECK_16: usize = 25;
-const MULTIPLICITY_COL_TIMESTAMP: usize = 26;
-const MULTIPLICITY_COL_GENERIC: usize = 27;
+const MULTIPLICITY_COL_RANGE_CHECK_16: usize = 26;
+const MULTIPLICITY_COL_TIMESTAMP: usize = 27;
+const MULTIPLICITY_COL_GENERIC: usize = 28;
 
 /// Generate a jump_branch_slt proof with a witness mutation applied before proving.
 fn generate_proof(

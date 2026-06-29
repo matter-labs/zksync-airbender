@@ -33,6 +33,7 @@ OPT_IN_STEPS=(malicious)
 MODE=""                            # set by subcommand
 BLAKE="blake2_with_compression"
 VARIANT="caches"
+ENCODING="coeff"
 SECURITY_LEVEL="80"
 PROVE_EMPTY=false
 SELF_CHECKS=true
@@ -63,6 +64,8 @@ Options:
   --blake V             blake2_with_compression (default) | blake2_g_function | special_opcodes_extension
                         Propagated to prover-side program selection via GKR_BLAKE.
   --variant V           caches (default) | no_caches
+  --encoding ENC        coeff (default) | eval (WHIR leaf encoding)
+                        Forwarded as the eval_leaves feature to prover + generator.
   --security-level L    80 (default) | 100   (mutually exclusive — run separately)
   --prove-empty         Prove every applicable circuit even if program made 0 calls.
                         Forwarded via GKR_PROVE_EMPTY.
@@ -136,6 +139,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help) usage ;;
     --blake) BLAKE="$2"; shift 2 ;;
     --variant) VARIANT="$2"; shift 2 ;;
+    --encoding) ENCODING="$2"; shift 2 ;;
     --security-level) SECURITY_LEVEL="$2"; shift 2 ;;
     --prove-empty) PROVE_EMPTY=true; shift ;;
     --no-self-checks) SELF_CHECKS=false; shift ;;
@@ -247,6 +251,19 @@ if [[ "$VARIANT" = "no_caches" ]]; then
   GENERATOR_FEATURES="${GENERATOR_FEATURES},no_caches"
   VARIANT_FEATURES=(--features no_caches)
 fi
+
+# Leaf encoding: `eval_leaves` switches the prover commit and the generated
+# verifier to evaluation form. Default (coeff) needs no feature. The verifier
+# crate needs nothing extra — the generated code is self-contained. Appended to
+# every prover invocation so committed proofs always match the generated verifier.
+ENCODING_PROVER_FEATURES=()
+case "$ENCODING" in
+  coeff) ;;
+  eval)
+    GENERATOR_FEATURES="${GENERATOR_FEATURES},eval_leaves"
+    ENCODING_PROVER_FEATURES=(--features eval_leaves) ;;
+  *) die "--encoding must be coeff or eval. Got: $ENCODING" ;;
+esac
 
 # Prover-crate additive features. Neither gkr_self_checks nor gkr_check_satisfied
 # is in the prover crate's defaults; each is opt-in via --features.
@@ -374,6 +391,7 @@ step_prover() {
     run_prover_cargo \
       "${PROVER_CARGO_FEATURE_ARGS[@]+"${PROVER_CARGO_FEATURE_ARGS[@]}"}" \
       "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
+      "${ENCODING_PROVER_FEATURES[@]+"${ENCODING_PROVER_FEATURES[@]}"}" \
       -- --nocapture "$filter"
 }
 
@@ -434,6 +452,7 @@ step_malicious() {
         run_prover_cargo \
           --no-default-features --features prover,bincode \
           "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
+          "${ENCODING_PROVER_FEATURES[@]+"${ENCODING_PROVER_FEATURES[@]}"}" \
           -- --ignored --nocapture malicious_proof
       run_step "Verify malicious proofs rejected (soundness gap tests)" \
         env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier \
@@ -445,6 +464,7 @@ step_malicious() {
         run_prover_cargo \
           "${PROVER_CARGO_FEATURE_ARGS[@]+"${PROVER_CARGO_FEATURE_ARGS[@]}"}" \
           "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
+          "${ENCODING_PROVER_FEATURES[@]+"${ENCODING_PROVER_FEATURES[@]}"}" \
           -- --nocapture unified_negative
       # Proof layer: corrupt the witness and PROVE it. Default features (no
       # PROVER_CARGO_FEATURE_ARGS) ⇒ no gkr_self_checks (the bad witness reaches
@@ -456,6 +476,7 @@ step_malicious() {
       run_step "Generate malicious unified proofs (corrupt witness, no self-checks)" \
         run_prover_cargo \
           "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
+          "${ENCODING_PROVER_FEATURES[@]+"${ENCODING_PROVER_FEATURES[@]}"}" \
           -- --ignored --nocapture generate_malicious_unified_proofs
       run_step "Verify malicious unified proofs rejected (soundness gap tests)" \
         env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier \

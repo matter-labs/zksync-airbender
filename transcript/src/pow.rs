@@ -59,7 +59,7 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         initial_state: [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
         base_input: [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
     ) -> (Seed, u64) {
-        let threshold = u32::MAX.checked_shr(pow_bits).unwrap_or(0);
+        let threshold = Self::pow_threshold(pow_bits);
         let mut input = base_input;
         for challenge in 0u64..(BLAKE2S_NO_RESULT - 1) {
             if Self::pow_challenge_matches(&mut input, &initial_state, challenge, threshold) {
@@ -81,7 +81,7 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         use std::sync::atomic::Ordering;
 
         let result = std::sync::Arc::new(AtomicU64::new(BLAKE2S_NO_RESULT));
-        let threshold = u32::MAX.checked_shr(pow_bits).unwrap_or(0);
+        let threshold = Self::pow_threshold(pow_bits);
         let pow_rounds_per_invocation = BLAKE2S_ROUNDS_PER_INVOCAITON as u64;
         let num_workers = worker.num_cores as u64;
 
