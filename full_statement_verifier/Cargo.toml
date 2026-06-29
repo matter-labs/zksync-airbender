@@ -24,7 +24,7 @@ verifiers = []
 # reduce the dependency graph / artifact size, which might be important
 # for certain use cases (e.g., WASM).
 unified_verifier_only = []
-unified_verifier_only_security_80 = []
+unified_verifier_only_security_80 = ["unified_verifier_only", "verifier_common/security_80"]
 
 security_80 = ["verifiers", "verifier_common/security_80"]
 security_100 = ["verifiers", "verifier_common/security_100"]

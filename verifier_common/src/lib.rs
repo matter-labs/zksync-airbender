@@ -86,13 +86,18 @@ pub const MAX_PERMUTATION_ELEMENTS_LOG2: usize = {
 };
 
 /// Schwartz–Zippel base soundness (in bits) of the shared memory/delegation permutation
-/// argument *before* any proof-of-work. The `- 2` (factor 4) is a conservative
-/// cushion for the linearization coupling multiple key components plus the read/write
-/// two-sidedness of the grand product.
+/// argument *before* any proof-of-work. Each permutation key is a degree-1 affine form in the
+/// drawn challenges (`AddrSpace + Σ data_limbᵢ·χᵢ + γ`, with the χ independent — NOT powers of one
+/// challenge), so the collision polynomial `∏read − ∏write` has total degree = the element count,
+/// giving an EXACT SZ base of `field_size_log2 - max_elements_log2` (= 123 - 40 = 83 here). The
+/// `- 2` is therefore NOT a degree correction (there is no hidden degree inflation) but a
+/// deliberate 2-bit (factor-4) conservative margin on top of that exact bound, absorbing read/write
+/// two-sidedness + any linearization slack
 const fn permutation_argument_base_security_bits(
     field_size_log2: usize,
     max_elements_log2: usize,
 ) -> usize {
+    assert!(field_size_log2 > max_elements_log2 + 2);
     field_size_log2 - max_elements_log2 - 2
 }
 
@@ -109,17 +114,17 @@ const fn pow_bits_for_target_security(
 }
 
 pub const fn memory_delegation_pow_bits(level: ::prover::definitions::SecurityLevel) -> usize {
-    use ::prover::definitions::SecurityLevel;
-    let security_bits = match level {
-        SecurityLevel::Sec80 => 80,
-        SecurityLevel::Sec100 => 100,
-    };
     pow_bits_for_target_security(
-        security_bits,
+        level.security_bits(),
         BABYBEAR_EXT4_SIZE_LOG2,
         MAX_PERMUTATION_ELEMENTS_LOG2,
     )
 }
+
+#[cfg(all(feature = "security_80", feature = "security_100"))]
+compile_error!(
+    "features `security_80` and `security_100` are mutually exclusive — enable exactly one"
+);
 
 #[cfg(feature = "security_100")]
 pub const MEMORY_DELEGATION_POW_BITS: usize =

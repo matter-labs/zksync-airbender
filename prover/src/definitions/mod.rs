@@ -42,6 +42,13 @@ impl SecurityLevel {
             SecurityLevel::Sec100 => "sec_100",
         }
     }
+
+    pub const fn security_bits(self) -> usize {
+        match self {
+            SecurityLevel::Sec80 => 80,
+            SecurityLevel::Sec100 => 100,
+        }
+    }
 }
 
 use cs::definitions::gkr::AddressSpaceType;
