@@ -84,7 +84,7 @@ fn resolve_source_field(
 
 /// Resolve an expr's field, recursing through `Add`/`Mul` and resolving cross-
 /// layer reads from `cross_layer`.
-fn resolve_expr_field(
+pub(crate) fn resolve_expr_field(
     id: ExprId,
     layer: &DagLayer,
     cross_layer: &HashMap<ReadPlace, FieldKind>,
@@ -111,6 +111,26 @@ fn resolve_expr_field(
             }
         }
     }
+}
+
+/// The cross-layer sink-field map accumulated from layers `0..upto_layer`, exactly as
+/// `validate()` publishes it ([validate.rs] sink-publish loop). Used by schedule validation
+/// to resolve the field/width of an `ExprId` whose cone reads a prior layer's output/cache.
+pub(crate) fn cross_layer_field_map_upto(
+    circuit: &DagCircuit,
+    upto_layer: usize,
+) -> std::collections::HashMap<ReadPlace, FieldKind> {
+    let mut cross_layer = std::collections::HashMap::new();
+    for layer in circuit.layers.iter().take(upto_layer) {
+        for root in &layer.roots {
+            if let Some(sink) = &root.materialize {
+                if let Some(place) = sink_read_place(&sink.kind) {
+                    cross_layer.insert(place, sink.field);
+                }
+            }
+        }
+    }
+    cross_layer
 }
 
 // ── Per-source field-kind invariants (spec §7) ───────────────────────────────
@@ -1965,5 +1985,42 @@ mod tests {
             err.contains("neither materialize nor claim"),
             "error should mention degenerate shape, got: {err}"
         );
+    }
+
+    // ── Task 2: cross-layer field resolver public API ─────────────────────────
+
+    #[test]
+    fn cross_layer_resolver_resolves_ext_cache_output() {
+        use crate::gkr_compiler::dag_ir::*;
+        // Layer 0 produces one Ext value materialized as Cache{layer:0, offset:0}.
+        let l0 = DagLayer {
+            sources: vec![SourceInfo { kind: SourceKind::Constant { value: 1 } }],
+            exprs: vec![Expr::Source(SourceId(0))],
+            roots: vec![Root {
+                expr: ExprId(0),
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Cache { layer: 0, offset: 0 },
+                    field: FieldKind::Ext,
+                }),
+                claim: None,
+            }],
+            batching: BatchingOrder { roots: vec![] },
+            resolutions: std::collections::BTreeMap::new(),
+        };
+        // Layer 1 reads that cache output.
+        let l1 = DagLayer {
+            sources: vec![SourceInfo {
+                kind: SourceKind::Read { place: ReadPlace::CacheOutput { layer: 0, offset: 0 } },
+            }],
+            exprs: vec![Expr::Source(SourceId(0))],
+            roots: vec![],
+            batching: BatchingOrder { roots: vec![] },
+            resolutions: std::collections::BTreeMap::new(),
+        };
+        let circuit = DagCircuit { layers: vec![l0, l1], globals: DagGlobals::default() };
+
+        let cross = cross_layer_field_map_upto(&circuit, 1);
+        let f = resolve_expr_field(ExprId(0), &circuit.layers[1], &cross).expect("resolves");
+        assert_eq!(f, FieldKind::Ext);
     }
 }
