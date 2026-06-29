@@ -8,8 +8,8 @@ use ::field::baby_bear::base::BabyBearField;
 use ::field::Field;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use cs::gkr_circuits::unified_reduced_machine::{
-    FAMILY_1_FLAG_OFFSET, FAMILY_2_FLAG_OFFSET, FAMILY_3_FLAG_OFFSET, FAMILY_4_LW_BIT,
-    FAMILY_4_SW_BIT,
+    FAMILY_1_FLAG_OFFSET, FAMILY_1_TRI_ADD_BIT, FAMILY_2_FLAG_OFFSET, FAMILY_3_FLAG_OFFSET,
+    FAMILY_4_LW_BIT, FAMILY_4_SW_BIT,
 };
 use proptest::prelude::*;
 use riscv_transpiler::vm::*;
@@ -88,7 +88,9 @@ fn build_satisfying_trace_with_mutation(
     };
 
     let config = ProgramConfig::multi_family_smoke_blake_g_function();
-    let vm = run_vm_and_capture::<CountersT>(&config, &worker);
+    let vm = run_vm_and_capture::<CountersT, riscv_transpiler::ir::ReducedMachineDecoderConfig>(
+        &config, &worker,
+    );
 
     let num_calls = vm
         .counters
@@ -182,6 +184,31 @@ fn slt_rd_write_high_limb_nonzero_rejected() {
     assert!(
         !check_satisfied(&circuit, &full_trace),
         "expected SLT rd_write_limbs[1] = 0x1234 mutation to fail check_satisfied"
+    );
+}
+
+#[test]
+fn tri_add_output_low_corruption_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let tri_add_addr =
+            find_base_layer_address(circuit, &format!("family_bit[{FAMILY_1_TRI_ADD_BIT}]"));
+        let out_lo_addr = find_base_layer_address(circuit, "rd/mem write write_value[0]");
+        let tri_add_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, tri_add_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one tri-add");
+        // Flip out_low to a different 16-bit value (0 ↔ 1) so the implicit top-level RC
+        // can't be what rejects — only the tri-add low-limb constraint should.
+        let cur = read_cell(trace, out_lo_addr, tri_add_row);
+        let wrong = if cur == BabyBearField::ZERO {
+            BabyBearField::ONE
+        } else {
+            BabyBearField::ZERO
+        };
+        write_cell(trace, out_lo_addr, tri_add_row, wrong);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected tri-add out_low corruption to fail check_satisfied (3-input add low-limb constraint)"
     );
 }
 
@@ -814,7 +841,9 @@ fn baseline_trace_is_memory_consistent() {
     };
 
     let config = ProgramConfig::multi_family_smoke_blake_g_function();
-    let vm = run_vm_and_capture::<CountersT>(&config, &worker);
+    let vm = run_vm_and_capture::<CountersT, riscv_transpiler::ir::ReducedMachineDecoderConfig>(
+        &config, &worker,
+    );
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
@@ -870,7 +899,9 @@ fn generate_malicious_unified_proof(
         }
         _ => ProgramConfig::multi_family_smoke_blake_g_function(),
     };
-    let vm = run_vm_and_capture::<CountersT>(&config, &worker);
+    let vm = run_vm_and_capture::<CountersT, riscv_transpiler::ir::ReducedMachineDecoderConfig>(
+        &config, &worker,
+    );
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();

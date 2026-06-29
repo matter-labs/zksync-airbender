@@ -69,6 +69,23 @@ fn fma_mod(a: u32, b: u32, mut c: u32) -> u32 {
 }
 
 #[inline(never)]
+fn tri_add(a: u32, b: u32, mut c: u32) -> u32 {
+    // Unified-only 3-input add: c = a + b + c (wrapping u32). Like fma (idx 3) the
+    // destination is also read (rd_old is the third addend), so use `inlateout`.
+    unsafe {
+        core::arch::asm!(
+            "mop.rr.{idx} {c}, {a}, {b}",
+            a = in(reg) a,
+            b = in(reg) b,
+            c = inlateout(reg) c,
+            idx = const 4,
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+    c
+}
+
+#[inline(never)]
 fn mul_mod(a: u32, b: u32) -> u32 {
     let rd;
     unsafe {
@@ -184,7 +201,11 @@ unsafe fn workload() -> ! {
     let mul_out = mul_mod(seed, n);
     let add_out = add_mod(seed, n);
     let sub_out = sub_mod(seed, n);
-    let sum = sum.wrapping_add(add_out).wrapping_add(sub_out);
+    let tri_out = tri_add(seed, n, sum);
+    let sum = sum
+        .wrapping_add(add_out)
+        .wrapping_add(sub_out)
+        .wrapping_add(tri_out);
 
     zksync_os_finish_success(&[sum, slt_acc, sltu_acc, n, seed, blake_out, fma_out, mul_out]);
 }

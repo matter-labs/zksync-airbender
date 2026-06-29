@@ -31,9 +31,10 @@ fn run_unified_test(level: SecurityLevel) {
         blake_g_function: Some(super::blake2_g_function::witness_eval_fn),
     };
 
-    let vm = super::orchestration::common::run_vm_and_capture::<DelegationsAndUnifiedCounters>(
-        &config, &worker,
-    );
+    let vm = super::orchestration::common::run_vm_and_capture::<
+        DelegationsAndUnifiedCounters,
+        riscv_transpiler::ir::ReducedMachineDecoderConfig,
+    >(&config, &worker);
     let delegation_call_counts = DelegationCallCounts {
         blake: vm.counters.blake_calls,
         bigint: vm.counters.bigint_calls,
