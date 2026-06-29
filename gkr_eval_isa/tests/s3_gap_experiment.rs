@@ -1128,3 +1128,69 @@ fn replay_plan_matches_score_and_reproduces_residency() {
         assert_eq!(resident, after, "step {si}: events must reproduce resident_after");
     }
 }
+
+// ── Task 6: id-bridge helpers + order-bridge binding gate ─────────────────────
+
+/// Atom roots in walk order: roots that are both materialized (claim-bearing Output)
+/// and contribute to the oracle's occurrence list — i.e. `materialize.is_some() &&
+/// claim.is_some()`. Matches `extract_instance`'s `top_exprs` predicate exactly.
+fn atom_root_ids(layer: &DagLayer) -> Vec<RootId> {
+    layer
+        .roots
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.materialize.is_some() && r.claim.is_some())
+        .map(|(i, _)| RootId(i as u32))
+        .collect()
+}
+
+/// Reorder `atom_roots` by `occ_order` (an occurrence-index permutation from the
+/// metaheuristic) into a `Vec<RootId>` over production root ids.
+fn bridge_order(occ_order: &[usize], atom_roots: &[RootId]) -> Vec<RootId> {
+    occ_order.iter().map(|&occ| atom_roots[occ]).collect()
+}
+
+/// Invert the `remap` from `extract_instance_with_remap` (old ExprId.0 → node-id)
+/// to a node-id → old ExprId.0 map (used by the producer in Task 7).
+fn invert_remap(remap: &HashMap<u32, u32>) -> HashMap<u32, u32> {
+    remap.iter().map(|(&old_eid, &node)| (node, old_eid)).collect()
+}
+
+#[test]
+fn order_bridge_binding_holds() {
+    use s3_gap::instance::{extract_instance_with_remap, relation_units};
+    use s3_planner::metaheuristic::tests::{project_genome_to_units, seeded_smoke_population};
+    use s3_planner::metaheuristic::{
+        decode_grouped_occurrence_order, enumerate_demand_sites, order_keeps_units_contiguous,
+        unit_members,
+    };
+
+    // Known-present fixture: assert the load, don't silently return.
+    let (layer, cross) = try_load_l0("mem_word_only_layout_gkr.json").expect("mem_word_only L0 must load");
+    let (inst, remap) = extract_instance_with_remap(&layer, &cross, REAL_BUDGET);
+    assert!(!inst.roots.is_empty(), "mem_word_only L0 must have atom roots");
+    let sites = enumerate_demand_sites(&inst);
+    let units = unit_members(&relation_units(&layer));
+    let flat = seeded_smoke_population(&inst, &sites, 1, 0);
+    let genome = project_genome_to_units(&flat[0], &units);
+
+    let atom_roots = atom_root_ids(&layer);
+    assert_eq!(atom_roots.len(), inst.roots.len(), "one atom root per occurrence");
+
+    // THE BINDING (non-tautological): the producer's atom-walk order matches extract_instance's
+    // occurrence order, verified through the remap.
+    for occ in 0..inst.roots.len() {
+        let expr0 = layer.roots[atom_roots[occ].0 as usize].expr.0;
+        assert_eq!(
+            remap.get(&expr0).copied(),
+            Some(inst.roots[occ]),
+            "atom_roots[{occ}] must map to inst.roots[{occ}] via the remap"
+        );
+    }
+
+    // bridge_order + unit contiguity (both used by the producer).
+    let occ_order = decode_grouped_occurrence_order(&inst, &genome, &units);
+    let order = bridge_order(&occ_order, &atom_roots);
+    assert_eq!(order.len(), occ_order.len());
+    assert!(order_keeps_units_contiguous(&occ_order, &units), "unit contiguity");
+}
