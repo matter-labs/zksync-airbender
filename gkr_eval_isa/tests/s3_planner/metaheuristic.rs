@@ -334,6 +334,45 @@ enum EvictCause {
     Transient { width: usize },
 }
 
+/// Per-step action stream emitted by [`replay_plan`]. One `StepPlanRaw` is produced
+/// per root occurrence (even for `real_dram`/infeasible roots, which contribute an
+/// empty-event step with `resident_after == resident_before`). The stream is
+/// node-id-keyed and behavior-preserving: it records state the scoring replay already
+/// computes, so replaying `events` from `resident_before` reproduces `resident_after`.
+///
+/// `resident_before` is snapshotted AFTER `enforce_cone_fit` (so cone-fit transient
+/// evictions are absorbed by it and are NOT events — spec §3); `resident_after` after
+/// `finish_root`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StepPlanRaw {
+    pub(crate) resident_before: Vec<u32>,
+    pub(crate) events: Vec<ReplayEventRaw>,
+    pub(crate) resident_after: Vec<u32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ReplayEventRaw {
+    Demand {
+        consumer: u32,
+        input_index: u32,
+        value: u32,
+        kind: DemandKindRaw,
+    },
+    Admit {
+        value: u32,
+    },
+    Evict {
+        value: u32,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DemandKindRaw {
+    Resident,
+    Reload,
+    Recompute,
+}
+
 pub fn score_candidate(
     inst: &OracleInstance,
     sites: &[DemandSite],
@@ -402,20 +441,74 @@ pub(crate) fn score_candidate_internal(
     }
 
     let trace = replay.trace.take().unwrap_or_default();
-    let score = CandidateScore {
-        traffic: replay.traffic,
-        instrs: replay.instrs,
-        feasible: replay.feasible,
-        order: occurrence_order
-            .into_iter()
-            .map(|root_occurrence| inst.roots[root_occurrence])
-            .collect(),
-        admitted: replay.admitted,
-        evicted: replay.evicted,
-        dormant_sites: replay.dormant_sites,
-        admit_stats: replay.admit_stats,
-    };
+    let score = replay.into_score(&occurrence_order);
     (score, trace)
+}
+
+/// Behavior-preserving instrumentation: re-runs the SAME group-atomic scoring replay
+/// over `genome` and additionally emits the per-step action stream. The returned
+/// `CandidateScore` is identical to [`score_candidate_grouped`] for the same genome
+/// (proven by the parity gate in `s3_gap_experiment.rs`); the second element is one
+/// [`StepPlanRaw`] per root occurrence.
+///
+/// It OWNS the per-occurrence loop (rather than calling `compute_root`) so exactly one
+/// step is pushed per occurrence even when `compute_root` would early-return
+/// (`real_dram` / infeasible). The owned loop reproduces `compute_root` exactly:
+/// `enforce_cone_fit` (guarded by feasibility, matching `compute_root`'s leading
+/// guard) → `compute_root_body` (guarded) → `finish_root`. `resident_before` is
+/// snapshotted between `enforce_cone_fit` and the body so cone-fit transient evicts are
+/// absorbed into it and are NOT events; `resident_after` after `finish_root`.
+pub(crate) fn replay_plan(
+    inst: &OracleInstance,
+    sites: &[DemandSite],
+    genome: &Genome,
+    units: &[Vec<usize>],
+) -> (CandidateScore, Vec<StepPlanRaw>) {
+    assert_eq!(
+        genome.admit_bias.len(),
+        sites.len(),
+        "admit_bias length must match demand-site count"
+    );
+    assert_eq!(
+        genome.recovery_bias.len(),
+        sites.len(),
+        "recovery_bias length must match demand-site count"
+    );
+    assert_eq!(
+        genome.keep_after_use_bias.len(),
+        sites.len(),
+        "keep_after_use_bias length must match demand-site count"
+    );
+    assert_normalized_genome(genome);
+
+    let occurrence_order = decode_grouped_occurrence_order(inst, genome, units);
+    let classes = classify_values(inst);
+    let mut replay = Replay::new(inst, sites, genome, classes, &occurrence_order, false);
+    replay.step_events = Some(Vec::new());
+
+    let mut steps = Vec::with_capacity(occurrence_order.len());
+    for &occ in &occurrence_order {
+        // Reproduce `compute_root` exactly (leading feasibility guard → cone-fit →
+        // re-check → body), so scoring stays identical regardless of the early-outs.
+        if replay.feasible {
+            replay.enforce_cone_fit(occ);
+        }
+        let resident_before = replay.resident_snapshot();
+        if replay.feasible {
+            replay.compute_root_body(occ);
+        }
+        replay.finish_root(occ);
+        let resident_after = replay.resident_snapshot();
+        let events = std::mem::take(replay.step_events.as_mut().unwrap());
+        steps.push(StepPlanRaw {
+            resident_before,
+            events,
+            resident_after,
+        });
+    }
+
+    let score = replay.into_score(&occurrence_order);
+    (score, steps)
 }
 
 struct Replay<'a> {
@@ -444,6 +537,10 @@ struct Replay<'a> {
     dormant_sites: u64,
     admit_stats: AdmitStats,
     trace: Option<CacheTrace>,
+    /// Optional per-step event accumulator for [`replay_plan`]. `None` in normal
+    /// scoring → every emit point is a no-op → the scoring path is byte-identical.
+    /// `replay_plan` sets it to `Some(vec![])` and drains it once per occurrence.
+    step_events: Option<Vec<ReplayEventRaw>>,
 }
 
 fn find_site_in(
@@ -592,6 +689,7 @@ impl<'a> Replay<'a> {
             dormant_sites: 0,
             admit_stats: AdmitStats::default(),
             trace: collect_trace.then(CacheTrace::default),
+            step_events: None,
         }
     }
 
@@ -739,6 +837,15 @@ impl<'a> Replay<'a> {
         if !self.feasible {
             return;
         }
+        self.compute_root_body(root_occurrence);
+    }
+
+    /// Everything in `compute_root` AFTER the `enforce_cone_fit` + feasibility re-check.
+    /// Split out so `replay_plan` can own the per-occurrence loop and snapshot
+    /// `resident_before` between `enforce_cone_fit` and this body — keeping exactly one
+    /// `StepPlanRaw` per occurrence regardless of the `real_dram`/infeasible early-outs.
+    /// Behavior-identical to the inline body it replaced (the scoring loop is unchanged).
+    fn compute_root_body(&mut self, root_occurrence: usize) {
         let root = self.inst.roots[root_occurrence];
         let node = &self.inst.nodes[root as usize];
         if node.real_dram {
@@ -753,6 +860,33 @@ impl<'a> Replay<'a> {
             return;
         }
         self.compute_node(root_occurrence, root);
+    }
+
+    /// IDs of the currently resident values, ascending. Snapshotted by `replay_plan`
+    /// to bound each step's event stream (`resident_before`/`resident_after`).
+    fn resident_snapshot(&self) -> Vec<u32> {
+        (0..self.resident.len() as u32)
+            .filter(|&i| self.resident[i as usize])
+            .collect()
+    }
+
+    /// Shared `CandidateScore` assembly used by both `score_candidate_internal` and
+    /// `replay_plan`, so the two paths produce byte-identical scores (the parity gate).
+    /// `occurrence_order` is the decoded per-occurrence order (root-occurrence indices).
+    fn into_score(&self, occurrence_order: &[usize]) -> CandidateScore {
+        CandidateScore {
+            traffic: self.traffic,
+            instrs: self.instrs,
+            feasible: self.feasible,
+            order: occurrence_order
+                .iter()
+                .map(|&root_occurrence| self.inst.roots[root_occurrence])
+                .collect(),
+            admitted: self.admitted,
+            evicted: self.evicted,
+            dormant_sites: self.dormant_sites,
+            admit_stats: self.admit_stats,
+        }
     }
 
     fn finish_root(&mut self, root_occurrence: usize) {
@@ -773,6 +907,7 @@ impl<'a> Replay<'a> {
 
     fn satisfy_demand(&mut self, root_occurrence: usize, value: u32, site_idx: usize) -> bool {
         if self.resident[value as usize] {
+            self.emit_demand(site_idx, DemandKindRaw::Resident);
             self.stamp_keep(value, site_idx);
             self.dormant_sites += self.count_subtree_sites(root_occurrence, value);
             self.consume_policy_demands(root_occurrence, value);
@@ -781,6 +916,7 @@ impl<'a> Replay<'a> {
 
         match self.classes[value as usize] {
             ValueClass::RamSource => {
+                self.emit_demand(site_idx, DemandKindRaw::Reload);
                 self.traffic += self.inst.nodes[value as usize].width as u64;
                 self.trace_event(CacheTraceEvent::TrafficRead {
                     root: self.inst.roots[root_occurrence],
@@ -789,6 +925,7 @@ impl<'a> Replay<'a> {
                 });
             }
             ValueClass::Intermediate => {
+                self.emit_demand(site_idx, DemandKindRaw::Recompute);
                 self.compute_node(root_occurrence, value);
             }
             ValueClass::CachedRootOutput => {
@@ -796,6 +933,7 @@ impl<'a> Replay<'a> {
                     && self.is_reloadable(value)
                     && self.choose_reload(value, site_idx)
                 {
+                    self.emit_demand(site_idx, DemandKindRaw::Reload);
                     self.traffic += self.inst.nodes[value as usize].width as u64;
                     self.trace_event(CacheTraceEvent::TrafficRead {
                         root: self.inst.roots[root_occurrence],
@@ -804,16 +942,39 @@ impl<'a> Replay<'a> {
                     });
                     self.consume_policy_demands(root_occurrence, value);
                 } else {
+                    self.emit_demand(site_idx, DemandKindRaw::Recompute);
                     self.compute_node(root_occurrence, value);
                 }
             }
             ValueClass::Other => {
+                self.emit_demand(site_idx, DemandKindRaw::Recompute);
                 self.compute_node(root_occurrence, value);
             }
         }
 
         self.maybe_admit(value, site_idx);
         self.resident[value as usize]
+    }
+
+    /// Emit one `Demand` event for the resolution decided in `satisfy_demand` (no-op
+    /// when not capturing). Demand identity comes from `sites[site_idx]` (consumer/
+    /// input_index/value), per spec — they are not free locals here. The root-output
+    /// pseudo-site (`input_index == ROOT_OUTPUT_INPUT_INDEX`) is skipped: it is not a
+    /// consumer demand and the integrity test asserts no Demand carries it.
+    fn emit_demand(&mut self, site_idx: usize, kind: DemandKindRaw) {
+        let site = &self.sites[site_idx];
+        if site.input_index == ROOT_OUTPUT_INPUT_INDEX {
+            return;
+        }
+        let event = ReplayEventRaw::Demand {
+            consumer: site.consumer,
+            input_index: site.input_index,
+            value: site.value,
+            kind,
+        };
+        if let Some(events) = &mut self.step_events {
+            events.push(event);
+        }
     }
 
     fn choose_reload(&self, value: u32, site_idx: usize) -> bool {
@@ -862,6 +1023,12 @@ impl<'a> Replay<'a> {
                 victim_remaining: self.remaining_demands[victim],
                 cause: EvictCause::PressureAdmit { admitted: value },
             });
+            // Post-snapshot eviction (cause PressureAdmit) → an event.
+            if let Some(events) = &mut self.step_events {
+                events.push(ReplayEventRaw::Evict {
+                    value: victim as u32,
+                });
+            }
         }
 
         if self.used_width() + width <= self.inst.budget {
@@ -877,6 +1044,9 @@ impl<'a> Replay<'a> {
         self.stamp_keep(value, site_idx);
         self.admitted += 1;
         self.trace_event(CacheTraceEvent::Admit { site_idx, value });
+        if let Some(events) = &mut self.step_events {
+            events.push(ReplayEventRaw::Admit { value });
+        }
     }
 
     // KEEP REDUCTION (M2). `keep_after_use_bias` is a PER-SITE gene, but a value has a
@@ -918,6 +1088,12 @@ impl<'a> Replay<'a> {
                     victim_remaining: self.remaining_demands[value],
                     cause: EvictCause::Dead,
                 });
+                // Post-snapshot eviction (cause Dead) → an event.
+                if let Some(events) = &mut self.step_events {
+                    events.push(ReplayEventRaw::Evict {
+                        value: value as u32,
+                    });
+                }
             }
         }
     }

@@ -1072,3 +1072,59 @@ fn m1_uniform_binding_c_is_exact_handbuilt() {
     let run = plan_fixed_order(&inst);
     assert_eq!(run.result.objective(), (4, 5));
 }
+
+#[test]
+fn replay_plan_matches_score_and_reproduces_residency() {
+    use s3_gap::instance::extract_instance;
+    use s3_gap::instance::relation_units;
+    use s3_planner::metaheuristic::tests::{project_genome_to_units, seeded_smoke_population};
+    use s3_planner::metaheuristic::{
+        enumerate_demand_sites, replay_plan, score_candidate_grouped, unit_members, ReplayEventRaw,
+    };
+
+    // Known-present fixture: assert the load (do NOT silently return — that hides a regression).
+    let (layer, cross) =
+        try_load_l0("add_sub_lui_auipc_mop_layout_gkr.json").expect("add_sub L0 must load");
+    let inst = extract_instance(&layer, &cross, REAL_BUDGET);
+    assert!(!inst.roots.is_empty(), "add_sub L0 must have atom roots");
+    let sites = enumerate_demand_sites(&inst);
+    let units = unit_members(&relation_units(&layer));
+    let flat = seeded_smoke_population(&inst, &sites, 1, 0);
+    let genome = project_genome_to_units(&flat[0], &units);
+
+    let (score, steps) = replay_plan(&inst, &sites, &genome, &units);
+
+    // Parity: replay_plan's score == the scorer's, on the same genome.
+    let ref_score = score_candidate_grouped(&inst, &sites, &genome, &units);
+    assert_eq!(score.traffic, ref_score.traffic, "traffic parity");
+    assert_eq!(score.instrs, ref_score.instrs, "instrs parity");
+    assert_eq!(score.feasible, ref_score.feasible, "feasible parity");
+    assert!(
+        score.feasible,
+        "fixture must be feasible at budget 16 for the integrity check"
+    );
+
+    // Event integrity: replaying events from resident_before yields resident_after, per step.
+    // (One step per occurrence even for real_dram/infeasible roots — see Step 3's owned loop.)
+    assert_eq!(steps.len(), inst.roots.len());
+    for (si, step) in steps.iter().enumerate() {
+        let mut resident: std::collections::HashSet<u32> =
+            step.resident_before.iter().copied().collect();
+        for ev in &step.events {
+            match ev {
+                ReplayEventRaw::Admit { value } => {
+                    resident.insert(*value);
+                }
+                ReplayEventRaw::Evict { value } => {
+                    resident.remove(value);
+                }
+                ReplayEventRaw::Demand { input_index, .. } => {
+                    assert_ne!(*input_index, u32::MAX, "step {si}: root-output not a Demand");
+                }
+            }
+        }
+        let after: std::collections::HashSet<u32> =
+            step.resident_after.iter().copied().collect();
+        assert_eq!(resident, after, "step {si}: events must reproduce resident_after");
+    }
+}
