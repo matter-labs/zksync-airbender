@@ -137,6 +137,10 @@ enum Commands {
         bin: String,
         #[arg(long)]
         text: Option<String>,
+        // Continuation policy is part of the trust boundary and must be supplied
+        // explicitly rather than inherited from prover-controlled artifact metadata.
+        #[arg(long, value_enum)]
+        security_level: SecurityLevel,
         #[arg(long, default_value = "output")]
         output_dir: String,
         #[arg(long, default_value = "proof.json")]
@@ -158,6 +162,12 @@ enum Commands {
         bin: String,
         #[arg(long)]
         text: Option<String>,
+        // Verification policy is trusted caller input, so we require an explicit
+        // security level and target instead of defaulting or trusting the artifact.
+        #[arg(long, value_enum)]
+        security_level: SecurityLevel,
+        #[arg(long, value_enum)]
+        target: ProofTarget,
     },
     /// Run binary via the transpiler VM.
     Run {
@@ -392,6 +402,7 @@ fn main() {
             proof,
             bin,
             text,
+            security_level,
             output_dir,
             output_file,
             target,
@@ -401,9 +412,8 @@ fn main() {
         } => {
             let input_artifact: ProofArtifact = deserialize_from_file(&proof);
             let source = ProgramSource::from_paths(bin, text);
-            // Continuation inherits the security schedule from the persisted artifact.
             let prover_config = make_prover_config(
-                input_artifact.security_level,
+                security_level,
                 target,
                 Some(ProverBackend::Cpu),
                 cpu_cycles_bound,
@@ -420,11 +430,18 @@ fn main() {
 
             write_artifact(&artifact, &output_dir, &output_file);
         }
-        Commands::Verify { proof, bin, text } => {
+        Commands::Verify {
+            proof,
+            bin,
+            text,
+            security_level,
+            target,
+        } => {
             let artifact: ProofArtifact = deserialize_from_file(&proof);
             let source = ProgramSource::from_paths(bin, text);
-            let output = cli_lib::prover_utils::verify_artifact(&artifact, &source)
-                .unwrap_or_else(|e| panic!("Verification failed: {}", e));
+            let output =
+                cli_lib::prover_utils::verify_artifact(&artifact, &source, security_level, target)
+                    .unwrap_or_else(|e| panic!("Verification failed: {}", e));
             println!("PROOF IS VALID. output={:?}", output);
         }
         Commands::Run {
@@ -537,4 +554,109 @@ fn run_binary_with_decoder<D: DecodingOptions>(
     );
 
     (state.registers.map(|register| register.value), finished)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::error::ErrorKind;
+
+    #[test]
+    fn verify_requires_security_level() {
+        let err = match Cli::try_parse_from([
+            "cli",
+            "verify",
+            "--proof",
+            "proof.json",
+            "--bin",
+            "program.bin",
+            "--target",
+            "base",
+        ]) {
+            Ok(_) => panic!("verify must require a trusted security level"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
+        assert!(
+            err.to_string().contains("--security-level"),
+            "unexpected clap error: {err}"
+        );
+    }
+
+    #[test]
+    fn verify_requires_target() {
+        let err = match Cli::try_parse_from([
+            "cli",
+            "verify",
+            "--proof",
+            "proof.json",
+            "--bin",
+            "program.bin",
+            "--security-level",
+            "80",
+        ]) {
+            Ok(_) => panic!("verify must require a trusted target"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
+        assert!(
+            err.to_string().contains("--target"),
+            "unexpected clap error: {err}"
+        );
+    }
+
+    #[test]
+    fn continue_proof_requires_security_level() {
+        let err = match Cli::try_parse_from([
+            "cli",
+            "continue-proof",
+            "--proof",
+            "proof.json",
+            "--bin",
+            "program.bin",
+        ]) {
+            Ok(_) => panic!("continue-proof must require a trusted security level"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
+        assert!(
+            err.to_string().contains("--security-level"),
+            "unexpected clap error: {err}"
+        );
+    }
+
+    #[test]
+    fn verify_accepts_explicit_trusted_policy() {
+        let cli = Cli::try_parse_from([
+            "cli",
+            "verify",
+            "--proof",
+            "proof.json",
+            "--bin",
+            "program.bin",
+            "--security-level",
+            "100",
+            "--target",
+            "recursion-unified",
+        ])
+        .expect("verify should accept explicit trusted policy flags");
+
+        match cli.command {
+            Commands::Verify {
+                security_level,
+                target,
+                ..
+            } => {
+                assert_eq!(security_level, SecurityLevel::Security100);
+                assert_eq!(target, ProofTarget::RecursionUnified);
+            }
+            other => panic!(
+                "expected verify command, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
 }
