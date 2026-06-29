@@ -39,6 +39,128 @@ pub const fn transcript_challenge_array_size(num_elements: usize, pow_bits: usiz
     }
 }
 
+/// log2 of `BabyBearExt4` field size.
+/// `|F| = ORDER^4` with `ORDER = 0x7800_0001 = 2^31 - 2^27 + 1 ≈ 2^30.907`, so
+/// `log2 |F| ≈ 123.63`. We floor it: using a *lower* bound on `|F|` gives an *upper*
+/// bound on the Schwartz–Zippel collision probability `degree / |F|`, i.e. the
+/// soundness-conservative rounding direction.
+pub const BABYBEAR_EXT4_SIZE_LOG2: usize = 123;
+
+/// Permutation elements contributed per cycle: 1 machine-state + 3 memory accesses = 4 = `2^2`.
+const PERMUTATION_ELEMENTS_PER_CYCLE_LOG2: usize = 2;
+
+/// Delegation-capacity headroom. These `+2` bits set the ceiling to 4x the main-circuit worst
+/// case (`2^38 -> 2^40`) — this is the *ceiling* multiplier, NOT 4x headroom for delegations
+/// (the net room above a maxed main circuit is ~3x). The number of delegation circuit instances
+/// is bounded at runtime ONLY by [`MAX_PERMUTATION_ELEMENTS_LOG2`] (no compile-time cap); since
+/// each delegation circuit contributes only ~`2^25`–`2^26` permutation terms, this is far above
+/// any realistic program (delegations are negligible next to the `2^38` main worst case). A
+/// *policy* choice, deliberately conservative: it bites ONLY at security_100 (it inflates the
+/// auto-derived PoW by 1 bit per extra bit here); at security_80 the base soundness already
+/// exceeds 80 for any ceiling `<= 2^41`, so this value is behaviourally moot there.
+const DELEGATION_HEADROOM_LOG2: usize = 2;
+
+/// log2 ceiling on the total number of permutation-argument elements that share the
+/// memory/delegation external (linearization) challenges. The shared argument is ONE global
+/// multiset/grand-product equality over the union of all circuits' accesses, so its
+/// Schwartz–Zippel degree is this total element count.
+///
+/// Derived (not a magic number): main circuits contribute at most `MAX_NUMBER_OF_CYCLES * 4`
+/// elements, where `MAX_NUMBER_OF_CYCLES = 2^36` comes from the RAM timestamp layout exactly as
+/// `full_statement_verifier::MAX_CYCLES` computes it; the delegation headroom adds the policy
+/// margin. Currently `36 + 2 + 2 = 40`.
+///
+/// The coupling is structural, not by convention: BOTH the runtime assert in
+/// `full_statement_verifier::unrolled_proof_statement` AND the PoW derivation
+/// ([`memory_delegation_pow_bits`]) read this one constant, so they cannot drift — changing the
+/// cycle layout re-derives the PoW automatically. The `derivation_matches_expected_values`
+/// self-check pins the resulting value/base soundness as a tripwire: a layout change that moves
+/// it fails the test and forces a deliberate PoW-soundness re-review.
+pub const MAX_PERMUTATION_ELEMENTS_LOG2: usize = {
+    // Mirror full_statement_verifier::MAX_CYCLES: MAX_NUMBER_OF_CYCLES is
+    // `1 << (TIMESTAMP_COLUMNS_NUM_BITS * NUM_TIMESTAMP_COLUMNS_FOR_RAM - NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP)`.
+    let max_cycles_log2 = (cs::definitions::TIMESTAMP_COLUMNS_NUM_BITS as usize
+        * cs::definitions::NUM_TIMESTAMP_COLUMNS_FOR_RAM)
+        - cs::definitions::NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP as usize;
+    max_cycles_log2 + PERMUTATION_ELEMENTS_PER_CYCLE_LOG2 + DELEGATION_HEADROOM_LOG2
+};
+
+/// Schwartz–Zippel base soundness (in bits) of the shared memory/delegation permutation
+/// argument *before* any proof-of-work. The `- 2` (factor 4) is a conservative
+/// cushion for the linearization coupling multiple key components plus the read/write
+/// two-sidedness of the grand product.
+const fn permutation_argument_base_security_bits(
+    field_size_log2: usize,
+    max_elements_log2: usize,
+) -> usize {
+    field_size_log2 - max_elements_log2 - 2
+}
+
+/// Generic PoW derivation: grinding bits required to lift the permutation-argument base
+/// soundness up to `security_bits`: `max(0, security_bits - base)`
+const fn pow_bits_for_target_security(
+    security_bits: usize,
+    field_size_log2: usize,
+    max_elements_log2: usize,
+) -> usize {
+    let base = permutation_argument_base_security_bits(field_size_log2, max_elements_log2);
+    // == max(0, security_bits - base)
+    security_bits.saturating_sub(base)
+}
+
+pub const fn memory_delegation_pow_bits(level: ::prover::definitions::SecurityLevel) -> usize {
+    use ::prover::definitions::SecurityLevel;
+    let security_bits = match level {
+        SecurityLevel::Sec80 => 80,
+        SecurityLevel::Sec100 => 100,
+    };
+    pow_bits_for_target_security(
+        security_bits,
+        BABYBEAR_EXT4_SIZE_LOG2,
+        MAX_PERMUTATION_ELEMENTS_LOG2,
+    )
+}
+
+#[cfg(feature = "security_100")]
+pub const MEMORY_DELEGATION_POW_BITS: usize =
+    memory_delegation_pow_bits(::prover::definitions::SecurityLevel::Sec100);
+#[cfg(not(feature = "security_100"))]
+pub const MEMORY_DELEGATION_POW_BITS: usize =
+    memory_delegation_pow_bits(::prover::definitions::SecurityLevel::Sec80);
+
+#[cfg(test)]
+mod memory_delegation_pow_tests {
+    use super::*;
+    use ::prover::definitions::SecurityLevel;
+
+    #[test]
+    fn derivation_matches_expected_values() {
+        // Tripwire: the derived ceiling is currently 40 (cycles 2^36 * 4 + 4x delegation
+        // headroom). If the RAM timestamp layout changes this, re-review the PoW soundness
+        // before updating these expectations.
+        assert_eq!(MAX_PERMUTATION_ELEMENTS_LOG2, 40);
+        // base = 123 - 40 - 2 = 81
+        assert_eq!(
+            permutation_argument_base_security_bits(
+                BABYBEAR_EXT4_SIZE_LOG2,
+                MAX_PERMUTATION_ELEMENTS_LOG2
+            ),
+            81
+        );
+        // 80-bit target is already met without PoW; 100-bit needs 19.
+        assert_eq!(memory_delegation_pow_bits(SecurityLevel::Sec80), 0);
+        assert_eq!(memory_delegation_pow_bits(SecurityLevel::Sec100), 19);
+    }
+
+    #[test]
+    fn active_constant_matches_selected_security_level() {
+        #[cfg(feature = "security_100")]
+        assert_eq!(MEMORY_DELEGATION_POW_BITS, 19);
+        #[cfg(not(feature = "security_100"))]
+        assert_eq!(MEMORY_DELEGATION_POW_BITS, 0);
+    }
+}
+
 // Stable reimpl of standard library
 #[inline(always)]
 pub const unsafe fn slice_from_ptr_range<'a, T>(range: core::ops::Range<*const T>) -> &'a [T] {

@@ -66,4 +66,6 @@ pub const MAX_CYCLES: u64 = const {
     max_cycles
 };
 
-pub const MEMORY_DELEGATION_POW_BITS: usize = 0; // TODO
+// Single source of truth lives in `verifier_common` so the prover and verifier provably
+// grind/check the same number of bits
+pub use verifier_common::MEMORY_DELEGATION_POW_BITS;

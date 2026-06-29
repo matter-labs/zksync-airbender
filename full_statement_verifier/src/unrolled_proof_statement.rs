@@ -207,8 +207,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         }
     }
 
-    // TODO: assert that number of permutation elements is less than we computed for security levels
-    assert!(total_permutation_elements < 1u64 << 40);
+    assert!(total_permutation_elements < 1u64 << verifier_common::MAX_PERMUTATION_ELEMENTS_LOG2);
 
     // finish with the transcript, compare memory values from transcript with ones used in proofs
     let memory_seed = transcript.finalize_reset();
