@@ -10,9 +10,10 @@ use crate::gkr_circuits::mem_word_only::WordOnlyMemoryFamilyDecoder;
 use crate::types::Boolean;
 
 use super::circuit::{
-    FAMILY_1_FLAG_OFFSET as F1_OFFSET, FAMILY_2_FLAG_OFFSET as F2_OFFSET,
+    FAMILY_1_FLAG_OFFSET as F1_OFFSET, FAMILY_1_TRI_ADD_BIT, FAMILY_2_FLAG_OFFSET as F2_OFFSET,
     FAMILY_3_FLAG_OFFSET as F3_OFFSET, FAMILY_4_FLAG_OFFSET as F4_OFFSET,
-    FAMILY_4_LW_BIT as F4_LW_BIT, FAMILY_4_SW_BIT as F4_SW_BIT, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
+    FAMILY_4_LW_BIT as F4_LW_BIT, FAMILY_4_SW_BIT as F4_SW_BIT, UNIFIED_F1_NUM_FLAGS,
+    UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
 
 // Family 4 in the unified bitmask is one-hot LW/SW (2 bits), not the standalone
@@ -28,7 +29,9 @@ pub struct UnifiedReducedMachineDecoder;
 
 #[derive(Clone, Copy, Debug)]
 pub struct UnifiedReducedMachineFamilyCircuitMask {
-    add_sub_lui_auipc_mop_bits: [Boolean; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS],
+    // UNIFIED_F1_NUM_FLAGS = standalone NUM_FLAGS + 1: bits [0..9) are the standalone
+    // add_sub family flags, bit [9] is the unified-only 3-input-add (tri-add) flag.
+    add_sub_lui_auipc_mop_bits: [Boolean; UNIFIED_F1_NUM_FLAGS],
     jump_branch_slt_bits: [Boolean; JUMP_SLT_BRANCH_FAMILY_NUM_BITS],
     binary_shifts_bits: [Boolean; SHIFT_BINARY_FAMILY_NUM_FLAGS],
     is_lw: Boolean,
@@ -47,7 +50,16 @@ impl UnifiedReducedMachineFamilyCircuitMask {
     }
 
     pub fn add_sub_lui_auipc_mop(&self) -> AddSubLuiAuipcMopFamilyCircuitMask {
-        AddSubLuiAuipcMopFamilyCircuitMask::from_mask(self.add_sub_lui_auipc_mop_bits)
+        // The shared mask carries only the 9 standalone flags; the tri-add bit [9] is
+        // threaded separately via `perform_tri_add()`.
+        let standalone: [Boolean; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS] =
+            std::array::from_fn(|i| self.add_sub_lui_auipc_mop_bits[i]);
+        AddSubLuiAuipcMopFamilyCircuitMask::from_mask(standalone)
+    }
+
+    /// Unified-only 3-input-add (`ZimopTriAdd`) flag (F1 region bit [9]).
+    pub fn perform_tri_add(&self) -> Boolean {
+        self.add_sub_lui_auipc_mop_bits[ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS]
     }
 
     pub fn jump_branch_slt(&self) -> JumpSltBranchFamilyCircuitMask {
@@ -66,7 +78,7 @@ impl UnifiedReducedMachineFamilyCircuitMask {
         self.is_sw
     }
 
-    pub fn add_sub_lui_auipc_mop_bits(&self) -> [Boolean; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS] {
+    pub fn add_sub_lui_auipc_mop_bits(&self) -> [Boolean; UNIFIED_F1_NUM_FLAGS] {
         self.add_sub_lui_auipc_mop_bits
     }
 
@@ -97,6 +109,24 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
         &self,
         preprocessed_opcode: Instruction,
     ) -> Result<ExecutorFamilyDecoderData, ()> {
+        // `ZimopTriAdd` (rd += rs1 + rs2) is a UNIFIED-ONLY add_sub-family opcode: the
+        // standalone `AddSubLuiAuipcMopDecoder` returns `Err` for it, so decode it here.
+        // Addressing mirrors fmamod (rd is read as the third addend); the flag lands on
+        // the unified-only F1 tri-add bit. funct3 is lifted to Some(0) like every opcode.
+        if preprocessed_opcode.name == InstructionName::ZimopTriAdd {
+            assert_ne!(preprocessed_opcode.rd, 0);
+            assert_eq!(preprocessed_opcode.imm, 0);
+            return Ok(ExecutorFamilyDecoderData {
+                imm: 0,
+                rs1_index: preprocessed_opcode.rs1,
+                rs2_index: preprocessed_opcode.rs2 as u16,
+                rd_index: preprocessed_opcode.rd,
+                funct3: Some(0),
+                funct7: None,
+                opcode_family_bits: 1u32 << FAMILY_1_TRI_ADD_BIT,
+            });
+        }
+
         let mut decoded: ExecutorFamilyDecoderData;
 
         // Try Family 1.
@@ -159,19 +189,50 @@ mod tests {
     #[test]
     fn flag_offsets_consistent() {
         assert_eq!(F1_OFFSET, 0);
-        assert_eq!(F2_OFFSET, ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS);
+        // The unified F1 region is one wider than the standalone family (extra tri-add bit),
+        // so F2 starts at UNIFIED_F1_NUM_FLAGS, not the standalone NUM_FLAGS.
+        assert_eq!(F2_OFFSET, UNIFIED_F1_NUM_FLAGS);
         assert_eq!(
             F3_OFFSET,
-            ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS + JUMP_SLT_BRANCH_FAMILY_NUM_BITS
+            UNIFIED_F1_NUM_FLAGS + JUMP_SLT_BRANCH_FAMILY_NUM_BITS
         );
         assert_eq!(
             F4_OFFSET,
-            ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS
-                + JUMP_SLT_BRANCH_FAMILY_NUM_BITS
-                + SHIFT_BINARY_FAMILY_NUM_FLAGS
+            UNIFIED_F1_NUM_FLAGS + JUMP_SLT_BRANCH_FAMILY_NUM_BITS + SHIFT_BINARY_FAMILY_NUM_FLAGS
         );
+        // The tri-add bit is the last bit of the F1 region (just past the 9 standalone flags).
+        assert_eq!(FAMILY_1_TRI_ADD_BIT, ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS);
+        assert!(FAMILY_1_TRI_ADD_BIT < F2_OFFSET);
         // 2-bit one-hot Family-4 region fits within the bitmask.
         assert!(F4_SW_BIT < UNIFIED_REDUCED_MACHINE_NUM_FLAGS);
+    }
+
+    /// `ZimopTriAdd` is decoded only by the unified decoder (standalone returns `Err`),
+    /// and lands on exactly the unified-only tri-add flag bit.
+    #[test]
+    fn tri_add_unified_only() {
+        use riscv_transpiler::ir::simple_instruction_set::{Instruction, InstructionName};
+
+        // rd += rs1 + rs2 : rd != 0, imm == 0.
+        let tri = Instruction::new(InstructionName::ZimopTriAdd, 1, 2, 3, 0);
+
+        // Standalone add_sub decoder rejects it (unified-only opcode).
+        assert!(AddSubLuiAuipcMopDecoder
+            .define_decoder_subspace(tri)
+            .is_err());
+
+        // Unified decoder accepts it and sets exactly the tri-add bit.
+        let decoded = UnifiedReducedMachineDecoder
+            .define_decoder_subspace(tri)
+            .unwrap();
+        assert_eq!(
+            decoded.opcode_family_bits,
+            1u32 << FAMILY_1_TRI_ADD_BIT,
+            "ZimopTriAdd should set exactly bit FAMILY_1_TRI_ADD_BIT"
+        );
+        assert_eq!(decoded.rs1_index, 1);
+        assert_eq!(decoded.rs2_index, 2);
+        assert_eq!(decoded.rd_index, 3);
     }
 
     /// LW maps to bit F4_LW_BIT (= 15); SW maps to bit F4_SW_BIT (= 16). Use real

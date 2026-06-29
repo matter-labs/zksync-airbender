@@ -24,6 +24,7 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     decoder: AddSubLuiAuipcMopFamilyCircuitMask,
+    tri_add: Boolean,
     rs1_limbs: [Variable; 2],
     rs2_limbs: [Variable; 2],
     rd_write_limbs: [Variable; 2],
@@ -67,6 +68,9 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
 
     let carry = of_slots[0];
     let intermediate_carry = of_slots[1];
+    let is_tri_add = tri_add;
+    let tri_clo_b = of_slots[2];
+    let tri_chi_b = of_slots[3];
     let mulmod_intermediate_var = cs.add_named_variable("MULMOD intermediate value");
 
     // Witness function - added before any constraints, so we can use debug machinery
@@ -89,6 +93,9 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         let is_mulmod_var = is_mulmod.expect_variable();
         let is_fmamod_var = is_fmamod.expect_variable();
         let is_non_determinism_read_var = is_non_determinism_read.expect_variable();
+        let is_tri_add_var = is_tri_add.expect_variable();
+        let tri_clo_b_var = tri_clo_b.expect_variable();
+        let tri_chi_b_var = tri_chi_b.expect_variable();
 
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             // NOTE: it is UNCONDITIONAL assignment, even though we select across multiple variants
@@ -98,6 +105,9 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             let mut of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
             let mut u16_intermedaite_carry_value =
                 <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
+            // tri-add second-Boolean carries (low/high limb); set only on tri-add rows.
+            let mut tri_clo_b_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
+            let mut tri_chi_b_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
 
             let imm_low = placer.get_u16(imm_vars[0]);
             let imm = placer.get_u32_from_u16_parts(imm_vars);
@@ -312,6 +322,66 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                     &of_value,
                 );
             }
+            // tri-add (unified-only): rd = rs1 + rs2 + rd_old (wrapping u32)
+            {
+                let is_tri_add = placer.get_boolean(is_tri_add_var);
+                let rs1_high = placer.get_u16(rs1_vars[1]);
+                let rs2_high = placer.get_u16(rs2_vars[1]);
+                let rd_old_low = placer.get_u16(rd_read_vars[0]);
+                let rd_old_high = placer.get_u16(rd_read_vars[1]);
+                // Re-fetch rs1/rs2 as u32: the earlier mulmod/fmamod block consumes the outer
+                // `rs1_u32`/`rs2_u32` by value, so they're unavailable here.
+                let rs1_u32 = placer.get_u32_from_u16_parts(rs1_vars);
+                let rs2_u32 = placer.get_u32_from_u16_parts(rs2_vars);
+                let rd_old_u32 = placer.get_u32_from_u16_parts(rd_read_vars);
+
+                // output = rs1 + rs2 + rd_old (mod 2^32)
+                let (sum01, _) = rs1_u32.overflowing_add(&rs2_u32);
+                let (tri_out, _) = sum01.overflowing_add(&rd_old_u32);
+                out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                    &is_tri_add,
+                    &tri_out,
+                    &out_value,
+                );
+
+                // low-limb carry = clo_a + clo_b: two chained 16-bit add carries provably sum to
+                // floor((rs1_low + rs2_low + rd_old_low) / 2^16) ∈ {0,1,2}.
+                let (s1, clo_a) = rs1_low.overflowing_add(&rs2_low);
+                let (_lo, clo_b) = s1.overflowing_add(&rd_old_low);
+
+                // high-limb carry = chi_a + chi_b, folding the low carry-in (clo_a, clo_b) as two
+                // 1-bit carries. The three high-limb carries j1,j2,j3 sum to the true high carry
+                // ∈ {0,1,2} (cannot be 3), so encode chi_a = (carry≥1) = j1|j2|j3 and
+                // chi_b = (carry≥2) = at-least-two-of(j1,j2,j3).
+                let zero_u16 = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0u16);
+                let (u1, j1) = rs1_high.overflowing_add(&rs2_high);
+                let (u2, j2) = u1.overflowing_add_with_carry(&rd_old_high, &clo_a);
+                let (_hi, j3) = u2.overflowing_add_with_carry(&zero_u16, &clo_b);
+                let chi_a = j1.or(&j2).or(&j3);
+                let chi_b = j1.and(&j2).or(&j1.and(&j3)).or(&j2.and(&j3));
+
+                of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                    &is_tri_add,
+                    &chi_a,
+                    &of_value,
+                );
+                u16_intermedaite_carry_value =
+                    <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                        &is_tri_add,
+                        &clo_a,
+                        &u16_intermedaite_carry_value,
+                    );
+                tri_clo_b_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                    &is_tri_add,
+                    &clo_b,
+                    &tri_clo_b_value,
+                );
+                tri_chi_b_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                    &is_tri_add,
+                    &chi_b,
+                    &tri_chi_b_value,
+                );
+            }
 
             // actually assign
             if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
@@ -326,6 +396,7 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                 m = m.or(&placer.get_boolean(is_submod_var));
                 m = m.or(&placer.get_boolean(is_mulmod_var));
                 m = m.or(&placer.get_boolean(is_fmamod_var));
+                m = m.or(&placer.get_boolean(is_tri_add_var));
                 m
             };
             placer.conditionally_assign_u32(intermediate_vars, &is_f1_active, &intermediate_value);
@@ -335,6 +406,10 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                 &is_f1_active,
                 &u16_intermedaite_carry_value,
             );
+            // tri-add's two extra carry Booleans (only meaningful on tri-add rows).
+            let is_tri_add_m = placer.get_boolean(is_tri_add_var);
+            placer.conditionally_assign_mask(tri_clo_b_var, &is_tri_add_m, &tri_clo_b_value);
+            placer.conditionally_assign_mask(tri_chi_b_var, &is_tri_add_m, &tri_chi_b_value);
         };
         cs.set_values(value_fn);
     }
@@ -439,6 +514,30 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             eq_sub_high.mask(is_sub),
             eq_modular_high * is_modular,
         ]));
+    }
+
+    // tri-add (unified-only): rd = rs1 + rs2 + rd_old (wrapping u32), per-16-bit-limb.
+    // Each limb carry ∈ {0,1,2} is encoded as a sum of two Booleans (chained-Boolean carries):
+    //   low  carry = intermediate_carry (of_slots[1]) + tri_clo_b (of_slots[2])
+    //   high carry = carry              (of_slots[0]) + tri_chi_b (of_slots[3])
+    // out_low/out_high are 16-bit range-checked (above) and rd_read limbs are 16-bit register
+    // reads, so each limb equation uniquely determines (out, carry); the discarded top carry
+    // (chi) ∈ {0,1,2} realises the mod-2^32 wrap. Both gated by is_tri_add (=0 ⇒ trivially sat).
+    {
+        let rd_old_low_e = Expr::var(rd_read_limbs[0]);
+        let rd_old_high_e = Expr::var(rd_read_limbs[1]);
+        let clo = Expr::<F>::from(intermediate_carry) + Expr::<F>::from(tri_clo_b);
+        let chi = Expr::<F>::from(carry) + Expr::<F>::from(tri_chi_b);
+
+        let eq_tri_low = rs1_low_e.clone() + rs2_low_e.clone() + rd_old_low_e
+            - Expr::var(out_low)
+            - clo.clone() * carry_shift;
+        let eq_tri_high = clo + rs1_high_e.clone() + rs2_high_e.clone() + rd_old_high_e
+            - Expr::var(out_high)
+            - chi * carry_shift;
+
+        cs.add_constraint_expr(eq_tri_low.mask(is_tri_add));
+        cs.add_constraint_expr(eq_tri_high.mask(is_tri_add));
     }
 
     // Delegation call

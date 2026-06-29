@@ -28,9 +28,10 @@ use field::PrimeField;
 /// | Bit range  | Family                            | Count |
 /// |------------|-----------------------------------|-------|
 /// | [0..9)     | Family 1 (add_sub_lui_auipc_mop)  | 9     |
-/// | [9..14)    | Family 2 (jump_branch_slt)        | 5     |
-/// | [14..16)   | Family 3 (shift_binop)            | 2     |
-/// | [16..18)   | Family 4 (mem_word_only)          | 2     |
+/// | [9]        | Family 1 unified-only tri-add     | 1     |
+/// | [10..15)   | Family 2 (jump_branch_slt)        | 5     |
+/// | [15..17)   | Family 3 (shift_binop)            | 2     |
+/// | [17..19)   | Family 4 (mem_word_only)          | 2     |
 ///
 /// Family 4 is encoded one-hot in the unified bitmask (bit 16 = LW, bit 17 = SW)
 /// to match the per-sub-opcode convention used by Families 1/2/3. This diverges
@@ -42,8 +43,11 @@ use field::PrimeField;
 /// 1 reserved bit — `mem_subword_only`'s third sub-opcode bit (`SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS = 3`)
 ///  — that the unified reduced-machine layout doesn't allocate because mem_subword isn't part of the reduced-machine family set.)
 pub const FAMILY_1_FLAG_OFFSET: usize = 0;
-pub const FAMILY_2_FLAG_OFFSET: usize =
+pub const UNIFIED_F1_NUM_FLAGS: usize = ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS + 1;
+pub const FAMILY_1_TRI_ADD_BIT: usize =
     FAMILY_1_FLAG_OFFSET + ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS;
+
+pub const FAMILY_2_FLAG_OFFSET: usize = FAMILY_1_FLAG_OFFSET + UNIFIED_F1_NUM_FLAGS;
 pub const FAMILY_3_FLAG_OFFSET: usize = FAMILY_2_FLAG_OFFSET + JUMP_SLT_BRANCH_FAMILY_NUM_BITS;
 pub const FAMILY_4_FLAG_OFFSET: usize = FAMILY_3_FLAG_OFFSET + SHIFT_BINARY_FAMILY_NUM_FLAGS;
 
@@ -53,7 +57,7 @@ pub const UNIFIED_FAMILY_4_NUM_FLAGS: usize = 2;
 pub const FAMILY_4_LW_BIT: usize = FAMILY_4_FLAG_OFFSET;
 pub const FAMILY_4_SW_BIT: usize = FAMILY_4_FLAG_OFFSET + 1;
 
-pub const UNIFIED_REDUCED_MACHINE_NUM_FLAGS: usize = ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS
+pub const UNIFIED_REDUCED_MACHINE_NUM_FLAGS: usize = UNIFIED_F1_NUM_FLAGS
     + JUMP_SLT_BRANCH_FAMILY_NUM_BITS
     + SHIFT_BINARY_FAMILY_NUM_FLAGS
     + UNIFIED_FAMILY_4_NUM_FLAGS;
@@ -62,7 +66,7 @@ pub const UNIFIED_REDUCED_MACHINE_NUM_FLAGS: usize = ADD_SUB_LUI_AUIPC_MOP_FAMIL
 /// only inside that family's flag-gated constraints, hence unconstrained (free)
 /// on rows where the family is idle. Because at most one family fires per row,
 /// these slots can be ALIASED across families into one shared pool.
-pub(super) const F1_SCRATCH_BOOLS: usize = 2; // carry, intermediate_carry (alias F4's of_lo/of_hi slots)
+pub(super) const F1_SCRATCH_BOOLS: usize = 4; // 2-input: carry, intermediate_carry; tri-add (unified-only) also uses [2],[3] so each limb's carry ∈ {0,1,2} is a sum of two Booleans (alias F4's of_lo/of_hi slots)
 pub(super) const F2_SCRATCH_BOOLS: usize = 5; // add_rel_{0,1}_{intermediate,final}_of (4) + next_pc_bit_1
 pub(super) const F3_SCRATCH_BOOLS: usize = 0;
 pub(super) const F4_SCRATCH_BOOLS: usize = 5; // of_lo, of_hi, is_rom, sw-align bit_0, bit_1
@@ -309,6 +313,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         cs,
         inputs.clone(),
         unified_mask.add_sub_lui_auipc_mop(),
+        unified_mask.perform_tri_add(),
         rs1_limbs,
         rs2_limbs,
         rd_write_limbs,
@@ -497,7 +502,7 @@ fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
 
     // Witness: is_any_family_active = execute AND (any of the family-dispatch bits)
     {
-        let f1_vars: [Variable; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS] =
+        let f1_vars: [Variable; UNIFIED_F1_NUM_FLAGS] =
             std::array::from_fn(|i| family_1_bits[i].expect_variable());
         let f2_vars: [Variable; 4] = std::array::from_fn(|i| family_2_bits[i].expect_variable());
         let f3_vars: [Variable; SHIFT_BINARY_FAMILY_NUM_FLAGS] =
