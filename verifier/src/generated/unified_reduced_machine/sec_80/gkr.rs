@@ -1,8 +1,7 @@
 use super::common::{
-    dot_eq, draw_field_els_into, draw_field_els_into_after_pow, draw_single_field_el,
-    draw_single_field_el_after_pow, ext_from_nds, ext_from_raw_words, fold_standard_claims,
-    make_eq_poly, read_field_el, read_reduced_field_el, verify_final_step_check,
-    verify_sumcheck_rounds, EXT_DEGREE,
+    dot_eq, draw_field_els_into, draw_single_field_el, ext_from_nds, ext_from_raw_words,
+    fold_standard_claims, make_eq_poly, read_field_el, read_reduced_field_el,
+    verify_final_step_check, verify_sumcheck_rounds, EXT_DEGREE,
 };
 use super::constants::*;
 use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
@@ -16,7 +15,6 @@ use verifier_common::gkr::{GKRVerifierOutput, LayerState};
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
-use verifier_common::whir::read_and_verify_pow;
 use verifier_common::GKRExternalChallenges;
 #[inline(always)]
 #[allow(unused_variables)]
@@ -24,7 +22,7 @@ unsafe fn layer_0_compute_claim(
     output_claims: &[BabyBearExt4; 77usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 144usize] = [
+    const DESCS: [(usize, usize, usize); 145usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (1usize, 2usize, 0usize),
@@ -86,6 +84,7 @@ unsafe fn layer_0_compute_claim(
         (2usize, 67usize, 68usize),
         (1usize, 69usize, 0usize),
         (2usize, 70usize, 71usize),
+        (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
@@ -899,19 +898,19 @@ unsafe fn layer_0_final_step_accumulator(
                 (22usize, 536591292usize),
                 (26usize, 1073182584usize),
                 (27usize, 268295646usize),
-                (70usize, 268435454usize),
+                (29usize, 268435454usize),
                 (22usize, 536591292usize),
                 (26usize, 1073182584usize),
                 (27usize, 268295646usize),
-                (70usize, 268435454usize),
+                (29usize, 268435454usize),
                 (22usize, 536591292usize),
                 (26usize, 1073182584usize),
                 (27usize, 268295646usize),
-                (70usize, 268435454usize),
+                (29usize, 268435454usize),
                 (22usize, 536591292usize),
                 (26usize, 1073182584usize),
                 (27usize, 268295646usize),
-                (70usize, 268435454usize),
+                (29usize, 268435454usize),
                 (43usize, 1996488705usize),
                 (65usize, 16777216usize),
             ];
@@ -1963,6 +1962,36 @@ unsafe fn layer_0_final_step_accumulator(
                 (48usize, 268435454usize),
                 (66usize, 1744830467usize),
                 (70usize, 268435454usize),
+            ];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
+            const VAL_QO: [(usize, usize); 5usize] = [
+                (3usize, 1usize),
+                (14usize, 2usize),
+                (15usize, 2usize),
+                (16usize, 2usize),
+                (17usize, 2usize),
+            ];
+            const VAL_QI: [(usize, usize); 9usize] = [
+                (16usize, 1744830467usize),
+                (29usize, 268435454usize),
+                (70usize, 1744830467usize),
+                (29usize, 268435454usize),
+                (70usize, 1744830467usize),
+                (29usize, 268435454usize),
+                (70usize, 1744830467usize),
+                (29usize, 268435454usize),
+                (70usize, 1744830467usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -4374,8 +4403,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
         unsafe {
             init_challenges.set_len(2);
         }
-        read_and_verify_pow::<I>(ts, LOOKUP_CHALLENGES_POW_BITS, nd_source);
-        draw_field_els_into_after_pow::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
+        draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
         let lookup_alpha = *init_challenges.get(0);
         let lookup_additive_challenge = *init_challenges.get(1);
         let address_high_bits_shift: u32 = 10u32;
@@ -6341,8 +6369,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR MAIN LAYER 0");
         }
-        read_and_verify_pow::<I>(ts, BATCHED_PROXIMITY_POW_BITS, nd_source);
-        state.batching_challenge = draw_single_field_el_after_pow(ts);
+        state.batching_challenge = draw_single_field_el(ts);
         let mut permutation_read_product: BabyBearExt4 = BabyBearExt4::ONE;
         let mut permutation_write_product: BabyBearExt4 = BabyBearExt4::ONE;
         {
