@@ -10,10 +10,11 @@ pub struct ProverConfig {
     pub lde_factor: usize,
     pub cap_size: usize,
     pub base_oracles_values_per_leaf: usize,
-    pub lookup_challenges_pow_bits: u32,
     // we do not expect any challenges for sumcheck, as it's soundness
     // error is very small
     pub sumcheck_explicit_output_size_log_2: usize,
+    // Both proof-of-work bit counts (lookup challenges, WHIR batching) are derived
+    // per-circuit from `security_bits` via `pow_bits`, so neither is stored here.
     pub security_bits: u32,
     pub whir_schedule: WhirSchedule,
 }
@@ -98,7 +99,7 @@ pub fn compute_best_prover_config_guess(
     base_oracles_values_per_leaf: usize,
     lookup_challenges_pow_bits: u32, // we use these as inputs for now
     sumcheck_explicit_output_size_log_2: usize,
-    batched_proximity_check_challenge_pow_bits: u32,
+    security_bits: u32,
     first_round_pow_bits: u32,
     other_rounds_pow_bits: u32,
     min_pow_bits: u32,
@@ -168,7 +169,7 @@ pub fn compute_best_prover_config_guess(
     //     base_oracles_values_per_leaf,
     //     lookup_challenges_pow_bits,
     //     sumcheck_explicit_output_size_log_2,
-    //     batched_proximity_check_challenge_pow_bits,
+    //     security_bits,
     //     whir_schedule,
     // }
 }

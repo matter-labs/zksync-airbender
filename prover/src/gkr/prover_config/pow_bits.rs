@@ -10,20 +10,56 @@ use field::PrimeField;
 /// soundness-safe choice.
 pub const CHALLENGE_FIELD_SIZE_LOG2: usize = 123;
 
-/// PoW bits required before the lookup challenges (`lookup_alpha`,
-/// `lookup_additive`), so that the `cq`-style lookup argument reaches
-/// `security_bits` of security over a domain of `domain_size_log2` rows.
+/// Total degree (in the lookup challenges α = `lookup_alpha`, γ = `lookup_additive`)
+/// of the cleared logUp identity, which bounds the lookup-argument soundness error
+/// by Schwartz–Zippel: `ε ≤ degree / |F|`.
+///
+/// The verifier draws α, γ and checks
+///     `Σ_lookups 1/(RLC_α(tuple) + γ) = Σ_table mult · 1/(RLC_α(entry) + γ)`,
+/// where `RLC_α` folds a width-`w` tuple into one field element (degree `w-1` in α)
+/// and γ is the logarithmic-derivative denominator shift. Cleared to a polynomial
+/// `P(α, γ)`, its total degree is `≤ T·w`, where `T` is the total number of
+/// fractions (every lookup access + every table entry) and `w` the max tuple
+/// width. We charge every fraction the max α-degree, which over-counts the
+/// width-1 range-check fractions — conservative, i.e. it can only ask for *more*
+/// PoW, never less. `T = (lookups per row)·N + table entries`.
+pub fn lookup_identity_degree<F: PrimeField>(compiled_circuit: &GKRCircuitArtifact<F>) -> usize {
+    // Max tuple width folded by `lookup_alpha`; `max(_, 1)` so range-check-only
+    // circuits (width 1, no α) still bound the γ-degree (= T).
+    let tuple_width = compiled_circuit.generic_lookup_tables_width.max(1);
+    // One logUp fraction per (lookup relation × row), across all lookup kinds.
+    let fractions_per_row = compiled_circuit.num_generic_lookups
+        + compiled_circuit.range_check_16_lookup_expressions.len()
+        + compiled_circuit
+            .timestamp_range_check_lookup_expressions
+            .len();
+    // ... plus one fraction per table entry (the table side of the identity).
+    let total_fractions = fractions_per_row
+        .saturating_mul(compiled_circuit.trace_len)
+        .saturating_add(compiled_circuit.total_tables_size);
+    total_fractions.saturating_mul(tuple_width)
+}
+
+/// PoW bits required before the lookup challenges `lookup_alpha` (α) and
+/// `lookup_additive` (γ), so the cq/logUp lookup argument reaches `security_bits`.
+///
+/// By [`lookup_identity_degree`] the soundness error is `ε ≤ D / |F|`, so the
+/// no-PoW security is `log2|F| − ceil(log2 D)` and the PoW closes the gap to
+/// `security_bits`.
 pub const fn pow_bits_for_cq_lookup(
     security_bits: usize,
-    domain_size_log2: usize,
+    identity_degree: usize,
     field_size_log2: usize,
 ) -> usize {
-    let no_pow_security_bits = field_size_log2 - domain_size_log2 - 5;
+    let degree_log2 = identity_degree.next_power_of_two().trailing_zeros() as usize;
+    let no_pow_security_bits = field_size_log2.saturating_sub(degree_log2);
     security_bits.saturating_sub(no_pow_security_bits)
 }
 
-pub const fn lookup_challenges_pow_bits(security_bits: usize, trace_len_log_2: usize) -> u32 {
-    pow_bits_for_cq_lookup(security_bits, trace_len_log_2, CHALLENGE_FIELD_SIZE_LOG2) as u32
+/// PoW bits for the lookup challenges at the given security level, for a logUp
+/// identity of total degree `identity_degree` (see [`lookup_identity_degree`]).
+pub const fn lookup_challenges_pow_bits(security_bits: usize, identity_degree: usize) -> u32 {
+    pow_bits_for_cq_lookup(security_bits, identity_degree, CHALLENGE_FIELD_SIZE_LOG2) as u32
 }
 
 pub fn total_base_oracle_columns<F: PrimeField>(compiled_circuit: &GKRCircuitArtifact<F>) -> usize {
@@ -37,10 +73,10 @@ pub const fn pow_bits_for_batched_proximity(
     security_bits: usize,
     domain_size_log2: usize,
     lde_factor_log2: usize,
-    num_batched_oracles: usize,
+    num_batched_columns: usize,
     field_size_log2: usize,
 ) -> usize {
-    let batch_bits = num_batched_oracles.next_power_of_two().trailing_zeros() as usize;
+    let batch_bits = num_batched_columns.next_power_of_two().trailing_zeros() as usize;
     let lde_domain_log2 = domain_size_log2 + lde_factor_log2;
     let no_pow_security_bits = field_size_log2
         .saturating_sub(lde_domain_log2)
@@ -72,18 +108,21 @@ mod tests {
 
     #[test]
     fn lookup_pow_is_zero_at_80_bits() {
-        // no_pow = 123 - trace - 5 = 118 - trace; for traces 20..=24 this is 98..94, all > 80.
-        for trace in [20usize, 22, 24] {
-            assert_eq!(lookup_challenges_pow_bits(80, trace), 0);
+        // no_pow = 123 - ceil(log2 D); for any realistic degree (D <= 2^43 ⇒
+        // no_pow >= 80) the lookup PoW is 0 at 80-bit security.
+        for degree_log2 in [20u32, 30, 40] {
+            assert_eq!(lookup_challenges_pow_bits(80, 1usize << degree_log2), 0);
         }
     }
 
     #[test]
-    fn lookup_pow_at_100_bits_matches_hand_computation() {
-        // no_pow = 118 - trace; pow = max(0, 100 - (118 - trace)) = max(0, trace - 18).
-        assert_eq!(lookup_challenges_pow_bits(100, 20), 2);
-        assert_eq!(lookup_challenges_pow_bits(100, 22), 4);
-        assert_eq!(lookup_challenges_pow_bits(100, 24), 6);
+    fn lookup_pow_at_100_scales_with_identity_degree() {
+        // no_pow = 123 - ceil(log2 D); pow = max(0, 100 - no_pow) = max(0, ceil(log2 D) - 23).
+        assert_eq!(lookup_challenges_pow_bits(100, 1usize << 24), 1); // 24 - 23
+        assert_eq!(lookup_challenges_pow_bits(100, 1usize << 30), 7); // 30 - 23
+        assert_eq!(lookup_challenges_pow_bits(100, 1usize << 33), 10); // 33 - 23
+                                                                       // ceil(log2) rounds a non-power-of-two up: D = 2^30 + 1 ⇒ 31 ⇒ pow 8.
+        assert_eq!(lookup_challenges_pow_bits(100, (1usize << 30) + 1), 8);
     }
 
     #[test]

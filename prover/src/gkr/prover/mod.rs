@@ -375,12 +375,12 @@ where
     // Now we need to draw prove-local challenges, and in our case it's just a challenge for lookups,
     // and challenge to batch all constraints. They are gated behind a proof-of-work; commit-before-draw
     // is satisfied by `commit_initial` above.
-    let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) = draw_random_field_els_with_pow(
-        &mut seed,
-        2,
-        prover_config.lookup_challenges_pow_bits,
-        worker,
+    let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+        prover_config.security_bits as usize,
+        pow_bits::lookup_identity_degree(compiled_circuit),
     );
+    let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
+        draw_random_field_els_with_pow(&mut seed, 2, lookup_challenges_pow_bits, worker);
     let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
 
     let mut gkr_storage = GKRStorage::<F, E>::default();

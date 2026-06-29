@@ -743,7 +743,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     compiled_circuit: &GKRCircuitArtifact<MW::BaseField>,
     sumcheck_output_size_log_2: usize,
     whir_schedule: &WhirSchedule,
-    lookup_challenges_pow_bits: u32,
     security_bits: u32,
 ) -> GKRGeneratedFiles {
     let num_standard_layers = compiled_circuit.layers.len();
@@ -1586,6 +1585,12 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         whir_base_lde_factor.trailing_zeros() as usize,
         pow_bits::total_base_oracle_columns(compiled_circuit),
     );
+    // Derived per-circuit from `security_bits` (same as the batched-proximity bits
+    // above), so prover grind and this baked const cannot diverge.
+    let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+        security_bits as usize,
+        pow_bits::lookup_identity_degree(compiled_circuit),
+    );
     let whir_cap_size = whir_schedule.cap_size;
     let whir_cap_size_log2 = whir_cap_size.trailing_zeros() as usize;
 
@@ -1718,13 +1723,16 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #max_evals * EXT_DEGREE;
             total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
         };
-        pub const DRAW_BUF_CAPACITY: usize =
-            (#num_challenges * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-        // `draw_field_els_into_after_pow` draws the 2 lookup challenges plus the skipped PoW word.
-        const _: () = assert!(
-            DRAW_BUF_CAPACITY >= (2 * EXT_DEGREE + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS),
-            "DRAW_BUF_CAPACITY too small for the post-PoW lookup-challenge draw",
-        );
+        // Sized for the larger of the two draws that share this buffer: the
+        // sumcheck/batching draw of `num_challenges` elements, and the post-PoW
+        // lookup draw (`draw_field_els_into_after_pow`) of 2 elements plus the
+        // skipped PoW word. Taking the max keeps the buffer valid for both even
+        // if a future circuit has a small `num_challenges`.
+        pub const DRAW_BUF_CAPACITY: usize = {
+            let sumcheck = (#num_challenges * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+            let lookup_after_pow = (2 * EXT_DEGREE + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+            if sumcheck > lookup_after_pow { sumcheck } else { lookup_after_pow }
+        };
         pub const WHIR_FOLD_STEPS: [usize; #whir_rounds] = [#(#whir_fold_steps),*];
         pub const WHIR_QUERIES: [usize; #whir_rounds] = [#(#whir_queries),*];
         pub const WHIR_POW_BITS: [u32; #whir_rounds] = [#(#whir_pow_bits),*];

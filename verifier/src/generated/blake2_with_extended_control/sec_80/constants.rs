@@ -46,12 +46,15 @@ pub const GKR_EVALS_COMMIT_BUF: usize = {
     let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + 96usize * EXT_DEGREE;
     total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
 };
-pub const DRAW_BUF_CAPACITY: usize =
-    (5usize * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-const _: () = assert!(
-    DRAW_BUF_CAPACITY >= (2 * EXT_DEGREE + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS),
-    "DRAW_BUF_CAPACITY too small for the post-PoW lookup-challenge draw",
-);
+pub const DRAW_BUF_CAPACITY: usize = {
+    let sumcheck = (5usize * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+    let lookup_after_pow = (2 * EXT_DEGREE + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+    if sumcheck > lookup_after_pow {
+        sumcheck
+    } else {
+        lookup_after_pow
+    }
+};
 pub const WHIR_FOLD_STEPS: [usize; 5usize] = [1usize, 5usize, 5usize, 4usize, 4usize];
 pub const WHIR_QUERIES: [usize; 5usize] = [63usize, 9usize, 5usize, 4usize, 3usize];
 pub const WHIR_POW_BITS: [u32; 5usize] = [28u32, 16u32, 15u32, 20u32, 23u32];
