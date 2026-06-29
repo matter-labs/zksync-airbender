@@ -1,3 +1,4 @@
+use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::PrimeField;
 
@@ -33,10 +34,25 @@ pub fn lookup_identity_degree<F: PrimeField>(compiled_circuit: &GKRCircuitArtifa
         + compiled_circuit
             .timestamp_range_check_lookup_expressions
             .len();
-    // ... plus one fraction per table entry (the table side of the identity).
+    let virtual_table_fractions = if compiled_circuit
+        .range_check_16_lookup_expressions
+        .is_empty()
+    {
+        0
+    } else {
+        1usize << 16
+    } + if compiled_circuit
+        .timestamp_range_check_lookup_expressions
+        .is_empty()
+    {
+        0
+    } else {
+        1usize << TIMESTAMP_COLUMNS_NUM_BITS
+    };
     let total_fractions = fractions_per_row
         .saturating_mul(compiled_circuit.trace_len)
-        .saturating_add(compiled_circuit.total_tables_size);
+        .saturating_add(compiled_circuit.total_tables_size)
+        .saturating_add(virtual_table_fractions);
     total_fractions.saturating_mul(tuple_width)
 }
 

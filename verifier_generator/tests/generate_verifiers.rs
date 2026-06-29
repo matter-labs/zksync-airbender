@@ -86,7 +86,7 @@ fn generate_gkr_verifier<MW: FieldWrapper<BaseField = BabyBearField>>(
         &compiled_circuit,
         prover_config.sumcheck_explicit_output_size_log_2,
         circuit.whir_schedule_for(level),
-        prover_config.security_bits,
+        prover_config.security_level.bits(),
     );
 
     write_and_fmt(&format!("{}/constants.rs", dir), &files.constants);

@@ -34,7 +34,7 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
         ) {
             let n = dst.len();
             let padded = (n * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-            debug_assert!(padded <= BUF_CAP, "draw buffer too small");
+            assert!(padded <= BUF_CAP, "draw buffer too small");
 
             let mut words = LazyVec::<u32, BUF_CAP>::new();
             unsafe {

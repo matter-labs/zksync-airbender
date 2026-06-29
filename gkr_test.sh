@@ -442,6 +442,10 @@ step_transpiler() {
 # The inits/teardowns-eval corruption lives in the `corruption` step
 # (rejects_corrupted_it_evals_unified_reduced_machine_sec_80).
 step_malicious() {
+  # `malicious` is opt-in, so a full pipeline (which runs `generator`) may not have
+  # run beforehand. Regenerate the verifier first so the soundness-gap tests always
+  # exercise the CURRENT generator source, not stale on-disk generated code.
+  step_generator
   case "$MODE" in
     per_family)
       run_step "Generate malicious proofs (corrupt witness, no self-checks)" \
@@ -450,10 +454,13 @@ step_malicious() {
           "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
           "${ENCODING_PROVER_FEATURES[@]+"${ENCODING_PROVER_FEATURES[@]}"}" \
           -- --ignored --nocapture malicious_proof
+      # Scope to the per-family malicious tests only. The `rejects_malicious_unified_*`
+      # tests belong to the `unified` subcommand (which regenerates their fixtures);
+      # running them here would test stale unified fixtures against the per-family run.
       run_step "Verify malicious proofs rejected (soundness gap tests)" \
         env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier \
           --no-default-features --features "$FEATURES" \
-          --test malicious -- --include-ignored
+          --test malicious -- --include-ignored --skip rejects_malicious_unified
       ;;
     unified)
       run_step "Unified negative tests (constraint + range-lookup layer)" \
