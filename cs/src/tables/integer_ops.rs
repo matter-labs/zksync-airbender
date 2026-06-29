@@ -73,16 +73,36 @@ pub fn create_range_check_table_for_two_tuple<F: PrimeField, const M: usize>(
         |keys| {
             let a = keys[0].as_u32_reduced();
             let b = keys[1].as_u32_reduced();
-            assert!(a < (1u32 << M));
-            assert!(b < (1u32 << M));
+            assert!(
+                a < (1u32 << M),
+                "value {} doesn't fit into {} bit range check table",
+                a,
+                M
+            );
+            assert!(
+                b < (1u32 << M),
+                "value {} doesn't fit into {} bit range check table",
+                b,
+                M
+            );
 
             (((a << M) | b) as usize, ArrayVec::new())
         },
         Some(|keys| {
             let a = keys[0].as_u32_reduced();
             let b = keys[1].as_u32_reduced();
-            assert!(a < (1u32 << M));
-            assert!(b < (1u32 << M));
+            assert!(
+                a < (1u32 << M),
+                "value {} doesn't fit into {} bit range check table",
+                a,
+                M
+            );
+            assert!(
+                b < (1u32 << M),
+                "value {} doesn't fit into {} bit range check table",
+                b,
+                M
+            );
 
             ((a << M) | b) as usize
         }),
@@ -107,13 +127,23 @@ pub fn create_range_check_table_for_single_entry<F: PrimeField, const M: usize>(
         0,
         |keys| {
             let a = keys[0].as_u32_reduced();
-            assert!(a < (1u32 << M));
+            assert!(
+                a < (1u32 << M),
+                "value {} doesn't fit into {} bit range check table",
+                a,
+                M
+            );
 
             (a as usize, ArrayVec::new())
         },
         Some(|keys| {
             let a = keys[0].as_u32_reduced();
-            assert!(a < (1u32 << M));
+            assert!(
+                a < (1u32 << M),
+                "value {} doesn't fit into {} bit range check table",
+                a,
+                M
+            );
 
             a as usize
         }),

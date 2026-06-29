@@ -10,14 +10,59 @@
 //! the compiled GKR artifact, the table driver, and the witness-eval fn so the
 //! `setups` crate can build a `CircuitSetup` for it.
 
+use cs::gkr_circuits::unified_reduced_machine::*;
 use prover::cs;
 use prover::cs::tables::TableDriver;
 use prover::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 use prover::field::baby_bear::base::BabyBearField;
+use prover::field::PrimeField;
 use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 
 pub use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as FAMILY_IDX;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct UnifiedReducedMachineCircuit;
+
+impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, true> for UnifiedReducedMachineCircuit {
+    const CIRCUIT_FAMILY: u8 =
+        common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
+    const DOMAIN_SIZE_LOG2: u32 = 24;
+
+    fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS, _bytecode: &[u32]) {
+        unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(cs);
+    }
+
+    fn table_addition_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS, bytecode: &[u32]) {
+        unified_reduced_machine_table_addition_fn(cs);
+        // ROM tables must be added here (with dummy bytecode) so that
+        // offset_for_decoder_table in the compiled JSON reflects the correct
+        // total_tables_len at prove time, when real ROM tables are present.
+        for (table_type, table) in
+            crate::cs::gkr_circuits::mem_word_only::create_mem_word_only_special_tables::<
+                F,
+                { common_constants::ROM_SECOND_WORD_BITS },
+            >(bytecode)
+        {
+            cs.add_table_with_content(table_type, table);
+        }
+    }
+
+    fn table_driver_fn(table_driver: &mut TableDriver<F>, bytecode: &[u32]) {
+        unified_reduced_machine_table_driver_fn(table_driver);
+        // ROM tables must be added here (with dummy bytecode) so that
+        // offset_for_decoder_table in the compiled JSON reflects the correct
+        // total_tables_len at prove time, when real ROM tables are present.
+        for (table_type, table) in
+            crate::cs::gkr_circuits::mem_word_only::create_mem_word_only_special_tables::<
+                F,
+                { common_constants::ROM_SECOND_WORD_BITS },
+            >(bytecode)
+        {
+            table_driver.add_table_with_content(table_type, table);
+        }
+    }
+}
 
 /// The unified circuit is compiled with a `1 << 24` row domain (see
 /// `compile_family_circuit_with_inline_inits_and_teardowns` in `cs`).
@@ -27,15 +72,6 @@ pub const NUM_CYCLES: usize = DOMAIN_SIZE;
 pub const LDE_FACTOR: usize = 2;
 pub const MAX_ROM_SIZE: usize = common_constants::rom::ROM_BYTE_SIZE;
 pub const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = common_constants::rom::ROM_SECOND_WORD_BITS;
-
-pub const ALLOWED_DELEGATION_CSRS: &[u32] = &[
-    common_constants::NON_DETERMINISM_CSR,
-    common_constants::BLAKE2S_DELEGATION_CSR_REGISTER,
-];
-pub const ALLOWED_DELEGATION_CSRS_U16: &[u16] = &[
-    common_constants::NON_DETERMINISM_CSR as u16,
-    common_constants::BLAKE2S_DELEGATION_CSR_REGISTER as u16,
-];
 
 /// Compile (or load from cache) the unified GKR circuit artifact. The artifact
 /// shape is bytecode-independent (special-table *content* is supplied at
@@ -70,4 +106,20 @@ pub fn witness_eval_fn(
         ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>, BabyBearField>,
     >;
     (fn_ptr)(proxy);
+}
+
+#[cfg(test)]
+mod test {
+    use test_utils::skip_if_ci;
+
+    use super::*;
+
+    #[test]
+    fn generate() {
+        skip_if_ci!();
+
+        circuit_common::generate_default_risc_v_with_mem_cycles_artifacts::<
+            UnifiedReducedMachineCircuit,
+        >(true);
+    }
 }

@@ -91,18 +91,24 @@ impl ProgramProof {
 
         // risc-v proofs
         for k in RISC_V_CIRCUIT_TYPES.iter() {
-            let k = *k as u32;
-            if let Some(proofs) = self.riscv_proofs.get(&k) {
-                responses.push(proofs.len() as u32);
-                let compiled_circuit = &self.compiled_riscv_circuits[&k];
-                for proof in proofs.iter() {
-                    responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
-                        proof,
-                        compiled_circuit,
-                    ));
+            if let Some(compiled_circuit) = self.compiled_riscv_circuits.get(&(*k as u32)) {
+                // such setup is present, so we must at least say "0 proofs"
+                let k = *k as u32;
+                if let Some(proofs) = self.riscv_proofs.get(&k) {
+                    responses.push(proofs.len() as u32);
+                    for proof in proofs.iter() {
+                        responses.extend(
+                            ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+                                proof,
+                                compiled_circuit,
+                            ),
+                        );
+                    }
+                } else {
+                    responses.push(0u32);
                 }
             } else {
-                responses.push(0u32);
+                // we skip it entirely
             }
         }
 
@@ -129,11 +135,11 @@ impl ProgramProof {
             BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
         ];
 
-        // delegation proofs
+        // delegation proofs - we always flatten ALL of them
         for k in DELEGATION_TYPES.iter() {
             if let Some(proofs) = self.delegation_proofs.get(&k) {
                 responses.push(proofs.len() as u32);
-                let compiled_circuit = &self.compiled_delegation_circuits[&k];
+                let compiled_circuit = &self.compiled_delegation_circuits[k];
                 for proof in proofs.iter() {
                     responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
                         proof,
@@ -221,17 +227,22 @@ impl ProgramProof {
 
         // delegation proofs
         for k in DELEGATION_TYPES.iter() {
-            if let Some(proofs) = self.delegation_proofs.get(&k) {
-                responses.push(proofs.len() as u32);
-                let compiled_circuit = &self.compiled_delegation_circuits[&k];
-                for proof in proofs.iter() {
-                    responses.extend(::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
-                        proof,
-                        compiled_circuit,
-                    ));
+            if let Some(compiled_circuit) = self.compiled_delegation_circuits.get(k) {
+                if let Some(proofs) = self.delegation_proofs.get(&k) {
+                    responses.push(proofs.len() as u32);
+                    for proof in proofs.iter() {
+                        responses.extend(
+                            ::verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
+                                proof,
+                                compiled_circuit,
+                            ),
+                        );
+                    }
+                } else {
+                    responses.push(0u32);
                 }
             } else {
-                responses.push(0u32);
+                // skip
             }
         }
 

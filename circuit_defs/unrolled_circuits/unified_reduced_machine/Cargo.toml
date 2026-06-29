@@ -11,7 +11,9 @@ categories.workspace = true
 
 [dependencies]
 prover = { workspace = true, features = ["prover"] }
+witness_eval_generator = { workspace = true }
 common_constants = { workspace = true }
+circuit_common = { workspace = true }
 
 [features]
 witness_eval_fn = []

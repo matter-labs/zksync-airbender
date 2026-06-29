@@ -103,9 +103,6 @@ fn replay_unified_circuit<C: Counters>(
     assert_eq!(expected_final_state.pc, state.pc);
     assert_eq!(expected_final_state.timestamp, state.timestamp);
 
-    dbg!(buffers.len());
-    dbg!(buffers[0].len());
-
     buffers
 }
 

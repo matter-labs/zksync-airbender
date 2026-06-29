@@ -174,7 +174,6 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
             .zip(delegation_circuits_verifiers)
         {
             let num_circuits = nd_source.read_word();
-
             if num_circuits > 0 {
                 let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
                 buffer[0] = delegation_circuit_params.delegation_type;

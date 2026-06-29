@@ -32,6 +32,7 @@ cs = { workspace = true, optional = true }
 test_utils = { workspace = true }
 lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git"}
 serial_test = "3"
+flate2 = "*"
 
 [features]
 verifiers = ["verifier_common/no_inline", "full_statement_verifier/verifiers", "full_statement_verifier/security_80"]

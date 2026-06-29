@@ -14,7 +14,7 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
 
     let num_bytes_per_set: u64 = (1u64 << trace_len_log2) << WORD_BITS;
     assert!(num_bytes_per_set * (num_sets as u64) <= 1u64 << 32);
-    println!("Compiling inits and teardowns circuit for {} sets, 2^{} bytes each, {} bytes init in total", num_sets, num_bytes_per_set.trailing_zeros(), num_bytes_per_set * (num_sets as u64));
+    // println!("Compiling inits and teardowns circuit for {} sets, 2^{} bytes each, {} bytes init in total", num_sets, num_bytes_per_set.trailing_zeros(), num_bytes_per_set * (num_sets as u64));
 
     let mut variable_names = HashMap::new();
 

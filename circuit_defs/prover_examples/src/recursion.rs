@@ -22,9 +22,11 @@
 
 #[cfg(all(test, feature = "verifiers"))]
 mod tests {
-    use crate::serialize_to_file;
-use crate::unified::prove_unified_execution_with_replayer;
+    use super::scripts::*;
+    use crate::unified::prove_unified_execution_with_replayer;
     use crate::unrolled::prove_unrolled_execution_with_replayer;
+    use crate::unrolled::run_unrolled_machine_in_full;
+    use crate::*;
     use common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
     use full_statement_verifier::program_proof::ProgramProof;
     use full_statement_verifier::unified_circuit_statement::verify_unified_circuit_recursion_layer;
@@ -37,6 +39,7 @@ use crate::unified::prove_unified_execution_with_replayer;
     use riscv_transpiler::cycle::{
         IMStandardIsaConfigUnsignedMulDivOnly, ReducedMachineWithDelegation,
     };
+    use riscv_transpiler::vm::DelegationsAndUnifiedCounters;
     use setups::UnrolledCircuitSetupParams;
     use std::alloc::Global;
     use std::collections::BTreeMap;
@@ -271,30 +274,36 @@ use crate::unified::prove_unified_execution_with_replayer;
             "../../riscv_transpiler/examples/zksync_os/23620012_witness",
         ));
 
-        let pc = 30238;
-        println!("PC[{} * 4] = 0x{:08x}", pc, zksync_text[pc]);
-
         println!("=== Stage 1: proving zksync_os base layer ===");
-        let (base_proof, base_setups) = prove_unrolled_execution_with_replayer::<
-            IMStandardIsaConfigUnsignedMulDivOnly,
-            Global,
-        >(
-            BASE_CYCLES_BOUND,
-            &zksync_bin,
-            &zksync_text,
-            use_caches,
-            QuasiUARTSource::new_with_reads(zksync_witness),
-            RAM_BOUND,
-            &worker,
-            SecurityLevel::Sec80,
-            0,
-        );
-        println!("Base proofs are done");
-        serialize_to_file(&base_proof, "base_proofs.bin");
-        serialize_to_file(&base_setups, "base_setups.bin");
+        let (base_proof, base_setups) =
+            if let Ok(base_proof) = try_deserialize_compressed_from_file("base_proofs.bin") {
+                println!("Using existing files for base layer");
+                (base_proof, try_deserialize_compressed_from_file("base_setups.bin").unwrap())
+            } else {
+                let (base_proof, base_setups) = prove_unrolled_execution_with_replayer::<
+                    IMStandardIsaConfigUnsignedMulDivOnly,
+                    Global,
+                >(
+                    BASE_CYCLES_BOUND,
+                    &zksync_bin,
+                    &zksync_text,
+                    use_caches,
+                    QuasiUARTSource::new_with_reads(zksync_witness),
+                    RAM_BOUND,
+                    &worker,
+                    SecurityLevel::Sec80,
+                    0,
+                );
+                println!("Base proofs are done");
+                serialize_compressed_to_file(&base_proof, "base_proofs.bin");
+                serialize_compressed_to_file(&base_setups, "base_setups.bin");
+
+                (base_proof, base_setups)
+            };
 
         // sanity: base proof verifies on the native machine.
         native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
+        println!("Base layer proofs pass the verification on native arch");
 
         let base_end_params = compute_end_params(&base_setups, base_proof.final_pc);
         let (mut chain_hash, mut chain_preimage) = begin_chain(&base_end_params);
@@ -311,6 +320,7 @@ use crate::unified::prove_unified_execution_with_replayer;
         let mut proof = base_proof;
         let mut setups = base_setups;
         let mut input_is_base = true;
+        let mut layer = 0;
 
         loop {
             let (bin, text) = if input_is_base {
@@ -324,20 +334,38 @@ use crate::unified::prove_unified_execution_with_replayer;
                 "=== unrolled recursion over a {} proof ===",
                 if input_is_base { "base" } else { "recursion" }
             );
-            let (mut new_proof, new_setups) =
-                prove_unrolled_execution_with_replayer::<ReducedMachineWithDelegation, Global>(
-                    UNROLLED_RECURSION_CYCLES_BOUND,
-                    bin,
-                    text,
-                    use_caches,
-                    QuasiUARTSource::new_with_reads(stream),
-                    RAM_BOUND,
-                    &worker,
-                    SecurityLevel::Sec80,
-                    0,
+            let (new_proof, new_setups) = if let Ok(new_proof) =
+                try_deserialize_compressed_from_file(&format!("recursion_layer_{}_proof.bin", layer))
+            {
+                println!("Using existing files for layer {}", layer);
+                (
+                    new_proof,
+                    try_deserialize_compressed_from_file(&format!("recursion_layer_{}_setups.bin", layer)).unwrap(),
+                )
+            } else {
+                let (mut new_proof, new_setups) =
+                    prove_unrolled_execution_with_replayer::<ReducedMachineWithDelegation, Global>(
+                        UNROLLED_RECURSION_CYCLES_BOUND,
+                        bin,
+                        text,
+                        use_caches,
+                        QuasiUARTSource::new_with_reads(stream),
+                        RAM_BOUND,
+                        &worker,
+                        SecurityLevel::Sec80,
+                        0,
+                    );
+                new_proof.recursion_chain_hash = Some(chain_hash);
+                new_proof.recursion_chain_preimage = Some(chain_preimage);
+
+                serialize_compressed_to_file(&new_proof, &format!("recursion_layer_{}_proof.bin", layer));
+                serialize_compressed_to_file(
+                    &new_setups,
+                    &format!("recursion_layer_{}_setups.bin", layer),
                 );
-            new_proof.recursion_chain_hash = Some(chain_hash);
-            new_proof.recursion_chain_preimage = Some(chain_preimage);
+
+                (new_proof, new_setups)
+            };
 
             let round_cycles = proof_cycles(&new_proof);
             total_cycles += round_cycles;
@@ -355,6 +383,8 @@ use crate::unified::prove_unified_execution_with_replayer;
             setups = new_setups;
             input_is_base = false;
 
+            layer += 1;
+
             if round_cycles < UNIFIED_SWITCH_CYCLES {
                 println!("verifier invocation now < 64M cycles — switching to unified machine");
                 break;
@@ -366,20 +396,34 @@ use crate::unified::prove_unified_execution_with_replayer;
         //              its proof is a single unified circuit. ===
         println!("=== bridge: proving fsv_unrolled_recursion_layer in unified mode ===");
         let bridge_stream = build_unrolled_stream(&setups, &proof);
-        let (mut bridge_proof, bridge_setups) = prove_unified_execution_with_replayer::<Global>(
-            UNIFIED_CYCLES_BOUND,
-            &unrolled_rec_bin,
-            &unrolled_rec_text,
-            use_caches,
-            QuasiUARTSource::new_with_reads(bridge_stream),
-            RAM_BOUND,
-            &worker,
-            SecurityLevel::Sec80,
-            0,
-        );
-        bridge_proof.recursion_chain_hash = Some(chain_hash);
-        bridge_proof.recursion_chain_preimage = Some(chain_preimage);
-        total_cycles += proof_cycles(&bridge_proof);
+        let (mut bridge_proof, bridge_setups) = if let Ok(bridge_proof) =
+            try_deserialize_compressed_from_file("bridge_proofs.bin")
+        {
+            println!("Using existing files for bridge layer");
+            (bridge_proof, try_deserialize_compressed_from_file("bridge_setups.bin").unwrap())
+        } else {
+            let (mut bridge_proof, bridge_setups) = prove_unified_execution_with_replayer::<Global>(
+                UNIFIED_CYCLES_BOUND,
+                &unrolled_rec_bin,
+                &unrolled_rec_text,
+                use_caches,
+                QuasiUARTSource::new_with_reads(bridge_stream),
+                RAM_BOUND,
+                &worker,
+                SecurityLevel::Sec80,
+                0,
+            );
+            bridge_proof.recursion_chain_hash = Some(chain_hash);
+            bridge_proof.recursion_chain_preimage = Some(chain_preimage);
+
+            serialize_compressed_to_file(&bridge_proof, "bridge_proofs.bin");
+            serialize_compressed_to_file(&bridge_setups, "bridge_setups.bin");
+
+            (bridge_proof, bridge_setups)
+        };
+        let bridge_proof_cycles = proof_cycles(&bridge_proof);
+        total_cycles += bridge_proof_cycles;
+        println!("bridge unified proof ran {bridge_proof_cycles} cycles (total {total_cycles})");
 
         native_verify_unified(build_unified_stream(&bridge_setups, &bridge_proof));
 
@@ -395,32 +439,70 @@ use crate::unified::prove_unified_execution_with_replayer;
         println!("=== final: proving fsv_unified_recursion_layer in unified mode ===");
         let (unified_rec_bin, unified_rec_text) = fsv_program("fsv_unified_recursion_layer_sec_80");
         let final_stream = build_unified_stream(&setups, &proof);
-        let (mut final_proof, final_setups) = prove_unified_execution_with_replayer::<Global>(
-            UNIFIED_CYCLES_BOUND,
-            &unified_rec_bin,
-            &unified_rec_text,
-            use_caches,
-            QuasiUARTSource::new_with_reads(final_stream),
-            RAM_BOUND,
-            &worker,
-            SecurityLevel::Sec80,
-            0,
-        );
-        final_proof.recursion_chain_hash = Some(chain_hash);
-        final_proof.recursion_chain_preimage = Some(chain_preimage);
-        total_cycles += proof_cycles(&final_proof);
+        let (mut final_proof, final_setups) = if let Ok(final_proof) =
+            try_deserialize_compressed_from_file("final_proofs.bin")
+        {
+            println!("Using existing files for final layer");
+            (final_proof, try_deserialize_compressed_from_file("final_setups.bin").unwrap())
+        } else {
+            let (mut final_proof, final_setups) = prove_unified_execution_with_replayer::<Global>(
+                UNIFIED_CYCLES_BOUND,
+                &unified_rec_bin,
+                &unified_rec_text,
+                use_caches,
+                QuasiUARTSource::new_with_reads(final_stream),
+                RAM_BOUND,
+                &worker,
+                SecurityLevel::Sec80,
+                0,
+            );
+            final_proof.recursion_chain_hash = Some(chain_hash);
+            final_proof.recursion_chain_preimage = Some(chain_preimage);
+
+            serialize_compressed_to_file(&final_proof, "final_proofs.bin");
+            serialize_compressed_to_file(&final_setups, "final_setups.bin");
+
+            (final_proof, final_setups)
+        };
+        let final_proof_cycles = proof_cycles(&final_proof);
+        total_cycles += final_proof_cycles;
+        println!("final unified proof ran {final_proof_cycles} cycles (total {total_cycles})");
 
         let final_output = native_verify_unified(build_unified_stream(&final_setups, &final_proof));
 
         println!("=== pipeline complete: {total_cycles} total cycles proven ===");
         println!("final recursion-chain output registers: {final_output:?}");
+
+        let final_stream = build_unified_stream(&final_setups, &final_proof);
+
+        let (
+            (_final_pc, final_timestamp),
+            _snapshotter,
+            _counters,
+            _ram,
+            _registers,
+            _tape,
+            _expected_final_state,
+        ) = run_unrolled_machine_in_full::<
+            ReducedMachineWithDelegation,
+            DelegationsAndUnifiedCounters,
+        >(
+            UNIFIED_CYCLES_BOUND,
+            &unified_rec_bin,
+            &unified_rec_text,
+            RAM_BOUND,
+            DelegationsAndUnifiedCounters::default(),
+            QuasiUARTSource::new_with_reads(final_stream),
+        );
+        let cycles = (final_timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
+        println!("Verification of final proof would take {} cycles", cycles);
     }
 
     #[test]
     #[serial_test::serial]
     fn load_binary() {
-        use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
         use riscv_transpiler::ir::simple_instruction_set::*;
+        use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 
         let (zksync_bin, zksync_text) = load_program(
             "../../riscv_transpiler/examples/zksync_os/app.bin",
@@ -431,5 +513,54 @@ use crate::unified::prove_unified_execution_with_replayer;
 
         let instructions: Vec<Instruction> =
             preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&zksync_text);
+    }
+}
+
+#[cfg(test)]
+mod scripts {
+    use std::io::Read;
+    use std::io::Write;
+
+    #[allow(dead_code)]
+    pub(crate) fn try_deserialize_compressed_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> Result<T, ()> {
+        use flate2::Decompress;
+        use flate2::read::ZlibDecoder;
+
+        let mut src = std::fs::File::open(filename).map_err(|_| ())?;
+        let mut buffer = vec![];
+        src.read_to_end(&mut buffer);
+
+        let mut decoder = ZlibDecoder::new(&buffer[..]);
+        let mut unpacked: Vec<u8> = vec![];
+        decoder.read_to_end(&mut unpacked);
+
+        Ok(bincode::deserialize_from(&unpacked[..]).unwrap())
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn serialize_compressed_to_file<T: serde::Serialize>(el: &T, filename: &str) {
+        use flate2::Compression;
+        use flate2::write::ZlibEncoder;
+        let mut buffer = vec![];
+        bincode::serialize_into(&mut buffer, el).unwrap();
+
+        let mut dst = std::fs::File::create(filename).unwrap();
+        let mut e = ZlibEncoder::new(dst, Compression::default());
+        e.write_all(&buffer);
+        let _ = e.finish();
+    }
+
+    #[test]
+    fn convert_file() {
+        use full_statement_verifier::program_proof::ProgramProof;
+        use setups::UnrolledCircuitSetupParams;
+        use std::collections::BTreeMap;
+
+        // type T = ProgramProof;
+        type T = BTreeMap<u32, UnrolledCircuitSetupParams>;
+        
+        let file_name = "recursion_layer_0_setups";
+        let data: T = crate::deserialize_from_file(&format!("{}.json", file_name));
+        serialize_compressed_to_file(&data, &format!("{}.bin", file_name));
     }
 }

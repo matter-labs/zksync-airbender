@@ -116,13 +116,13 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
     cs.require_invariant(out_low, Invariant::RangeChecked { width: 16 });
     cs.require_invariant(out_high, Invariant::RangeChecked { width: 16 });
 
-    if let Some(rs1_reg) = Register(rs1_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
-        println!("RS1 value = 0x{:08x}", rs1_reg);
-    }
+    // if let Some(rs1_reg) = Register(rs1_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
+    //     println!("RS1 value = 0x{:08x}", rs1_reg);
+    // }
 
-    if let Some(rs2_reg) = Register(rs2_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
-        println!("RS2 value = 0x{:08x}", rs2_reg);
-    }
+    // if let Some(rs2_reg) = Register(rs2_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
+    //     println!("RS2 value = 0x{:08x}", rs2_reg);
+    // }
 
     if SUPPORT_SIGNED == false {
         let is_mul = decoder.is_mul();
@@ -144,18 +144,18 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
         // we do not need any sign information, but we still need to break everything into u8 chunks (do via lookup that outputs exact lowest 8 bits),
         // and test if divisor is 0 (via lookup of the sum of limbs)
 
-        if is_mul.get_value(cs).unwrap_or(false) {
-            println!("MUL");
-        }
-        if is_mulhu.get_value(cs).unwrap_or(false) {
-            println!("MULHU");
-        }
-        if is_divu.get_value(cs).unwrap_or(false) {
-            println!("DIVU");
-        }
-        if is_remu.get_value(cs).unwrap_or(false) {
-            println!("REMU");
-        }
+        // if is_mul.get_value(cs).unwrap_or(false) {
+        //     println!("MUL");
+        // }
+        // if is_mulhu.get_value(cs).unwrap_or(false) {
+        //     println!("MULHU");
+        // }
+        // if is_divu.get_value(cs).unwrap_or(false) {
+        //     println!("DIVU");
+        // }
+        // if is_remu.get_value(cs).unwrap_or(false) {
+        //     println!("REMU");
+        // }
 
         let is_mul_expr = Expr::<F>::from(is_mul);
         let is_mulhu_expr = Expr::<F>::from(is_mulhu);
@@ -553,8 +553,8 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                             .shl(8),
                     );
                     bits_32_to_48_carry.add_assign(
-                        &quotient_byte_3_value
-                            .widening_product(&divisor_byte_2_value)
+                        &quotient_byte_2_value
+                            .widening_product(&divisor_byte_3_value)
                             .widen()
                             .shl(8),
                     );
@@ -792,7 +792,7 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
             for i in 0..4 {
                 // `i` marks u16-ish chunks over which we accumulate
                 // schoolbook multplication terms
-                println!("Computing enforcement on limb {}", i);
+                // println!("Computing enforcement on limb {}", i);
 
                 let mut expr = Expr::<F>::zero();
 
@@ -801,13 +801,13 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                     for k in 0..4 {
                         let d_byte = &divisor_bytes[k];
                         if j + k == 2 * i {
-                            // println!(" + {:?} * {:?}", q_byte.get_value(cs), d_byte.get_value(cs));
+                            // println!(" + {:?} * {:?}", q_byte.to_max_quadratic_constraint().get_value(cs), d_byte.to_max_quadratic_constraint().get_value(cs));
                             expr = expr + q_byte.clone() * d_byte.clone();
                         } else if j + k == 2 * i + 1 {
                             // println!(
                             //     " + 256 * {:?} * {:?}",
-                            //     q_byte.get_value(cs),
-                            //     d_byte.get_value(cs)
+                            //     q_byte.to_max_quadratic_constraint().get_value(cs),
+                            //     d_byte.to_max_quadratic_constraint().get_value(cs)
                             // );
                             expr = expr + q_byte.clone() * d_byte.clone() * shift_left_8_bits;
                         }
@@ -882,9 +882,9 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
         todo!("support signed ops")
     }
 
-    if let Some(rd_reg) = Register(rd_write_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
-        println!("RD value = 0x{:08x}", rd_reg);
-    }
+    // if let Some(rd_reg) = Register(rd_write_limbs.map(|el| Num::Var(el))).get_value_unsigned(cs) {
+    //     println!("RD value = 0x{:08x}", rd_reg);
+    // }
 
     // bump PC
     use crate::gkr_circuits::utils::calculate_pc_next_no_overflows_with_range_checks;
