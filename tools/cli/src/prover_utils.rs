@@ -589,7 +589,7 @@ pub fn verify_artifact(
                     security,
                 )
                 .map_err(|_| "recursion(unrolled over base) verification failed".to_string())?;
-                ensure_recursion_chain_binds_program(&output, &base_level.hash_chain)?;
+                ensure_unrolled_target_binds_program(&output, &unrolled_level.hash_chain)?;
                 Ok(output)
             } else if previous_end_params == unrolled_level.setup.end_params {
                 let output = verify_unrolled_layer_proof(
@@ -602,7 +602,7 @@ pub fn verify_artifact(
                 .map_err(|_| {
                     "recursion(unrolled over recursion-unrolled) verification failed".to_string()
                 })?;
-                ensure_recursion_chain_binds_program(&output, &unrolled_level.hash_chain)?;
+                ensure_unrolled_target_binds_program(&output, &unrolled_level.hash_chain)?;
                 Ok(output)
             } else {
                 Err("unable to infer previous layer for recursion-unrolled proof".to_string())
@@ -678,6 +678,19 @@ fn ensure_recursion_chain_binds_program(
         );
     }
     Ok(())
+}
+
+/// Bind a verified recursion-unrolled proof to the supplied program and target stage.
+///
+/// A `RecursionUnrolled` artifact must prove one unrolled-recursion wrapper around the
+/// supplied program's base layer, regardless of whether the wrapped proof came directly
+/// from the base layer or from a prior unrolled wrapper. In both cases, the authenticated
+/// output chain must therefore match the supplied program's unrolled recursion level.
+fn ensure_unrolled_target_binds_program(
+    verifier_output: &[u32; 16],
+    expected_unrolled_chain: &[u32; 8],
+) -> Result<(), String> {
+    ensure_recursion_chain_binds_program(verifier_output, expected_unrolled_chain)
 }
 
 fn make_artifact(
@@ -1172,5 +1185,42 @@ mod recursion_binding_tests {
 
         // And it still verifies against the program it was actually generated for.
         assert!(ensure_recursion_chain_binds_program(&proven_output, &chain_q).is_ok());
+    }
+
+    #[test]
+    fn rejects_base_chain_when_target_claims_recursion_unrolled() {
+        let base_end_params = [1, 2, 3, 4, 5, 6, 7, 8];
+        let unrolled_end_params = [11, 12, 13, 14, 15, 16, 17, 18];
+        let (base_chain, base_preimage) =
+            UnrolledProgramSetup::begin_recursion_chain(&base_end_params);
+        let (unrolled_chain, _) = UnrolledProgramSetup::continue_recursion_chain(
+            &unrolled_end_params,
+            &base_chain,
+            &base_preimage,
+        );
+
+        let base_output = verifier_output_with_chain(base_chain);
+        let err = ensure_unrolled_target_binds_program(&base_output, &unrolled_chain)
+            .expect_err("base output chain must not satisfy a recursion-unrolled target");
+        assert!(
+            err.contains("does not match the supplied program"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn accepts_unrolled_chain_for_recursion_unrolled_target() {
+        let base_end_params = [21, 22, 23, 24, 25, 26, 27, 28];
+        let unrolled_end_params = [31, 32, 33, 34, 35, 36, 37, 38];
+        let (base_chain, base_preimage) =
+            UnrolledProgramSetup::begin_recursion_chain(&base_end_params);
+        let (unrolled_chain, _) = UnrolledProgramSetup::continue_recursion_chain(
+            &unrolled_end_params,
+            &base_chain,
+            &base_preimage,
+        );
+
+        let unrolled_output = verifier_output_with_chain(unrolled_chain);
+        assert!(ensure_unrolled_target_binds_program(&unrolled_output, &unrolled_chain).is_ok());
     }
 }
