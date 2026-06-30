@@ -6,14 +6,20 @@
 #
 #   fsv_unrolled_base_layer_sec_80      : blake2_with_compression, blake2_g_function
 #   fsv_unrolled_recursion_layer_sec_80 : blake2_with_compression, blake2_g_function
-#   fsv_unified_recursion_layer_sec_80  : blake2_with_compression, blake2_g_function, mop_extension
+#   fsv_unified_recursion_layer_sec_80  : blake2_with_compression, blake2_g_function, special_opcodes_extension
+#
+# `special_opcodes_extension` does blake inline with the reduced machine's
+# tri-add / xor-rotate opcodes — the correct mop-style path for the reduced ISA
+# (the `mop_extension` rotate opcode is for SPECIAL_ROTATION machines only and
+# would be miscompiled here).
 #
 # We do NOT build the unified base-layer verifier — the recursion pipeline never
 # uses it (it only verifies a unified proof at the recursion layer).
 #
 # Output files are e.g. `fsv_unrolled_recursion_layer_sec_80_blake2_g_function.{bin,elf,text}`,
 # which is what `recursion.rs::fsv_program_blake` loads based on the
-# RECURSION_UNROLLED_BLAKE / RECURSION_UNIFIED_BLAKE environment variables.
+# RECURSION_UNROLLED_BLAKE / RECURSION_BRIDGE_BLAKE / RECURSION_FINAL_BLAKE
+# environment variables.
 #
 # Variant defaults to `caches` to match the prover, which runs with
 # `use_caches = true`. Override with: ./dump_recursive_verifiers.sh --variant no_caches
@@ -46,8 +52,8 @@ for mode in blake2_with_compression blake2_g_function; do
     build_variant fsv_unrolled_recursion_layer_sec_80 "${mode}"
 done
 
-# Unified-machine recursion verifier: round, g function, or mop extension.
-for mode in blake2_with_compression blake2_g_function mop_extension; do
+# Unified-machine recursion verifier: round, g function, or inline special opcodes.
+for mode in blake2_with_compression blake2_g_function special_opcodes_extension; do
     build_variant fsv_unified_recursion_layer_sec_80 "${mode}"
 done
 

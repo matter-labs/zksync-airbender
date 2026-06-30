@@ -86,9 +86,9 @@ pub(crate) fn default_increase_pc<C: Counters>(state: &mut State<C>) {
 #[inline(always)]
 pub(crate) fn illegal<C: Counters, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
-    instr: Instruction,
-    tracer: &mut impl WitnessTracer,
+    _ram: &mut R,
+    _instr: Instruction,
+    _tracer: &mut impl WitnessTracer,
 ) {
     panic!("Illegal instruction encounteted at PC = 0x{:08x}", state.pc);
 }

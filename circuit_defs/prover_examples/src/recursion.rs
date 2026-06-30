@@ -22,8 +22,11 @@
 //!   * `RECURSION_UNROLLED_BLAKE` (round|g) — unrolled base + recursion steps,
 //!   * `RECURSION_BRIDGE_BLAKE`   (round|g) — the bridge proof (defaults to the
 //!     unrolled mode),
-//!   * `RECURSION_FINAL_BLAKE`    (round|g|mop, legacy alias
-//!     `RECURSION_UNIFIED_BLAKE`) — the final unified-recursion proof.
+//!   * `RECURSION_FINAL_BLAKE`    (round|g|special_opcodes, legacy alias
+//!     `RECURSION_UNIFIED_BLAKE`) — the final unified-recursion proof. The
+//!     `special_opcodes` mode does blake inline with the reduced machine's
+//!     tri-add / xor-rotate opcodes (the correct mop-style path for the
+//!     reduced ISA; the old `mop_extension` rotate is wrong there).
 //! Build the matching binaries with
 //! `tools/gkr_verifier/dump_recursive_verifiers.sh`. Intermediate proofs/setups
 //! are cached to disk, keyed by the active blake variants so different options
@@ -243,7 +246,7 @@ mod tests {
     enum BlakeMode {
         Compression,
         GFunction,
-        Mop,
+        BlakeSpecialOpcodes,
     }
 
     impl BlakeMode {
@@ -252,7 +255,7 @@ mod tests {
             match self {
                 BlakeMode::Compression => "blake2_with_compression",
                 BlakeMode::GFunction => "blake2_g_function",
-                BlakeMode::Mop => "mop_extension",
+                BlakeMode::BlakeSpecialOpcodes => "special_opcodes_extension",
             }
         }
 
@@ -260,21 +263,29 @@ mod tests {
             match s {
                 "blake2_with_compression" | "compression" | "round" => Some(BlakeMode::Compression),
                 "blake2_g_function" | "g_function" | "g" => Some(BlakeMode::GFunction),
-                "mop_extension" | "mop" => Some(BlakeMode::Mop),
+                "special_opcodes_extension" | "special_opcodes" | "spec" => {
+                    Some(BlakeMode::BlakeSpecialOpcodes)
+                }
                 _ => None,
             }
         }
     }
 
-    /// Read a blake mode from the first set of `vars`, validating it. `allow_mop`
-    /// gates the mop_extension variant (only the unified verifier supports it).
-    fn blake_mode_from_env(vars: &[&str], allow_mop: bool, default: BlakeMode) -> BlakeMode {
+    /// Read a blake mode from the first set of `vars`, validating it.
+    /// `allow_special_opcodes` gates the inline special-opcodes variant — only
+    /// the unified-machine (reduced-ISA) verifier uses it; the unrolled
+    /// verifiers are restricted to the blake round/g-function delegations.
+    fn blake_mode_from_env(
+        vars: &[&str],
+        allow_special_opcodes: bool,
+        default: BlakeMode,
+    ) -> BlakeMode {
         for var in vars {
             if let Ok(v) = std::env::var(var) {
                 let m = BlakeMode::parse(&v).unwrap_or_else(|| panic!("invalid {var}={v}"));
                 assert!(
-                    allow_mop || m != BlakeMode::Mop,
-                    "{var}: this verifier supports only blake round/g function, not mop"
+                    allow_special_opcodes || m != BlakeMode::BlakeSpecialOpcodes,
+                    "{var}: this verifier supports only blake round/g function, not special opcodes"
                 );
                 return m;
             }
@@ -290,14 +301,15 @@ mod tests {
 
     /// Blake mode for the **bridge** proof — the unrolled verifier re-proven on
     /// the unified machine. `RECURSION_BRIDGE_BLAKE` = round | g; defaults to the
-    /// unrolled mode. (The bridge binary is an unrolled verifier, so no mop.)
+    /// unrolled mode. (The bridge binary is an unrolled verifier, restricted to
+    /// the round/g-function delegations.)
     fn bridge_blake_mode() -> BlakeMode {
         blake_mode_from_env(&["RECURSION_BRIDGE_BLAKE"], false, unrolled_blake_mode())
     }
 
     /// Blake mode for the **final** unified-recursion verifier.
     /// `RECURSION_FINAL_BLAKE` (or legacy `RECURSION_UNIFIED_BLAKE`) =
-    /// round (default) | g | mop.
+    /// round (default) | g | special_opcodes.
     fn final_blake_mode() -> BlakeMode {
         blake_mode_from_env(
             &["RECURSION_FINAL_BLAKE", "RECURSION_UNIFIED_BLAKE"],
