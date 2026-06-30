@@ -701,20 +701,23 @@ fn run_basic_unrolled_proof_job_multi_schedule_test() {
 /// `E4::ONE` — mirroring the CPU orchestration (orchestration/unified.rs:259-278).
 /// Unlike GATE 2 (stagewise), this exercises the full backward+WHIR path, so it is
 /// the first test that commits the base-layer (layer 0) cached-relation extras into
-/// the WHIR transcript. A second schedule/finish proves determinism + that device
-/// memory returns to baseline across proofs (no cross-proof leak).
+/// the WHIR transcript.
 ///
-/// Serial shape (schedule -> finish -> schedule -> finish), NOT the concurrent
-/// no-sync shape of `run_basic_unrolled_proof_job_multi_schedule_test`: scheduling
-/// two unified (2^24) jobs concurrently currently trips a pre-existing cross-proof
-/// scheduling race in the prover (lookup-column corruption surfaced only when two
-/// unified proofs' async work interleaves; it reproduces with device-buffer
-/// releases fully disabled, so it is independent of the keepalive accounting). That
-/// race is a separate investigation; until it is root-caused, run the two unified
-/// proofs serially. `prove()` is balanced — every device allocation it makes is
-/// released stream-ordered before it returns (asserted per-prove in
-/// `schedule_prove`) — so the per-proof footprint never accumulates across the two
-/// runs and a single ~54 GiB peak fits the 64 GiB fixture arena.
+/// Concurrent shape (schedule -> schedule -> finish -> finish), NOT serial: both
+/// unified (2^24) jobs are scheduled before either finishes, so the second proof's
+/// device allocations land on blocks the first proof wrote and freed (the first
+/// job keeps only its input transfers alive until `finish()`, which shifts the
+/// second proof's placement onto recycled, non-zero memory). This is the exact
+/// condition that exposed a witness-trace uninitialized-read: the witness
+/// generators write the per-opcode lookup columns only under `IF` guards, so rows
+/// whose opcode doesn't match were left unwritten and read as fresh-page zeros on a
+/// first proof but as stale data on the recycled second proof — diverging the
+/// `Lookup16Bits`/`LookupTimestamps`/`GenericLookup` base-layer claims. The fix is
+/// the codegen zero-default for conditionally-written witness columns
+/// (`gpu_witness_eval_generator`); this test guards against its regression.
+/// `prove()` is balanced — every device allocation it makes is released
+/// stream-ordered before it returns (asserted per-prove in `schedule_prove`) — so a
+/// single ~54 GiB peak fits the 64 GiB fixture arena even with both jobs live.
 #[test]
 #[serial]
 #[ignore]
@@ -722,7 +725,12 @@ fn run_unified_proof_job_multi_schedule_test() {
     let fixture = prepare_unified_proof_fixture();
     let baseline_device_usage = fixture.base.context.get_used_mem_current();
 
+    // Schedule both jobs before finishing either: the second proof reuses the
+    // first's freed (written) device blocks, exercising the cross-proof recycling
+    // path that surfaced the uninitialized-witness read.
     let proof_job_0 = fixture.schedule_prove().unwrap();
+    let proof_job_1 = fixture.schedule_prove().unwrap();
+
     let (gpu_proof_0, proof_time_ms_0) = proof_job_0.finish().unwrap();
     eprintln!("unified proof_job_0 proof time: {proof_time_ms_0} ms");
     assert_gkr_proof_eq_for_test(&gpu_proof_0, &fixture.expected_cpu_proof);
@@ -749,9 +757,8 @@ fn run_unified_proof_job_multi_schedule_test() {
     );
     drop(gpu_proof_0);
 
-    // Second schedule/finish: proves the proof is deterministic across runs and
-    // that device memory returns to baseline (no cross-proof leak).
-    let proof_job_1 = fixture.schedule_prove().unwrap();
+    // The concurrently-scheduled second proof must be bit-exact too (this is the
+    // one that ran on recycled blocks) and device memory must return to baseline.
     let (gpu_proof_1, proof_time_ms_1) = proof_job_1.finish().unwrap();
     eprintln!("unified proof_job_1 proof time: {proof_time_ms_1} ms");
     assert_gkr_proof_eq_for_test(&gpu_proof_1, &fixture.expected_cpu_proof);
