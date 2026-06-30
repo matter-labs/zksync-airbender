@@ -1350,10 +1350,11 @@ pub fn perturb_one_gene(genome: &Genome, index: usize, delta: f64) -> Genome {
     panic!("gene index {index} out of range");
 }
 
+// Flat-path re-export so consumers reach the optimizer driver as `metaheuristic::<item>` instead of
+// coupling to the `tests` submodule. `OptimizerResult` stays internal to `tests` (used only there).
 #[cfg(test)]
 pub(crate) use tests::{
     optimize_from_population_grouped, project_genome_to_units, seeded_smoke_population,
-    OptimizerResult,
 };
 
 #[cfg(test)]

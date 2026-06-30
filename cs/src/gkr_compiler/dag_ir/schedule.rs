@@ -233,12 +233,28 @@ mod validator_tests {
     }
 
     #[test]
-    fn rejects_non_atom_root_in_order() {
-        // RootId(1) is out of range (only 1 root) — also covers range.
+    fn rejects_out_of_range_root() {
+        // RootId(1) does not exist (demo_circuit has 1 root) — covers the range case.
         let mut s = ok_schedule();
         s.layers[0].order = vec![RootId(1)];
         s.layers[0].steps = vec![StepPlan { resident_before: vec![], events: vec![], resident_after: vec![] }];
         assert!(validate_circuit_schedule(&demo_circuit(), &s).is_err());
+    }
+
+    #[test]
+    fn rejects_non_atom_root_in_order() {
+        // An IN-RANGE root that is not an atom (claim: None) must be rejected — isolates the
+        // atom-set check from the out-of-range case above.
+        let mut c = demo_circuit();
+        c.layers[0].roots.push(Root {
+            expr: ExprId(2),
+            materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 1 }, field: FieldKind::Base }),
+            claim: None,
+        });
+        let mut s = ok_schedule();
+        s.layers[0].order = vec![RootId(1)]; // in range now (2 roots), but not an atom root
+        s.layers[0].steps = vec![StepPlan { resident_before: vec![], events: vec![], resident_after: vec![] }];
+        assert!(validate_circuit_schedule(&c, &s).is_err());
     }
 
     #[test]
@@ -279,6 +295,34 @@ mod validator_tests {
             resident_before: vec![],
             events: vals.iter().map(|&v| ReplayEvent::Admit { value: v }).collect(),
             resident_after: vals,
+        }];
+        assert!(validate_circuit_schedule(&c, &s).is_err());
+    }
+
+    #[test]
+    fn rejects_ext_width_over_budget_under_count() {
+        // ONE Ext value (4 cells) with budget 3: count (1) is UNDER budget but width (4) is OVER.
+        // A count-based regression would wrongly accept this; the width-aware validator rejects it.
+        let mut c = demo_circuit();
+        // Challenge source -> Ext; Expr::Source referencing it is ExprId(3), resolves to Ext.
+        c.layers[0].sources.push(SourceInfo {
+            kind: SourceKind::Challenge {
+                reference: ChallengeRef {
+                    key: ChallengeKey::ConstraintAggregation,
+                    power: ChallengePower::One,
+                },
+            },
+        });
+        let challenge_src = SourceId(c.layers[0].sources.len() as u32 - 1);
+        c.layers[0].exprs.push(Expr::Source(challenge_src));
+        let ext_val = ExprId(3);
+
+        let mut s = ok_schedule();
+        s.budget = 3; // 1 Ext value = 4 cells > 3, while the entry count (1) is <= 3
+        s.layers[0].steps = vec![StepPlan {
+            resident_before: vec![],
+            events: vec![ReplayEvent::Admit { value: ext_val }],
+            resident_after: vec![ext_val],
         }];
         assert!(validate_circuit_schedule(&c, &s).is_err());
     }

@@ -1077,7 +1077,7 @@ fn m1_uniform_binding_c_is_exact_handbuilt() {
 fn replay_plan_matches_score_and_reproduces_residency() {
     use s3_gap::instance::extract_instance;
     use s3_gap::instance::relation_units;
-    use s3_planner::metaheuristic::tests::{project_genome_to_units, seeded_smoke_population};
+    use s3_planner::metaheuristic::{project_genome_to_units, seeded_smoke_population};
     use s3_planner::metaheuristic::{
         enumerate_demand_sites, replay_plan, score_candidate_grouped, unit_members, ReplayEventRaw,
     };
@@ -1159,7 +1159,7 @@ fn invert_remap(remap: &HashMap<u32, u32>) -> HashMap<u32, u32> {
 #[test]
 fn order_bridge_binding_holds() {
     use s3_gap::instance::{extract_instance_with_remap, relation_units};
-    use s3_planner::metaheuristic::tests::{project_genome_to_units, seeded_smoke_population};
+    use s3_planner::metaheuristic::{project_genome_to_units, seeded_smoke_population};
     use s3_planner::metaheuristic::{
         decode_grouped_occurrence_order, enumerate_demand_sites, order_keeps_units_contiguous,
         unit_members,
@@ -1229,9 +1229,8 @@ fn produce_circuit_schedule(
         order_keeps_units_contiguous, replay_plan, score_candidate_grouped, unit_members,
         DemandKindRaw, ReplayEventRaw, StepPlanRaw,
     };
-    // Items living in `metaheuristic::tests` (the optimizer driver + grouped seed helpers),
-    // imported exactly as the Task 5/6 tests do.
-    use crate::s3_planner::metaheuristic::tests::{
+    // Optimizer driver + grouped seed helpers, via the flat `metaheuristic` re-export.
+    use crate::s3_planner::metaheuristic::{
         optimize_from_population_grouped, project_genome_to_units, seeded_smoke_population,
     };
     use cs::gkr_compiler::dag_ir::{
