@@ -704,23 +704,17 @@ fn run_basic_unrolled_proof_job_multi_schedule_test() {
 /// the WHIR transcript. A second schedule/finish proves determinism + that device
 /// memory returns to baseline across proofs (no cross-proof leak).
 ///
-/// WORKAROUND / TODO: the two proofs here run SERIALLY (schedule -> finish ->
-/// schedule -> finish). That is NOT the intended `multi_schedule` shape: the
-/// per-family `run_basic_unrolled_proof_job_multi_schedule_test` deliberately
-/// schedules BOTH jobs with no synchronization between the two `schedule_prove`
-/// calls, so their async stream-ordered work interleaves on the shared streams +
-/// device pool — that overlap is what exercises cross-job race conditions. The
-/// serial shape below loses that race coverage; it only validates parity +
-/// closure-to-ONE + baseline reclaim.
-///
-/// The reason it is serial for now: a single unified (2^24) proof peaks at ~54 GiB
-/// and a live `GpuGKRProofJob` currently over-retains ~18 GiB of WHIR/backward/slab
-/// device buffers in its keepalive until `finish()` (a pre-existing regression from
-/// base commit f2dc2d2f — those buffers' last *scheduled* use is inside `prove()`,
-/// so they should drop stream-ordered at prove-end like the stage-1 traces). Two
-/// jobs in flight therefore need ~72 GiB and exceed the 64 GiB fixture arena.
-/// Once that over-retention is fixed, restore the concurrent (no-sync-between-
-/// schedules) shape to recover the race-condition coverage.
+/// Serial shape (schedule -> finish -> schedule -> finish), NOT the concurrent
+/// no-sync shape of `run_basic_unrolled_proof_job_multi_schedule_test`: scheduling
+/// two unified (2^24) jobs concurrently currently trips a pre-existing cross-proof
+/// scheduling race in the prover (lookup-column corruption surfaced only when two
+/// unified proofs' async work interleaves; it reproduces with device-buffer
+/// releases fully disabled, so it is independent of the keepalive accounting). That
+/// race is a separate investigation; until it is root-caused, run the two unified
+/// proofs serially. `prove()` is balanced — every device allocation it makes is
+/// released stream-ordered before it returns (asserted per-prove in
+/// `schedule_prove`) — so the per-proof footprint never accumulates across the two
+/// runs and a single ~54 GiB peak fits the 64 GiB fixture arena.
 #[test]
 #[serial]
 #[ignore]

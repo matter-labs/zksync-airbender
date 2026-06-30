@@ -198,6 +198,18 @@ impl<T> TraceHolder<T> {
         self.cosets_materialized
     }
 
+    /// Release the materialized LDE cosets, returning the holder to its
+    /// pre-`ensure_cosets_materialized` state (`raw_hypercube_evals`, cached
+    /// partial trees, and the unified cap are kept). The cosets are a transient
+    /// expansion needed only while committing / WHIR-opening this trace; once
+    /// those reads have been scheduled the reservation is freed stream-ordered
+    /// (same basis as the other prove-end device releases). A subsequent
+    /// `ensure_cosets_materialized` re-allocates them on demand.
+    pub(crate) fn release_cosets(&mut self) {
+        self.cosets = CosetsHolder::None(std::marker::PhantomData);
+        self.cosets_materialized = false;
+    }
+
     pub(crate) fn mark_cosets_materialized(&mut self) {
         self.cosets_materialized = true;
     }

@@ -197,7 +197,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         post_backward_callbacks,
         mut base_layer_claims_scheduled,
         base_layer_claims_shared_state,
-        whir_scheduled,
+        mut whir_scheduled,
         batching_challenge_device: _batching_challenge_device,
     } = schedule_whir_phase(
         &compiled_circuit,
@@ -218,7 +218,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     // handles were already taken by the orchestrator (or remain as `Some`
     // for the proof-lifetime final-seed/claim-point buffers), and the
     // callbacks/tracing/host-staging buffers all ride on this struct.
-    let backward_keepalive = backward_scheduled;
+    let mut backward_keepalive = backward_scheduled;
 
     let pending_aggregation = base_layer_claims_scheduled.take_pending_aggregation();
     let proof_host_mirror = Some(schedule_terminal_proof_assembly(
@@ -245,6 +245,40 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
 
     proof_range.end(stream)?;
     ranges.push(proof_range);
+
+    // Release the device reservations whose last scheduled use is inside
+    // prove(), so the job returns to the caller holding only the inputs it was
+    // given plus host bookkeeping — i.e. used device memory after prove()
+    // equals used device memory before it. The allocator pool is a reservation
+    // tracker (immediate bookkeeping release); physical safety is exec-stream
+    // ordering, so the next proof's exec-stream work serializes after this
+    // proof's and can reuse these regions. Only host bits — pending callbacks,
+    // the (empty in production) backward shared_state, base-layer claim
+    // metadata, and the pinned proof host mirror read by the terminal callback
+    // — ride on to finish(). Each release is a single statement so an
+    // individual buffer class can be re-retained when bisecting a
+    // multi-schedule regression.
+    //
+    // Synthetic setup trace holder (when present): its last scheduled use is
+    // the WHIR open of the setup commitment in schedule_whir_phase. Drop it
+    // explicitly here rather than leaving it to function-scope drop.
+    drop(synthetic_setup_trace_holder);
+    // Real setup commitment: the WHIR open materializes its LDE cosets
+    // on-demand (~the trace's full LDE). Those cosets are prove-internal — once
+    // the open kernels are scheduled they are dead — but the setup wrapper
+    // itself (raw hypercube evals + cached partial trees + unified cap) is a
+    // caller-provided input that rides on in `_inputs`. Release just the cosets
+    // so prove()'s net device footprint is zero without freeing the input.
+    if let Some(setup) = setup.as_mut() {
+        setup.trace_holder.release_cosets();
+    }
+    backward_keepalive.release_device_buffers();
+    base_layer_claims_scheduled.release_device_buffers();
+    whir_scheduled.release_device_buffers();
+    // WHIR base batching-challenge buffer: consumed on-device by WHIR fold.
+    drop(_batching_challenge_device);
+    // Proof slab: last scheduled use is the terminal D2H on exec_stream.
+    drop(proof_slab);
 
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     is_finished_event.record(stream)?;
@@ -275,9 +309,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
             _backward: backward_keepalive,
             _base_layer_claims: base_layer_claims_scheduled,
             _whir: whir_scheduled,
-            _whir_batching_challenge_device: _batching_challenge_device,
             _proof_host_mirror: proof_host_mirror,
-            _proof_slab: proof_slab,
         },
     })
 }

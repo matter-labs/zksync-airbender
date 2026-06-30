@@ -1,12 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 
 use era_cudart::event::CudaEvent;
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{DeviceAllocation, HostAllocation};
+use crate::primitives::context::HostAllocation;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::{ClaimBufferLayout, GpuGKRBackwardScheduledExecution};
@@ -42,20 +41,14 @@ pub(super) struct GpuGKRProofJobKeepalive<'a, A: GoodAllocator> {
     pub(super) _backward: GpuGKRBackwardScheduledExecution<BF, E4>,
     pub(super) _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
     pub(super) _whir: GpuWhirFoldScheduledExecution,
-    /// Device-resident WHIR base batching-challenge buffer drawn from the
-    /// rolling backward seed before WHIR fold. Kept alive on the proof-job
-    /// keepalive so any scheduled kernel still reading from it remains valid
-    /// until `finish()` syncs the exec stream.
-    #[allow(dead_code)]
-    pub(super) _whir_batching_challenge_device: DeviceAllocation<E4>,
     /// Pinned host mirror of the device-resident proof slab (Phase 4). Populated
-    /// by the terminal D2H; read by the single assembly callback.
+    /// by the terminal D2H; read by the single assembly callback. This is the
+    /// only buffer (host, pinned) the keepalive still owns past prove-end — the
+    /// device reservations (proof slab, WHIR caps/ephemerals, batching
+    /// challenge, backward handoff buffers) are released stream-ordered at the
+    /// end of `prove()`.
     #[allow(dead_code)]
     pub(super) _proof_host_mirror: Option<HostAllocation<[u8]>>,
-    /// Proof slab itself — held here so it outlives all scheduled writes and
-    /// the terminal D2H.
-    #[allow(dead_code)]
-    pub(super) _proof_slab: Arc<DeviceAllocation<E4>>,
 }
 
 pub struct GpuGKRProofJob<'a, A: GoodAllocator> {
