@@ -11,10 +11,11 @@ use crate::types::Boolean;
 
 use super::circuit::{
     FAMILY_1_FLAG_OFFSET as F1_OFFSET, FAMILY_1_TRI_ADD_BIT, FAMILY_2_FLAG_OFFSET as F2_OFFSET,
-    FAMILY_3_FLAG_OFFSET as F3_OFFSET, FAMILY_4_FLAG_OFFSET as F4_OFFSET,
+    FAMILY_3_FLAG_OFFSET as F3_OFFSET, FAMILY_3_XOR_ROT_BIT, FAMILY_4_FLAG_OFFSET as F4_OFFSET,
     FAMILY_4_LW_BIT as F4_LW_BIT, FAMILY_4_SW_BIT as F4_SW_BIT, UNIFIED_F1_NUM_FLAGS,
-    UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
+    UNIFIED_F3_NUM_FLAGS, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
+use crate::tables::TableType;
 
 // Family 4 in the unified bitmask is one-hot LW/SW (2 bits), not the standalone
 // 1-bit `is_store` encoding. The bit positions live in `circuit.rs` as the
@@ -33,7 +34,9 @@ pub struct UnifiedReducedMachineFamilyCircuitMask {
     // add_sub family flags, bit [9] is the unified-only 3-input-add (tri-add) flag.
     add_sub_lui_auipc_mop_bits: [Boolean; UNIFIED_F1_NUM_FLAGS],
     jump_branch_slt_bits: [Boolean; JUMP_SLT_BRANCH_FAMILY_NUM_BITS],
-    binary_shifts_bits: [Boolean; SHIFT_BINARY_FAMILY_NUM_FLAGS],
+    // UNIFIED_F3_NUM_FLAGS = standalone NUM_FLAGS + 1: bits [0..2) are the standalone
+    // shift/binop flags, bit [2] is the unified-only xor-rotate flag.
+    binary_shifts_bits: [Boolean; UNIFIED_F3_NUM_FLAGS],
     is_lw: Boolean,
     is_sw: Boolean,
 }
@@ -67,7 +70,16 @@ impl UnifiedReducedMachineFamilyCircuitMask {
     }
 
     pub fn binary_shifts(&self) -> ShiftBinaryFamilyCircuitMask {
-        ShiftBinaryFamilyCircuitMask::from_mask(self.binary_shifts_bits)
+        // The shared mask carries only the 2 standalone flags; the xor-rotate bit [2] is
+        // threaded separately via `perform_xor_rot()`.
+        let standalone: [Boolean; SHIFT_BINARY_FAMILY_NUM_FLAGS] =
+            std::array::from_fn(|i| self.binary_shifts_bits[i]);
+        ShiftBinaryFamilyCircuitMask::from_mask(standalone)
+    }
+
+    /// Unified-only xor-rotate (`ZimopIXorRot`) flag (F3 region bit [2]).
+    pub fn perform_xor_rot(&self) -> Boolean {
+        self.binary_shifts_bits[SHIFT_BINARY_FAMILY_NUM_FLAGS]
     }
 
     pub fn is_lw(&self) -> Boolean {
@@ -86,7 +98,7 @@ impl UnifiedReducedMachineFamilyCircuitMask {
         self.jump_branch_slt_bits
     }
 
-    pub fn binary_shifts_bits(&self) -> [Boolean; SHIFT_BINARY_FAMILY_NUM_FLAGS] {
+    pub fn binary_shifts_bits(&self) -> [Boolean; UNIFIED_F3_NUM_FLAGS] {
         self.binary_shifts_bits
     }
 }
@@ -124,6 +136,34 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
                 funct3: Some(0),
                 funct7: None,
                 opcode_family_bits: 1u32 << FAMILY_1_TRI_ADD_BIT,
+            });
+        }
+
+        // `ZimopIXorRot` (rd = (rs1 ^ rd_old) >>> rot) is a UNIFIED-ONLY shift/binop-family opcode;
+        // the standalone `ShiftBinaryDecoder` returns `Err`. The VM keeps rs2 = x0 and reads rd_old
+        // via the rd slot (like fma), so rd_index = rd; the rotation amount (only the 4 Blake2 values
+        // {16,12,8,7}) is mapped to the per-rotation xor-rotate table id and carried in `funct3`
+        // (table_id = funct3). `imm` is zeroed (the rotation now lives in funct3).
+        if preprocessed_opcode.name == InstructionName::ZimopIXorRot {
+            assert_ne!(preprocessed_opcode.rd, 0);
+            assert_eq!(preprocessed_opcode.rs2, 0);
+            let rotation_table_id = match preprocessed_opcode.imm {
+                16 => TableType::XorRotate16,
+                12 => TableType::XorRotate12,
+                8 => TableType::XorRotate8,
+                7 => TableType::XorRotate7,
+                other => panic!(
+                    "unsupported xor-rotate rotation amount {other} (only Blake2 {{16,12,8,7}})"
+                ),
+            } as u32;
+            return Ok(ExecutorFamilyDecoderData {
+                imm: 0,
+                rs1_index: preprocessed_opcode.rs1,
+                rs2_index: 0,
+                rd_index: preprocessed_opcode.rd,
+                funct3: Some(rotation_table_id as u8),
+                funct7: None,
+                opcode_family_bits: 1u32 << FAMILY_3_XOR_ROT_BIT,
             });
         }
 
@@ -198,13 +238,45 @@ mod tests {
         );
         assert_eq!(
             F4_OFFSET,
-            UNIFIED_F1_NUM_FLAGS + JUMP_SLT_BRANCH_FAMILY_NUM_BITS + SHIFT_BINARY_FAMILY_NUM_FLAGS
+            UNIFIED_F1_NUM_FLAGS + JUMP_SLT_BRANCH_FAMILY_NUM_BITS + UNIFIED_F3_NUM_FLAGS
         );
         // The tri-add bit is the last bit of the F1 region (just past the 9 standalone flags).
         assert_eq!(FAMILY_1_TRI_ADD_BIT, ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS);
         assert!(FAMILY_1_TRI_ADD_BIT < F2_OFFSET);
+        assert_eq!(FAMILY_3_XOR_ROT_BIT, F3_OFFSET + SHIFT_BINARY_FAMILY_NUM_FLAGS);
+        assert!(FAMILY_3_XOR_ROT_BIT < F4_OFFSET);
         // 2-bit one-hot Family-4 region fits within the bitmask.
         assert!(F4_SW_BIT < UNIFIED_REDUCED_MACHINE_NUM_FLAGS);
+    }
+
+    #[test]
+    fn xor_rot_unified_only() {
+        use riscv_transpiler::ir::simple_instruction_set::{Instruction, InstructionName};
+
+        // rd = (rs1 ^ rd_old) >>> 12 : rs1=1, rs2=0 (formal), rd=3, imm=rotation=12.
+        let xr = Instruction::new(InstructionName::ZimopIXorRot, 1, 0, 3, 12);
+
+        // Standalone shift/binop decoder rejects it (unified-only opcode).
+        assert!(ShiftBinaryDecoder.define_decoder_subspace(xr).is_err());
+
+        // Unified decoder accepts it and sets exactly the xor-rotate bit.
+        let decoded = UnifiedReducedMachineDecoder
+            .define_decoder_subspace(xr)
+            .unwrap();
+        assert_eq!(
+            decoded.opcode_family_bits,
+            1u32 << FAMILY_3_XOR_ROT_BIT,
+            "ZimopIXorRot should set exactly bit FAMILY_3_XOR_ROT_BIT"
+        );
+        assert_eq!(decoded.rs1_index, 1);
+        assert_eq!(decoded.rs2_index, 0, "rs2 is formal x0");
+        assert_eq!(decoded.rd_index, 3);
+        assert_eq!(decoded.imm, 0, "imm zeroed; rotation lives in funct3");
+        assert_eq!(
+            decoded.funct3,
+            Some(TableType::XorRotate12 as u8),
+            "rotation 12 maps to the XorRotate12 table id"
+        );
     }
 
     /// `ZimopTriAdd` is decoded only by the unified decoder (standalone returns `Err`),

@@ -31,7 +31,8 @@ use field::PrimeField;
 /// | [9]        | Family 1 unified-only tri-add     | 1     |
 /// | [10..15)   | Family 2 (jump_branch_slt)        | 5     |
 /// | [15..17)   | Family 3 (shift_binop)            | 2     |
-/// | [17..19)   | Family 4 (mem_word_only)          | 2     |
+/// | [17]       | Family 3 unified-only xor-rotate  | 1     |
+/// | [18..20)   | Family 4 (mem_word_only)          | 2     |
 ///
 /// Family 4 is encoded one-hot in the unified bitmask (bit 16 = LW, bit 17 = SW)
 /// to match the per-sub-opcode convention used by Families 1/2/3. This diverges
@@ -49,7 +50,10 @@ pub const FAMILY_1_TRI_ADD_BIT: usize =
 
 pub const FAMILY_2_FLAG_OFFSET: usize = FAMILY_1_FLAG_OFFSET + UNIFIED_F1_NUM_FLAGS;
 pub const FAMILY_3_FLAG_OFFSET: usize = FAMILY_2_FLAG_OFFSET + JUMP_SLT_BRANCH_FAMILY_NUM_BITS;
-pub const FAMILY_4_FLAG_OFFSET: usize = FAMILY_3_FLAG_OFFSET + SHIFT_BINARY_FAMILY_NUM_FLAGS;
+pub const UNIFIED_F3_NUM_FLAGS: usize = SHIFT_BINARY_FAMILY_NUM_FLAGS + 1;
+pub const FAMILY_3_XOR_ROT_BIT: usize = FAMILY_3_FLAG_OFFSET + SHIFT_BINARY_FAMILY_NUM_FLAGS;
+
+pub const FAMILY_4_FLAG_OFFSET: usize = FAMILY_3_FLAG_OFFSET + UNIFIED_F3_NUM_FLAGS;
 
 /// Family 4 occupies 2 unified flags (one-hot LW/SW), independent of the standalone
 /// `WORD_ONLY_MEMORY_FAMILY_NUM_FLAGS = 1` encoding.
@@ -59,7 +63,7 @@ pub const FAMILY_4_SW_BIT: usize = FAMILY_4_FLAG_OFFSET + 1;
 
 pub const UNIFIED_REDUCED_MACHINE_NUM_FLAGS: usize = UNIFIED_F1_NUM_FLAGS
     + JUMP_SLT_BRANCH_FAMILY_NUM_BITS
-    + SHIFT_BINARY_FAMILY_NUM_FLAGS
+    + UNIFIED_F3_NUM_FLAGS
     + UNIFIED_FAMILY_4_NUM_FLAGS;
 
 /// Per-family count of *branch-local* scratch Booleans — committed Booleans used
@@ -89,7 +93,7 @@ const UNIFIED_SCRATCH_BOOL_COUNT: usize = {
 
 pub(super) const F1_SCRATCH_VARS: usize = 0;
 pub(super) const F2_SCRATCH_VARS: usize = 4; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value, slt_sign_source
-pub(super) const F3_SCRATCH_VARS: usize = 21; // shift/binop scratch_space (17) + 4 rs1/rs2 low-byte split points
+pub(super) const F3_SCRATCH_VARS: usize = 23; // shift/binop scratch_space (17) + 4 rs1/rs2 low-byte split points + 2 rd_old low-byte split points (xor-rotate, unified-only)
 pub(super) const F4_SCRATCH_VARS: usize = 2; // ram_addr[0], ram_addr[1]
 
 /// Shared base-layer scratch-Variable pool size = max across families.
@@ -161,11 +165,21 @@ fn flush_unified_lookup_pool<F: PrimeField, CS: Circuit<F>>(
     }
 }
 
+const UNIFIED_XOR_ROTATE_TABLES: [TableType; 4] = [
+    TableType::XorRotate16,
+    TableType::XorRotate12,
+    TableType::XorRotate8,
+    TableType::XorRotate7,
+];
+
 pub fn unified_reduced_machine_table_addition_fn<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
     add_sub_lui_auipc_mop_table_addition_fn(cs);
     jump_branch_slt_table_addition_fn(cs);
     shift_binop_table_addition_fn(cs);
     mem_word_only_table_addition_fn(cs);
+    for t in UNIFIED_XOR_ROTATE_TABLES {
+        cs.materialize_table::<UNIFIED_LOOKUP_WIDTH>(t);
+    }
 }
 
 pub fn unified_reduced_machine_table_driver_fn<F: PrimeField>(table_driver: &mut TableDriver<F>) {
@@ -173,6 +187,9 @@ pub fn unified_reduced_machine_table_driver_fn<F: PrimeField>(table_driver: &mut
     jump_branch_slt_table_driver_fn(table_driver);
     shift_binop_table_driver_fn(table_driver);
     mem_word_only_table_driver_fn(table_driver);
+    for t in UNIFIED_XOR_ROTATE_TABLES {
+        table_driver.materialize_table::<UNIFIED_LOOKUP_WIDTH>(t);
+    }
 }
 
 /// Top-level unified circuit body. Allocates a single shared set of memory accesses
@@ -337,9 +354,11 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         cs,
         inputs.clone(),
         unified_mask.binary_shifts(),
+        unified_mask.perform_xor_rot(),
         rs1_limbs,
         rs2_limbs,
         rd_write_limbs,
+        rd_read_limbs,
         core::array::from_fn::<_, F3_SCRATCH_VARS, _>(|i| scratch_vars[i]),
     );
     let pc_in = inputs.cycle_start_state.pc;
@@ -505,7 +524,7 @@ fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
         let f1_vars: [Variable; UNIFIED_F1_NUM_FLAGS] =
             std::array::from_fn(|i| family_1_bits[i].expect_variable());
         let f2_vars: [Variable; 4] = std::array::from_fn(|i| family_2_bits[i].expect_variable());
-        let f3_vars: [Variable; SHIFT_BINARY_FAMILY_NUM_FLAGS] =
+        let f3_vars: [Variable; UNIFIED_F3_NUM_FLAGS] =
             std::array::from_fn(|i| family_3_bits[i].expect_variable());
         let is_lw_var = is_lw.expect_variable();
         let is_sw_var = is_sw.expect_variable();

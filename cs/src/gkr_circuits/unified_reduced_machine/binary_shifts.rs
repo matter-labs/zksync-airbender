@@ -4,6 +4,7 @@ use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
 use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables;
 use crate::gkr_circuits::binary_shifts_family::ShiftBinaryFamilyCircuitMask;
+use crate::types::Boolean;
 use crate::witness_placer::*;
 use field::PrimeField;
 
@@ -14,9 +15,11 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     decoder: ShiftBinaryFamilyCircuitMask,
+    xor_rot: Boolean,
     rs1_limbs: [Variable; 2],
     rs2_limbs: [Variable; 2],
     rd_write_limbs: [Variable; 2],
+    rd_read_limbs: [Variable; 2],
     scratch_space: [Variable; F3_SCRATCH_VARS],
 ) -> Vec<LookupRequest<F>> {
     // NOTE: by preprocessing if we have rd == 0 in any of the opcodes below, then
@@ -36,7 +39,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     // - for binary ops we need just 5: one for sign-extension of the immediate, and 4 for outputs
     // - for shift we need 17: 4x4 for output contributions, and one for truncated shift amount
 
-    const _: () = assert!(F3_SCRATCH_VARS == 21);
+    const _: () = assert!(F3_SCRATCH_VARS == 23);
     let [binary_ops_imm_sign_ext, binop_output_0, binop_output_1, binop_output_2, binop_output_3, ..] =
         scratch_space;
     let binary_ops_outputs = [
@@ -55,6 +58,10 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     let rs1_b2 = scratch_space[18];
     let rs2_b0 = scratch_space[19];
     let rs2_b2 = scratch_space[20];
+    // xor-rotate (unified-only) reads rd_old (rd_read_limbs) as the 2nd XOR operand; split its
+    // low bytes the same way as rs1/rs2. These slots are unused by binary-op / shift rows.
+    let rd_old_b0 = scratch_space[21];
+    let rd_old_b2 = scratch_space[22];
     let hi_byte = |lo_limb: Variable, lo_byte: Variable| -> Constraint<F> {
         let mut c = Constraint::from(lo_limb);
         c -= Constraint::from(lo_byte);
@@ -74,6 +81,12 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         Constraint::from(rs2_b2),
         hi_byte(rs2_limbs[1], rs2_b2),
     ];
+    let rd_old_bytes: [Constraint<F>; 4] = [
+        Constraint::from(rd_old_b0),
+        hi_byte(rd_read_limbs[0], rd_old_b0),
+        Constraint::from(rd_old_b2),
+        hi_byte(rd_read_limbs[1], rd_old_b2),
+    ];
     {
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let rs1_lo = placer.get_u16(rs1_limbs[0]);
@@ -84,15 +97,23 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
             placer.assign_u8(rs1_b2, &rs1_hi.truncate());
             placer.assign_u8(rs2_b0, &rs2_lo.truncate());
             placer.assign_u8(rs2_b2, &rs2_hi.truncate());
+            // rd_old low bytes (xor-rotate 2nd operand).
+            let rd_old_lo = placer.get_u16(rd_read_limbs[0]);
+            let rd_old_hi = placer.get_u16(rd_read_limbs[1]);
+            placer.assign_u8(rd_old_b0, &rd_old_lo.truncate());
+            placer.assign_u8(rd_old_b2, &rd_old_hi.truncate());
         };
         cs.set_values(value_fn);
     }
 
     let is_binary_op = decoder.perform_binary_op();
     let is_shift = decoder.perform_shift();
+    let is_xor_rot = xor_rot;
 
     {
-        let f3_sum: Constraint<F> = Term::from(is_binary_op) + Term::from(is_shift);
+        // At most one Family-3 sub-opcode fires per row (binary-op / shift / xor-rotate).
+        let f3_sum: Constraint<F> =
+            Term::from(is_binary_op) + Term::from(is_shift) + Term::from(is_xor_rot);
         cs.add_constraint(f3_sum.clone() * (f3_sum - Term::from(1u32)));
     }
 
@@ -168,6 +189,24 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         }
     }
 
+    // then xor-rotate (unified-only): per byte, look up the funct3-selected XorRotate{r} table on
+    // (rs1_byte, rd_old_byte) -> the 4 contribution bytes T_i = rotate_right((rs1^rd_old) byte at
+    // byte 0, r). Reuses the shift_output_chunks scratch (shift and xor-rot are mutually exclusive).
+    {
+        for i in 0..4 {
+            let a = rs1_bytes[i].clone();
+            let b = rd_old_bytes[i].clone();
+            let outs = shift_output_chunks[i];
+            peek_lookup_values_unconstrained_into_variables(
+                cs,
+                &[LookupInput::from(a), LookupInput::from(b)],
+                &outs,
+                LookupInput::from(inputs.decoder_data.funct3.expect("is present")),
+                is_xor_rot,
+            );
+        }
+    }
+
     // and to enforce lookups we will perform selections (via constraints that push to the next layer),
     // where they will be used as lookups. Most of selections are quadratic anyway.
 
@@ -233,12 +272,23 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
             constraints[4 + j] += Term::from(is_shift) * Term::from(shift_outputs[j]);
         }
 
+        // xor-rotate: the XorRotate{r} table is (a, b, o0, o1, o2, o3) — inputs at cols 0,1,
+        // the 4 contribution bytes at cols 2..6 (reusing the shift_output_chunks scratch).
+        constraints[0] += Term::from(is_xor_rot) * rs1_bytes[i].clone();
+        constraints[1] += Term::from(is_xor_rot) * rd_old_bytes[i].clone();
+        for j in 0..4 {
+            constraints[2 + j] += Term::from(is_xor_rot) * Term::from(shift_outputs[j]);
+        }
+
         let mut table_id = Constraint::empty();
         table_id += Term::from(is_shift)
             * Term::from_field(
                 F::from_u32(TableType::ShiftImplementationOverBytes as u32).expect("must fit"),
             );
         table_id += Term::from(is_binary_op)
+            * Term::from(inputs.decoder_data.funct3.expect("must be present"));
+        // xor-rotate dispatches by funct3 = the per-rotation XorRotate{r} table id.
+        table_id += Term::from(is_xor_rot)
             * Term::from(inputs.decoder_data.funct3.expect("must be present"));
 
         per_byte_requests.push(LookupRequest::new(table_id, constraints.to_vec()));
@@ -255,9 +305,17 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         let shift_outputs = shift_output_chunks[i];
         low_constraint += Term::from(is_shift)
             * (Term::from(1 << 8) * Term::from(shift_outputs[1]) + Term::from(shift_outputs[0]));
+        // xor-rotate: cyclic reconstruction out_byte[k] = Σ_i chunk[i][(k - i) mod 4].
+        // low limb = out_byte[0] + out_byte[1]<<8.
+        let b0 = shift_outputs[(4 - i) % 4]; // (0 - i) mod 4
+        let b1 = shift_outputs[(1 + 4 - i) % 4]; // (1 - i) mod 4
+        low_constraint +=
+            Term::from(is_xor_rot) * (Term::from(1 << 8) * Term::from(b1) + Term::from(b0));
     }
-    low_constraint -=
-        (Constraint::from(is_binary_op) + Term::from(is_shift)) * Term::from(rd_write_limbs[0]);
+    low_constraint -= (Constraint::from(is_binary_op)
+        + Term::from(is_shift)
+        + Term::from(is_xor_rot))
+        * Term::from(rd_write_limbs[0]);
     cs.add_constraint(low_constraint);
 
     let mut high_constraint = Constraint::empty();
@@ -268,9 +326,16 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         let shift_outputs = shift_output_chunks[i];
         high_constraint += Term::from(is_shift)
             * (Term::from(1 << 8) * Term::from(shift_outputs[3]) + Term::from(shift_outputs[2]));
+        // xor-rotate high limb = out_byte[2] + out_byte[3]<<8.
+        let b2 = shift_outputs[(2 + 4 - i) % 4]; // (2 - i) mod 4
+        let b3 = shift_outputs[(3 + 4 - i) % 4]; // (3 - i) mod 4
+        high_constraint +=
+            Term::from(is_xor_rot) * (Term::from(1 << 8) * Term::from(b3) + Term::from(b2));
     }
-    high_constraint -=
-        (Constraint::from(is_binary_op) + Term::from(is_shift)) * Term::from(rd_write_limbs[1]);
+    high_constraint -= (Constraint::from(is_binary_op)
+        + Term::from(is_shift)
+        + Term::from(is_xor_rot))
+        * Term::from(rd_write_limbs[1]);
     cs.add_constraint(high_constraint);
 
     let mut lookups = vec![combined_request];

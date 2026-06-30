@@ -61,6 +61,13 @@ pub enum TableType {
     LoadHalfwordRomRead,
     LoadByteRomRead,
     Decoder,
+    // Unified-only xor-rotate tables (one per Blake2 rotation amount): map
+    // (rs1_byte, rs2_byte) -> the 4 bytes of `rotate_right((rs1_byte ^ rs2_byte) at byte 0, r)`.
+    // Dispatched as table_id = funct3
+    XorRotate16,
+    XorRotate12,
+    XorRotate8,
+    XorRotate7,
     DynamicPlaceholder, // MUST be the last
 }
 

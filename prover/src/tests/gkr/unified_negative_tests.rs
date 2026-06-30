@@ -9,7 +9,7 @@ use ::field::Field;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use cs::gkr_circuits::unified_reduced_machine::{
     FAMILY_1_FLAG_OFFSET, FAMILY_1_TRI_ADD_BIT, FAMILY_2_FLAG_OFFSET, FAMILY_3_FLAG_OFFSET,
-    FAMILY_4_LW_BIT, FAMILY_4_SW_BIT,
+    FAMILY_3_XOR_ROT_BIT, FAMILY_4_LW_BIT, FAMILY_4_SW_BIT,
 };
 use proptest::prelude::*;
 use riscv_transpiler::vm::*;
@@ -209,6 +209,34 @@ fn tri_add_output_low_corruption_rejected() {
     assert!(
         !check_satisfied(&circuit, &full_trace),
         "expected tri-add out_low corruption to fail check_satisfied (3-input add low-limb constraint)"
+    );
+}
+
+/// Xor-rotate (unified-only `rd = (rs1 ^ rd_old) >>> rot`) output binding. The cyclic
+/// reconstruction `is_xor_rot * (rd_write - Σ_i contrib_i[(k-i) mod 4]) = 0` pins `out_low`.
+/// Corrupting `out_low` to a different 16-bit value on an xor-rot row keeps the top-level 16-bit
+/// range-check happy, so only the xor-rotate reconstruction constraint should reject — guarding
+/// the rotate-contribution arithmetic.
+#[test]
+fn xor_rot_output_low_corruption_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let xor_rot_addr =
+            find_base_layer_address(circuit, &format!("family_bit[{FAMILY_3_XOR_ROT_BIT}]"));
+        let out_lo_addr = find_base_layer_address(circuit, "rd/mem write write_value[0]");
+        let xor_rot_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, xor_rot_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one xor-rotate");
+        let cur = read_cell(trace, out_lo_addr, xor_rot_row);
+        let wrong = if cur == BabyBearField::ZERO {
+            BabyBearField::ONE
+        } else {
+            BabyBearField::ZERO
+        };
+        write_cell(trace, out_lo_addr, xor_rot_row, wrong);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected xor-rot out_low corruption to fail check_satisfied (rotate-contribution reconstruction)"
     );
 }
 

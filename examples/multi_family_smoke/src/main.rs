@@ -86,6 +86,20 @@ fn tri_add(a: u32, b: u32, mut c: u32) -> u32 {
 }
 
 #[inline(never)]
+fn xor_rot<const ROT: u32>(rs1: u32, mut rd: u32) -> u32 {
+    unsafe {
+        core::arch::asm!(
+            "mop.r.{idx} {rd}, {rs1}",
+            rs1 = in(reg) rs1,
+            rd = inout(reg) rd,
+            idx = const ROT,
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+    rd
+}
+
+#[inline(never)]
 fn mul_mod(a: u32, b: u32) -> u32 {
     let rd;
     unsafe {
@@ -202,10 +216,16 @@ unsafe fn workload() -> ! {
     let add_out = add_mod(seed, n);
     let sub_out = sub_mod(seed, n);
     let tri_out = tri_add(seed, n, sum);
+    let mut xr = sum;
+    xr = xor_rot::<16>(seed, xr);
+    xr = xor_rot::<12>(seed, xr);
+    xr = xor_rot::<8>(seed, xr);
+    xr = xor_rot::<7>(seed, xr);
     let sum = sum
         .wrapping_add(add_out)
         .wrapping_add(sub_out)
-        .wrapping_add(tri_out);
+        .wrapping_add(tri_out)
+        .wrapping_add(xr);
 
     zksync_os_finish_success(&[sum, slt_acc, sltu_acc, n, seed, blake_out, fma_out, mul_out]);
 }

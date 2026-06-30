@@ -38,6 +38,33 @@ pub fn create_xor_table<F: PrimeField, const WIDTH: usize>(id: u32) -> LookupTab
     )
 }
 
+pub fn create_xor_rotate_table<F: PrimeField, const ROT: u32>(id: u32) -> LookupTable<F> {
+    let keys = key_binary_generation::<F, 2>();
+    let table_name = format!("XOR-rotate-right-{} table", ROT);
+    LookupTable::create_table_from_key_and_pure_generation_fn(
+        &keys,
+        table_name,
+        2,
+        4,
+        |keys| {
+            let a = keys[0].as_u32_reduced();
+            let b = keys[1].as_u32_reduced();
+            assert!(a <= u8::MAX as u32);
+            assert!(b <= u8::MAX as u32);
+
+            let z = a ^ b; // XOR'd byte, sits at byte 0
+            let rotated = z.rotate_right(ROT);
+            let mut result = ArrayVec::new();
+            for byte in rotated.to_le_bytes().into_iter() {
+                result.push(F::from_u32_unchecked(byte as u32));
+            }
+            (index_for_binary_key(a, b), result)
+        },
+        Some(bit_chunks_slice_index_gen_fn::<F, 8>),
+        id,
+    )
+}
+
 pub fn create_and_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     let keys = key_binary_generation::<F, 2>();
     const TABLE_NAME: &'static str = "AND table";

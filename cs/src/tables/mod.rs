@@ -936,6 +936,18 @@ impl TableType {
             }
             TableType::AndN => LookupWrapper::Initialized(create_andn_table::<F>(id)),
             TableType::RotL => LookupWrapper::Initialized(create_rotl_table::<F>(id)),
+            TableType::XorRotate16 => {
+                LookupWrapper::Initialized(create_xor_rotate_table::<F, 16>(id))
+            }
+            TableType::XorRotate12 => {
+                LookupWrapper::Initialized(create_xor_rotate_table::<F, 12>(id))
+            }
+            TableType::XorRotate8 => {
+                LookupWrapper::Initialized(create_xor_rotate_table::<F, 8>(id))
+            }
+            TableType::XorRotate7 => {
+                LookupWrapper::Initialized(create_xor_rotate_table::<F, 7>(id))
+            }
             a @ _ => {
                 todo!("Support {:?}", a);
             }
