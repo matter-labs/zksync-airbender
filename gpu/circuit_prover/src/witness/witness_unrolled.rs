@@ -1,10 +1,12 @@
 use crate::primitives::device_structures::{DeviceMatrixImpl, DeviceMatrixMutImpl};
 use crate::primitives::field::BF;
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use crate::witness::circuit_type::{UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType};
+use crate::witness::circuit_type::{
+    UnrolledCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
+};
 use crate::witness::trace_unrolled::{
     UnrolledMemoryTraceDevice, UnrolledMemoryTraceRaw, UnrolledNonMemoryTraceDevice,
-    UnrolledNonMemoryTraceRaw,
+    UnrolledNonMemoryTraceRaw, UnrolledUnifiedTraceDevice, UnrolledUnifiedTraceRaw,
 };
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
@@ -149,50 +151,57 @@ pub(crate) fn generate_witness_values_unrolled_non_memory(
     GenerateWitnessUnrolledNonMemoryKernelFunction(kernel).launch(&config, &args)
 }
 
-// cuda_kernel!(GenerateWitnessUnrolledUnifiedKernel,
-//     ab_generate_witness_values_unified_reduced_machine_kernel(
-//         trace: UnrolledUnifiedTraceRaw,
-//         generic_lookup_tables: *const BF,
-//         memory: *const BF,
-//         witness: *mut BF,
-//         lookup_mapping: *mut u32,
-//         stride: u32,
-//         count: u32,
-//     )
-// );
-//
-// pub(crate) fn generate_witness_values_unrolled_unified(
-//     trace: &UnrolledUnifiedTraceDevice,
-//     generic_lookup_tables: &impl DeviceMatrixImpl<BF>,
-//     memory: &impl DeviceMatrixImpl<BF>,
-//     witness: &mut impl DeviceMatrixMutImpl<BF>,
-//     lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
-//     stream: &CudaStream,
-// ) -> CudaResult<()> {
-//     let count = UnrolledCircuitType::Unified.get_num_cycles();
-//     let stride = generic_lookup_tables.stride();
-//     assert_eq!(memory.stride(), stride);
-//     assert_eq!(witness.stride(), stride);
-//     assert_eq!(lookup_mapping.stride(), stride);
-//     assert!(stride < u32::MAX as usize);
-//     let stride = stride as u32;
-//     assert!(count < u32::MAX as usize);
-//     let count = count as u32;
-//     let trace = trace.into();
-//     let generic_lookup_tables = generic_lookup_tables.as_ptr();
-//     let memory = memory.as_ptr();
-//     let witness = witness.as_mut_ptr();
-//     let lookup_mapping = lookup_mapping.as_mut_ptr();
-//     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
-//     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-//     let args = GenerateWitnessUnrolledUnifiedKernelArguments::new(
-//         trace,
-//         generic_lookup_tables,
-//         memory,
-//         witness,
-//         lookup_mapping,
-//         stride,
-//         count,
-//     );
-//     GenerateWitnessUnrolledUnifiedKernelFunction::default().launch(&config, &args)
-// }
+cuda_kernel!(GenerateWitnessUnrolledUnifiedKernel,
+    generate_witness_unrolled_unified_kernel,
+    trace: UnrolledUnifiedTraceRaw,
+    generic_lookup_tables: *const BF,
+    memory: *const BF,
+    witness: *mut BF,
+    scratch: *mut BF,
+    lookup_mapping: *mut u32,
+    stride: u32,
+    count: u32,
+);
+
+generate_witness_unrolled_unified_kernel!(ab_generate_witness_values_unified_reduced_machine_kernel);
+
+pub(crate) fn generate_witness_values_unrolled_unified(
+    trace: &UnrolledUnifiedTraceDevice,
+    generic_lookup_tables: &impl DeviceMatrixImpl<BF>,
+    memory: &impl DeviceMatrixImpl<BF>,
+    witness: &mut impl DeviceMatrixMutImpl<BF>,
+    scratch: &mut impl DeviceMatrixMutImpl<BF>,
+    lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let count = UnrolledCircuitType::Unified.get_domain_size();
+    let stride = generic_lookup_tables.stride();
+    assert_eq!(memory.stride(), stride);
+    assert_eq!(witness.stride(), stride);
+    assert_eq!(scratch.stride(), stride);
+    assert_eq!(lookup_mapping.stride(), stride);
+    assert!(stride < u32::MAX as usize);
+    let stride = stride as u32;
+    assert!(count < u32::MAX as usize);
+    let count = count as u32;
+    let trace: UnrolledUnifiedTraceRaw = trace.into();
+    let generic_lookup_tables = generic_lookup_tables.as_ptr();
+    let memory = memory.as_ptr();
+    let witness = witness.as_mut_ptr();
+    let scratch = scratch.as_mut_ptr();
+    let lookup_mapping = lookup_mapping.as_mut_ptr();
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = GenerateWitnessUnrolledUnifiedKernelArguments::new(
+        trace,
+        generic_lookup_tables,
+        memory,
+        witness,
+        scratch,
+        lookup_mapping,
+        stride,
+        count,
+    );
+    GenerateWitnessUnrolledUnifiedKernelFunction(ab_generate_witness_values_unified_reduced_machine_kernel)
+        .launch(&config, &args)
+}

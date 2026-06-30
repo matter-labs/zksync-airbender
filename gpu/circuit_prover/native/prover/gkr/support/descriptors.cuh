@@ -46,11 +46,20 @@ template <typename E> struct gkr_ext_continuing_source {
   bool first_access;
 };
 
-static constexpr unsigned GKR_BACKWARD_MAX_KERNELS_PER_LAYER = 128;
+// Raised from 128: unified circuit has 145 main-layer kernels (118 distinct
+// reads, within FLAT_ROUND0_MAX_SOURCES = 1280). 256 gives headroom.
+// MUST stay in lockstep with the Rust mirror in
+// src/prover/gkr/backward/kernels/shared.rs (asserted by the
+// gkr_backward_max_kernels_lockstep #[test]).
+static constexpr unsigned GKR_BACKWARD_MAX_KERNELS_PER_LAYER = 256;
 // Dim-reducing layers are keyed by OutputType: 2 pairwise records for
-// PermutationProduct plus up to 3 lookup records, consuming 8 challenges.
-static constexpr unsigned GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER = 5;
-static constexpr unsigned GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN = 8;
+// PermutationProduct, up to 3 lookup records, plus (unified circuit, PR #305)
+// 2 pairwise records for InitsAndTeardownsProduct = 7 records / 10 challenges.
+// MUST stay in lockstep with the Rust mirror in
+// src/prover/gkr/backward/kernels/dim_reducing.rs (asserted by the
+// gkr_dim_reducing_caps_lockstep #[test]).
+static constexpr unsigned GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER = 7;
+static constexpr unsigned GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN = 10;
 static constexpr unsigned GKR_BACKWARD_MAX_TRACE_LEN_LOG2 = 24;
 // Dim-reducing stores folding_steps - 1 round challenges plus 3 transcript challenges.
 static constexpr unsigned GKR_DIM_REDUCING_LAYER_CLAIM_POINT_LEN = GKR_BACKWARD_MAX_TRACE_LEN_LOG2 + 2;

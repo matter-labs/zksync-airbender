@@ -112,6 +112,7 @@ pub(super) fn attach_test_ext_output_layout(
         artifact_log2_stride: log2_stride,
         layers,
         aliases: BTreeMap::new(),
+        scratch_space_mapping_rev: BTreeMap::new(),
     }));
 }
 
@@ -240,6 +241,7 @@ pub(super) fn attach_test_dim_reducing_tower_layout(
         artifact_log2_stride: initial_trace_log_2 as u32,
         layers,
         aliases: BTreeMap::new(),
+        scratch_space_mapping_rev: BTreeMap::new(),
     }));
 }
 

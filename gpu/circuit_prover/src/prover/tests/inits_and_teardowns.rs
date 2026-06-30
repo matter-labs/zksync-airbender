@@ -2,7 +2,7 @@ use super::*;
 
 /// Bucket sparse `(addr, (timestamp, value))` triples (per CPU-worker chunks) into the
 /// page-based SoA wire format consumed by the GPU inits-and-teardowns kernel.
-fn build_inits_and_teardowns_pages_for_test(
+pub(super) fn build_inits_and_teardowns_pages_for_test(
     sparse: &[Vec<(u32, (common_constants::TimestampScalar, u32))>],
     trace_len_log2: u32,
     num_sets: u32,
@@ -45,7 +45,7 @@ fn build_inits_and_teardowns_pages_for_test(
     (page_indices, values_packed, timestamps_packed)
 }
 
-fn build_inits_and_teardowns_trace_host_for_test(
+pub(super) fn build_inits_and_teardowns_trace_host_for_test(
     page_indices: &[u32],
     values_packed: &[u32],
     timestamps_packed: &[common_constants::TimestampScalar],
@@ -72,7 +72,7 @@ fn build_inits_and_teardowns_trace_host_for_test(
 /// Each call dedicates a private `ConcurrentStaticHostAllocator` that owns one fresh
 /// `HostAllocation`, mirroring the per-chunk pinned allocation pattern used in the
 /// production producer's pool allocators (single-chunk degenerate case).
-fn alloc_pinned_vec_from_slice_for_test<T: Copy>(
+pub(super) fn alloc_pinned_vec_from_slice_for_test<T: Copy>(
     values: &[T],
 ) -> Vec<T, crate::allocator::host::ConcurrentStaticHostAllocator> {
     use crate::allocator::host::ConcurrentStaticHostAllocator;

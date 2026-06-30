@@ -50,9 +50,13 @@ impl GpuGKRDimensionReducingKernelKind {
 }
 
 // Dim-reducing layers are keyed by OutputType: 2 pairwise records for
-// PermutationProduct plus up to 3 lookup records, consuming 8 challenges.
-pub(crate) const GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER: usize = 5;
-pub(crate) const GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN: usize = 8;
+// PermutationProduct, up to 3 lookup records, plus (unified circuit, PR #305)
+// 2 pairwise records for InitsAndTeardownsProduct = 7 records / 10 challenges.
+// MUST stay in lockstep with the native mirror in
+// native/prover/gkr/support/descriptors.cuh (GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER /
+// GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN).
+pub(crate) const GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER: usize = 7;
+pub(crate) const GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN: usize = 10;
 /// Dim-reducing next-layer state stores `(folding_steps - 1)` per-round
 /// challenges plus 3 transcript-squeezed values:
 /// `[folding_challenges, r_before_last, r_last, next_batching]`.
@@ -241,4 +245,20 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExte
     pub(crate) claim_layout_for_next_layer: Option<ClaimBufferLayout>,
     #[allow(dead_code)]
     pub(crate) _phantom: std::marker::PhantomData<B>,
+}
+
+#[cfg(test)]
+mod cap_tests {
+    use super::{
+        GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN, GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
+    };
+
+    // Lockstep guard: these two values are mirrored verbatim into
+    // native/prover/gkr/support/descriptors.cuh:52-53. If you change one
+    // side you MUST change the other; this test fails loudly to force it.
+    #[test]
+    fn gkr_dim_reducing_caps_lockstep() {
+        assert_eq!(GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER, 7);
+        assert_eq!(GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN, 10);
+    }
 }

@@ -372,6 +372,33 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             );
         }
 
+        // All storage resolution (compact descriptors + round0..round3 prepared
+        // pointers) is complete above. From here the kernel input/output
+        // addresses are consumed only as *protocol/claim identity*
+        // (`final_evaluation_sources_for_last_step` keys → transcript order +
+        // proof addresses, and `claim_idx(output)` lookups). Map any scratch
+        // storage alias back to its logical `InnerLayer` identity so those match
+        // the CPU verifier; storage/execution keep the `ScratchSpace` alias.
+        // No-op for circuits without scratch-backed claimed values. See
+        // `transform::logical_protocol_address`.
+        if let Some(layout) = self.storage.layout.as_ref() {
+            let rev = &layout.scratch_space_mapping_rev;
+            if !rev.is_empty() {
+                for kp in kernel_plans.iter_mut() {
+                    for addr in kp
+                        .inputs
+                        .inputs_in_base
+                        .iter_mut()
+                        .chain(kp.inputs.inputs_in_extension.iter_mut())
+                        .chain(kp.inputs.outputs_in_base.iter_mut())
+                        .chain(kp.inputs.outputs_in_extension.iter_mut())
+                    {
+                        *addr = crate::prover::gkr::transform::logical_protocol_address(*addr, rev);
+                    }
+                }
+            }
+        }
+
         Ok(GpuGKRMainLayerSumcheckLayerPlan {
             layer_idx,
             trace_len: self.trace_len,

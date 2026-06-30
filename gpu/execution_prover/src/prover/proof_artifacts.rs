@@ -225,5 +225,22 @@ fn unrolled_circuit_type_from_family_idx(
             return UnrolledCircuitType::NonMemory(*ct);
         }
     }
+    if family_idx == UnrolledCircuitType::Unified.get_family_idx() {
+        return UnrolledCircuitType::Unified;
+    }
     panic!("unknown unrolled family idx {family_idx} for machine type {machine_type:?}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reduced_machine_idx_maps_to_unified() {
+        let ct = unrolled_circuit_type_from_family_idx(
+            UnrolledCircuitType::Unified.get_family_idx(),
+            MachineType::Reduced,
+        );
+        assert_eq!(ct, UnrolledCircuitType::Unified);
+    }
 }

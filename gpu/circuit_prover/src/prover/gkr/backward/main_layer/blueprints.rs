@@ -40,12 +40,13 @@ pub(in crate::prover::gkr::backward) fn build_dimension_reducing_kernel_blueprin
     let mut next_batch_challenge_offset = 0usize;
     let mut blueprints = Vec::new();
     for (output_type, reduced_io) in layer.iter() {
+        // FS-safe merge (PR #305): both passes iterate `BTreeMap<OutputType>`
+        // with the derived `Ord`; `InitsAndTeardownsProduct` is the last
+        // discriminant (cs/src/definitions/gkr_layers.rs:5-10), so its 2
+        // pairwise records / 2 challenges are always squeezed AFTER the
+        // PermutationProduct + lookup records — identical to the CPU order.
         match *output_type {
-            OutputType::InitsAndTeardownsProduct => unimplemented!(
-                "GKR unified circuit (InitsAndTeardownsProduct layer, PR #305) is not yet \
-                 supported on GPU; gated so per-family circuits keep building"
-            ),
-            OutputType::PermutationProduct => {
+            OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
                 for (input, output) in reduced_io.inputs.iter().zip(reduced_io.output.iter()) {
                     let batch_challenge_offset = next_batch_challenge_offset;
                     next_batch_challenge_offset += 1;
@@ -836,7 +837,14 @@ where
                 if *addr == GKRAddress::placeholder() {
                     continue;
                 }
-                addresses.insert(*addr);
+                // Protocol/claim identity, not storage: map any scratch alias
+                // back to its logical `InnerLayer` address so the proof's
+                // `final_step_eval_addresses` (and their commit order) match the
+                // CPU verifier. See `transform::logical_protocol_address`.
+                addresses.insert(crate::prover::gkr::transform::logical_protocol_address(
+                    *addr,
+                    &compiled_circuit.scratch_space_mapping_rev,
+                ));
             }
         }
         per_layer.push(addresses.into_iter().collect());
@@ -906,7 +914,15 @@ where
                 if *addr == GKRAddress::placeholder() {
                     continue;
                 }
-                addresses.insert(*addr);
+                // Protocol/claim identity, not storage: map any scratch alias
+                // back to its logical `InnerLayer` address so the per-layer
+                // claim layout (`claim_idx`) matches the CPU verifier and the
+                // sibling input-address collector. See
+                // `transform::logical_protocol_address`.
+                addresses.insert(crate::prover::gkr::transform::logical_protocol_address(
+                    *addr,
+                    &compiled_circuit.scratch_space_mapping_rev,
+                ));
             }
         }
         per_layer.push(addresses.into_iter().collect());
@@ -973,4 +989,50 @@ where
         per_layer.push(orphans.into_iter().collect());
     }
     per_layer
+}
+
+#[cfg(test)]
+mod unified_cap_tests {
+    use std::collections::BTreeMap;
+
+    use super::build_dimension_reducing_kernel_blueprints_static;
+    use crate::primitives::field::E4;
+    use crate::prover::gkr::backward::kernels::{
+        GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN, GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
+    };
+    use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
+
+    fn io(layer: usize, base_offset: usize) -> DimensionReducingInputOutput {
+        let addr = |off: usize| GKRAddress::InnerLayer { layer, offset: off };
+        DimensionReducingInputOutput {
+            inputs: vec![addr(base_offset), addr(base_offset + 1)],
+            output: vec![addr(base_offset + 2), addr(base_offset + 3)],
+        }
+    }
+
+    // The unified dim-reducing layer carries PermutationProduct + all three
+    // lookups + InitsAndTeardownsProduct. PermutationProduct and i/t each emit
+    // 2 pairwise records / 2 challenges (one per input/output pair); the 3
+    // lookups emit 1 record / 2 challenges each: 2+2+3 = 7 records, 2+2+6 = 10
+    // challenges. This exceeds the pre-#305 caps of 5 records / 8 challenges.
+    #[test]
+    fn unified_dim_reducing_layer_fits_raised_caps() {
+        let mut layer: BTreeMap<OutputType, DimensionReducingInputOutput> = BTreeMap::new();
+        layer.insert(OutputType::PermutationProduct, io(0, 0));
+        layer.insert(OutputType::Lookup16Bits, io(0, 4));
+        layer.insert(OutputType::LookupTimestamps, io(0, 8));
+        layer.insert(OutputType::GenericLookup, io(0, 12));
+        layer.insert(OutputType::InitsAndTeardownsProduct, io(0, 16));
+
+        let blueprints = build_dimension_reducing_kernel_blueprints_static::<E4>(&layer);
+        let record_count = blueprints.len();
+        let challenge_count: usize = blueprints.iter().map(|b| b.batch_challenge_count).sum();
+
+        assert_eq!(record_count, 7, "unified layer must produce 7 records");
+        assert_eq!(challenge_count, 10, "unified layer must consume 10 challenges");
+        assert!(record_count <= GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER);
+        assert!(challenge_count <= GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN);
+        // Regression intent: these counts exceed the pre-#305 limits (5 / 8).
+        assert!(record_count > 5 && challenge_count > 8);
+    }
 }

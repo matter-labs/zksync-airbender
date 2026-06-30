@@ -424,6 +424,7 @@ mod tests {
             "mem_subword_only",
             "mem_word_only",
             "shift_binop",
+            "unified_reduced_machine",
             "unsigned_mul_div",
         ];
         for id in IDS {

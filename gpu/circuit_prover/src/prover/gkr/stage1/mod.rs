@@ -25,6 +25,7 @@ use crate::witness::memory_unrolled::{
     generate_memory_and_witness_values_unrolled_inits_and_teardowns,
     generate_memory_and_witness_values_unrolled_memory,
     generate_memory_and_witness_values_unrolled_non_memory,
+    generate_memory_and_witness_values_unrolled_unified,
 };
 use crate::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice, PAGE_SIZE_LOG2,
@@ -32,6 +33,7 @@ use crate::witness::trace_unrolled::{
 use crate::witness::witness_delegation::generate_witness_values_delegation;
 use crate::witness::witness_unrolled::{
     generate_witness_values_unrolled_memory, generate_witness_values_unrolled_non_memory,
+    generate_witness_values_unrolled_unified,
 };
 
 use crate::upstream::GKRCircuitArtifact;
@@ -452,8 +454,54 @@ impl GpuGKRStage1Output {
                 }
                 (
                     CircuitType::Unrolled(UnrolledCircuitType::Unified),
-                    Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(_))),
-                ) => unimplemented!("GPU GKR stage1 unified path is not implemented yet"),
+                    Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(trace))),
+                ) => {
+                    let witness_values_range =
+                        Range::new("gkr.stage1.generate.memory_and_witness_values")?;
+                    witness_values_range.start(stream)?;
+                    // Inline inits/teardowns: a paged RAM-word sweep into the SAME memory matrix
+                    // (page-based-reuse, per Global Constraints). MUST run BEFORE the per-row launch:
+                    // generate_memory_and_witness_values_unrolled_inits_and_teardowns zeroes the whole
+                    // matrix (set_to_zero, memory_unrolled.rs:632) before writing the teardown columns,
+                    // and derives pages_per_set_log2 itself. Mirrors the standalone i/t arm (stage1 :435-449).
+                    let inits_and_teardowns = inits_and_teardowns
+                        .expect("unified circuit requires transferred init/teardown data");
+                    generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+                        &compiled_circuit.memory_layout,
+                        geometry.log_domain_size as u32,
+                        PAGE_SIZE_LOG2,
+                        inits_and_teardowns,
+                        &mut memory_matrix,
+                        context.get_exec_stream(),
+                    )?;
+                    let decoder_table = if compiled_circuit.has_decoder_lookup {
+                        decoder_table.expect("decoder lookup requires transferred decoder table")
+                    } else {
+                        DeviceSlice::empty()
+                    };
+                    generate_memory_and_witness_values_unrolled_unified(
+                        &compiled_circuit.memory_layout,
+                        &compiled_circuit.aux_layout_data,
+                        decoder_table,
+                        compiled_circuit.offset_for_decoder_table as u32,
+                        trace,
+                        &mut memory_matrix,
+                        &mut witness_matrix,
+                        decoder_lookup_mapping,
+                        context.get_exec_stream(),
+                    )?;
+                    generate_witness_values_unrolled_unified(
+                        trace,
+                        &DeviceMatrix::new(generic_lookup_tables, trace_len),
+                        &DeviceMatrix::new(memory_matrix.slice(), trace_len),
+                        &mut witness_matrix,
+                        &mut scratch_matrix,
+                        &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
+                        context.get_exec_stream(),
+                    )?;
+                    witness_values_range.end(stream)?;
+                    tracing_ranges.push(witness_values_range);
+                }
                 _ => unimplemented!(
                     "GPU GKR stage1 received an unsupported witness shape for circuit {circuit_type:?}",
                 ),

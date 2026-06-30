@@ -55,12 +55,13 @@ pub(in crate::prover::gkr::backward::tests) fn build_dimension_reducing_kernel_b
 
     let mut blueprints = Vec::new();
     for (output_type, reduced_io) in layer.iter() {
+        // FS-safe merge (PR #305): both passes iterate `BTreeMap<OutputType>`
+        // with the derived `Ord`; `InitsAndTeardownsProduct` is the last
+        // discriminant (cs/src/definitions/gkr_layers.rs:5-10), so its 2
+        // pairwise records / 2 challenges are always squeezed AFTER the
+        // PermutationProduct + lookup records — identical to the CPU order.
         match *output_type {
-            OutputType::InitsAndTeardownsProduct => unimplemented!(
-                "GKR unified circuit (InitsAndTeardownsProduct layer, PR #305) is not yet \
-                 supported on GPU; gated so per-family circuits keep building"
-            ),
-            OutputType::PermutationProduct => {
+            OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
                 for (input, output) in reduced_io.inputs.iter().zip(reduced_io.output.iter()) {
                     let batch_challenge_offset = next_batch_challenge_offset;
                     next_batch_challenge_offset += 1;
