@@ -3,9 +3,37 @@
 use blake2s_u32::*;
 
 pub use blake2s_u32;
+use field::{FieldExtension, PrimeField};
 
 #[cfg(feature = "pow")]
 pub mod pow;
+
+pub trait Transcript<F: PrimeField, E: FieldExtension<F>>: 'static + Send + Sync + Clone + Copy + Default {
+    type Seed: 'static + Send + Sync + Clone + Copy + Default;
+    type Hasher: 'static + Send + Sync + Clone + Copy + Default;
+
+    fn commit_initial_u32(input: &[u32]) -> Self::Seed;
+    fn commit_u32_with_seed(seed: &mut Seed, input: &[u32]);
+    fn commit_initial_u32_using_hasher(
+        hasher: &mut Self::Hasher,
+        input: &[u32],
+    ) -> Self::Seed;
+    fn commit_u32_with_seed_using_hasher(
+        hasher: &mut Self::Hasher,
+        seed: &mut Self::Seed,
+        input: &[u32],
+    );
+
+    // TODO: more pub methods from Blake2sTranscript
+
+    // absorbing field elements
+    fn commit_base_field_elements(seed: &mut Seed, els: &[F]);
+    fn commit_extension_field_elements(seed: &mut Seed, els: &[E]);
+    fn draw_random_field_elements(
+        seed: &mut Seed,
+        buffer: &mut [E],
+    );
+}
 
 // Our transcript for verifier efficiency is effectively stateless and has 3 functions:
 // - commit initial -> seed

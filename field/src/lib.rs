@@ -20,6 +20,8 @@ pub mod quartic;
 
 pub mod baby_bear;
 
+pub mod proth120;
+
 // #[cfg(test)]
 mod tests;
 
@@ -32,6 +34,8 @@ mod proc_macro_ops;
 pub use self::base::*;
 pub use self::complex::*;
 pub use self::quartic::*;
+
+pub use self::proth120::*;
 
 pub use self::field::*;
 

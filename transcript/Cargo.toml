@@ -10,6 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+field = { workspace = true }
 blake2s_u32 = { workspace = true }
 unroll = { workspace = true }
 worker = { workspace = true, optional = true }
