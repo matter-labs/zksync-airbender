@@ -8,14 +8,26 @@
 //! 2. Feed that proof into `fsv_unrolled_base_layer_sec_80` and prove it
 //!    (unrolled machine mode, reduced ISA + delegations). Verify natively.
 //! 3. Feed into `fsv_unrolled_recursion_layer_sec_80`, prove (unrolled, reduced).
-//!    Repeat this step while a single verifier invocation still needs >= 64M
-//!    cycles to run.
-//! 4. Once a verifier invocation would take < 64M cycles, **bridge** to the
-//!    unified machine: re-prove `fsv_unrolled_recursion_layer_sec_80` in
-//!    **unified** machine mode (this re-proves the same verifier over the last
-//!    unrolled proof, but emits a *unified* single-circuit proof).
+//!    Before each round we *measure* how many cycles running the verifier over
+//!    the current proof would take; we keep recursing on the unrolled machine
+//!    while that stays at/above a configurable threshold.
+//! 4. Once the measured verifier run drops below the threshold
+//!    (`RECURSION_UNIFIED_SWITCH_CYCLES`, default 64M), **bridge** to the unified
+//!    machine: re-prove the unrolled verifier over the last unrolled proof in
+//!    **unified** machine mode, emitting a *unified* single-circuit proof.
 //! 5. Feed the unified proof into `fsv_unified_recursion_layer_sec_80` and prove
 //!    it in unified machine mode. Verify natively.
+//!
+//! Blake variants of the recursive verifiers are selected at runtime, per stage:
+//!   * `RECURSION_UNROLLED_BLAKE` (round|g) — unrolled base + recursion steps,
+//!   * `RECURSION_BRIDGE_BLAKE`   (round|g) — the bridge proof (defaults to the
+//!     unrolled mode),
+//!   * `RECURSION_FINAL_BLAKE`    (round|g|mop, legacy alias
+//!     `RECURSION_UNIFIED_BLAKE`) — the final unified-recursion proof.
+//! Build the matching binaries with
+//! `tools/gkr_verifier/dump_recursive_verifiers.sh`. Intermediate proofs/setups
+//! are cached to disk, keyed by the active blake variants so different options
+//! don't overwrite each other.
 //!
 //! The whole pipeline is a single `#[ignore]`d heavy test; the pure helpers
 //! (hash-chain math, hex witness parsing) are covered by cheap unit tests.
@@ -59,8 +71,8 @@ mod tests {
     // Per-stage cycle/RAM bounds (generous; the prover chunks into as many
     // circuit instances as the actual run needs).
     const BASE_CYCLES_BOUND: usize = 1 << 31;
-    const UNROLLED_RECURSION_CYCLES_BOUND: usize = 1 << 27;
-    const UNIFIED_CYCLES_BOUND: usize = 1 << 26;
+    const UNROLLED_RECURSION_CYCLES_BOUND: usize = 1 << 28;
+    const UNIFIED_CYCLES_BOUND: usize = 1 << 27;
     const RAM_BOUND: usize = 1 << 30;
 
     type Setups = BTreeMap<u32, UnrolledCircuitSetupParams>;
@@ -222,6 +234,118 @@ mod tests {
         )
     }
 
+    // ---- blake variant selection -------------------------------------------
+
+    /// Which blake delegation a recursive verifier binary uses for its own
+    /// transcript hashing. Selected at runtime; the matching binary must have
+    /// been produced by `tools/gkr_verifier/dump_recursive_verifiers.sh`.
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum BlakeMode {
+        Compression,
+        GFunction,
+        Mop,
+    }
+
+    impl BlakeMode {
+        /// Cargo-feature name; also the filename suffix used by the build script.
+        fn tag(self) -> &'static str {
+            match self {
+                BlakeMode::Compression => "blake2_with_compression",
+                BlakeMode::GFunction => "blake2_g_function",
+                BlakeMode::Mop => "mop_extension",
+            }
+        }
+
+        fn parse(s: &str) -> Option<Self> {
+            match s {
+                "blake2_with_compression" | "compression" | "round" => Some(BlakeMode::Compression),
+                "blake2_g_function" | "g_function" | "g" => Some(BlakeMode::GFunction),
+                "mop_extension" | "mop" => Some(BlakeMode::Mop),
+                _ => None,
+            }
+        }
+    }
+
+    /// Read a blake mode from the first set of `vars`, validating it. `allow_mop`
+    /// gates the mop_extension variant (only the unified verifier supports it).
+    fn blake_mode_from_env(vars: &[&str], allow_mop: bool, default: BlakeMode) -> BlakeMode {
+        for var in vars {
+            if let Ok(v) = std::env::var(var) {
+                let m = BlakeMode::parse(&v).unwrap_or_else(|| panic!("invalid {var}={v}"));
+                assert!(
+                    allow_mop || m != BlakeMode::Mop,
+                    "{var}: this verifier supports only blake round/g function, not mop"
+                );
+                return m;
+            }
+        }
+        default
+    }
+
+    /// Blake mode for the unrolled-machine recursive verifiers (base + recursion
+    /// fsv programs). `RECURSION_UNROLLED_BLAKE` = round (default) | g.
+    fn unrolled_blake_mode() -> BlakeMode {
+        blake_mode_from_env(&["RECURSION_UNROLLED_BLAKE"], false, BlakeMode::Compression)
+    }
+
+    /// Blake mode for the **bridge** proof — the unrolled verifier re-proven on
+    /// the unified machine. `RECURSION_BRIDGE_BLAKE` = round | g; defaults to the
+    /// unrolled mode. (The bridge binary is an unrolled verifier, so no mop.)
+    fn bridge_blake_mode() -> BlakeMode {
+        blake_mode_from_env(&["RECURSION_BRIDGE_BLAKE"], false, unrolled_blake_mode())
+    }
+
+    /// Blake mode for the **final** unified-recursion verifier.
+    /// `RECURSION_FINAL_BLAKE` (or legacy `RECURSION_UNIFIED_BLAKE`) =
+    /// round (default) | g | mop.
+    fn final_blake_mode() -> BlakeMode {
+        blake_mode_from_env(
+            &["RECURSION_FINAL_BLAKE", "RECURSION_UNIFIED_BLAKE"],
+            true,
+            BlakeMode::Compression,
+        )
+    }
+
+    /// Load a blake-variant fsv binary. Falls back to the unsuffixed (legacy,
+    /// compression-built) binaries only for the default `Compression` mode.
+    fn fsv_program_blake(name: &str, blake: BlakeMode) -> (Vec<u32>, Vec<u32>) {
+        let suffixed = format!("{name}_{}", blake.tag());
+        if Path::new(&format!("{FSV_DIR}/{suffixed}.bin")).exists() {
+            fsv_program(&suffixed)
+        } else {
+            assert!(
+                blake == BlakeMode::Compression,
+                "missing variant binary {FSV_DIR}/{suffixed}.bin — run \
+                 `cd tools/gkr_verifier && ./dump_recursive_verifiers.sh`"
+            );
+            fsv_program(name)
+        }
+    }
+
+    /// Cycle threshold below which a verifier invocation is small enough to be
+    /// proven on the unified machine. `RECURSION_UNIFIED_SWITCH_CYCLES` overrides.
+    fn unified_switch_cycles() -> u64 {
+        std::env::var("RECURSION_UNIFIED_SWITCH_CYCLES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(UNIFIED_SWITCH_CYCLES)
+    }
+
+    /// Run (without proving) the verifier program over `stream` and return the
+    /// number of cycles it executes — i.e. how big a circuit proving it needs.
+    fn measure_verifier_cycles(binary_image: &[u32], text_section: &[u32], stream: Vec<u32>) -> u64 {
+        let ((_final_pc, final_timestamp), _snapshotter, _counters, _ram, _registers, _tape, _state) =
+            run_unrolled_machine_in_full::<ReducedMachineWithDelegation, DelegationsAndUnifiedCounters>(
+                UNROLLED_RECURSION_CYCLES_BOUND,
+                binary_image,
+                text_section,
+                RAM_BOUND,
+                DelegationsAndUnifiedCounters::default(),
+                QuasiUARTSource::new_with_reads(stream),
+            );
+        (final_timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP
+    }
+
     // ---- pure-helper unit tests (cheap) -------------------------------------
 
     #[test]
@@ -311,11 +435,26 @@ mod tests {
         let mut total_cycles = proof_cycles(&base_proof);
         println!("zksync_os base layer ran {total_cycles} cycles");
 
-        // === Stages 2-3: unrolled recursion (reduced ISA) until a verifier
-        //                 invocation drops below the unified-switch threshold. ===
-        let (unrolled_base_bin, unrolled_base_text) = fsv_program("fsv_unrolled_base_layer_sec_80");
+        // === Stages 2-3: unrolled recursion (reduced ISA). Each round we first
+        //                 MEASURE how many cycles running the next verifier would
+        //                 take; once that drops below the configurable threshold
+        //                 we stop and switch to the unified machine. ===
+        let unrolled_blake = unrolled_blake_mode();
+        let bridge_blake = bridge_blake_mode();
+        let final_blake = final_blake_mode();
+        let u_tag = unrolled_blake.tag();
+        let bridge_tag = bridge_blake.tag();
+        let final_tag = final_blake.tag();
+        let switch_cycles = unified_switch_cycles();
+        println!(
+            "blake modes: unrolled={u_tag}, bridge={bridge_tag}, final={final_tag}; \
+             unified-switch threshold {switch_cycles} cycles"
+        );
+
+        let (unrolled_base_bin, unrolled_base_text) =
+            fsv_program_blake("fsv_unrolled_base_layer_sec_80", unrolled_blake);
         let (unrolled_rec_bin, unrolled_rec_text) =
-            fsv_program("fsv_unrolled_recursion_layer_sec_80");
+            fsv_program_blake("fsv_unrolled_recursion_layer_sec_80", unrolled_blake);
 
         let mut proof = base_proof;
         let mut setups = base_setups;
@@ -328,44 +467,65 @@ mod tests {
             } else {
                 (&unrolled_rec_bin, &unrolled_rec_text)
             };
-            let stream = build_unrolled_stream(&setups, &proof);
+
+            // Resume from a previously-proven unrolled layer if present.
+            if let Ok(cached_proof) = try_deserialize_compressed_from_file::<ProgramProof>(&format!(
+                "recursion_layer_{}_proof_{}.bin",
+                layer, u_tag
+            )) {
+                println!("Using existing files for unrolled layer {layer}");
+                let cached_setups: Setups = try_deserialize_compressed_from_file(&format!(
+                    "recursion_layer_{}_setups_{}.bin",
+                    layer, u_tag
+                ))
+                .unwrap();
+                total_cycles += proof_cycles(&cached_proof);
+                native_verify_unrolled(build_unrolled_stream(&cached_setups, &cached_proof), false);
+                let end_params = compute_end_params(&cached_setups, cached_proof.final_pc);
+                let (h, p) = continue_chain(&chain_hash, &chain_preimage, &end_params);
+                chain_hash = h;
+                chain_preimage = p;
+                proof = cached_proof;
+                setups = cached_setups;
+                input_is_base = false;
+                layer += 1;
+                continue;
+            }
+
+            // Measure the next verifier invocation BEFORE proving it.
+            let measured = measure_verifier_cycles(bin, text, build_unrolled_stream(&setups, &proof));
+            println!("running the layer-{layer} verifier would take {measured} cycles");
+            if measured < switch_cycles {
+                println!("... below {switch_cycles} — switching to the unified machine");
+                break;
+            }
 
             println!(
-                "=== unrolled recursion over a {} proof ===",
+                "=== unrolled recursion over a {} proof (layer {layer}) ===",
                 if input_is_base { "base" } else { "recursion" }
             );
-            let (new_proof, new_setups) = if let Ok(new_proof) =
-                try_deserialize_compressed_from_file(&format!("recursion_layer_{}_proof.bin", layer))
-            {
-                println!("Using existing files for layer {}", layer);
-                (
-                    new_proof,
-                    try_deserialize_compressed_from_file(&format!("recursion_layer_{}_setups.bin", layer)).unwrap(),
-                )
-            } else {
-                let (mut new_proof, new_setups) =
-                    prove_unrolled_execution_with_replayer::<ReducedMachineWithDelegation, Global>(
-                        UNROLLED_RECURSION_CYCLES_BOUND,
-                        bin,
-                        text,
-                        use_caches,
-                        QuasiUARTSource::new_with_reads(stream),
-                        RAM_BOUND,
-                        &worker,
-                        SecurityLevel::Sec80,
-                        0,
-                    );
-                new_proof.recursion_chain_hash = Some(chain_hash);
-                new_proof.recursion_chain_preimage = Some(chain_preimage);
-
-                serialize_compressed_to_file(&new_proof, &format!("recursion_layer_{}_proof.bin", layer));
-                serialize_compressed_to_file(
-                    &new_setups,
-                    &format!("recursion_layer_{}_setups.bin", layer),
+            let (mut new_proof, new_setups) =
+                prove_unrolled_execution_with_replayer::<ReducedMachineWithDelegation, Global>(
+                    UNROLLED_RECURSION_CYCLES_BOUND,
+                    bin,
+                    text,
+                    use_caches,
+                    QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof)),
+                    RAM_BOUND,
+                    &worker,
+                    SecurityLevel::Sec80,
+                    0,
                 );
-
-                (new_proof, new_setups)
-            };
+            new_proof.recursion_chain_hash = Some(chain_hash);
+            new_proof.recursion_chain_preimage = Some(chain_preimage);
+            serialize_compressed_to_file(
+                &new_proof,
+                &format!("recursion_layer_{}_proof_{}.bin", layer, u_tag),
+            );
+            serialize_compressed_to_file(
+                &new_setups,
+                &format!("recursion_layer_{}_setups_{}.bin", layer, u_tag),
+            );
 
             let round_cycles = proof_cycles(&new_proof);
             total_cycles += round_cycles;
@@ -382,32 +542,41 @@ mod tests {
             proof = new_proof;
             setups = new_setups;
             input_is_base = false;
-
             layer += 1;
-
-            if round_cycles < UNIFIED_SWITCH_CYCLES {
-                println!("verifier invocation now < 64M cycles — switching to unified machine");
-                break;
-            }
         }
 
-        // === Stage 4: bridge — re-prove the unrolled-recursion verifier over
-        //              the last unrolled proof, but in UNIFIED machine mode, so
-        //              its proof is a single unified circuit. ===
-        println!("=== bridge: proving fsv_unrolled_recursion_layer in unified mode ===");
-        let bridge_stream = build_unrolled_stream(&setups, &proof);
-        let (mut bridge_proof, bridge_setups) = if let Ok(bridge_proof) =
-            try_deserialize_compressed_from_file("bridge_proofs.bin")
-        {
+        // === Stage 4: bridge — re-prove the verifier we just measured (the one
+        //              that verifies the last unrolled proof) but in UNIFIED
+        //              machine mode, so its proof is a single unified circuit.
+        //              The bridge binary is an unrolled verifier in its own
+        //              (bridge-selected) blake variant; only the *proving
+        //              machine* changes. ===
+        let bridge_name = if input_is_base {
+            "fsv_unrolled_base_layer_sec_80"
+        } else {
+            "fsv_unrolled_recursion_layer_sec_80"
+        };
+        let (bridge_bin, bridge_text) = fsv_program_blake(bridge_name, bridge_blake);
+        println!("=== bridge: proving the unrolled verifier in unified mode (blake {bridge_tag}) ===");
+        let (bridge_proof, bridge_setups) = if let Ok(bridge_proof) =
+            try_deserialize_compressed_from_file::<ProgramProof>(&format!(
+                "bridge_proof_{u_tag}_{bridge_tag}.bin"
+            )) {
             println!("Using existing files for bridge layer");
-            (bridge_proof, try_deserialize_compressed_from_file("bridge_setups.bin").unwrap())
+            (
+                bridge_proof,
+                try_deserialize_compressed_from_file(&format!(
+                    "bridge_setups_{u_tag}_{bridge_tag}.bin"
+                ))
+                .unwrap(),
+            )
         } else {
             let (mut bridge_proof, bridge_setups) = prove_unified_execution_with_replayer::<Global>(
                 UNIFIED_CYCLES_BOUND,
-                &unrolled_rec_bin,
-                &unrolled_rec_text,
+                &bridge_bin,
+                &bridge_text,
                 use_caches,
-                QuasiUARTSource::new_with_reads(bridge_stream),
+                QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof)),
                 RAM_BOUND,
                 &worker,
                 SecurityLevel::Sec80,
@@ -416,8 +585,14 @@ mod tests {
             bridge_proof.recursion_chain_hash = Some(chain_hash);
             bridge_proof.recursion_chain_preimage = Some(chain_preimage);
 
-            serialize_compressed_to_file(&bridge_proof, "bridge_proofs.bin");
-            serialize_compressed_to_file(&bridge_setups, "bridge_setups.bin");
+            serialize_compressed_to_file(
+                &bridge_proof,
+                &format!("bridge_proof_{u_tag}_{bridge_tag}.bin"),
+            );
+            serialize_compressed_to_file(
+                &bridge_setups,
+                &format!("bridge_setups_{u_tag}_{bridge_tag}.bin"),
+            );
 
             (bridge_proof, bridge_setups)
         };
@@ -434,23 +609,30 @@ mod tests {
         proof = bridge_proof;
         setups = bridge_setups;
 
-        // === Stage 5: final — prove fsv_unified_recursion_layer over the
-        //              unified bridge proof, in unified machine mode. ===
-        println!("=== final: proving fsv_unified_recursion_layer in unified mode ===");
-        let (unified_rec_bin, unified_rec_text) = fsv_program("fsv_unified_recursion_layer_sec_80");
-        let final_stream = build_unified_stream(&setups, &proof);
-        let (mut final_proof, final_setups) = if let Ok(final_proof) =
-            try_deserialize_compressed_from_file("final_proofs.bin")
-        {
+        // === Stage 5: final — prove fsv_unified_recursion_layer (final-blake
+        //              variant) over the unified bridge proof, in unified mode. ===
+        println!("=== final: proving fsv_unified_recursion_layer in unified mode (blake {final_tag}) ===");
+        let (unified_rec_bin, unified_rec_text) =
+            fsv_program_blake("fsv_unified_recursion_layer_sec_80", final_blake);
+        let (final_proof, final_setups) = if let Ok(final_proof) =
+            try_deserialize_compressed_from_file::<ProgramProof>(&format!(
+                "final_proof_{u_tag}_{bridge_tag}_{final_tag}.bin"
+            )) {
             println!("Using existing files for final layer");
-            (final_proof, try_deserialize_compressed_from_file("final_setups.bin").unwrap())
+            (
+                final_proof,
+                try_deserialize_compressed_from_file(&format!(
+                    "final_setups_{u_tag}_{bridge_tag}_{final_tag}.bin"
+                ))
+                .unwrap(),
+            )
         } else {
             let (mut final_proof, final_setups) = prove_unified_execution_with_replayer::<Global>(
                 UNIFIED_CYCLES_BOUND,
                 &unified_rec_bin,
                 &unified_rec_text,
                 use_caches,
-                QuasiUARTSource::new_with_reads(final_stream),
+                QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
                 RAM_BOUND,
                 &worker,
                 SecurityLevel::Sec80,
@@ -459,8 +641,14 @@ mod tests {
             final_proof.recursion_chain_hash = Some(chain_hash);
             final_proof.recursion_chain_preimage = Some(chain_preimage);
 
-            serialize_compressed_to_file(&final_proof, "final_proofs.bin");
-            serialize_compressed_to_file(&final_setups, "final_setups.bin");
+            serialize_compressed_to_file(
+                &final_proof,
+                &format!("final_proof_{u_tag}_{bridge_tag}_{final_tag}.bin"),
+            );
+            serialize_compressed_to_file(
+                &final_setups,
+                &format!("final_setups_{u_tag}_{bridge_tag}_{final_tag}.bin"),
+            );
 
             (final_proof, final_setups)
         };
@@ -473,29 +661,13 @@ mod tests {
         println!("=== pipeline complete: {total_cycles} total cycles proven ===");
         println!("final recursion-chain output registers: {final_output:?}");
 
-        let final_stream = build_unified_stream(&final_setups, &final_proof);
-
-        let (
-            (_final_pc, final_timestamp),
-            _snapshotter,
-            _counters,
-            _ram,
-            _registers,
-            _tape,
-            _expected_final_state,
-        ) = run_unrolled_machine_in_full::<
-            ReducedMachineWithDelegation,
-            DelegationsAndUnifiedCounters,
-        >(
-            UNIFIED_CYCLES_BOUND,
+        // Informational: how big a further unified-recursion step would be.
+        let next_cycles = measure_verifier_cycles(
             &unified_rec_bin,
             &unified_rec_text,
-            RAM_BOUND,
-            DelegationsAndUnifiedCounters::default(),
-            QuasiUARTSource::new_with_reads(final_stream),
+            build_unified_stream(&final_setups, &final_proof),
         );
-        let cycles = (final_timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
-        println!("Verification of final proof would take {} cycles", cycles);
+        println!("verifying the final proof would take {next_cycles} cycles");
     }
 
     #[test]
