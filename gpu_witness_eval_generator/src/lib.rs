@@ -5,7 +5,7 @@ use cs::witness_placer::graph_description::{
     BoolNodeExpression, Expression, FieldNodeExpression, FixedWidthIntegerNodeExpression,
     RawExpression,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::path::Path;
 
@@ -34,6 +34,15 @@ pub struct Generator {
     output: String,
     scratch_size: usize,
     fn_indexes: Vec<usize>,
+    // Witness columns that are ONLY ever written under an `IF` guard (no
+    // unconditional write anywhere in the graph). The generators write them
+    // per-opcode, so rows whose opcode doesn't match leave the column
+    // untouched. The CPU witness is lazily zero-filled, so those gaps must read
+    // as zero; we fold a zero-default into each such column's FIRST write.
+    conditional_only_witness: BTreeSet<usize>,
+    // Conditional-only witness columns whose first write has already been
+    // emitted (as `SET_WITNESS_PLACE_OR_ZERO`). Subsequent writes stay `IF`.
+    witness_zero_default_emitted: BTreeSet<usize>,
 }
 
 impl Generator {
@@ -58,7 +67,40 @@ impl Generator {
             output: String::new(),
             scratch_size,
             fn_indexes: Vec::new(),
+            conditional_only_witness: BTreeSet::new(),
+            witness_zero_default_emitted: BTreeSet::new(),
         }
+    }
+
+    /// Classify witness-column writes across the whole graph and record the
+    /// columns that are written exclusively under an `IF` condition. A column
+    /// with any unconditional write is fully covered and never needs a default;
+    /// the partition is clean in practice (no column is both), so folding a
+    /// zero-default into such a column's first write can't clobber a real write.
+    fn collect_conditional_only_witness(&mut self, graph: &[Vec<RawExpression<F>>]) {
+        let mut unconditional = BTreeSet::new();
+        let mut conditional = BTreeSet::new();
+        for expressions in graph {
+            for expr in expressions {
+                if let RawExpression::WriteVariable {
+                    into_variable,
+                    condition_subexpr_idx,
+                    ..
+                } = expr
+                {
+                    if let ColumnAddress::WitnessSubtree(idx) =
+                        self.get_column_address(into_variable)
+                    {
+                        if condition_subexpr_idx.is_some() {
+                            conditional.insert(idx);
+                        } else {
+                            unconditional.insert(idx);
+                        }
+                    }
+                }
+            }
+        }
+        self.conditional_only_witness = conditional.difference(&unconditional).copied().collect();
     }
 
     fn create_var(&mut self) -> usize {
@@ -210,9 +252,23 @@ impl Generator {
                         let source_ident = self.expression_into_var(source_subexpr);
                         if let Some(condition) = condition_subexpr_idx {
                             let condition_ident = Self::ident_for_idx(*condition);
-                            self.push(&format!(
-                                "IF({condition_ident}, SET_WITNESS_PLACE({idx}, {source_ident}))\n"
-                            ));
+                            // For a column that is ONLY ever written under a guard, fold the
+                            // zero-default into its FIRST write (in evaluation order): emit a
+                            // branchless `cond ? source : 0` store instead of an `IF`, so rows
+                            // whose guard is false get a definite zero with no separate prologue.
+                            // Later writes (mutually-exclusive opcode branches) stay `IF` and
+                            // overwrite where they fire.
+                            if self.conditional_only_witness.contains(&idx)
+                                && self.witness_zero_default_emitted.insert(idx)
+                            {
+                                self.push(&format!(
+                                    "SET_WITNESS_PLACE_OR_ZERO({idx}, {condition_ident}, {source_ident})\n"
+                                ));
+                            } else {
+                                self.push(&format!(
+                                    "IF({condition_ident}, SET_WITNESS_PLACE({idx}, {source_ident}))\n"
+                                ));
+                            }
                         } else {
                             self.output
                                 .push_str(&format!("SET_WITNESS_PLACE({idx}, {source_ident})\n"));
@@ -367,6 +423,7 @@ impl Generator {
         let mut generator =
             Generator::new(&layout, num_lookup_mappings, perform_assignments_to_memory);
         generator.generate_header(&circuit.table_offsets);
+        generator.collect_conditional_only_witness(graph);
         generator.generate_functions(graph, &layout);
         generator.generate_footer();
         generator.output

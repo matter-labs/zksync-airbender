@@ -337,6 +337,13 @@ template <class R> struct WitnessProxy {
   }
 #define SET_MEMORY_PLACE(IDX, V) p.set_memory_place(IDX, VAR(V));
 #define SET_WITNESS_PLACE(IDX, V) p.set_witness_place(IDX, VAR(V));
+// Unconditional store of `COND ? V : 0`, used for the FIRST write to a witness
+// column that is only ever written under a guard. Folds the zero-default into
+// the write as a branchless select, so rows whose guard is false get a definite
+// zero without a separate prologue pass. Only valid when the column has no
+// unconditional write (else the `: 0` could clobber it).
+#define SET_WITNESS_PLACE_OR_ZERO(IDX, COND, V)                                                                                                                \
+  p.set_witness_place(IDX, wrapped_b::select(VAR(COND), wrapped_f::from(VAR(V)), wrapped_f::new_const(0)));
 #define SET_SCRATCH_PLACE(IDX, V) p.set_scratch_place(IDX, VAR(V));
 
 #define FN_BEGIN(N) template <class R> DEVICE_FORCEINLINE void fn_##N(const WitnessProxy<R> p) {
