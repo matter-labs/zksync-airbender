@@ -106,8 +106,10 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             let mut u16_intermedaite_carry_value =
                 <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
             // tri-add second-Boolean carries (low/high limb); set only on tri-add rows.
-            let mut tri_clo_b_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
-            let mut tri_chi_b_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
+            let mut tri_clo_b_value =
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
+            let mut tri_chi_b_value =
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
 
             let imm_low = placer.get_u16(imm_vars[0]);
             let imm = placer.get_u32_from_u16_parts(imm_vars);

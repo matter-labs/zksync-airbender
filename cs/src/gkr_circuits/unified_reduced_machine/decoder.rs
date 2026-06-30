@@ -117,6 +117,12 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
     /// per-family bits into the appropriate region of the unified bitmask. For
     /// Family 4, also translates the 1-bit `is_store` standalone encoding into the
     /// 2-bit one-hot `LW`/`SW` encoding the unified body expects.
+    ///
+    /// # Panics
+    /// Panics if a `ZimopIXorRot` carries a rotation amount outside the 4 Blake2 values
+    /// {16,12,8,7} — only those have a corresponding `XorRotate{r}` lookup table. Panicking
+    /// (rather than `Err`) is deliberate: the caller treats `Err` as "not my family" and skips
+    /// the instruction, which would silently drop an illegal opcode.
     fn define_decoder_subspace(
         &self,
         preprocessed_opcode: Instruction,
@@ -156,6 +162,12 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
                     "unsupported xor-rotate rotation amount {other} (only Blake2 {{16,12,8,7}})"
                 ),
             } as u32;
+            // table_id is carried in the u8 funct3 column; guard against future TableType drift
+            // pushing the XorRotate discriminants past 255.
+            assert!(
+                rotation_table_id <= u8::MAX as u32,
+                "XorRotate table id {rotation_table_id} does not fit in the funct3 u8 column"
+            );
             return Ok(ExecutorFamilyDecoderData {
                 imm: 0,
                 rs1_index: preprocessed_opcode.rs1,
@@ -243,7 +255,10 @@ mod tests {
         // The tri-add bit is the last bit of the F1 region (just past the 9 standalone flags).
         assert_eq!(FAMILY_1_TRI_ADD_BIT, ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS);
         assert!(FAMILY_1_TRI_ADD_BIT < F2_OFFSET);
-        assert_eq!(FAMILY_3_XOR_ROT_BIT, F3_OFFSET + SHIFT_BINARY_FAMILY_NUM_FLAGS);
+        assert_eq!(
+            FAMILY_3_XOR_ROT_BIT,
+            F3_OFFSET + SHIFT_BINARY_FAMILY_NUM_FLAGS
+        );
         assert!(FAMILY_3_XOR_ROT_BIT < F4_OFFSET);
         // 2-bit one-hot Family-4 region fits within the bitmask.
         assert!(F4_SW_BIT < UNIFIED_REDUCED_MACHINE_NUM_FLAGS);
@@ -253,30 +268,39 @@ mod tests {
     fn xor_rot_unified_only() {
         use riscv_transpiler::ir::simple_instruction_set::{Instruction, InstructionName};
 
-        // rd = (rs1 ^ rd_old) >>> 12 : rs1=1, rs2=0 (formal), rd=3, imm=rotation=12.
-        let xr = Instruction::new(InstructionName::ZimopIXorRot, 1, 0, 3, 12);
+        // All 4 Blake2 rotations map to their own XorRotate{r} table id (catches arm transposition).
+        let cases = [
+            (16u32, TableType::XorRotate16),
+            (12, TableType::XorRotate12),
+            (8, TableType::XorRotate8),
+            (7, TableType::XorRotate7),
+        ];
+        for (rot, expected_table) in cases {
+            // rd = (rs1 ^ rd_old) >>> rot : rs1=1, rs2=0 (formal), rd=3, imm=rotation.
+            let xr = Instruction::new(InstructionName::ZimopIXorRot, 1, 0, 3, rot);
 
-        // Standalone shift/binop decoder rejects it (unified-only opcode).
-        assert!(ShiftBinaryDecoder.define_decoder_subspace(xr).is_err());
+            // Standalone shift/binop decoder rejects it (unified-only opcode).
+            assert!(ShiftBinaryDecoder.define_decoder_subspace(xr).is_err());
 
-        // Unified decoder accepts it and sets exactly the xor-rotate bit.
-        let decoded = UnifiedReducedMachineDecoder
-            .define_decoder_subspace(xr)
-            .unwrap();
-        assert_eq!(
-            decoded.opcode_family_bits,
-            1u32 << FAMILY_3_XOR_ROT_BIT,
-            "ZimopIXorRot should set exactly bit FAMILY_3_XOR_ROT_BIT"
-        );
-        assert_eq!(decoded.rs1_index, 1);
-        assert_eq!(decoded.rs2_index, 0, "rs2 is formal x0");
-        assert_eq!(decoded.rd_index, 3);
-        assert_eq!(decoded.imm, 0, "imm zeroed; rotation lives in funct3");
-        assert_eq!(
-            decoded.funct3,
-            Some(TableType::XorRotate12 as u8),
-            "rotation 12 maps to the XorRotate12 table id"
-        );
+            // Unified decoder accepts it and sets exactly the xor-rotate bit.
+            let decoded = UnifiedReducedMachineDecoder
+                .define_decoder_subspace(xr)
+                .unwrap();
+            assert_eq!(
+                decoded.opcode_family_bits,
+                1u32 << FAMILY_3_XOR_ROT_BIT,
+                "ZimopIXorRot should set exactly bit FAMILY_3_XOR_ROT_BIT"
+            );
+            assert_eq!(decoded.rs1_index, 1);
+            assert_eq!(decoded.rs2_index, 0, "rs2 is formal x0");
+            assert_eq!(decoded.rd_index, 3);
+            assert_eq!(decoded.imm, 0, "imm zeroed; rotation lives in funct3");
+            assert_eq!(
+                decoded.funct3,
+                Some(expected_table as u8),
+                "rotation {rot} must map to the {expected_table:?} table id"
+            );
+        }
     }
 
     /// `ZimopTriAdd` is decoded only by the unified decoder (standalone returns `Err`),

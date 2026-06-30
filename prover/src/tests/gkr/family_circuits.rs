@@ -68,7 +68,10 @@ pub fn gkr_run_basic_unrolled_test_impl(
         _ => super::orchestration::common::ProgramConfig::keccak_f1600(),
     };
 
-    let vm = super::orchestration::common::run_vm_and_capture::<CountersT, FullUnsignedMachineDecoderConfig>(&config, &worker);
+    let vm = super::orchestration::common::run_vm_and_capture::<
+        CountersT,
+        FullUnsignedMachineDecoderConfig,
+    >(&config, &worker);
 
     assert_eq!(
         (NUM_INIT_AND_TEARDOWN_SETS << TRACE_LEN_LOG2) << WORD_BITS,
@@ -746,7 +749,10 @@ fn add_sub_mop_real_program_check_satisfied() {
     let worker = Worker::new_with_num_threads(8);
 
     let config = super::orchestration::common::ProgramConfig::mop_smoke();
-    let vm = super::orchestration::common::run_vm_and_capture::<CountersT, FullUnsignedMachineDecoderConfig>(&config, &worker);
+    let vm = super::orchestration::common::run_vm_and_capture::<
+        CountersT,
+        FullUnsignedMachineDecoderConfig,
+    >(&config, &worker);
 
     let num_calls = vm.counters.get_calls_to_circuit_family::<CIRCUIT_TYPE>();
     assert!(num_calls > 0);

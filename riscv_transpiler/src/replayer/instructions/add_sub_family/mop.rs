@@ -113,16 +113,18 @@ pub(crate) fn mop_mulmod<C: Counters, R: RAM, F: PrimeField>(
 }
 
 #[inline(always)]
-pub(crate) fn mop_tri_add<C: Counters, R: RAM, F: PrimeField>(
+pub(crate) fn mop_tri_add<C: Counters, R: RAM>(
     state: &mut State<C>,
     _ram: &mut R,
     instr: Instruction,
     tracer: &mut impl WitnessTracer,
 ) {
     // 3-input addition: rd = rs1 + rs2 + rd_old (wrapping u32), rd_old read like fmamod.
-    // Mirrors `vm::instructions::add_sub_family::mop::mop_tri_add`.
+    // Mirrors `vm::instructions::add_sub_family::mop::mop_tri_add`. Plain u32 wrapping arithmetic,
+    // so (unlike the modular mop_*mod helpers) no field type parameter is needed.
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
     let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
+    // SAFETY: instr.rd is a 5-bit RISC-V register index (0..=31); state.registers is [_; 32].
     let rd_raw_read_value = unsafe { state.registers.get_unchecked(instr.rd as usize).value };
     let rd = rs1_value
         .wrapping_add(rs2_value)

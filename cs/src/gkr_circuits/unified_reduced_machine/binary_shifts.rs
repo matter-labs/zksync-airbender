@@ -312,10 +312,9 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         low_constraint +=
             Term::from(is_xor_rot) * (Term::from(1 << 8) * Term::from(b1) + Term::from(b0));
     }
-    low_constraint -= (Constraint::from(is_binary_op)
-        + Term::from(is_shift)
-        + Term::from(is_xor_rot))
-        * Term::from(rd_write_limbs[0]);
+    low_constraint -=
+        (Constraint::from(is_binary_op) + Term::from(is_shift) + Term::from(is_xor_rot))
+            * Term::from(rd_write_limbs[0]);
     cs.add_constraint(low_constraint);
 
     let mut high_constraint = Constraint::empty();
@@ -332,10 +331,9 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         high_constraint +=
             Term::from(is_xor_rot) * (Term::from(1 << 8) * Term::from(b3) + Term::from(b2));
     }
-    high_constraint -= (Constraint::from(is_binary_op)
-        + Term::from(is_shift)
-        + Term::from(is_xor_rot))
-        * Term::from(rd_write_limbs[1]);
+    high_constraint -=
+        (Constraint::from(is_binary_op) + Term::from(is_shift) + Term::from(is_xor_rot))
+            * Term::from(rd_write_limbs[1]);
     cs.add_constraint(high_constraint);
 
     let mut lookups = vec![combined_request];

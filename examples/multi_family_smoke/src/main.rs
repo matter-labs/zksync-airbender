@@ -87,6 +87,13 @@ fn tri_add(a: u32, b: u32, mut c: u32) -> u32 {
 
 #[inline(never)]
 fn xor_rot<const ROT: u32>(rs1: u32, mut rd: u32) -> u32 {
+    // Only the 4 Blake2 rotations have a corresponding circuit table.
+    const {
+        assert!(
+            matches!(ROT, 7 | 8 | 12 | 16),
+            "xor_rot ROT must be one of {7,8,12,16}"
+        )
+    };
     unsafe {
         core::arch::asm!(
             "mop.r.{idx} {rd}, {rs1}",

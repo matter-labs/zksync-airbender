@@ -240,6 +240,57 @@ fn xor_rot_output_low_corruption_rejected() {
     );
 }
 
+/// Tri-add HIGH limb: the high-limb constraint (carry-in + rs1_hi + rs2_hi + rd_old_hi − out_high
+/// − chi·2^16 = 0) is structurally more complex than the low limb (it folds the low carry-in), so
+/// cover it explicitly. Flip `out_high` to a different 16-bit value on a tri-add row.
+#[test]
+fn tri_add_output_high_corruption_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let tri_add_addr =
+            find_base_layer_address(circuit, &format!("family_bit[{FAMILY_1_TRI_ADD_BIT}]"));
+        let out_hi_addr = find_base_layer_address(circuit, "rd/mem write write_value[1]");
+        let tri_add_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, tri_add_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one tri-add");
+        let cur = read_cell(trace, out_hi_addr, tri_add_row);
+        let wrong = if cur == BabyBearField::ZERO {
+            BabyBearField::ONE
+        } else {
+            BabyBearField::ZERO
+        };
+        write_cell(trace, out_hi_addr, tri_add_row, wrong);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected tri-add out_high corruption to fail check_satisfied (3-input add high-limb constraint)"
+    );
+}
+
+/// Xor-rotate HIGH limb (bytes 2,3): same cyclic reconstruction as the low limb but over the high
+/// output bytes. Flip `out_high` to a different 16-bit value on an xor-rot row.
+#[test]
+fn xor_rot_output_high_corruption_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let xor_rot_addr =
+            find_base_layer_address(circuit, &format!("family_bit[{FAMILY_3_XOR_ROT_BIT}]"));
+        let out_hi_addr = find_base_layer_address(circuit, "rd/mem write write_value[1]");
+        let xor_rot_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, xor_rot_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one xor-rotate");
+        let cur = read_cell(trace, out_hi_addr, xor_rot_row);
+        let wrong = if cur == BabyBearField::ZERO {
+            BabyBearField::ONE
+        } else {
+            BabyBearField::ZERO
+        };
+        write_cell(trace, out_hi_addr, xor_rot_row, wrong);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected xor-rot out_high corruption to fail check_satisfied (rotate-contribution reconstruction, high limb)"
+    );
+}
+
 /// SW-into-ROM trap: the constraint `is_rom * is_sw = 0` forbids stores to ROM
 /// addresses. Mutating `is_rom = 1` on an SW row should make the product 1 ≠ 0;
 /// `check_satisfied` must reject. `is_rom` is aliased into the shared scratch-Boolean
@@ -646,6 +697,26 @@ fn pbt_family_output_corruption_always_rejected() {
         (
             "F3 shift out_hi",
             FAMILY_3_FLAG_OFFSET,
+            "rd/mem write write_value[1]",
+        ),
+        (
+            "F1 tri-add out_lo",
+            FAMILY_1_TRI_ADD_BIT,
+            "rd/mem write write_value[0]",
+        ),
+        (
+            "F1 tri-add out_hi",
+            FAMILY_1_TRI_ADD_BIT,
+            "rd/mem write write_value[1]",
+        ),
+        (
+            "F3 xor-rot out_lo",
+            FAMILY_3_XOR_ROT_BIT,
+            "rd/mem write write_value[0]",
+        ),
+        (
+            "F3 xor-rot out_hi",
+            FAMILY_3_XOR_ROT_BIT,
             "rd/mem write write_value[1]",
         ),
     ];

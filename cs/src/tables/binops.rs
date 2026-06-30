@@ -39,6 +39,12 @@ pub fn create_xor_table<F: PrimeField, const WIDTH: usize>(id: u32) -> LookupTab
 }
 
 pub fn create_xor_rotate_table<F: PrimeField, const ROT: u32>(id: u32) -> LookupTable<F> {
+    const {
+        assert!(
+            ROT < 32,
+            "ROT must be a valid u32 rotate-right amount (< 32)"
+        )
+    };
     let keys = key_binary_generation::<F, 2>();
     let table_name = format!("XOR-rotate-right-{} table", ROT);
     LookupTable::create_table_from_key_and_pure_generation_fn(

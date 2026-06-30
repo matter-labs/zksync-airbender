@@ -179,7 +179,7 @@ impl<C: Counters> ReplayerVM<C> {
                     add_sub_family::mop::mop_fmamod::<C, R, F>(state, ram, instr, tracer)
                 }
                 InstructionName::ZimopTriAdd => {
-                    add_sub_family::mop::mop_tri_add::<C, R, F>(state, ram, instr, tracer)
+                    add_sub_family::mop::mop_tri_add::<C, R>(state, ram, instr, tracer)
                 }
                 InstructionName::ZicsrNonDeterminismRead => {
                     add_sub_family::non_determinism::nd_read::<C, R, ND>(

@@ -15,6 +15,7 @@ pub(crate) fn mopi_xor_rot<C: Counters, R: RAM>(
     let rs2_ts = touch_x0_with_ts::<C, 1>(state);
     let rs2_value = 0u32;
     let rotation_value = instr.imm;
+    // SAFETY: instr.rd is a 5-bit RISC-V register index (0..=31); state.registers is [_; 32].
     let rd_raw_read_value = unsafe { state.registers.get_unchecked(instr.rd as usize).value };
     let rd = (rd_raw_read_value ^ rs1_value).rotate_right(rotation_value);
     let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);

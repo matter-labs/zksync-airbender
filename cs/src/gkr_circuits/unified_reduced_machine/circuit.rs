@@ -34,7 +34,7 @@ use field::PrimeField;
 /// | [17]       | Family 3 unified-only xor-rotate  | 1     |
 /// | [18..20)   | Family 4 (mem_word_only)          | 2     |
 ///
-/// Family 4 is encoded one-hot in the unified bitmask (bit 16 = LW, bit 17 = SW)
+/// Family 4 is encoded one-hot in the unified bitmask (bit 18 = LW, bit 19 = SW)
 /// to match the per-sub-opcode convention used by Families 1/2/3. This diverges
 /// from the Family-4 standalone encoding (1 bit = is_store) but lets the unified
 /// body read the LW/SW gates directly as Booleans without committing additional
@@ -70,7 +70,7 @@ pub const UNIFIED_REDUCED_MACHINE_NUM_FLAGS: usize = UNIFIED_F1_NUM_FLAGS
 /// only inside that family's flag-gated constraints, hence unconstrained (free)
 /// on rows where the family is idle. Because at most one family fires per row,
 /// these slots can be ALIASED across families into one shared pool.
-pub(super) const F1_SCRATCH_BOOLS: usize = 4; // 2-input: carry, intermediate_carry; tri-add (unified-only) also uses [2],[3] so each limb's carry ∈ {0,1,2} is a sum of two Booleans (alias F4's of_lo/of_hi slots)
+pub(super) const F1_SCRATCH_BOOLS: usize = 4; // 2-input add/sub: carry, intermediate_carry ([0],[1]); tri-add (unified-only) also uses [2],[3] so each limb's carry ∈ {0,1,2} is a sum of two Booleans. Aliased (one-hot ⇒ ≤1 family/row) with F4's pooled bools: [0],[1]=of_lo,of_hi; [2]=is_rom; [3]=sw-align bit_0.
 pub(super) const F2_SCRATCH_BOOLS: usize = 5; // add_rel_{0,1}_{intermediate,final}_of (4) + next_pc_bit_1
 pub(super) const F3_SCRATCH_BOOLS: usize = 0;
 pub(super) const F4_SCRATCH_BOOLS: usize = 5; // of_lo, of_hi, is_rom, sw-align bit_0, bit_1
