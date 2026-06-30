@@ -46,7 +46,9 @@ Notes:
 ```shell
 cargo run --release -p cli -- verify \
   --proof /tmp/proof.json \
-  --bin examples/hashed_fibonacci/app.bin
+  --bin examples/hashed_fibonacci/app.bin \
+  --security-level 80 \
+  --target recursion-unified
 ```
 
 The verifier prints the public output on success. It should match the output from step 1.
@@ -66,6 +68,7 @@ cargo run --release -p cli -- prove \
 cargo run --release -p cli -- continue-proof \
   --proof /tmp/base.json \
   --bin examples/hashed_fibonacci/app.bin \
+  --security-level 80 \
   --target recursion-unified \
   --output-dir /tmp \
   --output-file proof.json

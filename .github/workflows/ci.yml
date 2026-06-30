@@ -149,19 +149,19 @@ jobs:
         run: |
           BIN="$PWD/examples/opcode_smoke/app.bin"
           TEXT="$PWD/examples/opcode_smoke/app.text"
-          verify_output="$(./target/release/cli verify --proof output/base.json --bin "$BIN" --text "$TEXT")"
+          verify_output="$(./target/release/cli verify --proof output/base.json --bin "$BIN" --text "$TEXT" --security-level ${{ matrix.security_level }} --target base)"
           echo "$verify_output"
           echo "$verify_output" | grep -F "output=[1330660171, 0, 0, 42, 2374183677, 305419896, 524296, 0"
       - name: Continue to recursion unified
         run: |
           BIN="$PWD/examples/opcode_smoke/app.bin"
           TEXT="$PWD/examples/opcode_smoke/app.text"
-          ./target/release/cli continue-proof --proof output/base.json --bin "$BIN" --text "$TEXT" --target recursion-unified --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file recursion_unified.json
+          ./target/release/cli continue-proof --proof output/base.json --bin "$BIN" --text "$TEXT" --security-level ${{ matrix.security_level }} --target recursion-unified --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file recursion_unified.json
       - name: Verify recursion unified
         run: |
           BIN="$PWD/examples/opcode_smoke/app.bin"
           TEXT="$PWD/examples/opcode_smoke/app.text"
-          verify_output="$(./target/release/cli verify --proof output/recursion_unified.json --bin "$BIN" --text "$TEXT")"
+          verify_output="$(./target/release/cli verify --proof output/recursion_unified.json --bin "$BIN" --text "$TEXT" --security-level ${{ matrix.security_level }} --target recursion-unified)"
           echo "$verify_output"
           echo "$verify_output" | grep -F "output=[1330660171, 0, 0, 42, 2374183677, 305419896, 524296, 0"
 

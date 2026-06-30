@@ -175,11 +175,12 @@ impl OpcodeFamilyDecoder for ShiftBinaryCsrrwDecoder {
                 validate_csr = true;
                 // also check that we only have rs1 == 0 or rd == 0, or both
                 if imm == NON_DETERMINISM_CSR {
-                    assert!(rs1_index == 0 || rs2_index == 0);
-                } else {
+                    if !(rs1_index == 0 || rd_index == 0) {
+                        return Err(());
+                    }
+                } else if !(rs1_index == 0 && rs2_index == 0 && rd_index == 0) {
                     // works for all our precompiles, and UNIMP opcode
-                    assert!(rs1_index == 0);
-                    assert!(rs2_index == 0);
+                    return Err(());
                 }
             }
             // (OPERATION_SYSTEM, 0b001, func7) if func7 & 0x40 == 0 => {

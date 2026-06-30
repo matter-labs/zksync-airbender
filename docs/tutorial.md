@@ -89,6 +89,7 @@ cargo run --release -p cli -- prove \
 cargo run --release -p cli -- continue-proof \
   --proof output/base.json \
   --bin examples/basic_fibonacci/app.bin \
+  --security-level 80 \
   --target recursion-unified \
   --output-dir output \
   --output-file recursion_unified.json
@@ -101,7 +102,11 @@ cargo run --release -p cli -- continue-proof \
 The CLI verifies a single proof artifact at a time:
 
 ```shell
-cargo run --release -p cli -- verify --proof output/proof.json --bin examples/basic_fibonacci/app.bin
+cargo run --release -p cli -- verify \
+  --proof output/proof.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --security-level 80 \
+  --target recursion-unified
 ```
 
 Verification checks:

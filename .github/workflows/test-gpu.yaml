@@ -141,7 +141,9 @@ jobs:
           verify_output="$(zksync-airbender-cli/cli verify \
             --proof output/proof.json \
             --bin "$BIN" \
-            --text "$TEXT")"
+            --text "$TEXT" \
+            --security-level ${{ matrix.security_level }} \
+            --target recursion-unified)"
           echo "$verify_output"
           echo "$verify_output" | grep -F "output=[1330660171, 0, 0, 42, 2374183677, 305419896, 524296, 0"
 

@@ -76,12 +76,18 @@ cargo run --release -p cli --features "gpu" -- prove \
 cargo run --release -p cli -- \
   verify \
   --proof output/proof.json \
-  --bin examples/basic_fibonacci/app.bin
+  --bin examples/basic_fibonacci/app.bin \
+  --security-level 80 \
+  --target recursion-unified
 ```
+
+For `verify` and `continue-proof`, treat `--security-level` and `--target` as trusted
+inputs from the caller. The artifact's embedded metadata is only checked against that
+policy; it is not itself authoritative.
 
 Verification checks:
 
-- security level consistency inside the artifact and the selected recursion layer,
+- caller-supplied security level and target consistency,
 - program hash binding (`program_bin_keccak`, `program_text_keccak`),
 - recursion chain hash consistency (for recursion targets),
 - proof validity in the selected layer.
@@ -101,18 +107,23 @@ cargo run --release -p cli -- prove \
 
 cargo run --release -p cli -- verify \
   --proof output/base.json \
-  --bin examples/basic_fibonacci/app.bin
+  --bin examples/basic_fibonacci/app.bin \
+  --security-level 80 \
+  --target base
 
 cargo run --release -p cli -- continue-proof \
   --proof output/base.json \
   --bin examples/basic_fibonacci/app.bin \
+  --security-level 80 \
   --target recursion-unified \
   --output-dir output \
   --output-file recursion_unified.json
 
 cargo run --release -p cli -- verify \
   --proof output/recursion_unified.json \
-  --bin examples/basic_fibonacci/app.bin
+  --bin examples/basic_fibonacci/app.bin \
+  --security-level 80 \
+  --target recursion-unified
 ```
 
 ## Prove Batch

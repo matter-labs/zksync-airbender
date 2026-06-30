@@ -101,7 +101,7 @@ mod tests {
         let manifest_path = fixture_crate.join("Cargo.toml");
 
         let disassembly = run_command(&format!(
-            "cargo objdump --manifest-path {} --locked --lib --release --target {RISCV_TARGET} -- --disassemble --no-show-raw-insn",
+            "cargo objdump --manifest-path {} --offline --locked --lib --release --target {RISCV_TARGET} -- --disassemble --no-show-raw-insn",
             manifest_path.display()
         ));
 
@@ -116,8 +116,16 @@ mod tests {
     fn create_codegen_fixture() -> tempfile::TempDir {
         let fixture_dir = tempfile::tempdir().unwrap();
         let fixture_crate = fixture_dir.path();
+        let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("common_constants must live under the workspace root");
 
         fs::create_dir_all(fixture_crate.join("src")).unwrap();
+        fs::copy(
+            workspace_root.join("Cargo.lock"),
+            fixture_crate.join("Cargo.lock"),
+        )
+        .unwrap();
 
         // This fixture deliberately stays below the SHA3 layer. It exercises the
         // migrated ABI surface directly and leaves permutation correctness tests
