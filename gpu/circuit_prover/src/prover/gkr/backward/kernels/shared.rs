@@ -103,19 +103,32 @@ pub(crate) struct ScheduledChallengeBuffer<E> {
 pub(crate) struct ScheduledChallengeStorage<E> {
     #[allow(dead_code)] // keepalive: callbacks must outlive the scheduled stream ops.
     pub(crate) callbacks: Callbacks<'static>,
-    pub(crate) device: Box<SharedChallengeDevice<E>>,
+    pub(crate) device: Option<Box<SharedChallengeDevice<E>>>,
 }
 
 impl<E> ScheduledChallengeStorage<E> {
     pub(crate) fn new(device: DeviceAllocation<E>) -> Self {
         Self {
             callbacks: Callbacks::new(),
-            device: Box::new(SharedChallengeDevice::new(device)),
+            device: Some(Box::new(SharedChallengeDevice::new(device))),
         }
     }
 
     pub(crate) fn device_accessor(&self) -> UnsafeAccessor<SharedChallengeDevice<E>> {
-        UnsafeAccessor::new(self.device.as_ref())
+        UnsafeAccessor::new(
+            self.device
+                .as_deref()
+                .expect("challenge storage device already released"),
+        )
+    }
+
+    /// Release the per-layer batch-challenge device buffer. Its last scheduled
+    /// use is this main layer's backward sumcheck (the `device_accessor`
+    /// pointer is only dereferenced by those enqueued kernels), so the
+    /// reservation frees stream-ordered at prove-end like the other backward
+    /// handoff buffers.
+    pub(crate) fn release_device(&mut self) {
+        self.device = None;
     }
 }
 

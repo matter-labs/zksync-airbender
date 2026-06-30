@@ -570,6 +570,12 @@ impl BasicUnrolledFixture {
         transfers.schedule(&self.context)?;
         transfer_range.end(h2d_stream)?;
 
+        // Invariant: prove() is balanced — it releases every device allocation
+        // it makes (stream-ordered) before returning, so used device memory
+        // right after prove() returns equals used device memory right before
+        // it was called. The transfers above are allocated before this point
+        // and ride on in the job's keepalive, so they appear on both sides.
+        let mem_before_prove = self.context.get_used_mem_current();
         let mut proof_job = prove::<Global>(
             self.circuit_type,
             self.compiled_circuit.clone(),
@@ -578,6 +584,14 @@ impl BasicUnrolledFixture {
             transfers,
             &self.context,
         )?;
+        let mem_after_prove = self.context.get_used_mem_current();
+        assert_eq!(
+            mem_after_prove, mem_before_prove,
+            "prove() must release every device allocation it makes: \
+             before={mem_before_prove} after={mem_after_prove} \
+             net_retained={}",
+            mem_after_prove as i64 - mem_before_prove as i64,
+        );
         proof_job.ranges.insert(0, transfer_range);
         Ok(proof_job)
     }

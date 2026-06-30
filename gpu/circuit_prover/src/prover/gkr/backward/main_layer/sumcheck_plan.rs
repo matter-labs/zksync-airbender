@@ -66,7 +66,11 @@ where
         unsafe {
             // SAFETY: the freshly allocated challenge buffer is only re-viewed
             // at the concrete `E4` layout used by this scheduler.
-            let dst_slice = storage.device.slice_mut(0, len);
+            let dst_slice = storage
+                .device
+                .as_deref_mut()
+                .expect("challenge storage device just allocated")
+                .slice_mut(0, len);
             let dst_e4 = dst_slice.transmute_mut::<E4>();
             let batching_e4 = batching_slice.transmute::<E4>();
             crate::ops::powers::get_powers_by_ref::<E4>(
