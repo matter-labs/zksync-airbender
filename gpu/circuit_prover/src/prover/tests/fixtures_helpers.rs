@@ -144,9 +144,7 @@ pub(super) fn prepare_basic_unrolled_fixture(
         _marker: std::marker::PhantomData,
     };
 
-    let fixture_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-        UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-    ));
+    let fixture_circuit_type = build_config.circuit_type;
     let prover_config =
         crate::prover::config::prover_config(fixture_circuit_type, SecurityLevel::Sec80).unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
@@ -315,6 +313,13 @@ pub(super) fn prepare_basic_unrolled_fixture(
             decoder_table_host,
             tracing_data_host,
             memory_tree_caps,
+            // Per-family fixtures have no inits-and-teardowns layer and no
+            // unified-closure metadata; the unified fixture populates these.
+            inits_and_teardowns_host: None,
+            unified_register_final_state: [(0u32, (0u32, 0u32)); 32],
+            unified_final_pc: 0,
+            unified_final_timestamp: 0,
+            delegation_grand_product_factors: Vec::new(),
         },
         expected_cpu_proof,
     )
@@ -326,6 +331,9 @@ pub(crate) fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixtur
             binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
             text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
             layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: true,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
@@ -343,6 +351,9 @@ pub(super) fn prepare_basic_unrolled_profiling_fixture() -> BasicUnrolledFixture
             binary_path: "examples/basic_fibonacci/app.bin",
             text_path: "examples/basic_fibonacci/app.text",
             layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
             non_determinism_reads: &[],
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
@@ -611,6 +622,9 @@ pub(crate) fn prepare_basic_unrolled_async_backward_fixture(
             binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
             text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
             layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),

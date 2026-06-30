@@ -295,12 +295,13 @@ where
             .clone()
             .try_into()
             .expect("dimension reduction forward inputs must have arity 2");
+        // FS-safe merge (PR #305): both passes iterate `BTreeMap<OutputType>`
+        // with the derived `Ord`; `InitsAndTeardownsProduct` is the last
+        // discriminant (cs/src/definitions/gkr_layers.rs:5-10), so its 2
+        // pairwise records / 2 challenges are always squeezed AFTER the
+        // PermutationProduct + lookup records — identical to the CPU order.
         match *arg_type {
-            OutputType::InitsAndTeardownsProduct => unimplemented!(
-                "GKR unified circuit (InitsAndTeardownsProduct layer, PR #305) is not yet \
-                 supported on GPU; gated so per-family circuits keep building"
-            ),
-            OutputType::PermutationProduct => {
+            OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
                 let mut outputs = [GKRAddress::placeholder(); 2];
                 for (idx, input) in inputs.into_iter().enumerate() {
                     let input_start_ptr = storage

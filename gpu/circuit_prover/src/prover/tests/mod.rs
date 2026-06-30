@@ -44,7 +44,8 @@ use crate::witness::circuit_type::{
 use crate::witness::trace::ChunkedTraceHolder;
 use crate::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice, InitsAndTeardownsTraceHost,
-    UnrolledMemoryTraceDevice, UnrolledNonMemoryTraceDevice, PAGE_SIZE_LOG2,
+    UnrolledMemoryTraceDevice, UnrolledNonMemoryTraceDevice, UnrolledUnifiedTraceDevice,
+    PAGE_SIZE_LOG2,
 };
 
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
@@ -64,16 +65,17 @@ use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruct
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{
-    Counters, DelegationsAndFamiliesCounters, RamWithRomRegion, ReplayBuffer, SimpleSnapshotter,
-    SimpleTape, State, VM,
+    Counters, DelegationsAndFamiliesCounters, DelegationsAndUnifiedCounters, RamWithRomRegion,
+    ReplayBuffer, SimpleSnapshotter, SimpleTape, State, VM,
 };
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
+use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp;
 use riscv_transpiler::witness::{
     BigintDelegationDestinationHolder, BlakeDelegationDestinationHolder,
     KeccakDelegationDestinationHolder, MemDestinationHolder, MemoryOpcodeTracingDataWithTimestamp,
-    NonMemDestinationHolder, NonMemoryOpcodeTracingDataWithTimestamp,
+    NonMemDestinationHolder, NonMemoryOpcodeTracingDataWithTimestamp, UnifiedDestinationHolder,
 };
 use serial_test::serial;
 use std::alloc::Global;
@@ -102,6 +104,7 @@ mod memory_workflow;
 mod poly_helpers;
 mod smoke;
 mod stagewise;
+mod unified_stagewise;
 mod whir_oracle_parity;
 mod workflow_parity;
 
@@ -370,6 +373,14 @@ fn make_non_memory_tracing_host_for_test(
     }))
 }
 
+fn make_unified_tracing_host_for_test(
+    buffer: Vec<UnifiedOpcodeTracingDataWithTimestamp>,
+) -> TracingDataHost<Global> {
+    TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(ChunkedTraceHolder {
+        chunks: vec![Arc::new(buffer)],
+    }))
+}
+
 fn setup_geometry_for_test(setup_transfer: &GpuGKRSetupTransfer<'_>) -> GpuGKRTraceGeometry {
     GpuGKRTraceGeometry {
         log_domain_size: setup_transfer.trace_holder.log_domain_size,
@@ -453,6 +464,17 @@ pub(crate) struct BasicUnrolledFixture {
         Arc<crate::primitives::static_host::StaticPinnedBox<ExecutorFamilyDecoderData>>,
     pub(crate) tracing_data_host: TracingDataHost<Global>,
     pub(crate) memory_tree_caps: Vec<MerkleTreeCapVarLength>,
+    /// Sparse RAM init/teardown trace host. `None` for per-family fixtures
+    /// (their memory is fully covered by the per-row shuffle); `Some` for the
+    /// unified fixture, which proves the inits-and-teardowns layer.
+    pub(crate) inits_and_teardowns_host: Option<InitsAndTeardownsTraceHost>,
+    /// Closure-assembly metadata captured from the same VM run, consumed by the
+    /// unified e2e test (Task 22) to drive the no-filter grand-product
+    /// accumulator to ONE. Empty/`None`/default for per-family fixtures.
+    pub(crate) unified_register_final_state: [(u32, (u32, u32)); 32],
+    pub(crate) unified_final_pc: u32,
+    pub(crate) unified_final_timestamp: common_constants::TimestampScalar,
+    pub(crate) delegation_grand_product_factors: Vec<E4>,
 }
 
 type BasicUnrolledTransfers<'a> = crate::prover::proof::inputs::GpuGKRProofTransfer<'a, Global>;
@@ -499,12 +521,18 @@ impl BasicUnrolledFixture {
             context,
         )?;
 
+        let inits_and_teardowns_transfer = self
+            .inits_and_teardowns_host
+            .clone()
+            .map(|host| InitsAndTeardownsTransfer::new(host, context))
+            .transpose()?;
+
         let canonical_top_bits =
             crate::prover::proof::canonical_inits_and_teardowns_top_bits(&self.compiled_circuit);
         BasicUnrolledTransfers::new(
             setup_transfer,
             decoder_transfer,
-            None,
+            inits_and_teardowns_transfer,
             tracing_data_transfer,
             memory_transfer,
             &canonical_top_bits,
@@ -565,6 +593,7 @@ struct BasicUnrolledFixtureBuildConfig<'a> {
     binary_path: &'a str,
     text_path: &'a str,
     layout_path: &'a str,
+    circuit_type: CircuitType,
     non_determinism_reads: &'a [u32],
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
@@ -756,3 +785,6 @@ fn assert_cached_kernel_addresses_are_layer_local(
 
 mod fixtures_helpers;
 pub(super) use fixtures_helpers::*;
+
+mod unified_fixtures_helpers;
+pub(super) use unified_fixtures_helpers::*;

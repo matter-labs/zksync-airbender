@@ -1086,6 +1086,39 @@ where
             None
         };
 
+        // Commit the orphan/extra at-point evaluations to the transcript,
+        // mirroring the CPU's
+        // `commit_field_els(seed, extra_evaluations_from_caching_relations.values())`
+        // (`sumcheck_loop/mod.rs:439-445`), which runs AFTER the
+        // next-batching-challenge squeeze. These extras advance the running seed
+        // entering the next (lower) main layer. Omitting this commit left the
+        // next layer's round-0 seed at the pre-extras state (the β-state), so any
+        // layer whose child layer produces orphan outputs (e.g. a layer with
+        // `cached_relations`, like the unified circuit's layer 1) diverged from
+        // the CPU at the child's round-0 folding challenge while β itself still
+        // matched. The orphan set + sorted order mirror the CPU BTreeMap (see
+        // `compute_main_layer_orphan_output_addresses_per_layer`).
+        if orphan_count > 0 {
+            // SAFETY: the orphan eval scheduled above wrote `orphan_count` E4
+            // values into this slot's `extra_evaluations` slab range on
+            // `exec_stream`; this commit is stream-ordered after it. E4 matches
+            // the host flatten byte layout (4 u32 limbs per element).
+            let (extra_ptr, extra_len) = unsafe {
+                proof_layout.backward_extra_evaluations_device_mut(
+                    proof_slab.as_ptr() as *mut u8,
+                    layer_slot,
+                )
+            };
+            debug_assert_eq!(
+                extra_len, orphan_count,
+                "extra_evaluations slab len must match orphan_count",
+            );
+            let extra_e4_slice =
+                unsafe { DeviceSlice::from_raw_parts(extra_ptr as *const E4, extra_len) };
+            let d_extra_u32 = unsafe { extra_e4_slice.transmute::<u32>() };
+            crate::ops::blake2s::transcript_commit(&mut device_seed, d_extra_u32, stream)?;
+        }
+
         // `device_claim_point_out` is already populated in place — slots
         // `[0..last_step]` by the per-round update kernels (folding challenges)
         // and slots `[last_step..last_step + 2]` by the transcript squeeze

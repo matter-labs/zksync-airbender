@@ -147,6 +147,35 @@ pub(super) mod add_sub_lui_auipc_mod {
 }
 
 #[allow(unused_imports)]
+pub(super) mod unified_reduced_machine_mod {
+    use crate::primitives::field::BF;
+    use cs::oracle::Placeholder;
+    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
+    use cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
+    };
+    use field::baby_bear::base::BabyBearField;
+    use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
+    use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
+    use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
+
+    include!("../../../../../prover/compiled_circuits/unified_reduced_machine_generated_gkr.rs");
+
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut ColumnMajorWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>, BF>,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<BF, true>,
+            ColumnMajorWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>, BF>,
+        >;
+        fn_ptr(proxy);
+    }
+}
+
+#[allow(unused_imports)]
 pub(super) mod jump_branch_slt_mod {
     use crate::primitives::field::BF;
     use cs::oracle::Placeholder;
@@ -348,6 +377,35 @@ pub(super) mod keccak_special5_mod {
         let fn_ptr = evaluate_witness_fn::<
             ScalarWitnessTypeSet<BF, true>,
             ColumnMajorWitnessProxy<'a, KeccakDelegationOracle<'b>, BF>,
+        >;
+        fn_ptr(proxy);
+    }
+}
+
+#[allow(unused_imports)]
+pub(super) mod blake2_g_function_mod {
+    use crate::primitives::field::BF;
+    use cs::oracle::Placeholder;
+    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
+    use cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
+    };
+    use field::baby_bear::base::BabyBearField;
+    use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
+    use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
+    use prover::tracers::oracles::transpiler_oracles::delegation::Blake2sGFunctionDelegationOracle;
+
+    include!("../../../../../prover/compiled_circuits/blake2_g_function_generated_gkr.rs");
+
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut ColumnMajorWitnessProxy<'a, Blake2sGFunctionDelegationOracle<'b>, BF>,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<BF, true>,
+            ColumnMajorWitnessProxy<'a, Blake2sGFunctionDelegationOracle<'b>, BF>,
         >;
         fn_ptr(proxy);
     }

@@ -11,7 +11,17 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::upstream::{Field, FieldExtension, GKRAddress, Seed};
 
-pub(crate) const GKR_BACKWARD_MAX_KERNELS_PER_LAYER: usize = 128;
+/// Previous ceiling was 128; the unified circuit has 145 kernels in layer 0
+/// (118 distinct reads, well within `FLAT_ROUND0_MAX_SOURCES = 1280`).
+/// Raised to 256 to give headroom for future circuits.
+///
+/// MUST stay in lockstep with the native mirror in
+/// `native/prover/gkr/support/descriptors.cuh` (`GKR_BACKWARD_MAX_KERNELS_PER_LAYER`).
+/// Unlike the dim-reducing caps, this one sizes no shared `extern "C"` array (it
+/// is only a `<=` capacity assert on both sides), so nothing structural catches
+/// drift — the `gkr_backward_max_kernels_lockstep` test below pins the value to
+/// force a matching native edit.
+pub(crate) const GKR_BACKWARD_MAX_KERNELS_PER_LAYER: usize = 256;
 /// Supported GKR trace-length ceiling. Backward folding uses one challenge per
 /// trace dimension, so a `2^24` trace has at most 24 folding steps.
 pub(crate) const GKR_BACKWARD_MAX_TRACE_LEN_LOG2: usize = 24;
@@ -223,4 +233,18 @@ where
     E: FieldExtension<BF> + Field,
 {
     Box::new(ScheduledBackwardWorkflowState::deferred())
+}
+
+#[cfg(test)]
+mod cap_tests {
+    use super::GKR_BACKWARD_MAX_KERNELS_PER_LAYER;
+
+    // Lockstep guard, mirroring `gkr_dim_reducing_caps_lockstep`: this value is
+    // mirrored verbatim into native/prover/gkr/support/descriptors.cuh:51. It
+    // sizes no shared array, so there is no ABI tie to catch drift — if you
+    // change one side you MUST change the other; this test fails loudly to force it.
+    #[test]
+    fn gkr_backward_max_kernels_lockstep() {
+        assert_eq!(GKR_BACKWARD_MAX_KERNELS_PER_LAYER, 256);
+    }
 }

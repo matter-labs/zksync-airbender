@@ -230,6 +230,12 @@ pub(crate) fn build_flat_round0_plan<'s, E: Field>(
             }
 
             GpuGKRMainLayerKernelKind::InitsAndTeardownsInitialPair => {
+                // Round 0 emits only the output term (c0) + the quadratic
+                // constraint gate (c2), with NO linear (c1) tier — matching the
+                // CPU round-0 (step == 0 in `batch_evaluation.rs`), where
+                // `evaluate_linear_term` returns early for `FIRST_ROUND` and
+                // `fill_constant_term` runs only at step == 1. (A linear-tier
+                // emit here over-counts the round-0 monomial.)
                 let out = b.add_ext_source(&r0.extension_field_outputs[0]);
                 b.push_c0_ext(out, bc0());
                 emit_constraint_gate(&mut b, gate, r0, p0);

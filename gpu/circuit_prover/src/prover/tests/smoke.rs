@@ -491,6 +491,9 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
             binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
             text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
             layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
@@ -625,6 +628,9 @@ fn run_basic_unrolled_no_caches_test() {
             binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
             text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
             layout_path: BASIC_UNROLLED_ADD_SUB_NO_CACHES_LAYOUT_PATH,
+            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: true,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
@@ -675,6 +681,85 @@ fn run_basic_unrolled_proof_job_multi_schedule_test() {
 
     let (gpu_proof_1, proof_time_ms_1) = proof_job_1.finish().unwrap();
     eprintln!("proof_job_1 proof time: {proof_time_ms_1} ms");
+    assert_gkr_proof_eq_for_test(&gpu_proof_1, &fixture.expected_cpu_proof);
+    drop(gpu_proof_1);
+
+    assert_eq!(
+        fixture.base.context.get_used_mem_current(),
+        baseline_device_usage,
+        "device memory must return to baseline after both proofs complete"
+    );
+}
+
+/// VALIDATION GATE 3 (Task 22): full e2e unified proof parity + closure-to-ONE.
+///
+/// Proves the unified_reduced_machine circuit on the GPU and asserts the proof is
+/// field-wise bit-exact vs the CPU `prove_configured_with_gkr` reference
+/// (`assert_gkr_proof_eq_for_test` covers `grand_product_accumulator_computed` AND
+/// `whir_proof` incl. PoW/queries). Then drives the no-filter grand-product
+/// accumulator closure using the GPU proof's accumulator and asserts it closes to
+/// `E4::ONE` — mirroring the CPU orchestration (orchestration/unified.rs:259-278).
+/// Unlike GATE 2 (stagewise), this exercises the full backward+WHIR path, so it is
+/// the first test that commits the base-layer (layer 0) cached-relation extras into
+/// the WHIR transcript. A second schedule/finish proves determinism + that device
+/// memory returns to baseline across proofs (no cross-proof leak).
+///
+/// WORKAROUND / TODO: the two proofs here run SERIALLY (schedule -> finish ->
+/// schedule -> finish). That is NOT the intended `multi_schedule` shape: the
+/// per-family `run_basic_unrolled_proof_job_multi_schedule_test` deliberately
+/// schedules BOTH jobs with no synchronization between the two `schedule_prove`
+/// calls, so their async stream-ordered work interleaves on the shared streams +
+/// device pool — that overlap is what exercises cross-job race conditions. The
+/// serial shape below loses that race coverage; it only validates parity +
+/// closure-to-ONE + baseline reclaim.
+///
+/// The reason it is serial for now: a single unified (2^24) proof peaks at ~54 GiB
+/// and a live `GpuGKRProofJob` currently over-retains ~18 GiB of WHIR/backward/slab
+/// device buffers in its keepalive until `finish()` (a pre-existing regression from
+/// base commit f2dc2d2f — those buffers' last *scheduled* use is inside `prove()`,
+/// so they should drop stream-ordered at prove-end like the stage-1 traces). Two
+/// jobs in flight therefore need ~72 GiB and exceed the 64 GiB fixture arena.
+/// Once that over-retention is fixed, restore the concurrent (no-sync-between-
+/// schedules) shape to recover the race-condition coverage.
+#[test]
+#[serial]
+#[ignore]
+fn run_unified_proof_job_multi_schedule_test() {
+    let fixture = prepare_unified_proof_fixture();
+    let baseline_device_usage = fixture.base.context.get_used_mem_current();
+
+    let proof_job_0 = fixture.schedule_prove().unwrap();
+    let (gpu_proof_0, proof_time_ms_0) = proof_job_0.finish().unwrap();
+    eprintln!("unified proof_job_0 proof time: {proof_time_ms_0} ms");
+    assert_gkr_proof_eq_for_test(&gpu_proof_0, &fixture.expected_cpu_proof);
+
+    // No-filter grand-product accumulator closure, driven by the GPU proof's
+    // `grand_product_accumulator_computed` (proven == CPU above). Closing to ONE
+    // confirms the GPU path produces a sound full-machine permutation argument.
+    let mut acc = produce_initial_permutation_product_contribution::<BF, E4>(
+        &fixture.base.unified_register_final_state,
+        INITIAL_PC,
+        split_timestamp(INITIAL_TIMESTAMP),
+        fixture.base.unified_final_pc,
+        split_timestamp(fixture.base.unified_final_timestamp),
+        &fixture.base.external_challenges,
+    );
+    acc.mul_assign(&gpu_proof_0.grand_product_accumulator_computed);
+    for factor in fixture.base.delegation_grand_product_factors.iter() {
+        acc.mul_assign(factor);
+    }
+    assert_eq!(
+        acc,
+        E4::ONE,
+        "unified grand-product accumulator must close to ONE"
+    );
+    drop(gpu_proof_0);
+
+    // Second schedule/finish: proves the proof is deterministic across runs and
+    // that device memory returns to baseline (no cross-proof leak).
+    let proof_job_1 = fixture.schedule_prove().unwrap();
+    let (gpu_proof_1, proof_time_ms_1) = proof_job_1.finish().unwrap();
+    eprintln!("unified proof_job_1 proof time: {proof_time_ms_1} ms");
     assert_gkr_proof_eq_for_test(&gpu_proof_1, &fixture.expected_cpu_proof);
     drop(gpu_proof_1);
 

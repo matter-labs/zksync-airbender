@@ -98,6 +98,13 @@ pub struct GpuGKRStorageLayout {
     /// outputs. Aliases share their canonical's storage and do not claim
     /// their own slot in `index` / `slot_poly_counts`.
     pub aliases: BTreeMap<GKRAddress, GKRAddress>,
+    /// `artifact.scratch_space_mapping_rev` (scratch slot -> logical
+    /// `InnerLayer` address). Retained so the backward scheduler can recover a
+    /// scratch-aliased value's logical protocol/claim identity via
+    /// [`crate::transform::logical_protocol_address`]. See that function for
+    /// why storage and protocol identity must diverge for scratch-backed
+    /// values.
+    pub scratch_space_mapping_rev: BTreeMap<usize, GKRAddress>,
 }
 
 impl GpuGKRStorageLayout {
@@ -249,6 +256,7 @@ impl GpuGKRStorageLayout {
             artifact_log2_stride: log2_stride,
             layers,
             aliases,
+            scratch_space_mapping_rev: artifact.scratch_space_mapping_rev.clone(),
         };
         layout.assert_within_phase0_budgets();
         layout.assert_aliases_resolve();
@@ -681,6 +689,7 @@ pub fn handcrafted_layout(
             log2_stride,
         }],
         aliases: BTreeMap::new(),
+        scratch_space_mapping_rev: BTreeMap::new(),
     }
 }
 

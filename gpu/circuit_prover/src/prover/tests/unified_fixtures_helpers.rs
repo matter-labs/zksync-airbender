@@ -1,0 +1,740 @@
+use super::*;
+
+use super::inits_and_teardowns::{
+    build_inits_and_teardowns_pages_for_test, build_inits_and_teardowns_trace_host_for_test,
+};
+use prover::tracers::oracles::transpiler_oracles::delegation::Blake2sGFunctionDelegationOracle;
+use riscv_transpiler::witness::{BlakeGFunctionDelegationDestinationHolder, DelegationWitness};
+
+const UNIFIED_LAYOUT_PATH: &str = "cs/compiled_circuits/unified_reduced_machine_layout_gkr.json";
+const UNIFIED_NO_CACHES_LAYOUT_PATH: &str =
+    "cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json";
+// The default unified program: the SAME `app_blake2_g_function` the CPU unified
+// test runs (its default `multi_family_smoke_blake_g_function` config), so GPU
+// and CPU traces align.
+const UNIFIED_BINARY_PATH: &str = "examples/multi_family_smoke/app_blake2_g_function.bin";
+const UNIFIED_TEXT_PATH: &str = "examples/multi_family_smoke/app_blake2_g_function.text";
+
+const TRACE_LEN_LOG2: usize = 24;
+const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
+
+// Delegation cycle counts mirror the (test-gated, hence inlined here) constants
+// in `prover::tests::gkr::orchestration::common`. The `prover` test module is
+// not enabled by `circuit_prover`, so the values are reproduced verbatim.
+const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
+const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+
+/// Re-derives `prover::tests::gkr::orchestration::unified::build_unified_full_trace`
+/// against the **non-test** prover surface (the test module is gated behind
+/// `prover/test`, which circuit_prover does not enable), and also returns the
+/// sparse RAM init/teardown triples the GPU page builder consumes.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn build_unified_full_trace_for_test(
+    binary: &[u32],
+    text_section: &[u32],
+    unified_circuit: &GKRCircuitArtifact<BF>,
+    snapshotter: &SimpleSnapshotter<DelegationsAndUnifiedCounters, { ROM_SECOND_WORD_BITS }>,
+    ram: &RamWithRomRegion<{ ROM_SECOND_WORD_BITS }>,
+    expected_final_state: &State<DelegationsAndUnifiedCounters>,
+    tape: &SimpleTape,
+    cycles_bound: usize,
+    num_unified_teardown_sets: usize,
+    num_calls: usize,
+    run_memory_consistency_check: bool,
+    worker: &Worker,
+) -> (
+    GKRFullWitnessTrace<BF, Global, Global>,
+    TableDriver<BF>,
+    Vec<UnifiedOpcodeTracingDataWithTimestamp>,
+    Vec<cs::gkr_circuits::ExecutorFamilyDecoderData>,
+    Vec<Vec<(u32, (common_constants::TimestampScalar, u32))>>,
+) {
+    let mut state = snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = snapshotter
+        .reads_buffer
+        .make_range(0..snapshotter.reads_buffer.len());
+    let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let mut buffer = vec![UnifiedOpcodeTracingDataWithTimestamp::default(); num_calls];
+    let mut buffers = vec![&mut buffer[..]];
+    let mut tracer = UnifiedDestinationHolder {
+        buffers: &mut buffers[..],
+    };
+    ReplayerVM::<DelegationsAndUnifiedCounters>::replay_basic_unrolled::<_, _, BF>(
+        &mut state,
+        &mut replay_ram,
+        tape,
+        &mut (),
+        cycles_bound,
+        &mut tracer,
+    );
+    assert_eq!(*expected_final_state, state);
+    drop(replay_ram);
+
+    let oracle = UnifiedRiscvCircuitOracle::new::<BF>(
+        &buffer[..],
+        text_section,
+        common_constants::ROM_WORD_SIZE,
+    );
+    let unified_table_driver = build_unified_table_driver::<BF>(binary);
+
+    // Sparse triples for the GPU page builder, AND the per-set column form for CPU witness gen.
+    let sparse_inits_and_teardowns = ram.collect_inits_and_teardowns(worker, Global);
+    let mut unified_inits_and_teardowns = Vec::with_capacity(num_unified_teardown_sets);
+    for _ in 0..num_unified_teardown_sets {
+        let a = Vec::with_capacity(1 << TRACE_LEN_LOG2);
+        let b = Vec::with_capacity(1 << TRACE_LEN_LOG2);
+        let c = Vec::with_capacity(1 << TRACE_LEN_LOG2);
+        let d = Vec::with_capacity(1 << TRACE_LEN_LOG2);
+        unified_inits_and_teardowns.push(([a, b], [c, d]));
+    }
+    ram.collect_inits_and_teardowns_into_columns::<BF, _>(
+        worker,
+        TRACE_LEN_LOG2,
+        0,
+        &mut unified_inits_and_teardowns,
+    );
+
+    if run_memory_consistency_check {
+        let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
+            unified_circuit,
+            NUM_CYCLES_PER_CHUNK,
+            &oracle,
+            worker,
+            Some(unified_inits_and_teardowns.clone()),
+            Global,
+            Global,
+        );
+        let full_trace = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
+            unified_circuit,
+            fixtures::unified_reduced_machine_mod::witness_eval_fn,
+            NUM_CYCLES_PER_CHUNK,
+            &oracle,
+            &unified_table_driver,
+            worker,
+            Some(unified_inits_and_teardowns),
+            Global,
+            Global,
+        );
+        ensure_memory_trace_consistency(&memory_trace, &full_trace);
+        let decoder_table = oracle.decoder_table_with_options().to_vec();
+        let witness_gen_data = decoder_table
+            .iter()
+            .map(|entry| entry.unwrap_or_default())
+            .collect_vec();
+        return (
+            full_trace,
+            unified_table_driver,
+            buffer,
+            witness_gen_data,
+            sparse_inits_and_teardowns,
+        );
+    }
+
+    let full_trace = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
+        unified_circuit,
+        fixtures::unified_reduced_machine_mod::witness_eval_fn,
+        NUM_CYCLES_PER_CHUNK,
+        &oracle,
+        &unified_table_driver,
+        worker,
+        Some(unified_inits_and_teardowns),
+        Global,
+        Global,
+    );
+    let decoder_table = oracle.decoder_table_with_options().to_vec();
+    let witness_gen_data = decoder_table
+        .iter()
+        .map(|entry| entry.unwrap_or_default())
+        .collect_vec();
+    (
+        full_trace,
+        unified_table_driver,
+        buffer,
+        witness_gen_data,
+        sparse_inits_and_teardowns,
+    )
+}
+
+/// Inline-prove a single delegation on CPU and return its grand-product factor
+/// (`grand_product_accumulator_computed`, or `E4::ONE` when the delegation has
+/// no calls). Re-derives `prover::tests::gkr::orchestration::delegations`'
+/// `prove_delegation_inner` against the non-test surface, using the same CPU
+/// `example_configs` config the upstream delegation prove uses.
+#[allow(clippy::too_many_arguments)]
+fn prove_delegation_factor<O>(
+    circuit: &GKRCircuitArtifact<BF>,
+    table_driver: &TableDriver<BF>,
+    oracle: &O,
+    eval_fn: fn(
+        &mut prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy<'_, O, BF>,
+    ),
+    num_delegation_cycles: usize,
+    is_empty: bool,
+    external_challenges: &GKRExternalChallenges<BF, E4>,
+    level: SecurityLevel,
+    worker: &Worker,
+) -> E4
+where
+    O: cs::oracle::Oracle<BF>,
+{
+    let memory_trace = evaluate_gkr_memory_witness_for_delegation_circuit::<BF, _, _, _>(
+        circuit,
+        num_delegation_cycles,
+        oracle,
+        worker,
+        Global,
+        Global,
+    );
+    let full_trace = evaluate_gkr_witness_for_delegation_circuit::<BF, _, _, _>(
+        circuit,
+        eval_fn,
+        num_delegation_cycles,
+        oracle,
+        table_driver,
+        worker,
+        Global,
+        Global,
+    );
+    ensure_memory_trace_consistency(&memory_trace, &full_trace);
+    drop(memory_trace);
+
+    // Match the CPU orchestration: an empty delegation contributes ONE and is
+    // not proved (the prover would assert ONE anyway).
+    if is_empty {
+        return E4::ONE;
+    }
+
+    let prover_config = config_for_security_level_under_pessimistic_conjecture(
+        num_delegation_cycles.trailing_zeros() as usize,
+        level,
+    );
+    let twiddles: Twiddles<_, Global> = Twiddles::new(num_delegation_cycles, worker);
+    let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, circuit);
+    let setup_commitment = setup.commit(
+        &twiddles,
+        prover_config.lde_factor,
+        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+        prover_config.cap_size,
+        num_delegation_cycles.trailing_zeros() as usize,
+        worker,
+    );
+    let proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
+        circuit,
+        external_challenges,
+        full_trace,
+        &setup,
+        &setup_commitment,
+        &twiddles,
+        &prover_config,
+        Vec::new(),
+        num_delegation_cycles,
+        worker,
+    );
+    proof.grand_product_accumulator_computed
+}
+
+/// Prove every delegation the unified program wires (the same four the CPU
+/// `prove_unified` loop covers) and collect their grand-product factors so the
+/// unified e2e test can close the no-filter accumulator to ONE. Delegations the
+/// program never calls have a zero-length buffer -> `prove_delegation_factor`
+/// short-circuits to `E4::ONE`, exactly as the CPU loop does.
+fn prove_unified_delegation_factors(
+    snapshotter: &SimpleSnapshotter<DelegationsAndUnifiedCounters, { ROM_SECOND_WORD_BITS }>,
+    tape: &SimpleTape,
+    expected_final_state: &State<DelegationsAndUnifiedCounters>,
+    cycles_bound: usize,
+    counters: &DelegationsAndUnifiedCounters,
+    external_challenges: &GKRExternalChallenges<BF, E4>,
+    worker: &Worker,
+) -> Vec<E4> {
+    let level = SecurityLevel::Sec80;
+    let mut factors = Vec::new();
+
+    // --- Blake2 round function (with extended control). ---
+    {
+        let circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(
+            "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
+        );
+        let mut table_driver = TableDriver::<BF>::new();
+        cs::gkr_circuits::delegation::blake2_round_with_extended_control::blake2_with_extended_control_table_driver_fn(
+            &mut table_driver,
+        );
+
+        let mut state = snapshotter.initial_snapshot.state;
+        let mut ram_log_buffers = snapshotter
+            .reads_buffer
+            .make_range(0..snapshotter.reads_buffer.len());
+        let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+            ram_log: &mut ram_log_buffers,
+        };
+        let mut buffer = vec![DelegationWitness::empty(); counters.blake_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = BlakeDelegationDestinationHolder {
+            buffers: &mut buffers[..],
+        };
+        ReplayerVM::<DelegationsAndUnifiedCounters>::replay_basic_unrolled::<_, _, BF>(
+            &mut state,
+            &mut replay_ram,
+            tape,
+            &mut (),
+            cycles_bound,
+            &mut tracer,
+        );
+        assert_eq!(*expected_final_state, state);
+        drop(replay_ram);
+
+        let is_empty = buffer.is_empty();
+        let oracle = Blake2sDelegationOracle {
+            cycle_data: &buffer,
+            marker: core::marker::PhantomData,
+        };
+        factors.push(prove_delegation_factor(
+            &circuit,
+            &table_driver,
+            &oracle,
+            fixtures::blake2_with_extended_control_mod::witness_eval_fn,
+            BLAKE_NUM_DELEGATION_CYCLES,
+            is_empty,
+            external_challenges,
+            level,
+            worker,
+        ));
+    }
+
+    // --- Bigint (with extended control). ---
+    {
+        let circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(
+            "cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
+        );
+        let mut table_driver = TableDriver::<BF>::new();
+        cs::gkr_circuits::delegation::bigint_with_control::bigint_with_extended_control_delegation_circuit_table_driver_fn(
+            &mut table_driver,
+        );
+
+        let mut state = snapshotter.initial_snapshot.state;
+        let mut ram_log_buffers = snapshotter
+            .reads_buffer
+            .make_range(0..snapshotter.reads_buffer.len());
+        let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+            ram_log: &mut ram_log_buffers,
+        };
+        let mut buffer = vec![DelegationWitness::empty(); counters.bigint_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = BigintDelegationDestinationHolder {
+            buffers: &mut buffers[..],
+        };
+        ReplayerVM::<DelegationsAndUnifiedCounters>::replay_basic_unrolled::<_, _, BF>(
+            &mut state,
+            &mut replay_ram,
+            tape,
+            &mut (),
+            cycles_bound,
+            &mut tracer,
+        );
+        assert_eq!(*expected_final_state, state);
+        drop(replay_ram);
+
+        let is_empty = buffer.is_empty();
+        let oracle = BigintDelegationOracle {
+            cycle_data: &buffer,
+            marker: core::marker::PhantomData,
+        };
+        factors.push(prove_delegation_factor(
+            &circuit,
+            &table_driver,
+            &oracle,
+            fixtures::bigint_with_extended_control_mod::witness_eval_fn,
+            BIGINT_NUM_DELEGATION_CYCLES,
+            is_empty,
+            external_challenges,
+            level,
+            worker,
+        ));
+    }
+
+    // --- Keccak special5. ---
+    {
+        let circuit: GKRCircuitArtifact<BF> =
+            deserialize_json_for_test("cs/compiled_circuits/keccak_special5_layout_gkr.json");
+        let mut table_driver = TableDriver::<BF>::new();
+        cs::gkr_circuits::delegation::keccak_special5::keccak_special5_delegation_circuit_table_driver_fn(
+            &mut table_driver,
+        );
+
+        let mut state = snapshotter.initial_snapshot.state;
+        let mut ram_log_buffers = snapshotter
+            .reads_buffer
+            .make_range(0..snapshotter.reads_buffer.len());
+        let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+            ram_log: &mut ram_log_buffers,
+        };
+        let mut buffer = vec![DelegationWitness::empty(); counters.keccak_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = KeccakDelegationDestinationHolder {
+            buffers: &mut buffers[..],
+        };
+        ReplayerVM::<DelegationsAndUnifiedCounters>::replay_basic_unrolled::<_, _, BF>(
+            &mut state,
+            &mut replay_ram,
+            tape,
+            &mut (),
+            cycles_bound,
+            &mut tracer,
+        );
+        assert_eq!(*expected_final_state, state);
+        drop(replay_ram);
+
+        let is_empty = buffer.is_empty();
+        let oracle = KeccakDelegationOracle {
+            cycle_data: &buffer,
+            marker: core::marker::PhantomData,
+        };
+        factors.push(prove_delegation_factor(
+            &circuit,
+            &table_driver,
+            &oracle,
+            fixtures::keccak_special5_mod::witness_eval_fn,
+            KECCAK_NUM_DELEGATION_CYCLES,
+            is_empty,
+            external_challenges,
+            level,
+            worker,
+        ));
+    }
+
+    // --- Blake2 G-function (the default `app_blake2_g_function` delegation). ---
+    {
+        let circuit: GKRCircuitArtifact<BF> =
+            deserialize_json_for_test("cs/compiled_circuits/blake2_g_function_layout_gkr.json");
+        let mut table_driver = TableDriver::<BF>::new();
+        cs::gkr_circuits::delegation::blake2_g_function::blake2_g_function_table_driver_fn(
+            &mut table_driver,
+        );
+
+        let mut state = snapshotter.initial_snapshot.state;
+        let mut ram_log_buffers = snapshotter
+            .reads_buffer
+            .make_range(0..snapshotter.reads_buffer.len());
+        let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+            ram_log: &mut ram_log_buffers,
+        };
+        let mut buffer = vec![DelegationWitness::empty(); counters.blake_g_function_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = BlakeGFunctionDelegationDestinationHolder {
+            buffers: &mut buffers[..],
+        };
+        ReplayerVM::<DelegationsAndUnifiedCounters>::replay_basic_unrolled::<_, _, BF>(
+            &mut state,
+            &mut replay_ram,
+            tape,
+            &mut (),
+            cycles_bound,
+            &mut tracer,
+        );
+        assert_eq!(*expected_final_state, state);
+        drop(replay_ram);
+
+        let is_empty = buffer.is_empty();
+        let oracle = Blake2sGFunctionDelegationOracle {
+            cycle_data: &buffer,
+            marker: core::marker::PhantomData,
+        };
+        factors.push(prove_delegation_factor(
+            &circuit,
+            &table_driver,
+            &oracle,
+            fixtures::blake2_g_function_mod::witness_eval_fn,
+            BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES,
+            is_empty,
+            external_challenges,
+            level,
+            worker,
+        ));
+    }
+
+    factors
+}
+
+pub(crate) fn prepare_unified_proof_fixture() -> BasicUnrolledProofFixture {
+    prepare_unified_proof_fixture_with_layout(UNIFIED_LAYOUT_PATH)
+}
+
+pub(crate) fn prepare_unified_no_caches_proof_fixture() -> BasicUnrolledProofFixture {
+    prepare_unified_proof_fixture_with_layout(UNIFIED_NO_CACHES_LAYOUT_PATH)
+}
+
+pub(crate) fn prepare_unified_proof_fixture_with_layout(
+    layout_path: &str,
+) -> BasicUnrolledProofFixture {
+    let (base, expected_cpu_proof) = prepare_unified_fixture(layout_path, true);
+    BasicUnrolledProofFixture {
+        base,
+        expected_cpu_proof: expected_cpu_proof
+            .expect("unified proof fixture must include the CPU reference proof"),
+    }
+}
+
+fn prepare_unified_fixture(
+    layout_path: &str,
+    compute_cpu_reference: bool,
+) -> (
+    BasicUnrolledFixture,
+    Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
+) {
+    type CountersT = DelegationsAndUnifiedCounters;
+
+    const TRACE_LEN_LOG2: usize = 24;
+    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const HOST_POOL_SIZE_MB: usize = 1024;
+    let device_allocator_arena_bytes: usize = 64usize << 30;
+    let device_allocator_block_log_size =
+        default_fixture_device_allocator_block_log_size();
+
+    let trace_len: usize = 1 << TRACE_LEN_LOG2;
+    let worker = Worker::new_with_num_threads(8);
+
+    let binary = read_test_words(UNIFIED_BINARY_PATH);
+    let text_section = read_test_words(UNIFIED_TEXT_PATH);
+
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
+    let cycles_bound = 1 << 20;
+
+    let mut state = State::initial_with_counters(CountersT::default());
+    let mut snapshotter =
+        SimpleSnapshotter::<CountersT, { ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(
+            cycles_bound,
+            state,
+        );
+    let mut non_determinism = QuasiUARTSource::new_with_reads(vec![50, 0xDEAD_BEEF]);
+
+    let is_program_finished = VM::<CountersT>::run_basic_unrolled::<_, _, _, BF>(
+        &mut state,
+        &mut ram,
+        &mut snapshotter,
+        &tape,
+        cycles_bound,
+        &mut non_determinism,
+    );
+    assert!(is_program_finished);
+
+    // Closure-assembly metadata, captured from the final VM state (counters
+    // zeroed for the boundary state the replayer must reproduce).
+    let counters = state.counters;
+    let unified_register_final_state: [(u32, (u32, u32)); 32] =
+        state.registers.map(|el| (el.value, split_timestamp(el.timestamp)));
+    let unified_final_pc = state.pc;
+    let unified_final_timestamp = state.timestamp;
+    let mut expected_final_state = state;
+    expected_final_state.counters = Default::default();
+
+    let compiled_circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(layout_path);
+    let num_unified_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
+    let num_calls = counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
+
+    let (full_trace, unified_table_driver, buffer, witness_gen_data, sparse_inits_and_teardowns) =
+        build_unified_full_trace_for_test(
+            &binary,
+            &text_section,
+            &compiled_circuit,
+            &snapshotter,
+            &ram,
+            &expected_final_state,
+            &tape,
+            cycles_bound,
+            num_unified_teardown_sets,
+            num_calls,
+            compute_cpu_reference,
+            &worker,
+        );
+
+    let memory_argument_alpha =
+        E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
+    let permutation_argument_additive_part =
+        E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS
+        - 1] = materialize_powers_serial_starting_with_elem::<_, Global>(
+        memory_argument_alpha,
+        NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
+    )
+    .try_into()
+    .unwrap();
+    let external_challenges: GKRExternalChallenges<BF, E4> = GKRExternalChallenges {
+        permutation_argument_linearization_challenges,
+        permutation_argument_additive_part,
+        _marker: std::marker::PhantomData,
+    };
+
+    let fixture_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::Unified);
+    let prover_config =
+        crate::prover::config::prover_config(fixture_circuit_type, SecurityLevel::Sec80).unwrap();
+    let whir_schedule = prover_config.whir_schedule.clone();
+
+    // The CPU setup needs the genuine `Option<..>` decoder table (the `None`
+    // rows encode the `MINUS_ONE` fill, which differs from `Some(default)`);
+    // the GPU host below uses the unwrapped form + its own fill value.
+    let option_decoder_table = {
+        let oracle = UnifiedRiscvCircuitOracle::new::<BF>(
+            &buffer[..],
+            &text_section,
+            common_constants::ROM_WORD_SIZE,
+        );
+        oracle.decoder_table_with_options().to_vec()
+    };
+    let setup = CpuGKRSetup::construct(
+        &unified_table_driver,
+        &option_decoder_table,
+        trace_len,
+        &compiled_circuit,
+    );
+
+    let device_block_size = 1usize << device_allocator_block_log_size;
+    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
+    let context = make_test_context_with_device_allocator_block_log_size(
+        max_device_allocation_blocks_count,
+        HOST_POOL_SIZE_MB,
+        device_allocator_block_log_size,
+    );
+    let gpu_setup_host = Arc::new(
+        GpuGKRSetupHost::precompute_from_cpu_setup(
+            &setup,
+            whir_schedule.base_lde_factor.trailing_zeros(),
+            1,
+            whir_schedule.cap_size.trailing_zeros(),
+            &context,
+        )
+        .unwrap(),
+    );
+    let decoder_table_host = make_decoder_table_host_for_test(&witness_gen_data);
+
+    // Sparse i/t triples -> page-based GPU wire format -> transfer host.
+    let (page_indices, values_packed, timestamps_packed) = build_inits_and_teardowns_pages_for_test(
+        &sparse_inits_and_teardowns,
+        TRACE_LEN_LOG2 as u32,
+        num_unified_teardown_sets as u32,
+    );
+    let inits_and_teardowns_host = build_inits_and_teardowns_trace_host_for_test(
+        &page_indices,
+        &values_packed,
+        &timestamps_packed,
+    );
+
+    let (expected_cpu_proof, delegation_grand_product_factors) = if compute_cpu_reference {
+        let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+        let setup_commitment = setup.commit(
+            &twiddles,
+            whir_schedule.base_lde_factor,
+            whir_schedule.whir_steps_schedule[0],
+            whir_schedule.cap_size,
+            trace_len.trailing_zeros() as usize,
+            &worker,
+        );
+        let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
+            &compiled_circuit,
+            &external_challenges,
+            full_trace,
+            &setup,
+            &setup_commitment,
+            &twiddles,
+            &prover_config,
+            (0..num_unified_teardown_sets as u32).collect::<Vec<u32>>(),
+            trace_len,
+            &worker,
+        );
+
+        // Prove the active delegations so Task 22 can close the no-filter
+        // grand-product accumulator to ONE.
+        let factors = prove_unified_delegation_factors(
+            &snapshotter,
+            &tape,
+            &expected_final_state,
+            cycles_bound,
+            &counters,
+            &external_challenges,
+            &worker,
+        );
+        (Some(expected_cpu_proof), factors)
+    } else {
+        (None, Vec::new())
+    };
+
+    let tracing_data_host = make_unified_tracing_host_for_test(buffer);
+
+    // Per-coset memory tree caps from the CPU proof (needed for the prove signature).
+    let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
+        let combined_cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
+        let lde_factor = whir_schedule.base_lde_factor;
+        let subcap_size = combined_cap.cap.len() / lde_factor;
+        combined_cap
+            .cap
+            .chunks_exact(subcap_size)
+            .map(|chunk| MerkleTreeCapVarLength {
+                cap: chunk.to_vec(),
+            })
+            .collect_vec()
+    } else {
+        // No CPU reference -> derive caps from a one-shot GPU commit_memory.
+        // The unified arm requires the inits/teardowns bundle, so use
+        // `commit_memory_from_transfers` (the 6-arg `commit_memory` hard-codes
+        // `None` for i/t and panics on a unified circuit with "requires
+        // init/teardown data"). No setup transfer is needed — the commit-memory
+        // bundle only carries decoder/i-t/tracing. Validated bit-exact vs CPU by
+        // `run_unified_commit_memory_matches_cpu_test`.
+        let decoder = if compiled_circuit.has_decoder_lookup {
+            Some(DecoderTableTransfer::new(Arc::clone(&decoder_table_host), &context).unwrap())
+        } else {
+            None
+        };
+        let inits_and_teardowns =
+            Some(InitsAndTeardownsTransfer::new(inits_and_teardowns_host.clone(), &context).unwrap());
+        let tracing_data =
+            Some(TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap());
+
+        let mut bundle = crate::prover::trace::memory_transfer::GpuGKRCommitMemoryTransfer::new(
+            decoder,
+            inits_and_teardowns,
+            tracing_data,
+            &context,
+        )
+        .unwrap();
+        bundle.schedule(&context).unwrap();
+
+        let job = crate::prover::trace::memory::commit_memory_from_transfers(
+            fixture_circuit_type,
+            &compiled_circuit,
+            bundle,
+            &prover_config,
+            &context,
+        )
+        .unwrap();
+        let (tree_caps, _) = job.finish().unwrap();
+        tree_caps
+    };
+
+    (
+        BasicUnrolledFixture {
+            context,
+            circuit_type: fixture_circuit_type,
+            compiled_circuit,
+            external_challenges,
+            prover_config,
+            final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
+            gpu_setup_host,
+            decoder_table_host,
+            tracing_data_host,
+            memory_tree_caps,
+            inits_and_teardowns_host: Some(inits_and_teardowns_host),
+            unified_register_final_state,
+            unified_final_pc,
+            unified_final_timestamp,
+            delegation_grand_product_factors,
+        },
+        expected_cpu_proof,
+    )
+}

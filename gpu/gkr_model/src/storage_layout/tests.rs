@@ -3,7 +3,10 @@ use serial_test::serial;
 use std::path::PathBuf;
 
 fn compiled_circuit_dir() -> PathBuf {
+    // `CARGO_MANIFEST_DIR` is `gpu/gkr_model`; the fixtures live at the
+    // workspace-root `cs/compiled_circuits` (two levels up), not `gpu/cs`.
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
         .join("..")
         .join("cs")
         .join("compiled_circuits")
@@ -26,6 +29,10 @@ const CIRCUIT_BASENAMES: &[&str] = &[
     "mem_word_only",
     "shift_binop",
     "unsigned_mul_div",
+    // The unified reduced-machine circuit carries a scratch-backed
+    // `LookupUnbalancedPairWithMaterializedBaseInputs.remainder`, which is the
+    // regression covered by `normalize_leaves_no_scratch_mapped_inner_layer_reads`.
+    "unified_reduced_machine",
 ];
 
 /// Every `GKRAddress` produced by
@@ -251,6 +258,64 @@ fn no_caches_artifacts_use_only_gpu_forward_supported_variants() {
         }
     }
     assert!(covered > 0, "expected at least one no-cache artifact");
+}
+
+/// After `normalize_compiled_circuit_for_gpu`, no surviving gate may reference
+/// a scratch-mapped `InnerLayer` address. The normalize pass rewrites every
+/// such address's *producer* (e.g. the `MaxQuadratic` writer) to its
+/// `ScratchSpace` alias, which removes the `InnerLayer` slot from the storage
+/// layout. Any consumer that still reads the `InnerLayer` address would then
+/// fail the layout lookup in `register_flat_base_folding_for_layer`
+/// (`storage/ops.rs`). This guards the full rewrite coverage of
+/// `rewrite_relation_scratch_addresses` against new relation variants that
+/// carry materialized base reads (regression: the unified circuit's
+/// `LookupUnbalancedPairWithMaterializedBaseInputs.remainder`).
+#[test]
+#[serial]
+fn normalize_leaves_no_scratch_mapped_inner_layer_reads() {
+    let dir = compiled_circuit_dir();
+    let mut covered = 0;
+    for basename in CIRCUIT_BASENAMES {
+        for suffix in ["_layout_gkr.json", "_layout_no_caches_gkr.json"] {
+            let path = dir.join(format!("{basename}{suffix}"));
+            let Some(artifact) = load_artifact(&path) else {
+                continue;
+            };
+            covered += 1;
+            let scratch_keys: BTreeSet<GKRAddress> =
+                artifact.scratch_space_mapping.keys().copied().collect();
+            if scratch_keys.is_empty() {
+                continue;
+            }
+            let normalized = crate::transform::normalize_compiled_circuit_for_gpu(artifact);
+            for (layer_idx, layer) in normalized.layers.iter().enumerate() {
+                for gate in layer
+                    .gates
+                    .iter()
+                    .chain(layer.gates_with_external_connections.iter())
+                {
+                    let mut reads = Vec::new();
+                    let mut writes = Vec::new();
+                    collect_addresses_from_relation(
+                        &gate.enforced_relation,
+                        &mut reads,
+                        &mut writes,
+                    );
+                    for addr in reads.iter().chain(writes.iter()) {
+                        assert!(
+                            !scratch_keys.contains(addr),
+                            "{basename}{suffix} layer {layer_idx}: gate {:?} still references \
+                             scratch-mapped {addr:?} after normalize; its writer was rewritten to \
+                             ScratchSpace so the layout has no InnerLayer slot for it. Add this \
+                             relation to rewrite_relation_scratch_addresses.",
+                            std::mem::discriminant(&gate.enforced_relation),
+                        );
+                    }
+                }
+            }
+        }
+    }
+    assert!(covered > 0, "expected at least one artifact to load");
 }
 
 #[test]

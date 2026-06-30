@@ -376,31 +376,16 @@ EXTERN __global__ void ab_generate_memory_values_unrolled_non_memory_kernel(cons
   //   process_delegation_requests(layout.delegation_request_layout.value, oracle, memory, index);
 }
 
-// EXTERN __global__ void
-// ab_generate_memory_values_unrolled_inits_and_teardowns_kernel(const __grid_constant__ ShuffleRamInitAndTeardownLayouts init_and_teardown_layouts,
-//                                                               const __grid_constant__ ShuffleRamInitsAndTeardowns inits_and_teardowns,
-//                                                               matrix_setter<bf, st_modifier::cg> memory, const unsigned count) {
-//   const unsigned index = blockIdx.x * blockDim.x + threadIdx.x;
-//   if (index >= count)
-//     return;
-//   memory.add_row(index);
-//   process_inits_and_teardowns<false>(init_and_teardown_layouts, {}, inits_and_teardowns, memory, memory, count, index);
-// }
-//
-// EXTERN __global__ void ab_generate_memory_values_unrolled_unified_kernel(const __grid_constant__ UnrolledFamilyMemorySubtree subtree,
-//                                                                          const __grid_constant__ ShuffleRamInitsAndTeardowns inits_and_teardowns,
-//                                                                          const __grid_constant__ UnrolledUnifiedOracle oracle,
-//                                                                          matrix_setter<bf, st_modifier::cg> memory, const unsigned count) {
-//   const unsigned index = blockIdx.x * blockDim.x + threadIdx.x;
-//   if (index >= count)
-//     return;
-//   memory.add_row(index);
-//   process_inits_and_teardowns<false>(subtree.init_and_teardown_layouts, {}, inits_and_teardowns, memory, memory, count, index);
-//   process_machine_state_assuming_preprocessed_decoder<false>(subtree, {}, oracle, memory, memory, nullptr, index);
-//   process_shuffle_ram_access_sets<false>(subtree.shuffle_ram_access_sets, {}, oracle, memory, memory, index);
-//   if (subtree.delegation_request_layout.tag == OptionU32::Some)
-//     process_delegation_requests(subtree.delegation_request_layout.value, oracle, memory, index);
-// }
+EXTERN __global__ void ab_generate_memory_values_unrolled_unified_kernel(const __grid_constant__ UnrolledMemoryLayout layout,
+                                                                         const __grid_constant__ UnrolledUnifiedOracle oracle,
+                                                                         matrix_setter<bf, st_modifier::cg> memory, const unsigned count) {
+  const unsigned index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index >= count)
+    return;
+  memory.add_row(index);
+  process_machine_state_assuming_preprocessed_decoder<false>(layout, oracle, memory, memory, nullptr, index);
+  process_shuffle_ram_access_sets<false>(layout, {}, oracle, memory, memory, index);
+}
 
 EXTERN __global__ void ab_generate_memory_and_witness_values_unrolled_memory_kernel(const __grid_constant__ UnrolledMemoryLayout layout,
                                                                                     const __grid_constant__ AuxLayoutData aux_layout_data,
@@ -440,25 +425,20 @@ EXTERN __global__ void ab_generate_memory_and_witness_values_unrolled_inits_and_
   const unsigned global_word = blockIdx.x * blockDim.x + threadIdx.x;
   process_inits_and_teardowns_pages(init_and_teardown_layouts, trace, memory, page_size_log2, pages_per_set_log2, global_word);
 }
-//
-// EXTERN __global__ void ab_generate_memory_and_witness_values_unrolled_unified_kernel(
-//     const __grid_constant__ UnrolledFamilyMemorySubtree subtree, const __grid_constant__ ShuffleRamAuxComparisonSets aux_comparison_sets,
-//     const __grid_constant__ OptionU32::Option<ColumnAddress> executor_family_circuit_next_timestamp_aux_var,
-//     const __grid_constant__ MemoryQueriesTimestampComparisonAuxVars memory_queries_timestamp_comparison_aux_vars,
-//     const __grid_constant__ ShuffleRamInitsAndTeardowns inits_and_teardowns, const __grid_constant__ UnrolledUnifiedOracle oracle,
-//     matrix_setter<bf, st_modifier::cg> memory, matrix_setter<bf, st_modifier::cg> witness, u32 *const __restrict__ decoder_lookup_mapping,
-//     const unsigned count) {
-//   const unsigned index = blockIdx.x * blockDim.x + threadIdx.x;
-//   if (index >= count)
-//     return;
-//   memory.add_row(index);
-//   witness.add_row(index);
-//   process_inits_and_teardowns<true>(subtree.init_and_teardown_layouts, aux_comparison_sets, inits_and_teardowns, memory, witness, count, index);
-//   process_machine_state_assuming_preprocessed_decoder<true>(subtree, executor_family_circuit_next_timestamp_aux_var, oracle, memory, witness,
-//                                                             decoder_lookup_mapping, index);
-//   process_shuffle_ram_access_sets<true>(subtree.shuffle_ram_access_sets, memory_queries_timestamp_comparison_aux_vars, oracle, memory, witness, index);
-//   if (subtree.delegation_request_layout.tag == OptionU32::Some)
-//     process_delegation_requests(subtree.delegation_request_layout.value, oracle, memory, index);
-// }
+
+EXTERN __global__ void ab_generate_memory_and_witness_values_unrolled_unified_kernel(const __grid_constant__ UnrolledMemoryLayout layout,
+                                                                                     const __grid_constant__ AuxLayoutData aux_layout_data,
+                                                                                     const __grid_constant__ UnrolledUnifiedOracle oracle,
+                                                                                     matrix_setter<bf, st_modifier::cg> memory,
+                                                                                     matrix_setter<bf, st_modifier::cg> witness,
+                                                                                     u32 *const __restrict__ decoder_lookup_mapping, const unsigned count) {
+  const unsigned index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index >= count)
+    return;
+  memory.add_row(index);
+  witness.add_row(index);
+  process_machine_state_assuming_preprocessed_decoder<true>(layout, oracle, memory, witness, decoder_lookup_mapping, index);
+  process_shuffle_ram_access_sets<true>(layout, aux_layout_data, oracle, memory, witness, index);
+}
 
 } // namespace airbender::witness::memory::unrolled

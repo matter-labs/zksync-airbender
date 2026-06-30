@@ -10,11 +10,24 @@
 
 // `cs` — GKR circuit artifacts + decoder/opcode helpers.
 pub use cs::gkr_circuits::{
+    create_mem_word_only_special_tables,
     opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization,
     opcodes_for_reduced_machine, process_binary_into_separate_tables_ext,
     ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData,
 };
-pub use cs::gkr_compiler::GKRCircuitArtifact;
+pub use cs::gkr_compiler::{GKRCircuitArtifact, GKRCompiler, OutputType};
+
+// `cs` — unified-circuit build-direct compile path. Mirrors
+// `cs::gkr_circuits::unified_reduced_machine::circuit::build_unified_artifact`
+// (private upstream), the source of truth that produced
+// `unified_reduced_machine_layout_gkr.json`. `Circuit` is the trait carrying
+// `BasicAssembly::{new, add_table_with_content, finalize}`.
+pub use cs::cs::circuit_impl::BasicAssembly;
+pub use cs::cs::circuit_trait::Circuit;
+pub use cs::gkr_circuits::unified_reduced_machine::{
+    unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr,
+    unified_reduced_machine_table_addition_fn,
+};
 
 // `prover` — CPU prover types the GPU orchestrator interoperates with.
 pub use prover::definitions::{
@@ -22,8 +35,13 @@ pub use prover::definitions::{
 };
 pub use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub use prover::gkr::prover::GKRProof;
+pub use prover::gkr::witness_gen::family_circuits::build_unified_table_driver;
+pub use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 pub use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 pub use prover::transcript::Seed;
+
+// `common_constants` — ROM geometry for the unified build-direct compile path.
+pub use common_constants::{ROM_SECOND_WORD_BITS, ROM_WORD_SIZE};
 
 // `setups` — compiled-circuit binary loading + per-circuit setup constructors.
 pub use setups::circuits::{

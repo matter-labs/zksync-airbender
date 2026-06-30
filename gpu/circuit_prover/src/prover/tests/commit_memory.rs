@@ -130,6 +130,73 @@ fn test_blake2_delegation_zero_call_commit_memory_matches_cpu() {
     assert_blake2_delegation_commit_memory_matches_cpu(compiled_circuit, true);
 }
 
+/// Follow-up #1 from the #305 merge review. The GATE-3 fixture injects the CPU
+/// proof's memory-commitment cap into the proof slab, so the memory-cap equality
+/// inside `assert_gkr_proof_eq_for_test` is vacuous for the unified circuit — the
+/// GPU memory-tree build over the unified column width is never compared to CPU.
+/// Close that gap: run the production GPU `commit_memory` over the unified trace
+/// (the same call the no-CPU fixture path uses) and assert its per-coset caps
+/// equal the CPU-derived caps (`fixture.base.memory_tree_caps`, split from the
+/// CPU proof's `memory_commitment.commitment.cap`). GATE 1 already proves the
+/// memory *column values* bit-exact; this isolates the LDE/Merkle tree build at
+/// the unified width.
+#[test]
+#[ignore]
+#[serial]
+fn run_unified_commit_memory_matches_cpu_test() {
+    use crate::prover::trace::memory::commit_memory_from_transfers;
+    use crate::prover::trace::memory_transfer::GpuGKRCommitMemoryTransfer;
+
+    let fixture = prepare_unified_proof_fixture();
+    let base = &fixture.base;
+    let context = &base.context;
+
+    // Drive the production unified memory-commit path: `commit_memory_from_transfers`
+    // threads the inits/teardowns bundle through to the unified arm (the 6-arg
+    // `commit_memory` hard-codes `None` for i/t and panics on a unified circuit).
+    let decoder = if base.compiled_circuit.has_decoder_lookup {
+        Some(DecoderTableTransfer::new(Arc::clone(&base.decoder_table_host), context).unwrap())
+    } else {
+        None
+    };
+    let inits_and_teardowns = Some(
+        InitsAndTeardownsTransfer::new(
+            base.inits_and_teardowns_host
+                .clone()
+                .expect("unified fixture must carry an inits/teardowns host"),
+            context,
+        )
+        .unwrap(),
+    );
+    let tracing_data = Some(TracingDataTransfer::new(base.tracing_data_host.clone(), context).unwrap());
+
+    let mut bundle =
+        GpuGKRCommitMemoryTransfer::new(decoder, inits_and_teardowns, tracing_data, context).unwrap();
+    bundle.schedule(context).unwrap();
+
+    let job = commit_memory_from_transfers(
+        base.circuit_type,
+        &base.compiled_circuit,
+        bundle,
+        &base.prover_config,
+        context,
+    )
+    .unwrap();
+    let (gpu_caps, elapsed_ms) = job.finish().unwrap();
+    eprintln!("unified GPU memory commitment ready in {elapsed_ms:.1}ms");
+
+    // Compare via the same flatten idiom the per-family helpers use.
+    let mut gpu_flat = vec![];
+    flatten_merkle_caps_iter_into(gpu_caps.into_iter(), &mut gpu_flat);
+    let mut cpu_flat = vec![];
+    flatten_merkle_caps_iter_into(base.memory_tree_caps.iter().cloned(), &mut cpu_flat);
+    assert_eq!(
+        gpu_flat, cpu_flat,
+        "unified GPU memory-tree caps must match the CPU memory commitment"
+    );
+    eprintln!("unified memory commitment caps match CPU!");
+}
+
 fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     binary_path: &str,
     text_path: &str,

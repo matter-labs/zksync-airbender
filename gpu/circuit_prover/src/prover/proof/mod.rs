@@ -31,6 +31,15 @@ use orchestration::{
     Stage1AndForwardPreparation, WhirPhaseResult,
 };
 
+/// `prove` is circuit-type-driven: it dispatches purely on `circuit_type` and
+/// the `GpuGKRProofTransfer` shape, with no per-family whitelist. The Unified
+/// path is therefore *selected*, not special-cased here — feed
+/// `CircuitType::Unrolled(UnrolledCircuitType::Unified)`, the unified compiled
+/// circuit, and the `UnrolledTracingDataDevice::Unified` transfer. All
+/// Unified-specific handling lives in the inner stages: stage1 dispatch
+/// (`gkr/stage1/mod.rs`), commit-memory (`prover/trace/memory.rs`), setup
+/// (`execution_prover::precomputations`), and the claim-layout/accumulator
+/// arms.
 #[allow(clippy::too_many_arguments)]
 pub fn prove<'a, A: GoodAllocator + 'a>(
     circuit_type: CircuitType,

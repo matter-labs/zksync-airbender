@@ -117,6 +117,15 @@ pub(crate) fn top_layer_claim_layout(
         addresses.insert(output.output[0]);
         addresses.insert(output.output[1]);
     }
+    // Unified circuit (PR #305): the inline inits/teardowns grand product adds a
+    // second top-layer product channel. Mirror the CPU top_layer_claims insert
+    // at prover/src/gkr/prover/mod.rs:556-559 (claim_initset @ output[0],
+    // claim_teardownset @ output[1]) so every output_layer_for_sumcheck entry
+    // has a claim address and the backward claim_idx lookup never panics.
+    if let Some(output) = output_layer_for_sumcheck.get(&OutputType::InitsAndTeardownsProduct) {
+        addresses.insert(output.output[0]);
+        addresses.insert(output.output[1]);
+    }
     ClaimBufferLayout::from_addresses(addresses.into_iter().collect())
 }
 
@@ -140,6 +149,30 @@ pub(crate) fn grand_product_accumulator_from_explicit_evaluations(
             .inverse()
             .expect("read-set accumulator must not be zero"),
     );
+
+    // Unified circuit (PR #305): fold the inline inits/teardowns product into the
+    // accumulator so the caller's `initial_contribution * accumulator == ONE`
+    // closure holds as a single check. Exact mirror of the CPU prover at
+    // prover/src/gkr/prover/mod.rs:813-823 — it_evals[0] = init_set,
+    // it_evals[1] = teardown_set, contribution = teardown * init.inverse().
+    if let Some(it_evals) =
+        final_explicit_evaluations.get(&OutputType::InitsAndTeardownsProduct)
+    {
+        let [init_set_computed, teardown_set_computed] = it_evals.clone().map(|els| {
+            let mut result = E4::ONE;
+            for el in els.iter() {
+                result.mul_assign(el);
+            }
+            result
+        });
+        let mut it_contribution = teardown_set_computed;
+        it_contribution.mul_assign(
+            &init_set_computed
+                .inverse()
+                .expect("init-set accumulator must not be zero"),
+        );
+        grand_product_accumulator_computed.mul_assign(&it_contribution);
+    }
 
     grand_product_accumulator_computed
 }
