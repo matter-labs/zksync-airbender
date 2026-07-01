@@ -76,7 +76,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             );
         let total_lookups_for_range_checks_16 =
             (range_check_16_expressions.len() as u64) * trace_len as u64;
-        assert!(total_lookups_for_range_checks_16 < F::CHARACTERISTICS as u64, "total number of range-check-16 lookups in circuit is {} that is larger that field characteristics {}", total_lookups_for_range_checks_16, F::CHARACTERISTICS);
+        assert!(total_lookups_for_range_checks_16 < F::CHARACTERISTICS_U32 as u64, "total number of range-check-16 lookups in circuit is {} that is larger that field characteristics {}", total_lookups_for_range_checks_16, F::CHARACTERISTICS_U32);
 
         let mut expect_table_id_for_generic_lookup = false;
 
@@ -93,7 +93,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             let total_generic_lookups = (generic_lookups.len() as u64
                 + decoder_lookup_pair.is_some() as u64)
                 * trace_len as u64;
-            assert!(total_generic_lookups < F::CHARACTERISTICS as u64, "total number of generic lookups in circuit is {} that is larger that field characteristics {}", total_generic_lookups, F::CHARACTERISTICS);
+            assert!(total_generic_lookups < F::CHARACTERISTICS_U32 as u64, "total number of generic lookups in circuit is {} that is larger that field characteristics {}", total_generic_lookups, F::CHARACTERISTICS_U32);
 
             let max_practical_lookup_width_without_decoder = generic_lookups
                 .iter()
@@ -212,7 +212,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         let total_timestamp_range_check_lookups =
             timestamp_range_check_expressions_to_compile.len() as u64 * trace_len as u64;
-        assert!(total_timestamp_range_check_lookups < F::CHARACTERISTICS as u64, "total number of timestamp range check lookups in circuit is {} that is larger that field characteristics {}", total_timestamp_range_check_lookups, F::CHARACTERISTICS);
+        assert!(total_timestamp_range_check_lookups < F::CHARACTERISTICS_U32 as u64, "total number of timestamp range check lookups in circuit is {} that is larger that field characteristics {}", total_timestamp_range_check_lookups, F::CHARACTERISTICS_U32);
 
         // for all boolean vars we add booleanity constraint here
 

@@ -38,8 +38,8 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     // we have rs1 = x0, rs2 = x0 and imm = 0, and it's preprocessed into plain addition,
     // so we do NOT need to mask rd value
 
-    let modulus_low = F::from_u32_unchecked((F::CHARACTERISTICS as u16) as u32);
-    let modulus_high = F::from_u32_unchecked(((F::CHARACTERISTICS >> 16) as u16) as u32);
+    let modulus_low = F::from_u32_unchecked((F::CHARACTERISTICS_U32 as u16) as u32);
+    let modulus_high = F::from_u32_unchecked(((F::CHARACTERISTICS_U32 >> 16) as u16) as u32);
 
     let carry_shift = F::from_u32_with_reduction(1 << 16);
 
@@ -109,9 +109,9 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             let pc_u32 = placer.get_u32_from_u16_parts(pc_vars);
             let boolean_false = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
             let modulus_low =
-                <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(F::CHARACTERISTICS as u16);
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(F::CHARACTERISTICS_U32 as u16);
             let modulus_constant =
-                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(F::CHARACTERISTICS as u32);
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(F::CHARACTERISTICS_U32 as u32);
             {
                 let is_add = placer.get_boolean(is_add_var);
                 let (add_result, of0) = rs1_u32.overflowing_add(&rs2_u32);

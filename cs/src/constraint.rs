@@ -32,7 +32,7 @@ impl<F: PrimeField> std::fmt::Display for Term<F> {
                 degree,
             } => {
                 let coeff = coeff.as_u32_reduced();
-                let coeff_opp = F::CHARACTERISTICS - coeff;
+                let coeff_opp = F::CHARACTERISTICS_U32 - coeff;
                 if coeff < coeff_opp {
                     if coeff != 1 {
                         write!(f, " + {coeff}")?;

@@ -433,7 +433,8 @@ impl Sub for Mersenne31Field {
 impl PrimeField for Mersenne31Field {
     const NUM_BYTES_IN_REPR: usize = 4;
     const CHAR_BITS: usize = 31;
-    const CHARACTERISTICS: u32 = Self::ORDER;
+    const CHARACTERISTICS_U32: u32 = Self::ORDER;
+    const CHARACTERISTICS_U128: u128 = Self::CHARACTERISTICS_U32 as u128;
 
     const IS_MONT_REPR: bool = false;
     const MONT_K: u32 = 1;
@@ -493,10 +494,6 @@ impl PrimeField for Mersenne31Field {
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_boolean(flag: bool) -> Self {
         Self(flag as u32)
-    }
-
-    fn increment_unchecked(&'_ mut self) {
-        self.0 += 1;
     }
 }
 

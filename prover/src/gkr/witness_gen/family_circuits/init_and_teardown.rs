@@ -92,8 +92,8 @@ mod tests {
 
     fn marker(set_idx: u32, limb: u32, row: u32) -> BabyBearField {
         // Distinguishable per-(set, limb, row) value to spot-check placement.
-        BabyBearField::from_u64_with_reduction(
-            ((set_idx as u64) * 1_000_000) + ((limb as u64) * 10_000) + (row as u64),
+        BabyBearField::from_u32_with_reduction(
+            (set_idx * 1_000_000) + (limb * 10_000) + row,
         )
     }
 

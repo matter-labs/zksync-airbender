@@ -724,7 +724,7 @@ pub(crate) unsafe fn gkr_postprocess_multiplicities<
             assert!(trace_len >= 1 << 16);
             for absolute_row_idx in 0..(1 << 16) {
                 let multiplicity = *range_16_multiplicities.get_unchecked(absolute_row_idx);
-                debug_assert!(multiplicity < F::CHARACTERISTICS as u32);
+                debug_assert!(multiplicity < F::CHARACTERISTICS_U32 as u32);
                 *dst.get_unchecked_mut(absolute_row_idx) =
                     F::from_u32_unchecked(multiplicity as u32);
             }
@@ -769,7 +769,7 @@ pub(crate) unsafe fn gkr_postprocess_multiplicities<
             for absolute_row_idx in 0..(1 << TIMESTAMP_COLUMNS_NUM_BITS) {
                 let multiplicity =
                     *timestamp_range_check_multiplicities.get_unchecked(absolute_row_idx);
-                debug_assert!(multiplicity < F::CHARACTERISTICS as u32);
+                debug_assert!(multiplicity < F::CHARACTERISTICS_U32 as u32);
                 *dst.get_unchecked_mut(absolute_row_idx) =
                     F::from_u32_unchecked(multiplicity as u32);
             }
@@ -864,7 +864,7 @@ pub(crate) unsafe fn gkr_postprocess_multiplicities<
                                 // so it's used
                                 let multiplicity =
                                     *general_purpose_multiplicity_ref.get_unchecked(encoding_index);
-                                debug_assert!(multiplicity < F::CHARACTERISTICS as u32);
+                                debug_assert!(multiplicity < F::CHARACTERISTICS_U32 as u32);
                                 *dst.get_unchecked_mut(i) =
                                     F::from_u32_unchecked(multiplicity as u32);
                             }
@@ -880,7 +880,7 @@ pub(crate) unsafe fn gkr_postprocess_multiplicities<
                             //         // so it's used
                             //         let multiplicity = *general_purpose_multiplicity_ref
                             //             .get_unchecked(encoding_index);
-                            //         debug_assert!(multiplicity < F::CHARACTERISTICS as u32);
+                            //         debug_assert!(multiplicity < F::CHARACTERISTICS_U32 as u32);
                             //         *dst.get_unchecked_mut() = F::from_u32_unchecked(multiplicity as u64);
                             //     } else {
                             //         todo!()

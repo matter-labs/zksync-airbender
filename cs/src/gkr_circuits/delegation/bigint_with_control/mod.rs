@@ -587,8 +587,8 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
                 }
             }
         }
-        assert!(product_range < F::CHARACTERISTICS as u64);
-        assert!(product_range.next_power_of_two() <= F::CHARACTERISTICS as u64);
+        assert!(product_range < F::CHARACTERISTICS_U32 as u64);
+        assert!(product_range.next_power_of_two() <= F::CHARACTERISTICS_U32 as u64);
 
         if i == full_product.len() - 1 {
             assert!(product_range < 1 << 16);
@@ -757,7 +757,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
     // NOTE: we will add all words, that are range checked. It's addition result is less than
     // 2^16 * 16 words, so we ensure that field is large enough and save variables
-    assert!(F::CHARACTERISTICS >= (1 << 16) * 16);
+    assert!(F::CHARACTERISTICS_U32 >= (1 << 16) * 16);
 
     // here it's a little involved, because we will need to manually create witness and copy it over
     // layers.

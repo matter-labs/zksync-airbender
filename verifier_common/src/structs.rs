@@ -130,7 +130,7 @@ pub fn ext_from_nds<
         let mut i = 0;
         while i < E::DEGREE {
             dst.get_unchecked_mut(i).write(F::from_reduced_raw_repr(
-                nd_source.read_reduced_field_element(F::CHARACTERISTICS),
+                nd_source.read_reduced_field_element(F::CHARACTERISTICS_U32),
             ));
             i += 1;
         }

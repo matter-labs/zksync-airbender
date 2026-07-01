@@ -68,31 +68,31 @@ pub fn read_and_verify_pow<I: NonDeterminismSource>(
     );
 }
 
-// #[inline(always)]
-// pub fn draw_query_indices<const MAX_QUERIES: usize, const MAX_DRAW_WORDS: usize>(
-//     ts: &mut TranscriptState,
-//     num_queries: usize,
-//     query_index_bits: usize,
-//     draw_words: usize,
-// ) -> LazyVec<usize, MAX_QUERIES> {
-//     let mut source_words = LazyVec::<u32, MAX_DRAW_WORDS>::new();
-//     unsafe {
-//         source_words.set_len(draw_words);
-//         ts.draw_raw(source_words.as_mut_slice());
-//     }
+#[inline(always)]
+pub fn draw_query_indices<const MAX_QUERIES: usize, const MAX_DRAW_WORDS: usize>(
+    ts: &mut TranscriptState,
+    num_queries: usize,
+    query_index_bits: usize,
+    draw_words: usize,
+) -> LazyVec<usize, MAX_QUERIES> {
+    let mut source_words = LazyVec::<u32, MAX_DRAW_WORDS>::new();
+    unsafe {
+        source_words.set_len(draw_words);
+        ts.draw_raw(source_words.as_mut_slice());
+    }
 
-//     // Skip first word (matches prover's draw_query_bits convention)
-//     let bit_words = &source_words.as_slice()[1..];
-//     let mut bit_source = BitSource::new(bit_words);
+    // Skip first word (matches prover's draw_query_bits convention)
+    let bit_words = &source_words.as_slice()[1..];
+    let mut bit_source = BitSource::new(bit_words);
 
-//     let mut indices = LazyVec::<usize, MAX_QUERIES>::new();
-//     let mut q = 0;
-//     while q < num_queries {
-//         indices.push(assemble_query_index(query_index_bits, &mut bit_source));
-//         q += 1;
-//     }
-//     indices
-// }
+    let mut indices = LazyVec::<usize, MAX_QUERIES>::new();
+    let mut q = 0;
+    while q < num_queries {
+        indices.push(assemble_query_index(query_index_bits, &mut bit_source));
+        q += 1;
+    }
+    indices
+}
 
 #[inline(always)]
 pub fn verify_merkle_path<I: NonDeterminismSource>(

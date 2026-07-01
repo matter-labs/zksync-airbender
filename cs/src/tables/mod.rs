@@ -1059,7 +1059,7 @@ pub fn key_for_continuous_range<F: PrimeField, const N: usize>(
     max_value_inclusive: u32,
 ) -> Vec<[F; N]> {
     let len = max_value_inclusive as usize + 1;
-    assert!(len < F::CHARACTERISTICS as usize);
+    assert!(len < F::CHARACTERISTICS_U32 as usize);
     let mut keys = Vec::with_capacity(len);
     if max_value_inclusive < (1 << 20) {
         for a in 0u32..=max_value_inclusive {

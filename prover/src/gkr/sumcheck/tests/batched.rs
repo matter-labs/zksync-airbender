@@ -101,11 +101,11 @@ fn test_batched_kernels() {
     };
 
     // Batch challenges
-    let copy_bc = E::from_base(F::from_u64_with_reduction(3));
-    let product_bc = E::from_base(F::from_u64_with_reduction(5));
+    let copy_bc = E::from_base(F::from_u32_with_reduction(3));
+    let product_bc = E::from_base(F::from_u32_with_reduction(5));
     let lookup_bc = [
-        E::from_base(F::from_u64_with_reduction(11)),
-        E::from_base(F::from_u64_with_reduction(13)),
+        E::from_base(F::from_u32_with_reduction(11)),
+        E::from_base(F::from_u32_with_reduction(13)),
     ];
 
     // Compute combined claim

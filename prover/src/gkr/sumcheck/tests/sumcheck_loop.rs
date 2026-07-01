@@ -133,10 +133,10 @@ fn test_sumcheck_loop_product() {
     let mut claim_points: BTreeMap<usize, Vec<E>> = BTreeMap::new();
     claim_points.insert(1, prev_challenges.clone());
 
-    let lookup_multiplicative_part = E::from_base(F::from_u64_with_reduction(0xff));
-    let lookup_additive_part = E::from_base(F::from_u64_with_reduction(42));
+    let lookup_multiplicative_part = E::from_base(F::from_u32_with_reduction(0xff));
+    let lookup_additive_part = E::from_base(F::from_u32_with_reduction(42));
 
-    let mut batching_challenge = E::from_base(F::from_u64_with_reduction(0xff));
+    let mut batching_challenge = E::from_base(F::from_u32_with_reduction(0xff));
     let mut seed = Seed::default();
 
     evaluate_sumcheck_for_layer::<F, E, TestTranscript>(
@@ -289,10 +289,10 @@ fn test_sumcheck_loop_multiple_gates() {
     let mut claim_points: BTreeMap<usize, Vec<E>> = BTreeMap::new();
     claim_points.insert(1, prev_challenges.clone());
 
-    let lookup_multiplicative_part = E::from_base(F::from_u64_with_reduction(0xff));
-    let lookup_additive_part = E::from_base(F::from_u64_with_reduction(42));
+    let lookup_multiplicative_part = E::from_base(F::from_u32_with_reduction(0xff));
+    let lookup_additive_part = E::from_base(F::from_u32_with_reduction(42));
 
-    let mut batching_challenge = E::from_base(F::from_u64_with_reduction(0xff));
+    let mut batching_challenge = E::from_base(F::from_u32_with_reduction(0xff));
     let mut seed = Seed::default();
 
     evaluate_sumcheck_for_layer::<F, E, TestTranscript>(
