@@ -2148,7 +2148,7 @@ pub(crate) mod tests {
         push_trace_guided_cache_neighbors(&sites, &genome, &trace, 16, &mut neighbors);
 
         assert!(neighbors.iter().any(|(_, candidate, family)| {
-            *family == Some(MoveFamily::AdmitBias)
+            *family == Some(MoveFamily::KeepBias)
                 && reject_sites_for_value_1
                     .iter()
                     .all(|&idx| candidate.cache_priority[idx] > 0.0)
@@ -2161,6 +2161,25 @@ pub(crate) mod tests {
             *family == Some(MoveFamily::KeepBias)
                 && candidate.cache_priority[victim_keep_site_for_value_0] < 0.0
         }));
+        assert!(neighbors
+            .iter()
+            .all(|(_, _, family)| *family != Some(MoveFamily::AdmitBias)));
+    }
+
+    #[test]
+    fn trace_guided_cache_neighbors_use_single_cache_family() {
+        let inst = trace_guided_cache_fixture();
+        let sites = enumerate_demand_sites(&inst);
+        let genome = trace_guided_cache_genome(&inst, &sites);
+        let (_score, trace) = score_candidate_with_trace(&inst, &sites, &genome);
+        let mut neighbors = Vec::new();
+
+        push_trace_guided_cache_neighbors(&sites, &genome, &trace, 16, &mut neighbors);
+
+        assert!(!neighbors.is_empty());
+        assert!(neighbors
+            .iter()
+            .all(|(_, _, family)| *family == Some(MoveFamily::KeepBias)));
     }
 
     #[test]
@@ -2179,11 +2198,14 @@ pub(crate) mod tests {
         let neighbors = neighbor_entries(&inst, &sites, &genome, 64, &[]);
 
         assert!(neighbors.iter().any(|(_, candidate, family)| {
-            *family == Some(MoveFamily::AdmitBias)
+            *family == Some(MoveFamily::KeepBias)
                 && reject_sites_for_value_1
                     .iter()
                     .all(|&idx| candidate.cache_priority[idx] > 0.0)
         }));
+        assert!(neighbors
+            .iter()
+            .all(|(_, _, family)| *family != Some(MoveFamily::AdmitBias)));
     }
 
     #[test]
@@ -2975,10 +2997,10 @@ pub(crate) mod tests {
             .any(|(_, _, family)| *family == Some(MoveFamily::RootInsert)));
         assert!(neighbors
             .iter()
-            .any(|(_, _, family)| *family == Some(MoveFamily::AdmitBias)));
+            .any(|(_, _, family)| *family == Some(MoveFamily::KeepBias)));
         assert!(neighbors
             .iter()
-            .any(|(_, _, family)| *family == Some(MoveFamily::KeepBias)));
+            .all(|(_, _, family)| *family != Some(MoveFamily::AdmitBias)));
     }
 
     #[test]
@@ -4532,18 +4554,18 @@ pub(crate) mod tests {
                 | CacheTraceEvent::NoFutureDemand { .. } => {}
                 CacheTraceEvent::PressureReject { value, .. } => {
                     let mut candidate = base.clone();
-                    set_admit_bias_for_value(sites, &mut candidate, value, TRACE_GUIDED_BIAS);
-                    push_trace_candidate(out, limit, candidate, MoveFamily::AdmitBias);
+                    set_cache_priority_for_value(sites, &mut candidate, value, TRACE_GUIDED_BIAS);
+                    push_trace_candidate(out, limit, candidate, MoveFamily::KeepBias);
                 }
                 CacheTraceEvent::PressureAdmit { site_idx, value } => {
                     let mut admit_candidate = base.clone();
-                    set_admit_bias_for_value(
+                    set_cache_priority_for_value(
                         sites,
                         &mut admit_candidate,
                         value,
                         -TRACE_GUIDED_BIAS,
                     );
-                    push_trace_candidate(out, limit, admit_candidate, MoveFamily::AdmitBias);
+                    push_trace_candidate(out, limit, admit_candidate, MoveFamily::KeepBias);
 
                     let mut keep_candidate = base.clone();
                     set_cache_priority_for_site(
@@ -4575,7 +4597,12 @@ pub(crate) mod tests {
         }
     }
 
-    fn set_admit_bias_for_value(sites: &[DemandSite], genome: &mut Genome, value: u32, bias: f64) {
+    fn set_cache_priority_for_value(
+        sites: &[DemandSite],
+        genome: &mut Genome,
+        value: u32,
+        bias: f64,
+    ) {
         let site_to_gene = cache_priority_site_to_gene(sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == value {
