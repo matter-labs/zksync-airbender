@@ -12,6 +12,7 @@
 //! Multiplication uses Montgomery reduction (CIOS over two 64-bit limbs). No
 //! extensions are defined over this field.
 
+use crate::PrimeField;
 use crate::field::Field;
 use crate::Rand;
 use crate::TwoAdicField;
@@ -510,6 +511,69 @@ impl TwoAdicField for Proth120 {
     const TWO_ADICITY_GENERATORS: &[Self] = &Self::TWO_ADICITY_GENERATORS;
 
     const TWO_ADICITY_GENERATORS_INVERSED: &[Self] = &Self::TWO_ADICITY_GENERATORS_INVERSED;
+}
+
+impl PrimeField for Proth120 {
+    const NUM_BYTES_IN_REPR: usize = 16;
+
+    const IS_MONT_REPR: bool = true;
+    const MONT_K: u32 = u32::MAX;
+
+    const CHAR_BITS: usize = 123;
+    const CHARACTERISTICS_U32: u32 = u32::MAX;
+    const CHARACTERISTICS_U128: u128 = 9304595970494411110326649421962412033;
+
+    // Potentially unnormalized, but "natural" representation
+    fn as_u32(self) -> u32 {
+        unreachable!()
+    }
+    // < CHAR, but "natural" representation
+    fn as_u32_reduced(self) -> u32 {
+        unreachable!()
+    }
+    // any representation, without reduction guarantees. To be used for roundtrips
+    // over newly constructed elements
+    fn as_u32_raw_repr(self) -> u32 {
+        unreachable!()
+    }
+    // any representation, that can be used with the corresponding constructor
+    fn as_u32_raw_repr_reduced(self) -> u32 {
+        unreachable!()
+    }
+
+    fn as_u128_reduced(self) -> u128 {
+        self.to_u128()
+    }
+
+    fn from_u32_unchecked(value: u32) -> Self {
+        unreachable!()
+    }
+    fn from_u32_with_reduction(value: u32) -> Self {
+        unreachable!()
+    }
+    fn from_u128_with_reduction(value: u128) -> Self {
+        Self::new(value % Self::CHARACTERISTICS_U128)
+    }
+    fn from_u32(value: u32) -> Option<Self> {
+        unreachable!()
+    }
+    fn from_reduced_raw_repr(value: u32) -> Self {
+        unreachable!()
+    }
+    fn from_raw_repr_with_reduction(value: u32) -> Self {
+        unreachable!()
+    }
+
+    fn as_boolean(&self) -> bool {
+        debug_assert!(
+            self.0 == 0 || self.0 == Self::MONT_R,
+            "expected boolean value, got {}",
+            self.as_u128_reduced()
+        );
+
+        // in non-debug we can just compare to 1
+        self.0 == Self::MONT_R
+    }
 }
 
 #[cfg(test)]
